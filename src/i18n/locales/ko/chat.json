@@ -148,8 +148,8 @@
   "control-arguments-unavailable": "인수를 표시할 수 없습니다.",
   "control-approve-once": "이번만 허용",
   "control-approve-run": "이 실행 동안 허용",
-  "control-approve-space": "이 Space에서 항상 허용",
-  "control-approve-space-tool": "이 Space에서 이 도구를 항상 허용",
+  "control-approve-space": "항상 허용",
+  "control-approve-space-tool": "항상 허용",
   "control-approve-once-description": "이 작업을 한 번만 허용합니다.",
   "control-approve-run-description": "이 실행이 끝날 때까지 다시 묻지 않고 허용합니다.",
   "control-approve-space-description": "앞으로의 실행을 포함해 이 Space에서 항상 허용합니다.",
@@ -215,5 +215,9 @@
   "timeline-history-reconnecting": "다시 연결하는 중…",
   "timeline-history-retry": "다시 시도",
   "timeline-empty": "아직 메시지가 없습니다. 메시지를 보내 시작하세요.",
+  "timeline-style-tooltip": "채팅 타임라인 스타일",
+  "timeline-style-normal": "일반",
+  "timeline-style-detailed": "상세",
+  "timeline-style-summarized": "요약",
   "files-changed": "변경된 파일"
 }

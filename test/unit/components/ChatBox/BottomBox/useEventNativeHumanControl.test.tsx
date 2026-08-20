@@ -387,11 +387,16 @@ describe('useEventNativeHumanControl', () => {
 
     expect(result.current.variant).toMatchObject({
       kind: 'feedback',
+      presentation: 'question',
       header: {
-        title: 'Allow todo_write?',
+        title: 'Question',
         description: 'Which file should I update?',
       },
     });
+    if (result.current.variant?.kind !== 'feedback') throw new Error('variant');
+    expect(result.current.variant.header.eyebrow).toBeUndefined();
+    expect(result.current.variant.header.contextItems).toBeUndefined();
+    expect(result.current.variant.header.details).toBeUndefined();
 
     act(() => {
       if (result.current.variant?.kind === 'feedback') {

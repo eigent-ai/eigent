@@ -176,16 +176,21 @@ function safeToolDetail(node: ChatActivityNode): string {
   return '';
 }
 
+function safeToolPayload(node: ChatActivityNode, active: boolean): string {
+  const explicit = active ? node.input : node.output;
+  return explicit?.trim() || safeToolDetail(node);
+}
+
 function toolCallFromNode(node: ChatActivityNode): SessionToolCall {
   const active = ACTIVE_TOOL_STATUSES.has(node.status);
-  const detail = safeToolDetail(node);
+  const payload = safeToolPayload(node, active);
   return {
     id: node.toolCallId || `tool-call:${node.eventId}`,
     toolkitName: node.toolkitName?.trim() || node.toolName?.trim() || 'Tool',
     method:
       node.methodName?.trim() || node.toolName?.trim() || node.title.trim(),
-    input: active ? detail : '',
-    output: active ? '' : detail,
+    input: active ? payload : '',
+    output: active ? '' : payload,
     status: active ? 'running' : 'done',
     taskId: node.runId,
     agentName: node.agentName?.trim() || '',
@@ -196,12 +201,12 @@ function toolCallFromNode(node: ChatActivityNode): SessionToolCall {
 }
 
 function mergeToolNode(call: SessionToolCall, node: ChatActivityNode): void {
-  const detail = safeToolDetail(node);
   const active = ACTIVE_TOOL_STATUSES.has(node.status);
-  if (detail) {
-    if (active && !call.input) call.input = detail;
+  const payload = safeToolPayload(node, active);
+  if (payload) {
+    if (active && !call.input) call.input = payload;
     if (!active) {
-      call.output = [call.output, detail].filter(Boolean).join('\n\n');
+      call.output = [call.output, payload].filter(Boolean).join('\n\n');
     }
   }
   call.updatedAt = Math.max(call.updatedAt, nodeTime(node));

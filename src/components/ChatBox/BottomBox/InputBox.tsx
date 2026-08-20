@@ -28,6 +28,8 @@ import {
   FileText,
   Image,
   Paperclip,
+  Play,
+  Square,
   UploadCloud,
   WandSparkles,
   X,
@@ -38,6 +40,13 @@ import { toast } from 'sonner';
 import { BoxHeaderDisplay } from './BoxHeader';
 import { RichChatInput } from './RichChatInput';
 import type { BottomBoxHeaderContent } from './types';
+
+const PRIMARY_ACTION_ICON_MOTION_CLASS =
+  'absolute inset-0 size-[14px] text-current transition-[transform,opacity] motion-reduce:transition-none';
+const PRIMARY_ACTION_ICON_MOTION_STYLE: React.CSSProperties = {
+  transitionDuration: '160ms',
+  transitionTimingFunction: 'cubic-bezier(0.77, 0, 0.175, 1)',
+};
 
 /**
  * File attachment object
@@ -57,8 +66,13 @@ export interface InputboxProps {
   value?: string;
   /** Callback when text changes */
   onChange?: (value: string) => void;
-  /** Callback when send button is clicked (only fires when value is not empty) */
+  /** Callback when the send action is clicked. Text or attachments make it available. */
   onSend?: () => void;
+  /** Task state shown by the primary action when the composer has no draft. */
+  taskControlState?: 'idle' | 'running' | 'paused';
+  onPauseTask?: () => void;
+  onResumeTask?: () => void;
+  taskControlLoading?: boolean;
   /** Array of file attachments */
   files?: FileAttachment[];
   /** Render attachment chips inside the input surface (layer 2). */
@@ -137,6 +151,10 @@ export const Inputbox = ({
   value = '',
   onChange,
   onSend,
+  taskControlState = 'idle',
+  onPauseTask,
+  onResumeTask,
+  taskControlLoading = false,
   files = [],
   showFileAttachments = true,
   header,
@@ -205,9 +223,9 @@ export const Inputbox = ({
   );
 
   const handleSend = () => {
-    if (value.trim().length > 0 && !disabled) {
+    if (hasContent && !disabled) {
       onSend?.();
-    } else if (value.trim().length === 0) {
+    } else if (!hasContent) {
       toast.error(t('chat.message-cannot-be-empty'), {
         closeButton: true,
       });
@@ -219,6 +237,34 @@ export const Inputbox = ({
       e.preventDefault();
       handleSend();
     }
+  };
+
+  const primaryAction = hasContent
+    ? 'send'
+    : taskControlState === 'running'
+      ? 'pause'
+      : taskControlState === 'paused'
+        ? 'resume'
+        : 'idle';
+  const showArrow = primaryAction === 'idle' || primaryAction === 'send';
+  const primaryActionLabel =
+    primaryAction === 'pause'
+      ? t('chat.pause')
+      : primaryAction === 'resume'
+        ? t('chat.run-resume')
+        : t('chat.send-now');
+  const primaryActionDisabled =
+    primaryAction === 'idle' ||
+    taskControlLoading ||
+    (primaryAction === 'send' && disabled) ||
+    (primaryAction === 'pause' && !onPauseTask) ||
+    (primaryAction === 'resume' && !onResumeTask);
+
+  const handlePrimaryAction = () => {
+    if (primaryActionDisabled) return;
+    if (primaryAction === 'send') handleSend();
+    if (primaryAction === 'pause') onPauseTask?.();
+    if (primaryAction === 'resume') onResumeTask?.();
   };
 
   const handleRemoveFile = (filePath: string) => {
@@ -343,9 +389,9 @@ export const Inputbox = ({
       {isDragging && (
         <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-ds-border-neutral-strong-default bg-ds-bg-information-subtle-default text-ds-text-neutral-default-default backdrop-blur-sm">
           <UploadCloud className="h-8 w-8" />
-          <div className="text-sm font-semibold">
+          <span className="block text-body-sm font-semibold">
             {t('chat.drop-files-to-attach')}
-          </div>
+          </span>
         </div>
       )}
       {/* Layer 1: Input-required question / details */}
@@ -591,24 +637,63 @@ export const Inputbox = ({
           )}
         </div>
 
-        {/* Right: send */}
+        {/* Right: send or control the current task when the draft is empty. */}
         <div className="flex shrink-0 items-center gap-2">
           <Button
+            type="button"
             size="xs"
             buttonContent="icon-only"
             textWeight="bold"
             buttonRadius="full"
-            variant={value.trim().length > 0 ? 'primary' : 'primary'}
-            tone={value.trim().length > 0 ? 'success' : 'default'}
-            onClick={handleSend}
-            disabled={disabled || value.trim().length === 0}
+            variant="primary"
+            tone={
+              primaryAction === 'send' || primaryAction === 'resume'
+                ? 'success'
+                : 'default'
+            }
+            aria-label={primaryActionLabel}
+            aria-busy={taskControlLoading || undefined}
+            data-composer-primary-action={primaryAction}
+            onClick={handlePrimaryAction}
+            disabled={primaryActionDisabled}
           >
-            <ArrowRight
-              className={cn(
-                'text-current transition-transform duration-200',
-                value.trim().length > 0 && 'rotate-[-90deg]'
-              )}
-            />
+            <span
+              className="relative grid size-[14px] place-items-center leading-none"
+              aria-hidden
+            >
+              <ArrowRight
+                data-composer-primary-icon="arrow"
+                style={PRIMARY_ACTION_ICON_MOTION_STYLE}
+                className={cn(
+                  PRIMARY_ACTION_ICON_MOTION_CLASS,
+                  showArrow
+                    ? primaryAction === 'send'
+                      ? '-rotate-90 opacity-100'
+                      : 'rotate-0 opacity-100'
+                    : 'rotate-0 opacity-0'
+                )}
+              />
+              <Square
+                data-composer-primary-icon="pause"
+                style={PRIMARY_ACTION_ICON_MOTION_STYLE}
+                className={cn(
+                  PRIMARY_ACTION_ICON_MOTION_CLASS,
+                  primaryAction === 'pause'
+                    ? 'rotate-0 opacity-100'
+                    : 'rotate-90 opacity-0'
+                )}
+              />
+              <Play
+                data-composer-primary-icon="play"
+                style={PRIMARY_ACTION_ICON_MOTION_STYLE}
+                className={cn(
+                  PRIMARY_ACTION_ICON_MOTION_CLASS,
+                  primaryAction === 'resume'
+                    ? 'rotate-0 opacity-100'
+                    : '-rotate-90 opacity-0'
+                )}
+              />
+            </span>
           </Button>
         </div>
       </div>

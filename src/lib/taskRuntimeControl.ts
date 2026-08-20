@@ -32,12 +32,15 @@ type TaskControlRequest = (
 export async function takeControlOfTask({
   chatStore,
   action,
+  projectId,
   taskId,
   request = fetchPut,
   now = Date.now,
 }: {
   chatStore: TaskControlStore | null | undefined;
   action: TaskControlAction;
+  /** Project-scoped TaskLock ID used by the runtime control endpoint. */
+  projectId: string;
   taskId: string;
   request?: TaskControlRequest;
   now?: () => number;
@@ -61,7 +64,9 @@ export async function takeControlOfTask({
   }
 
   try {
-    await request(`/task/${taskId}/take-control`, { action });
+    await request(`/task/${encodeURIComponent(projectId)}/take-control`, {
+      action,
+    });
     return true;
   } catch (error) {
     chatStore.setElapsed(taskId, previous.elapsed);

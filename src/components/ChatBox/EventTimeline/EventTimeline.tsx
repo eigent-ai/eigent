@@ -52,7 +52,7 @@ interface EventTimelineProps {
 export function EventTimeline({
   ariaLabel = 'Chat event timeline',
   className,
-  detailLevel = 'detailed',
+  detailLevel = 'trajectory',
   emptyState = null,
   eventTypeRegistry,
   nodes,

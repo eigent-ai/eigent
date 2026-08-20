@@ -913,34 +913,49 @@ describe('EventTimeline', () => {
     );
   });
 
-  it('falls back to detailed presentation for a reserved detail level', () => {
+  it('uses the narrative presentation policy for the narrative mode', () => {
     render(
       <EventTimeline
-        detailLevel="compact"
-        nodes={[messageNode('message-1', 'assistant', 'Detailed for now')]}
+        detailLevel="narrative"
+        nodes={[
+          messageNode('message-1', 'assistant', 'Normal response'),
+          activityNode('activity-1', 'Routine tool call', {
+            detail: '{"internal":"payload"}',
+          }),
+          unknownNode(),
+        ]}
       />
     );
 
     const timeline = screen.getByRole('list', {
       name: 'Chat event timeline',
     });
-    expect(timeline).toHaveAttribute('data-requested-detail-level', 'compact');
-    expect(timeline).toHaveAttribute('data-effective-detail-level', 'detailed');
-    expect(screen.getByLabelText("Eigent's reply")).toHaveTextContent(
-      'Detailed for now'
+    expect(timeline).toHaveAttribute(
+      'data-requested-detail-level',
+      'narrative'
     );
+    expect(timeline).toHaveAttribute(
+      'data-effective-detail-level',
+      'narrative'
+    );
+    expect(screen.getByLabelText("Eigent's reply")).toHaveTextContent(
+      'Normal response'
+    );
+    expect(screen.getByText('Routine tool call')).toBeInTheDocument();
+    expect(screen.queryByText('{"internal":"payload"}')).toBeNull();
+    expect(screen.queryByText('future.super_event')).toBeNull();
   });
 
   it('applies a registered detail-level presentation policy', () => {
     const presentationPolicies = createChatTimelinePresentationPolicyRegistry({
-      compact: (nodes) => nodes.filter((node) => node.kind === 'notice'),
+      narrative: (nodes) => nodes.filter((node) => node.kind === 'notice'),
     });
 
     render(
       <EventTimeline
-        detailLevel="compact"
+        detailLevel="narrative"
         nodes={[
-          messageNode('message-1', 'assistant', 'Hidden by compact policy'),
+          messageNode('message-1', 'assistant', 'Hidden by narrative policy'),
           noticeNode('notice-1', 'Compact milestone'),
         ]}
         presentationPolicies={presentationPolicies}
@@ -950,21 +965,24 @@ describe('EventTimeline', () => {
     const timeline = screen.getByRole('list', {
       name: 'Chat event timeline',
     });
-    expect(timeline).toHaveAttribute('data-effective-detail-level', 'compact');
-    expect(screen.queryByText('Hidden by compact policy')).toBeNull();
+    expect(timeline).toHaveAttribute(
+      'data-effective-detail-level',
+      'narrative'
+    );
+    expect(screen.queryByText('Hidden by narrative policy')).toBeNull();
     expect(screen.getByText('Compact milestone')).toBeInTheDocument();
   });
 
   it('falls back safely when a presentation policy fails', () => {
     const presentationPolicies = createChatTimelinePresentationPolicyRegistry({
-      summarized: () => {
-        throw new Error('summary policy failed');
+      narrative: () => {
+        throw new Error('narrative policy failed');
       },
     });
 
     render(
       <EventTimeline
-        detailLevel="summarized"
+        detailLevel="narrative"
         nodes={[messageNode('message-1', 'assistant', 'Preserved output')]}
         presentationPolicies={presentationPolicies}
       />
@@ -973,7 +991,10 @@ describe('EventTimeline', () => {
     const timeline = screen.getByRole('list', {
       name: 'Chat event timeline',
     });
-    expect(timeline).toHaveAttribute('data-effective-detail-level', 'detailed');
+    expect(timeline).toHaveAttribute(
+      'data-effective-detail-level',
+      'trajectory'
+    );
     expect(screen.getByLabelText("Eigent's reply")).toHaveTextContent(
       'Preserved output'
     );

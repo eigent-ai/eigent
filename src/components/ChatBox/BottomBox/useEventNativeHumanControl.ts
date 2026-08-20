@@ -613,14 +613,10 @@ export function useEventNativeHumanControl({
         (scope): scope is BottomBoxApprovalScope =>
           scope === 'once' || scope === 'run' || scope === 'space'
       );
-      const isToolMatcher =
-        interaction.ruleMatcher?.matcherKind === 'literal_tool';
       const labels: Record<BottomBoxApprovalScope, string> = {
         once: t('chat.control-approve-once'),
         run: t('chat.control-approve-run'),
-        space: isToolMatcher
-          ? t('chat.control-approve-space-tool')
-          : t('chat.control-approve-space'),
+        space: t('chat.control-approve-space'),
       };
       const descriptions: Record<BottomBoxApprovalScope, string> = {
         once: t('chat.control-approve-once-description'),
@@ -732,9 +728,20 @@ export function useEventNativeHumanControl({
       interaction.interactionType === 'feedback' ||
       interaction.interactionType === 'human_feedback'
     ) {
+      const questionPresentation = interaction.interactionType === 'question';
       return {
         kind: 'feedback',
-        ...common,
+        header: questionPresentation
+          ? {
+              title: t('chat.timeline-question'),
+              description:
+                [interaction.prompt, activeSubmission.error]
+                  .filter(Boolean)
+                  .join(' ') || undefined,
+            }
+          : header,
+        presentation: questionPresentation ? 'question' : 'default',
+        submitting,
         value: activeDraft.feedback,
         placeholder: t('chat.control-response-placeholder'),
         onChange: (feedback) =>

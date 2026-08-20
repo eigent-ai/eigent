@@ -194,6 +194,23 @@ describe('BottomBox structure', () => {
           header: {
             eyebrow: 'Permission required',
             title: 'Allow todo_write?',
+            contextItems: [
+              {
+                id: 'agent',
+                label: 'single_agent',
+                kind: 'agent',
+              },
+              {
+                id: 'operation',
+                label: 'mcp.tool.write',
+                kind: 'operation',
+              },
+              {
+                id: 'resource',
+                label: 'brave_search.web_search',
+                kind: 'external-context',
+              },
+            ],
             details: [
               {
                 id: 'arguments',
@@ -228,7 +245,7 @@ describe('BottomBox structure', () => {
 
     expect(approvalSurface).toBeInTheDocument();
     expect(approvalHeader).toBeInTheDocument();
-    expect(approvalHeader).toHaveTextContent('Permission required');
+    expect(approvalHeader).not.toHaveTextContent('Permission required');
     expect(approvalHeader).toHaveTextContent('Allow todo_write?');
     expect(approvalSurface).toContainElement(approvalActions as HTMLElement);
     expect(container.querySelector('[data-approval-actions]')).toHaveClass(
@@ -246,11 +263,60 @@ describe('BottomBox structure', () => {
       screen.queryByRole('button', { name: /always allow/i })
     ).not.toBeInTheDocument();
     expect(
-      screen.getByText('Review arguments (secrets redacted)')
-    ).toBeInTheDocument();
+      screen.queryByText('Review arguments (secrets redacted)')
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('single_agent')).not.toBeInTheDocument();
+    expect(screen.queryByText('mcp.tool.write')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('brave_search.web_search')
+    ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Approve once' }));
     expect(onApprove).toHaveBeenCalledWith('once');
+  });
+
+  it('renders a concise approval without eyebrow or scope descriptions', () => {
+    render(
+      <BottomBox
+        state="running"
+        variant={{
+          kind: 'approval',
+          header: {
+            eyebrow: 'Input required',
+            title: 'The agent wants to run send_message_to_user.',
+          },
+          options: [
+            {
+              scope: 'once',
+              label: 'Approve once',
+              description: 'Allow this action one time only.',
+            },
+            {
+              scope: 'space',
+              label: 'Always allow',
+              description: 'Allow this action in this Space from now on.',
+            },
+          ],
+          onApprove: vi.fn(),
+          onReject: vi.fn(),
+        }}
+        {...footerProps}
+      />
+    );
+
+    expect(screen.queryByText('Input required')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Allow this action one time only.')
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Allow this action in this Space from now on.')
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Approve once' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Always allow' })
+    ).toBeInTheDocument();
   });
 
   it('animates from the composer into a three-action approval variant', () => {
@@ -303,7 +369,7 @@ describe('BottomBox structure', () => {
       'data-layout-motion',
       'instant'
     );
-    expect(screen.getByText('Input required')).toBeInTheDocument();
+    expect(screen.queryByText('Input required')).not.toBeInTheDocument();
     expect(
       screen.getByText('The agent wants to publish the report.')
     ).toBeInTheDocument();
@@ -339,6 +405,28 @@ describe('BottomBox structure', () => {
     expect(onSelectionChange).toHaveBeenCalledWith(['pdf']);
   });
 
+  it('keeps standard textarea chrome for non-question feedback', () => {
+    render(
+      <BottomBox
+        state="running"
+        variant={{
+          kind: 'feedback',
+          header: { title: 'Share feedback' },
+          value: '',
+          onChange: vi.fn(),
+          onSubmit: vi.fn(),
+        }}
+        {...footerProps}
+      />
+    );
+
+    expect(screen.getByRole('textbox', { name: 'Feedback' })).toHaveClass(
+      'border',
+      'shadow-sm',
+      'focus-visible:ring-1'
+    );
+  });
+
   it('routes feedback and structured form callbacks', () => {
     const onFeedbackChange = vi.fn();
     const onFieldChange = vi.fn();
@@ -347,7 +435,11 @@ describe('BottomBox structure', () => {
         state="running"
         variant={{
           kind: 'feedback',
-          header: { title: 'What should I change?' },
+          presentation: 'question',
+          header: {
+            title: 'Question',
+            description: 'What should I change?',
+          },
           value: '',
           onChange: onFeedbackChange,
           onSubmit: vi.fn(),
@@ -356,13 +448,23 @@ describe('BottomBox structure', () => {
       />
     );
 
+    expect(screen.getByText('Question')).toBeInTheDocument();
     expect(screen.getByText('What should I change?')).toBeInTheDocument();
     expect(
       screen
         .getByText('What should I change?')
         .closest('[data-bottom-box-header]')
     ).toBeInTheDocument();
-    fireEvent.change(screen.getByRole('textbox', { name: 'Feedback' }), {
+    const questionTextarea = screen.getByRole('textbox', {
+      name: 'Feedback',
+    });
+    expect(questionTextarea).toHaveClass(
+      'border-none',
+      'shadow-none',
+      'focus-visible:ring-0',
+      'focus-visible:ring-offset-0'
+    );
+    fireEvent.change(questionTextarea, {
       target: { value: 'Use a shorter title' },
     });
     expect(onFeedbackChange).toHaveBeenCalledWith('Use a shorter title');
@@ -474,42 +576,6 @@ describe('BottomBox structure', () => {
     expect(screen.getByTestId('project-setup-footer')).toBeInTheDocument();
   });
 
-  it('routes Stop to the explicitly targeted running Run', () => {
-    const onStop = vi.fn();
-    const { container } = render(
-      <BottomBox
-        state="running"
-        variant={{
-          kind: 'run_control',
-          header: {
-            eyebrow: 'Run control',
-            title: 'Research Run',
-            description: 'The Run is active.',
-          },
-          runId: 'run-42',
-          state: 'running',
-          onStop,
-        }}
-        {...footerProps}
-      />
-    );
-
-    expect(screen.getByText('Research Run')).toBeInTheDocument();
-    expect(container.querySelector('[data-bottom-box-input]')).toHaveAttribute(
-      'data-variant',
-      'run_control'
-    );
-    expect(container.querySelector('[data-run-control]')).toHaveAttribute(
-      'data-run-id',
-      'run-42'
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
-    expect(onStop).toHaveBeenCalledWith('run-42');
-    expect(
-      screen.queryByRole('button', { name: 'Resume' })
-    ).not.toBeInTheDocument();
-  });
-
   it('routes Resume and Cancel to the explicitly targeted interrupted Run', () => {
     const onResume = vi.fn();
     const onCancel = vi.fn();
@@ -559,16 +625,6 @@ describe('BottomBox structure', () => {
       runId: 'run-7',
     };
     const { rerender } = render(
-      <BottomBox
-        state="running"
-        variant={{ ...common, state: 'stopping' }}
-        {...footerProps}
-      />
-    );
-
-    expect(screen.getByRole('button', { name: 'Stopping…' })).toBeDisabled();
-
-    rerender(
       <BottomBox
         state="running"
         variant={{ ...common, state: 'resuming' }}

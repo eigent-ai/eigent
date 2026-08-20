@@ -18,12 +18,21 @@ import {
   selectRenderableChatNodes,
   type ChatProjectionNode,
 } from '@/lib/projector/chat';
+import {
+  composeTimelineRuns,
+  reconcileTimelineRuns,
+  type TimelineRunView,
+} from '@/lib/projector/chat/presentation';
+import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
+import type { ChatTimelineDetailLevel } from '@/types/chatTimeline';
+import type { SessionModeType } from '@/types/constants';
 import {
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
+  type ReactNode,
   type RefObject,
 } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -32,8 +41,8 @@ import {
   animateChatTimelineAnchor,
   type ChatTimelineScrollAnimation,
 } from './chatTimelineScroll';
-import { EventTimeline, type ChatTimelineDetailLevel } from './EventTimeline';
 import { presentChatSemanticEntities } from './EventTimeline/presentationPolicy';
+import { TimelineModeRenderer } from './TimelineModes';
 
 /** Temporary DOM window until the event timeline has variable-height virtualization. */
 const MAX_MOUNTED_EVENT_NODES = 250;
@@ -51,6 +60,38 @@ export function isChatTimelineNearBottom(
 interface EventNativeTimelineWindow {
   hiddenNodeCount: number;
   nodes: readonly ChatProjectionNode[];
+}
+
+/**
+ * Apply the temporary DOM window to already-composed semantic Runs.
+ *
+ * Re-composing the visible input is unsafe because the visible slice may
+ * contain transport receipts that the full semantic pass intentionally
+ * suppressed (for example an approval decision or a legacy ASK mirror). Keep
+ * the full Run's collapsed rows and select them only by the semantic event
+ * identities that survived the window instead.
+ */
+export function selectWindowedTimelineRuns(
+  allRuns: readonly TimelineRunView[],
+  visibleNodes: readonly ChatProjectionNode[]
+): TimelineRunView[] {
+  const visibleEventIds = new Set(visibleNodes.map((node) => node.eventId));
+
+  return allRuns.flatMap((run): TimelineRunView[] => {
+    const nodes = run.nodes.filter((node) => visibleEventIds.has(node.eventId));
+    if (nodes.length === 0) return [];
+
+    const traceRows = run.traceRows.filter((row) =>
+      row.kind === 'node'
+        ? visibleEventIds.has(row.node.eventId)
+        : row.invocation.nodes.some((node) => visibleEventIds.has(node.eventId))
+    );
+
+    // Summary/final/file data stay whole. Tool rows also retain their complete
+    // lifecycle so a visible completion can show the safe request that began
+    // outside the mounted window.
+    return [{ ...run, nodes, traceRows }];
+  });
 }
 
 /**
@@ -109,7 +150,11 @@ function ChatTimelineSkeleton({ label }: { label: string }) {
 
 interface EventNativeProjectTimelineProps {
   detailLevel?: ChatTimelineDetailLevel;
+  /** The user has taken control; timers and progress animations hold. */
+  paused?: boolean;
+  floatingControl?: ReactNode;
   projectId: string;
+  sessionMode?: SessionModeType;
   scrollContainerRef?: RefObject<HTMLDivElement | null>;
   scrollBottomInsetPx: number;
 }
@@ -117,12 +162,15 @@ interface EventNativeProjectTimelineProps {
 /**
  * Production integration boundary for the event-native read path. Raw durable
  * events and legacy AgentStep values never reach this component: it consumes
- * semantic projection nodes and delegates component selection to the renderer
- * registry owned by EventTimeline.
+ * semantic projection nodes, composes complete Run models, and delegates to a
+ * mode-owned renderer. Timeline style never changes control authority.
  */
 export function EventNativeProjectTimeline({
-  detailLevel = 'detailed',
+  detailLevel = 'trajectory',
+  paused = false,
+  floatingControl,
   projectId,
+  sessionMode,
   scrollContainerRef,
   scrollBottomInsetPx,
 }: EventNativeProjectTimelineProps) {
@@ -140,6 +188,24 @@ export function EventNativeProjectTimeline({
     [allNodes]
   );
   const { hiddenNodeCount, nodes: visibleNodes } = timelineWindow;
+  const projectedRunsById =
+    runtime.projectId === projectId ? runtime.snapshot?.view?.runs : undefined;
+  const allRuns = useMemo(
+    () =>
+      reconcileTimelineRuns(
+        composeTimelineRuns(presentChatSemanticEntities(allNodes)),
+        projectedRunsById
+      ),
+    [allNodes, projectedRunsById]
+  );
+  const visibleRuns = useMemo(
+    () => selectWindowedTimelineRuns(allRuns, visibleNodes),
+    [allRuns, visibleNodes]
+  );
+  const projectedArtifactsByRun =
+    runtime.projectId === projectId
+      ? runtime.snapshot?.view?.artifactsByRun
+      : undefined;
   const previousScrollHeightRef = useRef(0);
   const previousLatestUserEventIdRef = useRef<string | undefined>(undefined);
   const previousProjectIdRef = useRef(projectId);
@@ -305,7 +371,11 @@ export function EventNativeProjectTimeline({
     >
       <div
         ref={contentRef}
-        className="mx-auto w-full max-w-[600px] pt-0"
+        className={cn(
+          'mx-auto w-full pt-0',
+          detailLevel !== 'trajectory' && 'max-w-[600px]'
+        )}
+        data-chat-timeline-content
         style={{ paddingBottom: scrollBottomInsetPx }}
       >
         {hiddenNodeCount > 0 ? (
@@ -343,47 +413,49 @@ export function EventNativeProjectTimeline({
             </Button>
           </div>
         ) : null}
-        <EventTimeline
-          ariaLabel={t('chat.timeline-label')}
-          detailLevel={detailLevel}
-          emptyState={
-            hydration.status === 'error' ? (
-              <div
-                className="flex flex-col items-center gap-2 px-4 py-6"
-                role="alert"
-              >
-                <span className="text-center text-body-sm font-normal text-ds-text-status-error-default-default">
-                  {t('chat.timeline-history-error')}
-                </span>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  buttonRadius="full"
-                  onClick={hydration.retry}
-                >
-                  {t('chat.timeline-history-retry')}
-                </Button>
-              </div>
-            ) : hydration.status === 'ready' || hydration.status === 'idle' ? (
-              <span
-                className="block px-4 py-6 text-center text-body-sm font-normal text-ds-text-neutral-muted-default"
-                role="status"
-              >
-                {t('chat.timeline-empty')}
-              </span>
-            ) : (
-              <ChatTimelineSkeleton
-                label={
-                  hydration.status === 'retrying'
-                    ? t('chat.timeline-history-reconnecting')
-                    : t('chat.timeline-history-loading')
-                }
-              />
-            )
-          }
-          nodes={visibleNodes}
-        />
+        {visibleRuns.length > 0 ? (
+          <TimelineModeRenderer
+            detailLevel={detailLevel}
+            paused={paused}
+            projectedArtifactsByRun={projectedArtifactsByRun}
+            runs={visibleRuns}
+            sessionMode={sessionMode}
+          />
+        ) : hydration.status === 'error' ? (
+          <div
+            className="flex flex-col items-center gap-2 px-4 py-6"
+            role="alert"
+          >
+            <span className="text-center text-body-sm font-normal text-ds-text-status-error-default-default">
+              {t('chat.timeline-history-error')}
+            </span>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              buttonRadius="full"
+              onClick={hydration.retry}
+            >
+              {t('chat.timeline-history-retry')}
+            </Button>
+          </div>
+        ) : hydration.status === 'ready' || hydration.status === 'idle' ? (
+          <span
+            className="block px-4 py-6 text-center text-body-sm font-normal text-ds-text-neutral-muted-default"
+            role="status"
+          >
+            {t('chat.timeline-empty')}
+          </span>
+        ) : (
+          <ChatTimelineSkeleton
+            label={
+              hydration.status === 'retrying'
+                ? t('chat.timeline-history-reconnecting')
+                : t('chat.timeline-history-loading')
+            }
+          />
+        )}
+        {floatingControl}
       </div>
     </div>
   );

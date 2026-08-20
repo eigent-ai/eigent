@@ -30,12 +30,12 @@ const ShinyText: React.FC<ShinyTextProps> = ({
   const animationDuration = `${speed}s`;
 
   return (
-    <div
+    <span
       className={`shiny-text ${disabled ? 'disabled' : ''} ${className}`}
       style={{ animationDuration }}
     >
       {text}
-    </div>
+    </span>
   );
 };
 

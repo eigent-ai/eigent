@@ -18,13 +18,15 @@ import {
   DEFAULT_THEME_CATALOG,
   createDefaultThemeContractV2,
 } from '@/lib/themeTokens/catalog';
-import { contrastRatio } from '@/lib/themeTokens/colorMath';
+import { contrastRatio, oklchToHex } from '@/lib/themeTokens/colorMath';
 import {
   applyThemeContractV2,
   buildThemeV2,
   createApcaDiagnosticsReport,
 } from '@/lib/themeTokens/engine';
 import {
+  CATEGORY_COLOR_NAMES,
+  CATEGORY_TOKEN_ROLES,
   TOKEN_ELEMENTS,
   TOKEN_EMPHASIS,
   TOKEN_TONES,
@@ -158,10 +160,47 @@ describe('themeTokens v2 engine', () => {
     );
     const expected =
       TOKEN_ELEMENTS.length *
-      TOKEN_TONES.length *
-      TOKEN_EMPHASIS.length *
-      TOKEN_UI_STATES.length;
+        TOKEN_TONES.length *
+        TOKEN_EMPHASIS.length *
+        TOKEN_UI_STATES.length +
+      CATEGORY_COLOR_NAMES.length * CATEGORY_TOKEN_ROLES.length;
     expect(Object.keys(theme.tokens)).toHaveLength(expected);
+  });
+
+  it('maps all 16 categorical palettes into role-based light and dark tokens', () => {
+    const light = buildThemeV2(
+      createDefaultThemeContractV2('light', {
+        themeId: 'eigent',
+        contrast: 50,
+      }),
+      DEFAULT_THEME_CATALOG
+    );
+    const dark = buildThemeV2(
+      createDefaultThemeContractV2('dark', {
+        themeId: 'eigent',
+        contrast: 50,
+      }),
+      DEFAULT_THEME_CATALOG
+    );
+
+    expect(light.tokens['category.purple.background.default']).toBe(
+      oklchToHex({ l: 0.963, c: 0.036, h: 295 })
+    );
+    expect(light.tokens['category.purple.text.strong']).toBe(
+      oklchToHex({ l: 0.358, c: 0.102, h: 295 })
+    );
+    expect(dark.tokens['category.purple.background.default']).toBe(
+      oklchToHex({ l: 0.358, c: 0.102, h: 295 })
+    );
+    expect(dark.tokens['category.purple.text.strong']).toBe(
+      oklchToHex({ l: 0.991, c: 0.009, h: 295 })
+    );
+    expect(light.cssVariables['--ds-category-purple-background-default']).toBe(
+      light.tokens['category.purple.background.default']
+    );
+    expect(light.cssVariables['--ds-category-purple-text-strong']).toBe(
+      light.tokens['category.purple.text.strong']
+    );
   });
 
   it('ensures all generated tokens are valid CSS colors', () => {

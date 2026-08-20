@@ -33,6 +33,7 @@ import {
 } from '@/lib/projectAchievement';
 import { runEventIngressRegistry } from '@/lib/runEvents/registry';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
+import { takeControlOfTask } from '@/lib/taskRuntimeControl';
 import {
   cancelFollowUpRequest,
   createFollowUpRequest,
@@ -41,6 +42,7 @@ import {
   terminalContinuationAdmissionRejection,
 } from '@/service/followUpQueueApi';
 import { decideHumanInteraction } from '@/service/humanInteractionApi';
+import { cancelProjectRun } from '@/service/projectRunsApi';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
 import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
@@ -50,6 +52,7 @@ import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
 import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { ExecutionStatus } from '@/types';
+import { DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL } from '@/types/chatTimeline';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
 import {
   useCallback,
@@ -63,6 +66,7 @@ import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BottomBox from './BottomBox';
+import { selectBottomBoxControl } from './BottomBox/controlArbitration';
 import { createLegacyApprovalVariant } from './BottomBox/legacyHumanControl';
 import type {
   BottomBoxApprovalScope,
@@ -75,10 +79,12 @@ import {
   InterruptedRunBanner,
   InterruptedRunBannerAction,
 } from './InterruptedRunBanner';
+import { FloatingAction } from './MessageItem/FloatingAction';
 import { ProjectChatContainer } from './ProjectChatContainer';
 import {
   isEventNativeRunActionable,
   selectActionableInterruptedRun,
+  selectComposerTaskControlState,
   selectEventNativeActiveRunId,
 } from './runControlArbitration';
 import { PLAN_OVERLAY_SLOT_ID } from './TaskBox/PlanTaskBox';
@@ -312,6 +318,9 @@ export default function ChatBox(): JSX.Element {
   const textareaRef = useRef<HTMLDivElement>(null);
   const workspaceChatFocusRequestId = usePageTabStore(
     (s) => s.workspaceChatFocusRequestId
+  );
+  const chatTimelineDetailLevel = usePageTabStore(
+    (s) => s.chatTimelineDetailLevel ?? DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL
   );
   const activeProjectId = projectStore.activeProjectId;
   const eventNativeTimelineEnabled = isChatEventTimelineEnabled();
@@ -882,7 +891,14 @@ export default function ChatBox(): JSX.Element {
     queuedRequestId?: string
   ) => {
     const _taskId = taskId || chatStore.activeTaskId;
-    if (message.trim() === '' && !messageStr) return;
+    const composerAttachments =
+      queuedAttaches || (_taskId ? chatStore.tasks[_taskId]?.attaches : []);
+    if (
+      message.trim() === '' &&
+      !messageStr &&
+      (composerAttachments?.length || 0) === 0
+    )
+      return;
 
     if (!hasModel) {
       if (isCloudUsageLimited) {
@@ -909,6 +925,11 @@ export default function ChatBox(): JSX.Element {
 
     const rawMessageContent = messageStr || message;
     let tempMessageContent = rawMessageContent;
+    if (!tempMessageContent.trim() && (composerAttachments?.length || 0) > 0) {
+      tempMessageContent = t('chat.attachment-only-message', {
+        defaultValue: 'Please use the attached file(s).',
+      });
+    }
     const displayContent = tempMessageContent;
     const preserveComposer = queuedAttaches !== undefined;
 
@@ -1666,6 +1687,30 @@ export default function ChatBox(): JSX.Element {
     }
   };
 
+  const handleTaskControl = async (action: 'pause' | 'resume') => {
+    const taskId = chatStore.activeTaskId;
+    const projectId = projectStore.activeProjectId;
+    if (!taskId || !projectId || isPauseResumeLoading) return;
+    setIsPauseResumeLoading(true);
+    try {
+      const changed = await takeControlOfTask({
+        chatStore,
+        action,
+        projectId,
+        taskId,
+      });
+      if (!changed) {
+        toast.error(
+          t(`chat.${action}-task-failed`, {
+            defaultValue: `Failed to ${action} the task.`,
+          })
+        );
+      }
+    } finally {
+      setIsPauseResumeLoading(false);
+    }
+  };
+
   const handleSendQueuedMessageNow = async (taskId: string) => {
     const projectId = projectStore.activeProjectId;
     if (!projectId) return;
@@ -1826,19 +1871,39 @@ export default function ChatBox(): JSX.Element {
     }
   };
 
+  const handleEventNativeResumeRun = (runId: string) => {
+    if (runId !== interruptedRun?.run_id || isCloudRestoredRun) return;
+    void handleResumeInterruptedRun();
+  };
+
+  const handleEventNativeCancelRun = (runId: string) => {
+    if (runId !== interruptedRun?.run_id || isCloudRestoredRun) return;
+    void handleCancelInterruptedRun();
+  };
+
   const handleEventNativeStopRun = async (runId: string) => {
     const currentRunId = selectEventNativeActiveRunId(
       eventNativeProjectSnapshot,
       eligibleLegacyActiveRunId
     );
-    if (runId !== currentRunId) return;
+    const currentRun = currentRunId
+      ? eventNativeProjectSnapshot?.view.runs[currentRunId]
+      : undefined;
+    if (
+      runId !== currentRunId ||
+      currentRun?.status !== 'running' ||
+      isPauseResumeLoading
+    ) {
+      return;
+    }
 
     setIsPauseResumeLoading(true);
     try {
-      await fetchPost(`/runs/${encodeURIComponent(runId)}/cancel`, {
-        request_id: runActionRequestId('cancel', runId),
-        reason: 'explicit_stop_from_event_native_chatbox',
-      });
+      await cancelProjectRun(
+        runId,
+        runActionRequestId('cancel', runId),
+        'explicit_stop_from_event_native_chatbox'
+      );
       clearRunActionRequestId('cancel', runId);
       if (chatStore.tasks[runId]) chatStore.setIsPending(runId, false);
       toast.success('Run stopped successfully', { closeButton: true });
@@ -1848,16 +1913,6 @@ export default function ChatBox(): JSX.Element {
     } finally {
       setIsPauseResumeLoading(false);
     }
-  };
-
-  const handleEventNativeResumeRun = (runId: string) => {
-    if (runId !== interruptedRun?.run_id || isCloudRestoredRun) return;
-    void handleResumeInterruptedRun();
-  };
-
-  const handleEventNativeCancelRun = (runId: string) => {
-    if (runId !== interruptedRun?.run_id || isCloudRestoredRun) return;
-    void handleCancelInterruptedRun();
   };
 
   let eventNativeRunControlVariant: BottomBoxRunControlVariant | null = null;
@@ -1907,27 +1962,6 @@ export default function ChatBox(): JSX.Element {
         ? t('chat.run-cloud-restored-description')
         : undefined,
     };
-  } else if (
-    eventNativeTimelineEnabled &&
-    eventNativeActiveRunId &&
-    (eventNativeProjectSnapshot?.view.runs[eventNativeActiveRunId]?.status ===
-      'running' ||
-      (eventNativeActiveRunId === activeTaskId &&
-        activeTask?.status === ChatTaskStatus.RUNNING))
-  ) {
-    eventNativeRunControlVariant = {
-      kind: 'run_control',
-      header: {
-        title:
-          (eventNativeActiveRunId === activeTaskId
-            ? activeTask?.summaryTask
-            : undefined) || t('layout.stop-task'),
-      },
-      runId: eventNativeActiveRunId,
-      state: isPauseResumeLoading ? 'stopping' : 'running',
-      stopLabel: t('layout.stop-task'),
-      onStop: (runId) => void handleEventNativeStopRun(runId),
-    };
   }
 
   const legacyApprovalVariant =
@@ -1953,14 +1987,27 @@ export default function ChatBox(): JSX.Element {
           },
         }
       : 'input';
-  const bottomBoxVariant = eventNativeTimelineEnabled
-    ? (eventNativeHumanControl.variant ??
-      eventNativeRunControlVariant ??
-      'input')
-    : (legacyApprovalVariant ?? legacyHumanInputVariant);
-  const hasControlledBottomBoxVariant =
-    bottomBoxVariant !== 'input' && bottomBoxVariant.kind !== 'input';
-
+  // Timeline density is presentation-only. Select one shared BottomBox control
+  // from the active authority before rendering Normal, Detailed, or Summarised.
+  const bottomBoxControl = selectBottomBoxControl({
+    humanInteractionVariant: eventNativeTimelineEnabled
+      ? eventNativeHumanControl.variant
+      : legacyApprovalVariant,
+    runControlVariant: eventNativeTimelineEnabled
+      ? eventNativeRunControlVariant
+      : null,
+    composerVariant: eventNativeTimelineEnabled
+      ? 'input'
+      : legacyHumanInputVariant,
+  });
+  const bottomBoxVariant = bottomBoxControl.variant;
+  const hasControlledBottomBoxVariant = bottomBoxControl.isControlled;
+  const composerTaskControlState = selectComposerTaskControlState({
+    eventNativeTimelineEnabled,
+    legacyControlRunId: eligibleLegacyActiveRunId,
+    activeTaskStatus: activeTask?.status,
+    eventNativeActiveRunId,
+  });
   const chatColumn = (
     <>
       {/* Main: scroll (scrollbar on panel edge) + BottomBox overlay when chatting */}
@@ -1973,7 +2020,23 @@ export default function ChatBox(): JSX.Element {
           eventNativeTimelineEnabled &&
           activeProjectId ? (
             <EventNativeProjectTimeline
+              detailLevel={chatTimelineDetailLevel}
+              paused={composerTaskControlState === 'paused'}
+              floatingControl={
+                eventNativeActiveProjectedRun?.status === 'running' ? (
+                  <FloatingAction
+                    status={ChatTaskStatus.RUNNING}
+                    onSkip={() =>
+                      void handleEventNativeStopRun(
+                        eventNativeActiveProjectedRun.runId
+                      )
+                    }
+                    loading={isPauseResumeLoading}
+                  />
+                ) : null
+              }
               projectId={activeProjectId}
+              sessionMode={displaySessionMode}
               scrollContainerRef={scrollContainerRef}
               scrollBottomInsetPx={scrollBottomInsetPx}
             />
@@ -2024,6 +2087,10 @@ export default function ChatBox(): JSX.Element {
                     value: message,
                     onChange: setMessage,
                     onSend: handleSend,
+                    taskControlState: composerTaskControlState,
+                    onPauseTask: () => void handleTaskControl('pause'),
+                    onResumeTask: () => void handleTaskControl('resume'),
+                    taskControlLoading: isPauseResumeLoading,
                     files:
                       chatStore.tasks[chatStore.activeTaskId]?.attaches?.map(
                         (f) => ({
@@ -2130,6 +2197,10 @@ export default function ChatBox(): JSX.Element {
                   value: message,
                   onChange: setMessage,
                   onSend: handleSend,
+                  taskControlState: composerTaskControlState,
+                  onPauseTask: () => void handleTaskControl('pause'),
+                  onResumeTask: () => void handleTaskControl('resume'),
+                  taskControlLoading: isPauseResumeLoading,
                   files:
                     activeTask?.attaches?.map((f) => ({
                       fileName: f.fileName,

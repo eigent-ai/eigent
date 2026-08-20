@@ -184,7 +184,7 @@ describe('HumanInteractionCard', () => {
 
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'Always allow this tool in this Space',
+        name: 'Always allow',
       })
     );
 
@@ -343,7 +343,7 @@ describe('HumanInteractionCard', () => {
     render(<HumanInteractionCard interaction={toolInteraction} readOnly />);
 
     const persistentButton = screen.getByRole('button', {
-      name: 'Always allow this tool in this Space',
+      name: 'Always allow',
     });
     expect(persistentButton).toBeDisabled();
     await waitFor(() => expect(persistentButton).toBeEnabled());

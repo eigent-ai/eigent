@@ -341,7 +341,9 @@ export default function BottomBox({
           animate={{ opacity: 1, y: 0 }}
           transition={enterTransition}
         >
-          {externalHeader && <BoxHeaderDisplay {...externalHeader} />}
+          {externalHeader && (
+            <BoxHeaderDisplay {...externalHeader} className="px-3" />
+          )}
 
           {/* InputBox — controlled router selected by event-derived variant. */}
           <ControlInputRouter
@@ -381,7 +383,7 @@ export default function BottomBox({
               className="h-4 w-4 shrink-0 text-ds-icon-warning-default-default"
               aria-hidden
             />
-            <span className="block text-sm font-medium leading-snug text-ds-text-warning-default-default">
+            <span className="block text-body-sm font-normal text-ds-text-warning-default-default">
               {t('layout.please-select-model')}
             </span>
             <Button

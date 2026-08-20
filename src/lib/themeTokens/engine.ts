@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import baseColorTokens from '../../style/tokens/base.color.json';
+import categoryColorTokens from '../../style/tokens/category.color.json';
 import componentTokens from '../../style/tokens/component.color.json';
 import semanticTokens from '../../style/tokens/semantic.color.json';
 import { DEFAULT_THEME_CATALOG, getColorThemeDefinitionV2 } from './catalog';
@@ -38,7 +39,10 @@ import {
 import { tokenKeyToCssVarName } from './naming';
 import type {
   Adjustment,
+  CategoryColor,
+  CategoryTokenKey,
   ContrastDiagnostic,
+  DesignTokenKey,
   Element,
   Emphasis,
   Mode,
@@ -50,6 +54,7 @@ import type {
   TokenKey,
   Tone,
 } from './types';
+import { CATEGORY_COLOR_NAMES, CATEGORY_TOKEN_ROLES } from './types';
 
 type SemanticShape = {
   axes: {
@@ -110,7 +115,12 @@ type BaseShape = {
   >;
 };
 
+type CategoryShape = {
+  colors: Record<CategoryColor, string[]>;
+};
+
 const BASE = baseColorTokens as BaseShape;
+const CATEGORY = categoryColorTokens as CategoryShape;
 const SEMANTIC = semanticTokens as SemanticShape;
 const LEGACY_NEUTRAL_EMPHASIS = [
   'subtle',
@@ -350,6 +360,45 @@ const SYSTEM_STATUS_TRANSPARENT_OPACITY_BY_STATE: Record<State, number> = {
   focus: 0.5,
   disabled: 0.1,
 };
+
+const CATEGORY_DARK_STEP_BY_ROLE = [
+  11, 11, 11, 10, 9, 8, 7, 6, 5, 4, 2, 0,
+] as const;
+
+function parseCategoryOklch(value: string): Oklch {
+  const match = value
+    .trim()
+    .match(/^oklch\(\s*(0|1|0?\.\d+)\s+(0|0?\.\d+)\s+(-?\d+(?:\.\d+)?)\s*\)$/i);
+  if (!match) {
+    throw new Error(`Invalid categorical OKLCH color: ${value}`);
+  }
+  return {
+    l: clamp(Number(match[1]), 0, 1),
+    c: Math.max(0, Number(match[2])),
+    h: normalizeHue(Number(match[3])),
+  };
+}
+
+function buildCategoryTokens(mode: Mode): ThemeTokens {
+  const tokens: ThemeTokens = {};
+  for (const color of CATEGORY_COLOR_NAMES) {
+    const scale = CATEGORY.colors[color];
+    if (!Array.isArray(scale) || scale.length !== CATEGORY_TOKEN_ROLES.length) {
+      throw new Error(
+        `Categorical palette "${color}" must contain ${CATEGORY_TOKEN_ROLES.length} colors.`
+      );
+    }
+
+    CATEGORY_TOKEN_ROLES.forEach(({ style, state }, roleIndex) => {
+      const stepIndex =
+        mode === 'dark' ? CATEGORY_DARK_STEP_BY_ROLE[roleIndex] : roleIndex;
+      const source = scale[stepIndex];
+      const key = `category.${color}.${style}.${state}` as CategoryTokenKey;
+      tokens[key] = oklchToHex(parseCategoryOklch(source));
+    });
+  }
+  return tokens;
+}
 
 function mergeAdjustment(...values: Array<Adjustment | undefined>): Adjustment {
   const out: Adjustment = {};
@@ -1038,7 +1087,7 @@ function toCssVariables(tokens: ThemeTokens): Record<string, string> {
   const variables: Record<string, string> = {};
   for (const [tokenKey, value] of Object.entries(tokens)) {
     if (!value) continue;
-    variables[tokenKeyToCssVarName(tokenKey as TokenKey)] = value;
+    variables[tokenKeyToCssVarName(tokenKey as DesignTokenKey)] = value;
   }
   return variables;
 }
@@ -1070,7 +1119,11 @@ function computeThemeV2(
   const { seed, themeId } = getThemeSeed(normalized, catalog);
 
   const semantic = buildSemanticTokens(normalized, seed);
-  const accentInverseAdjusted = applyFilledAccentInverseTextHeuristic(semantic);
+  const category = buildCategoryTokens(normalized.mode);
+  const accentInverseAdjusted = applyFilledAccentInverseTextHeuristic({
+    ...semantic,
+    ...category,
+  });
   const enforced = enforceContrastPairs(accentInverseAdjusted);
   const semanticCssVars = toCssVariables(enforced.tokens);
   const componentVars = buildComponentAliasVariables(

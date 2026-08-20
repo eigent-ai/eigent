@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { fetchGet } from '@/api/http';
+import { fetchGet, fetchPost } from '@/api/http';
 
 export type ProjectRunsResponse = {
   project_id?: unknown;
@@ -27,6 +27,11 @@ export type ProjectRunsResponse = {
   has_more?: unknown;
   cloud_restore_pending?: unknown;
 };
+
+type RunControlRequest = (
+  url: string,
+  data: { request_id: string; reason: string }
+) => Promise<unknown>;
 
 const inFlightProjectRuns = new Map<string, Promise<ProjectRunsResponse>>();
 
@@ -97,4 +102,17 @@ export function fetchProjectRuns(
     );
   }
   return waitForCaller(request, signal);
+}
+
+/** Cancel one exact durable Run; callers own stable request-id generation. */
+export function cancelProjectRun(
+  runId: string,
+  requestId: string,
+  reason: string,
+  request: RunControlRequest = fetchPost
+): Promise<unknown> {
+  return request(`/runs/${encodeURIComponent(runId)}/cancel`, {
+    request_id: requestId,
+    reason,
+  });
 }

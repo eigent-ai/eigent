@@ -14,7 +14,6 @@
 
 import ShinyText from '@/components/ui/ShinyText/ShinyText';
 import { agentMap, type WorkflowAgentType } from '@/components/WorkFlow/agents';
-import { MarkDown } from '@/components/WorkFlow/MarkDown';
 import { cn } from '@/lib/utils';
 import type {
   DurableRunDisplayStatus,
@@ -41,6 +40,7 @@ import {
 import { Trans, useTranslation } from 'react-i18next';
 import { HumanInteractionCard } from './HumanInteractionCard';
 import { formatSplittingElapsed } from './TokenUtils';
+import { ToolInputOutputDetails } from './ToolInputOutputDetails';
 
 const CONTENT_EASE: [number, number, number, number] = [0.32, 0.72, 0, 1];
 const HEIGHT_MOTION = {
@@ -230,6 +230,8 @@ export type ToolItem = {
   /** The tool call response/result (from DEACTIVATE_TOOLKIT). */
   output: string;
   status: 'running' | 'done';
+  /** Human question/answer owned by this Human Toolkit call. */
+  humanInput?: HumanInputItem;
 };
 
 type MessageItem = {
@@ -249,10 +251,10 @@ type MessageItem = {
 
 /**
  * A human-control receipt embedded at the point where execution paused.
- * While pending, the prompt lives only in BottomBox. Once answered, history
- * shows the question and answer together in this same chronological receipt.
+ * BottomBox owns the live controls, while the matching Human Toolkit detail
+ * owns the question/answer context and folds after the response is recorded.
  */
-type HumanInputItem = {
+export type HumanInputItem = {
   kind: 'human-input';
   id: string;
   question: string;
@@ -282,6 +284,9 @@ function normalizedToolIdentity(value: string): string {
 }
 
 function repeatedToolKey(item: ToolItem): string | null {
+  // A Human Toolkit call owns an interaction receipt and must remain an
+  // individual accordion so that question/answer history stays attached.
+  if (item.humanInput) return null;
   const toolkit = normalizedToolIdentity(item.toolkitName);
   const method = normalizedToolIdentity(item.method);
   return toolkit && method ? JSON.stringify([toolkit, method]) : null;
@@ -289,8 +294,8 @@ function repeatedToolKey(item: ToolItem): string | null {
 
 /**
  * Collapse only consecutive identical toolkit/method rows for presentation.
- * Messages and human-input receipts are hard chronology boundaries, and the
- * source work-log items remain unchanged.
+ * Messages and tools that own human-input receipts are hard chronology
+ * boundaries, and the source work-log items remain unchanged.
  */
 export function groupConsecutiveToolItems(
   items: readonly TimelineItem[]
@@ -826,7 +831,11 @@ export function injectHumanInputReceipts(
 ): GroupedEntry[] {
   const asks = messages
     .map((message, index) => ({ message, index }))
-    .filter(({ message }) => message.step === AgentStep.ASK);
+    .filter(
+      ({ message }) =>
+        message.step === AgentStep.ASK &&
+        message.interaction?.interaction_type !== 'approval'
+    );
   if (!asks.length) return entries;
 
   const result = entries.map((entry) => ({
@@ -849,8 +858,6 @@ export function injectHumanInputReceipts(
     });
   });
 
-  // Inserting shifts later item indexes within the same entry.
-  const insertedPerEntry = new Map<number, number>();
   for (const { message: ask, index: askIndex } of asks) {
     const interactionId = ask.interaction?.interaction_id;
     const explicitlyCorrelated = interactionId
@@ -888,9 +895,13 @@ export function injectHumanInputReceipts(
 
     if (toolIndex !== -1) {
       const [{ entryIndex, itemIndex }] = unusedHumanTools.splice(toolIndex, 1);
-      const offset = insertedPerEntry.get(entryIndex) ?? 0;
-      result[entryIndex]!.items.splice(itemIndex + offset + 1, 0, receipt);
-      insertedPerEntry.set(entryIndex, offset + 1);
+      const tool = result[entryIndex]!.items[itemIndex];
+      if (tool?.kind === 'tool') {
+        result[entryIndex]!.items[itemIndex] = {
+          ...tool,
+          humanInput: receipt,
+        };
+      }
       continue;
     }
 
@@ -1071,13 +1082,27 @@ const ToolDetailRow = memo(function ToolDetailRow({
   input,
   output,
   status,
+  humanInputPending = false,
+  humanInputReceipt,
 }: {
   rowTitle: string;
   input: string;
   output: string;
   status: 'running' | 'done';
+  humanInputPending?: boolean;
+  humanInputReceipt?: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(humanInputPending);
+  const wasHumanInputPending = useRef(humanInputPending);
+
+  useEffect(() => {
+    if (humanInputPending) {
+      setOpen(true);
+    } else if (wasHumanInputPending.current) {
+      setOpen(false);
+    }
+    wasHumanInputPending.current = humanInputPending;
+  }, [humanInputPending]);
 
   return (
     <div className="flex w-full min-w-0 flex-col items-start">
@@ -1119,34 +1144,13 @@ const ToolDetailRow = memo(function ToolDetailRow({
             transition={HEIGHT_MOTION}
             className="w-full min-w-0 overflow-hidden"
           >
-            {input || output ? (
-              <div className="mt-1 flex w-full flex-col gap-1.5">
-                {input ? (
-                  <div className="w-full rounded-md bg-ds-bg-neutral-muted-default p-2 opacity-60">
-                    <div className="mb-1 !text-label-xs font-medium uppercase tracking-wide text-ds-text-neutral-subtle-default">
-                      Request
-                    </div>
-                    <MarkDown
-                      content={input}
-                      enableTypewriter={false}
-                      pTextSize="text-label-xs text-ds-text-neutral-default-default"
-                    />
-                  </div>
-                ) : null}
-                {output ? (
-                  <div className="w-full rounded-md bg-ds-bg-neutral-muted-default p-2 opacity-60">
-                    <div className="mb-1 !text-label-xs font-medium uppercase tracking-wide text-ds-text-neutral-subtle-default">
-                      Response
-                    </div>
-                    <MarkDown
-                      content={output}
-                      enableTypewriter={false}
-                      pTextSize="text-label-xs text-ds-text-neutral-default-default"
-                    />
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
+            <ToolInputOutputDetails
+              className="mt-1"
+              input={input}
+              output={output}
+            >
+              {humanInputReceipt}
+            </ToolInputOutputDetails>
           </motion.div>
         ) : null}
       </AnimatePresence>
@@ -1257,8 +1261,8 @@ const InlineMessageRow = memo(function InlineMessageRow({
   // narration stay subtle so the eye stays on tool titles + reasoning.
   const colorClass =
     source === 'reasoning'
-      ? 'text-ds-text-neutral-subtle-default'
-      : 'text-ds-text-neutral-default-default';
+      ? 'text-ds-text-neutral-default-default'
+      : 'text-ds-text-neutral-subtle-default';
   return (
     <div className="w-full min-w-0">
       {running ? (
@@ -1266,14 +1270,14 @@ const InlineMessageRow = memo(function InlineMessageRow({
           text={display}
           speed={2.5}
           className={cn(
-            'whitespace-pre-wrap break-words !text-label-sm font-normal',
+            'whitespace-pre-wrap break-words !text-label-sm !font-normal',
             colorClass
           )}
         />
       ) : (
         <span
           className={cn(
-            'm-0 whitespace-pre-wrap break-words !text-label-sm font-medium',
+            'm-0 whitespace-pre-wrap break-words !text-label-sm !font-normal',
             colorClass
           )}
         >
@@ -1294,46 +1298,43 @@ const HumanInputReceiptRow = memo(function HumanInputReceiptRow({
   readOnly: boolean;
   onResolved: (item: HumanInputItem, response?: string) => void;
 }) {
-  if (item.interaction && item.interaction.interaction_type !== 'question') {
+  if (
+    item.interaction &&
+    item.interaction.interaction_type !== 'question' &&
+    !item.response
+  ) {
     return (
       <HumanInteractionCard
         interaction={item.interaction}
-        response={item.response ?? undefined}
-        readOnly={readOnly || Boolean(item.response)}
+        readOnly={readOnly}
         timelineReceipt
         onResolved={(response) => onResolved(item, response)}
       />
     );
   }
+
+  const labelClassName =
+    'block !text-label-xs font-medium uppercase tracking-wide text-ds-text-neutral-subtle-default';
+  const valueClassName =
+    'block whitespace-pre-wrap break-words !text-label-xs font-normal text-ds-text-neutral-default-default';
+
   return (
     <div
       data-human-input-receipt
-      className="w-full min-w-0 rounded-lg border border-ds-border-warning-subtle-default bg-ds-bg-warning-subtle-default px-3 py-2"
+      className="w-full rounded-md bg-ds-bg-neutral-muted-default p-2 opacity-60"
     >
-      <span className="block text-label-sm font-medium text-ds-text-neutral-default-default">
-        Input required
-      </span>
+      <span className={labelClassName}>Input required</span>
+      {item.question ? (
+        <div className="mt-2" data-human-input-question>
+          <span className={labelClassName}>Question</span>
+          <span className={cn('mt-1', valueClassName)}>{item.question}</span>
+        </div>
+      ) : null}
       {item.response ? (
-        <>
-          {item.question ? (
-            <div className="mt-2" data-human-input-question>
-              <span className="block text-label-xs font-medium text-ds-text-neutral-muted-default">
-                Question
-              </span>
-              <span className="mt-1 block whitespace-pre-wrap break-words text-label-sm font-normal text-ds-text-neutral-subtle-default">
-                {item.question}
-              </span>
-            </div>
-          ) : null}
-          <div className="mt-2" data-human-input-response>
-            <span className="block text-label-xs font-medium text-ds-text-neutral-muted-default">
-              Answer
-            </span>
-            <span className="mt-1 block whitespace-pre-wrap break-words text-label-sm font-normal text-ds-text-neutral-subtle-default">
-              {item.response}
-            </span>
-          </div>
-        </>
+        <div className="mt-2" data-human-input-response>
+          <span className={labelClassName}>Answer</span>
+          <span className={cn('mt-1', valueClassName)}>{item.response}</span>
+        </div>
       ) : null}
     </div>
   );
@@ -1450,6 +1451,18 @@ const AgentBlockRow = memo(function AgentBlockRow({
                       item.status === 'running'
                         ? 'running'
                         : 'done'
+                    }
+                    humanInputPending={Boolean(
+                      item.humanInput && !item.humanInput.response
+                    )}
+                    humanInputReceipt={
+                      item.humanInput ? (
+                        <HumanInputReceiptRow
+                          item={item.humanInput}
+                          readOnly={humanInputReadOnly}
+                          onResolved={onHumanInputResolved}
+                        />
+                      ) : undefined
                     }
                   />
                 )
@@ -1712,6 +1725,18 @@ const AgentGroupRow = memo(function AgentGroupRow({
                         ? 'running'
                         : 'done'
                     }
+                    humanInputPending={Boolean(
+                      item.humanInput && !item.humanInput.response
+                    )}
+                    humanInputReceipt={
+                      item.humanInput ? (
+                        <HumanInputReceiptRow
+                          item={item.humanInput}
+                          readOnly={humanInputReadOnly}
+                          onResolved={onHumanInputResolved}
+                        />
+                      ) : undefined
+                    }
                   />
                 )
               )}
@@ -1915,7 +1940,7 @@ export function TaskWorkLogAccordion({
   const timeLabel = formatSplittingElapsed(elapsedMs);
 
   return (
-    <div className={cn('my-2 flex w-full min-w-0 flex-col', className)}>
+    <div className={cn('flex w-full min-w-0 flex-col', className)}>
       <button
         type="button"
         aria-expanded={outerOpen}

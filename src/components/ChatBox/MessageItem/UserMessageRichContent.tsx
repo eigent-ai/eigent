@@ -16,6 +16,7 @@ import { useHost } from '@/host';
 import {
   RICH_CONNECTOR_STYLE_CLASSES,
   RICH_SKILL_STYLE_CLASSES,
+  RICH_TAG_BASE_STYLE_CLASSES,
   hashSkillLabel,
   httpUrlOrNull,
   isSafeSkillFolderName,
@@ -34,8 +35,7 @@ export const USER_MESSAGE_BODY_STYLE = {
 const SKILL_TAG_REGEX = /\{\{([^}]+)\}\}/g;
 
 type ContentNode =
-  | { type: 'text'; value: string }
-  | { type: 'skill'; name: string };
+  { type: 'text'; value: string } | { type: 'skill'; name: string };
 
 function parseContentWithTags(content: string): ContentNode[] {
   const nodes: ContentNode[] = [];
@@ -101,7 +101,7 @@ function renderMessageRichSegments(
         <span
           key={key}
           className={cn(
-            'inline rounded px-0.5 align-baseline font-normal',
+            RICH_TAG_BASE_STYLE_CLASSES,
             RICH_CONNECTOR_STYLE_CLASSES
           )}
         >
@@ -114,7 +114,7 @@ function renderMessageRichSegments(
       <span
         key={key}
         className={cn(
-          'inline rounded px-0.5 align-baseline font-normal',
+          RICH_TAG_BASE_STYLE_CLASSES,
           RICH_SKILL_STYLE_CLASSES[clsIdx]
         )}
       >
@@ -161,7 +161,7 @@ export function UserMessageRichContent({
 
   return (
     <div className={cn('min-w-0', className)}>
-      <div style={USER_MESSAGE_BODY_STYLE} className={bodyClass}>
+      <span style={USER_MESSAGE_BODY_STYLE} className={cn('block', bodyClass)}>
         {contentNodes.map((node, i) => {
           if (node.type === 'text') {
             return (
@@ -183,15 +183,16 @@ export function UserMessageRichContent({
               }}
               title="Open skill folder"
               className={cn(
-                'mx-0 inline cursor-pointer rounded-lg px-1 align-baseline font-normal [font:inherit] hover:opacity-90',
+                'mx-0 cursor-pointer border-0 [font:inherit] hover:opacity-90',
+                RICH_TAG_BASE_STYLE_CLASSES,
                 RICH_SKILL_STYLE_CLASSES[clsIdx]
               )}
             >
-              {skillToken}
+              <span className="!text-body-sm !font-normal">{skillToken}</span>
             </button>
           );
         })}
-      </div>
+      </span>
     </div>
   );
 }

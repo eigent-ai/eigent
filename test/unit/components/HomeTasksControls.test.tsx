@@ -68,8 +68,8 @@ function TasksHarness({
 }: {
   initialStatus: ChatTaskStatusType;
   presentation?: 'home' | 'space-detail';
-  pauseRequest?: () => Promise<void>;
-  resumeRequest?: () => Promise<void>;
+  pauseRequest?: (taskId: string, projectId: string) => Promise<void>;
+  resumeRequest?: (taskId: string, projectId: string) => Promise<void>;
 }) {
   const [status, setStatus] = useState(initialStatus);
   const value = useMemo<HomeHubContextValue>(
@@ -95,12 +95,12 @@ function TasksHarness({
       onTaskShare: vi.fn(),
       onProjectDelete: vi.fn(),
       onProjectRename: vi.fn(),
-      onOngoingTaskPause: async () => {
-        await pauseRequest();
+      onOngoingTaskPause: async (taskId, projectId) => {
+        await pauseRequest(taskId, projectId);
         setStatus(ChatTaskStatus.PAUSE);
       },
-      onOngoingTaskResume: async () => {
-        await resumeRequest();
+      onOngoingTaskResume: async (taskId, projectId) => {
+        await resumeRequest(taskId, projectId);
         setStatus(ChatTaskStatus.RUNNING);
       },
     }),
@@ -142,7 +142,7 @@ describe('Home Tasks runtime controls', () => {
 
     await user.click(screen.getByRole('button', { name: 'More actions' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Pause' }));
-    expect(pauseRequest).toHaveBeenCalledTimes(1);
+    expect(pauseRequest).toHaveBeenCalledWith('task-1', 'project-1');
 
     const pendingPause = await screen.findByRole('menuitem', { name: 'Pause' });
     expect(pendingPause).toHaveAttribute('data-disabled');
@@ -156,7 +156,7 @@ describe('Home Tasks runtime controls', () => {
       ).toBeInTheDocument()
     );
     await user.click(screen.getByRole('menuitem', { name: 'Resume' }));
-    expect(resumeRequest).toHaveBeenCalledTimes(1);
+    expect(resumeRequest).toHaveBeenCalledWith('task-1', 'project-1');
   });
 
   it('provides the same Resume action in the Space detail Tasks list', async () => {
@@ -174,7 +174,7 @@ describe('Home Tasks runtime controls', () => {
     expect(row).not.toBeNull();
     fireEvent.contextMenu(row!);
     await user.click(await screen.findByRole('menuitem', { name: 'Resume' }));
-    expect(resumeRequest).toHaveBeenCalledTimes(1);
+    expect(resumeRequest).toHaveBeenCalledWith('task-1', 'project-1');
   });
 
   it('does not expose pause or resume for a completed task', async () => {

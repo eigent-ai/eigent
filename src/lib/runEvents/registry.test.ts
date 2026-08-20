@@ -25,6 +25,10 @@ vi.mock('@/api/http', () => ({
   sseTransport: sseTransportMock,
 }));
 
+import {
+  getProjectEventStore,
+  resetProjectEventStoresForTests,
+} from '@/store/projectEventStore';
 import { runDomainEventHub } from './eventHub';
 import { runProjectionStore } from './projectionStore';
 import { RunEventIngressRegistry } from './registry';
@@ -34,6 +38,7 @@ describe('RunEventIngressRegistry', () => {
     vi.clearAllMocks();
     runDomainEventHub.clear();
     runProjectionStore.clear();
+    resetProjectEventStoresForTests();
     sseTransportMock.mockImplementation(
       ({ signal }: { signal: AbortSignal }) =>
         new Promise<void>((resolve) => {
@@ -163,6 +168,111 @@ describe('RunEventIngressRegistry', () => {
       'live',
     ]);
     unsubscribe();
+    registry.clear();
+  });
+
+  it('projects the owned canonical Run stream into the Chat timeline', async () => {
+    let transportOptions!: {
+      onmessage: (message: { event: string; data: string }) => Promise<void>;
+      signal: AbortSignal;
+    };
+    sseTransportMock.mockImplementation((options) => {
+      transportOptions = options;
+      return new Promise<void>((resolve) => {
+        options.signal.addEventListener('abort', () => resolve(), {
+          once: true,
+        });
+      });
+    });
+    const registry = new RunEventIngressRegistry();
+    registry.ensureLocal('project-chat', 'run-chat');
+
+    await transportOptions.onmessage({
+      event: 'run_event',
+      data: JSON.stringify({
+        schema_version: 1,
+        event_id: 'tool-prepared-1',
+        project_id: 'project-chat',
+        run_id: 'run-chat',
+        run_sequence: 1,
+        run_version: 1,
+        event_type: 'tool.prepared',
+        payload: {
+          status: 'prepared',
+          tool_call_id: 'tool-call-1',
+          tool_name: 'execute_action',
+        },
+        created_at: 1,
+      }),
+    });
+
+    const projectEventStore = getProjectEventStore('project-chat');
+    projectEventStore.flushNow();
+    expect(projectEventStore.getSnapshot().chat.nodes).toEqual([
+      expect.objectContaining({
+        eventId: 'tool-prepared-1',
+        kind: 'activity',
+        toolCallId: 'tool-call-1',
+      }),
+    ]);
+    expect(
+      projectEventStore.getSnapshot().view.runs['run-chat']?.origin
+    ).toBeNull();
+    registry.clear();
+  });
+
+  it('does not let origin-less registry delivery overwrite snapshot provenance', async () => {
+    let transportOptions!: {
+      onmessage: (message: { event: string; data: string }) => Promise<void>;
+      signal: AbortSignal;
+    };
+    sseTransportMock.mockImplementation((options) => {
+      transportOptions = options;
+      return new Promise<void>((resolve) => {
+        options.signal.addEventListener('abort', () => resolve(), {
+          once: true,
+        });
+      });
+    });
+    const projectEventStore = getProjectEventStore('project-cloud');
+    projectEventStore.replaceSnapshot({
+      project_id: 'project-cloud',
+      current_cursor: 0,
+      runs: [
+        {
+          run_id: 'run-cloud',
+          status: 'running',
+          expected_next_run_sequence: 1,
+          run_version: 0,
+          updated_at: '2026-08-20T00:00:00Z',
+          origin: 'cloud_restore',
+        },
+      ],
+      recent_events: [],
+    });
+    const registry = new RunEventIngressRegistry();
+    registry.ensureLocal('project-cloud', 'run-cloud');
+
+    await transportOptions.onmessage({
+      event: 'run_event',
+      data: JSON.stringify({
+        schema_version: 1,
+        event_id: 'cloud-event-1',
+        project_id: 'project-cloud',
+        run_id: 'run-cloud',
+        run_sequence: 1,
+        run_version: 1,
+        event_type: 'run.attempt_started',
+        payload: {},
+        created_at: 1,
+      }),
+    });
+    projectEventStore.flushNow();
+
+    expect(projectEventStore.getSnapshot().view.runs['run-cloud']?.origin).toBe(
+      'cloud_restore'
+    );
+    expect(projectEventStore.getSnapshot().view.needsResync).toBe(false);
     registry.clear();
   });
 

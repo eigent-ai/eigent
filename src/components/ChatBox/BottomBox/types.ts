@@ -100,6 +100,8 @@ export interface BottomBoxSelectionVariant extends ControlledVariantBase {
 /** Free-form human-in-the-loop feedback. */
 export interface BottomBoxFeedbackVariant extends ControlledVariantBase {
   kind: 'feedback';
+  /** Compact agent-question presentation; other feedback keeps normal chrome. */
+  presentation?: 'default' | 'question';
   value: string;
   placeholder?: string;
   submitLabel?: string;
@@ -137,12 +139,7 @@ export interface BottomBoxBlockedVariant extends ControlledVariantBase {
 }
 
 export type BottomBoxRunControlState =
-  | 'running'
-  | 'stopping'
-  | 'interrupted'
-  | 'resuming'
-  | 'cancelling'
-  | 'read_only';
+  'interrupted' | 'resuming' | 'cancelling' | 'read_only';
 
 /**
  * Display-only Run lifecycle controls. The owner performs every command and
@@ -152,14 +149,11 @@ export interface BottomBoxRunControlVariant extends ControlledVariantBase {
   kind: 'run_control';
   runId: string;
   state: BottomBoxRunControlState;
-  stopLabel?: string;
-  stoppingLabel?: string;
   resumeLabel?: string;
   resumingLabel?: string;
   cancelLabel?: string;
   cancellingLabel?: string;
   readOnlyLabel?: string;
-  onStop?: (runId: string) => void;
   onResume?: (runId: string) => void;
   onCancel?: (runId: string) => void;
 }

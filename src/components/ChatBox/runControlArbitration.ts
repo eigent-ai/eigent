@@ -13,9 +13,39 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
+import { ChatTaskStatus, type ChatTaskStatusType } from '@/types/constants';
 
 export type EventNativeProjectedRun =
   ProjectEventStoreSnapshot['view']['runs'][string];
+
+export type ComposerTaskControlState = 'idle' | 'running' | 'paused';
+
+/**
+ * Pause/resume still targets the Project-scoped legacy TaskLock. It is safe to
+ * expose only when the compatibility task owns the same Run selected by the
+ * event-native control arbitration.
+ */
+export function selectComposerTaskControlState({
+  eventNativeTimelineEnabled,
+  legacyControlRunId,
+  activeTaskStatus,
+  eventNativeActiveRunId,
+}: {
+  eventNativeTimelineEnabled: boolean;
+  legacyControlRunId: string | null | undefined;
+  activeTaskStatus: ChatTaskStatusType | null | undefined;
+  eventNativeActiveRunId: string | null | undefined;
+}): ComposerTaskControlState {
+  if (
+    eventNativeTimelineEnabled &&
+    (!legacyControlRunId || eventNativeActiveRunId !== legacyControlRunId)
+  ) {
+    return 'idle';
+  }
+  if (activeTaskStatus === ChatTaskStatus.PAUSE) return 'paused';
+  if (activeTaskStatus === ChatTaskStatus.RUNNING) return 'running';
+  return 'idle';
+}
 
 const PENDING_CONTROL_RUN_STATUSES = new Set([
   'pending',

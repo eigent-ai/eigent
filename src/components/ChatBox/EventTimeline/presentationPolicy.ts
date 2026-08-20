@@ -13,9 +13,15 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import type { ChatProjectionNode } from '@/lib/projector/chat';
+import {
+  chatTimelineDetailLevels,
+  type ChatTimelineDetailLevel,
+} from '@/types/chatTimeline';
 
 type InteractionNode = Extract<ChatProjectionNode, { kind: 'interaction' }>;
 type MessageNode = Extract<ChatProjectionNode, { kind: 'message' }>;
+type ActivityNode = Extract<ChatProjectionNode, { kind: 'activity' }>;
+type RunStatusNode = Extract<ChatProjectionNode, { kind: 'run_status' }>;
 type InteractionResolutionNode =
   InteractionNode | Extract<ChatProjectionNode, { kind: 'message' }>;
 
@@ -31,10 +37,6 @@ interface PresentableInteractionRequest {
   request: InteractionNode;
   suppressedRequestEventIds: ReadonlySet<string>;
 }
-
-const chatTimelineDetailLevels = ['detailed', 'compact', 'summarized'] as const;
-
-type ChatTimelineDetailLevel = (typeof chatTimelineDetailLevels)[number];
 
 interface ChatTimelinePresentationPolicyContext {
   requestedDetailLevel: ChatTimelineDetailLevel;
@@ -55,8 +57,150 @@ interface ResolvedChatTimelinePresentation {
   requestedDetailLevel: ChatTimelineDetailLevel;
 }
 
-const detailedPresentationPolicy: ChatTimelinePresentationPolicy = (nodes) =>
+/** Trajectory shows every semantic node; density comes from folding, not filtering. */
+const trajectoryPresentationPolicy: ChatTimelinePresentationPolicy = (nodes) =>
   nodes;
+
+const IMPORTANT_ACTIVITY_STATUSES = new Set([
+  'failed',
+  'timed_out',
+  'outcome_unknown',
+]);
+
+/**
+ * Narrative keeps the useful work log while removing migration diagnostics and
+ * verbose successful tool payloads. Step-level aggregation happens later, in
+ * the segmentation layer; this policy only drops what nothing should render.
+ */
+const narrativePresentationPolicy: ChatTimelinePresentationPolicy = (nodes) =>
+  nodes.flatMap((node): ChatProjectionNode[] => {
+    if (node.kind === 'unknown') return [];
+    if (
+      node.kind === 'run_status' &&
+      ['pending', 'running'].includes(node.status)
+    ) {
+      return [];
+    }
+    if (
+      node.kind === 'activity' &&
+      !IMPORTANT_ACTIVITY_STATUSES.has(node.status)
+    ) {
+      return [{ ...node, detail: undefined }];
+    }
+    return [node];
+  });
+
+const TERMINAL_ACTIVITY_STATUSES = new Set([
+  'completed',
+  'failed',
+  'timed_out',
+  'outcome_unknown',
+  'cancelled',
+]);
+
+function normalizeLifecycleIdentity(value: string | undefined): string {
+  return (value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function agentLifecycleKey(node: ActivityNode): string | null {
+  if (node.activityType !== 'agent') return null;
+  const agent =
+    normalizeLifecycleIdentity(node.agentId) ||
+    normalizeLifecycleIdentity(node.agentName);
+  const task = normalizeLifecycleIdentity(node.taskId);
+  if (!agent || !task) return null;
+  return JSON.stringify([node.runId, agent, task]);
+}
+
+function isAgentLifecycleStart(node: ActivityNode): boolean {
+  return (
+    node.phase === 'requested' ||
+    node.phase === 'started' ||
+    node.status === 'pending' ||
+    node.status === 'running'
+  );
+}
+
+function isAgentLifecycleTerminal(node: ActivityNode): boolean {
+  return TERMINAL_ACTIVITY_STATUSES.has(node.status);
+}
+
+function mergeAgentLifecycle(
+  start: ActivityNode,
+  terminal: ActivityNode
+): ActivityNode {
+  return {
+    ...start,
+    status: terminal.status,
+    phase: terminal.phase,
+    detail: terminal.detail || start.detail,
+    output: terminal.output || start.output,
+    durationMs: terminal.durationMs ?? start.durationMs,
+  };
+}
+
+/**
+ * Fold one explicitly identifiable agent activation/deactivation lifecycle.
+ * Repeated work by the same agent/task is paired FIFO; missing identities or
+ * missing terminal receipts stay visible and active instead of being guessed.
+ */
+function presentAgentActivityLifecycles(
+  nodes: readonly ChatProjectionNode[]
+): readonly ChatProjectionNode[] {
+  const openByIdentity = new Map<string, ActivityNode[]>();
+  const terminalByStartEventId = new Map<string, ActivityNode>();
+  const suppressedTerminalEventIds = new Set<string>();
+
+  for (const node of nodes) {
+    if (node.kind !== 'activity' || node.activityType !== 'agent') continue;
+    const key = agentLifecycleKey(node);
+    if (!key) continue;
+
+    if (isAgentLifecycleTerminal(node)) {
+      const open = openByIdentity.get(key);
+      const start = open?.shift();
+      if (open?.length === 0) openByIdentity.delete(key);
+      if (!start) continue;
+      terminalByStartEventId.set(start.eventId, node);
+      suppressedTerminalEventIds.add(node.eventId);
+      continue;
+    }
+
+    if (isAgentLifecycleStart(node)) {
+      const open = openByIdentity.get(key);
+      if (open) open.push(node);
+      else openByIdentity.set(key, [node]);
+    }
+  }
+
+  if (terminalByStartEventId.size === 0) return nodes;
+  return nodes.flatMap((node): ChatProjectionNode[] => {
+    if (node.kind !== 'activity' || node.activityType !== 'agent') {
+      return [node];
+    }
+    if (suppressedTerminalEventIds.has(node.eventId)) return [];
+    const terminal = terminalByStartEventId.get(node.eventId);
+    return terminal ? [mergeAgentLifecycle(node, terminal)] : [node];
+  });
+}
+
+/** Keep only the latest lifecycle receipt for each Run in the detailed log. */
+function presentRunStatusLifecycles(
+  nodes: readonly ChatProjectionNode[]
+): readonly ChatProjectionNode[] {
+  const latestByRunId = new Map<string, RunStatusNode>();
+  for (const node of nodes) {
+    if (node.kind === 'run_status') latestByRunId.set(node.runId, node);
+  }
+  if (latestByRunId.size === 0) return nodes;
+  return nodes.filter(
+    (node) =>
+      node.kind !== 'run_status' || latestByRunId.get(node.runId) === node
+  );
+}
 
 function interactionCorrelationKey(
   node: Pick<InteractionNode, 'interactionId' | 'runId'>
@@ -383,19 +527,23 @@ function presentTypedMessageLifecycles(
 function presentChatSemanticEntities(
   nodes: readonly ChatProjectionNode[]
 ): readonly ChatProjectionNode[] {
-  return presentHumanInteractionReceipts(
-    presentTypedMessageLifecycles(presentLegacyTranscriptFallbacks(nodes))
+  return presentRunStatusLifecycles(
+    presentAgentActivityLifecycles(
+      presentHumanInteractionReceipts(
+        presentTypedMessageLifecycles(presentLegacyTranscriptFallbacks(nodes))
+      )
+    )
   );
 }
 
 const defaultChatTimelinePresentationPolicyRegistry = Object.freeze({
-  detailed: detailedPresentationPolicy,
+  narrative: narrativePresentationPolicy,
+  trajectory: trajectoryPresentationPolicy,
 }) satisfies ChatTimelinePresentationPolicyRegistry;
 
 /**
  * Adds product-owned timeline presentation policies without coupling them to
- * transport events. Compact and summarized are intentionally reserved until a
- * caller supplies a policy for them.
+ * transport events.
  */
 function createChatTimelinePresentationPolicyRegistry(
   overrides: ChatTimelinePresentationPolicyRegistry = {}
@@ -422,8 +570,8 @@ function applyPresentationPolicy(
 }
 
 /**
- * Resolves the requested display intensity. Missing, throwing, or invalid
- * future policies fall back to detailed presentation, keeping the timeline
+ * Resolves the requested mode. Missing, throwing, or invalid future policies
+ * fall back to the unfiltered trajectory presentation, keeping the timeline
  * available instead of taking down the ChatBox.
  */
 function resolveChatTimelinePresentation(
@@ -447,16 +595,16 @@ function resolveChatTimelinePresentation(
     }
   }
 
-  const detailedPolicy = registry.detailed ?? detailedPresentationPolicy;
-  const detailedNodes = applyPresentationPolicy(
-    detailedPolicy,
+  const fallbackPolicy = registry.trajectory ?? trajectoryPresentationPolicy;
+  const fallbackNodes = applyPresentationPolicy(
+    fallbackPolicy,
     nodes,
     requestedDetailLevel
   );
 
   return {
-    effectiveDetailLevel: 'detailed',
-    nodes: detailedNodes ?? nodes,
+    effectiveDetailLevel: 'trajectory',
+    nodes: fallbackNodes ?? nodes,
     requestedDetailLevel,
   };
 }
@@ -465,9 +613,11 @@ export {
   chatTimelineDetailLevels,
   createChatTimelinePresentationPolicyRegistry,
   defaultChatTimelinePresentationPolicyRegistry,
+  presentAgentActivityLifecycles,
   presentChatSemanticEntities,
   presentHumanInteractionReceipts,
   presentLegacyTranscriptFallbacks,
+  presentRunStatusLifecycles,
   presentTypedMessageLifecycles,
   resolveChatTimelinePresentation,
 };
