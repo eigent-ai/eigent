@@ -20,10 +20,7 @@ import { Bot, Upload, UserRound } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 export type WorkspaceCommitKind =
-  | 'save_point'
-  | 'merge'
-  | 'checkpoint'
-  | 'commit';
+  'save_point' | 'merge' | 'checkpoint' | 'commit';
 
 export const classifyWorkspaceCommit = (
   commit: Pick<WorkspaceGitCommit, 'parent_oids' | 'subject'> &
@@ -60,22 +57,18 @@ export const buildWorkspaceTimelineEvents = (
   operations: WorkspaceGitOperation[]
 ): WorkspaceTimelineEvent[] =>
   [
-    ...commits.map(
-      (commit): WorkspaceTimelineEvent => ({
-        type: 'commit',
-        id: `commit:${commit.oid}`,
-        occurredAt: commit.committed_at,
-        commit,
-      })
-    ),
-    ...operations.map(
-      (operation): WorkspaceTimelineEvent => ({
-        type: 'operation',
-        id: `operation:${operation.operation_id}`,
-        occurredAt: operation.occurred_at,
-        operation,
-      })
-    ),
+    ...commits.map((commit): WorkspaceTimelineEvent => ({
+      type: 'commit',
+      id: `commit:${commit.oid}`,
+      occurredAt: commit.committed_at,
+      commit,
+    })),
+    ...operations.map((operation): WorkspaceTimelineEvent => ({
+      type: 'operation',
+      id: `operation:${operation.operation_id}`,
+      occurredAt: operation.occurred_at,
+      operation,
+    })),
   ].sort((left, right) => right.occurredAt - left.occurredAt);
 
 export const resolveWorkspaceCommitInitiator = (

@@ -354,8 +354,7 @@ describe('Workspace', () => {
 
   it('guards against duplicate submissions while project creation is pending', async () => {
     let resolveCreation:
-      | ((value: { projectId: string; spaceId: string }) => void)
-      | undefined;
+      ((value: { projectId: string; spaceId: string }) => void) | undefined;
     vi.mocked(createSyncedProjectInSpace).mockImplementation(
       () =>
         new Promise((resolve) => {
