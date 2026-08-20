@@ -31,11 +31,11 @@ export interface TimelineModeRendererProps extends TimelineModeProps {
  */
 export function TimelineModeRenderer({
   detailLevel,
-  sessionMode: _sessionMode,
+  sessionMode,
   ...props
 }: TimelineModeRendererProps) {
   if (detailLevel === 'trajectory') return <TrajectoryTimeline {...props} />;
-  return <NarrativeTimeline {...props} />;
+  return <NarrativeTimeline sessionMode={sessionMode} {...props} />;
 }
 
 export { CallRow } from './CallRow';

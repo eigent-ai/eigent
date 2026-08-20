@@ -114,7 +114,7 @@ export function AgentMessageCard({
   return (
     <div
       key={id}
-      className={`flex w-full flex-col rounded-xl bg-transparent px-2 py-3 ${className || ''} overflow-hidden`}
+      className={`flex w-full flex-col rounded-xl bg-transparent py-3 ${className || ''} overflow-hidden`}
     >
       <MarkDown
         content={content}

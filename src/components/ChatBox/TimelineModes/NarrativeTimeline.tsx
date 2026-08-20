@@ -24,16 +24,19 @@ import {
   type TimelineSegment,
 } from '@/lib/projector/chat/presentation';
 import { cn } from '@/lib/utils';
+import { SessionMode, type SessionModeType } from '@/types/constants';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { CallRow, isCallActiveStatus } from './CallRow';
+import { CallRow, isCallActiveStatus, isCallErrorStatus } from './CallRow';
 import { RunFilesGroup } from './RunFiles';
 import {
   disclosureMotion,
   eventEntryMotion,
+  type InteractiveTimelinePlan,
   isActiveRunStatus,
+  isTerminalRunStatus,
   RunElapsed,
   type TimelineModeProps,
 } from './shared';
@@ -44,9 +47,97 @@ import {
  * label treatment, so the reader can always tell narration from inference.
  */
 const PRIMARY_TEXT_CLASS =
-  'text-body-sm font-normal text-ds-text-neutral-default-default';
+  '!text-body-sm font-normal text-ds-text-neutral-default-default';
 const DERIVED_TEXT_CLASS =
-  '!text-label-sm font-normal text-ds-text-neutral-subtle-default';
+  '!text-body-sm font-normal text-ds-text-neutral-default-default';
+
+type NarrativeWorkEntry =
+  | {
+      kind: 'agent';
+      id: string;
+      agentKey: string;
+      agentName: string;
+      items: TimelineNarrativeItem[];
+    }
+  | { kind: 'item'; item: TimelineNarrativeItem };
+
+function narrativeItemAgent(
+  item: TimelineNarrativeItem
+): { id: string; name: string } | null {
+  if (item.kind === 'segment') {
+    const id = (item.agentId || item.agentName || '').trim();
+    if (!id) return null;
+    return { id, name: item.agentName?.trim() || 'Agent' };
+  }
+  if (item.kind === 'interrupt') {
+    const id = (item.call.agentId || item.call.agentName || '').trim();
+    if (!id) return null;
+    return { id, name: item.call.agentName?.trim() || 'Agent' };
+  }
+  return null;
+}
+
+function itemOwnsCall(
+  item: TimelineNarrativeItem,
+  callId: string | null
+): boolean {
+  if (!callId) return false;
+  if (item.kind === 'segment') {
+    return item.calls.some((call) => call.id === callId);
+  }
+  if (item.kind === 'interrupt') return item.call.id === callId;
+  return false;
+}
+
+function itemHasActiveCall(item: TimelineNarrativeItem): boolean {
+  if (item.kind === 'segment') {
+    return item.calls.some((call) => isCallActiveStatus(call.status));
+  }
+  if (item.kind === 'interrupt') return isCallActiveStatus(item.call.status);
+  return false;
+}
+
+function itemIsFailed(item: TimelineNarrativeItem): boolean {
+  if (item.kind === 'segment') return isCallErrorStatus(item.status);
+  if (item.kind === 'interrupt') return isCallErrorStatus(item.call.status);
+  return false;
+}
+
+/**
+ * Workforce folds contiguous work from one actor into a nested accordion.
+ * Plans, notices, and unattributed interrupts stay at the work-log level so
+ * they keep their chronological position. Single-agent stays a flat list.
+ */
+function groupNarrativeWork(
+  items: readonly TimelineNarrativeItem[],
+  workforce: boolean
+): NarrativeWorkEntry[] {
+  if (!workforce) {
+    return items.map((item) => ({ kind: 'item', item }));
+  }
+
+  const entries: NarrativeWorkEntry[] = [];
+  for (const item of items) {
+    const agent = narrativeItemAgent(item);
+    if (!agent) {
+      entries.push({ kind: 'item', item });
+      continue;
+    }
+    const last = entries.at(-1);
+    if (last?.kind === 'agent' && last.agentKey === agent.id) {
+      last.items.push(item);
+      continue;
+    }
+    entries.push({
+      kind: 'agent',
+      id: `agent:${agent.id}:${item.id}`,
+      agentKey: agent.id,
+      agentName: agent.name,
+      items: [item],
+    });
+  }
+  return entries;
+}
 
 function workLogSummary(run: TimelineRunView, paused: boolean): string {
   if (paused && isActiveRunStatus(run.status)) return 'Paused after';
@@ -64,14 +155,11 @@ function workLogSummary(run: TimelineRunView, paused: boolean): string {
  */
 function NarrativeSegment({
   segment,
-  showAgentName,
   runActive,
   latestRunningCallId,
   reducedMotion,
 }: {
   segment: TimelineSegment;
-  /** True when this segment starts a new actor's stretch of work. */
-  showAgentName: boolean;
   runActive: boolean;
   latestRunningCallId: string | null;
   reducedMotion: boolean;
@@ -100,19 +188,11 @@ function NarrativeSegment({
 
   return (
     <div
-      className="flex w-full min-w-0 flex-col gap-1"
+      className="flex w-full min-w-0 flex-col gap-2"
       data-narrative-segment-id={segment.id}
       data-narrative-segment-source={segment.source}
       data-narrative-segment-status={segment.status}
     >
-      {showAgentName && segment.agentName ? (
-        <span
-          className="!text-label-xs font-medium text-ds-text-neutral-muted-default"
-          data-narrative-segment-agent={segment.agentName}
-        >
-          {segment.agentName}
-        </span>
-      ) : null}
       {segment.narration ? (
         <span
           className={cn('whitespace-pre-wrap break-words', PRIMARY_TEXT_CLASS)}
@@ -127,7 +207,7 @@ function NarrativeSegment({
             type="button"
             aria-expanded={open}
             onClick={() => setOpen((value) => !value)}
-            className="group inline-flex min-w-0 max-w-full items-center gap-1 self-start px-0 py-0.5 text-left transition-opacity hover:opacity-80"
+            className="group inline-flex min-w-0 max-w-full items-center gap-1 self-start px-0 py-0.5 text-left opacity-60 transition-opacity hover:opacity-100"
             data-narrative-segment-trigger
           >
             {shimmerOnLabel ? (
@@ -171,7 +251,7 @@ function NarrativeSegment({
                 {...disclosureMotion(reducedMotion)}
                 className="w-full min-w-0 overflow-hidden"
               >
-                <div className="flex min-w-0 flex-col gap-1 pl-3 pt-1">
+                <div className="flex min-w-0 flex-col gap-1 pt-1">
                   {segment.calls.map((call) => (
                     <CallRow
                       call={call}
@@ -202,12 +282,12 @@ function NarrativePlan({
 
   return (
     <div
-      className="flex w-full min-w-0 flex-col gap-1"
+      className="flex w-full min-w-0 flex-col gap-2"
       data-narrative-plan-id={node.id}
     >
       {heading ? <span className={PRIMARY_TEXT_CLASS}>{heading}</span> : null}
       {node.tasks.length > 0 ? (
-        <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {node.tasks.map((task) => (
             <li className={PRIMARY_TEXT_CLASS} key={task.id}>
               {task.title}
@@ -242,6 +322,158 @@ function NarrativeNotice({
   );
 }
 
+function NarrativeItem({
+  item,
+  interactivePlan,
+  runActive,
+  latestRunningCallId,
+  reducedMotion,
+}: {
+  item: TimelineNarrativeItem;
+  interactivePlan?: InteractiveTimelinePlan;
+  runActive: boolean;
+  latestRunningCallId: string | null;
+  reducedMotion: boolean;
+}) {
+  if (item.kind === 'segment') {
+    return (
+      <NarrativeSegment
+        latestRunningCallId={latestRunningCallId}
+        reducedMotion={reducedMotion}
+        runActive={runActive}
+        segment={item}
+      />
+    );
+  }
+  if (item.kind === 'plan') {
+    if (item.node.eventId === interactivePlan?.eventId) {
+      return (
+        <div
+          className="w-full min-w-0"
+          data-narrative-plan-id={item.node.id}
+          data-narrative-plan-interactive
+        >
+          {interactivePlan.content}
+        </div>
+      );
+    }
+    return <NarrativePlan item={item} />;
+  }
+  if (item.kind === 'notice') {
+    return <NarrativeNotice item={item} />;
+  }
+  return (
+    <CallRow
+      call={item.call}
+      latestRunningCallId={latestRunningCallId}
+      reducedMotion={reducedMotion}
+      runActive={runActive}
+    />
+  );
+}
+
+/**
+ * Workforce-only wrapper. The agent's name is the accordion trigger; their
+ * narration and calls live inside so the work log reads as a roster of actors
+ * rather than a flat stream with labels.
+ */
+function NarrativeAgentGroup({
+  agentName,
+  items,
+  isLatest,
+  animationsActive,
+  runLive,
+  latestRunningCallId,
+  reducedMotion,
+}: {
+  agentName: string;
+  items: readonly TimelineNarrativeItem[];
+  isLatest: boolean;
+  animationsActive: boolean;
+  runLive: boolean;
+  latestRunningCallId: string | null;
+  reducedMotion: boolean;
+}) {
+  const ownsShimmer = items.some((item) =>
+    itemOwnsCall(item, latestRunningCallId)
+  );
+  const autoOpen =
+    !runLive ||
+    isLatest ||
+    ownsShimmer ||
+    items.some(itemHasActiveCall) ||
+    items.some(itemIsFailed);
+  const [open, setOpen] = useState(autoOpen);
+  const wasAutoOpen = useRef(autoOpen);
+
+  useEffect(() => {
+    if (autoOpen) setOpen(true);
+    else if (wasAutoOpen.current) setOpen(false);
+    wasAutoOpen.current = autoOpen;
+  }, [autoOpen]);
+
+  const shimmerOnLabel = !open && ownsShimmer;
+
+  return (
+    <div
+      className="flex w-full min-w-0 flex-col"
+      data-narrative-agent-group={agentName}
+    >
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full min-w-0 items-center justify-start gap-1 px-0 py-1 text-left"
+        data-narrative-agent-trigger
+      >
+        {shimmerOnLabel ? (
+          <ShinyText
+            speed={2.5}
+            text={agentName}
+            className="min-w-0 shrink overflow-hidden text-ellipsis whitespace-nowrap !text-body-sm !font-medium text-ds-text-neutral-muted-default"
+          />
+        ) : (
+          <span className="min-w-0 shrink overflow-hidden text-ellipsis whitespace-nowrap text-body-sm font-medium text-ds-text-neutral-muted-default">
+            {agentName}
+          </span>
+        )}
+        {open ? (
+          <ChevronDown
+            aria-hidden
+            className="size-4 shrink-0 text-ds-icon-neutral-muted-default"
+          />
+        ) : (
+          <ChevronRight
+            aria-hidden
+            className="size-4 shrink-0 text-ds-icon-neutral-muted-default"
+          />
+        )}
+      </button>
+      <AnimatePresence initial={false}>
+        {open ? (
+          <motion.div
+            key="narrative-agent-group-body"
+            {...disclosureMotion(reducedMotion)}
+            className="overflow-hidden"
+          >
+            <div className="flex min-w-0 flex-col gap-2 pt-1">
+              {items.map((item) => (
+                <NarrativeItem
+                  item={item}
+                  key={item.id}
+                  latestRunningCallId={latestRunningCallId}
+                  reducedMotion={reducedMotion}
+                  runActive={animationsActive}
+                />
+              ))}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 /**
  * Pick the one call that owns the running shimmer. Narrative shows at most one
  * so a burst of parallel calls does not read as several competing cursors.
@@ -268,23 +500,35 @@ function latestRunningCallId(
 
 function NarrativeRunWorkLog({
   run,
+  items,
   paused,
+  workforce,
+  interactivePlan,
 }: {
   run: TimelineRunView;
+  items: readonly TimelineNarrativeItem[];
   paused: boolean;
+  workforce: boolean;
+  interactivePlan?: InteractiveTimelinePlan;
 }) {
-  const items = useMemo(() => segmentTimelineRun(run), [run]);
+  const entries = useMemo(
+    () => groupNarrativeWork(items, workforce),
+    [items, workforce]
+  );
   const live = isActiveRunStatus(run.status);
   // Pausing stops the shimmer but must not collapse the log: the user is still
   // in the middle of this Run, so only a terminal status folds it away.
-  const active = live && !paused;
+  const animationsActive = live && !paused;
   const runningCallId = useMemo(
-    () => latestRunningCallId(items, active),
-    [active, items]
+    () => latestRunningCallId(items, animationsActive),
+    [animationsActive, items]
   );
   const reducedMotion = Boolean(useReducedMotion());
   const [open, setOpen] = useState(live);
   const wasLive = useRef(live);
+  const lastAgentIndex = entries.findLastIndex(
+    (entry) => entry.kind === 'agent'
+  );
 
   useEffect(() => {
     if (live) setOpen(true);
@@ -334,41 +578,29 @@ function NarrativeRunWorkLog({
               className="flex min-w-0 flex-col gap-3 py-2"
               data-narrative-timeline
             >
-              {items.map((item, index) => {
-                if (item.kind === 'segment') {
-                  // Workforce loses its per-agent accordion in narrative mode,
-                  // so attribution rides on the segment where the actor
-                  // changes. Single-agent runs never show a name.
-                  const previous = items
-                    .slice(0, index)
-                    .findLast((candidate) => candidate.kind === 'segment');
-                  const showAgentName =
-                    previous?.kind !== 'segment' ||
-                    previous.agentName !== item.agentName;
+              {entries.map((entry, index) => {
+                if (entry.kind === 'agent') {
                   return (
-                    <NarrativeSegment
-                      key={item.id}
+                    <NarrativeAgentGroup
+                      agentName={entry.agentName}
+                      animationsActive={animationsActive}
+                      isLatest={index === lastAgentIndex}
+                      items={entry.items}
+                      key={entry.id}
                       latestRunningCallId={runningCallId}
                       reducedMotion={reducedMotion}
-                      runActive={active}
-                      segment={item}
-                      showAgentName={showAgentName}
+                      runLive={live}
                     />
                   );
                 }
-                if (item.kind === 'plan') {
-                  return <NarrativePlan item={item} key={item.id} />;
-                }
-                if (item.kind === 'notice') {
-                  return <NarrativeNotice item={item} key={item.id} />;
-                }
                 return (
-                  <CallRow
-                    call={item.call}
-                    key={item.id}
+                  <NarrativeItem
+                    interactivePlan={interactivePlan}
+                    item={entry.item}
+                    key={entry.item.id}
                     latestRunningCallId={runningCallId}
                     reducedMotion={reducedMotion}
-                    runActive={active}
+                    runActive={animationsActive}
                   />
                 );
               })}
@@ -383,13 +615,21 @@ function NarrativeRunWorkLog({
 export function NarrativeTimeline({
   runs,
   projectedArtifactsByRun = {},
+  interactivePlansByRun = {},
   paused = false,
-}: TimelineModeProps) {
+  sessionMode,
+}: TimelineModeProps & { sessionMode?: SessionModeType }) {
+  const workforce = sessionMode === SessionMode.WORKFORCE;
   return (
     <div className="flex w-full flex-col gap-3" data-timeline-mode="narrative">
       {runs.map((run) => {
         const projectedArtifacts = projectedArtifactsByRun[run.runId] || [];
-        const hasExecutionRows = run.traceRows.length > 0;
+        const interactivePlan = interactivePlansByRun[run.runId];
+        const narrativeItems = segmentTimelineRun(run);
+        const hasWorkBand = narrativeItems.length > 0;
+        const hasFiles =
+          run.artifacts.length > 0 || projectedArtifacts.length > 0;
+        const showFiles = isTerminalRunStatus(run.status) && hasFiles;
         return (
           <section
             className="flex w-full flex-col gap-3"
@@ -403,24 +643,33 @@ export function NarrativeTimeline({
                 id={run.userQuery.id}
               />
             ) : null}
-            {isActiveRunStatus(run.status) && !hasExecutionRows ? (
+            {isActiveRunStatus(run.status) && !hasWorkBand ? (
               <PreparingToExecuteTasks />
             ) : null}
-            <NarrativeRunWorkLog paused={paused} run={run} />
+            <NarrativeRunWorkLog
+              items={narrativeItems}
+              paused={paused}
+              run={run}
+              workforce={workforce}
+              interactivePlan={interactivePlan}
+            />
             {run.finalAssistantResponse ? (
               <AgentMessageCard
                 content={run.finalAssistantResponse.content}
                 deferredFooter={
-                  <RunFilesGroup
-                    artifactNodes={run.artifacts}
-                    projectedArtifacts={projectedArtifacts}
-                    runId={run.runId}
-                  />
+                  showFiles ? (
+                    <RunFilesGroup
+                      artifactNodes={run.artifacts}
+                      projectedArtifacts={projectedArtifacts}
+                      runId={run.runId}
+                    />
+                  ) : undefined
                 }
                 id={run.finalAssistantResponse.id}
                 typewriter={isActiveRunStatus(run.status)}
               />
-            ) : run.artifacts.length > 0 || projectedArtifacts.length > 0 ? (
+            ) : null}
+            {!run.finalAssistantResponse && showFiles ? (
               <RunFilesGroup
                 artifactNodes={run.artifacts}
                 projectedArtifacts={projectedArtifacts}

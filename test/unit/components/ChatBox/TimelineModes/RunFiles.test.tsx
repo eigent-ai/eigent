@@ -119,11 +119,44 @@ describe('RunFiles capability boundary', () => {
       },
     } satisfies ProjectedArtifact;
     const { result } = renderHook(() =>
-      useRunFileInfo({ projectedArtifacts: [cloud] })
+      useRunFileInfo({
+        projectedArtifacts: [cloud],
+        workspaceRoot: '/Users/test/workspace',
+      })
     );
 
-    expect(result.current[0]?.path).toBe('');
+    expect(result.current[0]).toMatchObject({
+      path: '',
+      localPathAvailable: false,
+      isRemote: true,
+      assetRef: cloud.assetRef,
+    });
     expect(runFileReviewPath(result.current[0]!)).toBe('reports/report.csv');
+  });
+
+  it('keeps resolved local paths while routing changed files to review', () => {
+    const changed = {
+      ...projectedArtifact,
+      artifactId: 'artifact-2',
+      name: 'notes.md',
+      relativePath: 'notes.md',
+      changeType: 'changed',
+    } satisfies ProjectedArtifact;
+    const { result } = renderHook(() =>
+      useRunFileInfo({
+        projectedArtifacts: [projectedArtifact, changed],
+        workspaceRoot: '/Users/test/workspace',
+      })
+    );
+
+    expect(result.current.map((file) => file.path)).toEqual([
+      '/Users/test/workspace/reports/report.csv',
+      '/Users/test/workspace/notes.md',
+    ]);
+    expect(result.current.map(runFileReviewPath)).toEqual([
+      'reports/report.csv',
+      'notes.md',
+    ]);
   });
 
   it('rejects escaping paths before they reach the Run review API', () => {

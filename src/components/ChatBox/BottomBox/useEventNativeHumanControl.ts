@@ -59,6 +59,10 @@ export type UseEventNativeHumanControlInput = {
   activeRunId: string | null | undefined;
   actorId?: string | number | null;
   enabled?: boolean;
+  /** Immediate presentation bridge while the durable decision is in flight. */
+  onSubmissionStart?: (interaction: HumanControlInteraction) => void;
+  /** Restores the input-required presentation when submission cannot settle. */
+  onSubmissionFailure?: (interaction: HumanControlInteraction) => void;
   /** Temporary compatibility bridge after an authoritative terminal event is loaded. */
   onDurableResolution?: (interaction: HumanControlInteraction) => void;
 };
@@ -453,6 +457,8 @@ export function useEventNativeHumanControl({
   activeRunId,
   actorId,
   enabled = true,
+  onSubmissionStart,
+  onSubmissionFailure,
   onDurableResolution,
 }: UseEventNativeHumanControlInput): EventNativeHumanControlController {
   const { t } = useTranslation();
@@ -516,6 +522,14 @@ export function useEventNativeHumanControl({
       if (inFlightKey.current === controlKey) return;
       inFlightKey.current = controlKey;
       setSubmission({ key: controlKey, phase: 'submitting', error: null });
+      try {
+        onSubmissionStart?.(interaction);
+      } catch (error) {
+        console.error(
+          '[EventNativeHumanControl] submission-start bridge failed',
+          error
+        );
+      }
 
       let decisionAccepted = false;
       try {
@@ -557,6 +571,14 @@ export function useEventNativeHumanControl({
         // interaction disappears. There is no optimistic local resolution.
       } catch (error) {
         console.error('[EventNativeHumanControl] decision failed', error);
+        try {
+          onSubmissionFailure?.(interaction);
+        } catch (bridgeError) {
+          console.error(
+            '[EventNativeHumanControl] submission-failure bridge failed',
+            bridgeError
+          );
+        }
         const message = decisionAccepted
           ? t('chat.control-decision-unsynced')
           : t('chat.control-decision-failed');
@@ -571,6 +593,8 @@ export function useEventNativeHumanControl({
       controlKey,
       interaction,
       onDurableResolution,
+      onSubmissionFailure,
+      onSubmissionStart,
       projectId,
       submitting,
       t,

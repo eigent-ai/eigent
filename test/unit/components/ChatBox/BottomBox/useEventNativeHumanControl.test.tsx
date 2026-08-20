@@ -201,6 +201,38 @@ describe('useEventNativeHumanControl', () => {
     );
   });
 
+  it('updates submission presentation immediately and restores it on failure', async () => {
+    const onSubmissionStart = vi.fn();
+    const onSubmissionFailure = vi.fn();
+    mocks.projection = projection([interaction()]);
+    mocks.decide.mockRejectedValueOnce(new Error('offline'));
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    const { result } = renderHook(() =>
+      useEventNativeHumanControl({
+        projectId: 'project-1',
+        activeRunId: 'run-1',
+        onSubmissionStart,
+        onSubmissionFailure,
+      })
+    );
+
+    act(() => {
+      if (result.current.variant?.kind === 'approval') {
+        result.current.variant.onApprove('once');
+      }
+    });
+
+    expect(onSubmissionStart).toHaveBeenCalledOnce();
+    expect(onSubmissionStart).toHaveBeenCalledWith(
+      expect.objectContaining({ interactionId: 'approval-1' })
+    );
+    await waitFor(() => expect(onSubmissionFailure).toHaveBeenCalledOnce());
+    expect(result.current.phase).toBe('idle');
+    consoleError.mockRestore();
+  });
+
   it('does not use a legacy connection ordinal as a durable replay cursor', async () => {
     mocks.projection = projection([
       interaction({ sequence: 48, requestSource: 'chat_step_v1' }),

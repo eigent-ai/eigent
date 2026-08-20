@@ -15,6 +15,7 @@
 import {
   getWorkspaceRelativeFilePath,
   normalizeWorkspaceRelativePath,
+  resolveWorkspaceFilePath,
 } from '@/lib/workspaceRelativePath';
 import { describe, expect, it } from 'vitest';
 
@@ -93,5 +94,29 @@ describe('getWorkspaceRelativeFilePath', () => {
     ).toBeNull();
     expect(normalizeWorkspaceRelativePath('%2e%2e/secret.txt')).toBeNull();
     expect(normalizeWorkspaceRelativePath('reports/%2fsecret.txt')).toBeNull();
+  });
+});
+
+describe('resolveWorkspaceFilePath', () => {
+  it('joins a workspace root with a portable relative identity', () => {
+    expect(
+      resolveWorkspaceFilePath('/Users/test/workspace', 'reports/final.md')
+    ).toBe('/Users/test/workspace/reports/final.md');
+    expect(
+      resolveWorkspaceFilePath('C:\\Users\\test\\workspace', 'reports/final.md')
+    ).toBe('C:\\Users\\test\\workspace\\reports\\final.md');
+  });
+
+  it('rejects traversal, URLs, and missing roots', () => {
+    expect(
+      resolveWorkspaceFilePath('/Users/test/workspace', '../secret.txt')
+    ).toBe('');
+    expect(
+      resolveWorkspaceFilePath(
+        'https://example.test/workspace',
+        'reports/final.md'
+      )
+    ).toBe('');
+    expect(resolveWorkspaceFilePath('', 'reports/final.md')).toBe('');
   });
 });

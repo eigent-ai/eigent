@@ -25,6 +25,7 @@ import {
   Loader2,
   PauseCircle,
 } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 
 export function isActiveRunStatus(status: TimelineRunView['status']): boolean {
@@ -37,6 +38,18 @@ export function isTerminalRunStatus(
   status: TimelineRunView['status']
 ): boolean {
   return ['completed', 'failed', 'cancelled', 'interrupted'].includes(status);
+}
+
+/** A submitted query and a pending receipt are still startup state. */
+export function hasRunExecutionRows(run: TimelineRunView): boolean {
+  return run.traceRows.some((row) => {
+    if (row.kind === 'tool') return true;
+    if (row.node.kind === 'message' && row.node.role === 'user') return false;
+    if (row.node.kind === 'run_status') {
+      return row.node.status !== 'pending';
+    }
+    return true;
+  });
 }
 
 export function statusLabel(status: string): string {
@@ -241,9 +254,20 @@ export function disclosureMotion(reducedMotion: boolean) {
   } as const;
 }
 
+export interface InteractiveTimelinePlan {
+  eventId: string;
+  content: ReactNode;
+}
+
 export interface TimelineModeProps {
   runs: readonly TimelineRunView[];
   projectedArtifactsByRun?: Readonly<Record<string, ProjectedArtifact[]>>;
+  /**
+   * The active workforce plan keeps its legacy view/edit surface while its
+   * durable event remains the source of timeline ordering. Other plan events
+   * continue through the read-only timeline renderer.
+   */
+  interactivePlansByRun?: Readonly<Record<string, InteractiveTimelinePlan>>;
   /**
    * The user has taken control of the Run. Elapsed time and the running
    * shimmer both hold until it resumes; the work log stays open because a

@@ -12,9 +12,15 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { ChevronLeft, FileText, X } from 'lucide-react';
+import {
+  ChevronLeft,
+  FileText,
+  MessageCircleQuestionMark,
+  X,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { BottomBoxContextItem, BottomBoxHeaderContent } from './types';
@@ -43,7 +49,17 @@ export function BoxHeaderDisplay({
   details = [],
   onRemoveContextItem,
   className,
-}: BottomBoxHeaderContent & { className?: string }) {
+  descriptionAsTitle = false,
+  descriptionAsMarkdown = false,
+  showQuestionIcon = false,
+}: BottomBoxHeaderContent & {
+  className?: string;
+  /** Questions use one typographic voice for the label and prompt. */
+  descriptionAsTitle?: boolean;
+  /** Agent question copy may contain display-safe Markdown. */
+  descriptionAsMarkdown?: boolean;
+  showQuestionIcon?: boolean;
+}) {
   const hasCopy = Boolean(eyebrow || title || description);
   if (!hasCopy && contextItems.length === 0 && details.length === 0)
     return null;
@@ -55,22 +71,42 @@ export function BoxHeaderDisplay({
       className={cn('flex w-full flex-col gap-2 px-4 py-2', className)}
     >
       {hasCopy && (
-        <div className="flex min-w-0 flex-col gap-0.5">
+        <div className="flex min-w-0 flex-col gap-1">
           {eyebrow && (
             <span className="text-body-xs font-medium text-ds-text-neutral-muted-default">
               {eyebrow}
             </span>
           )}
           {title && (
-            <span className="block text-body-sm font-bold text-ds-text-neutral-default-default">
-              {title}
+            <span className="flex items-center gap-1.5 text-body-sm font-bold text-ds-text-neutral-default-default">
+              {showQuestionIcon ? (
+                <MessageCircleQuestionMark
+                  aria-hidden
+                  className="size-4 shrink-0 text-ds-icon-neutral-default-default"
+                  data-bottom-box-question-icon
+                />
+              ) : null}
+              <span>{title}</span>
             </span>
           )}
-          {description && (
-            <span className="block text-body-xs font-normal text-ds-text-neutral-muted-default">
+          {description && descriptionAsMarkdown ? (
+            <div
+              className="bottom-box-question-markdown min-w-0 text-body-sm text-ds-text-neutral-default-default"
+              data-bottom-box-question-markdown
+            >
+              <MarkDown content={description} enableTypewriter={false} />
+            </div>
+          ) : description ? (
+            <span
+              className={
+                descriptionAsTitle
+                  ? 'block text-body-sm font-bold text-ds-text-neutral-default-default'
+                  : 'block text-body-xs font-normal text-ds-text-neutral-muted-default'
+              }
+            >
               {description}
             </span>
-          )}
+          ) : null}
         </div>
       )}
 

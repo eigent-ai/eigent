@@ -502,6 +502,7 @@
   "context-tab-remote": "Remote",
   "scheduled-tab": "Scheduled",
   "dispatch-tab": "Dispatch",
+  "configuration-tab": "Configuration",
   "workspace-work-with-title": "Dispatch",
   "workspace-work-with-remote-control": "Remote control",
   "dispatch-copy-link": "Copy link",

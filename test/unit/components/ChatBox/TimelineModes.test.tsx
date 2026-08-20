@@ -560,6 +560,8 @@ describe('ChatBox timeline modes', () => {
       container.querySelector('[data-narrative-segment-narration]')
     ).toHaveClass('text-ds-text-neutral-default-default');
     expect(container.querySelector('[data-timeline-call-id]')).toBeNull();
+    expect(screen.queryByText('Developer Agent')).toBeNull();
+    expect(container.querySelector('[data-narrative-agent-group]')).toBeNull();
 
     openNarrativeSegments(container);
 
@@ -579,6 +581,33 @@ describe('ChatBox timeline modes', () => {
     expect(within(tool).getByText('Response')).toBeInTheDocument();
     expect(
       within(tool).getByText('Waiting for a response.')
+    ).toBeInTheDocument();
+  });
+
+  it('keeps Preparing visible until the narrative work band can render', () => {
+    const { container, rerender } = render(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns([runningRunStatus(1)])}
+      />
+    );
+
+    expect(screen.getByText('Preparing to start tasks')).toBeInTheDocument();
+    expect(container.querySelector('[data-narrative-run-work-log]')).toBeNull();
+
+    rerender(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns([
+          normalToolActivity({ id: 'first-work', runSequence: 2 }),
+          runningRunStatus(3),
+        ])}
+      />
+    );
+
+    expect(screen.queryByText('Preparing to start tasks')).toBeNull();
+    expect(
+      container.querySelector('[data-narrative-run-work-log]')
     ).toBeInTheDocument();
   });
 
@@ -1065,6 +1094,153 @@ describe('ChatBox timeline modes', () => {
     // Agent lifecycle frames supply identity metadata, never timeline rows.
     expect(screen.queryByText('Agent finished')).toBeNull();
   });
+
+  it('nests each workforce agent in its own accordion', () => {
+    const workforceNodes: ChatProjectionNode[] = [
+      {
+        ...base,
+        kind: 'message',
+        id: 'alpha-narration',
+        eventId: 'alpha-narration',
+        eventType: 'message.completed',
+        runSequence: 1,
+        createdAt: '2026-08-19T00:00:01Z',
+        role: 'assistant',
+        purpose: 'narration',
+        status: 'complete',
+        content: 'Alpha will search first.',
+        agentId: 'alpha',
+        agentName: 'Alpha Agent',
+      },
+      {
+        ...base,
+        kind: 'activity',
+        id: 'alpha-search',
+        eventId: 'alpha-search',
+        eventType: 'tool.completed',
+        runSequence: 2,
+        createdAt: '2026-08-19T00:00:02Z',
+        activityType: 'tool',
+        phase: 'completed',
+        status: 'completed',
+        title: 'WebFetchToolkit · Search',
+        toolCallId: 'alpha-search',
+        toolkitName: 'WebFetchToolkit',
+        methodName: 'Search',
+        agentId: 'alpha',
+        agentName: 'Alpha Agent',
+      },
+      {
+        ...base,
+        kind: 'message',
+        id: 'beta-narration',
+        eventId: 'beta-narration',
+        eventType: 'message.completed',
+        runSequence: 3,
+        createdAt: '2026-08-19T00:00:03Z',
+        role: 'assistant',
+        purpose: 'narration',
+        status: 'complete',
+        content: 'Beta will write the notes.',
+        agentId: 'beta',
+        agentName: 'Beta Agent',
+      },
+      {
+        ...base,
+        kind: 'run_status',
+        id: 'run-running',
+        eventId: 'run-running',
+        eventType: 'run.running',
+        runSequence: 4,
+        createdAt: '2026-08-19T00:00:04Z',
+        status: 'running',
+      },
+    ];
+
+    const { container, rerender } = render(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns(workforceNodes)}
+        sessionMode={SessionMode.WORKFORCE}
+      />
+    );
+
+    const groups = [
+      ...container.querySelectorAll('[data-narrative-agent-group]'),
+    ].map((element) => element.getAttribute('data-narrative-agent-group'));
+    expect(groups).toEqual(['Alpha Agent', 'Beta Agent']);
+    expect(
+      screen.queryByText('Alpha will search first.')
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('Beta will write the notes.')).toBeInTheDocument();
+
+    expect(screen.getByRole('button', { name: 'Alpha Agent' })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
+    expect(screen.getByRole('button', { name: 'Beta Agent' })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
+    rerender(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        paused
+        runs={composeTimelineRuns(workforceNodes)}
+        sessionMode={SessionMode.WORKFORCE}
+      />
+    );
+    expect(screen.getByRole('button', { name: 'Alpha Agent' })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
+    expect(screen.getByRole('button', { name: 'Beta Agent' })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
+    rerender(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns(workforceNodes)}
+        sessionMode={SessionMode.WORKFORCE}
+      />
+    );
+    expect(screen.getByRole('button', { name: 'Alpha Agent' })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Alpha Agent' }));
+    expect(screen.getByText('Alpha will search first.')).toBeInTheDocument();
+  });
+
+  it.each(['completed', 'failed', 'cancelled', 'interrupted'] as const)(
+    'shows terminal %s Run artifacts without a final assistant response',
+    (status) => {
+      const artifact = nodes('completed').find(
+        (node) => node.kind === 'artifact'
+      )!;
+      const terminalStatus: ChatProjectionNode = {
+        ...base,
+        kind: 'run_status',
+        id: `run-${status}`,
+        eventId: `run-${status}`,
+        eventType: `run.${status}`,
+        runSequence: 6,
+        createdAt: '2026-08-19T00:00:05Z',
+        status,
+      };
+
+      render(
+        <TimelineModeRenderer
+          detailLevel="narrative"
+          runs={composeTimelineRuns([artifact, terminalStatus])}
+        />
+      );
+
+      expect(screen.getByText('Files changed')).toBeInTheDocument();
+    }
+  );
 
   it('keeps approvals at their chronological position after a repeated event group', () => {
     const approvalNodes: ChatProjectionNode[] = [

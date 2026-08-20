@@ -13,7 +13,13 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import BottomBox, { type BottomBoxProps } from '@/components/ChatBox/BottomBox';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/components/ChatBox/BottomBox/BoxFooter', () => ({
@@ -183,7 +189,7 @@ describe('BottomBox structure', () => {
     expect(onConfirm).toHaveBeenCalledOnce();
   });
 
-  it('renders only the approval scopes supplied by the owner', () => {
+  it('renders only the approval scopes supplied by the owner', async () => {
     const onApprove = vi.fn();
 
     const { container } = render(
@@ -271,6 +277,9 @@ describe('BottomBox structure', () => {
       screen.queryByText('brave_search.web_search')
     ).not.toBeInTheDocument();
 
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Reject' })).not.toHaveFocus()
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Approve once' }));
     expect(onApprove).toHaveBeenCalledWith('once');
   });
@@ -319,7 +328,7 @@ describe('BottomBox structure', () => {
     ).toBeInTheDocument();
   });
 
-  it('animates from the composer into a three-action approval variant', () => {
+  it('animates from the composer into a three-action approval variant', async () => {
     const { container, rerender } = render(
       <BottomBox
         state="input"
@@ -378,6 +387,9 @@ describe('BottomBox structure', () => {
         container.querySelector('[data-approval-actions]') as HTMLElement
       ).getAllByRole('button')
     ).toHaveLength(3);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Reject' })).not.toHaveFocus()
+    );
   });
 
   it('routes controlled selection changes without owning event state', () => {
@@ -427,7 +439,7 @@ describe('BottomBox structure', () => {
     );
   });
 
-  it('routes feedback and structured form callbacks', () => {
+  it('routes feedback and structured form callbacks', async () => {
     const onFeedbackChange = vi.fn();
     const onFieldChange = vi.fn();
     const { rerender } = render(
@@ -438,7 +450,7 @@ describe('BottomBox structure', () => {
           presentation: 'question',
           header: {
             title: 'Question',
-            description: 'What should I change?',
+            description: '### What should I **change**?',
           },
           value: '',
           onChange: onFeedbackChange,
@@ -448,12 +460,35 @@ describe('BottomBox structure', () => {
       />
     );
 
-    expect(screen.getByText('Question')).toBeInTheDocument();
-    expect(screen.getByText('What should I change?')).toBeInTheDocument();
+    const questionLabel = screen.getByText('Question');
+    expect(questionLabel.parentElement).toHaveClass(
+      'text-body-sm',
+      'font-bold'
+    );
     expect(
-      screen
-        .getByText('What should I change?')
+      questionLabel
         .closest('[data-bottom-box-header]')
+        ?.querySelector('[data-bottom-box-question-icon]')
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-bottom-box-question-markdown] h3')
+      ).toBeInTheDocument()
+    );
+    const questionPrompt = document.querySelector(
+      '[data-bottom-box-question-markdown] h3'
+    ) as HTMLElement;
+    expect(questionPrompt).toHaveTextContent('What should I change?');
+    expect(questionPrompt.querySelector('strong')).toHaveTextContent('change');
+    expect(
+      questionPrompt.closest('[data-bottom-box-question-markdown]')
+    ).toHaveClass(
+      'bottom-box-question-markdown',
+      'text-body-sm',
+      'text-ds-text-neutral-default-default'
+    );
+    expect(
+      questionPrompt.closest('[data-bottom-box-header]')
     ).toBeInTheDocument();
     const questionTextarea = screen.getByRole('textbox', {
       name: 'Feedback',

@@ -52,6 +52,34 @@ export function normalizeWorkspaceRelativePath(
   return segments.length > 0 ? segments.join('/') : null;
 }
 
+function isWindowsDrivePath(value: string): boolean {
+  return /^[A-Za-z]:[\\/]/.test(value);
+}
+
+/**
+ * Turn a portable workspace-relative identity into a local preview path.
+ * Rejects URLs, absolute relatives, and traversal. The Electron preview
+ * loader still authorizes the result against registered Space roots.
+ */
+export function resolveWorkspaceFilePath(
+  workspaceRoot: string | null | undefined,
+  relativePath: string | null | undefined
+): string {
+  const root = (workspaceRoot || '').trim();
+  const relative = normalizeWorkspaceRelativePath(relativePath);
+  if (!root || !relative) return '';
+  if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(root) && !isWindowsDrivePath(root)) {
+    return '';
+  }
+
+  const usesBackslash = root.includes('\\') && !root.includes('/');
+  const separator = usesBackslash ? '\\' : '/';
+  const trimmedRoot = root.replace(/[/\\]+$/, '');
+  return `${trimmedRoot}${separator}${
+    usesBackslash ? relative.replace(/\//g, '\\') : relative
+  }`;
+}
+
 /**
  * Return a display path scoped to the current workspace root.
  * Absolute local paths and remote preview URLs are intentionally never shown.

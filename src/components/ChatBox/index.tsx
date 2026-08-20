@@ -626,10 +626,39 @@ export default function ChatBox(): JSX.Element {
     }
   };
 
+  const updateLegacyHumanControlSubmission = useCallback(
+    (
+      projectId: string,
+      interaction: { interactionId: string; runId: string },
+      phase: 'submitting' | 'failed'
+    ) => {
+      const activeStore = projectStore.getActiveChatStore(projectId);
+      if (!activeStore) return;
+      const state = activeStore.getState();
+      if (state.activeTaskId !== interaction.runId) return;
+      const current = state.tasks[interaction.runId];
+      if (!current) return;
+
+      // Presentation-only migration bridge: the durable interaction remains
+      // authoritative, but the sidebar must react at click time instead of
+      // waiting for the decision POST plus event replay round trip.
+      state.setIsPending(interaction.runId, phase === 'submitting');
+      state.setDurableRunStatus(
+        interaction.runId,
+        phase === 'submitting' ? 'running' : 'waiting_for_user'
+      );
+      state.setStatus(interaction.runId, ChatTaskStatus.RUNNING);
+    },
+    [projectStore]
+  );
+
   const handleDurableHumanControlResolved = useCallback(
-    (resolved: { interactionId: string; runId: string }) => {
-      if (!activeTaskId || resolved.runId !== activeTaskId) return;
-      const current = chatStore?.tasks[activeTaskId];
+    (projectId: string, resolved: { interactionId: string; runId: string }) => {
+      const activeStore = projectStore.getActiveChatStore(projectId);
+      if (!activeStore) return;
+      const state = activeStore.getState();
+      if (state.activeTaskId !== resolved.runId) return;
+      const current = state.tasks[resolved.runId];
       if (!current) return;
 
       const activeAskInteractionId = current.messages.findLast(
@@ -644,14 +673,25 @@ export default function ChatBox(): JSX.Element {
 
       // Migration-only compatibility: the durable terminal event is already
       // loaded at this point. Keep the legacy task queue coherent until all
-      // send/disable logic reads HumanControlProjection directly.
-      const [nextAsk, ...remainingAsks] = current.askList;
-      chatStore.setActiveAskList(activeTaskId, remainingAsks);
-      chatStore.setActiveAsk(activeTaskId, nextAsk?.agent_name || '');
-      chatStore.setIsPending(activeTaskId, false);
-      if (nextAsk) chatStore.addMessages(activeTaskId, nextAsk);
+      // send/disable and sidebar logic reads HumanControlProjection directly.
+      state.markHumanInteractionResolved(
+        resolved.runId,
+        resolved.interactionId
+      );
+      const reconciled = activeStore.getState().tasks[resolved.runId];
+      if (!reconciled) return;
+      const [nextAsk, ...remainingAsks] = reconciled.askList;
+      state.setActiveAskList(resolved.runId, remainingAsks);
+      state.setActiveAsk(resolved.runId, nextAsk?.agent_name || '');
+      state.setIsPending(resolved.runId, false);
+      state.setDurableRunStatus(
+        resolved.runId,
+        nextAsk ? 'waiting_for_user' : 'running'
+      );
+      state.setStatus(resolved.runId, ChatTaskStatus.RUNNING);
+      if (nextAsk) state.addMessages(resolved.runId, nextAsk);
     },
-    [activeTaskId, chatStore]
+    [projectStore]
   );
 
   const eventNativeHumanControl = useEventNativeHumanControl({
@@ -666,7 +706,26 @@ export default function ChatBox(): JSX.Element {
         isEventNativeRunActionable(eventNativeActiveProjectedRun)
       ) &&
       !share_token,
-    onDurableResolution: handleDurableHumanControlResolved,
+    onSubmissionStart: (interaction) => {
+      if (!activeProjectId) return;
+      updateLegacyHumanControlSubmission(
+        activeProjectId,
+        interaction,
+        'submitting'
+      );
+    },
+    onSubmissionFailure: (interaction) => {
+      if (!activeProjectId) return;
+      updateLegacyHumanControlSubmission(
+        activeProjectId,
+        interaction,
+        'failed'
+      );
+    },
+    onDurableResolution: (interaction) => {
+      if (!activeProjectId) return;
+      handleDurableHumanControlResolved(activeProjectId, interaction);
+    },
   });
 
   const getAllChatStoresMemoized = useMemo(() => {
@@ -2014,12 +2073,13 @@ export default function ChatBox(): JSX.Element {
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div
           ref={scrollContainerRef}
-          className="scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pl-2"
+          className="scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pl-2.5"
         >
           {shouldRenderChatTimeline &&
           eventNativeTimelineEnabled &&
           activeProjectId ? (
             <EventNativeProjectTimeline
+              chatStore={projectStore.getActiveChatStore() ?? undefined}
               detailLevel={chatTimelineDetailLevel}
               paused={composerTaskControlState === 'paused'}
               floatingControl={
@@ -2118,16 +2178,14 @@ export default function ChatBox(): JSX.Element {
           )}
         </div>
 
-        {chatStore.activeTaskId &&
-          hasAnyMessages &&
-          !eventNativeTimelineEnabled && (
-            <div id={PLAN_OVERLAY_SLOT_ID} className="contents" />
-          )}
+        {chatStore.activeTaskId && hasAnyMessages ? (
+          <div id={PLAN_OVERLAY_SLOT_ID} className="contents" />
+        ) : null}
         {shouldRenderBottomBoxOverlay && (
           <div
             ref={bottomBoxOverlayRef}
             data-bottom-box-overlay
-            className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-2"
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-2.5"
           >
             <div className="pointer-events-auto mx-auto w-full max-w-[600px] rounded-t-3xl bg-ds-bg-neutral-subtle-default pb-1">
               {interruptedRun && !eventNativeTimelineEnabled && (
