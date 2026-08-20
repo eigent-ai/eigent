@@ -128,7 +128,11 @@ export default function Tasks({
   );
 
   const handleTaskControl = useCallback(
-    async (taskId: string, action: TaskRuntimeControlAction) => {
+    async (
+      taskId: string,
+      projectId: string,
+      action: TaskRuntimeControlAction
+    ) => {
       if (pendingTaskIdsRef.current.has(taskId)) return;
       const callback =
         action === 'pause' ? onOngoingTaskPause : onOngoingTaskResume;
@@ -137,7 +141,7 @@ export default function Tasks({
       pendingTaskIdsRef.current.add(taskId);
       setPendingTaskIds(new Set(pendingTaskIdsRef.current));
       try {
-        await callback(taskId);
+        await callback(taskId, projectId);
       } finally {
         pendingTaskIdsRef.current.delete(taskId);
         setPendingTaskIds(new Set(pendingTaskIdsRef.current));
@@ -192,7 +196,11 @@ export default function Tasks({
           controlPending={pendingTaskIds.has(task.task_id)}
           onControl={() => {
             if (controlAction) {
-              void handleTaskControl(task.task_id, controlAction);
+              void handleTaskControl(
+                task.task_id,
+                task.project_id,
+                controlAction
+              );
             }
           }}
         />

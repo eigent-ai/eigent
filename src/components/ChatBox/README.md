@@ -19,12 +19,12 @@ the legacy `MessageItem/` routing path.
 ```text
 ChatBox
 ├── scroll viewport
-│   └── timeline column (width: 100%; maximum width: 600px)
+│   └── timeline column (Narrative: 600px max; Trajectory: full width)
 │       ├── event-native path
 │       │   └── EventNativeProjectTimeline
-│       │       └── EventTimeline
-│       │           └── EventRenderer
-│       │               └── semantic event renderer
+│       │       └── TimelineModeRenderer
+│       │           ├── NarrativeTimeline (segments + CallRow)
+│       │           └── TrajectoryTimeline (trace rows)
 │       └── legacy fallback path
 │           └── ProjectChatContainer
 │               └── ProjectSection (one task/run)
@@ -88,14 +88,127 @@ ChatBox/
 1. Durable project/run events hydrate the project event store.
 2. The chat projector converts transport events into semantic
    `ChatProjectionNode` values.
-3. `EventNativeProjectTimeline` selects renderable nodes and bounds the mounted
-   history window.
-4. `EventTimeline` applies presentation policy and creates a 12px-spaced list.
-5. `EventRenderer` selects a renderer by semantic node kind or exact event type.
-6. `BottomBox` renders the event-derived human control or the standard input.
+3. `presentChatSemanticEntities` folds lifecycle receipts into logical
+   entities (L1).
+4. `composeTimelineRuns` builds one `TimelineRunView` per Run.
+5. `EventNativeProjectTimeline` bounds the mounted history window.
+6. `TimelineModeRenderer` picks Narrative or Trajectory.
+7. `BottomBox` renders the event-derived human control or the standard input.
 
-The default semantic renderer kinds are message, notice, interaction, plan,
-activity, artifact, run status, and unknown.
+### Normal timeline hierarchy
+
+When the event-native read path is enabled, Normal always renders from the
+semantic Run timeline. It keeps the legacy outer Run disclosure without
+reading presentation data from `ChatStore`, then selects its second layer from
+the Project session mode:
+
+```text
+Worked for / Working on tasks for
+├── Single Agent: flat chronological event list
+│   ├── event or reasoning text
+│   ├── permission or human-input receipt
+│   └── repeated toolkit/method event group
+│       └── individual tool-call accordions
+└── Workforce: one System/Agent accordion per Run-wide identity
+    ├── chronological event
+    ├── reasoning text
+    ├── permission or human-input receipt
+    └── repeated toolkit/method event group
+        └── individual tool-call accordions
+```
+
+Single Agent never renders a `Single Agent` or `System event` accordion.
+Workforce creates one stable accordion per agent, ordered by that actor's first
+visible event, and preserves chronological order inside each actor. Explicit
+agent IDs are authoritative; unique name and task correlations can join
+partial receipts, while ambiguous or unattributed rows stay in the one System
+accordion. Plans remain System events even when their tasks have assignees.
+
+Agent activation/deactivation frames provide Workforce identity metadata but
+are not child events. Their legacy `message` is the raw model input (for
+example the injected Lightweight Memory context), not assistant reasoning, and
+an unmatched activation can otherwise look permanently active after a stopped
+Run. Displayable reasoning comes from assistant narration messages.
+
+Human interactions are rendered at their request sequence. The semantic
+presentation layer folds an explicitly correlated resolution onto that request
+before Run composition, so answering a question updates the original row
+instead of moving it to the end or nesting it under a tool.
+
+## Timeline modes
+
+Two modes, selected by an `IconPillToggle` in the Session header and persisted
+in `pageTabStore`:
+
+| Mode         | Question it answers               | Work-band unit |
+| ------------ | --------------------------------- | -------------- |
+| `narrative`  | What did it do for me?            | Segment        |
+| `trajectory` | What exactly happened, and where? | Trace row      |
+
+Only the work band differs. The user query, plan, interrupts, artifacts, and
+final response render identically in both, so toggling never moves the row the
+reader was looking at.
+
+### The segment layer
+
+`lib/projector/chat/presentation/segmentTimeline.ts` folds trace rows into
+narrative segments. A segment is one piece of narration plus the calls made
+while carrying it out. Boundaries come only from data the projection already
+carries: new narration, an agent change, a task change, a toolkit change, or
+an interrupt. Wall-clock gaps are deliberately **not** a boundary.
+
+`TimelineSegment.source` is the seam for backend step events. Everything is
+`derived` today; backend `step.*` events will supply `authored` segments with
+real titles and no renderer change.
+
+### Narrative typography
+
+Primary text is reserved for language the agent produced itself. Anything the
+frontend derived from toolkit and method names stays subdued, so the reader can
+always tell narration from inference.
+
+| Content                                 | Token                                  |
+| --------------------------------------- | -------------------------------------- |
+| Narration, work-log progress, plan text | `text-ds-text-neutral-default-default` |
+| Derived segment label, calls, counts    | `text-ds-text-neutral-subtle-default`  |
+| Work-band header                        | `text-ds-text-neutral-muted-default`   |
+
+A segment with no narration promotes its derived label to primary, because it
+is then the only text there is.
+
+### Calls: one row, two executors
+
+`presentation/timelineCalls.ts` maps both a toolkit invocation and a human
+interaction onto one `TimelineCall`. They share a shape — a request, an
+executor, a response — so `TimelineModes/CallRow.tsx` renders both. Only the
+labels and title grammar differ:
+
+| Family      | Interaction types                                      | Labels               | Title            |
+| ----------- | ------------------------------------------------------ | -------------------- | ---------------- |
+| `ask`       | question, feedback, human_feedback, form, confirmation | Question / Answer    | `You · Answered` |
+| `authorize` | approval, credential_binding                           | Requested / Decision | `You · Allowed`  |
+| `choose`    | choice, selection, merge_conflict, diff_review         | Options / Selected   | `You · Selected` |
+
+An unrecognized future interaction type falls back to `ask`, which is the only
+family whose labels stay accurate for an unknown pair. **The timeline never
+renders an approve/reject control** — permission actions belong to `BottomBox`.
+A pending request shows as `Input required`; the resolved record shows the
+prompt and the human's answer through the same disclosure a tool call uses.
+
+### Fold policy
+
+Calls stay folded by default; narrative exists to show the agent's words, not
+its tool rows. A failed segment is the exception and opens to the failing row.
+While a segment is folded the running shimmer sits on its label; opening it
+hands the shimmer to the call that owns it, so exactly one indicator shows.
+
+### Pause and resume
+
+`paused` flows from `ChatBox` into both renderers. While paused, elapsed time
+holds, the shimmer and status spinners stop, and the header reads
+`Paused after`. The work log stays open, because a pause is not an ending.
+`usePausedOffsetMs` subtracts the paused span so the timer continues from where
+it stopped rather than jumping forward by the wait.
 
 ### Repeated tool-call presentation
 
@@ -106,20 +219,28 @@ events without correlation. The source projection remains immutable.
 
 Calls are grouped only when the run, agent, toolkit, and method match without
 another timeline node between them. A message, interaction, different tool,
-agent change, or Run change ends the group so chronological relationships are
-never reordered.
+or Run change ends the group in Single Agent. Workforce applies the same rule
+inside each agent's own chronological list.
 
-- One logical call renders as the normal activity row.
+- One logical call renders as an accordion with the safe Request then Response.
 - Two or more calls render through `RepeatedToolCallGroup.tsx` as
   `Toolkit · method · count events`.
 - The repeated group is collapsed by default and expands to show each call's
   individual status and safe display detail.
 - Aggregate running, completed, cancelled, and failed states appear on the
   collapsed row.
+
+Normal tool rows do not show a status icon. Successful calls keep the neutral
+legacy text treatment; failed, timed-out, and unknown-outcome headers use the
+error text color plus an accessible failure label. Typed tool payloads reach
+Request/Response only through explicit backend `display_input` and
+`display_output` fields; the frontend never falls back to raw request/result
+data.
+
 - The group key is anchored to its first call so an open accordion stays open
   when later calls join the same live burst.
 
-While the legacy fallback is still enabled, `TaskWorkLogAccordion.tsx` applies
+When the event-native read path is disabled, `TaskWorkLogAccordion.tsx` applies
 the same consecutive-call rule to action rows through
 `groupConsecutiveToolItems`. Its optional inner accordion uses the same
 `Toolkit · method · count events` summary. Every expanded child retains the
@@ -134,7 +255,7 @@ multiple agents. Remove this legacy implementation together with
 | ------------------------------------------- | ---------------------------------------------------------------: |
 | ChatBox shell                               |                      Full width and height; vertical flex layout |
 | Scroll viewport                             |                               Remaining height; 8px left padding |
-| Timeline column                             |                 Full width; 600px maximum; horizontally centered |
+| Timeline column                             |          Normal/Summarised: 600px centered; Detailed: full width |
 | BottomBox overlay column                    | Full width; 600px maximum; 8px horizontal and 4px bottom padding |
 | Minimum space below timeline                |                                                            128px |
 | Dynamic space below timeline                |                                  BottomBox measured height + 8px |
@@ -313,5 +434,5 @@ bridge so legacy transport frames can still be normalized into the event store.
 - Add a new human-control state to `BottomBox/types.ts`, route it through
   `ControlInputRouter`, and derive it in `useEventNativeHumanControl.ts`.
 - Keep transport and store logic outside presentation renderers.
-- Preserve the shared 600px timeline/composer alignment and 12px timeline
-  rhythm unless the overall layout specification changes.
+- Preserve the mode-aware timeline width (600px for Normal/Summarised, full
+  width for Detailed), the centered 600px composer, and 12px timeline rhythm.

@@ -17,12 +17,46 @@ import tokenLightIcon from '@/assets/custom/token-light.svg';
 import { AnimatedTokenNumber } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { CONTENT_HEADER_CLASS } from '@/components/Layout/ContentHeader';
 import { Button } from '@/components/ui/button';
+import { IconPillToggle } from '@/components/ui/icon-pill-toggle';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
+import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
-import { ArrowLeft, GalleryThumbnails } from 'lucide-react';
+import {
+  chatTimelineDetailLevels,
+  DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL,
+  type ChatTimelineDetailLevel,
+} from '@/types/chatTimeline';
+import {
+  ArrowLeft,
+  createLucideIcon,
+  GalleryThumbnails,
+  Logs,
+  type LucideIcon,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+
+const SquareText = createLucideIcon('square-text', [
+  ['rect', { width: '18', height: '18', x: '3', y: '3', rx: '2' }],
+  ['path', { d: 'M7 8h10' }],
+  ['path', { d: 'M7 12h10' }],
+  ['path', { d: 'M7 16h6' }],
+]);
+
+/**
+ * Narrative reads as prose, trajectory reads as a log trace. The icons
+ * carry the distinction on their own so the toggle needs no visible text.
+ */
+const TIMELINE_MODE_ICONS: Record<ChatTimelineDetailLevel, LucideIcon> = {
+  narrative: SquareText,
+  trajectory: Logs,
+};
+
+const TIMELINE_MODE_FALLBACK_LABELS: Record<ChatTimelineDetailLevel, string> = {
+  narrative: 'Narrative',
+  trajectory: 'Trajectory',
+};
 
 export interface HeaderBoxProps {
   /** Total token count for the current project */
@@ -48,6 +82,13 @@ export function HeaderBox({
     (s) => getSessionPreviewSlice(s).open
   );
   const toggleSessionPreview = usePageTabStore((s) => s.toggleSessionPreview);
+  const chatTimelineDetailLevel = usePageTabStore(
+    (s) => s.chatTimelineDetailLevel ?? DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL
+  );
+  const setChatTimelineDetailLevel = usePageTabStore(
+    (s) => s.setChatTimelineDetailLevel
+  );
+  const eventNativeTimelineEnabled = isChatEventTimelineEnabled();
   const tokenIcon = appearance === 'dark' ? tokenDarkIcon : tokenLightIcon;
   const backTooltip = t('layout.back-tooltip', {
     defaultValue: 'Back',
@@ -55,6 +96,21 @@ export function HeaderBox({
   const windowPreviewTooltip = sessionPreviewOpen
     ? t('layout.close-preview-tooltip', { defaultValue: 'Close preview' })
     : t('layout.open-preview-tooltip', { defaultValue: 'Open preview' });
+  const timelineStyleTooltip = t('chat.timeline-style-tooltip', {
+    defaultValue: 'Chat timeline style',
+  });
+  const timelineStyleLabel = (level: ChatTimelineDetailLevel) =>
+    t(`chat.timeline-style-${level}`, {
+      defaultValue: TIMELINE_MODE_FALLBACK_LABELS[level],
+    });
+  const timelineModeOptions = chatTimelineDetailLevels.map((level) => ({
+    value: level,
+    label: timelineStyleLabel(level),
+    icon: TIMELINE_MODE_ICONS[level],
+  }));
+  const handleTimelineStyleChange = (value: ChatTimelineDetailLevel) => {
+    setChatTimelineDetailLevel(value);
+  };
 
   if (empty) {
     return (
@@ -93,7 +149,7 @@ export function HeaderBox({
       </div>
 
       {/* Right: project total token count + unified preview toggle */}
-      <div className="flex items-center gap-2 text-ds-text-neutral-muted-default">
+      <div className="flex items-center gap-1 text-ds-text-neutral-muted-default">
         <div className="flex items-center gap-1">
           <img src={tokenIcon} alt="" className="h-3.5 w-3.5" />
           <span className="text-xs font-medium">
@@ -101,6 +157,19 @@ export function HeaderBox({
             <AnimatedTokenNumber value={totalTokens} />
           </span>
         </div>
+        {eventNativeTimelineEnabled ? (
+          <TooltipSimple content={timelineStyleTooltip} variant="instant">
+            <span className="no-drag inline-flex shrink-0">
+              <IconPillToggle
+                aria-label={timelineStyleTooltip}
+                layoutId="chat-timeline-mode"
+                onValueChange={handleTimelineStyleChange}
+                options={timelineModeOptions}
+                value={chatTimelineDetailLevel}
+              />
+            </span>
+          </TooltipSimple>
+        ) : null}
         <TooltipSimple
           content={windowPreviewTooltip}
           variant="instant"

@@ -15,13 +15,16 @@
 import type { CanonicalProjectEvent, ProjectedLegacyStep } from '../types';
 import type {
   ChatActivityNode,
+  ChatActivityPhase,
   ChatActivityStatus,
   ChatActivityType,
   ChatArtifactNode,
   ChatArtifactOperation,
   ChatInteractionNode,
   ChatInteractionOption,
+  ChatMessageAttachment,
   ChatMessageNode,
+  ChatMessagePurpose,
   ChatNoticeNode,
   ChatPlanNode,
   ChatPlanTask,
@@ -209,6 +212,55 @@ function messageContent(
   return legacyContent || '';
 }
 
+function messageAttachments(
+  base: ChatProjectionNodeBase,
+  payload: JsonRecord
+): ChatMessageAttachment[] | undefined {
+  const isLegacy = base.eventType.startsWith('legacy.');
+  const source = isLegacy
+    ? (payload.attaches ?? payload.attachments)
+    : (payload.display_attachments ?? payload.displayAttachments);
+  if (Array.isArray(source)) {
+    const attachments = source.flatMap<ChatMessageAttachment>((value) => {
+      const attachment = asRecord(value);
+      const fileName = firstText(
+        attachment.file_name,
+        attachment.fileName,
+        attachment.name
+      );
+      const filePath = firstText(
+        attachment.file_path,
+        attachment.filePath,
+        attachment.relative_path,
+        attachment.relativePath
+      );
+      if (!fileName || (isLegacy && !filePath)) return [];
+      const rawSource = firstText(attachment.source);
+      return [
+        {
+          fileName,
+          ...(isLegacy && filePath ? { filePath } : {}),
+          fileId: firstText(attachment.file_id, attachment.fileId) || undefined,
+          source:
+            rawSource === 'local' || rawSource === 'upload'
+              ? rawSource
+              : undefined,
+        },
+      ];
+    });
+    if (attachments.length > 0) return attachments;
+  }
+
+  if (isLegacy) return undefined;
+  const durableNames = payload.attachment_names ?? payload.attachmentNames;
+  if (!Array.isArray(durableNames)) return undefined;
+  const attachments = durableNames.flatMap<ChatMessageAttachment>((value) => {
+    const fileName = safeArtifactBasename(value);
+    return fileName ? [{ fileName }] : [];
+  });
+  return attachments.length > 0 ? attachments : undefined;
+}
+
 function nestedText(value: unknown): string {
   if (!isRecord(value)) return firstText(value);
   return firstText(
@@ -364,12 +416,44 @@ function messageNode(
     base.eventType === 'message.created' ||
     base.eventType === 'message.delta' ||
     base.legacyStep === 'decompose_text';
+  const explicitPurpose = firstText(
+    messagePayload.message_purpose,
+    messagePayload.messagePurpose,
+    messagePayload.display_purpose,
+    messagePayload.displayPurpose
+  )
+    .trim()
+    .toLowerCase();
+  const knownPurposes = new Set<ChatMessagePurpose>([
+    'query',
+    'narration',
+    'agent_result',
+    'final',
+    'interaction_response',
+    'unknown',
+  ]);
+  const purpose: ChatMessagePurpose = knownPurposes.has(
+    explicitPurpose as ChatMessagePurpose
+  )
+    ? (explicitPurpose as ChatMessagePurpose)
+    : role === 'user'
+      ? base.legacyStep === 'human_reply'
+        ? 'interaction_response'
+        : 'query'
+      : base.eventType === 'assistant.final' || base.legacyStep === 'end'
+        ? 'final'
+        : base.legacyStep === 'agent_end' ||
+            base.legacyStep === 'agent_summary_end'
+          ? 'agent_result'
+          : 'narration';
   return {
     ...base,
     kind: 'message',
     role,
     content: messageContent(base, messagePayload, data),
     status: eventIsStreaming ? 'streaming' : 'complete',
+    purpose,
+    attachments: messageAttachments(base, messagePayload),
     messageId: explicitMessageId(messagePayload),
     agentId:
       firstText(messagePayload.agent_id, messagePayload.agentId) || undefined,
@@ -460,9 +544,9 @@ function interactionNode(
         payload.content,
         payload.notice,
         payload.answer,
+        request.question,
         nestedText(payload.request),
-        nestedText(payload.prompt),
-        request.question
+        nestedText(payload.prompt)
       ) || undefined,
     response: responseText(decision) || undefined,
     responseOptionIds: responseOptionIds(decision),
@@ -600,10 +684,115 @@ function activityDetail(payload: JsonRecord, isTypedActivity: boolean): string {
   );
 }
 
+/**
+ * Typed events may expose tool payloads only through explicit display fields.
+ * The canonical raw request/result can contain credentials or large blobs and
+ * must never be used as a UI fallback.
+ */
+function activityInput(
+  base: ChatProjectionNodeBase,
+  payload: JsonRecord,
+  tool: JsonRecord,
+  isTypedActivity: boolean
+): string {
+  const display = asRecord(payload.display);
+  const toolDisplay = asRecord(tool.display);
+  if (isTypedActivity) {
+    return firstText(
+      payload.display_input,
+      payload.displayInput,
+      payload.display_request,
+      payload.displayRequest,
+      display.input,
+      display.request,
+      tool.display_input,
+      tool.displayInput,
+      toolDisplay.input,
+      toolDisplay.request
+    );
+  }
+  if (base.legacyStep === 'terminal') {
+    return firstText(payload.command, payload.input, payload.request);
+  }
+  return base.legacyStep === 'activate_toolkit'
+    ? firstText(payload.message, payload.input, payload.request)
+    : firstText(payload.input, payload.request);
+}
+
+function activityOutput(
+  base: ChatProjectionNodeBase,
+  payload: JsonRecord,
+  tool: JsonRecord,
+  isTypedActivity: boolean
+): string {
+  const display = asRecord(payload.display);
+  const toolDisplay = asRecord(tool.display);
+  if (isTypedActivity) {
+    return firstText(
+      payload.display_output,
+      payload.displayOutput,
+      payload.display_response,
+      payload.displayResponse,
+      display.output,
+      display.response,
+      tool.display_output,
+      tool.displayOutput,
+      toolDisplay.output,
+      toolDisplay.response
+    );
+  }
+  if (base.legacyStep === 'terminal') {
+    return firstText(payload.output, payload.result, payload.response);
+  }
+  return base.legacyStep === 'deactivate_toolkit'
+    ? firstText(
+        payload.message,
+        payload.output,
+        payload.result,
+        payload.response
+      )
+    : firstText(payload.output, payload.result, payload.response);
+}
+
+function activityPhase(
+  base: ChatProjectionNodeBase,
+  status: ChatActivityStatus
+): ChatActivityPhase {
+  if (base.legacyStep === 'activate_toolkit') return 'started';
+  if (base.legacyStep === 'deactivate_toolkit') return 'completed';
+
+  const suffix = base.eventType.split('.').at(-1)?.toLowerCase();
+  if (suffix === 'requested') return 'requested';
+  if (['started', 'active', 'running'].includes(suffix || '')) return 'started';
+  if (['progress', 'delta', 'updated'].includes(suffix || ''))
+    return 'progress';
+  if (['completed', 'complete', 'succeeded'].includes(suffix || '')) {
+    return 'completed';
+  }
+  if (['failed', 'error', 'timed_out'].includes(suffix || '')) return 'failed';
+  if (['cancelled', 'canceled'].includes(suffix || '')) return 'cancelled';
+  if (status === 'completed') return 'completed';
+  if (status === 'failed' || status === 'timed_out') return 'failed';
+  if (status === 'cancelled') return 'cancelled';
+  return 'unknown';
+}
+
+function activityDurationMs(payload: JsonRecord): number | undefined {
+  const value =
+    payload.display_duration_ms ??
+    payload.displayDurationMs ??
+    payload.duration_ms ??
+    payload.durationMs;
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined;
+}
+
 function activityTitle(
   base: ChatProjectionNodeBase,
   payload: JsonRecord,
   isTypedActivity: boolean,
+  activityType: ChatActivityType,
   names: { methodName: string; toolName: string; toolkitName: string }
 ): string {
   const toolkitMethod =
@@ -624,6 +813,26 @@ function activityTitle(
       payload.task_name,
       payload.taskName,
       humanize(base.eventType)
+    );
+  }
+  if (activityType === 'tool') {
+    return firstText(
+      payload.title,
+      names.toolName,
+      toolkitMethod,
+      names.toolkitName,
+      payload.message,
+      payload.content,
+      humanize(base.legacyStep || base.eventType)
+    );
+  }
+  if (activityType === 'agent') {
+    return firstText(
+      payload.title,
+      payload.agent_name,
+      payload.agentName,
+      payload.message,
+      humanize(base.legacyStep || base.eventType)
     );
   }
   return firstText(
@@ -707,21 +916,29 @@ function activityNode(
   );
   const title = isHumanInputActivity
     ? 'Human Toolkit'
-    : activityTitle(base, payload, isTypedActivity, {
+    : activityTitle(base, payload, isTypedActivity, activityType, {
         methodName,
         toolName,
         toolkitName,
       });
+  const status = normalizeActivityStatus(
+    payload.status ??
+      payload.state ??
+      (isTypedActivity ? base.eventType.split('.').at(-1) : undefined),
+    fallbackStatus
+  );
+  const input = isHumanInputActivity
+    ? ''
+    : activityInput(base, payload, tool, isTypedActivity);
+  const output = isHumanInputActivity
+    ? ''
+    : activityOutput(base, payload, tool, isTypedActivity);
   return {
     ...base,
     kind: 'activity',
     activityType,
-    status: normalizeActivityStatus(
-      payload.status ??
-        payload.state ??
-        (isTypedActivity ? base.eventType.split('.').at(-1) : undefined),
-      fallbackStatus
-    ),
+    status,
+    phase: activityPhase(base, status),
     title,
     // Human input content belongs exclusively to the BottomBox header and its
     // durable interaction receipt. Toolkit activity frames can carry the
@@ -730,6 +947,9 @@ function activityNode(
     ...(isHumanInputActivity
       ? {}
       : { detail: activityDetail(payload, isTypedActivity) || undefined }),
+    input: input || undefined,
+    output: output || undefined,
+    durationMs: activityDurationMs(payload),
     agentId: firstText(payload.agent_id, payload.agentId) || undefined,
     agentName:
       firstText(payload.agent_name, payload.agentName, payload.agent) ||
@@ -1032,7 +1252,7 @@ function legacyNode(
   if (activityType) {
     const fallbackStatus: ChatActivityStatus = step.startsWith('deactivate_')
       ? 'completed'
-      : step === 'create_agent'
+      : step === 'create_agent' || step === 'terminal'
         ? 'completed'
         : 'running';
     return activityNode(base, data, activityType, fallbackStatus);

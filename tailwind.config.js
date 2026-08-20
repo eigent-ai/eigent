@@ -31,9 +31,49 @@ function loadTokenManifest() {
       'warning',
       'information',
     ],
+    category: {
+      colors: [
+        'gray',
+        'slate',
+        'red',
+        'blue',
+        'green',
+        'yellow',
+        'orange',
+        'purple',
+        'pink',
+        'cyan',
+        'teal',
+        'indigo',
+        'amber',
+        'lime',
+        'mint',
+        'tomato',
+      ],
+      roles: [
+        ['background', 'app'],
+        ['background', 'subtle'],
+        ['background', 'default'],
+        ['background', 'hover'],
+        ['background', 'active'],
+        ['border', 'subtle'],
+        ['border', 'default'],
+        ['border', 'hover'],
+        ['solid', 'default'],
+        ['solid', 'hover'],
+        ['text', 'default'],
+        ['text', 'strong'],
+      ],
+    },
   };
 
-  const manifestPath = path.join(__dirname, 'tokens', 'manifest.json');
+  const manifestPath = path.join(
+    __dirname,
+    'src',
+    'style',
+    'tokens',
+    'manifest.json'
+  );
   try {
     const raw = fs.readFileSync(manifestPath, 'utf8');
     const parsed = JSON.parse(raw);
@@ -41,7 +81,9 @@ function loadTokenManifest() {
       Array.isArray(parsed.elements) &&
       Array.isArray(parsed.emphasis) &&
       Array.isArray(parsed.states) &&
-      Array.isArray(parsed.tones)
+      Array.isArray(parsed.tones) &&
+      Array.isArray(parsed.category?.colors) &&
+      Array.isArray(parsed.category?.roles)
     ) {
       return parsed;
     }
@@ -56,6 +98,8 @@ const DS_TOKEN_ELEMENTS = TOKEN_MANIFEST.elements;
 const DS_TOKEN_EMPHASIS = TOKEN_MANIFEST.emphasis;
 const DS_TOKEN_STATES = TOKEN_MANIFEST.states;
 const DS_TOKEN_TONES = TOKEN_MANIFEST.tones;
+const DS_CATEGORY_COLORS = TOKEN_MANIFEST.category.colors;
+const DS_CATEGORY_ROLES = TOKEN_MANIFEST.category.roles;
 
 function buildDsTokenColorMap() {
   const map = {};
@@ -67,6 +111,17 @@ function buildDsTokenColorMap() {
           map[token] = `var(--${token})`;
         }
       }
+    }
+  }
+  return map;
+}
+
+function buildDsCategoryColorMap() {
+  const map = {};
+  for (const color of DS_CATEGORY_COLORS) {
+    for (const [style, state] of DS_CATEGORY_ROLES) {
+      const token = `ds-category-${color}-${style}-${state}`;
+      map[token] = `var(--${token})`;
     }
   }
   return map;
@@ -131,6 +186,7 @@ module.exports = {
     extend: {
       colors: {
         ...buildDsTokenColorMap(),
+        ...buildDsCategoryColorMap(),
         ...buildDsBgStatusSubtleShortAliases(),
         red: {
           50: 'var(--colors-red-50)',

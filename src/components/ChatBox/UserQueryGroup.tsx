@@ -12,13 +12,15 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { isUserMessageReplyToAsk } from '@/lib/humanInteractionMessages';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
-import { getWorkspaceRelativeFilePath } from '@/lib/workspaceRelativePath';
+import { resolveWorkspaceFilePath } from '@/lib/workspaceRelativePath';
 import { VanillaChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
 import { motion } from 'framer-motion';
-import { ChevronDown, FileText, InfoIcon } from 'lucide-react';
+import { ChevronDown, InfoIcon } from 'lucide-react';
 import React, {
   useCallback,
   useEffect,
@@ -28,6 +30,7 @@ import React, {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AgentMessageCard } from './MessageItem/AgentMessageCard';
+import { ArtifactChangeList } from './MessageItem/ArtifactChangeList';
 import {
   HumanInteractionCard,
   isHumanInteractionReadOnly,
@@ -88,97 +91,6 @@ const AgentResultCard: React.FC<{
   );
 };
 
-/** Run-scoped artifact delta. Every item opens in the existing preview panel. */
-const ArtifactChangeList: React.FC<{
-  files?: FileInfo[];
-  onOpen: (file: FileInfo) => void;
-  scanStatus?: string;
-  truncated?: boolean;
-}> = ({ files, onOpen, scanStatus = 'complete', truncated = false }) => {
-  const { t } = useTranslation();
-  const [isExpanded, setIsExpanded] = useState(false);
-  const fileItems = files || [];
-  const scanWarning = truncated
-    ? 'This Run changed more files than the bounded scan could list. The files shown below are a partial durable manifest.'
-    : scanStatus === 'workspace_unavailable'
-      ? 'The original local workspace is unavailable. This durable file manifest may be incomplete.'
-      : scanStatus === 'workspace_mismatch'
-        ? 'The recorded workspace no longer matches this Run. File discovery was not completed.'
-        : scanStatus !== 'complete'
-          ? `File discovery completed with status: ${scanStatus}.`
-          : null;
-  if (!fileItems.length && !scanWarning) return null;
-
-  const collapsedCount = 3;
-  const hiddenCount = Math.max(0, fileItems.length - collapsedCount);
-  const visibleFiles = isExpanded
-    ? fileItems
-    : fileItems.slice(0, collapsedCount);
-
-  return (
-    <section className="my-3 overflow-hidden rounded-xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default">
-      <div className="flex items-center gap-2 border-x-0 border-b border-t-0 border-solid border-ds-border-neutral-default-default px-4 py-3">
-        <span className="flex size-4 shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-strong-default text-ds-icon-neutral-default-default">
-          <FileText size={18} aria-hidden />
-        </span>
-        <span className="text-body-sm font-semibold text-ds-text-neutral-default-default">
-          {t('chat.files-changed')}
-        </span>
-        <span className="text-body-sm font-medium text-ds-text-success-default-default">
-          {fileItems.length}
-        </span>
-      </div>
-      {scanWarning ? (
-        <div className="border-b border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default px-4 py-2 text-body-xs text-ds-text-warning-strong-default">
-          {scanWarning}
-        </div>
-      ) : null}
-      <div className="flex flex-col">
-        {visibleFiles.map((file, fileIndex) => {
-          const detail = getWorkspaceRelativeFilePath(file);
-          const changeLabel =
-            file.artifactChange === 'generated'
-              ? 'Generated'
-              : file.artifactChange === 'changed'
-                ? 'Changed'
-                : file.type || 'File';
-          return (
-            <button
-              type="button"
-              key={`artifact-${detail}-${fileIndex}`}
-              title={detail}
-              onClick={() => onOpen(file)}
-              className="group flex w-full min-w-0 items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-ds-bg-neutral-default-default"
-            >
-              <span className="min-w-0 flex-1 truncate text-body-sm text-ds-text-neutral-default-default group-hover:underline">
-                {detail}
-              </span>
-              <span className="shrink-0 text-body-sm font-medium text-ds-text-success-default-default">
-                {changeLabel}
-              </span>
-            </button>
-          );
-        })}
-        {hiddenCount > 0 ? (
-          <button
-            type="button"
-            aria-expanded={isExpanded}
-            onClick={() => setIsExpanded((value) => !value)}
-            className="mt-1 flex items-center gap-1 px-4 py-3 text-body-sm font-semibold text-ds-text-neutral-default-default transition-colors hover:bg-ds-bg-neutral-default-default"
-          >
-            {isExpanded ? 'Show fewer files' : `Show ${hiddenCount} more files`}
-            <ChevronDown
-              size={15}
-              aria-hidden
-              className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-            />
-          </button>
-        ) : null}
-      </div>
-    </section>
-  );
-};
-
 /** Typewriter only for the agent message currently being produced (latest agent row while task is running). */
 function shouldUseLiveAgentTypewriter(
   task: {
@@ -227,26 +139,7 @@ interface UserQueryGroupProps {
   taskId?: string;
 }
 
-export function isUserMessageReplyToAsk(
-  messages: any[],
-  userMessageId: string
-): boolean {
-  const userMessageIndex = messages.findIndex(
-    (message: any) => message.id === userMessageId
-  );
-  if (userMessageIndex <= 0) return false;
-  const userMessage = messages[userMessageIndex];
-  const previousMessage = messages[userMessageIndex - 1];
-  const followsAsk =
-    previousMessage?.role === 'agent' &&
-    previousMessage?.step === AgentStep.ASK;
-  if (!followsAsk) return false;
-  if (!userMessage?.interactionResponseTo) return true;
-  return (
-    previousMessage?.interaction?.interaction_id ===
-    userMessage.interactionResponseTo
-  );
-}
+export { isUserMessageReplyToAsk } from '@/lib/humanInteractionMessages';
 
 export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   chatId,
@@ -262,14 +155,25 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const chatState = chatStore.getState();
 
   const activeTaskId = scopedTaskId ?? chatState.activeTaskId;
+  const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
+  const workspaceRoot = useSpaceStore((s) =>
+    activeSpaceId ? s.spaces[activeSpaceId]?.rootPath : undefined
+  );
   const openFilePreviewInPanel = usePageTabStore(
     (state) => state.openFilePreview
   );
   const openFilePreview = useCallback(
     (file: FileInfo) => {
-      openFilePreviewInPanel(file);
+      const resolvedPath =
+        file.path?.trim() ||
+        resolveWorkspaceFilePath(workspaceRoot, file.relativePath);
+      openFilePreviewInPanel(
+        resolvedPath && resolvedPath !== file.path
+          ? { ...file, path: resolvedPath, localPathAvailable: true }
+          : file
+      );
     },
-    [openFilePreviewInPanel]
+    [openFilePreviewInPanel, workspaceRoot]
   );
 
   // Subscribe to streaming decompose text separately for efficient updates

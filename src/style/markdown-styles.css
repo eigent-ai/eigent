@@ -20,6 +20,28 @@
   color: inherit;
 }
 
+/* BottomBox questions use the sanitized Markdown renderer with compact
+   conversational spacing instead of final-response document spacing. */
+.bottom-box-question-markdown .markdown-body {
+  min-width: 0;
+  font-size: var(--fontSize-sm, 13px);
+  line-height: var(--lineHeight-14, 20px);
+}
+
+.bottom-box-question-markdown .markdown-body > :first-child {
+  margin-top: 0;
+}
+
+.bottom-box-question-markdown .markdown-body > :last-child {
+  margin-bottom: 0;
+}
+
+.bottom-box-question-markdown .markdown-body ul,
+.bottom-box-question-markdown .markdown-body ol {
+  margin-bottom: 0.5em;
+  padding-left: 1.5em;
+}
+
 /* Typography improvements */
 .markdown-body h1 {
   font-size: 1.5em;
@@ -126,10 +148,18 @@
 .markdown-body ol {
   margin-bottom: 16px;
   padding-left: 2em;
+  font-size: var(--fontSize-sm, 13px);
+  line-height: var(--lineHeight-14, 20px);
 }
 
 .markdown-body li {
   margin-bottom: 0.25em;
+  font-size: var(--fontSize-sm, 13px);
+  line-height: var(--lineHeight-14, 20px);
+}
+
+.markdown-body li::marker {
+  font-size: var(--fontSize-sm, 13px);
 }
 
 .markdown-body li > p {

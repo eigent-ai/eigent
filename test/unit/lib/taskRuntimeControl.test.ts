@@ -46,6 +46,7 @@ describe('takeControlOfTask', () => {
       takeControlOfTask({
         chatStore: store,
         action: 'pause',
+        projectId: 'project-1',
         taskId: 'task-1',
         request,
         now: () => 1_500,
@@ -53,7 +54,7 @@ describe('takeControlOfTask', () => {
     ).resolves.toBe(true);
 
     expect(request).toHaveBeenCalledOnce();
-    expect(request).toHaveBeenCalledWith('/task/task-1/take-control', {
+    expect(request).toHaveBeenCalledWith('/task/project-1/take-control', {
       action: 'pause',
     });
     expect(task).toMatchObject({
@@ -74,13 +75,14 @@ describe('takeControlOfTask', () => {
       takeControlOfTask({
         chatStore: store,
         action: 'resume',
+        projectId: 'project-1',
         taskId: 'task-1',
         request,
         now: () => 2_000,
       })
     ).resolves.toBe(false);
 
-    expect(request).toHaveBeenCalledWith('/task/task-1/take-control', {
+    expect(request).toHaveBeenCalledWith('/task/project-1/take-control', {
       action: 'resume',
     });
     expect(task).toMatchObject({

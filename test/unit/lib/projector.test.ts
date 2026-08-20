@@ -45,6 +45,164 @@ function event(overrides: Record<string, unknown> = {}) {
 }
 
 describe('projector pipeline', () => {
+  it('keeps established Run origin immutable and fails closed on conflicts', () => {
+    const cloud = reduceProjectView(
+      createProjectViewState('project-1', 'live'),
+      normalizeEvent(event({ origin: 'cloud_restore' }))
+    );
+    const conflicted = reduceProjectView(
+      cloud,
+      normalizeEvent(
+        event({
+          event_id: 'event-2',
+          run_sequence: 2,
+          run_version: 2,
+          cloud_cursor: 2,
+          origin: 'local',
+        })
+      )
+    );
+
+    expect(conflicted.runs['run-1']?.origin).toBe('cloud_restore');
+    expect(conflicted.needsResync).toBe(true);
+    expect(conflicted.resyncReason).toBe(
+      'run_origin_conflict:run-1:cloud_restore:local'
+    );
+  });
+
+  it('allows one authoritative origin to fill an initially unknown Run', () => {
+    const unknown = reduceProjectView(
+      createProjectViewState('project-1', 'live'),
+      normalizeEvent(event())
+    );
+    const local = reduceProjectView(
+      unknown,
+      normalizeEvent(
+        event({
+          event_id: 'event-2',
+          run_sequence: 2,
+          run_version: 2,
+          cloud_cursor: 2,
+          origin: 'local',
+        })
+      )
+    );
+
+    expect(unknown.runs['run-1']?.origin).toBeNull();
+    expect(local.runs['run-1']?.origin).toBe('local');
+    expect(local.needsResync).toBe(false);
+  });
+
+  it('lets a snapshot aggregate correct newer buffered provenance', () => {
+    const previous = projectRawEvents(
+      'project-1',
+      [
+        event({
+          event_id: 'local-2',
+          run_sequence: 2,
+          run_version: 2,
+          cloud_cursor: 2,
+          origin: 'local',
+        }),
+      ],
+      'rehydrate'
+    ).state;
+    const snapshot = projectSnapshot(
+      {
+        project_id: 'project-1',
+        current_cursor: 1,
+        runs: [
+          {
+            run_id: 'run-1',
+            status: 'running',
+            expected_next_run_sequence: 2,
+            run_version: 1,
+            updated_at: '2026-08-05T10:00:00Z',
+            origin: 'cloud_restore',
+          },
+        ],
+        recent_events: [],
+      },
+      previous
+    );
+
+    expect(snapshot.runs['run-1']).toMatchObject({
+      lastSequence: 2,
+      origin: 'cloud_restore',
+    });
+  });
+
+  it('treats an explicit unknown snapshot origin as fail-closed authority', () => {
+    const previous = projectRawEvents(
+      'project-1',
+      [
+        event({
+          event_id: 'local-2',
+          run_sequence: 2,
+          run_version: 2,
+          cloud_cursor: 2,
+          origin: 'local',
+        }),
+      ],
+      'rehydrate'
+    ).state;
+    const snapshot = projectSnapshot(
+      {
+        project_id: 'project-1',
+        current_cursor: 1,
+        runs: [
+          {
+            run_id: 'run-1',
+            status: 'running',
+            expected_next_run_sequence: 2,
+            run_version: 1,
+            updated_at: '2026-08-05T10:00:00Z',
+            origin: null,
+          },
+        ],
+        recent_events: [],
+      },
+      previous
+    );
+
+    expect(snapshot.runs['run-1']?.origin).toBeNull();
+  });
+
+  it('preserves established provenance when an older snapshot omits origin', () => {
+    const previous = projectRawEvents(
+      'project-1',
+      [
+        event({
+          event_id: 'local-2',
+          run_sequence: 2,
+          run_version: 2,
+          cloud_cursor: 2,
+          origin: 'local',
+        }),
+      ],
+      'rehydrate'
+    ).state;
+    const snapshot = projectSnapshot(
+      {
+        project_id: 'project-1',
+        current_cursor: 1,
+        runs: [
+          {
+            run_id: 'run-1',
+            status: 'running',
+            expected_next_run_sequence: 2,
+            run_version: 1,
+            updated_at: '2026-08-05T10:00:00Z',
+          },
+        ],
+        recent_events: [],
+      },
+      previous
+    );
+
+    expect(snapshot.runs['run-1']?.origin).toBe('local');
+  });
+
   it('deduplicates by event ID without changing object identity', () => {
     const normalized = normalizeEvent(event());
     const initial = createProjectViewState('project-1', 'live');

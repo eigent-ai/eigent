@@ -18,7 +18,6 @@ import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseWorkers';
 import { isBaseWorkflowAgent } from '@/components/Workspace/FoldedAgentCard';
 import { SingleAgentList } from '@/components/Workspace/SingleAgentList';
 import { WorkforceAgentList } from '@/components/Workspace/WorkforceAgentList';
-import { WorkspaceProjectPicker } from '@/components/Workspace/WorkspaceProjectPicker';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useHost } from '@/host';
@@ -29,11 +28,7 @@ import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
-import {
-  ChatTaskStatus,
-  SessionMode,
-  type SessionModeType,
-} from '@/types/constants';
+import { SessionMode, type SessionModeType } from '@/types/constants';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -44,11 +39,11 @@ const WORKSPACE_COWORK_TEXT_CLASS =
 
 interface WorkspaceProps {
   /**
-   * `'workspace'` (default): management landing with a top-aligned composer.
-   * `'new-project'`: composer-first layout; use with `embedded` inside Session.
+   * `'workspace'` (default): Cowork composer on the Workspace tab.
+   * `'new-project'`: same composer inside the Session new-project shell.
    */
   variant?: 'workspace' | 'new-project';
-  /** When true, render only the centered composer block (for Session shell). */
+  /** When true, fill the Session content column instead of the page shell. */
   embedded?: boolean;
   /** Controlled session mode when embedded in the new-project Session shell. */
   sessionMode?: SessionModeType;
@@ -66,53 +61,14 @@ export default function Workspace({
   onSessionModeChange,
 }: WorkspaceProps) {
   const { t } = useTranslation();
-  const isNewProjectVariant = variant === 'new-project';
   const host = useHost();
   const { chatStore } = useChatStoreAdapter();
-  const activeProjectId = useProjectRuntimeStore((s) => s.activeProjectId);
-  const activeProject = useProjectRuntimeStore((s) =>
-    s.activeProjectId ? s.projects[s.activeProjectId] : null
-  );
   const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
   const activeSpace = useSpaceStore((s) =>
     s.activeSpaceId ? s.spaces[s.activeSpaceId] : null
   );
   // Legacy Spaces are read-only — new Projects can't be started inside them.
   const isLegacyActiveSpace = activeSpace ? isLegacySpace(activeSpace) : false;
-  const activeProjectMeta = useSpaceStore((s) =>
-    activeProjectId ? s.getProjectMeta(activeProjectId) : null
-  );
-  const activeProjectMetadata =
-    activeProjectMeta?.metadata ?? activeProject?.metadata;
-  const customAgentFolderPath = usePageTabStore((s) =>
-    activeProjectId
-      ? s.customAgentFolderPathByProjectId[activeProjectId]
-      : undefined
-  );
-  /**
-   * True when the home workspace has no explicitly selected project (default
-   * "new project" shell). New Project keeps the interactive project picker in
-   * that case; once a project is selected (history, folder, or started work)
-   * the picker is display-only.
-   */
-  const isFreshProject = useMemo(() => {
-    if (!activeProject) return true;
-    if (activeProjectMetadata?.historyId) return false;
-    if (customAgentFolderPath) return false;
-    const hasStartedWork = Object.values(chatStore?.tasks ?? {}).some(
-      (task) =>
-        (task.messages?.length || 0) > 0 ||
-        task.hasMessages ||
-        task.status !== ChatTaskStatus.PENDING
-    );
-    if (hasStartedWork) return false;
-    return true;
-  }, [
-    activeProject,
-    activeProjectMetadata,
-    chatStore?.tasks,
-    customAgentFolderPath,
-  ]);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
   const workspaceChatFocusRequestId = usePageTabStore(
@@ -379,18 +335,11 @@ export default function Workspace({
     [workerList, setWorkerList]
   );
 
-  const projectPicker =
-    isNewProjectVariant && (embedded || !isFreshProject) ? (
-      <WorkspaceProjectPicker readOnly />
-    ) : (
-      <WorkspaceProjectPicker />
-    );
-
   const activeAgentId = chatStore?.activeTaskId
     ? chatStore.tasks[chatStore.activeTaskId]?.activeAgent
     : undefined;
 
-  const renderAgentList = (alignment: 'center' | 'start' = 'center') =>
+  const renderAgentList = () =>
     effectiveSessionMode === SessionMode.SINGLE_AGENT ? (
       <SingleAgentList />
     ) : (
@@ -402,23 +351,9 @@ export default function Workspace({
         onDuplicateUserAgent={onDuplicateUserAgent}
         onDeleteUserAgent={onDeleteUserAgent}
         onAddWorker={() => setAddWorkerDialogOpen(true)}
-        alignment={alignment}
+        alignment="start"
       />
     );
-
-  const composerTop = (
-    <>
-      <div className="mb-8 flex w-full justify-center">{projectPicker}</div>
-      <span className="mb-8 w-full text-center text-heading-lg font-bold text-ds-text-neutral-default-default">
-        {effectiveSessionMode === SessionMode.SINGLE_AGENT
-          ? t('layout.workspace-cowork-single-agent')
-          : t('layout.workspace-cowork-workforce')}
-      </span>
-      <div className="mb-8 flex w-full justify-center px-5">
-        {renderAgentList()}
-      </div>
-    </>
-  );
 
   const workspaceComposerTop = (
     <div
@@ -430,7 +365,7 @@ export default function Workspace({
         data-workspace-agent-list
         className="flex h-[46px] min-h-[46px] min-w-0 flex-1 items-center justify-start gap-3 overflow-visible"
       >
-        {renderAgentList('start')}
+        {renderAgentList()}
         {effectiveSessionMode === SessionMode.SINGLE_AGENT ? (
           <span
             data-workspace-single-agent-label
@@ -475,52 +410,31 @@ export default function Workspace({
     </>
   );
 
-  const composer = (
-    <div className="mx-auto my-auto flex w-full max-w-[600px] shrink-0 flex-col">
-      <div className="flex min-h-[50vh] w-full min-w-0 flex-col justify-end">
-        {composerTop}
-        {composerInput}
-      </div>
-    </div>
-  );
-
-  if (embedded && isNewProjectVariant) {
-    return (
-      <div className="relative z-[1] flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-3">
-        {composer}
-        <div
-          className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto pt-6"
-          id="workspace-bottom-group"
-          aria-hidden
-        />
-      </div>
-    );
-  }
-
   return (
-    <div className="relative z-[1] flex h-full min-h-0 w-full min-w-0 flex-row overflow-hidden">
-      {isNewProjectVariant ? (
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-3">
-          {composer}
-        </div>
-      ) : (
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <section
-            aria-label="Workspace header"
-            className="flex min-h-0 w-full flex-1 items-center gap-0"
+    <div
+      data-workspace-variant={variant}
+      className={
+        embedded
+          ? 'relative z-[1] flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
+          : 'relative z-[1] flex h-full min-h-0 w-full min-w-0 flex-row overflow-hidden'
+      }
+    >
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <section
+          aria-label="Workspace header"
+          className="flex min-h-0 w-full flex-1 items-center gap-0"
+        >
+          <div
+            data-workspace-input-section
+            className="flex min-w-0 flex-1 items-center justify-center p-4"
           >
-            <div
-              data-workspace-input-section
-              className="flex min-w-0 flex-1 items-center justify-center p-4"
-            >
-              <div className="flex w-full min-w-0 max-w-[600px] flex-col">
-                {workspaceComposerTop}
-                {composerInput}
-              </div>
+            <div className="flex w-full min-w-0 max-w-[600px] flex-col pb-[58px]">
+              {workspaceComposerTop}
+              {composerInput}
             </div>
-          </section>
-        </div>
-      )}
+          </div>
+        </section>
+      </div>
     </div>
   );
 }

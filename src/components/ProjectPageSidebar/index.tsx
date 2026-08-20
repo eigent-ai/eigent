@@ -42,24 +42,36 @@ import {
   getSessionNavLeadFromHistoryProject,
   resolveProjectNavLeadPresentation,
 } from '@/lib/sessionNavLead';
+import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
 import {
   getContextTabBindingLabel,
   isUnboundUntitledSpace,
 } from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
+import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
 import { useAuthStore } from '@/store/authStore';
 import type { ChatStore } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import {
   getVisibleProjectMetasForSpace,
   useSpaceStore,
 } from '@/store/spaceStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import { ChatTaskStatus } from '@/types/constants';
-import { Cast, Inbox, LayoutGrid, Plus, Zap, ZapOff } from 'lucide-react';
+import {
+  Cast,
+  Inbox,
+  LayoutGrid,
+  Plus,
+  ToolCase,
+  Zap,
+  ZapOff,
+} from 'lucide-react';
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ProjectNavList } from './ProjectNavList';
 import {
@@ -112,6 +124,9 @@ export default function ProjectPageSidebar({
   const folderTabHasUnviewedFiles =
     !!activeProjectId && inboxUnviewedForProjects.has(activeProjectId);
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const closeSettings = useSettingsStore((state) => state.closeSettings);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [deleteProjectId, setDeleteProjectId] = useState<string | null>(null);
   const [deleteProjectLoading, setDeleteProjectLoading] = useState(false);
@@ -439,6 +454,37 @@ export default function ProjectPageSidebar({
     setActiveWorkspaceTab('new-project');
     requestWorkspaceChatFocus();
   }, [projectStore, requestWorkspaceChatFocus, setActiveWorkspaceTab]);
+
+  const isConfigurationActive = useMemo(() => {
+    if (!activeSpaceId || !isSettingsRoutePath(location.pathname)) {
+      return false;
+    }
+    const searchParams = new URLSearchParams(location.search);
+    return (
+      searchParams.get('section') === 'spaces' &&
+      searchParams.get('spaceId') === activeSpaceId &&
+      searchParams.get('spaceTab') === 'workspace-profile'
+    );
+  }, [activeSpaceId, location.pathname, location.search]);
+
+  const openSpaceConfiguration = useCallback(() => {
+    if (!activeSpaceId) return;
+    void runAfterWorkspaceConfigurationSave(() => {
+      closeSettings();
+      navigate(
+        `/home?section=spaces&spaceId=${encodeURIComponent(activeSpaceId)}&spaceTab=workspace-profile`,
+        {
+          state: shellBackState(`${location.pathname}${location.search}`),
+        }
+      );
+    });
+  }, [
+    activeSpaceId,
+    closeSettings,
+    location.pathname,
+    location.search,
+    navigate,
+  ]);
 
   const openInboxTab = useCallback(() => {
     let projectId = activeProjectId;
@@ -848,6 +894,15 @@ export default function ProjectPageSidebar({
                 label={t('layout.dispatch-tab')}
                 ariaLabel={t('layout.dispatch-tab')}
                 ariaCurrentPage={activeWorkspaceTab === 'dispatch'}
+              />
+              <NavTab
+                active={isConfigurationActive}
+                onClick={openSpaceConfiguration}
+                disabled={!activeSpaceId}
+                leading={<ToolCase className="h-4 w-4 shrink-0" aria-hidden />}
+                label={t('layout.configuration-tab')}
+                ariaLabel={t('layout.configuration-tab')}
+                ariaCurrentPage={isConfigurationActive}
               />
             </SidebarNavGroup>
           </SidebarSection>

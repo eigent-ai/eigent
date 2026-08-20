@@ -41,9 +41,9 @@ export function UsageLimitBanner({
           : 'border-border-warning bg-surface-warning text-text-warning'
       )}
     >
-      <div className="min-w-0 flex-1 truncate text-body-sm font-medium">
+      <span className="min-w-0 flex-1 truncate text-body-sm font-medium">
         {message}
-      </div>
+      </span>
       <button
         type="button"
         onClick={onAction}
@@ -52,7 +52,7 @@ export function UsageLimitBanner({
           isDanger ? 'text-text-error' : 'text-text-heading'
         )}
       >
-        {actionLabel}
+        <span className="text-body-sm font-semibold">{actionLabel}</span>
       </button>
       <button
         type="button"

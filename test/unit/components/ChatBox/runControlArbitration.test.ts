@@ -14,6 +14,7 @@
 
 import {
   selectActionableInterruptedRun,
+  selectComposerTaskControlState,
   selectEventNativeActiveRunId,
 } from '@/components/ChatBox/runControlArbitration';
 import { createProjectViewState, type ProjectedRun } from '@/lib/projector';
@@ -26,6 +27,7 @@ import {
   type HumanControlInteraction,
 } from '@/lib/projector/control';
 import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
+import { ChatTaskStatus } from '@/types/constants';
 import { describe, expect, it } from 'vitest';
 
 function run(
@@ -121,6 +123,41 @@ function snapshot({
 }
 
 describe('event-native Run-control arbitration', () => {
+  it('exposes Project-scoped pause only when the legacy task owns the selected Run', () => {
+    expect(
+      selectComposerTaskControlState({
+        eventNativeTimelineEnabled: true,
+        legacyControlRunId: 'legacy-live',
+        activeTaskStatus: ChatTaskStatus.RUNNING,
+        eventNativeActiveRunId: 'typed-input',
+      })
+    ).toBe('idle');
+    expect(
+      selectComposerTaskControlState({
+        eventNativeTimelineEnabled: true,
+        legacyControlRunId: 'legacy-live',
+        activeTaskStatus: ChatTaskStatus.RUNNING,
+        eventNativeActiveRunId: 'legacy-live',
+      })
+    ).toBe('running');
+    expect(
+      selectComposerTaskControlState({
+        eventNativeTimelineEnabled: true,
+        legacyControlRunId: 'legacy-live',
+        activeTaskStatus: ChatTaskStatus.PAUSE,
+        eventNativeActiveRunId: 'legacy-live',
+      })
+    ).toBe('paused');
+    expect(
+      selectComposerTaskControlState({
+        eventNativeTimelineEnabled: true,
+        legacyControlRunId: null,
+        activeTaskStatus: ChatTaskStatus.RUNNING,
+        eventNativeActiveRunId: 'legacy-live',
+      })
+    ).toBe('idle');
+  });
+
   it('lets a typed pending control outrank the legacy-owned live Run', () => {
     const state = snapshot({
       runs: [run('legacy-live', 'running'), run('input', 'waiting_for_user')],

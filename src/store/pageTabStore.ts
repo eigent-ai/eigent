@@ -15,6 +15,11 @@
 import { createHost } from '@/host';
 import { canonicalizeBrowserUrl, normalizeBrowserUrl } from '@/lib/browserUrl';
 import { disposeShellSession } from '@/lib/shellSessions';
+import {
+  DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL,
+  normalizeChatTimelineDetailLevel,
+  type ChatTimelineDetailLevel,
+} from '@/types/chatTimeline';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -188,6 +193,22 @@ function createFilePreviewTab(file: FileInfo | null = null): SessionFileTab {
   };
 }
 
+function filePreviewIdentity(file: FileInfo): string | null {
+  const artifactId = file.artifactId?.trim();
+  if (artifactId) return `artifact:${artifactId}`;
+  const chatFileId = file.assetRef?.chatFileId;
+  if (typeof chatFileId === 'number') return `chat-file:${chatFileId}`;
+  const path = file.path?.trim();
+  if (path) return `path:${path}`;
+  const relativePath = file.relativePath?.trim();
+  return relativePath ? `relative:${relativePath}` : null;
+}
+
+function isSameFilePreview(left: FileInfo, right: FileInfo): boolean {
+  const leftIdentity = filePreviewIdentity(left);
+  return leftIdentity !== null && leftIdentity === filePreviewIdentity(right);
+}
+
 function createChooserPreviewTab(): SessionChooserTab {
   return {
     id: nextSessionPreviewTabId('chooser'),
@@ -308,6 +329,9 @@ interface PageTabState {
   // Panel position for ChatBox
   chatPanelPosition: 'left' | 'right';
   setChatPanelPosition: (position: 'left' | 'right') => void;
+  /** Event-native ChatBox presentation density. Persisted across Projects. */
+  chatTimelineDetailLevel: ChatTimelineDetailLevel;
+  setChatTimelineDetailLevel: (level: ChatTimelineDetailLevel) => void;
   // Track if there are triggers (for dynamic menu toggle visibility)
   hasTriggers: boolean;
   setHasTriggers: (value: boolean) => void;
@@ -520,6 +544,11 @@ export const usePageTabStore = create<PageTabState>()(
         })),
       chatPanelPosition: 'left',
       setChatPanelPosition: (position) => set({ chatPanelPosition: position }),
+      chatTimelineDetailLevel: DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL,
+      setChatTimelineDetailLevel: (level) =>
+        set({
+          chatTimelineDetailLevel: normalizeChatTimelineDetailLevel(level),
+        }),
       hasTriggers: false,
       setHasTriggers: (value) => set({ hasTriggers: value }),
       hasAgentFiles: false,
@@ -676,7 +705,9 @@ export const usePageTabStore = create<PageTabState>()(
           const matchingTab = targetFile
             ? previewTabs.find(
                 (tab) =>
-                  tab.type === 'file' && tab.file?.path === targetFile.path
+                  tab.type === 'file' &&
+                  tab.file !== null &&
+                  isSameFilePreview(tab.file, targetFile)
               )
             : previewTabs.find(
                 (tab) => tab.type === 'file' && tab.file === null
@@ -891,27 +922,33 @@ export const usePageTabStore = create<PageTabState>()(
     }),
     {
       name: 'eigent-page-tab',
-      version: 2,
+      version: 3,
       // v1: Project.mode becomes the source of truth. Drop the legacy global
       // sessionSidePanelMode so mode no longer drifts between Projects.
       // v2: Project sidebar fold was removed; drop persisted fold state.
       migrate: (persistedState, version) => {
-        if (
-          version < 2 &&
-          persistedState &&
-          typeof persistedState === 'object'
-        ) {
+        if (persistedState && typeof persistedState === 'object') {
           const next = { ...(persistedState as Record<string, unknown>) };
           if (version < 1) {
             delete next.sessionSidePanelMode;
           }
-          delete next.projectSidebarFolded;
+          if (version < 2) {
+            delete next.projectSidebarFolded;
+          }
+          if (version < 3) {
+            // Summarised was retired; the density knob became a two-mode
+            // switch between the narrative and trajectory renderers.
+            next.chatTimelineDetailLevel = normalizeChatTimelineDetailLevel(
+              next.chatTimelineDetailLevel
+            );
+          }
           return next as unknown as PageTabState;
         }
         return persistedState as PageTabState;
       },
       partialize: (state) => ({
         workspaceSidebarHidden: state.workspaceSidebarHidden,
+        chatTimelineDetailLevel: state.chatTimelineDetailLevel,
         customAgentFolderPathByProjectId:
           state.customAgentFolderPathByProjectId,
         sessionPreviewByProject: sanitizeSessionPreviewForPersist(

@@ -28,6 +28,21 @@ export type ChatProjectionNodeKind =
 
 export type ChatMessageRole = 'user' | 'assistant';
 export type ChatMessageStatus = 'streaming' | 'complete';
+export type ChatMessagePurpose =
+  | 'query'
+  | 'narration'
+  | 'agent_result'
+  | 'final'
+  | 'interaction_response'
+  | 'unknown';
+
+export interface ChatMessageAttachment {
+  fileName: string;
+  /** Present only after a trusted local attachment resolver grants reveal. */
+  filePath?: string;
+  fileId?: string;
+  source?: 'local' | 'upload';
+}
 export type ChatNoticeSeverity = 'info' | 'warning' | 'error';
 export type ChatInteractionStatus =
   'requested' | 'responded' | 'cancelled' | 'expired';
@@ -48,6 +63,14 @@ export type ChatActivityStatus =
   | 'failed'
   | 'timed_out'
   | 'outcome_unknown'
+  | 'cancelled'
+  | 'unknown';
+export type ChatActivityPhase =
+  | 'requested'
+  | 'started'
+  | 'progress'
+  | 'completed'
+  | 'failed'
   | 'cancelled'
   | 'unknown';
 export type ChatArtifactOperation =
@@ -87,6 +110,10 @@ export interface ChatMessageNode extends ChatProjectionNodeBase {
   role: ChatMessageRole;
   content: string;
   status: ChatMessageStatus;
+  /** Semantic role used by Run presenters; independent from transport names. */
+  purpose?: ChatMessagePurpose;
+  /** Explicit display-safe file metadata; typed events never use raw attachments. */
+  attachments?: ChatMessageAttachment[];
   /** Stable typed-message identity used only for presentation folding. */
   messageId?: string;
   agentId?: string;
@@ -152,8 +179,16 @@ export interface ChatActivityNode extends ChatProjectionNodeBase {
   kind: 'activity';
   activityType: ChatActivityType;
   status: ChatActivityStatus;
+  /** Lifecycle phase for pairing one invocation without relying on adjacency. */
+  phase?: ChatActivityPhase;
   title: string;
   detail?: string;
+  /** Redacted, presentation-safe request text. Typed events must opt in. */
+  input?: string;
+  /** Redacted, presentation-safe response text. Typed events must opt in. */
+  output?: string;
+  /** Duration supplied by the backend when it is safe and authoritative. */
+  durationMs?: number;
   agentId?: string;
   agentName?: string;
   taskId?: string;

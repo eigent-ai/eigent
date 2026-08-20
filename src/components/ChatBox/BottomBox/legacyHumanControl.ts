@@ -33,12 +33,11 @@ export function approvalScopeLabels(
   t: HumanControlTranslate,
   isToolMatcher = false
 ): Record<BottomBoxApprovalScope, string> {
+  void isToolMatcher;
   return {
     once: t('chat.control-approve-once'),
     run: t('chat.control-approve-run'),
-    space: isToolMatcher
-      ? t('chat.control-approve-space-tool')
-      : t('chat.control-approve-space'),
+    space: t('chat.control-approve-space'),
   };
 }
 
@@ -56,10 +55,7 @@ function approvalOptions(
   interaction: HumanInteractionPayload,
   t: HumanControlTranslate
 ): BottomBoxApprovalOption[] {
-  const labels = approvalScopeLabels(
-    t,
-    interaction.rule_matcher?.matcher_kind === 'literal_tool'
-  );
+  const labels = approvalScopeLabels(t);
   const descriptions = approvalScopeDescriptions(t);
   const offered = (interaction.allowed_scopes || []).filter(
     (scope): scope is BottomBoxApprovalScope =>

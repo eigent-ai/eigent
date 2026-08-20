@@ -72,12 +72,12 @@ export function UnknownEventFallback({
       data-event-fallback={reason}
       role="status"
     >
-      <p className="m-0 text-body-sm font-medium text-ds-text-neutral-default-default">
+      <span className="block text-body-sm font-medium text-ds-text-neutral-default-default">
         {t('chat.timeline-unsupported-event')}
-      </p>
-      <p className="m-0 mt-1 truncate text-label-xs text-ds-text-neutral-muted-default">
+      </span>
+      <span className="mt-1 block truncate text-label-xs font-normal text-ds-text-neutral-muted-default">
         {eventLabel(node, t('chat.timeline-unknown-event'))}
-      </p>
+      </span>
     </section>
   );
 }

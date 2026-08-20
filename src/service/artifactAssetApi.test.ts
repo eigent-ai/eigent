@@ -48,7 +48,8 @@ describe('Artifact asset resolution', () => {
     const file = {
       name: 'report.csv',
       type: 'csv',
-      path: '',
+      // Portable identity must not bypass Cloud asset resolution.
+      path: 'reports/report.csv',
       localPathAvailable: false,
       assetRef: {
         chatFileId: 73,

@@ -14,6 +14,8 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 
 import { fetchGet, sseTransport } from '@/api/http';
+import { normalizeLocalRunEvent } from '@/lib/projector';
+import { getProjectEventStore } from '@/store/projectEventStore';
 import { RunEventIngress } from './ingress';
 import {
   runProjectionStore,
@@ -54,8 +56,19 @@ export class RunEventIngressRegistry {
 
     const controller = new AbortController();
     const ingress = new RunEventIngress(projectId, runId);
-    const lastSequence =
+    // One owned stream now feeds both RunProjectionStore and the Project event
+    // timeline. Resume from the older watermark so neither consumer can miss a
+    // prefix that the other one happened to hydrate first; both stores dedupe
+    // replayed event IDs independently.
+    const runProjectionSequence =
       runProjectionStore.getRun(projectId, runId)?.lastSequence || 0;
+    const projectTimelineSequence =
+      getProjectEventStore(projectId).getSnapshot().view.runs[runId]
+        ?.lastSequence || 0;
+    const lastSequence = Math.min(
+      runProjectionSequence,
+      projectTimelineSequence
+    );
     let replaying = Boolean(options.reconnect || lastSequence > 0);
     let openCount = 0;
     let failures = 0;
@@ -84,6 +97,18 @@ export class RunEventIngressRegistry {
         if (message.event !== 'run_event') return;
         const raw = JSON.parse(message.data);
         ingress.ingest(raw, replaying ? 'reconnect_catch_up' : 'live');
+
+        // The application already owns this canonical Run stream. Feed the
+        // same durable envelope into the Project event projection so ChatBox
+        // can correlate approval:<toolCallId> with the prepared Tool row while
+        // the approval is still pending. Previously this stream updated only
+        // runProjectionStore, leaving Normal mode with a legacy ASK and no
+        // canonical Tool identity until after the user decided.
+        const projectEvent = normalizeLocalRunEvent(raw, projectId);
+        getProjectEventStore(projectId).enqueue({
+          ...projectEvent,
+          raw: null,
+        });
       },
       onerror(error) {
         if (controller.signal.aborted) throw error;

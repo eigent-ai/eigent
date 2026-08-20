@@ -86,6 +86,235 @@ describe('chat activity projection', () => {
     });
   });
 
+  it('projects explicit display-safe input and output for typed tools', () => {
+    const node = adaptChatProjectionEvent(
+      event(
+        {
+          tool_call_id: 'call-safe',
+          display_input: 'Query: Eigent documentation',
+          display_output: 'Found 3 relevant pages',
+          input: 'raw secret request',
+          output: 'raw secret response',
+          display_duration_ms: 1250,
+        },
+        'tool.completed'
+      )
+    );
+
+    expect(node).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'activity',
+        phase: 'completed',
+        input: 'Query: Eigent documentation',
+        output: 'Found 3 relevant pages',
+        durationMs: 1250,
+      },
+    });
+  });
+
+  it('does not expose raw typed tool payloads without display fields', () => {
+    const node = adaptChatProjectionEvent(
+      event(
+        {
+          tool_call_id: 'call-private',
+          input: 'raw secret request',
+          output: 'raw secret response',
+        },
+        'tool.completed'
+      )
+    );
+
+    expect(node).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'activity',
+        input: undefined,
+        output: undefined,
+      },
+    });
+  });
+
+  it('projects only explicit display-safe attachments for typed user messages', () => {
+    const node = adaptChatProjectionEvent(
+      event(
+        {
+          content: 'Review this file',
+          attachments: [
+            {
+              file_name: 'secret.txt',
+              file_path: '/private/secret.txt',
+            },
+          ],
+          display_attachments: [
+            {
+              file_name: 'brief.pdf',
+              file_path: 'uploads/brief.pdf',
+              file_id: 'file-1',
+              source: 'upload',
+            },
+          ],
+        },
+        'user.message'
+      )
+    );
+
+    expect(node).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'message',
+        attachments: [
+          {
+            fileName: 'brief.pdf',
+            fileId: 'file-1',
+            source: 'upload',
+          },
+        ],
+      },
+    });
+  });
+
+  it('does not expose raw typed attachments without display metadata', () => {
+    const node = adaptChatProjectionEvent(
+      event(
+        {
+          content: 'Review this file',
+          attachments: [
+            {
+              file_name: 'secret.txt',
+              file_path: '/private/secret.txt',
+            },
+          ],
+        },
+        'user.message'
+      )
+    );
+
+    expect(node).toMatchObject({
+      kind: 'display',
+      node: { kind: 'message', attachments: undefined },
+    });
+  });
+
+  it('restores durable attachment names without exposing local paths', () => {
+    const node = adaptChatProjectionEvent(
+      event(
+        {
+          content: 'Compare these files',
+          attachment_names: [
+            'right_hemisphere.glb',
+            '/Users/alice/private/left_hemisphere.glb',
+          ],
+        },
+        'user.message'
+      )
+    );
+
+    expect(node).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'message',
+        attachments: [
+          {
+            fileName: 'right_hemisphere.glb',
+          },
+          {
+            fileName: 'left_hemisphere.glb',
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(node)).not.toContain('/Users/alice');
+    expect(JSON.stringify(node)).not.toContain('filePath');
+  });
+
+  it('keeps legacy activate and deactivate messages as input and output', () => {
+    const activate = adaptChatProjectionEvent(
+      normalizeLegacyChatStep(
+        {
+          step: 'activate_toolkit',
+          data: {
+            toolkit_name: 'Search Toolkit',
+            method_name: 'search',
+            message: 'Eigent event timeline',
+          },
+        },
+        {
+          projectId: 'project-1',
+          runId: 'run-1',
+          sequence: 1,
+          sourceId: 'legacy-stream',
+          createdAt: 1_000,
+        }
+      )
+    );
+    const deactivate = adaptChatProjectionEvent(
+      normalizeLegacyChatStep(
+        {
+          step: 'deactivate_toolkit',
+          data: {
+            toolkit_name: 'Search Toolkit',
+            method_name: 'search',
+            message: 'Three results',
+          },
+        },
+        {
+          projectId: 'project-1',
+          runId: 'run-1',
+          sequence: 2,
+          sourceId: 'legacy-stream',
+          createdAt: 2_000,
+        }
+      )
+    );
+
+    expect(activate).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'activity',
+        phase: 'started',
+        input: 'Eigent event timeline',
+      },
+    });
+    expect(deactivate).toMatchObject({
+      kind: 'display',
+      node: { kind: 'activity', phase: 'completed', output: 'Three results' },
+    });
+  });
+
+  it('projects legacy terminal command and result as safe input and output', () => {
+    const terminal = adaptChatProjectionEvent(
+      normalizeLegacyChatStep(
+        {
+          step: 'terminal',
+          data: {
+            command: 'npm test -- --runInBand',
+            output: '6 tests passed',
+            result: 'fallback result',
+          },
+        },
+        {
+          projectId: 'project-1',
+          runId: 'run-1',
+          sequence: 1,
+          sourceId: 'legacy-stream',
+          createdAt: 1_000,
+        }
+      )
+    );
+
+    expect(terminal).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'activity',
+        activityType: 'terminal',
+        status: 'completed',
+        input: 'npm test -- --runInBand',
+        output: '6 tests passed',
+      },
+    });
+  });
+
   it('keeps artifact identity separate from a machine-local path', () => {
     const node = adaptChatProjectionEvent(
       event(

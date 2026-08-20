@@ -64,6 +64,15 @@ function snapshotRunOrigin(value: unknown): ProjectedRun['origin'] {
     : null;
 }
 
+function authoritativeSnapshotRunOrigin(
+  aggregate: NonNullable<ProjectSnapshotInput['runs']>[number],
+  recent: ProjectedRun | undefined
+): ProjectedRun['origin'] {
+  return Object.prototype.hasOwnProperty.call(aggregate, 'origin')
+    ? snapshotRunOrigin(aggregate.origin)
+    : snapshotRunOrigin(recent?.origin);
+}
+
 export function projectRawEvents(
   projectId: string,
   rawEvents: unknown[],
@@ -103,7 +112,11 @@ export function projectSnapshot(
     'rehydrate'
   ).state;
   const runs = { ...projected.runs };
+  const aggregateOriginAuthorities = new Set<string>();
   for (const aggregate of snapshot.runs || []) {
+    if (Object.prototype.hasOwnProperty.call(aggregate, 'origin')) {
+      aggregateOriginAuthorities.add(aggregate.run_id);
+    }
     const recent = runs[aggregate.run_id];
     const aggregateRunVersion = snapshotRunVersion(aggregate);
     // GET /runs is read before the event pages. If the Run changes while the
@@ -127,7 +140,7 @@ export function projectSnapshot(
       updatedAt: replayIsAtLeastAsFresh
         ? recent!.updatedAt
         : aggregate.updated_at,
-      origin: snapshotRunOrigin(aggregate.origin ?? recent?.origin),
+      origin: authoritativeSnapshotRunOrigin(aggregate, recent),
       resumeBlockedReason:
         aggregate.resume_blocked_reason ?? recent?.resumeBlockedReason ?? null,
     };
@@ -145,7 +158,16 @@ export function projectSnapshot(
         (existing.lastSequence === snapshotRun.lastSequence &&
           existing.updatedAt > snapshotRun.updatedAt)
       ) {
-        runs[runId] = existing;
+        runs[runId] = snapshotRun
+          ? {
+              ...existing,
+              // Snapshot Run aggregates are the provenance authority even when
+              // buffered live delivery is newer for status/sequence purposes.
+              origin: aggregateOriginAuthorities.has(runId)
+                ? snapshotRun.origin
+                : (existing.origin ?? snapshotRun.origin ?? null),
+            }
+          : existing;
       }
     }
   }

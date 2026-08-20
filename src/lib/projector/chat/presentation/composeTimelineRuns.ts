@@ -1,0 +1,597 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import type {
+  ChatActivityNode,
+  ChatActivityPhase,
+  ChatActivityStatus,
+  ChatArtifactNode,
+  ChatInteractionNode,
+  ChatMessageNode,
+  ChatPlanNode,
+  ChatProjectionNode,
+  ChatRunStatus,
+  ChatRunStatusNode,
+} from '../types';
+import type {
+  TimelineRunSummary,
+  TimelineRunTimestamps,
+  TimelineRunView,
+  TimelineToolInvocation,
+  TimelineTraceRow,
+} from './types';
+
+const TERMINAL_ACTIVITY_STATUSES = new Set<ChatActivityStatus>([
+  'completed',
+  'failed',
+  'timed_out',
+  'outcome_unknown',
+  'cancelled',
+]);
+
+const TERMINAL_RUN_STATUSES = new Set<ChatRunStatus>([
+  'completed',
+  'failed',
+  'cancelled',
+  'interrupted',
+]);
+
+type IndexedNode = {
+  node: ChatProjectionNode;
+  inputIndex: number;
+};
+
+function finiteNumber(value: number | null | undefined): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function timestampValue(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function compareNullableNumbers(
+  left: number | null,
+  right: number | null
+): number {
+  if (left === null && right === null) return 0;
+  if (left === null) return 1;
+  if (right === null) return -1;
+  return left - right;
+}
+
+function compareIndexedNodes(left: IndexedNode, right: IndexedNode): number {
+  const sequenceDifference = compareNullableNumbers(
+    finiteNumber(left.node.runSequence),
+    finiteNumber(right.node.runSequence)
+  );
+  if (sequenceDifference) return sequenceDifference;
+
+  const cursorDifference = compareNullableNumbers(
+    finiteNumber(left.node.cloudCursor),
+    finiteNumber(right.node.cloudCursor)
+  );
+  if (cursorDifference) return cursorDifference;
+
+  const timestampDifference = compareNullableNumbers(
+    timestampValue(left.node.createdAt),
+    timestampValue(right.node.createdAt)
+  );
+  if (timestampDifference) return timestampDifference;
+
+  const eventDifference = left.node.eventId.localeCompare(right.node.eventId);
+  if (eventDifference) return eventDifference;
+
+  const idDifference = left.node.id.localeCompare(right.node.id);
+  if (idDifference) return idDifference;
+  return left.inputIndex - right.inputIndex;
+}
+
+function firstText(
+  values: readonly (string | undefined)[]
+): string | undefined {
+  return values.find((value) => Boolean(value?.trim()));
+}
+
+function lastText(values: readonly (string | undefined)[]): string | undefined {
+  return [...values].reverse().find((value) => Boolean(value?.trim()));
+}
+
+function firstTimestamp(
+  nodes: readonly ChatProjectionNode[],
+  predicate: (node: ChatProjectionNode) => boolean = () => true
+): string | null {
+  return (
+    nodes.find(
+      (node) => predicate(node) && timestampValue(node.createdAt) !== null
+    )?.createdAt || null
+  );
+}
+
+function lastTimestamp(
+  nodes: readonly ChatProjectionNode[],
+  predicate: (node: ChatProjectionNode) => boolean = () => true
+): string | null {
+  return (
+    [...nodes]
+      .reverse()
+      .find(
+        (node) => predicate(node) && timestampValue(node.createdAt) !== null
+      )?.createdAt || null
+  );
+}
+
+function activityPhase(node: ChatActivityNode): ChatActivityPhase {
+  if (node.phase) return node.phase;
+  if (node.status === 'pending') return 'requested';
+  if (node.status === 'running') return 'started';
+  if (node.status === 'completed') return 'completed';
+  if (node.status === 'failed' || node.status === 'timed_out') return 'failed';
+  if (node.status === 'cancelled') return 'cancelled';
+  return 'unknown';
+}
+
+function isStartingActivity(node: ChatActivityNode): boolean {
+  const phase = activityPhase(node);
+  return (
+    phase === 'requested' ||
+    phase === 'started' ||
+    phase === 'progress' ||
+    node.status === 'pending' ||
+    node.status === 'running'
+  );
+}
+
+function isTerminalActivity(node: ChatActivityNode): boolean {
+  return TERMINAL_ACTIVITY_STATUSES.has(node.status);
+}
+
+function explicitInvocationId(node: ChatActivityNode): string {
+  return node.toolCallId
+    ? `tool-call:${node.runId}:${node.toolCallId}`
+    : `tool-event:${node.id}`;
+}
+
+function normalizeLegacyIdentity(value: string | undefined): string {
+  return (value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function legacyToolIdentity(node: ChatActivityNode): string | null {
+  if (
+    node.activityType !== 'tool' ||
+    (node.legacyStep !== 'activate_toolkit' &&
+      node.legacyStep !== 'deactivate_toolkit')
+  ) {
+    return null;
+  }
+  const toolkit = normalizeLegacyIdentity(node.toolkitName);
+  const method = normalizeLegacyIdentity(node.methodName || node.toolName);
+  if (!toolkit && !method) return null;
+  return JSON.stringify([
+    node.runId,
+    normalizeLegacyIdentity(node.agentId || node.agentName),
+    normalizeLegacyIdentity(node.taskId),
+    toolkit,
+    method,
+  ]);
+}
+
+/**
+ * Legacy toolkit receipts predate call IDs. Pair their start/terminal frames
+ * FIFO within an explicit toolkit/method identity. Canonical events never use
+ * this compatibility lane and therefore remain fail-closed without an ID.
+ */
+function invocationIdsByNode(
+  nodes: readonly ChatProjectionNode[]
+): Map<string, string> {
+  const ids = new Map<string, string>();
+  const openLegacyCalls = new Map<string, string[]>();
+
+  for (const node of nodes) {
+    if (
+      node.kind !== 'activity' ||
+      (node.activityType !== 'tool' && node.activityType !== 'terminal')
+    ) {
+      continue;
+    }
+    if (node.toolCallId) {
+      ids.set(node.id, explicitInvocationId(node));
+      continue;
+    }
+
+    const identity = legacyToolIdentity(node);
+    if (!identity) {
+      ids.set(node.id, explicitInvocationId(node));
+      continue;
+    }
+    if (node.legacyStep === 'activate_toolkit') {
+      const invocationId = `legacy-tool-call:${node.runId}:${node.id}`;
+      const open = openLegacyCalls.get(identity);
+      if (open) open.push(invocationId);
+      else openLegacyCalls.set(identity, [invocationId]);
+      ids.set(node.id, invocationId);
+      continue;
+    }
+
+    const open = openLegacyCalls.get(identity);
+    const invocationId = open?.shift();
+    if (open?.length === 0) openLegacyCalls.delete(identity);
+    ids.set(node.id, invocationId || explicitInvocationId(node));
+  }
+
+  return ids;
+}
+
+/**
+ * Project one logical tool call using only fields that already crossed the
+ * semantic adapter's display-safety boundary. No raw payload fallback exists
+ * in this layer.
+ */
+function composeToolInvocation(
+  nodes: readonly ChatActivityNode[]
+): TimelineToolInvocation {
+  const first = nodes[0]!;
+  const last = nodes.at(-1)!;
+  const explicitInput = firstText(nodes.map((node) => node.input));
+  const explicitOutput = lastText(nodes.map((node) => node.output));
+  const fallbackInput = firstText(
+    nodes.filter(isStartingActivity).map((node) => node.detail)
+  );
+  const fallbackOutput = lastText(
+    nodes.filter(isTerminalActivity).map((node) => node.detail)
+  );
+  const input = explicitInput || fallbackInput;
+  const output = explicitOutput || fallbackOutput;
+  const remainingDetail = lastText(
+    nodes
+      .map((node) => node.detail)
+      .filter(
+        (detail) =>
+          Boolean(detail?.trim()) &&
+          detail?.trim() !== input?.trim() &&
+          detail?.trim() !== output?.trim()
+      )
+  );
+  const startedAt = firstTimestamp(nodes, (node) =>
+    isStartingActivity(node as ChatActivityNode)
+  );
+  const endedAt = lastTimestamp(nodes, (node) =>
+    isTerminalActivity(node as ChatActivityNode)
+  );
+  const explicitDuration = [...nodes]
+    .reverse()
+    .map((node) => node.durationMs)
+    .find(
+      (duration): duration is number =>
+        typeof duration === 'number' &&
+        Number.isFinite(duration) &&
+        duration >= 0
+    );
+  const derivedDuration =
+    timestampValue(startedAt) !== null && timestampValue(endedAt) !== null
+      ? Math.max(0, timestampValue(endedAt)! - timestampValue(startedAt)!)
+      : undefined;
+
+  return {
+    id:
+      first.toolCallId !== undefined
+        ? explicitInvocationId(first)
+        : `tool-event:${first.id}`,
+    runId: first.runId,
+    activityType: first.activityType === 'terminal' ? 'terminal' : 'tool',
+    toolCallId: firstText(nodes.map((node) => node.toolCallId)),
+    nodes,
+    firstNodeId: first.id,
+    lastNodeId: last.id,
+    runSequence: first.runSequence,
+    title: last.title || first.title,
+    status: last.status,
+    phase: activityPhase(last),
+    input,
+    output,
+    detail: remainingDetail,
+    durationMs: explicitDuration ?? derivedDuration,
+    startedAt,
+    endedAt,
+    agentId: firstText(nodes.map((node) => node.agentId)),
+    agentName: firstText(nodes.map((node) => node.agentName)),
+    taskId: firstText(nodes.map((node) => node.taskId)),
+    toolkitName: firstText(nodes.map((node) => node.toolkitName)),
+    methodName: firstText(nodes.map((node) => node.methodName)),
+    toolName: firstText(nodes.map((node) => node.toolName)),
+  };
+}
+
+function composeTraceRows(
+  nodes: readonly ChatProjectionNode[]
+): TimelineTraceRow[] {
+  const invocationIdByNode = invocationIdsByNode(nodes);
+  const toolNodesByInvocation = new Map<string, ChatActivityNode[]>();
+  for (const node of nodes) {
+    if (
+      node.kind !== 'activity' ||
+      (node.activityType !== 'tool' && node.activityType !== 'terminal')
+    ) {
+      continue;
+    }
+    const id = invocationIdByNode.get(node.id)!;
+    const lifecycle = toolNodesByInvocation.get(id);
+    if (lifecycle) lifecycle.push(node);
+    else toolNodesByInvocation.set(id, [node]);
+  }
+
+  const emittedToolInvocations = new Set<string>();
+  return nodes.flatMap<TimelineTraceRow>((node) => {
+    if (
+      node.kind !== 'activity' ||
+      (node.activityType !== 'tool' && node.activityType !== 'terminal')
+    ) {
+      return [
+        {
+          kind: 'node',
+          id: node.id,
+          runSequence: node.runSequence,
+          node,
+        },
+      ];
+    }
+
+    const id = invocationIdByNode.get(node.id)!;
+    if (emittedToolInvocations.has(id)) return [];
+    emittedToolInvocations.add(id);
+    const invocation = {
+      ...composeToolInvocation(toolNodesByInvocation.get(id)!),
+      id,
+    };
+    return [
+      {
+        kind: 'tool',
+        id: invocation.id,
+        runSequence: invocation.runSequence,
+        invocation,
+      },
+    ];
+  });
+}
+
+function latestRunStatus(
+  nodes: readonly ChatProjectionNode[]
+): ChatRunStatusNode | null {
+  for (let index = nodes.length - 1; index >= 0; index -= 1) {
+    const node = nodes[index];
+    if (node?.kind === 'run_status') return node;
+  }
+  return null;
+}
+
+function inferRunStatus(
+  traceRows: readonly TimelineTraceRow[],
+  interactions: readonly ChatInteractionNode[],
+  finalAssistantResponse: ChatMessageNode | null
+): ChatRunStatus {
+  const latestInteractionByIdentity = new Map<string, ChatInteractionNode>();
+  for (const interaction of interactions) {
+    latestInteractionByIdentity.set(
+      interactionIdentity(interaction),
+      interaction
+    );
+  }
+  const hasPendingInteraction = [...latestInteractionByIdentity.values()].some(
+    (interaction) => interaction.status === 'requested'
+  );
+  if (hasPendingInteraction) return 'waiting_for_user';
+
+  if (finalAssistantResponse) return 'completed';
+
+  const activities = traceRows.flatMap((row) => {
+    if (row.kind === 'tool') return [row.invocation.status];
+    return row.node.kind === 'activity' ? [row.node.status] : [];
+  });
+  if (
+    activities.some((status) => status === 'running' || status === 'pending')
+  ) {
+    return 'running';
+  }
+  if (
+    activities.some((status) => status === 'failed' || status === 'timed_out')
+  ) {
+    return 'failed';
+  }
+  return 'unknown';
+}
+
+function composeRunTimestamps(
+  nodes: readonly ChatProjectionNode[],
+  runStatus: ChatRunStatusNode | null,
+  finalAssistantResponse: ChatMessageNode | null
+): TimelineRunTimestamps {
+  const createdAt = firstTimestamp(nodes);
+  const updatedAt = lastTimestamp(nodes);
+  const startedAt =
+    firstTimestamp(
+      nodes,
+      (node) => node.kind === 'run_status' && node.status === 'running'
+    ) || createdAt;
+  const endedAt =
+    (runStatus && TERMINAL_RUN_STATUSES.has(runStatus.status)
+      ? runStatus.createdAt
+      : null) ||
+    finalAssistantResponse?.createdAt ||
+    null;
+  const start = timestampValue(startedAt);
+  const end = timestampValue(endedAt);
+
+  return {
+    createdAt,
+    startedAt,
+    updatedAt,
+    endedAt,
+    durationMs:
+      start !== null && end !== null ? Math.max(0, end - start) : null,
+    totalAttemptElapsedMs: null,
+    elapsedAnchor: null,
+  };
+}
+
+function uniqueCount(values: readonly string[]): number {
+  return new Set(values).size;
+}
+
+function artifactIdentity(node: ChatArtifactNode): string {
+  return node.artifactId || node.relativePath || node.path || node.eventId;
+}
+
+function interactionIdentity(node: ChatInteractionNode): string {
+  return node.interactionId || node.eventId;
+}
+
+function messageIdentity(node: ChatMessageNode): string {
+  return node.messageId || node.eventId;
+}
+
+function composeRunSummary(
+  traceRows: readonly TimelineTraceRow[],
+  nodes: readonly ChatProjectionNode[],
+  artifacts: readonly ChatArtifactNode[],
+  interactions: readonly ChatInteractionNode[]
+): TimelineRunSummary {
+  const assistantMessages = nodes.filter(
+    (node): node is ChatMessageNode =>
+      node.kind === 'message' && node.role === 'assistant'
+  );
+  return {
+    toolCallCount: uniqueCount(
+      traceRows.flatMap((row) => (row.kind === 'tool' ? [row.id] : []))
+    ),
+    agentMessageCount: uniqueCount(assistantMessages.map(messageIdentity)),
+    artifactCount: uniqueCount(artifacts.map(artifactIdentity)),
+    interactionCount: uniqueCount(interactions.map(interactionIdentity)),
+  };
+}
+
+function composeOneRun(nodes: readonly ChatProjectionNode[]): TimelineRunView {
+  const first = nodes[0]!;
+  const userQuery =
+    nodes.find(
+      (node): node is ChatMessageNode =>
+        node.kind === 'message' &&
+        node.role === 'user' &&
+        node.purpose !== 'interaction_response' &&
+        !node.interactionResponse
+    ) || null;
+  const finalAssistantResponse =
+    [...nodes]
+      .reverse()
+      .find(
+        (node): node is ChatMessageNode =>
+          node.kind === 'message' &&
+          node.role === 'assistant' &&
+          node.purpose === 'final'
+      ) || null;
+  const plans = nodes.filter(
+    (node): node is ChatPlanNode => node.kind === 'plan'
+  );
+  const artifacts = nodes.filter(
+    (node): node is ChatArtifactNode => node.kind === 'artifact'
+  );
+  const interactions = nodes.filter(
+    (node): node is ChatInteractionNode => node.kind === 'interaction'
+  );
+  const runStatus = latestRunStatus(nodes);
+  const traceRows = composeTraceRows(nodes);
+
+  return {
+    id: `timeline-run:${first.runId}`,
+    projectId: first.projectId,
+    runId: first.runId,
+    nodes,
+    userQuery,
+    plans,
+    traceRows,
+    finalAssistantResponse,
+    artifacts,
+    interactions,
+    runStatus,
+    status:
+      runStatus?.status ||
+      inferRunStatus(traceRows, interactions, finalAssistantResponse),
+    timestamps: composeRunTimestamps(nodes, runStatus, finalAssistantResponse),
+    summary: composeRunSummary(traceRows, nodes, artifacts, interactions),
+  };
+}
+
+function runOrder(left: IndexedNode[], right: IndexedNode[]): number {
+  const leftCursor =
+    left
+      .map(({ node }) => finiteNumber(node.cloudCursor))
+      .find((cursor) => cursor !== null) ?? null;
+  const rightCursor =
+    right
+      .map(({ node }) => finiteNumber(node.cloudCursor))
+      .find((cursor) => cursor !== null) ?? null;
+  const cursorDifference = compareNullableNumbers(leftCursor, rightCursor);
+  if (cursorDifference) return cursorDifference;
+
+  const leftCreatedAt =
+    left
+      .map(({ node }) => timestampValue(node.createdAt))
+      .find((timestamp) => timestamp !== null) ?? null;
+  const rightCreatedAt =
+    right
+      .map(({ node }) => timestampValue(node.createdAt))
+      .find((timestamp) => timestamp !== null) ?? null;
+  const timestampDifference = compareNullableNumbers(
+    leftCreatedAt,
+    rightCreatedAt
+  );
+  if (timestampDifference) return timestampDifference;
+
+  const runIdDifference = left[0]!.node.runId.localeCompare(
+    right[0]!.node.runId
+  );
+  if (runIdDifference) return runIdDifference;
+  return left[0]!.inputIndex - right[0]!.inputIndex;
+}
+
+/** Compose all event-native Runs without mutating the immutable node ledger. */
+export function composeTimelineRuns(
+  nodes: readonly ChatProjectionNode[]
+): TimelineRunView[] {
+  const grouped = new Map<string, IndexedNode[]>();
+  nodes.forEach((node, inputIndex) => {
+    const runNodes = grouped.get(node.runId);
+    const indexed = { node, inputIndex };
+    if (runNodes) runNodes.push(indexed);
+    else grouped.set(node.runId, [indexed]);
+  });
+
+  return [...grouped.values()]
+    .map((runNodes) => [...runNodes].sort(compareIndexedNodes))
+    .sort(runOrder)
+    .map((runNodes) => composeOneRun(runNodes.map(({ node }) => node)));
+}
+
+/** Compose one Run while applying the same deterministic ordering contract. */
+export function composeTimelineRun(
+  nodes: readonly ChatProjectionNode[],
+  runId: string
+): TimelineRunView | null {
+  return (
+    composeTimelineRuns(nodes.filter((node) => node.runId === runId))[0] || null
+  );
+}
