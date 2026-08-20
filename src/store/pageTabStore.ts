@@ -299,13 +299,15 @@ interface PageTabState {
     /** When switching to the folder tab, pass the active project id to clear its inbox dot. */
     options?: { clearInboxForProjectId?: string | null }
   ) => void;
+  /**
+   * Workspace rail visibility, toggled from the title bar. Only the workspace
+   * shell honours this — Home and Settings always show their rail.
+   */
+  workspaceSidebarHidden: boolean;
+  toggleWorkspaceSidebar: () => void;
   // Panel position for ChatBox
   chatPanelPosition: 'left' | 'right';
   setChatPanelPosition: (position: 'left' | 'right') => void;
-  /** Project page left sidebar: icon-only rail (labels fade + width collapse). Persisted. */
-  projectSidebarFolded: boolean;
-  toggleProjectSidebarFolded: () => void;
-  setProjectSidebarFolded: (folded: boolean) => void;
   // Track if there are triggers (for dynamic menu toggle visibility)
   hasTriggers: boolean;
   setHasTriggers: (value: boolean) => void;
@@ -364,29 +366,7 @@ interface PageTabState {
   triggerSelectRequestId: number;
   requestSelectTrigger: (triggerId: number) => void;
 
-  // ── TurnTabs: per-project turn selection ─────────────────────────────────
-  /**
-   * Which task (turn) is currently highlighted in the side-panel TurnTabs,
-   * per project. `null` / absent → default to the chatStore's activeTaskId.
-   */
-  sidePanelSelectedTurnByProject: Record<string, string>;
-  /**
-   * Unix-ms timestamp until which a user tab-click overrides the
-   * scroll-driven viewport selection, per project.
-   */
-  sidePanelManualUntilByProject: Record<string, number>;
-  /**
-   * Task ID currently visible in the chatbox scroll viewport, per project.
-   * Written by the IntersectionObserver in ProjectChatContainer.
-   */
-  sidePanelViewedTurnByProject: Record<string, string>;
-  setSidePanelSelectedTurn: (
-    projectId: string,
-    taskId: string,
-    manualDurationMs?: number
-  ) => void;
-  setSidePanelViewedTurn: (projectId: string, taskId: string) => void;
-  /** Set by TurnTabs to tell the matching ProjectChatContainer to scroll. */
+  /** One-shot command used by historical rows in the Session side panel. */
   scrollToTurnRequest: { projectId: string; taskId: string } | null;
   setScrollToTurnRequest: (
     request: { projectId: string; taskId: string } | null
@@ -533,15 +513,13 @@ export const usePageTabStore = create<PageTabState>()(
             inboxUnviewedForProjects: nextInboxProjects,
           };
         }),
+      workspaceSidebarHidden: false,
+      toggleWorkspaceSidebar: () =>
+        set((state) => ({
+          workspaceSidebarHidden: !state.workspaceSidebarHidden,
+        })),
       chatPanelPosition: 'left',
       setChatPanelPosition: (position) => set({ chatPanelPosition: position }),
-      projectSidebarFolded: false,
-      toggleProjectSidebarFolded: () =>
-        set((state) => ({
-          projectSidebarFolded: !state.projectSidebarFolded,
-        })),
-      setProjectSidebarFolded: (folded) =>
-        set({ projectSidebarFolded: folded }),
       hasTriggers: false,
       setHasTriggers: (value) => set({ hasTriggers: value }),
       hasAgentFiles: false,
@@ -638,49 +616,6 @@ export const usePageTabStore = create<PageTabState>()(
           triggerSelectRequestId: state.triggerSelectRequestId + 1,
         })),
 
-      sidePanelSelectedTurnByProject: {},
-      sidePanelManualUntilByProject: {},
-      sidePanelViewedTurnByProject: {},
-      setSidePanelSelectedTurn: (projectId, taskId, manualDurationMs = 1500) =>
-        set((state) => ({
-          sidePanelSelectedTurnByProject: {
-            ...state.sidePanelSelectedTurnByProject,
-            [projectId]: taskId,
-          },
-          sidePanelManualUntilByProject: {
-            ...state.sidePanelManualUntilByProject,
-            [projectId]: Date.now() + manualDurationMs,
-          },
-        })),
-      setSidePanelViewedTurn: (projectId, taskId) =>
-        set((state) => {
-          const manualUntil =
-            state.sidePanelManualUntilByProject[projectId] ?? 0;
-          // Suppress viewport updates during the manual-selection window so a
-          // tab click isn't immediately overwritten by an in-flight observer
-          // firing while the chatbox is mid-scroll.
-          const selectedTaskId =
-            state.sidePanelSelectedTurnByProject[projectId];
-          if (Date.now() < manualUntil && selectedTaskId !== taskId) {
-            return state;
-          }
-          // Once the window expires, drive both fields so components only need
-          // to read `sidePanelSelectedTurnByProject` — no Date.now() in render.
-          return {
-            sidePanelViewedTurnByProject: {
-              ...state.sidePanelViewedTurnByProject,
-              [projectId]: taskId,
-            },
-            sidePanelSelectedTurnByProject: {
-              ...state.sidePanelSelectedTurnByProject,
-              [projectId]: taskId,
-            },
-            sidePanelManualUntilByProject: {
-              ...state.sidePanelManualUntilByProject,
-              [projectId]: 0,
-            },
-          };
-        }),
       scrollToTurnRequest: null,
       setScrollToTurnRequest: (request) =>
         set({ scrollToTurnRequest: request }),
@@ -956,23 +891,27 @@ export const usePageTabStore = create<PageTabState>()(
     }),
     {
       name: 'eigent-page-tab',
-      version: 1,
+      version: 2,
       // v1: Project.mode becomes the source of truth. Drop the legacy global
       // sessionSidePanelMode so mode no longer drifts between Projects.
+      // v2: Project sidebar fold was removed; drop persisted fold state.
       migrate: (persistedState, version) => {
         if (
-          version < 1 &&
+          version < 2 &&
           persistedState &&
           typeof persistedState === 'object'
         ) {
           const next = { ...(persistedState as Record<string, unknown>) };
-          delete next.sessionSidePanelMode;
+          if (version < 1) {
+            delete next.sessionSidePanelMode;
+          }
+          delete next.projectSidebarFolded;
           return next as unknown as PageTabState;
         }
         return persistedState as PageTabState;
       },
       partialize: (state) => ({
-        projectSidebarFolded: state.projectSidebarFolded,
+        workspaceSidebarHidden: state.workspaceSidebarHidden,
         customAgentFolderPathByProjectId:
           state.customAgentFolderPathByProjectId,
         sessionPreviewByProject: sanitizeSessionPreviewForPersist(

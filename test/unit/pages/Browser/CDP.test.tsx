@@ -12,13 +12,14 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { fetchDelete, fetchGet, fetchPost } from '@/api/http';
+import CDP from '@/components/Settings/Browser';
 import { useHost } from '@/host';
-import CDP from '@/pages/Browser/CDP';
 import { toast } from 'sonner';
 
 vi.mock('@/api/http', () => ({
@@ -45,8 +46,15 @@ vi.mock('react-i18next', () => ({
       const translations: Record<string, string> = {
         'layout.cdp-browser-connection': 'CDP Browser Connection',
         'layout.cdp-browser-pool': 'CDP Browser Pool',
+        'layout.cdp-browser-pool-description':
+          'Manage multiple browsers for task execution',
+        'layout.browser': 'Browser',
+        'layout.browser-pool': 'Browser Pool',
+        'layout.browser-pool-description':
+          'Browsers available for task execution.',
         'layout.open-new-browser': 'Open Blank Browser',
         'layout.connect-existing-browser': 'Connect Existing Browser',
+        'layout.close-all': 'Close all',
         'layout.no-browsers-in-pool': 'No browsers in pool',
         'layout.add-browsers-hint': 'Add a browser to get started',
       };
@@ -94,7 +102,11 @@ describe('CDP Browser Page', () => {
   });
 
   it('launches a browser through the backend in web mode', async () => {
-    render(<CDP />);
+    render(
+      <MemoryRouter>
+        <CDP />
+      </MemoryRouter>
+    );
 
     await waitFor(() => {
       expect(mockFetchGet).toHaveBeenCalledWith('/browser/cdp/list');
@@ -120,5 +132,58 @@ describe('CDP Browser Page', () => {
       'Browser launched on port 9222',
       { id: 'launch-browser' }
     );
+  });
+
+  it('uses two divided rows and closes every browser in the pool', async () => {
+    mockFetchGet
+      .mockResolvedValueOnce([
+        {
+          id: 'web-cdp-9222',
+          port: 9222,
+          isExternal: false,
+          name: 'Managed Browser',
+          addedAt: 123,
+        },
+      ])
+      .mockResolvedValue([]);
+
+    const { container } = render(
+      <MemoryRouter>
+        <CDP />
+      </MemoryRouter>
+    );
+
+    await screen.findByText('Managed Browser');
+    const group = container.querySelector('[data-settings-row-group]');
+    const rows = group?.querySelectorAll('[data-settings-row]') ?? [];
+    const dividers =
+      group?.querySelectorAll('[data-settings-row-divider]') ?? [];
+
+    expect(rows).toHaveLength(2);
+    expect(dividers).toHaveLength(1);
+    expect(within(rows[0] as HTMLElement).getByText('Browser')).toBeVisible();
+    expect(
+      within(rows[0] as HTMLElement).getByRole('button', {
+        name: 'Open Blank Browser',
+      })
+    ).toBeVisible();
+    expect(
+      within(rows[0] as HTMLElement).getByRole('button', {
+        name: 'Connect Existing Browser',
+      })
+    ).toBeVisible();
+    expect(
+      within(rows[1] as HTMLElement).getByText('Browser Pool')
+    ).toBeVisible();
+
+    await userEvent.click(
+      within(rows[1] as HTMLElement).getByRole('button', {
+        name: 'Close all',
+      })
+    );
+
+    await waitFor(() => {
+      expect(mockFetchDelete).toHaveBeenCalledWith('/browser/cdp/9222');
+    });
   });
 });

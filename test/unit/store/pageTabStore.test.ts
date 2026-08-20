@@ -15,37 +15,14 @@
 import { usePageTabStore } from '@/store/pageTabStore';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-describe('pageTabStore turn selection', () => {
+describe('pageTabStore side-panel requests', () => {
   beforeEach(() => {
     usePageTabStore.setState({
-      sidePanelSelectedTurnByProject: {},
-      sidePanelManualUntilByProject: {},
-      sidePanelViewedTurnByProject: {},
       taskBoxFocusRequestId: 0,
       taskBoxFocusProjectId: null,
       taskBoxFocusTaskId: null,
       scrollToTurnRequest: null,
     });
-  });
-
-  it('holds manual selection until the selected turn reaches the viewport', () => {
-    const store = usePageTabStore.getState();
-    store.setSidePanelSelectedTurn('project-1', 'task-2', 5000);
-    store.setSidePanelViewedTurn('project-1', 'task-1');
-
-    expect(
-      usePageTabStore.getState().sidePanelSelectedTurnByProject['project-1']
-    ).toBe('task-2');
-
-    store.setSidePanelViewedTurn('project-1', 'task-2');
-    expect(
-      usePageTabStore.getState().sidePanelManualUntilByProject['project-1']
-    ).toBe(0);
-
-    store.setSidePanelViewedTurn('project-1', 'task-1');
-    expect(
-      usePageTabStore.getState().sidePanelSelectedTurnByProject['project-1']
-    ).toBe('task-1');
   });
 
   it('scopes task-card focus requests to a project and task', () => {
@@ -56,5 +33,14 @@ describe('pageTabStore turn selection', () => {
       taskBoxFocusProjectId: 'project-1',
       taskBoxFocusTaskId: 'task-2',
     });
+  });
+
+  it('stores a one-shot historical Run scroll request', () => {
+    const request = { projectId: 'project-1', taskId: 'task-1' };
+    usePageTabStore.getState().setScrollToTurnRequest(request);
+    expect(usePageTabStore.getState().scrollToTurnRequest).toEqual(request);
+
+    usePageTabStore.getState().setScrollToTurnRequest(null);
+    expect(usePageTabStore.getState().scrollToTurnRequest).toBeNull();
   });
 });

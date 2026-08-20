@@ -30,6 +30,7 @@ from app.hands.interface import IHands
 from app.model.chat import Chat
 from app.service.task import Agents
 from app.utils.file_utils import get_working_directory
+from app.workspace_bundle.runtime import ResolvedRuntimeEnvironment
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,7 @@ async def single_agent(
     hands: IHands | None = None,
     pause_event: asyncio.Event | None = None,
     runtime: AgentRuntimeConfig | None = None,
+    runtime_environment: ResolvedRuntimeEnvironment | None = None,
 ):
     """Create the root Single Agent using CAMEL-first tool assembly."""
 
@@ -65,6 +67,7 @@ async def single_agent(
         can_delegate=runtime.can_delegate,
         current_depth=runtime.depth,
         max_depth=runtime.max_depth,
+        runtime_environment=runtime_environment,
     )
 
     system_message = SINGLE_AGENT_SYS_PROMPT.format(
@@ -74,6 +77,10 @@ async def single_agent(
         now_str=NOW_STR,
     )
     system_message = append_connected_app_mcp_notice(system_message)
+    if runtime_environment is not None:
+        bundle_context = runtime_environment.prompt_context()
+        if bundle_context:
+            system_message = f"{system_message}\n\n{bundle_context}"
 
     agent = agent_model(
         Agents.single_agent,
@@ -91,6 +98,7 @@ async def single_agent(
     if assembly.observable_todo_toolkit is not None:
         assembly.observable_todo_toolkit.agent_id = agent.agent_id
     agent._observable_todo_toolkit = assembly.observable_todo_toolkit
+    agent._runtime_cleanup_toolkits = tuple(assembly.cleanup_toolkits)
 
     if assembly.browser_toolkit is not None:
         agent._browser_toolkit = assembly.browser_toolkit

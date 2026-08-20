@@ -13,6 +13,10 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import type {
+  WorkspaceSecretLookup,
+  WorkspaceSecretPutRequest,
+} from '../main/workspaceSecrets/types';
 
 contextBridge.exposeInMainWorld('ipcRenderer', {
   on(...args: Parameters<typeof ipcRenderer.on>) {
@@ -45,6 +49,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   toggleMaximizeWindow: () => ipcRenderer.send('window-toggle-maximize'),
   isFullScreen: () => ipcRenderer.invoke('is-fullscreen'),
   selectFile: (options?: any) => ipcRenderer.invoke('select-file', options),
+  selectAgentPluginSource: () =>
+    ipcRenderer.invoke('select-agent-plugin-source'),
   processDroppedFiles: (fileData: Array<{ name: string; path?: string }>) =>
     ipcRenderer.invoke('process-dropped-files', fileData),
   savePastedFile: (fileName: string, data: ArrayBuffer) =>
@@ -103,6 +109,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   envRemove: (email: string, key: string) =>
     ipcRenderer.invoke('env-remove', email, key),
   getEnvPath: (email: string) => ipcRenderer.invoke('get-env-path', email),
+  workspaceSecretPut: (request: WorkspaceSecretPutRequest) =>
+    ipcRenderer.invoke('workspace-secret:put', request),
+  workspaceSecretStatus: (request: WorkspaceSecretLookup) =>
+    ipcRenderer.invoke('workspace-secret:status', request),
+  workspaceSecretDelete: (request: WorkspaceSecretLookup) =>
+    ipcRenderer.invoke('workspace-secret:delete', request),
   // command execution
   executeCommand: (command: string, email: string) =>
     ipcRenderer.invoke('execute-command', command, email),
@@ -120,6 +132,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkInstallBrowser: () => ipcRenderer.invoke('check-install-browser'),
   getInstallationStatus: () => ipcRenderer.invoke('get-installation-status'),
   getBackendPort: () => ipcRenderer.invoke('get-backend-port'),
+  getLocalControlCapability: () =>
+    ipcRenderer.invoke('get-local-control-capability'),
+  getDesktopInstanceId: (legacyRendererId?: string) =>
+    ipcRenderer.invoke('get-desktop-instance-id', legacyRendererId),
   restartBackend: () => ipcRenderer.invoke('restart-backend'),
   onInstallDependenciesStart: (callback: () => void) => {
     ipcRenderer.on('install-dependencies-start', callback);

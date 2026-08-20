@@ -15,8 +15,11 @@
   "gateway-connectors": "连接器",
   "source-open": "云端",
   "source-built-in": "内置",
-  "source-local": "本地",
-  "source-remote": "远程",
+  "source-local": "自定义本地",
+  "source-remote": "自定义远程",
+  "type": "类型",
+  "connected": "已连接",
+  "not-connected": "未连接",
   "load-built-in-failed": "加载内置连接器失败",
   "load-custom-failed": "加载自定义连接器失败",
   "load-gateway-failed": "加载连接器失败",
@@ -128,5 +131,10 @@
   "search-engine-id": "搜索引擎 ID",
   "search-engine-id-placeholder": "输入与你的 API 密钥关联的自定义搜索引擎 ID",
   "google-search-custom-desc": "连接 Google 自定义搜索。需要 Google API 密钥和自定义搜索引擎（CSE）ID。",
-  "google-search-default-desc": "Google 搜索默认已启用，无需 API 密钥。"
+  "google-search-default-desc": "Google 搜索默认已启用，无需 API 密钥。",
+  "exa-api-key": "Exa API 密钥",
+  "google-check-failed": "无法验证 Google 凭据。",
+  "exa-check-failed": "无法验证 Exa API 密钥。",
+  "optional": "可选",
+  "enter-field": "输入{{field}}"
 }

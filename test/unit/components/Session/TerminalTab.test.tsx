@@ -161,7 +161,7 @@ describe('TerminalTab', () => {
   it('tells web users the shell needs the desktop app', () => {
     renderTab(shellTab(), { ipcRenderer: null, electronAPI: null });
     expect(
-      screen.getByText('layout.terminal-desktop-only')
+      screen.getByText('The terminal is available in the desktop app.')
     ).toBeInTheDocument();
     expect(screen.queryByTestId('shell-terminal')).not.toBeInTheDocument();
   });
@@ -180,7 +180,9 @@ describe('TerminalTab', () => {
   it('shows a notice when the agent stream is gone', () => {
     mockSources = [];
     renderTab(agentTab('missing'));
-    expect(screen.getByText('layout.terminal-stream-gone')).toBeInTheDocument();
+    expect(
+      screen.getByText('This terminal stream is no longer available.')
+    ).toBeInTheDocument();
   });
 
   it('copies the agent stream to the clipboard', () => {
@@ -192,9 +194,7 @@ describe('TerminalTab', () => {
     mockSources = [source('a', 'Developer Agent', ['echo one', 'echo two'])];
     renderTab(agentTab('a'));
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'layout.preview-terminal-copy' })
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Copy output' }));
     expect(writeText).toHaveBeenCalledWith('echo one\necho two');
   });
 });

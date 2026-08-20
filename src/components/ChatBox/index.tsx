@@ -14,6 +14,7 @@
 
 import {
   fetchDelete,
+  fetchGet,
   fetchPost,
   proxyFetchDelete,
   proxyFetchGet,
@@ -21,18 +22,32 @@ import {
 } from '@/api/http';
 import { isWeb } from '@/client/platform';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useInterruptedRunStatus } from '@/hooks/useInterruptedRunStatus';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
+import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
 import { useHost } from '@/host';
 import { generateUniqueId, SITE_URL } from '@/lib';
 import {
   isProjectAchieved,
   setProjectAchievedState,
 } from '@/lib/projectAchievement';
+import { runEventIngressRegistry } from '@/lib/runEvents/registry';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
+import {
+  cancelFollowUpRequest,
+  createFollowUpRequest,
+  listPendingFollowUpRequests,
+  prioritizeFollowUpRequest,
+  terminalContinuationAdmissionRejection,
+} from '@/service/followUpQueueApi';
+import { decideHumanInteraction } from '@/service/humanInteractionApi';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { useAuthStore } from '@/store/authStore';
+import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import { buildProjectContinuationContext } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
+import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
+import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { ExecutionStatus } from '@/types';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
@@ -45,10 +60,27 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BottomBox from './BottomBox';
+import { createLegacyApprovalVariant } from './BottomBox/legacyHumanControl';
+import type {
+  BottomBoxApprovalScope,
+  BottomBoxInputVariant,
+  BottomBoxRunControlVariant,
+} from './BottomBox/types';
+import { useEventNativeHumanControl } from './BottomBox/useEventNativeHumanControl';
+import { EventNativeProjectTimeline } from './EventNativeProjectTimeline';
+import {
+  InterruptedRunBanner,
+  InterruptedRunBannerAction,
+} from './InterruptedRunBanner';
 import { ProjectChatContainer } from './ProjectChatContainer';
+import {
+  isEventNativeRunActionable,
+  selectActionableInterruptedRun,
+  selectEventNativeActiveRunId,
+} from './runControlArbitration';
 import { PLAN_OVERLAY_SLOT_ID } from './TaskBox/PlanTaskBox';
 
 /** Minimum scroll padding under messages (matches previous ~8rem floor). */
@@ -58,6 +90,51 @@ const CHAT_SCROLL_BOTTOM_GAP_PX = 8;
 
 const USAGE_WARNING_RATIO = 0.75;
 const FREE_STARTING_CREDITS = 500;
+const READ_ONLY_EVENT_NATIVE_RUN_STATUSES = new Set([
+  'pending',
+  'running',
+  'waiting_for_user',
+  'cancelling',
+  'interrupted',
+]);
+
+type EventNativeProjectedRun =
+  ProjectEventStoreSnapshot['view']['runs'][string];
+
+function isEventNativeRunReadOnly(run: EventNativeProjectedRun): boolean {
+  return (
+    (run.origin !== null && run.origin !== 'local') ||
+    Boolean(run.resumeBlockedReason)
+  );
+}
+
+function compareProjectedRunsByRecency(
+  left: EventNativeProjectedRun,
+  right: EventNativeProjectedRun
+): number {
+  const timeDelta =
+    (Date.parse(right.updatedAt) || 0) - (Date.parse(left.updatedAt) || 0);
+  if (timeDelta !== 0) return timeDelta;
+  if (right.lastSequence !== left.lastSequence) {
+    return right.lastSequence - left.lastSequence;
+  }
+  return right.runId.localeCompare(left.runId);
+}
+
+function selectLatestReadOnlyEventNativeRun(
+  snapshot: ProjectEventStoreSnapshot | null
+): EventNativeProjectedRun | null {
+  if (!snapshot) return null;
+  return (
+    Object.values(snapshot.view.runs)
+      .filter(
+        (run) =>
+          READ_ONLY_EVENT_NATIVE_RUN_STATUSES.has(run.status) &&
+          isEventNativeRunReadOnly(run)
+      )
+      .sort(compareProjectedRunsByRecency)[0] ?? null
+  );
+}
 
 interface SubscriptionLimitInfo {
   plan_key?: string | null;
@@ -77,6 +154,36 @@ interface UsageLimitBannerState {
   actionLabel: string;
   severity: 'warning' | 'danger';
 }
+
+function getCurrentTimestamp() {
+  return Date.now();
+}
+
+const runActionRequestId = (action: 'resume' | 'cancel', runId: string) => {
+  const key = `eigent:run:${runId}:${action}:request-id`;
+  try {
+    const existing = window.sessionStorage.getItem(key);
+    if (existing) return existing;
+    const requestId = `${action}:${runId}:${generateUniqueId()}`;
+    window.sessionStorage.setItem(key, requestId);
+    return requestId;
+  } catch {
+    return `${action}:${runId}:${generateUniqueId()}`;
+  }
+};
+
+const clearRunActionRequestId = (
+  action: 'resume' | 'cancel',
+  runId: string
+) => {
+  try {
+    window.sessionStorage.removeItem(
+      `eigent:run:${runId}:${action}:request-id`
+    );
+  } catch {
+    // sessionStorage can be unavailable in hardened browser contexts.
+  }
+};
 
 const toFiniteNumber = (value: unknown): number | null =>
   typeof value === 'number' && Number.isFinite(value) ? value : null;
@@ -207,6 +314,16 @@ export default function ChatBox(): JSX.Element {
     (s) => s.workspaceChatFocusRequestId
   );
   const activeProjectId = projectStore.activeProjectId;
+  const eventNativeTimelineEnabled = isChatEventTimelineEnabled();
+  const { snapshot: sharedProjectEventSnapshot } = useProjectEventRuntime();
+  const eventNativeProjectSnapshot =
+    eventNativeTimelineEnabled &&
+    sharedProjectEventSnapshot?.view.projectId === activeProjectId
+      ? sharedProjectEventSnapshot
+      : null;
+  const eventNativeReadOnlyRun = selectLatestReadOnlyEventNativeRun(
+    eventNativeProjectSnapshot
+  );
   const activeProjectMeta = useSpaceStore((s) =>
     activeProjectId ? s.getProjectMeta(activeProjectId) : null
   );
@@ -244,12 +361,20 @@ export default function ChatBox(): JSX.Element {
     CHAT_SCROLL_BOTTOM_MIN_PX
   );
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const { modelType, token } = useAuthStore();
+  const { modelType, token, user_id } = useAuthStore();
   const [subscriptionUsage, setSubscriptionUsage] =
     useState<SubscriptionLimitInfo | null>(null);
   const [currentCredits, setCurrentCredits] = useState<number | null>(null);
   const [dismissedUsageLimitBannerId, setDismissedUsageLimitBannerId] =
     useState<string | null>(null);
+  const {
+    run: interruptedRun,
+    setRun: setInterruptedRun,
+    refresh: refreshInterruptedRun,
+  } = useInterruptedRunStatus(activeProjectId);
+  const [durableRunAction, setDurableRunAction] =
+    useState<InterruptedRunBannerAction>(null);
+  const isCloudRestoredRun = interruptedRun?.origin === 'cloud_restore';
 
   const refreshUsageLimits = useCallback(async () => {
     if (modelType !== 'cloud' || !token) {
@@ -327,11 +452,9 @@ export default function ChatBox(): JSX.Element {
 
     if (modelType !== 'cloud' || !token) return;
 
-    const intervalId = window.setInterval(refreshUsageLimits, 60000);
     window.addEventListener('focus', refreshUsageLimits);
 
     return () => {
-      window.clearInterval(intervalId);
       window.removeEventListener('focus', refreshUsageLimits);
     };
   }, [modelType, token, refreshUsageLimits]);
@@ -367,69 +490,175 @@ export default function ChatBox(): JSX.Element {
   const skill_prompt = searchParams.get('skill_prompt');
 
   const handleSendRef = useRef<
-    ((messageStr?: string, taskId?: string) => Promise<void>) | null
+    | ((
+        messageStr?: string,
+        taskId?: string,
+        executionId?: string,
+        queuedAttaches?: File[],
+        queuedRequestId?: string
+      ) => Promise<void>)
+    | null
   >(null);
-  const autoReplyAttemptRef = useRef<string | null>(null);
-
-  const navigate = useNavigate();
+  const queuedDispatchRef = useRef<string | null>(null);
 
   const handleSelectModel = useCallback(() => {
-    navigate('/history?tab=agents');
-  }, [navigate]);
-
-  // Task time tracking
-  const [, setTaskTime] = useState(
-    chatStore?.getFormattedTaskTime(chatStore?.activeTaskId as string) ||
-      '00:00'
-  );
+    openSettings('models');
+  }, []);
 
   const [loading, setLoading] = useState(false);
   const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
 
   const activeTaskId = chatStore?.activeTaskId;
   const activeAskTask = chatStore?.tasks[activeTaskId as string];
-  const activeAsk = activeAskTask?.activeAsk;
-  const activeAskMessageId = activeAskTask?.messages.findLast(
-    (item) => item.step === AgentStep.ASK
-  )?.id;
-  const isInteractiveHumanReply =
-    activeAskTask?.type !== 'replay' &&
-    activeAskTask?.type !== 'share' &&
-    activeAskTask?.status !== ChatTaskStatus.FINISHED;
-  const activeHumanReplyKey =
-    activeTaskId && activeAsk && isInteractiveHumanReply
-      ? `${activeTaskId}:${activeAskMessageId || activeAsk}`
+  const projectedLegacyRun = activeTaskId
+    ? eventNativeProjectSnapshot?.view.runs[activeTaskId]
+    : undefined;
+  const eligibleLegacyActiveRunId =
+    activeTaskId &&
+    activeAskTask &&
+    activeAskTask.type !== 'replay' &&
+    activeAskTask.type !== 'share' &&
+    activeAskTask.status !== ChatTaskStatus.FINISHED &&
+    projectedLegacyRun &&
+    (projectedLegacyRun.status === 'running' ||
+      projectedLegacyRun.status === 'cancelling') &&
+    isEventNativeRunActionable(projectedLegacyRun)
+      ? activeTaskId
       : null;
+  const eventNativeActiveRunId = selectEventNativeActiveRunId(
+    eventNativeProjectSnapshot,
+    eligibleLegacyActiveRunId
+  );
+  const eventNativeActiveTask = eventNativeActiveRunId
+    ? chatStore?.tasks[eventNativeActiveRunId]
+    : undefined;
+  const eventNativeActiveProjectedRun = eventNativeActiveRunId
+    ? eventNativeProjectSnapshot?.view.runs[eventNativeActiveRunId]
+    : undefined;
+  const eventNativeInterruptedRun = selectActionableInterruptedRun(
+    eventNativeProjectSnapshot,
+    interruptedRun?.run_id
+  );
+  const activeAsk = activeAskTask?.activeAsk;
+  const activeAskMessage = activeAskTask?.messages.findLast(
+    (item) => item.step === AgentStep.ASK
+  );
+  const activeInteraction = activeAskMessage?.interaction;
+  const isInteractiveHumanReply =
+    !!activeAskTask &&
+    activeAskTask.type !== 'replay' &&
+    activeAskTask.type !== 'share' &&
+    activeAskTask.status !== ChatTaskStatus.FINISHED;
+  const [legacyApprovalSubmitting, setLegacyApprovalSubmitting] =
+    useState(false);
 
   useEffect(() => {
-    if (!chatStore?.activeTaskId) return;
-    const interval = setInterval(() => {
-      if (chatStore.activeTaskId) {
-        setTaskTime(chatStore.getFormattedTaskTime(chatStore.activeTaskId));
+    setLegacyApprovalSubmitting(false);
+  }, [activeInteraction?.interaction_id]);
+
+  const handleLegacyApprovalDecision = async (
+    decision: 'approved' | 'rejected',
+    scope: BottomBoxApprovalScope
+  ) => {
+    const interaction = activeInteraction;
+    const taskId = activeTaskId;
+    if (
+      !interaction ||
+      interaction.interaction_type !== 'approval' ||
+      !taskId ||
+      legacyApprovalSubmitting
+    ) {
+      return;
+    }
+
+    setLegacyApprovalSubmitting(true);
+    try {
+      await decideHumanInteraction(interaction, {
+        decisionRequestId: [
+          'desktop-approval',
+          encodeURIComponent(interaction.interaction_id),
+          String(interaction.version ?? 0),
+          decision,
+          scope,
+        ].join(':'),
+        decision: { decision, scope },
+        actorId: user_id,
+      });
+
+      const activeStore = projectStore.getActiveChatStore();
+      if (!activeStore) return;
+      const state = activeStore.getState();
+      if (!state || state.activeTaskId !== taskId) return;
+
+      state.markHumanInteractionResolved(taskId, interaction.interaction_id);
+      const current = activeStore.getState().tasks[taskId];
+      if (!current) return;
+      const [nextAsk, ...remainingAsks] = current.askList;
+      state.setActiveAskList(taskId, remainingAsks);
+      state.setActiveAsk(taskId, nextAsk?.agent_name || '');
+      state.setIsPending(taskId, false);
+      state.setDurableRunStatus(
+        taskId,
+        nextAsk ? 'waiting_for_user' : 'running'
+      );
+      state.setStatus(taskId, ChatTaskStatus.RUNNING);
+      if (nextAsk) state.addMessages(taskId, nextAsk);
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.detail?.message ||
+        error?.response?.data?.detail ||
+        error?.message ||
+        t('chat.control-decision-failed');
+      toast.error(
+        typeof message === 'string' ? message : JSON.stringify(message)
+      );
+    } finally {
+      setLegacyApprovalSubmitting(false);
+    }
+  };
+
+  const handleDurableHumanControlResolved = useCallback(
+    (resolved: { interactionId: string; runId: string }) => {
+      if (!activeTaskId || resolved.runId !== activeTaskId) return;
+      const current = chatStore?.tasks[activeTaskId];
+      if (!current) return;
+
+      const activeAskInteractionId = current.messages.findLast(
+        (message) => message.step === AgentStep.ASK
+      )?.interaction?.interaction_id;
+      if (
+        activeAskInteractionId &&
+        activeAskInteractionId !== resolved.interactionId
+      ) {
+        return;
       }
-    }, 500);
-    return () => clearInterval(interval);
-  }, [chatStore?.activeTaskId, chatStore]);
 
-  useEffect(() => {
-    if (!activeHumanReplyKey || !activeTaskId) {
-      autoReplyAttemptRef.current = null;
-      return;
-    }
-    if (message.trim() || autoReplyAttemptRef.current === activeHumanReplyKey) {
-      return;
-    }
+      // Migration-only compatibility: the durable terminal event is already
+      // loaded at this point. Keep the legacy task queue coherent until all
+      // send/disable logic reads HumanControlProjection directly.
+      const [nextAsk, ...remainingAsks] = current.askList;
+      chatStore.setActiveAskList(activeTaskId, remainingAsks);
+      chatStore.setActiveAsk(activeTaskId, nextAsk?.agent_name || '');
+      chatStore.setIsPending(activeTaskId, false);
+      if (nextAsk) chatStore.addMessages(activeTaskId, nextAsk);
+    },
+    [activeTaskId, chatStore]
+  );
 
-    const timer = window.setTimeout(() => {
-      // A failed request must not create an endless 30-second retry loop for
-      // the same question. The prompt remains visible so the user can retry.
-      if (autoReplyAttemptRef.current === activeHumanReplyKey) return;
-      autoReplyAttemptRef.current = activeHumanReplyKey;
-      void handleSendRef.current?.('skip', activeTaskId);
-    }, 30000);
-
-    return () => window.clearTimeout(timer);
-  }, [activeHumanReplyKey, activeTaskId, message]);
+  const eventNativeHumanControl = useEventNativeHumanControl({
+    projectId: eventNativeTimelineEnabled ? activeProjectId : null,
+    activeRunId: eventNativeActiveRunId,
+    enabled:
+      eventNativeTimelineEnabled &&
+      Boolean(activeProjectId) &&
+      eventNativeActiveTask?.type !== 'share' &&
+      Boolean(
+        eventNativeActiveProjectedRun &&
+        isEventNativeRunActionable(eventNativeActiveProjectedRun)
+      ) &&
+      !share_token,
+    onDurableResolution: handleDurableHumanControlResolved,
+  });
 
   const getAllChatStoresMemoized = useMemo(() => {
     if (!projectStore.activeProjectId) return [];
@@ -455,8 +684,25 @@ export default function ChatBox(): JSX.Element {
     });
   }, [chatStore, getAllChatStoresMemoized]);
 
+  // With the event-native read path enabled, typed-only durable events can be
+  // the first visible records. Timeline presence must not depend on whether a
+  // legacy ChatStore message happened to be created for the same event.
+  const shouldRenderChatTimeline = eventNativeTimelineEnabled
+    ? Boolean(activeProjectId)
+    : hasAnyMessages;
+  const shouldRenderBottomBoxOverlay =
+    shouldRenderChatTimeline &&
+    Boolean(
+      chatStore?.activeTaskId ||
+      (eventNativeTimelineEnabled &&
+        (interruptedRun ||
+          eventNativeHumanControl.variant ||
+          eventNativeActiveRunId ||
+          eventNativeReadOnlyRun))
+    );
+
   useLayoutEffect(() => {
-    if (!chatStore?.activeTaskId || !hasAnyMessages) return;
+    if (!shouldRenderBottomBoxOverlay) return;
 
     const el = bottomBoxOverlayRef.current;
     if (!el) return;
@@ -475,7 +721,7 @@ export default function ChatBox(): JSX.Element {
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [chatStore?.activeTaskId, hasAnyMessages]);
+  }, [shouldRenderBottomBoxOverlay]);
 
   const isTaskBusy = useMemo(() => {
     if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
@@ -511,8 +757,6 @@ export default function ChatBox(): JSX.Element {
     // If ask human is active, allow input
     if (task.activeAsk) return false;
 
-    if (isTaskBusy) return true;
-
     // Standard checks - check model
     if (isCloudUsageLimited) return true;
     if (!hasModel) return true;
@@ -526,7 +770,6 @@ export default function ChatBox(): JSX.Element {
     isCloudUsageLimited,
     hasModel,
     useCloudModelInDev,
-    isTaskBusy,
   ]);
 
   const handleSendShare = useCallback(
@@ -548,7 +791,7 @@ export default function ChatBox(): JSX.Element {
           return;
         }
         toast.error('Please select a model first.');
-        navigate('/history?tab=agents');
+        openSettings('models');
         return;
       }
 
@@ -586,7 +829,6 @@ export default function ChatBox(): JSX.Element {
       hasModel,
       isCloudUsageLimited,
       cloudUsageLimitMessage,
-      navigate,
       t,
     ]
   );
@@ -601,17 +843,6 @@ export default function ChatBox(): JSX.Element {
       setSearchParams(newSearchParams, { replace: true });
     }
   }, [skill_prompt, searchParams, setSearchParams]);
-
-  const scrollToBottom = useCallback(() => {
-    if (scrollContainerRef.current) {
-      setTimeout(() => {
-        scrollContainerRef.current!.scrollTo({
-          top: scrollContainerRef.current!.scrollHeight + 20,
-          behavior: 'smooth',
-        });
-      }, 200);
-    }
-  }, []);
 
   // Handle scrollbar visibility on scroll
   useEffect(() => {
@@ -646,7 +877,9 @@ export default function ChatBox(): JSX.Element {
   const handleSend = async (
     messageStr?: string,
     taskId?: string,
-    executionId?: string
+    executionId?: string,
+    queuedAttaches?: File[],
+    queuedRequestId?: string
   ) => {
     const _taskId = taskId || chatStore.activeTaskId;
     if (message.trim() === '' && !messageStr) return;
@@ -659,7 +892,7 @@ export default function ChatBox(): JSX.Element {
         return;
       }
       toast.error('Please select a model first.');
-      navigate('/history?tab=agents');
+      openSettings('models');
       return;
     }
 
@@ -677,6 +910,7 @@ export default function ChatBox(): JSX.Element {
     const rawMessageContent = messageStr || message;
     let tempMessageContent = rawMessageContent;
     const displayContent = tempMessageContent;
+    const preserveComposer = queuedAttaches !== undefined;
 
     if (executionId && targetProjectId) {
       const project = projectStore.getProjectById(targetProjectId);
@@ -696,6 +930,8 @@ export default function ChatBox(): JSX.Element {
     // Multi-turn support: Check if task is running or planning (splitting/confirm)
     const task = chatStore.tasks[_taskId];
     const requiresHumanReply = Boolean(task?.activeAsk);
+    const requiresApprovalDecision =
+      activeInteraction?.interaction_type === 'approval';
     const isTaskBusy =
       (task.status === ChatTaskStatus.RUNNING && task.hasMessages) ||
       task.status === ChatTaskStatus.PAUSE ||
@@ -716,12 +952,33 @@ export default function ChatBox(): JSX.Element {
     const _isTaskInProgress = ['running', 'pause'].includes(task?.status || '');
     const isReplayChatStore = task?.type === 'replay';
     if (!requiresHumanReply && isTaskBusy && !isReplayChatStore) {
-      toast.error(
-        'Current task is in progress. Please wait for it to finish before sending a new request.',
-        {
-          closeButton: true,
-        }
+      const queuedFiles = JSON.parse(
+        JSON.stringify(chatStore.tasks[_taskId]?.attaches || [])
       );
+      const requestId = generateUniqueId();
+      try {
+        await createFollowUpRequest({
+          projectId: targetProjectId,
+          requestId,
+          content: displayContent,
+          attachmentPaths: queuedFiles.map((file: File) => file.filePath),
+        });
+      } catch (error: any) {
+        console.error('[FollowUpQueue] Failed to persist message', error);
+        toast.error(error?.message || 'Failed to queue message.');
+        return;
+      }
+      projectStore.restoreQueuedMessage(targetProjectId, {
+        task_id: requestId,
+        run_id: requestId,
+        content: displayContent,
+        timestamp: getCurrentTimestamp(),
+        attaches: queuedFiles,
+        source: 'local',
+      });
+      chatStore.setAttaches(_taskId, []);
+      setMessage('');
+      toast.success('Message queued. It will run after the current task.');
       return;
     }
 
@@ -738,38 +995,98 @@ export default function ChatBox(): JSX.Element {
 
     if (textareaRef.current) textareaRef.current.style.height = '60px';
     try {
-      if (requiresHumanReply) {
-        if (activeHumanReplyKey) {
-          autoReplyAttemptRef.current = activeHumanReplyKey;
+      if (queuedRequestId) {
+        chatStore.setNextTaskId(queuedRequestId);
+        chatStore.setNextExecutionId(_taskId, undefined);
+        const queuedFiles = queuedAttaches || [];
+        const backendStatus = await fetchGet(
+          `/chat/${encodeURIComponent(targetProjectId)}/status`
+        );
+        if (backendStatus?.has_lock) {
+          await fetchPost(`/chat/${targetProjectId}`, {
+            question: tempMessageContent,
+            task_id: queuedRequestId,
+            attaches: queuedFiles.map((file) => file.filePath),
+            target: undefined,
+          });
+          chatStore.setIsPending(_taskId, true);
+          chatStore.addMessages(_taskId, {
+            id: generateUniqueId(),
+            role: 'user',
+            content: displayContent,
+            attaches: queuedFiles,
+          });
+        } else {
+          // Brain restart removes the warm compatibility consumer.  A queued
+          // instruction is still a normal new Run, so start it through the
+          // cold admission path with its durable request id instead of
+          // retrying /chat/{project} forever.
+          await chatStore.startTask(
+            queuedRequestId,
+            undefined,
+            undefined,
+            undefined,
+            tempMessageContent,
+            queuedFiles,
+            undefined,
+            targetProjectId,
+            effectiveSessionMode,
+            {
+              preserveTaskId: true,
+              awaitAdmission: true,
+            }
+          );
         }
+      } else if (requiresHumanReply) {
+        if (requiresApprovalDecision) {
+          toast.error(
+            'Use the approval card to approve or reject this action.'
+          );
+          return;
+        }
+        const humanReplyMessageId = generateUniqueId();
         chatStore.addMessages(_taskId, {
-          id: generateUniqueId(),
+          id: humanReplyMessageId,
           role: 'user',
           content: displayContent,
-          attaches:
-            JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) ||
-            [],
+          interactionResponseTo: activeInteraction?.interaction_id,
+          attaches: JSON.parse(
+            JSON.stringify(chatStore.tasks[_taskId]?.attaches || [])
+          ),
         });
         setMessage('');
 
-        // Scroll to bottom after adding user message
-        setTimeout(() => {
-          scrollToBottom();
-        }, 200);
-
         chatStore.setIsPending(_taskId, true);
 
-        const replyResult = await fetchPost(
-          `/chat/${targetProjectId}/human-reply`,
-          {
-            agent: chatStore.tasks[_taskId].activeAsk,
-            reply: tempMessageContent,
-          }
-        );
+        let replyResult: any;
+        try {
+          replyResult = await fetchPost(
+            `/chat/${targetProjectId}/human-reply`,
+            {
+              agent: chatStore.tasks[_taskId].activeAsk,
+              reply: tempMessageContent,
+              interaction_id: activeInteraction?.interaction_id,
+              decision_request_id: activeInteraction?.interaction_id
+                ? `desktop-reply:${activeInteraction.interaction_id}`
+                : undefined,
+            }
+          );
+        } catch (error: any) {
+          // The optimistic answer must not become a historical receipt unless
+          // the backend accepted it. Keep the active request available for a
+          // retry and restore the draft on transport failure.
+          chatStore.removeMessage(_taskId, humanReplyMessageId);
+          chatStore.setIsPending(_taskId, false);
+          setMessage(tempMessageContent);
+          toast.error(error?.message || 'Failed to send your reply.');
+          return;
+        }
         if (replyResult?.code === 1) {
+          chatStore.removeMessage(_taskId, humanReplyMessageId);
           chatStore.setIsPending(_taskId, false);
           chatStore.setActiveAskList(_taskId, []);
           chatStore.setActiveAsk(_taskId, '');
+          setMessage(tempMessageContent);
           toast.error(
             replyResult.text || 'This task is no longer waiting for a reply.'
           );
@@ -838,11 +1155,13 @@ export default function ChatBox(): JSX.Element {
             chatStore.tasks[_taskId].type === 'replay' ||
             hasErrorMessage
           ) {
-            setMessage('');
+            if (!preserveComposer) setMessage('');
             // Pass the message content to startTask instead of adding it to current chatStore
             const attachesToSend =
-              JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) ||
-              [];
+              queuedAttaches ||
+              JSON.parse(
+                JSON.stringify(chatStore.tasks[_taskId]?.attaches || [])
+              );
             try {
               ensureActiveProjectMode();
               await chatStore.startTask(
@@ -856,11 +1175,11 @@ export default function ChatBox(): JSX.Element {
                 targetProjectId,
                 effectiveSessionMode
               );
-              chatStore.setAttaches(_taskId, []);
+              if (!preserveComposer) chatStore.setAttaches(_taskId, []);
               // If activeTaskId changed (new task created), clear its draft too
               const newActiveId = chatStore.activeTaskId;
               if (newActiveId && newActiveId !== _taskId) {
-                chatStore.setAttaches(newActiveId, []);
+                if (!preserveComposer) chatStore.setAttaches(newActiveId, []);
               }
             } catch (err: any) {
               console.error('Failed to start task:', err);
@@ -868,55 +1187,105 @@ export default function ChatBox(): JSX.Element {
                 err?.message ||
                   'Failed to start task. Please check your model configuration.'
               );
+              if (preserveComposer) throw err;
               return;
             }
             // keep hasWaitComfirm as true so that follow-up improves work as usual
           } else {
             // Continue conversation: simple response, complex task, or finished task
-            const attachesForThisTurn = JSON.parse(
-              JSON.stringify(chatStore.tasks[_taskId]?.attaches || [])
-            );
+            const attachesForThisTurn =
+              queuedAttaches ||
+              JSON.parse(
+                JSON.stringify(chatStore.tasks[_taskId]?.attaches || [])
+              );
             const improveAttaches =
               attachesForThisTurn.map(
                 (f: { filePath: string }) => f.filePath
               ) || [];
 
-            //Generate nextId in case new chatStore is created to sync with the backend beforehand
+            // A normal follow-up is a new durable Run. Seed it before the
+            // admission request completes so the reply and its pending work
+            // log are visible immediately, while the completed Run remains a
+            // stable history section above it.
             const nextTaskId = generateUniqueId();
             chatStore.setNextTaskId(nextTaskId);
             chatStore.setNextExecutionId(_taskId as string, executionId);
+            const nextChatResult = projectStore.appendInitChatStore(
+              targetProjectId,
+              nextTaskId
+            );
+            if (!nextChatResult) {
+              // Every other failure path in this handler surfaces a toast. The
+              // outer catch only logs, so without this the user would click
+              // Send and observe nothing at all.
+              const prepareError = new Error(
+                t('chat.follow-up-prepare-failed')
+              );
+              toast.error(prepareError.message);
+              throw prepareError;
+            }
 
-            // Use improve endpoint (POST /chat/{id}) - {id} is project_id
-            fetchPost(`/chat/${targetProjectId}`, {
-              question: tempMessageContent,
-              task_id: nextTaskId,
-              attaches: improveAttaches,
-              project_context: buildProjectContinuationContext(
-                targetProjectId,
-                nextTaskId
-              ),
-              target: undefined,
-            });
-            chatStore.setIsPending(_taskId, true);
-            chatStore.addMessages(_taskId, {
+            const nextChatState = nextChatResult.chatStore.getState();
+            // During the remaining multi-store migration window the prepared
+            // Run can live in a different store from the completed Run. Keep
+            // the boundary token on both sides so CONFIRMED reuses this exact
+            // task instead of creating a duplicate.
+            nextChatState.setNextTaskId(nextTaskId);
+            nextChatState.setTaskSessionMode(nextTaskId, effectiveSessionMode);
+            nextChatState.setTaskSource(
+              nextTaskId,
+              executionId ? 'trigger' : 'user'
+            );
+            nextChatState.setExecutionId(nextTaskId, executionId);
+            nextChatState.setIsPending(nextTaskId, true);
+            nextChatState.setHasMessages(nextTaskId, true);
+            nextChatState.addMessages(nextTaskId, {
               id: generateUniqueId(),
               role: 'user',
               content: displayContent,
               attaches: attachesForThisTurn,
             });
-            chatStore.setAttaches(_taskId, []);
-            setMessage('');
+            if (!preserveComposer) {
+              chatStore.setAttaches(_taskId, []);
+              setMessage('');
+            }
+
+            try {
+              // Use improve endpoint (POST /chat/{id}) - {id} is project_id.
+              await fetchPost(`/chat/${targetProjectId}`, {
+                question: tempMessageContent,
+                task_id: nextTaskId,
+                attaches: improveAttaches,
+                project_context: buildProjectContinuationContext(
+                  targetProjectId,
+                  nextTaskId
+                ),
+                target: undefined,
+              });
+            } catch (error: any) {
+              // Keep the failed turn as a traceable receipt instead of moving
+              // the reply back into (or mutating) the completed history Run.
+              nextChatState.setIsPending(nextTaskId, false);
+              nextChatState.setStatus(nextTaskId, ChatTaskStatus.FINISHED);
+              nextChatState.addMessages(nextTaskId, {
+                id: generateUniqueId(),
+                role: 'agent',
+                content:
+                  error?.message ||
+                  '❌ **Error**: Failed to start the follow-up task.',
+              });
+              toast.error(error?.message || 'Failed to send follow-up.');
+              if (preserveComposer) throw error;
+            }
           }
         } else {
-          setTimeout(() => {
-            scrollToBottom();
-          }, 200);
-
           // For the very first message, add it to the current chatStore first, then call startTask
           const attachesToSend =
-            JSON.parse(JSON.stringify(chatStore.tasks[_taskId]?.attaches)) ||
-            [];
-          setMessage('');
+            queuedAttaches ||
+            JSON.parse(
+              JSON.stringify(chatStore.tasks[_taskId]?.attaches || [])
+            );
+          if (!preserveComposer) setMessage('');
           try {
             ensureActiveProjectMode();
             await chatStore.startTask(
@@ -931,11 +1300,11 @@ export default function ChatBox(): JSX.Element {
               effectiveSessionMode
             );
             chatStore.setHasWaitComfirm(_taskId as string, true);
-            chatStore.setAttaches(_taskId, []);
+            if (!preserveComposer) chatStore.setAttaches(_taskId, []);
             // If activeTaskId changed (new task created), clear its draft too
             const newActiveId2 = chatStore.activeTaskId;
             if (newActiveId2 && newActiveId2 !== _taskId) {
-              chatStore.setAttaches(newActiveId2, []);
+              if (!preserveComposer) chatStore.setAttaches(newActiveId2, []);
             }
           } catch (err: any) {
             console.error('Failed to start task:', err);
@@ -943,18 +1312,98 @@ export default function ChatBox(): JSX.Element {
               err?.message ||
                 'Failed to start task. Please check your model configuration.'
             );
+            if (preserveComposer) throw err;
             return;
           }
         }
       }
     } catch (error) {
       console.error('error:', error);
+      if (preserveComposer) throw error;
     } finally {
       scheduleUsageRefresh();
     }
   };
 
-  handleSendRef.current = handleSend;
+  useEffect(() => {
+    handleSendRef.current = handleSend;
+  });
+
+  const handleResumeInterruptedRun = async () => {
+    if (!interruptedRun || !activeProjectId || !chatStore) return;
+    if (!hasModel) {
+      toast.error('Please select a model before resuming this Run.');
+      return;
+    }
+    const run = interruptedRun;
+    const requestId = runActionRequestId('resume', run.run_id);
+    setDurableRunAction('resuming');
+    try {
+      ensureActiveProjectMode();
+      const resumePromise = chatStore.startTask(
+        run.run_id,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        activeProjectId,
+        effectiveSessionMode,
+        {
+          preserveTaskId: true,
+          skipHistoryCreate: true,
+          historyId: projectStore.getHistoryId(activeProjectId),
+          resumeRequestId: requestId,
+        }
+      );
+      // Admission is now owned by the existing task card/SSE. Hide the stale
+      // interrupted action immediately; a failed admission refreshes it from
+      // RunJournal in the catch path.
+      setInterruptedRun(null);
+      await resumePromise;
+      clearRunActionRequestId('resume', run.run_id);
+    } catch (error: any) {
+      console.error('[RunControl] Failed to resume Run', error);
+      clearRunActionRequestId('resume', run.run_id);
+      toast.error(error?.message || t('chat.run-resume-failed'));
+      await refreshInterruptedRun();
+    } finally {
+      setDurableRunAction(null);
+    }
+  };
+
+  const handleCancelInterruptedRun = async () => {
+    if (!interruptedRun) return;
+    const run = interruptedRun;
+    setDurableRunAction('cancelling');
+    try {
+      await fetchPost(`/runs/${encodeURIComponent(run.run_id)}/cancel`, {
+        request_id: runActionRequestId('cancel', run.run_id),
+        reason: 'explicit_cancel_from_desktop_ui',
+      });
+      // The cancel response confirms the command, not that the renderer has
+      // consumed the canonical run.cancelled event. Replay from the durable
+      // cursor so a prior gap can be filled and needsResync can be released.
+      void runEventIngressRegistry.replayRun(run.project_id, run.run_id);
+      clearRunActionRequestId('cancel', run.run_id);
+      setInterruptedRun(null);
+      for (const { chatStore: store } of projectStore.getAllChatStores(
+        run.project_id
+      )) {
+        const state = store.getState();
+        if (!state.tasks[run.run_id]) continue;
+        state.setIsPending(run.run_id, false);
+        state.setStatus(run.run_id, ChatTaskStatus.FINISHED);
+      }
+    } catch (error: any) {
+      console.error('[RunControl] Failed to cancel Run', error);
+      toast.error(error?.message || t('chat.run-cancel-failed'));
+      await refreshInterruptedRun();
+    } finally {
+      setDurableRunAction(null);
+    }
+  };
 
   // Reactive queuedMessages for the active project
   const queuedMessages = useMemo(() => {
@@ -965,8 +1414,114 @@ export default function ChatBox(): JSX.Element {
       id: m.task_id,
       content: m.content,
       timestamp: m.timestamp,
+      processing: m.processing,
+      canSendNow:
+        !m.executionId &&
+        m.source !== 'scheduled' &&
+        m.source !== 'remote_control' &&
+        !interruptedRun,
     }));
-  }, [projectStore]);
+  }, [interruptedRun, projectStore]);
+
+  useEffect(() => {
+    const projectId = projectStore.activeProjectId;
+    if (!projectId) return;
+    void listPendingFollowUpRequests(projectId)
+      .then((items) => {
+        const durableIds = new Set(items.map((item) => item.request_id));
+        const current =
+          projectStore.getProjectById(projectId)?.queuedMessages || [];
+        for (const local of current) {
+          if (local.source && !durableIds.has(local.task_id)) {
+            projectStore.removeQueuedMessage(projectId, local.task_id);
+          }
+        }
+        for (const item of items) {
+          projectStore.restoreQueuedMessage(projectId, {
+            task_id: item.request_id,
+            run_id: item.request_id,
+            content: item.content,
+            timestamp: item.created_at * 1000,
+            attaches: item.attachment_paths.map((filePath) => ({
+              fileName: filePath.split(/[\\/]/).pop() || filePath,
+              filePath,
+              source: 'local',
+            })) as unknown as File[],
+            sendNow: item.delivery_mode === 'send_now',
+            source: item.source,
+          });
+        }
+      })
+      .catch((error) => {
+        console.warn(
+          '[FollowUpQueue] Failed to restore pending messages',
+          error
+        );
+      });
+  }, [projectStore, projectStore.activeProjectId]);
+
+  useEffect(() => {
+    const projectId = projectStore.activeProjectId;
+    const activeId = chatStore?.activeTaskId;
+    if (
+      !projectId ||
+      !activeId ||
+      isTaskBusy ||
+      activeAsk ||
+      interruptedRun ||
+      !hasModel ||
+      isCloudUsageLimited
+    )
+      return;
+    if (queuedDispatchRef.current) return;
+
+    const project = projectStore.getProjectById(projectId);
+    const candidates = (project?.queuedMessages || []).filter(
+      (item) => !item.executionId && !item.processing
+    );
+    const next = candidates.find((item) => item.sendNow) || candidates[0];
+    if (!next) return;
+    const sendQueuedMessage = handleSendRef.current;
+    if (!sendQueuedMessage) return;
+
+    queuedDispatchRef.current = next.task_id;
+    projectStore.setQueuedMessageProcessing(projectId, next.task_id, true);
+    void sendQueuedMessage(
+      next.content,
+      activeId,
+      undefined,
+      next.attaches,
+      next.task_id
+    )
+      .then(() => {
+        projectStore.removeQueuedMessage(projectId, next.task_id);
+      })
+      .catch((error) => {
+        console.error('[FollowUpQueue] Failed to admit queued message', error);
+        const rejection = terminalContinuationAdmissionRejection(error);
+        if (rejection) {
+          // Brain has durably cancelled this queue row. Remove only the
+          // renderer projection and leave the typed explanation visible.
+          projectStore.removeQueuedMessage(projectId, next.task_id);
+          toast.error(rejection.message);
+          return;
+        }
+        projectStore.setQueuedMessageProcessing(projectId, next.task_id, false);
+        toast.error(error?.message || 'Failed to send queued message.');
+      })
+      .finally(() => {
+        queuedDispatchRef.current = null;
+      });
+  }, [
+    activeAsk,
+    chatStore?.activeTaskId,
+    hasModel,
+    isCloudUsageLimited,
+    isTaskBusy,
+    interruptedRun,
+    projectStore,
+    queuedMessages,
+  ]);
 
   useEffect(() => {
     if (share_token && isConfigLoaded) {
@@ -1111,6 +1666,26 @@ export default function ChatBox(): JSX.Element {
     }
   };
 
+  const handleSendQueuedMessageNow = async (taskId: string) => {
+    const projectId = projectStore.activeProjectId;
+    if (!projectId) return;
+
+    try {
+      await prioritizeFollowUpRequest(projectId, taskId);
+      projectStore.prioritizeQueuedMessage(projectId, taskId);
+      if (!isTaskBusy) return;
+      await fetchPost(`/chat/${projectId}/skip-task`, {
+        project_id: projectId,
+      });
+      toast.success(
+        'Stopping the current task. Your queued message will start next.'
+      );
+    } catch (error: any) {
+      console.error('[FollowUpQueue] Failed to stop active Run', error);
+      toast.error(error?.message || 'Failed to send the queued message now.');
+    }
+  };
+
   // Edit query handler
   const handleEditQuery = async () => {
     const taskId = chatStore.activeTaskId as string;
@@ -1217,18 +1792,20 @@ export default function ChatBox(): JSX.Element {
       return;
     }
 
-    // Remove from projectStore's queuedMessages
-    const removed = projectStore.removeQueuedMessage(project_id, task_id);
-    if (!removed || !removed.task_id) {
+    const project = projectStore.getProjectById(project_id);
+    const queued = project?.queuedMessages.find(
+      (item) => item.task_id === task_id
+    );
+    if (!queued) {
       console.error(`Task with id ${task_id} not found in project queue`);
       return;
     }
 
     try {
       // Update the backend execution status if it has an executionId
-      if (removed.executionId) {
+      if (queued.executionId) {
         await proxyUpdateTriggerExecution(
-          removed.executionId,
+          queued.executionId,
           {
             status: ExecutionStatus.Cancelled,
             error_message: 'Task was removed from queue by user.',
@@ -1237,16 +1814,152 @@ export default function ChatBox(): JSX.Element {
             projectId: project_id,
           }
         );
+      } else {
+        await cancelFollowUpRequest(project_id, task_id);
       }
+      projectStore.removeQueuedMessage(project_id, task_id);
     } catch (error) {
       console.error(`[ChatBox] Failed to cancel task ${task_id}:`, error);
-      // Restore the message if backend update failed
-      projectStore.restoreQueuedMessage(project_id, removed);
       toast.error('Failed to cancel task', {
         description: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   };
+
+  const handleEventNativeStopRun = async (runId: string) => {
+    const currentRunId = selectEventNativeActiveRunId(
+      eventNativeProjectSnapshot,
+      eligibleLegacyActiveRunId
+    );
+    if (runId !== currentRunId) return;
+
+    setIsPauseResumeLoading(true);
+    try {
+      await fetchPost(`/runs/${encodeURIComponent(runId)}/cancel`, {
+        request_id: runActionRequestId('cancel', runId),
+        reason: 'explicit_stop_from_event_native_chatbox',
+      });
+      clearRunActionRequestId('cancel', runId);
+      if (chatStore.tasks[runId]) chatStore.setIsPending(runId, false);
+      toast.success('Run stopped successfully', { closeButton: true });
+    } catch (error: any) {
+      console.error('[RunControl] Failed to stop Run', error);
+      toast.error(error?.message || 'Failed to stop this Run.');
+    } finally {
+      setIsPauseResumeLoading(false);
+    }
+  };
+
+  const handleEventNativeResumeRun = (runId: string) => {
+    if (runId !== interruptedRun?.run_id || isCloudRestoredRun) return;
+    void handleResumeInterruptedRun();
+  };
+
+  const handleEventNativeCancelRun = (runId: string) => {
+    if (runId !== interruptedRun?.run_id || isCloudRestoredRun) return;
+    void handleCancelInterruptedRun();
+  };
+
+  let eventNativeRunControlVariant: BottomBoxRunControlVariant | null = null;
+  if (
+    eventNativeTimelineEnabled &&
+    interruptedRun &&
+    (isCloudRestoredRun || eventNativeInterruptedRun)
+  ) {
+    eventNativeRunControlVariant = {
+      kind: 'run_control',
+      header: {
+        title: t(
+          isCloudRestoredRun
+            ? 'chat.run-cloud-restored-title'
+            : 'chat.run-interrupted-title'
+        ),
+        description: isCloudRestoredRun
+          ? undefined
+          : t('chat.run-interrupted-description'),
+      },
+      runId: interruptedRun.run_id,
+      state: isCloudRestoredRun
+        ? 'read_only'
+        : (durableRunAction ?? 'interrupted'),
+      resumeLabel: t('chat.run-resume'),
+      resumingLabel: t('chat.run-resuming'),
+      cancelLabel: t('chat.run-cancel'),
+      cancellingLabel: t('chat.run-cancelling'),
+      readOnlyLabel: t('chat.run-cloud-restored-description'),
+      onResume: isCloudRestoredRun ? undefined : handleEventNativeResumeRun,
+      onCancel: isCloudRestoredRun ? undefined : handleEventNativeCancelRun,
+    };
+  } else if (eventNativeTimelineEnabled && eventNativeReadOnlyRun) {
+    const restoredFromCloud = eventNativeReadOnlyRun.origin === 'cloud_restore';
+    eventNativeRunControlVariant = {
+      kind: 'run_control',
+      header: {
+        title: t(
+          restoredFromCloud
+            ? 'chat.run-cloud-restored-title'
+            : 'chat.run-interrupted-title'
+        ),
+      },
+      runId: eventNativeReadOnlyRun.runId,
+      state: 'read_only',
+      readOnlyLabel: restoredFromCloud
+        ? t('chat.run-cloud-restored-description')
+        : undefined,
+    };
+  } else if (
+    eventNativeTimelineEnabled &&
+    eventNativeActiveRunId &&
+    (eventNativeProjectSnapshot?.view.runs[eventNativeActiveRunId]?.status ===
+      'running' ||
+      (eventNativeActiveRunId === activeTaskId &&
+        activeTask?.status === ChatTaskStatus.RUNNING))
+  ) {
+    eventNativeRunControlVariant = {
+      kind: 'run_control',
+      header: {
+        title:
+          (eventNativeActiveRunId === activeTaskId
+            ? activeTask?.summaryTask
+            : undefined) || t('layout.stop-task'),
+      },
+      runId: eventNativeActiveRunId,
+      state: isPauseResumeLoading ? 'stopping' : 'running',
+      stopLabel: t('layout.stop-task'),
+      onStop: (runId) => void handleEventNativeStopRun(runId),
+    };
+  }
+
+  const legacyApprovalVariant =
+    activeAsk && isInteractiveHumanReply && activeAskMessage
+      ? createLegacyApprovalVariant({
+          interaction: activeInteraction,
+          fallbackQuestion: activeAskMessage.content.trim(),
+          submitting: legacyApprovalSubmitting,
+          t,
+          onApprove: (scope) =>
+            void handleLegacyApprovalDecision('approved', scope),
+          onReject: () => void handleLegacyApprovalDecision('rejected', 'once'),
+        })
+      : null;
+  const legacyHumanInputVariant: BottomBoxInputVariant | 'input' =
+    activeAsk && isInteractiveHumanReply && activeAskMessage
+      ? {
+          kind: 'input',
+          header: {
+            eyebrow: t('chat.control-input-required'),
+            title:
+              activeInteraction?.question || activeAskMessage.content.trim(),
+          },
+        }
+      : 'input';
+  const bottomBoxVariant = eventNativeTimelineEnabled
+    ? (eventNativeHumanControl.variant ??
+      eventNativeRunControlVariant ??
+      'input')
+    : (legacyApprovalVariant ?? legacyHumanInputVariant);
+  const hasControlledBottomBoxVariant =
+    bottomBoxVariant !== 'input' && bottomBoxVariant.kind !== 'input';
 
   const chatColumn = (
     <>
@@ -1256,7 +1969,15 @@ export default function ChatBox(): JSX.Element {
           ref={scrollContainerRef}
           className="scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pl-2"
         >
-          {hasAnyMessages ? (
+          {shouldRenderChatTimeline &&
+          eventNativeTimelineEnabled &&
+          activeProjectId ? (
+            <EventNativeProjectTimeline
+              projectId={activeProjectId}
+              scrollContainerRef={scrollContainerRef}
+              scrollBottomInsetPx={scrollBottomInsetPx}
+            />
+          ) : shouldRenderChatTimeline ? (
             <ProjectChatContainer
               scrollContainerRef={scrollContainerRef}
               scrollBottomInsetPx={scrollBottomInsetPx}
@@ -1267,11 +1988,35 @@ export default function ChatBox(): JSX.Element {
             <div className="mx-auto flex min-h-full w-full max-w-[600px] flex-col">
               <div className="flex flex-1 flex-col items-center justify-end gap-1 pb-4"></div>
 
+              {interruptedRun && !eventNativeTimelineEnabled && (
+                <InterruptedRunBanner
+                  title={t(
+                    isCloudRestoredRun
+                      ? 'chat.run-cloud-restored-title'
+                      : 'chat.run-interrupted-title'
+                  )}
+                  description={t(
+                    isCloudRestoredRun
+                      ? 'chat.run-cloud-restored-description'
+                      : 'chat.run-interrupted-description'
+                  )}
+                  action={durableRunAction}
+                  resumeLabel={t('chat.run-resume')}
+                  resumingLabel={t('chat.run-resuming')}
+                  cancelLabel={t('chat.run-cancel')}
+                  cancellingLabel={t('chat.run-cancelling')}
+                  onResume={handleResumeInterruptedRun}
+                  onCancel={handleCancelInterruptedRun}
+                  readOnly={isCloudRestoredRun}
+                />
+              )}
+
               {chatStore.activeTaskId && (
                 <BottomBox
                   state="input"
                   queuedMessages={queuedMessages}
                   onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
+                  onSendQueuedMessageNow={handleSendQueuedMessageNow}
                   usageLimitBanner={usageLimitBanner}
                   noModelOverlay={!hasModel && !isCloudUsageLimited}
                   onSelectModel={handleSelectModel}
@@ -1306,20 +2051,52 @@ export default function ChatBox(): JSX.Element {
           )}
         </div>
 
-        {chatStore.activeTaskId && hasAnyMessages && (
-          <div id={PLAN_OVERLAY_SLOT_ID} className="contents" />
-        )}
-        {chatStore.activeTaskId && hasAnyMessages && (
+        {chatStore.activeTaskId &&
+          hasAnyMessages &&
+          !eventNativeTimelineEnabled && (
+            <div id={PLAN_OVERLAY_SLOT_ID} className="contents" />
+          )}
+        {shouldRenderBottomBoxOverlay && (
           <div
             ref={bottomBoxOverlayRef}
             data-bottom-box-overlay
-            className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-2"
           >
-            <div className="pointer-events-auto mx-auto w-full max-w-[600px] rounded-t-3xl bg-ds-bg-neutral-subtle-default px-2 pb-1">
+            <div className="pointer-events-auto mx-auto w-full max-w-[600px] rounded-t-3xl bg-ds-bg-neutral-subtle-default pb-1">
+              {interruptedRun && !eventNativeTimelineEnabled && (
+                <InterruptedRunBanner
+                  compact
+                  title={t(
+                    isCloudRestoredRun
+                      ? 'chat.run-cloud-restored-title'
+                      : 'chat.run-interrupted-title'
+                  )}
+                  description={t(
+                    isCloudRestoredRun
+                      ? 'chat.run-cloud-restored-description'
+                      : 'chat.run-interrupted-description'
+                  )}
+                  attemptNumber={interruptedRun.latest_attempt?.attempt_number}
+                  action={durableRunAction}
+                  resumeLabel={t('chat.run-resume')}
+                  resumingLabel={t('chat.run-resuming')}
+                  cancelLabel={t('chat.run-cancel')}
+                  cancellingLabel={t('chat.run-cancelling')}
+                  onResume={handleResumeInterruptedRun}
+                  onCancel={handleCancelInterruptedRun}
+                  readOnly={isCloudRestoredRun}
+                />
+              )}
               <BottomBox
-                state={getBottomBoxState()}
+                state={
+                  hasControlledBottomBoxVariant
+                    ? 'running'
+                    : getBottomBoxState()
+                }
+                variant={bottomBoxVariant}
                 queuedMessages={queuedMessages}
                 onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
+                onSendQueuedMessageNow={handleSendQueuedMessageNow}
                 usageLimitBanner={usageLimitBanner}
                 noModelOverlay={!hasModel && !isCloudUsageLimited}
                 onSelectModel={handleSelectModel}
@@ -1327,23 +2104,18 @@ export default function ChatBox(): JSX.Element {
                   getBottomBoxState() === 'confirm' ||
                   getBottomBoxState() === 'save'
                     ? (() => {
-                        const messages =
-                          chatStore.tasks[chatStore.activeTaskId]?.messages ||
-                          [];
+                        const messages = activeTask?.messages || [];
                         const lastUserMessage = messages
                           .slice()
                           .reverse()
                           .find((msg) => msg.role === 'user');
                         return (
-                          lastUserMessage?.content ||
-                          chatStore.tasks[chatStore.activeTaskId]?.summaryTask
+                          lastUserMessage?.content || activeTask?.summaryTask
                         );
                       })()
-                    : chatStore.tasks[chatStore.activeTaskId]?.summaryTask
+                    : activeTask?.summaryTask
                 }
-                autoStartDeadline={
-                  chatStore.tasks[chatStore.activeTaskId]?.autoConfirmDeadline
-                }
+                autoStartDeadline={activeTask?.autoConfirmDeadline}
                 onStartTask={() => handleConfirmTask()}
                 onSavePlan={async () => {
                   if (chatStore.activeTaskId) {
@@ -1359,17 +2131,14 @@ export default function ChatBox(): JSX.Element {
                   onChange: setMessage,
                   onSend: handleSend,
                   files:
-                    chatStore.tasks[chatStore.activeTaskId]?.attaches?.map(
-                      (f) => ({
-                        fileName: f.fileName,
-                        filePath: f.filePath,
-                      })
-                    ) || [],
-                  onFilesChange: (files) =>
-                    chatStore.setAttaches(
-                      chatStore.activeTaskId as string,
-                      files as any
-                    ),
+                    activeTask?.attaches?.map((f) => ({
+                      fileName: f.fileName,
+                      filePath: f.filePath,
+                    })) || [],
+                  onFilesChange: (files) => {
+                    if (!chatStore.activeTaskId) return;
+                    chatStore.setAttaches(chatStore.activeTaskId, files as any);
+                  },
                   onAddFile: handleFileSelect,
                   placeholder: t('chat.follow-up-placeholder'),
                   disabled: isInputDisabled,

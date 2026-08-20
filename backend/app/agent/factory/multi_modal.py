@@ -29,6 +29,7 @@ from app.agent.prompt import (
 )
 from app.agent.toolkit.audio_analysis_toolkit import AudioAnalysisToolkit
 from app.agent.toolkit.human_toolkit import HumanToolkit
+from app.agent.toolkit.memory_toolkit import add_memory_tools
 
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
@@ -199,6 +200,12 @@ def multi_modal_agent(
     tool_names = [
         name for name in ordered_tool_names if name in available_tool_names
     ]
+    add_memory_tools(
+        tools=tools,
+        tool_names=tool_names,
+        api_task_id=options.project_id,
+        agent_name=Agents.multi_modal_agent,
+    )
     system_message = MULTI_MODAL_SYS_PROMPT.format(
         platform_system=platform.system(),
         platform_machine=platform.machine(),

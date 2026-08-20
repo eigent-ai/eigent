@@ -60,11 +60,17 @@ from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.tools import get_mcp_tools, get_toolkits
 from app.hands.interface import IHands
 from app.memory import (
-    build_durable_context_for_task_lock,
+    build_durable_context_projection_for_task_lock,
     finalize_task_lock_run_memory,
 )
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
 from app.model.subscription_runtime import is_subscription_auth
+from app.run_journal.context_projection import (
+    build_project_execution_context_projection,
+    persist_context_projection_diagnostic,
+)
+from app.run_journal.runtime import get_default_run_journal
+from app.run_runtime.admission import activate_improve_admission
 from app.service.single_agent_service import single_agent_solve
 from app.service.task import (
     Action,
@@ -77,6 +83,7 @@ from app.service.task import (
     TaskLock,
     delete_task_lock,
     set_current_task_id,
+    write_file_event_payload,
 )
 from app.utils.agent_memory import (
     build_memory_context,
@@ -94,6 +101,20 @@ logger = logging.getLogger("chat_service")
 
 SUMMARY_TASK_NAME_MAX_LENGTH = 80
 SUMMARY_TASK_SUMMARY_MAX_LENGTH = 240
+
+
+async def _activate_improve_admission(
+    task_lock: TaskLock,
+    item: ActionImproveData,
+    *,
+    project_id: str,
+) -> bool:
+    return await activate_improve_admission(
+        task_lock,
+        item,
+        project_id=project_id,
+        logger=logger,
+    )
 
 
 def _truncate_summary_part(value: str, max_length: int) -> str:
@@ -424,23 +445,66 @@ def build_context_for_workforce(
 
     Prepends durable Project memory (from LocalMemoryStore) when available so
     Workforce recovers cross-restart context the same way Single Agent does
-    via _build_single_agent_context. The in-process conversation_history is
-    still appended afterward because it is the live state for the current
-    session and may contain turns not yet flushed to disk.
+    via _build_single_agent_context. Durable and in-process history are
+    alternative projections of the same facts; concatenating both duplicates
+    prior turns and gives two components ownership of conversation state.
     """
-    durable = build_durable_context_for_task_lock(
+    run_context = getattr(task_lock, "run_context", None)
+    canonical_execution = ""
+    execution_event_ids: tuple[str, ...] = ()
+    project_id = getattr(run_context, "project_id", None)
+    run_id = getattr(run_context, "run_id", None)
+    if isinstance(project_id, str) and isinstance(run_id, str):
+        try:
+            execution_projection = build_project_execution_context_projection(
+                get_default_run_journal(),
+                project_id=project_id,
+                current_run_id=run_id,
+            )
+            canonical_execution = execution_projection.text
+            execution_event_ids = execution_projection.source_event_ids
+        except Exception:
+            logger.warning(
+                "Canonical execution context unavailable; using Memory fallback",
+                extra={"project_id": project_id, "run_id": run_id},
+                exc_info=True,
+            )
+    memory_projection = build_durable_context_projection_for_task_lock(
         task_lock,
         mode="workforce_coordinator",
         current_user_prompt=task_content or "",
+        include_conversation=not bool(canonical_execution),
     )
+    durable = memory_projection.text if memory_projection is not None else None
     in_process = build_conversation_context(
         task_lock, header="=== CONVERSATION HISTORY ==="
     )
-    if durable and in_process:
-        return durable + "\n\n" + in_process
-    if durable:
-        return durable + "\n\n"
-    return in_process
+
+    def record_projection(projected_text: str) -> str:
+        if isinstance(project_id, str) and isinstance(run_id, str):
+            persist_context_projection_diagnostic(
+                get_default_run_journal(),
+                project_id=project_id,
+                run_id=run_id,
+                projected_text=projected_text,
+                source_event_ids=execution_event_ids,
+                source_memory_ids=(
+                    memory_projection.source_memory_ids
+                    if memory_projection is not None
+                    else ()
+                ),
+            )
+        return projected_text
+
+    durable_parts = [
+        part.strip()
+        for part in (durable, canonical_execution)
+        if isinstance(part, str) and part.strip()
+    ]
+    if durable_parts:
+        projected = "\n\n".join(durable_parts) + "\n\n"
+        return record_projection(projected)
+    return record_projection(in_process)
 
 
 @sync_step
@@ -466,8 +530,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     # Initialize task_lock attributes
     if not hasattr(task_lock, "conversation_history"):
         task_lock.conversation_history = []
-    if not hasattr(task_lock, "last_task_result"):
-        task_lock.last_task_result = ""
     if not hasattr(task_lock, "agent_memory_history"):
         task_lock.agent_memory_history = []
     if not hasattr(task_lock, "memory_summary"):
@@ -533,47 +595,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             },
         )
 
-        if await request.is_disconnected():
-            logger.warning("=" * 80)
-            logger.warning(
-                "[LIFECYCLE] CLIENT DISCONNECTED "
-                f"for project {options.project_id}"
-            )
-            logger.warning("=" * 80)
-            if workforce is not None:
-                logger.info(
-                    "[LIFECYCLE] Stopping workforce "
-                    "due to client disconnect, "
-                    "workforce._running="
-                    f"{workforce._running}"
-                )
-                if workforce._running:
-                    workforce.stop()
-                workforce.stop_gracefully()
-                logger.info(
-                    "[LIFECYCLE] Workforce stopped after client disconnect"
-                )
-            else:
-                logger.info("[LIFECYCLE] Workforce is None, no need to stop")
-            task_lock.status = Status.done
-            finalize_task_lock_run_memory(
-                task_lock,
-                state="cancelled",
-                final_result="<summary>Client disconnected</summary>Client disconnected",
-            )
-            try:
-                await delete_task_lock(task_lock.id)
-                logger.info(
-                    "[LIFECYCLE] Task lock deleted after client disconnect"
-                )
-            except Exception as e:
-                logger.error(f"Error deleting task lock on disconnect: {e}")
-            logger.info(
-                "[LIFECYCLE] Breaking out of "
-                "step_solve loop due to "
-                "client disconnect"
-            )
-            break
         try:
             item = await task_lock.get_queue()
         except Exception as e:
@@ -588,6 +609,14 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             )
             # Continue waiting instead of breaking on queue error
             continue
+
+        if isinstance(item, ActionImproveData):
+            if not await _activate_improve_admission(
+                task_lock,
+                item,
+                project_id=options.project_id,
+            ):
+                continue
 
         try:
             if item.action == Action.improve or start_event_loop:
@@ -1180,8 +1209,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 end_message = (
                     "<summary>Task stopped</summary>Task stopped by user"
                 )
-                task_lock.last_task_result = end_message
-
                 # Add to conversation history (like normal end does)
                 if camel_task is not None:
                     task_content: str = camel_task.content
@@ -1215,10 +1242,16 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 )
                 finalize_task_lock_run_memory(
                     task_lock,
-                    state="done",
+                    state="cancelled",
                     final_result=end_message,
                     summary=getattr(task_lock, "summary_task_content", ""),
                 )
+
+                from app.service.run_cancellation import (
+                    cancel_current_turn_durable,
+                )
+
+                await cancel_current_turn_durable(task_lock)
 
                 # Clear camel_task as well
                 # (workforce is cleared, so
@@ -1713,13 +1746,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             elif item.action == Action.deactivate_toolkit:
                 yield sse_json("deactivate_toolkit", item.data)
             elif item.action == Action.write_file:
-                yield sse_json(
-                    "write_file",
-                    {
-                        "file_path": item.data,
-                        "process_task_id": item.process_task_id,
-                    },
-                )
+                yield sse_json("write_file", write_file_event_payload(item))
             elif item.action == Action.ask:
                 yield sse_json("ask", item.data)
             elif item.action == Action.notice:
@@ -1884,8 +1911,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
                 task_lock.status = Status.done
 
-                task_lock.last_task_result = final_result
-
                 # Handle task content - use fallback if camel_task is None
                 if camel_task is not None:
                     task_content: str = camel_task.content
@@ -2042,6 +2067,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     state="cancelled",
                     final_result="<summary>Task stopped</summary>Task stopped by user",
                 )
+                from app.service.run_cancellation import (
+                    cancel_current_turn_durable,
+                )
+
+                await cancel_current_turn_durable(task_lock)
                 logger.info("[LIFECYCLE] Deleting task lock")
                 await delete_task_lock(task_lock.id)
                 logger.info(

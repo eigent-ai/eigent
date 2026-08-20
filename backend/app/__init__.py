@@ -73,7 +73,14 @@ api.add_middleware(
     allow_credentials=bool(_allowed_origins),
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Session-ID"],
+    expose_headers=[
+        "X-Session-ID",
+        "Accept-Ranges",
+        "Content-Disposition",
+        "Content-Length",
+        "Content-Range",
+        "Last-Modified",
+    ],
 )
 api.add_middleware(SecurityHeadersMiddleware)
 

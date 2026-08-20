@@ -15,6 +15,7 @@
 import tokenDarkIcon from '@/assets/custom/token-dark.svg';
 import tokenLightIcon from '@/assets/custom/token-light.svg';
 import { AnimatedTokenNumber } from '@/components/ChatBox/MessageItem/TokenUtils';
+import { CONTENT_HEADER_CLASS } from '@/components/Layout/ContentHeader';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -26,6 +27,8 @@ import { useTranslation } from 'react-i18next';
 export interface HeaderBoxProps {
   /** Total token count for the current project */
   totalTokens?: number;
+  /** Display-only identity for the active Project. */
+  projectName?: string | null;
   /** Optional extra class names for the outer container */
   className?: string;
   /** Reserve header height without controls or token count. */
@@ -34,6 +37,7 @@ export interface HeaderBoxProps {
 
 export function HeaderBox({
   totalTokens = 0,
+  projectName,
   className,
   empty = false,
 }: HeaderBoxProps) {
@@ -45,31 +49,27 @@ export function HeaderBox({
   );
   const toggleSessionPreview = usePageTabStore((s) => s.toggleSessionPreview);
   const tokenIcon = appearance === 'dark' ? tokenDarkIcon : tokenLightIcon;
-  const backToWorkspaceTooltip = t('layout.back-to-workspace-tooltip', {
-    defaultValue: 'Back to workspace',
+  const backTooltip = t('layout.back-tooltip', {
+    defaultValue: 'Back',
   });
-  // Own key (not the old file-preview one): the control's meaning changed, so
-  // stale translations must not carry over.
-  const windowPreviewTooltip = t('layout.toggle-window-preview-tooltip', {
-    defaultValue: 'Toggle window preview',
-  });
+  const windowPreviewTooltip = sessionPreviewOpen
+    ? t('layout.close-preview-tooltip', { defaultValue: 'Close preview' })
+    : t('layout.open-preview-tooltip', { defaultValue: 'Open preview' });
 
   if (empty) {
     return (
       <div
-        className={`flex h-[44px] w-full shrink-0 flex-row items-center justify-between px-3 ${className || ''}`}
+        className={cn(CONTENT_HEADER_CLASS, 'justify-between', className)}
         aria-hidden
       />
     );
   }
 
   return (
-    <div
-      className={`flex h-[44px] w-full flex-row items-center justify-between pl-3 pr-1.5 ${className || ''}`}
-    >
-      {/* Left: return to project workspace */}
-      <div className="flex items-center gap-2">
-        <TooltipSimple content={backToWorkspaceTooltip} variant="instant">
+    <div className={cn(CONTENT_HEADER_CLASS, 'justify-between', className)}>
+      {/* Left: return to workspace + display-only Project identity. */}
+      <div className="flex min-w-0 items-center gap-2">
+        <TooltipSimple content={backTooltip} variant="instant" side="bottom">
           <Button
             type="button"
             variant="ghost"
@@ -77,11 +77,19 @@ export function HeaderBox({
             buttonContent="icon-only"
             onClick={() => setActiveWorkspaceTab('workforce')}
             className="no-drag shrink-0 text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default"
-            aria-label={backToWorkspaceTooltip}
+            aria-label={backTooltip}
           >
             <ArrowLeft className="h-4 w-4" aria-hidden />
           </Button>
         </TooltipSimple>
+        {projectName ? (
+          <span
+            className="min-w-0 max-w-[200px] truncate text-body-sm font-semibold text-ds-text-neutral-default-default"
+            title={projectName}
+          >
+            {projectName}
+          </span>
+        ) : null}
       </div>
 
       {/* Right: project total token count + unified preview toggle */}
@@ -93,13 +101,25 @@ export function HeaderBox({
             <AnimatedTokenNumber value={totalTokens} />
           </span>
         </div>
-        <TooltipSimple content={windowPreviewTooltip} variant="instant">
+        <TooltipSimple
+          content={windowPreviewTooltip}
+          variant="instant"
+          side="bottom"
+        >
           <Button
             type="button"
             variant="ghost"
             size="sm"
             buttonContent="icon-only"
-            onClick={toggleSessionPreview}
+            onClick={(event) => {
+              const wasOpen = sessionPreviewOpen;
+              toggleSessionPreview();
+              // Closing leaves :focus on the ghost button, which keeps the
+              // hover/selected fill until the next click elsewhere.
+              if (wasOpen) {
+                event.currentTarget.blur();
+              }
+            }}
             className={cn(
               'no-drag shrink-0 text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default',
               sessionPreviewOpen &&

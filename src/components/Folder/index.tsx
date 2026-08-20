@@ -14,6 +14,10 @@
 
 import cursorIcon from '@/assets/icon/cursor.svg';
 import vsCodeIcon from '@/assets/icon/vs-code.svg';
+import {
+  CONTENT_HEADER_BORDER_CLASS,
+  CONTENT_HEADER_CLASS,
+} from '@/components/Layout/ContentHeader';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -23,8 +27,10 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Skeleton } from '@/components/ui/skeleton';
 import type { LucideIcon } from 'lucide-react';
 import {
+  AlertTriangle,
   ChevronDown,
   ChevronRight,
   CodeXml,
@@ -51,14 +57,16 @@ import {
   useRef,
   useState,
 } from 'react';
+import { CsvPreviewTable } from './CsvPreviewTable';
 import FolderComponent from './FolderComponent';
 
 import { fetchGet, getBaseURL } from '@/api/http';
 import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
+import { getSidePanelOutputFilesRevision } from '@/components/Session/SidePanel/sections/collectSidePanelOutputFiles';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import { useSelectedProjectTurn } from '@/hooks/useSelectedProjectTurn';
 import { useHost } from '@/host';
 import { filterVisibleAgentFiles } from '@/lib/agentFileFilters';
+import { loadFilePreview, toLocalPreviewUrl } from '@/lib/filePreviewLoader';
 import {
   deferInlineScriptsUntilLoad,
   injectFontStyles,
@@ -68,8 +76,18 @@ import {
   inlineLocalProjectImagePaths,
   toLocalFileUrl,
 } from '@/lib/htmlLocalAssets';
-import { containsDangerousContent } from '@/lib/htmlSanitization';
+import {
+  collectPreviewRemoteOrigins,
+  containsDangerousContent,
+  injectPreviewContentSecurityPolicy,
+  repairGeneratedReportBraces,
+} from '@/lib/htmlSanitization';
 import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
+import { cn } from '@/lib/utils';
+import {
+  formatFileSize,
+  type FilePreviewPayload,
+} from '@/shared/filePreviewContract';
 import { useAuthStore } from '@/store/authStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { useTranslation } from 'react-i18next';
@@ -381,6 +399,11 @@ export interface FileInfo {
   relativePath?: string;
   isRemote?: boolean;
   status?: FileTreeStatus;
+  size?: number;
+  modifiedAt?: number;
+  supportsRanges?: boolean;
+  mimeType?: string;
+  preview?: FilePreviewPayload;
 }
 
 type ProjectFetchTarget = {
@@ -829,7 +852,7 @@ export async function downloadFromUrl(
 
   const tryFetchAsBlob = async (): Promise<boolean> => {
     try {
-      const response = await fetch(trimmed, { credentials: 'include' });
+      const response = await fetch(trimmed, { credentials: 'same-origin' });
       if (!response.ok) return false;
       const blob = await response.blob();
       const filename =
@@ -868,6 +891,16 @@ export async function downloadFromUrl(
 export async function downloadOpenedFile(file: FileInfo): Promise<void> {
   if (file.isFolder || (!file.path && file.content === undefined)) return;
 
+  // A blocked preview must never fall back to fetch(...).blob(), because that
+  // would reintroduce an unbounded renderer allocation for the exact files the
+  // preview policy rejected. Let the browser/OS own the transfer instead.
+  if (file.preview?.kind === 'blocked') {
+    if (file.isRemote && file.path) {
+      window.open(file.path, '_blank', 'noopener,noreferrer');
+    }
+    return;
+  }
+
   const filename = file.name || 'download';
   const content = file.content;
 
@@ -900,18 +933,22 @@ export async function downloadOpenedFile(file: FileInfo): Promise<void> {
   await downloadFromUrl(file.path, filename);
 }
 
-export default function Folder({ data: _data }: { data?: Agent }) {
+interface FolderProps {
+  data?: Agent;
+  spaceId?: string;
+}
+
+export default function Folder({ data: _data, spaceId }: FolderProps) {
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
   const authStore = useAuthStore();
   const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
-  const activeProjectId = projectStore.activeProjectId;
-  const selectedTurn = useSelectedProjectTurn(activeProjectId);
+  const activeProjectId = spaceId ? null : projectStore.activeProjectId;
   const activeProjectMeta = useSpaceStore((s) =>
     activeProjectId ? s.getProjectMeta(activeProjectId) : null
   );
   const resolvedSpaceId =
-    activeProjectMeta?.spaceId || activeSpaceId || undefined;
+    spaceId || activeProjectMeta?.spaceId || activeSpaceId || undefined;
   const activeSpace = useSpaceStore((s) => {
     return resolvedSpaceId ? (s.spaces[resolvedSpaceId] ?? null) : null;
   });
@@ -928,6 +965,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   const { t } = useTranslation();
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
   const [loading, setLoading] = useState(false);
+  const [filesLoading, setFilesLoading] = useState(false);
   const [isShowSourceCode, setIsShowSourceCode] = useState(false);
   const [fileSearchQuery, setFileSearchQuery] = useState('');
   const [workingFolderPath, setWorkingFolderPath] = useState<string | null>(
@@ -957,17 +995,18 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   const hasFetchedRemote = useRef(false);
   const lastFetchKey = useRef<string>('');
   const priorFilePathsSnapshotRef = useRef<Set<string>>(new Set());
+  const previewRequestRef = useRef<AbortController | null>(null);
   const [fileTreeScope, setFileTreeScope] = useState<'all' | 'new'>('all');
   const [newFilePathsAccumulated, setNewFilePathsAccumulated] = useState<
     Set<string>
   >(() => new Set());
   const [isFileSidebarOpen, setIsFileSidebarOpen] = useState(true);
+  const hasNoFiles = fileGroups.every((group) => group.files.length === 0);
 
   const rememberSelectedFile = (file: FileInfo) => {
-    if (!selectedTurn.chatStore || !selectedTurn.taskId) return;
-    selectedTurn.chatStore
-      .getState()
-      .setSelectedFile(selectedTurn.taskId, file);
+    if (spaceId) return;
+    if (!chatStore?.activeTaskId) return;
+    chatStore.setSelectedFile(chatStore.activeTaskId, file);
   };
 
   const filteredFileTree = useMemo(
@@ -1000,8 +1039,6 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   }, [filteredFileTree, fileTreeScope, newFilePathsAccumulated]);
 
   const selectedFileChange = (file: FileInfo, isShowSourceCode?: boolean) => {
-    const isWebMode = !ipcRenderer?.invoke;
-
     if (file.type === 'zip') {
       // if file is remote, don't call reveal-in-folder
       if (file.isRemote) {
@@ -1015,125 +1052,37 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     if (file.isFolder) {
       return;
     }
+    previewRequestRef.current?.abort();
+    const controller = new AbortController();
+    previewRequestRef.current = controller;
     setSelectedFile(file);
     setLoading(true);
-    console.log('file', JSON.parse(JSON.stringify(file)));
-
-    if (file.isRemote && file.path?.startsWith('http')) {
-      if (isImageFile(file)) {
-        const loadRemoteImage = async () => {
-          try {
-            const content = await fetchRemoteFileAsDataUrl(file.path);
-            setSelectedFile({ ...file, content });
-            rememberSelectedFile(file);
-          } catch (error) {
-            console.error('Failed to load remote image:', error);
-            setSelectedFile({ ...file });
-            rememberSelectedFile(file);
-          } finally {
-            setLoading(false);
-          }
-        };
-        void loadRemoteImage();
-        return;
-      }
-
-      if (isAudioFile(file) || isVideoFile(file)) {
-        setSelectedFile({ ...file });
+    void loadFilePreview(file, {
+      ipcRenderer,
+      showSource: isShowSourceCode,
+      signal: controller.signal,
+    })
+      .then((loadedFile) => {
+        if (controller.signal.aborted) return;
+        setSelectedFile(loadedFile);
         rememberSelectedFile(file);
-        setLoading(false);
-        return;
-      }
-
-      if (!isWebMode && ipcRenderer) {
-        ipcRenderer
-          .invoke('open-file', file.type, file.path, isShowSourceCode)
-          .then((res: string) => {
-            setSelectedFile({ ...file, content: res });
-            rememberSelectedFile(file);
-            setLoading(false);
-          })
-          .catch((error: unknown) => {
-            console.error('open-file error:', error);
-            setLoading(false);
-          });
-        return;
-      }
-
-      const loadRemoteContent = async () => {
-        try {
-          const resp = await fetch(file.path);
-          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-          const contentType = resp.headers.get('content-type') || '';
-          let content: string;
-          if (file.type === 'pdf' || contentType.includes('application/pdf')) {
-            const blob = await resp.blob();
-            content = await new Promise<string>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onload = () => resolve(reader.result as string);
-              reader.onerror = reject;
-              reader.readAsDataURL(blob);
-            });
-          } else {
-            content = await resp.text();
-          }
-          setSelectedFile({ ...file, content });
-          rememberSelectedFile(file);
-        } catch (error) {
-          console.error('Failed to load remote file:', error);
-        } finally {
-          setLoading(false);
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          console.error('Failed to load file preview:', error);
         }
-      };
-      void loadRemoteContent();
-      return;
-    }
-
-    // For PDF files, use data URL instead of custom protocol
-    if (file.type === 'pdf') {
-      if (ipcRenderer) {
-        ipcRenderer
-          .invoke('read-file-dataurl', file.path)
-          .then((dataUrl: string) => {
-            setSelectedFile({ ...file, content: dataUrl });
-            rememberSelectedFile(file);
-            setLoading(false);
-          })
-          .catch((error: unknown) => {
-            console.error('read-file-dataurl error:', error);
-            setLoading(false);
-          });
-      } else {
-        setLoading(false);
-      }
-      return;
-    }
-
-    // For audio/video files, skip open-file — loaders handle reading themselves
-    if (isAudioFile(file) || isVideoFile(file)) {
-      setSelectedFile({ ...file });
-      rememberSelectedFile(file);
-      setLoading(false);
-      return;
-    }
-
-    // all other files call open-file interface, the backend handles download and parsing
-    if (ipcRenderer) {
-      ipcRenderer
-        .invoke('open-file', file.type, file.path, isShowSourceCode)
-        .then((res: string) => {
-          setSelectedFile({ ...file, content: res });
-          rememberSelectedFile(file);
-          setLoading(false);
-        })
-        .catch((error: unknown) => {
-          console.error('open-file error:', error);
-          setLoading(false);
-        });
-    } else {
-      setLoading(false);
-    }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
   };
+
+  useEffect(
+    () => () => {
+      previewRequestRef.current?.abort();
+    },
+    []
+  );
 
   const isShowSourceCodeChange = () => {
     // all files can reload content
@@ -1153,8 +1102,14 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     });
   };
 
-  const activeTaskId = selectedTurn.taskId ?? undefined;
-  const taskAssigning = selectedTurn.task?.taskAssigning;
+  const activeTaskId = spaceId
+    ? undefined
+    : (chatStore?.activeTaskId ?? undefined);
+  const activeTask = activeTaskId ? chatStore?.tasks[activeTaskId] : undefined;
+  const projectedFileRevision = useMemo(
+    () => getSidePanelOutputFilesRevision(activeTask),
+    [activeTask]
+  );
   const projectId = (activeProjectId as string) || activeTaskId || '';
   const fileSpaceId = resolvedSpaceId;
   const useBrainWorkspaceFiles = Boolean(fileSpaceId && activeSpace?.rootPath);
@@ -1196,17 +1151,11 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     .join(',');
   const projectFetchTargetsRef =
     useRef<ProjectFetchTarget[]>(projectFetchTargets);
-  const fetchKey = `${fileSpaceId || ''}|${useSpaceScopedRemoteFiles ? 'space' : 'project'}|${projectFetchKey}|${activeTaskId || ''}`;
+  const fetchKey = `${fileSpaceId || ''}|${useSpaceScopedRemoteFiles ? 'space' : 'project'}|${projectFetchKey}|${activeTaskId || ''}|${projectedFileRevision}`;
   const fileContextResetKey =
     useSpaceScopedRemoteFiles || useBrainWorkspaceFiles
       ? fileSpaceId
       : activeTaskId;
-  const taskRunning =
-    !!taskAssigning?.length &&
-    taskAssigning.some(
-      (agent) => agent.status === 'running' || agent.status === 'pending'
-    );
-
   // Reset state when the file context changes.
   useEffect(() => {
     hasFetchedRemote.current = false;
@@ -1231,7 +1180,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
         setWorkingFolderPath(activeSpace.rootPath);
         return;
       }
-      if (!authStore.email || !projectStore.activeProjectId) {
+      if (!authStore.email || !activeProjectId) {
         setWorkingFolderPath(null);
         return;
       }
@@ -1242,7 +1191,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       try {
         const folderPath = await electronAPI.getProjectFolderPath(
           authStore.email,
-          projectStore.activeProjectId as string,
+          activeProjectId,
           authStore.user_id
         );
         if (!cancelled) setWorkingFolderPath(folderPath || null);
@@ -1257,7 +1206,8 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   }, [
     activeSpace?.rootPath,
     authStore.email,
-    projectStore.activeProjectId,
+    authStore.user_id,
+    activeProjectId,
     electronAPI,
   ]);
 
@@ -1284,6 +1234,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       !projectFetchTargetsRef.current.length ||
       !authStore.email
     ) {
+      setFilesLoading(false);
       return;
     }
 
@@ -1332,7 +1283,6 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       if (
         !res.length ||
         !ipcRenderer ||
-        import.meta.env.VITE_USE_LOCAL_PROXY === 'true' ||
         useSpaceScopedRemoteFiles ||
         useBrainWorkspaceFiles
       ) {
@@ -1378,6 +1328,15 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                     ? `${target.name}/${relativePath}`
                     : relativePath,
                   isRemote: true,
+                  size:
+                    typeof item.size === 'number' && item.size >= 0
+                      ? item.size
+                      : undefined,
+                  modifiedAt:
+                    typeof item.modifiedAt === 'number'
+                      ? item.modifiedAt
+                      : undefined,
+                  supportsRanges: item.supportsRanges === true,
                 };
               });
             });
@@ -1439,7 +1398,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       setFileTree(tree);
       // Keep the old structure for compatibility
       setFileGroups((prev) => {
-        const chatStoreSelectedFile = selectedTurn.task?.selectedFile;
+        const chatStoreSelectedFile = activeTask?.selectedFile;
         if (chatStoreSelectedFile) {
           const file = findMatchingFile(
             nextVisibleFiles,
@@ -1466,17 +1425,9 @@ export default function Folder({ data: _data }: { data?: Agent }) {
 
     const shouldFetch =
       lastFetchKey.current !== fetchKey || !hasFetchedRemote.current;
-    let pollTimer: ReturnType<typeof setInterval> | null = null;
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     let inFlightController: AbortController | null = null;
     let inFlightMode: 'full' | 'merge' | null = null;
-
-    const activeProjectFetchTargets = () => {
-      const targets = projectFetchTargetsRef.current;
-      if (!taskRunning) return targets;
-      const activeTargets = targets.filter((target) => target.id === projectId);
-      return activeTargets.length ? activeTargets : targets.slice(0, 1);
-    };
 
     const runFileList = (
       targets = projectFetchTargetsRef.current,
@@ -1503,38 +1454,31 @@ export default function Folder({ data: _data }: { data?: Agent }) {
             inFlightController = null;
             inFlightMode = null;
           }
+          if (mode === 'full' && !cancelled) setFilesLoading(false);
         });
     };
 
     if (shouldFetch) {
+      setFilesLoading(true);
       debounceTimer = setTimeout(() => {
         lastFetchKey.current = fetchKey;
         runFileList(projectFetchTargetsRef.current, { merge: false });
       }, 120);
     }
 
-    if (taskRunning && isFileSidebarOpen) {
-      pollTimer = setInterval(() => {
-        runFileList(activeProjectFetchTargets(), { merge: true });
-      }, 5000);
-    }
-
     return () => {
       cancelled = true;
       if (debounceTimer) clearTimeout(debounceTimer);
-      if (pollTimer) clearInterval(pollTimer);
       inFlightController?.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     fetchKey,
-    taskRunning,
     projectId,
     fileSpaceId,
     activeTaskId,
     authStore.email,
     authStore.user_id,
-    isFileSidebarOpen,
     projectFetchKey,
     useBrainWorkspaceFiles,
     useSpaceScopedRemoteFiles,
@@ -1544,10 +1488,10 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     hasFetchedRemote.current = false;
   }, [projectId, activeTaskId]);
 
-  const selectedFilePath = selectedTurn.task?.selectedFile?.path;
+  const selectedFilePath = activeTask?.selectedFile?.path;
 
   useEffect(() => {
-    const chatStoreSelectedFile = selectedTurn.task?.selectedFile;
+    const chatStoreSelectedFile = activeTask?.selectedFile;
     if (chatStoreSelectedFile && fileGroups[0]?.files) {
       const file = findMatchingFile(fileGroups[0].files, chatStoreSelectedFile);
       if (file) {
@@ -1562,7 +1506,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       setSelectedFile(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedFilePath, fileGroups, isShowSourceCode, selectedTurn.taskId]);
+  }, [selectedFilePath, fileGroups, isShowSourceCode, activeTaskId]);
 
   const fileBreadcrumbSegments = useMemo(() => {
     if (!selectedFile) return [];
@@ -1594,12 +1538,12 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       let folderPath = activeSpace?.rootPath || '';
       if (
         !folderPath &&
-        projectStore.activeProjectId &&
+        activeProjectId &&
         typeof electronAPI.getProjectFolderPath === 'function'
       ) {
         folderPath = await electronAPI.getProjectFolderPath(
           authStore.email,
-          projectStore.activeProjectId,
+          activeProjectId,
           authStore.user_id
         );
       }
@@ -1638,7 +1582,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
       {/* header */}
-      <div className="border-b-1 flex w-full shrink-0 items-center gap-2 border-x-0 border-t-0 border-solid border-ds-border-neutral-subtle-default p-2">
+      <div className={cn(CONTENT_HEADER_CLASS, CONTENT_HEADER_BORDER_CLASS)}>
         <div className="flex min-w-0 max-w-[min(20rem,45%)] items-center">
           <Button
             type="button"
@@ -1800,16 +1744,34 @@ export default function Folder({ data: _data }: { data?: Agent }) {
             </div>
             <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto">
               <div className="h-full pl-1.5">
-                <FileTree
-                  node={sidebarFileTree}
-                  selectedFile={selectedFile}
-                  expandedFolders={expandedFolders}
-                  onToggleFolder={toggleFolder}
-                  onSelectFile={(file) =>
-                    selectedFileChange(file, isShowSourceCode)
-                  }
-                  isShowSourceCode={isShowSourceCode}
-                />
+                {filesLoading && hasNoFiles ? (
+                  <div
+                    role="status"
+                    aria-label="Loading files"
+                    className="space-y-3 px-2 py-3"
+                  >
+                    {Array.from({ length: 7 }, (_, index) => (
+                      <Skeleton
+                        key={index}
+                        className={cn(
+                          'h-3',
+                          index % 3 === 0 ? 'w-40' : 'ml-4 w-32'
+                        )}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <FileTree
+                    node={sidebarFileTree}
+                    selectedFile={selectedFile}
+                    expandedFolders={expandedFolders}
+                    onToggleFolder={toggleFolder}
+                    onSelectFile={(file) =>
+                      selectedFileChange(file, isShowSourceCode)
+                    }
+                    isShowSourceCode={isShowSourceCode}
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -1823,17 +1785,45 @@ export default function Folder({ data: _data }: { data?: Agent }) {
           breadcrumbSegments={fileBreadcrumbSegments}
           projectFiles={fileGroups[0]?.files || []}
           surfaceClassName="bg-ds-bg-neutral-subtle-default"
+          emptyState={
+            filesLoading && hasNoFiles ? (
+              <div className="flex h-full min-h-64 w-full flex-1 flex-col gap-3 p-4">
+                <Skeleton className="h-3 w-48" />
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-[82%]" />
+                <Skeleton className="h-3 w-[68%]" />
+              </div>
+            ) : undefined
+          }
           onRevealFile={() => {
             if (!selectedFile) return;
             // if file is remote, don't call reveal-in-folder
             if (selectedFile.isRemote) {
+              if (selectedFile.preview?.kind === 'blocked') {
+                window.open(selectedFile.path, '_blank', 'noopener,noreferrer');
+                return;
+              }
               void downloadFromUrl(selectedFile.path, selectedFile.name);
               return;
             }
             ipcRenderer?.invoke('reveal-in-folder', selectedFile.path);
           }}
+          onOpenExternalFile={() => {
+            if (!selectedFile) return;
+            if (selectedFile.isRemote) {
+              window.open(selectedFile.path, '_blank', 'noopener,noreferrer');
+              return;
+            }
+            void ipcRenderer?.invoke('open-local-file', selectedFile.path);
+          }}
           onDownloadFile={() => {
             if (!selectedFile || selectedFile.isFolder) return;
+            if (selectedFile.preview?.kind === 'blocked') {
+              if (selectedFile.isRemote) {
+                window.open(selectedFile.path, '_blank', 'noopener,noreferrer');
+              }
+              return;
+            }
             void downloadOpenedFile(selectedFile);
           }}
           onToggleSourceCode={() => isShowSourceCodeChange()}
@@ -1841,46 +1831,6 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       </div>
     </div>
   );
-}
-
-function toFileUrl(filePath: string): string {
-  if (
-    filePath.startsWith('file://') ||
-    filePath.startsWith('localfile://') ||
-    filePath.startsWith('http://') ||
-    filePath.startsWith('https://') ||
-    filePath.startsWith('blob:') ||
-    filePath.startsWith('data:')
-  ) {
-    return filePath;
-  }
-
-  const normalizedPath = filePath.replace(/\\/g, '/');
-
-  // Windows UNC path: //server/share/path/to/file
-  if (normalizedPath.startsWith('//')) {
-    const withoutLeadingSlashes = normalizedPath.replace(/^\/+/, '');
-    const [host, ...pathSegments] = withoutLeadingSlashes.split('/');
-    const encodedPath = pathSegments.map(encodeURIComponent).join('/');
-    return encodedPath ? `file://${host}/${encodedPath}` : `file://${host}/`;
-  }
-
-  const hasWindowsDrive = /^[A-Za-z]:\//.test(normalizedPath);
-  if (hasWindowsDrive) {
-    const [drive, ...pathSegments] = normalizedPath.split('/');
-    const encodedPath = pathSegments.map(encodeURIComponent).join('/');
-    return encodedPath
-      ? `file:///${drive}/${encodedPath}`
-      : `file:///${drive}/`;
-  }
-
-  const encodedPath = normalizedPath
-    .split('/')
-    .map((segment, index) =>
-      index === 0 && segment === '' ? '' : encodeURIComponent(segment)
-    )
-    .join('/');
-  return `file://${encodedPath}`;
 }
 
 function ImageLoader({ selectedFile }: { selectedFile: FileInfo }) {
@@ -1912,8 +1862,12 @@ function ImageLoader({ selectedFile }: { selectedFile: FileInfo }) {
         cancelled = true;
       };
     }
-    // Use file:// source so Chromium can stream/seek large media files.
-    setSrc(toFileUrl(selectedFile.path));
+    // The privileged protocol streams workspace-scoped files without exposing
+    // a raw file:// URL, which Chromium blocks from the renderer origin.
+    setSrc(
+      (selectedFile.content as string | undefined) ||
+        toLocalPreviewUrl(selectedFile.path)
+    );
     return () => {
       cancelled = true;
     };
@@ -1946,8 +1900,10 @@ function AudioLoader({ selectedFile }: { selectedFile: FileInfo }) {
       setSrc(selectedFile.content || selectedFile.path);
       return;
     }
-    // Use file:// source so Chromium can stream/seek large media files.
-    setSrc(toFileUrl(selectedFile.path));
+    setSrc(
+      (selectedFile.content as string | undefined) ||
+        toLocalPreviewUrl(selectedFile.path)
+    );
   }, [selectedFile]);
 
   return (
@@ -1976,8 +1932,10 @@ function VideoLoader({ selectedFile }: { selectedFile: FileInfo }) {
       setSrc(selectedFile.content || selectedFile.path);
       return;
     }
-    // Use file:// source so Chromium can stream/seek large media files.
-    setSrc(toFileUrl(selectedFile.path));
+    setSrc(
+      (selectedFile.content as string | undefined) ||
+        toLocalPreviewUrl(selectedFile.path)
+    );
   }, [selectedFile]);
 
   return (
@@ -2040,99 +1998,6 @@ function resolveRelativePath(basePath: string, relativePath: string): string {
   }
 
   return baseParts.join('/');
-}
-
-function hasScriptSrcAttribute(script: HTMLScriptElement): boolean {
-  return script.hasAttribute('src');
-}
-
-function isClassicScriptElement(script: HTMLScriptElement): boolean {
-  const rawType = script.getAttribute('type')?.trim() ?? '';
-  const normalizedType = rawType.split(';', 1)[0].trim().toLowerCase();
-  if (!normalizedType) return true;
-
-  if (normalizedType === 'module' || normalizedType === 'application/ld+json') {
-    return false;
-  }
-
-  return new Set([
-    'text/javascript',
-    'application/javascript',
-    'text/ecmascript',
-    'application/ecmascript',
-    'application/x-javascript',
-    'text/x-javascript',
-    'application/x-ecmascript',
-    'text/x-ecmascript',
-    'text/jscript',
-    'text/livescript',
-  ]).has(normalizedType);
-}
-
-function canParseClassicScript(script: string): boolean {
-  try {
-    // Parse only. The generated function is never executed.
-    new Function(script);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function normalizeGeneratedDoubleBraces(source: string): string {
-  return source.replace(/\{\{/g, '{').replace(/\}\}/g, '}');
-}
-
-function repairGeneratedReportBraces(html: string): string {
-  if (!html.includes('{{') && !html.includes('}}')) {
-    return html;
-  }
-
-  if (typeof DOMParser === 'undefined') {
-    return html;
-  }
-
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, 'text/html');
-  const doctype = html.match(/<!doctype[^>]*>/i)?.[0] || '';
-  let repaired = false;
-
-  doc.querySelectorAll('style').forEach((style) => {
-    const content = style.textContent ?? '';
-    if (!content.includes('{{') && !content.includes('}}')) {
-      return;
-    }
-
-    const normalizedContent = normalizeGeneratedDoubleBraces(content);
-    if (normalizedContent !== content) {
-      style.textContent = normalizedContent;
-      repaired = true;
-    }
-  });
-
-  doc.querySelectorAll('script').forEach((script) => {
-    if (hasScriptSrcAttribute(script) || !isClassicScriptElement(script)) {
-      return;
-    }
-
-    const content = script.textContent ?? '';
-    if (!content.includes('{{') && !content.includes('}}')) {
-      return;
-    }
-
-    const normalizedContent = normalizeGeneratedDoubleBraces(content);
-    if (
-      !canParseClassicScript(content) &&
-      canParseClassicScript(normalizedContent)
-    ) {
-      script.textContent = normalizedContent;
-      repaired = true;
-    }
-  });
-
-  return repaired
-    ? `${doctype}${doc.documentElement?.outerHTML || html}`
-    : html;
 }
 
 function getUrlBasename(url: string): string {
@@ -2657,14 +2522,26 @@ function HtmlRenderer({
   projectFiles: FileInfo[];
 }) {
   const [processedHtml, setProcessedHtml] = useState<string>('');
+  const [authorizedRemotePreviewPath, setAuthorizedRemotePreviewPath] =
+    useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const host = useHost();
   const ipcRenderer = host?.ipcRenderer;
   const electronAPI = host?.electronAPI;
+  const remoteOrigins = useMemo(
+    () => collectPreviewRemoteOrigins(selectedFile.content || ''),
+    [selectedFile.content]
+  );
+  const remoteContentAllowed =
+    authorizedRemotePreviewPath === selectedFile.path;
 
   useEffect(() => {
     const processHtml = async () => {
       if (!selectedFile.content) {
+        setProcessedHtml('');
+        return;
+      }
+      if (remoteOrigins.length && !remoteContentAllowed) {
         setProcessedHtml('');
         return;
       }
@@ -2717,8 +2594,14 @@ function HtmlRenderer({
         );
         const htmlWithStorageShim =
           injectSandboxStorageShim(htmlWithInlineImages);
+        const htmlWithPreviewFonts = remoteContentAllowed
+          ? deferInlineScriptsUntilLoad(htmlWithStorageShim)
+          : injectFontStyles(deferInlineScriptsUntilLoad(htmlWithStorageShim));
         setProcessedHtml(
-          injectFontStyles(deferInlineScriptsUntilLoad(htmlWithStorageShim))
+          injectPreviewContentSecurityPolicy(
+            htmlWithPreviewFonts,
+            remoteOrigins
+          )
         );
         return;
       }
@@ -2811,16 +2694,37 @@ function HtmlRenderer({
       const htmlWithDeferredScripts = deferInlineScriptsUntilLoad(
         injectSandboxStorageShim(processedHtmlContent)
       );
+      const htmlWithPreviewFonts = remoteContentAllowed
+        ? htmlWithDeferredScripts
+        : injectFontStyles(htmlWithDeferredScripts);
 
-      // Set the processed HTML with font styles - iframe sandbox provides security
-      setProcessedHtml(injectFontStyles(htmlWithDeferredScripts));
+      // Authorized remote reports retain their declared fonts; offline reports
+      // keep Eigent's deterministic system-font fallback.
+      setProcessedHtml(
+        injectPreviewContentSecurityPolicy(htmlWithPreviewFonts, remoteOrigins)
+      );
     };
 
     processHtml().catch((error) => {
       console.error('[HtmlRenderer] Failed to process HTML:', error);
-      setProcessedHtml(injectFontStyles(selectedFile.content || ''));
+      const fallbackHtml = remoteContentAllowed
+        ? selectedFile.content || ''
+        : injectFontStyles(selectedFile.content || '');
+      setProcessedHtml(
+        injectPreviewContentSecurityPolicy(
+          fallbackHtml,
+          remoteContentAllowed ? remoteOrigins : []
+        )
+      );
     });
-  }, [selectedFile, projectFiles, ipcRenderer, electronAPI]);
+  }, [
+    selectedFile,
+    projectFiles,
+    ipcRenderer,
+    electronAPI,
+    remoteContentAllowed,
+    remoteOrigins,
+  ]);
 
   // Zoom state and controls
   const [zoom, setZoom] = useState(100);
@@ -2837,6 +2741,49 @@ function HtmlRenderer({
       setZoom((prev) => Math.min(Math.max(prev + delta, 50), 200));
     }
   };
+
+  if (remoteOrigins.length && !remoteContentAllowed) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-code-surface p-6">
+        <div className="max-w-xl rounded-2xl border border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default p-5 shadow-sm">
+          <div className="flex items-start gap-3">
+            <AlertTriangle
+              className="mt-0.5 h-5 w-5 shrink-0 text-ds-icon-warning-default-default"
+              aria-hidden
+            />
+            <div className="min-w-0">
+              <h3 className="text-body-md font-bold">
+                This HTML uses external content
+              </h3>
+              <p className="mt-1 text-body-sm text-ds-text-neutral-muted-default">
+                Loading it gives remote code access to this report&apos;s
+                rendered content. Access applies only to this preview session.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {remoteOrigins.map((origin) => (
+                  <code
+                    key={origin}
+                    className="rounded-md bg-ds-bg-neutral-default-default px-2 py-1 text-body-xs"
+                  >
+                    {origin}
+                  </code>
+                ))}
+              </div>
+              <Button
+                type="button"
+                className="mt-4"
+                onClick={() =>
+                  setAuthorizedRemotePreviewPath(selectedFile.path)
+                }
+              >
+                Load external content
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (selectedFile.content && !processedHtml) {
     return (
@@ -2862,7 +2809,7 @@ function HtmlRenderer({
         onWheel={handleWheel}
       >
         <div
-          className="h-full origin-top-left transition-transform duration-150"
+          className="h-full origin-top-left transition-transform duration-150 motion-reduce:transition-none"
           style={{
             transform: `scale(${zoom / 100})`,
             width: `${10000 / zoom}%`,
@@ -2909,12 +2856,76 @@ export interface FileViewerPanelProps {
   onBreadcrumbSegmentClick?: (index: number) => void;
   /** Download button. */
   onDownloadFile: () => void;
+  /** Open an oversized or unsupported file with the host system. */
+  onOpenExternalFile?: () => void;
   /** Toggle the source-code view. */
   onToggleSourceCode: () => void;
   /** Extra controls rendered at the end of the header row (e.g. a close button). */
   headerActionsExtra?: React.ReactNode;
   /** Replaces the default placeholder shown when no file is selected. */
   emptyState?: React.ReactNode;
+}
+
+function TruncatedPreviewNotice({ file }: { file: FileInfo }) {
+  if (file.preview?.kind !== 'truncated-text') return null;
+  return (
+    <div className="mb-2 rounded-lg bg-ds-bg-neutral-subtle-default px-3 py-2 text-body-xs text-ds-text-neutral-muted-default">
+      Previewing {formatFileSize(file.preview.bytesRead)}
+      {file.preview.totalBytes !== null
+        ? ` of ${formatFileSize(file.preview.totalBytes)}`
+        : ''}
+      . The complete file was not loaded.
+    </div>
+  );
+}
+
+function BlockedPreviewPlaceholder({
+  file,
+  onRevealFile,
+  onDownloadFile,
+}: {
+  file: FileInfo;
+  onRevealFile: () => void;
+  onDownloadFile: () => void;
+}) {
+  if (file.preview?.kind !== 'blocked') return null;
+  const reason =
+    file.preview.reason === 'too-large'
+      ? 'This file exceeds the safe in-app preview limit.'
+      : file.preview.reason === 'metadata-unavailable'
+        ? 'Eigent could not verify the file size, so automatic preview was blocked.'
+        : 'This file type cannot be safely previewed in this environment.';
+  return (
+    <div className="flex h-full min-h-64 w-full items-center justify-center px-6 py-10">
+      <div className="flex max-w-md flex-col items-center gap-3 text-center">
+        <AlertTriangle className="size-10 text-ds-icon-neutral-muted-default" />
+        <div>
+          <p className="m-0 text-body-md font-semibold text-ds-text-neutral-default-default">
+            Preview not loaded
+          </p>
+          <p className="mt-1 text-body-sm text-ds-text-neutral-muted-default">
+            {reason}
+          </p>
+        </div>
+        <div className="text-body-xs text-ds-text-neutral-muted-default">
+          File size: {formatFileSize(file.preview.size)}
+          {file.preview.limit !== null
+            ? ` · Preview limit: ${formatFileSize(file.preview.limit)}`
+            : ''}
+        </div>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <Button type="button" variant="secondary" onClick={onRevealFile}>
+            Open externally
+          </Button>
+          {file.isRemote ? (
+            <Button type="button" variant="ghost" onClick={onDownloadFile}>
+              Download
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -2934,6 +2945,7 @@ export function FileViewerPanel({
   onRevealFile,
   onBreadcrumbSegmentClick,
   onDownloadFile,
+  onOpenExternalFile,
   onToggleSourceCode,
   headerActionsExtra,
   emptyState,
@@ -3004,17 +3016,21 @@ export function FileViewerPanel({
             </nav>
           </div>
           <div className="flex flex-shrink-0 items-center gap-0.5">
-            <Button
-              size="icon"
-              variant="ghost"
-              type="button"
-              aria-label={t('folder.download-file', {
-                defaultValue: 'Download file',
-              })}
-              onClick={onDownloadFile}
-            >
-              <Download className="h-4 w-4 text-ds-icon-neutral-muted-default" />
-            </Button>
+            {!(
+              selectedFile.preview?.kind === 'blocked' && !selectedFile.isRemote
+            ) ? (
+              <Button
+                size="icon"
+                variant="ghost"
+                type="button"
+                aria-label={t('folder.download-file', {
+                  defaultValue: 'Download file',
+                })}
+                onClick={onDownloadFile}
+              >
+                <Download className="h-4 w-4 text-ds-icon-neutral-muted-default" />
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="ghost"
@@ -3045,17 +3061,28 @@ export function FileViewerPanel({
         >
           {selectedFile ? (
             !loading ? (
-              selectedFile.type === 'md' && !isShowSourceCode ? (
-                <div className="prose prose-sm max-w-none">
-                  <MarkDown
-                    content={selectedFile.content || ''}
-                    enableTypewriter={false}
-                    contentBasePath={
-                      selectedFile.isRemote
-                        ? null
-                        : getDirPath(selectedFile.path)
-                    }
-                  />
+              selectedFile.preview?.kind === 'blocked' ? (
+                <BlockedPreviewPlaceholder
+                  file={selectedFile}
+                  onRevealFile={onOpenExternalFile || onRevealFile}
+                  onDownloadFile={onDownloadFile}
+                />
+              ) : selectedFile.preview?.kind === 'csv' ? (
+                <CsvPreviewTable preview={selectedFile.preview} />
+              ) : selectedFile.type === 'md' && !isShowSourceCode ? (
+                <div className="max-w-none">
+                  <TruncatedPreviewNotice file={selectedFile} />
+                  <div className="prose prose-sm max-w-none">
+                    <MarkDown
+                      content={selectedFile.content || ''}
+                      enableTypewriter={false}
+                      contentBasePath={
+                        selectedFile.isRemote
+                          ? null
+                          : getDirPath(selectedFile.path)
+                      }
+                    />
+                  </div>
                 </div>
               ) : selectedFile.type === 'pdf' ? (
                 <iframe
@@ -3063,13 +3090,19 @@ export function FileViewerPanel({
                   className="h-full w-full border-0"
                   title={selectedFile.name}
                 />
-              ) : ['csv', 'doc', 'docx', 'pptx', 'xlsx'].includes(
+              ) : ['doc', 'docx', 'pptx', 'xlsx'].includes(
                   selectedFile.type
                 ) ? (
                 <FolderComponent selectedFile={selectedFile} />
               ) : selectedFile.type === 'html' ? (
-                isShowSourceCode ? (
-                  <>{selectedFile.content}</>
+                isShowSourceCode ||
+                selectedFile.preview?.kind === 'truncated-text' ? (
+                  <div>
+                    <TruncatedPreviewNotice file={selectedFile} />
+                    <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-sm text-ds-text-neutral-default-default">
+                      {selectedFile.content}
+                    </pre>
+                  </div>
                 ) : (
                   <HtmlRenderer
                     selectedFile={selectedFile}
@@ -3098,9 +3131,12 @@ export function FileViewerPanel({
                   <ImageLoader selectedFile={selectedFile} />
                 </div>
               ) : (
-                <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-sm text-ds-text-neutral-default-default">
-                  {selectedFile.content}
-                </pre>
+                <div>
+                  <TruncatedPreviewNotice file={selectedFile} />
+                  <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-sm text-ds-text-neutral-default-default">
+                    {selectedFile.content}
+                  </pre>
+                </div>
               )
             ) : (
               <div className="flex h-full w-full items-center justify-center">

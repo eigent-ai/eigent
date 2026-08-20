@@ -24,8 +24,8 @@ import { cn } from '@/lib/utils';
 import type { TriggerInput } from '@/types';
 import {
   ArrowRight,
+  Cable,
   FileText,
-  Hammer,
   Image,
   Paperclip,
   UploadCloud,
@@ -35,7 +35,9 @@ import {
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { BoxHeaderDisplay } from './BoxHeader';
 import { RichChatInput } from './RichChatInput';
+import type { BottomBoxHeaderContent } from './types';
 
 /**
  * File attachment object
@@ -59,6 +61,10 @@ export interface InputboxProps {
   onSend?: () => void;
   /** Array of file attachments */
   files?: FileAttachment[];
+  /** Render attachment chips inside the input surface (layer 2). */
+  showFileAttachments?: boolean;
+  /** Input-required question, details, and non-file context (layer 1). */
+  header?: BottomBoxHeaderContent;
   /** Callback when files are modified */
   onFilesChange?: (files: FileAttachment[]) => void;
   /** Callback when add file button is clicked */
@@ -94,14 +100,11 @@ export interface InputboxProps {
 /**
  * Inputbox Component
  *
- * A multi-state input component with two visual states:
- * - **Default**: Empty state with placeholder text and disabled send button
- * - **Focus/Input**: Active state with content, file attachments, and active send button
- *
- * Features:
- * - Auto-expanding rich text input (links + #skills, up to 200px height)
- * - File attachment display (shows up to 5 files + count indicator)
- * - Action buttons (add file on left, send on right)
+ * A multi-state input component with four stacked layers:
+ * - **Layer 1**: Input-required question / details (when provided)
+ * - **Layer 2**: File attachment chips (original design, up to 5 + overflow)
+ * - **Layer 3**: Auto-expanding rich text input
+ * - **Layer 4**: Action buttons (attach, connectors, skills, send)
  * - Send button changes color based on content (gray when empty, green when has content)
  * - Arrow icon rotates when there's content
  * - Supports Enter to send, Shift+Enter for new line
@@ -135,6 +138,8 @@ export const Inputbox = ({
   onChange,
   onSend,
   files = [],
+  showFileAttachments = true,
+  header,
   onFilesChange,
   onAddFile,
   placeholder,
@@ -321,6 +326,7 @@ export const Inputbox = ({
 
   return (
     <div
+      data-bottom-box-input-surface
       className={cn(
         'relative flex w-full flex-col items-start rounded-3xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default p-3 transition-colors',
         (isFocused || hasContent) &&
@@ -342,8 +348,10 @@ export const Inputbox = ({
           </div>
         </div>
       )}
+      {/* Layer 1: Input-required question / details */}
+      {header && <BoxHeaderDisplay {...header} className="px-0 pb-2 pt-0" />}
       {/* Layer 2: File attachments (only show if has files) */}
-      {files.length > 0 && (
+      {showFileAttachments && files.length > 0 && (
         <div className="relative box-border flex w-full flex-wrap items-start gap-1 pb-2">
           {visibleFiles.map((file) => {
             const isHovered = hoveredFilePath === file.filePath;
@@ -381,14 +389,14 @@ export const Inputbox = ({
                 </a>
 
                 {/* File Name */}
-                <p
+                <span
                   className={cn(
-                    "relative my-0 min-h-px min-w-px flex-1 overflow-hidden overflow-ellipsis whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default"
+                    "relative block min-h-px min-w-px flex-1 overflow-hidden overflow-ellipsis whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default"
                   )}
                   title={file.fileName}
                 >
                   {file.fileName}
-                </p>
+                </span>
               </div>
             );
           })}
@@ -409,9 +417,9 @@ export const Inputbox = ({
                     e.stopPropagation();
                   }}
                 >
-                  <p className="my-0 whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default">
+                  <span className="block whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default">
                     {remainingCount}+
-                  </p>
+                  </span>
                 </Button>
               </PopoverTrigger>
               <PopoverContent
@@ -457,9 +465,9 @@ export const Inputbox = ({
                             getFileIcon(file.fileName)
                           )}
                         </a>
-                        <p className="my-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default">
+                        <span className="block flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default">
                           {file.fileName}
-                        </p>
+                        </span>
                       </div>
                     );
                   })}
@@ -471,7 +479,10 @@ export const Inputbox = ({
       )}
 
       {/* Layer 3: Text input area */}
-      <div className="relative flex w-full flex-1 items-start justify-center gap-2.5 pb-3">
+      <div
+        data-text-input
+        className="relative flex w-full flex-1 items-start justify-center gap-2.5 pb-3"
+      >
         <RichChatInput
           ref={textareaRef as React.RefObject<HTMLDivElement>}
           value={value}
@@ -502,7 +513,10 @@ export const Inputbox = ({
       </div>
 
       {/* Layer 4: Action buttons */}
-      <div className="flex w-full flex-wrap items-center justify-between gap-y-2">
+      <div
+        data-input-actions
+        className="flex w-full flex-wrap items-center justify-between gap-y-2"
+      >
         {/* Left: add files/photos + connector picker + skill picker */}
         <div className="flex min-w-0 items-center gap-2">
           <TooltipSimple content="Attach" side="top">
@@ -546,7 +560,7 @@ export const Inputbox = ({
                 )}
                 onClick={onToggleConnectorPanel}
               >
-                <Hammer />
+                <Cable />
               </Button>
             </TooltipSimple>
           )}

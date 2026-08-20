@@ -100,19 +100,19 @@ describe('PreviewPanel', () => {
   it('opens on the chooser tab listing the available content kinds', () => {
     renderPanel();
     expect(screen.getByRole('tab', { name: 'New tab' })).toBeInTheDocument();
-    // Vertical options (test i18n echoes the key, not the label).
-    for (const kind of ['browser', 'file', 'review', 'terminal']) {
+    // Vertical options use the same product copy users see in the chooser.
+    for (const label of ['Browser', 'Files', 'Review', 'Terminal']) {
       expect(
         screen.getByRole('button', {
-          name: new RegExp(`preview-kind-${kind}\\b`),
+          name: new RegExp(`^${label}\\b`),
         })
       ).toBeInTheDocument();
     }
-    // Canvas remains reserved until a later version.
-    for (const kind of ['canvas']) {
+    // Reserved kinds stay hidden from the chooser until a later version.
+    for (const label of ['Canvas']) {
       expect(
         screen.queryByRole('button', {
-          name: new RegExp(`preview-kind-${kind}\\b`),
+          name: new RegExp(`^${label}\\b`),
         })
       ).not.toBeInTheDocument();
     }
@@ -131,9 +131,7 @@ describe('PreviewPanel', () => {
     ];
     renderPanel();
 
-    expect(
-      screen.getByText('layout.preview-chooser-project-title')
-    ).toBeInTheDocument();
+    expect(screen.getByText('From this project')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Start dev server/ }));
 
     const slice = previewSlice();
@@ -152,13 +150,11 @@ describe('PreviewPanel', () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await user.click(
-      screen.getByRole('button', { name: /preview-kind-browser\b/ })
-    );
+    await user.click(screen.getByRole('button', { name: /^Browser\b/ }));
     expect(activeType()).toBe('browser');
     // Address bar of the browser tab is now shown.
     expect(
-      screen.getByRole('textbox', { name: 'layout.browser-url-placeholder' })
+      screen.getByRole('textbox', { name: 'Enter a URL' })
     ).toBeInTheDocument();
   });
 
@@ -204,9 +200,7 @@ describe('PreviewPanel', () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await user.click(
-      screen.getByRole('button', { name: 'layout.add-preview-tab' })
-    );
+    await user.click(screen.getByRole('button', { name: 'New tab' }));
     expect(screen.getAllByRole('tab', { name: 'New tab' })).toHaveLength(2);
     expect(activeType()).toBe('chooser');
   });
@@ -242,15 +236,9 @@ describe('PreviewPanel', () => {
 
     try {
       renderPanel();
-      await user.click(
-        screen.getByRole('button', { name: 'layout.browser-back' })
-      );
-      await user.click(
-        screen.getByRole('button', { name: 'layout.browser-forward' })
-      );
-      await user.click(
-        screen.getByRole('button', { name: 'layout.browser-reload' })
-      );
+      await user.click(screen.getByRole('button', { name: 'Back' }));
+      await user.click(screen.getByRole('button', { name: 'Forward' }));
+      await user.click(screen.getByRole('button', { name: 'Reload' }));
 
       expect(goBack).toHaveBeenCalled();
       expect(goForward).toHaveBeenCalled();
@@ -275,9 +263,7 @@ describe('PreviewPanel', () => {
     );
 
     renderPanel();
-    await user.click(
-      screen.getByRole('button', { name: 'layout.browser-open-external' })
-    );
+    await user.click(screen.getByRole('button', { name: 'Open externally' }));
 
     expect(openExternal).toHaveBeenCalledWith('http://localhost:3000/');
   });
@@ -286,9 +272,7 @@ describe('PreviewPanel', () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await user.click(
-      screen.getByRole('button', { name: 'layout.close-preview-tab' })
-    );
+    await user.click(screen.getByRole('button', { name: 'Close tab' }));
 
     expect(previewSlice()).toMatchObject({
       open: false,

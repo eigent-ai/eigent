@@ -244,6 +244,178 @@ class TestAgentFactoryFunctions:
         assert task_config["stream"] is True
         assert browser_config["parallel_tool_calls"] is False
 
+    def test_environment_effort_overrides_untrusted_model_config(
+        self, sample_chat_data
+    ):
+        options = Chat(
+            **{
+                **sample_chat_data,
+                "model_config_dict": {"reasoning_effort": "low"},
+            }
+        )
+        mock_task_lock = MagicMock()
+        mock_task_lock.put_queue = MagicMock(return_value=None)
+        mock_task_lock.provider_effort_parameter_name = "reasoning_effort"
+        mock_task_lock.provider_effort_parameter_value = "xhigh"
+
+        _m = sys.modules["app.agent.agent_model"]
+        with (
+            patch.object(_m, "ListenChatAgent"),
+            patch.object(_m, "ModelFactory") as mock_model_factory,
+            patch.object(_m, "get_task_lock", return_value=mock_task_lock),
+            patch.object(_m, "_schedule_async_task"),
+        ):
+            mock_model_factory.create.return_value = MagicMock()
+            agent_model("TestAgent", "You are helpful", options, [])
+
+        assert (
+            mock_model_factory.create.call_args.kwargs["model_config_dict"][
+                "reasoning_effort"
+            ]
+            == "xhigh"
+        )
+
+    @pytest.mark.parametrize(
+        "model_type",
+        [
+            "gpt-5.6-sol",
+            "gpt-5.6-terra",
+            "gpt-5.6-luna",
+            "gpt-5.7-future",
+        ],
+    )
+    def test_cloud_azure_uses_server_declared_responses_transport(
+        self, sample_chat_data, model_type
+    ):
+        """Cloud transport remains server-controlled for future models."""
+        options = Chat(
+            **{
+                **sample_chat_data,
+                "model_platform": "azure",
+                "model_type": model_type,
+                "api_url": "https://proxy.eigent.ai",
+                "extra_params": {
+                    "api_mode": "responses",
+                    "stream_options": {"include_usage": True},
+                },
+            }
+        )
+        mock_task_lock = MagicMock()
+        mock_task_lock.put_queue = MagicMock(return_value=None)
+        mock_task_lock.provider_effort_parameter_name = "reasoning_effort"
+        mock_task_lock.provider_effort_parameter_value = "high"
+
+        _m = sys.modules["app.agent.agent_model"]
+        with (
+            patch.object(_m, "ListenChatAgent"),
+            patch.object(_m, "ModelFactory") as mock_model_factory,
+            patch.object(_m, "get_task_lock", return_value=mock_task_lock),
+            patch.object(_m, "_schedule_async_task"),
+        ):
+            mock_model_factory.create.return_value = MagicMock()
+            agent_model(
+                "TestAgent",
+                "You are helpful",
+                options,
+                [MagicMock()],
+            )
+
+        kwargs = mock_model_factory.create.call_args.kwargs
+        assert kwargs["model_platform"] == "openai-compatible-model"
+        assert kwargs["api_mode"] == "responses"
+        assert "api_version" not in kwargs
+        assert "azure_deployment_name" not in kwargs
+        assert kwargs["model_config_dict"]["reasoning"] == {"effort": "high"}
+        assert "reasoning_effort" not in kwargs["model_config_dict"]
+        assert "stream_options" not in kwargs["model_config_dict"]
+
+    def test_direct_azure_gpt_5_6_reasoning_with_tools_uses_responses_api(
+        self, sample_chat_data
+    ):
+        """A user-managed Azure endpoint keeps its native Responses support."""
+        options = Chat(
+            **{
+                **sample_chat_data,
+                "model_platform": "azure",
+                "model_type": "gpt-5.6-sol",
+                "api_url": "https://customer-resource.openai.azure.com",
+                "extra_params": {"api_mode": "chat_completions"},
+            }
+        )
+        mock_task_lock = MagicMock()
+        mock_task_lock.put_queue = MagicMock(return_value=None)
+        mock_task_lock.provider_effort_parameter_name = "reasoning_effort"
+        mock_task_lock.provider_effort_parameter_value = "high"
+
+        _m = sys.modules["app.agent.agent_model"]
+        with (
+            patch.object(_m, "ListenChatAgent"),
+            patch.object(_m, "ModelFactory") as mock_model_factory,
+            patch.object(_m, "get_task_lock", return_value=mock_task_lock),
+            patch.object(_m, "_schedule_async_task"),
+        ):
+            mock_model_factory.create.return_value = MagicMock()
+            agent_model(
+                "TestAgent",
+                "You are helpful",
+                options,
+                [MagicMock()],
+            )
+
+        kwargs = mock_model_factory.create.call_args.kwargs
+        assert kwargs["model_platform"] == "azure"
+        assert kwargs["api_mode"] == "responses"
+        assert kwargs["model_config_dict"]["reasoning"] == {"effort": "high"}
+        assert "reasoning_effort" not in kwargs["model_config_dict"]
+        assert "stream_options" not in kwargs["model_config_dict"]
+
+    @pytest.mark.parametrize(
+        ("model_type", "effort", "has_tools"),
+        [
+            ("gpt-5.5", "high", True),
+            ("gpt-5.6-sol", "provider_default", True),
+            ("gpt-5.6-sol", "high", False),
+        ],
+    )
+    def test_azure_responses_transport_is_not_applied_broadly(
+        self,
+        sample_chat_data,
+        model_type,
+        effort,
+        has_tools,
+    ):
+        """Unrelated Azure request shapes retain their configured transport."""
+        options = Chat(
+            **{
+                **sample_chat_data,
+                "model_platform": "azure",
+                "model_type": model_type,
+                "api_url": "https://proxy.eigent.ai",
+            }
+        )
+        mock_task_lock = MagicMock()
+        mock_task_lock.put_queue = MagicMock(return_value=None)
+        mock_task_lock.provider_effort_parameter_name = "reasoning_effort"
+        mock_task_lock.provider_effort_parameter_value = effort
+
+        _m = sys.modules["app.agent.agent_model"]
+        with (
+            patch.object(_m, "ListenChatAgent"),
+            patch.object(_m, "ModelFactory") as mock_model_factory,
+            patch.object(_m, "get_task_lock", return_value=mock_task_lock),
+            patch.object(_m, "_schedule_async_task"),
+        ):
+            mock_model_factory.create.return_value = MagicMock()
+            agent_model(
+                "TestAgent",
+                "You are helpful",
+                options,
+                [MagicMock()] if has_tools else [],
+            )
+
+        kwargs = mock_model_factory.create.call_args.kwargs
+        assert "api_mode" not in kwargs
+
     def test_per_agent_explicit_model_config_overrides_task_config(
         self, sample_chat_data
     ):

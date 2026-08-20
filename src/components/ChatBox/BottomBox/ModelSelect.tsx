@@ -20,6 +20,10 @@
 import { proxyFetchGet } from '@/api/http';
 import folderIcon from '@/assets/logo/eigent_icon_rich.svg';
 import {
+  getLocalPlatformName,
+  LOCAL_MODEL_OPTIONS,
+} from '@/components/Settings/Models/localModels';
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -31,7 +35,6 @@ import {
 import { createHost } from '@/host/createHost';
 import {
   applyDefaultModelSelection,
-  DEFAULT_MODEL_CONFIGURE_PATH,
   isDefaultModelConfigured,
   type DefaultModelCategory,
 } from '@/lib/applyDefaultModelSelection';
@@ -39,16 +42,13 @@ import { INIT_PROVODERS } from '@/lib/llm';
 import { getProviderValid } from '@/lib/providerStatus';
 import { cn } from '@/lib/utils';
 import {
-  getLocalPlatformName,
-  LOCAL_MODEL_OPTIONS,
-} from '@/pages/Agents/localModels';
-import {
   getModelImage,
   needsInvertModelImage,
 } from '@/shared/modelProviderImages';
 import { useAuthStore } from '@/store/authStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import type { Provider } from '@/types';
 
@@ -63,7 +63,6 @@ import {
 import type { Dispatch, SetStateAction } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 
 export interface ModelSelectProps {
   disabled?: boolean;
@@ -93,7 +92,6 @@ export function ModelSelect({
   readOnly = false,
 }: ModelSelectProps) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const {
     modelType,
     cloud_model_type,
@@ -412,7 +410,7 @@ export function ModelSelect({
           localProviderIds,
         })
       ) {
-        navigate(DEFAULT_MODEL_CONFIGURE_PATH);
+        openSettings('models');
         return;
       }
       if (projectId) {
@@ -474,7 +472,6 @@ export function ModelSelect({
       localProviderIds,
       localPlatform,
       localTypes,
-      navigate,
       projectId,
       setProjectModel,
       setModelType,
@@ -668,7 +665,7 @@ export function ModelSelect({
                         if (isConfigured) {
                           handleCodexSetDefault();
                         } else {
-                          navigate(DEFAULT_MODEL_CONFIGURE_PATH);
+                          openSettings('models');
                         }
                         return;
                       }

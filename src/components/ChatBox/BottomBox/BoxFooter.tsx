@@ -14,8 +14,16 @@
 
 import { ProjectModeToggle } from '@/components/Workspace/ProjectModeToggle';
 import { useIsCompactWidth } from '@/hooks/useIsCompactWidth';
-import type { SessionModeType } from '@/types/constants';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { useSpaceStore } from '@/store/spaceStore';
+import {
+  normalizeThinkingEffort,
+  ThinkingEffort,
+  type SessionModeType,
+} from '@/types/constants';
+import { ApprovalModeSelect } from './ApprovalModeSelect';
 import { ModelSelect } from './ModelSelect';
+import { ThinkingEffortSelect } from './ThinkingEffortSelect';
 
 /**
  * Below this footer width the session mode control collapses to icon-only so
@@ -53,6 +61,20 @@ export function BoxFooter({
   const [footerRef, compact] = useIsCompactWidth<HTMLDivElement>(
     COMPACT_WIDTH_THRESHOLD
   );
+  const projectEffort = useProjectRuntimeStore((state) =>
+    projectId ? state.projects[projectId]?.metadata?.thinkingEffort : undefined
+  );
+  const setProjectThinkingEffort = useProjectRuntimeStore(
+    (state) => state.setProjectThinkingEffort
+  );
+  const thinkingEffort = normalizeThinkingEffort(
+    projectEffort ?? ThinkingEffort.MEDIUM
+  );
+  const spaceId = useSpaceStore((state) =>
+    projectId
+      ? (state.projectIdIndex[projectId] ?? state.activeSpaceId)
+      : state.activeSpaceId
+  );
 
   return (
     <div
@@ -67,8 +89,23 @@ export function BoxFooter({
           compact={compact}
           className="shrink-0"
         />
+        <ApprovalModeSelect
+          spaceId={spaceId}
+          disabled={disabled}
+          compact={compact}
+          className="shrink-0"
+        />
       </div>
       <div className="flex shrink-0 items-center gap-1">
+        <ThinkingEffortSelect
+          value={thinkingEffort}
+          onValueChange={(effort) => {
+            if (projectId) setProjectThinkingEffort(projectId, effort);
+          }}
+          disabled={disabled || !projectId}
+          readOnly={!projectId}
+          className={compact ? 'max-w-[88px]' : undefined}
+        />
         <ModelSelect
           disabled={disabled}
           projectId={projectId}

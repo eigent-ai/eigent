@@ -41,7 +41,7 @@ export const TaskCompletionCard: React.FC<TaskCompletionCardProps> = ({
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25 }}
-        className="group rounded-xl p-3 bg-ds-bg-neutral-default-default relative flex w-full flex-row items-center"
+        className="group relative flex w-full flex-row items-center rounded-xl bg-ds-bg-neutral-default-default p-3"
       >
         {onDismiss && (
           <Button
@@ -53,14 +53,14 @@ export const TaskCompletionCard: React.FC<TaskCompletionCardProps> = ({
             buttonRadius="full"
             buttonContent="icon-only"
             onClick={onDismiss}
-            className="-top-2 -right-2 pointer-events-none absolute z-10 shrink-0 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
+            className="pointer-events-none absolute -right-2 -top-2 z-10 shrink-0 opacity-0 transition-opacity duration-200 focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
             aria-label={t('chat.close')}
           >
             <X />
           </Button>
         )}
         <div
-          className={`min-w-0 gap-0.5 flex w-full flex-col ${onDismiss ? 'pr-10' : ''}`}
+          className={`flex w-full min-w-0 flex-col gap-0.5 ${onDismiss ? 'pr-10' : ''}`}
         >
           <div className="text-label-sm font-bold leading-normal text-ds-text-neutral-default-default">
             {t('chat.task-completed-card-title')}
@@ -73,7 +73,7 @@ export const TaskCompletionCard: React.FC<TaskCompletionCardProps> = ({
           variant="primary"
           size="sm"
           onClick={handleAddTrigger}
-          className="rounded-lg h-fit"
+          className="h-fit rounded-lg"
         >
           <Plus className="h-4 w-4" />
           {t('triggers.add-trigger')}

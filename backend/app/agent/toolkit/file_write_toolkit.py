@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import os
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -22,6 +23,7 @@ from camel.toolkits import FileToolkit as BaseFileToolkit
 from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.component.environment import env
 from app.run_context import RunContext
+from app.run_runtime.tool_checkpoint import get_current_tool_checkpoint
 from app.service.task import (
     ActionWriteFileData,
     Agents,
@@ -36,11 +38,13 @@ from app.utils.listen.toolkit_listen import (
 from app.utils.space_overlay_client import (
     path_write_lock,
     post_overlay_write,
+    relative_to_artifact_root,
     relative_to_workdir,
     run_context_for_task,
     sha256_of_file,
     should_record_overlay,
 )
+from app.workspace_git import get_default_workspace_mutation_service
 
 
 @dataclass(frozen=True)
@@ -99,12 +103,9 @@ class FileToolkit(BaseFileToolkit, AbstractToolkit):
 
     @listen_toolkit(
         BaseFileToolkit.write_to_file,
-        lambda _,
-        title,
-        content,
-        filename,
-        encoding=None,
-        use_latex=False: f"write content to file: {filename} with encoding: {encoding} and use_latex: {use_latex}",
+        lambda _, title, content, filename, encoding=None, use_latex=False: (
+            f"write content to file: {filename} with encoding: {encoding} and use_latex: {use_latex}"
+        ),
     )
     def write_to_file(
         self,
@@ -113,6 +114,88 @@ class FileToolkit(BaseFileToolkit, AbstractToolkit):
         filename: str,
         encoding: str | None = None,
         use_latex: bool = False,
+    ) -> str:
+        run_context = run_context_for_task(self.api_task_id)
+        prepared_write = None
+        relative_path = None
+        operation_request_id = None
+        mutation_service = None
+        if run_context is not None:
+            checkpoint = get_current_tool_checkpoint()
+            operation_request_id = (
+                checkpoint.tool_call_id
+                if checkpoint is not None
+                else f"local-file-write:{uuid.uuid4().hex}"
+            )
+            mutation_service = get_default_workspace_mutation_service()
+            prepared_write = mutation_service.prepare_file_write(
+                context=run_context,
+                filename=filename,
+                operation_request_id=operation_request_id,
+                actor_id=self.agent_name,
+                trigger="filesystem.write",
+            )
+        if prepared_write is not None:
+            res = super().write_to_file(
+                title,
+                content,
+                str(prepared_write.target_path),
+                encoding,
+                use_latex,
+            )
+            if "Content successfully written to file: " in res:
+                assert operation_request_id is not None
+                assert mutation_service is not None
+                mutation_service.complete_file_write(
+                    prepared_write,
+                    operation_request_id=operation_request_id,
+                    actor_id=self.agent_name,
+                    trigger="filesystem.write",
+                )
+                res = (
+                    "Content successfully written to file: "
+                    f"{prepared_write.relative_path}"
+                )
+                relative_path = prepared_write.relative_path
+        else:
+            res = self._write_legacy_or_cloud_overlay(
+                title=title,
+                content=content,
+                filename=filename,
+                encoding=encoding,
+                use_latex=use_latex,
+            )
+        if "Content successfully written to file: " in res:
+            written_path = res.replace(
+                "Content successfully written to file: ", ""
+            )
+            if relative_path is None and run_context is not None:
+                relative_path = relative_to_artifact_root(
+                    run_context, written_path
+                )
+            task_lock = get_task_lock(self.api_task_id)
+            # Capture ContextVar value before creating async task
+            current_process_task_id = process_task.get("")
+
+            # Use _safe_put_queue to handle both sync and async contexts
+            _safe_put_queue(
+                task_lock,
+                ActionWriteFileData(
+                    process_task_id=current_process_task_id,
+                    data=written_path,
+                    relative_path=relative_path,
+                ),
+            )
+        return res
+
+    def _write_legacy_or_cloud_overlay(
+        self,
+        *,
+        title: str,
+        content: str | list[list[str]],
+        filename: str,
+        encoding: str | None,
+        use_latex: bool,
     ) -> str:
         overlay_context = self._overlay_write_context(filename)
         if overlay_context is None:
@@ -165,19 +248,4 @@ class FileToolkit(BaseFileToolkit, AbstractToolkit):
                     size=pending_overlay_write.size,
                     mode=pending_overlay_write.mode,
                 )
-        if "Content successfully written to file: " in res:
-            task_lock = get_task_lock(self.api_task_id)
-            # Capture ContextVar value before creating async task
-            current_process_task_id = process_task.get("")
-
-            # Use _safe_put_queue to handle both sync and async contexts
-            _safe_put_queue(
-                task_lock,
-                ActionWriteFileData(
-                    process_task_id=current_process_task_id,
-                    data=res.replace(
-                        "Content successfully written to file: ", ""
-                    ),
-                ),
-            )
         return res

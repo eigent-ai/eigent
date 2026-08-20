@@ -76,12 +76,20 @@ async def test_mcp_agent_creation(sample_chat_data):
             call_args[0][0]
         )  # agent_name (enum contains this value)
         tools_arg = call_args[0][3]
-        assert tools_arg == [search_tool, mcp_tool]
+        assert tools_arg[:2] == [search_tool, mcp_tool]
+        assert {tool.get_function_name() for tool in tools_arg[2:]} == {
+            "search_memory",
+            "remember_project_memory",
+            "update_project_memory",
+            "forget_project_memory",
+            "promote_project_memory",
+            "search_project_history",
+        }
         assert call_args[0][1] == "MCP system prompt"
         assert call_args.kwargs["tool_names"] == ["ticketing"]
 
         prompt_kwargs = mock_attach_remote_sub_agent.call_args.kwargs
-        assert prompt_kwargs["tools"] == [search_tool, mcp_tool]
+        assert prompt_kwargs["tools"][:2] == [search_tool, mcp_tool]
         assert "MCP Search Toolkit" in prompt_kwargs["tool_names"]
         assert "create_ticket" in prompt_kwargs["tool_names"]
 

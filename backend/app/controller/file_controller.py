@@ -22,11 +22,26 @@ from pathlib import Path
 from typing import Annotated
 from urllib.parse import quote
 
-from fastapi import APIRouter, File, Header, HTTPException, Query, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Header,
+    HTTPException,
+    Query,
+    UploadFile,
+)
 from fastapi.responses import FileResponse
 from starlette.concurrency import run_in_threadpool
 
+from app.artifacts import (
+    discover_task_changed_files,
+    scan_task_changed_files,
+    task_modification_windows,
+)
+from app.auth import require_local_control_principal
 from app.component.environment import env
+from app.run_journal import get_default_run_journal
 from app.utils.file_utils import list_files, resolve_under_base
 from app.utils.workspace_paths import runtime_owner_key, task_dir_name
 from app.utils.workspace_resolver import get_workspace_resolver
@@ -206,6 +221,101 @@ def _resolve_file_root(
     return _resolve_project_root(email, project_id, user_id)
 
 
+def _list_task_changed_files(
+    snapshot,
+    max_entries: int = 500,
+    modification_windows: tuple[tuple[float, float | None], ...] | None = None,
+) -> list[dict]:
+    """List files generated or modified by one Run without uploading them."""
+    return scan_task_changed_files(
+        snapshot,
+        max_entries,
+        modification_windows,
+        list_files_fn=list_files,
+    )
+
+
+def _task_modification_windows(
+    task_id: str,
+    project_id: str,
+) -> tuple[tuple[tuple[float, float | None], ...] | None, bool]:
+    """Return filesystem-mtime windows owned by this Run's attempts.
+
+    ``None`` means the RunJournal has no matching canonical Run and callers
+    should retain the legacy start-time-only behavior.
+    """
+    return task_modification_windows(
+        get_default_run_journal(), task_id, project_id
+    )
+
+
+@router.get(
+    "/files/changes",
+    dependencies=[Depends(require_local_control_principal)],
+)
+async def list_task_changed_files(
+    task_id: str = Query(..., description="Run/task ID"),
+    project_id: str = Query(..., description="Project ID"),
+    email: str = Query(..., description="User email"),
+    user_id: str | None = Query(
+        None, description="Optional canonical user ID"
+    ),
+) -> dict:
+    """Return the Desktop-local preview index for one Run's changed files."""
+    manifest_event = await run_in_threadpool(
+        get_default_run_journal().get_run_artifact_manifest_event,
+        task_id,
+    )
+    if manifest_event is not None:
+        artifacts = manifest_event.payload.get("artifacts", [])
+        if isinstance(artifacts, list):
+            return {
+                "artifacts": [
+                    dict(item) for item in artifacts if isinstance(item, dict)
+                ],
+                "scan_status": str(
+                    manifest_event.payload.get("scan_status") or "complete"
+                ),
+                "truncated": bool(manifest_event.payload.get("truncated")),
+            }
+
+    snapshot = get_workspace_resolver().store.get_snapshot(
+        email, task_id, user_id
+    )
+    if snapshot is None or snapshot.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Task workspace not found")
+    artifact_manifest = getattr(snapshot, "artifact_manifest", None)
+    if artifact_manifest is not None:
+        return {
+            "artifacts": [dict(item) for item in artifact_manifest],
+            "scan_status": "complete",
+            "truncated": False,
+        }
+
+    windows, permanently_terminal = await run_in_threadpool(
+        _task_modification_windows, task_id, project_id
+    )
+    scan_result = await run_in_threadpool(
+        discover_task_changed_files,
+        snapshot,
+        max_entries=500,
+        modification_windows=windows,
+    )
+    artifacts = scan_result.artifacts
+    if permanently_terminal:
+        await run_in_threadpool(
+            get_workspace_resolver().store.freeze_artifact_manifest,
+            email,
+            snapshot,
+            artifacts,
+        )
+    return {
+        "artifacts": artifacts,
+        "scan_status": scan_result.scan_status,
+        "truncated": scan_result.truncated,
+    }
+
+
 @router.get("/files")
 async def list_project_files(
     project_id: str = Query(..., description="Project ID"),
@@ -282,6 +392,7 @@ async def list_project_files(
             )
             # URL-encode the relative path for stream endpoint
             path_param = quote(rel, safe="")
+            stat_result = Path(abs_path).stat()
             result.append(
                 {
                     "filename": Path(abs_path).name,
@@ -293,6 +404,9 @@ async def list_project_files(
                         + (f"&user_id={quote(user_id)}" if user_id else "")
                     ),
                     "relativePath": rel,
+                    "size": stat_result.st_size,
+                    "modifiedAt": stat_result.st_mtime * 1000,
+                    "supportsRanges": True,
                 }
             )
         except (ValueError, OSError):
@@ -300,7 +414,7 @@ async def list_project_files(
     return result
 
 
-@router.get("/files/stream")
+@router.api_route("/files/stream", methods=["GET", "HEAD"])
 async def stream_file(
     path: str = Query(..., description="Relative path from project root"),
     project_id: str = Query(..., description="Project ID"),

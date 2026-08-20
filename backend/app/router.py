@@ -27,13 +27,20 @@ from app.controller import (
     file_controller,
     health_controller,
     mcp_controller,
+    memory_controller,
     message_controller,
     model_controller,
+    permission_controller,
+    remote_command_controller,
     remote_sub_agent_controller,
+    run_controller,
     skill_controller,
     task_controller,
     tool_controller,
+    workspace_bundle_controller,
+    workspace_config_controller,
     workspace_controller,
+    workspace_git_controller,
 )
 
 logger = logging.getLogger("router")
@@ -84,6 +91,30 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "description": "Phase 2 Message Router - /messages endpoint (prefix-aware)",
         },
         {
+            "router": run_controller.router,
+            "tags": ["Runs"],
+            "description": "Durable Run snapshots, event replay, and live streams",
+            "self_authenticated": True,
+        },
+        {
+            "router": permission_controller.router,
+            "tags": ["Permissions"],
+            "description": "Authenticated local Space permission profiles",
+            "self_authenticated": True,
+        },
+        {
+            "router": memory_controller.router,
+            "tags": ["Memory"],
+            "description": "Authenticated local Lightweight Memory CRUD",
+            "self_authenticated": True,
+        },
+        {
+            "router": remote_command_controller.router,
+            "tags": ["Remote Command Inbox"],
+            "description": "Durable Remote Control Inbox and command-result lane",
+            "self_authenticated": True,
+        },
+        {
             "router": model_controller.router,
             "tags": ["model"],
             "description": "Model validation and configuration",
@@ -108,6 +139,24 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
             "tags": ["workspace"],
             "description": "Space-level local workspace binding",
         },
+        {
+            "router": workspace_bundle_controller.router,
+            "tags": ["Workspace Bundles"],
+            "description": "Review-first local Bundle installation",
+            "self_authenticated": True,
+        },
+        {
+            "router": workspace_config_controller.router,
+            "tags": ["Workspace Configuration"],
+            "description": "Mutable local Workspace Configuration working copy",
+            "self_authenticated": True,
+        },
+        {
+            "router": workspace_git_controller.router,
+            "tags": ["workspace-git"],
+            "description": "Authenticated local Space Git operations",
+            "self_authenticated": True,
+        },
     ]
 
     app.include_router(health_controller.router, tags=["Health"])
@@ -119,6 +168,7 @@ def register_routers(app: FastAPI, prefix: str = "") -> None:
         dependencies = (
             []
             if config["tags"] == ["Health"]
+            or config.get("self_authenticated", False)
             else [Depends(get_brain_auth_context)]
         )
         app.include_router(

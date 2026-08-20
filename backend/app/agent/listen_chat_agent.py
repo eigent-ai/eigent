@@ -18,6 +18,7 @@ import json
 import logging
 import threading
 from collections.abc import Callable
+from contextlib import AsyncExitStack
 from threading import Event
 from typing import Any
 
@@ -37,7 +38,27 @@ from camel.types import ModelPlatformType, ModelType
 from camel.types.agents import ToolCallingRecord
 from pydantic import BaseModel
 
-from app.component.environment import env
+from app.permission_policy import (
+    ToolPermissionRejectedError,
+    authorize_tool_checkpoint,
+)
+from app.run_runtime.active_timeout import (
+    ActiveExecutionTimeout,
+    refresh_active_execution_timeout,
+)
+from app.run_runtime.timeout_config import (
+    normalize_optional_timeout_seconds,
+    optional_timeout_seconds_from_env,
+)
+from app.run_runtime.tool_checkpoint import (
+    ToolCheckpointError,
+    ToolInvocationNotDispatchedError,
+    declared_tool_safety,
+    dispatch_tool_checkpoint,
+    finish_tool_checkpoint,
+    prepare_tool_checkpoint,
+    tool_checkpoint_scope,
+)
 from app.service.task import (
     Action,
     ActionActivateAgentData,
@@ -56,19 +77,65 @@ from app.utils.event_loop_utils import _schedule_async_task
 logger = logging.getLogger("agent")
 
 
-# Default 30 minutes; long agent turns (e.g. writing many chapters in one
-# run) can legitimately exceed it, so allow tuning without a rebuild.
-# A non-positive value disables the per-step timeout entirely.
+# One CAMEL "step" contains the entire progressing model/tool loop. It must
+# not impose a default total duration ceiling on a durable Run. A separate
+# sliding stall watchdog still bounds execution that stops making progress.
+_MALFORMED_MODEL_JSON_RETRIES = 2
+
+
 def default_step_timeout() -> float | None:
-    raw = env("AGENT_STEP_TIMEOUT_SECONDS", "1800")
-    try:
-        value = float(raw)
-    except (TypeError, ValueError):
-        logger.warning(
-            "Invalid AGENT_STEP_TIMEOUT_SECONDS value %r; using 1800", raw
-        )
-        return 1800.0
-    return value if value > 0 else None
+    """Return the opt-in hard cap for a complete CAMEL step."""
+
+    return optional_timeout_seconds_from_env("AGENT_STEP_TIMEOUT_SECONDS")
+
+
+def default_agent_stall_timeout() -> float | None:
+    """Return the sliding no-progress timeout for one Agent activity."""
+
+    return optional_timeout_seconds_from_env(
+        "AGENT_STALL_TIMEOUT_SECONDS",
+        default=1800,
+    )
+
+
+def _reported_tool_error(result: Any) -> RuntimeError | None:
+    """Turn a tool-level error result into a *known* journal failure.
+
+    Some tool adapters deliberately return an error mapping instead of raising.
+    The mapping proves the invocation returned normally, so it must not be
+    escalated into an unknown external side effect even when the tool itself is
+    conservatively classified as an unsafe write.
+    """
+
+    if isinstance(result, dict) and result.get("error"):
+        return RuntimeError(str(result["error"]))
+    return None
+
+
+def _tool_failure_outcome_known(
+    error: BaseException,
+    *,
+    checkpoint_dispatched: bool,
+) -> bool:
+    """Return whether an exception proves the external action never started."""
+
+    if not checkpoint_dispatched:
+        return True
+
+    pending: list[BaseException] = [error]
+    visited: set[int] = set()
+    while pending:
+        current = pending.pop()
+        identity = id(current)
+        if identity in visited:
+            continue
+        visited.add(identity)
+        if isinstance(current, ToolInvocationNotDispatchedError):
+            return True
+        for linked in (current.__cause__, current.__context__):
+            if linked is not None:
+                pending.append(linked)
+    return False
 
 
 class ListenChatAgent(ChatAgent):
@@ -119,6 +186,7 @@ class ListenChatAgent(ChatAgent):
         prune_tool_calls_from_memory: bool = False,
         enable_snapshot_clean: bool = False,
         step_timeout: float | None = None,
+        stall_timeout: float | None = None,
         model_reload_callback: (
             Callable[[], BaseModelBackend | ModelManager] | None
         ) = None,
@@ -132,6 +200,13 @@ class ListenChatAgent(ChatAgent):
 
         if step_timeout is None:
             step_timeout = default_step_timeout()
+        else:
+            step_timeout = normalize_optional_timeout_seconds(step_timeout)
+        if stall_timeout is None:
+            stall_timeout = default_agent_stall_timeout()
+        else:
+            stall_timeout = normalize_optional_timeout_seconds(stall_timeout)
+        self.stall_timeout = stall_timeout
         super().__init__(
             system_message=system_message,
             model=model,
@@ -155,10 +230,228 @@ class ListenChatAgent(ChatAgent):
             step_timeout=step_timeout,
             **kwargs,
         )
+        self._tool_checkpoint_error_lock = threading.Lock()
+        self._tool_checkpoint_error: ToolCheckpointError | None = None
         self._model_reload_callback = model_reload_callback
         self._model_reload_lock = threading.Lock()
 
     process_task_id: str = ""
+
+    @staticmethod
+    def _messages_with_model_json_error(
+        openai_messages: list[Any],
+        error: json.JSONDecodeError,
+        *,
+        retry_number: int,
+    ) -> list[Any]:
+        """Ask the model to regenerate only its rejected response.
+
+        The correction is deliberately request-local: it is not written to
+        Agent memory, and CAMEL has not recorded or dispatched the malformed
+        tool call because parsing failed inside ``_get_model_response``.
+        """
+
+        return [
+            *openai_messages,
+            {
+                "role": "user",
+                "content": (
+                    "Your previous response was rejected before any new "
+                    "tool call was executed because its JSON arguments were "
+                    f"invalid. Parser error: {error}. Regenerate the same "
+                    "intended next response now. If you call a tool, follow "
+                    "its schema exactly, use double-quoted JSON property "
+                    "names, and do not repeat actions that were already "
+                    f"completed. This is correction retry {retry_number} of "
+                    f"{_MALFORMED_MODEL_JSON_RETRIES}."
+                ),
+            },
+        ]
+
+    def _get_model_response(
+        self,
+        openai_messages,
+        current_iteration=0,
+        response_format=None,
+        tool_schemas=None,
+        prev_num_openai_messages=0,
+    ):
+        """Retry a malformed model JSON response without replaying the step."""
+
+        retry_messages = openai_messages
+        for retry_number in range(_MALFORMED_MODEL_JSON_RETRIES + 1):
+            try:
+                response = super()._get_model_response(
+                    retry_messages,
+                    current_iteration=current_iteration,
+                    response_format=response_format,
+                    tool_schemas=tool_schemas,
+                    prev_num_openai_messages=prev_num_openai_messages,
+                )
+                refresh_active_execution_timeout()
+                return response
+            except json.JSONDecodeError as error:
+                refresh_active_execution_timeout()
+                if retry_number >= _MALFORMED_MODEL_JSON_RETRIES:
+                    raise
+                next_retry = retry_number + 1
+                logger.warning(
+                    "Agent %s received malformed model JSON; retrying "
+                    "current response (%s/%s): %s",
+                    self.agent_name,
+                    next_retry,
+                    _MALFORMED_MODEL_JSON_RETRIES,
+                    error,
+                )
+                retry_messages = self._messages_with_model_json_error(
+                    openai_messages,
+                    error,
+                    retry_number=next_retry,
+                )
+
+        raise AssertionError("malformed model JSON retry loop exhausted")
+
+    async def _aget_model_response(
+        self,
+        openai_messages,
+        current_iteration=0,
+        response_format=None,
+        tool_schemas=None,
+        prev_num_openai_messages=0,
+    ):
+        """Async variant of the bounded malformed-response retry."""
+
+        retry_messages = openai_messages
+        for retry_number in range(_MALFORMED_MODEL_JSON_RETRIES + 1):
+            try:
+                response = await super()._aget_model_response(
+                    retry_messages,
+                    current_iteration=current_iteration,
+                    response_format=response_format,
+                    tool_schemas=tool_schemas,
+                    prev_num_openai_messages=prev_num_openai_messages,
+                )
+                refresh_active_execution_timeout()
+                return response
+            except json.JSONDecodeError as error:
+                refresh_active_execution_timeout()
+                if retry_number >= _MALFORMED_MODEL_JSON_RETRIES:
+                    raise
+                next_retry = retry_number + 1
+                logger.warning(
+                    "Agent %s received malformed model JSON; retrying "
+                    "current response (%s/%s): %s",
+                    self.agent_name,
+                    next_retry,
+                    _MALFORMED_MODEL_JSON_RETRIES,
+                    error,
+                )
+                retry_messages = self._messages_with_model_json_error(
+                    openai_messages,
+                    error,
+                    retry_number=next_retry,
+                )
+
+        raise AssertionError("malformed model JSON retry loop exhausted")
+
+    async def _astep_with_active_timeout(
+        self,
+        input_message: BaseMessage | str,
+        response_format: type[BaseModel] | None = None,
+    ) -> ChatAgentResponse | AsyncStreamingChatAgentResponse:
+        """Run CAMEL under opt-in hard and sliding no-progress guards.
+
+        CAMEL's built-in non-streaming ``astep`` wraps the entire tool loop in
+        one cumulative timeout. That is unsuitable for long-running Runs, so
+        the cumulative guard defaults off while the stall guard is refreshed
+        after each model response and tool completion. Durable human waits
+        pause both guards. Streaming steps retain CAMEL's native path.
+        """
+
+        stream = self.model_backend.model_config_dict.get("stream", False)
+        if stream:
+            return await super().astep(input_message, response_format)
+        if self.step_timeout is None and self.stall_timeout is None:
+            return await super()._astep_non_streaming_task(
+                input_message, response_format
+            )
+        hard_timeout: ActiveExecutionTimeout | None = None
+        stall_timeout: ActiveExecutionTimeout | None = None
+        try:
+            async with AsyncExitStack() as stack:
+                if self.step_timeout is not None:
+                    hard_timeout = await stack.enter_async_context(
+                        ActiveExecutionTimeout(self.step_timeout)
+                    )
+                if self.stall_timeout is not None:
+                    stall_timeout = await stack.enter_async_context(
+                        ActiveExecutionTimeout(
+                            self.stall_timeout,
+                            refresh_on_progress=True,
+                        )
+                    )
+                return await super()._astep_non_streaming_task(
+                    input_message, response_format
+                )
+        except TimeoutError as error:
+            if hard_timeout is not None and hard_timeout.expired:
+                raise TimeoutError(
+                    f"Async step timed out after {self.step_timeout}s"
+                ) from error
+            if stall_timeout is not None and stall_timeout.expired:
+                raise TimeoutError(
+                    "Agent activity made no progress for "
+                    f"{self.stall_timeout}s"
+                ) from error
+            raise
+
+    def _reset_tool_checkpoint_error(self) -> None:
+        with self._tool_checkpoint_error_lock:
+            self._tool_checkpoint_error = None
+
+    def _remember_tool_checkpoint_error(
+        self, error: ToolCheckpointError
+    ) -> None:
+        with self._tool_checkpoint_error_lock:
+            if self._tool_checkpoint_error is None:
+                self._tool_checkpoint_error = error
+
+    def _consume_tool_checkpoint_error(self) -> ToolCheckpointError | None:
+        with self._tool_checkpoint_error_lock:
+            error = self._tool_checkpoint_error
+            self._tool_checkpoint_error = None
+            return error
+
+    def _execute_tools_sync_with_status_accumulator(self, *args, **kwargs):
+        """Restore fail-closed semantics after CAMEL logs worker errors."""
+
+        self._reset_tool_checkpoint_error()
+        try:
+            yield from super()._execute_tools_sync_with_status_accumulator(
+                *args, **kwargs
+            )
+        finally:
+            error = self._consume_tool_checkpoint_error()
+            if error is not None:
+                raise error
+
+    async def _execute_tools_async_with_status_accumulator(
+        self, *args, **kwargs
+    ):
+        """Restore fail-closed semantics after CAMEL logs task errors."""
+
+        self._reset_tool_checkpoint_error()
+        try:
+            async for (
+                item
+            ) in super()._execute_tools_async_with_status_accumulator(
+                *args, **kwargs
+            ):
+                yield item
+        finally:
+            error = self._consume_tool_checkpoint_error()
+            if error is not None:
+                raise error
 
     def _on_request_usage(self, payload: dict[str, Any]) -> Any:
         request_usage = payload.get("request_usage") or {}
@@ -372,40 +665,70 @@ class ListenChatAgent(ChatAgent):
         """
         accumulated_content = ""
         last_chunk = None
+        hard_timeout: ActiveExecutionTimeout | None = None
+        stall_timeout: ActiveExecutionTimeout | None = None
 
         try:
-            try:
-                async for chunk in response_gen:
-                    last_chunk = chunk
-                    if chunk.msg and chunk.msg.content:
-                        delta_content = chunk.msg.content
-                        accumulated_content += delta_content
-                    yield chunk
-            except ModelProcessingError as error:
-                can_retry = (
-                    auth_retry_available
-                    and input_message is not None
-                    and not accumulated_content
-                    and await self._areload_model_after_auth_error(error)
-                )
-                if not can_retry:
-                    raise
-
-                retry_response = await ChatAgent.astep(
-                    self, input_message, response_format
-                )
-                if isinstance(retry_response, AsyncStreamingChatAgentResponse):
-                    async for chunk in retry_response:
+            async with AsyncExitStack() as stack:
+                if self.step_timeout is not None:
+                    hard_timeout = await stack.enter_async_context(
+                        ActiveExecutionTimeout(self.step_timeout)
+                    )
+                if self.stall_timeout is not None:
+                    stall_timeout = await stack.enter_async_context(
+                        ActiveExecutionTimeout(
+                            self.stall_timeout,
+                            refresh_on_progress=True,
+                        )
+                    )
+                try:
+                    async for chunk in response_gen:
                         last_chunk = chunk
                         if chunk.msg and chunk.msg.content:
                             delta_content = chunk.msg.content
                             accumulated_content += delta_content
+                        refresh_active_execution_timeout()
                         yield chunk
-                else:
-                    last_chunk = retry_response
-                    if retry_response.msg and retry_response.msg.content:
-                        accumulated_content += retry_response.msg.content
-                    yield retry_response
+                except ModelProcessingError as error:
+                    can_retry = (
+                        auth_retry_available
+                        and input_message is not None
+                        and not accumulated_content
+                        and await self._areload_model_after_auth_error(error)
+                    )
+                    if not can_retry:
+                        raise
+
+                    retry_response = await ChatAgent.astep(
+                        self, input_message, response_format
+                    )
+                    if isinstance(
+                        retry_response, AsyncStreamingChatAgentResponse
+                    ):
+                        async for chunk in retry_response:
+                            last_chunk = chunk
+                            if chunk.msg and chunk.msg.content:
+                                delta_content = chunk.msg.content
+                                accumulated_content += delta_content
+                            refresh_active_execution_timeout()
+                            yield chunk
+                    else:
+                        last_chunk = retry_response
+                        if retry_response.msg and retry_response.msg.content:
+                            accumulated_content += retry_response.msg.content
+                        refresh_active_execution_timeout()
+                        yield retry_response
+        except TimeoutError as error:
+            if hard_timeout is not None and hard_timeout.expired:
+                raise TimeoutError(
+                    f"Streaming step timed out after {self.step_timeout}s"
+                ) from error
+            if stall_timeout is not None and stall_timeout.expired:
+                raise TimeoutError(
+                    "Streaming Agent activity made no progress for "
+                    f"{self.stall_timeout}s"
+                ) from error
+            raise
         finally:
             total_tokens = self._extract_tokens(last_chunk)
             self._send_agent_deactivate(accumulated_content, total_tokens)
@@ -549,7 +872,9 @@ class ListenChatAgent(ChatAgent):
         )
 
         try:
-            res = await super().astep(input_message, response_format)
+            res = await self._astep_with_active_timeout(
+                input_message, response_format
+            )
             if isinstance(res, AsyncStreamingChatAgentResponse):
                 # Use reusable async stream wrapper to send chunks to frontend
                 return AsyncStreamingChatAgentResponse(
@@ -563,7 +888,9 @@ class ListenChatAgent(ChatAgent):
         except ModelProcessingError as e:
             if await self._areload_model_after_auth_error(e):
                 try:
-                    res = await super().astep(input_message, response_format)
+                    res = await self._astep_with_active_timeout(
+                        input_message, response_format
+                    )
                     if isinstance(res, AsyncStreamingChatAgentResponse):
                         return AsyncStreamingChatAgentResponse(
                             self._astream_chunks(
@@ -650,6 +977,8 @@ class ListenChatAgent(ChatAgent):
         # The proper fix is to unify event sending:
         # remove activate/deactivate from @listen_toolkit, only send here
         has_listen_decorator = getattr(tool.func, "__listen_toolkit__", False)
+        checkpoint = None
+        dispatched = False
 
         try:
             task_lock = get_task_lock(self.api_task_id)
@@ -664,6 +993,28 @@ class ListenChatAgent(ChatAgent):
                 f"{func_name} from toolkit: {toolkit_name} "
                 f"with args: {json.dumps(args, ensure_ascii=False)}"
             )
+            checkpoint = prepare_tool_checkpoint(
+                raw_tool_call_id=tool_call_id,
+                tool_name=func_name,
+                arguments=args,
+                declared_safety=declared_tool_safety(
+                    tool,
+                    func_name,
+                    args,
+                ),
+                dispatch_immediately=False,
+            )
+            asyncio.run(
+                authorize_tool_checkpoint(
+                    checkpoint,
+                    arguments=args,
+                    toolkit_name=toolkit_name,
+                    agent_name=self.agent_name,
+                    task_lock=task_lock,
+                )
+            )
+            dispatch_tool_checkpoint(checkpoint)
+            dispatched = True
 
             # Only send activate event if tool is
             # NOT wrapped by @listen_toolkit
@@ -684,8 +1035,21 @@ class ListenChatAgent(ChatAgent):
                     )
                 )
             # Set process_task context for all tool executions
-            with set_process_task(self.process_task_id):
+            with (
+                set_process_task(self.process_task_id),
+                tool_checkpoint_scope(checkpoint),
+            ):
                 raw_result = tool(**args)
+            reported_error = _reported_tool_error(raw_result)
+            if reported_error is None:
+                finish_tool_checkpoint(checkpoint, result=raw_result)
+            else:
+                finish_tool_checkpoint(
+                    checkpoint,
+                    result=raw_result,
+                    error=reported_error,
+                    outcome_known=True,
+                )
             logger.debug(f"Tool {func_name} executed successfully")
             if self.mask_tool_output:
                 self._secure_result_store[tool_call_id] = raw_result
@@ -727,7 +1091,26 @@ class ListenChatAgent(ChatAgent):
                         )
                     )
                 )
+        except ToolPermissionRejectedError as error:
+            finish_tool_checkpoint(
+                checkpoint,
+                result={"error": str(error), "permission_denied": True},
+                error=error,
+                outcome_known=True,
+            )
+            result = {"error": str(error), "permission_denied": True}
+            mask_flag = False
+        except ToolCheckpointError:
+            raise
         except Exception as e:
+            finish_tool_checkpoint(
+                checkpoint,
+                error=e,
+                outcome_known=_tool_failure_outcome_known(
+                    e,
+                    checkpoint_dispatched=dispatched,
+                ),
+            )
             # Capture the error message to prevent framework crash
             error_msg = f"Error executing tool '{func_name}': {e!s}"
             result = f"Tool execution failed: {error_msg}"
@@ -776,8 +1159,13 @@ class ListenChatAgent(ChatAgent):
                 tool_call_data
             )
             if tool_call_request.tool_name not in self._internal_tools:
-                return super()._execute_tool_from_stream_data(tool_call_data)
+                raise ToolCheckpointError(
+                    f"streamed tool {tool_call_request.tool_name!r} is not registered"
+                )
             return self._execute_tool(tool_call_request)
+        except ToolCheckpointError as error:
+            self._remember_tool_checkpoint_error(error)
+            raise
         except Exception as e:
             logger.error(f"Error processing streaming tool call: {e}")
             return None
@@ -838,22 +1226,50 @@ class ListenChatAgent(ChatAgent):
         # If so, the decorator will handle activate/deactivate events
         has_listen_decorator = getattr(tool.func, "__listen_toolkit__", False)
 
-        # Only send activate event if tool is NOT wrapped by @listen_toolkit
-        if not has_listen_decorator:
-            await task_lock.put_queue(
-                ActionActivateToolkitData(
-                    data={
-                        "agent_name": self.agent_name,
-                        "process_task_id": self.process_task_id,
-                        "toolkit_name": toolkit_name,
-                        "method_name": func_name,
-                        "message": json.dumps(args, ensure_ascii=False),
-                    },
-                )
-            )
+        checkpoint = await asyncio.to_thread(
+            prepare_tool_checkpoint,
+            raw_tool_call_id=tool_call_id,
+            tool_name=func_name,
+            arguments=args,
+            declared_safety=declared_tool_safety(
+                tool,
+                func_name,
+                args,
+            ),
+            dispatch_immediately=False,
+        )
+
+        execution_error: Exception | None = None
+        dispatched = False
         try:
+            await authorize_tool_checkpoint(
+                checkpoint,
+                arguments=args,
+                toolkit_name=toolkit_name,
+                agent_name=self.agent_name,
+                task_lock=task_lock,
+            )
+            await asyncio.to_thread(dispatch_tool_checkpoint, checkpoint)
+            dispatched = True
+            # Activation is an execution projection. Do not publish it before
+            # the durable permission gate authorizes and dispatches the tool.
+            if not has_listen_decorator:
+                await task_lock.put_queue(
+                    ActionActivateToolkitData(
+                        data={
+                            "agent_name": self.agent_name,
+                            "process_task_id": self.process_task_id,
+                            "toolkit_name": toolkit_name,
+                            "method_name": func_name,
+                            "message": json.dumps(args, ensure_ascii=False),
+                        },
+                    )
+                )
             # Set process_task context for all tool executions
-            with set_process_task(self.process_task_id):
+            with (
+                set_process_task(self.process_task_id),
+                tool_checkpoint_scope(checkpoint),
+            ):
                 # Try different invocation paths in order of preference
                 if hasattr(tool, "func") and hasattr(tool.func, "async_call"):
                     # MCP FunctionTool: always use async_call (sync wrapper can timeout)
@@ -892,7 +1308,35 @@ class ListenChatAgent(ChatAgent):
                     if asyncio.iscoroutine(result):
                         result = await result
 
+        except asyncio.CancelledError as error:
+            await asyncio.to_thread(
+                finish_tool_checkpoint,
+                checkpoint,
+                error=TimeoutError("tool execution cancelled or timed out"),
+                outcome_known=not dispatched,
+            )
+            raise error
+        except ToolPermissionRejectedError as error:
+            execution_error = error
+            result = {"error": str(error), "permission_denied": True}
+            await asyncio.to_thread(
+                finish_tool_checkpoint,
+                checkpoint,
+                result=result,
+                error=error,
+                outcome_known=True,
+            )
         except Exception as e:
+            execution_error = e
+            await asyncio.to_thread(
+                finish_tool_checkpoint,
+                checkpoint,
+                error=e,
+                outcome_known=_tool_failure_outcome_known(
+                    e,
+                    checkpoint_dispatched=dispatched,
+                ),
+            )
             # Capture the error message to prevent framework crash
             error_msg = f"Error executing async tool '{func_name}': {e!s}"
             result = {"error": error_msg}
@@ -900,6 +1344,23 @@ class ListenChatAgent(ChatAgent):
                 f"Async tool execution failed for {func_name}: {e}",
                 exc_info=True,
             )
+
+        if execution_error is None:
+            reported_error = _reported_tool_error(result)
+            if reported_error is None:
+                await asyncio.to_thread(
+                    finish_tool_checkpoint,
+                    checkpoint,
+                    result=result,
+                )
+            else:
+                await asyncio.to_thread(
+                    finish_tool_checkpoint,
+                    checkpoint,
+                    result=result,
+                    error=reported_error,
+                    outcome_known=True,
+                )
 
         # Prepare result message with truncation
         if isinstance(result, str):
@@ -928,6 +1389,7 @@ class ListenChatAgent(ChatAgent):
                     },
                 )
             )
+        refresh_active_execution_timeout()
         return self._record_tool_calling(
             func_name,
             args,
@@ -944,10 +1406,13 @@ class ListenChatAgent(ChatAgent):
                 tool_call_data
             )
             if tool_call_request.tool_name not in self._internal_tools:
-                return await super()._aexecute_tool_from_stream_data(
-                    tool_call_data
+                raise ToolCheckpointError(
+                    f"streamed tool {tool_call_request.tool_name!r} is not registered"
                 )
             return await self._aexecute_tool(tool_call_request)
+        except ToolCheckpointError as error:
+            self._remember_tool_checkpoint_error(error)
+            raise
         except Exception as e:
             logger.error(f"Error processing async streaming tool call: {e}")
             return None
@@ -960,6 +1425,7 @@ class ListenChatAgent(ChatAgent):
         # tools so that HybridBrowserToolkit clones with the correct CDP port
         new_cdp_port = None
         new_cdp_url = None
+        new_owned_target_url = None
         new_cdp_session = None
         has_cdp = hasattr(self, "_cdp_acquire_callback") and callable(
             getattr(self, "_cdp_acquire_callback", None)
@@ -989,7 +1455,16 @@ class ListenChatAgent(ChatAgent):
                 if selected:
                     new_cdp_port = _get_browser_port(selected)
                     new_cdp_url = _get_browser_endpoint(selected)
+                    new_owned_target_url = selected.get("targetUrl")
                 else:
+                    if any(
+                        browser.get("managedBy") == "electron"
+                        for browser in cdp_browsers
+                    ):
+                        raise RuntimeError(
+                            "No unused Eigent embedded browser target is "
+                            "available for the cloned Agent."
+                        )
                     fallback_browser = cdp_browsers[0]
                     new_cdp_port = _get_browser_port(fallback_browser)
                     new_cdp_url = _get_browser_endpoint(fallback_browser)
@@ -1003,9 +1478,24 @@ class ListenChatAgent(ChatAgent):
                 original_cdp_url = (
                     toolkit.config_loader.get_browser_config().cdp_url
                 )
+                original_owned_target_url = getattr(
+                    toolkit, "_owned_target_url", None
+                )
+                original_allow_owned_target_clone = getattr(
+                    toolkit, "_allow_owned_target_clone", False
+                )
+                original_ws_owned_target_url = toolkit._ws_config.get(
+                    "ownedTargetUrl"
+                )
                 toolkit.config_loader.get_browser_config().cdp_url = (
                     new_cdp_url
                 )
+                toolkit._owned_target_url = new_owned_target_url
+                toolkit._allow_owned_target_clone = bool(new_owned_target_url)
+                if new_owned_target_url:
+                    toolkit._ws_config["ownedTargetUrl"] = new_owned_target_url
+                else:
+                    toolkit._ws_config.pop("ownedTargetUrl", None)
                 try:
                     cloned_tools, toolkits_to_register = self._clone_tools()
                 except Exception:
@@ -1017,6 +1507,16 @@ class ListenChatAgent(ChatAgent):
                     toolkit.config_loader.get_browser_config().cdp_url = (
                         original_cdp_url
                     )
+                    toolkit._owned_target_url = original_owned_target_url
+                    toolkit._allow_owned_target_clone = (
+                        original_allow_owned_target_clone
+                    )
+                    if original_ws_owned_target_url:
+                        toolkit._ws_config["ownedTargetUrl"] = (
+                            original_ws_owned_target_url
+                        )
+                    else:
+                        toolkit._ws_config.pop("ownedTargetUrl", None)
         else:
             cloned_tools, toolkits_to_register = self._clone_tools()
 
@@ -1050,6 +1550,7 @@ class ListenChatAgent(ChatAgent):
             prune_tool_calls_from_memory=self.prune_tool_calls_from_memory,
             enable_snapshot_clean=self._enable_snapshot_clean,
             step_timeout=self.step_timeout,
+            stall_timeout=self.stall_timeout,
             stream_accumulate=self.stream_accumulate,
             **clone_kwargs,
         )

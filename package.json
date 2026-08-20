@@ -168,20 +168,20 @@
     "lint-staged": "^15.2.11",
     "postcss": "^8.4.49",
     "postcss-import": "^16.1.0",
-    "prettier": "^3.8.1",
-    "prettier-plugin-organize-imports": "^4.3.0",
-    "prettier-plugin-tailwindcss": "^0.6.14",
+    "prettier": "3.9.6",
+    "prettier-plugin-organize-imports": "4.3.0",
+    "prettier-plugin-tailwindcss": "0.6.14",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-i18next": "^15.7.3",
     "rimraf": "^6.0.1",
     "storybook": "^10.1.11",
     "tailwindcss": "^3.4.15",
-    "typescript": "^5.4.2",
+    "typescript": "5.9.3",
     "vite": "^5.4.11",
     "vite-plugin-electron": "^0.29.0",
     "vite-plugin-electron-renderer": "^0.14.6",
-    "vitest": "^2.1.5"
+    "vitest": "2.1.9"
   },
   "pnpm": {
     "neverBuiltDependencies": []

@@ -36,6 +36,17 @@ interface ElectronAPI {
     fileCount?: number;
     canceled?: boolean;
   }>;
+  /**
+   * Trusted user gesture for selecting an Agent Plugins standard directory
+   * or archive. The path is accepted only by local Brain import endpoints and
+   * must never be persisted in a Bundle or Cloud projection.
+   */
+  selectAgentPluginSource?: () => Promise<{
+    canceled: boolean;
+    source_path?: string;
+    display_name?: string;
+    source_kind?: 'directory' | 'archive';
+  }>;
   processDroppedFiles: (
     fileData: Array<{ name: string; path?: string }>
   ) => Promise<{
@@ -116,6 +127,52 @@ interface ElectronAPI {
   envWrite: (email: string, kv: { key: string; value: string }) => Promise<any>;
   envRemove: (email: string, key: string) => Promise<any>;
   getEnvPath: (email: string) => Promise<string>;
+  workspaceSecretPut: (request: {
+    account_scope_digest: string;
+    space_id: string;
+    revision_id: string;
+    slot_id: string;
+    value: string;
+  }) => Promise<{
+    secret_ref: string;
+    account_scope_digest: string;
+    space_id: string;
+    revision_id: string;
+    slot_id: string;
+    state: 'available';
+    created_at?: string;
+    updated_at?: string;
+  }>;
+  workspaceSecretStatus: (request: {
+    secret_ref: string;
+    account_scope_digest: string;
+    space_id: string;
+    revision_id: string;
+    slot_id: string;
+  }) => Promise<{
+    secret_ref: string;
+    account_scope_digest: string;
+    space_id: string;
+    revision_id: string;
+    slot_id: string;
+    state: 'available' | 'missing' | 'needs_rebind';
+    created_at?: string;
+    updated_at?: string;
+  }>;
+  workspaceSecretDelete: (request: {
+    secret_ref: string;
+    account_scope_digest: string;
+    space_id: string;
+    revision_id: string;
+    slot_id: string;
+  }) => Promise<{
+    secret_ref: string;
+    account_scope_digest: string;
+    space_id: string;
+    revision_id: string;
+    slot_id: string;
+    state: 'missing';
+  }>;
   executeCommand: (
     command: string,
     email: string
@@ -158,6 +215,8 @@ interface ElectronAPI {
     error?: string;
   }>;
   getBackendPort: () => Promise<number | null>;
+  getLocalControlCapability: () => Promise<string>;
+  getDesktopInstanceId: (legacyRendererId?: string) => Promise<string>;
   restartBackend: () => Promise<{ success: boolean; error?: string }>;
   onInstallDependenciesStart: (callback: () => void) => void;
   onInstallDependenciesLog: (

@@ -55,5 +55,11 @@
   "create-skill-default-name": "新技能",
   "create-skill-default-description": "描述此技能的用途。",
   "save-skill": "儲存技能",
-  "compose-skill-hint": "編輯 SKILL.md（需要含名稱與描述的 YAML 前言），然後儲存。"
+  "compose-skill-hint": "編輯 SKILL.md（需要含名稱與描述的 YAML 前言），然後儲存。",
+  "try-skill-prompt": "我剛剛為 Eigent 新增了 {{name}} 技能。你能用這個技能創造一些很棒的內容嗎？",
+  "select-agent-access": "選擇代理存取權",
+  "all-agents": "所有代理",
+  "replace-skill-title": "取代「{{name}}」技能？",
+  "replace-skill-message": "已存在同名技能。上傳此技能將取代原技能，而且無法還原現有版本。",
+  "update-and-replace": "更新並取代"
 }

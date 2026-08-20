@@ -26,7 +26,7 @@
  *   - scripts/design-token-usage.allowlist — repo-relative paths, one per line (# comments ok)
  */
 
-import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -165,9 +165,7 @@ function main() {
   const explicit = resolveCliFiles(argv);
 
   const targets =
-    explicit.length > 0
-      ? explicit
-      : [...walkSrcFiles(join(REPO_ROOT, 'src'))];
+    explicit.length > 0 ? explicit : [...walkSrcFiles(join(REPO_ROOT, 'src'))];
 
   const violations = [];
   for (const abs of targets) {

@@ -23,6 +23,11 @@ import pytest
 from app.agent.factory.toolkit_assembler import assemble_single_agent_toolkits
 from app.model.chat import Chat
 from app.service.task import TaskLock, task_locks
+from app.workspace_bundle.runtime import (
+    EnvironmentSetupRequiredError,
+    ResolvedRuntimeEnvironment,
+    ResolvedRuntimeSkill,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -114,6 +119,234 @@ async def test_default_single_agent_tools_have_descriptions(
     _assert_tool_descriptions_are_non_empty(
         assembly.tools, "single-agent default toolkit assembly"
     )
+
+
+@pytest.mark.asyncio
+async def test_active_bundle_runtime_inputs_override_request_toolkit_config(
+    sample_chat_data, monkeypatch, tmp_path
+):
+    import app.agent.factory.toolkit_assembler as assembler
+
+    toolkit_config = {
+        name: {"enabled": name in {"skill", "mcp", "terminal"}}
+        for name in assembler.DEFAULT_SINGLE_AGENT_TOOLKIT_CONFIG
+    }
+    toolkit_config["skill"]["pinned_skill_sources"] = {
+        "/attacker/SKILL.md": "request override"
+    }
+    toolkit_config["mcp"].update(
+        {
+            "config_dict": {
+                "mcpServers": {"request-override": {"command": "malicious"}}
+            },
+            "skip_failed": True,
+        }
+    )
+    toolkit_config["terminal"].update(
+        {
+            "working_directory": "/attacker",
+            "safe_mode": False,
+            "use_docker_backend": True,
+            "runtime_env_provider": None,
+        }
+    )
+    options = _bedrock_chat(sample_chat_data).model_copy(
+        update={
+            "installed_mcp": {
+                "mcpServers": {"legacy-global": {"command": "legacy-command"}}
+            },
+            "toolkit_config": toolkit_config,
+        }
+    )
+    captured: dict[str, Any] = {}
+    monkeypatch.setenv("MCP_REMOTE_CONFIG_DIR", "/legacy/mcp-auth")
+    _patch_toolkit_creation_side_effects(
+        monkeypatch, tmp_path, options.project_id
+    )
+
+    class FakeSkillToolkit:
+        def __init__(self, *args, **kwargs):
+            captured["skills"] = kwargs["pinned_skill_sources"]
+
+        @classmethod
+        def toolkit_name(cls):
+            return "SkillToolkit"
+
+        def get_tools(self):
+            return []
+
+    class FakeMCPToolkit:
+        def __init__(self, **kwargs):
+            captured["mcp"] = kwargs["config_dict"]
+            captured["skip_failed"] = kwargs["skip_failed"]
+
+        async def connect(self):
+            captured["connected"] = True
+
+        def get_tools(self):
+            return []
+
+    class FakeTerminalToolkit:
+        def __init__(self, *args, **kwargs):
+            captured["terminal"] = kwargs
+
+        @classmethod
+        def toolkit_name(cls):
+            return "TerminalToolkit"
+
+        def get_tools(self):
+            return []
+
+    monkeypatch.setattr(assembler, "SkillToolkit", FakeSkillToolkit)
+    monkeypatch.setattr(assembler, "MCPToolkit", FakeMCPToolkit)
+    monkeypatch.setattr(assembler, "TerminalToolkit", FakeTerminalToolkit)
+    runtime = ResolvedRuntimeEnvironment(
+        environment_spec_id="envspec-1",
+        bundle_revision_id="bundle@1",
+        proposal_id="proposal-1",
+        configuration_root=str(tmp_path),
+        instructions=(("coordinator", "Pinned instruction"),),
+        context=(),
+        skills=(
+            ResolvedRuntimeSkill(
+                ref="bundle://skills/demo/SKILL.md",
+                path=str(tmp_path / "skills/demo/SKILL.md"),
+                content=(
+                    "---\nname: demo\ndescription: demo\n---\nPinned body"
+                ),
+                assign_to=("single_agent",),
+            ),
+        ),
+        connectors=(),
+        agent_aliases=("coordinator",),
+        permission_profile="request_approval",
+        permission_rules=(("git.remote_write", "deny"),),
+        _mcp_servers={"bundle-local": {"command": "python", "args": ["-V"]}},
+        _secret_identities=(),
+        _environment_bindings=(),
+        _secret_broker_factory=lambda: None,  # never called
+    )
+
+    await assemble_single_agent_toolkits(
+        options,
+        task_id=options.task_id,
+        working_directory=str(tmp_path),
+        hands=None,
+        can_delegate=False,
+        runtime_environment=runtime,
+    )
+
+    assert list(captured["skills"].values())[0].endswith("Pinned body")
+    assert set(captured["mcp"]["mcpServers"]) == {"bundle-local"}
+    assert "legacy-global" not in captured["mcp"]["mcpServers"]
+    assert (
+        "MCP_REMOTE_CONFIG_DIR"
+        not in (captured["mcp"]["mcpServers"]["bundle-local"]["env"])
+    )
+    assert captured["skip_failed"] is False
+    assert captured["connected"] is True
+    assert captured["terminal"]["working_directory"] == str(tmp_path)
+    assert captured["terminal"]["safe_mode"] is True
+    assert captured["terminal"]["use_docker_backend"] is False
+    assert callable(captured["terminal"]["runtime_env_provider"])
+
+    class CleanupTerminalToolkit(FakeTerminalToolkit):
+        def cleanup(self):
+            captured["terminal_cleaned"] = True
+
+    class FailingMCPToolkit(FakeMCPToolkit):
+        async def connect(self):
+            raise RuntimeError("partial MCP startup")
+
+        async def disconnect(self):
+            captured["mcp_cleaned"] = True
+
+    monkeypatch.setattr(
+        assembler,
+        "TerminalToolkit",
+        CleanupTerminalToolkit,
+    )
+    monkeypatch.setattr(assembler, "MCPToolkit", FailingMCPToolkit)
+
+    with pytest.raises(
+        EnvironmentSetupRequiredError,
+        match="bundle_mcp_start_failed",
+    ):
+        await assemble_single_agent_toolkits(
+            options,
+            task_id=options.task_id,
+            working_directory=str(tmp_path),
+            hands=None,
+            can_delegate=False,
+            runtime_environment=runtime,
+        )
+
+    assert captured["terminal_cleaned"] is True
+    assert captured["mcp_cleaned"] is True
+
+    captured.pop("terminal_cleaned")
+
+    class ConstructorFailingMCPToolkit:
+        def __init__(self, **_kwargs):
+            raise RuntimeError("MCP constructor failed")
+
+    monkeypatch.setattr(
+        assembler,
+        "MCPToolkit",
+        ConstructorFailingMCPToolkit,
+    )
+    with pytest.raises(
+        EnvironmentSetupRequiredError,
+        match="bundle_mcp_start_failed",
+    ):
+        await assemble_single_agent_toolkits(
+            options,
+            task_id=options.task_id,
+            working_directory=str(tmp_path),
+            hands=None,
+            can_delegate=False,
+            runtime_environment=runtime,
+        )
+    assert captured["terminal_cleaned"] is True
+
+    class UnexpectedToolkitConstruction:
+        def __init__(self, *_args, **_kwargs):
+            raise AssertionError("resource allocation preceded MCP preflight")
+
+    denied_hands = MagicMock()
+    denied_hands.can_use_mcp.return_value = False
+    denied_options = options.model_copy(
+        update={
+            "toolkit_config": {
+                **toolkit_config,
+                "browser": {"enabled": True},
+            }
+        }
+    )
+    monkeypatch.setattr(
+        assembler,
+        "TerminalToolkit",
+        UnexpectedToolkitConstruction,
+    )
+    monkeypatch.setattr(
+        assembler,
+        "HybridBrowserToolkit",
+        UnexpectedToolkitConstruction,
+    )
+    with pytest.raises(
+        EnvironmentSetupRequiredError,
+        match="mcp_not_allowed:bundle-local",
+    ):
+        await assemble_single_agent_toolkits(
+            denied_options,
+            task_id=denied_options.task_id,
+            working_directory=str(tmp_path),
+            hands=denied_hands,
+            can_delegate=False,
+            runtime_environment=runtime,
+        )
+    denied_hands.can_use_mcp.assert_called_once_with("bundle-local")
+    denied_hands.can_use_browser.assert_not_called()
 
 
 @pytest.mark.asyncio

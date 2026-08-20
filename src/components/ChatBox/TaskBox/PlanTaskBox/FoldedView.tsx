@@ -80,7 +80,7 @@ export function FoldedView({
       exit={planBlurFadeMotion.exit}
       transition={planBlurFadeMotion.transition}
       className={cn(
-        'relative mx-sm flex flex-col overflow-hidden rounded-2xl bg-ds-bg-splitting-subtle-default'
+        'relative mx-2 flex flex-col overflow-hidden rounded-2xl bg-ds-bg-splitting-subtle-default'
       )}
     >
       <div className="flex items-center gap-2 border-x-0 border-b border-t-0 border-solid border-ds-border-neutral-subtle-default px-3 py-2">
@@ -119,7 +119,10 @@ export function FoldedView({
 
       {showPreview && (
         <div
-          className="scrollbar relative m-2 overflow-y-auto rounded-xl bg-transparent"
+          className={cn(
+            'relative m-2 rounded-xl bg-transparent',
+            canExpand ? 'overflow-hidden' : 'scrollbar overflow-y-auto'
+          )}
           style={{ height: PREVIEW_MAX_HEIGHT_PX }}
         >
           <div className="flex flex-col px-3 py-2">

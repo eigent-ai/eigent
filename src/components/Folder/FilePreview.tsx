@@ -14,18 +14,12 @@
 
 import { Button } from '@/components/ui/button';
 import { useHost } from '@/host';
+import { loadFilePreview } from '@/lib/filePreviewLoader';
+import { resolveArtifactAssetFile } from '@/service/artifactAssetApi';
 import { FileText, X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  downloadFromUrl,
-  downloadOpenedFile,
-  fetchRemoteFileAsDataUrl,
-  FileViewerPanel,
-  isAudioFile,
-  isImageFile,
-  isVideoFile,
-} from './index';
+import { downloadFromUrl, downloadOpenedFile, FileViewerPanel } from './index';
 
 export interface FilePreviewProps {
   /** File to preview, or null to show the empty "select a file" placeholder. */
@@ -65,127 +59,53 @@ export function FilePreview({
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [isShowSourceCode, setIsShowSourceCode] = useState(false);
+  const previewRequestRef = useRef<AbortController | null>(null);
 
   // Mirror of the Inbox/Folder loader (selectedFileChange): read content via the
   // electron host (or remote fetch) and stash it on the file for the viewer.
   const loadFileContent = useCallback(
     (target: FileInfo, showSource?: boolean) => {
-      const isWebMode = !ipcRenderer?.invoke;
-
       // Folders / archives are not previewable inline.
       if (target.isFolder || target.type === 'zip') {
+        previewRequestRef.current?.abort();
         setSelectedFile(null);
         setLoading(false);
         return;
       }
 
+      previewRequestRef.current?.abort();
+      const controller = new AbortController();
+      previewRequestRef.current = controller;
       setSelectedFile(target);
       setLoading(true);
-
-      if (target.isRemote && target.path?.startsWith('http')) {
-        if (isImageFile(target)) {
-          void fetchRemoteFileAsDataUrl(target.path)
-            .then((content) => setSelectedFile({ ...target, content }))
-            .catch((error) => {
-              console.error('Failed to load remote image:', error);
-              setSelectedFile({ ...target });
-            })
-            .finally(() => setLoading(false));
-          return;
-        }
-
-        if (isAudioFile(target) || isVideoFile(target)) {
-          setSelectedFile({ ...target });
-          setLoading(false);
-          return;
-        }
-
-        if (!isWebMode && ipcRenderer) {
-          ipcRenderer
-            .invoke('open-file', target.type, target.path, showSource)
-            .then((res: string) => {
-              setSelectedFile({ ...target, content: res });
-              setLoading(false);
-            })
-            .catch((error: unknown) => {
-              console.error('open-file error:', error);
-              setLoading(false);
-            });
-          return;
-        }
-
-        void (async () => {
-          try {
-            const resp = await fetch(target.path);
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            const contentType = resp.headers.get('content-type') || '';
-            let content: string;
-            if (
-              target.type === 'pdf' ||
-              contentType.includes('application/pdf')
-            ) {
-              const blob = await resp.blob();
-              content = await new Promise<string>((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result as string);
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
-              });
-            } else {
-              content = await resp.text();
-            }
-            setSelectedFile({ ...target, content });
-          } catch (error) {
-            console.error('Failed to load remote file:', error);
-          } finally {
-            setLoading(false);
-          }
-        })();
-        return;
-      }
-
-      // PDF: use a data URL so the iframe can render it.
-      if (target.type === 'pdf') {
-        if (ipcRenderer) {
-          ipcRenderer
-            .invoke('read-file-dataurl', target.path)
-            .then((dataUrl: string) => {
-              setSelectedFile({ ...target, content: dataUrl });
-              setLoading(false);
-            })
-            .catch((error: unknown) => {
-              console.error('read-file-dataurl error:', error);
-              setLoading(false);
-            });
-        } else {
-          setLoading(false);
-        }
-        return;
-      }
-
-      // Audio/video: loaders read the file:// source themselves.
-      if (isAudioFile(target) || isVideoFile(target)) {
-        setSelectedFile({ ...target });
-        setLoading(false);
-        return;
-      }
-
-      if (ipcRenderer) {
-        ipcRenderer
-          .invoke('open-file', target.type, target.path, showSource)
-          .then((res: string) => {
-            setSelectedFile({ ...target, content: res });
-            setLoading(false);
+      void resolveArtifactAssetFile(target)
+        .then((resolved) =>
+          loadFilePreview(resolved, {
+            ipcRenderer,
+            showSource,
+            signal: controller.signal,
           })
-          .catch((error: unknown) => {
-            console.error('open-file error:', error);
-            setLoading(false);
-          });
-      } else {
-        setLoading(false);
-      }
+        )
+        .then((loadedFile) => {
+          if (!controller.signal.aborted) setSelectedFile(loadedFile);
+        })
+        .catch((error: unknown) => {
+          if (!controller.signal.aborted) {
+            console.error('Failed to load file preview:', error);
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setLoading(false);
+        });
     },
     [ipcRenderer]
+  );
+
+  useEffect(
+    () => () => {
+      previewRequestRef.current?.abort();
+    },
+    []
   );
 
   // Reload whenever the previewed file changes. Reset the source-code toggle so
@@ -199,7 +119,7 @@ export function FilePreview({
     }
     loadFileContent(file, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [file?.path, file?.isRemote, loadFileContent]);
+  }, [file?.path, file?.isRemote, file?.assetRef?.chatFileId, loadFileContent]);
 
   // Breadcrumb is intentionally shallow: "Context > filename". The "Context"
   // root navigates to the Inbox/Context tab for this file.
@@ -229,6 +149,10 @@ export function FilePreview({
   const handleRevealFile = useCallback(() => {
     if (!selectedFile) return;
     if (selectedFile.isRemote) {
+      if (selectedFile.preview?.kind === 'blocked') {
+        window.open(selectedFile.path, '_blank', 'noopener,noreferrer');
+        return;
+      }
       void downloadFromUrl(selectedFile.path, selectedFile.name);
       return;
     }
@@ -237,8 +161,23 @@ export function FilePreview({
 
   const handleDownloadFile = useCallback(() => {
     if (!selectedFile || selectedFile.isFolder) return;
+    if (selectedFile.preview?.kind === 'blocked') {
+      if (selectedFile.isRemote) {
+        window.open(selectedFile.path, '_blank', 'noopener,noreferrer');
+      }
+      return;
+    }
     void downloadOpenedFile(selectedFile);
   }, [selectedFile]);
+
+  const handleOpenExternalFile = useCallback(() => {
+    if (!selectedFile) return;
+    if (selectedFile.isRemote) {
+      window.open(selectedFile.path, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    void ipcRenderer?.invoke('open-local-file', selectedFile.path);
+  }, [selectedFile, ipcRenderer]);
 
   return (
     <FileViewerPanel
@@ -253,6 +192,7 @@ export function FilePreview({
       surfaceClassName={surfaceClassName}
       embedded={embedded}
       onRevealFile={handleRevealFile}
+      onOpenExternalFile={handleOpenExternalFile}
       onDownloadFile={handleDownloadFile}
       onToggleSourceCode={handleToggleSourceCode}
       emptyState={

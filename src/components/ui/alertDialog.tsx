@@ -18,7 +18,9 @@ import {
   type ButtonVariant,
 } from '@/components/ui/button';
 import { AnimatePresence, motion } from 'framer-motion';
-import type { ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 
 type ConfirmVariant = ButtonVariant | ButtonLegacyVariant;
 
@@ -40,16 +42,26 @@ export default function ConfirmModal({
   isOpen,
   onClose,
   onConfirm,
-  title = 'Confirm Title',
-  message = 'Confirm content?',
-  confirmText = 'Confirm',
-  cancelText = 'Cancel',
+  title: titleProp,
+  message: messageProp,
+  confirmText: confirmTextProp,
+  cancelText: cancelTextProp,
   confirmVariant = 'caution',
   hideCancel = false,
   confirmDisabled = false,
   children,
 }: ConfirmModalProps) {
-  return (
+  const { t } = useTranslation();
+  const titleId = useId();
+  const descriptionId = useId();
+  const title = titleProp ?? t('layout.confirm');
+  const message = messageProp ?? t('layout.confirm-content');
+  const confirmText = confirmTextProp ?? t('layout.confirm');
+  const cancelText = cancelTextProp ?? t('layout.cancel');
+
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
         <>
@@ -67,18 +79,30 @@ export default function ConfirmModal({
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="alert-dialog-wrapper fixed left-1/2 top-1/2 z-[100] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            aria-describedby={descriptionId}
+            className="alert-dialog-wrapper fixed left-1/2 top-1/2 z-[100] w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl"
           >
-            <div className="rounded-xl border border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default p-6 shadow-perfect">
-              <span className="mb-2 text-body-lg font-bold text-ds-text-neutral-default-default">
+            <div className="rounded-xl border border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default p-6 shadow-perfect">
+              <span
+                id={titleId}
+                className="mb-2 block text-body-lg font-bold text-ds-text-neutral-default-default"
+              >
                 {title}
               </span>
               {children ? (
-                <div className="mb-6">{children}</div>
+                <div id={descriptionId} className="mb-6">
+                  {children}
+                </div>
               ) : (
-                <p className="mb-6 text-label-md text-ds-text-neutral-muted-default">
+                <span
+                  id={descriptionId}
+                  className="mb-6 block text-label-md text-ds-text-neutral-muted-default"
+                >
                   {message}
-                </p>
+                </span>
               )}
 
               <div className="flex justify-end gap-3">
@@ -103,6 +127,7 @@ export default function ConfirmModal({
           </motion.div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }

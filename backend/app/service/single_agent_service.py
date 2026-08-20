@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import asyncio
+import inspect
 import logging
 import os
 from typing import Any
@@ -24,11 +25,18 @@ from fastapi import Request
 from app.agent.factory.single_agent import single_agent
 from app.hands.interface import IHands
 from app.memory import (
-    build_durable_context_for_task_lock,
+    build_durable_context_projection_for_task_lock,
     finalize_task_lock_run_memory,
 )
 from app.model.chat import Chat, sse_json
 from app.model.enums import Status
+from app.run_journal.context_projection import (
+    build_project_execution_context_projection,
+    persist_context_projection_diagnostic,
+)
+from app.run_journal.runtime import get_default_run_journal
+from app.run_runtime.admission import activate_improve_admission
+from app.run_runtime.coordinator import RunInterruptedError
 from app.service.task import (
     Action,
     ActionData,
@@ -36,6 +44,7 @@ from app.service.task import (
     TaskLock,
     delete_task_lock,
     set_current_task_id,
+    write_file_event_payload,
 )
 from app.utils.agent_memory import (
     build_memory_context,
@@ -44,6 +53,109 @@ from app.utils.agent_memory import (
 from app.utils.file_utils import get_working_directory
 
 logger = logging.getLogger("single_agent_service")
+
+_RETRYABLE_MODEL_STATUS_CODES = frozenset(
+    {408, 425, 429, 499, 500, 502, 503, 504}
+)
+
+
+def _is_retryable_turn_error(error: Exception) -> bool:
+    """Return whether a failed model turn can safely continue in a new Attempt.
+
+    These failures happen before Eigent receives a model response, so no tool
+    call from that response has been dispatched. Completed tool checkpoints
+    from earlier turns remain authoritative and are not replayed implicitly.
+    """
+
+    status_code = getattr(error, "status_code", None)
+    if status_code in _RETRYABLE_MODEL_STATUS_CODES:
+        return True
+    if type(error).__name__ in {"APIConnectionError", "APITimeoutError"}:
+        return True
+    message = str(error).strip().lower()
+    return message in {
+        "client closed request",
+        "connection error",
+        "request timed out",
+    }
+
+
+async def _dispose_stale_agent_runtime(
+    agent: Any,
+    task_lock: TaskLock,
+    *,
+    task_id: str,
+) -> None:
+    """Dispose every stale adapter before a replacement can be assembled."""
+
+    failures: list[Exception] = []
+    release_cdp = getattr(agent, "_cdp_release_callback", None)
+    if callable(release_cdp):
+        try:
+            release_cdp(agent)
+            agent._cdp_release_callback = None
+        except Exception as exc:
+            failures.append(exc)
+            logger.exception(
+                "Failed to release stale Agent browser runtime",
+                extra={"task_id": task_id},
+            )
+
+    remaining_toolkits: list[Any] = []
+    for toolkit in getattr(agent, "_runtime_cleanup_toolkits", ()):
+        disposed = False
+        try:
+            cleanup = getattr(toolkit, "disconnect", None)
+            if cleanup is None:
+                cleanup = getattr(toolkit, "cleanup", None)
+            if cleanup is not None:
+                outcome = cleanup()
+                if inspect.isawaitable(outcome):
+                    await outcome
+            disposed = True
+        except Exception as exc:
+            failures.append(exc)
+            remaining_toolkits.append(toolkit)
+            logger.exception(
+                "Failed to dispose stale Agent toolkit",
+                extra={
+                    "task_id": task_id,
+                    "toolkit": type(toolkit).__name__,
+                },
+            )
+        if disposed:
+            task_lock.registered_toolkits = [
+                item
+                for item in task_lock.registered_toolkits
+                if item is not toolkit
+            ]
+    agent._runtime_cleanup_toolkits = tuple(remaining_toolkits)
+
+    if failures:
+        raise RuntimeError(
+            "Failed to dispose stale Agent runtime; replacement blocked"
+        ) from failures[0]
+
+
+async def _reset_agent_for_run(
+    agent: Any,
+    *,
+    task_id: str,
+) -> None:
+    """Reset semantic state while retaining the compatible warm runtime."""
+
+    reset = getattr(agent, "reset", None)
+    if not callable(reset):
+        raise RuntimeError("Reusable Agent does not expose reset()")
+    outcome = reset()
+    if inspect.isawaitable(outcome):
+        await outcome
+    agent.process_task_id = task_id
+    stop_event = getattr(agent, "stop_event", None)
+    clear_stop = getattr(stop_event, "clear", None)
+    if callable(clear_stop):
+        clear_stop()
+
 
 # Char budget for the durable memory bundle (~32k chars at 4 chars/token).
 # Override via EIGENT_MEMORY_TOKEN_BUDGET if you need to tune in the field.
@@ -60,15 +172,62 @@ def _build_single_agent_context(
     project_context: str | None = None,
     current_user_prompt: str = "",
 ) -> str:
-    # 1. Durable cross-restart context from LocalMemoryStore (M4 path).
-    durable = build_durable_context_for_task_lock(
+    run_context = getattr(task_lock, "run_context", None)
+    canonical_execution = ""
+    execution_event_ids: tuple[str, ...] = ()
+    project_id = getattr(run_context, "project_id", None)
+    run_id = getattr(run_context, "run_id", None)
+    if isinstance(project_id, str) and isinstance(run_id, str):
+        try:
+            execution_projection = build_project_execution_context_projection(
+                get_default_run_journal(),
+                project_id=project_id,
+                current_run_id=run_id,
+            )
+            canonical_execution = execution_projection.text
+            execution_event_ids = execution_projection.source_event_ids
+        except Exception:
+            logger.warning(
+                "Canonical execution context unavailable; using Memory fallback",
+                extra={"project_id": project_id, "run_id": run_id},
+                exc_info=True,
+            )
+
+    # Project Memory owns durable summaries/facts/artifacts. Conversation and
+    # tool history come from the canonical RunJournal when it is available.
+    memory_projection = build_durable_context_projection_for_task_lock(
         task_lock,
         mode="single_agent",
         current_user_prompt=current_user_prompt,
         token_budget=_MEMORY_TOKEN_BUDGET,
+        include_conversation=not bool(canonical_execution),
     )
-    if durable:
-        return durable + "\n\n"
+    durable = memory_projection.text if memory_projection is not None else None
+
+    def record_projection(projected_text: str) -> str:
+        if isinstance(project_id, str) and isinstance(run_id, str):
+            persist_context_projection_diagnostic(
+                get_default_run_journal(),
+                project_id=project_id,
+                run_id=run_id,
+                projected_text=projected_text,
+                source_event_ids=execution_event_ids,
+                source_memory_ids=(
+                    memory_projection.source_memory_ids
+                    if memory_projection is not None
+                    else ()
+                ),
+            )
+        return projected_text
+
+    durable_parts = [
+        part.strip()
+        for part in (durable, canonical_execution)
+        if isinstance(part, str) and part.strip()
+    ]
+    if durable_parts:
+        projected = "\n\n".join(durable_parts) + "\n\n"
+        return record_projection(projected)
 
     # 2. In-process conversation history (hot follow-up turns).
     if getattr(task_lock, "conversation_history", None):
@@ -89,13 +248,13 @@ def _build_single_agent_context(
         if memory_context:
             lines.append(memory_context.rstrip())
         lines.append("=== End Previous Conversation ===")
-        return "\n".join(lines) + "\n\n"
+        return record_projection("\n".join(lines) + "\n\n")
 
     # 3. Phase-0 bridge fallback (frontend-sent project_context).
     durable_context = (project_context or "").strip()
     if not durable_context:
-        return ""
-    return (
+        return record_projection("")
+    return record_projection(
         "=== Persisted Project Context ===\n"
         f"{durable_context}\n"
         "=== End Persisted Project Context ===\n\n"
@@ -125,8 +284,11 @@ def _build_single_agent_prompt(
     attaches: list[str],
     project_context: str | None = None,
 ) -> str:
+    # The current instruction is appended below exactly once. Durable memory
+    # owns cross-Run history; it must not also render the current user message
+    # as a synthetic history section.
     context = _build_single_agent_context(
-        task_lock, project_context, current_user_prompt=question
+        task_lock, project_context, current_user_prompt=""
     )
     attachment_context = ""
     if attaches:
@@ -184,13 +346,7 @@ def _action_to_sse(item: ActionData) -> str | None:
     if item.action == Action.deactivate_toolkit:
         return sse_json("deactivate_toolkit", item.data)
     if item.action == Action.write_file:
-        return sse_json(
-            "write_file",
-            {
-                "file_path": item.data,
-                "process_task_id": item.process_task_id,
-            },
-        )
+        return sse_json("write_file", write_file_event_payload(item))
     if item.action == Action.ask:
         return sse_json("ask", item.data)
     if item.action == Action.notice:
@@ -227,18 +383,49 @@ async def single_agent_solve(
     pause_event = asyncio.Event()
     pause_event.set()
     agent = None
+    agent_run_id: str | None = None
+    agent_runtime_key: tuple[str | None, str, str | None] | None = None
     running_turn: asyncio.Task[tuple[str, int]] | None = None
     current_task_id = options.task_id
 
     async def ensure_agent(task_id: str):
-        nonlocal agent
+        nonlocal agent, agent_run_id, agent_runtime_key
+        current_environment_spec_id = getattr(
+            task_lock,
+            "environment_spec_id",
+            None,
+        )
+        current_runtime_key = (
+            current_environment_spec_id,
+            get_working_directory(options, task_lock),
+            getattr(task_lock, "permission_profile_revision", None),
+        )
+        if agent is not None and agent_runtime_key != current_runtime_key:
+            await _dispose_stale_agent_runtime(
+                agent,
+                task_lock,
+                task_id=task_id,
+            )
+            agent = None
+            agent_run_id = None
+            agent_runtime_key = None
         if agent is None:
             agent = await single_agent(
                 options,
                 task_id=task_id,
                 hands=hands,
                 pause_event=pause_event,
+                runtime_environment=getattr(
+                    task_lock,
+                    "resolved_runtime_environment",
+                    None,
+                ),
             )
+            agent_run_id = task_id
+            agent_runtime_key = current_runtime_key
+        elif agent_run_id != task_id:
+            await _reset_agent_for_run(agent, task_id=task_id)
+            agent_run_id = task_id
         observable_todo = getattr(agent, "_observable_todo_toolkit", None)
         if observable_todo is not None:
             observable_todo.task_id = task_id
@@ -286,17 +473,6 @@ async def single_agent_solve(
 
     try:
         while True:
-            if await request.is_disconnected():
-                logger.info(
-                    "Single Agent client disconnected; pausing session",
-                    extra={"project_id": options.project_id},
-                )
-                pause_event.clear()
-                task_lock.status = Status.confirming
-                if running_turn and not running_turn.done():
-                    running_turn.cancel()
-                break
-
             wait_for = {pending_queue_get}
             if running_turn is not None:
                 wait_for.add(running_turn)
@@ -315,6 +491,13 @@ async def single_agent_solve(
 
                 if item.action == Action.improve:
                     assert isinstance(item, ActionImproveData)
+                    if not await activate_improve_admission(
+                        task_lock,
+                        item,
+                        project_id=options.project_id,
+                        logger=logger,
+                    ):
+                        continue
                     if item.new_task_id:
                         current_task_id = item.new_task_id
                         set_current_task_id(
@@ -392,6 +575,11 @@ async def single_agent_solve(
 
                         cancelled_turn.add_done_callback(_swallow)
                     task_lock.status = Status.done
+                    from app.service.run_cancellation import (
+                        cancel_current_turn_durable,
+                    )
+
+                    await cancel_current_turn_durable(task_lock)
                     _finalize_memory_for_turn(
                         task_lock,
                         state="cancelled",
@@ -408,6 +596,11 @@ async def single_agent_solve(
                         agent.stop_event.set()
                     if running_turn is not None and not running_turn.done():
                         running_turn.cancel()
+                    from app.service.run_cancellation import (
+                        cancel_current_turn_durable,
+                    )
+
+                    await cancel_current_turn_durable(task_lock)
                     await delete_task_lock(task_lock.id)
                     break
 
@@ -426,6 +619,7 @@ async def single_agent_solve(
                     final_result = "<summary>Task paused</summary>Task paused"
                     total_tokens = 0
                 except Exception as e:
+                    retryable = _is_retryable_turn_error(e)
                     logger.error(
                         "Single Agent turn failed",
                         extra={
@@ -437,11 +631,35 @@ async def single_agent_solve(
                     pause_event.clear()
                     task_lock.status = Status.confirming
                     _finalize_memory_for_turn(
-                        task_lock, state="failed", error=str(e)
+                        task_lock,
+                        state="interrupted" if retryable else "failed",
+                        error=str(e),
                     )
-                    yield sse_json("error", {"message": str(e)})
+                    yield sse_json(
+                        "error",
+                        {
+                            "message": str(e),
+                            "retryable": retryable,
+                            "reason": (
+                                "model_transport_error" if retryable else None
+                            ),
+                        },
+                    )
                     running_turn = None
-                    continue
+                    try:
+                        await delete_task_lock(task_lock.id)
+                    except Exception:
+                        # Cleanup failure must not downgrade a retryable model
+                        # interruption into a non-resumable execution failure.
+                        logger.exception(
+                            "Failed to clean task lock after turn error",
+                            extra={"task_id": task_lock.id},
+                        )
+                    if retryable:
+                        raise RunInterruptedError(
+                            str(e), reason="model_transport_error"
+                        ) from e
+                    raise
 
                 task_lock.status = Status.done
                 running_turn = None
@@ -462,12 +680,13 @@ async def single_agent_solve(
             pause_event.clear()
             task_lock.status = Status.confirming
             running_turn.cancel()
-        # If the loop exits without a clean done/failed end-of-turn (client
-        # disconnect, stop, exception), record a cancelled run. The
+        # If the loop exits without a clean done/failed/cancelled end-of-turn,
+        # project it as interrupted. Only an explicit cancel may produce the
+        # cancelled state; transport/process teardown is resumable. The
         # `_memory_finalized_runs` set on task_lock makes this idempotent:
         # a prior done/failed write wins, this only catches the unfinished
         # case.
-        _finalize_memory_for_turn(task_lock, state="cancelled")
+        _finalize_memory_for_turn(task_lock, state="interrupted")
         if agent is not None:
             release_cdp = getattr(agent, "_cdp_release_callback", None)
             if callable(release_cdp):

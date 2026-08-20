@@ -19,10 +19,13 @@ import { cn } from '@/lib/utils';
 
 const Progress = React.forwardRef<
   React.ElementRef<typeof ProgressPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof ProgressPrimitive.Root>
->(({ className, value, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof ProgressPrimitive.Root> & {
+    indicatorClassName?: string;
+  }
+>(({ className, indicatorClassName, value, ...props }, ref) => (
   <ProgressPrimitive.Root
     ref={ref}
+    value={value}
     className={cn(
       'bg-specialty-progress-surface relative h-2 w-full overflow-hidden rounded-full',
       className
@@ -30,7 +33,13 @@ const Progress = React.forwardRef<
     {...props}
   >
     <ProgressPrimitive.Indicator
-      className={`ease-[cubic-bezier(0.23,1,0.32,1)] h-full w-full flex-1 transition-transform duration-200 ${value === 100 ? 'bg-progress-fill-complete' : 'bg-progress-fill-default'}`}
+      className={cn(
+        'h-full w-full flex-1 transition-transform duration-200 ease-out',
+        value === 100
+          ? 'bg-progress-fill-complete'
+          : 'bg-progress-fill-default',
+        indicatorClassName
+      )}
       style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
     />
   </ProgressPrimitive.Root>

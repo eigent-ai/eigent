@@ -140,6 +140,25 @@ class TestRunStart:
         # Nothing written -- memory root has no users/ subtree
         assert not (service.store.root / "users").exists()
 
+    def test_on_run_start_deduplicates_a_stable_conversation_event(
+        self, service, run_context
+    ):
+        for _ in range(2):
+            event_id = service.on_run_start(
+                run_context=run_context,
+                space_name="W",
+                project_name="P",
+                mode="single_agent",
+                user_prompt="retry-safe prompt",
+                conversation_event_id="memory:request-1",
+            )
+
+        tail = service.store.read_conversation_tail(
+            "user_42", run_context.space_id, run_context.project_id, limit=10
+        )
+        assert event_id == "memory:request-1"
+        assert [event.content for event in tail] == ["retry-safe prompt"]
+
     def test_followup_run_inherits_mode_from_project(
         self, service, run_context
     ):
@@ -308,7 +327,7 @@ class TestCamelLogsArtifact:
 
 
 class TestTaskLockFinalizer:
-    def test_finalize_task_lock_run_memory_writes_done_once(
+    def test_legacy_task_lock_finalizer_is_retired_noop(
         self, service, run_context
     ):
         class DummyTaskLock:
@@ -327,7 +346,7 @@ class TestTaskLockFinalizer:
             user_prompt="q",
         )
 
-        assert finalize_task_lock_run_memory(
+        assert not finalize_task_lock_run_memory(
             task_lock,
             state="done",
             final_result="answer",
@@ -345,11 +364,11 @@ class TestTaskLockFinalizer:
             run_context.run_id,
         )
         assert status is not None
-        assert status.state == "done"
+        assert status.state == "running"
         tail = service.store.read_conversation_tail(
             "user_42", run_context.space_id, run_context.project_id, limit=10
         )
-        assert [event.content for event in tail] == ["q", "answer"]
+        assert [event.content for event in tail] == ["q"]
 
 
 class TestCrossRestartRecovery:

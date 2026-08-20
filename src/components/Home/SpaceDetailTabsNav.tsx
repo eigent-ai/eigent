@@ -1,0 +1,232 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import { cn } from '@/lib/utils';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import {
+  Brain,
+  FolderKanban,
+  Library,
+  ListChecks,
+  Settings,
+  Zap,
+  type LucideIcon,
+} from 'lucide-react';
+import { useCallback, useRef, useState, type KeyboardEvent } from 'react';
+
+const underlineSlideTransition = {
+  type: 'spring' as const,
+  stiffness: 420,
+  damping: 34,
+  mass: 0.55,
+};
+
+const uiEaseOut = [0.23, 1, 0.32, 1] as const;
+
+export const SPACE_DETAIL_TABS = [
+  'projects',
+  'tasks',
+  'triggers',
+  'context',
+  'memory',
+  'workspace-profile',
+] as const;
+
+export type SpaceDetailTab = (typeof SPACE_DETAIL_TABS)[number];
+
+export function isSpaceDetailTab(value: unknown): value is SpaceDetailTab {
+  return SPACE_DETAIL_TABS.includes(value as SpaceDetailTab);
+}
+
+type SpaceDetailTabConfig = {
+  id: SpaceDetailTab;
+  label: string;
+  icon: LucideIcon;
+};
+
+const SPACE_DETAIL_TAB_OPTIONS: SpaceDetailTabConfig[] = [
+  { id: 'projects', label: 'Projects', icon: FolderKanban },
+  { id: 'tasks', label: 'Tasks', icon: ListChecks },
+  { id: 'triggers', label: 'Triggers', icon: Zap },
+  { id: 'context', label: 'Context', icon: Library },
+  { id: 'memory', label: 'Memory', icon: Brain },
+  { id: 'workspace-profile', label: 'Space Settings', icon: Settings },
+];
+
+const tabButtonClass =
+  'group relative z-10 inline-flex h-8 min-h-8 shrink-0 items-center gap-2 rounded-full border-0 bg-transparent px-2 !text-body-sm font-bold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ds-border-brand-default-focus focus-visible:ring-offset-2 focus-visible:ring-offset-ds-bg-neutral-default-default';
+
+const iconSlotClass =
+  'relative z-10 inline-flex size-4 shrink-0 items-center justify-center [&_svg]:size-4';
+
+export type SpaceDetailTabsNavProps = {
+  activeTab: SpaceDetailTab;
+  onChange: (value: SpaceDetailTab) => void;
+  className?: string;
+};
+
+export function SpaceDetailTabsNav({
+  activeTab,
+  onChange,
+  className,
+}: SpaceDetailTabsNavProps) {
+  const navRef = useRef<HTMLDivElement>(null);
+  const [hoveredTab, setHoveredTab] = useState<SpaceDetailTab | null>(null);
+  const [layoutInput, setLayoutInput] = useState<'pointer' | 'keyboard'>(
+    'pointer'
+  );
+  const reduceMotion = Boolean(useReducedMotion());
+  const useInstantLayout = reduceMotion || layoutInput === 'keyboard';
+  const layoutTransition = useInstantLayout
+    ? { duration: 0 }
+    : underlineSlideTransition;
+
+  const findTab = useCallback((tab: SpaceDetailTab) => {
+    return navRef.current?.querySelector<HTMLElement>(
+      `[data-space-detail-tab="${tab}"]`
+    );
+  }, []);
+
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLButtonElement>, tab: SpaceDetailTab) => {
+      const currentIndex = SPACE_DETAIL_TABS.indexOf(tab);
+      let nextIndex: number | null = null;
+
+      if (
+        event.key === 'ArrowRight' ||
+        event.key === 'ArrowLeft' ||
+        event.key === 'Home' ||
+        event.key === 'End' ||
+        event.key === 'Enter' ||
+        event.key === ' ' ||
+        event.key === 'Spacebar'
+      ) {
+        setLayoutInput('keyboard');
+      }
+
+      if (event.key === 'ArrowRight') {
+        nextIndex = (currentIndex + 1) % SPACE_DETAIL_TABS.length;
+      } else if (event.key === 'ArrowLeft') {
+        nextIndex =
+          (currentIndex - 1 + SPACE_DETAIL_TABS.length) %
+          SPACE_DETAIL_TABS.length;
+      } else if (event.key === 'Home') {
+        nextIndex = 0;
+      } else if (event.key === 'End') {
+        nextIndex = SPACE_DETAIL_TABS.length - 1;
+      }
+
+      if (nextIndex === null) return;
+      event.preventDefault();
+      const nextTab = SPACE_DETAIL_TABS[nextIndex];
+      onChange(nextTab);
+      requestAnimationFrame(() => findTab(nextTab)?.focus());
+    },
+    [findTab, onChange]
+  );
+
+  return (
+    <div
+      ref={navRef}
+      role="tablist"
+      aria-label="Space content"
+      className={cn(
+        'relative flex flex-row flex-wrap items-center gap-2 pb-2',
+        className
+      )}
+      data-motion-reduced={reduceMotion ? 'true' : 'false'}
+      data-layout-movement={useInstantLayout ? 'instant' : 'spring'}
+      onPointerLeave={() => setHoveredTab(null)}
+    >
+      {SPACE_DETAIL_TAB_OPTIONS.map(({ id, label, icon: Icon }) => {
+        const selected = activeTab === id;
+        return (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            data-space-detail-tab={id}
+            aria-selected={selected}
+            tabIndex={selected ? 0 : -1}
+            onClick={() => onChange(id)}
+            onKeyDown={(event) => handleKeyDown(event, id)}
+            onPointerDown={(event) => {
+              setLayoutInput('pointer');
+              if (event.pointerType === 'touch') setHoveredTab(null);
+            }}
+            onPointerEnter={(event) => {
+              if (event.pointerType === 'touch') {
+                setHoveredTab(null);
+                return;
+              }
+              setLayoutInput('pointer');
+              setHoveredTab(id);
+            }}
+            className={cn(
+              tabButtonClass,
+              selected
+                ? 'text-ds-text-neutral-default-default'
+                : 'text-ds-text-neutral-muted-default hover:text-ds-text-neutral-default-default'
+            )}
+          >
+            <AnimatePresence initial={false}>
+              {hoveredTab === id ? (
+                <motion.span
+                  key="space-detail-tab-hover"
+                  layoutId="space-detail-tab-hover"
+                  data-space-detail-tab-hover
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 z-0 rounded-full bg-ds-bg-neutral-default-default shadow-sm ring-1 ring-ds-border-neutral-default-default"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{
+                    layout: layoutTransition,
+                    opacity: {
+                      duration: reduceMotion ? 0.12 : 0.18,
+                      ease: uiEaseOut,
+                    },
+                  }}
+                />
+              ) : null}
+            </AnimatePresence>
+            {selected ? (
+              <motion.span
+                layoutId="space-detail-tab-indicator"
+                data-space-detail-tab-indicator
+                aria-hidden
+                className="pointer-events-none absolute left-0 top-[calc(100%+8px)] z-[11] h-0.5 w-full rounded-full bg-ds-bg-brand-default-default"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{
+                  layout: layoutTransition,
+                  opacity: {
+                    duration: reduceMotion ? 0.12 : 0.2,
+                    ease: uiEaseOut,
+                  },
+                }}
+              />
+            ) : null}
+            <span className={iconSlotClass} aria-hidden>
+              <Icon />
+            </span>
+            <span className="relative z-10 !text-body-sm font-bold">
+              {label}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}

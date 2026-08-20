@@ -15,8 +15,11 @@
   "gateway-connectors": "الموصلات",
   "source-open": "السحابة",
   "source-built-in": "مدمج",
-  "source-local": "محلي",
-  "source-remote": "بعيد",
+  "source-local": "مخصص محلي",
+  "source-remote": "مخصص بعيد",
+  "type": "النوع",
+  "connected": "متصل",
+  "not-connected": "غير متصل",
   "load-built-in-failed": "تعذر تحميل الموصلات المدمجة",
   "load-custom-failed": "تعذر تحميل الموصلات المخصصة",
   "load-gateway-failed": "تعذر تحميل الموصلات",
@@ -128,5 +131,10 @@
   "search-engine-id": "معرّف محرك البحث",
   "search-engine-id-placeholder": "أدخل معرّف محرك البحث المخصص المرتبط بمفتاح API",
   "google-search-custom-desc": "اتصل بـ Google Custom Search. يتطلب مفتاح Google API ومعرّف محرك بحث مخصص (CSE).",
-  "google-search-default-desc": "بحث Google مفعّل افتراضيًا. لا يلزم مفتاح API."
+  "google-search-default-desc": "بحث Google مفعّل افتراضيًا. لا يلزم مفتاح API.",
+  "exa-api-key": "مفتاح Exa API",
+  "google-check-failed": "تعذر التحقق من بيانات اعتماد Google.",
+  "exa-check-failed": "تعذر التحقق من مفتاح Exa API.",
+  "optional": "اختياري",
+  "enter-field": "أدخل {{field}}"
 }

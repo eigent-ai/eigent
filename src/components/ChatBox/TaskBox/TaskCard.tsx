@@ -238,19 +238,19 @@ export function TaskCard({
 
   return (
     <div>
-      <div className="flex h-auto w-full flex-col gap-2 px-sm py-2">
-        <div className="relative h-auto w-full overflow-hidden rounded-xl bg-ds-bg-neutral-default-default py-sm">
+      <div className="flex h-auto w-full flex-col gap-2 px-2 py-2">
+        <div className="relative h-auto w-full overflow-hidden rounded-xl bg-ds-bg-neutral-default-default py-2">
           <div className="absolute left-0 top-0 w-full bg-transparent">
             <Progress value={progressValue} className="h-[2px] w-full" />
           </div>
           {summaryTask && (
-            <div className="mb-2.5 px-sm text-sm font-bold leading-13">
+            <div className="mb-2.5 px-2 text-sm font-bold leading-13">
               {summaryTask.split('|')[0].replace(/"/g, '')}
             </div>
           )}
 
           {summaryTask && (
-            <div className={`flex items-center justify-between gap-2 px-sm`}>
+            <div className="flex items-center justify-between gap-2 px-2">
               <div className="flex items-center gap-2">
                 {taskType === 1 && (
                   <TaskState
@@ -381,7 +381,7 @@ export function TaskCard({
 
           <div className="relative">
             {taskType === 1 && (
-              <div className="ease-[cubic-bezier(0.23,1,0.32,1)] mt-sm flex flex-col px-sm duration-200 animate-in fade-in-0 slide-in-from-bottom-4">
+              <div className="ease-[cubic-bezier(0.23,1,0.32,1)] mt-2 flex flex-col px-2 duration-200 animate-in fade-in-0 slide-in-from-bottom-4">
                 {taskInfo.map((task, taskIndex) => (
                   <div
                     key={`task-${taskIndex}`}
@@ -407,7 +407,7 @@ export function TaskCard({
                   opacity: isExpanded ? 1 : 0,
                 }}
               >
-                <div className="mt-sm flex flex-col gap-2 px-2">
+                <div className="mt-2 flex flex-col gap-2 px-2">
                   {filterTasks.map((task: TaskInfo) => {
                     return (
                       <div
@@ -452,7 +452,7 @@ export function TaskCard({
                           }
                         }}
                         key={`taskList-${task.id}`}
-                        className={`ease-[cubic-bezier(0.23,1,0.32,1)] flex gap-2 rounded-lg px-sm py-sm transition-[background-color,border-color] duration-200 animate-in fade-in-0 slide-in-from-left-2 ${
+                        className={`ease-[cubic-bezier(0.23,1,0.32,1)] flex gap-2 rounded-lg px-2 py-2 transition-[background-color,border-color] duration-200 animate-in fade-in-0 slide-in-from-left-2 ${
                           task.status === TaskStatus.COMPLETED
                             ? 'bg-ds-bg-completed-subtle-default'
                             : task.status === TaskStatus.FAILED

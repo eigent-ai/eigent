@@ -13,16 +13,45 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
+  TaskWorkLogAccordion,
   buildAgentBlocks,
   getBlockHeaderParts,
   getSingleAgentActiveForm,
+  getTaskRunDisplayStatus,
   groupBlocksByAgent,
+  groupConsecutiveToolItems,
+  terminalWorkLogI18nKey,
   type AgentBlock,
   type AgentGroup,
+  type RepeatedToolItem,
   type TimelineItem,
+  type ToolItem,
 } from '@/components/ChatBox/MessageItem/TaskWorkLogAccordion';
-import { AgentStep, TaskStatus, type AgentStepType } from '@/types/constants';
-import { describe, expect, it } from 'vitest';
+import type { VanillaChatStore } from '@/store/chatStore';
+import {
+  AgentStep,
+  ChatTaskStatus,
+  SessionMode,
+  TaskStatus,
+  type AgentStepType,
+} from '@/types/constants';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('react-i18next', () => ({
+  initReactI18next: {
+    type: '3rdParty',
+    init: vi.fn(),
+  },
+  Trans: ({ i18nKey }: { i18nKey: string }) => i18nKey,
+  useTranslation: () => ({
+    t: (key: string, options: Record<string, unknown> = {}) =>
+      key === 'chat.repeated-tool-events'
+        ? `${options.tool} · ${options.count} events`
+        : key,
+    i18n: { language: 'en', changeLanguage: vi.fn() },
+  }),
+}));
 
 type TaggedLog = Parameters<typeof buildAgentBlocks>[0][number];
 
@@ -51,6 +80,257 @@ function findMessage(items: TimelineItem[], idx: number) {
   const messages = items.filter((i) => i.kind === 'message');
   return messages[idx];
 }
+
+function makeToolItem(
+  id: string,
+  overrides: Partial<Omit<ToolItem, 'kind' | 'id'>> = {}
+): ToolItem {
+  return {
+    kind: 'tool',
+    id,
+    rowTitle: 'Browser Toolkit · Browser visit page',
+    toolkitName: 'Browser Toolkit',
+    method: 'Browser visit page',
+    detail: '',
+    input: '',
+    output: '',
+    status: 'done',
+    ...overrides,
+  };
+}
+
+describe('groupConsecutiveToolItems', () => {
+  it('keeps a single tool call on the existing row path', () => {
+    const call = makeToolItem('call-1');
+    const result = groupConsecutiveToolItems([call]);
+
+    expect(result).toEqual([call]);
+    expect(result[0]).toBe(call);
+  });
+
+  it('groups adjacent matching toolkit and method calls', () => {
+    const first = makeToolItem('call-1');
+    const second = makeToolItem('call-2', { status: 'running' });
+    const result = groupConsecutiveToolItems([first, second]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      kind: 'repeated-tool',
+      id: 'repeated-tool:call-1',
+      rowTitle: 'Browser Toolkit · Browser visit page',
+      status: 'running',
+    });
+    expect((result[0] as RepeatedToolItem).calls).toEqual([first, second]);
+  });
+
+  it('normalizes cosmetic toolkit and method separators', () => {
+    const first = makeToolItem('call-1');
+    const second = makeToolItem('call-2', {
+      toolkitName: 'browser_toolkit',
+      method: 'browser-visit-page',
+      rowTitle: 'browser_toolkit · Browser-visit-page',
+    });
+
+    expect(groupConsecutiveToolItems([first, second])).toHaveLength(1);
+    expect(groupConsecutiveToolItems([first, second])[0]!.kind).toBe(
+      'repeated-tool'
+    );
+  });
+
+  it('treats messages and human-input receipts as chronology boundaries', () => {
+    const message: TimelineItem = {
+      kind: 'message',
+      id: 'message-1',
+      text: 'Opening the next result',
+      source: 'reasoning',
+      running: false,
+      pairKey: null,
+    };
+    const first = makeToolItem('call-1');
+    const second = makeToolItem('call-2');
+
+    expect(groupConsecutiveToolItems([first, message, second])).toEqual([
+      first,
+      message,
+      second,
+    ]);
+  });
+
+  it('does not group a different toolkit or method', () => {
+    const first = makeToolItem('call-1');
+    const differentMethod = makeToolItem('call-2', {
+      method: 'Browser open',
+      rowTitle: 'Browser Toolkit · Browser open',
+    });
+    const differentToolkit = makeToolItem('call-3', {
+      toolkitName: 'Search Toolkit',
+      rowTitle: 'Search Toolkit · Browser visit page',
+    });
+
+    expect(
+      groupConsecutiveToolItems([first, differentMethod, differentToolkit])
+    ).toEqual([first, differentMethod, differentToolkit]);
+  });
+
+  it('keeps the first-call group identity when another live call arrives', () => {
+    const calls = [
+      makeToolItem('call-1'),
+      makeToolItem('call-2'),
+      makeToolItem('call-3'),
+    ];
+
+    const firstGroup = groupConsecutiveToolItems(calls.slice(0, 2))[0];
+    const updatedGroup = groupConsecutiveToolItems(calls)[0];
+
+    expect(firstGroup?.id).toBe('repeated-tool:call-1');
+    expect(updatedGroup?.id).toBe(firstGroup?.id);
+  });
+
+  it('does not mutate the source timeline', () => {
+    const source = [makeToolItem('call-1'), makeToolItem('call-2')];
+    const snapshot = structuredClone(source);
+
+    groupConsecutiveToolItems(source);
+
+    expect(source).toEqual(snapshot);
+  });
+});
+
+describe('TaskWorkLogAccordion repeated tool-call rendering', () => {
+  function completedCall(
+    toolkitName: string,
+    method: string,
+    request: string,
+    response: string
+  ): AgentMessage[] {
+    return [
+      mk(AgentStep.ACTIVATE_TOOLKIT, {
+        toolkit_name: toolkitName,
+        method_name: method,
+        message: request,
+      }),
+      mk(AgentStep.DEACTIVATE_TOOLKIT, {
+        toolkit_name: toolkitName,
+        method_name: method,
+        message: response,
+      }),
+    ];
+  }
+
+  function createWorkLogStore(log: AgentMessage[]): VanillaChatStore {
+    const state = {
+      tasks: {
+        'task-1': {
+          status: ChatTaskStatus.RUNNING,
+          sessionMode: SessionMode.WORKFORCE,
+          taskTime: 0,
+          elapsed: 0,
+          messages: [],
+          askList: [],
+          taskAssigning: [
+            {
+              agent_id: 'agent-1',
+              type: 'browser',
+              name: 'Researcher',
+              tasks: [],
+              log,
+            },
+          ],
+        },
+      },
+    };
+
+    return {
+      getState: () => state,
+      subscribe: () => () => undefined,
+    } as unknown as VanillaChatStore;
+  }
+
+  it('renders duplicate Browser and Todo calls as expandable count rows', () => {
+    const log = [
+      mk(AgentStep.ACTIVATE_AGENT),
+      ...completedCall(
+        'Browser Toolkit',
+        'Browser visit page',
+        '{"url":"https://example.com/one"}',
+        'First page'
+      ),
+      ...completedCall(
+        'Browser Toolkit',
+        'Browser visit page',
+        '{"url":"https://example.com/two"}',
+        'Second page'
+      ),
+      ...completedCall(
+        'TodoToolkit',
+        'Todo_write',
+        '{"todo":"one"}',
+        'Saved first todo'
+      ),
+      ...completedCall(
+        'TodoToolkit',
+        'Todo_write',
+        '{"todo":"two"}',
+        'Saved second todo'
+      ),
+    ];
+
+    render(
+      <TaskWorkLogAccordion
+        chatStore={createWorkLogStore(log)}
+        taskId="task-1"
+      />
+    );
+
+    const browserGroup = screen.getByRole('button', {
+      name: 'Browser Toolkit · Browser visit page · 2 events',
+    });
+    const todoGroup = screen.getByRole('button', {
+      name: 'TodoToolkit · Todo_write · 2 events',
+    });
+
+    expect(browserGroup).toHaveAttribute('aria-expanded', 'false');
+    expect(todoGroup).toHaveAttribute('aria-expanded', 'false');
+    expect(
+      screen.getAllByRole('button', {
+        name: 'Browser Toolkit · Browser visit page · 2 events',
+      })
+    ).toHaveLength(1);
+
+    fireEvent.click(browserGroup);
+
+    expect(browserGroup).toHaveAttribute('aria-expanded', 'true');
+    expect(
+      screen.getAllByRole('button', {
+        name: 'Browser Toolkit · Browser visit page',
+      })
+    ).toHaveLength(2);
+  });
+});
+
+describe('terminal Run presentation', () => {
+  it('lets a recorded error override a compatibility interrupted status', () => {
+    expect(
+      getTaskRunDisplayStatus({
+        durableRunStatus: 'interrupted',
+        messages: [
+          {
+            step: AgentStep.ERROR,
+            content: '❌ **Error**: Client Closed Request',
+          },
+        ],
+      })
+    ).toBe('failed');
+    expect(terminalWorkLogI18nKey('failed')).toBe('chat.failed-after');
+  });
+
+  it('uses explicit labels for interrupted and stopped Runs', () => {
+    expect(terminalWorkLogI18nKey('interrupted')).toBe(
+      'chat.interrupted-after'
+    );
+    expect(terminalWorkLogI18nKey('stopped')).toBe('chat.stopped-after');
+  });
+});
 
 describe('getSingleAgentActiveForm', () => {
   function taskWithAgents(
@@ -872,27 +1152,31 @@ describe('groupBlocksByAgent', () => {
     expect(group.doneToolCount).toBe(2);
   });
 
-  it('merges alternating blocks from the same agent (A, B, A) into two groups', () => {
+  it('preserves alternating blocks from the same agent as A, B, A', () => {
     const blocks: AgentBlock[] = [
       makeBlock('a1', 'dev', 'Dev', [makeTool('t1')], 'done'),
       makeBlock('a2', 'browser', 'Browser', [makeTool('t2')], 'done'),
       makeBlock('a1', 'dev', 'Dev', [makeTool('t3')], 'running'),
     ];
     const result = groupBlocksByAgent(blocks);
-    expect(result).toHaveLength(2);
+    expect(result).toHaveLength(3);
 
     const g1 = result[0] as AgentGroup;
     expect(g1.kind).toBe('agent-group');
     expect(g1.agentId).toBe('a1');
-    expect(g1.items).toHaveLength(2);
-    expect(g1.items.map((i) => i.id)).toEqual(['t1', 't3']);
-    expect(g1.status).toBe('running');
+    expect(g1.items.map((i) => i.id)).toEqual(['t1']);
+    expect(g1.status).toBe('done');
 
     const g2 = result[1] as AgentGroup;
     expect(g2.kind).toBe('agent-group');
     expect(g2.agentId).toBe('a2');
     expect(g2.items).toHaveLength(1);
     expect(g2.status).toBe('done');
+
+    const g3 = result[2] as AgentGroup;
+    expect(g3.agentId).toBe('a1');
+    expect(g3.items.map((i) => i.id)).toEqual(['t3']);
+    expect(g3.status).toBe('running');
   });
 
   it('preserves the preparation block at its original position', () => {
@@ -952,7 +1236,7 @@ describe('groupBlocksByAgent', () => {
     expect(group.doneToolCount).toBe(0);
   });
 
-  it('orders groups by first appearance of the agent', () => {
+  it('preserves chronological group order', () => {
     const blocks: AgentBlock[] = [
       makeBlock('a2', 'browser', 'Browser', [makeTool('t1')], 'done'),
       makeBlock('a1', 'dev', 'Dev', [makeTool('t2')], 'done'),
@@ -960,10 +1244,11 @@ describe('groupBlocksByAgent', () => {
       makeBlock('a2', 'browser', 'Browser', [makeTool('t4')], 'running'),
     ];
     const result = groupBlocksByAgent(blocks);
-    expect(result).toHaveLength(3);
+    expect(result).toHaveLength(4);
     expect((result[0] as AgentGroup).agentId).toBe('a2');
     expect((result[1] as AgentGroup).agentId).toBe('a1');
     expect((result[2] as AgentGroup).agentId).toBe('a3');
+    expect((result[3] as AgentGroup).agentId).toBe('a2');
   });
 
   it('integrates with buildAgentBlocks for interleaved multi-agent logs', () => {
@@ -1024,11 +1309,15 @@ describe('groupBlocksByAgent', () => {
     const agentGroups = grouped.filter(
       (e): e is AgentGroup => e.kind === 'agent-group'
     );
-    expect(agentGroups).toHaveLength(2);
+    expect(agentGroups).toHaveLength(3);
     expect(agentGroups[0]!.agentId).toBe('a1');
     expect(agentGroups[1]!.agentId).toBe('a2');
+    expect(agentGroups[2]!.agentId).toBe('a1');
 
-    const devTools = agentGroups[0]!.items.filter((i) => i.kind === 'tool');
+    const devTools = agentGroups
+      .filter((group) => group.agentId === 'a1')
+      .flatMap((group) => group.items)
+      .filter((i) => i.kind === 'tool');
     expect(devTools).toHaveLength(2);
   });
 });

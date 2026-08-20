@@ -60,12 +60,12 @@ export class ErrorBoundary extends Component<Props, State> {
 
       // Default error UI
       return (
-        <div className="bg-ds-bg-neutral-subtle-default p-4 flex h-screen w-full items-center justify-center">
-          <div className="max-w-md gap-6 rounded-xl border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default p-8 shadow-lg flex flex-col items-center border border-solid text-center">
-            <div className="bg-warning/10 h-16 w-16 flex items-center justify-center rounded-full">
+        <div className="flex h-screen w-full items-center justify-center bg-ds-bg-neutral-subtle-default p-4">
+          <div className="flex max-w-md flex-col items-center gap-6 rounded-xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default p-8 text-center shadow-lg">
+            <div className="bg-warning/10 flex h-16 w-16 items-center justify-center rounded-full">
               <AlertTriangle className="text-warning h-8 w-8" />
             </div>
-            <div className="gap-2 flex flex-col">
+            <div className="flex flex-col gap-2">
               <h1 className="text-xl font-bold text-ds-text-neutral-default-default">
                 Something went wrong
               </h1>
@@ -74,16 +74,16 @@ export class ErrorBoundary extends Component<Props, State> {
               </p>
             </div>
             {this.state.error && (
-              <div className="rounded-lg bg-ds-bg-neutral-strong-default p-4 w-full text-left">
+              <div className="w-full rounded-lg bg-ds-bg-neutral-strong-default p-4 text-left">
                 <p className="mb-2 text-xs font-medium text-ds-text-neutral-muted-default">
                   Error details:
                 </p>
-                <p className="max-h-32 font-mono text-xs text-ds-text-neutral-default-default overflow-y-auto">
+                <p className="max-h-32 overflow-y-auto font-mono text-xs text-ds-text-neutral-default-default">
                   {this.state.error.toString()}
                 </p>
               </div>
             )}
-            <div className="gap-3 flex">
+            <div className="flex gap-3">
               <Button
                 variant="outline"
                 size="md"

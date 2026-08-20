@@ -119,7 +119,10 @@ export function isTaskListRowHardFailure(task: TaskLifecycleFields): boolean {
   return getTaskMessages(task).some((m) => {
     if (m.role !== 'agent') return false;
     if (m.step === AgentStep.FAILED) return true;
-    const c = m.content?.trim() ?? '';
+    // Message.content is a string by contract, but older caches and legacy SSE
+    // ingress could contain a structured HumanInteraction payload here. Keep
+    // derived navigation state total while those messages age out naturally.
+    const c = typeof m.content === 'string' ? m.content.trim() : '';
     if (c.startsWith('❌ **Error**')) return true;
     return false;
   });

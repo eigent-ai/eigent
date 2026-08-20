@@ -13,12 +13,13 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 // Comprehensive unit tests for ChatBox component
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   fetchDelete,
+  fetchGet,
   fetchPost,
   fetchPut,
   proxyFetchDelete,
@@ -33,6 +34,7 @@ vi.mock('../../../src/store/authStore', () => ({
   getAuthStore: vi.fn(() => ({ language: 'en-US', setLanguage: vi.fn() })),
 }));
 vi.mock('../../../src/api/http', () => ({
+  fetchGet: vi.fn(),
   fetchPost: vi.fn(),
   fetchPut: vi.fn(),
   fetchDelete: vi.fn(),
@@ -45,6 +47,7 @@ vi.mock('@/store/authStore', () => ({
   getAuthStore: vi.fn(() => ({ language: 'en-US', setLanguage: vi.fn() })),
 }));
 vi.mock('@/api/http', () => ({
+  fetchGet: vi.fn(),
   fetchPost: vi.fn(),
   fetchPut: vi.fn(),
   fetchDelete: vi.fn(),
@@ -154,6 +157,7 @@ vi.mock('../../../src/components/ChatBox/TypeCardSkeleton', () => ({
 
 describe('ChatBox Component', async () => {
   const mockUseAuthStore = vi.mocked(useAuthStore);
+  const mockFetchGet = vi.mocked(fetchGet);
   const _mockFetchPost = vi.mocked(fetchPost);
   const _mockFetchPut = vi.mocked(fetchPut);
   const _mockFetchDelete = vi.mocked(fetchDelete);
@@ -195,6 +199,7 @@ describe('ChatBox Component', async () => {
     },
     setHasMessages: vi.fn(),
     addMessages: vi.fn(),
+    removeMessage: vi.fn(),
     setIsPending: vi.fn(),
     startTask: vi.fn(),
     setActiveAsk: vi.fn(),
@@ -215,10 +220,29 @@ describe('ChatBox Component', async () => {
     setAttaches: vi.fn(),
     setNextTaskId: vi.fn(),
     setNextExecutionId: vi.fn(),
+    setTaskSessionMode: vi.fn(),
+    setTaskSource: vi.fn(),
+    setExecutionId: vi.fn(),
+    removeMessage: vi.fn(),
     removeTask: vi.fn(),
     setElapsed: vi.fn(),
     setTaskTime: vi.fn(),
     setStatus: vi.fn(),
+  };
+
+  const preparedRunState = {
+    setNextTaskId: vi.fn(),
+    setTaskSessionMode: vi.fn(),
+    setTaskSource: vi.fn(),
+    setExecutionId: vi.fn(),
+    setIsPending: vi.fn(),
+    setHasMessages: vi.fn(),
+    addMessages: vi.fn(),
+    setStatus: vi.fn(),
+  };
+
+  const preparedRunChatStore = {
+    getState: vi.fn(() => preparedRunState),
   };
 
   const defaultProjectStoreState = {
@@ -234,7 +258,9 @@ describe('ChatBox Component', async () => {
     restoreQueuedMessage: vi.fn(),
     clearQueuedMessages: vi.fn(),
     createChatStore: vi.fn(),
-    appendInitChatStore: vi.fn(),
+    appendInitChatStore: vi.fn((_projectId: string, _taskId: string) => ({
+      chatStore: preparedRunChatStore,
+    })),
     setActiveChatStore: vi.fn(),
     removeChatStore: vi.fn(),
     saveChatStore: vi.fn(),
@@ -268,6 +294,7 @@ describe('ChatBox Component', async () => {
     mockUseAuthStore.mockReturnValue(defaultAuthStoreState as any);
 
     // Setup default API responses
+    mockFetchGet.mockResolvedValue({ runs: [] });
     mockProxyFetchGet.mockImplementation((url: string) => {
       if (url === '/api/user/key' || url === '/api/v1/user/key') {
         return Promise.resolve({ value: 'test-api-key' });
@@ -425,10 +452,36 @@ describe('ChatBox Component', async () => {
       await user.type(messageInput, 'Test message');
       await user.click(sendButton);
 
-      // The component should call fetchPost for continuing conversation
+      // A follow-up is prepared as a new durable Run before admission.
       await waitFor(() => {
-        expect(_mockFetchPost).toHaveBeenCalled();
+        expect(defaultProjectStoreState.appendInitChatStore).toHaveBeenCalled();
+        expect(_mockFetchPost).toHaveBeenCalledWith(
+          '/chat/test-project-id',
+          expect.objectContaining({
+            question: 'Test message',
+          })
+        );
       });
+
+      const nextTaskId =
+        defaultProjectStoreState.appendInitChatStore.mock.calls[0][1];
+      expect(preparedRunState.setNextTaskId).toHaveBeenCalledWith(nextTaskId);
+      expect(preparedRunState.setTaskSessionMode).toHaveBeenCalledWith(
+        nextTaskId,
+        'single-agent'
+      );
+      expect(preparedRunState.setIsPending).toHaveBeenCalledWith(
+        nextTaskId,
+        true
+      );
+      expect(preparedRunState.setHasMessages).toHaveBeenCalledWith(
+        nextTaskId,
+        true
+      );
+      expect(_mockFetchPost).toHaveBeenCalledWith(
+        '/chat/test-project-id',
+        expect.objectContaining({ task_id: nextTaskId })
+      );
     });
 
     it('should not send empty messages', async () => {
@@ -681,6 +734,10 @@ describe('ChatBox Component', async () => {
       await user.click(sendButton);
 
       await waitFor(() => {
+        expect(storeObj.removeMessage).toHaveBeenCalledWith(
+          'test-task-id',
+          expect.any(String)
+        );
         expect(storeObj.setIsPending).toHaveBeenCalledWith(
           'test-task-id',
           false
@@ -739,12 +796,8 @@ describe('ChatBox Component', async () => {
       });
     });
 
-    it('should auto-skip a failed human reply only once per question', async () => {
-      const consoleErrorSpy = vi
-        .spyOn(console, 'error')
-        .mockImplementation(() => {});
+    it('keeps an ordinary human question pending without a skip timer', () => {
       const timeoutSpy = vi.spyOn(window, 'setTimeout');
-      _mockFetchPost.mockRejectedValue(new Error('Backend unavailable'));
 
       const activeAskTask = {
         ...defaultChatStoreState.tasks['test-task-id'],
@@ -759,55 +812,27 @@ describe('ChatBox Component', async () => {
           },
         ],
       };
+      const storeObj = {
+        ...defaultChatStoreState,
+        tasks: { 'test-task-id': activeAskTask },
+      } as any;
       mockUseChatStoreAdapter.mockReturnValue({
         projectStore: defaultProjectStoreState as any,
-        chatStore: {
-          ...defaultChatStoreState,
-          tasks: { 'test-task-id': activeAskTask },
-        } as any,
+        chatStore: storeObj,
       });
 
-      const rendered = renderChatBox();
-      const autoReplyTimer = timeoutSpy.mock.calls.find(
-        ([, delay]) => delay === 30000
-      );
-      expect(autoReplyTimer).toBeDefined();
-      await act(async () => {
-        (autoReplyTimer![0] as TimerHandler)();
-        await Promise.resolve();
-      });
+      renderChatBox();
 
-      expect(_mockFetchPost).toHaveBeenCalledTimes(1);
-      expect(_mockFetchPost).toHaveBeenCalledWith(
-        '/chat/test-project-id/human-reply',
-        { agent: 'test-agent', reply: 'skip' }
-      );
-
-      // Store snapshots change as messages/pending state update. Re-rendering
-      // the same prompt must not arm another automatic reply timer.
-      mockUseChatStoreAdapter.mockReturnValue({
-        projectStore: defaultProjectStoreState as any,
-        chatStore: {
-          ...defaultChatStoreState,
-          tasks: { 'test-task-id': { ...activeAskTask } },
-        } as any,
-      });
-      rendered.rerender(
-        <BrowserRouter>
-          <ChatBox />
-        </BrowserRouter>
-      );
-      await act(async () => {
-        (autoReplyTimer![0] as TimerHandler)();
-        await Promise.resolve();
-      });
-
-      expect(_mockFetchPost).toHaveBeenCalledTimes(1);
       expect(
         timeoutSpy.mock.calls.filter(([, delay]) => delay === 30000)
-      ).toHaveLength(1);
+      ).toHaveLength(0);
+      expect(_mockFetchPost).not.toHaveBeenCalledWith(
+        '/chat/test-project-id/human-reply',
+        expect.objectContaining({ reply: 'skip' })
+      );
+      expect(storeObj.setActiveAsk).not.toHaveBeenCalled();
+      expect(storeObj.setIsPending).not.toHaveBeenCalled();
       timeoutSpy.mockRestore();
-      consoleErrorSpy.mockRestore();
     });
 
     it('should not auto-skip a question while replaying history', () => {

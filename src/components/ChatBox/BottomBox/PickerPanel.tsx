@@ -30,11 +30,11 @@ import {
 import { skillNameToDirName } from '@/lib/skillToolkit';
 import { cn } from '@/lib/utils';
 import { useServerCapabilityStore } from '@/store/serverCapabilityStore';
+import { openSettings } from '@/store/settingsStore';
 import { useSkillsStore } from '@/store/skillsStore';
 import { Check, Plus, Wrench } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 
 /**
  * An item shown in a picker panel. `token` is the exact string inserted inline
@@ -223,7 +223,6 @@ export function ConnectorPickerPanel({
   onToggleItem,
 }: WiredPickerPanelProps) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const [builtInItems, setBuiltInItems] = useState<IntegrationItem[]>([]);
   const [openItems, setOpenItems] = useState<PickerItem[]>([]);
   const [yourMcps, setYourMcps] = useState<PickerItem[]>([]);
@@ -350,7 +349,7 @@ export function ConnectorPickerPanel({
       renderTag={(item) => (
         <span
           className={cn(
-            'rounded px-1 py-px text-xs font-medium',
+            'rounded px-1 py-[1px] text-xs font-medium',
             RICH_CONNECTOR_STYLE_CLASSES
           )}
         >
@@ -380,7 +379,7 @@ export function ConnectorPickerPanel({
       loading={loading}
       emptyLabel={t('chat.no-connectors-added')}
       emptyActionLabel={t('chat.input-attach-manage-connectors')}
-      onEmptyAction={() => navigate('/history?tab=connectors')}
+      onEmptyAction={() => openSettings('connectors')}
     />
   );
 }
@@ -391,7 +390,6 @@ export function SkillPickerPanel({
   onToggleItem,
 }: WiredPickerPanelProps) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const skills = useSkillsStore((s) => s.skills);
 
   const items = useMemo(
@@ -418,7 +416,7 @@ export function SkillPickerPanel({
         return (
           <span
             className={cn(
-              'rounded px-1 py-px text-xs font-medium',
+              'rounded px-1 py-[1px] text-xs font-medium',
               RICH_SKILL_STYLE_CLASSES[clsIdx]
             )}
           >
@@ -428,7 +426,7 @@ export function SkillPickerPanel({
       }}
       emptyLabel={t('chat.no-skills-added')}
       emptyActionLabel={t('chat.input-attach-manage-skills')}
-      onEmptyAction={() => navigate('/history?tab=agents')}
+      onEmptyAction={() => openSettings('skills')}
     />
   );
 }

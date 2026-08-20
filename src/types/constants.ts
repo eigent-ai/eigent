@@ -32,6 +32,8 @@ export const AgentStep = {
   DEACTIVATE_TOOLKIT: 'deactivate_toolkit',
   TERMINAL: 'terminal',
   WRITE_FILE: 'write_file',
+  ARTIFACT_MANIFEST: 'artifact_manifest',
+  ARTIFACT_UPLOADED: 'artifact_uploaded',
   TODO_STATE: 'todo_state',
   BUDGET_NOT_ENOUGH: 'budget_not_enough',
   CONTEXT_TOO_LONG: 'context_too_long',
@@ -117,12 +119,28 @@ export type SessionModeType = (typeof SessionMode)[keyof typeof SessionMode];
  * Reasoning/thinking effort level for the active model, low → high compute budget.
  */
 export const ThinkingEffort = {
-  LIGHT: 'light',
+  LOW: 'low',
   MEDIUM: 'medium',
   HIGH: 'high',
-  EXTRA_HIGH: 'extra_high',
-  ULTRA: 'ultra',
+  XHIGH: 'xhigh',
+  MAX: 'max',
 } as const;
 
 export type ThinkingEffortType =
   (typeof ThinkingEffort)[keyof typeof ThinkingEffort];
+
+const LEGACY_THINKING_EFFORT_ALIASES: Record<string, ThinkingEffortType> = {
+  light: ThinkingEffort.LOW,
+  extra_high: ThinkingEffort.XHIGH,
+  ultra: ThinkingEffort.MAX,
+};
+
+export function normalizeThinkingEffort(value: unknown): ThinkingEffortType {
+  if (typeof value !== 'string') return ThinkingEffort.MEDIUM;
+  if (value in LEGACY_THINKING_EFFORT_ALIASES) {
+    return LEGACY_THINKING_EFFORT_ALIASES[value];
+  }
+  return Object.values(ThinkingEffort).includes(value as ThinkingEffortType)
+    ? (value as ThinkingEffortType)
+    : ThinkingEffort.MEDIUM;
+}

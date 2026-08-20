@@ -22,17 +22,21 @@ export interface QueuedMessage {
   id: string;
   content: string;
   timestamp?: number;
+  processing?: boolean;
+  canSendNow?: boolean;
 }
 
 interface QueuedBoxProps {
   queuedMessages?: QueuedMessage[];
   onRemoveQueuedMessage?: (id: string) => void;
+  onSendQueuedMessageNow?: (id: string) => void;
   className?: string;
 }
 
 export function QueuedBox({
   queuedMessages = [],
   onRemoveQueuedMessage,
+  onSendQueuedMessageNow,
   className,
 }: QueuedBoxProps) {
   const { t } = useTranslation();
@@ -98,7 +102,10 @@ export function QueuedBox({
           <QueueingItem
             key={msg.id}
             content={msg.content}
+            processing={msg.processing}
+            canSendNow={msg.canSendNow}
             onRemove={() => onRemoveQueuedMessage?.(msg.id)}
+            onSendNow={() => onSendQueuedMessageNow?.(msg.id)}
           />
         ))}
       </div>
@@ -108,10 +115,19 @@ export function QueuedBox({
 
 interface QueueingItemProps {
   content: string;
+  processing?: boolean;
+  canSendNow?: boolean;
   onRemove?: () => void;
+  onSendNow?: () => void;
 }
 
-function QueueingItem({ content, onRemove }: QueueingItemProps) {
+function QueueingItem({
+  content,
+  processing = false,
+  canSendNow = true,
+  onRemove,
+  onSendNow,
+}: QueueingItemProps) {
   const { t } = useTranslation();
   const [isHovered, setIsHovered] = useState(false);
 
@@ -126,15 +142,35 @@ function QueueingItem({ content, onRemove }: QueueingItemProps) {
       </div>
 
       <div className="relative flex min-h-px min-w-px flex-1 flex-col justify-center overflow-hidden overflow-ellipsis">
-        <p className="m-0 overflow-hidden overflow-ellipsis whitespace-nowrap text-xs font-normal">
+        <span className="block overflow-hidden overflow-ellipsis whitespace-nowrap text-xs font-normal">
           {content}
-        </p>
+        </span>
       </div>
+
+      {canSendNow && (
+        <Button
+          variant="ghost"
+          size="xs"
+          disabled={processing || !isHovered}
+          tabIndex={isHovered ? 0 : -1}
+          className={cn(
+            'h-5 shrink-0 rounded-md px-1.5 text-[11px] transition-opacity',
+            isHovered ? 'opacity-100' : 'pointer-events-none opacity-0'
+          )}
+          onClick={(event) => {
+            event.preventDefault();
+            onSendNow?.();
+          }}
+        >
+          {t('chat.send-now', { defaultValue: 'Send now' })}
+        </Button>
+      )}
 
       <Button
         variant="ghost"
         size="xs"
         buttonContent="icon-only"
+        disabled={processing}
         className={cn(
           'h-5 w-5 shrink-0 rounded-md p-0.5 transition-[background-color,opacity,transform] duration-200',
           isHovered

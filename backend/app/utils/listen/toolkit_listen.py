@@ -440,6 +440,7 @@ EXCLUDED_METHODS = {
     "json",  # Pydantic legacy json method
     "copy",  # Object copying
     "update",  # Object update
+    "clone_for_new_session",  # Runtime construction, not a tool action
 }
 
 

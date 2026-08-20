@@ -16,10 +16,12 @@ import larkIcon from '@/assets/icon/lark.png';
 import telegramIcon from '@/assets/icon/telegram.svg';
 import whatsappIcon from '@/assets/icon/whatsapp.svg';
 import { isDesktop } from '@/client/platform';
-import { SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS } from '@/components/Session/sessionSidePanelLayout';
+import ContentHeader from '@/components/Layout/ContentHeader';
+import { SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS } from '@/components/Session/SidePanel/layout';
 import { Button } from '@/components/ui/button';
 import {
   createRemoteControlSession,
+  getRemoteControlBridgeError,
   getRemoteControlDesktopInstanceId,
   isRemoteControlAlreadyGoneError,
   parseRemoteControlLinkToken,
@@ -406,9 +408,10 @@ export function WorkspaceDispatch() {
 
   // Cleanup all timers on unmount
   useEffect(() => {
+    const timers = expiryTimersRef.current;
     return () => {
-      expiryTimersRef.current.forEach((t) => clearTimeout(t));
-      expiryTimersRef.current.clear();
+      timers.forEach((timer) => clearTimeout(timer));
+      timers.clear();
     };
   }, []);
   const [stoppingSessionId, setStoppingSessionId] = useState<string | null>(
@@ -437,16 +440,25 @@ export function WorkspaceDispatch() {
     try {
       const bridgeReady = await waitForRemoteControlBridgeConnected();
       if (!bridgeReady) {
-        toast.error('Remote control is still connecting.', {
-          description:
-            'Keep Eigent Desktop open and try again in a few seconds.',
-        });
+        const bridgeError = getRemoteControlBridgeError();
+        toast.error(
+          bridgeError?.retryable === false
+            ? 'Remote control needs attention.'
+            : 'Remote control is still connecting.',
+          {
+            description:
+              bridgeError?.code === 'device_owner_mismatch'
+                ? 'This Desktop is registered to another Eigent account. Sign in with that account or explicitly reset/transfer the Desktop device registration.'
+                : bridgeError?.message ||
+                  'Keep Eigent Desktop open and try again in a few seconds.',
+          }
+        );
         return;
       }
 
       const title = buildRemoteControlTitle(activeSpace?.name);
       const res = await createRemoteControlSession({
-        desktop_instance_id: getRemoteControlDesktopInstanceId(),
+        desktop_instance_id: await getRemoteControlDesktopInstanceId(),
         space_id: activeSpaceId,
         ...(activeProjectId ? { project_id: activeProjectId } : {}),
         ...(activeProjectId && brainSessionId
@@ -495,7 +507,6 @@ export function WorkspaceDispatch() {
   }, [
     activeProjectId,
     activeSpace,
-    activeSpace?.name,
     activeSpaceId,
     addRemoteControlSession,
     addRemoteControlLog,
@@ -536,56 +547,6 @@ export function WorkspaceDispatch() {
     },
     [removeRemoteControlSession, addRemoteControlLog]
   );
-
-  const handleStopAllRemoteControl = useCallback(async () => {
-    const toStop = activeSessions;
-    if (toStop.length === 0) return;
-    setStoppingSessionId(toStop[0].sessionId);
-    const results = await Promise.allSettled(
-      toStop.map(async (session) => {
-        const linkToken =
-          session.linkToken || parseRemoteControlLinkToken(session.url);
-        if (!linkToken) {
-          throw new Error('Remote control link token is missing.');
-        }
-        try {
-          await revokeRemoteControlSession(session.sessionId, linkToken);
-        } catch (err: any) {
-          // Already revoked or expired server-side; treat it as stopped so the
-          // entry is cleaned up locally.
-          if (!isRemoteControlAlreadyGoneError(err)) {
-            throw err;
-          }
-        }
-        return session;
-      })
-    );
-    let stoppedCount = 0;
-    results.forEach((result) => {
-      if (result.status !== 'fulfilled') {
-        return;
-      }
-      stoppedCount += 1;
-      removeRemoteControlSession(result.value.sessionId);
-      addRemoteControlLog({ name: result.value.title, status: 'stopped' });
-    });
-    const failedCount = results.length - stoppedCount;
-    if (stoppedCount > 0) {
-      toast.success(
-        stoppedCount === 1
-          ? 'Remote control link revoked'
-          : `${stoppedCount} remote control links revoked`
-      );
-    }
-    if (failedCount > 0) {
-      toast.error(
-        failedCount === 1
-          ? 'Failed to revoke 1 remote control link.'
-          : `Failed to revoke ${failedCount} remote control links.`
-      );
-    }
-    setStoppingSessionId(null);
-  }, [activeSessions, removeRemoteControlSession, addRemoteControlLog]);
 
   const handleCopySession = useCallback(
     (url: string) => {
@@ -650,11 +611,11 @@ export function WorkspaceDispatch() {
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="border-b-1 box-border flex h-[45.5px] w-full shrink-0 items-center gap-2 border-x-0 border-t-0 border-solid border-ds-border-neutral-subtle-default px-3">
-        <span className="text-body-md font-bold text-ds-text-neutral-muted-default">
-          {t('layout.workspace-work-with-title', { defaultValue: 'Work with' })}
-        </span>
-      </div>
+      <ContentHeader
+        title={t('layout.workspace-work-with-title', {
+          defaultValue: 'Work with',
+        })}
+      />
 
       {/* Body */}
       <div className="relative flex min-h-0 w-full flex-1 overflow-hidden">
