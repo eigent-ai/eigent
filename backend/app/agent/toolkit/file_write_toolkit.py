@@ -23,7 +23,10 @@ from camel.toolkits import FileToolkit as BaseFileToolkit
 from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.component.environment import env
 from app.run_context import RunContext
-from app.run_runtime.tool_checkpoint import get_current_tool_checkpoint
+from app.run_runtime.tool_checkpoint import (
+    ToolInvocationNotDispatchedError,
+    get_current_tool_checkpoint,
+)
 from app.service.task import (
     ActionWriteFileData,
     Agents,
@@ -87,6 +90,38 @@ class FileToolkit(BaseFileToolkit, AbstractToolkit):
         )
         self.api_task_id = api_task_id
 
+    def _prepare_file_write(
+        self,
+        mutation_service,
+        *,
+        run_context: RunContext,
+        filename: str,
+        operation_request_id: str,
+        actor_id: str,
+        trigger: str,
+    ):
+        """Prepare Git state before the file operation can touch its target."""
+
+        try:
+            return mutation_service.prepare_file_write(
+                context=run_context,
+                filename=filename,
+                operation_request_id=operation_request_id,
+                actor_id=actor_id,
+                trigger=trigger,
+            )
+        except Exception as error:
+            # Workspace snapshot/admission happens before CAMEL invokes the
+            # underlying file operation. Preserve that boundary so an overlay
+            # conflict is a known, model-visible failure rather than an
+            # ambiguous external side effect that poisons the whole Run.
+            error_code = getattr(error, "code", None)
+            detail = f"{error_code}: {error}" if error_code else str(error)
+            raise ToolInvocationNotDispatchedError(
+                "File mutation was not started because its Workspace could "
+                f"not be prepared: {detail}"
+            ) from error
+
     def _overlay_write_context(
         self, filename: str
     ) -> OverlayWriteContext | None:
@@ -128,8 +163,9 @@ class FileToolkit(BaseFileToolkit, AbstractToolkit):
                 else f"local-file-write:{uuid.uuid4().hex}"
             )
             mutation_service = get_default_workspace_mutation_service()
-            prepared_write = mutation_service.prepare_file_write(
-                context=run_context,
+            prepared_write = self._prepare_file_write(
+                mutation_service,
+                run_context=run_context,
                 filename=filename,
                 operation_request_id=operation_request_id,
                 actor_id=self.agent_name,
@@ -183,6 +219,80 @@ class FileToolkit(BaseFileToolkit, AbstractToolkit):
                 ActionWriteFileData(
                     process_task_id=current_process_task_id,
                     data=written_path,
+                    relative_path=relative_path,
+                ),
+            )
+        return res
+
+    def edit_file(
+        self,
+        file_path: str,
+        old_content: str,
+        new_content: str,
+    ) -> str:
+        """Edit one file inside the Run-owned Agent worktree.
+
+        CAMEL's base implementation resolves relative paths against the
+        toolkit working directory.  That directory is the visible Space for
+        compatibility sessions, so calling it directly would let follow-up
+        edits bypass the Run commit. Route the edit through the same durable
+        exact-path mutation used by ``write_to_file`` instead.
+        """
+
+        run_context = run_context_for_task(self.api_task_id)
+        prepared_write = None
+        relative_path = None
+        operation_request_id = None
+        mutation_service = None
+        if run_context is not None:
+            checkpoint = get_current_tool_checkpoint()
+            operation_request_id = (
+                checkpoint.tool_call_id
+                if checkpoint is not None
+                else f"local-file-edit:{uuid.uuid4().hex}"
+            )
+            mutation_service = get_default_workspace_mutation_service()
+            prepared_write = self._prepare_file_write(
+                mutation_service,
+                run_context=run_context,
+                filename=file_path,
+                operation_request_id=operation_request_id,
+                actor_id=self.agent_name,
+                trigger="filesystem.edit",
+            )
+        if prepared_write is not None:
+            res = super().edit_file(
+                str(prepared_write.target_path),
+                old_content,
+                new_content,
+            )
+            if res.startswith("Successfully edited "):
+                assert operation_request_id is not None
+                assert mutation_service is not None
+                mutation_service.complete_file_write(
+                    prepared_write,
+                    operation_request_id=operation_request_id,
+                    actor_id=self.agent_name,
+                    trigger="filesystem.edit",
+                )
+                relative_path = prepared_write.relative_path
+                res = f"Successfully edited {relative_path}"
+        else:
+            res = super().edit_file(file_path, old_content, new_content)
+
+        if res.startswith("Successfully edited "):
+            edited_path = res.removeprefix("Successfully edited ")
+            if relative_path is None and run_context is not None:
+                relative_path = relative_to_artifact_root(
+                    run_context, edited_path
+                )
+            task_lock = get_task_lock(self.api_task_id)
+            current_process_task_id = process_task.get("")
+            _safe_put_queue(
+                task_lock,
+                ActionWriteFileData(
+                    process_task_id=current_process_task_id,
+                    data=edited_path,
                     relative_path=relative_path,
                 ),
             )

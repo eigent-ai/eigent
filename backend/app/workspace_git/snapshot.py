@@ -514,17 +514,32 @@ class WorkspaceSnapshotService:
         user_commit_changed = user_blob != baseline_blob
         user_changed = dirty or user_commit_changed
         project_changed = project_blob != baseline_blob
+        same_project_content = False
+        if user_changed and project_blob is not None and candidate is not None:
+            try:
+                same_project_content = (
+                    self.git.hash_worktree_file(root, candidate)
+                    == project_blob
+                )
+            except GitBackendError as exc:
+                raise WorkspaceSnapshotUnavailableError(
+                    f"Could not compare Workspace path {relative_path!r} "
+                    "with its pinned Project blob"
+                ) from exc
 
         if user_changed and project_changed:
-            same_committed_content = (
-                not dirty
-                and user_blob is not None
-                and user_blob == project_blob
-            )
-            if not same_committed_content:
+            if not same_project_content:
                 raise WorkspaceOverlayConflictError(
                     f"Both Project and User sources changed {relative_path!r}"
                 )
+
+        # Project projection intentionally leaves the visible Space dirty
+        # relative to User ``main``. When its actual bytes already equal the
+        # pinned Project blob, use that immutable blob rather than treating
+        # the projection as a competing User edit or pinning an ephemeral
+        # Worktree file.
+        if same_project_content:
+            user_changed = False
 
         if user_changed:
             if candidate is None:

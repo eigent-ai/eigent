@@ -81,6 +81,11 @@ class WorkspaceGitCoordinator:
         A Space without an enabled Content Repository remains a valid non-Git
         execution environment. Once Git is enabled, a Run replay always
         returns its original pinned base even if User HEAD later advances.
+
+        TODO(project-fork): when Project forking is implemented, admission
+        must carry the user's explicit workspace choice: continue the source
+        Project worktree/branch, or create a new Project worktree/branch. Do
+        not infer that choice from the prompt or silently fork every Run.
         """
 
         repository = self.journal.get_space_git_repository(space_id=space_id)
