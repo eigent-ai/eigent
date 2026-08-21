@@ -2900,7 +2900,7 @@ function SourceFilePreview({
 }) {
   const sourcePath = file.relativePath || file.path || file.name;
   return (
-    <div className="flex h-full min-h-0 w-full flex-col p-3">
+    <div className="flex h-full min-h-0 w-full flex-col p-2">
       <TruncatedPreviewNotice file={file} />
       <div className="min-h-0 flex-1 overflow-hidden rounded-[6px] border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default">
         <SourceCodeViewer
@@ -3004,9 +3004,6 @@ export function FileViewerPanel({
   const sourceViewLabel = t('folder.source-view', {
     defaultValue: 'Source',
   });
-  const viewModeActionLabel = isShowSourceCode
-    ? previewViewLabel
-    : sourceViewLabel;
   const showsHtmlPreview =
     Boolean(selectedFile) &&
     ['html', 'htm'].includes(selectedType) &&
@@ -3093,43 +3090,42 @@ export function FileViewerPanel({
           )}
           <div className="scrollbar-hide ml-auto flex max-w-full flex-shrink-0 items-center gap-1 overflow-x-auto">
             {supportsRichView ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={onToggleSourceCode}
-                aria-label={viewModeActionLabel}
-                className="justify-center"
+              <div
+                role="group"
+                aria-label={t('folder.view-mode', {
+                  defaultValue: 'View mode',
+                })}
+                className="flex h-8 items-center rounded-[6px] bg-ds-bg-neutral-subtle-default p-0.5"
               >
-                {isShowSourceCode ? (
-                  <Eye className="size-3.5" aria-hidden />
-                ) : (
-                  <CodeXml className="size-3.5" aria-hidden />
-                )}
-                <span
-                  data-slot="view-mode-label"
-                  className="grid place-items-center"
+                <button
+                  type="button"
+                  onClick={isShowSourceCode ? onToggleSourceCode : undefined}
+                  aria-pressed={!isShowSourceCode}
+                  className={cn(
+                    'flex h-7 items-center gap-1.5 rounded-[5px] border-0 px-2 text-xs transition-colors',
+                    !isShowSourceCode
+                      ? 'bg-ds-bg-neutral-default-default font-medium text-ds-text-neutral-default-default shadow-sm'
+                      : 'cursor-pointer bg-transparent text-ds-text-neutral-muted-default hover:text-ds-text-neutral-default-default'
+                  )}
                 >
-                  <span
-                    aria-hidden={!isShowSourceCode}
-                    className={cn(
-                      'col-start-1 row-start-1',
-                      !isShowSourceCode && 'invisible'
-                    )}
-                  >
-                    {previewViewLabel}
-                  </span>
-                  <span
-                    aria-hidden={isShowSourceCode}
-                    className={cn(
-                      'col-start-1 row-start-1',
-                      isShowSourceCode && 'invisible'
-                    )}
-                  >
-                    {sourceViewLabel}
-                  </span>
-                </span>
-              </Button>
+                  <Eye className="size-3.5" aria-hidden />
+                  {previewViewLabel}
+                </button>
+                <button
+                  type="button"
+                  onClick={!isShowSourceCode ? onToggleSourceCode : undefined}
+                  aria-pressed={isShowSourceCode}
+                  className={cn(
+                    'flex h-7 items-center gap-1.5 rounded-[5px] border-0 px-2 text-xs transition-colors',
+                    isShowSourceCode
+                      ? 'bg-ds-bg-neutral-default-default font-medium text-ds-text-neutral-default-default shadow-sm'
+                      : 'cursor-pointer bg-transparent text-ds-text-neutral-muted-default hover:text-ds-text-neutral-default-default'
+                  )}
+                >
+                  <CodeXml className="size-3.5" aria-hidden />
+                  {sourceViewLabel}
+                </button>
+              </div>
             ) : null}
 
             {openInActions.length ? (
@@ -3251,17 +3247,16 @@ export function FileViewerPanel({
                 !isShowSourceCode ? (
                 <div className="mx-auto w-full max-w-4xl">
                   <TruncatedPreviewNotice file={selectedFile} />
-                  <div className="prose prose-sm max-w-none">
-                    <MarkDown
-                      content={selectedFile.content || ''}
-                      enableTypewriter={false}
-                      contentBasePath={
-                        selectedFile.isRemote
-                          ? null
-                          : getDirPath(selectedFile.path)
-                      }
-                    />
-                  </div>
+                  <MarkDown
+                    content={selectedFile.content || ''}
+                    enableTypewriter={false}
+                    profile="document"
+                    contentBasePath={
+                      selectedFile.isRemote
+                        ? null
+                        : getDirPath(selectedFile.path)
+                    }
+                  />
                 </div>
               ) : selectedType === 'pdf' ? (
                 <iframe

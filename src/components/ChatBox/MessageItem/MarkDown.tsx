@@ -17,11 +17,14 @@ import { useHost } from '@/host';
 import { fileInfoFromPath } from '@/lib/fileInfo';
 import { isHtmlDocument } from '@/lib/htmlFontStyles';
 import { escapeHtml } from '@/lib/richText';
+import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import '@/style/markdown-styles.css';
 import DOMPurify from 'dompurify';
-import { marked } from 'marked';
+import { Marked, type Tokens } from 'marked';
 import { memo, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 // Helper functions for path resolution
 function joinPath(...paths: string[]): string {
@@ -51,11 +54,65 @@ function resolveRelativePath(basePath: string, relativePath: string): string {
   return baseParts.join('/');
 }
 
-// Configure marked
-marked.setOptions({
-  gfm: true,
-  breaks: true,
-});
+export type MarkdownProfile = 'conversation' | 'compact' | 'document';
+
+const COLLAPSE_AFTER_LINES: Record<MarkdownProfile, number> = {
+  conversation: 20,
+  compact: 12,
+  document: 32,
+};
+
+function normalizedCodeLanguage(lang?: string): string {
+  return (lang ?? '')
+    .trim()
+    .split(/\s+/)[0]
+    .toLowerCase()
+    .replace(/[^a-z0-9_+#.-]/g, '');
+}
+
+function codeBlockHtml(
+  text: string,
+  lang: string | undefined,
+  profile: MarkdownProfile,
+  labels: { code: string; copy: string; expand: string }
+): string {
+  const language = normalizedCodeLanguage(lang);
+  const lines = text ? text.replace(/\n$/, '').split('\n').length : 0;
+  const collapsible = lines > COLLAPSE_AFTER_LINES[profile];
+  const languageLabel = language || labels.code;
+  return `<div class="markdown-code-block" data-expanded="false"${
+    collapsible ? ' data-collapsible="true"' : ''
+  }><div class="markdown-code-toolbar"><span class="markdown-code-language">${escapeHtml(
+    languageLabel
+  )}</span><button type="button" class="markdown-code-action" data-markdown-code-copy>${escapeHtml(
+    labels.copy
+  )}</button></div><pre tabindex="0"><code${
+    language
+      ? ` class="language-${language}" data-markdown-language="${language}"`
+      : ''
+  }>${escapeHtml(text)}</code></pre>${
+    collapsible
+      ? `<button type="button" class="markdown-code-expand" data-markdown-code-expand>${escapeHtml(
+          labels.expand
+        )}</button>`
+      : ''
+  }</div>`;
+}
+
+function createMarkdownParser(
+  profile: MarkdownProfile,
+  labels: { code: string; copy: string; expand: string }
+) {
+  const parser = new Marked({ gfm: true, breaks: true });
+  parser.use({
+    renderer: {
+      code(token: Tokens.Code) {
+        return codeBlockHtml(token.text, token.lang, profile, labels);
+      },
+    },
+  });
+  return parser;
+}
 
 export const MarkDown = memo(
   ({
@@ -65,6 +122,8 @@ export const MarkDown = memo(
     onMarkdownRenderComplete,
     enableTypewriter = true,
     contentBasePath,
+    profile = 'conversation',
+    className,
   }: {
     content: string;
     speed?: number;
@@ -76,15 +135,21 @@ export const MarkDown = memo(
     olPadding?: string;
     /** Base directory for resolving relative image paths (e.g. markdown file's directory). */
     contentBasePath?: string | null;
+    /** Typography density for chat, tool-detail, and standalone document use. */
+    profile?: MarkdownProfile;
+    className?: string;
   }) => {
+    const { t } = useTranslation();
     const host = useHost();
     const electronAPI = host?.electronAPI;
+    const appearance = useAuthStore((state) => state.appearance);
     const openFilePreview = usePageTabStore((s) => s.openFilePreview);
     const openBrowserPreview = usePageTabStore((s) => s.openBrowserPreview);
     const [displayedContent, setDisplayedContent] = useState('');
     const [html, setHtml] = useState('');
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const contentRef = useRef<HTMLDivElement>(null);
+    const rawCodeByElementRef = useRef(new WeakMap<Element, string>());
     const lastContentRef = useRef<string | null>(null);
     /** Tracks how many characters have been typed so far — lets streaming
      *  appends continue from the current position instead of restarting. */
@@ -147,11 +212,18 @@ export const MarkDown = memo(
 
     // Convert markdown to HTML and process images
     useEffect(() => {
+      let cancelled = false;
       const processMarkdown = async () => {
         if (!displayedContent) {
-          setHtml('');
+          if (!cancelled) setHtml('');
           return;
         }
+
+        const labels = {
+          code: t('markdown.code', { defaultValue: 'Code' }),
+          copy: t('markdown.copy-code', { defaultValue: 'Copy' }),
+          expand: t('markdown.show-more-code', { defaultValue: 'Show more' }),
+        };
 
         // If content is pure HTML, handle it separately
         if (isHtmlDocument(displayedContent)) {
@@ -160,9 +232,8 @@ export const MarkDown = memo(
             .map((line) => line.trimStart())
             .join('\n')
             .trim();
-          setHtml(
-            `<pre class="bg-ds-bg-neutral-strong-default p-2 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all" style="word-break: break-all;"><code>${escapeHtml(formattedHtml)}</code></pre>`
-          );
+          if (cancelled) return;
+          setHtml(codeBlockHtml(formattedHtml, 'html', profile, labels));
           if (displayedContent === content && renderCompleteRef.current) {
             renderCompleteRef.current();
           }
@@ -170,7 +241,9 @@ export const MarkDown = memo(
         }
 
         // Parse markdown to HTML
-        let rawHtml = await marked.parse(displayedContent);
+        const parser = createMarkdownParser(profile, labels);
+        let rawHtml = await parser.parse(displayedContent);
+        if (cancelled) return;
 
         // Process images: replace relative paths with data URLs
         if (contentBasePath) {
@@ -198,6 +271,7 @@ export const MarkDown = memo(
                 if (electronAPI?.readFileAsDataUrl) {
                   const dataUrl =
                     await electronAPI.readFileAsDataUrl(resolvedPath);
+                  if (cancelled) return;
 
                   // Add cursor-pointer class and data attributes for click handling
                   const newTag = `<img${beforeSrc}src="${dataUrl}"${afterSrc} class="cursor-pointer hover:opacity-90 transition-opacity" data-clickable="true" style="max-height: 320px; object-fit: contain;">`;
@@ -266,16 +340,67 @@ export const MarkDown = memo(
         // Sanitize HTML — explicitly allow class so syntax-highlighted code
         // blocks keep their language-* className after sanitization.
         const sanitized = DOMPurify.sanitize(rawHtml, {
-          ADD_ATTR: ['class'],
+          ADD_ATTR: [
+            'class',
+            'data-clickable',
+            'data-file-path',
+            'data-markdown-code-copy',
+            'data-markdown-code-expand',
+            'data-markdown-language',
+            'data-collapsible',
+            'data-expanded',
+          ],
         });
+        if (cancelled) return;
         setHtml(sanitized);
         if (displayedContent === content && renderCompleteRef.current) {
           renderCompleteRef.current();
         }
       };
 
-      processMarkdown();
-    }, [displayedContent, content, contentBasePath, electronAPI]);
+      void processMarkdown();
+      return () => {
+        cancelled = true;
+      };
+    }, [displayedContent, content, contentBasePath, electronAPI, profile, t]);
+
+    // Reuse the Monaco grammars already shipped for Source/Review. Highlight
+    // only stable content so streaming responses stay cheap and responsive.
+    useEffect(() => {
+      const root = contentRef.current;
+      if (!root || displayedContent !== content) return;
+      const codeBlocks = Array.from(
+        root.querySelectorAll<HTMLElement>('code[data-markdown-language]')
+      );
+      if (codeBlocks.length === 0) return;
+      let cancelled = false;
+
+      const colorize = async () => {
+        const { highlightMarkdownCode } =
+          await import('@/lib/markdownSyntaxHighlight');
+        if (cancelled) return;
+        await Promise.all(
+          codeBlocks.map(async (code) => {
+            const raw = code.textContent ?? '';
+            rawCodeByElementRef.current.set(code, raw);
+            const requested = code.dataset.markdownLanguage ?? '';
+            const highlighted = await highlightMarkdownCode(
+              raw,
+              requested,
+              appearance
+            );
+            if (!cancelled && highlighted && code.isConnected) {
+              code.innerHTML = highlighted;
+            }
+          })
+        );
+      };
+
+      void colorize();
+      return () => {
+        cancelled = true;
+      };
+    }, [appearance, content, displayedContent, html]);
 
     // Add click handlers for images
     useEffect(() => {
@@ -283,6 +408,55 @@ export const MarkDown = memo(
 
       const handleContentClick = (e: MouseEvent) => {
         const target = e.target as HTMLElement;
+        const copyButton = target.closest<HTMLButtonElement>(
+          'button[data-markdown-code-copy]'
+        );
+        if (copyButton) {
+          e.preventDefault();
+          const code = copyButton
+            .closest('.markdown-code-block')
+            ?.querySelector('code');
+          const raw = code
+            ? (rawCodeByElementRef.current.get(code) ??
+              (code as HTMLElement).innerText ??
+              code.textContent ??
+              '')
+            : '';
+          if (navigator.clipboard?.writeText) {
+            void navigator.clipboard
+              .writeText(raw)
+              .then(() => {
+                copyButton.textContent = t('markdown.copied', {
+                  defaultValue: 'Copied',
+                });
+                window.setTimeout(() => {
+                  if (copyButton.isConnected) {
+                    copyButton.textContent = t('markdown.copy-code', {
+                      defaultValue: 'Copy',
+                    });
+                  }
+                }, 1500);
+              })
+              .catch(() => undefined);
+          }
+          return;
+        }
+        const expandButton = target.closest<HTMLButtonElement>(
+          'button[data-markdown-code-expand]'
+        );
+        if (expandButton) {
+          e.preventDefault();
+          const block = expandButton.closest<HTMLElement>(
+            '.markdown-code-block'
+          );
+          if (!block) return;
+          const expanded = block.dataset.expanded === 'true';
+          block.dataset.expanded = String(!expanded);
+          expandButton.textContent = expanded
+            ? t('markdown.show-more-code', { defaultValue: 'Show more' })
+            : t('markdown.show-less-code', { defaultValue: 'Show less' });
+          return;
+        }
         if (
           target.tagName === 'IMG' &&
           target.getAttribute('data-clickable') === 'true'
@@ -324,13 +498,17 @@ export const MarkDown = memo(
       return () => {
         div.removeEventListener('click', handleContentClick);
       };
-    }, [html, openFilePreview, openBrowserPreview, electronAPI]);
+    }, [html, openFilePreview, openBrowserPreview, electronAPI, t]);
 
     return (
       <>
         <div
           ref={contentRef}
-          className="markdown-body max-w-none overflow-hidden"
+          className={cn(
+            'markdown-body min-w-0 max-w-none overflow-hidden',
+            `markdown-profile-${profile}`,
+            className
+          )}
           dangerouslySetInnerHTML={{ __html: html }}
         />
 

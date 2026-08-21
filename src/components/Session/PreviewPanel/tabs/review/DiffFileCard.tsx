@@ -65,6 +65,8 @@ export interface DiffFileCardProps {
   file: ReviewFile;
   selected: boolean;
   appearance: string;
+  /** Available vertical space for a single-file review on this panel. */
+  maxEditorHeight?: number;
   /**
    * Fold state the "collapse/expand all" control last asked for. The card
    * still owns its own state — this only re-applies when `foldNonce` changes,
@@ -97,6 +99,7 @@ export function DiffFileCard({
   file,
   selected,
   appearance,
+  maxEditorHeight = MAX_EDITOR_HEIGHT,
   foldAll = false,
   foldNonce = 0,
 }: DiffFileCardProps) {
@@ -109,7 +112,7 @@ export function DiffFileCard({
   const [sides, setSides] = useState<DiffSides | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [counts, setCounts] = useState<LineCounts | null>(null);
-  const [editorHeight, setEditorHeight] = useState(160);
+  const [contentHeight, setContentHeight] = useState(148);
   const wholeFileEditorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(
     null
   );
@@ -144,7 +147,7 @@ export function DiffFileCard({
     setSides(null);
     setLoadError(null);
     setCounts(null);
-    setEditorHeight(160);
+    setContentHeight(148);
     if (file.inline) {
       setSides(file.inline);
       return;
@@ -242,13 +245,13 @@ export function DiffFileCard({
           : null;
   const wholeFileTinted = wholeFileSide !== null && !file.beforeUnavailable;
 
-  const fitHeight = (contentHeight: number) =>
-    setEditorHeight(
-      Math.min(
-        MAX_EDITOR_HEIGHT,
-        Math.max(MIN_EDITOR_HEIGHT, contentHeight + 12)
-      )
-    );
+  const editorHeight = Math.min(
+    maxEditorHeight,
+    Math.max(MIN_EDITOR_HEIGHT, contentHeight + 12)
+  );
+
+  const fitHeight = (nextContentHeight: number) =>
+    setContentHeight(nextContentHeight);
 
   const handleMount = (editor: monaco.editor.IStandaloneDiffEditor) => {
     const applyMetrics = () => {

@@ -1,175 +1,313 @@
-/* Import GitHub markdown styles */
+/* Import GitHub's semantic defaults, then bind them to Eigent's density and
+ * app-controlled light/dark theme. */
 @import 'github-markdown-css/github-markdown.css';
 
 [data-theme='dark'] .markdown-body {
   color-scheme: dark;
 }
+
 [data-theme='light'] .markdown-body {
   color-scheme: light;
 }
 
-/* Custom overrides for better integration */
 .markdown-body {
   box-sizing: border-box;
-  min-width: 200px;
+  min-width: 0;
   max-width: 100%;
   padding: 0;
-  font-size: 0.875rem; /* 14px */
-  line-height: 1.6;
-  word-wrap: break-word;
+  overflow-wrap: anywhere;
   color: inherit;
-}
-
-/* BottomBox questions use the sanitized Markdown renderer with compact
-   conversational spacing instead of final-response document spacing. */
-.bottom-box-question-markdown .markdown-body {
-  min-width: 0;
+  background-color: inherit;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica,
+    Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji' !important;
   font-size: var(--fontSize-sm, 13px);
   line-height: var(--lineHeight-14, 20px);
 }
 
-.bottom-box-question-markdown .markdown-body > :first-child {
-  margin-top: 0;
+.markdown-profile-compact {
+  font-size: 12px;
+  line-height: 18px;
 }
 
-.bottom-box-question-markdown .markdown-body > :last-child {
-  margin-bottom: 0;
+.markdown-profile-document {
+  font-size: 15px;
+  line-height: 24px;
 }
 
-.bottom-box-question-markdown .markdown-body ul,
-.bottom-box-question-markdown .markdown-body ol {
-  margin-bottom: 0.5em;
-  padding-left: 1.5em;
+.markdown-body > :first-child {
+  margin-top: 0 !important;
 }
 
-/* Typography improvements */
+.markdown-body > :last-child {
+  margin-bottom: 0 !important;
+}
+
+/* Headings and prose */
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+  color: inherit;
+  line-height: 1.25;
+}
+
 .markdown-body h1 {
+  margin: 1em 0 0.5em;
+  padding-bottom: 0;
+  border-bottom: 0;
   font-size: 1.5em;
   font-weight: 700;
-  margin-bottom: 0.5em;
-  margin-top: 1em;
-  padding-bottom: 0;
-  border-bottom: none !important;
 }
 
 .markdown-body h2 {
+  margin: 1em 0 0.5em;
+  padding-bottom: 0;
+  border-bottom: 0;
   font-size: 1.25em;
   font-weight: 600;
-  margin-bottom: 0.5em;
-  margin-top: 1em;
-  padding-bottom: 0;
-  border-bottom: none !important;
 }
 
 .markdown-body h3 {
+  margin: 1em 0 0.5em;
   font-size: 1.1em;
   font-weight: 600;
-  margin-bottom: 0.5em;
-  margin-top: 1em;
+}
+
+.markdown-profile-document h1,
+.markdown-profile-document h2 {
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid #d1d9e0;
+}
+
+.markdown-profile-document h1 {
+  font-size: 2em;
+}
+
+.markdown-profile-document h2 {
+  font-size: 1.5em;
 }
 
 .markdown-body p {
-  margin-bottom: 0.75em;
-  margin-top: 0;
-  font-size: var(--fontSize-sm, 13px);
-  line-height: var(--lineHeight-14, 20px);
+  margin: 0 0 0.75em;
+  font-size: inherit;
+  line-height: inherit;
 }
 
-/* Code blocks styling.
-   The imported github-markdown-css colors code text via variables keyed to
-   the OS color scheme (prefers-color-scheme), while this file forces the
-   code backgrounds per app theme (data-theme). When the two disagree the
-   text becomes invisible (near-white on the light background and vice
-   versa), so pin the text color alongside each forced background. */
-.markdown-body pre {
-  background-color: #f6f8fa;
-  color: #1f2328;
-  border-radius: 6px;
-  padding: 16px;
-  overflow-x: auto;
-  font-size: 13px;
-  line-height: 1.5;
-  margin-bottom: 16px;
-}
-
+/* Inline code */
 .markdown-body code {
-  background-color: rgba(175, 184, 193, 0.2);
   padding: 0.2em 0.4em;
-  border-radius: 3px;
-  font-size: 85%;
+  border-radius: 4px;
+  background-color: rgba(175, 184, 193, 0.2);
   font-family:
     ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono',
     monospace;
+  font-size: 85%;
 }
 
-.markdown-body pre code {
-  background-color: transparent;
-  color: inherit;
+/* Fenced code uses one shell in chat, summaries, workflow details, and files. */
+.markdown-body .markdown-code-block {
+  max-width: 100%;
+  margin: 0 0 16px;
+  overflow: hidden;
+  border: 1px solid #d1d9e0;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.markdown-body .markdown-code-toolbar {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 8px 0 12px;
+  border-bottom: 1px solid #d1d9e0;
+  background: #f6f8fa;
+}
+
+.markdown-body .markdown-code-language {
+  overflow: hidden;
+  color: #59636e;
+  font-family:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono',
+    monospace;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  text-overflow: ellipsis;
+  text-transform: lowercase;
+  white-space: nowrap;
+}
+
+.markdown-body .markdown-code-action,
+.markdown-body .markdown-code-expand {
+  appearance: none;
+  border: 0;
+  color: #59636e;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.markdown-body .markdown-code-action {
+  min-height: 24px;
+  padding: 0 6px;
+  border-radius: 4px;
+}
+
+.markdown-body .markdown-code-action:hover {
+  color: #1f2328;
+  background: rgba(175, 184, 193, 0.2);
+}
+
+.markdown-body .markdown-code-action:focus-visible,
+.markdown-body .markdown-code-expand:focus-visible {
+  outline: 2px solid #0969da;
+  outline-offset: -2px;
+}
+
+.markdown-body .markdown-code-block pre {
+  max-width: 100%;
+  margin: 0;
+  padding: 12px 16px;
+  overflow: auto;
+  border: 0;
+  border-radius: 0;
+  color: #1f2328;
+  background: #ffffff;
+  font-size: 13px;
+  line-height: 20px;
+  tab-size: 2;
+  white-space: pre;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.markdown-profile-compact .markdown-code-block pre {
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.markdown-body .markdown-code-block pre code {
+  display: inline;
   padding: 0;
-  font-size: 100%;
+  border-radius: 0;
+  color: inherit;
+  background: transparent;
+  font-size: inherit;
+  white-space: inherit;
 }
 
-/* Table styling */
+.markdown-profile-conversation
+  .markdown-code-block[data-collapsible='true'][data-expanded='false']
+  pre {
+  max-height: 400px;
+  overflow-y: hidden;
+}
+
+.markdown-profile-compact
+  .markdown-code-block[data-collapsible='true'][data-expanded='false']
+  pre {
+  max-height: 252px;
+  overflow-y: hidden;
+}
+
+.markdown-profile-document
+  .markdown-code-block[data-collapsible='true'][data-expanded='false']
+  pre {
+  max-height: 520px;
+  overflow-y: hidden;
+}
+
+.markdown-body .markdown-code-expand {
+  display: block;
+  width: 100%;
+  min-height: 30px;
+  border-top: 1px solid #d1d9e0;
+  background: #f6f8fa;
+  text-align: center;
+}
+
+.markdown-body .markdown-code-expand:hover {
+  color: #1f2328;
+  background: #eef1f4;
+}
+
+/* Tables scroll as a unit instead of clipping the last columns inside chat. */
 .markdown-body table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  margin: 0 0 16px;
+  overflow-x: auto;
   border-collapse: collapse;
   border-spacing: 0;
-  width: 100%;
-  overflow: auto;
-  margin-bottom: 16px;
 }
 
 .markdown-body table th,
 .markdown-body table td {
   padding: 6px 13px;
   border: 1px solid #d0d7de;
+  white-space: normal;
+}
+
+.markdown-profile-compact table th,
+.markdown-profile-compact table td {
+  padding: 4px 8px;
+  font-size: 11px;
+  line-height: 16px;
 }
 
 .markdown-body table th {
-  font-weight: 600;
   background-color: #f6f8fa;
+  font-weight: 600;
 }
 
 .markdown-body table tr {
-  background-color: #ffffff;
   border-top: 1px solid #d0d7de;
+  background-color: #ffffff;
 }
 
 .markdown-body table tr:nth-child(2n) {
   background-color: #f6f8fa;
 }
 
-/* List styling */
+/* Lists, quotes, links, and media */
 .markdown-body ul,
 .markdown-body ol {
-  margin-bottom: 16px;
+  margin: 0 0 16px;
   padding-left: 2em;
-  font-size: var(--fontSize-sm, 13px);
-  line-height: var(--lineHeight-14, 20px);
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.markdown-profile-compact ul,
+.markdown-profile-compact ol {
+  margin-bottom: 8px;
+  padding-left: 1.5em;
 }
 
 .markdown-body li {
   margin-bottom: 0.25em;
-  font-size: var(--fontSize-sm, 13px);
-  line-height: var(--lineHeight-14, 20px);
-}
-
-.markdown-body li::marker {
-  font-size: var(--fontSize-sm, 13px);
+  font-size: inherit;
+  line-height: inherit;
 }
 
 .markdown-body li > p {
   margin-bottom: 0;
 }
 
-/* Blockquote styling */
 .markdown-body blockquote {
+  margin: 0 0 16px;
   padding: 0 1em;
-  color: #57606a;
   border-left: 0.25em solid #d0d7de;
-  margin-bottom: 16px;
+  color: #57606a;
 }
 
-/* Link styling */
 .markdown-body a {
   color: #0969da;
   text-decoration: none;
@@ -179,36 +317,84 @@
   text-decoration: underline;
 }
 
-/* Image styling */
 .markdown-body img {
   max-width: 100%;
   height: auto;
-  border-radius: 6px;
   margin: 8px 0;
+  border-radius: 6px;
 }
 
-/* Horizontal rule */
 .markdown-body hr {
   height: 0;
-  padding: 0;
   margin: 24px 0;
-  background-color: transparent;
+  padding: 0;
   border: 0;
-  border-top: 2px solid var(--ds-border-neutral-default-default);
+  border-top: 1px solid #d1d9e0;
+  background: transparent;
 }
 
-/* Dark mode support - matches app's data-theme attribute */
+.markdown-body .task-list-item {
+  list-style-type: none;
+}
+
+.markdown-body .task-list-item input[type='checkbox'] {
+  margin: 0 0.5em 0.25em -1.6em;
+  vertical-align: middle;
+}
+
+/* BottomBox questions are conversation Markdown with tighter outer spacing. */
+.bottom-box-question-markdown .markdown-body {
+  min-width: 0;
+}
+
+.bottom-box-question-markdown .markdown-body ul,
+.bottom-box-question-markdown .markdown-body ol {
+  margin-bottom: 0.5em;
+  padding-left: 1.5em;
+}
+
+/* Dark mode follows the app theme rather than the OS color preference used by
+ * github-markdown-css. */
 [data-theme='dark'] .markdown-body {
   color: #e6edf3;
 }
 
-[data-theme='dark'] .markdown-body pre {
-  background-color: #161b22;
-  color: #e6edf3;
+[data-theme='dark'] .markdown-profile-document h1,
+[data-theme='dark'] .markdown-profile-document h2,
+[data-theme='dark'] .markdown-body hr {
+  border-color: #30363d;
 }
 
 [data-theme='dark'] .markdown-body code {
   background-color: rgba(110, 118, 129, 0.4);
+}
+
+[data-theme='dark'] .markdown-body .markdown-code-block {
+  border-color: #30363d;
+  background: #0d1117;
+}
+
+[data-theme='dark'] .markdown-body .markdown-code-toolbar,
+[data-theme='dark'] .markdown-body .markdown-code-expand {
+  border-color: #30363d;
+  background: #161b22;
+}
+
+[data-theme='dark'] .markdown-body .markdown-code-language,
+[data-theme='dark'] .markdown-body .markdown-code-action,
+[data-theme='dark'] .markdown-body .markdown-code-expand {
+  color: #8b949e;
+}
+
+[data-theme='dark'] .markdown-body .markdown-code-action:hover,
+[data-theme='dark'] .markdown-body .markdown-code-expand:hover {
+  color: #e6edf3;
+  background: rgba(110, 118, 129, 0.25);
+}
+
+[data-theme='dark'] .markdown-body .markdown-code-block pre {
+  color: #e6edf3;
+  background: #0d1117;
 }
 
 [data-theme='dark'] .markdown-body table th {
@@ -221,8 +407,8 @@
 }
 
 [data-theme='dark'] .markdown-body table tr {
-  background-color: transparent;
   border-top-color: #30363d;
+  background-color: transparent;
 }
 
 [data-theme='dark'] .markdown-body table tr:nth-child(2n) {
@@ -230,28 +416,10 @@
 }
 
 [data-theme='dark'] .markdown-body blockquote {
-  color: #8b949e;
   border-left-color: #30363d;
+  color: #8b949e;
 }
 
 [data-theme='dark'] .markdown-body a {
   color: #58a6ff;
-}
-
-/* Task list styling */
-.markdown-body .task-list-item {
-  list-style-type: none;
-}
-
-.markdown-body .task-list-item input[type='checkbox'] {
-  margin: 0 0.5em 0.25em -1.6em;
-  vertical-align: middle;
-}
-
-/* Ensure compatibility with your app's theme */
-.markdown-body {
-  background-color: inherit;
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica,
-    Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji' !important;
 }

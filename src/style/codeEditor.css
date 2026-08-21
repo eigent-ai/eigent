@@ -21,3 +21,24 @@
 .code-editor-surface .monaco-editor .margin-view-overlays .line-numbers {
   font-family: var(--code-font-family, monospace);
 }
+
+/* Whole-file additions/deletions still need status context, but Monaco's
+ * stock solid wash is much louder than a GitHub-style review. Keep the gutter
+ * marker and use a restrained content tint. */
+.review-diff-surface .monaco-editor .line-insert {
+  background: rgba(46, 160, 67, 0.08);
+  box-shadow: inset 2px 0 rgba(46, 160, 67, 0.55);
+}
+
+.review-diff-surface .monaco-editor .line-delete {
+  background: rgba(248, 81, 73, 0.08);
+  box-shadow: inset 2px 0 rgba(248, 81, 73, 0.55);
+}
+
+[data-theme='dark'] .review-diff-surface .monaco-editor .line-insert {
+  background: rgba(63, 185, 80, 0.1);
+}
+
+[data-theme='dark'] .review-diff-surface .monaco-editor .line-delete {
+  background: rgba(248, 81, 73, 0.1);
+}
