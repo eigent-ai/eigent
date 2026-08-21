@@ -19,7 +19,29 @@ import type { ComponentProps } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/components/ChatBox/MessageItem/MarkDown', () => ({
-  MarkDown: ({ content }: { content: string }) => <article>{content}</article>,
+  MarkDown: ({ content, profile }: { content: string; profile?: string }) => (
+    <article data-markdown-profile={profile}>{content}</article>
+  ),
+}));
+
+vi.mock('@/components/CodeViewer/SourceCodeViewer', () => ({
+  SourceCodeViewer: ({
+    value,
+    path,
+    appearance,
+  }: {
+    value: string;
+    path: string;
+    appearance: string;
+  }) => (
+    <pre
+      data-testid="source-code-viewer"
+      data-path={path}
+      data-appearance={appearance}
+    >
+      {value}
+    </pre>
+  ),
 }));
 
 type ViewerFile = NonNullable<
@@ -119,7 +141,16 @@ describe('FileViewerPanel toolbar', () => {
     expect(screen.queryByRole('button', { name: 'Download file' })).toBeNull();
   });
 
-  it('offers one Source action for a Markdown preview', async () => {
+  it('renders ordinary text through the shared source viewer', () => {
+    renderViewer(textFile());
+
+    const source = screen.getByTestId('source-code-viewer');
+    expect(source).toHaveAttribute('data-path', 'notes.txt');
+    expect(source).toHaveAttribute('data-appearance', 'light');
+    expect(source).toHaveTextContent('hello from the file');
+  });
+
+  it('shows Preview and Source as a current-state control', async () => {
     const user = userEvent.setup();
     renderViewer(
       textFile({
@@ -131,15 +162,14 @@ describe('FileViewerPanel toolbar', () => {
       })
     );
 
-    expect(screen.queryByRole('button', { name: 'Preview' })).toBeNull();
+    const previewButton = screen.getByRole('button', { name: 'Preview' });
     const sourceButton = screen.getByRole('button', { name: 'Source' });
-    const labelSlot = sourceButton.querySelector(
-      '[data-slot="view-mode-label"]'
+    expect(previewButton).toHaveAttribute('aria-pressed', 'true');
+    expect(sourceButton).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByText('# Report')).toHaveAttribute(
+      'data-markdown-profile',
+      'document'
     );
-    expect(sourceButton).toHaveClass('justify-center');
-    expect(labelSlot).toHaveClass('grid', 'place-items-center');
-    expect(labelSlot).toHaveTextContent('Preview');
-    expect(labelSlot).toHaveTextContent('Source');
 
     await user.click(sourceButton);
 
@@ -185,7 +215,7 @@ describe('FileViewerPanel toolbar', () => {
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
-  it('offers one Preview action when a rich file is showing source', () => {
+  it('marks Source as active when a rich file is showing source', () => {
     renderViewer(
       textFile({
         name: 'page.html',
@@ -198,11 +228,13 @@ describe('FileViewerPanel toolbar', () => {
     );
 
     const previewButton = screen.getByRole('button', { name: 'Preview' });
-    expect(previewButton).toHaveClass('justify-center');
-    expect(
-      previewButton.querySelector('[data-slot="view-mode-label"]')
-    ).toHaveTextContent('PreviewSource');
-    expect(screen.queryByRole('button', { name: 'Source' })).toBeNull();
+    const sourceButton = screen.getByRole('button', { name: 'Source' });
+    expect(previewButton).toHaveAttribute('aria-pressed', 'false');
+    expect(sourceButton).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('source-code-viewer')).toHaveAttribute(
+      'data-path',
+      'page.html'
+    );
   });
 
   it('hides source switching and removed toolbar actions for a local blocked file', () => {

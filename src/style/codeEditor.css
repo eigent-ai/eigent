@@ -1,0 +1,44 @@
+/* ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. ========= */
+
+/* index.css assigns Inter directly to every element. Pin Monaco's painted text
+ * to the same code stack it uses for glyph measurement; otherwise cursor and
+ * selection geometry drift. Codicons retain Monaco's icon font. */
+.code-editor-surface .monaco-editor .view-lines,
+.code-editor-surface .monaco-editor .view-line,
+.code-editor-surface .monaco-editor .view-line span:not(.codicon),
+.code-editor-surface .monaco-editor .margin-view-overlays .line-numbers {
+  font-family: var(--code-font-family, monospace);
+}
+
+/* Whole-file additions/deletions still need status context, but Monaco's
+ * stock solid wash is much louder than a GitHub-style review. Keep the gutter
+ * marker and use a restrained content tint. */
+.review-diff-surface .monaco-editor .line-insert {
+  background: rgba(46, 160, 67, 0.08);
+  box-shadow: inset 2px 0 rgba(46, 160, 67, 0.55);
+}
+
+.review-diff-surface .monaco-editor .line-delete {
+  background: rgba(248, 81, 73, 0.08);
+  box-shadow: inset 2px 0 rgba(248, 81, 73, 0.55);
+}
+
+[data-theme='dark'] .review-diff-surface .monaco-editor .line-insert {
+  background: rgba(63, 185, 80, 0.1);
+}
+
+[data-theme='dark'] .review-diff-surface .monaco-editor .line-delete {
+  background: rgba(248, 81, 73, 0.1);
+}

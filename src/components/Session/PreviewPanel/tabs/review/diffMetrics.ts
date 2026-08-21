@@ -116,13 +116,6 @@ export function countLineDiff(
   return { added: (distance + delta) / 2, removed: (distance - delta) / 2 };
 }
 
-/** The parts of Monaco's `ILanguageExtensionPoint` language lookup needs. */
-export interface LanguageDescriptor {
-  id: string;
-  extensions?: readonly string[];
-  filenames?: readonly string[];
-}
-
 /**
  * Added/removed line counts for a diff.
  *
@@ -155,38 +148,4 @@ export function countLineChanges(
         change.originalEndLineNumber - change.originalStartLineNumber + 1;
   }
   return { added, removed };
-}
-
-/**
- * Monaco language id for a file path, so diffs get syntax highlighting.
- * `@monaco-editor/react` defaults its diff models to `"text"` (it never infers
- * from the model path), so the language has to be resolved and passed in.
- * Matching is by exact filename first (Dockerfile, Makefile), then extension.
- */
-export function languageForPath(
-  path: string,
-  languages: readonly LanguageDescriptor[]
-): string {
-  const fileName = path.replace(/\\/g, '/').split('/').pop() ?? '';
-  if (!fileName) return 'plaintext';
-  const lowerName = fileName.toLowerCase();
-
-  for (const language of languages) {
-    if (language.filenames?.some((name) => name.toLowerCase() === lowerName))
-      return language.id;
-  }
-
-  // Longest extension first so `.d.ts`-style compound extensions win over `.ts`.
-  let best: { id: string; length: number } | null = null;
-  for (const language of languages) {
-    for (const extension of language.extensions ?? []) {
-      if (!extension.startsWith('.')) continue;
-      const lowerExtension = extension.toLowerCase();
-      if (!lowerName.endsWith(lowerExtension)) continue;
-      if (lowerName === lowerExtension) continue; // dotfile, not an extension
-      if (!best || lowerExtension.length > best.length)
-        best = { id: language.id, length: lowerExtension.length };
-    }
-  }
-  return best?.id ?? 'plaintext';
 }

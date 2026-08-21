@@ -58,12 +58,43 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
   // Collapsing the rail gives the diffs the full panel width, which matters on
   // a narrow preview panel. Resets per mount — this is a per-look preference,
   // not a setting worth persisting.
-  const [treeHidden, setTreeHidden] = useState(false);
+  const [treeMode, setTreeMode] = useState<'auto' | 'visible' | 'hidden'>(
+    'auto'
+  );
   // Cards own their fold state so individual ones stay togglable; the nonce is
   // what tells them a toolbar command was issued rather than a re-render.
   const [foldAll, setFoldAll] = useState(false);
   const [foldNonce, setFoldNonce] = useState(0);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const reviewBodyRef = useRef<HTMLDivElement>(null);
   const stackRef = useRef<HTMLDivElement>(null);
+  const [panelWidth, setPanelWidth] = useState<number | null>(null);
+  const [reviewBodyHeight, setReviewBodyHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    const panel = panelRef.current;
+    const body = reviewBodyRef.current;
+    if (!panel || !body || typeof ResizeObserver === 'undefined') return;
+    const measure = () => {
+      setPanelWidth(panel.getBoundingClientRect().width);
+      setReviewBodyHeight(body.getBoundingClientRect().height);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(panel);
+    observer.observe(body);
+    return () => observer.disconnect();
+  }, [loading, files.length]);
+
+  const treeAutoHidden =
+    files.length === 1 ||
+    (panelWidth !== null && panelWidth > 0 && panelWidth < 840);
+  const treeHidden =
+    treeMode === 'hidden' || (treeMode === 'auto' && treeAutoHidden);
+  const singleFileEditorHeight =
+    files.length === 1 && reviewBodyHeight !== null
+      ? Math.max(120, Math.floor(reviewBodyHeight - 64))
+      : undefined;
 
   const toggleFoldAll = useCallback(() => {
     setFoldAll((folded) => !folded);
@@ -171,7 +202,10 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
+    <div
+      ref={panelRef}
+      className="flex h-full min-h-0 w-full flex-col overflow-hidden"
+    >
       <div className="flex h-10 shrink-0 items-center gap-2 border-0 border-b border-solid border-ds-border-neutral-subtle-default px-3">
         <span className="text-sm font-medium text-ds-text-neutral-default-default">
           {t('layout.review-changed-files', {
@@ -237,7 +271,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
               variant="ghost"
               size="sm"
               buttonContent="icon-only"
-              onClick={() => setTreeHidden((hidden) => !hidden)}
+              onClick={() => setTreeMode(treeHidden ? 'visible' : 'hidden')}
               aria-pressed={treeHidden}
               aria-label={treeToggleLabel}
             >
@@ -253,7 +287,10 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
         </div>
       </div>
 
-      <div className="flex min-h-0 w-full flex-1 overflow-hidden">
+      <div
+        ref={reviewBodyRef}
+        className="flex min-h-0 w-full flex-1 overflow-hidden"
+      >
         {/* Right padding comes from the always-visible 8px scrollbar gutter;
             the left padding matches it so the stack reads centered. */}
         <div
@@ -266,6 +303,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
               file={file}
               selected={file.id === selectedId}
               appearance={appearance}
+              maxEditorHeight={singleFileEditorHeight}
               foldAll={foldAll}
               foldNonce={foldNonce}
             />
@@ -293,14 +331,18 @@ function CenteredNotice({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex h-full min-h-0 w-full flex-col items-center justify-center gap-2 px-6 text-center">
-      <FileDiff
-        className="h-8 w-8 text-ds-icon-neutral-muted-default"
-        aria-hidden
-      />
-      <p className="text-sm text-ds-text-neutral-default-default">{message}</p>
+    <div className="flex h-full min-h-0 w-full -translate-y-4 flex-col items-center justify-center gap-3 px-6 text-center">
+      <div className="flex size-12 items-center justify-center rounded-full bg-ds-bg-neutral-subtle-default">
+        <FileDiff
+          className="h-5 w-5 text-ds-icon-neutral-muted-default"
+          aria-hidden
+        />
+      </div>
+      <p className="m-0 text-sm font-medium text-ds-text-neutral-default-default">
+        {message}
+      </p>
       {detail && (
-        <p className="max-w-[380px] text-xs text-ds-text-neutral-muted-default">
+        <p className="m-0 max-w-[420px] text-xs leading-5 text-ds-text-neutral-muted-default">
           {detail}
         </p>
       )}

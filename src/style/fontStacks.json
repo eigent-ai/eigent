@@ -1,3 +1,11 @@
 {
-  "code": ["Inconsolata", "SFMono-Regular", "Menlo", "monospace"]
+  "code": [
+    "ui-monospace",
+    "SFMono-Regular",
+    "SF Mono",
+    "Menlo",
+    "Consolas",
+    "Liberation Mono",
+    "monospace"
+  ]
 }

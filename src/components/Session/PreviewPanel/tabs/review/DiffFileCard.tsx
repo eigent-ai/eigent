@@ -13,53 +13,35 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { useHost } from '@/host';
+import {
+  CODE_FONT_FAMILY,
+  READ_ONLY_CODE_OPTIONS,
+  codeThemeForAppearance,
+  languageForPath,
+  registerCodeThemes,
+} from '@/lib/codePresentation';
 import { ensureMonacoWorkers } from '@/lib/monacoWorkers';
 import { cn } from '@/lib/utils';
-import fontStacks from '@/style/fontStacks.json';
 import loader from '@monaco-editor/loader';
 import { DiffEditor, Editor } from '@monaco-editor/react';
 import { ChevronRight, FileWarning } from 'lucide-react';
 import * as monaco from 'monaco-editor';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  countLineChanges,
-  languageForPath,
-  type LineCounts,
-} from './diffMetrics';
+import { countLineChanges, type LineCounts } from './diffMetrics';
 import { ReviewAccordionContent } from './ReviewAccordionContent';
 import { decodeFileText, diffSidePaths } from './reviewContent';
-import './reviewDiff.css';
 import { MAX_DIFF_BYTES, type ReviewFile } from './useReviewChanges';
 
 ensureMonacoWorkers();
 loader.config({ monaco });
+registerCodeThemes(monaco);
 
 const MIN_EDITOR_HEIGHT = 72;
 const MAX_EDITOR_HEIGHT = 520;
 
-/** The `font-code` stack Tailwind builds from; Monaco needs it as a string. */
-const CODE_FONT_FAMILY = fontStacks.code.join(', ');
-
-const BASE_OPTIONS: monaco.editor.IEditorConstructionOptions = {
-  readOnly: true,
-  automaticLayout: true,
-  minimap: { enabled: false },
-  overviewRulerLanes: 0,
-  scrollBeyondLastLine: false,
-  scrollbar: { alwaysConsumeMouseWheel: false },
-  contextmenu: false,
-  folding: false,
-  fontFamily: CODE_FONT_FAMILY,
-  fontSize: 13,
-  lineHeight: 19,
-  lineNumbersMinChars: 4,
-  renderLineHighlight: 'none',
-  guides: { indentation: false },
-};
-
 const DIFF_OPTIONS: monaco.editor.IDiffEditorConstructionOptions = {
-  ...BASE_OPTIONS,
+  ...READ_ONLY_CODE_OPTIONS,
   renderOverviewRuler: false,
   originalEditable: false,
   renderSideBySide: false,
@@ -68,7 +50,7 @@ const DIFF_OPTIONS: monaco.editor.IDiffEditorConstructionOptions = {
 };
 
 const WHOLE_FILE_OPTIONS: monaco.editor.IStandaloneEditorConstructionOptions = {
-  ...BASE_OPTIONS,
+  ...READ_ONLY_CODE_OPTIONS,
   occurrencesHighlight: 'off',
   selectionHighlight: false,
 };
@@ -83,6 +65,8 @@ export interface DiffFileCardProps {
   file: ReviewFile;
   selected: boolean;
   appearance: string;
+  /** Available vertical space for a single-file review on this panel. */
+  maxEditorHeight?: number;
   /**
    * Fold state the "collapse/expand all" control last asked for. The card
    * still owns its own state — this only re-applies when `foldNonce` changes,
@@ -115,6 +99,7 @@ export function DiffFileCard({
   file,
   selected,
   appearance,
+  maxEditorHeight = MAX_EDITOR_HEIGHT,
   foldAll = false,
   foldNonce = 0,
 }: DiffFileCardProps) {
@@ -127,7 +112,7 @@ export function DiffFileCard({
   const [sides, setSides] = useState<DiffSides | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [counts, setCounts] = useState<LineCounts | null>(null);
-  const [editorHeight, setEditorHeight] = useState(160);
+  const [contentHeight, setContentHeight] = useState(148);
   const wholeFileEditorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(
     null
   );
@@ -162,7 +147,7 @@ export function DiffFileCard({
     setSides(null);
     setLoadError(null);
     setCounts(null);
-    setEditorHeight(160);
+    setContentHeight(148);
     if (file.inline) {
       setSides(file.inline);
       return;
@@ -236,6 +221,7 @@ export function DiffFileCard({
     () => languageForPath(file.path, monaco.languages.getLanguages()),
     [file.path]
   );
+  const codeTheme = codeThemeForAppearance(appearance);
 
   /**
    * Which side to show on its own, uncompared: a file that only exists on one
@@ -259,13 +245,13 @@ export function DiffFileCard({
           : null;
   const wholeFileTinted = wholeFileSide !== null && !file.beforeUnavailable;
 
-  const fitHeight = (contentHeight: number) =>
-    setEditorHeight(
-      Math.min(
-        MAX_EDITOR_HEIGHT,
-        Math.max(MIN_EDITOR_HEIGHT, contentHeight + 12)
-      )
-    );
+  const editorHeight = Math.min(
+    maxEditorHeight,
+    Math.max(MIN_EDITOR_HEIGHT, contentHeight + 12)
+  );
+
+  const fitHeight = (nextContentHeight: number) =>
+    setContentHeight(nextContentHeight);
 
   const handleMount = (editor: monaco.editor.IStandaloneDiffEditor) => {
     const applyMetrics = () => {
@@ -386,7 +372,7 @@ export function DiffFileCard({
       ref={containerRef}
       data-review-id={file.id}
       className={cn(
-        'overflow-hidden rounded-xl border border-solid bg-ds-bg-neutral-default-default',
+        'overflow-hidden rounded-[6px] border border-solid bg-ds-bg-neutral-default-default',
         selected
           ? 'border-ds-border-neutral-strong-default'
           : 'border-ds-border-neutral-subtle-default'
@@ -397,7 +383,7 @@ export function DiffFileCard({
         onClick={() => setCollapsed((value) => !value)}
         aria-expanded={!collapsed}
         aria-controls={contentId}
-        className="sticky top-0 z-10 flex h-9 w-full cursor-pointer items-center gap-2 border-0 border-b border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default px-3 text-left"
+        className="sticky top-0 z-10 flex h-10 w-full cursor-pointer items-center gap-2 border-0 border-b border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default px-3 text-left"
       >
         <ChevronRight
           className={cn(
@@ -412,8 +398,10 @@ export function DiffFileCard({
         >
           {status.letter}
         </span>
-        <span className="min-w-0 flex-1 truncate text-xs font-medium text-ds-text-neutral-default-default">
-          <span className="text-ds-text-neutral-muted-default">{dirName}</span>
+        <span className="min-w-0 flex-1 truncate font-code text-xs font-medium text-ds-text-neutral-default-default">
+          <span className="font-code text-ds-text-neutral-muted-default">
+            {dirName}
+          </span>
           {baseName}
         </span>
         {counts && (
@@ -449,12 +437,11 @@ export function DiffFileCard({
               </div>
             ) : null}
             <div
-              className="review-diff-surface"
+              className="code-editor-surface review-diff-surface"
               style={
                 {
                   height: editorHeight,
-                  // Hands reviewDiff.css the same stack Monaco measures with.
-                  '--review-code-font': CODE_FONT_FAMILY,
+                  '--code-font-family': CODE_FONT_FAMILY,
                 } as React.CSSProperties
               }
             >
@@ -467,7 +454,7 @@ export function DiffFileCard({
                   }
                   language={language}
                   path={reviewModelPath(wholeFileSide, file)}
-                  theme={appearance === 'light' ? 'vs' : 'vs-dark'}
+                  theme={codeTheme}
                   options={WHOLE_FILE_OPTIONS}
                   onMount={handleWholeFileMount}
                   loading={
@@ -481,7 +468,7 @@ export function DiffFileCard({
                   language={language}
                   originalModelPath={reviewModelPath('original', file)}
                   modifiedModelPath={reviewModelPath('modified', file)}
-                  theme={appearance === 'light' ? 'vs' : 'vs-dark'}
+                  theme={codeTheme}
                   options={DIFF_OPTIONS}
                   onMount={handleMount}
                   loading={

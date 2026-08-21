@@ -50,11 +50,13 @@ vi.mock('@/components/Session/PreviewPanel/tabs/review/DiffFileCard', () => ({
     selected,
     foldAll,
     foldNonce,
+    maxEditorHeight,
   }: {
     file: { id: string };
     selected?: boolean;
     foldAll?: boolean;
     foldNonce?: number;
+    maxEditorHeight?: number;
   }) => (
     <div
       data-testid={`diff:${file.id}`}
@@ -62,6 +64,7 @@ vi.mock('@/components/Session/PreviewPanel/tabs/review/DiffFileCard', () => ({
       data-selected={String(selected)}
       data-fold-all={String(foldAll)}
       data-fold-nonce={String(foldNonce)}
+      data-max-editor-height={maxEditorHeight}
     />
   ),
 }));
@@ -139,7 +142,13 @@ describe('ReviewTab', () => {
     expect(
       screen.getByTestId('diff:file:/outside/src/example.ts')
     ).toBeInTheDocument();
-    expect(screen.getByTestId('review-tree')).toBeInTheDocument();
+    expect(
+      screen.getByTestId('diff:file:/outside/src/example.ts')
+    ).toHaveAttribute('data-max-editor-height', '120');
+    expect(screen.queryByTestId('review-tree')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Show file tree' })
+    ).toBeInTheDocument();
   });
 
   it('shows the project-wide added and removed line totals', () => {
@@ -237,6 +246,13 @@ describe('ReviewTab', () => {
           status: 'added',
           absPath: '/outside/src/example.ts',
           bakPath: null,
+        },
+        {
+          id: 'file:/outside/src/second.ts',
+          path: '/outside/src/second.ts',
+          status: 'modified',
+          absPath: '/outside/src/second.ts',
+          bakPath: '/outside/src/second.ts.20260722_120000.bak',
         },
       ],
     });

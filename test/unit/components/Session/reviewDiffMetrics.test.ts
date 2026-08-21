@@ -15,9 +15,16 @@
 import {
   countLineChanges,
   countLineDiff,
+} from '@/components/Session/PreviewPanel/tabs/review/diffMetrics';
+import {
+  CODE_FONT_FAMILY,
+  CODE_LINE_HEIGHT,
+  CODE_THEME_NAMES,
+  READ_ONLY_CODE_OPTIONS,
+  codeThemeForAppearance,
   languageForPath,
   type LanguageDescriptor,
-} from '@/components/Session/PreviewPanel/tabs/review/diffMetrics';
+} from '@/lib/codePresentation';
 import { describe, expect, it } from 'vitest';
 
 /** Mirrors what Monaco's diff computer reports (verified against it). */
@@ -101,6 +108,27 @@ describe('languageForPath', () => {
 
   it('does not treat a dotfile name as an extension', () => {
     expect(languageForPath('.ts', languages)).toBe('plaintext');
+  });
+});
+
+describe('code presentation', () => {
+  it('uses the Primer monospace stack and GitHub-sized line grid', () => {
+    expect(CODE_FONT_FAMILY).toContain('ui-monospace');
+    expect(CODE_FONT_FAMILY).toContain('SF Mono');
+    expect(CODE_LINE_HEIGHT).toBe(20);
+    expect(READ_ONLY_CODE_OPTIONS.fontSize).toBe(13);
+    expect(READ_ONLY_CODE_OPTIONS.wordWrap).toBe('off');
+    expect(READ_ONLY_CODE_OPTIONS.unicodeHighlight).toEqual({
+      ambiguousCharacters: false,
+      nonBasicASCII: false,
+      invisibleCharacters: true,
+    });
+  });
+
+  it('selects a scoped light or dark theme', () => {
+    expect(codeThemeForAppearance('light')).toBe(CODE_THEME_NAMES.light);
+    expect(codeThemeForAppearance('dark')).toBe(CODE_THEME_NAMES.dark);
+    expect(codeThemeForAppearance('system')).toBe(CODE_THEME_NAMES.light);
   });
 });
 

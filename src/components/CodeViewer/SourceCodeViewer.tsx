@@ -12,26 +12,29 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { MarkDown } from './MarkDown';
+import { lazy, Suspense } from 'react';
 
-/** Legacy import kept for compatibility; summaries now use the same GitHub-
- * style renderer as every other assistant response. */
-export const SummaryMarkDown = ({
-  content,
-  speed = 15,
-  onTyping,
-  enableTypewriter = true,
-}: {
-  content: string;
-  speed?: number;
-  onTyping?: () => void;
-  enableTypewriter?: boolean;
-}) => (
-  <MarkDown
-    content={content}
-    speed={speed}
-    onTyping={onTyping}
-    enableTypewriter={enableTypewriter}
-    profile="conversation"
-  />
-);
+export interface SourceCodeViewerProps {
+  value: string;
+  path: string;
+  appearance: string;
+  ariaLabel?: string;
+}
+
+const MonacoSourceCodeViewer = lazy(() => import('./MonacoSourceCodeViewer'));
+
+/** Lightweight boundary so opening Files does not synchronously load Monaco. */
+export function SourceCodeViewer(props: SourceCodeViewerProps) {
+  return (
+    <Suspense
+      fallback={
+        <div
+          data-testid="source-code-viewer-loading"
+          className="h-full min-h-48 w-full animate-pulse bg-ds-bg-neutral-subtle-default"
+        />
+      }
+    >
+      <MonacoSourceCodeViewer {...props} />
+    </Suspense>
+  );
+}
