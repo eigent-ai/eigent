@@ -109,38 +109,29 @@
 .markdown-body .markdown-code-block {
   position: relative;
   max-width: 100%;
-  margin: 0 0 16px;
+  margin: 4px 0 16px;
   overflow: hidden;
-  border: 1px solid rgba(31, 35, 40, 0.12);
-  border-radius: 10px;
-  background: #fbfcfd;
-  box-shadow:
-    0 1px 2px rgba(31, 35, 40, 0.04),
-    0 0 0 1px rgba(31, 35, 40, 0.015);
+  border: 0;
+  border-radius: 8px;
+  background: #f6f8fa;
+  box-shadow: none;
 }
 
 .markdown-body .markdown-code-toolbar {
-  display: flex;
-  min-height: 36px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 4px 7px 4px 14px;
-  border-bottom: 1px solid rgba(31, 35, 40, 0.08);
-  background: rgba(246, 248, 250, 0.88);
+  position: absolute;
+  z-index: 3;
+  top: 8px;
+  right: 8px;
+  display: block;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  pointer-events: none;
 }
 
 .markdown-body .markdown-code-language {
-  overflow: hidden;
-  color: #656d76;
-  font-family: inherit;
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  line-height: 1;
-  text-overflow: ellipsis;
-  text-transform: lowercase;
-  white-space: nowrap;
+  display: none;
 }
 
 .markdown-body .markdown-code-action,
@@ -167,16 +158,18 @@
   padding: 0;
   align-items: center;
   justify-content: center;
-  border: 0;
+  border: 1px solid rgba(31, 35, 40, 0.13);
   border-radius: 6px;
   color: #59636e;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 1px 1px rgba(31, 35, 40, 0.04);
   cursor: pointer;
+  pointer-events: auto;
 }
 
 .markdown-body .markdown-copy-icon {
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
   pointer-events: none;
 }
 
@@ -193,7 +186,8 @@
 
 .markdown-body .markdown-copy-button:hover {
   color: #1f2328;
-  background: rgba(208, 215, 222, 0.45);
+  border-color: rgba(31, 35, 40, 0.22);
+  background: #ffffff;
 }
 
 .markdown-body .markdown-copy-button:focus-visible,
@@ -234,12 +228,12 @@
 .markdown-body .markdown-code-block pre {
   max-width: 100%;
   margin: 0;
-  padding: 14px 17px 16px;
+  padding: 14px 48px 14px 16px;
   overflow: auto;
   border: 0;
   border-radius: 0;
   color: #1f2328;
-  background: #fbfcfd;
+  background: transparent;
   font-size: 13px;
   line-height: 20px;
   tab-size: 2;
@@ -271,7 +265,7 @@
 }
 
 .markdown-profile-compact .markdown-code-block pre {
-  padding: 10px 12px;
+  padding: 10px 44px 10px 12px;
   font-size: 12px;
   line-height: 18px;
 }
@@ -335,7 +329,7 @@
   bottom: 0;
   left: 0;
   height: 72px;
-  background: linear-gradient(to bottom, rgba(251, 252, 253, 0), #fbfcfd 62%);
+  background: linear-gradient(to bottom, rgba(246, 248, 250, 0), #f6f8fa 62%);
   content: '';
   pointer-events: none;
 }
@@ -479,16 +473,12 @@
 }
 
 [data-theme='dark'] .markdown-body .markdown-code-block {
-  border-color: rgba(240, 246, 252, 0.12);
-  background: #0d1117;
-  box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.24),
-    0 0 0 1px rgba(240, 246, 252, 0.015);
+  background: #161b22;
+  box-shadow: none;
 }
 
 [data-theme='dark'] .markdown-body .markdown-code-toolbar {
-  border-color: rgba(240, 246, 252, 0.08);
-  background: rgba(22, 27, 34, 0.9);
+  background: transparent;
 }
 
 [data-theme='dark'] .markdown-body .markdown-code-language,
@@ -507,7 +497,13 @@
 
 [data-theme='dark'] .markdown-body .markdown-code-block pre {
   color: #e6edf3;
-  background: #0d1117;
+  background: transparent;
+}
+
+[data-theme='dark'] .markdown-body .markdown-copy-button {
+  border-color: rgba(240, 246, 252, 0.14);
+  background: rgba(33, 38, 45, 0.88);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
 }
 
 [data-theme='dark'] .markdown-body .markdown-code-expand {
@@ -519,7 +515,7 @@
 [data-theme='dark']
   .markdown-body
   .markdown-code-block[data-collapsible='true'][data-expanded='false']::after {
-  background: linear-gradient(to bottom, rgba(13, 17, 23, 0), #0d1117 62%);
+  background: linear-gradient(to bottom, rgba(22, 27, 34, 0), #161b22 62%);
 }
 
 [data-theme='dark'] .markdown-body table th {
