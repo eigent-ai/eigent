@@ -57,8 +57,7 @@ vi.mock('@/store/chatStore', () => ({
 
 function renderProvider() {
   let closeRequestListener:
-    | ((request: { intent: 'close-window' | 'quit-app' }) => void)
-    | undefined;
+    ((request: { intent: 'close-window' | 'quit-app' }) => void) | undefined;
   const respondToCloseRequest = vi.fn();
   const unsubscribe = vi.fn(() => {
     closeRequestListener = undefined;

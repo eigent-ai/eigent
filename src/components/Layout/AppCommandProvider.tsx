@@ -51,8 +51,7 @@ export function useAppCommand(): ExecuteAppCommand {
 export function AppCommandProvider({ children }: { children: ReactNode }) {
   const host = useHost();
   const appShellElectronAPI = host?.electronAPI as
-    | AppShellElectronAPI
-    | undefined;
+    AppShellElectronAPI | undefined;
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useTranslation();

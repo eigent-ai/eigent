@@ -29,8 +29,7 @@ import {
 export function WindowCloseProvider({ children }: { children: ReactNode }) {
   const host = useHost();
   const appShellElectronAPI = host?.electronAPI as
-    | AppShellElectronAPI
-    | undefined;
+    AppShellElectronAPI | undefined;
   const { chatStore } = useChatStoreAdapter();
   const [pendingIntent, setPendingIntent] = useState<CloseIntent | null>(null);
   const pendingIntentRef = useRef<CloseIntent | null>(null);

@@ -4914,8 +4914,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               if (taskIdToRemove) {
                 const projectStore = useProjectStore.getState();
                 const project_id = agentMessages.data.project_id as
-                  | string
-                  | undefined;
+                  string | undefined;
                 if (project_id) {
                   const project = projectStore.getProjectById(project_id);
                   if (project && project.queuedMessages) {
