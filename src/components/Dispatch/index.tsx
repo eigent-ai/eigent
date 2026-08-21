@@ -17,7 +17,7 @@ import telegramIcon from '@/assets/icon/telegram.svg';
 import whatsappIcon from '@/assets/icon/whatsapp.svg';
 import { isDesktop } from '@/client/platform';
 import ContentHeader from '@/components/Layout/ContentHeader';
-import { SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS } from '@/components/Session/SidePanel/layout';
+import { RIGHT_RAIL_CONTENT_WIDTH_CLASS } from '@/components/Layout/rightRail';
 import { Button } from '@/components/ui/button';
 import {
   createRemoteControlSession,
@@ -661,7 +661,7 @@ export function WorkspaceDispatch() {
               <motion.div
                 className={cn(
                   'flex shrink-0 flex-col gap-1 overflow-y-auto border-l border-ds-border-neutral-subtle-default p-3',
-                  SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS
+                  RIGHT_RAIL_CONTENT_WIDTH_CLASS
                 )}
                 initial={{ x: 40, opacity: 0 }}
                 animate={{ x: 0, opacity: 1 }}

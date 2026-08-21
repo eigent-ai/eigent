@@ -12,9 +12,12 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-/** Compatibility aliases for Session-specific consumers. */
-export {
-  RIGHT_RAIL_CONTENT_WIDTH_CLASS as SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS,
-  RIGHT_RAIL_EXPANDED_OUTER_CLASS as SESSION_SIDE_PANEL_EXPANDED_OUTER_CLASS,
-  RIGHT_RAIL_FOLDED_OUTER_CLASS as SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS,
-} from '@/components/Layout/rightRail';
+/** Shared responsive width for fixed right-side content rails. */
+export const RIGHT_RAIL_CONTENT_WIDTH_CLASS =
+  'w-[min(360px,40vw)] max-w-[400px]';
+
+/** Expanded outer rail width; matches its content without an extra clip. */
+export const RIGHT_RAIL_EXPANDED_OUTER_CLASS = RIGHT_RAIL_CONTENT_WIDTH_CLASS;
+
+/** Folded outer rail width; full-width content can remain mounted and clipped. */
+export const RIGHT_RAIL_FOLDED_OUTER_CLASS = 'w-[40px]';

@@ -56,10 +56,17 @@ import {
 import {
   authorizeLocalFilePath,
   authorizeLocalPreviewPath,
-  isExecutableExternalOpenPath,
   isMainRendererSender,
 } from './localFileSecurity';
 import { filePathFromLocalFileUrl } from './localFileUrl';
+import {
+  authorizeWorkspaceLocalNode,
+  openWorkspaceLocalFile,
+  rememberBoundedPathGrant,
+  revealAuthorizedLocalNode,
+  revealUserVisibleLocalNode,
+  revealWorkspaceLocalNode,
+} from './localPathActions';
 import { setRoundedCorners } from './native/macos-window';
 import { registerReviewChangesIpcHandlers } from './reviewChanges';
 import {
@@ -118,6 +125,25 @@ let use_external_cdp = false;
 let proxyUrl: string | null = null;
 const LEGACY_DESKTOP_INSTANCE_STORAGE_KEY = 'eigent_desktop_instance_id';
 const activeLocalFileRoots = new Set<string>();
+
+/**
+ * Real paths the user picked in a native file dialog this session.
+ *
+ * Chat attachments are chosen from anywhere on disk, so they are legitimately
+ * outside every Space root. The dialog itself is the user's authorization, and
+ * recording the exact picked path lets those attachments stay revealable
+ * without granting the renderer free rein over the file system.
+ */
+const userSelectedLocalPaths = new Set<string>();
+const USER_SELECTED_PATH_LIMIT = 512;
+
+function rememberUserSelectedLocalPath(realPath: string): void {
+  rememberBoundedPathGrant(
+    userSelectedLocalPaths,
+    realPath,
+    USER_SELECTED_PATH_LIMIT
+  );
+}
 
 function resolveDesktopInstanceId(legacyRendererId?: string | null): string {
   if (!desktopInstanceId) {
@@ -210,7 +236,8 @@ type BackendStartOptions = {
 };
 
 type BackendStartResult =
-  { success: true; port: number } | { success: false; error: string };
+  | { success: true; port: number }
+  | { success: false; error: string };
 
 function formatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -1179,6 +1206,12 @@ function registerIpcHandlers() {
     'set-local-file-preview-roots',
     async (event, roots: unknown) => {
       assertMainRendererSender(event);
+      // TODO(security): replace this renderer-declared, process-global root set
+      // with main-authoritative, per-surface capabilities. A compromised main
+      // renderer can currently register a broad existing directory (including
+      // a filesystem root), and the replace semantics let concurrent preview
+      // surfaces clear one another's grants. This check is bug containment,
+      // not a renderer-compromise boundary.
       if (!Array.isArray(roots) || roots.length > 4) {
         throw new Error('Invalid local file preview roots');
       }
@@ -1757,6 +1790,7 @@ function registerIpcHandlers() {
 
   // ==================== file operation handler ====================
   ipcMain.handle('select-file', async (event, options = {}) => {
+    assertMainRendererSender(event);
     const result = await dialog.showOpenDialog(win!, {
       properties: ['openFile', 'multiSelections'],
       ...options,
@@ -1767,6 +1801,15 @@ function registerIpcHandlers() {
         filePath,
         fileName: filePath.split(/[/\\]/).pop() || '',
       }));
+
+      // Picking a file here is the user's own grant to reveal it later, even
+      // though attachments routinely live outside every Space root.
+      await Promise.all(
+        result.filePaths.map(async (filePath) => {
+          const realPath = await fsp.realpath(filePath).catch(() => null);
+          if (realPath) rememberUserSelectedLocalPath(realPath);
+        })
+      );
 
       return {
         success: true,
@@ -1843,15 +1886,19 @@ function registerIpcHandlers() {
   ipcMain.handle(
     'process-dropped-files',
     async (event, fileData: Array<{ name: string; path?: string }>) => {
+      assertMainRendererSender(event);
       try {
         // In Electron with contextIsolation, we need to get file paths differently
         // The renderer will send us file metadata, and we'll use webUtils if needed
         const files = fileData
           .filter((f) => f.path) // Only process files with valid paths
-          .map((f) => ({
-            filePath: fs.realpathSync(f.path!),
-            fileName: f.name,
-          }));
+          .map((f) => {
+            const filePath = fs.realpathSync(f.path!);
+            // Drag-and-drop is an explicit user gesture equivalent to picking
+            // the exact path in the native file dialog.
+            rememberUserSelectedLocalPath(filePath);
+            return { filePath, fileName: f.name };
+          });
 
         if (files.length === 0) {
           return {
@@ -1878,7 +1925,8 @@ function registerIpcHandlers() {
   // path-based attachment flow; pasted File objects carry no filesystem path.
   ipcMain.handle(
     'save-pasted-file',
-    async (_event, fileName: string, data: ArrayBuffer) => {
+    async (event, fileName: string, data: ArrayBuffer) => {
+      assertMainRendererSender(event);
       try {
         const pastedDir = path.join(app.getPath('temp'), 'eigent-pasted');
         await fsp.mkdir(pastedDir, { recursive: true });
@@ -1891,7 +1939,10 @@ function registerIpcHandlers() {
         const unique = crypto.randomUUID();
         const filePath = path.join(pastedDir, `${stamp}-${unique}-${safeName}`);
         await fsp.writeFile(filePath, Buffer.from(new Uint8Array(data)));
-        return { success: true, filePath, fileName: safeName };
+        const realPath = await fsp.realpath(filePath);
+        // The paste gesture created this exact attachment on the user's behalf.
+        rememberUserSelectedLocalPath(realPath);
+        return { success: true, filePath: realPath, fileName: safeName };
       } catch (error: any) {
         log.error('Failed to save pasted file:', error);
         return { success: false, error: error.message };
@@ -1899,45 +1950,38 @@ function registerIpcHandlers() {
     }
   );
 
-  ipcMain.handle('reveal-in-folder', async (event, filePath: string) => {
+  ipcMain.handle('reveal-in-folder', async (event, targetPath: string) => {
+    assertMainRendererSender(event);
     try {
-      const stats = await fs.promises
-        .stat(filePath.replace(/\/$/, ''))
-        .catch(() => null);
-      if (stats && stats.isDirectory()) {
-        shell.openPath(filePath);
-      } else {
-        shell.showItemInFolder(filePath);
-      }
-    } catch (e) {
-      log.error('reveal in folder failed', e);
+      // Same containment rules as 'reveal-local-path'; this channel additionally
+      // serves chat attachments, which the user picked outside the workspace.
+      return await revealUserVisibleLocalNode(
+        targetPath,
+        [...activeLocalFileRoots],
+        userSelectedLocalPaths,
+        shell
+      );
+    } catch (error) {
+      log.error('Reveal in folder failed', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to reveal path',
+      };
     }
   });
 
-  ipcMain.handle('open-local-file', async (event, filePath: string) => {
+  ipcMain.handle('reveal-local-path', async (event, targetPath: string) => {
     assertMainRendererSender(event);
-    const authorization = await authorizeLocalFilePath(
-      filePath,
-      localFileAllowedRoots()
+    return revealWorkspaceLocalNode(
+      targetPath,
+      [...activeLocalFileRoots],
+      shell
     );
-    if (!authorization.allowed) {
-      return { success: false, error: 'File is outside the active workspace' };
-    }
-    const stats = await fsp.stat(authorization.filePath).catch(() => null);
-    if (!stats?.isFile()) {
-      return { success: false, error: 'File does not exist' };
-    }
-    if (isExecutableExternalOpenPath(authorization.filePath, stats.mode)) {
-      shell.showItemInFolder(authorization.filePath);
-      return {
-        success: false,
-        error: 'Executable files cannot be opened from an agent result',
-      };
-    }
-    const error = await shell.openPath(authorization.filePath);
-    return error
-      ? { success: false, error }
-      : { success: true, error: undefined };
+  });
+
+  ipcMain.handle('open-local-file', async (event, targetPath: string) => {
+    assertMainRendererSender(event);
+    return openWorkspaceLocalFile(targetPath, [...activeLocalFileRoots], shell);
   });
 
   // Skills: all operations via Brain REST API (backend). No IPC.
@@ -2047,7 +2091,20 @@ function registerIpcHandlers() {
 
   ipcMain.handle(
     'open-in-ide',
-    async (_event, folderPath: string, ide: string) => {
+    async (event, targetPath: string, ide: string) => {
+      assertMainRendererSender(event);
+      if (ide !== 'vscode' && ide !== 'cursor' && ide !== 'system') {
+        return { success: false, error: 'Unsupported editor' };
+      }
+
+      const node = await authorizeWorkspaceLocalNode(targetPath, [
+        ...activeLocalFileRoots,
+      ]);
+      if (!node.success) return node;
+      if (ide === 'system') {
+        return revealAuthorizedLocalNode(node, shell);
+      }
+
       const getIDECommand = (): string => {
         const platform = process.platform;
         const homeDir = homedir();
@@ -2062,9 +2119,7 @@ function registerIpcHandlers() {
             for (const p of vscodePaths) {
               if (existsSync(p)) return p;
             }
-            log.warn(
-              '[IDE] VS Code not found on macOS, using system file manager'
-            );
+            log.warn('[IDE] VS Code not found on macOS');
             return '';
           } else if (platform === 'win32') {
             // Windows: Check common VS Code paths
@@ -2075,26 +2130,14 @@ function registerIpcHandlers() {
                 'Local',
                 'Programs',
                 'Microsoft VS Code',
-                'bin',
-                'code.cmd'
-              ),
-              path.join(
-                homeDir,
-                'AppData',
-                'Local',
-                'Programs',
-                'Microsoft VS Code',
                 'Code.exe'
               ),
-              'C:\\Program Files\\Microsoft VS Code\\bin\\code.cmd',
               'C:\\Program Files\\Microsoft VS Code\\Code.exe',
             ];
             for (const p of vscodePaths) {
               if (existsSync(p)) return p;
             }
-            log.warn(
-              '[IDE] VS Code not found on Windows, using system file manager'
-            );
+            log.warn('[IDE] VS Code not found on Windows');
             return '';
           }
           return 'code'; // Linux
@@ -2108,24 +2151,11 @@ function registerIpcHandlers() {
             for (const p of cursorPaths) {
               if (existsSync(p)) return p;
             }
-            log.warn(
-              '[IDE] Cursor not found on macOS, using system file manager'
-            );
+            log.warn('[IDE] Cursor not found on macOS');
             return '';
           } else if (platform === 'win32') {
             // Windows: Check common Cursor paths
             const cursorPaths = [
-              path.join(
-                homeDir,
-                'AppData',
-                'Local',
-                'Programs',
-                'Cursor',
-                'resources',
-                'app',
-                'bin',
-                'cursor.cmd'
-              ),
               path.join(
                 homeDir,
                 'AppData',
@@ -2139,9 +2169,7 @@ function registerIpcHandlers() {
             for (const p of cursorPaths) {
               if (existsSync(p)) return p;
             }
-            log.warn(
-              '[IDE] Cursor not found on Windows, using system file manager'
-            );
+            log.warn('[IDE] Cursor not found on Windows');
             return '';
           }
           return 'cursor'; // Linux
@@ -2151,37 +2179,24 @@ function registerIpcHandlers() {
 
       const cmd = getIDECommand();
       if (!cmd) {
-        // IDE not found or 'system' selected - open with system file manager
-        const errorMsg = await shell.openPath(folderPath);
-        if (errorMsg) {
-          log.error('[IDE] shell.openPath error:', errorMsg);
-          return { success: false, error: errorMsg };
-        }
-        return { success: true };
+        const editorName = ide === 'vscode' ? 'Visual Studio Code' : 'Cursor';
+        return { success: false, error: `${editorName} is not installed` };
       }
 
       return new Promise<{ success: boolean; error?: string }>((resolve) => {
-        // Use shell: true so .cmd/.bat wrappers work on Windows
-        const child = spawn(cmd, [folderPath], {
-          shell: true,
+        const child = spawn(cmd, [node.path], {
+          shell: false,
           stdio: 'ignore',
           detached: true,
         });
         child.unref();
 
-        child.on('error', (error) => {
-          log.warn(
-            `[IDE] ${cmd} not found, falling back to system file manager:`,
-            error.message
-          );
-          shell.openPath(folderPath).then((errorMsg) => {
-            resolve(
-              errorMsg ? { success: false, error: errorMsg } : { success: true }
-            );
-          });
+        child.once('error', (error) => {
+          log.warn(`[IDE] Failed to open ${node.path} with ${cmd}:`, error);
+          resolve({ success: false, error: error.message });
         });
 
-        child.on('spawn', () => {
+        child.once('spawn', () => {
           resolve({ success: true });
         });
       });

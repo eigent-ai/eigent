@@ -12,19 +12,30 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
+const { invokeMock, toastErrorMock } = vi.hoisted(() => ({
+  invokeMock: vi.fn(),
+  toastErrorMock: vi.fn(),
+}));
 
 vi.mock('@/host', () => ({
   useHost: () => ({ ipcRenderer: { invoke: invokeMock } }),
 }));
 
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: toastErrorMock },
+}));
+
 import { UserMessageCard } from '@/components/ChatBox/MessageItem/UserMessageCard';
 
 describe('UserMessageCard', () => {
-  beforeEach(() => invokeMock.mockReset());
+  beforeEach(() => {
+    invokeMock.mockReset();
+    invokeMock.mockResolvedValue({ success: true });
+    toastErrorMock.mockReset();
+  });
 
   it('renders as a right-aligned chat bubble with a tighter tail corner', () => {
     const { container } = render(
@@ -94,6 +105,30 @@ describe('UserMessageCard', () => {
     expect(invokeMock).toHaveBeenCalledWith(
       'reveal-in-folder',
       '/workspace/report.pdf'
+    );
+  });
+
+  it('shows feedback when a restored attachment has lost its session grant', async () => {
+    invokeMock.mockResolvedValue({
+      success: false,
+      error: 'Path is outside the active workspace',
+    });
+    render(
+      <UserMessageCard
+        id="restored-local-attachment"
+        content="Restored message"
+        attaches={[
+          { fileName: 'report.pdf', filePath: '/downloads/report.pdf' },
+        ]}
+      />
+    );
+
+    fireEvent.click(screen.getByTitle('report.pdf').closest('div')!);
+
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        'Path is outside the active workspace'
+      )
     );
   });
 });
