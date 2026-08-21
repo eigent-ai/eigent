@@ -5147,83 +5147,236 @@ class SQLiteRunJournal:
 
         timestamp = now if now is not None else time.time()
         with self._write_transaction() as connection:
-            run = connection.execute(
-                "SELECT * FROM git_run_materializations WHERE run_id = ?",
+            return self._rebase_unmaterialized_git_run_in_transaction(
+                connection,
+                run_id=run_id,
+                expected_base_commit=expected_base_commit,
+                base_commit=base_commit,
+                base_ref=base_ref,
+                timestamp=timestamp,
+            )
+
+    def refresh_git_run_base_after_writer_acquired(
+        self,
+        *,
+        run_id: str,
+        attempt_id: str,
+        writer_request_id: str,
+        expected_task_id: str,
+        expected_checkout_id: str,
+        expected_base_commit: str | None,
+        base_commit: str,
+        base_ref: str,
+        now: float | None = None,
+    ) -> RunGitMaterializationRecord:
+        """Atomically refresh a queued direct Run before execution starts.
+
+        Admission may happen while another Project owns the same physical
+        checkout. The Run can therefore become stale while it waits. Only an
+        acquired writer whose Attempt is still pending may move the boundary;
+        the audit event is committed in the same transaction as that move.
+        """
+
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            admitted_run = connection.execute(
+                """
+                SELECT project_id, repository_id
+                FROM git_run_materializations WHERE run_id = ?
+                """,
                 (run_id,),
             ).fetchone()
-            if run is None:
+            if admitted_run is None:
                 raise RunNotFoundError(f"Run {run_id!r} has no Git admission")
-            if run["materialization_state"] != "unmaterialized":
+            attempt = connection.execute(
+                "SELECT run_id, status FROM run_attempts WHERE attempt_id = ?",
+                (attempt_id,),
+            ).fetchone()
+            if attempt is None or attempt["run_id"] != run_id:
                 raise InvalidRunTransitionError(
-                    "only an unmaterialized direct Run can move its base"
+                    "Run boundary refresh requires its pending Attempt"
                 )
-            if run["promoted_commit"] is not None:
+            if attempt["status"] != "pending":
                 raise InvalidRunTransitionError(
-                    "a finalized direct Run cannot move its base"
+                    "Run boundary cannot move after Attempt activation"
                 )
-            if run["workspace_base_commit"] != expected_base_commit:
-                raise OptimisticConcurrencyError("direct Run base changed")
-            managed = connection.execute(
+            request = connection.execute(
                 """
-                SELECT 1 FROM git_change_sets AS sets
-                JOIN git_change_set_items AS items
-                  ON items.change_set_id = sets.change_set_id
-                WHERE sets.run_id = ? LIMIT 1
+                SELECT * FROM workspace_writer_requests
+                WHERE request_id = ?
                 """,
+                (writer_request_id,),
+            ).fetchone()
+            if (
+                request is None
+                or request["status"] != "acquired"
+                or request["task_id"] != expected_task_id
+                or request["checkout_id"] != expected_checkout_id
+            ):
+                raise InvalidRunTransitionError(
+                    "Run boundary refresh requires its acquired writer lease"
+                )
+            if (
+                request["project_id"] != admitted_run["project_id"]
+                or request["repository_id"] != admitted_run["repository_id"]
+            ):
+                raise InvalidRunTransitionError(
+                    "Run boundary writer does not own its Git admission"
+                )
+            lease = connection.execute(
+                """
+                SELECT request_id FROM workspace_writer_leases
+                WHERE repository_id = ? AND checkout_id = ?
+                """,
+                (request["repository_id"], request["checkout_id"]),
+            ).fetchone()
+            if lease is None or lease["request_id"] != writer_request_id:
+                raise InvalidRunTransitionError(
+                    "Run boundary refresh requires the active writer lease"
+                )
+            binding = connection.execute(
+                """
+                SELECT repository_id, checkout_id, target_ref
+                FROM project_workspace_bindings WHERE project_id = ?
+                """,
+                (request["project_id"],),
+            ).fetchone()
+            if (
+                binding is None
+                or binding["repository_id"] != request["repository_id"]
+                or binding["checkout_id"] != request["checkout_id"]
+                or binding["target_ref"] != base_ref
+            ):
+                raise InvalidRunTransitionError(
+                    "Run boundary refresh cannot target an internal checkout"
+                )
+            change_set = connection.execute(
+                "SELECT 1 FROM git_change_sets WHERE run_id = ? LIMIT 1",
                 (run_id,),
             ).fetchone()
-            if managed is not None:
+            if change_set is not None:
                 raise InvalidRunTransitionError(
-                    "direct Run already contains managed changes"
+                    "Run boundary cannot move after ChangeSet creation"
                 )
-            project = connection.execute(
-                """
-                SELECT * FROM git_project_integrations WHERE project_id = ?
-                """,
-                (run["project_id"],),
-            ).fetchone()
-            if project is None:
-                raise RunJournalError("direct Run has no Project Git state")
-            next_project_version = int(project["version"]) + 1
-            connection.execute(
-                """
-                UPDATE git_project_integrations
-                SET last_synced_user_head = ?, projected_head = ?,
-                    version = ?, updated_at = ?
-                WHERE project_id = ? AND version = ?
-                """,
-                (
-                    base_commit,
-                    base_commit,
-                    next_project_version,
-                    timestamp,
-                    run["project_id"],
-                    int(project["version"]),
-                ),
+            updated = self._rebase_unmaterialized_git_run_in_transaction(
+                connection,
+                run_id=run_id,
+                expected_base_commit=expected_base_commit,
+                base_commit=base_commit,
+                base_ref=base_ref,
+                timestamp=timestamp,
             )
-            connection.execute(
-                """
-                UPDATE git_run_materializations
-                SET workspace_base_ref = ?, workspace_base_commit = ?,
-                    project_state_version = ?, version = version + 1,
-                    updated_at = ?
-                WHERE run_id = ? AND version = ?
-                """,
-                (
-                    base_ref,
-                    base_commit,
-                    next_project_version,
-                    timestamp,
-                    run_id,
-                    int(run["version"]),
+            self._append_event_in_transaction(
+                connection,
+                run_id,
+                RunEventDraft(
+                    event_id=(
+                        f"workspace.run_base_refreshed:{run_id}:{base_commit}"
+                    ),
+                    event_type="workspace.run_base_refreshed",
+                    payload={
+                        "attempt_id": attempt_id,
+                        "request_id": writer_request_id,
+                        "task_id": expected_task_id,
+                        "checkout_id": expected_checkout_id,
+                        "base_ref": base_ref,
+                        "previous_base_commit": expected_base_commit,
+                        "base_commit": base_commit,
+                        "reason": "writer_lease_acquired",
+                    },
+                    created_at=timestamp,
                 ),
+                expected_project_id=str(request["project_id"]),
             )
-            updated = connection.execute(
-                "SELECT * FROM git_run_materializations WHERE run_id = ?",
-                (run_id,),
-            ).fetchone()
-            assert updated is not None
-            return self._run_git_materialization_from_row(updated)
+            return updated
+
+    def _rebase_unmaterialized_git_run_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        run_id: str,
+        expected_base_commit: str | None,
+        base_commit: str,
+        base_ref: str,
+        timestamp: float,
+    ) -> RunGitMaterializationRecord:
+        run = connection.execute(
+            "SELECT * FROM git_run_materializations WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+        if run is None:
+            raise RunNotFoundError(f"Run {run_id!r} has no Git admission")
+        if run["materialization_state"] != "unmaterialized":
+            raise InvalidRunTransitionError(
+                "only an unmaterialized direct Run can move its base"
+            )
+        if run["promoted_commit"] is not None:
+            raise InvalidRunTransitionError(
+                "a finalized direct Run cannot move its base"
+            )
+        if run["workspace_base_commit"] != expected_base_commit:
+            raise OptimisticConcurrencyError("direct Run base changed")
+        managed = connection.execute(
+            """
+            SELECT 1 FROM git_change_sets AS sets
+            JOIN git_change_set_items AS items
+              ON items.change_set_id = sets.change_set_id
+            WHERE sets.run_id = ? LIMIT 1
+            """,
+            (run_id,),
+        ).fetchone()
+        if managed is not None:
+            raise InvalidRunTransitionError(
+                "direct Run already contains managed changes"
+            )
+        project = connection.execute(
+            """
+            SELECT * FROM git_project_integrations WHERE project_id = ?
+            """,
+            (run["project_id"],),
+        ).fetchone()
+        if project is None:
+            raise RunJournalError("direct Run has no Project Git state")
+        next_project_version = int(project["version"]) + 1
+        connection.execute(
+            """
+            UPDATE git_project_integrations
+            SET last_synced_user_head = ?, projected_head = ?,
+                version = ?, updated_at = ?
+            WHERE project_id = ? AND version = ?
+            """,
+            (
+                base_commit,
+                base_commit,
+                next_project_version,
+                timestamp,
+                run["project_id"],
+                int(project["version"]),
+            ),
+        )
+        connection.execute(
+            """
+            UPDATE git_run_materializations
+            SET workspace_base_ref = ?, workspace_base_commit = ?,
+                project_state_version = ?, version = version + 1,
+                updated_at = ?
+            WHERE run_id = ? AND version = ?
+            """,
+            (
+                base_ref,
+                base_commit,
+                next_project_version,
+                timestamp,
+                run_id,
+                int(run["version"]),
+            ),
+        )
+        updated = connection.execute(
+            "SELECT * FROM git_run_materializations WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+        assert updated is not None
+        return self._run_git_materialization_from_row(updated)
 
     def complete_direct_git_run(
         self,

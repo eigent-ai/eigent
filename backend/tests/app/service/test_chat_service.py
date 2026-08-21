@@ -22,6 +22,7 @@ from camel.tasks.task import TaskState
 
 from app.model.chat import AgentModelConfig, Chat, NewAgent
 from app.model.enums import DEFAULT_SUMMARY_PROMPT
+from app.run_journal import SQLiteRunJournal
 from app.service.chat_service import (
     _activate_improve_admission,
     _extract_stream_chunk_content,
@@ -87,7 +88,21 @@ def test_default_completion_prompt_requires_concrete_deliverables():
 async def test_improve_admission_activates_once_and_deduplicates_retry():
     task_lock = MagicMock()
     task_lock.processed_improve_request_ids = set()
-    journal = MagicMock()
+    journal = MagicMock(spec=SQLiteRunJournal)
+    scheduler = MagicMock()
+    activation_order = []
+
+    async def _acquire_writer(**_kwargs):
+        activation_order.append("writer")
+
+    scheduler.wait_until_acquired = AsyncMock(side_effect=_acquire_writer)
+    coordinator = MagicMock()
+    coordinator.refresh_run_boundary_after_writer_acquired.side_effect = (
+        lambda **_kwargs: activation_order.append("boundary")
+    )
+    journal.activate_run_attempt.side_effect = (
+        lambda *_args, **_kwargs: activation_order.append("attempt")
+    )
     item = ActionImproveData(
         data=ImprovePayload(question="hello"),
         request_id="request-1",
@@ -95,9 +110,19 @@ async def test_improve_admission_activates_once_and_deduplicates_retry():
         attempt_id="attempt-1",
     )
 
-    with patch(
-        "app.run_runtime.admission.get_default_run_journal",
-        return_value=journal,
+    with (
+        patch(
+            "app.run_runtime.admission.get_default_run_journal",
+            return_value=journal,
+        ),
+        patch(
+            "app.run_runtime.admission.WorkspaceWriterScheduler",
+            return_value=scheduler,
+        ),
+        patch(
+            "app.run_runtime.admission.get_default_workspace_git_coordinator",
+            return_value=coordinator,
+        ),
     ):
         assert await _activate_improve_admission(
             task_lock, item, project_id="project-1"
@@ -106,9 +131,19 @@ async def test_improve_admission_activates_once_and_deduplicates_retry():
             task_lock, item, project_id="project-1"
         )
 
+    scheduler.wait_until_acquired.assert_awaited_once_with(
+        run_id="run-1",
+        task_id="run-1",
+    )
+    coordinator.refresh_run_boundary_after_writer_acquired.assert_called_once_with(
+        run_id="run-1",
+        task_id="run-1",
+        attempt_id="attempt-1",
+    )
     journal.activate_run_attempt.assert_called_once_with(
         "attempt-1", expected_run_id="run-1"
     )
+    assert activation_order == ["writer", "boundary", "attempt"]
 
 
 @pytest.mark.unit

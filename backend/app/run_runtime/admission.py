@@ -21,6 +21,7 @@ import logging
 
 from app.run_journal import SQLiteRunJournal, get_default_run_journal
 from app.service.task import ActionImproveData, TaskLock
+from app.workspace_git.coordinator import get_default_workspace_git_coordinator
 from app.workspace_git.scheduler import WorkspaceWriterScheduler
 
 
@@ -47,6 +48,13 @@ async def activate_improve_admission(
             await WorkspaceWriterScheduler(journal).wait_until_acquired(
                 run_id=item.run_id,
                 task_id=item.new_task_id or item.run_id,
+            )
+            coordinator = get_default_workspace_git_coordinator()
+            await asyncio.to_thread(
+                coordinator.refresh_run_boundary_after_writer_acquired,
+                run_id=item.run_id,
+                task_id=item.new_task_id or item.run_id,
+                attempt_id=item.attempt_id,
             )
         await asyncio.to_thread(
             journal.activate_run_attempt,

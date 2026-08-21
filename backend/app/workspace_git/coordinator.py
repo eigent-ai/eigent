@@ -92,8 +92,10 @@ class WorkspaceGitCoordinator:
         """Pin the latest Project/User commit and remain unmaterialized.
 
         A Space without an enabled Content Repository remains a valid non-Git
-        execution environment. Once Git is enabled, a Run replay always
-        returns its original pinned base even if User HEAD later advances.
+        execution environment. A direct Run waiting for the shared checkout
+        may refresh this provisional base exactly once after it acquires the
+        writer lease and before its Attempt starts. After activation, replay
+        always returns the final pinned boundary.
 
         TODO(project-fork): when Project forking is implemented, admission
         must carry the user's explicit workspace choice: continue the source
@@ -166,6 +168,92 @@ class WorkspaceGitCoordinator:
             run=run,
             binding=binding,
             writer=writer,
+        )
+
+    def refresh_run_boundary_after_writer_acquired(
+        self,
+        *,
+        run_id: str,
+        task_id: str,
+        attempt_id: str,
+    ) -> RunGitMaterializationRecord | None:
+        """Align a queued direct Run with checkout HEAD before activation.
+
+        Internal workforce checkouts retain their immutable admission base.
+        A normal Project checkout is refreshed only while its writer lease is
+        acquired and its Attempt is still pending; the journal enforces both
+        facts atomically with the boundary audit event.
+        """
+
+        run = self.journal.get_run_git_materialization(run_id)
+        if run is None:
+            return None
+        binding = self.journal.get_project_workspace_binding(run.project_id)
+        if binding is None:
+            raise ContentRepositoryError(
+                f"Project {run.project_id!r} has no workspace binding"
+            )
+        request_id = self.writer_scheduler.request_id(run_id)
+        request = self.journal.get_workspace_writer_request(request_id)
+        if request is None:
+            # Git admission is optional and can fail after the Run boundary
+            # row is created. File mutation will remain fail-closed because it
+            # separately requires this lease, while pure conversation can run.
+            return run
+        if (
+            request.project_id != run.project_id
+            or request.repository_id != run.repository_id
+            or request.task_id != task_id
+        ):
+            raise ContentRepositoryError(
+                "Run workspace writer admission does not match its Git state"
+            )
+        if request.checkout_id != binding.checkout_id:
+            # Multi-Agent execution owns an internal checkout which is lazily
+            # materialized from the immutable admission boundary.
+            isolated_digest = canonical_digest(
+                {
+                    "kind": "internal_run_checkout",
+                    "repository_id": run.repository_id,
+                    "run_id": run_id,
+                }
+            )[:32]
+            if (
+                request.checkout_id == f"checkout_internal_{isolated_digest}"
+                and request.target_ref
+                == f"refs/eigent/runs/{isolated_digest}/integration"
+            ):
+                return run
+            raise ContentRepositoryError(
+                "Run workspace writer targets an unknown checkout"
+            )
+        if request.target_ref != binding.target_ref:
+            raise ContentRepositoryError(
+                "Run workspace writer targets another Project branch"
+            )
+        root = Path(binding.worktree_path).expanduser().resolve()
+        probe = self.git.probe(root)
+        observed_ref = f"refs/heads/{probe.branch}" if probe.branch else None
+        if not probe.is_repository or not probe.owns_requested_root:
+            raise ContentRepositoryError(
+                "bound Project checkout is not the Content Repository root"
+            )
+        if observed_ref != binding.target_ref:
+            raise ContentRepositoryError(
+                "bound Project checkout changed branch while the Run waited"
+            )
+        current_head = probe.head_oid
+        if current_head is None or current_head == run.workspace_base_commit:
+            return run
+        return self.journal.refresh_git_run_base_after_writer_acquired(
+            run_id=run_id,
+            attempt_id=attempt_id,
+            writer_request_id=request_id,
+            expected_task_id=task_id,
+            expected_checkout_id=binding.checkout_id,
+            expected_base_commit=run.workspace_base_commit,
+            base_commit=current_head,
+            base_ref=binding.target_ref,
         )
 
     def ensure_run_materialized(

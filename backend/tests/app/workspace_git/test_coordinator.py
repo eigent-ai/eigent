@@ -19,7 +19,11 @@ from pathlib import Path
 
 import pytest
 
-from app.run_journal import OptimisticConcurrencyError, SQLiteRunJournal
+from app.run_journal import (
+    InvalidRunTransitionError,
+    OptimisticConcurrencyError,
+    SQLiteRunJournal,
+)
 from app.workspace_git import (
     ContentRepositoryError,
     ContentRepositoryService,
@@ -217,6 +221,224 @@ def test_single_agent_queues_on_primary_but_workforce_runs_are_isolated(
     )
     assert first_workforce.binding.checkout_mode == "primary_checkout"
     assert second_workforce.binding.checkout_mode == "primary_checkout"
+
+
+@pytest.mark.asyncio
+async def test_queued_direct_run_refreshes_base_after_writer_acquisition(
+    tmp_path,
+    journal,
+):
+    content, coordinator, backend = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    target = space / "report.md"
+    target.write_text("first\n", encoding="utf-8")
+    first_head = backend.commit_paths(space, (target,), message="first")
+    for run_id, project_id in (
+        ("run-1", "project-1"),
+        ("run-2", "project-2"),
+    ):
+        journal.ensure_run(
+            run_id=run_id,
+            project_id=project_id,
+            status="pending",
+        )
+    attempt = journal.create_run_attempt(
+        "run-2",
+        request_id="attempt-request-2",
+        reason="initial",
+        attempt_id="attempt-2",
+    )
+    first = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-1",
+        run_id="run-1",
+        task_id="task-1",
+        session_mode="single-agent",
+    )
+    second = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-2",
+        run_id="run-2",
+        task_id="task-2",
+        session_mode="single-agent",
+    )
+
+    assert first is not None and first.writer.request.status == "acquired"
+    assert second is not None and second.writer.request.status == "queued"
+    assert second.run.workspace_base_commit == first_head
+
+    target.write_text("second\n", encoding="utf-8")
+    second_head = backend.commit_paths(space, (target,), message="second")
+    dirty_path = space / "user-draft.txt"
+    dirty_path.write_text("not committed\n", encoding="utf-8")
+    coordinator.writer_scheduler.finish_task(
+        run_id="run-1",
+        task_id="task-1",
+    )
+    await coordinator.writer_scheduler.wait_until_acquired(
+        run_id="run-2",
+        task_id="task-2",
+    )
+
+    refreshed = coordinator.refresh_run_boundary_after_writer_acquired(
+        run_id="run-2",
+        task_id="task-2",
+        attempt_id=attempt.attempt_id,
+    )
+    replay = coordinator.refresh_run_boundary_after_writer_acquired(
+        run_id="run-2",
+        task_id="task-2",
+        attempt_id=attempt.attempt_id,
+    )
+
+    assert refreshed is not None
+    assert refreshed.workspace_base_commit == second_head
+    assert replay == refreshed
+    assert "user-draft.txt" in backend.worktree_status(space)
+    assert journal.get_project_git_state("project-2").projected_head == (
+        second_head
+    )
+    agent_output = space / "agent-output.txt"
+    agent_output.write_text("run 2\n", encoding="utf-8")
+    terminal_head = backend.commit_paths(
+        space,
+        (agent_output,),
+        message="run 2 output",
+    )
+    assert tuple(
+        change.relative_path
+        for change in backend.changed_paths_between(
+            space,
+            base_commit=refreshed.workspace_base_commit,
+            target_commit=terminal_head,
+        )
+    ) == ("agent-output.txt",)
+    boundary_events = [
+        event
+        for event in journal.list_events("run-2")
+        if event.event_type == "workspace.run_base_refreshed"
+    ]
+    assert len(boundary_events) == 1
+    assert boundary_events[0].payload == {
+        "attempt_id": "attempt-2",
+        "request_id": "workspace-writer:run-2",
+        "task_id": "task-2",
+        "checkout_id": second.binding.checkout_id,
+        "base_ref": "refs/heads/main",
+        "previous_base_commit": first_head,
+        "base_commit": second_head,
+        "reason": "writer_lease_acquired",
+    }
+
+
+def test_direct_run_boundary_cannot_move_after_attempt_activation(
+    tmp_path,
+    journal,
+):
+    content, coordinator, backend = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    target = space / "report.md"
+    target.write_text("first\n", encoding="utf-8")
+    first_head = backend.commit_paths(space, (target,), message="first")
+    journal.ensure_run(
+        run_id="run-1",
+        project_id="project-1",
+        status="pending",
+    )
+    attempt = journal.create_run_attempt(
+        "run-1",
+        request_id="attempt-request-1",
+        reason="initial",
+        attempt_id="attempt-1",
+    )
+    admission = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-1",
+        run_id="run-1",
+        task_id="task-1",
+        session_mode="single-agent",
+    )
+    assert admission is not None
+    journal.activate_run_attempt(attempt.attempt_id, expected_run_id="run-1")
+    target.write_text("second\n", encoding="utf-8")
+    backend.commit_paths(space, (target,), message="second")
+
+    with pytest.raises(
+        InvalidRunTransitionError,
+        match="after Attempt activation",
+    ):
+        coordinator.refresh_run_boundary_after_writer_acquired(
+            run_id="run-1",
+            task_id="task-1",
+            attempt_id=attempt.attempt_id,
+        )
+
+    persisted = journal.get_run_git_materialization("run-1")
+    assert persisted is not None
+    assert persisted.workspace_base_commit == first_head
+
+
+def test_internal_workforce_run_keeps_immutable_admission_base(
+    tmp_path,
+    journal,
+):
+    content, coordinator, backend = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    target = space / "report.md"
+    target.write_text("first\n", encoding="utf-8")
+    first_head = backend.commit_paths(space, (target,), message="first")
+    journal.ensure_run(
+        run_id="run-1",
+        project_id="project-1",
+        status="pending",
+    )
+    attempt = journal.create_run_attempt(
+        "run-1",
+        request_id="attempt-request-1",
+        reason="initial",
+        attempt_id="attempt-1",
+    )
+    admission = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-1",
+        run_id="run-1",
+        task_id="task-1",
+        session_mode="workforce",
+    )
+    assert admission is not None
+    target.write_text("second\n", encoding="utf-8")
+    backend.commit_paths(space, (target,), message="second")
+
+    refreshed = coordinator.refresh_run_boundary_after_writer_acquired(
+        run_id="run-1",
+        task_id="task-1",
+        attempt_id=attempt.attempt_id,
+    )
+
+    assert refreshed is not None
+    assert refreshed.workspace_base_commit == first_head
+    assert not any(
+        event.event_type == "workspace.run_base_refreshed"
+        for event in journal.list_events("run-1")
+    )
 
 
 def test_unmaterialized_project_tracks_new_user_head_but_run_replay_stays_pinned(
