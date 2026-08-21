@@ -21,10 +21,12 @@ import type {
   TimelineTraceRow,
 } from '@/lib/projector/chat/presentation';
 import { cn } from '@/lib/utils';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { ChevronRight, FileText } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { normalizeRunReviewPath } from './RunFiles';
 import {
   hasRunExecutionRows,
   isActiveRunStatus,
@@ -388,8 +390,15 @@ function InteractionTraceDetails({
   );
 }
 
-function NodeTraceDetails({ row }: { row: NodeTraceRow }) {
+function NodeTraceDetails({
+  row,
+  runId,
+}: {
+  row: NodeTraceRow;
+  runId: string;
+}) {
   const { t } = useTranslation();
+  const openReviewPreview = usePageTabStore((state) => state.openReviewPreview);
   const node = row.node;
   if (node.kind === 'message') {
     return (
@@ -448,16 +457,25 @@ function NodeTraceDetails({ row }: { row: NodeTraceRow }) {
     );
   }
   if (node.kind === 'artifact') {
+    const reviewPath = normalizeRunReviewPath(node.relativePath);
     return (
-      <div className="flex min-w-0 items-center gap-2">
+      <button
+        type="button"
+        disabled={!reviewPath}
+        title={reviewPath ? 'Review this change' : undefined}
+        onClick={() =>
+          reviewPath && openReviewPreview({ runId, path: reviewPath })
+        }
+        className="group flex min-w-0 items-center gap-2 border-0 bg-transparent p-0 text-left disabled:cursor-default"
+      >
         <FileText
           aria-hidden
           className="size-3.5 shrink-0 text-ds-icon-neutral-subtle-default"
         />
-        <span className="min-w-0 flex-1 break-all !text-label-xs !font-normal text-ds-text-neutral-default-default">
+        <span className="min-w-0 flex-1 break-all !text-label-xs !font-normal text-ds-text-neutral-default-default group-enabled:group-hover:underline">
           {node.relativePath || node.path}
         </span>
-      </div>
+      </button>
     );
   }
   if (node.kind === 'run_status') {
@@ -561,7 +579,7 @@ function DetailedRun({
                 status={nodeStatus(row, paused)}
                 summary={nodeSummary(row)}
               >
-                <NodeTraceDetails row={row} />
+                <NodeTraceDetails row={row} runId={run.runId} />
               </TraceRow>
             );
           })}

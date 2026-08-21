@@ -161,6 +161,20 @@ class GitPathChange:
     relative_path: str
 
 
+@dataclass(frozen=True)
+class GitPathLineStat:
+    relative_path: str
+    added_lines: int | None
+    removed_lines: int | None
+
+
+@dataclass(frozen=True)
+class GitPathBlob:
+    relative_path: str
+    oid: str
+    size_bytes: int
+
+
 class GitBackend:
     """Small typed backend; arbitrary command execution is intentionally absent."""
 
@@ -720,6 +734,55 @@ class GitBackend:
             changes.append(GitPathChange(status=status, relative_path=path))
         return tuple(changes)
 
+    def path_line_stats_between(
+        self,
+        repository_root: Path,
+        *,
+        base_commit: str,
+        target_commit: str,
+    ) -> tuple[GitPathLineStat, ...]:
+        """Return text line totals per path; binary files use null totals."""
+
+        self._validate_object_name(base_commit)
+        self._validate_object_name(target_commit)
+        result = self._run(
+            repository_root,
+            (
+                "diff",
+                "--numstat",
+                "-z",
+                "--no-renames",
+                base_commit,
+                target_commit,
+                "--",
+            ),
+        )
+        stats: list[GitPathLineStat] = []
+        for record in result.stdout.split("\0"):
+            if not record:
+                continue
+            raw_added, separator, remainder = record.partition("\t")
+            raw_removed, separator_two, raw_path = remainder.partition("\t")
+            if not separator or not separator_two or not raw_path:
+                raise GitBackendError("Git returned malformed line stats")
+            path = self._normalize_relative_git_path(raw_path)
+            if raw_added == "-" and raw_removed == "-":
+                added_lines = None
+                removed_lines = None
+            elif raw_added.isdigit() and raw_removed.isdigit():
+                added_lines = int(raw_added)
+                removed_lines = int(raw_removed)
+            else:
+                raise GitBackendError("Git returned invalid line stats")
+            stats.append(
+                GitPathLineStat(
+                    relative_path=path,
+                    added_lines=added_lines,
+                    removed_lines=removed_lines,
+                )
+            )
+        return tuple(stats)
+
     def hash_worktree_file(
         self,
         repository_root: Path,
@@ -867,6 +930,45 @@ class GitBackend:
         oid = parts[2]
         self._validate_object_name(oid)
         return oid
+
+    def blobs_at_paths(
+        self,
+        repository_root: Path,
+        commit_oid: str,
+        relative_paths: tuple[str, ...],
+    ) -> tuple[GitPathBlob, ...]:
+        """Resolve regular blobs and sizes for many paths in one Git call."""
+
+        if not relative_paths:
+            return ()
+        self._validate_object_name(commit_oid)
+        paths = tuple(
+            self._normalize_relative_git_path(path) for path in relative_paths
+        )
+        result = self._run(
+            repository_root,
+            ("ls-tree", "-z", "-l", commit_oid, "--", *paths),
+        )
+        blobs: list[GitPathBlob] = []
+        for record in result.stdout.split("\0"):
+            if not record:
+                continue
+            metadata, separator, raw_path = record.partition("\t")
+            parts = metadata.split()
+            if separator != "\t" or len(parts) != 4:
+                raise GitBackendError("Git returned malformed blob metadata")
+            _mode, object_type, oid, raw_size = parts
+            if object_type != "blob" or not raw_size.isdigit():
+                continue
+            self._validate_object_name(oid)
+            blobs.append(
+                GitPathBlob(
+                    relative_path=self._normalize_relative_git_path(raw_path),
+                    oid=oid,
+                    size_bytes=int(raw_size),
+                )
+            )
+        return tuple(blobs)
 
     def object_size(self, repository_root: Path, object_oid: str) -> int:
         self._validate_object_name(object_oid)

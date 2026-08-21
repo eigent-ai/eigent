@@ -18,6 +18,7 @@ import {
   reconcileTimelineRun,
 } from '@/lib/projector/chat/presentation';
 import type { ChatProjectionNode } from '@/lib/projector/chat/types';
+import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
 import { SessionMode } from '@/types/constants';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -252,6 +253,10 @@ describe('ChatBox timeline modes', () => {
   afterEach(() => {
     vi.useRealTimers();
     motionPreference.reduced = false;
+    usePageTabStore.setState({
+      sessionPreviewProjectId: null,
+      sessionPreviewByProject: {},
+    });
   });
 
   it('renders Detailed as labelled rows with vertical Input then Output', () => {
@@ -358,6 +363,35 @@ describe('ChatBox timeline modes', () => {
     expect(within(toolRow).getByText('completed').parentElement).toHaveClass(
       '!text-label-xs'
     );
+  });
+
+  it('opens a trajectory Artifact in the owning Run review', () => {
+    usePageTabStore.setState({
+      sessionPreviewProjectId: 'project-1',
+      sessionPreviewByProject: {},
+    });
+    const { container } = render(
+      <TimelineModeRenderer
+        detailLevel="trajectory"
+        runs={composeTimelineRuns(nodes('completed'))}
+      />
+    );
+    const fileRow = container.querySelector(
+      '[data-trace-category="file"]'
+    ) as HTMLElement;
+
+    fireEvent.click(fileRow.querySelector(':scope > button') as HTMLElement);
+    fireEvent.click(within(fileRow).getByTitle('Review this change'));
+
+    const preview = getSessionPreviewSlice(usePageTabStore.getState());
+    expect(preview.tabs[0]).toMatchObject({
+      type: 'review',
+      reviewTarget: {
+        scope: 'run',
+        runId: 'run-1',
+        focusPath: 'src/timeline.tsx',
+      },
+    });
   });
 
   it('auto-expands a pending question and folds it after the answer arrives', () => {

@@ -151,6 +151,48 @@ describe('pageTabStore session preview', () => {
     });
   });
 
+  it('opens and refocuses a Run review without replacing Project review', () => {
+    const store = usePageTabStore.getState();
+    store.toggleSessionPreview();
+    const chooserId = slice().activeTabId!;
+    store.choosePreviewTabType(chooserId, 'review');
+
+    const projectReview = slice().tabs[0];
+    expect(projectReview).toMatchObject({
+      type: 'review',
+      reviewTarget: { scope: 'project', focusRequestId: 0 },
+    });
+
+    store.openReviewPreview({ runId: 'run-1', path: './src/app.ts' });
+    const runReview = slice().tabs.find(
+      (tab) => tab.type === 'review' && tab.reviewTarget?.scope === 'run'
+    );
+    expect(runReview).toMatchObject({
+      type: 'review',
+      title: 'Run review',
+      reviewTarget: {
+        scope: 'run',
+        runId: 'run-1',
+        focusPath: 'src/app.ts',
+        focusRequestId: 0,
+      },
+    });
+    expect(slice().tabs).toHaveLength(2);
+
+    store.openReviewPreview({ runId: 'run-1', path: 'src/other.ts' });
+    const refocused = slice().tabs.find((tab) => tab.id === runReview?.id);
+    expect(refocused).toMatchObject({
+      reviewTarget: {
+        scope: 'run',
+        runId: 'run-1',
+        focusPath: 'src/other.ts',
+        focusRequestId: 1,
+      },
+    });
+    expect(slice().tabs).toHaveLength(2);
+    expect(slice().activeTabId).toBe(runReview?.id);
+  });
+
   it('reuses the empty file tab and deduplicates files by path', () => {
     const store = usePageTabStore.getState();
     store.toggleSessionPreview();

@@ -661,6 +661,7 @@ export function NarrativeTimeline({
                     <RunFilesGroup
                       artifactNodes={run.artifacts}
                       projectedArtifacts={projectedArtifacts}
+                      runId={run.runId}
                     />
                   ) : undefined
                 }
@@ -672,6 +673,7 @@ export function NarrativeTimeline({
               <RunFilesGroup
                 artifactNodes={run.artifacts}
                 projectedArtifacts={projectedArtifacts}
+                runId={run.runId}
               />
             ) : null}
           </section>

@@ -40,6 +40,11 @@ vi.mock('@/components/Session/PreviewPanel/tabs/terminal/TerminalTab', () => ({
   TerminalTab: () => <div data-testid="terminal-tab" />,
 }));
 
+// Monaco and the live project stores are covered by the ReviewTab suite.
+vi.mock('@/components/Session/PreviewPanel/tabs/ReviewTab', () => ({
+  ReviewTab: () => <div data-testid="review-tab" />,
+}));
+
 // The chooser lists the project's agent terminal streams via this hook; keep
 // the suite off the chat-store dependency chain and drive it with fixtures.
 let mockTerminalSources: Array<{
@@ -96,7 +101,7 @@ describe('PreviewPanel', () => {
     renderPanel();
     expect(screen.getByRole('tab', { name: 'New tab' })).toBeInTheDocument();
     // Vertical options use the same product copy users see in the chooser.
-    for (const label of ['Browser', 'Files', 'Terminal']) {
+    for (const label of ['Browser', 'Files', 'Review', 'Terminal']) {
       expect(
         screen.getByRole('button', {
           name: new RegExp(`^${label}\\b`),
@@ -104,7 +109,7 @@ describe('PreviewPanel', () => {
       ).toBeInTheDocument();
     }
     // Reserved kinds stay hidden from the chooser until a later version.
-    for (const label of ['Review', 'Canvas']) {
+    for (const label of ['Canvas']) {
       expect(
         screen.queryByRole('button', {
           name: new RegExp(`^${label}\\b`),
@@ -166,9 +171,9 @@ describe('PreviewPanel', () => {
   it('routes review, terminal, and canvas tabs to their surfaces', () => {
     const store = usePageTabStore.getState();
     const chooserId = previewSlice().tabs[0].id;
-    act(() => store.choosePreviewTabType(chooserId, 'canvas'));
+    act(() => store.choosePreviewTabType(chooserId, 'review'));
     const { rerender } = renderPanel();
-    expect(screen.getByTestId('canvas-tab')).toBeInTheDocument();
+    expect(screen.getByTestId('review-tab')).toBeInTheDocument();
 
     act(() =>
       store.choosePreviewTabType(previewSlice().activeTabId!, 'terminal')
@@ -179,6 +184,16 @@ describe('PreviewPanel', () => {
       </HostProvider>
     );
     expect(screen.getByTestId('terminal-tab')).toBeInTheDocument();
+
+    act(() =>
+      store.choosePreviewTabType(previewSlice().activeTabId!, 'canvas')
+    );
+    rerender(
+      <HostProvider host={host}>
+        <PreviewPanel />
+      </HostProvider>
+    );
+    expect(screen.getByTestId('canvas-tab')).toBeInTheDocument();
   });
 
   it('the + button adds a new chooser tab', async () => {

@@ -112,6 +112,50 @@ export interface WorkspaceGitHistory {
   backup: { configured: boolean; message: string };
 }
 
+export interface ProjectGitChangeFile {
+  path: string;
+  status: 'added' | 'modified' | 'deleted';
+  before_size: number | null;
+  after_size: number | null;
+  binary: boolean;
+  added_lines: number | null;
+  removed_lines: number | null;
+}
+
+export interface ProjectGitChanges {
+  repository_id: string;
+  project_id: string;
+  base_commit: string | null;
+  target_commit: string | null;
+  files: ProjectGitChangeFile[];
+  totals: { added: number; removed: number };
+  truncated: boolean;
+}
+
+export interface ProjectGitChangeSide {
+  content: string | null;
+  size: number | null;
+  binary: boolean;
+  too_large: boolean;
+}
+
+export interface ProjectGitChangeContent {
+  path: string;
+  base_commit: string;
+  target_commit: string;
+  before: ProjectGitChangeSide;
+  after: ProjectGitChangeSide;
+}
+
+export interface RunGitChanges extends ProjectGitChanges {
+  run_id: string;
+}
+
+export interface RunGitChangeContent extends ProjectGitChangeContent {
+  run_id: string;
+  project_id: string;
+}
+
 export interface AdvancedGitPreview {
   classification: string;
   subcommand: string;
@@ -201,6 +245,54 @@ export const fetchWorkspaceGitHistory = async (
   fetchGet(`/spaces/${encodeURIComponent(spaceId)}/git/history`, {
     ...identityParams(identity),
     limit,
+  });
+
+export const fetchProjectGitChanges = async (
+  projectId: string,
+  spaceId: string,
+  identity: WorkspaceGitIdentity
+): Promise<ProjectGitChanges> =>
+  fetchGet(`/projects/${encodeURIComponent(projectId)}/git/changes`, {
+    ...identityParams(identity),
+    space_id: spaceId,
+  });
+
+export const fetchProjectGitChangeContent = async (
+  projectId: string,
+  spaceId: string,
+  identity: WorkspaceGitIdentity,
+  input: { path: string; baseCommit: string; targetCommit: string }
+): Promise<ProjectGitChangeContent> =>
+  fetchGet(`/projects/${encodeURIComponent(projectId)}/git/changes/content`, {
+    ...identityParams(identity),
+    space_id: spaceId,
+    path: input.path,
+    base_commit: input.baseCommit,
+    target_commit: input.targetCommit,
+  });
+
+export const fetchRunGitChanges = async (
+  runId: string,
+  spaceId: string,
+  identity: WorkspaceGitIdentity
+): Promise<RunGitChanges> =>
+  fetchGet(`/runs/${encodeURIComponent(runId)}/git/changes`, {
+    ...identityParams(identity),
+    space_id: spaceId,
+  });
+
+export const fetchRunGitChangeContent = async (
+  runId: string,
+  spaceId: string,
+  identity: WorkspaceGitIdentity,
+  input: { path: string; baseCommit: string; targetCommit: string }
+): Promise<RunGitChangeContent> =>
+  fetchGet(`/runs/${encodeURIComponent(runId)}/git/changes/content`, {
+    ...identityParams(identity),
+    space_id: spaceId,
+    path: input.path,
+    base_commit: input.baseCommit,
+    target_commit: input.targetCommit,
   });
 
 export const previewAdvancedGit = async (

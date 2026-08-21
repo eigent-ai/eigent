@@ -179,7 +179,7 @@ export function PreviewPanel({
       case 'file':
         return <FileTab tab={activeTab} onJumpToContext={onJumpToContext} />;
       case 'review':
-        return <ReviewTab />;
+        return <ReviewTab tab={activeTab} />;
       case 'terminal':
         // Keyed so each terminal tab keeps its own shell / stream state.
         return <TerminalTab key={activeTab.id} tab={activeTab} />;

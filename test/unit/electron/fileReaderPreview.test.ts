@@ -16,8 +16,15 @@ import { FILE_PREVIEW_LIMITS } from '@/shared/filePreviewContract';
 import { mkdir, mkdtemp, rm, truncate, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FileReader } from '../../../electron/main/fileReader';
+
+vi.mock('electron', () => ({
+  app: {
+    getPath: vi.fn(() => ''),
+  },
+  BrowserWindow: class BrowserWindow {},
+}));
 
 const temporaryDirectories: string[] = [];
 

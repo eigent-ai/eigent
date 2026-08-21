@@ -61,6 +61,7 @@ import {
 } from './localFileSecurity';
 import { filePathFromLocalFileUrl } from './localFileUrl';
 import { setRoundedCorners } from './native/macos-window';
+import { registerReviewChangesIpcHandlers } from './reviewChanges';
 import {
   completeCodexOAuthCallback,
   getCodexResolverEnv,
@@ -867,6 +868,7 @@ const checkManagerInstance = (manager: any, name: string) => {
 function registerIpcHandlers() {
   registerCodexSubscriptionAuthIpcHandlers(ipcMain);
   registerTerminalIpcHandlers();
+  registerReviewChangesIpcHandlers();
   registerWorkspaceSecretIpcHandlers(
     ipcMain,
     getDefaultWorkspaceSecretVault(),

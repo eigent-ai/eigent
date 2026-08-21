@@ -13,14 +13,15 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
-  isRunFilePreviewable,
+  runFileReviewPath,
   RunFilesGroup,
   useRunFileInfo,
 } from '@/components/ChatBox/TimelineModes/RunFiles';
 import type { ChatArtifactNode } from '@/lib/projector/chat';
 import type { ProjectedArtifact } from '@/lib/projector/types';
-import { render, renderHook, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
+import { fireEvent, render, renderHook, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 const projectedArtifact: ProjectedArtifact = {
   artifactId: 'artifact-1',
@@ -52,6 +53,13 @@ const realtimeArtifact: ChatArtifactNode = {
 };
 
 describe('RunFiles capability boundary', () => {
+  beforeEach(() => {
+    usePageTabStore.setState({
+      sessionPreviewProjectId: 'project-1',
+      sessionPreviewByProject: {},
+    });
+  });
+
   it('does not turn portable local or realtime identity into a file path', () => {
     const projected = renderHook(() =>
       useRunFileInfo({ projectedArtifacts: [projectedArtifact] })
@@ -69,19 +77,39 @@ describe('RunFiles capability boundary', () => {
       path: '',
       relativePath: 'reports/report.csv',
     });
-    expect(isRunFilePreviewable(projected.result.current[0]!)).toBe(false);
-    expect(isRunFilePreviewable(realtime.result.current[0]!)).toBe(false);
+    expect(runFileReviewPath(projected.result.current[0]!)).toBe(
+      'reports/report.csv'
+    );
+    expect(runFileReviewPath(realtime.result.current[0]!)).toBe(
+      'reports/report.csv'
+    );
   });
 
-  it('renders unresolved local Artifacts as display-only rows', () => {
-    render(<RunFilesGroup projectedArtifacts={[projectedArtifact]} />);
+  it('opens an unresolved local Artifact in its Run-scoped Git review', () => {
+    render(
+      <RunFilesGroup projectedArtifacts={[projectedArtifact]} runId="run-1" />
+    );
 
     const row = screen.getByTitle('reports/report.csv');
-    expect(row).toHaveAttribute('data-artifact-preview', 'unavailable');
-    expect(row.tagName).toBe('DIV');
+    expect(row).toHaveAttribute('data-artifact-preview', 'available');
+    expect(row.tagName).toBe('BUTTON');
+    fireEvent.click(row);
+
+    const preview = getSessionPreviewSlice(usePageTabStore.getState());
+    expect(preview.open).toBe(true);
+    expect(preview.tabs).toHaveLength(1);
+    expect(preview.tabs[0]).toMatchObject({
+      type: 'review',
+      title: 'Run review',
+      reviewTarget: {
+        scope: 'run',
+        runId: 'run-1',
+        focusPath: 'reports/report.csv',
+      },
+    });
   });
 
-  it('allows only a resolvable Cloud asset into the preview pipeline', () => {
+  it('uses the durable relative path for Cloud assets too', () => {
     const cloud = {
       ...projectedArtifact,
       localPathAvailable: false,
@@ -103,10 +131,10 @@ describe('RunFiles capability boundary', () => {
       isRemote: true,
       assetRef: cloud.assetRef,
     });
-    expect(isRunFilePreviewable(result.current[0]!)).toBe(true);
+    expect(runFileReviewPath(result.current[0]!)).toBe('reports/report.csv');
   });
 
-  it('resolves local workspace files so every changed file can open in preview', () => {
+  it('keeps resolved local paths while routing changed files to review', () => {
     const changed = {
       ...projectedArtifact,
       artifactId: 'artifact-2',
@@ -125,18 +153,21 @@ describe('RunFiles capability boundary', () => {
       '/Users/test/workspace/reports/report.csv',
       '/Users/test/workspace/notes.md',
     ]);
-    expect(result.current.every((file) => isRunFilePreviewable(file))).toBe(
-      true
+    expect(result.current.map(runFileReviewPath)).toEqual([
+      'reports/report.csv',
+      'notes.md',
+    ]);
+  });
+
+  it('rejects escaping paths before they reach the Run review API', () => {
+    const unsafe = {
+      ...projectedArtifact,
+      relativePath: '../outside.txt',
+    } satisfies ProjectedArtifact;
+    const { result } = renderHook(() =>
+      useRunFileInfo({ projectedArtifacts: [unsafe] })
     );
 
-    render(
-      <RunFilesGroup
-        projectedArtifacts={[projectedArtifact, changed]}
-        workspaceRoot="/Users/test/workspace"
-      />
-    );
-
-    expect(screen.getByTitle('reports/report.csv').tagName).toBe('BUTTON');
-    expect(screen.getByTitle('notes.md').tagName).toBe('BUTTON');
+    expect(runFileReviewPath(result.current[0]!)).toBeNull();
   });
 });

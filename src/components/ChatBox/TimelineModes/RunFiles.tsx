@@ -94,22 +94,41 @@ function uniqueFiles(files: readonly FileInfo[]): FileInfo[] {
   return [...byIdentity.values()];
 }
 
-export function isRunFilePreviewable(file: FileInfo): boolean {
-  if (typeof file.assetRef?.chatFileId === 'number') return true;
-  return Boolean(file.path?.trim());
+export function normalizeRunReviewPath(
+  value: string | undefined
+): string | null {
+  const path = value?.trim().replace(/\\/g, '/');
+  if (
+    !path ||
+    path.startsWith('/') ||
+    path.startsWith('~/') ||
+    (path.length > 1 && path[1] === ':') ||
+    path.split('/').includes('..')
+  ) {
+    return null;
+  }
+  return path.replace(/^\.\//, '');
 }
 
-export interface RunFilesProps {
+export function runFileReviewPath(file: FileInfo): string | null {
+  return normalizeRunReviewPath(file.relativePath);
+}
+
+export interface RunFileSources {
   artifactNodes?: readonly ChatArtifactNode[];
   projectedArtifacts?: readonly ProjectedArtifact[];
   workspaceRoot?: string | null;
+}
+
+export interface RunFilesProps extends RunFileSources {
+  runId: string;
 }
 
 export function useRunFileInfo({
   artifactNodes = [],
   projectedArtifacts = [],
   workspaceRoot = null,
-}: RunFilesProps): FileInfo[] {
+}: RunFileSources): FileInfo[] {
   return useMemo(
     () =>
       uniqueFiles(
@@ -136,13 +155,16 @@ export function RunFilesGroup(props: RunFilesProps) {
     ...props,
     workspaceRoot: props.workspaceRoot ?? spaceRootPath ?? null,
   });
-  const openFilePreview = usePageTabStore((state) => state.openFilePreview);
+  const openReviewPreview = usePageTabStore((state) => state.openReviewPreview);
 
   return (
     <ArtifactChangeList
       files={files}
-      onOpen={openFilePreview}
-      canOpenFile={isRunFilePreviewable}
+      onOpen={(file) => {
+        const path = runFileReviewPath(file);
+        if (path) openReviewPreview({ runId: props.runId, path });
+      }}
+      canOpenFile={(file) => runFileReviewPath(file) !== null}
     />
   );
 }
@@ -150,7 +172,7 @@ export function RunFilesGroup(props: RunFilesProps) {
 export function FilesChangedSummaryRow({
   embedded = false,
   ...props
-}: RunFilesProps & { embedded?: boolean }) {
+}: RunFileSources & { embedded?: boolean }) {
   const { t } = useTranslation();
   const files = useRunFileInfo(props);
 

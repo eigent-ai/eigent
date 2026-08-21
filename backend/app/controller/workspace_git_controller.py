@@ -53,6 +53,9 @@ from app.workspace_git.backend import RepositoryDiagnostics
 
 router = APIRouter(dependencies=[Depends(require_local_control_principal)])
 
+_PROJECT_CHANGE_MAX_FILES = 500
+_PROJECT_CHANGE_MAX_BYTES = 2_000_000
+
 
 class GitBootstrapBody(BaseModel):
     email: str = Field(min_length=1)
@@ -829,6 +832,271 @@ def _project_workspace_payload(
     }
 
 
+def _project_change_path(value: str) -> str:
+    path = PurePosixPath(value)
+    if (
+        not value
+        or path.is_absolute()
+        or ".." in path.parts
+        or value.startswith(("~/", "\\\\"))
+        or (len(value) > 1 and value[1] == ":")
+    ):
+        raise HTTPException(status_code=422, detail="Invalid change path")
+    return path.as_posix()
+
+
+def _project_change_context(
+    *,
+    project_id: str,
+    space_id: str,
+    email: str,
+    user_id: str | None,
+):
+    root = _binding_root(space_id=space_id, email=email, user_id=user_id)
+    service = _service()
+    repository = service.journal.get_space_git_repository(space_id=space_id)
+    project = service.journal.get_project_git_state(project_id)
+    if (
+        repository is None
+        or project is None
+        or project.repository_id != repository.repository_id
+    ):
+        raise HTTPException(
+            status_code=404, detail="Project Git state not found"
+        )
+    _assert_repository_binding(repository, root)
+    base_commit = project.last_synced_user_head
+    if base_commit is None:
+        runs = sorted(
+            (
+                run
+                for run in service.journal.list_run_git_materializations()
+                if run.project_id == project_id
+                and run.repository_id == repository.repository_id
+                and run.workspace_base_commit is not None
+            ),
+            key=lambda run: (run.created_at, run.run_id),
+        )
+        base_commit = runs[0].workspace_base_commit if runs else None
+    return service, repository, project, base_commit, project.integration_head
+
+
+def _git_change_side(
+    service: ContentRepositoryService,
+    root: Path,
+    commit: str,
+    path: str,
+) -> tuple[str | None, int | None]:
+    oid = service.git.blob_oid_at_path(root, commit, path)
+    if oid is None:
+        return None, None
+    return oid, service.git.object_size(root, oid)
+
+
+def _read_git_change_side(
+    service: ContentRepositoryService,
+    root: Path,
+    oid: str | None,
+    size: int | None,
+) -> dict:
+    if oid is None or size is None:
+        return {
+            "content": None,
+            "size": None,
+            "binary": False,
+            "too_large": False,
+        }
+    if size > _PROJECT_CHANGE_MAX_BYTES:
+        return {
+            "content": None,
+            "size": size,
+            "binary": False,
+            "too_large": True,
+        }
+    data = (
+        b""
+        if size == 0
+        else service.git.read_blob_range(
+            root,
+            oid,
+            start_offset=0,
+            max_bytes=size,
+        )
+    )
+    try:
+        content = data.decode("utf-8")
+    except UnicodeDecodeError:
+        content = None
+    binary = b"\0" in data[:8000] or content is None
+    return {
+        "content": None if binary else content,
+        "size": size,
+        "binary": binary,
+        "too_large": False,
+    }
+
+
+def _run_change_context(
+    *,
+    run_id: str,
+    space_id: str,
+    email: str,
+    user_id: str | None,
+):
+    root = _binding_root(space_id=space_id, email=email, user_id=user_id)
+    service = _service()
+    repository = service.journal.get_space_git_repository(space_id=space_id)
+    run = service.journal.get_run_git_materialization(run_id)
+    if (
+        repository is None
+        or run is None
+        or run.repository_id != repository.repository_id
+    ):
+        raise HTTPException(status_code=404, detail="Run Git state not found")
+    _assert_repository_binding(repository, root)
+    if run.workspace_base_commit is None or run.promoted_commit is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Run changes are not finalized yet",
+        )
+    return (
+        service,
+        repository,
+        run,
+        run.workspace_base_commit,
+        run.promoted_commit,
+    )
+
+
+def _git_changes_payload(
+    *,
+    service: ContentRepositoryService,
+    repository,
+    identity: dict,
+    base_commit: str | None,
+    target_commit: str | None,
+) -> dict:
+    if base_commit is None or target_commit is None:
+        return {
+            "repository_id": repository.repository_id,
+            **identity,
+            "base_commit": base_commit,
+            "target_commit": target_commit,
+            "files": [],
+            "totals": {"added": 0, "removed": 0},
+            "truncated": False,
+        }
+    root = Path(repository.root_path)
+    changes = service.git.changed_paths_between(
+        root,
+        base_commit=base_commit,
+        target_commit=target_commit,
+    )
+    stats = {
+        item.relative_path: item
+        for item in service.git.path_line_stats_between(
+            root,
+            base_commit=base_commit,
+            target_commit=target_commit,
+        )
+    }
+    visible_changes = changes[:_PROJECT_CHANGE_MAX_FILES]
+    visible_paths = tuple(item.relative_path for item in visible_changes)
+    before_blobs = {
+        item.relative_path: item
+        for item in service.git.blobs_at_paths(
+            root, base_commit, visible_paths
+        )
+    }
+    after_blobs = {
+        item.relative_path: item
+        for item in service.git.blobs_at_paths(
+            root, target_commit, visible_paths
+        )
+    }
+    files = []
+    for change in visible_changes:
+        before_blob = before_blobs.get(change.relative_path)
+        after_blob = after_blobs.get(change.relative_path)
+        line_stat = stats.get(change.relative_path)
+        files.append(
+            {
+                "path": change.relative_path,
+                "status": {
+                    "A": "added",
+                    "M": "modified",
+                    "D": "deleted",
+                    "T": "modified",
+                }[change.status],
+                "before_size": (
+                    before_blob.size_bytes if before_blob else None
+                ),
+                "after_size": (after_blob.size_bytes if after_blob else None),
+                "binary": (
+                    line_stat is not None and line_stat.added_lines is None
+                ),
+                "added_lines": (line_stat.added_lines if line_stat else None),
+                "removed_lines": (
+                    line_stat.removed_lines if line_stat else None
+                ),
+            }
+        )
+    text_stats = [
+        item for item in stats.values() if item.added_lines is not None
+    ]
+    return {
+        "repository_id": repository.repository_id,
+        **identity,
+        "base_commit": base_commit,
+        "target_commit": target_commit,
+        "files": files,
+        "totals": {
+            "added": sum(item.added_lines or 0 for item in text_stats),
+            "removed": sum(item.removed_lines or 0 for item in text_stats),
+        },
+        "truncated": len(changes) > _PROJECT_CHANGE_MAX_FILES,
+    }
+
+
+def _git_change_content_payload(
+    *,
+    service: ContentRepositoryService,
+    repository,
+    identity: dict,
+    path: str,
+    base_commit: str,
+    target_commit: str,
+) -> dict:
+    relative_path = _project_change_path(path)
+    root = Path(repository.root_path)
+    changed_paths = {
+        item.relative_path
+        for item in service.git.changed_paths_between(
+            root,
+            base_commit=base_commit,
+            target_commit=target_commit,
+        )
+    }
+    if relative_path not in changed_paths:
+        raise HTTPException(status_code=404, detail="Change not found")
+    before_oid, before_size = _git_change_side(
+        service, root, base_commit, relative_path
+    )
+    after_oid, after_size = _git_change_side(
+        service, root, target_commit, relative_path
+    )
+    return {
+        **identity,
+        "path": relative_path,
+        "base_commit": base_commit,
+        "target_commit": target_commit,
+        "before": _read_git_change_side(
+            service, root, before_oid, before_size
+        ),
+        "after": _read_git_change_side(service, root, after_oid, after_size),
+    }
+
+
 def _snapshot_payload(snapshot) -> dict:
     return {
         "snapshot_id": snapshot.snapshot_id,
@@ -897,6 +1165,142 @@ async def project_git_workspace(
         project,
         projection_state_digest=projection_digest,
     )
+
+
+@router.get("/projects/{project_id}/git/changes")
+async def project_git_changes(
+    project_id: str,
+    space_id: str = Query(..., min_length=1),
+    email: str = Query(..., min_length=1),
+    user_id: str | None = Query(None),
+):
+    """List authoritative Project changes without reading file contents."""
+
+    service, repository, _project, base_commit, target_commit = (
+        _project_change_context(
+            project_id=project_id,
+            space_id=space_id,
+            email=email,
+            user_id=user_id,
+        )
+    )
+    try:
+        return _git_changes_payload(
+            service=service,
+            repository=repository,
+            identity={"project_id": project_id},
+            base_commit=base_commit,
+            target_commit=target_commit,
+        )
+    except Exception as exc:
+        raise _git_error(exc) from exc
+
+
+@router.get("/projects/{project_id}/git/changes/content")
+async def project_git_change_content(
+    project_id: str,
+    path: str = Query(..., min_length=1, max_length=4096),
+    base_commit: str = Query(..., min_length=1),
+    target_commit: str = Query(..., min_length=1),
+    space_id: str = Query(..., min_length=1),
+    email: str = Query(..., min_length=1),
+    user_id: str | None = Query(None),
+):
+    """Read one changed file's before/after text from pinned Git commits."""
+
+    service, repository, _project, current_base, current_target = (
+        _project_change_context(
+            project_id=project_id,
+            space_id=space_id,
+            email=email,
+            user_id=user_id,
+        )
+    )
+    if current_base != base_commit or current_target != target_commit:
+        raise HTTPException(
+            status_code=409,
+            detail="Project changed; refresh the change review",
+        )
+    try:
+        return _git_change_content_payload(
+            service=service,
+            repository=repository,
+            identity={},
+            path=path,
+            base_commit=base_commit,
+            target_commit=target_commit,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _git_error(exc) from exc
+
+
+@router.get("/runs/{run_id}/git/changes")
+async def run_git_changes(
+    run_id: str,
+    space_id: str = Query(..., min_length=1),
+    email: str = Query(..., min_length=1),
+    user_id: str | None = Query(None),
+):
+    """List one finalized Run's authoritative Git changes lazily."""
+
+    service, repository, run, base_commit, target_commit = _run_change_context(
+        run_id=run_id,
+        space_id=space_id,
+        email=email,
+        user_id=user_id,
+    )
+    try:
+        return _git_changes_payload(
+            service=service,
+            repository=repository,
+            identity={"run_id": run_id, "project_id": run.project_id},
+            base_commit=base_commit,
+            target_commit=target_commit,
+        )
+    except Exception as exc:
+        raise _git_error(exc) from exc
+
+
+@router.get("/runs/{run_id}/git/changes/content")
+async def run_git_change_content(
+    run_id: str,
+    path: str = Query(..., min_length=1, max_length=4096),
+    base_commit: str = Query(..., min_length=1),
+    target_commit: str = Query(..., min_length=1),
+    space_id: str = Query(..., min_length=1),
+    email: str = Query(..., min_length=1),
+    user_id: str | None = Query(None),
+):
+    """Read one finalized Run change from its pinned Git commits."""
+
+    service, repository, run, current_base, current_target = (
+        _run_change_context(
+            run_id=run_id,
+            space_id=space_id,
+            email=email,
+            user_id=user_id,
+        )
+    )
+    if current_base != base_commit or current_target != target_commit:
+        raise HTTPException(
+            status_code=409,
+            detail="Run changed; refresh the change review",
+        )
+    try:
+        return _git_change_content_payload(
+            service=service,
+            repository=repository,
+            identity={"run_id": run_id, "project_id": run.project_id},
+            path=path,
+            base_commit=base_commit,
+            target_commit=target_commit,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _git_error(exc) from exc
 
 
 @router.get("/runs/{run_id}/git/workspace")
