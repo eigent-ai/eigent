@@ -47,14 +47,14 @@ describe('ReviewFileTree', () => {
       />
     );
 
-    expect(screen.getByRole('button', { name: /added\.ts/i })).toBeVisible();
-    expect(screen.getByRole('button', { name: /modified\.ts/i })).toHaveClass(
+    expect(screen.getByRole('treeitem', { name: /added\.ts/i })).toBeVisible();
+    expect(screen.getByRole('treeitem', { name: /modified\.ts/i })).toHaveClass(
       'bg-ds-bg-neutral-default-default'
     );
     expect(screen.getByLabelText('added')).toHaveTextContent('A');
     expect(screen.getByLabelText('modified')).toHaveTextContent('M');
 
-    await user.click(screen.getByRole('button', { name: /added\.ts/i }));
+    await user.click(screen.getByRole('treeitem', { name: /added\.ts/i }));
     expect(onSelect).toHaveBeenCalledWith(files[0].id);
   });
 
@@ -66,9 +66,9 @@ describe('ReviewFileTree', () => {
 
     await user.type(screen.getByRole('textbox'), 'added');
 
-    expect(screen.getByRole('button', { name: /added\.ts/i })).toBeVisible();
+    expect(screen.getByRole('treeitem', { name: /added\.ts/i })).toBeVisible();
     expect(
-      screen.queryByRole('button', { name: /modified\.ts/i })
+      screen.queryByRole('treeitem', { name: /modified\.ts/i })
     ).not.toBeInTheDocument();
   });
 });
