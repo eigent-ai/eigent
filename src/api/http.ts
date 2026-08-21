@@ -164,15 +164,16 @@ async function fetchRequest(
   };
 
   if (method === 'GET') {
-    const query = data
-      ? '?' +
-        Object.entries(data)
-          .map(
-            ([key, val]) =>
-              `${encodeURIComponent(key)}=${encodeURIComponent(val)}`
-          )
-          .join('&')
-      : '';
+    const queryParams = new URLSearchParams();
+    Object.entries(data ?? {}).forEach(([key, value]) => {
+      const values = Array.isArray(value) ? value : [value];
+      values.forEach((item) => {
+        if (item !== undefined && item !== null) {
+          queryParams.append(key, String(item));
+        }
+      });
+    });
+    const query = queryParams.size > 0 ? `?${queryParams.toString()}` : '';
     return handleResponse(fetch(fullUrl + query, options), data);
   }
 

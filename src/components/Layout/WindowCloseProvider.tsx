@@ -15,8 +15,14 @@
 import CloseNoticeDialog from '@/components/Dialog/CloseNotice';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost, type AppShellElectronAPI } from '@/host';
-import { type CloseIntent } from '@/shared/windowClose';
-import { hasAnyActiveRun } from '@/store/chatStore';
+import { assessCloseRunState } from '@/service/runCloseGuard';
+import {
+  type CloseExecutionClass,
+  type CloseIntent,
+} from '@/shared/windowClose';
+import { hasAnyActiveLegacySSEConnection } from '@/store/chatStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import {
   useCallback,
   useEffect,
@@ -25,14 +31,36 @@ import {
   type ReactNode,
 } from 'react';
 
+const CLOSE_RUN_LOOKUP_TIMEOUT_MS = 2_500;
+
+interface ClosePrompt {
+  executionClass: CloseExecutionClass;
+  intent: CloseIntent;
+}
+
+function getKnownLocalProjectIds(): string[] {
+  const projectIds = new Set(
+    useSpaceStore
+      .getState()
+      .getProjectsForSpace()
+      .map((project) => project.id)
+  );
+  Object.keys(useProjectRuntimeStore.getState().projects).forEach((projectId) =>
+    projectIds.add(projectId)
+  );
+  return [...projectIds];
+}
+
 /** Keeps Close Window and Quit guarded on every route, including auth pages. */
 export function WindowCloseProvider({ children }: { children: ReactNode }) {
   const host = useHost();
   const appShellElectronAPI = host?.electronAPI as
     AppShellElectronAPI | undefined;
   const { chatStore } = useChatStoreAdapter();
-  const [pendingIntent, setPendingIntent] = useState<CloseIntent | null>(null);
-  const pendingIntentRef = useRef<CloseIntent | null>(null);
+  const [pendingPrompt, setPendingPrompt] = useState<ClosePrompt | null>(null);
+  const pendingPromptRef = useRef<ClosePrompt | null>(null);
+  const assessmentGenerationRef = useRef(0);
+  const assessmentAbortRef = useRef<AbortController | null>(null);
   const chatStoreRef = useRef(chatStore);
 
   useEffect(() => {
@@ -41,19 +69,22 @@ export function WindowCloseProvider({ children }: { children: ReactNode }) {
 
   const respondToCloseRequest = useCallback(
     (action: 'confirm' | 'cancel') => {
-      const intent = pendingIntentRef.current;
-      if (!intent) return;
+      const prompt = pendingPromptRef.current;
+      if (!prompt) return;
 
-      pendingIntentRef.current = null;
-      setPendingIntent(null);
-      appShellElectronAPI?.respondToCloseRequest?.({ intent, action });
+      pendingPromptRef.current = null;
+      setPendingPrompt(null);
+      appShellElectronAPI?.respondToCloseRequest?.({
+        intent: prompt.intent,
+        action,
+      });
     },
     [appShellElectronAPI]
   );
 
   const handleOpenChange = useCallback(
     (open: boolean) => {
-      if (!open && pendingIntentRef.current) {
+      if (!open && pendingPromptRef.current) {
         respondToCloseRequest('cancel');
       }
     },
@@ -65,7 +96,18 @@ export function WindowCloseProvider({ children }: { children: ReactNode }) {
     const respond = appShellElectronAPI?.respondToCloseRequest;
     if (!onCloseRequest || !respond) return;
 
-    return onCloseRequest((request) => {
+    let disposed = false;
+    const unsubscribe = onCloseRequest((request) => {
+      const generation = assessmentGenerationRef.current + 1;
+      assessmentGenerationRef.current = generation;
+      assessmentAbortRef.current?.abort();
+      const controller = new AbortController();
+      assessmentAbortRef.current = controller;
+
+      pendingPromptRef.current = null;
+      setPendingPrompt(null);
+      respond({ intent: request.intent, action: 'acknowledge' });
+
       const currentChatStore = chatStoreRef.current;
       const currentStatus = currentChatStore?.activeTaskId
         ? currentChatStore.tasks[currentChatStore.activeTaskId]?.status
@@ -73,16 +115,72 @@ export function WindowCloseProvider({ children }: { children: ReactNode }) {
       const activeTaskBusy = Boolean(
         currentStatus && ['running', 'pause'].includes(currentStatus)
       );
+      const legacyActive = activeTaskBusy || hasAnyActiveLegacySSEConnection();
+      const timeout = window.setTimeout(
+        () =>
+          controller.abort(
+            new DOMException('Canonical Run lookup timed out', 'TimeoutError')
+          ),
+        CLOSE_RUN_LOOKUP_TIMEOUT_MS
+      );
 
-      if (activeTaskBusy || hasAnyActiveRun()) {
-        respond({ intent: request.intent, action: 'acknowledge' });
-        pendingIntentRef.current = request.intent;
-        setPendingIntent(request.intent);
-        return;
-      }
-
-      respond({ intent: request.intent, action: 'confirm' });
+      void Promise.resolve()
+        .then(() =>
+          assessCloseRunState({
+            projectIds: getKnownLocalProjectIds(),
+            legacyActive,
+            signal: controller.signal,
+          })
+        )
+        .then((assessment) => {
+          if (
+            disposed ||
+            controller.signal.aborted ||
+            assessmentGenerationRef.current !== generation
+          ) {
+            return;
+          }
+          if (assessment === 'idle') {
+            respond({ intent: request.intent, action: 'confirm' });
+            return;
+          }
+          const prompt = {
+            intent: request.intent,
+            executionClass: assessment,
+          } satisfies ClosePrompt;
+          pendingPromptRef.current = prompt;
+          setPendingPrompt(prompt);
+        })
+        .catch((error: unknown) => {
+          if (disposed || assessmentGenerationRef.current !== generation) {
+            return;
+          }
+          console.warn(
+            '[WINDOW CLOSE] Could not verify durable Run state',
+            error
+          );
+          const prompt = {
+            intent: request.intent,
+            executionClass: 'unknown',
+          } satisfies ClosePrompt;
+          pendingPromptRef.current = prompt;
+          setPendingPrompt(prompt);
+        })
+        .finally(() => {
+          window.clearTimeout(timeout);
+          if (assessmentAbortRef.current === controller) {
+            assessmentAbortRef.current = null;
+          }
+        });
     });
+
+    return () => {
+      disposed = true;
+      assessmentGenerationRef.current += 1;
+      assessmentAbortRef.current?.abort();
+      assessmentAbortRef.current = null;
+      unsubscribe();
+    };
   }, [appShellElectronAPI]);
 
   return (
@@ -91,7 +189,9 @@ export function WindowCloseProvider({ children }: { children: ReactNode }) {
       <CloseNoticeDialog
         onOpenChange={handleOpenChange}
         onConfirm={() => respondToCloseRequest('confirm')}
-        open={pendingIntent !== null}
+        open={pendingPrompt !== null}
+        intent={pendingPrompt?.intent ?? 'close-window'}
+        executionClass={pendingPrompt?.executionClass ?? 'unknown'}
       />
     </>
   );

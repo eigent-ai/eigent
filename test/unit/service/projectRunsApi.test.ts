@@ -13,7 +13,12 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fetchGet, fetchPost } from '@/api/http';
-import { cancelProjectRun, fetchProjectRuns } from '@/service/projectRunsApi';
+import {
+  ACTIVE_DURABLE_RUN_STATUSES,
+  cancelProjectRun,
+  fetchActiveProjectRuns,
+  fetchProjectRuns,
+} from '@/service/projectRunsApi';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/api/http', () => ({ fetchGet: vi.fn(), fetchPost: vi.fn() }));
@@ -72,6 +77,27 @@ describe('project Runs API', () => {
     response.resolve(payload);
     await expect(remaining).resolves.toBe(payload);
     expect(fetchGetMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks the canonical registry only for active Run states', async () => {
+    const controller = new AbortController();
+    const payload = { project_id: 'project-1', runs: [] as never[] };
+    fetchGetMock.mockResolvedValueOnce(payload);
+
+    await expect(
+      fetchActiveProjectRuns('project-1', controller.signal)
+    ).resolves.toBe(payload);
+
+    expect(fetchGetMock).toHaveBeenCalledWith(
+      '/runs',
+      {
+        project_id: 'project-1',
+        status: ACTIVE_DURABLE_RUN_STATUSES,
+        limit: 1,
+      },
+      undefined,
+      { signal: controller.signal }
+    );
   });
 
   it('cancels the exact encoded Run with the caller-owned request id', async () => {

@@ -19,6 +19,15 @@ export const CLOSE_INTENTS = ['close-window', 'quit-app'] as const;
 
 export type CloseIntent = (typeof CLOSE_INTENTS)[number];
 
+export const CLOSE_EXECUTION_CLASSES = [
+  'canonical-durable',
+  'legacy-stream',
+  'mixed',
+  'unknown',
+] as const;
+
+export type CloseExecutionClass = (typeof CLOSE_EXECUTION_CLASSES)[number];
+
 export interface WindowCloseRequest {
   intent: CloseIntent;
 }

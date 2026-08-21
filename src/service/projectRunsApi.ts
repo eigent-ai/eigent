@@ -35,6 +35,12 @@ type RunControlRequest = (
 
 const inFlightProjectRuns = new Map<string, Promise<ProjectRunsResponse>>();
 
+export const ACTIVE_DURABLE_RUN_STATUSES = [
+  'pending',
+  'running',
+  'waiting_for_user',
+] as const;
+
 function abortError(signal: AbortSignal): Error {
   if (signal.reason instanceof Error) return signal.reason;
   return new DOMException('Project Run loading was aborted', 'AbortError');
@@ -102,6 +108,23 @@ export function fetchProjectRuns(
     );
   }
   return waitForCaller(request, signal);
+}
+
+/** Read only canonical Runs that still own live execution state. */
+export function fetchActiveProjectRuns(
+  projectId: string,
+  signal?: AbortSignal
+): Promise<ProjectRunsResponse> {
+  return fetchGet(
+    '/runs',
+    {
+      project_id: projectId,
+      status: ACTIVE_DURABLE_RUN_STATUSES,
+      limit: 1,
+    },
+    undefined,
+    { signal }
+  ) as Promise<ProjectRunsResponse>;
 }
 
 /** Cancel one exact durable Run; callers own stable request-id generation. */

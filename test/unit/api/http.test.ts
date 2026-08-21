@@ -48,7 +48,7 @@ vi.mock('@/components/Toast/trafficToast', () => ({
   showTrafficToast: mocked.showTrafficToast,
 }));
 
-import { fetchPost, getBaseURL } from '@/api/http';
+import { fetchGet, fetchPost, getBaseURL } from '@/api/http';
 import {
   resetConnectionConfig,
   setConnectionConfig,
@@ -115,6 +115,23 @@ describe('api/http handleResponse', () => {
       string
     >;
     expect(headers['X-Desktop-Instance-ID']).toBeUndefined();
+  });
+
+  it('encodes array query values as repeated parameters', async () => {
+    const request = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    await fetchGet('/runs', {
+      project_id: 'project 1',
+      status: ['pending', 'running', 'waiting_for_user'],
+      limit: 1,
+    });
+
+    expect(request).toHaveBeenCalledWith(
+      'http://brain.local/runs?project_id=project+1&status=pending&status=running&status=waiting_for_user&limit=1',
+      expect.objectContaining({ method: 'GET' })
+    );
   });
 });
 
