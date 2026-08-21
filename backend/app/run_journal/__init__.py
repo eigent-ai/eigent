@@ -48,6 +48,7 @@ from app.run_journal.models import (
     ProjectExecutionStateRecord,
     ProjectGitStateRecord,
     ProjectHistoryEventRecord,
+    ProjectWorkspaceBindingRecord,
     RemoteCommandInboxRecord,
     RunAttemptRecord,
     RunEventDraft,
@@ -71,6 +72,9 @@ from app.run_journal.models import (
     WorkspaceOverlayEntryRecord,
     WorkspaceReadSnapshotRecord,
     WorkspaceSnapshotRangeRecord,
+    WorkspaceWriterLeaseRecord,
+    WorkspaceWriterReleaseResult,
+    WorkspaceWriterRequestRecord,
 )
 from app.run_journal.paths import default_run_journal_path
 from app.run_journal.recorder import EventRecorder
@@ -131,6 +135,7 @@ __all__ = [
     "ProjectHistoryEventRecord",
     "ProjectGitStateRecord",
     "ProjectExecutionStateRecord",
+    "ProjectWorkspaceBindingRecord",
     "IdempotencyConflictError",
     "InvalidRunTransitionError",
     "OptimisticConcurrencyError",
@@ -161,6 +166,9 @@ __all__ = [
     "WorkspaceOverlayEntryRecord",
     "WorkspaceReadSnapshotRecord",
     "WorkspaceSnapshotRangeRecord",
+    "WorkspaceWriterLeaseRecord",
+    "WorkspaceWriterReleaseResult",
+    "WorkspaceWriterRequestRecord",
     "UnsafeResumeError",
     "UnsupportedSchemaVersionError",
     "close_default_run_journal",

@@ -73,6 +73,7 @@ from app.run_journal.models import (
     ProjectExecutionStateRecord,
     ProjectGitStateRecord,
     ProjectHistoryEventRecord,
+    ProjectWorkspaceBindingRecord,
     RemoteCommandInboxRecord,
     RunAttemptRecord,
     RunEventDraft,
@@ -96,6 +97,9 @@ from app.run_journal.models import (
     WorkspaceOverlayEntryRecord,
     WorkspaceReadSnapshotRecord,
     WorkspaceSnapshotRangeRecord,
+    WorkspaceWriterLeaseRecord,
+    WorkspaceWriterReleaseResult,
+    WorkspaceWriterRequestRecord,
 )
 from app.run_journal.paths import default_run_journal_path
 from app.run_journal.transitions import (
@@ -120,7 +124,7 @@ from app.workspace_config.models import (
     canonical_json,
 )
 
-SCHEMA_VERSION = 31
+SCHEMA_VERSION = 32
 logger = logging.getLogger("run_journal")
 # Per redacted request or response. Oversized documents retain a bounded JSON
 # prefix plus the byte count and digest of the full redacted projection.
@@ -2076,6 +2080,78 @@ INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
 VALUES (31, CAST(strftime('%s', 'now') AS REAL));
 
 PRAGMA user_version = 31;
+COMMIT;
+"""
+
+_MIGRATION_V32 = """
+BEGIN IMMEDIATE;
+
+-- A Project normally binds to the Space's primary checkout. Multiple Projects
+-- may therefore share one checkout_id and are serialized by the writer lease
+-- below. An explicit user branch/worktree receives a distinct checkout_id.
+CREATE TABLE IF NOT EXISTS project_workspace_bindings(
+    project_id TEXT PRIMARY KEY,
+    repository_id TEXT NOT NULL REFERENCES git_repositories(repository_id)
+        ON DELETE CASCADE,
+    checkout_id TEXT NOT NULL,
+    checkout_mode TEXT NOT NULL CHECK(
+        checkout_mode IN ('primary_checkout', 'explicit_worktree')
+    ),
+    target_ref TEXT NOT NULL,
+    worktree_path TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1 CHECK(version >= 1),
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS project_workspace_bindings_checkout_idx
+ON project_workspace_bindings(repository_id, checkout_id, updated_at DESC);
+
+-- A Project execution lease prevents two Runs in one Project. This separate
+-- checkout lease prevents mutating Tasks in different Projects from writing
+-- the same physical checkout concurrently. Renderer/EventBus state is only a
+-- projection of these canonical rows.
+CREATE TABLE IF NOT EXISTS workspace_writer_requests(
+    request_id TEXT PRIMARY KEY,
+    repository_id TEXT NOT NULL REFERENCES git_repositories(repository_id)
+        ON DELETE CASCADE,
+    checkout_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    target_ref TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'queued' CHECK(
+        status IN ('queued', 'acquired', 'released', 'interrupted')
+    ),
+    created_at REAL NOT NULL,
+    acquired_at REAL,
+    finished_at REAL,
+    updated_at REAL NOT NULL,
+    UNIQUE(repository_id, checkout_id, task_id)
+);
+CREATE INDEX IF NOT EXISTS workspace_writer_requests_queue_idx
+ON workspace_writer_requests(
+    repository_id, checkout_id, status, created_at, request_id
+);
+
+CREATE TABLE IF NOT EXISTS workspace_writer_leases(
+    repository_id TEXT NOT NULL REFERENCES git_repositories(repository_id)
+        ON DELETE CASCADE,
+    checkout_id TEXT NOT NULL,
+    request_id TEXT NOT NULL UNIQUE REFERENCES workspace_writer_requests(
+        request_id
+    ) ON DELETE CASCADE,
+    task_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    target_ref TEXT NOT NULL,
+    acquired_at REAL NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1 CHECK(version >= 1),
+    PRIMARY KEY(repository_id, checkout_id)
+);
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (32, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 32;
 COMMIT;
 """
 
@@ -5052,6 +5128,161 @@ class SQLiteRunJournal:
                 if row is not None
                 else None
             )
+
+    def rebase_unmaterialized_git_run(
+        self,
+        *,
+        run_id: str,
+        expected_base_commit: str | None,
+        base_commit: str,
+        base_ref: str,
+        now: float | None = None,
+    ) -> RunGitMaterializationRecord:
+        """Move a direct Run boundary after preserving pre-existing dirt.
+
+        This is legal only before the Run has produced a managed ChangeSet.
+        It lets direct-checkout execution commit the user's visible preimage
+        without incorrectly attributing that preimage to the Agent diff.
+        """
+
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            run = connection.execute(
+                "SELECT * FROM git_run_materializations WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            if run is None:
+                raise RunNotFoundError(f"Run {run_id!r} has no Git admission")
+            if run["materialization_state"] != "unmaterialized":
+                raise InvalidRunTransitionError(
+                    "only an unmaterialized direct Run can move its base"
+                )
+            if run["promoted_commit"] is not None:
+                raise InvalidRunTransitionError(
+                    "a finalized direct Run cannot move its base"
+                )
+            if run["workspace_base_commit"] != expected_base_commit:
+                raise OptimisticConcurrencyError("direct Run base changed")
+            managed = connection.execute(
+                """
+                SELECT 1 FROM git_change_sets AS sets
+                JOIN git_change_set_items AS items
+                  ON items.change_set_id = sets.change_set_id
+                WHERE sets.run_id = ? LIMIT 1
+                """,
+                (run_id,),
+            ).fetchone()
+            if managed is not None:
+                raise InvalidRunTransitionError(
+                    "direct Run already contains managed changes"
+                )
+            project = connection.execute(
+                """
+                SELECT * FROM git_project_integrations WHERE project_id = ?
+                """,
+                (run["project_id"],),
+            ).fetchone()
+            if project is None:
+                raise RunJournalError("direct Run has no Project Git state")
+            next_project_version = int(project["version"]) + 1
+            connection.execute(
+                """
+                UPDATE git_project_integrations
+                SET last_synced_user_head = ?, projected_head = ?,
+                    version = ?, updated_at = ?
+                WHERE project_id = ? AND version = ?
+                """,
+                (
+                    base_commit,
+                    base_commit,
+                    next_project_version,
+                    timestamp,
+                    run["project_id"],
+                    int(project["version"]),
+                ),
+            )
+            connection.execute(
+                """
+                UPDATE git_run_materializations
+                SET workspace_base_ref = ?, workspace_base_commit = ?,
+                    project_state_version = ?, version = version + 1,
+                    updated_at = ?
+                WHERE run_id = ? AND version = ?
+                """,
+                (
+                    base_ref,
+                    base_commit,
+                    next_project_version,
+                    timestamp,
+                    run_id,
+                    int(run["version"]),
+                ),
+            )
+            updated = connection.execute(
+                "SELECT * FROM git_run_materializations WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            assert updated is not None
+            return self._run_git_materialization_from_row(updated)
+
+    def complete_direct_git_run(
+        self,
+        *,
+        run_id: str,
+        expected_base_commit: str | None,
+        terminal_commit: str,
+        now: float | None = None,
+    ) -> RunGitMaterializationRecord:
+        """Persist exact OIDs for a Run executed in its bound checkout."""
+
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            run = connection.execute(
+                "SELECT * FROM git_run_materializations WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            if run is None:
+                raise RunNotFoundError(f"Run {run_id!r} has no Git admission")
+            if run["materialization_state"] != "unmaterialized":
+                raise InvalidRunTransitionError(
+                    "direct Run was unexpectedly materialized"
+                )
+            if run["workspace_base_commit"] != expected_base_commit:
+                raise OptimisticConcurrencyError("direct Run base changed")
+            if run["promoted_commit"] is not None:
+                if run["promoted_commit"] != terminal_commit:
+                    raise IdempotencyConflictError(
+                        "direct Run was finalized at another commit"
+                    )
+                return self._run_git_materialization_from_row(run)
+            connection.execute(
+                """
+                UPDATE git_run_materializations
+                SET promoted_commit = ?, version = version + 1, updated_at = ?
+                WHERE run_id = ? AND promoted_commit IS NULL
+                """,
+                (terminal_commit, timestamp, run_id),
+            )
+            connection.execute(
+                """
+                UPDATE git_project_integrations
+                SET last_synced_user_head = ?, projected_head = ?,
+                    version = version + 1, updated_at = ?
+                WHERE project_id = ?
+                """,
+                (
+                    terminal_commit,
+                    terminal_commit,
+                    timestamp,
+                    run["project_id"],
+                ),
+            )
+            updated = connection.execute(
+                "SELECT * FROM git_run_materializations WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            assert updated is not None
+            return self._run_git_materialization_from_row(updated)
 
     def list_project_git_states(self) -> list[ProjectGitStateRecord]:
         with self._lock:
@@ -8298,6 +8529,546 @@ class SQLiteRunJournal:
             ).fetchone()
             assert updated is not None
             return self._follow_up_request_from_row(updated)
+
+    def ensure_project_workspace_binding(
+        self,
+        *,
+        project_id: str,
+        repository_id: str,
+        checkout_id: str,
+        checkout_mode: str,
+        target_ref: str,
+        worktree_path: str,
+        now: float | None = None,
+    ) -> ProjectWorkspaceBindingRecord:
+        """Persist a Project's physical checkout without silently rebinding it.
+
+        Ordinary Projects share the Space primary checkout. Explicit user
+        branch/worktree creation uses a different checkout id and must go
+        through ``update_project_workspace_binding`` after the worktree exists.
+        """
+
+        values = {
+            "project_id": project_id.strip(),
+            "repository_id": repository_id.strip(),
+            "checkout_id": checkout_id.strip(),
+            "target_ref": target_ref.strip(),
+            "worktree_path": worktree_path.strip(),
+        }
+        if any(not value for value in values.values()):
+            raise ValueError("Project workspace binding identity is required")
+        if any(len(value) > 4096 for value in values.values()):
+            raise ValueError("Project workspace binding identity is too long")
+        if checkout_mode not in {"primary_checkout", "explicit_worktree"}:
+            raise ValueError("invalid Project checkout mode")
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            existing = connection.execute(
+                "SELECT * FROM project_workspace_bindings WHERE project_id = ?",
+                (values["project_id"],),
+            ).fetchone()
+            if existing is not None:
+                persisted = (
+                    existing["repository_id"],
+                    existing["checkout_id"],
+                    existing["checkout_mode"],
+                    existing["target_ref"],
+                    existing["worktree_path"],
+                )
+                requested = (
+                    values["repository_id"],
+                    values["checkout_id"],
+                    checkout_mode,
+                    values["target_ref"],
+                    values["worktree_path"],
+                )
+                if persisted != requested:
+                    raise IdempotencyConflictError(
+                        f"Project {project_id!r} already has another "
+                        "workspace binding"
+                    )
+                return self._project_workspace_binding_from_row(existing)
+            repository = connection.execute(
+                """
+                SELECT repository_role FROM git_repositories
+                WHERE repository_id = ?
+                """,
+                (values["repository_id"],),
+            ).fetchone()
+            if (
+                repository is None
+                or repository["repository_role"] != "content"
+            ):
+                raise RunNotFoundError(
+                    f"Content Repository {repository_id!r} does not exist"
+                )
+            connection.execute(
+                """
+                INSERT INTO project_workspace_bindings(
+                    project_id, repository_id, checkout_id, checkout_mode,
+                    target_ref, worktree_path, version, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+                """,
+                (
+                    values["project_id"],
+                    values["repository_id"],
+                    values["checkout_id"],
+                    checkout_mode,
+                    values["target_ref"],
+                    values["worktree_path"],
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM project_workspace_bindings WHERE project_id = ?",
+                (values["project_id"],),
+            ).fetchone()
+            assert row is not None
+            return self._project_workspace_binding_from_row(row)
+
+    def get_project_workspace_binding(
+        self,
+        project_id: str,
+    ) -> ProjectWorkspaceBindingRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM project_workspace_bindings WHERE project_id = ?",
+                (project_id,),
+            ).fetchone()
+            return (
+                self._project_workspace_binding_from_row(row)
+                if row is not None
+                else None
+            )
+
+    def update_project_workspace_binding(
+        self,
+        *,
+        project_id: str,
+        expected_version: int,
+        checkout_id: str,
+        checkout_mode: str,
+        target_ref: str,
+        worktree_path: str,
+        now: float | None = None,
+    ) -> ProjectWorkspaceBindingRecord:
+        """CAS-switch a Project after an explicit checkout operation."""
+
+        if expected_version < 1:
+            raise ValueError(
+                "expected Project workspace version must be positive"
+            )
+        values = {
+            "checkout_id": checkout_id.strip(),
+            "target_ref": target_ref.strip(),
+            "worktree_path": worktree_path.strip(),
+        }
+        if any(not value for value in values.values()):
+            raise ValueError("Project workspace binding identity is required")
+        if checkout_mode not in {"primary_checkout", "explicit_worktree"}:
+            raise ValueError("invalid Project checkout mode")
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE project_workspace_bindings
+                SET checkout_id = ?, checkout_mode = ?, target_ref = ?,
+                    worktree_path = ?, version = version + 1, updated_at = ?
+                WHERE project_id = ? AND version = ?
+                """,
+                (
+                    values["checkout_id"],
+                    checkout_mode,
+                    values["target_ref"],
+                    values["worktree_path"],
+                    timestamp,
+                    project_id,
+                    expected_version,
+                ),
+            )
+            if cursor.rowcount != 1:
+                current = connection.execute(
+                    """
+                    SELECT version FROM project_workspace_bindings
+                    WHERE project_id = ?
+                    """,
+                    (project_id,),
+                ).fetchone()
+                if current is None:
+                    raise RunNotFoundError(
+                        f"Project {project_id!r} has no workspace binding"
+                    )
+                raise OptimisticConcurrencyError(
+                    f"Project {project_id!r} workspace binding changed"
+                )
+            row = connection.execute(
+                "SELECT * FROM project_workspace_bindings WHERE project_id = ?",
+                (project_id,),
+            ).fetchone()
+            assert row is not None
+            return self._project_workspace_binding_from_row(row)
+
+    def enqueue_workspace_writer(
+        self,
+        *,
+        request_id: str,
+        repository_id: str,
+        checkout_id: str,
+        task_id: str,
+        project_id: str,
+        target_ref: str,
+        reason: str,
+        now: float | None = None,
+    ) -> WorkspaceWriterRequestRecord:
+        """Acquire or durably queue one Task for a physical checkout.
+
+        The first request acquires the lease in the same transaction. Later
+        requests remain FIFO queued even when they belong to another Project.
+        Repeating one request id with the same payload is idempotent.
+        """
+
+        values = {
+            "request_id": request_id.strip(),
+            "repository_id": repository_id.strip(),
+            "checkout_id": checkout_id.strip(),
+            "task_id": task_id.strip(),
+            "project_id": project_id.strip(),
+            "target_ref": target_ref.strip(),
+            "reason": reason.strip(),
+        }
+        if any(not value for value in values.values()):
+            raise ValueError("workspace writer identity is required")
+        if any(len(value) > 512 for value in values.values()):
+            raise ValueError("workspace writer identity is too long")
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            existing = connection.execute(
+                "SELECT * FROM workspace_writer_requests WHERE request_id = ?",
+                (values["request_id"],),
+            ).fetchone()
+            if existing is not None:
+                persisted = (
+                    existing["repository_id"],
+                    existing["checkout_id"],
+                    existing["task_id"],
+                    existing["project_id"],
+                    existing["target_ref"],
+                    existing["reason"],
+                )
+                requested = (
+                    values["repository_id"],
+                    values["checkout_id"],
+                    values["task_id"],
+                    values["project_id"],
+                    values["target_ref"],
+                    values["reason"],
+                )
+                if persisted != requested:
+                    raise IdempotencyConflictError(
+                        f"workspace writer request_id {request_id!r} was reused"
+                    )
+                return self._workspace_writer_request_from_row(
+                    connection,
+                    existing,
+                )
+            repository = connection.execute(
+                "SELECT 1 FROM git_repositories WHERE repository_id = ?",
+                (values["repository_id"],),
+            ).fetchone()
+            if repository is None:
+                raise RunNotFoundError(
+                    f"Git repository {repository_id!r} does not exist"
+                )
+            task_request = connection.execute(
+                """
+                SELECT request_id FROM workspace_writer_requests
+                WHERE repository_id = ? AND checkout_id = ? AND task_id = ?
+                """,
+                (
+                    values["repository_id"],
+                    values["checkout_id"],
+                    values["task_id"],
+                ),
+            ).fetchone()
+            if task_request is not None:
+                raise IdempotencyConflictError(
+                    f"Task {task_id!r} already has workspace writer request "
+                    f"{task_request['request_id']!r}"
+                )
+            connection.execute(
+                """
+                INSERT INTO workspace_writer_requests(
+                    request_id, repository_id, checkout_id, task_id,
+                    project_id, target_ref, reason, status, created_at,
+                    acquired_at, finished_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, NULL, NULL, ?)
+                """,
+                (
+                    values["request_id"],
+                    values["repository_id"],
+                    values["checkout_id"],
+                    values["task_id"],
+                    values["project_id"],
+                    values["target_ref"],
+                    values["reason"],
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            lease = connection.execute(
+                """
+                SELECT 1 FROM workspace_writer_leases
+                WHERE repository_id = ? AND checkout_id = ?
+                """,
+                (values["repository_id"], values["checkout_id"]),
+            ).fetchone()
+            if lease is None:
+                self._acquire_workspace_writer_in_transaction(
+                    connection,
+                    request_id=values["request_id"],
+                    now=timestamp,
+                )
+            row = connection.execute(
+                "SELECT * FROM workspace_writer_requests WHERE request_id = ?",
+                (values["request_id"],),
+            ).fetchone()
+            assert row is not None
+            return self._workspace_writer_request_from_row(connection, row)
+
+    def get_workspace_writer_request(
+        self,
+        request_id: str,
+    ) -> WorkspaceWriterRequestRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM workspace_writer_requests WHERE request_id = ?",
+                (request_id,),
+            ).fetchone()
+            return (
+                self._workspace_writer_request_from_row(self._connection, row)
+                if row is not None
+                else None
+            )
+
+    def get_workspace_writer_lease(
+        self,
+        *,
+        repository_id: str,
+        checkout_id: str,
+    ) -> WorkspaceWriterLeaseRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT * FROM workspace_writer_leases
+                WHERE repository_id = ? AND checkout_id = ?
+                """,
+                (repository_id, checkout_id),
+            ).fetchone()
+            return (
+                self._workspace_writer_lease_from_row(row)
+                if row is not None
+                else None
+            )
+
+    def list_workspace_writer_requests(
+        self,
+        *,
+        repository_id: str,
+        checkout_id: str,
+        include_terminal: bool = False,
+    ) -> list[WorkspaceWriterRequestRecord]:
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM workspace_writer_requests
+                WHERE repository_id = ? AND checkout_id = ?
+                  AND (? OR status IN ('queued', 'acquired'))
+                ORDER BY
+                    CASE status
+                        WHEN 'acquired' THEN 0
+                        WHEN 'queued' THEN 1
+                        ELSE 2
+                    END,
+                    created_at, request_id
+                """,
+                (repository_id, checkout_id, include_terminal),
+            ).fetchall()
+            return [
+                self._workspace_writer_request_from_row(self._connection, row)
+                for row in rows
+            ]
+
+    def release_workspace_writer(
+        self,
+        *,
+        request_id: str,
+        task_id: str,
+        now: float | None = None,
+    ) -> WorkspaceWriterReleaseResult:
+        return self._finish_workspace_writer(
+            request_id=request_id,
+            task_id=task_id,
+            final_status="released",
+            now=now,
+        )
+
+    def interrupt_workspace_writer(
+        self,
+        *,
+        request_id: str,
+        task_id: str,
+        now: float | None = None,
+    ) -> WorkspaceWriterReleaseResult:
+        return self._finish_workspace_writer(
+            request_id=request_id,
+            task_id=task_id,
+            final_status="interrupted",
+            now=now,
+        )
+
+    def _finish_workspace_writer(
+        self,
+        *,
+        request_id: str,
+        task_id: str,
+        final_status: str,
+        now: float | None,
+    ) -> WorkspaceWriterReleaseResult:
+        if final_status not in {"released", "interrupted"}:
+            raise ValueError("invalid workspace writer terminal status")
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            row = connection.execute(
+                "SELECT * FROM workspace_writer_requests WHERE request_id = ?",
+                (request_id,),
+            ).fetchone()
+            if row is None:
+                raise RunNotFoundError(
+                    f"workspace writer request_id {request_id!r} does not exist"
+                )
+            if row["task_id"] != task_id:
+                raise InvalidRunTransitionError(
+                    "workspace writer can only be finished by its owning Task"
+                )
+            if row["status"] in {"released", "interrupted"}:
+                return WorkspaceWriterReleaseResult(
+                    finished=self._workspace_writer_request_from_row(
+                        connection,
+                        row,
+                    ),
+                    next_acquired=None,
+                )
+            next_acquired = None
+            if row["status"] == "acquired":
+                lease = connection.execute(
+                    """
+                    SELECT * FROM workspace_writer_leases
+                    WHERE repository_id = ? AND checkout_id = ?
+                    """,
+                    (row["repository_id"], row["checkout_id"]),
+                ).fetchone()
+                if lease is None or lease["request_id"] != request_id:
+                    raise InvalidRunTransitionError(
+                        "workspace writer lease ownership is inconsistent"
+                    )
+                connection.execute(
+                    """
+                    DELETE FROM workspace_writer_leases
+                    WHERE repository_id = ? AND checkout_id = ?
+                    """,
+                    (row["repository_id"], row["checkout_id"]),
+                )
+            connection.execute(
+                """
+                UPDATE workspace_writer_requests
+                SET status = ?, finished_at = ?, updated_at = ?
+                WHERE request_id = ?
+                """,
+                (final_status, timestamp, timestamp, request_id),
+            )
+            if row["status"] == "acquired":
+                queued = connection.execute(
+                    """
+                    SELECT request_id FROM workspace_writer_requests
+                    WHERE repository_id = ? AND checkout_id = ?
+                      AND status = 'queued'
+                    ORDER BY created_at, request_id
+                    LIMIT 1
+                    """,
+                    (row["repository_id"], row["checkout_id"]),
+                ).fetchone()
+                if queued is not None:
+                    self._acquire_workspace_writer_in_transaction(
+                        connection,
+                        request_id=queued["request_id"],
+                        now=timestamp,
+                    )
+                    acquired_row = connection.execute(
+                        """
+                        SELECT * FROM workspace_writer_requests
+                        WHERE request_id = ?
+                        """,
+                        (queued["request_id"],),
+                    ).fetchone()
+                    assert acquired_row is not None
+                    next_acquired = self._workspace_writer_request_from_row(
+                        connection,
+                        acquired_row,
+                    )
+            finished_row = connection.execute(
+                "SELECT * FROM workspace_writer_requests WHERE request_id = ?",
+                (request_id,),
+            ).fetchone()
+            assert finished_row is not None
+            return WorkspaceWriterReleaseResult(
+                finished=self._workspace_writer_request_from_row(
+                    connection,
+                    finished_row,
+                ),
+                next_acquired=next_acquired,
+            )
+
+    @staticmethod
+    def _acquire_workspace_writer_in_transaction(
+        connection: sqlite3.Connection,
+        *,
+        request_id: str,
+        now: float,
+    ) -> None:
+        row = connection.execute(
+            "SELECT * FROM workspace_writer_requests WHERE request_id = ?",
+            (request_id,),
+        ).fetchone()
+        if row is None or row["status"] != "queued":
+            raise InvalidRunTransitionError(
+                "only a queued workspace writer can acquire the lease"
+            )
+        connection.execute(
+            """
+            INSERT INTO workspace_writer_leases(
+                repository_id, checkout_id, request_id, task_id, project_id,
+                target_ref, acquired_at, version
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+            """,
+            (
+                row["repository_id"],
+                row["checkout_id"],
+                row["request_id"],
+                row["task_id"],
+                row["project_id"],
+                row["target_ref"],
+                now,
+            ),
+        )
+        connection.execute(
+            """
+            UPDATE workspace_writer_requests
+            SET status = 'acquired', acquired_at = ?, updated_at = ?
+            WHERE request_id = ? AND status = 'queued'
+            """,
+            (now, now, request_id),
+        )
 
     def list_all_runs(self) -> list[RunRecord]:
         """Return canonical Runs for startup projection reconciliation."""
@@ -16164,6 +16935,8 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             self._connection.executescript(_MIGRATION_V30)
         if version < 31:
             self._connection.executescript(_MIGRATION_V31)
+        if version < 32:
+            self._connection.executescript(_MIGRATION_V32)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:
@@ -17360,6 +18133,99 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             source_command_id=row["source_command_id"],
             last_error=row["last_error"],
             created_at=float(row["created_at"]),
+            updated_at=float(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _project_workspace_binding_from_row(
+        row: sqlite3.Row,
+    ) -> ProjectWorkspaceBindingRecord:
+        return ProjectWorkspaceBindingRecord(
+            project_id=row["project_id"],
+            repository_id=row["repository_id"],
+            checkout_id=row["checkout_id"],
+            checkout_mode=row["checkout_mode"],
+            target_ref=row["target_ref"],
+            worktree_path=row["worktree_path"],
+            version=int(row["version"]),
+            created_at=float(row["created_at"]),
+            updated_at=float(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _workspace_writer_lease_from_row(
+        row: sqlite3.Row,
+    ) -> WorkspaceWriterLeaseRecord:
+        return WorkspaceWriterLeaseRecord(
+            repository_id=row["repository_id"],
+            checkout_id=row["checkout_id"],
+            request_id=row["request_id"],
+            task_id=row["task_id"],
+            project_id=row["project_id"],
+            target_ref=row["target_ref"],
+            acquired_at=float(row["acquired_at"]),
+            version=int(row["version"]),
+        )
+
+    @staticmethod
+    def _workspace_writer_request_from_row(
+        connection: sqlite3.Connection,
+        row: sqlite3.Row,
+    ) -> WorkspaceWriterRequestRecord:
+        queue_position = None
+        blocker_task_id = None
+        if row["status"] == "queued":
+            position = connection.execute(
+                """
+                SELECT COUNT(*) AS position
+                FROM workspace_writer_requests
+                WHERE repository_id = ? AND checkout_id = ?
+                  AND status = 'queued'
+                  AND (
+                    created_at < ?
+                    OR (created_at = ? AND request_id <= ?)
+                  )
+                """,
+                (
+                    row["repository_id"],
+                    row["checkout_id"],
+                    row["created_at"],
+                    row["created_at"],
+                    row["request_id"],
+                ),
+            ).fetchone()
+            assert position is not None
+            queue_position = int(position["position"])
+            lease = connection.execute(
+                """
+                SELECT task_id FROM workspace_writer_leases
+                WHERE repository_id = ? AND checkout_id = ?
+                """,
+                (row["repository_id"], row["checkout_id"]),
+            ).fetchone()
+            blocker_task_id = lease["task_id"] if lease is not None else None
+        return WorkspaceWriterRequestRecord(
+            request_id=row["request_id"],
+            repository_id=row["repository_id"],
+            checkout_id=row["checkout_id"],
+            task_id=row["task_id"],
+            project_id=row["project_id"],
+            target_ref=row["target_ref"],
+            reason=row["reason"],
+            status=row["status"],
+            queue_position=queue_position,
+            blocker_task_id=blocker_task_id,
+            created_at=float(row["created_at"]),
+            acquired_at=(
+                float(row["acquired_at"])
+                if row["acquired_at"] is not None
+                else None
+            ),
+            finished_at=(
+                float(row["finished_at"])
+                if row["finished_at"] is not None
+                else None
+            ),
             updated_at=float(row["updated_at"]),
         )
 

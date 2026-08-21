@@ -1072,7 +1072,7 @@ export function WorkspaceConfigurationEditor({
                 </SettingRow>
                 <SettingRow
                   label="Git workspace environment"
-                  description="Use local checkpoints and isolated worktrees."
+                  description="Version this Space on its selected branch; multi-agent work stays isolated until integration."
                 >
                   <div className="flex min-h-10 items-center justify-end">
                     <Switch

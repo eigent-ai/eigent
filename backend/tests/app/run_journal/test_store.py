@@ -96,7 +96,293 @@ def test_initializes_schema_and_durability_pragmas(journal):
         "memory_entries",
         "memory_mutations",
         "memory_mutation_outbox",
+        "project_workspace_bindings",
+        "workspace_writer_requests",
+        "workspace_writer_leases",
     } <= tables
+
+
+def _put_content_repository(
+    journal, *, repository_id="repo-1", space_id="space-1"
+):
+    return journal.put_git_repository(
+        repository_id=repository_id,
+        space_id=space_id,
+        repository_role="content",
+        root_path=f"/tmp/{space_id}",
+        root_path_digest="a" * 64,
+        ownership="eigent_owned",
+        state="ready",
+        version_coverage="full",
+        now=1,
+    )
+
+
+def test_project_workspace_binding_defaults_to_shared_primary_checkout(
+    journal,
+):
+    _put_content_repository(journal)
+
+    first = journal.ensure_project_workspace_binding(
+        project_id="project-1",
+        repository_id="repo-1",
+        checkout_id="checkout-primary",
+        checkout_mode="primary_checkout",
+        target_ref="refs/heads/main",
+        worktree_path="/tmp/space-1",
+        now=10,
+    )
+    second = journal.ensure_project_workspace_binding(
+        project_id="project-2",
+        repository_id="repo-1",
+        checkout_id="checkout-primary",
+        checkout_mode="primary_checkout",
+        target_ref="refs/heads/main",
+        worktree_path="/tmp/space-1",
+        now=11,
+    )
+
+    assert first.checkout_mode == "primary_checkout"
+    assert first.checkout_id == second.checkout_id
+    assert first.worktree_path == second.worktree_path
+    assert journal.get_project_workspace_binding("project-1") == first
+
+    replay = journal.ensure_project_workspace_binding(
+        project_id="project-1",
+        repository_id="repo-1",
+        checkout_id="checkout-primary",
+        checkout_mode="primary_checkout",
+        target_ref="refs/heads/main",
+        worktree_path="/tmp/space-1",
+        now=99,
+    )
+    assert replay == first
+
+    with pytest.raises(IdempotencyConflictError, match="another workspace"):
+        journal.ensure_project_workspace_binding(
+            project_id="project-1",
+            repository_id="repo-1",
+            checkout_id="checkout-silent-fork",
+            checkout_mode="explicit_worktree",
+            target_ref="refs/heads/feature",
+            worktree_path="/tmp/feature",
+        )
+
+
+def test_project_workspace_binding_requires_explicit_cas_to_switch(journal):
+    _put_content_repository(journal)
+    original = journal.ensure_project_workspace_binding(
+        project_id="project-1",
+        repository_id="repo-1",
+        checkout_id="checkout-primary",
+        checkout_mode="primary_checkout",
+        target_ref="refs/heads/main",
+        worktree_path="/tmp/space-1",
+        now=10,
+    )
+
+    switched = journal.update_project_workspace_binding(
+        project_id="project-1",
+        expected_version=original.version,
+        checkout_id="checkout-feature",
+        checkout_mode="explicit_worktree",
+        target_ref="refs/heads/feature",
+        worktree_path="/tmp/feature",
+        now=11,
+    )
+
+    assert switched.version == original.version + 1
+    assert switched.checkout_mode == "explicit_worktree"
+    assert switched.target_ref == "refs/heads/feature"
+    with pytest.raises(OptimisticConcurrencyError, match="binding changed"):
+        journal.update_project_workspace_binding(
+            project_id="project-1",
+            expected_version=original.version,
+            checkout_id="checkout-other",
+            checkout_mode="explicit_worktree",
+            target_ref="refs/heads/other",
+            worktree_path="/tmp/other",
+        )
+
+
+def test_workspace_writer_queue_serializes_one_checkout_and_not_another(
+    journal,
+):
+    _put_content_repository(journal)
+
+    first = journal.enqueue_workspace_writer(
+        request_id="writer-1",
+        repository_id="repo-1",
+        checkout_id="checkout-primary",
+        task_id="task-1",
+        project_id="project-1",
+        target_ref="refs/heads/main",
+        reason="filesystem.write",
+        now=10,
+    )
+    second = journal.enqueue_workspace_writer(
+        request_id="writer-2",
+        repository_id="repo-1",
+        checkout_id="checkout-primary",
+        task_id="task-2",
+        project_id="project-2",
+        target_ref="refs/heads/main",
+        reason="terminal.execute",
+        now=11,
+    )
+    third = journal.enqueue_workspace_writer(
+        request_id="writer-3",
+        repository_id="repo-1",
+        checkout_id="checkout-primary",
+        task_id="task-3",
+        project_id="project-3",
+        target_ref="refs/heads/main",
+        reason="skill.script.execute",
+        now=12,
+    )
+    independent = journal.enqueue_workspace_writer(
+        request_id="writer-4",
+        repository_id="repo-1",
+        checkout_id="checkout-explicit-worktree",
+        task_id="task-4",
+        project_id="project-4",
+        target_ref="refs/heads/feature",
+        reason="filesystem.write",
+        now=13,
+    )
+
+    assert first.status == "acquired"
+    assert (first.queue_position, first.blocker_task_id) == (None, None)
+    assert (second.status, second.queue_position, second.blocker_task_id) == (
+        "queued",
+        1,
+        "task-1",
+    )
+    assert (third.status, third.queue_position, third.blocker_task_id) == (
+        "queued",
+        2,
+        "task-1",
+    )
+    assert independent.status == "acquired"
+
+    replay = journal.enqueue_workspace_writer(
+        request_id="writer-2",
+        repository_id="repo-1",
+        checkout_id="checkout-primary",
+        task_id="task-2",
+        project_id="project-2",
+        target_ref="refs/heads/main",
+        reason="terminal.execute",
+        now=99,
+    )
+    assert replay == second
+
+    released = journal.release_workspace_writer(
+        request_id="writer-1",
+        task_id="task-1",
+        now=20,
+    )
+    assert released.finished.status == "released"
+    assert released.next_acquired is not None
+    assert released.next_acquired.task_id == "task-2"
+    assert released.next_acquired.status == "acquired"
+
+    waiting = journal.get_workspace_writer_request("writer-3")
+    assert waiting is not None
+    assert (waiting.queue_position, waiting.blocker_task_id) == (1, "task-2")
+    lease = journal.get_workspace_writer_lease(
+        repository_id="repo-1",
+        checkout_id="checkout-primary",
+    )
+    assert lease is not None
+    assert (lease.request_id, lease.task_id) == ("writer-2", "task-2")
+
+    interrupted = journal.interrupt_workspace_writer(
+        request_id="writer-3",
+        task_id="task-3",
+        now=21,
+    )
+    assert interrupted.finished.status == "interrupted"
+    assert interrupted.next_acquired is None
+    assert (
+        journal.get_workspace_writer_lease(
+            repository_id="repo-1",
+            checkout_id="checkout-primary",
+        )
+        == lease
+    )
+
+
+def test_workspace_writer_queue_is_cross_connection_durable(tmp_path):
+    path = tmp_path / "run-journal.sqlite3"
+    with SQLiteRunJournal(path) as first:
+        _put_content_repository(first)
+        acquired = first.enqueue_workspace_writer(
+            request_id="writer-1",
+            repository_id="repo-1",
+            checkout_id="checkout-primary",
+            task_id="task-1",
+            project_id="project-1",
+            target_ref="refs/heads/main",
+            reason="filesystem.write",
+            now=10,
+        )
+        assert acquired.status == "acquired"
+
+        with SQLiteRunJournal(path) as second:
+            queued = second.enqueue_workspace_writer(
+                request_id="writer-2",
+                repository_id="repo-1",
+                checkout_id="checkout-primary",
+                task_id="task-2",
+                project_id="project-2",
+                target_ref="refs/heads/main",
+                reason="filesystem.write",
+                now=11,
+            )
+            assert (queued.status, queued.blocker_task_id) == (
+                "queued",
+                "task-1",
+            )
+
+    with SQLiteRunJournal(path) as reopened:
+        lease = reopened.get_workspace_writer_lease(
+            repository_id="repo-1",
+            checkout_id="checkout-primary",
+        )
+        queued = reopened.get_workspace_writer_request("writer-2")
+        assert lease is not None and lease.task_id == "task-1"
+        assert queued is not None
+        assert (queued.queue_position, queued.blocker_task_id) == (1, "task-1")
+
+
+def test_workspace_writer_request_rejects_identity_reuse(journal):
+    _put_content_repository(journal)
+    journal.enqueue_workspace_writer(
+        request_id="writer-1",
+        repository_id="repo-1",
+        checkout_id="checkout-primary",
+        task_id="task-1",
+        project_id="project-1",
+        target_ref="refs/heads/main",
+        reason="filesystem.write",
+    )
+
+    with pytest.raises(IdempotencyConflictError, match="was reused"):
+        journal.enqueue_workspace_writer(
+            request_id="writer-1",
+            repository_id="repo-1",
+            checkout_id="checkout-primary",
+            task_id="task-other",
+            project_id="project-1",
+            target_ref="refs/heads/main",
+            reason="filesystem.write",
+        )
+    with pytest.raises(InvalidRunTransitionError, match="owning Task"):
+        journal.release_workspace_writer(
+            request_id="writer-1",
+            task_id="task-other",
+        )
 
 
 def _persist_environment_spec(journal, *, owner_id: str = "run-1"):
@@ -1003,6 +1289,38 @@ def test_database_reopens_without_reapplying_or_losing_migration(tmp_path):
     with SQLiteRunJournal(path) as reopened:
         assert reopened.schema_version == SCHEMA_VERSION
         assert reopened.get_run("run-1") is not None
+
+
+def test_v31_database_adds_workspace_binding_and_writer_queue_without_losing_runs(
+    tmp_path,
+):
+    path = tmp_path / "run-journal.sqlite3"
+    with SQLiteRunJournal(path) as current:
+        current.ensure_run(run_id="run-1", project_id="project-1")
+
+    with sqlite3.connect(path) as connection:
+        connection.execute("DROP TABLE workspace_writer_leases")
+        connection.execute("DROP TABLE workspace_writer_requests")
+        connection.execute("DROP TABLE project_workspace_bindings")
+        connection.execute(
+            "DELETE FROM run_journal_migrations WHERE version = 32"
+        )
+        connection.execute("PRAGMA user_version = 31")
+
+    with SQLiteRunJournal(path) as upgraded:
+        assert upgraded.schema_version == SCHEMA_VERSION
+        assert upgraded.get_run("run-1") is not None
+        tables = {
+            row[0]
+            for row in upgraded._connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        assert {
+            "project_workspace_bindings",
+            "workspace_writer_requests",
+            "workspace_writer_leases",
+        } <= tables
 
 
 def test_v28_database_adds_memory_review_without_losing_interaction_children(

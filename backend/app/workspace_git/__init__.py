@@ -84,6 +84,12 @@ from app.workspace_git.retention import (
     DEFAULT_GIT_RETENTION_POLICY,
     GitRetentionPolicy,
 )
+from app.workspace_git.scheduler import (
+    WorkspaceWriterAdmission,
+    WorkspaceWriterInterruptedError,
+    WorkspaceWriterScheduler,
+    get_default_workspace_writer_scheduler,
+)
 from app.workspace_git.snapshot import (
     MaterializedOverlay,
     WorkspaceOverlayConflictError,
@@ -151,6 +157,9 @@ __all__ = [
     "WorkspaceGitObserver",
     "WorkspaceMutationService",
     "WorkspaceMutationReconciliation",
+    "WorkspaceWriterAdmission",
+    "WorkspaceWriterInterruptedError",
+    "WorkspaceWriterScheduler",
     "WorkspaceOverlayConflictError",
     "WorkspacePathNotFoundError",
     "WorkspaceSnapshotError",
@@ -167,5 +176,6 @@ __all__ = [
     "get_default_workspace_git_coordinator",
     "get_default_workspace_git_lifecycle",
     "get_default_workspace_mutation_service",
+    "get_default_workspace_writer_scheduler",
     "DEFAULT_GIT_RETENTION_POLICY",
 ]

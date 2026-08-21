@@ -74,6 +74,8 @@ const RECEIPT_ONLY_EVENT_TYPES = new Set([
   'approval.expiry_observed',
   'artifact.manifest.finalized',
   'artifact.uploaded',
+  'workspace.writer.released',
+  'workspace.writer.interrupted',
 ]);
 
 const RECEIPT_ONLY_EVENT_PREFIXES = [
@@ -1060,6 +1062,44 @@ function humanize(value: string): string {
     .replace(/^\w/, (letter) => letter.toUpperCase());
 }
 
+function workspaceWriterNotice(
+  base: ChatProjectionNodeBase,
+  data: unknown
+): ChatNoticeNode | null {
+  const payload = asRecord(data);
+  if (base.eventType === 'workspace.writer.queued') {
+    const position = Number(payload.queue_position);
+    const positionText =
+      Number.isInteger(position) && position > 0
+        ? ` Queue position: ${position}.`
+        : '';
+    return noticeNode(
+      base,
+      {
+        title: 'Waiting for workspace',
+        content:
+          'Another task is updating this Space. This task will start ' +
+          `automatically when the workspace is available.${positionText}`,
+      },
+      'info'
+    );
+  }
+  if (
+    base.eventType === 'workspace.writer.acquired' &&
+    payload.waited === true
+  ) {
+    return noticeNode(
+      base,
+      {
+        title: 'Workspace available',
+        content: 'This task now has write access and is continuing.',
+      },
+      'info'
+    );
+  }
+  return null;
+}
+
 function typedNode(
   base: ChatProjectionNodeBase,
   data: unknown
@@ -1067,6 +1107,10 @@ function typedNode(
   const { eventType } = base;
   const runStatus = RUN_STATUS_BY_EVENT[eventType];
   if (runStatus) return runStatusNode(base, data, runStatus);
+
+  if (eventType.startsWith('workspace.writer.')) {
+    return workspaceWriterNotice(base, data);
+  }
 
   if (eventType === 'user.message') {
     return messageNode(base, data, 'user');
@@ -1277,6 +1321,12 @@ export function adaptChatProjectionEvent(
 ): ChatProjectionDecision {
   const { base, data } = normalizeInput(input);
   if (!base.eventType.startsWith('legacy.')) {
+    if (
+      base.eventType === 'workspace.writer.acquired' &&
+      asRecord(data).waited !== true
+    ) {
+      return { kind: 'receipt', receiptType: base.eventType };
+    }
     if (
       RECEIPT_ONLY_EVENT_TYPES.has(base.eventType) ||
       RECEIPT_ONLY_EVENT_PREFIXES.some((prefix) =>

@@ -105,7 +105,70 @@ class WorkspaceGitLifecycle:
             raise ContentRepositoryError(f"Run {run_id!r} is unavailable")
         if canonical_run.status not in {"completed", "failed", "cancelled"}:
             return GitRunFinalization(run_id, "deferred_active", None, None)
+        try:
+            return self._finalize_terminal_run(
+                run_id,
+                terminal_status=canonical_run.status,
+            )
+        finally:
+            # Git projection/finalization may need attention, but a terminal
+            # Task must never retain the physical checkout writer forever.
+            self.coordinator.writer_scheduler.finish_task(run_id=run_id)
+
+    def _finalize_terminal_run(
+        self,
+        run_id: str,
+        *,
+        terminal_status: str,
+    ) -> GitRunFinalization:
         run = self.journal.get_run_git_materialization(run_id)
+        binding = (
+            self.journal.get_project_workspace_binding(run.project_id)
+            if run is not None
+            else None
+        )
+        if (
+            run is not None
+            and run.materialization_state == "unmaterialized"
+            and binding is not None
+            and binding.checkout_mode
+            in {"primary_checkout", "explicit_worktree"}
+        ):
+            root = Path(binding.worktree_path)
+            terminal_commit = self.git.current_head(root)
+            if terminal_commit is None:
+                return GitRunFinalization(
+                    run_id,
+                    "direct_no_commit",
+                    None,
+                    None,
+                )
+            ref_suffix = (
+                "completed"
+                if terminal_status == "completed"
+                else f"recovery-{terminal_status}"
+            )
+            task_ref = (
+                "refs/eigent/tasks/"
+                + canonical_digest({"run_id": run_id})[:32]
+                + f"/{ref_suffix}"
+            )
+            self.git.update_eigent_ref(root, task_ref, terminal_commit)
+            completed = self.journal.complete_direct_git_run(
+                run_id=run_id,
+                expected_base_commit=run.workspace_base_commit,
+                terminal_commit=terminal_commit,
+            )
+            return GitRunFinalization(
+                run_id,
+                (
+                    "committed_primary"
+                    if terminal_status == "completed"
+                    else f"preserved_primary_{terminal_status}"
+                ),
+                completed.promoted_commit,
+                task_ref,
+            )
         if run is None or run.materialization_state == "unmaterialized":
             return GitRunFinalization(run_id, "not_materialized", None, None)
         if run.materialization_state == "archived":

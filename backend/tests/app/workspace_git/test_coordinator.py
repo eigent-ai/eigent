@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from __future__ import annotations
 
 import subprocess
@@ -111,6 +125,12 @@ def test_run_admission_pins_base_without_creating_ref_or_worktree(
     assert admission.run.materialization_state == "unmaterialized"
     assert admission.run.run_ref is None
     assert admission.run.worktree_path is None
+    assert admission.binding.checkout_mode == "primary_checkout"
+    assert admission.binding.target_ref == "refs/heads/main"
+    assert admission.binding.worktree_path == str(space)
+    assert journal.get_project_workspace_binding("project-1") == (
+        admission.binding
+    )
     assert (
         _git(
             space,
@@ -121,6 +141,82 @@ def test_run_admission_pins_base_without_creating_ref_or_worktree(
         == ""
     )
     assert not (tmp_path / "state" / "worktrees").exists()
+
+
+def test_single_agent_queues_on_primary_but_workforce_runs_are_isolated(
+    tmp_path,
+    journal,
+):
+    content, coordinator, backend = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    seed = space / "seed.txt"
+    seed.write_text("seed\n", encoding="utf-8")
+    backend.commit_paths(space, (seed,), message="seed")
+    for run_id, project_id in (
+        ("run-single-1", "project-single-1"),
+        ("run-single-2", "project-single-2"),
+        ("run-workforce-1", "project-workforce-1"),
+        ("run-workforce-2", "project-workforce-2"),
+    ):
+        journal.ensure_run(
+            run_id=run_id,
+            project_id=project_id,
+            status="pending",
+        )
+
+    first_single = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-single-1",
+        run_id="run-single-1",
+        task_id="task-single-1",
+        session_mode="single-agent",
+    )
+    second_single = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-single-2",
+        run_id="run-single-2",
+        task_id="task-single-2",
+        session_mode="single-agent",
+    )
+    first_workforce = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-workforce-1",
+        run_id="run-workforce-1",
+        task_id="task-workforce-1",
+        session_mode="workforce",
+    )
+    second_workforce = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-workforce-2",
+        run_id="run-workforce-2",
+        task_id="task-workforce-2",
+        session_mode="workforce",
+    )
+
+    assert first_single is not None
+    assert second_single is not None
+    assert first_workforce is not None
+    assert second_workforce is not None
+    assert first_single.writer.request.status == "acquired"
+    assert second_single.writer.request.status == "queued"
+    assert (
+        first_single.writer.request.checkout_id
+        == second_single.writer.request.checkout_id
+    )
+    assert first_workforce.writer.request.status == "acquired"
+    assert second_workforce.writer.request.status == "acquired"
+    assert (
+        first_workforce.writer.request.checkout_id
+        != second_workforce.writer.request.checkout_id
+    )
+    assert first_workforce.binding.checkout_mode == "primary_checkout"
+    assert second_workforce.binding.checkout_mode == "primary_checkout"
 
 
 def test_unmaterialized_project_tracks_new_user_head_but_run_replay_stays_pinned(

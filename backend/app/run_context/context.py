@@ -39,6 +39,7 @@ class RunContext:
     binding_source: str
     workdir_mode: str | None
     browser_port: int
+    session_mode: str = "workforce"
     cdp_url: str | None = None
     api_key: str | None = None
     api_base_url: str | None = None

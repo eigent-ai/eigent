@@ -652,6 +652,15 @@ class GitBackend:
             raise GitBackendError("Git commit did not create HEAD")
         return head
 
+    def empty_tree_oid(self, repository_root: Path) -> str:
+        """Return Git's canonical empty-tree object without creating a commit."""
+
+        result = self._run(repository_root, ("mktree",), input_text="")
+        oid = result.stdout.strip()
+        if not oid:
+            raise GitBackendError("Git did not create the empty tree object")
+        return oid
+
     def show_commit_paths(
         self,
         repository_root: Path,

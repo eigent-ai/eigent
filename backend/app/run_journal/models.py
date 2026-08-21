@@ -59,6 +59,55 @@ class FollowUpRequestRecord:
 
 
 @dataclass(frozen=True)
+class ProjectWorkspaceBindingRecord:
+    project_id: str
+    repository_id: str
+    checkout_id: str
+    checkout_mode: str
+    target_ref: str
+    worktree_path: str
+    version: int
+    created_at: float
+    updated_at: float
+
+
+@dataclass(frozen=True)
+class WorkspaceWriterLeaseRecord:
+    repository_id: str
+    checkout_id: str
+    request_id: str
+    task_id: str
+    project_id: str
+    target_ref: str
+    acquired_at: float
+    version: int
+
+
+@dataclass(frozen=True)
+class WorkspaceWriterRequestRecord:
+    request_id: str
+    repository_id: str
+    checkout_id: str
+    task_id: str
+    project_id: str
+    target_ref: str
+    reason: str
+    status: str
+    queue_position: int | None
+    blocker_task_id: str | None
+    created_at: float
+    acquired_at: float | None
+    finished_at: float | None
+    updated_at: float
+
+
+@dataclass(frozen=True)
+class WorkspaceWriterReleaseResult:
+    finished: WorkspaceWriterRequestRecord
+    next_acquired: WorkspaceWriterRequestRecord | None
+
+
+@dataclass(frozen=True)
 class ProjectExecutionStateRecord:
     project_id: str
     state_version: int

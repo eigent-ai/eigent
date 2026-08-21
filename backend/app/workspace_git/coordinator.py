@@ -16,12 +16,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from app.run_journal import (
     OptimisticConcurrencyError,
     ProjectGitStateRecord,
+    ProjectWorkspaceBindingRecord,
     RunGitMaterializationRecord,
     SQLiteRunJournal,
     configured_run_journal_path,
@@ -34,12 +35,18 @@ from app.workspace_git.content import (
     ContentRepositoryService,
     RepositoryStateChangedError,
 )
+from app.workspace_git.scheduler import (
+    WorkspaceWriterAdmission,
+    WorkspaceWriterScheduler,
+)
 
 
 @dataclass(frozen=True)
 class GitRunAdmission:
     project: ProjectGitStateRecord
     run: RunGitMaterializationRecord
+    binding: ProjectWorkspaceBindingRecord
+    writer: WorkspaceWriterAdmission
 
 
 @dataclass(frozen=True)
@@ -59,6 +66,7 @@ class WorkspaceGitCoordinator:
         *,
         state_root: Path,
         git_backend: GitBackend | None = None,
+        writer_scheduler: WorkspaceWriterScheduler | None = None,
     ) -> None:
         self.journal = journal
         self.state_root = state_root.expanduser().resolve()
@@ -68,6 +76,9 @@ class WorkspaceGitCoordinator:
             state_root=self.state_root,
             git_backend=self.git,
         )
+        self.writer_scheduler = writer_scheduler or WorkspaceWriterScheduler(
+            journal
+        )
 
     def admit_run(
         self,
@@ -75,6 +86,8 @@ class WorkspaceGitCoordinator:
         space_id: str,
         project_id: str,
         run_id: str,
+        task_id: str | None = None,
+        session_mode: str = "workforce",
     ) -> GitRunAdmission | None:
         """Pin the latest Project/User commit and remain unmaterialized.
 
@@ -94,6 +107,29 @@ class WorkspaceGitCoordinator:
         status = self.content.status(repository.repository_id)
         probe = self.git.probe(Path(repository.root_path))
         user_ref = f"refs/heads/{probe.branch}" if probe.branch else None
+        binding = self.journal.get_project_workspace_binding(project_id)
+        if binding is None:
+            binding = self.journal.ensure_project_workspace_binding(
+                project_id=project_id,
+                repository_id=repository.repository_id,
+                checkout_id=(
+                    "checkout_"
+                    + canonical_digest(
+                        {
+                            "kind": "primary_checkout",
+                            "repository_id": repository.repository_id,
+                            "root_path_digest": repository.root_path_digest,
+                        }
+                    )[:32]
+                ),
+                checkout_mode="primary_checkout",
+                target_ref=user_ref or "refs/heads/main",
+                worktree_path=repository.root_path,
+            )
+        elif binding.repository_id != repository.repository_id:
+            raise ContentRepositoryError(
+                f"Project {project_id!r} is bound to another repository"
+            )
         project, run = self.journal.admit_git_run_workspace(
             run_id=run_id,
             project_id=project_id,
@@ -101,7 +137,36 @@ class WorkspaceGitCoordinator:
             user_head=status.diagnostics.state_token.head_oid,
             user_ref=user_ref,
         )
-        return GitRunAdmission(project=project, run=run)
+        writer_binding = binding
+        if session_mode != "single-agent":
+            isolated_digest = canonical_digest(
+                {
+                    "kind": "internal_run_checkout",
+                    "repository_id": repository.repository_id,
+                    "run_id": run_id,
+                }
+            )[:32]
+            writer_binding = replace(
+                binding,
+                checkout_id=f"checkout_internal_{isolated_digest}",
+                checkout_mode="explicit_worktree",
+                target_ref=f"refs/eigent/runs/{isolated_digest}/integration",
+                worktree_path=str(
+                    self.state_root / "worktrees" / "runs" / isolated_digest
+                ),
+            )
+        writer = self.writer_scheduler.admit_task(
+            run_id=run_id,
+            task_id=task_id or run_id,
+            project_id=project_id,
+            binding=writer_binding,
+        )
+        return GitRunAdmission(
+            project=project,
+            run=run,
+            binding=binding,
+            writer=writer,
+        )
 
     def ensure_run_materialized(
         self,

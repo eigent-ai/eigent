@@ -105,6 +105,56 @@ describe('chat projection presentation contract', () => {
     });
   });
 
+  it('shows shared-workspace waits without cluttering uncontended tasks', () => {
+    expect(
+      adaptChatProjectionEvent(
+        event(
+          'workspace.writer.queued',
+          { queue_position: 2, blocker_task_id: 'task-private' },
+          1
+        )
+      )
+    ).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'notice',
+        title: 'Waiting for workspace',
+        content: expect.stringContaining('Queue position: 2.'),
+      },
+    });
+    expect(
+      JSON.stringify(
+        adaptChatProjectionEvent(
+          event(
+            'workspace.writer.queued',
+            { queue_position: 2, blocker_task_id: 'task-private' },
+            1
+          )
+        )
+      )
+    ).not.toContain('task-private');
+
+    expect(
+      adaptChatProjectionEvent(
+        event('workspace.writer.acquired', { waited: false }, 2)
+      )
+    ).toEqual({
+      kind: 'receipt',
+      receiptType: 'workspace.writer.acquired',
+    });
+    expect(
+      adaptChatProjectionEvent(
+        event('workspace.writer.acquired', { waited: true }, 3)
+      )
+    ).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'notice',
+        title: 'Workspace available',
+      },
+    });
+  });
+
   it('keeps canonical transcript, tool outcomes, and safe artifact identity semantic', () => {
     const inputs = [
       event('user.message', { content: 'Create the report' }, 1),

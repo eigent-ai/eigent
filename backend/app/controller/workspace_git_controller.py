@@ -954,7 +954,15 @@ def _run_change_context(
     ):
         raise HTTPException(status_code=404, detail="Run Git state not found")
     _assert_repository_binding(repository, root)
-    if run.workspace_base_commit is None or run.promoted_commit is None:
+    canonical_run = service.journal.get_run(run_id)
+    terminal = canonical_run is not None and canonical_run.status in {
+        "completed",
+        "failed",
+        "cancelled",
+    }
+    if not terminal and (
+        run.workspace_base_commit is None or run.promoted_commit is None
+    ):
         raise HTTPException(
             status_code=409,
             detail="Run changes are not finalized yet",

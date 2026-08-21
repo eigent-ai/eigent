@@ -20,11 +20,12 @@ from pathlib import Path
 import pytest
 
 from app.run_context import RunContext
-from app.run_journal import SQLiteRunJournal
+from app.run_journal import RunEventDraft, SQLiteRunJournal
 from app.workspace_git import (
     ContentRepositoryService,
     GitBackend,
     WorkspaceGitCoordinator,
+    WorkspaceGitLifecycle,
     WorkspaceMutationService,
     WorkspaceSnapshotService,
 )
@@ -61,6 +62,7 @@ def _services(tmp_path: Path, journal: SQLiteRunJournal):
         state_root=state_root,
         coordinator=coordinator,
         snapshots=snapshots,
+        primary_checkout_enabled=False,
     )
     return content, coordinator, mutations, backend
 
@@ -79,6 +81,7 @@ def _context(space: Path, *, run_id: str = "run-1") -> RunContext:
         binding_source="test",
         workdir_mode="direct-write",
         browser_port=9222,
+        session_mode="single-agent",
     )
 
 
@@ -97,6 +100,8 @@ def _admit(
         space_id="space-1",
         project_id="project-1",
         run_id=run_id,
+        task_id="task-1",
+        session_mode="single-agent",
     )
     assert admission is not None
     return admission
@@ -703,3 +708,244 @@ def test_broad_write_checkpoints_only_actual_process_delta(tmp_path, journal):
         ("seed.txt", "modified", "checkpointed"),
     ]
     assert seed.read_text() == "seed"
+
+
+def test_primary_checkout_write_commits_in_place_and_records_run_oids(
+    tmp_path,
+    journal,
+):
+    content, coordinator, _, backend = _services(tmp_path, journal)
+    direct = WorkspaceMutationService(
+        journal,
+        state_root=tmp_path / "state",
+        coordinator=coordinator,
+    )
+    lifecycle = WorkspaceGitLifecycle(
+        journal,
+        state_root=tmp_path / "state",
+        coordinator=coordinator,
+    )
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    seed = space / "seed.txt"
+    seed.write_text("seed", encoding="utf-8")
+    base = backend.commit_paths(space, (seed,), message="seed")
+    admission = _admit(journal, coordinator)
+
+    prepared = direct.prepare_file_write(
+        context=_context(space),
+        filename="generated.txt",
+        operation_request_id="direct-file-1",
+        actor_id="developer-agent",
+        trigger="filesystem.write",
+    )
+    assert prepared is not None
+    assert prepared.workspace is None
+    assert prepared.agent_workspace is None
+    assert prepared.mutation_root == space
+    prepared.target_path.write_text("visible now", encoding="utf-8")
+
+    checkpoint = direct.complete_file_write(
+        prepared,
+        operation_request_id="direct-file-1",
+        actor_id="developer-agent",
+        trigger="filesystem.write",
+    )
+
+    assert checkpoint == backend.current_head(space)
+    assert (space / "generated.txt").read_text() == "visible now"
+    assert not (tmp_path / "state" / "worktrees").exists()
+    message = _git(space, "show", "-s", "--format=%B", checkpoint or "HEAD")
+    assert "Eigent-Task-ID: task-1" in message
+    assert "Eigent-Run-ID: run-1" in message
+    journal.append_event(
+        "run-1",
+        RunEventDraft(
+            event_id="run-1-completed",
+            event_type="run.completed",
+            payload={"reason": "test"},
+        ),
+    )
+
+    finalized = lifecycle.finalize_run("run-1")
+    persisted = journal.get_run_git_materialization("run-1")
+
+    assert finalized.outcome == "committed_primary"
+    assert persisted is not None
+    assert persisted.workspace_base_commit == base
+    assert persisted.promoted_commit == checkpoint
+    assert tuple(
+        item.relative_path
+        for item in backend.changed_paths_between(
+            space,
+            base_commit=base,
+            target_commit=checkpoint or "HEAD",
+        )
+    ) == ("generated.txt",)
+    assert admission.writer.request.status == "acquired"
+    writer = journal.get_workspace_writer_request("workspace-writer:run-1")
+    assert writer is not None and writer.status == "released"
+
+
+def test_primary_checkout_preserves_dirty_user_preimage_before_agent_diff(
+    tmp_path,
+    journal,
+):
+    content, coordinator, _, backend = _services(tmp_path, journal)
+    direct = WorkspaceMutationService(
+        journal,
+        state_root=tmp_path / "state",
+        coordinator=coordinator,
+    )
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    seed = space / "seed.txt"
+    seed.write_text("seed", encoding="utf-8")
+    backend.commit_paths(space, (seed,), message="seed")
+    seed.write_text("user draft", encoding="utf-8")
+    _admit(journal, coordinator)
+
+    prepared = direct.prepare_file_write(
+        context=_context(space),
+        filename="generated.txt",
+        operation_request_id="direct-file-2",
+        actor_id="developer-agent",
+        trigger="filesystem.write",
+    )
+    assert prepared is not None
+    preserved_base = backend.current_head(space)
+    assert preserved_base is not None
+    assert _git(space, "show", f"{preserved_base}:seed.txt") == "user draft"
+    prepared.target_path.write_text("agent output", encoding="utf-8")
+    terminal = direct.complete_file_write(
+        prepared,
+        operation_request_id="direct-file-2",
+        actor_id="developer-agent",
+        trigger="filesystem.write",
+    )
+
+    run = journal.get_run_git_materialization("run-1")
+    assert run is not None and run.workspace_base_commit == preserved_base
+    assert tuple(
+        item.relative_path
+        for item in backend.changed_paths_between(
+            space,
+            base_commit=preserved_base,
+            target_commit=terminal or "HEAD",
+        )
+    ) == ("generated.txt",)
+
+
+def test_primary_checkout_broad_process_commits_only_visible_checkout(
+    tmp_path,
+    journal,
+):
+    content, coordinator, _, backend = _services(tmp_path, journal)
+    direct = WorkspaceMutationService(
+        journal,
+        state_root=tmp_path / "state",
+        coordinator=coordinator,
+    )
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    seed = space / "seed.txt"
+    seed.write_text("seed", encoding="utf-8")
+    backend.commit_paths(space, (seed,), message="seed")
+    _admit(journal, coordinator)
+
+    prepared = direct.prepare_broad_write(
+        context=_context(space),
+        operation_request_id="direct-terminal-1",
+        actor_id="developer-agent",
+        trigger="terminal.execute",
+    )
+    assert prepared is not None
+    (prepared.mutation_root / "seed.txt").write_text(
+        "updated", encoding="utf-8"
+    )
+    (prepared.mutation_root / "generated.csv").write_text(
+        "a,b\n1,2", encoding="utf-8"
+    )
+
+    commits = direct.complete_broad_write(
+        prepared,
+        operation_request_id="direct-terminal-1",
+        actor_id="developer-agent",
+        trigger="terminal.execute",
+    )
+
+    assert len(commits) == 1
+    assert backend.is_worktree_clean(space)
+    assert _git(space, "show", "HEAD:seed.txt") == "updated"
+    assert _git(space, "show", "HEAD:generated.csv") == "a,b\n1,2"
+    assert not (tmp_path / "state" / "worktrees").exists()
+
+
+def test_failed_primary_checkout_run_keeps_a_recovery_ref(tmp_path, journal):
+    content, coordinator, _, backend = _services(tmp_path, journal)
+    direct = WorkspaceMutationService(
+        journal,
+        state_root=tmp_path / "state",
+        coordinator=coordinator,
+    )
+    lifecycle = WorkspaceGitLifecycle(
+        journal,
+        state_root=tmp_path / "state",
+        coordinator=coordinator,
+    )
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    seed = space / "seed.txt"
+    seed.write_text("seed", encoding="utf-8")
+    backend.commit_paths(space, (seed,), message="seed")
+    _admit(journal, coordinator)
+    prepared = direct.prepare_file_write(
+        context=_context(space),
+        filename="partial.txt",
+        operation_request_id="direct-partial-1",
+        actor_id="developer-agent",
+        trigger="filesystem.write",
+    )
+    assert prepared is not None
+    prepared.target_path.write_text("recoverable", encoding="utf-8")
+    terminal = direct.complete_file_write(
+        prepared,
+        operation_request_id="direct-partial-1",
+        actor_id="developer-agent",
+        trigger="filesystem.write",
+    )
+    journal.append_event(
+        "run-1",
+        RunEventDraft(
+            event_id="run-1-failed",
+            event_type="run.failed",
+            payload={"reason": "test"},
+        ),
+    )
+
+    finalized = lifecycle.finalize_run("run-1")
+
+    assert finalized.outcome == "preserved_primary_failed"
+    assert finalized.archive_ref is not None
+    assert finalized.archive_ref.endswith("/recovery-failed")
+    assert backend.ref_oid(space, finalized.archive_ref) == terminal

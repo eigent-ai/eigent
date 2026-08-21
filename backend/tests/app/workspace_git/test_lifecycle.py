@@ -77,6 +77,7 @@ def test_terminal_run_promotes_refreshes_and_archives(
         journal,
         state_root=state_root,
         coordinator=coordinator,
+        primary_checkout_enabled=False,
     )
     lifecycle = WorkspaceGitLifecycle(
         journal,
@@ -196,6 +197,8 @@ def test_terminal_run_promotes_refreshes_and_archives(
 
     assert result.outcome == "archived"
     assert replay == result
+    writer = journal.get_workspace_writer_request("workspace-writer:run-1")
+    assert writer is not None and writer.status == "released"
     run = journal.get_run_git_materialization("run-1")
     project = journal.get_project_git_state("project-1")
     assert run is not None and project is not None
@@ -243,7 +246,10 @@ def test_eigent_space_auto_apply_never_overwrites_a_user_edit(
         journal, state_root=state_root, git_backend=git
     )
     mutations = WorkspaceMutationService(
-        journal, state_root=state_root, coordinator=coordinator
+        journal,
+        state_root=state_root,
+        coordinator=coordinator,
+        primary_checkout_enabled=False,
     )
     lifecycle = WorkspaceGitLifecycle(
         journal, state_root=state_root, coordinator=coordinator
@@ -315,6 +321,7 @@ def test_terminal_run_waits_for_unfinished_change_set_item(tmp_path, journal):
         journal,
         state_root=state_root,
         coordinator=coordinator,
+        primary_checkout_enabled=False,
     )
     lifecycle = WorkspaceGitLifecycle(
         journal,

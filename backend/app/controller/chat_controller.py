@@ -957,6 +957,7 @@ def _build_run_context(
         binding_source=frozen_dirs.binding_source,
         workdir_mode=frozen_dirs.workdir_mode or data.workdir_mode,
         browser_port=browser_port,
+        session_mode=data.session_mode,
         cdp_url=cdp_url,
         api_key=data.api_key,
         api_base_url=api_base_url,
@@ -1257,6 +1258,8 @@ async def _prepare_chat_run(
                         space_id=run_context.space_id,
                         project_id=run_context.project_id,
                         run_id=run_context.run_id,
+                        task_id=run_context.task_id,
+                        session_mode=run_context.session_mode,
                     )
                 except Exception:
                     chat_logger.warning(
@@ -1328,6 +1331,8 @@ async def _prepare_chat_run(
                     space_id=run_context.space_id,
                     project_id=run_context.project_id,
                     run_id=run_context.run_id,
+                    task_id=run_context.task_id,
+                    session_mode=run_context.session_mode,
                 )
             except Exception:
                 # Git is optional at Run admission. A broken repository blocks

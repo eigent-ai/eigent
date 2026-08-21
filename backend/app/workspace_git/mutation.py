@@ -27,6 +27,7 @@ from app.run_context import RunContext
 from app.run_journal import (
     GitChangeSetRecord,
     GitMutationIntentRecord,
+    ProjectWorkspaceBindingRecord,
     SQLiteRunJournal,
     configured_run_journal_path,
     get_default_run_journal,
@@ -51,24 +52,44 @@ from app.workspace_git.workforce import (
 @dataclass(frozen=True)
 class PreparedWorkspaceWrite:
     context: RunContext
-    workspace: GitRunWorkspace
-    agent_workspace: GitAgentWorkspace
+    workspace: GitRunWorkspace | None
+    agent_workspace: GitAgentWorkspace | None
     change_set: GitChangeSetRecord
     intent: GitMutationIntentRecord
     relative_path: str
     target_path: Path
     preimage_digest: str | None
     overlay: MaterializedOverlay | None
+    direct_binding: ProjectWorkspaceBindingRecord | None = None
+
+    @property
+    def mutation_root(self) -> Path:
+        if self.direct_binding is not None:
+            return Path(self.direct_binding.worktree_path)
+        if self.agent_workspace is None:
+            raise ContentRepositoryError("prepared write has no mutation root")
+        return self.agent_workspace.agent_worktree
 
 
 @dataclass(frozen=True)
 class PreparedWorkspaceExecution:
     context: RunContext
-    workspace: GitRunWorkspace
-    agent_workspace: GitAgentWorkspace
+    workspace: GitRunWorkspace | None
+    agent_workspace: GitAgentWorkspace | None
     change_set: GitChangeSetRecord
     intent: GitMutationIntentRecord
     imported_overlays: tuple[MaterializedOverlay, ...]
+    direct_binding: ProjectWorkspaceBindingRecord | None = None
+
+    @property
+    def mutation_root(self) -> Path:
+        if self.direct_binding is not None:
+            return Path(self.direct_binding.worktree_path)
+        if self.agent_workspace is None:
+            raise ContentRepositoryError(
+                "prepared execution has no mutation root"
+            )
+        return self.agent_workspace.agent_worktree
 
 
 @dataclass(frozen=True)
@@ -91,6 +112,7 @@ class WorkspaceMutationService:
         coordinator: WorkspaceGitCoordinator | None = None,
         snapshots: WorkspaceSnapshotService | None = None,
         workforce: WorkforceGitService | None = None,
+        primary_checkout_enabled: bool = True,
     ) -> None:
         self.journal = journal
         self.state_root = state_root.expanduser().resolve()
@@ -110,6 +132,7 @@ class WorkspaceMutationService:
             state_root=self.state_root,
             coordinator=self.coordinator,
         )
+        self.primary_checkout_enabled = primary_checkout_enabled
 
     def prepare_file_write(
         self,
@@ -134,6 +157,26 @@ class WorkspaceMutationService:
             repository_root=Path(repository.root_path),
             filename=filename,
         )
+        binding = self.journal.get_project_workspace_binding(
+            context.project_id
+        )
+        if (
+            self.primary_checkout_enabled
+            and context.session_mode == "single-agent"
+            and binding is not None
+            and binding.checkout_mode
+            in {"primary_checkout", "explicit_worktree"}
+        ):
+            return self._prepare_direct_file_write(
+                context=context,
+                run=run,
+                repository_root=Path(repository.root_path),
+                binding=binding,
+                relative_path=relative_path,
+                operation_request_id=operation_request_id,
+                actor_id=actor_id,
+                trigger=trigger,
+            )
         pinned_entry = None
         try:
             pinned_entry = self.snapshots.pin_path(
@@ -252,6 +295,25 @@ class WorkspaceMutationService:
         repository = self.journal.get_git_repository(run.repository_id)
         if project is None or repository is None:
             raise ContentRepositoryError("Run Git owner is unavailable")
+        binding = self.journal.get_project_workspace_binding(
+            context.project_id
+        )
+        if (
+            self.primary_checkout_enabled
+            and context.session_mode == "single-agent"
+            and binding is not None
+            and binding.checkout_mode
+            in {"primary_checkout", "explicit_worktree"}
+        ):
+            return self._prepare_direct_broad_write(
+                context=context,
+                run=run,
+                repository_root=Path(repository.root_path),
+                binding=binding,
+                operation_request_id=operation_request_id,
+                actor_id=actor_id,
+                trigger=trigger,
+            )
         user_token = self.git.repo_state_token(Path(repository.root_path))
         workspace = self.coordinator.ensure_run_materialized(
             run_id=context.run_id,
@@ -331,6 +393,17 @@ class WorkspaceMutationService:
     ) -> tuple[str, ...]:
         """Capture a bounded terminal/script delta after the process exits."""
 
+        if prepared.direct_binding is not None:
+            return self._complete_direct_broad_write(
+                prepared,
+                operation_request_id=operation_request_id,
+                actor_id=actor_id,
+                trigger=trigger,
+            )
+        if prepared.agent_workspace is None:
+            raise ContentRepositoryError(
+                "legacy broad write has no Agent worktree"
+            )
         commits: list[str] = []
         overlay_paths = {
             item.relative_path: item for item in prepared.imported_overlays
@@ -470,6 +543,12 @@ class WorkspaceMutationService:
     ) -> None:
         """Renew the lease while an admitted broad process is still running."""
 
+        if prepared.direct_binding is not None:
+            return
+        if prepared.agent_workspace is None:
+            raise ContentRepositoryError(
+                "legacy broad write has no Agent worktree"
+            )
         self.workforce.renew_workspace(
             prepared.agent_workspace,
             now=now,
@@ -486,6 +565,17 @@ class WorkspaceMutationService:
     ) -> str | None:
         """Checkpoint one successful exact-path write and return its commit."""
 
+        if prepared.direct_binding is not None:
+            return self._complete_direct_file_write(
+                prepared,
+                operation_request_id=operation_request_id,
+                actor_id=actor_id,
+                trigger=trigger,
+            )
+        if prepared.agent_workspace is None:
+            raise ContentRepositoryError(
+                "legacy file write has no Agent worktree"
+            )
         result_digest = self._digest_file(prepared.target_path)
         if result_digest is None and prepared.preimage_digest is None:
             self._complete_intent(prepared.intent)
@@ -640,6 +730,412 @@ class WorkspaceMutationService:
             ),
         )
         return outcome.merged_commit or checkpoint.commit_oid
+
+    def _prepare_direct_file_write(
+        self,
+        *,
+        context: RunContext,
+        run,
+        repository_root: Path,
+        binding: ProjectWorkspaceBindingRecord,
+        relative_path: str,
+        operation_request_id: str,
+        actor_id: str,
+        trigger: str,
+    ) -> PreparedWorkspaceWrite:
+        root = self._require_direct_checkout(
+            context=context,
+            run=run,
+            repository_root=repository_root,
+            binding=binding,
+        )
+        run = self._preserve_direct_preimage(
+            context=context,
+            run=run,
+            binding=binding,
+            root=root,
+            operation_request_id=operation_request_id,
+        )
+        target = root / relative_path
+        preimage_digest = self._digest_file(target)
+        change_set = self._ensure_direct_change_set(
+            context=context,
+            run=run,
+            binding=binding,
+        )
+        existing_intent = next(
+            (
+                item
+                for item in self.journal.list_git_mutation_intents()
+                if item.change_set_id == change_set.change_set_id
+                and item.operation_request_id == operation_request_id
+            ),
+            None,
+        )
+        if existing_intent is not None:
+            preimage_digest = existing_intent.preimage_digest
+        intent = self.journal.ensure_git_mutation_intent(
+            intent_id=self._intent_id(
+                change_set.change_set_id,
+                operation_request_id,
+            ),
+            change_set_id=change_set.change_set_id,
+            operation_request_id=operation_request_id,
+            mutation_scope="exact_path",
+            relative_path=relative_path,
+            preimage_digest=preimage_digest,
+            actor_id=actor_id,
+            trigger=trigger,
+        )
+        return PreparedWorkspaceWrite(
+            context=context,
+            workspace=None,
+            agent_workspace=None,
+            change_set=change_set,
+            intent=intent,
+            relative_path=relative_path,
+            target_path=target,
+            preimage_digest=preimage_digest,
+            overlay=None,
+            direct_binding=binding,
+        )
+
+    def _prepare_direct_broad_write(
+        self,
+        *,
+        context: RunContext,
+        run,
+        repository_root: Path,
+        binding: ProjectWorkspaceBindingRecord,
+        operation_request_id: str,
+        actor_id: str,
+        trigger: str,
+    ) -> PreparedWorkspaceExecution:
+        root = self._require_direct_checkout(
+            context=context,
+            run=run,
+            repository_root=repository_root,
+            binding=binding,
+        )
+        run = self._preserve_direct_preimage(
+            context=context,
+            run=run,
+            binding=binding,
+            root=root,
+            operation_request_id=operation_request_id,
+        )
+        change_set = self._ensure_direct_change_set(
+            context=context,
+            run=run,
+            binding=binding,
+        )
+        intent = self.journal.ensure_git_mutation_intent(
+            intent_id=self._intent_id(
+                change_set.change_set_id,
+                operation_request_id,
+            ),
+            change_set_id=change_set.change_set_id,
+            operation_request_id=operation_request_id,
+            mutation_scope="broad_process",
+            relative_path=None,
+            preimage_digest=None,
+            actor_id=actor_id,
+            trigger=trigger,
+        )
+        return PreparedWorkspaceExecution(
+            context=context,
+            workspace=None,
+            agent_workspace=None,
+            change_set=change_set,
+            intent=intent,
+            imported_overlays=(),
+            direct_binding=binding,
+        )
+
+    def _require_direct_checkout(
+        self,
+        *,
+        context: RunContext,
+        run,
+        repository_root: Path,
+        binding: ProjectWorkspaceBindingRecord,
+    ) -> Path:
+        root = Path(binding.worktree_path).expanduser().resolve()
+        repository_root = repository_root.expanduser().resolve()
+        if binding.checkout_mode == "primary_checkout":
+            if root != repository_root:
+                raise ContentRepositoryError(
+                    "primary checkout binding no longer matches the Space root"
+                )
+        elif not any(
+            item.path == root and item.ref_name == binding.target_ref
+            for item in self.git.list_worktrees(repository_root)
+        ):
+            raise ContentRepositoryError(
+                "explicit Project worktree is no longer registered for its "
+                "selected branch"
+            )
+        if binding.repository_id != run.repository_id:
+            raise ContentRepositoryError(
+                "Project checkout belongs to another Content Repository"
+            )
+        probe = self.git.probe(root)
+        observed_ref = f"refs/heads/{probe.branch}" if probe.branch else None
+        if observed_ref != binding.target_ref:
+            raise ContentRepositoryError(
+                "bound checkout is on another branch; switch it explicitly "
+                "before this Task writes"
+            )
+        request = self.journal.get_workspace_writer_request(
+            f"workspace-writer:{context.run_id}"
+        )
+        if (
+            request is None
+            or request.status != "acquired"
+            or request.task_id != context.task_id
+            or request.checkout_id != binding.checkout_id
+        ):
+            raise ContentRepositoryError(
+                "Task does not own the bound checkout writer lease"
+            )
+        return root
+
+    def _preserve_direct_preimage(
+        self,
+        *,
+        context: RunContext,
+        run,
+        binding: ProjectWorkspaceBindingRecord,
+        root: Path,
+        operation_request_id: str,
+    ):
+        managed = any(
+            self.journal.list_git_change_set_items(item.change_set_id)
+            for item in self.journal.list_git_change_sets()
+            if item.run_id == context.run_id
+        )
+        if managed:
+            return run
+        status = self.git.worktree_status(root)
+        if not status:
+            return run
+        paths = tuple(root / path for path in sorted(status))
+        checkpoint = self.content.checkpoint(
+            run.repository_id,
+            operation_request_id=self._request_id(
+                operation_request_id,
+                "direct-user-preimage",
+            ),
+            expected_repo_state_digest=self.git.repo_state_token(root).digest,
+            paths=paths,
+            path_sources={path: "user_selected" for path in sorted(status)},
+            target_role="user",
+            target_id=context.project_id,
+            actor_id=context.user_id or "local-user",
+            trigger="workspace.preimage",
+            message=f"Save workspace before Task {context.task_id}",
+            worktree_root=root,
+            commit_trailers={
+                "Eigent-Initiator": "User",
+                "Eigent-Run-ID": context.run_id,
+                "Eigent-Task-ID": context.task_id,
+            },
+        )
+        return self.journal.rebase_unmaterialized_git_run(
+            run_id=context.run_id,
+            expected_base_commit=run.workspace_base_commit,
+            base_commit=checkpoint.commit_oid,
+            base_ref=binding.target_ref,
+        )
+
+    def _ensure_direct_change_set(
+        self,
+        *,
+        context: RunContext,
+        run,
+        binding: ProjectWorkspaceBindingRecord,
+    ) -> GitChangeSetRecord:
+        base_commit = run.workspace_base_commit or self.git.current_head(
+            Path(binding.worktree_path)
+        )
+        if base_commit is None:
+            base_commit = self.git.empty_tree_oid(Path(binding.worktree_path))
+            run = self.journal.rebase_unmaterialized_git_run(
+                run_id=context.run_id,
+                expected_base_commit=None,
+                base_commit=base_commit,
+                base_ref=binding.target_ref,
+            )
+        return self.journal.ensure_git_change_set(
+            change_set_id=(
+                "changeset_"
+                + canonical_digest(
+                    {
+                        "run_id": context.run_id,
+                        "checkout_id": binding.checkout_id,
+                        "target_ref": binding.target_ref,
+                    }
+                )[:32]
+            ),
+            run_id=context.run_id,
+            repository_id=run.repository_id,
+            worktree_ref=binding.target_ref,
+            base_commit=base_commit,
+        )
+
+    def _complete_direct_file_write(
+        self,
+        prepared: PreparedWorkspaceWrite,
+        *,
+        operation_request_id: str,
+        actor_id: str,
+        trigger: str,
+    ) -> str | None:
+        result_digest = self._digest_file(prepared.target_path)
+        if result_digest == prepared.preimage_digest:
+            self._complete_intent(prepared.intent)
+            return None
+        size = (
+            prepared.target_path.stat().st_size
+            if result_digest is not None
+            else None
+        )
+        tracked = self.git.is_tracked(
+            prepared.mutation_root,
+            prepared.target_path,
+        )
+        change_kind = (
+            "deleted"
+            if result_digest is None
+            else ("modified" if tracked else "added")
+        )
+        source = (
+            "agent_created" if change_kind == "added" else "agent_modified"
+        )
+        item = self.journal.put_git_change_set_item(
+            change_set_id=prepared.change_set.change_set_id,
+            relative_path=prepared.relative_path,
+            operation_request_id=operation_request_id,
+            actor_id=actor_id,
+            trigger=trigger,
+            change_kind=change_kind,
+            source=source,
+            preimage_digest=prepared.preimage_digest,
+            result_digest=result_digest,
+            size_bytes=size,
+        )
+        if item.item_state == "checkpointed":
+            self._complete_intent(prepared.intent)
+            return self.git.current_head(prepared.mutation_root)
+        checkpoint = self.content.checkpoint(
+            prepared.change_set.repository_id,
+            operation_request_id=self._request_id(
+                operation_request_id,
+                "direct-delta",
+            ),
+            expected_repo_state_digest=self.git.repo_state_token(
+                prepared.mutation_root
+            ).digest,
+            paths=(prepared.target_path,),
+            path_sources={prepared.relative_path: source},
+            target_role="run",
+            target_id=prepared.context.run_id,
+            actor_id=actor_id,
+            trigger=trigger,
+            message=f"Update {prepared.relative_path}",
+            worktree_root=prepared.mutation_root,
+            commit_trailers=self._direct_commit_trailers(prepared.context),
+        )
+        self.journal.update_git_change_set_item_state(
+            change_set_id=prepared.change_set.change_set_id,
+            relative_path=prepared.relative_path,
+            expected_state=item.item_state,
+            state="checkpointed",
+        )
+        self._complete_intent(prepared.intent)
+        return checkpoint.commit_oid
+
+    def _complete_direct_broad_write(
+        self,
+        prepared: PreparedWorkspaceExecution,
+        *,
+        operation_request_id: str,
+        actor_id: str,
+        trigger: str,
+    ) -> tuple[str, ...]:
+        root = prepared.mutation_root
+        status = self.git.worktree_status(root)
+        if not status:
+            self._complete_intent(prepared.intent)
+            return ()
+        paths: list[Path] = []
+        sources: dict[str, str] = {}
+        items = []
+        for relative_path in sorted(status):
+            target = root / relative_path
+            tracked = self.git.is_tracked(root, target)
+            result_digest = self._digest_file(target)
+            change_kind = (
+                "deleted"
+                if result_digest is None
+                else ("modified" if tracked else "added")
+            )
+            source = (
+                "agent_created" if change_kind == "added" else "agent_modified"
+            )
+            item = self.journal.put_git_change_set_item(
+                change_set_id=prepared.change_set.change_set_id,
+                relative_path=relative_path,
+                operation_request_id=operation_request_id,
+                actor_id=actor_id,
+                trigger=trigger,
+                change_kind=change_kind,
+                source="worktree_delta",
+                preimage_digest=None,
+                result_digest=result_digest,
+                size_bytes=(
+                    target.stat().st_size if target.is_file() else None
+                ),
+            )
+            paths.append(target)
+            sources[relative_path] = source
+            items.append(item)
+        checkpoint = self.content.checkpoint(
+            prepared.change_set.repository_id,
+            operation_request_id=self._request_id(
+                operation_request_id,
+                "direct-terminal-delta",
+            ),
+            expected_repo_state_digest=self.git.repo_state_token(root).digest,
+            paths=tuple(paths),
+            path_sources=sources,
+            target_role="run",
+            target_id=prepared.context.run_id,
+            actor_id=actor_id,
+            trigger=trigger,
+            message="Checkpoint Task workspace changes",
+            worktree_root=root,
+            commit_trailers=self._direct_commit_trailers(prepared.context),
+        )
+        for item in items:
+            if item.item_state != "checkpointed":
+                self.journal.update_git_change_set_item_state(
+                    change_set_id=prepared.change_set.change_set_id,
+                    relative_path=item.relative_path,
+                    expected_state=item.item_state,
+                    state="checkpointed",
+                )
+        self._complete_intent(prepared.intent)
+        return (checkpoint.commit_oid,)
+
+    @staticmethod
+    def _direct_commit_trailers(context: RunContext) -> dict[str, str]:
+        return {
+            "Eigent-Initiator": "Agent",
+            "Eigent-Run-ID": context.run_id,
+            "Eigent-Task-ID": context.task_id,
+            "Eigent-Task-Status": "checkpointed",
+        }
 
     def _complete_intent(self, intent: GitMutationIntentRecord) -> None:
         self.journal.update_git_mutation_intent_status(

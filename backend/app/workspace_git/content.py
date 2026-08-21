@@ -299,12 +299,18 @@ class ContentRepositoryService:
         message: str,
         worktree_root: Path | None = None,
         repository_lock_held: bool = False,
+        commit_trailers: dict[str, str] | None = None,
     ) -> GitCheckpointRecord:
         self._validate_identifier("operation_request_id", operation_request_id)
         self._validate_text("actor_id", actor_id)
         self._validate_text("trigger", trigger)
         self._validate_text("message", message, max_length=500)
         self._validate_text("target_id", target_id, max_length=256)
+        trailers = dict(commit_trailers or {})
+        for key, value in trailers.items():
+            if not re.fullmatch(r"[A-Za-z][A-Za-z0-9-]{0,63}", key):
+                raise ValueError("invalid commit trailer key")
+            self._validate_text("commit trailer value", value, max_length=256)
         if target_role not in _TARGET_ROLES:
             raise ValueError(f"unsupported checkpoint target {target_role!r}")
         repository = self._repository(repository_id)
@@ -331,6 +337,7 @@ class ContentRepositoryService:
             "actor_id": actor_id,
             "trigger": trigger,
             "message": message,
+            "commit_trailers": trailers,
             "worktree_ref": self._worktree_ref(repository, root),
         }
         operation_id = (
@@ -448,6 +455,11 @@ class ContentRepositoryService:
                 f"Eigent-Actor: {actor_id}\n"
                 f"Eigent-Trigger: {trigger}"
             )
+            if trailers:
+                commit_message += "\n" + "\n".join(
+                    f"{key}: {value}"
+                    for key, value in sorted(trailers.items())
+                )
             try:
                 commit_oid = self.git.commit_paths(
                     root,

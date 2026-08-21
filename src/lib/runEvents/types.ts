@@ -27,6 +27,7 @@ export type RunEventCategory =
   | 'tool'
   | 'artifact'
   | 'runtime'
+  | 'workspace'
   | 'sync'
   | 'memory'
   | 'other';
@@ -55,6 +56,7 @@ export function categoryForRunEvent(eventType: string): RunEventCategory {
   if (eventType.startsWith('interaction.')) return 'interaction';
   if (eventType.startsWith('tool.')) return 'tool';
   if (eventType.startsWith('runtime.')) return 'runtime';
+  if (eventType.startsWith('workspace.')) return 'workspace';
   if (eventType.startsWith('sync.') || eventType.startsWith('run.sync.')) {
     return 'sync';
   }

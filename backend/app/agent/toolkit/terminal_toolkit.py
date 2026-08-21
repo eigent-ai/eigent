@@ -803,7 +803,12 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 # CAMEL reads this field immediately before process spawn.
                 # Existing sessions keep their original cwd; a new command is
                 # never started in the User Worktree once Git is enabled.
-                self.working_dir = str(prepared.agent_workspace.agent_worktree)
+                mutation_root = getattr(prepared, "mutation_root", None)
+                if mutation_root is None:
+                    # Compatibility for injected/test mutation adapters that
+                    # still expose only the legacy Agent workspace shape.
+                    mutation_root = prepared.agent_workspace.agent_worktree
+                self.working_dir = str(mutation_root)
 
         isolate_local_session = (
             runtime_env_provider is None
