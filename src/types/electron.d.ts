@@ -23,8 +23,7 @@ interface IpcRenderer {
 }
 
 type LocalPathActionResult =
-  | { success: true }
-  | { success: false; error: string };
+  { success: true } | { success: false; error: string };
 
 interface ElectronAPI {
   closeWindow: () => void;
