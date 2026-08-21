@@ -15,6 +15,7 @@
 import { ControlInputRouter } from '@/components/ChatBox/BottomBox/ControlInput';
 import type { BottomBoxApprovalVariant } from '@/components/ChatBox/BottomBox/types';
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 function approvalVariant(
@@ -33,9 +34,8 @@ function approvalVariant(
   };
 }
 
-// jsdom reports no Electron platform, so labels resolve to the Enter wording.
-describe('BottomBox approval shortcuts', () => {
-  it('maps Enter to approve once and Shift+Enter to the run scope', () => {
+describe('BottomBox approval keyboard safety', () => {
+  it('does not approve from window or body Enter', () => {
     const onApprove = vi.fn();
     render(
       <ControlInputRouter
@@ -46,81 +46,57 @@ describe('BottomBox approval shortcuts', () => {
 
     fireEvent.keyDown(window, { key: 'Enter' });
     fireEvent.keyDown(window, { key: 'Enter', shiftKey: true });
+    document.body.focus();
+    fireEvent.keyDown(document.body, { key: 'Enter' });
+    fireEvent.keyDown(document.body, { key: 'Enter', shiftKey: true });
 
-    expect(onApprove).toHaveBeenNthCalledWith(1, 'once');
-    expect(onApprove).toHaveBeenNthCalledWith(2, 'run');
+    expect(onApprove).not.toHaveBeenCalled();
+  });
+
+  it('uses native keyboard activation only on the focused scope button', async () => {
+    const user = userEvent.setup();
+    const onApprove = vi.fn();
+    render(
+      <ControlInputRouter
+        variant={approvalVariant(onApprove)}
+        inputProps={{}}
+      />
+    );
 
     const approveOnce = screen.getByRole('button', { name: 'Approve once' });
     const allowForRun = screen.getByRole('button', {
       name: 'Allow for this run',
     });
-    const approveOnceShortcut = within(approveOnce).getByText('Enter');
-    const allowForRunShortcut = within(allowForRun).getByText('Shift+Enter');
-    expect(approveOnceShortcut.tagName).toBe('KBD');
-    expect(approveOnceShortcut).toHaveClass(
-      'bg-primary-2',
-      'rounded-full',
-      'opacity-60',
-      'text-[9px]',
-      'text-primary-11',
-      'ring-[var(--colors-black-10)]'
-    );
-    expect(allowForRunShortcut).toHaveClass(
-      'bg-primary-2',
-      'rounded-full',
-      'opacity-60',
-      'text-[9px]',
-      'text-primary-11',
-      'ring-[var(--colors-black-10)]'
-    );
-    expect(approveOnceShortcut).not.toHaveClass(
-      'bg-transparent',
-      'text-ds-text-success-inverse-default'
+    approveOnce.focus();
+    await user.keyboard('{Enter}');
+    allowForRun.focus();
+    await user.keyboard('{Enter}');
+
+    expect(onApprove).toHaveBeenNthCalledWith(1, 'once');
+    expect(onApprove).toHaveBeenNthCalledWith(2, 'run');
+  });
+
+  it('does not advertise removed approval shortcuts', () => {
+    const onApprove = vi.fn();
+    render(
+      <ControlInputRouter
+        variant={approvalVariant(onApprove)}
+        inputProps={{}}
+      />
     );
 
-    // The standing space-wide grant must never be reachable from the keyboard.
+    expect(screen.queryByText('Enter')).toBeNull();
+    expect(screen.queryByText('Shift+Enter')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Approve once' }).querySelector('kbd')
+    ).toBeNull();
+    expect(
+      screen
+        .getByRole('button', { name: 'Allow for this run' })
+        .querySelector('kbd')
+    ).toBeNull();
     const alwaysAllow = screen.getByRole('button', { name: 'Always allow' });
-    expect(within(alwaysAllow).queryByRole('note')).toBeNull();
     expect(alwaysAllow.querySelector('kbd')).toBeNull();
-    expect(onApprove).not.toHaveBeenCalledWith('space');
-  });
-
-  it('ignores Enter while focus sits outside the approval surface', () => {
-    const onApprove = vi.fn();
-    render(
-      <ControlInputRouter
-        variant={approvalVariant(onApprove)}
-        inputProps={{}}
-      />
-    );
-
-    // Stand in for an open dialog or popover holding focus elsewhere.
-    const elsewhere = document.createElement('div');
-    elsewhere.tabIndex = -1;
-    document.body.appendChild(elsewhere);
-    elsewhere.focus();
-
-    fireEvent.keyDown(window, { key: 'Enter' });
-    fireEvent.keyDown(window, { key: 'Enter', shiftKey: true });
-
-    expect(onApprove).not.toHaveBeenCalled();
-    elsewhere.remove();
-  });
-
-  it('does not approve from an interactive element or on key repeat', () => {
-    const onApprove = vi.fn();
-    render(
-      <ControlInputRouter
-        variant={approvalVariant(onApprove)}
-        inputProps={{}}
-      />
-    );
-
-    fireEvent.keyDown(screen.getByRole('button', { name: 'Approve once' }), {
-      key: 'Enter',
-    });
-    fireEvent.keyDown(window, { key: 'Enter', repeat: true });
-
     expect(onApprove).not.toHaveBeenCalled();
   });
 
