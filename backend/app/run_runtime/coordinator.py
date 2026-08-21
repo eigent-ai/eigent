@@ -403,6 +403,10 @@ class RunCoordinator:
             # durable cancel/failure. It is transport state, not permission to
             # rewrite the canonical Run outcome as success.
             return True
+        await self._quiesce_run_background_sessions(
+            run_id,
+            project_id=project_id,
+        )
         try:
             from app.workspace_git import get_default_workspace_git_lifecycle
 
@@ -482,6 +486,36 @@ class RunCoordinator:
         return self._journal is None or (
             run is not None and run.status == "completed"
         )
+
+    async def _quiesce_run_background_sessions(
+        self,
+        run_id: str,
+        *,
+        project_id: str,
+    ) -> None:
+        """Close Run-owned background mutations before terminal Git work."""
+
+        from app.service.task import get_task_lock_if_exists
+
+        task_lock = get_task_lock_if_exists(project_id)
+        if task_lock is None:
+            return
+        quiesce_calls = []
+        for toolkit in tuple(task_lock.registered_toolkits):
+            quiesce = getattr(toolkit, "quiesce_run_background_sessions", None)
+            if callable(quiesce):
+                quiesce_calls.append(asyncio.to_thread(quiesce, run_id))
+        if not quiesce_calls:
+            return
+        results = await asyncio.gather(*quiesce_calls)
+        lingering = tuple(
+            session_id for result in results for session_id in result
+        )
+        if lingering:
+            raise RunRuntimeError(
+                "Run background Terminal sessions did not stop before Git "
+                f"finalization: {', '.join(lingering)}"
+            )
 
     async def cancel(self, run_id: str) -> bool:
         async with self._lock:

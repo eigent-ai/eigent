@@ -294,6 +294,55 @@ async def test_logical_turn_completes_without_disposing_warm_runtime(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_completed_run_quiesces_background_terminal_mutations(
+    tmp_path,
+    monkeypatch,
+):
+    journal = SQLiteRunJournal(tmp_path / "journal.sqlite3")
+    coordinator = RunCoordinator(journal)
+    release = asyncio.Event()
+    calls: list[str] = []
+
+    class _TerminalToolkit:
+        def quiesce_run_background_sessions(self, run_id):
+            calls.append(run_id)
+            return ()
+
+    task_lock = type(
+        "TaskLockStub",
+        (),
+        {"registered_toolkits": [_TerminalToolkit()]},
+    )()
+    monkeypatch.setattr(
+        "app.service.task.get_task_lock_if_exists",
+        lambda project_id: task_lock if project_id == "project-1" else None,
+    )
+    try:
+        journal.ensure_run(run_id="run-turn", project_id="project-1")
+
+        async def source():
+            await release.wait()
+            yield "later"
+
+        await coordinator.start_with_subscription(
+            run_id="run-turn",
+            stream_factory=source,
+        )
+
+        assert await coordinator.complete_turn(
+            "run-turn",
+            project_id="project-1",
+            assistant_data="Done",
+        )
+        assert calls == ["run-turn"]
+        assert journal.get_run("run-turn").status == "completed"
+    finally:
+        release.set()
+        await coordinator.close()
+        journal.close()
+
+
+@pytest.mark.asyncio
 async def test_warm_turn_cancel_never_becomes_success_on_legacy_end(tmp_path):
     journal = SQLiteRunJournal(tmp_path / "journal.sqlite3")
     coordinator = RunCoordinator(journal)
