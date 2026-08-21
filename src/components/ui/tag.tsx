@@ -393,7 +393,7 @@ const Tag = React.forwardRef<HTMLDivElement, TagProps>(
         style={mergeAliasStyles(tagTokenAliases, style)}
         {...props}
       >
-        {icon && <span className="flex-shrink-0">{icon}</span>}
+        {icon && <span className="shrink-0">{icon}</span>}
         {text && <span>{text}</span>}
         {children}
       </Comp>

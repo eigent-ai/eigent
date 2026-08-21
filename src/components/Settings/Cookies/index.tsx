@@ -276,7 +276,7 @@ export default function Cookies() {
                 buttonRadius="full"
                 onClick={handleDeleteAll}
                 disabled={deletingAll || cookieDomains.length === 0}
-                className="uppercase !text-ds-text-status-error-strong-default"
+                className="!text-ds-text-status-error-strong-default uppercase"
               >
                 {deletingAll ? t('layout.deleting') : t('layout.delete-all')}
               </Button>
@@ -327,7 +327,7 @@ export default function Cookies() {
                       handleDeleteMainDomain(group.mainDomain, group.subdomains)
                     }
                     disabled={deletingDomain === group.mainDomain}
-                    className="ml-3 flex-shrink-0"
+                    className="ml-3 shrink-0"
                     aria-label={t('layout.delete-cookies-for-domain', {
                       domain: group.mainDomain,
                     })}

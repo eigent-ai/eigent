@@ -197,7 +197,7 @@ export default function BrowserAgentWorkspace() {
   ) : (
     <div className="flex h-full w-full flex-1 items-center justify-center">
       <div className="relative flex h-full w-full flex-col overflow-hidden rounded-xl bg-ds-bg-neutral-default-default backdrop-blur-sm">
-        <div className="flex flex-shrink-0 items-center justify-between rounded-t-2xl px-2 pb-2 pt-3">
+        <div className="flex shrink-0 items-center justify-between rounded-t-2xl px-2 pt-3 pb-2">
           <div className="flex items-center justify-start gap-sm">
             <Button
               size="xs"
@@ -210,7 +210,7 @@ export default function BrowserAgentWorkspace() {
               <ChevronLeft size={16} />
             </Button>
             <div
-              className={`text-base font-bold leading-snug ${
+              className={`text-base leading-snug font-bold ${
                 agentMap[activeAgent?.type as keyof typeof agentMap]?.textColor
               }`}
             >
@@ -292,7 +292,7 @@ export default function BrowserAgentWorkspace() {
                     className="cursor-pointer rounded-full"
                   >
                     <Hand size={24} />
-                    <span className="text-base font-medium leading-9">
+                    <span className="text-base leading-9 font-medium">
                       Take Control
                     </span>
                   </Button>
@@ -341,7 +341,7 @@ export default function BrowserAgentWorkspace() {
                         className="cursor-pointer rounded-full"
                       >
                         <Hand size={24} />
-                        <span className="text-base font-medium leading-9">
+                        <span className="text-base leading-9 font-medium">
                           Take Control
                         </span>
                       </Button>
@@ -352,7 +352,7 @@ export default function BrowserAgentWorkspace() {
           </div>
         )}
         {activeAgent?.activeWebviewIds?.length !== 1 && (
-          <div className="z-100 absolute bottom-2 right-2 flex w-auto items-center gap-1 rounded-lg border border-solid border-ds-border-neutral-strong-default bg-ds-bg-neutral-strong-default p-1">
+          <div className="absolute right-2 bottom-2 z-100 flex w-auto items-center gap-1 rounded-lg border border-solid border-ds-border-neutral-strong-default bg-ds-bg-neutral-strong-default p-1">
             <Button
               size="xs"
               buttonContent="icon-only"

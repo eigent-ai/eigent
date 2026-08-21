@@ -429,7 +429,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
       selectedTrigger?.config?.authentication_required;
 
     return (
-      <div className="flex w-full flex-col gap-6 py-6 pl-6 pr-4">
+      <div className="flex w-full flex-col gap-6 py-6 pr-4 pl-6">
         {/* Trigger Name */}
         <Input
           id="name"
@@ -566,7 +566,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     <Card className="relative flex h-24 cursor-not-allowed flex-col items-center justify-center gap-2 border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default opacity-50 transition-colors hover:border-ds-border-neutral-default-default">
                       <Badge
                         variant="secondary"
-                        className="absolute right-2 top-2 text-xs"
+                        className="absolute top-2 right-2 text-xs"
                       >
                         Coming Soon
                       </Badge>
@@ -578,7 +578,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     <Card className="relative flex h-24 cursor-not-allowed flex-col items-center justify-center gap-2 border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default opacity-50 transition-colors hover:border-ds-border-neutral-default-default">
                       <Badge
                         variant="secondary"
-                        className="absolute right-2 top-2 text-xs"
+                        className="absolute top-2 right-2 text-xs"
                       >
                         Coming Soon
                       </Badge>
@@ -630,12 +630,12 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                     <div
                       className={`flex flex-row items-center justify-start gap-4 rounded-xl bg-ds-bg-neutral-subtle-default p-4 ${needsAuth ? 'border border-yellow-500' : ''}`}
                     >
-                      <div className="flex w-full items-center gap-2 break-all font-mono text-sm text-ds-text-neutral-default-default">
+                      <div className="flex w-full items-center gap-2 font-mono text-sm break-all text-ds-text-neutral-default-default">
                         {needsAuth && (
                           <TooltipSimple
                             content={t('triggers.verification-required')}
                           >
-                            <AlertTriangle className="h-4 w-4 flex-shrink-0 text-yellow-600" />
+                            <AlertTriangle className="h-4 w-4 shrink-0 text-yellow-600" />
                           </TooltipSimple>
                         )}
                         {`${import.meta.env.VITE_PROXY_URL}/api${formData.webhook_url || createdWebhookUrl}`}
@@ -902,7 +902,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
             </div>
 
             <div className="flex flex-row items-center justify-start gap-4 rounded-xl bg-ds-bg-neutral-subtle-default p-4">
-              <div className="w-full break-all font-mono text-sm text-ds-text-neutral-default-default">
+              <div className="w-full font-mono text-sm break-all text-ds-text-neutral-default-default">
                 {`${import.meta.env.VITE_PROXY_URL}/api${createdWebhookUrl}`}
               </div>
               <Button

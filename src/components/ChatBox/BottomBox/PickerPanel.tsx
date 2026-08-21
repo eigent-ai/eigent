@@ -96,7 +96,7 @@ export function PickerPanel({
   return (
     <div className="flex w-full flex-col overflow-hidden rounded-2xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default">
       {/* Header */}
-      <div className="flex items-center gap-1 px-3 pb-1 pt-2">
+      <div className="flex items-center gap-1 px-3 pt-2 pb-1">
         <span className="text-label-xs font-bold text-ds-text-neutral-muted-default">
           {title}
         </span>
@@ -136,7 +136,7 @@ export function PickerPanel({
           nonEmptyGroups.map((group) => (
             <Fragment key={group.id}>
               {group.label && (
-                <span className="block px-2 pb-0.5 pt-1.5 text-label-xs font-bold text-ds-text-neutral-muted-default">
+                <span className="block px-2 pt-1.5 pb-0.5 text-label-xs font-bold text-ds-text-neutral-muted-default">
                   {group.label}
                 </span>
               )}
@@ -185,7 +185,7 @@ function PickerPanelItem({
           {logo}
         </span>
       )}
-      <span className="min-w-0 flex-1 overflow-hidden overflow-ellipsis whitespace-nowrap text-body-sm font-medium text-ds-text-neutral-default-default">
+      <span className="min-w-0 flex-1 overflow-hidden text-body-sm font-medium text-ellipsis whitespace-nowrap text-ds-text-neutral-default-default">
         {item.name}
       </span>
       <span className="max-w-[45%] shrink-0 overflow-hidden whitespace-nowrap">

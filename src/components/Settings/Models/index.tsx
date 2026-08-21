@@ -1645,7 +1645,7 @@ export default function SettingModels() {
         Number(subscription?.trial_total_credits_limit) || 1000;
       return (
         <div className="flex w-full flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
-          <div className="mx-6 mb-4 flex flex-col justify-start self-stretch border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default pb-4 pt-2">
+          <div className="mx-6 mb-4 flex flex-col justify-start self-stretch border-x-0 border-t-0 border-b-[0.5px] border-solid border-ds-border-neutral-default-default pt-2 pb-4">
             <div className="inline-flex items-center justify-start gap-2 self-stretch">
               <div className="text-body-base my-2 flex-1 justify-center font-bold text-ds-text-neutral-default-default">
                 {t('setting.eigent-cloud')}
@@ -1838,11 +1838,11 @@ export default function SettingModels() {
           </Dialog>
           <div className="flex w-full flex-1 items-center justify-between px-6 pb-4">
             <div className="flex min-w-0 flex-1 items-center">
-              <span className="overflow-hidden text-ellipsis whitespace-nowrap text-body-sm">
+              <span className="overflow-hidden text-body-sm text-ellipsis whitespace-nowrap">
                 {t('setting.select-model-type')}
               </span>
             </div>
-            <div className="ml-4 flex-shrink-0">
+            <div className="ml-4 shrink-0">
               <Select
                 value={effectiveCloudModelId ?? cloud_model_type}
                 onValueChange={setCloudModelType}
@@ -1880,7 +1880,7 @@ export default function SettingModels() {
 
         return (
           <ConfigModelCard status={configCardRing}>
-            <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default pb-4 pt-2">
+            <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid border-ds-border-neutral-default-default pt-2 pb-4">
               <div className="inline-flex items-center justify-between gap-2 self-stretch">
                 <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default">
                   {item.name}
@@ -1986,11 +1986,11 @@ export default function SettingModels() {
               {/* Model type row: left label, right input */}
               <div className="flex w-full items-center justify-between gap-3">
                 <div className="flex min-w-0 flex-1 items-center">
-                  <span className="overflow-hidden text-ellipsis whitespace-nowrap text-body-sm">
+                  <span className="overflow-hidden text-body-sm text-ellipsis whitespace-nowrap">
                     {t('setting.model-type')}
                   </span>
                 </div>
-                <div className="ml-4 flex-shrink-0">
+                <div className="ml-4 shrink-0">
                   <Input
                     value={codex_model_type}
                     onChange={(e) => setCodexModelType(e.target.value)}
@@ -2006,7 +2006,7 @@ export default function SettingModels() {
 
       return (
         <ConfigModelCard status={configCardRing}>
-          <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default pb-4 pt-2">
+          <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid border-ds-border-neutral-default-default pt-2 pb-4">
             <div className="inline-flex items-center justify-between gap-2 self-stretch">
               <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default">
                 {item.name}
@@ -2371,7 +2371,7 @@ export default function SettingModels() {
 
       return (
         <ConfigModelCard status={configCardRing}>
-          <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default pb-4 pt-2">
+          <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid border-ds-border-neutral-default-default pt-2 pb-4">
             <div className="inline-flex items-center justify-between gap-2 self-stretch">
               <div className="flex items-center gap-2">
                 <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default">
@@ -2529,7 +2529,7 @@ export default function SettingModels() {
                       )
                     }
                     disabled={!localEnabled || platformModelsLoading}
-                    className="mb-1 flex-shrink-0"
+                    className="mb-1 shrink-0"
                   >
                     {platformModelsLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -2624,18 +2624,18 @@ export default function SettingModels() {
             <button
               disabled={providersLoading}
               aria-busy={providersLoading}
-              className="flex w-fit items-center gap-2 rounded-lg border-[0.5px] border-solid border-ds-bg-brand-default-default bg-ds-bg-brand-default-default px-3 py-1 font-semibold text-ds-text-brand-inverse-default outline-none transition-colors hover:border-ds-bg-brand-default-hover hover:bg-ds-bg-brand-default-hover focus:outline-none focus-visible:outline-none active:border-ds-bg-brand-default-active active:bg-ds-bg-brand-default-active disabled:cursor-wait disabled:opacity-70"
+              className="flex w-fit items-center gap-2 rounded-lg border-[0.5px] border-solid border-ds-bg-brand-default-default bg-ds-bg-brand-default-default px-3 py-1 font-semibold text-ds-text-brand-inverse-default transition-colors outline-none hover:border-ds-bg-brand-default-hover hover:bg-ds-bg-brand-default-hover focus:outline-none focus-visible:outline-none active:border-ds-bg-brand-default-active active:bg-ds-bg-brand-default-active disabled:cursor-wait disabled:opacity-70"
             >
-              <span className="whitespace-nowrap text-body-sm leading-none">
+              <span className="text-body-sm leading-none whitespace-nowrap">
                 {getDefaultModelDisplayText()}
               </span>
               {providersLoading ? (
                 <Loader2
-                  className="h-4 w-4 flex-shrink-0 animate-spin !text-ds-text-brand-inverse-default motion-reduce:animate-none"
+                  className="h-4 w-4 shrink-0 animate-spin !text-ds-text-brand-inverse-default motion-reduce:animate-none"
                   aria-hidden
                 />
               ) : (
-                <ChevronDown className="h-4 w-4 flex-shrink-0 !text-ds-text-brand-inverse-default" />
+                <ChevronDown className="h-4 w-4 shrink-0 !text-ds-text-brand-inverse-default" />
               )}
             </button>
           </DropdownMenuTrigger>
@@ -2810,7 +2810,7 @@ export default function SettingModels() {
       >
         <div className="flex w-full flex-row items-start justify-between">
           {/* Sidebar */}
-          <div className="-ml-2 mr-4 h-full w-[240px] rounded-2xl bg-ds-bg-neutral-default-default">
+          <div className="mr-4 -ml-2 h-full w-[240px] rounded-2xl bg-ds-bg-neutral-default-default">
             <div className="flex flex-col gap-4">
               {/* Eigent Cloud Section */}
               <div className="flex flex-col gap-1">
@@ -2861,7 +2861,7 @@ export default function SettingModels() {
                         )}
                       </button>
                       <div
-                        className={`duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] overflow-hidden transition-opacity ${
+                        className={`overflow-hidden transition-opacity duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] ${
                           subscriptionCollapsed
                             ? 'max-h-0 opacity-0'
                             : 'max-h-[2000px] opacity-100'
@@ -2903,7 +2903,7 @@ export default function SettingModels() {
                         )}
                       </button>
                       <div
-                        className={`duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] overflow-hidden transition-opacity ${
+                        className={`overflow-hidden transition-opacity duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] ${
                           byokGroupCollapsed
                             ? 'max-h-0 opacity-0'
                             : 'max-h-[2000px] opacity-100'
@@ -2943,7 +2943,7 @@ export default function SettingModels() {
                   )}
                 </button>
                 <div
-                  className={`duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] overflow-hidden transition-opacity ${
+                  className={`overflow-hidden transition-opacity duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] ${
                     localCollapsed
                       ? 'max-h-0 opacity-0'
                       : 'max-h-[2000px] opacity-100'

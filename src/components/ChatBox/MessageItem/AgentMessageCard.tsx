@@ -136,9 +136,9 @@ export function AgentMessageCard({
                 key={'attache-' + file.fileName}
                 className="flex w-full cursor-pointer items-center gap-2 rounded-2xl border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default py-1 pl-2"
               >
-                <FileText size={24} className="flex-shrink-0" />
+                <FileText size={24} className="shrink-0" />
                 <div className="flex flex-col">
-                  <span className="block max-w-48 overflow-hidden text-ellipsis whitespace-nowrap text-body-sm font-bold text-ds-text-neutral-default-default">
+                  <span className="block max-w-48 overflow-hidden text-body-sm font-bold text-ellipsis whitespace-nowrap text-ds-text-neutral-default-default">
                     {file?.fileName?.split('.')[0]}
                   </span>
                   <span className="block text-label-xs font-medium text-ds-text-neutral-muted-default">

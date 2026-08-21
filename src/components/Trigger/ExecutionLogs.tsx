@@ -310,7 +310,7 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
   return (
     <div className="flex h-full flex-col">
       {/* Stats */}
-      <div className="flex flex-col items-start justify-start overflow-hidden border-x-0 border-b border-t-0 border-solid border-ds-border-neutral-subtle-default px-3 pb-3">
+      <div className="flex flex-col items-start justify-start overflow-hidden border-x-0 border-t-0 border-b border-solid border-ds-border-neutral-subtle-default px-3 pb-3">
         <div className="mb-4 flex w-full flex-row items-center justify-between">
           <span
             className="max-w-[150px] truncate text-label-sm font-medium text-ds-text-neutral-default-default"
@@ -329,7 +329,7 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
           </span>
         </div>
         <div className="flex flex-row">
-          <div className="mr-4 flex flex-col border-y-0 border-l-0 border-r border-solid border-ds-border-neutral-subtle-default pr-4">
+          <div className="mr-4 flex flex-col border-y-0 border-r border-l-0 border-solid border-ds-border-neutral-subtle-default pr-4">
             <span className="text-label-sm font-medium text-ds-text-neutral-default-default">
               {trigger.execution_count || 0}
             </span>
@@ -337,7 +337,7 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
               {t('triggers.total-runs')}
             </span>
           </div>
-          <div className="mr-4 flex flex-col border-y-0 border-l-0 border-r border-solid border-ds-border-neutral-subtle-default pr-4">
+          <div className="mr-4 flex flex-col border-y-0 border-r border-l-0 border-solid border-ds-border-neutral-subtle-default pr-4">
             <span
               className={`text-label-sm font-medium ${getSuccessRateColorClass(successRate)}`}
             >
@@ -364,7 +364,7 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
                 key={log.id}
                 className={`flex items-start gap-2.5 px-4 py-2.5 transition-colors hover:bg-ds-bg-neutral-strong-hover ${getStatusColor(log.status)}`}
               >
-                <div className="mt-0.5 flex-shrink-0">
+                <div className="mt-0.5 shrink-0">
                   {getStatusIcon(log.status)}
                 </div>
                 <div className="min-w-0 flex-1">

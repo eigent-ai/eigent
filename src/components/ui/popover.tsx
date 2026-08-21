@@ -150,7 +150,7 @@ const PopoverTrigger = React.forwardRef<
           disabled={disabled}
           className={cn(
             // Base styles
-            'relative flex w-full items-center justify-between gap-2 rounded-lg border border-solid px-3 text-ds-text-neutral-default-default outline-none transition-[background-color,border-color,box-shadow,opacity]',
+            'relative flex w-full items-center justify-between gap-2 rounded-lg border border-solid px-3 text-ds-text-neutral-default-default transition-[background-color,border-color,box-shadow,opacity] outline-none',
             sizeClasses[size],
             'whitespace-nowrap [&>span]:line-clamp-1',
             // Default state (when no error/success)
@@ -171,14 +171,14 @@ const PopoverTrigger = React.forwardRef<
         >
           <div className="flex min-w-0 flex-1 items-center gap-2">
             {leadingIcon && (
-              <span className="flex-shrink-0 text-ds-icon-neutral-default-default">
+              <span className="shrink-0 text-ds-icon-neutral-default-default">
                 {leadingIcon}
               </span>
             )}
             <span className="truncate">{children}</span>
           </div>
           {showChevron && (
-            <ChevronDown className="h-4 w-4 flex-shrink-0 text-ds-icon-neutral-default-default" />
+            <ChevronDown className="h-4 w-4 shrink-0 text-ds-icon-neutral-default-default" />
           )}
         </PopoverPrimitive.Trigger>
         {note ? (
@@ -275,7 +275,7 @@ const PopoverContent = React.forwardRef<
           onInteractOutside={handleInteractOutside}
           className={cn(
             'relative z-50 min-w-[8rem] overflow-hidden rounded-lg border border-solid border-transparent bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default shadow-md',
-            'origin-[--radix-popover-content-transform-origin] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
+            'origin-(--radix-popover-content-transform-origin) data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0',
             'data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1',
             'w-[var(--radix-popover-trigger-width)]',
             className
@@ -298,7 +298,7 @@ const PopoverItem = React.forwardRef<HTMLDivElement, PopoverItemProps>(
     <div
       ref={ref}
       className={cn(
-        'relative flex w-full cursor-pointer select-none items-center rounded-lg py-1.5 pl-2 pr-8 text-sm outline-none hover:bg-ds-bg-neutral-default-hover',
+        'relative flex w-full cursor-pointer items-center rounded-lg py-1.5 pr-8 pl-2 text-sm outline-none select-none hover:bg-ds-bg-neutral-default-hover',
         disabled && 'pointer-events-none opacity-50',
         selected && 'bg-ds-bg-neutral-default-hover',
         className
@@ -324,7 +324,7 @@ const PopoverViewport = React.forwardRef<HTMLDivElement, PopoverViewportProps>(
   ({ className, maxHeight = 200, style, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn('overflow-y-auto overflow-x-hidden p-1', className)}
+      className={cn('overflow-x-hidden overflow-y-auto p-1', className)}
       style={{
         maxHeight: typeof maxHeight === 'number' ? `${maxHeight}px` : maxHeight,
         ...style,

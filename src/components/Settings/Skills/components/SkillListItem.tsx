@@ -202,7 +202,7 @@ export default function SkillListItem(props: SkillListItemProps) {
           </span>
         </div>
 
-        <div className="flex flex-shrink-0 items-center gap-md">
+        <div className="flex shrink-0 items-center gap-md">
           <Switch
             checked={skill.enabled}
             onCheckedChange={() => toggleSkill(skill.id)}
@@ -242,10 +242,10 @@ export default function SkillListItem(props: SkillListItemProps) {
       {/* Row 2: Description - 5 lines max, hover shows full */}
       <TooltipSimple
         content={skill.description}
-        className="max-w-sm whitespace-pre-wrap break-words"
+        className="max-w-sm break-words whitespace-pre-wrap"
       >
         <div className="w-full cursor-default">
-          <span className="line-clamp-5 block overflow-hidden break-words text-body-sm text-ds-text-neutral-muted-default">
+          <span className="line-clamp-5 block overflow-hidden text-body-sm break-words text-ds-text-neutral-muted-default">
             {skill.description}
           </span>
         </div>
@@ -266,7 +266,7 @@ export default function SkillListItem(props: SkillListItemProps) {
         </Button>
 
         {scopeOpen && (
-          <div className="flex w-full flex-wrap items-center gap-2 border-x-0 border-b-0 border-t-[0.5px] border-solid border-ds-border-neutral-default-default pt-4">
+          <div className="flex w-full flex-wrap items-center gap-2 border-x-0 border-t-[0.5px] border-b-0 border-solid border-ds-border-neutral-default-default pt-4">
             {/* All agents as first tab; then each agent toggle */}
             <button
               type="button"

@@ -22,7 +22,6 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { iconForTriggerType } from '@/lib/triggerIcon';
-import { formatDateTime } from '@/lib/utils';
 import { Trigger, TriggerStatus, TriggerType } from '@/types';
 import {
   AlarmClockIcon,
@@ -51,7 +50,6 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
   isSelected,
   onSelect,
   onEdit,
-  onDuplicate,
   onDelete,
   onToggleActive,
 }) => {
@@ -87,11 +85,6 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
     }
   };
 
-  const formatLastExecution = (dateString?: string) => {
-    if (!dateString) return t('triggers.never');
-    return formatDateTime(dateString, 'HH:mm MMM dd');
-  };
-
   const TriggerIcon = iconForTriggerType(trigger.trigger_type);
 
   return (
@@ -106,7 +99,7 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
       }`}
     >
       {/* 1. Icon for the event that starts this automation */}
-      <div className="bg-amber-500/10 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/10">
         <TriggerIcon className="h-5 w-5 text-ds-icon-neutral-default-default" />
       </div>
 

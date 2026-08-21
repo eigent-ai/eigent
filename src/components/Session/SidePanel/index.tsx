@@ -78,7 +78,7 @@ export function SessionSidePanel({
       {/* Full logical width; outer #session-side-panel clips to 40px when folded */}
       <div
         className={cn(
-          'flex h-full min-h-0 flex-shrink-0 flex-col overflow-hidden',
+          'flex h-full min-h-0 shrink-0 flex-col overflow-hidden',
           RIGHT_RAIL_CONTENT_WIDTH_CLASS,
           isFolded &&
             'pointer-events-none opacity-40 transition-opacity duration-200 group-hover:opacity-80'

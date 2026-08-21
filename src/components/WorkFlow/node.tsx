@@ -411,16 +411,16 @@ export function Node({ id, data }: NodeProps) {
           getCurrentTask()?.activeAgent === id
             ? `${displayInfo?.borderColor} z-50`
             : 'z-10 border-ds-border-neutral-default-default'
-        } ease-[cubic-bezier(0.23,1,0.32,1)] transition-[border-color,opacity] duration-200 ${
+        } transition-[border-color,opacity] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] ${
           (data.agent?.tasks?.length ?? 0) === 0 && 'opacity-30'
         }`}
       >
-        <div className="flex w-[342px] shrink-0 flex-col border-y-0 border-l-0 border-r-[0.5px] border-solid border-ds-border-neutral-default-default">
+        <div className="flex w-[342px] shrink-0 flex-col border-y-0 border-r-[0.5px] border-l-0 border-solid border-ds-border-neutral-default-default">
           {/* header */}
-          <div className="flex items-center justify-between gap-sm px-3 pb-1 pt-2">
+          <div className="flex items-center justify-between gap-sm px-3 pt-2 pb-1">
             <div className="flex items-center justify-between gap-md">
               <div
-                className={`text-base font-bold leading-relaxed ${
+                className={`text-base leading-relaxed font-bold ${
                   displayInfo?.textColor
                 }`}
               >
@@ -486,7 +486,7 @@ export function Node({ id, data }: NodeProps) {
           {/* tools */}
           <div
             ref={toolsRef}
-            className="mb-sm flex min-h-4 flex-shrink-0 flex-wrap px-3 text-xs font-normal leading-tight text-ds-text-neutral-muted-default"
+            className="mb-sm flex min-h-4 shrink-0 flex-wrap px-3 text-xs leading-tight font-normal text-ds-text-neutral-muted-default"
           >
             {/* {JSON.stringify(data.agent)} */}
             {toolkitLabels.map((toolkit, index) => (
@@ -517,7 +517,7 @@ export function Node({ id, data }: NodeProps) {
                     className="relative h-full w-full overflow-hidden rounded-lg"
                   >
                     <img
-                      className="absolute left-0 top-0 h-[250%] w-[250%] origin-top-left scale-[0.4] object-cover"
+                      className="absolute top-0 left-0 h-[250%] w-[250%] origin-top-left scale-[0.4] object-cover"
                       src={img.img}
                       alt={data.type}
                     />
@@ -537,7 +537,7 @@ export function Node({ id, data }: NodeProps) {
               data?.agent?.tasks &&
               data.agent.tasks.length > 0 && (
                 <div className="relative h-[180px] w-full overflow-hidden rounded-sm">
-                  <div className="absolute left-0 top-0 h-[500px] w-[900px] origin-top-left scale-[0.36]">
+                  <div className="absolute top-0 left-0 h-[500px] w-[900px] origin-top-left scale-[0.36]">
                     <Folder data={data.agent as Agent} />
                   </div>
                 </div>
@@ -552,7 +552,7 @@ export function Node({ id, data }: NodeProps) {
                     key={task.id}
                     className="relative h-full w-full overflow-hidden rounded-lg object-cover"
                   >
-                    <div className="absolute left-0 top-0 h-[250%] w-[250%] origin-top-left scale-[0.4]">
+                    <div className="absolute top-0 left-0 h-[250%] w-[250%] origin-top-left scale-[0.4]">
                       <Terminal content={task.terminal} />
                     </div>
                   </div>
@@ -622,7 +622,7 @@ export function Node({ id, data }: NodeProps) {
             onWheel={(e) => {
               e.stopPropagation();
             }}
-            className="scrollbar scrollbar-always-visible ease-[cubic-bezier(0.23,1,0.32,1)] flex flex-col gap-2 overflow-y-auto px-3 pb-2 duration-200 animate-in fade-in-0 slide-in-from-bottom-4"
+            className="scrollbar scrollbar-always-visible flex flex-col gap-2 overflow-y-auto px-3 pb-2 duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] animate-in fade-in-0 slide-in-from-bottom-4"
             style={{
               maxHeight:
                 data.img && data.img.length > 0
@@ -683,7 +683,7 @@ export function Node({ id, data }: NodeProps) {
                       }
                     }}
                     key={`taskList-${task.id}-${task.failure_count}`}
-                    className={`ease-[cubic-bezier(0.23,1,0.32,1)] flex gap-2 rounded-xl px-sm py-sm transition-[background-color,border-color] duration-200 animate-in fade-in-0 slide-in-from-left-2 ${taskRowBgHover} cursor-pointer border border-solid border-transparent ${
+                    className={`flex gap-2 rounded-xl px-sm py-sm transition-[background-color,border-color] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] animate-in fade-in-0 slide-in-from-left-2 ${taskRowBgHover} cursor-pointer border border-solid border-transparent ${
                       task.status === TaskStatus.COMPLETED
                         ? 'hover:border-ds-border-status-completed-subtle-focus'
                         : task.status === TaskStatus.FAILED
@@ -768,16 +768,16 @@ export function Node({ id, data }: NodeProps) {
                     </div>
                     <div className="flex flex-1 flex-col items-start justify-center">
                       <div
-                        className={`w-full flex-grow-0 ${taskTextClass} pointer-events-auto select-text whitespace-pre-line text-wrap break-all text-xs font-medium leading-13`}
+                        className={`w-full grow-0 ${taskTextClass} pointer-events-auto text-xs leading-13 font-medium text-wrap break-all whitespace-pre-line select-text`}
                       >
                         <div className="flex items-center gap-sm">
                           <div
-                            className={`text-xs font-bold leading-13 ${taskTextClass}`}
+                            className={`text-xs leading-13 font-bold ${taskTextClass}`}
                           >
                             No. {getTaskId(task.id)}
                           </div>
                           {task.reAssignTo ? (
-                            <div className="rounded-lg bg-ds-bg-document-subtle-default px-1 py-0.5 text-xs font-bold leading-none text-ds-text-document-default-default hover:bg-ds-bg-document-subtle-hover">
+                            <div className="rounded-lg bg-ds-bg-document-subtle-default px-1 py-0.5 text-xs leading-none font-bold text-ds-text-document-default-default hover:bg-ds-bg-document-subtle-hover">
                               Reassigned to {task.reAssignTo}
                             </div>
                           ) : (
@@ -789,7 +789,7 @@ export function Node({ id, data }: NodeProps) {
                                     : task.status === TaskStatus.COMPLETED
                                       ? 'bg-ds-bg-neutral-subtle-default text-ds-text-status-completed-default-default'
                                       : 'bg-ds-bg-neutral-subtle-default text-ds-text-neutral-default-default hover:bg-ds-bg-neutral-subtle-hover'
-                                } rounded-lg px-1 py-0.5 text-xs font-bold leading-none`}
+                                } rounded-lg px-1 py-0.5 text-xs leading-none font-bold`}
                               >
                                 Attempt {task.failure_count}
                               </div>
@@ -799,11 +799,11 @@ export function Node({ id, data }: NodeProps) {
                         <div>{task.content}</div>
                       </div>
                       {task?.status === TaskStatus.RUNNING && (
-                        <div className="ease-[cubic-bezier(0.23,1,0.32,1)] mt-xs flex items-center gap-2 duration-200 animate-in fade-in-0 slide-in-from-bottom-2">
+                        <div className="mt-xs flex items-center gap-2 duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] animate-in fade-in-0 slide-in-from-bottom-2">
                           {/* active toolkit */}
                           {lastActiveToolkit?.toolkitStatus ===
                             AgentStatusValue.RUNNING && (
-                            <div className="ease-[cubic-bezier(0.23,1,0.32,1)] flex min-w-0 flex-1 items-center justify-start gap-sm duration-200 animate-in fade-in-0 slide-in-from-right-2">
+                            <div className="flex min-w-0 flex-1 items-center justify-start gap-sm duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] animate-in fade-in-0 slide-in-from-right-2">
                               {getToolkitIcon(
                                 lastActiveToolkit.toolkitName ?? ''
                               )}
@@ -814,11 +814,11 @@ export function Node({ id, data }: NodeProps) {
                                   ].activeWorkspace
                                     ? '!w-[100px]'
                                     : '!w-[500px]'
-                                } min-w-0 flex-shrink-0 flex-grow-0 overflow-hidden text-ellipsis whitespace-nowrap pt-1 text-xs leading-17 text-ds-text-status-running-default-default`}
+                                } min-w-0 shrink-0 grow-0 overflow-hidden pt-1 text-xs leading-17 text-ellipsis whitespace-nowrap text-ds-text-status-running-default-default`}
                               >
                                 <ShinyText
                                   text={task.toolkits?.[0].toolkitName}
-                                  className="pointer-events-auto w-full select-text overflow-hidden text-ellipsis whitespace-nowrap text-xs font-bold leading-17 text-ds-text-status-running-default-default"
+                                  className="pointer-events-auto w-full overflow-hidden text-xs leading-17 font-bold text-ellipsis whitespace-nowrap text-ds-text-status-running-default-default select-text"
                                 />
                               </div>
                             </div>

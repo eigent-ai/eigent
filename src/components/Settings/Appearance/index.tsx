@@ -106,7 +106,7 @@ function ColorSeedEditor({
   };
 
   return (
-    <div className="flex flex-row items-center justify-between gap-2 border-x-0 border-b border-t-0 border-solid border-ds-border-neutral-subtle-disabled px-6 py-4">
+    <div className="flex flex-row items-center justify-between gap-2 border-x-0 border-t-0 border-b border-solid border-ds-border-neutral-subtle-disabled px-6 py-4">
       <span className="w-24 text-body-md font-semibold text-ds-text-neutral-default-default">
         {label}
       </span>
@@ -122,7 +122,7 @@ function ColorSeedEditor({
           <PopoverTrigger asChild>
             <button
               type="button"
-              className="h-8 w-10 flex-shrink-0 cursor-pointer rounded-md border border-solid border-ds-border-neutral-default-default focus-visible:outline-none focus-visible:ring-2"
+              className="h-8 w-10 shrink-0 cursor-pointer rounded-md border border-solid border-ds-border-neutral-default-default focus-visible:ring-2 focus-visible:outline-none"
               style={{ backgroundColor: normalizedPreview }}
               title={t('setting.pick-color', { color: label })}
               aria-label={t('setting.pick-color', { color: label })}

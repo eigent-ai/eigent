@@ -281,7 +281,7 @@ export default function Overview({
                   className="group flex cursor-pointer items-center justify-center gap-3 rounded-xl bg-ds-bg-neutral-default-default p-3 transition-opacity duration-200 hover:opacity-60"
                 >
                   {/* Add icon */}
-                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-subtle-default">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-subtle-default">
                     <Plus className="h-5 w-5 text-ds-icon-neutral-default-default" />
                   </div>
 

@@ -192,7 +192,7 @@ export function ActivityLogItem({
       {/* Left side: Status Lead Icon */}
       <div className="flex flex-col items-center self-stretch">
         <div
-          className={`relative flex h-6 w-6 items-center justify-center rounded-full ${statusIconBgClass} flex-shrink-0`}
+          className={`relative flex h-6 w-6 items-center justify-center rounded-full ${statusIconBgClass} shrink-0`}
         >
           <StatusIcon className={`h-4 w-4 ${statusIconColorClass}`} />
         </div>
@@ -203,9 +203,7 @@ export function ActivityLogItem({
       <div className="mb-4 flex min-w-0 flex-1 flex-col">
         {/* Top row: Trigger type icon + timestamp */}
         <div className="mb-2 flex items-center justify-between px-1">
-          <div
-            className={`flex h-6 w-6 flex-shrink-0 items-center justify-center`}
-          >
+          <div className={`flex h-6 w-6 shrink-0 items-center justify-center`}>
             <TriggerTypeIcon className={`h-4 w-4 ${typeIconColorClass}`} />
           </div>
           <span className="text-label-xs text-ds-text-neutral-muted-default">

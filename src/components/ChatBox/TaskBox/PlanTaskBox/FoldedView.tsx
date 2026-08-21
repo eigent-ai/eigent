@@ -83,7 +83,7 @@ export function FoldedView({
         'relative flex flex-col overflow-hidden rounded-2xl bg-ds-bg-splitting-subtle-default'
       )}
     >
-      <div className="flex items-center gap-2 border-x-0 border-b border-t-0 border-solid border-ds-border-neutral-subtle-default px-3 py-2">
+      <div className="flex items-center gap-2 border-x-0 border-t-0 border-b border-solid border-ds-border-neutral-subtle-default px-3 py-2">
         <div className="flex min-w-0 flex-1 items-center justify-start truncate text-left">
           {isSplitting ? (
             <ShinyText
@@ -131,7 +131,7 @@ export function FoldedView({
                 key={row.key}
                 className="flex items-start gap-2 py-1.5 duration-300 animate-in fade-in-0 slide-in-from-left-2"
               >
-                <div className="flex h-4 flex-shrink-0 items-center justify-center pt-0.5">
+                <div className="flex h-4 shrink-0 items-center justify-center pt-0.5">
                   {row.streaming ? (
                     <Circle
                       size={13}

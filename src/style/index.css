@@ -1,4 +1,24 @@
+@layer theme, base, components, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities) source(none);
+@import 'shadow-plugin';
 @import './token.css';
+
+@config '../../tailwind.config.js';
+@source '../../index.html';
+@source '../../src';
+@source '../../.storybook';
+@source not inline('container');
+
+/* Tailwind 4 does not consume `safelist` from legacy JavaScript configs. */
+@source inline('{hover:,focus:,active:,disabled:,focus-visible:,group-hover:,dark:,}bg-ds-bg-neutral-{subtle,muted,default,strong,inverse}-{default,hover,active,selected,focus,disabled}');
+@source inline('{hover:,focus:,active:,disabled:,focus-visible:,group-hover:,dark:,placeholder:,}text-ds-text-neutral-{subtle,muted,default,strong,inverse}-{default,hover,active,selected,focus,disabled}');
+@source inline('{hover:,focus:,active:,disabled:,focus-visible:,group-hover:,dark:,}text-ds-icon-neutral-{subtle,muted,default,strong,inverse}-{default,hover,active,selected,focus,disabled}');
+@source inline('{hover:,focus:,active:,disabled:,focus-visible:,group-hover:,dark:,}border-ds-border-neutral-{subtle,muted,default,strong,inverse}-{default,hover,active,selected,focus,disabled}');
+@source inline('{hover:,focus:,active:,disabled:,focus-visible:,group-hover:,dark:,}ring-ds-ring-neutral-{subtle,muted,default,strong,inverse}-{default,hover,active,selected,focus,disabled}');
+@source inline('{hover:,focus:,active:,disabled:,focus-visible:,group-hover:,dark:,}divide-ds-border-neutral-{subtle,muted,default,strong,inverse}-{default,hover,active,selected,focus,disabled}');
+@source inline('{hover:,focus:,active:,disabled:,focus-visible:,group-hover:,dark:,}outline-ds-border-neutral-{subtle,muted,default,strong,inverse}-{default,hover,active,selected,focus,disabled}');
 
 /* Palatino LT — welcome headline on History; files in /public/fonts/palatino-lt/ */
 @font-face {
@@ -78,10 +98,6 @@
   font-family:
     'Palatino LT', 'Palatino Linotype', 'Book Antiqua', Palatino, serif;
 }
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
 
 :root {
   font-family: 'Inter';

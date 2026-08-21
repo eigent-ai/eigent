@@ -92,7 +92,7 @@ export function QueuedBox({
       {/* Header Content - Accordion Items for queued tasks */}
       <div
         className={cn(
-          'scrollbar-always-visible duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] relative box-border flex w-full flex-col items-start gap-1 overflow-y-auto px-2 py-0 transition-opacity',
+          'scrollbar-always-visible relative box-border flex w-full flex-col items-start gap-1 overflow-y-auto px-2 py-0 transition-opacity duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)]',
           isExpanded && queuedMessages.length > 0
             ? 'max-h-[156px] opacity-100'
             : 'max-h-0 opacity-0'
@@ -141,8 +141,8 @@ function QueueingItem({
         <Circle size={16} className="text-ds-icon-neutral-muted-default" />
       </div>
 
-      <div className="relative flex min-h-px min-w-px flex-1 flex-col justify-center overflow-hidden overflow-ellipsis">
-        <span className="block overflow-hidden overflow-ellipsis whitespace-nowrap text-xs font-normal">
+      <div className="relative flex min-h-px min-w-px flex-1 flex-col justify-center overflow-hidden text-ellipsis">
+        <span className="block overflow-hidden text-xs font-normal text-ellipsis whitespace-nowrap">
           {content}
         </span>
       </div>

@@ -1,9 +1,16 @@
 /** @type {import('tailwindcss').Config} */
-const fs = require('node:fs');
-const path = require('node:path');
+import fs from 'node:fs';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import tailwindcssAnimate from 'tailwindcss-animate';
+
 // Shared with the code surfaces that need the stack as a plain string
 // (Monaco can't read Tailwind classes). Single source of truth for `font-code`.
+const require = createRequire(import.meta.url);
 const fontStacks = require('./src/style/fontStacks.json');
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function loadTokenManifest() {
   const fallback = {
@@ -175,7 +182,7 @@ function neutralDsSemanticSafelist() {
   ];
 }
 
-module.exports = {
+export default {
   darkMode: ['class'],
   content: [
     './index.html',
@@ -804,12 +811,18 @@ module.exports = {
         short: { raw: '(max-height: 800px)' },
       },
       boxShadow: {
+        // Preserve Tailwind 3's `shadow-sm` visual during the v4 migration.
+        sm: '0 1px 2px 0 rgb(0 0 0 / 0.05)',
         'history-item': '0px 3px 4px -1px rgba(0, 0, 0, 0.10)',
         perfect: 'var(--shadow-perfect)',
         soft: 'var(--shadow-soft)',
         'blur-effect': 'var(--shadow-blur-effect)',
         'button-shadow': 'var(--shadow-button)',
         'workspace-project-picker': 'var(--shadow-workspace-project-picker)',
+      },
+      blur: {
+        // Tailwind 4 renamed the old 4px `blur-sm` step to `blur-xs`.
+        sm: '4px',
       },
       spacing: {
         xs: 'var(--spacing-xs, 4px)',
@@ -978,5 +991,5 @@ module.exports = {
   corePlugins: {
     preflight: false,
   },
-  plugins: [require('tailwindcss-animate')],
+  plugins: [tailwindcssAnimate],
 };

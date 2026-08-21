@@ -813,7 +813,7 @@ const ToolSelect = forwardRef<
           key={item.id + item.key + (item.isLocal + '')}
           variant="secondary"
           size="sm"
-          className="flex w-auto flex-shrink-0"
+          className="flex w-auto shrink-0"
         >
           {item.name || item.mcp_name || item.key || `tool_${item.id}`}
           <div className="flex items-center justify-center rounded-sm bg-transparent">
@@ -842,7 +842,7 @@ const ToolSelect = forwardRef<
         className={cn(
           'flex min-h-0 w-full min-w-0 items-center gap-2 rounded-lg bg-ds-bg-neutral-subtle-default px-3 py-2 text-left last:mb-1',
           'cursor-pointer border-none shadow-none transition-colors',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-brand-default-focus focus-visible:ring-offset-2 focus-visible:ring-offset-ds-bg-neutral-default-default'
+          'focus-visible:ring-2 focus-visible:ring-ds-ring-brand-default-focus focus-visible:ring-offset-2 focus-visible:ring-offset-ds-bg-neutral-default-default focus-visible:outline-none'
         )}
       >
         <Checkbox
@@ -851,7 +851,7 @@ const ToolSelect = forwardRef<
           className="pointer-events-none"
           aria-hidden
         />
-        <span className="line-clamp-2 min-w-0 flex-1 break-words text-sm font-bold leading-5 text-ds-text-neutral-default-default sm:text-base">
+        <span className="line-clamp-2 min-w-0 flex-1 text-sm leading-5 font-bold break-words text-ds-text-neutral-default-default sm:text-base">
           {capitalizeFirstLetter(item.mcp_name || '')}
         </span>
       </button>
@@ -861,7 +861,7 @@ const ToolSelect = forwardRef<
   return (
     <div className="w-full min-w-0" ref={containerRef}>
       <div className="flex w-full min-w-0 flex-col gap-1.5">
-        <div className="flex min-h-5 shrink-0 items-center gap-1 text-sm font-bold leading-normal text-ds-text-neutral-default-default">
+        <div className="flex min-h-5 shrink-0 items-center gap-1 text-sm leading-normal font-bold text-ds-text-neutral-default-default">
           {t('workforce.agent-tool')}
           <TooltipSimple content={t('workforce.agent-tool-tooltip')}>
             <CircleAlert
@@ -873,7 +873,7 @@ const ToolSelect = forwardRef<
         <div
           onMouseDown={() => inputRef.current?.focus()}
           className={cn(
-            'focus-within:ring-ds-border-brand-default-default/35 flex max-h-[120px] min-h-[40px] w-full min-w-0 flex-wrap content-center items-center justify-start gap-1.5 rounded-lg bg-ds-bg-neutral-default-default px-2 py-1.5 focus-within:ring-2'
+            'flex max-h-[120px] min-h-[40px] w-full min-w-0 flex-wrap content-center items-center justify-start gap-1.5 rounded-lg bg-ds-bg-neutral-default-default px-2 py-1.5 focus-within:ring-2 focus-within:ring-ds-border-brand-default-default/35'
           )}
         >
           {renderSelectedItems()}
@@ -898,7 +898,7 @@ const ToolSelect = forwardRef<
           aria-label={t('workforce.agent-tool')}
           className="w-full min-w-0 overflow-hidden rounded-lg border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default"
         >
-          <div className="scrollbar-always-visible flex h-[260px] min-h-0 flex-col gap-1.5 overflow-y-auto overflow-x-hidden px-2 py-2">
+          <div className="scrollbar-always-visible flex h-[260px] min-h-0 flex-col gap-1.5 overflow-x-hidden overflow-y-auto px-2 py-2">
             {listHasItems ? (
               <div
                 className="flex min-w-0 flex-col gap-3 text-ds-text-neutral-default-default"
@@ -935,7 +935,7 @@ const ToolSelect = forwardRef<
               </div>
             ) : (
               <div className="flex flex-col items-center gap-1 px-2 py-2">
-                <p className="break-words text-center text-body-md text-ds-text-neutral-muted-default">
+                <p className="text-center text-body-md break-words text-ds-text-neutral-muted-default">
                   {t('dashboard.no-results')}
                 </p>
                 <Button

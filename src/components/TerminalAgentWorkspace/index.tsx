@@ -145,7 +145,7 @@ export default function TerminalAgentWorkspace() {
               size={16}
               className="text-ds-text-neutral-inverse-default"
             />
-            <span className="text-sm font-bold leading-13 text-ds-text-neutral-inverse-default">
+            <span className="text-sm leading-13 font-bold text-ds-text-neutral-inverse-default">
               {t('chat.give-back-to-agent')}
             </span>
           </Button>
@@ -156,7 +156,7 @@ export default function TerminalAgentWorkspace() {
   ) : (
     <div className="flex h-full w-full flex-1 items-center justify-center">
       <div className="relative flex h-full w-full flex-col overflow-hidden rounded-xl bg-ds-bg-neutral-default-default backdrop-blur-sm">
-        <div className="flex flex-shrink-0 items-center justify-between rounded-t-2xl px-2 pb-2 pt-3">
+        <div className="flex shrink-0 items-center justify-between rounded-t-2xl px-2 pt-3 pb-2">
           <div className="flex items-center justify-start gap-sm">
             <Button
               size="xs"
@@ -179,7 +179,7 @@ export default function TerminalAgentWorkspace() {
             >
               <Bot className="h-4 w-4 text-ds-icon-neutral-default-default" />
               <div
-                className={`text-[10px] font-bold leading-17 ${
+                className={`text-[10px] leading-17 font-bold ${
                   agentMap[activeAgent?.type as keyof typeof agentMap]
                     ?.textColor
                 }`}
@@ -187,7 +187,7 @@ export default function TerminalAgentWorkspace() {
                 {agentMap[activeAgent?.type as keyof typeof agentMap]?.name}
               </div>
             </div>
-            <div className="text-[10px] font-medium leading-17 text-ds-text-neutral-muted-default">
+            <div className="text-[10px] leading-17 font-medium text-ds-text-neutral-muted-default">
               {
                 activeAgent?.tasks?.filter(
                   (task) => task.status && task.status !== 'running'
@@ -281,7 +281,7 @@ export default function TerminalAgentWorkspace() {
         {activeAgent?.tasks.filter(
           (task) => task?.terminal && task?.terminal.length > 0
         ).length !== 1 && (
-          <div className="absolute bottom-2 right-2 z-[200] flex w-auto items-center gap-1 rounded-lg border border-solid border-ds-border-neutral-strong-default bg-ds-bg-neutral-strong-default p-1">
+          <div className="absolute right-2 bottom-2 z-[200] flex w-auto items-center gap-1 rounded-lg border border-solid border-ds-border-neutral-strong-default bg-ds-bg-neutral-strong-default p-1">
             {isSingleMode && (
               <Button
                 size="xs"

@@ -399,7 +399,7 @@ export const Inputbox = ({
         </div>
       )}
       {/* Layer 1: Input-required question / details */}
-      {header && <BoxHeaderDisplay {...header} className="px-0 pb-2 pt-0" />}
+      {header && <BoxHeaderDisplay {...header} className="px-0 pt-0 pb-2" />}
       {/* Layer 2: File attachments (only show if has files) */}
       {showFileAttachments && files.length > 0 && (
         <div className="relative box-border flex w-full flex-wrap items-start gap-1 pb-2">
@@ -441,7 +441,7 @@ export const Inputbox = ({
                 {/* File Name */}
                 <span
                   className={cn(
-                    "relative block min-h-px min-w-px flex-1 overflow-hidden overflow-ellipsis whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default"
+                    "relative block min-h-px min-w-px flex-1 overflow-hidden font-['Inter'] text-xs leading-tight font-bold text-ellipsis whitespace-nowrap text-ds-text-neutral-default-default"
                   )}
                   title={file.fileName}
                 >
@@ -467,7 +467,7 @@ export const Inputbox = ({
                     e.stopPropagation();
                   }}
                 >
-                  <span className="block whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default">
+                  <span className="block font-['Inter'] text-xs leading-tight font-bold whitespace-nowrap text-ds-text-neutral-default-default">
                     {remainingCount}+
                   </span>
                 </Button>
@@ -515,7 +515,7 @@ export const Inputbox = ({
                             getFileIcon(file.fileName)
                           )}
                         </a>
-                        <span className="block flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default">
+                        <span className="block flex-1 overflow-hidden font-['Inter'] text-xs leading-tight font-bold text-ellipsis whitespace-nowrap text-ds-text-neutral-default-default">
                           {file.fileName}
                         </span>
                       </div>

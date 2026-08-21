@@ -119,7 +119,7 @@ export function ExpandedOverlay({
             </div>
           )}
 
-          <div className="scrollbar scrollbar-always-visible min-h-0 flex-1 overflow-y-auto overflow-x-hidden border border-x-0 border-b-0 border-solid border-ds-border-neutral-subtle-disabled bg-transparent px-2">
+          <div className="scrollbar scrollbar-always-visible min-h-0 flex-1 overflow-x-hidden overflow-y-auto border border-x-0 border-b-0 border-solid border-ds-border-neutral-subtle-disabled bg-transparent px-2">
             {hasTaskInfo ? (
               <SubtaskEditor
                 taskInfo={taskInfo}
@@ -138,7 +138,7 @@ export function ExpandedOverlay({
                       key={`s-${i}`}
                       className="flex items-start gap-2 py-1.5 duration-300 animate-in fade-in-0 slide-in-from-left-2"
                     >
-                      <div className="flex h-4 flex-shrink-0 items-center justify-center pt-0.5">
+                      <div className="flex h-4 shrink-0 items-center justify-center pt-0.5">
                         {streaming ? (
                           <LoaderCircle
                             size={13}

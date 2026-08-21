@@ -349,7 +349,7 @@ export default function CDP() {
               disabled={
                 closingAll || browsersLoading || cdpBrowsers.length === 0
               }
-              className="uppercase !text-ds-text-status-error-strong-default"
+              className="!text-ds-text-status-error-strong-default uppercase"
             >
               {closingAll
                 ? t('layout.closing', { defaultValue: 'Closing' })
@@ -398,7 +398,7 @@ export default function CDP() {
                     buttonContent="icon-only"
                     onClick={() => setBrowserToRemove(browser)}
                     disabled={deletingBrowser === browser.id}
-                    className="ml-3 flex-shrink-0"
+                    className="ml-3 shrink-0"
                     aria-label={t('layout.remove-browser')}
                   >
                     <Trash2

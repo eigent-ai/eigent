@@ -224,26 +224,26 @@ export function AgentDetailPane({
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl bg-ds-bg-neutral-strong-default">
       <div
         className={cn(
-          'top-0 min-h-0 w-full min-w-0 max-w-full shrink-0 bg-ds-bg-neutral-strong-default pb-2 pt-2'
+          'top-0 min-h-0 w-full max-w-full min-w-0 shrink-0 bg-ds-bg-neutral-strong-default pt-2 pb-2'
         )}
       >
         <div
           className={cn(
-            'min-w-0 px-3 text-base font-bold leading-relaxed',
+            'min-w-0 px-3 text-base leading-relaxed font-bold',
             preset?.textColor ?? 'text-ds-text-neutral-default-default'
           )}
         >
           {preset?.name ?? agent.name}
         </div>
         <div
-          className="mt-sm min-h-4 w-full min-w-0 max-w-full px-3"
+          className="mt-sm min-h-4 w-full max-w-full min-w-0 px-3"
           onPointerEnter={() => setToolkitHovered(true)}
           onPointerLeave={() => setToolkitHovered(false)}
         >
           <HoverScrollText
             text={toolkitLine}
             active={toolkitHovered}
-            className="text-xs font-normal leading-tight text-ds-text-neutral-muted-default"
+            className="text-xs leading-tight font-normal text-ds-text-neutral-muted-default"
             innerClassName="text-xs font-normal leading-tight text-ds-text-neutral-muted-default"
           />
         </div>
@@ -305,7 +305,7 @@ export function AgentDetailPane({
           onWheel={(e) => e.stopPropagation()}
         >
           <div
-            className="mb-2 mt-1 max-h-[180px] w-full pl-3"
+            className="mt-1 mb-2 max-h-[180px] w-full pl-3"
             onClick={focusAgent}
           >
             {browserImages.length > 0 && (
@@ -318,7 +318,7 @@ export function AgentDetailPane({
                     className="relative h-full w-full overflow-hidden rounded-lg"
                   >
                     <img
-                      className="absolute left-0 top-0 h-[250%] w-[250%] origin-top-left scale-[0.4] object-cover"
+                      className="absolute top-0 left-0 h-[250%] w-[250%] origin-top-left scale-[0.4] object-cover"
                       src={img.img}
                       alt={agent.type}
                     />
@@ -338,7 +338,7 @@ export function AgentDetailPane({
               agent.tasks &&
               agent.tasks.length > 0 && (
                 <div className="relative h-[180px] w-full overflow-hidden rounded-sm">
-                  <div className="absolute left-0 top-0 h-[500px] w-[900px] origin-top-left scale-[0.36]">
+                  <div className="absolute top-0 left-0 h-[500px] w-[900px] origin-top-left scale-[0.36]">
                     <Folder data={agent} />
                   </div>
                 </div>
@@ -353,7 +353,7 @@ export function AgentDetailPane({
                     key={task.id}
                     className="relative h-full w-full overflow-hidden rounded-lg object-cover"
                   >
-                    <div className="absolute left-0 top-0 h-[250%] w-[250%] origin-top-left scale-[0.4]">
+                    <div className="absolute top-0 left-0 h-[250%] w-[250%] origin-top-left scale-[0.4]">
                       <Terminal content={task.terminal} />
                     </div>
                   </div>
@@ -394,7 +394,7 @@ export function AgentDetailPane({
                       }
                     }}
                     className={cn(
-                      'duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] flex cursor-pointer flex-col gap-1 rounded-xl border border-solid px-6 py-sm transition-[background-color,border-color]',
+                      'flex cursor-pointer flex-col gap-1 rounded-xl border border-solid px-6 py-sm transition-[background-color,border-color] duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)]',
                       task.reAssignTo
                         ? 'bg-ds-bg-status-blocked-subtle-default'
                         : task.status === TaskStatus.COMPLETED
@@ -483,18 +483,18 @@ export function AgentDetailPane({
                           )}
                         </div>
                         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-                          <span className="shrink-0 text-xs font-bold leading-13 text-ds-text-neutral-default-default">
+                          <span className="shrink-0 text-xs leading-13 font-bold text-ds-text-neutral-default-default">
                             No. {getTaskIdDisplay(task.id)}
                           </span>
                           {task.reAssignTo ? (
-                            <div className="rounded-lg bg-ds-bg-document-subtle-default px-1 py-0.5 text-xs font-bold leading-none text-ds-text-warning-strong-default">
+                            <div className="rounded-lg bg-ds-bg-document-subtle-default px-1 py-0.5 text-xs leading-none font-bold text-ds-text-warning-strong-default">
                               Reassigned to {task.reAssignTo}
                             </div>
                           ) : (
                             (task.failure_count ?? 0) > 0 && (
                               <div
                                 className={cn(
-                                  'rounded-lg px-1 py-0.5 text-xs font-bold leading-none',
+                                  'rounded-lg px-1 py-0.5 text-xs leading-none font-bold',
                                   task.status === TaskStatus.FAILED
                                     ? 'bg-ds-bg-status-error-subtle-default text-ds-text-status-error-strong-default'
                                     : task.status === TaskStatus.COMPLETED
@@ -538,7 +538,7 @@ export function AgentDetailPane({
                     </div>
                     <div
                       className={cn(
-                        'mt-0.5 w-full min-w-0 max-w-full pl-4 text-left',
+                        'mt-0.5 w-full max-w-full min-w-0 pl-4 text-left',
                         task.status === TaskStatus.FAILED
                           ? 'text-ds-text-status-error-strong-default'
                           : task.status === TaskStatus.BLOCKED
@@ -548,7 +548,7 @@ export function AgentDetailPane({
                     >
                       <div
                         className={cn(
-                          'block select-text break-words text-label-xs font-medium',
+                          'block text-label-xs font-medium break-words select-text',
                           !isExpanded && 'line-clamp-2 overflow-hidden',
                           isExpanded && 'whitespace-pre-line'
                         )}
@@ -557,17 +557,17 @@ export function AgentDetailPane({
                       </div>
                     </div>
                     {task.status === TaskStatus.RUNNING && isExpanded && (
-                      <div className="duration-400 ml-4 mt-0.5 flex items-center gap-2">
+                      <div className="mt-0.5 ml-4 flex items-center gap-2 duration-400">
                         {lastActiveToolkit?.toolkitStatus ===
                           AgentStatusValue.RUNNING && (
                           <div className="flex min-w-0 flex-1 items-center justify-start gap-sm duration-300">
                             {getToolkitIcon(
                               lastActiveToolkit.toolkitName ?? ''
                             )}
-                            <div className="min-w-0 max-w-full flex-shrink flex-grow-0 overflow-hidden text-ellipsis whitespace-nowrap pt-1 text-xs leading-17 text-ds-text-neutral-default-default">
+                            <div className="max-w-full min-w-0 shrink grow-0 overflow-hidden pt-1 text-xs leading-17 text-ellipsis whitespace-nowrap text-ds-text-neutral-default-default">
                               <ShinyText
                                 text={task.toolkits?.[0]?.toolkitName ?? ''}
-                                className="pointer-events-auto w-full select-text overflow-hidden text-ellipsis whitespace-nowrap text-xs font-bold leading-17 text-ds-text-neutral-default-default"
+                                className="pointer-events-auto w-full overflow-hidden text-xs leading-17 font-bold text-ellipsis whitespace-nowrap text-ds-text-neutral-default-default select-text"
                               />
                             </div>
                           </div>
@@ -609,7 +609,7 @@ export function AgentDetailPane({
               </div>
               <div
                 onWheel={(e) => e.stopPropagation()}
-                className="scrollbar scrollbar-always-visible min-h-0 flex-1 overflow-y-auto pb-2 pl-3 pr-1"
+                className="scrollbar scrollbar-always-visible min-h-0 flex-1 overflow-y-auto pr-1 pb-2 pl-3"
               >
                 <AnimatePresence mode="wait">
                   <motion.div
