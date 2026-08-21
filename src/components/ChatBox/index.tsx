@@ -96,6 +96,12 @@ const CHAT_SCROLL_BOTTOM_GAP_PX = 8;
 
 const USAGE_WARNING_RATIO = 0.75;
 const FREE_STARTING_CREDITS = 500;
+const TERMINAL_QUEUED_RUN_STATUSES = new Set([
+  'completed',
+  'failed',
+  'cancelled',
+  'interrupted',
+]);
 const READ_ONLY_EVENT_NATIVE_RUN_STATUSES = new Set([
   'pending',
   'running',
@@ -509,6 +515,10 @@ export default function ChatBox(): JSX.Element {
     | null
   >(null);
   const queuedDispatchRef = useRef<string | null>(null);
+  const [admittedQueuedRun, setAdmittedQueuedRun] = useState<{
+    projectId: string;
+    runId: string;
+  } | null>(null);
 
   const handleSelectModel = useCallback(() => {
     openSettings('models');
@@ -1089,13 +1099,10 @@ export default function ChatBox(): JSX.Element {
             attaches: queuedFiles.map((file) => file.filePath),
             target: undefined,
           });
-          chatStore.setIsPending(_taskId, true);
-          chatStore.addMessages(_taskId, {
-            id: generateUniqueId(),
-            role: 'user',
-            content: displayContent,
-            attaches: queuedFiles,
-          });
+          // The accepted request becomes a new durable Run. Do not append its
+          // user message to the completed compatibility Run: CONFIRMED owns
+          // the legacy projection and RunDomainEventHub owns the event-native
+          // projection. Writing here as well renders the queued prompt twice.
         } else {
           // Brain restart removes the warm compatibility consumer.  A queued
           // instruction is still a normal new Run, so start it through the
@@ -1541,6 +1548,42 @@ export default function ChatBox(): JSX.Element {
   }, [projectStore, projectStore.activeProjectId]);
 
   useEffect(() => {
+    if (
+      !admittedQueuedRun ||
+      admittedQueuedRun.projectId !== projectStore.activeProjectId
+    ) {
+      return;
+    }
+
+    const projectedRun =
+      eventNativeProjectSnapshot?.view.runs[admittedQueuedRun.runId];
+    if (projectedRun) {
+      if (TERMINAL_QUEUED_RUN_STATUSES.has(projectedRun.status)) {
+        setAdmittedQueuedRun(null);
+      }
+      return;
+    }
+
+    const legacyTask = projectStore
+      .getAllChatStores(admittedQueuedRun.projectId)
+      .map(
+        ({ chatStore: store }) =>
+          store.getState().tasks[admittedQueuedRun.runId]
+      )
+      .find(Boolean);
+    if (legacyTask?.status === ChatTaskStatus.FINISHED) {
+      setAdmittedQueuedRun(null);
+    }
+  }, [
+    admittedQueuedRun,
+    chatStore?.tasks,
+    eventNativeProjectSnapshot?.revision,
+    eventNativeProjectSnapshot?.view.runs,
+    projectStore,
+    projectStore.activeProjectId,
+  ]);
+
+  useEffect(() => {
     const projectId = projectStore.activeProjectId;
     const activeId = chatStore?.activeTaskId;
     if (
@@ -1553,6 +1596,10 @@ export default function ChatBox(): JSX.Element {
       isCloudUsageLimited
     )
       return;
+    // HTTP admission completes before the new Run necessarily reaches either
+    // renderer projection. Keep a Project-scoped barrier until that exact Run
+    // is terminal so React batching cannot drain the next FIFO row early.
+    if (admittedQueuedRun?.projectId === projectId) return;
     if (queuedDispatchRef.current) return;
 
     const project = projectStore.getProjectById(projectId);
@@ -1574,6 +1621,7 @@ export default function ChatBox(): JSX.Element {
       next.task_id
     )
       .then(() => {
+        setAdmittedQueuedRun({ projectId, runId: next.task_id });
         projectStore.removeQueuedMessage(projectId, next.task_id);
       })
       .catch((error) => {
@@ -1594,6 +1642,7 @@ export default function ChatBox(): JSX.Element {
       });
   }, [
     activeAsk,
+    admittedQueuedRun,
     chatStore?.activeTaskId,
     hasModel,
     isCloudUsageLimited,

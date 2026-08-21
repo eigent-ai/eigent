@@ -325,6 +325,7 @@ describe('ChatBox Component', async () => {
     removeQueuedMessage: vi.fn(),
     restoreQueuedMessage: vi.fn(),
     clearQueuedMessages: vi.fn(),
+    setQueuedMessageProcessing: vi.fn(),
     createChatStore: vi.fn(),
     appendInitChatStore: vi.fn((_projectId: string, _taskId: string) => ({
       chatStore: preparedRunChatStore,
@@ -419,6 +420,13 @@ describe('ChatBox Component', async () => {
       getState: () => defaultChatStoreState,
       subscribe: () => () => {},
     }));
+    defaultProjectStoreState.getProjectById.mockImplementation(() => ({
+      queuedMessages: [],
+    }));
+    defaultProjectStoreState.removeQueuedMessage.mockImplementation(
+      () => undefined
+    );
+    defaultProjectStoreState.getAllChatStores.mockReturnValue([]);
 
     // Setup default store states
     mockUseChatStoreAdapter.mockReturnValue({
@@ -771,6 +779,128 @@ describe('ChatBox Component', async () => {
             source: 'local',
           })
         );
+      });
+    });
+
+    it('admits queued follow-ups one at a time without writing into the completed Run', async () => {
+      const queuedMessages = [
+        {
+          task_id: 'queued-run-1',
+          run_id: 'queued-run-1',
+          content: 'First queued follow-up',
+          timestamp: 1,
+          attaches: [],
+        },
+        {
+          task_id: 'queued-run-2',
+          run_id: 'queued-run-2',
+          content: 'Second queued follow-up',
+          timestamp: 2,
+          attaches: [],
+        },
+      ];
+      defaultProjectStoreState.getProjectById.mockImplementation(() => ({
+        queuedMessages,
+      }));
+      defaultProjectStoreState.removeQueuedMessage.mockImplementation(
+        (_projectId: string, taskId: string) => {
+          const index = queuedMessages.findIndex(
+            (item) => item.task_id === taskId
+          );
+          return index >= 0 ? queuedMessages.splice(index, 1)[0] : undefined;
+        }
+      );
+
+      const completedTask = {
+        ...defaultChatStoreState.tasks['test-task-id'],
+        messages: [
+          {
+            id: 'completed-query',
+            role: 'user',
+            content: 'Completed task',
+            attaches: [],
+          },
+        ],
+        hasMessages: true,
+        hasWaitComfirm: true,
+        status: 'finished',
+      };
+      const completedStore = {
+        ...defaultChatStoreState,
+        tasks: { 'test-task-id': completedTask },
+      };
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: completedStore as any,
+      });
+      defaultProjectStoreState.getAllChatStores.mockReturnValue([]);
+      eventNativeHarness.enabled = true;
+      eventNativeHarness.snapshot = runningEventNativeSnapshot('test-task-id');
+      eventNativeHarness.snapshot.view.runs['test-task-id'].status =
+        'completed';
+      mockFetchGet.mockImplementation((url: string) => {
+        if (url === '/chat/test-project-id/status') {
+          return Promise.resolve({
+            has_lock: true,
+            status: 'done',
+            run_id: 'test-task-id',
+          });
+        }
+        return Promise.resolve({ items: [] });
+      });
+
+      const view = renderChatBox();
+
+      await waitFor(() => {
+        expect(_mockFetchPost).toHaveBeenCalledWith('/chat/test-project-id', {
+          question: 'First queued follow-up',
+          task_id: 'queued-run-1',
+          attaches: [],
+          target: undefined,
+        });
+      });
+      expect(
+        _mockFetchPost.mock.calls.filter(
+          ([url]) => url === '/chat/test-project-id'
+        )
+      ).toHaveLength(1);
+      expect(completedStore.addMessages).not.toHaveBeenCalled();
+      expect(defaultProjectStoreState.removeQueuedMessage).toHaveBeenCalledWith(
+        'test-project-id',
+        'queued-run-1'
+      );
+
+      eventNativeHarness.snapshot = runningEventNativeSnapshot('queued-run-1');
+      eventNativeHarness.snapshot.revision = 2;
+      view.rerender(
+        <BrowserRouter>
+          <ChatBox />
+        </BrowserRouter>
+      );
+      await Promise.resolve();
+      expect(
+        _mockFetchPost.mock.calls.filter(
+          ([url]) => url === '/chat/test-project-id'
+        )
+      ).toHaveLength(1);
+
+      eventNativeHarness.snapshot = runningEventNativeSnapshot('queued-run-1');
+      eventNativeHarness.snapshot.revision = 3;
+      eventNativeHarness.snapshot.view.runs['queued-run-1'].status =
+        'completed';
+      view.rerender(
+        <BrowserRouter>
+          <ChatBox />
+        </BrowserRouter>
+      );
+
+      await waitFor(() => {
+        expect(_mockFetchPost).toHaveBeenCalledWith('/chat/test-project-id', {
+          question: 'Second queued follow-up',
+          task_id: 'queued-run-2',
+          attaches: [],
+          target: undefined,
+        });
       });
     });
 
