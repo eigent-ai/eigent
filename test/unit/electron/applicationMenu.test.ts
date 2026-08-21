@@ -196,8 +196,6 @@ describe('application menu', () => {
       expect(close.role).toBeUndefined();
       click(findItem(template, 'file.settings'));
       click(findItem(template, 'help.keyboard-shortcuts'));
-      click(close);
-      click(exit);
       expect(harness.dispatchRendererCommand).toHaveBeenCalledWith(
         APP_COMMAND.openSettings
       );
@@ -207,8 +205,22 @@ describe('application menu', () => {
       expect(findItem(template, 'help.keyboard-shortcuts').accelerator).toBe(
         'Control+/'
       );
-      expect(harness.requestClose).toHaveBeenCalledOnce();
+    }
+  );
+
+  it.each(['win32', 'linux'] as const)(
+    'routes Close Window through guarded quit semantics on %s',
+    (platform) => {
+      const harness = createOptions(platform);
+      const template = buildApplicationMenuTemplate(harness.options);
+
+      click(findItem(template, 'file.close-window'));
+
+      expect(harness.requestClose).not.toHaveBeenCalled();
       expect(harness.requestQuit).toHaveBeenCalledOnce();
+
+      click(findItem(template, 'file.exit'));
+      expect(harness.requestQuit).toHaveBeenCalledTimes(2);
     }
   );
 

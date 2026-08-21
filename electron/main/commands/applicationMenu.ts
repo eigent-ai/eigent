@@ -465,7 +465,9 @@ function buildFileMenu(
       id: 'file.close-window',
       label: messages.closeWindow,
       accelerator: platformAccelerator(platform, 'Command+W', 'Control+W'),
-      click: requestClose,
+      // Closing the only window exits Eigent on Windows/Linux and tears down
+      // the local Brain, so it must use quit intent/copy on those platforms.
+      click: platform === 'darwin' ? requestClose : requestQuit,
     })
   );
 

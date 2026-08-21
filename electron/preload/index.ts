@@ -19,6 +19,7 @@ import {
   APP_COMMAND_HANDLED_CHANNEL,
   APP_SHELL_NOT_READY_CHANNEL,
   APP_SHELL_READY_CHANNEL,
+  APP_SHELL_READY_PROBE_CHANNEL,
   isAppCommandRequest,
   type AppCommandId,
 } from '../../src/shared/appCommands';
@@ -66,6 +67,15 @@ function updateAppShellReadiness(): void {
     ipcRenderer.send(APP_SHELL_NOT_READY_CHANNEL, { epoch: appShellEpoch });
   });
 }
+
+ipcRenderer.on(APP_SHELL_READY_PROBE_CHANNEL, () => {
+  // READY may race ahead of main's did-finish-load gate. Re-open the edge so
+  // the current listeners can announce the same document epoch again. If the
+  // listeners are not mounted yet, their normal registration path will send
+  // READY later.
+  appShellReadySent = false;
+  updateAppShellReadiness();
+});
 
 contextBridge.exposeInMainWorld('ipcRenderer', {
   on(...args: Parameters<typeof ipcRenderer.on>) {

@@ -43,6 +43,7 @@ import {
   APP_COMMAND_HANDLED_CHANNEL,
   APP_SHELL_NOT_READY_CHANNEL,
   APP_SHELL_READY_CHANNEL,
+  APP_SHELL_READY_PROBE_CHANNEL,
   isAppCommandHandled,
   isAppShellLifecycleMessage,
   type AppCommandId,
@@ -56,6 +57,7 @@ import {
   isWindowCloseResponse,
   WINDOW_CLOSE_RESPONSE_CHANNEL,
 } from '../../src/shared/windowClose';
+import { AppShellReadinessGate } from './appShellReadinessGate';
 import { CloseCoordinator } from './closeCoordinator';
 import { installApplicationMenu } from './commands/applicationMenu';
 import {
@@ -151,8 +153,16 @@ const LEGACY_DESKTOP_INSTANCE_STORAGE_KEY = 'eigent_desktop_instance_id';
 const activeLocalFileRoots = new Set<string>();
 let protocolUrlQueue: string[] = [];
 let isWindowReady = false;
-let isRendererDocumentLoaded = false;
 let nativeMenuLocale: NativeMenuLocale | null = null;
+const appShellReadinessGate = new AppShellReadinessGate({
+  announceReadyProbe: () => {
+    const target = win;
+    if (!target || target.isDestroyed() || target.webContents.isDestroyed()) {
+      return;
+    }
+    target.webContents.send(APP_SHELL_READY_PROBE_CHANNEL);
+  },
+});
 const rendererAppCommands = new RendererAppCommandCoordinator({
   send: (request) => {
     const target = win;
@@ -1904,7 +1914,10 @@ function registerIpcHandlers() {
   });
   ipcMain.on(APP_SHELL_READY_CHANNEL, (event, message: unknown) => {
     if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
-    if (!isRendererDocumentLoaded || !isAppShellLifecycleMessage(message)) {
+    if (
+      !appShellReadinessGate.canAcceptReady() ||
+      !isAppShellLifecycleMessage(message)
+    ) {
       return;
     }
     rendererAppCommands.markReady(message.epoch);
@@ -3073,7 +3086,7 @@ async function createWindowInternal() {
 
   // Platform-specific window configuration
   // Windows: native frame and solid background. macOS/Linux: frameless; macOS corner radius via native hook.
-  isRendererDocumentLoaded = false;
+  appShellReadinessGate.markDocumentLoading();
   rendererAppCommands.markNotReady('window-created');
   win = new BrowserWindow({
     title: 'Eigent',
@@ -3208,15 +3221,15 @@ async function createWindowInternal() {
 
   // ==================== Handle renderer crashes and failed loads ====================
   win.webContents.on('did-start-loading', () => {
-    isRendererDocumentLoaded = false;
+    appShellReadinessGate.markDocumentLoading();
     rendererAppCommands.markNotReady('did-start-loading');
   });
   win.webContents.on('did-finish-load', () => {
-    isRendererDocumentLoaded = true;
+    appShellReadinessGate.markDocumentLoaded();
   });
   win.webContents.on('render-process-gone', (event, details) => {
     log.error('[RENDERER] Process gone:', details.reason, details.exitCode);
-    isRendererDocumentLoaded = false;
+    appShellReadinessGate.markDocumentLoading();
     rendererAppCommands.markNotReady('render-process-gone');
     if (win && !win.isDestroyed()) {
       // Reload the window after a brief delay
@@ -3235,15 +3248,17 @@ async function createWindowInternal() {
 
   win.webContents.on(
     'did-fail-load',
-    (event, errorCode, errorDescription, validatedURL) => {
-      isRendererDocumentLoaded = false;
-      rendererAppCommands.markNotReady('did-fail-load');
+    (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      const shouldRetry = appShellReadinessGate.markDocumentLoadFailed(
+        isMainFrame,
+        errorCode
+      );
+      if (shouldRetry) rendererAppCommands.markNotReady('did-fail-load');
       log.error(
         `[RENDERER] Failed to load: ${errorCode} - ${errorDescription} - ${validatedURL}`
       );
       // Retry loading after a delay
-      if (errorCode !== -3) {
-        // -3 is USER_CANCELLED, don't retry
+      if (shouldRetry) {
         setTimeout(() => {
           if (win && !win.isDestroyed()) {
             log.info('[RENDERER] Retrying load after failure...');
@@ -3973,7 +3988,7 @@ app.on('window-all-closed', () => {
   rendererAppCommands.markNotReady('window-all-closed');
   win = null;
   isWindowReady = false;
-  isRendererDocumentLoaded = false;
+  appShellReadinessGate.markDocumentLoading();
   protocolUrlQueue = [];
 
   if (process.platform !== 'darwin') {
@@ -4061,7 +4076,7 @@ app.on('before-quit', async (event) => {
 
     // Reset protocol handling state
     isWindowReady = false;
-    isRendererDocumentLoaded = false;
+    appShellReadinessGate.markDocumentLoading();
     rendererAppCommands.markNotReady('app-exit');
     protocolUrlQueue = [];
 

@@ -14,6 +14,7 @@
 
 export const APP_COMMAND_CHANNEL = 'app-command' as const;
 export const APP_COMMAND_HANDLED_CHANNEL = 'app-command-handled' as const;
+export const APP_SHELL_READY_PROBE_CHANNEL = 'app-shell-ready-probe' as const;
 export const APP_SHELL_READY_CHANNEL = 'app-shell-ready' as const;
 export const APP_SHELL_NOT_READY_CHANNEL = 'app-shell-not-ready' as const;
 

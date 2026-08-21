@@ -18,6 +18,7 @@ import {
   APP_COMMAND_HANDLED_CHANNEL,
   APP_SHELL_NOT_READY_CHANNEL,
   APP_SHELL_READY_CHANNEL,
+  APP_SHELL_READY_PROBE_CHANNEL,
 } from '@/shared/appCommands';
 import { NATIVE_MENU_LOCALE_CHANNEL } from '@/shared/nativeMenu';
 import {
@@ -70,15 +71,45 @@ beforeAll(async () => {
 });
 
 describe('preload app shell bridge', () => {
+  it('re-announces READY when the first announcement preceded did-finish-load', async () => {
+    mocks.send.mockClear();
+    const unsubscribeCommand = electronAPI.onAppCommand(vi.fn());
+    const unsubscribeClose = electronAPI.onCloseRequest(vi.fn());
+    const probeListener = mocks.on.mock.calls.find(
+      ([channel]) => channel === APP_SHELL_READY_PROBE_CHANNEL
+    )?.[1];
+    const initialReady = mocks.send.mock.calls.find(
+      ([channel]) => channel === APP_SHELL_READY_CHANNEL
+    )?.[1] as { epoch: string } | undefined;
+
+    expect(initialReady?.epoch).toEqual(expect.any(String));
+    expect(probeListener).toEqual(expect.any(Function));
+
+    // Main rejects the first READY until did-finish-load, then sends this
+    // probe. The renderer must repeat READY for the same document epoch.
+    probeListener({});
+    const readyMessages = mocks.send.mock.calls.filter(
+      ([channel]) => channel === APP_SHELL_READY_CHANNEL
+    );
+    expect(readyMessages).toEqual([
+      [APP_SHELL_READY_CHANNEL, initialReady],
+      [APP_SHELL_READY_CHANNEL, initialReady],
+    ]);
+
+    unsubscribeCommand();
+    unsubscribeClose();
+    await Promise.resolve();
+  });
+
   it('handshakes after both listeners, filters epochs, and sends handled receipts', async () => {
     mocks.send.mockClear();
     const callback = vi.fn();
     const closeCallback = vi.fn();
     const unsubscribeCommand = electronAPI.onAppCommand(callback);
     const unsubscribeClose = electronAPI.onCloseRequest(closeCallback);
-    const commandListener = mocks.on.mock.calls.find(
-      ([channel]) => channel === APP_COMMAND_CHANNEL
-    )?.[1];
+    const commandListener = mocks.on.mock.calls
+      .filter(([channel]) => channel === APP_COMMAND_CHANNEL)
+      .at(-1)?.[1];
     const ready = mocks.send.mock.calls.find(
       ([channel]) => channel === APP_SHELL_READY_CHANNEL
     )?.[1] as { epoch: string } | undefined;
