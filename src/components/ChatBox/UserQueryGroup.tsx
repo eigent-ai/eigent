@@ -162,6 +162,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   const openFilePreviewInPanel = usePageTabStore(
     (state) => state.openFilePreview
   );
+  const openReviewPreview = usePageTabStore((state) => state.openReviewPreview);
   const openFilePreview = useCallback(
     (file: FileInfo) => {
       const resolvedPath =
@@ -175,6 +176,9 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
     },
     [openFilePreviewInPanel, workspaceRoot]
   );
+  const viewChanges = activeTaskId
+    ? () => openReviewPreview({ runId: activeTaskId })
+    : undefined;
 
   // Subscribe to streaming decompose text separately for efficient updates
   const streamingDecomposeText = useSyncExternalStore(
@@ -528,6 +532,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                         <ArtifactChangeList
                           files={message.fileList || []}
                           onOpen={openFilePreview}
+                          onViewChanges={viewChanges}
                           scanStatus={task?.artifactManifestScanStatus}
                           truncated={task?.artifactManifestTruncated}
                         />
@@ -604,6 +609,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
               <ArtifactChangeList
                 files={message.fileList}
                 onOpen={openFilePreview}
+                onViewChanges={viewChanges}
                 scanStatus={task?.artifactManifestScanStatus}
                 truncated={task?.artifactManifestTruncated}
               />

@@ -14,13 +14,14 @@
 
 import { cn } from '@/lib/utils';
 import { getWorkspaceRelativeFilePath } from '@/lib/workspaceRelativePath';
-import { ChevronDown, FileText } from 'lucide-react';
+import { ChevronDown, FileDiff, FileText } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export interface ArtifactChangeListProps {
   files?: FileInfo[];
   onOpen: (file: FileInfo) => void;
+  onViewChanges?: () => void;
   canOpenFile?: (file: FileInfo) => boolean;
   scanStatus?: string;
   truncated?: boolean;
@@ -30,6 +31,7 @@ export interface ArtifactChangeListProps {
 export function ArtifactChangeList({
   files,
   onOpen,
+  onViewChanges,
   canOpenFile = () => true,
   scanStatus = 'complete',
   truncated = false,
@@ -66,6 +68,16 @@ export function ArtifactChangeList({
         <span className="text-body-sm font-medium text-ds-text-success-default-default">
           {fileItems.length}
         </span>
+        {onViewChanges && fileItems.length > 0 ? (
+          <button
+            type="button"
+            onClick={onViewChanges}
+            className="ml-auto inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default px-2.5 text-label-xs font-medium text-ds-text-neutral-default-default transition-colors hover:bg-ds-bg-neutral-default-hover active:bg-ds-bg-neutral-default-active"
+          >
+            <FileDiff size={14} aria-hidden />
+            {t('chat.view-changes')}
+          </button>
+        ) : null}
       </div>
       {scanWarning ? (
         <div className="border-b border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default px-4 py-2 text-body-xs text-ds-text-warning-strong-default">

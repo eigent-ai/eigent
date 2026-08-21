@@ -73,6 +73,7 @@ import {
 } from '@/lib/htmlFontStyles';
 import {
   inlineLocalHtmlImgElements,
+  inlineLocalHtmlScriptElements,
   inlineLocalProjectImagePaths,
   toLocalFileUrl,
 } from '@/lib/htmlLocalAssets';
@@ -2612,6 +2613,14 @@ function HtmlRenderer({
           processedHtmlContent,
           htmlDir,
           electronAPI.readFileAsDataUrl
+        );
+      }
+
+      if (ipcRenderer) {
+        processedHtmlContent = await inlineLocalHtmlScriptElements(
+          processedHtmlContent,
+          htmlDir,
+          (filePath) => ipcRenderer.invoke('open-file', 'js', filePath, false)
         );
       }
 

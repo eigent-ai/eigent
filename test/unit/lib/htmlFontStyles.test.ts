@@ -16,7 +16,7 @@ import { deferInlineScriptsUntilLoad } from '@/lib/htmlFontStyles';
 import { describe, expect, it } from 'vitest';
 
 describe('deferInlineScriptsUntilLoad', () => {
-  it('only defers inline scripts that appear after an external script', () => {
+  it('keeps inline scripts after a parser-blocking external script in place', () => {
     const input = `<!doctype html><html><head>
 <script>window.preConfig = true;</script>
 <script src="https://cdn.example.com/chart.js"></script>
@@ -25,16 +25,11 @@ describe('deferInlineScriptsUntilLoad', () => {
 
     const output = deferInlineScriptsUntilLoad(input);
 
-    expect(output).toContain('<script>window.preConfig = true;</script>');
-    expect(output).toContain(
-      '<script src="https://cdn.example.com/chart.js"></script>'
-    );
-    expect(output).not.toContain('<script>window.postInit = true;</script>');
-    expect(output).toContain("window.addEventListener('load'");
+    expect(output).toBe(input);
   });
 
-  it('treats uppercase SRC as external and defers following inline scripts', () => {
-    const input = `<script SRC="https://cdn.example.com/lib.js"></script><script>window.after = 1;</script>`;
+  it('defers inline scripts that follow an async external script', () => {
+    const input = `<script SRC="https://cdn.example.com/lib.js" ASYNC></script><script>window.after = 1;</script>`;
 
     const output = deferInlineScriptsUntilLoad(input);
 
@@ -52,7 +47,7 @@ describe('deferInlineScriptsUntilLoad', () => {
   });
 
   it('preserves inline script global execution via dynamic script injection', () => {
-    const input = `<script src="https://cdn.example.com/lib.js"></script><script>window.shared = 1;</script>`;
+    const input = `<script defer src="https://cdn.example.com/lib.js"></script><script>window.shared = 1;</script>`;
 
     const output = deferInlineScriptsUntilLoad(input);
 
@@ -62,7 +57,7 @@ describe('deferInlineScriptsUntilLoad', () => {
   });
 
   it('does not rewrite non-javascript script types', () => {
-    const input = `<script src="https://cdn.example.com/lib.js"></script><script type="application/json">{"k":"v"}</script><script type="text/template"><div>{{name}}</div></script>`;
+    const input = `<script defer src="https://cdn.example.com/lib.js"></script><script type="application/json">{"k":"v"}</script><script type="text/template"><div>{{name}}</div></script>`;
 
     const output = deferInlineScriptsUntilLoad(input);
 
@@ -75,7 +70,7 @@ describe('deferInlineScriptsUntilLoad', () => {
   });
 
   it('supports javascript mime types with parameters', () => {
-    const input = `<script src="https://cdn.example.com/lib.js"></script><script type="text/javascript; charset=utf-8">window.paramType = 1;</script>`;
+    const input = `<script type="module" src="https://cdn.example.com/lib.js"></script><script type="text/javascript; charset=utf-8">window.paramType = 1;</script>`;
 
     const output = deferInlineScriptsUntilLoad(input);
 

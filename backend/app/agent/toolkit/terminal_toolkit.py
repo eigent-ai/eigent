@@ -94,6 +94,8 @@ _BUNDLE_RUNTIME_BASE_ENVIRONMENT_KEYS = {
     "WINDIR",
 }
 
+_RUN_BACKGROUND_QUIESCE_TIMEOUT_SECONDS = 5.0
+
 _LOCAL_PROCESS_GROUP_BOOTSTRAP = (
     "import os,sys; os.setsid(); "
     'os.execv("/bin/sh", ["/bin/sh", "-c", sys.argv[1]])'
@@ -1067,8 +1069,8 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                     extra={"pid": process.pid},
                 )
 
-    def shell_kill_process(self, id: str) -> str:
-        """Terminate a tracked process within a bounded amount of time."""
+    def _kill_registered_process(self, id: str) -> str:
+        """Terminate a tracked process without emitting a Tool event."""
 
         with self._session_lock:
             session = self.shell_sessions.get(id)
@@ -1102,6 +1104,11 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             self._output_condition.notify_all()
         return f"Process in session '{id}' has been terminated."
 
+    def shell_kill_process(self, id: str) -> str:
+        """Terminate a tracked process within a bounded amount of time."""
+
+        return self._kill_registered_process(id)
+
     def _watch_background_workspace_mutation(
         self,
         *,
@@ -1117,10 +1124,20 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             lock = threading.Lock()
             self._workspace_checkpoint_watchers_lock = lock
             self._workspace_checkpoint_watchers = set()
+            self._workspace_checkpoint_runs = {}
+            self._workspace_checkpoint_wakeups = {}
+            self._workspace_checkpoint_completions = {}
+        wakeup = threading.Event()
+        completion = threading.Event()
         with lock:
             if session_id in self._workspace_checkpoint_watchers:
                 return
             self._workspace_checkpoint_watchers.add(session_id)
+            self._workspace_checkpoint_runs[session_id] = (
+                prepared.context.run_id
+            )
+            self._workspace_checkpoint_wakeups[session_id] = wakeup
+            self._workspace_checkpoint_completions[session_id] = completion
 
         def wait_and_checkpoint() -> None:
             try:
@@ -1133,7 +1150,8 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 )
                 renew_interval = max(0.05, min(30.0, lease_seconds / 3.0))
                 while self._workspace_session_running(session_id):
-                    threading.Event().wait(renew_interval)
+                    wakeup.wait(renew_interval)
+                    wakeup.clear()
                     if self._workspace_session_running(session_id):
                         mutation_service.renew_broad_write(prepared)
                 mutation_service.complete_broad_write(
@@ -1151,14 +1169,67 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                     extra={"session_id": session_id},
                 )
             finally:
+                completion.set()
                 with lock:
                     self._workspace_checkpoint_watchers.discard(session_id)
+                    self._workspace_checkpoint_runs.pop(session_id, None)
+                    self._workspace_checkpoint_wakeups.pop(session_id, None)
+                    self._workspace_checkpoint_completions.pop(
+                        session_id, None
+                    )
 
         threading.Thread(
             target=wait_and_checkpoint,
             name=f"workspace-checkpoint-{session_id}",
             daemon=True,
         ).start()
+
+    def quiesce_run_background_sessions(
+        self,
+        run_id: str,
+        *,
+        timeout: float = _RUN_BACKGROUND_QUIESCE_TIMEOUT_SECONDS,
+    ) -> tuple[str, ...]:
+        """Stop one Run's background processes before Git promotion.
+
+        A background Terminal command owns a broad-write lease until it
+        exits. A logical Run must not be marked complete while that lease can
+        still change its Agent worktree, otherwise the Run has no immutable
+        commit to promote or review. Stop only sessions admitted for this Run
+        and wait for their checkpoint watchers to release the mutation.
+        """
+
+        lock = getattr(self, "_workspace_checkpoint_watchers_lock", None)
+        if lock is None:
+            return ()
+        with lock:
+            run_by_session = dict(
+                getattr(self, "_workspace_checkpoint_runs", {})
+            )
+            wakeups = dict(getattr(self, "_workspace_checkpoint_wakeups", {}))
+            completions = dict(
+                getattr(self, "_workspace_checkpoint_completions", {})
+            )
+        targets = tuple(
+            session_id
+            for session_id, owner_run_id in run_by_session.items()
+            if owner_run_id == run_id
+        )
+        for session_id in targets:
+            if self._workspace_session_running(session_id):
+                self._kill_registered_process(session_id)
+            wakeup = wakeups.get(session_id)
+            if wakeup is not None:
+                wakeup.set()
+
+        deadline = time.monotonic() + max(0.0, timeout)
+        lingering: list[str] = []
+        for session_id in targets:
+            completion = completions.get(session_id)
+            remaining = deadline - time.monotonic()
+            if completion is None or not completion.wait(max(0.0, remaining)):
+                lingering.append(session_id)
+        return tuple(lingering)
 
     def _workspace_session_running(self, session_id: str) -> bool:
         session_lock = getattr(self, "_session_lock", None)

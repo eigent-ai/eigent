@@ -400,3 +400,62 @@ def test_background_terminal_renews_lease_until_session_stops(
         "complete",
         "finalize",
     ]
+
+
+def test_run_completion_stops_background_session_before_checkpoint(
+    tmp_path,
+    monkeypatch,
+):
+    run_root = tmp_path / "run"
+    run_root.mkdir()
+    toolkit = TerminalToolkit.__new__(TerminalToolkit)
+    toolkit.agent_name = "developer_agent"
+    toolkit._session_lock = threading.RLock()
+    toolkit.shell_sessions = {"preview-server": {"running": True}}
+    prepared = SimpleNamespace(
+        agent_workspace=SimpleNamespace(agent_worktree=run_root),
+        context=SimpleNamespace(run_id="run-1"),
+    )
+    checkpointed = threading.Event()
+    calls: list[str] = []
+
+    class _Lifecycle:
+        def finalize_run(self, run_id):
+            assert run_id == "run-1"
+            calls.append("finalize")
+
+    class _MutationService:
+        workforce = SimpleNamespace(lease_seconds=300.0)
+
+        def complete_broad_write(self, value, **_kwargs):
+            assert value is prepared
+            calls.append("complete")
+            checkpointed.set()
+
+        def renew_broad_write(self, _value):
+            calls.append("renew")
+
+    def kill_process(session_id):
+        assert session_id == "preview-server"
+        with toolkit._session_lock:
+            toolkit.shell_sessions[session_id]["running"] = False
+        calls.append("kill")
+        return "stopped"
+
+    monkeypatch.setattr(toolkit, "_kill_registered_process", kill_process)
+    monkeypatch.setattr(
+        terminal_toolkit,
+        "get_default_workspace_git_lifecycle",
+        lambda: _Lifecycle(),
+    )
+
+    toolkit._watch_background_workspace_mutation(
+        session_id="preview-server",
+        mutation_service=_MutationService(),
+        prepared=prepared,
+        operation_request_id="terminal-preview",
+    )
+
+    assert toolkit.quiesce_run_background_sessions("run-1") == ()
+    assert checkpointed.is_set()
+    assert calls == ["kill", "complete", "finalize"]

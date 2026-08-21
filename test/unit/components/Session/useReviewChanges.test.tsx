@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { collectChangedFilePaths } from '@/components/Session/PreviewPanel/tabs/review/reviewSources';
 import { useReviewChanges } from '@/components/Session/PreviewPanel/tabs/review/useReviewChanges';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -128,6 +129,29 @@ describe('useReviewChanges', () => {
         ],
       },
     ]);
+  });
+
+  it('limits direct-write recovery paths to the selected older Run', () => {
+    const file = (name: string): FileInfo => ({
+      name,
+      type: 'txt',
+      path: `/workspace/${name}`,
+      relativePath: name,
+    });
+
+    expect(
+      collectChangedFilePaths(
+        [
+          {
+            tasks: {
+              'run-1': { messages: [{ fileList: [file('run-one.txt')] }] },
+              'run-2': { messages: [{ fileList: [file('run-two.txt')] }] },
+            },
+          },
+        ],
+        'run-1'
+      )
+    ).toEqual(['/workspace/run-one.txt']);
   });
 
   it('uses Git as the primary source and lazily reads visible content', async () => {
@@ -274,6 +298,62 @@ describe('useReviewChanges', () => {
         targetCommit: 'd'.repeat(40),
       }
     );
+  });
+
+  it("recovers an older Run from only that Run's retained overlays", async () => {
+    mockFetchRunGitChanges.mockRejectedValue(
+      Object.assign(new Error('Run Git state not found'), { status: 404 })
+    );
+    mockReviewListBackups.mockResolvedValue([
+      {
+        path: '/scratch/src/run-one.ts',
+        exists: true,
+        size: 120,
+        backups: [
+          { path: '/scratch/src/run-one.ts.20260722_120000.bak', size: 90 },
+        ],
+      },
+    ]);
+    mockFetchOverlays.mockResolvedValue({
+      space_id: 'space-1',
+      project_id: 'project-1',
+      overlays: [
+        {
+          id: 7,
+          space_id: 'space-1',
+          project_id: 'project-1',
+          run_id: 'run-1',
+          path: 'src/run-one.ts',
+          status: 'modified',
+          metadata: { source_path: '/scratch/src/run-one.ts' },
+        },
+        {
+          id: 8,
+          space_id: 'space-1',
+          project_id: 'project-1',
+          run_id: 'run-2',
+          path: 'src/run-two.ts',
+          status: 'modified',
+          metadata: { source_path: '/scratch/src/run-two.ts' },
+        },
+      ],
+    });
+
+    const { result } = renderHook(() =>
+      useReviewChanges({
+        scope: 'run',
+        runId: 'run-1',
+        focusRequestId: 0,
+      })
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBeNull();
+    expect(result.current.files).toHaveLength(1);
+    expect(result.current.files[0]).toMatchObject({
+      id: 'overlay:run-1:src/run-one.ts',
+      path: 'src/run-one.ts',
+    });
   });
 
   it('uses authoritative overlays and removes applied entries on refresh', async () => {

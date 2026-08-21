@@ -40,6 +40,7 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   type ReactNode,
   type RefObject,
 } from 'react';
@@ -360,9 +361,17 @@ export function EventNativeProjectTimeline({
       optimisticUserQuery,
     ]
   );
+  const [timelineWindowState, setTimelineWindowState] = useState({
+    projectId,
+    maxNodes: MAX_MOUNTED_EVENT_NODES,
+  });
+  const maxMountedNodes =
+    timelineWindowState.projectId === projectId
+      ? timelineWindowState.maxNodes
+      : MAX_MOUNTED_EVENT_NODES;
   const timelineWindow = useMemo(
-    () => prepareEventNativeTimelineWindow(allNodes),
-    [allNodes]
+    () => prepareEventNativeTimelineWindow(allNodes, maxMountedNodes),
+    [allNodes, maxMountedNodes]
   );
   const { hiddenNodeCount, nodes: visibleNodes } = timelineWindow;
   const projectedRunsById =
@@ -421,6 +430,11 @@ export function EventNativeProjectTimeline({
       ? runtime.snapshot.view.artifactsByRun
       : undefined;
   const previousScrollHeightRef = useRef(0);
+  const pendingOlderRevealRef = useRef<{
+    projectId: string;
+    scrollHeight: number;
+    scrollTop: number;
+  } | null>(null);
   const previousLatestUserQueryKeyRef = useRef<string | undefined>(undefined);
   const previousProjectIdRef = useRef(projectId);
   const pinToBottomRef = useRef(true);
@@ -443,6 +457,23 @@ export function EventNativeProjectTimeline({
       !node.interactionResponse
   );
   const latestUserQueryKey = userQueryNodes.at(-1)?.runId;
+  const showOlderMessages = () => {
+    const container = scrollContainerRef?.current;
+    if (container) {
+      pendingOlderRevealRef.current = {
+        projectId,
+        scrollHeight: container.scrollHeight,
+        scrollTop: container.scrollTop,
+      };
+    }
+    setTimelineWindowState((current) => ({
+      projectId,
+      maxNodes:
+        (current.projectId === projectId
+          ? current.maxNodes
+          : MAX_MOUNTED_EVENT_NODES) + MAX_MOUNTED_EVENT_NODES,
+    }));
+  };
 
   useLayoutEffect(() => {
     const container = scrollContainerRef?.current;
@@ -469,6 +500,21 @@ export function EventNativeProjectTimeline({
       passive: true,
     });
 
+    const pendingOlderReveal = pendingOlderRevealRef.current;
+    const revealedOlder = pendingOlderReveal?.projectId === projectId;
+    if (pendingOlderReveal && revealedOlder) {
+      pendingOlderRevealRef.current = null;
+      const heightDelta =
+        container.scrollHeight - pendingOlderReveal.scrollHeight;
+      container.scrollTo({
+        top: pendingOlderReveal.scrollTop + Math.max(0, heightDelta),
+        behavior: 'auto',
+      });
+      pinToBottomRef.current = false;
+    } else if (pendingOlderReveal) {
+      pendingOlderRevealRef.current = null;
+    }
+
     const previousHeight = previousScrollHeightRef.current;
     const wasNearBottom =
       previousHeight === 0 ||
@@ -488,7 +534,7 @@ export function EventNativeProjectTimeline({
     // A follow-up query starts a new reading viewport: its user row aligns just
     // below the Session header and streaming output grows beneath it. The first
     // query keeps the original bottom reveal behavior.
-    if (shouldAnchorNewQuery) {
+    if (!revealedOlder && shouldAnchorNewQuery) {
       const target = Array.from(
         contentRef.current?.querySelectorAll<HTMLElement>(
           '[data-message-role="user"]'
@@ -512,7 +558,7 @@ export function EventNativeProjectTimeline({
           }
         );
       }
-    } else if (isNewUserMessage || wasNearBottom) {
+    } else if (!revealedOlder && (isNewUserMessage || wasNearBottom)) {
       pinToBottomRef.current = true;
       container.scrollTo({ top: container.scrollHeight, behavior: 'auto' });
     }
@@ -599,12 +645,17 @@ export function EventNativeProjectTimeline({
         style={{ paddingBottom: scrollBottomInsetPx }}
       >
         {hiddenNodeCount > 0 ? (
-          <span
-            className="block px-4 py-2 text-center text-label-sm font-normal text-ds-text-neutral-muted-default"
-            role="status"
-          >
-            {t('chat.timeline-older-hidden')}
-          </span>
+          <div className="flex justify-center px-4 py-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              buttonRadius="full"
+              onClick={showOlderMessages}
+            >
+              {t('chat.timeline-show-older')}
+            </Button>
+          </div>
         ) : null}
         {hydration.eventsTruncated ? (
           <span

@@ -208,6 +208,7 @@
   "timeline-unsupported-event": "Questa parte della conversazione non può essere mostrata in questa versione di Eigent.",
   "timeline-unknown-event": "Sconosciuto",
   "timeline-older-hidden": "I messaggi meno recenti non vengono mostrati qui.",
+  "timeline-show-older": "Mostra i messaggi precedenti",
   "timeline-history-window": "Qui viene mostrata solo la tua attività più recente.",
   "timeline-history-partial-error": "Impossibile caricare i messaggi meno recenti.",
   "timeline-history-error": "Impossibile caricare questa conversazione.",
@@ -219,5 +220,6 @@
   "timeline-style-normal": "Normale",
   "timeline-style-detailed": "Dettagliato",
   "timeline-style-summarized": "Riepilogato",
-  "files-changed": "File modificati"
+  "files-changed": "File modificati",
+  "view-changes": "Visualizza modifiche"
 }

@@ -29,6 +29,7 @@ function file(name: string, artifactChange?: FileInfo['artifactChange']) {
 describe('ArtifactChangeList', () => {
   it('preserves the collapsed legacy file list and opens the selected file', () => {
     const onOpen = vi.fn();
+    const onViewChanges = vi.fn();
     const files = [
       file('one.ts', 'changed'),
       file('two.ts', 'generated'),
@@ -36,7 +37,13 @@ describe('ArtifactChangeList', () => {
       file('four.ts', 'changed'),
     ];
 
-    render(<ArtifactChangeList files={files} onOpen={onOpen} />);
+    render(
+      <ArtifactChangeList
+        files={files}
+        onOpen={onOpen}
+        onViewChanges={onViewChanges}
+      />
+    );
 
     expect(screen.getByText('Files changed')).toBeInTheDocument();
     expect(screen.getByText('4')).toBeInTheDocument();
@@ -45,6 +52,9 @@ describe('ArtifactChangeList', () => {
 
     fireEvent.click(screen.getByTitle('src/two.ts'));
     expect(onOpen).toHaveBeenCalledWith(files[1]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'View changes' }));
+    expect(onViewChanges).toHaveBeenCalledOnce();
 
     fireEvent.click(screen.getByRole('button', { name: 'Show 1 more files' }));
     expect(screen.getByTitle('src/four.ts')).toBeInTheDocument();

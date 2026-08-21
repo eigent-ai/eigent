@@ -289,6 +289,38 @@ describe('pageTabStore session preview', () => {
     expect(slice().activeTabId).toBe(fileTabs[0].id);
   });
 
+  it('refreshes a deduplicated Artifact tab when its preview becomes local', () => {
+    const store = usePageTabStore.getState();
+    const remote = {
+      name: 'index.html',
+      type: 'html',
+      path: 'https://example.test/signed/index.html',
+      relativePath: 'P5/index.html',
+      artifactId: 'artifact-html',
+      localPathAvailable: false,
+      isRemote: true,
+      assetRef: { chatFileId: 3, key: 'P5/index.html' },
+    } as FileInfo;
+    const local = {
+      ...remote,
+      path: '/workspace/space-1/P5/index.html',
+      localPathAvailable: true,
+      isRemote: false,
+    } as FileInfo;
+
+    store.openFilePreview(remote);
+    const originalTab = slice().tabs[0];
+    store.openFilePreview(local);
+
+    expect(slice().tabs).toHaveLength(1);
+    expect(slice().tabs[0]).toMatchObject({
+      id: originalTab.id,
+      type: 'file',
+      title: 'index.html',
+      file: local,
+    });
+  });
+
   it('opens chat links in a browser tab of the current project preview', () => {
     const store = usePageTabStore.getState();
     store.openBrowserPreview('https://example.com/docs');

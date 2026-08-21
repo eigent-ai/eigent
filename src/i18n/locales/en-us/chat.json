@@ -208,6 +208,7 @@
   "timeline-unsupported-event": "This part of the conversation can't be shown in this version of Eigent.",
   "timeline-unknown-event": "Unknown",
   "timeline-older-hidden": "Older messages aren't shown here.",
+  "timeline-show-older": "Show older messages",
   "timeline-history-window": "Only your most recent activity is shown here.",
   "timeline-history-partial-error": "Couldn't load earlier messages.",
   "timeline-history-error": "Couldn't load this conversation.",
@@ -219,5 +220,6 @@
   "timeline-style-normal": "Normal",
   "timeline-style-detailed": "Detailed",
   "timeline-style-summarized": "Summarised",
-  "files-changed": "Files changed"
+  "files-changed": "Files changed",
+  "view-changes": "View changes"
 }

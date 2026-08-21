@@ -208,6 +208,7 @@
   "timeline-unsupported-event": "لا يمكن عرض هذا الجزء من المحادثة في هذه النسخة من Eigent.",
   "timeline-unknown-event": "غير معروف",
   "timeline-older-hidden": "الرسائل الأقدم غير معروضة هنا.",
+  "timeline-show-older": "عرض الرسائل الأقدم",
   "timeline-history-window": "يُعرض هنا نشاطك الأحدث فقط.",
   "timeline-history-partial-error": "تعذّر تحميل الرسائل الأقدم.",
   "timeline-history-error": "تعذّر تحميل هذه المحادثة.",
@@ -219,5 +220,6 @@
   "timeline-style-normal": "عادي",
   "timeline-style-detailed": "مفصّل",
   "timeline-style-summarized": "ملخّص",
-  "files-changed": "الملفات التي تغيّرت"
+  "files-changed": "الملفات التي تغيّرت",
+  "view-changes": "عرض التغييرات"
 }
