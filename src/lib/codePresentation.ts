@@ -88,6 +88,16 @@ export const READ_ONLY_CODE_OPTIONS: Monaco.editor.IStandaloneEditorConstruction
     renderLineHighlight: 'none',
     renderValidationDecorations: 'off',
     renderWhitespace: 'selection',
+    // Read-only previews routinely contain CJK full-width punctuation and
+    // mathematical symbols. Monaco otherwise outlines those as ASCII
+    // confusables, creating distracting orange boxes throughout documents.
+    // Keep warnings for truly invisible characters, which can still conceal
+    // meaningful source text, without flagging normal international content.
+    unicodeHighlight: {
+      ambiguousCharacters: false,
+      nonBasicASCII: false,
+      invisibleCharacters: true,
+    },
     guides: { indentation: false },
     stickyScroll: { enabled: false },
     wordWrap: 'off',

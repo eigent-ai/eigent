@@ -118,6 +118,11 @@ describe('code presentation', () => {
     expect(CODE_LINE_HEIGHT).toBe(20);
     expect(READ_ONLY_CODE_OPTIONS.fontSize).toBe(13);
     expect(READ_ONLY_CODE_OPTIONS.wordWrap).toBe('off');
+    expect(READ_ONLY_CODE_OPTIONS.unicodeHighlight).toEqual({
+      ambiguousCharacters: false,
+      nonBasicASCII: false,
+      invisibleCharacters: true,
+    });
   });
 
   it('selects a scoped light or dark theme', () => {
