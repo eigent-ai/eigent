@@ -18,7 +18,6 @@ import { fileInfoFromPath } from '@/lib/fileInfo';
 import { isHtmlDocument } from '@/lib/htmlFontStyles';
 import { escapeHtml } from '@/lib/richText';
 import { cn } from '@/lib/utils';
-import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import '@/style/markdown-styles.css';
 import DOMPurify from 'dompurify';
@@ -70,6 +69,31 @@ const WRAPPED_CODE_LANGUAGES = new Set([
   'markdown',
   'md',
 ]);
+
+function getDocumentAppearance(): 'light' | 'dark' {
+  if (typeof document === 'undefined') return 'light';
+  return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+}
+
+function useDocumentAppearance(): 'light' | 'dark' {
+  const [appearance, setAppearance] = useState(getDocumentAppearance);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const updateAppearance = () => setAppearance(getDocumentAppearance());
+    const observer = new MutationObserver(updateAppearance);
+
+    observer.observe(root, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    });
+    updateAppearance();
+
+    return () => observer.disconnect();
+  }, []);
+
+  return appearance;
+}
 
 function copyButtonContents(label: string, copied = false): string {
   const safeLabel = escapeHtml(label);
@@ -126,7 +150,7 @@ function createMarkdownParser(
   profile: MarkdownProfile,
   labels: { code: string; copy: string; expand: string }
 ) {
-  const parser = new Marked({ gfm: true, breaks: true });
+  const parser = new Marked({ gfm: true, breaks: true, async: false });
   parser.use({
     renderer: {
       code(token: Tokens.Code) {
@@ -165,7 +189,7 @@ export const MarkDown = memo(
     const { t } = useTranslation();
     const host = useHost();
     const electronAPI = host?.electronAPI;
-    const appearance = useAuthStore((state) => state.appearance);
+    const appearance = useDocumentAppearance();
     const openFilePreview = usePageTabStore((s) => s.openFilePreview);
     const openBrowserPreview = usePageTabStore((s) => s.openBrowserPreview);
     const [displayedContent, setDisplayedContent] = useState('');
@@ -266,7 +290,10 @@ export const MarkDown = memo(
 
         // Parse markdown to HTML
         const parser = createMarkdownParser(profile, labels);
-        let rawHtml = await parser.parse(displayedContent);
+        // This parser has no async extensions. Keep the initial render in the
+        // current effect tick so existing timeline and tool-detail surfaces do
+        // not flash empty while waiting for an unnecessary microtask.
+        let rawHtml = parser.parse(displayedContent) as string;
         if (cancelled) return;
 
         // Process images: replace relative paths with data URLs
@@ -407,7 +434,8 @@ export const MarkDown = memo(
         if (cancelled) return;
         await Promise.all(
           codeBlocks.map(async (code) => {
-            const raw = code.textContent ?? '';
+            const raw =
+              rawCodeByElementRef.current.get(code) ?? code.textContent ?? '';
             rawCodeByElementRef.current.set(code, raw);
             const requested = code.dataset.markdownLanguage ?? '';
             const highlighted = await highlightMarkdownCode(

@@ -24,11 +24,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/host', () => ({ useHost: () => null }));
 
-vi.mock('@/store/authStore', () => ({
-  useAuthStore: (selector: (state: { appearance: string }) => unknown) =>
-    selector({ appearance: 'light' }),
-}));
-
 vi.mock('@/store/pageTabStore', () => ({
   usePageTabStore: (
     selector: (state: {
@@ -49,6 +44,7 @@ vi.mock('@/lib/markdownSyntaxHighlight', () => ({
 describe('shared MarkDown renderer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete document.documentElement.dataset.theme;
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
       value: { writeText: mocks.copy },
@@ -133,6 +129,35 @@ describe('shared MarkDown renderer', () => {
 
     await waitFor(() =>
       expect(mocks.copy).toHaveBeenCalledWith('const value = 1;')
+    );
+  });
+
+  it('rehighlights code when the document theme changes', async () => {
+    document.documentElement.dataset.theme = 'light';
+    render(
+      <MarkDown
+        content={'```typescript\nconst value = 1;\n```'}
+        enableTypewriter={false}
+      />
+    );
+
+    await waitFor(() =>
+      expect(mocks.highlight).toHaveBeenCalledWith(
+        'const value = 1;',
+        'typescript',
+        'light'
+      )
+    );
+
+    mocks.highlight.mockClear();
+    document.documentElement.dataset.theme = 'dark';
+
+    await waitFor(() =>
+      expect(mocks.highlight).toHaveBeenCalledWith(
+        'const value = 1;',
+        'typescript',
+        'dark'
+      )
     );
   });
 
