@@ -19,6 +19,7 @@ import { resolveArtifactAssetFile } from '@/service/artifactAssetApi';
 import { FileText, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import { downloadFromUrl, downloadOpenedFile, FileViewerPanel } from './index';
 
 export interface FilePreviewProps {
@@ -149,11 +150,10 @@ export function FilePreview({
 
   const handleToggleSourceCode = useCallback(() => {
     if (!selectedFile) return;
-    loadFileContent(selectedFile, !isShowSourceCode);
     setIsShowSourceCode((prev) => !prev);
-  }, [selectedFile, isShowSourceCode, loadFileContent]);
+  }, [selectedFile]);
 
-  const handleRevealFile = useCallback(() => {
+  const handleRevealFile = useCallback(async () => {
     if (!selectedFile) return;
     if (selectedFile.isRemote) {
       if (selectedFile.preview?.kind === 'blocked') {
@@ -163,8 +163,19 @@ export function FilePreview({
       void downloadFromUrl(selectedFile.path, selectedFile.name);
       return;
     }
-    ipcRenderer?.invoke('reveal-in-folder', selectedFile.path);
-  }, [selectedFile, ipcRenderer]);
+    try {
+      const result = await ipcRenderer?.invoke(
+        'reveal-in-folder',
+        selectedFile.path
+      );
+      if (!result?.success) {
+        toast.error(result?.error || t('chat.failed-to-open-folder'));
+      }
+    } catch (error) {
+      console.error('Failed to reveal file:', error);
+      toast.error(t('chat.failed-to-open-folder'));
+    }
+  }, [selectedFile, ipcRenderer, t]);
 
   const handleDownloadFile = useCallback(() => {
     if (!selectedFile || selectedFile.isFolder) return;

@@ -13,6 +13,10 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import ChatBox from '@/components/ChatBox';
+import {
+  RIGHT_RAIL_EXPANDED_OUTER_CLASS,
+  RIGHT_RAIL_FOLDED_OUTER_CLASS,
+} from '@/components/Layout/rightRail';
 import { HeaderBox } from '@/components/Session/HeaderBox';
 import { PreviewPanel } from '@/components/Session/PreviewPanel';
 import Workspace from '@/components/Workspace';
@@ -31,10 +35,6 @@ import {
 import { AnimatePresence, motion } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SessionSidePanel } from './SidePanel';
-import {
-  SESSION_SIDE_PANEL_EXPANDED_OUTER_CLASS,
-  SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS,
-} from './SidePanel/layout';
 
 /** Maximum width the resizable chat column can reclaim while display is open. */
 const CHAT_PRIORITY_WIDTH = 680;
@@ -369,8 +369,8 @@ export default function Session({ isNewProject = false }: SessionProps) {
             className={cn(
               'flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-200 ease-out',
               isSidePanelVisible
-                ? SESSION_SIDE_PANEL_EXPANDED_OUTER_CLASS
-                : cn(SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS, 'rounded-l-xl')
+                ? RIGHT_RAIL_EXPANDED_OUTER_CLASS
+                : cn(RIGHT_RAIL_FOLDED_OUTER_CLASS, 'rounded-l-xl')
             )}
           >
             {sessionSidePanel}
@@ -465,8 +465,8 @@ export default function Session({ isNewProject = false }: SessionProps) {
           className={cn(
             'flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-200 ease-out',
             isSidePanelVisible
-              ? SESSION_SIDE_PANEL_EXPANDED_OUTER_CLASS
-              : cn(SESSION_SIDE_PANEL_FOLDED_OUTER_CLASS, 'rounded-l-xl')
+              ? RIGHT_RAIL_EXPANDED_OUTER_CLASS
+              : cn(RIGHT_RAIL_FOLDED_OUTER_CLASS, 'rounded-l-xl')
           )}
         >
           {sessionSidePanel}

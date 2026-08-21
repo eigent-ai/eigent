@@ -106,6 +106,21 @@ export function UserMessageCard({
     }
   }, [content, t]);
 
+  const revealAttachment = useCallback(
+    async (filePath: string) => {
+      try {
+        const result = await ipcRenderer?.invoke('reveal-in-folder', filePath);
+        if (!result?.success) {
+          toast.error(result?.error || t('chat.failed-to-open-folder'));
+        }
+      } catch (error) {
+        console.error('Failed to reveal attachment:', error);
+        toast.error(t('chat.failed-to-open-folder'));
+      }
+    },
+    [ipcRenderer, t]
+  );
+
   // Popover handles outside clicks; no manual listener needed
   const openRemainingPopover = () => {
     if (hoverCloseTimerRef.current) {
@@ -181,10 +196,7 @@ export function UserMessageCard({
                           file.filePath
                             ? (e) => {
                                 e.stopPropagation();
-                                ipcRenderer?.invoke(
-                                  'reveal-in-folder',
-                                  file.filePath
-                                );
+                                void revealAttachment(file.filePath!);
                               }
                             : undefined
                         }
@@ -260,10 +272,7 @@ export function UserMessageCard({
                                   file.filePath
                                     ? (e) => {
                                         e.stopPropagation();
-                                        ipcRenderer?.invoke(
-                                          'reveal-in-folder',
-                                          file.filePath
-                                        );
+                                        void revealAttachment(file.filePath!);
                                         setIsRemainingOpen(false);
                                       }
                                     : undefined

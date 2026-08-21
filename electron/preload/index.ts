@@ -196,8 +196,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     projectId: string,
     userId?: string | number | null
   ) => ipcRenderer.invoke('get-project-folder-path', email, projectId, userId),
-  openInIDE: (folderPath: string, ide: string) =>
-    ipcRenderer.invoke('open-in-ide', folderPath, ide),
+  revealLocalPath: (targetPath: string) =>
+    ipcRenderer.invoke('reveal-local-path', targetPath),
+  openLocalFile: (targetPath: string) =>
+    ipcRenderer.invoke('open-local-file', targetPath),
+  openInIDE: (targetPath: string, ide: 'vscode' | 'cursor' | 'system') =>
+    ipcRenderer.invoke('open-in-ide', targetPath, ide),
   setBrowserPort: (port: number, isExternal?: boolean) =>
     ipcRenderer.invoke('set-browser-port', port, isExternal),
   getBrowserPort: () => ipcRenderer.invoke('get-browser-port'),

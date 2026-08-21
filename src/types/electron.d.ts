@@ -22,6 +22,10 @@ interface IpcRenderer {
   invoke: (channel: string, ...args: any[]) => Promise<any>;
 }
 
+type LocalPathActionResult =
+  | { success: true }
+  | { success: false; error: string };
+
 interface ElectronAPI {
   closeWindow: () => void;
   minimizeWindow: () => void;
@@ -278,10 +282,14 @@ interface ElectronAPI {
     projectId: string,
     userId?: string | number | null
   ) => Promise<string>;
+  /** Open a selected folder itself, or reveal and highlight a selected file. */
+  revealLocalPath: (targetPath: string) => Promise<LocalPathActionResult>;
+  /** Open a selected non-executable local file with its default OS app. */
+  openLocalFile: (targetPath: string) => Promise<LocalPathActionResult>;
   openInIDE: (
-    folderPath: string,
-    ide: string
-  ) => Promise<{ success: boolean; error?: string }>;
+    targetPath: string,
+    ide: 'vscode' | 'cursor' | 'system'
+  ) => Promise<LocalPathActionResult>;
   // Skills: all operations via Brain REST API
   setBrowserPort: (port: number, isExternal?: boolean) => Promise<any>;
   getBrowserPort: () => Promise<number>;

@@ -12,11 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { RIGHT_RAIL_CONTENT_WIDTH_CLASS } from '@/components/Layout/rightRail';
 import { SessionActivityPanel } from '@/components/Session/SidePanel/components/ActivityPanel';
 import ExpandedOverlay from '@/components/Session/SidePanel/components/ExpandedOverlay';
 import { SidePanelHeader } from '@/components/Session/SidePanel/components/Header';
 import { WorkforceHeaderAction } from '@/components/Session/SidePanel/components/WorkforceHeaderAction';
-import { SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS } from '@/components/Session/SidePanel/layout';
 import type { SessionPanelScope } from '@/components/Session/SidePanel/sections/sessionPanelScope';
 import {
   Select,
@@ -78,7 +78,7 @@ export function SessionSidePanel({
       <div
         className={cn(
           'flex h-full min-h-0 flex-shrink-0 flex-col overflow-hidden',
-          SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS,
+          RIGHT_RAIL_CONTENT_WIDTH_CLASS,
           isFolded &&
             'pointer-events-none opacity-40 transition-opacity duration-200 group-hover:opacity-80'
         )}

@@ -142,12 +142,27 @@ export async function authorizeLocalPreviewPath(
   };
 }
 
+function hasExecutableExtension(candidatePath: string): boolean {
+  return EXECUTABLE_FILE_EXTENSIONS.has(
+    path.extname(candidatePath).toLowerCase()
+  );
+}
+
+/**
+ * Detect a directory the OS launches instead of browsing, such as a macOS
+ * `.app` bundle.
+ *
+ * Mode bits cannot make this call: every traversable directory carries the
+ * execute bit, so {@link isExecutableExternalOpenPath} would match all of
+ * them. Only the extension distinguishes a bundle from an ordinary folder.
+ */
+export function isExecutableBundlePath(directoryPath: string): boolean {
+  return hasExecutableExtension(directoryPath);
+}
+
 export function isExecutableExternalOpenPath(
   filePath: string,
   mode = 0
 ): boolean {
-  return (
-    EXECUTABLE_FILE_EXTENSIONS.has(path.extname(filePath).toLowerCase()) ||
-    (mode & 0o111) !== 0
-  );
+  return hasExecutableExtension(filePath) || (mode & 0o111) !== 0;
 }
