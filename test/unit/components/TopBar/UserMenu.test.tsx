@@ -13,10 +13,15 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { proxyFetchGet } from '@/api/http';
+import {
+  AppCommandContext,
+  type ExecuteAppCommand,
+} from '@/components/Layout/AppCommandProvider';
 import { UserMenu } from '@/components/TopBar/UserMenu';
+import { APP_COMMAND } from '@/shared/appCommands';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/api/http', () => ({
@@ -71,21 +76,14 @@ vi.mock('@/store/installationStore', () => {
   };
 });
 
-function LocationProbe() {
-  const location = useLocation();
-  return (
-    <span data-testid="location">
-      {location.pathname}
-      {location.search}
-    </span>
-  );
-}
+const executeAppCommand = vi.fn<ExecuteAppCommand>();
 
 function renderUserMenu(initialEntry = '/') {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
-      <UserMenu />
-      <LocationProbe />
+      <AppCommandContext.Provider value={executeAppCommand}>
+        <UserMenu />
+      </AppCommandContext.Provider>
     </MemoryRouter>
   );
 }
@@ -108,6 +106,7 @@ async function closeMenu(user: ReturnType<typeof userEvent.setup>) {
 describe('UserMenu subscription summary', () => {
   beforeEach(() => {
     vi.mocked(proxyFetchGet).mockReset();
+    executeAppCommand.mockReset();
   });
 
   it('refreshes on each open and retains successful values on a partial failure', async () => {
@@ -161,7 +160,7 @@ describe('UserMenu subscription summary', () => {
     consoleError.mockRestore();
   });
 
-  it('groups account details before preferences and opens Settings inside Home', async () => {
+  it('groups account details before preferences and dispatches Settings through the app command controller', async () => {
     const user = userEvent.setup();
     vi.mocked(proxyFetchGet)
       .mockResolvedValueOnce({ plan_key: 'pro' })
@@ -181,10 +180,17 @@ describe('UserMenu subscription summary', () => {
     const appearance = within(menu).getByText('Appearance');
     const language = within(menu).getByRole('menuitem', { name: 'Language' });
     const settings = within(menu).getByRole('menuitem', { name: 'Settings' });
+    const keyboardShortcuts = within(menu).getByRole('menuitem', {
+      name: 'Keyboard Shortcuts',
+    });
     const logout = within(menu).getByRole('menuitem', { name: 'Log out' });
 
     expect(plan).toHaveTextContent('Pro · 10');
     expect(settings.querySelector('svg')).toHaveClass('lucide-settings');
+    expect(keyboardShortcuts.querySelector('svg')).toHaveClass(
+      'lucide-keyboard'
+    );
+    expect(keyboardShortcuts).toHaveTextContent('Ctrl+/');
     for (const [current, next] of [
       [email, plan],
       [plan, referFriends],
@@ -192,7 +198,8 @@ describe('UserMenu subscription summary', () => {
       [accountDivider, appearance],
       [appearance, language],
       [language, settings],
-      [settings, logoutDivider],
+      [settings, keyboardShortcuts],
+      [keyboardShortcuts, logoutDivider],
       [logoutDivider, logout],
     ] as const) {
       expect(
@@ -202,8 +209,16 @@ describe('UserMenu subscription summary', () => {
     }
     await user.click(settings);
 
-    expect(screen.getByTestId('location')).toHaveTextContent(
-      '/home?section=settings&tab=settings'
+    expect(executeAppCommand).toHaveBeenCalledWith(APP_COMMAND.openSettings);
+
+    await openMenu(user);
+    await user.click(
+      within(screen.getByRole('menu')).getByRole('menuitem', {
+        name: 'Keyboard Shortcuts',
+      })
+    );
+    expect(executeAppCommand).toHaveBeenCalledWith(
+      APP_COMMAND.keyboardShortcuts
     );
   });
 });

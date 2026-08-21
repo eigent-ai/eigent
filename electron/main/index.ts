@@ -21,6 +21,7 @@ import {
   Menu,
   nativeTheme,
   protocol,
+  screen,
   session,
   shell,
 } from 'electron';
@@ -37,7 +38,37 @@ import path from 'node:path';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import kill from 'tree-kill';
+import {
+  APP_COMMAND_CHANNEL,
+  APP_COMMAND_HANDLED_CHANNEL,
+  APP_SHELL_NOT_READY_CHANNEL,
+  APP_SHELL_READY_CHANNEL,
+  APP_SHELL_READY_PROBE_CHANNEL,
+  isAppCommandHandled,
+  isAppShellLifecycleMessage,
+  type AppCommandId,
+} from '../../src/shared/appCommands';
 import { FILE_PREVIEW_LIMITS } from '../../src/shared/filePreviewContract';
+import {
+  NATIVE_MENU_LOCALE_CHANNEL,
+  type NativeMenuLocale,
+} from '../../src/shared/nativeMenu';
+import {
+  isWindowCloseResponse,
+  WINDOW_CLOSE_RESPONSE_CHANNEL,
+} from '../../src/shared/windowClose';
+import { AppShellReadinessGate } from './appShellReadinessGate';
+import { CloseCoordinator } from './closeCoordinator';
+import { installApplicationMenu } from './commands/applicationMenu';
+import {
+  installContextMenu,
+  type ContextMenuSurfaceKind,
+} from './commands/contextMenu';
+import {
+  applyNativeMenuLocaleChange,
+  getNativeMenuMessages,
+  resolveNativeMenuLocale,
+} from './commands/nativeMenuMessages';
 import { copyBrowserData } from './copy';
 import { getOrCreateDesktopInstanceId } from './desktopIdentity';
 import { resolveFileByteRange } from './fileRange';
@@ -68,6 +99,7 @@ import {
   revealWorkspaceLocalNode,
 } from './localPathActions';
 import { setRoundedCorners } from './native/macos-window';
+import { RendererAppCommandCoordinator } from './rendererAppCommandCoordinator';
 import { registerReviewChangesIpcHandlers } from './reviewChanges';
 import {
   completeCodexOAuthCallback,
@@ -92,6 +124,7 @@ import {
   isBinaryExists,
 } from './utils/process';
 import { WebViewManager } from './webview';
+import { loadWindowStartupState, persistWindowState } from './windowState';
 import {
   closeWorkspaceSecretBroker,
   ensureWorkspaceSecretBroker,
@@ -125,6 +158,123 @@ let use_external_cdp = false;
 let proxyUrl: string | null = null;
 const LEGACY_DESKTOP_INSTANCE_STORAGE_KEY = 'eigent_desktop_instance_id';
 const activeLocalFileRoots = new Set<string>();
+let protocolUrlQueue: string[] = [];
+let isWindowReady = false;
+let nativeMenuLocale: NativeMenuLocale | null = null;
+const appShellReadinessGate = new AppShellReadinessGate({
+  announceReadyProbe: () => {
+    const target = win;
+    if (!target || target.isDestroyed() || target.webContents.isDestroyed()) {
+      return;
+    }
+    target.webContents.send(APP_SHELL_READY_PROBE_CHANNEL);
+  },
+});
+const rendererAppCommands = new RendererAppCommandCoordinator({
+  send: (request) => {
+    const target = win;
+    if (!target || target.isDestroyed() || target.webContents.isDestroyed()) {
+      throw new Error('main renderer is unavailable');
+    }
+    target.webContents.send(APP_COMMAND_CHANNEL, request);
+  },
+  diagnostic: (message) => log.warn(message),
+});
+const closeCoordinator = new CloseCoordinator({
+  defaultIntent: process.platform === 'darwin' ? 'close-window' : 'quit-app',
+  quit: () => app.quit(),
+  shouldGuard: () => rendererAppCommands.isReady(),
+  diagnostic: (message) => log.info(message),
+});
+let isQuitCleanupInProgress = false;
+let windowStateSaveTimer: NodeJS.Timeout | null = null;
+const allowDeveloperTools =
+  !app.isPackaged || app.commandLine.hasSwitch('enable-devtools');
+
+function getCurrentNativeMenuMessages() {
+  nativeMenuLocale ??= resolveNativeMenuLocale(app.getLocale());
+  return getNativeMenuMessages(nativeMenuLocale);
+}
+
+function installSurfaceContextMenu(
+  contents: Electron.WebContents,
+  ownerWindow: BrowserWindow,
+  surfaceKind: ContextMenuSurfaceKind
+): () => void {
+  return installContextMenu({
+    contents,
+    getMessages: getCurrentNativeMenuMessages,
+    isDevelopment: allowDeveloperTools,
+    menuApi: Menu,
+    ownerWindow,
+    surfaceKind,
+  });
+}
+
+async function dispatchRendererAppCommand(
+  commandId: AppCommandId
+): Promise<void> {
+  try {
+    if (!win || win.isDestroyed()) {
+      await createWindow();
+    } else if (createWindowPromise) {
+      await createWindowPromise;
+    }
+
+    const target = win;
+    if (!target || target.isDestroyed()) return;
+    if (!target.isVisible()) target.show();
+    target.focus();
+    rendererAppCommands.dispatch(commandId);
+  } catch (error) {
+    log.error(`[APP COMMAND] Failed to dispatch ${commandId}:`, error);
+  }
+}
+
+function installNativeApplicationMenu(): void {
+  const platform =
+    process.platform === 'darwin' || process.platform === 'win32'
+      ? process.platform
+      : 'linux';
+
+  installApplicationMenu(Menu, {
+    appName: app.getName(),
+    dispatchRendererCommand: (commandId) => {
+      void dispatchRendererAppCommand(commandId);
+    },
+    isDevelopment: allowDeveloperTools,
+    messages: getCurrentNativeMenuMessages(),
+    onOpenExternalError: (error) => {
+      log.error('[APPLICATION MENU] Failed to open external URL:', error);
+    },
+    openExternal: (url) => shell.openExternal(url),
+    platform,
+    requestClose: () => closeCoordinator.request('close-window'),
+    requestQuit: () => closeCoordinator.request('quit-app'),
+  });
+}
+
+function persistBrowserWindowState(target: BrowserWindow | null = win): void {
+  if (windowStateSaveTimer) {
+    clearTimeout(windowStateSaveTimer);
+    windowStateSaveTimer = null;
+  }
+  if (!target || target.isDestroyed()) return;
+
+  try {
+    persistWindowState(userData, target);
+  } catch (error) {
+    log.warn('[WINDOW STATE] Failed to persist window state:', error);
+  }
+}
+
+function scheduleWindowStateSave(target: BrowserWindow): void {
+  if (windowStateSaveTimer) clearTimeout(windowStateSaveTimer);
+  windowStateSaveTimer = setTimeout(() => {
+    windowStateSaveTimer = null;
+    persistBrowserWindowState(target);
+  }, 250);
+}
 
 /**
  * Real paths the user picked in a native file dialog this session.
@@ -525,10 +675,6 @@ async function closeBrowserViaCdp(port: number): Promise<void> {
     log.warn(`[CDP CLOSE] Best-effort close failed for port ${port}: ${err}`);
   }
 }
-
-// Protocol URL queue for handling URLs before window is ready
-let protocolUrlQueue: string[] = [];
-let isWindowReady = false;
 
 // ==================== path config ====================
 const preload = path.join(__dirname, '../preload/index.mjs');
@@ -1244,6 +1390,7 @@ function registerIpcHandlers() {
 
     // Schedule relaunch after a short delay
     setTimeout(() => {
+      closeCoordinator.markAppQuitInProgress();
       app.relaunch();
       app.quit();
     }, 100);
@@ -1773,11 +1920,59 @@ function registerIpcHandlers() {
   });
 
   // ==================== window control handler ====================
-  ipcMain.on('window-close', (_, data) => {
-    if (data.isForceQuit) {
-      return app?.quit();
+  ipcMain.on('window-close', (event, data: unknown) => {
+    if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
+    const isForceQuit =
+      Boolean(data) &&
+      typeof data === 'object' &&
+      (data as { isForceQuit?: unknown }).isForceQuit === true;
+    if (isForceQuit) {
+      return closeCoordinator.request('quit-app');
     }
-    return win?.close();
+    return closeCoordinator.request(
+      process.platform === 'darwin' ? 'close-window' : 'quit-app'
+    );
+  });
+  ipcMain.on(WINDOW_CLOSE_RESPONSE_CHANNEL, (event, response: unknown) => {
+    if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
+    if (!isWindowCloseResponse(response)) return;
+    closeCoordinator.respond(response);
+  });
+  ipcMain.on(NATIVE_MENU_LOCALE_CHANNEL, (event, locale: unknown) => {
+    if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
+    applyNativeMenuLocaleChange(nativeMenuLocale, locale, (nextLocale) => {
+      nativeMenuLocale = nextLocale;
+      installNativeApplicationMenu();
+    });
+  });
+  ipcMain.on(APP_SHELL_READY_CHANNEL, (event, message: unknown) => {
+    if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
+    if (
+      !appShellReadinessGate.canAcceptReady() ||
+      !isAppShellLifecycleMessage(message)
+    ) {
+      return;
+    }
+    rendererAppCommands.markReady(message.epoch);
+    closeCoordinator.markRendererReady();
+    log.info(`[APP SHELL] Renderer ready epoch=${message.epoch}`);
+  });
+  ipcMain.on(APP_SHELL_NOT_READY_CHANNEL, (event, message: unknown) => {
+    if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
+    if (!isAppShellLifecycleMessage(message)) return;
+    if (rendererAppCommands.markNotReady('listener-unmounted', message.epoch)) {
+      closeCoordinator.markRendererUnavailable('listener-unmounted');
+      log.info(`[APP SHELL] Renderer listeners removed epoch=${message.epoch}`);
+    }
+  });
+  ipcMain.on(APP_COMMAND_HANDLED_CHANNEL, (event, receipt: unknown) => {
+    if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
+    if (!isAppCommandHandled(receipt)) return;
+    if (!rendererAppCommands.handleReceipt(receipt)) {
+      log.warn(
+        `[APP COMMAND] Ignored stale handled receipt request=${receipt.requestId} epoch=${receipt.epoch}`
+      );
+    }
   });
   ipcMain.on('window-minimize', () => win?.minimize());
   ipcMain.on('window-toggle-maximize', () => {
@@ -2631,7 +2826,7 @@ function registerIpcHandlers() {
   });
 
   // ==================== register update related handler ====================
-  registerUpdateIpcHandlers();
+  registerUpdateIpcHandlers(() => closeCoordinator.markAppQuitInProgress());
 }
 
 // ==================== ensure eigent directories ====================
@@ -2893,14 +3088,26 @@ async function createWindowInternal() {
     )}`
   );
 
+  const startupWindowState = loadWindowStartupState({
+    userDataPath: userData,
+    displays: screen.getAllDisplays(),
+    primaryDisplay: screen.getPrimaryDisplay(),
+  });
+  log.info(
+    `[WINDOW STATE] Restoring ${startupWindowState.source}: ${JSON.stringify(
+      startupWindowState.bounds
+    )}`
+  );
+
   // Platform-specific window configuration
   // Windows: native frame and solid background. macOS/Linux: frameless; macOS corner radius via native hook.
+  appShellReadinessGate.markDocumentLoading();
+  rendererAppCommands.markNotReady('window-created');
   win = new BrowserWindow({
     title: 'Eigent',
-    width: 1280,
-    height: 960,
-    minWidth: 1100,
-    minHeight: 700,
+    ...startupWindowState.bounds,
+    minWidth: startupWindowState.minimumSize.width,
+    minHeight: startupWindowState.minimumSize.height,
     // Use native frame on Windows for better native integration
     frame: isWindows ? true : false,
     show: false, // Don't show until content is ready to avoid white screen
@@ -2922,9 +3129,10 @@ async function createWindowInternal() {
     icon: path.join(VITE_PUBLIC, 'favicon.ico'),
     // Rounded corners on macOS and Linux (as original)
     roundedCorners: !isWindows,
-    // Windows-specific options
-    ...(isWindows && {
-      autoHideMenuBar: true, // Hide menu bar on Windows for cleaner look
+    // Keep the Windows/Linux menu discoverable through Alt without changing
+    // the existing clean shell chrome.
+    ...(!isMac && {
+      autoHideMenuBar: true,
     }),
     webPreferences: {
       // Use a dedicated partition for main window to isolate from webviews
@@ -2937,6 +3145,25 @@ async function createWindowInternal() {
       webviewTag: true,
       spellcheck: false,
     },
+  });
+
+  const createdWindow = win;
+  const disposeMainContextMenu = installSurfaceContextMenu(
+    createdWindow.webContents,
+    createdWindow,
+    'main-renderer'
+  );
+  createdWindow.on('move', () => scheduleWindowStateSave(createdWindow));
+  createdWindow.on('resize', () => scheduleWindowStateSave(createdWindow));
+  createdWindow.on('maximize', () => scheduleWindowStateSave(createdWindow));
+  createdWindow.on('unmaximize', () => scheduleWindowStateSave(createdWindow));
+  createdWindow.on('close', () => persistBrowserWindowState(createdWindow));
+  createdWindow.on('closed', () => {
+    disposeMainContextMenu();
+    if (windowStateSaveTimer) {
+      clearTimeout(windowStateSaveTimer);
+      windowStateSaveTimer = null;
+    }
   });
 
   // Renderer <webview> guests (session preview browser) host arbitrary web
@@ -2962,6 +3189,13 @@ async function createWindowInternal() {
   // popup windows, and only allow web URLs. Together with the attach guard
   // above, this is the only main-process involvement the guests need.
   win.webContents.on('did-attach-webview', (_event, contents) => {
+    const disposeGuestContextMenu = installSurfaceContextMenu(
+      contents,
+      createdWindow,
+      'preview-guest'
+    );
+    contents.once('destroyed', disposeGuestContextMenu);
+
     const preventUnsafeNavigation = (
       event: Electron.Event,
       navigationUrl: string
@@ -3001,8 +3235,17 @@ async function createWindowInternal() {
   }
 
   // ==================== Handle renderer crashes and failed loads ====================
+  win.webContents.on('did-start-loading', () => {
+    appShellReadinessGate.markDocumentLoading();
+    rendererAppCommands.markNotReady('did-start-loading');
+  });
+  win.webContents.on('did-finish-load', () => {
+    appShellReadinessGate.markDocumentLoaded();
+  });
   win.webContents.on('render-process-gone', (event, details) => {
     log.error('[RENDERER] Process gone:', details.reason, details.exitCode);
+    appShellReadinessGate.markDocumentLoading();
+    rendererAppCommands.markNotReady('render-process-gone');
     if (win && !win.isDestroyed()) {
       // Reload the window after a brief delay
       setTimeout(() => {
@@ -3020,13 +3263,17 @@ async function createWindowInternal() {
 
   win.webContents.on(
     'did-fail-load',
-    (event, errorCode, errorDescription, validatedURL) => {
+    (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      const shouldRetry = appShellReadinessGate.markDocumentLoadFailed(
+        isMainFrame,
+        errorCode
+      );
+      if (shouldRetry) rendererAppCommands.markNotReady('did-fail-load');
       log.error(
         `[RENDERER] Failed to load: ${errorCode} - ${errorDescription} - ${validatedURL}`
       );
       // Retry loading after a delay
-      if (errorCode !== -3) {
-        // -3 is USER_CANCELLED, don't retry
+      if (shouldRetry) {
         setTimeout(() => {
           if (win && !win.isDestroyed()) {
             log.info('[RENDERER] Retrying load after failure...');
@@ -3104,7 +3351,10 @@ async function createWindowInternal() {
 
   // ==================== initialize manager ====================
   fileReader = new FileReader(win);
-  webViewManager = new WebViewManager(win);
+  webViewManager = new WebViewManager(win, {
+    installContextMenu: (contents, ownerWindow) =>
+      installSurfaceContextMenu(contents, ownerWindow, 'automation-view'),
+  });
 
   // create multiple webviews
   log.info(
@@ -3116,8 +3366,6 @@ async function createWindowInternal() {
   log.info('[PROJECT BROWSER] WebViewManager initialized with webviews');
 
   // ==================== set event listeners ====================
-  setupWindowEventListeners();
-  setupDevToolsShortcuts();
   setupExternalLinkHandling();
   handleBeforeClose();
 
@@ -3305,7 +3553,8 @@ async function createWindowInternal() {
 
   // Show window now that content is loaded (or timeout reached)
   if (win && !win.isDestroyed()) {
-    win.show();
+    if (startupWindowState.shouldMaximize) win.maximize();
+    else win.show();
     log.info('Window shown after content loaded');
   }
 
@@ -3313,9 +3562,6 @@ async function createWindowInternal() {
   isWindowReady = true;
   log.info('Window is ready, processing queued protocol URLs...');
   processQueuedProtocolUrls();
-
-  // Wait for React components to mount and register event listeners
-  await new Promise((resolve) => setTimeout(resolve, 500));
 
   // Now check and install dependencies
   let res: PromiseReturnType = await checkAndInstallDepsOnUpdate({ win });
@@ -3347,49 +3593,6 @@ async function createWindowInternal() {
   // Start backend after dependencies are ready
   await startBackendAfterInstall();
 }
-
-// ==================== window event listeners ====================
-const setupWindowEventListeners = () => {
-  if (!win) return;
-
-  // close default menu
-  Menu.setApplicationMenu(null);
-};
-
-// ==================== devtools shortcuts ====================
-const setupDevToolsShortcuts = () => {
-  if (!win) return;
-  if (app.isPackaged) return;
-
-  const toggleDevTools = () => win?.webContents.toggleDevTools();
-
-  win.webContents.on('before-input-event', (event, input) => {
-    // F12 key
-    if (input.key === 'F12' && input.type === 'keyDown') {
-      toggleDevTools();
-    }
-
-    // Ctrl+Shift+I (Windows/Linux) or Cmd+Shift+I (Mac)
-    if (
-      input.control &&
-      input.shift &&
-      input.key.toLowerCase() === 'i' &&
-      input.type === 'keyDown'
-    ) {
-      toggleDevTools();
-    }
-
-    // Mac Cmd+Shift+I
-    if (
-      input.meta &&
-      input.shift &&
-      input.key.toLowerCase() === 'i' &&
-      input.type === 'keyDown'
-    ) {
-      toggleDevTools();
-    }
-  });
-};
 
 // ==================== external link handle ====================
 const setupExternalLinkHandling = () => {
@@ -3635,18 +3838,7 @@ const cleanupPythonProcess = async () => {
 
 // before close
 const handleBeforeClose = () => {
-  let isQuitting = false;
-
-  app.on('before-quit', () => {
-    isQuitting = true;
-  });
-
-  win?.on('close', (event) => {
-    if (!isQuitting) {
-      event.preventDefault();
-      win?.webContents.send('before-close');
-    }
-  });
+  if (win) closeCoordinator.bindWindow(win);
 };
 
 // ==================== app event handle ====================
@@ -3789,6 +3981,7 @@ app.whenReady().then(async () => {
   // ==================== initialize app ====================
   initializeApp();
   registerIpcHandlers();
+  installNativeApplicationMenu();
   createWindow();
 });
 
@@ -3806,8 +3999,11 @@ app.on('window-all-closed', () => {
   }
 
   // Reset window state
+  closeCoordinator.unbindWindow();
+  rendererAppCommands.markNotReady('window-all-closed');
   win = null;
   isWindowReady = false;
+  appShellReadinessGate.markDocumentLoading();
   protocolUrlQueue = [];
 
   if (process.platform !== 'darwin') {
@@ -3839,11 +4035,27 @@ app.on('before-quit', async (event) => {
   log.info('before-quit');
   log.info('quit python_process.pid: ' + python_process?.pid);
 
+  if (
+    !closeCoordinator.isAppQuitInProgress() &&
+    rendererAppCommands.isReady() &&
+    win &&
+    !win.isDestroyed()
+  ) {
+    event.preventDefault();
+    closeCoordinator.request('quit-app');
+    return;
+  }
+
+  closeCoordinator.markAppQuitInProgress();
+
   // Stop CDP health-check polling
   stopCdpHealthCheck();
 
   // Prevent default quit to ensure cleanup completes
   event.preventDefault();
+
+  if (isQuitCleanupInProgress) return;
+  isQuitCleanupInProgress = true;
 
   try {
     // NOTE: Profile sync removed - we now use app userData directly for all partitions
@@ -3858,6 +4070,7 @@ app.on('before-quit', async (event) => {
     }
 
     if (win && !win.isDestroyed()) {
+      persistBrowserWindowState(win);
       win.destroy();
       win = null;
     }
@@ -3878,6 +4091,8 @@ app.on('before-quit', async (event) => {
 
     // Reset protocol handling state
     isWindowReady = false;
+    appShellReadinessGate.markDocumentLoading();
+    rendererAppCommands.markNotReady('app-exit');
     protocolUrlQueue = [];
 
     log.info('All cleanup completed, exiting...');

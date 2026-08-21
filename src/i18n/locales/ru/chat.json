@@ -95,7 +95,7 @@
   "open-in-file-manager": "Проводник",
   "failed-to-open-folder": "Не удалось открыть папку",
   "task-completed-card-title": "Задача выполнена",
-  "task-completed-card-subtitle": "Автоматизируйте вашу задачу с помощью триггера",
+  "task-completed-card-subtitle": "Автоматизируйте эту задачу",
   "single-agent-working": "{{agent}} усердно работает",
   "agent-outcome-expand": "Развернуть",
   "agent-outcome-collapse": "Свернуть",

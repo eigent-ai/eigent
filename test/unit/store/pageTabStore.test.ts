@@ -18,10 +18,14 @@ import { beforeEach, describe, expect, it } from 'vitest';
 describe('pageTabStore side-panel requests', () => {
   beforeEach(() => {
     usePageTabStore.setState({
+      activeWorkspaceTab: 'workforce',
+      unviewedTabs: new Set(),
+      filesUnviewedForProjects: new Set(),
       taskBoxFocusRequestId: 0,
       taskBoxFocusProjectId: null,
       taskBoxFocusTaskId: null,
       scrollToTurnRequest: null,
+      sessionSidePanelToggleRequestId: 0,
     });
   });
 
@@ -42,5 +46,27 @@ describe('pageTabStore side-panel requests', () => {
 
     usePageTabStore.getState().setScrollToTurnRequest(null);
     expect(usePageTabStore.getState().scrollToTurnRequest).toBeNull();
+  });
+
+  it('publishes one-shot session side-panel toggle requests', () => {
+    usePageTabStore.getState().requestToggleSessionSidePanel();
+    usePageTabStore.getState().requestToggleSessionSidePanel();
+
+    expect(usePageTabStore.getState().sessionSidePanelToggleRequestId).toBe(2);
+  });
+
+  it('tracks unread project files and clears the active project when Files opens', () => {
+    usePageTabStore.getState().markTabAsUnviewed('files', 'project-1');
+    usePageTabStore.getState().markTabAsUnviewed('files', 'project-2');
+
+    usePageTabStore.getState().setActiveWorkspaceTab('files', {
+      clearFilesForProjectId: 'project-1',
+    });
+
+    expect(usePageTabStore.getState().activeWorkspaceTab).toBe('files');
+    expect(usePageTabStore.getState().unviewedTabs).toEqual(new Set(['files']));
+    expect(usePageTabStore.getState().filesUnviewedForProjects).toEqual(
+      new Set(['project-2'])
+    );
   });
 });

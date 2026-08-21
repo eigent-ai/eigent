@@ -4578,8 +4578,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             setNuwFileNum(currentTaskId, tasks[currentTaskId].nuwFileNum + 1);
             const { activeWorkspaceTab, markTabAsUnviewed } =
               usePageTabStore.getState();
-            if (activeWorkspaceTab !== 'inbox' && project_id) {
-              markTabAsUnviewed('inbox', project_id);
+            if (activeWorkspaceTab !== 'files' && project_id) {
+              markTabAsUnviewed('files', project_id);
             }
             const { file_path } = agentMessages.data;
             const fileName =
@@ -6792,12 +6792,11 @@ export function hasActiveSSEConnection(taskIds: string[]): boolean {
 }
 
 /**
- * Returns true when any run, in any Project, still has a live SSE
- * connection. Closing the window kills these streams and the backend
- * aborts the in-flight work, so the close guard must consider every
- * Project, not just the active one.
+ * Returns true when any legacy `/chat` task still owns a live renderer SSE.
+ * This is a compatibility signal only; canonical Run state comes from the
+ * durable `/runs` registry.
  */
-export function hasAnyActiveRun(): boolean {
+export function hasAnyActiveLegacySSEConnection(): boolean {
   return Object.values(activeSSEControllers).some(
     (connection) => connection.live
   );

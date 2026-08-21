@@ -23,8 +23,9 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
+import { AUTOMATION_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
-import { Archive, MoreHorizontal, Pin, Trash2, Zap } from 'lucide-react';
+import { Archive, MoreHorizontal, Pin, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SIDEBAR_TAB_TOOLTIP_CONTENT_CLASS } from './constants';
@@ -243,7 +244,7 @@ function ProjectNavRow({
               {project.title}
             </span>
             {project.source === 'trigger' ? (
-              <Zap
+              <AUTOMATION_ICON
                 className="h-3.5 w-3.5 shrink-0 text-ds-icon-warning-default-default"
                 aria-label={triggerSourceLabel}
               />

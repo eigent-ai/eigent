@@ -69,7 +69,6 @@ import {
   Plus,
   Slack,
   WebhookIcon,
-  Zap,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -333,7 +332,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         // Add activity log
         addLog({
           type: ActivityType.TriggerUpdated,
-          message: `Trigger "${response.name}" updated`,
+          message: `Automation "${response.name}" updated`,
           projectId: activeProjectId || undefined,
           triggerId: response.id,
           triggerName: response.name,
@@ -382,7 +381,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         // Add activity log
         addLog({
           type: ActivityType.TriggerCreated,
-          message: `Trigger "${response.name}" created`,
+          message: `Automation "${response.name}" created`,
           projectId: activeProjectId || undefined,
           triggerId: response.id,
           triggerName: response.name,
@@ -837,7 +836,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
             title={t('triggers.webhook-created-title')}
           />
 
-          {/* Trigger Details Section */}
+          {/* Automation details section */}
           <div className="flex flex-col items-center justify-center gap-2 p-4">
             <motion.div
               initial={
@@ -856,7 +855,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
               }}
               className="flex h-16 w-16 items-center justify-center rounded-full bg-ds-bg-status-completed-subtle-default shadow-sm"
             >
-              <Zap className="h-8 w-8 text-ds-icon-status-completed-default-default" />
+              <WebhookIcon className="h-8 w-8 text-ds-icon-status-completed-default-default" />
             </motion.div>
             <motion.div
               initial={

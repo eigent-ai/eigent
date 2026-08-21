@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { SessionMode, type SessionModeType } from '@/types/constants';
@@ -141,7 +142,13 @@ export function SessionSidePanel({
 
       {isFolded && (
         <TooltipSimple
-          content={expandFoldedTooltip}
+          content={
+            <ShortcutTooltipContent
+              label={expandFoldedTooltip}
+              shortcutId="toggle-session-side-panel"
+            />
+          }
+          compact
           side="left"
           variant="instant"
         >

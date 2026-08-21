@@ -95,7 +95,7 @@
   "open-in-file-manager": "ファイルマネージャー",
   "failed-to-open-folder": "フォルダを開けませんでした",
   "task-completed-card-title": "タスク完了",
-  "task-completed-card-subtitle": "トリガーでタスクを自動化",
+  "task-completed-card-subtitle": "このタスクを自動化",
   "single-agent-working": "{{agent}}が処理中です",
   "agent-outcome-expand": "展開",
   "agent-outcome-collapse": "折りたたむ",

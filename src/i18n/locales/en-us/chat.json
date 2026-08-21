@@ -95,7 +95,7 @@
   "open-in-file-manager": "File manager",
   "failed-to-open-folder": "Failed to open folder",
   "task-completed-card-title": "Task completed",
-  "task-completed-card-subtitle": "Automate your task with a trigger",
+  "task-completed-card-subtitle": "Automate this task",
   "single-agent-working": "{{agent}} is working hard",
   "agent-outcome-expand": "Expand",
   "agent-outcome-collapse": "Collapse",

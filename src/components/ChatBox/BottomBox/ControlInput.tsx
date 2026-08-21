@@ -14,8 +14,11 @@
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { ShortcutKeycap } from '@/components/ui/shortcut-keycap';
 import { Textarea } from '@/components/ui/textarea';
+import { useDesktopShortcutPlatform } from '@/hooks/useDesktopShortcutPlatform';
 import { cn } from '@/lib/utils';
+import { getEnterKeyLabel } from '@/shared/keyboardShortcuts';
 import { Check, TriangleAlert } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -23,7 +26,6 @@ import { BoxHeaderDisplay } from './BoxHeader';
 import type { InputboxProps } from './InputBox';
 import { Inputbox } from './InputBox';
 import type {
-  BottomBoxApprovalScope,
   BottomBoxApprovalVariant,
   BottomBoxBlockedVariant,
   BottomBoxConfirmationVariant,
@@ -103,9 +105,6 @@ function ConfirmationInput({
 
 function ApprovalInput({ variant }: { variant: BottomBoxApprovalVariant }) {
   const { t } = useTranslation();
-  const approve = (scope: BottomBoxApprovalScope) => {
-    if (!variant.disabled && !variant.submitting) variant.onApprove(scope);
-  };
 
   return (
     <div
@@ -132,20 +131,22 @@ function ApprovalInput({ variant }: { variant: BottomBoxApprovalVariant }) {
           >
             {variant.rejectLabel ?? t('chat.control-reject')}
           </Button>
-          {variant.options.map((option) => (
-            <Button
-              key={option.scope}
-              type="button"
-              variant="primary"
-              tone="success"
-              size="sm"
-              buttonRadius="full"
-              disabled={variant.disabled || variant.submitting}
-              onClick={() => approve(option.scope)}
-            >
-              {option.label}
-            </Button>
-          ))}
+          {variant.options.map((option) => {
+            return (
+              <Button
+                key={option.scope}
+                type="button"
+                variant="primary"
+                tone="success"
+                size="sm"
+                buttonRadius="full"
+                disabled={variant.disabled || variant.submitting}
+                onClick={() => variant.onApprove(option.scope)}
+              >
+                <span>{option.label}</span>
+              </Button>
+            );
+          })}
         </ControlActions>
       </div>
     </div>
@@ -295,6 +296,7 @@ function SelectionInput({ variant }: { variant: BottomBoxSelectionVariant }) {
 
 function FeedbackInput({ variant }: { variant: BottomBoxFeedbackVariant }) {
   const { t } = useTranslation();
+  const enterLabel = getEnterKeyLabel(useDesktopShortcutPlatform());
 
   return (
     <div className={controlSurfaceClassName}>
@@ -335,9 +337,16 @@ function FeedbackInput({ variant }: { variant: BottomBoxFeedbackVariant }) {
           }
           onClick={variant.onSubmit}
         >
-          {variant.submitting
-            ? t('chat.control-submitting')
-            : (variant.submitLabel ?? t('chat.control-send-feedback'))}
+          <span>
+            {variant.submitting
+              ? t('chat.control-submitting')
+              : (variant.submitLabel ?? t('chat.control-send-feedback'))}
+          </span>
+          {!variant.submitting ? (
+            <ShortcutKeycap appearance="button" aria-hidden>
+              {enterLabel}
+            </ShortcutKeycap>
+          ) : null}
         </Button>
       </ControlActions>
     </div>

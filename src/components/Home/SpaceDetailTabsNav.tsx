@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { AUTOMATION_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
@@ -20,10 +21,10 @@ import {
   Library,
   ListChecks,
   Settings,
-  Zap,
   type LucideIcon,
 } from 'lucide-react';
 import { useCallback, useRef, useState, type KeyboardEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 
 const underlineSlideTransition = {
   type: 'spring' as const,
@@ -51,17 +52,48 @@ export function isSpaceDetailTab(value: unknown): value is SpaceDetailTab {
 
 type SpaceDetailTabConfig = {
   id: SpaceDetailTab;
-  label: string;
+  labelKey: string;
+  defaultLabel: string;
   icon: LucideIcon;
 };
 
 const SPACE_DETAIL_TAB_OPTIONS: SpaceDetailTabConfig[] = [
-  { id: 'projects', label: 'Projects', icon: FolderKanban },
-  { id: 'tasks', label: 'Tasks', icon: ListChecks },
-  { id: 'triggers', label: 'Triggers', icon: Zap },
-  { id: 'context', label: 'Context', icon: Library },
-  { id: 'memory', label: 'Memory', icon: Brain },
-  { id: 'workspace-profile', label: 'Space Settings', icon: Settings },
+  {
+    id: 'projects',
+    labelKey: 'layout.projects',
+    defaultLabel: 'Projects',
+    icon: FolderKanban,
+  },
+  {
+    id: 'tasks',
+    labelKey: 'layout.tasks-heading',
+    defaultLabel: 'Tasks',
+    icon: ListChecks,
+  },
+  {
+    id: 'triggers',
+    labelKey: 'layout.triggers',
+    defaultLabel: 'Automations',
+    icon: AUTOMATION_ICON,
+  },
+  {
+    id: 'context',
+    labelKey: 'layout.context-heading',
+    defaultLabel: 'Context',
+    icon: Library,
+  },
+  {
+    id: 'memory',
+    labelKey: 'layout.memory',
+    defaultLabel: 'Memory',
+    icon: Brain,
+  },
+  {
+    id: 'workspace-profile',
+    labelKey: 'layout.space-settings-heading',
+    defaultLabel: 'Space Settings',
+    icon: Settings,
+  },
 ];
 
 const tabButtonClass =
@@ -81,6 +113,7 @@ export function SpaceDetailTabsNav({
   onChange,
   className,
 }: SpaceDetailTabsNavProps) {
+  const { t } = useTranslation();
   const navRef = useRef<HTMLDivElement>(null);
   const [hoveredTab, setHoveredTab] = useState<SpaceDetailTab | null>(null);
   const [layoutInput, setLayoutInput] = useState<'pointer' | 'keyboard'>(
@@ -149,84 +182,87 @@ export function SpaceDetailTabsNav({
       data-layout-movement={useInstantLayout ? 'instant' : 'spring'}
       onPointerLeave={() => setHoveredTab(null)}
     >
-      {SPACE_DETAIL_TAB_OPTIONS.map(({ id, label, icon: Icon }) => {
-        const selected = activeTab === id;
-        return (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            data-space-detail-tab={id}
-            aria-selected={selected}
-            tabIndex={selected ? 0 : -1}
-            onClick={() => onChange(id)}
-            onKeyDown={(event) => handleKeyDown(event, id)}
-            onPointerDown={(event) => {
-              setLayoutInput('pointer');
-              if (event.pointerType === 'touch') setHoveredTab(null);
-            }}
-            onPointerEnter={(event) => {
-              if (event.pointerType === 'touch') {
-                setHoveredTab(null);
-                return;
-              }
-              setLayoutInput('pointer');
-              setHoveredTab(id);
-            }}
-            className={cn(
-              tabButtonClass,
-              selected
-                ? 'text-ds-text-neutral-default-default'
-                : 'text-ds-text-neutral-muted-default hover:text-ds-text-neutral-default-default'
-            )}
-          >
-            <AnimatePresence initial={false}>
-              {hoveredTab === id ? (
+      {SPACE_DETAIL_TAB_OPTIONS.map(
+        ({ id, labelKey, defaultLabel, icon: Icon }) => {
+          const label = t(labelKey, { defaultValue: defaultLabel });
+          const selected = activeTab === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              data-space-detail-tab={id}
+              aria-selected={selected}
+              tabIndex={selected ? 0 : -1}
+              onClick={() => onChange(id)}
+              onKeyDown={(event) => handleKeyDown(event, id)}
+              onPointerDown={(event) => {
+                setLayoutInput('pointer');
+                if (event.pointerType === 'touch') setHoveredTab(null);
+              }}
+              onPointerEnter={(event) => {
+                if (event.pointerType === 'touch') {
+                  setHoveredTab(null);
+                  return;
+                }
+                setLayoutInput('pointer');
+                setHoveredTab(id);
+              }}
+              className={cn(
+                tabButtonClass,
+                selected
+                  ? 'text-ds-text-neutral-default-default'
+                  : 'text-ds-text-neutral-muted-default hover:text-ds-text-neutral-default-default'
+              )}
+            >
+              <AnimatePresence initial={false}>
+                {hoveredTab === id ? (
+                  <motion.span
+                    key="space-detail-tab-hover"
+                    layoutId="space-detail-tab-hover"
+                    data-space-detail-tab-hover
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0 z-0 rounded-full bg-ds-bg-neutral-default-default shadow-sm ring-1 ring-ds-border-neutral-default-default"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{
+                      layout: layoutTransition,
+                      opacity: {
+                        duration: reduceMotion ? 0.12 : 0.18,
+                        ease: uiEaseOut,
+                      },
+                    }}
+                  />
+                ) : null}
+              </AnimatePresence>
+              {selected ? (
                 <motion.span
-                  key="space-detail-tab-hover"
-                  layoutId="space-detail-tab-hover"
-                  data-space-detail-tab-hover
+                  layoutId="space-detail-tab-indicator"
+                  data-space-detail-tab-indicator
                   aria-hidden
-                  className="pointer-events-none absolute inset-0 z-0 rounded-full bg-ds-bg-neutral-default-default shadow-sm ring-1 ring-ds-border-neutral-default-default"
+                  className="pointer-events-none absolute left-0 top-[calc(100%+8px)] z-[11] h-0.5 w-full rounded-full bg-ds-bg-brand-default-default"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
                   transition={{
                     layout: layoutTransition,
                     opacity: {
-                      duration: reduceMotion ? 0.12 : 0.18,
+                      duration: reduceMotion ? 0.12 : 0.2,
                       ease: uiEaseOut,
                     },
                   }}
                 />
               ) : null}
-            </AnimatePresence>
-            {selected ? (
-              <motion.span
-                layoutId="space-detail-tab-indicator"
-                data-space-detail-tab-indicator
-                aria-hidden
-                className="pointer-events-none absolute left-0 top-[calc(100%+8px)] z-[11] h-0.5 w-full rounded-full bg-ds-bg-brand-default-default"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{
-                  layout: layoutTransition,
-                  opacity: {
-                    duration: reduceMotion ? 0.12 : 0.2,
-                    ease: uiEaseOut,
-                  },
-                }}
-              />
-            ) : null}
-            <span className={iconSlotClass} aria-hidden>
-              <Icon />
-            </span>
-            <span className="relative z-10 !text-body-sm font-bold">
-              {label}
-            </span>
-          </button>
-        );
-      })}
+              <span className={iconSlotClass} aria-hidden>
+                <Icon />
+              </span>
+              <span className="relative z-10 !text-body-sm font-bold">
+                {label}
+              </span>
+            </button>
+          );
+        }
+      )}
     </div>
   );
 }

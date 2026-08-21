@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tag } from '@/components/ui/tag';
 import { getSpaceStatusLabel } from '@/lib/spaceLabel';
+import { iconForTriggerType } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
 import type { Space } from '@/store/spaceStore';
 import { Trigger } from '@/types';
@@ -30,7 +31,6 @@ import {
   ListChecks,
   MessageCircle,
   MoreHorizontal,
-  Zap,
 } from 'lucide-react';
 import {
   Fragment,
@@ -684,6 +684,8 @@ export function HomeHubTaskBoardCardBody({
 
 type HomeHubTriggerCardBodyProps = {
   title: string;
+  /** Drives the card glyph; only Schedule automations get a clock. */
+  triggerType: Trigger['trigger_type'];
   triggerTypeLabel: string;
   executionCount: number;
   spaceLabel: string;
@@ -696,6 +698,7 @@ type HomeHubTriggerCardBodyProps = {
 
 export function HomeHubTriggerCardBody({
   title,
+  triggerType,
   triggerTypeLabel,
   executionCount,
   spaceLabel,
@@ -706,6 +709,7 @@ export function HomeHubTriggerCardBody({
   menuItems,
 }: HomeHubTriggerCardBodyProps) {
   const { t } = useTranslation();
+  const TriggerIcon = iconForTriggerType(triggerType);
   const statItems = [
     triggerTypeLabel,
     t('layout.home-trigger-stat-executions', { count: executionCount }),
@@ -714,7 +718,7 @@ export function HomeHubTriggerCardBody({
   return (
     <HomeHubHubCardBody
       title={title}
-      icon={<Zap />}
+      icon={<TriggerIcon />}
       menuItems={menuItems}
       statItems={statItems}
       updatedAt={updatedAt}
@@ -733,6 +737,7 @@ export function HomeHubTriggerCardBody({
 
 export function HomeHubTriggerBoardCardBody({
   title,
+  triggerType,
   triggerTypeLabel,
   executionCount,
   spaceLabel,
@@ -742,11 +747,12 @@ export function HomeHubTriggerBoardCardBody({
   menuItems,
 }: Omit<HomeHubTriggerCardBodyProps, 'updatedAt'>) {
   const { t } = useTranslation();
+  const TriggerIcon = iconForTriggerType(triggerType);
 
   return (
     <HomeHubBoardCardBody
       title={title}
-      icon={<Zap />}
+      icon={<TriggerIcon />}
       menuItems={menuItems}
       statRows={[
         { label: t('layout.home-list-type'), value: triggerTypeLabel },

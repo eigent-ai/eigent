@@ -155,7 +155,7 @@ export default function Overview({
         type: isActivating
           ? ActivityType.TriggerActivated
           : ActivityType.TriggerDeactivated,
-        message: `Trigger "${trigger.name}" ${isActivating ? 'activated' : 'deactivated'}`,
+        message: `Automation "${trigger.name}" ${isActivating ? 'activated' : 'deactivated'}`,
         projectId: projectStore.activeProjectId || undefined,
         triggerId: trigger.id,
         triggerName: trigger.name,
@@ -219,7 +219,7 @@ export default function Overview({
       // Add activity log
       addLog({
         type: ActivityType.TriggerDeleted,
-        message: `Trigger "${deletingTrigger.name}" deleted`,
+        message: `Automation "${deletingTrigger.name}" deleted`,
         projectId: projectStore.activeProjectId || undefined,
         triggerId: deletingTrigger.id,
         triggerName: deletingTrigger.name,
@@ -245,7 +245,7 @@ export default function Overview({
       // Add activity log
       addLog({
         type: ActivityType.TriggerCreated,
-        message: `Trigger "${duplicated.name}" created (duplicated)`,
+        message: `Automation "${duplicated.name}" created (duplicated)`,
         projectId: projectStore.activeProjectId || undefined,
         triggerId: duplicated.id,
         triggerName: duplicated.name,
@@ -267,7 +267,7 @@ export default function Overview({
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex h-full flex-row pl-2">
-        {/* Left Side: Trigger List */}
+        {/* Left side: automation list */}
         <div className="flex min-w-0 flex-1 flex-col">
           {/* List View Section */}
           <div className="scrollbar-always-visible mx-auto flex h-full w-full max-w-[800px] flex-col overflow-auto pt-2">
@@ -280,12 +280,12 @@ export default function Overview({
                   }}
                   className="group flex cursor-pointer items-center justify-center gap-3 rounded-xl bg-ds-bg-neutral-default-default p-3 transition-opacity duration-200 hover:opacity-60"
                 >
-                  {/* Zap Icon */}
+                  {/* Add icon */}
                   <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-subtle-default">
                     <Plus className="h-5 w-5 text-ds-icon-neutral-default-default" />
                   </div>
 
-                  {/* Create Trigger Text */}
+                  {/* Create automation text */}
                   <div className="w-full flex-1">
                     <div className="truncate text-sm font-semibold text-ds-text-neutral-muted-default transition-colors group-hover:text-ds-text-brand-default-hover">
                       {t('triggers.create-hint')}

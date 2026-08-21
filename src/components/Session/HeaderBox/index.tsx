@@ -18,6 +18,7 @@ import { AnimatedTokenNumber } from '@/components/ChatBox/MessageItem/TokenUtils
 import { CONTENT_HEADER_CLASS } from '@/components/Layout/ContentHeader';
 import { Button } from '@/components/ui/button';
 import { IconPillToggle } from '@/components/ui/icon-pill-toggle';
+import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
@@ -158,7 +159,17 @@ export function HeaderBox({
           </span>
         </div>
         {eventNativeTimelineEnabled ? (
-          <TooltipSimple content={timelineStyleTooltip} variant="instant">
+          <TooltipSimple
+            content={
+              <ShortcutTooltipContent
+                label={timelineStyleTooltip}
+                shortcutId="toggle-timeline-view"
+              />
+            }
+            compact
+            variant="instant"
+            side="bottom"
+          >
             <span className="no-drag inline-flex shrink-0">
               <IconPillToggle
                 aria-label={timelineStyleTooltip}
@@ -171,7 +182,13 @@ export function HeaderBox({
           </TooltipSimple>
         ) : null}
         <TooltipSimple
-          content={windowPreviewTooltip}
+          content={
+            <ShortcutTooltipContent
+              label={windowPreviewTooltip}
+              shortcutId="toggle-preview-panel"
+            />
+          }
+          compact
           variant="instant"
           side="bottom"
         >

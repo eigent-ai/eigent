@@ -34,16 +34,16 @@ export interface FilePreviewProps {
   /** Close the preview column. */
   onClose?: () => void;
   /**
-   * Navigate to the Context (Inbox) tab for the given file (or null to just open
-   * the file list). Wired from the breadcrumb "Context" root and the empty state.
+   * Navigate to the Files tab for the given file (or null to just open the file
+   * list). Wired from the breadcrumb "Files" root and the empty state.
    */
-  onJumpToContext?: (file: FileInfo | null) => void;
+  onJumpToFiles?: (file: FileInfo | null) => void;
 }
 
 /**
  * Inline file preview shown beside the chat content on the project page.
  * Owns its own content-loading state and reuses {@link FileViewerPanel} so it
- * renders markdown/PDF/docs/HTML/media identically to the Inbox/Folder tab.
+ * renders markdown/PDF/docs/HTML/media identically to the Files tab.
  */
 export function FilePreview({
   file,
@@ -51,7 +51,7 @@ export function FilePreview({
   embedded = false,
   projectFiles = [],
   onClose,
-  onJumpToContext,
+  onJumpToFiles,
 }: FilePreviewProps) {
   const { t } = useTranslation();
   const host = useHost();
@@ -62,7 +62,7 @@ export function FilePreview({
   const [isShowSourceCode, setIsShowSourceCode] = useState(false);
   const previewRequestRef = useRef<AbortController | null>(null);
 
-  // Mirror of the Inbox/Folder loader (selectedFileChange): read content via the
+  // Mirror of the Files loader (selectedFileChange): read content via the
   // electron host (or remote fetch) and stash it on the file for the viewer.
   const loadFileContent = useCallback(
     (target: FileInfo, showSource?: boolean) => {
@@ -129,23 +129,21 @@ export function FilePreview({
     loadFileContent,
   ]);
 
-  // Breadcrumb is intentionally shallow: "Context > filename". The "Context"
-  // root navigates to the Inbox/Context tab for this file.
-  const contextLabel = t('layout.context-breadcrumb-root', {
-    defaultValue: 'Context',
-  });
+  // Breadcrumb is intentionally shallow: "Files > filename". The root opens
+  // the Files tab for this file.
+  const filesLabel = t('layout.files-tab', { defaultValue: 'Files' });
   const breadcrumbSegments = useMemo(
-    () => (selectedFile ? [contextLabel, selectedFile.name] : []),
-    [selectedFile, contextLabel]
+    () => (selectedFile ? [filesLabel, selectedFile.name] : []),
+    [selectedFile, filesLabel]
   );
 
   const handleBreadcrumbSegmentClick = useCallback(
     (index: number) => {
       if (index === 0) {
-        onJumpToContext?.(selectedFile);
+        onJumpToFiles?.(selectedFile);
       }
     },
-    [onJumpToContext, selectedFile]
+    [onJumpToFiles, selectedFile]
   );
 
   const handleToggleSourceCode = useCallback(() => {
@@ -204,7 +202,7 @@ export function FilePreview({
       isShowSourceCode={isShowSourceCode}
       breadcrumbSegments={breadcrumbSegments}
       onBreadcrumbSegmentClick={
-        onJumpToContext ? handleBreadcrumbSegmentClick : undefined
+        onJumpToFiles ? handleBreadcrumbSegmentClick : undefined
       }
       projectFiles={projectFiles}
       surfaceClassName={surfaceClassName}
@@ -221,14 +219,14 @@ export function FilePreview({
               defaultValue: 'No file selected.',
             })}
           </p>
-          {onJumpToContext ? (
+          {onJumpToFiles ? (
             <Button
               type="button"
               variant="secondary"
               size="sm"
-              onClick={() => onJumpToContext(null)}
+              onClick={() => onJumpToFiles(null)}
             >
-              {t('layout.jump-to-context-files', {
+              {t('layout.jump-to-files', {
                 defaultValue: 'See all files in your workspace',
               })}
             </Button>

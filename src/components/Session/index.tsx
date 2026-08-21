@@ -24,7 +24,11 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { ProjectEventRuntimeProvider } from '@/hooks/useProjectEventRuntime';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { cn } from '@/lib/utils';
-import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
+import {
+  getSessionPreviewSlice,
+  usePageTabStore,
+  WorkspaceTab,
+} from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import {
@@ -94,6 +98,12 @@ export default function Session({ isNewProject = false }: SessionProps) {
 
   const [isSidePanelVisible, setIsSidePanelVisible] = useState(!isNewProject);
   const [isExpandedOverlayOpen, setIsExpandedOverlayOpen] = useState(false);
+  const sessionSidePanelToggleRequestId = usePageTabStore(
+    (s) => s.sessionSidePanelToggleRequestId
+  );
+  const handledSidePanelToggleRequestId = useRef(
+    sessionSidePanelToggleRequestId
+  );
 
   // Default fold state is tab-specific. React reuses this component when switching
   // between `project` and `new-project`, so reset when the shell or project changes.
@@ -158,7 +168,7 @@ export default function Session({ isNewProject = false }: SessionProps) {
     // The New Project shell stays selected on its own tab — never redirect
     // away from it (it is empty until the user sends the first message).
     if (isNewProject) return;
-    // Only redirect while the live project tab is active; ignore inbox/triggers/etc.
+    // Only redirect while the live project tab is active; ignore files/triggers/etc.
     if (activeWorkspaceTab !== 'project') return;
     // Wait until the project chat store is ready (selectProject still loading).
     if (!chatStore) return;
@@ -223,6 +233,17 @@ export default function Session({ isNewProject = false }: SessionProps) {
   const toggleSidePanel = useCallback(() => {
     setIsSidePanelVisible((prev) => !prev);
   }, []);
+
+  useEffect(() => {
+    if (
+      handledSidePanelToggleRequestId.current ===
+      sessionSidePanelToggleRequestId
+    ) {
+      return;
+    }
+    handledSidePanelToggleRequestId.current = sessionSidePanelToggleRequestId;
+    if (activeWorkspaceTab === WorkspaceTab.Project) toggleSidePanel();
+  }, [activeWorkspaceTab, sessionSidePanelToggleRequestId, toggleSidePanel]);
 
   // Chat/display sizing. When display opens the chat collapses to its minimum;
   // display takes the remaining room before the independently folded side panel.
@@ -307,14 +328,14 @@ export default function Session({ isNewProject = false }: SessionProps) {
     [chatWidth]
   );
 
-  // "Context" breadcrumb / empty-state action: open the Inbox tab for this file.
-  const handleJumpToContext = useCallback(
+  // "Files" breadcrumb / empty-state action: open the Files tab for this file.
+  const handleJumpToFiles = useCallback(
     (file: FileInfo | null) => {
       if (file && chatStore?.activeTaskId) {
         chatStore.setSelectedFile(chatStore.activeTaskId, file);
       }
-      setActiveWorkspaceTab('inbox', {
-        clearInboxForProjectId: activeProjectId ?? null,
+      setActiveWorkspaceTab('files', {
+        clearFilesForProjectId: activeProjectId ?? null,
       });
       closeSessionPreview();
     },
@@ -452,7 +473,7 @@ export default function Session({ isNewProject = false }: SessionProps) {
                 {activeProjectId ? (
                   <PreviewPanel
                     displaySettled={displaySettled}
-                    onJumpToContext={handleJumpToContext}
+                    onJumpToFiles={handleJumpToFiles}
                   />
                 ) : null}
               </div>

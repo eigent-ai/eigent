@@ -14,6 +14,7 @@
 
 import { proxyFetchGet } from '@/api/http';
 import InviteCodeDialog from '@/components/Dialog/InviteCodeDialog';
+import { useAppCommand } from '@/components/Layout/AppCommandProvider';
 import {
   TOP_BAR_CONTROL_SELECTED_CLASS,
   TOP_BAR_CONTROL_STATE_CLASS,
@@ -31,12 +32,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { IconPillToggle } from '@/components/ui/icon-pill-toggle';
+import { ShortcutKeycap } from '@/components/ui/shortcut-keycap';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useDesktopShortcutPlatform } from '@/hooks/useDesktopShortcutPlatform';
 import { LocaleEnum, switchLanguage } from '@/i18n';
 import { SITE_URL } from '@/lib';
-import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
 import { cn } from '@/lib/utils';
-import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
+import { APP_COMMAND } from '@/shared/appCommands';
+import { getKeyboardShortcutsHint } from '@/shared/keyboardShortcuts';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationStore } from '@/store/installationStore';
 import {
@@ -44,6 +47,7 @@ import {
   Check,
   Gem,
   Gift,
+  Keyboard,
   Languages,
   Loader2,
   LogOut,
@@ -54,7 +58,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 const IS_LOCAL_PROXY = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
 
@@ -102,7 +106,8 @@ function applyLanguage(key: string) {
 export function UserMenu() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const location = useLocation();
+  const shortcutPlatform = useDesktopShortcutPlatform();
+  const executeAppCommand = useAppCommand();
   const [open, setOpen] = useState(false);
   const [languageSubOpen, setLanguageSubOpen] = useState(false);
   const [inviteCodeDialogOpen, setInviteCodeDialogOpen] = useState(false);
@@ -120,6 +125,7 @@ export function UserMenu() {
   const setNeedsBackendRestart = useInstallationStore(
     (s) => s.setNeedsBackendRestart
   );
+  const keyboardShortcutsHint = getKeyboardShortcutsHint(shortcutPlatform);
 
   const profileDisplayName = username?.trim() || email?.trim() || '';
   const profileInitial = (profileDisplayName || '?').charAt(0).toUpperCase();
@@ -194,13 +200,11 @@ export function UserMenu() {
   };
 
   const handleOpenSettings = () => {
-    void runAfterWorkspaceConfigurationSave(() => {
-      navigate('/home?section=settings&tab=settings', {
-        state: isSettingsRoutePath(location.pathname)
-          ? location.state
-          : shellBackState(`${location.pathname}${location.search}`),
-      });
-    });
+    executeAppCommand(APP_COMMAND.openSettings);
+  };
+
+  const handleOpenKeyboardShortcuts = () => {
+    executeAppCommand(APP_COMMAND.keyboardShortcuts);
   };
 
   const handleLogout = () => {
@@ -362,6 +366,18 @@ export function UserMenu() {
           >
             <Settings className="h-4 w-4" aria-hidden />
             {t('setting.settings')}
+          </DropdownMenuItem>
+
+          <DropdownMenuItem
+            className="gap-2"
+            onPointerEnter={closeLanguageSub}
+            onSelect={handleOpenKeyboardShortcuts}
+          >
+            <Keyboard className="h-4 w-4" aria-hidden />
+            <span className="min-w-0 flex-1 truncate">
+              {t('layout.shortcuts.title')}
+            </span>
+            <ShortcutKeycap aria-hidden>{keyboardShortcutsHint}</ShortcutKeycap>
           </DropdownMenuItem>
 
           <DropdownMenuSeparator />
