@@ -153,20 +153,79 @@
 }
 
 .markdown-body .markdown-code-action {
-  min-height: 24px;
-  padding: 0 6px;
-  border-radius: 4px;
+  flex: 0 0 auto;
 }
 
-.markdown-body .markdown-code-action:hover {
+.markdown-body .markdown-copy-button {
+  position: relative;
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 4px;
+  color: #59636e;
+  background: transparent;
+  cursor: pointer;
+}
+
+.markdown-body .markdown-copy-icon {
+  width: 15px;
+  height: 15px;
+  pointer-events: none;
+}
+
+.markdown-body .markdown-copy-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.markdown-body .markdown-copy-button:hover {
   color: #1f2328;
   background: rgba(175, 184, 193, 0.2);
 }
 
+.markdown-body .markdown-copy-button:focus-visible,
 .markdown-body .markdown-code-action:focus-visible,
 .markdown-body .markdown-code-expand:focus-visible {
   outline: 2px solid #0969da;
   outline-offset: -2px;
+}
+
+/* Long prose gets a local copy action without adding noise to every line. */
+.markdown-body .markdown-copyable-text {
+  position: relative;
+  padding-right: 34px;
+}
+
+.markdown-body .markdown-text-copy {
+  position: absolute;
+  top: -3px;
+  right: 2px;
+  opacity: 0;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease,
+    opacity 120ms ease;
+}
+
+.markdown-body .markdown-copyable-text:hover > .markdown-text-copy,
+.markdown-body .markdown-text-copy:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .markdown-body .markdown-text-copy {
+    opacity: 0.65;
+  }
 }
 
 .markdown-body .markdown-code-block pre {
@@ -382,11 +441,13 @@
 
 [data-theme='dark'] .markdown-body .markdown-code-language,
 [data-theme='dark'] .markdown-body .markdown-code-action,
+[data-theme='dark'] .markdown-body .markdown-copy-button,
 [data-theme='dark'] .markdown-body .markdown-code-expand {
   color: #8b949e;
 }
 
 [data-theme='dark'] .markdown-body .markdown-code-action:hover,
+[data-theme='dark'] .markdown-body .markdown-copy-button:hover,
 [data-theme='dark'] .markdown-body .markdown-code-expand:hover {
   color: #e6edf3;
   background: rgba(110, 118, 129, 0.25);

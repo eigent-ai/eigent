@@ -97,7 +97,7 @@ describe('shared MarkDown renderer', () => {
   });
 
   it('copies the original code after syntax highlighting', async () => {
-    render(
+    const { container } = render(
       <MarkDown
         content={'```typescript\nconst value = 1;\n```'}
         enableTypewriter={false}
@@ -105,12 +105,36 @@ describe('shared MarkDown renderer', () => {
     );
 
     const copy = await screen.findByRole('button', { name: 'Copy' });
+    expect(copy.querySelector('.markdown-copy-icon')).not.toBeNull();
+    expect(container.querySelector('.markdown-code-action')).toBe(copy);
     await waitFor(() => expect(mocks.highlight).toHaveBeenCalled());
     fireEvent.click(copy);
 
     await waitFor(() =>
       expect(mocks.copy).toHaveBeenCalledWith('const value = 1;')
     );
+  });
+
+  it('adds a local copy icon to long prose and copies only its text', async () => {
+    const content =
+      'This is a deliberately long rendered paragraph that gives the user a convenient local copy action without making every short sentence in a conversation show another button. It should copy exactly this paragraph.';
+    render(<MarkDown content={content} enableTypewriter={false} />);
+
+    const copy = await screen.findByRole('button', { name: 'Copy text' });
+    expect(copy.querySelector('.markdown-copy-icon')).not.toBeNull();
+    fireEvent.click(copy);
+
+    await waitFor(() => expect(mocks.copy).toHaveBeenCalledWith(content));
+    expect(copy).toHaveAccessibleName('Copied');
+  });
+
+  it('does not add copy controls to short prose', async () => {
+    render(<MarkDown content="A short answer." enableTypewriter={false} />);
+
+    await screen.findByText('A short answer.');
+    expect(
+      screen.queryByRole('button', { name: 'Copy text' })
+    ).not.toBeInTheDocument();
   });
 
   it('uses the compact profile for workflow details', async () => {

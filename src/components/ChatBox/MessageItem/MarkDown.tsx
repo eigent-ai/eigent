@@ -62,6 +62,17 @@ const COLLAPSE_AFTER_LINES: Record<MarkdownProfile, number> = {
   document: 32,
 };
 
+const COPYABLE_TEXT_MIN_LENGTH = 120;
+
+function copyButtonContents(label: string, copied = false): string {
+  const safeLabel = escapeHtml(label);
+  const icon = copied
+    ? '<path d="M20 6 9 17l-5-5" />'
+    : '<rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />';
+
+  return `<svg class="markdown-copy-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${icon}</svg><span class="markdown-copy-label">${safeLabel}</span>`;
+}
+
 function normalizedCodeLanguage(lang?: string): string {
   return (lang ?? '')
     .trim()
@@ -84,7 +95,9 @@ function codeBlockHtml(
     collapsible ? ' data-collapsible="true"' : ''
   }><div class="markdown-code-toolbar"><span class="markdown-code-language">${escapeHtml(
     languageLabel
-  )}</span><button type="button" class="markdown-code-action" data-markdown-code-copy>${escapeHtml(
+  )}</span><button type="button" class="markdown-copy-button markdown-code-action" data-markdown-code-copy aria-label="${escapeHtml(
+    labels.copy
+  )}" title="${escapeHtml(labels.copy)}">${copyButtonContents(
     labels.copy
   )}</button></div><pre tabindex="0"><code${
     language
@@ -150,6 +163,7 @@ export const MarkDown = memo(
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const contentRef = useRef<HTMLDivElement>(null);
     const rawCodeByElementRef = useRef(new WeakMap<Element, string>());
+    const rawTextByElementRef = useRef(new WeakMap<Element, string>());
     const lastContentRef = useRef<string | null>(null);
     /** Tracks how many characters have been typed so far — lets streaming
      *  appends continue from the current position instead of restarting. */
@@ -346,6 +360,7 @@ export const MarkDown = memo(
             'data-file-path',
             'data-markdown-code-copy',
             'data-markdown-code-expand',
+            'data-markdown-text-copy',
             'data-markdown-language',
             'data-collapsible',
             'data-expanded',
@@ -402,9 +417,69 @@ export const MarkDown = memo(
       };
     }, [appearance, content, displayedContent, html]);
 
-    // Add click handlers for images
+    // Add a low-noise, hover-revealed copy affordance to long prose blocks.
+    // Capture text before inserting the button so its accessible label never
+    // leaks into the copied value.
+    useEffect(() => {
+      const root = contentRef.current;
+      if (!root || displayedContent !== content) return;
+
+      const copyLabel = t('markdown.copy-text', {
+        defaultValue: 'Copy text',
+      });
+      const blocks = Array.from(
+        root.querySelectorAll<HTMLElement>(':scope > p, :scope > blockquote')
+      );
+
+      blocks.forEach((block) => {
+        if (block.querySelector(':scope > button[data-markdown-text-copy]')) {
+          return;
+        }
+        const raw = (block.innerText || block.textContent || '').trim();
+        if (raw.length < COPYABLE_TEXT_MIN_LENGTH) return;
+
+        rawTextByElementRef.current.set(block, raw);
+        block.classList.add('markdown-copyable-text');
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'markdown-copy-button markdown-text-copy';
+        button.dataset.markdownTextCopy = '';
+        button.setAttribute('aria-label', copyLabel);
+        button.title = copyLabel;
+        button.innerHTML = copyButtonContents(copyLabel);
+        block.append(button);
+      });
+    }, [content, displayedContent, html, t]);
+
+    // Add click handlers for copy actions, images, and links.
     useEffect(() => {
       if (!contentRef.current) return;
+
+      const copyWithFeedback = (
+        raw: string,
+        button: HTMLButtonElement,
+        resetLabel: string
+      ) => {
+        if (!raw || !navigator.clipboard?.writeText) return;
+        void navigator.clipboard
+          .writeText(raw)
+          .then(() => {
+            const copiedLabel = t('markdown.copied', {
+              defaultValue: 'Copied',
+            });
+            button.setAttribute('aria-label', copiedLabel);
+            button.title = copiedLabel;
+            button.innerHTML = copyButtonContents(copiedLabel, true);
+            window.setTimeout(() => {
+              if (button.isConnected) {
+                button.setAttribute('aria-label', resetLabel);
+                button.title = resetLabel;
+                button.innerHTML = copyButtonContents(resetLabel);
+              }
+            }, 1500);
+          })
+          .catch(() => undefined);
+      };
 
       const handleContentClick = (e: MouseEvent) => {
         const target = e.target as HTMLElement;
@@ -422,23 +497,29 @@ export const MarkDown = memo(
               code.textContent ??
               '')
             : '';
-          if (navigator.clipboard?.writeText) {
-            void navigator.clipboard
-              .writeText(raw)
-              .then(() => {
-                copyButton.textContent = t('markdown.copied', {
-                  defaultValue: 'Copied',
-                });
-                window.setTimeout(() => {
-                  if (copyButton.isConnected) {
-                    copyButton.textContent = t('markdown.copy-code', {
-                      defaultValue: 'Copy',
-                    });
-                  }
-                }, 1500);
-              })
-              .catch(() => undefined);
-          }
+          copyWithFeedback(
+            raw,
+            copyButton,
+            t('markdown.copy-code', { defaultValue: 'Copy' })
+          );
+          return;
+        }
+        const textCopyButton = target.closest<HTMLButtonElement>(
+          'button[data-markdown-text-copy]'
+        );
+        if (textCopyButton) {
+          e.preventDefault();
+          const block = textCopyButton.closest<HTMLElement>(
+            '.markdown-copyable-text'
+          );
+          const raw = block
+            ? (rawTextByElementRef.current.get(block) ?? '')
+            : '';
+          copyWithFeedback(
+            raw,
+            textCopyButton,
+            t('markdown.copy-text', { defaultValue: 'Copy text' })
+          );
           return;
         }
         const expandButton = target.closest<HTMLButtonElement>(
