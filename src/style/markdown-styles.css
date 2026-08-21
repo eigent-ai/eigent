@@ -107,33 +107,36 @@
 
 /* Fenced code uses one shell in chat, summaries, workflow details, and files. */
 .markdown-body .markdown-code-block {
+  position: relative;
   max-width: 100%;
   margin: 0 0 16px;
   overflow: hidden;
-  border: 1px solid #d1d9e0;
-  border-radius: 6px;
-  background: #ffffff;
+  border: 1px solid rgba(31, 35, 40, 0.12);
+  border-radius: 10px;
+  background: #fbfcfd;
+  box-shadow:
+    0 1px 2px rgba(31, 35, 40, 0.04),
+    0 0 0 1px rgba(31, 35, 40, 0.015);
 }
 
 .markdown-body .markdown-code-toolbar {
   display: flex;
-  min-height: 32px;
+  min-height: 36px;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 0 8px 0 12px;
-  border-bottom: 1px solid #d1d9e0;
-  background: #f6f8fa;
+  padding: 4px 7px 4px 14px;
+  border-bottom: 1px solid rgba(31, 35, 40, 0.08);
+  background: rgba(246, 248, 250, 0.88);
 }
 
 .markdown-body .markdown-code-language {
   overflow: hidden;
-  color: #59636e;
-  font-family:
-    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono',
-    monospace;
+  color: #656d76;
+  font-family: inherit;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
+  letter-spacing: 0.02em;
   line-height: 1;
   text-overflow: ellipsis;
   text-transform: lowercase;
@@ -159,13 +162,13 @@
 .markdown-body .markdown-copy-button {
   position: relative;
   display: inline-flex;
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   align-items: center;
   justify-content: center;
   border: 0;
-  border-radius: 4px;
+  border-radius: 6px;
   color: #59636e;
   background: transparent;
   cursor: pointer;
@@ -190,7 +193,7 @@
 
 .markdown-body .markdown-copy-button:hover {
   color: #1f2328;
-  background: rgba(175, 184, 193, 0.2);
+  background: rgba(208, 215, 222, 0.45);
 }
 
 .markdown-body .markdown-copy-button:focus-visible,
@@ -231,18 +234,40 @@
 .markdown-body .markdown-code-block pre {
   max-width: 100%;
   margin: 0;
-  padding: 12px 16px;
+  padding: 14px 17px 16px;
   overflow: auto;
   border: 0;
   border-radius: 0;
   color: #1f2328;
-  background: #ffffff;
+  background: #fbfcfd;
   font-size: 13px;
   line-height: 20px;
   tab-size: 2;
   white-space: pre;
   word-break: normal;
   overflow-wrap: normal;
+}
+
+.markdown-body .markdown-code-block pre::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.markdown-body .markdown-code-block pre::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.markdown-body .markdown-code-block pre::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: rgba(129, 139, 152, 0.42);
+  background-clip: padding-box;
+}
+
+.markdown-body .markdown-code-block[data-wrap-lines='true'] pre {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .markdown-profile-compact .markdown-code-block pre {
@@ -283,17 +308,42 @@
 }
 
 .markdown-body .markdown-code-expand {
+  position: relative;
+  z-index: 2;
   display: block;
-  width: 100%;
-  min-height: 30px;
-  border-top: 1px solid #d1d9e0;
-  background: #f6f8fa;
+  width: max-content;
+  min-height: 28px;
+  margin: -39px auto 10px;
+  padding: 0 12px;
+  border: 1px solid rgba(31, 35, 40, 0.13);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 1px 3px rgba(31, 35, 40, 0.12);
   text-align: center;
 }
 
 .markdown-body .markdown-code-expand:hover {
   color: #1f2328;
-  background: #eef1f4;
+  background: #f6f8fa;
+}
+
+.markdown-body
+  .markdown-code-block[data-collapsible='true'][data-expanded='false']::after {
+  position: absolute;
+  z-index: 1;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 72px;
+  background: linear-gradient(to bottom, rgba(251, 252, 253, 0), #fbfcfd 62%);
+  content: '';
+  pointer-events: none;
+}
+
+.markdown-body
+  .markdown-code-block[data-collapsible='true'][data-expanded='true']
+  .markdown-code-expand {
+  margin: 8px auto 10px;
 }
 
 /* Tables scroll as a unit instead of clipping the last columns inside chat. */
@@ -429,14 +479,16 @@
 }
 
 [data-theme='dark'] .markdown-body .markdown-code-block {
-  border-color: #30363d;
+  border-color: rgba(240, 246, 252, 0.12);
   background: #0d1117;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.24),
+    0 0 0 1px rgba(240, 246, 252, 0.015);
 }
 
-[data-theme='dark'] .markdown-body .markdown-code-toolbar,
-[data-theme='dark'] .markdown-body .markdown-code-expand {
-  border-color: #30363d;
-  background: #161b22;
+[data-theme='dark'] .markdown-body .markdown-code-toolbar {
+  border-color: rgba(240, 246, 252, 0.08);
+  background: rgba(22, 27, 34, 0.9);
 }
 
 [data-theme='dark'] .markdown-body .markdown-code-language,
@@ -456,6 +508,18 @@
 [data-theme='dark'] .markdown-body .markdown-code-block pre {
   color: #e6edf3;
   background: #0d1117;
+}
+
+[data-theme='dark'] .markdown-body .markdown-code-expand {
+  border-color: rgba(240, 246, 252, 0.14);
+  background: rgba(33, 38, 45, 0.96);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.32);
+}
+
+[data-theme='dark']
+  .markdown-body
+  .markdown-code-block[data-collapsible='true'][data-expanded='false']::after {
+  background: linear-gradient(to bottom, rgba(13, 17, 23, 0), #0d1117 62%);
 }
 
 [data-theme='dark'] .markdown-body table th {

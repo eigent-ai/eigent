@@ -96,6 +96,27 @@ describe('shared MarkDown renderer', () => {
     expect(expand).toHaveTextContent('Show less');
   });
 
+  it('wraps prompt-like text while keeping programming code unwrapped', async () => {
+    const { container } = render(
+      <MarkDown
+        content={
+          '```text\nA long prompt should wrap naturally in the available conversation width.\n```\n\n```typescript\nconst value = 1;\n```'
+        }
+        enableTypewriter={false}
+      />
+    );
+
+    await screen.findByText('text');
+    const textBlock = container
+      .querySelector('code.language-text')
+      ?.closest('.markdown-code-block');
+    const typeScriptBlock = container
+      .querySelector('code.language-typescript')
+      ?.closest('.markdown-code-block');
+    expect(textBlock).toHaveAttribute('data-wrap-lines', 'true');
+    expect(typeScriptBlock).not.toHaveAttribute('data-wrap-lines');
+  });
+
   it('copies the original code after syntax highlighting', async () => {
     const { container } = render(
       <MarkDown

@@ -63,6 +63,13 @@ const COLLAPSE_AFTER_LINES: Record<MarkdownProfile, number> = {
 };
 
 const COPYABLE_TEXT_MIN_LENGTH = 120;
+const WRAPPED_CODE_LANGUAGES = new Set([
+  'text',
+  'plaintext',
+  'txt',
+  'markdown',
+  'md',
+]);
 
 function copyButtonContents(label: string, copied = false): string {
   const safeLabel = escapeHtml(label);
@@ -91,8 +98,11 @@ function codeBlockHtml(
   const lines = text ? text.replace(/\n$/, '').split('\n').length : 0;
   const collapsible = lines > COLLAPSE_AFTER_LINES[profile];
   const languageLabel = language || labels.code;
+  const wrapsLongLines = WRAPPED_CODE_LANGUAGES.has(language);
   return `<div class="markdown-code-block" data-expanded="false"${
     collapsible ? ' data-collapsible="true"' : ''
+  }${
+    wrapsLongLines ? ' data-wrap-lines="true"' : ''
   }><div class="markdown-code-toolbar"><span class="markdown-code-language">${escapeHtml(
     languageLabel
   )}</span><button type="button" class="markdown-copy-button markdown-code-action" data-markdown-code-copy aria-label="${escapeHtml(
@@ -364,6 +374,7 @@ export const MarkDown = memo(
             'data-markdown-language',
             'data-collapsible',
             'data-expanded',
+            'data-wrap-lines',
           ],
         });
         if (cancelled) return;
