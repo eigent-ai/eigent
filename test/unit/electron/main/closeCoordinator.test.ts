@@ -17,29 +17,68 @@ import { CloseCoordinator } from '../../../../electron/main/closeCoordinator';
 import { isWindowCloseResponse } from '../../../../src/shared/windowClose';
 
 function createWindow(webContentsDestroyed = false) {
-  let closeListener: ((event: { preventDefault: () => void }) => void) | null =
-    null;
+  const windowListeners = new Map<string, Set<(...args: any[]) => void>>();
+  const webContentsListeners = new Map<string, Set<(...args: any[]) => void>>();
+  const addListener = (
+    listeners: Map<string, Set<(...args: any[]) => void>>,
+    event: string,
+    listener: (...args: any[]) => void
+  ) => {
+    const eventListeners = listeners.get(event) ?? new Set();
+    eventListeners.add(listener);
+    listeners.set(event, eventListeners);
+  };
+  const removeListener = (
+    listeners: Map<string, Set<(...args: any[]) => void>>,
+    event: string,
+    listener: (...args: any[]) => void
+  ) => listeners.get(event)?.delete(listener);
+  const emit = (
+    listeners: Map<string, Set<(...args: any[]) => void>>,
+    event: string,
+    ...args: any[]
+  ) => listeners.get(event)?.forEach((listener) => listener(...args));
+  const closeEvents: Array<{ preventDefault: ReturnType<typeof vi.fn> }> = [];
   const send = vi.fn();
   const close = vi.fn(() => {
-    closeListener?.({ preventDefault: vi.fn() });
+    const event = { preventDefault: vi.fn() };
+    closeEvents.push(event);
+    emit(windowListeners, 'close', event);
   });
   const window = {
     close,
     isDestroyed: () => false,
-    on: vi.fn((_event: string, listener: typeof closeListener) => {
-      closeListener = listener;
+    on: vi.fn((event: string, listener: (...args: any[]) => void) => {
+      addListener(windowListeners, event, listener);
       return window;
     }),
-    off: vi.fn((_event: string, listener: typeof closeListener) => {
-      if (closeListener === listener) closeListener = null;
+    off: vi.fn((event: string, listener: (...args: any[]) => void) => {
+      removeListener(windowListeners, event, listener);
       return window;
     }),
     webContents: {
       isDestroyed: () => webContentsDestroyed,
       send,
+      on: vi.fn((event: string, listener: (...args: any[]) => void) => {
+        addListener(webContentsListeners, event, listener);
+        return window.webContents;
+      }),
+      off: vi.fn((event: string, listener: (...args: any[]) => void) => {
+        removeListener(webContentsListeners, event, listener);
+        return window.webContents;
+      }),
     },
   };
-  return { window, close, send };
+  return {
+    window,
+    close,
+    closeEvents,
+    emitWindow: (event: string, ...args: any[]) =>
+      emit(windowListeners, event, ...args),
+    emitWebContents: (event: string, ...args: any[]) =>
+      emit(webContentsListeners, event, ...args),
+    send,
+  };
 }
 
 describe('CloseCoordinator', () => {
@@ -167,8 +206,26 @@ describe('CloseCoordinator', () => {
     coordinator.bindWindow(first.window as never);
     coordinator.bindWindow(second.window as never);
 
-    expect(first.window.off).toHaveBeenCalledOnce();
-    expect(second.window.on).toHaveBeenCalledOnce();
+    expect(first.window.off).toHaveBeenCalledWith(
+      'close',
+      expect.any(Function)
+    );
+    expect(first.window.off).toHaveBeenCalledWith(
+      'unresponsive',
+      expect.any(Function)
+    );
+    expect(first.window.webContents.off).toHaveBeenCalledWith(
+      'render-process-gone',
+      expect.any(Function)
+    );
+    expect(second.window.on).toHaveBeenCalledWith(
+      'close',
+      expect.any(Function)
+    );
+    expect(second.window.on).toHaveBeenCalledWith(
+      'unresponsive',
+      expect.any(Function)
+    );
   });
 
   it('lets trusted updater or restart quits bypass the renderer guard', () => {
@@ -296,5 +353,66 @@ describe('CloseCoordinator', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('clears an acknowledged request when the renderer becomes unresponsive', () => {
+    const fixture = createWindow();
+    const quit = vi.fn();
+    const diagnostic = vi.fn();
+    const coordinator = new CloseCoordinator({
+      defaultIntent: 'close-window',
+      quit,
+      diagnostic,
+    });
+    coordinator.bindWindow(fixture.window as never);
+
+    coordinator.request('quit-app');
+    coordinator.respond({ intent: 'quit-app', action: 'acknowledge' });
+    fixture.emitWindow('unresponsive');
+
+    expect(coordinator.getPendingIntent()).toBeNull();
+    expect(coordinator.isRendererReady()).toBe(false);
+    expect(diagnostic).toHaveBeenLastCalledWith(
+      expect.stringContaining('acknowledged=true')
+    );
+
+    // A second explicit Quit is now an escape instead of being swallowed.
+    coordinator.request('quit-app');
+    expect(quit).toHaveBeenCalledOnce();
+  });
+
+  it('clears pending state on renderer crash and lets the next native close pass', () => {
+    const fixture = createWindow();
+    const coordinator = new CloseCoordinator({
+      defaultIntent: 'close-window',
+      quit: vi.fn(),
+    });
+    coordinator.bindWindow(fixture.window as never);
+
+    fixture.close();
+    coordinator.respond({ intent: 'close-window', action: 'acknowledge' });
+    fixture.emitWebContents('render-process-gone');
+    fixture.close();
+
+    expect(coordinator.getPendingIntent()).toBeNull();
+    expect(fixture.send).toHaveBeenCalledTimes(1);
+    expect(fixture.closeEvents.at(-1)?.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('can guard again after a recovered renderer completes its handshake', () => {
+    const fixture = createWindow();
+    const coordinator = new CloseCoordinator({
+      defaultIntent: 'close-window',
+      quit: vi.fn(),
+    });
+    coordinator.bindWindow(fixture.window as never);
+    fixture.emitWindow('unresponsive');
+    coordinator.markRendererReady();
+
+    fixture.close();
+
+    expect(fixture.send).toHaveBeenCalledWith('before-close', {
+      intent: 'close-window',
+    });
   });
 });

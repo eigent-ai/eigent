@@ -45,6 +45,7 @@ export interface CloseCoordinatorOptions {
   responseTimeoutMs?: number;
   setTimeoutFn?: (handler: () => void, ms: number) => unknown;
   clearTimeoutFn?: (handle: unknown) => void;
+  diagnostic?: (message: string) => void;
 }
 
 export const DEFAULT_CLOSE_RESPONSE_TIMEOUT_MS = 5_000;
@@ -60,12 +61,15 @@ export class CloseCoordinator {
   private readonly responseTimeoutMs: number;
   private readonly setTimeoutFn: (handler: () => void, ms: number) => unknown;
   private readonly clearTimeoutFn: (handle: unknown) => void;
+  private readonly diagnostic: (message: string) => void;
   private responseTimer: unknown = null;
   private window: CoordinatedWindow | null = null;
   private pendingIntent: CloseIntent | null = null;
+  private pendingAcknowledged = false;
   private nextIntent: CloseIntent | null = null;
   private allowNextWindowClose = false;
   private appQuitInProgress = false;
+  private rendererReady = false;
 
   constructor({
     defaultIntent,
@@ -74,6 +78,7 @@ export class CloseCoordinator {
     responseTimeoutMs = DEFAULT_CLOSE_RESPONSE_TIMEOUT_MS,
     setTimeoutFn = (handler, ms) => setTimeout(handler, ms),
     clearTimeoutFn = (handle) => clearTimeout(handle as NodeJS.Timeout),
+    diagnostic = () => undefined,
   }: CloseCoordinatorOptions) {
     this.defaultIntent = defaultIntent;
     this.quit = quit;
@@ -81,6 +86,7 @@ export class CloseCoordinator {
     this.responseTimeoutMs = responseTimeoutMs;
     this.setTimeoutFn = setTimeoutFn;
     this.clearTimeoutFn = clearTimeoutFn;
+    this.diagnostic = diagnostic;
   }
 
   private clearResponseTimer(): void {
@@ -126,6 +132,7 @@ export class CloseCoordinator {
     }
     if (
       !this.shouldGuard() ||
+      !this.rendererReady ||
       !this.window ||
       this.window.webContents.isDestroyed()
     ) {
@@ -138,29 +145,89 @@ export class CloseCoordinator {
     if (this.pendingIntent) return;
 
     this.pendingIntent = intent;
+    this.pendingAcknowledged = false;
     this.sendRequest(intent);
   };
+
+  private readonly handleRendererUnresponsive = () => {
+    this.markRendererUnavailable('unresponsive');
+  };
+
+  private readonly handleRendererResponsive = () => {
+    this.markRendererReady('responsive');
+  };
+
+  private readonly handleRendererLoading = () => {
+    this.markRendererUnavailable('did-start-loading');
+  };
+
+  private readonly handleRendererGone = () => {
+    this.markRendererUnavailable('render-process-gone');
+  };
+
+  private readonly handleRendererDestroyed = () => {
+    this.markRendererUnavailable('destroyed');
+  };
+
+  private unbindHealthListeners(window: CoordinatedWindow): void {
+    window.off('unresponsive', this.handleRendererUnresponsive);
+    window.off('responsive', this.handleRendererResponsive);
+    window.webContents.off('did-start-loading', this.handleRendererLoading);
+    window.webContents.off('render-process-gone', this.handleRendererGone);
+    window.webContents.off('destroyed', this.handleRendererDestroyed);
+  }
 
   bindWindow(window: CoordinatedWindow): void {
     this.unbindWindow();
     this.window = window;
     this.clearResponseTimer();
     this.pendingIntent = null;
+    this.pendingAcknowledged = false;
     this.nextIntent = null;
     this.allowNextWindowClose = false;
     this.appQuitInProgress = false;
+    // `shouldGuard` owns the app-shell handshake. This flag tracks renderer
+    // health after binding and is cleared by loading/crash/unresponsive events.
+    this.rendererReady = true;
     window.on('close', this.handleWindowClose);
+    window.on('unresponsive', this.handleRendererUnresponsive);
+    window.on('responsive', this.handleRendererResponsive);
+    window.webContents.on('did-start-loading', this.handleRendererLoading);
+    window.webContents.on('render-process-gone', this.handleRendererGone);
+    window.webContents.on('destroyed', this.handleRendererDestroyed);
   }
 
   unbindWindow(): void {
-    if (this.window && !this.window.isDestroyed()) {
+    if (this.window) {
       this.window.off('close', this.handleWindowClose);
+      this.unbindHealthListeners(this.window);
     }
     this.window = null;
     this.clearResponseTimer();
     this.pendingIntent = null;
+    this.pendingAcknowledged = false;
     this.nextIntent = null;
     this.allowNextWindowClose = false;
+    this.rendererReady = false;
+  }
+
+  markRendererReady(reason = 'app-shell-ready'): void {
+    this.rendererReady = true;
+    this.diagnostic(`[WINDOW CLOSE] Renderer ready (${reason})`);
+  }
+
+  markRendererUnavailable(reason: string): void {
+    const pendingIntent = this.pendingIntent;
+    const acknowledged = this.pendingAcknowledged;
+    this.rendererReady = false;
+    this.clearResponseTimer();
+    this.pendingIntent = null;
+    this.pendingAcknowledged = false;
+    this.nextIntent = null;
+    this.allowNextWindowClose = false;
+    this.diagnostic(
+      `[WINDOW CLOSE] Renderer unavailable (${reason}); cleared intent=${pendingIntent ?? 'none'} acknowledged=${acknowledged}`
+    );
   }
 
   request(intent: CloseIntent): void {
@@ -173,7 +240,12 @@ export class CloseCoordinator {
       return;
     }
 
-    if (!this.shouldGuard() && intent === 'quit-app') {
+    if (
+      (!this.shouldGuard() ||
+        !this.rendererReady ||
+        window.webContents.isDestroyed()) &&
+      intent === 'quit-app'
+    ) {
       this.appQuitInProgress = true;
       this.quit();
       return;
@@ -185,6 +257,7 @@ export class CloseCoordinator {
       // dialog rather than letting a stale Close confirmation win.
       if (intent === 'quit-app' && this.pendingIntent === 'close-window') {
         this.pendingIntent = intent;
+        this.pendingAcknowledged = false;
         this.sendRequest(intent);
       }
       return;
@@ -203,10 +276,15 @@ export class CloseCoordinator {
       // The renderer is alive and owns a visible decision UI. Keep the intent
       // pending, but do not mistake normal user deliberation for a hung
       // renderer and auto-confirm it through the watchdog.
+      this.pendingAcknowledged = true;
+      this.diagnostic(
+        `[WINDOW CLOSE] Renderer acknowledged intent=${response.intent}`
+      );
       return true;
     }
 
     this.pendingIntent = null;
+    this.pendingAcknowledged = false;
     if (response.action === 'cancel') return true;
 
     if (response.intent === 'quit-app') {
@@ -226,6 +304,7 @@ export class CloseCoordinator {
     this.appQuitInProgress = true;
     this.clearResponseTimer();
     this.pendingIntent = null;
+    this.pendingAcknowledged = false;
   }
 
   isAppQuitInProgress(): boolean {
@@ -234,5 +313,9 @@ export class CloseCoordinator {
 
   getPendingIntent(): CloseIntent | null {
     return this.pendingIntent;
+  }
+
+  isRendererReady(): boolean {
+    return this.rendererReady;
   }
 }

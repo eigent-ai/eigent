@@ -13,6 +13,9 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 export const APP_COMMAND_CHANNEL = 'app-command' as const;
+export const APP_COMMAND_HANDLED_CHANNEL = 'app-command-handled' as const;
+export const APP_SHELL_READY_CHANNEL = 'app-shell-ready' as const;
+export const APP_SHELL_NOT_READY_CHANNEL = 'app-shell-not-ready' as const;
 
 export const APP_COMMAND = {
   openSettings: 'open-settings',
@@ -34,6 +37,17 @@ export const APP_COMMAND = {
 } as const;
 
 export type AppCommandId = (typeof APP_COMMAND)[keyof typeof APP_COMMAND];
+
+export interface AppShellLifecycleMessage {
+  epoch: string;
+}
+
+export interface AppCommandRequest extends AppShellLifecycleMessage {
+  commandId: AppCommandId;
+  requestId: string;
+}
+
+export type AppCommandHandled = AppCommandRequest;
 
 export const APP_COMMAND_IDS = [
   APP_COMMAND.openSettings,
@@ -60,3 +74,28 @@ export function isAppCommandId(value: unknown): value is AppCommandId {
     (APP_COMMAND_IDS as readonly string[]).includes(value)
   );
 }
+
+export function isAppShellLifecycleMessage(
+  value: unknown
+): value is AppShellLifecycleMessage {
+  return (
+    Boolean(value) &&
+    typeof value === 'object' &&
+    typeof (value as Partial<AppShellLifecycleMessage>).epoch === 'string' &&
+    (value as AppShellLifecycleMessage).epoch.length > 0
+  );
+}
+
+export function isAppCommandRequest(
+  value: unknown
+): value is AppCommandRequest {
+  if (!isAppShellLifecycleMessage(value)) return false;
+  const request = value as Partial<AppCommandRequest>;
+  return (
+    isAppCommandId(request.commandId) &&
+    typeof request.requestId === 'string' &&
+    request.requestId.length > 0
+  );
+}
+
+export const isAppCommandHandled = isAppCommandRequest;

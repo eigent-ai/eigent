@@ -12,7 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { APP_COMMAND, APP_COMMAND_CHANNEL } from '@/shared/appCommands';
+import {
+  APP_COMMAND,
+  APP_COMMAND_CHANNEL,
+  APP_COMMAND_HANDLED_CHANNEL,
+  APP_SHELL_NOT_READY_CHANNEL,
+  APP_SHELL_READY_CHANNEL,
+} from '@/shared/appCommands';
 import {
   WINDOW_CLOSE_REQUEST_CHANNEL,
   WINDOW_CLOSE_RESPONSE_CHANNEL,
@@ -62,22 +68,55 @@ beforeAll(async () => {
 });
 
 describe('preload app shell bridge', () => {
-  it('filters unknown commands and removes the exact listener on cleanup', () => {
+  it('handshakes after both listeners, filters epochs, and sends handled receipts', async () => {
+    mocks.send.mockClear();
     const callback = vi.fn();
-    const unsubscribe = electronAPI.onAppCommand(callback);
-    const listener = mocks.on.mock.calls.find(
+    const closeCallback = vi.fn();
+    const unsubscribeCommand = electronAPI.onAppCommand(callback);
+    const unsubscribeClose = electronAPI.onCloseRequest(closeCallback);
+    const commandListener = mocks.on.mock.calls.find(
       ([channel]) => channel === APP_COMMAND_CHANNEL
     )?.[1];
+    const ready = mocks.send.mock.calls.find(
+      ([channel]) => channel === APP_SHELL_READY_CHANNEL
+    )?.[1] as { epoch: string } | undefined;
 
-    expect(listener).toEqual(expect.any(Function));
-    listener({}, APP_COMMAND.newProject);
-    listener({}, 'not-an-app-command');
+    expect(ready?.epoch).toEqual(expect.any(String));
+    expect(commandListener).toEqual(expect.any(Function));
+    const request = {
+      commandId: APP_COMMAND.newProject,
+      requestId: 'request-1',
+      epoch: ready!.epoch,
+    };
+    commandListener({}, request);
+    commandListener({}, { ...request, epoch: 'stale-epoch' });
+    commandListener({}, APP_COMMAND.newProject);
 
     expect(callback).toHaveBeenCalledOnce();
     expect(callback).toHaveBeenCalledWith(APP_COMMAND.newProject);
+    expect(mocks.send).toHaveBeenCalledWith(
+      APP_COMMAND_HANDLED_CHANNEL,
+      request
+    );
 
-    unsubscribe();
-    expect(mocks.off).toHaveBeenCalledWith(APP_COMMAND_CHANNEL, listener);
+    unsubscribeCommand();
+    const unsubscribeReplacement = electronAPI.onAppCommand(vi.fn());
+    await Promise.resolve();
+    expect(mocks.send).not.toHaveBeenCalledWith(
+      APP_SHELL_NOT_READY_CHANNEL,
+      expect.anything()
+    );
+
+    unsubscribeReplacement();
+    unsubscribeClose();
+    await Promise.resolve();
+    expect(mocks.off).toHaveBeenCalledWith(
+      APP_COMMAND_CHANNEL,
+      commandListener
+    );
+    expect(mocks.send).toHaveBeenCalledWith(APP_SHELL_NOT_READY_CHANNEL, {
+      epoch: ready!.epoch,
+    });
   });
 
   it('sends typed close responses on the shared response channel', () => {
@@ -94,9 +133,9 @@ describe('preload app shell bridge', () => {
   it('filters close requests and removes the exact listener on cleanup', () => {
     const callback = vi.fn();
     const unsubscribe = electronAPI.onCloseRequest(callback);
-    const listener = mocks.on.mock.calls.find(
-      ([channel]) => channel === WINDOW_CLOSE_REQUEST_CHANNEL
-    )?.[1];
+    const listener = mocks.on.mock.calls
+      .filter(([channel]) => channel === WINDOW_CLOSE_REQUEST_CHANNEL)
+      .at(-1)?.[1];
 
     expect(listener).toEqual(expect.any(Function));
     listener({}, { intent: 'quit-app' });

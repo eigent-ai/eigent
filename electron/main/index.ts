@@ -40,6 +40,11 @@ import { fileURLToPath } from 'node:url';
 import kill from 'tree-kill';
 import {
   APP_COMMAND_CHANNEL,
+  APP_COMMAND_HANDLED_CHANNEL,
+  APP_SHELL_NOT_READY_CHANNEL,
+  APP_SHELL_READY_CHANNEL,
+  isAppCommandHandled,
+  isAppShellLifecycleMessage,
   type AppCommandId,
 } from '../../src/shared/appCommands';
 import { FILE_PREVIEW_LIMITS } from '../../src/shared/filePreviewContract';
@@ -76,6 +81,7 @@ import {
 } from './localFileSecurity';
 import { filePathFromLocalFileUrl } from './localFileUrl';
 import { setRoundedCorners } from './native/macos-window';
+import { RendererAppCommandCoordinator } from './rendererAppCommandCoordinator';
 import { registerReviewChangesIpcHandlers } from './reviewChanges';
 import {
   completeCodexOAuthCallback,
@@ -136,17 +142,22 @@ const LEGACY_DESKTOP_INSTANCE_STORAGE_KEY = 'eigent_desktop_instance_id';
 const activeLocalFileRoots = new Set<string>();
 let protocolUrlQueue: string[] = [];
 let isWindowReady = false;
-/**
- * True once the React tree has mounted and registered its IPC listeners. The
- * close guard keys off this rather than `isWindowReady` (set at
- * `did-finish-load`): guarding before the renderer can answer would preventDefault
- * a close that nothing ever confirms.
- */
-let isRendererListenerReady = false;
+let isRendererDocumentLoaded = false;
+const rendererAppCommands = new RendererAppCommandCoordinator({
+  send: (request) => {
+    const target = win;
+    if (!target || target.isDestroyed() || target.webContents.isDestroyed()) {
+      throw new Error('main renderer is unavailable');
+    }
+    target.webContents.send(APP_COMMAND_CHANNEL, request);
+  },
+  diagnostic: (message) => log.warn(message),
+});
 const closeCoordinator = new CloseCoordinator({
   defaultIntent: process.platform === 'darwin' ? 'close-window' : 'quit-app',
   quit: () => app.quit(),
-  shouldGuard: () => isRendererListenerReady,
+  shouldGuard: () => rendererAppCommands.isReady(),
+  diagnostic: (message) => log.info(message),
 });
 let isQuitCleanupInProgress = false;
 let windowStateSaveTimer: NodeJS.Timeout | null = null;
@@ -173,7 +184,7 @@ async function dispatchRendererAppCommand(
   try {
     if (!win || win.isDestroyed()) {
       await createWindow();
-    } else if (!isRendererListenerReady && createWindowPromise) {
+    } else if (createWindowPromise) {
       await createWindowPromise;
     }
 
@@ -181,7 +192,7 @@ async function dispatchRendererAppCommand(
     if (!target || target.isDestroyed()) return;
     if (!target.isVisible()) target.show();
     target.focus();
-    target.webContents.send(APP_COMMAND_CHANNEL, commandId);
+    rendererAppCommands.dispatch(commandId);
   } catch (error) {
     log.error(`[APP COMMAND] Failed to dispatch ${commandId}:`, error);
   }
@@ -322,8 +333,7 @@ type BackendStartOptions = {
 };
 
 type BackendStartResult =
-  | { success: true; port: number }
-  | { success: false; error: string };
+  { success: true; port: number } | { success: false; error: string };
 
 function formatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -1868,6 +1878,32 @@ function registerIpcHandlers() {
     if (!isWindowCloseResponse(response)) return;
     closeCoordinator.respond(response);
   });
+  ipcMain.on(APP_SHELL_READY_CHANNEL, (event, message: unknown) => {
+    if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
+    if (!isRendererDocumentLoaded || !isAppShellLifecycleMessage(message)) {
+      return;
+    }
+    rendererAppCommands.markReady(message.epoch);
+    closeCoordinator.markRendererReady();
+    log.info(`[APP SHELL] Renderer ready epoch=${message.epoch}`);
+  });
+  ipcMain.on(APP_SHELL_NOT_READY_CHANNEL, (event, message: unknown) => {
+    if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
+    if (!isAppShellLifecycleMessage(message)) return;
+    if (rendererAppCommands.markNotReady('listener-unmounted', message.epoch)) {
+      closeCoordinator.markRendererUnavailable('listener-unmounted');
+      log.info(`[APP SHELL] Renderer listeners removed epoch=${message.epoch}`);
+    }
+  });
+  ipcMain.on(APP_COMMAND_HANDLED_CHANNEL, (event, receipt: unknown) => {
+    if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
+    if (!isAppCommandHandled(receipt)) return;
+    if (!rendererAppCommands.handleReceipt(receipt)) {
+      log.warn(
+        `[APP COMMAND] Ignored stale handled receipt request=${receipt.requestId} epoch=${receipt.epoch}`
+      );
+    }
+  });
   ipcMain.on('window-minimize', () => win?.minimize());
   ipcMain.on('window-toggle-maximize', () => {
     if (win?.isMaximized()) {
@@ -3013,6 +3049,8 @@ async function createWindowInternal() {
 
   // Platform-specific window configuration
   // Windows: native frame and solid background. macOS/Linux: frameless; macOS corner radius via native hook.
+  isRendererDocumentLoaded = false;
+  rendererAppCommands.markNotReady('window-created');
   win = new BrowserWindow({
     title: 'Eigent',
     ...startupWindowState.bounds,
@@ -3145,8 +3183,17 @@ async function createWindowInternal() {
   }
 
   // ==================== Handle renderer crashes and failed loads ====================
+  win.webContents.on('did-start-loading', () => {
+    isRendererDocumentLoaded = false;
+    rendererAppCommands.markNotReady('did-start-loading');
+  });
+  win.webContents.on('did-finish-load', () => {
+    isRendererDocumentLoaded = true;
+  });
   win.webContents.on('render-process-gone', (event, details) => {
     log.error('[RENDERER] Process gone:', details.reason, details.exitCode);
+    isRendererDocumentLoaded = false;
+    rendererAppCommands.markNotReady('render-process-gone');
     if (win && !win.isDestroyed()) {
       // Reload the window after a brief delay
       setTimeout(() => {
@@ -3165,6 +3212,8 @@ async function createWindowInternal() {
   win.webContents.on(
     'did-fail-load',
     (event, errorCode, errorDescription, validatedURL) => {
+      isRendererDocumentLoaded = false;
+      rendererAppCommands.markNotReady('did-fail-load');
       log.error(
         `[RENDERER] Failed to load: ${errorCode} - ${errorDescription} - ${validatedURL}`
       );
@@ -3459,10 +3508,6 @@ async function createWindowInternal() {
   isWindowReady = true;
   log.info('Window is ready, processing queued protocol URLs...');
   processQueuedProtocolUrls();
-
-  // Wait for React components to mount and register event listeners
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  isRendererListenerReady = true;
 
   // Now check and install dependencies
   let res: PromiseReturnType = await checkAndInstallDepsOnUpdate({ win });
@@ -3901,9 +3946,10 @@ app.on('window-all-closed', () => {
 
   // Reset window state
   closeCoordinator.unbindWindow();
+  rendererAppCommands.markNotReady('window-all-closed');
   win = null;
   isWindowReady = false;
-  isRendererListenerReady = false;
+  isRendererDocumentLoaded = false;
   protocolUrlQueue = [];
 
   if (process.platform !== 'darwin') {
@@ -3937,7 +3983,7 @@ app.on('before-quit', async (event) => {
 
   if (
     !closeCoordinator.isAppQuitInProgress() &&
-    isRendererListenerReady &&
+    rendererAppCommands.isReady() &&
     win &&
     !win.isDestroyed()
   ) {
@@ -3991,7 +4037,8 @@ app.on('before-quit', async (event) => {
 
     // Reset protocol handling state
     isWindowReady = false;
-    isRendererListenerReady = false;
+    isRendererDocumentLoaded = false;
+    rendererAppCommands.markNotReady('app-exit');
     protocolUrlQueue = [];
 
     log.info('All cleanup completed, exiting...');

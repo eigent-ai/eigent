@@ -13,9 +13,13 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import crypto from 'node:crypto';
 import {
   APP_COMMAND_CHANNEL,
-  isAppCommandId,
+  APP_COMMAND_HANDLED_CHANNEL,
+  APP_SHELL_NOT_READY_CHANNEL,
+  APP_SHELL_READY_CHANNEL,
+  isAppCommandRequest,
   type AppCommandId,
 } from '../../src/shared/appCommands';
 import {
@@ -29,6 +33,35 @@ import type {
   WorkspaceSecretLookup,
   WorkspaceSecretPutRequest,
 } from '../main/workspaceSecrets/types';
+
+const appShellEpoch = crypto.randomUUID();
+let appCommandListenerCount = 0;
+let closeRequestListenerCount = 0;
+let appShellReadySent = false;
+let readinessRevision = 0;
+
+function updateAppShellReadiness(): void {
+  const revision = ++readinessRevision;
+  const ready = appCommandListenerCount > 0 && closeRequestListenerCount > 0;
+  if (ready) {
+    if (appShellReadySent) return;
+    appShellReadySent = true;
+    ipcRenderer.send(APP_SHELL_READY_CHANNEL, { epoch: appShellEpoch });
+    return;
+  }
+  if (!appShellReadySent) return;
+
+  // React replaces effect listeners synchronously during a commit. Defer the
+  // not-ready edge so that a normal callback rebind cannot create a false
+  // renderer outage, while a real unmount/error boundary still invalidates the
+  // shell before the next task can dispatch an IPC command.
+  queueMicrotask(() => {
+    if (revision !== readinessRevision) return;
+    if (appCommandListenerCount > 0 && closeRequestListenerCount > 0) return;
+    appShellReadySent = false;
+    ipcRenderer.send(APP_SHELL_NOT_READY_CHANNEL, { epoch: appShellEpoch });
+  });
+}
 
 contextBridge.exposeInMainWorld('ipcRenderer', {
   on(...args: Parameters<typeof ipcRenderer.on>) {
@@ -69,18 +102,40 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('save-pasted-file', fileName, data),
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   onAppCommand: (callback: (command: AppCommandId) => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, command: unknown) => {
-      if (isAppCommandId(command)) callback(command);
+    const listener = (_event: Electron.IpcRendererEvent, request: unknown) => {
+      if (!isAppCommandRequest(request) || request.epoch !== appShellEpoch) {
+        return;
+      }
+      callback(request.commandId);
+      ipcRenderer.send(APP_COMMAND_HANDLED_CHANNEL, request);
     };
     ipcRenderer.on(APP_COMMAND_CHANNEL, listener);
-    return () => ipcRenderer.off(APP_COMMAND_CHANNEL, listener);
+    appCommandListenerCount += 1;
+    updateAppShellReadiness();
+    let disposed = false;
+    return () => {
+      if (disposed) return;
+      disposed = true;
+      ipcRenderer.off(APP_COMMAND_CHANNEL, listener);
+      appCommandListenerCount = Math.max(0, appCommandListenerCount - 1);
+      updateAppShellReadiness();
+    };
   },
   onCloseRequest: (callback: (request: WindowCloseRequest) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, request: unknown) => {
       if (isWindowCloseRequest(request)) callback(request);
     };
     ipcRenderer.on(WINDOW_CLOSE_REQUEST_CHANNEL, listener);
-    return () => ipcRenderer.off(WINDOW_CLOSE_REQUEST_CHANNEL, listener);
+    closeRequestListenerCount += 1;
+    updateAppShellReadiness();
+    let disposed = false;
+    return () => {
+      if (disposed) return;
+      disposed = true;
+      ipcRenderer.off(WINDOW_CLOSE_REQUEST_CHANNEL, listener);
+      closeRequestListenerCount = Math.max(0, closeRequestListenerCount - 1);
+      updateAppShellReadiness();
+    };
   },
   respondToCloseRequest: (response: WindowCloseResponse) =>
     ipcRenderer.send(WINDOW_CLOSE_RESPONSE_CHANNEL, response),
