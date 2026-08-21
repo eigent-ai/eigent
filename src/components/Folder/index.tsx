@@ -62,6 +62,7 @@ import FolderComponent from './FolderComponent';
 
 import { fetchGet, getBaseURL } from '@/api/http';
 import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
+import { SourceCodeViewer } from '@/components/CodeViewer/SourceCodeViewer';
 import { getSidePanelOutputFilesRevision } from '@/components/Session/SidePanel/sections/collectSidePanelOutputFiles';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
@@ -2890,6 +2891,29 @@ function TruncatedPreviewNotice({ file }: { file: FileInfo }) {
   );
 }
 
+function SourceFilePreview({
+  file,
+  appearance,
+}: {
+  file: FileInfo;
+  appearance: string;
+}) {
+  const sourcePath = file.relativePath || file.path || file.name;
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col p-3">
+      <TruncatedPreviewNotice file={file} />
+      <div className="min-h-0 flex-1 overflow-hidden rounded-[6px] border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default">
+        <SourceCodeViewer
+          value={file.content || ''}
+          path={sourcePath}
+          appearance={appearance}
+          ariaLabel={`Source for ${file.name}`}
+        />
+      </div>
+    </div>
+  );
+}
+
 function BlockedPreviewPlaceholder({
   file,
   onRevealFile,
@@ -2966,6 +2990,7 @@ export function FileViewerPanel({
   emptyState,
 }: FileViewerPanelProps) {
   const { t } = useTranslation();
+  const appearance = useAuthStore((state) => state.appearance);
   const segmentsClickable = Boolean(onBreadcrumbSegmentClick);
   const selectedType = selectedFile ? getFileType(selectedFile) : '';
   const supportsRichView =
@@ -2982,6 +3007,25 @@ export function FileViewerPanel({
   const viewModeActionLabel = isShowSourceCode
     ? previewViewLabel
     : sourceViewLabel;
+  const showsHtmlPreview =
+    Boolean(selectedFile) &&
+    ['html', 'htm'].includes(selectedType) &&
+    !isShowSourceCode &&
+    selectedFile?.preview?.kind !== 'truncated-text';
+  const showsCodeSource =
+    Boolean(selectedFile) &&
+    !loading &&
+    !selectedFile?.isFolder &&
+    selectedFile?.preview?.kind !== 'blocked' &&
+    selectedFile?.preview?.kind !== 'csv' &&
+    selectedType !== 'pdf' &&
+    !['doc', 'docx', 'pptx', 'xlsx'].includes(selectedType) &&
+    selectedType !== 'zip' &&
+    !isAudioFile(selectedFile!) &&
+    !isVideoFile(selectedFile!) &&
+    !isImageFile(selectedFile!) &&
+    !(['md', 'markdown'].includes(selectedType) && !isShowSourceCode) &&
+    !showsHtmlPreview;
   return (
     <div
       className={`${
@@ -3165,14 +3209,14 @@ export function FileViewerPanel({
       {/* content */}
       <div
         className={`flex min-h-0 flex-1 flex-col ${
-          ['html', 'htm'].includes(selectedType) && !isShowSourceCode
+          showsHtmlPreview || showsCodeSource
             ? 'overflow-hidden'
             : 'scrollbar-always-visible overflow-y-auto'
         }`}
       >
         <div
           className={`flex flex-col ${
-            ['html', 'htm'].includes(selectedType) && !isShowSourceCode
+            showsHtmlPreview || showsCodeSource
               ? 'h-full min-h-0'
               : 'min-h-full py-2 pl-4 pr-2'
           } file-viewer-content`}
@@ -3230,12 +3274,10 @@ export function FileViewerPanel({
               ) : ['html', 'htm'].includes(selectedType) ? (
                 isShowSourceCode ||
                 selectedFile.preview?.kind === 'truncated-text' ? (
-                  <div className="mx-auto w-full max-w-5xl">
-                    <TruncatedPreviewNotice file={selectedFile} />
-                    <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-sm text-ds-text-neutral-default-default">
-                      {selectedFile.content}
-                    </pre>
-                  </div>
+                  <SourceFilePreview
+                    file={selectedFile}
+                    appearance={appearance}
+                  />
                 ) : (
                   <HtmlRenderer
                     selectedFile={selectedFile}
@@ -3264,12 +3306,10 @@ export function FileViewerPanel({
                   <ImageLoader selectedFile={selectedFile} />
                 </div>
               ) : (
-                <div className="mx-auto w-full max-w-5xl">
-                  <TruncatedPreviewNotice file={selectedFile} />
-                  <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-sm text-ds-text-neutral-default-default">
-                    {selectedFile.content}
-                  </pre>
-                </div>
+                <SourceFilePreview
+                  file={selectedFile}
+                  appearance={appearance}
+                />
               )
             ) : (
               <div className="flex h-full w-full items-center justify-center">

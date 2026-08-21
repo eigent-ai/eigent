@@ -88,7 +88,7 @@
   padding: 16px;
   overflow-x: auto;
   font-size: 13px;
-  line-height: 1.45;
+  line-height: 1.5;
   margin-bottom: 16px;
 }
 
@@ -98,12 +98,7 @@
   border-radius: 3px;
   font-size: 85%;
   font-family:
-    ui-monospace,
-    SFMono-Regular,
-    SF Mono,
-    Menlo,
-    Consolas,
-    Liberation Mono,
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono',
     monospace;
 }
 

@@ -22,6 +22,26 @@ vi.mock('@/components/ChatBox/MessageItem/MarkDown', () => ({
   MarkDown: ({ content }: { content: string }) => <article>{content}</article>,
 }));
 
+vi.mock('@/components/CodeViewer/SourceCodeViewer', () => ({
+  SourceCodeViewer: ({
+    value,
+    path,
+    appearance,
+  }: {
+    value: string;
+    path: string;
+    appearance: string;
+  }) => (
+    <pre
+      data-testid="source-code-viewer"
+      data-path={path}
+      data-appearance={appearance}
+    >
+      {value}
+    </pre>
+  ),
+}));
+
 type ViewerFile = NonNullable<
   ComponentProps<typeof FileViewerPanel>['selectedFile']
 >;
@@ -119,6 +139,15 @@ describe('FileViewerPanel toolbar', () => {
     expect(screen.queryByRole('button', { name: 'Download file' })).toBeNull();
   });
 
+  it('renders ordinary text through the shared source viewer', () => {
+    renderViewer(textFile());
+
+    const source = screen.getByTestId('source-code-viewer');
+    expect(source).toHaveAttribute('data-path', 'notes.txt');
+    expect(source).toHaveAttribute('data-appearance', 'light');
+    expect(source).toHaveTextContent('hello from the file');
+  });
+
   it('offers one Source action for a Markdown preview', async () => {
     const user = userEvent.setup();
     renderViewer(
@@ -203,6 +232,10 @@ describe('FileViewerPanel toolbar', () => {
       previewButton.querySelector('[data-slot="view-mode-label"]')
     ).toHaveTextContent('PreviewSource');
     expect(screen.queryByRole('button', { name: 'Source' })).toBeNull();
+    expect(screen.getByTestId('source-code-viewer')).toHaveAttribute(
+      'data-path',
+      'page.html'
+    );
   });
 
   it('hides source switching and removed toolbar actions for a local blocked file', () => {
