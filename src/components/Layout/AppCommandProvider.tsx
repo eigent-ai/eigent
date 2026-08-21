@@ -20,6 +20,7 @@ import { ensureProjectRuntimeLoaded } from '@/lib/projectRuntimeHydration';
 import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
 import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
 import { APP_COMMAND, type AppCommandId } from '@/shared/appCommands';
+import { normalizeNativeMenuLocale } from '@/shared/nativeMenu';
 import { WorkspaceTab, usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { openSettings, useSettingsStore } from '@/store/settingsStore';
@@ -54,7 +55,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     AppShellElectronAPI | undefined;
   const navigate = useNavigate();
   const location = useLocation();
-  const { t } = useTranslation();
+  const { i18n, t } = useTranslation();
   const setActiveProject = useProjectRuntimeStore(
     (state) => state.setActiveProject
   );
@@ -264,6 +265,14 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     return appShellElectronAPI?.onAppCommand?.(executeAppCommand);
   }, [appShellElectronAPI, executeAppCommand]);
+
+  useEffect(() => {
+    const locale = i18n.resolvedLanguage ?? i18n.language;
+    const nativeMenuLocale = normalizeNativeMenuLocale(locale);
+    if (nativeMenuLocale) {
+      appShellElectronAPI?.setNativeMenuLocale?.(nativeMenuLocale);
+    }
+  }, [appShellElectronAPI, i18n.language, i18n.resolvedLanguage]);
 
   /**
    * On Windows and Linux the native menu deliberately leaves Ctrl+N, Ctrl+B,

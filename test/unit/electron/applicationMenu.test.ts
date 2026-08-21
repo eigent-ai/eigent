@@ -26,6 +26,11 @@ import {
   type ApplicationMenuOptions,
 } from '../../../electron/main/commands/applicationMenu';
 import { EIGENT_GITHUB_REPOSITORY_URL } from '../../../electron/main/commands/catalog';
+import {
+  applyNativeMenuLocaleChange,
+  getNativeMenuMessages,
+  resolveNativeMenuLocale,
+} from '../../../electron/main/commands/nativeMenuMessages';
 import { APP_COMMAND } from '../../../src/shared/appCommands';
 
 type MenuItem = Electron.MenuItemConstructorOptions;
@@ -66,6 +71,7 @@ function createOptions(platform: DesktopMenuPlatform, isDevelopment = false) {
     appName: 'Eigent',
     dispatchRendererCommand,
     isDevelopment,
+    messages: getNativeMenuMessages('en-US'),
     onOpenExternalError,
     openExternal,
     platform,
@@ -205,6 +211,51 @@ describe('application menu', () => {
       expect(harness.requestQuit).toHaveBeenCalledOnce();
     }
   );
+
+  it('localizes every visible application label without relying on role defaults', () => {
+    const harness = createOptions('darwin');
+    harness.options.messages = getNativeMenuMessages('zh-Hans');
+    const template = buildApplicationMenuTemplate(harness.options);
+
+    expect(findItem(template, 'file').label).toBe('文件');
+    expect(findItem(template, 'edit.undo').label).toBe('撤销');
+    expect(findItem(template, 'window.front').label).toBe('全部置于前面');
+    expect(findItem(template, 'help.report-bug').label).toBe('报告问题…');
+    expect(findItem(template, 'app.about').label).toBe('关于 Eigent');
+
+    const visibleItems = (items: MenuItem[]): MenuItem[] =>
+      items.flatMap((item) => [item, ...visibleItems(children(item))]);
+    expect(
+      visibleItems(template)
+        .filter((item) => item.type !== 'separator' && item.visible !== false)
+        .every(
+          (item) => typeof item.label === 'string' && item.label.length > 0
+        )
+    ).toBe(true);
+  });
+
+  it('normalizes system locales and falls back to English', () => {
+    expect(resolveNativeMenuLocale('en')).toBe('en-US');
+    expect(resolveNativeMenuLocale('zh_TW')).toBe('zh-Hant');
+    expect(resolveNativeMenuLocale('zh-CN')).toBe('zh-Hans');
+    expect(resolveNativeMenuLocale('de-DE')).toBe('de');
+    expect(resolveNativeMenuLocale('pt-BR')).toBe('en-US');
+    expect(getNativeMenuMessages('pt-BR').file).toBe('File');
+  });
+
+  it('rebuilds once for a validated locale change', () => {
+    const rebuild = vi.fn();
+
+    expect(applyNativeMenuLocaleChange('en-US', 'zh-Hans', rebuild)).toBe(true);
+    expect(applyNativeMenuLocaleChange('zh-Hans', 'zh-Hans', rebuild)).toBe(
+      false
+    );
+    expect(
+      applyNativeMenuLocaleChange('zh-Hans', 'not-a-locale', rebuild)
+    ).toBe(false);
+    expect(rebuild).toHaveBeenCalledOnce();
+    expect(rebuild).toHaveBeenCalledWith('zh-Hans');
+  });
 
   it('keeps reload and Developer Tools out of packaged menus', () => {
     const production = buildApplicationMenuTemplate(

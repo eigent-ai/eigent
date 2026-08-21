@@ -19,6 +19,7 @@ import {
   APP_SHELL_NOT_READY_CHANNEL,
   APP_SHELL_READY_CHANNEL,
 } from '@/shared/appCommands';
+import { NATIVE_MENU_LOCALE_CHANNEL } from '@/shared/nativeMenu';
 import {
   WINDOW_CLOSE_REQUEST_CHANNEL,
   WINDOW_CLOSE_RESPONSE_CHANNEL,
@@ -55,6 +56,7 @@ type ExposedElectronAPI = {
     intent: 'close-window' | 'quit-app';
     action: 'acknowledge' | 'confirm' | 'cancel';
   }) => void;
+  setNativeMenuLocale: (locale: 'en-US' | 'zh-Hans') => void;
 };
 
 let electronAPI: ExposedElectronAPI;
@@ -127,6 +129,15 @@ describe('preload app shell bridge', () => {
     expect(mocks.send).toHaveBeenCalledWith(
       WINDOW_CLOSE_RESPONSE_CHANNEL,
       response
+    );
+  });
+
+  it('sends native-menu locale updates on their dedicated channel', () => {
+    electronAPI.setNativeMenuLocale('zh-Hans');
+
+    expect(mocks.send).toHaveBeenCalledWith(
+      NATIVE_MENU_LOCALE_CHANNEL,
+      'zh-Hans'
     );
   });
 

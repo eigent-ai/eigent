@@ -49,6 +49,10 @@ import {
 } from '../../src/shared/appCommands';
 import { FILE_PREVIEW_LIMITS } from '../../src/shared/filePreviewContract';
 import {
+  NATIVE_MENU_LOCALE_CHANNEL,
+  type NativeMenuLocale,
+} from '../../src/shared/nativeMenu';
+import {
   isWindowCloseResponse,
   WINDOW_CLOSE_RESPONSE_CHANNEL,
 } from '../../src/shared/windowClose';
@@ -58,6 +62,11 @@ import {
   installContextMenu,
   type ContextMenuSurfaceKind,
 } from './commands/contextMenu';
+import {
+  applyNativeMenuLocaleChange,
+  getNativeMenuMessages,
+  resolveNativeMenuLocale,
+} from './commands/nativeMenuMessages';
 import { copyBrowserData } from './copy';
 import { getOrCreateDesktopInstanceId } from './desktopIdentity';
 import { resolveFileByteRange } from './fileRange';
@@ -143,6 +152,7 @@ const activeLocalFileRoots = new Set<string>();
 let protocolUrlQueue: string[] = [];
 let isWindowReady = false;
 let isRendererDocumentLoaded = false;
+let nativeMenuLocale: NativeMenuLocale | null = null;
 const rendererAppCommands = new RendererAppCommandCoordinator({
   send: (request) => {
     const target = win;
@@ -164,6 +174,11 @@ let windowStateSaveTimer: NodeJS.Timeout | null = null;
 const allowDeveloperTools =
   !app.isPackaged || app.commandLine.hasSwitch('enable-devtools');
 
+function getCurrentNativeMenuMessages() {
+  nativeMenuLocale ??= resolveNativeMenuLocale(app.getLocale());
+  return getNativeMenuMessages(nativeMenuLocale);
+}
+
 function installSurfaceContextMenu(
   contents: Electron.WebContents,
   ownerWindow: BrowserWindow,
@@ -171,6 +186,7 @@ function installSurfaceContextMenu(
 ): () => void {
   return installContextMenu({
     contents,
+    getMessages: getCurrentNativeMenuMessages,
     isDevelopment: allowDeveloperTools,
     menuApi: Menu,
     ownerWindow,
@@ -210,6 +226,7 @@ function installNativeApplicationMenu(): void {
       void dispatchRendererAppCommand(commandId);
     },
     isDevelopment: allowDeveloperTools,
+    messages: getCurrentNativeMenuMessages(),
     onOpenExternalError: (error) => {
       log.error('[APPLICATION MENU] Failed to open external URL:', error);
     },
@@ -1877,6 +1894,13 @@ function registerIpcHandlers() {
     if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
     if (!isWindowCloseResponse(response)) return;
     closeCoordinator.respond(response);
+  });
+  ipcMain.on(NATIVE_MENU_LOCALE_CHANNEL, (event, locale: unknown) => {
+    if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
+    applyNativeMenuLocaleChange(nativeMenuLocale, locale, (nextLocale) => {
+      nativeMenuLocale = nextLocale;
+      installNativeApplicationMenu();
+    });
   });
   ipcMain.on(APP_SHELL_READY_CHANNEL, (event, message: unknown) => {
     if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;

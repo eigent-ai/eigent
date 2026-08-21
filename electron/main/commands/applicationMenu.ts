@@ -23,11 +23,16 @@ import {
   type DesktopMenuPlatform,
 } from './accelerators';
 import { EIGENT_GITHUB_REPOSITORY_URL } from './catalog';
+import {
+  formatNativeMenuMessage,
+  type NativeMenuMessages,
+} from './nativeMenuMessages';
 
 export interface ApplicationMenuOptions {
   appName: string;
   dispatchRendererCommand: (commandId: AppCommandId) => void;
   isDevelopment: boolean;
+  messages: NativeMenuMessages;
   onOpenExternalError?: (error: unknown) => void;
   openExternal: (url: string) => Promise<void>;
   platform: DesktopMenuPlatform;
@@ -45,6 +50,10 @@ export interface ApplicationMenuApi<TMenu = Electron.Menu> {
 const separator = (): Electron.MenuItemConstructorOptions => ({
   type: 'separator',
 });
+
+function topLevelLabel(platform: DesktopMenuPlatform, label: string): string {
+  return platform === 'darwin' ? label : `&${label}`;
+}
 
 function platformAccelerator(
   platform: DesktopMenuPlatform,
@@ -84,21 +93,22 @@ function terminalSafe(
 }
 
 function buildEditMenu(
-  platform: DesktopMenuPlatform
+  options: ApplicationMenuOptions
 ): Electron.MenuItemConstructorOptions {
+  const { messages, platform } = options;
   return {
     id: 'edit',
-    label: platform === 'darwin' ? 'Edit' : '&Edit',
+    label: topLevelLabel(platform, messages.edit),
     submenu: [
       editRole(platform, {
         id: 'edit.undo',
-        label: 'Undo',
+        label: messages.undo,
         role: 'undo',
         accelerator: platformAccelerator(platform, 'Command+Z', 'Control+Z'),
       }),
       editRole(platform, {
         id: 'edit.redo',
-        label: 'Redo',
+        label: messages.redo,
         role: 'redo',
         accelerator:
           platform === 'darwin'
@@ -110,25 +120,25 @@ function buildEditMenu(
       separator(),
       editRole(platform, {
         id: 'edit.cut',
-        label: 'Cut',
+        label: messages.cut,
         role: 'cut',
         accelerator: platformAccelerator(platform, 'Command+X', 'Control+X'),
       }),
       editRole(platform, {
         id: 'edit.copy',
-        label: 'Copy',
+        label: messages.copy,
         role: 'copy',
         accelerator: platformAccelerator(platform, 'Command+C', 'Control+C'),
       }),
       editRole(platform, {
         id: 'edit.paste',
-        label: 'Paste',
+        label: messages.paste,
         role: 'paste',
         accelerator: platformAccelerator(platform, 'Command+V', 'Control+V'),
       }),
       editRole(platform, {
         id: 'edit.paste-and-match-style',
-        label: 'Paste and Match Style',
+        label: messages.pasteAndMatchStyle,
         role: 'pasteAndMatchStyle',
         accelerator: platformAccelerator(
           platform,
@@ -139,7 +149,7 @@ function buildEditMenu(
       separator(),
       editRole(platform, {
         id: 'edit.select-all',
-        label: 'Select All',
+        label: messages.selectAll,
         role: 'selectAll',
         accelerator: platformAccelerator(platform, 'Command+A', 'Control+A'),
       }),
@@ -150,11 +160,12 @@ function buildEditMenu(
 function buildViewMenu(
   options: ApplicationMenuOptions
 ): Electron.MenuItemConstructorOptions {
-  const { dispatchRendererCommand, isDevelopment, platform } = options;
+  const { dispatchRendererCommand, isDevelopment, messages, platform } =
+    options;
   const submenu: Electron.MenuItemConstructorOptions[] = [
     {
       id: 'view.toggle-full-screen',
-      label: 'Toggle Full Screen',
+      label: messages.toggleFullScreen,
       role: 'togglefullscreen',
       accelerator: platform === 'darwin' ? 'Control+Command+F' : 'F11',
     },
@@ -259,20 +270,20 @@ function buildViewMenu(
       separator(),
       {
         id: 'view.reload',
-        label: 'Reload',
+        label: messages.reload,
         role: 'reload',
         accelerator: platformAccelerator(platform, 'Command+R', 'Control+R'),
       },
       {
         id: 'view.toggle-developer-tools',
-        label: 'Toggle Developer Tools',
+        label: messages.toggleDeveloperTools,
         role: 'toggleDevTools',
         accelerator:
           platform === 'darwin' ? 'Command+Shift+I' : 'Control+Shift+I',
       },
       {
         id: 'view.toggle-developer-tools-f12',
-        label: 'Toggle Developer Tools (F12)',
+        label: `${messages.toggleDeveloperTools} (F12)`,
         role: 'toggleDevTools',
         accelerator: 'F12',
         visible: false,
@@ -282,32 +293,43 @@ function buildViewMenu(
 
   return {
     id: 'view',
-    label: platform === 'darwin' ? 'View' : '&View',
+    label: topLevelLabel(platform, messages.view),
     submenu,
   };
 }
 
 function buildWindowMenu(
-  platform: DesktopMenuPlatform
+  options: ApplicationMenuOptions
 ): Electron.MenuItemConstructorOptions {
+  const { messages, platform } = options;
   return {
     id: 'window',
-    label: platform === 'darwin' ? 'Window' : '&Window',
+    label: topLevelLabel(platform, messages.window),
     submenu:
       platform === 'darwin'
         ? [
             {
               id: 'window.minimize',
-              label: 'Minimize',
+              label: messages.minimize,
               role: 'minimize',
               accelerator: 'Command+M',
             },
-            { id: 'window.zoom', label: 'Zoom', role: 'zoom' },
+            { id: 'window.zoom', label: messages.zoom, role: 'zoom' },
             separator(),
-            { id: 'window.front', label: 'Bring All to Front', role: 'front' },
-            { id: 'window.list', role: 'window' },
+            {
+              id: 'window.front',
+              label: messages.bringAllToFront,
+              role: 'front',
+            },
+            { id: 'window.list', label: messages.window, role: 'window' },
           ]
-        : [{ id: 'window.minimize', label: 'Minimize', role: 'minimize' }],
+        : [
+            {
+              id: 'window.minimize',
+              label: messages.minimize,
+              role: 'minimize',
+            },
+          ],
   };
 }
 
@@ -317,6 +339,7 @@ function buildHelpMenu(
   const {
     appName,
     dispatchRendererCommand,
+    messages,
     onOpenExternalError,
     openExternal,
   } = options;
@@ -324,19 +347,19 @@ function buildHelpMenu(
   const submenu: Electron.MenuItemConstructorOptions[] = [
     {
       id: 'help.keyboard-shortcuts',
-      label: 'Keyboard Shortcuts…',
+      label: messages.keyboardShortcuts,
       accelerator: getKeyboardShortcutsAccelerator(options.platform),
       click: () => dispatchRendererCommand(APP_COMMAND.keyboardShortcuts),
     },
     separator(),
     {
       id: 'help.report-bug',
-      label: 'Report a Bug…',
+      label: messages.reportBug,
       click: () => dispatchRendererCommand(APP_COMMAND.reportBug),
     },
     {
       id: 'help.github',
-      label: 'Eigent on GitHub',
+      label: messages.github,
       click: () => {
         void openExternal(EIGENT_GITHUB_REPOSITORY_URL).catch((error) => {
           onOpenExternalError?.(error);
@@ -348,16 +371,15 @@ function buildHelpMenu(
   if (options.platform !== 'darwin') {
     submenu.push(separator(), {
       id: 'help.about',
-      label: `About ${appName}`,
+      label: formatNativeMenuMessage(messages.about, appName),
       role: 'about',
     });
   }
 
   return {
     id: 'help',
-    ...(options.platform === 'darwin'
-      ? { role: 'help' as const }
-      : { label: '&Help' }),
+    label: topLevelLabel(options.platform, messages.help),
+    ...(options.platform === 'darwin' ? { role: 'help' as const } : {}),
     submenu,
   };
 }
@@ -365,29 +387,41 @@ function buildHelpMenu(
 function buildMacAppMenu(
   options: ApplicationMenuOptions
 ): Electron.MenuItemConstructorOptions {
-  const { appName, dispatchRendererCommand, requestQuit } = options;
+  const { appName, dispatchRendererCommand, messages, requestQuit } = options;
   return {
     id: 'app',
     label: appName,
     submenu: [
-      { id: 'app.about', label: `About ${appName}`, role: 'about' },
+      {
+        id: 'app.about',
+        label: formatNativeMenuMessage(messages.about, appName),
+        role: 'about',
+      },
       separator(),
       {
         id: 'app.settings',
-        label: 'Settings…',
+        label: messages.settings,
         accelerator: 'Command+,',
         click: () => dispatchRendererCommand(APP_COMMAND.openSettings),
       },
       separator(),
-      { id: 'app.services', role: 'services' },
+      { id: 'app.services', label: messages.services, role: 'services' },
       separator(),
-      { id: 'app.hide', label: `Hide ${appName}`, role: 'hide' },
-      { id: 'app.hide-others', label: 'Hide Others', role: 'hideOthers' },
-      { id: 'app.unhide', label: 'Show All', role: 'unhide' },
+      {
+        id: 'app.hide',
+        label: formatNativeMenuMessage(messages.hide, appName),
+        role: 'hide',
+      },
+      {
+        id: 'app.hide-others',
+        label: messages.hideOthers,
+        role: 'hideOthers',
+      },
+      { id: 'app.unhide', label: messages.showAll, role: 'unhide' },
       separator(),
       {
         id: 'app.quit',
-        label: `Quit ${appName}`,
+        label: formatNativeMenuMessage(messages.quit, appName),
         accelerator: 'Command+Q',
         // Deliberately custom: the native quit role bypasses Eigent's active-run
         // confirmation and shutdown coordination.
@@ -400,12 +434,17 @@ function buildMacAppMenu(
 function buildFileMenu(
   options: ApplicationMenuOptions
 ): Electron.MenuItemConstructorOptions {
-  const { dispatchRendererCommand, platform, requestClose, requestQuit } =
-    options;
+  const {
+    dispatchRendererCommand,
+    messages,
+    platform,
+    requestClose,
+    requestQuit,
+  } = options;
   const submenu: Electron.MenuItemConstructorOptions[] = [
     terminalSafe(platform, 'N', {
       id: 'file.new-project',
-      label: 'New Project',
+      label: messages.newProject,
       accelerator: platformAccelerator(platform, 'Command+N', 'Control+N'),
       click: () => dispatchRendererCommand(APP_COMMAND.newProject),
     }),
@@ -414,7 +453,7 @@ function buildFileMenu(
   if (platform !== 'darwin') {
     submenu.push({
       id: 'file.settings',
-      label: 'Settings…',
+      label: messages.settings,
       accelerator: 'Control+,',
       click: () => dispatchRendererCommand(APP_COMMAND.openSettings),
     });
@@ -424,7 +463,7 @@ function buildFileMenu(
     separator(),
     terminalSafe(platform, 'W', {
       id: 'file.close-window',
-      label: 'Close Window',
+      label: messages.closeWindow,
       accelerator: platformAccelerator(platform, 'Command+W', 'Control+W'),
       click: requestClose,
     })
@@ -433,7 +472,7 @@ function buildFileMenu(
   if (platform !== 'darwin') {
     submenu.push(separator(), {
       id: 'file.exit',
-      label: 'Exit',
+      label: messages.exit,
       // Deliberately custom for the same reason as macOS Quit.
       click: requestQuit,
     });
@@ -441,7 +480,7 @@ function buildFileMenu(
 
   return {
     id: 'file',
-    label: platform === 'darwin' ? 'File' : '&File',
+    label: topLevelLabel(platform, messages.file),
     submenu,
   };
 }
@@ -453,9 +492,9 @@ export function buildApplicationMenuTemplate(
   const template = [
     ...(options.platform === 'darwin' ? [buildMacAppMenu(options)] : []),
     buildFileMenu(options),
-    buildEditMenu(options.platform),
+    buildEditMenu(options),
     buildViewMenu(options),
-    buildWindowMenu(options.platform),
+    buildWindowMenu(options),
     buildHelpMenu(options),
   ];
 

@@ -238,6 +238,15 @@ describe('AppCommandProvider', () => {
     expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
 
+  it('normalizes and syncs the renderer locale to native menus', async () => {
+    const setNativeMenuLocale = vi.fn();
+    renderProvider({ setNativeMenuLocale });
+
+    await waitFor(() =>
+      expect(setNativeMenuLocale).toHaveBeenLastCalledWith('en-US')
+    );
+  });
+
   it('flushes pending workspace configuration before starting a new project', async () => {
     const user = userEvent.setup();
     renderProvider(null);

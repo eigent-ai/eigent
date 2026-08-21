@@ -12,10 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import type { NativeMenuMessages } from './nativeMenuMessages';
+
 export type ContextMenuSurfaceKind =
-  | 'main-renderer'
-  | 'preview-guest'
-  | 'automation-view';
+  'main-renderer' | 'preview-guest' | 'automation-view';
 
 export type ContextMenuWebContents = Pick<
   Electron.WebContents,
@@ -44,6 +44,7 @@ export interface ContextMenuApi<
 export interface ContextMenuTemplateOptions {
   contents: ContextMenuWebContents;
   isDevelopment: boolean;
+  messages: NativeMenuMessages;
   params: Pick<
     Electron.ContextMenuParams,
     'editFlags' | 'isEditable' | 'menuSourceType' | 'x' | 'y'
@@ -55,6 +56,7 @@ export interface InstallContextMenuOptions<
   TMenu extends ContextMenuPopup = ContextMenuPopup,
 > {
   contents: ContextMenuWebContents;
+  getMessages: () => NativeMenuMessages;
   isDevelopment: boolean;
   menuApi: ContextMenuApi<TMenu>;
   ownerWindow: Electron.BaseWindow;
@@ -62,13 +64,7 @@ export interface InstallContextMenuOptions<
 }
 
 type ContextCommand =
-  | 'undo'
-  | 'redo'
-  | 'cut'
-  | 'copy'
-  | 'paste'
-  | 'select-all'
-  | 'inspect';
+  'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'select-all' | 'inspect';
 
 function commandItem(
   surfaceKind: ContextMenuSurfaceKind,
@@ -97,6 +93,7 @@ const separator = (): Electron.MenuItemConstructorOptions => ({
 export function buildContextMenuTemplate({
   contents,
   isDevelopment,
+  messages,
   params,
   surfaceKind,
 }: ContextMenuTemplateOptions): Electron.MenuItemConstructorOptions[] {
@@ -105,39 +102,43 @@ export function buildContextMenuTemplate({
     surfaceKind !== 'automation-view' && params.isEditable;
   const template: Electron.MenuItemConstructorOptions[] = supportsEditing
     ? [
-        commandItem(surfaceKind, 'undo', 'Undo', editFlags.canUndo, () =>
+        commandItem(surfaceKind, 'undo', messages.undo, editFlags.canUndo, () =>
           contents.undo()
         ),
-        commandItem(surfaceKind, 'redo', 'Redo', editFlags.canRedo, () =>
+        commandItem(surfaceKind, 'redo', messages.redo, editFlags.canRedo, () =>
           contents.redo()
         ),
         separator(),
-        commandItem(surfaceKind, 'cut', 'Cut', editFlags.canCut, () =>
+        commandItem(surfaceKind, 'cut', messages.cut, editFlags.canCut, () =>
           contents.cut()
         ),
-        commandItem(surfaceKind, 'copy', 'Copy', editFlags.canCopy, () =>
+        commandItem(surfaceKind, 'copy', messages.copy, editFlags.canCopy, () =>
           contents.copy()
         ),
-        commandItem(surfaceKind, 'paste', 'Paste', editFlags.canPaste, () =>
-          contents.paste()
+        commandItem(
+          surfaceKind,
+          'paste',
+          messages.paste,
+          editFlags.canPaste,
+          () => contents.paste()
         ),
         separator(),
         commandItem(
           surfaceKind,
           'select-all',
-          'Select All',
+          messages.selectAll,
           editFlags.canSelectAll,
           () => contents.selectAll()
         ),
       ]
     : [
-        commandItem(surfaceKind, 'copy', 'Copy', editFlags.canCopy, () =>
+        commandItem(surfaceKind, 'copy', messages.copy, editFlags.canCopy, () =>
           contents.copy()
         ),
         commandItem(
           surfaceKind,
           'select-all',
-          'Select All',
+          messages.selectAll,
           editFlags.canSelectAll,
           () => contents.selectAll()
         ),
@@ -149,7 +150,7 @@ export function buildContextMenuTemplate({
       commandItem(
         surfaceKind,
         'inspect',
-        'Inspect Element',
+        messages.inspectElement,
         !contents.isDestroyed(),
         () => contents.inspectElement(params.x, params.y)
       )
@@ -164,6 +165,7 @@ export function installContextMenu<
   TMenu extends ContextMenuPopup = ContextMenuPopup,
 >({
   contents,
+  getMessages,
   isDevelopment,
   menuApi,
   ownerWindow,
@@ -179,6 +181,7 @@ export function installContextMenu<
       buildContextMenuTemplate({
         contents,
         isDevelopment,
+        messages: getMessages(),
         params,
         surfaceKind,
       })

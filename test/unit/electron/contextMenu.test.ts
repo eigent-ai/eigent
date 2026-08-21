@@ -19,8 +19,10 @@ import {
   type ContextMenuTemplateOptions,
   type ContextMenuWebContents,
 } from '../../../electron/main/commands/contextMenu';
+import { getNativeMenuMessages } from '../../../electron/main/commands/nativeMenuMessages';
 
 type MenuItem = Electron.MenuItemConstructorOptions;
+const englishMessages = getNativeMenuMessages('en-US');
 
 function createContents(destroyed = false) {
   const methods = {
@@ -85,6 +87,7 @@ describe('context menu', () => {
     const template = buildContextMenuTemplate({
       contents,
       isDevelopment: true,
+      messages: englishMessages,
       params: createParams(),
       surfaceKind: 'main-renderer',
     });
@@ -134,6 +137,7 @@ describe('context menu', () => {
     const template = buildContextMenuTemplate({
       contents,
       isDevelopment: false,
+      messages: englishMessages,
       params: createParams({
         isEditable: false,
         editFlags: {
@@ -156,6 +160,7 @@ describe('context menu', () => {
     const template = buildContextMenuTemplate({
       contents,
       isDevelopment: true,
+      messages: englishMessages,
       params: createParams({ isEditable: true }),
       surfaceKind: 'automation-view',
     });
@@ -179,6 +184,7 @@ describe('context menu', () => {
       const template = buildContextMenuTemplate({
         contents,
         isDevelopment: false,
+        messages: englishMessages,
         params: createParams({ isEditable: false }),
         surfaceKind,
       });
@@ -215,6 +221,7 @@ describe('context menu', () => {
 
     const dispose = installContextMenu({
       contents: first.contents,
+      getMessages: () => englishMessages,
       isDevelopment: true,
       menuApi: { buildFromTemplate },
       ownerWindow,
@@ -264,6 +271,7 @@ describe('context menu', () => {
 
     installContextMenu({
       contents,
+      getMessages: () => englishMessages,
       isDevelopment: true,
       menuApi: { buildFromTemplate },
       ownerWindow: {} as Electron.BaseWindow,
@@ -275,5 +283,44 @@ describe('context menu', () => {
     );
 
     expect(buildFromTemplate).not.toHaveBeenCalled();
+  });
+
+  it('reads the latest locale catalog for each popup', () => {
+    let listener:
+      | ((_event: Electron.Event, params: Electron.ContextMenuParams) => void)
+      | undefined;
+    const { contents, methods } = createContents();
+    methods.on.mockImplementation((_event, nextListener) => {
+      listener = nextListener;
+      return contents;
+    });
+    let messages = englishMessages;
+    const builtTemplates: Electron.MenuItemConstructorOptions[][] = [];
+    installContextMenu({
+      contents,
+      getMessages: () => messages,
+      isDevelopment: false,
+      menuApi: {
+        buildFromTemplate: (template) => {
+          builtTemplates.push(template);
+          return { popup: vi.fn() };
+        },
+      },
+      ownerWindow: {} as Electron.BaseWindow,
+      surfaceKind: 'main-renderer',
+    });
+
+    listener?.(
+      {} as Electron.Event,
+      createParams() as Electron.ContextMenuParams
+    );
+    messages = getNativeMenuMessages('zh-Hans');
+    listener?.(
+      {} as Electron.Event,
+      createParams() as Electron.ContextMenuParams
+    );
+
+    expect(itemNames(builtTemplates[0] ?? [])).toContain('Undo');
+    expect(itemNames(builtTemplates[1] ?? [])).toContain('撤销');
   });
 });

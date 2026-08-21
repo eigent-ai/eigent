@@ -23,6 +23,10 @@ import {
   type AppCommandId,
 } from '../../src/shared/appCommands';
 import {
+  NATIVE_MENU_LOCALE_CHANNEL,
+  type NativeMenuLocale,
+} from '../../src/shared/nativeMenu';
+import {
   isWindowCloseRequest,
   WINDOW_CLOSE_REQUEST_CHANNEL,
   WINDOW_CLOSE_RESPONSE_CHANNEL,
@@ -139,6 +143,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   respondToCloseRequest: (response: WindowCloseResponse) =>
     ipcRenderer.send(WINDOW_CLOSE_RESPONSE_CHANNEL, response),
+  setNativeMenuLocale: (locale: NativeMenuLocale) =>
+    ipcRenderer.send(NATIVE_MENU_LOCALE_CHANNEL, locale),
   getPlatform: () => process.platform,
   getHomeDir: () => ipcRenderer.invoke('get-home-dir'),
   createWebView: (id: string, url: string) =>

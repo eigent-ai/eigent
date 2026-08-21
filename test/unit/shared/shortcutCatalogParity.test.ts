@@ -15,6 +15,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { normalizeAccelerator } from '../../../electron/main/commands/accelerators';
 import { buildApplicationMenuTemplate } from '../../../electron/main/commands/applicationMenu';
+import { getNativeMenuMessages } from '../../../electron/main/commands/nativeMenuMessages';
 import {
   formatKeyboardShortcutKeys,
   getKeyboardShortcutGroups,
@@ -76,6 +77,7 @@ function buildTemplate(platform: DesktopShortcutPlatform) {
     appName: 'Eigent',
     dispatchRendererCommand: vi.fn(),
     isDevelopment: false,
+    messages: getNativeMenuMessages('en-US'),
     openExternal: vi.fn().mockResolvedValue(undefined),
     platform,
     requestClose: vi.fn(),

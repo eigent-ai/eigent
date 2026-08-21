@@ -15,6 +15,7 @@
 // See docs/design/04-client.md.
 
 import type { AppCommandId } from '@/shared/appCommands';
+import type { NativeMenuLocale } from '@/shared/nativeMenu';
 import type {
   WindowCloseRequest,
   WindowCloseResponse,
@@ -29,6 +30,7 @@ export interface AppShellElectronAPI {
     callback: (request: WindowCloseRequest) => void
   ) => () => void;
   respondToCloseRequest?: (response: WindowCloseResponse) => void;
+  setNativeMenuLocale?: (locale: NativeMenuLocale) => void;
 }
 
 export interface AppHost {
