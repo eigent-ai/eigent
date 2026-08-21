@@ -250,6 +250,9 @@ export default function Session({ isNewProject = false }: SessionProps) {
   const chatRowRef = useRef<HTMLDivElement>(null);
   const [chatWidth, setChatWidth] = useState(CHAT_PRIORITY_WIDTH);
   const [isResizingPreview, setIsResizingPreview] = useState(false);
+  const previewResizeCleanupRef = useRef<
+    ((commitWidth?: boolean) => void) | null
+  >(null);
 
   // Point the preview store at this project. Its saved tabs (and, within this
   // app run, the live webviews behind them) are restored on switch-back —
@@ -267,9 +270,25 @@ export default function Session({ isNewProject = false }: SessionProps) {
   useEffect(() => {
     if (previewOpen) {
       setIsSidePanelVisible(false);
-      setChatWidth(userChatWidthRef.current ?? CHAT_MIN_WIDTH);
+      const restoredWidth = userChatWidthRef.current ?? CHAT_MIN_WIDTH;
+      chatRowRef.current?.style.setProperty(
+        '--session-chat-width',
+        `${restoredWidth}px`
+      );
+      setChatWidth(restoredWidth);
+    } else {
+      previewResizeCleanupRef.current?.();
     }
   }, [previewOpen]);
+
+  // A drag can outlive the Session when the user switches Project or route.
+  // Remove every native listener without scheduling state on an unmounted tree.
+  useEffect(
+    () => () => {
+      previewResizeCleanupRef.current?.(false);
+    },
+    []
+  );
 
   // Embedded browser guests are `position: fixed` in a separate layer, so the
   // panel's clip-path entrance can't clip them. Hold the guest parked until
@@ -289,8 +308,10 @@ export default function Session({ isNewProject = false }: SessionProps) {
   }, [previewOpen]);
 
   const handlePreviewResizeStart = useCallback(
-    (e: React.PointerEvent) => {
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
       e.preventDefault();
+      previewResizeCleanupRef.current?.();
       const rowWidth =
         chatRowRef.current?.getBoundingClientRect().width ?? window.innerWidth;
       const sidePanelWidth =
@@ -307,23 +328,103 @@ export default function Session({ isNewProject = false }: SessionProps) {
       );
       const startX = e.clientX;
       const startWidth = chatWidth;
+      const pointerId = e.pointerId;
+      const handle = e.currentTarget;
+      const body = document.body;
+      const previousCursor = body.style.cursor;
+      const previousUserSelect = body.style.userSelect;
+      let pendingWidth = startWidth;
+      let frameId: number | null = null;
+      let finished = false;
+
       setIsResizingPreview(true);
+      body.style.cursor = 'col-resize';
+      body.style.userSelect = 'none';
+
+      const applyPendingWidth = () => {
+        frameId = null;
+        chatRowRef.current?.style.setProperty(
+          '--session-chat-width',
+          `${pendingWidth}px`
+        );
+      };
+
+      const finishResize = (commitWidth = true) => {
+        if (finished) return;
+        finished = true;
+        previewResizeCleanupRef.current = null;
+        if (frameId !== null) {
+          window.cancelAnimationFrame(frameId);
+          applyPendingWidth();
+        }
+
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onPointerEnd);
+        window.removeEventListener('pointercancel', onPointerEnd);
+        window.removeEventListener('blur', onWindowBlur);
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+        handle.removeEventListener('lostpointercapture', onLostPointerCapture);
+        try {
+          if (handle.hasPointerCapture?.(pointerId)) {
+            handle.releasePointerCapture(pointerId);
+          }
+        } catch {
+          // The browser may already have released capture during cancellation.
+        }
+
+        if (body.style.cursor === 'col-resize') {
+          body.style.cursor = previousCursor;
+        }
+        if (body.style.userSelect === 'none') {
+          body.style.userSelect = previousUserSelect;
+        }
+        if (commitWidth) {
+          userChatWidthRef.current = pendingWidth;
+          setChatWidth(pendingWidth);
+          setIsResizingPreview(false);
+        }
+      };
+
       const onMove = (ev: PointerEvent) => {
+        if (ev.pointerId !== pointerId) return;
+        // Cross-origin iframes and Electron webviews can consume pointerup.
+        // A later move with no pressed button is an equivalent end signal.
+        if (ev.buttons === 0) {
+          finishResize();
+          return;
+        }
+        ev.preventDefault();
         // Dragging right (larger clientX) widens the chat, shrinking the preview.
-        const next = Math.min(
+        pendingWidth = Math.min(
           maxChat,
           Math.max(CHAT_MIN_WIDTH, startWidth + (ev.clientX - startX))
         );
-        userChatWidthRef.current = next;
-        setChatWidth(next);
+        userChatWidthRef.current = pendingWidth;
+        if (frameId === null) {
+          frameId = window.requestAnimationFrame(applyPendingWidth);
+        }
       };
-      const onUp = () => {
-        setIsResizingPreview(false);
-        window.removeEventListener('pointermove', onMove);
-        window.removeEventListener('pointerup', onUp);
+      const onPointerEnd = (ev: PointerEvent) => {
+        if (ev.pointerId === pointerId) finishResize();
       };
+      const onWindowBlur = () => finishResize();
+      const onVisibilityChange = () => {
+        if (document.visibilityState !== 'visible') finishResize();
+      };
+      const onLostPointerCapture = () => finishResize();
+
       window.addEventListener('pointermove', onMove);
-      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointerup', onPointerEnd);
+      window.addEventListener('pointercancel', onPointerEnd);
+      window.addEventListener('blur', onWindowBlur);
+      document.addEventListener('visibilitychange', onVisibilityChange);
+      handle.addEventListener('lostpointercapture', onLostPointerCapture);
+      previewResizeCleanupRef.current = finishResize;
+      try {
+        handle.setPointerCapture?.(pointerId);
+      } catch {
+        // The fixed drag shield below remains the fallback for older hosts.
+      }
     },
     [chatWidth]
   );
@@ -407,9 +508,22 @@ export default function Session({ isNewProject = false }: SessionProps) {
         ref={chatRowRef}
         className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-row overflow-hidden"
       >
+        {isResizingPreview ? (
+          <div
+            data-preview-resize-shield
+            aria-hidden="true"
+            className="fixed inset-0 z-40 cursor-col-resize"
+          />
+        ) : null}
         {/* Chat content: owns the project header and folds when display opens. */}
         <div
-          style={previewOpen ? { width: chatWidth } : undefined}
+          style={
+            previewOpen
+              ? {
+                  width: `var(--session-chat-width, ${chatWidth}px)`,
+                }
+              : undefined
+          }
           className={cn(
             'flex min-h-0 min-w-0 flex-col overflow-hidden',
             previewOpen ? 'shrink-0' : 'flex-1',
