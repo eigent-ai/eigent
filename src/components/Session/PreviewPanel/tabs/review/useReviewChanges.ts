@@ -238,9 +238,10 @@ export function useReviewChanges(
       collectChangedFilePaths(
         chatEntries.map(({ chatStore }) => ({
           tasks: chatStore.getState().tasks,
-        }))
+        })),
+        runId
       ),
-    [chatEntries]
+    [chatEntries, runId]
   );
   const [changedPaths, setChangedPaths] = useState<string[]>(computePaths);
   useEffect(() => {
@@ -315,8 +316,10 @@ export function useReviewChanges(
           spaceId,
           projectId ?? ''
         );
-        const overlays = response.overlays.filter((overlay) =>
-          isReviewStatus(overlay.status)
+        const overlays = response.overlays.filter(
+          (overlay) =>
+            isReviewStatus(overlay.status) &&
+            (!runId || overlay.run_id === runId)
         );
         const sourcePaths = Array.from(
           new Set(
@@ -462,16 +465,8 @@ export function useReviewChanges(
             desktopOnly: false,
           };
         } catch (cause: unknown) {
-          if (
-            reviewScope === 'run' ||
-            (cause as { status?: number })?.status !== 404
-          ) {
-            throw cause;
-          }
+          if ((cause as { status?: number })?.status !== 404) throw cause;
         }
-      }
-      if (reviewScope === 'run') {
-        throw new Error('Run Git state not found');
       }
       return loadLegacyFiles();
     };

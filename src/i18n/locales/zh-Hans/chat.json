@@ -208,6 +208,7 @@
   "timeline-unsupported-event": "当前版本的 Eigent 无法显示这部分对话。",
   "timeline-unknown-event": "未知",
   "timeline-older-hidden": "更早的消息未在此显示。",
+  "timeline-show-older": "显示更早的消息",
   "timeline-history-window": "此处仅显示你最近的活动。",
   "timeline-history-partial-error": "无法加载更早的消息。",
   "timeline-history-error": "无法加载该对话。",
@@ -219,5 +220,6 @@
   "timeline-style-normal": "普通",
   "timeline-style-detailed": "详细",
   "timeline-style-summarized": "摘要",
-  "files-changed": "变更的文件"
+  "files-changed": "变更的文件",
+  "view-changes": "查看更改"
 }

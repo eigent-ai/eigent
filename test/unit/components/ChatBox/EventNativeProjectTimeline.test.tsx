@@ -830,7 +830,7 @@ describe('EventNativeProjectTimeline', () => {
     expect(mocks.projection.nodes).toEqual([request, resolution]);
   });
 
-  it('mounts a bounded latest window until timeline virtualization lands', () => {
+  it('mounts a bounded latest window and lets the user reveal older messages', () => {
     mocks.projection = projection(
       Array.from({ length: 251 }, (_, index) => messageNode(index))
     );
@@ -842,12 +842,20 @@ describe('EventNativeProjectTimeline', () => {
       />
     );
 
-    expect(
-      screen.getByText("Older messages aren't shown here.")
-    ).toBeInTheDocument();
+    const showOlder = screen.getByRole('button', {
+      name: 'Show older messages',
+    });
     expect(screen.queryByText('Message 0')).not.toBeInTheDocument();
     expect(screen.getByText('Message 250')).toBeInTheDocument();
     expect(screen.getAllByRole('listitem')).toHaveLength(250);
+
+    fireEvent.click(showOlder);
+
+    expect(screen.getByText('Message 0')).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(251);
+    expect(
+      screen.queryByRole('button', { name: 'Show older messages' })
+    ).not.toBeInTheDocument();
   });
 
   it('correlates an interaction before slicing the bounded DOM window', () => {
@@ -1021,7 +1029,7 @@ describe('EventNativeProjectTimeline', () => {
     expect(screen.getByText('{"query":"ISS modules"}')).toBeInTheDocument();
     expect(screen.getByText('Found 4 sources')).toBeInTheDocument();
     expect(
-      screen.getByText("Older messages aren't shown here.")
+      screen.getByRole('button', { name: 'Show older messages' })
     ).toBeInTheDocument();
   });
 

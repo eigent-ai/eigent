@@ -208,6 +208,7 @@
   "timeline-unsupported-event": "Dieser Teil der Unterhaltung kann in dieser Version von Eigent nicht angezeigt werden.",
   "timeline-unknown-event": "Unbekannt",
   "timeline-older-hidden": "Ältere Nachrichten werden hier nicht angezeigt.",
+  "timeline-show-older": "Ältere Nachrichten anzeigen",
   "timeline-history-window": "Hier wird nur deine jüngste Aktivität angezeigt.",
   "timeline-history-partial-error": "Ältere Nachrichten konnten nicht geladen werden.",
   "timeline-history-error": "Diese Unterhaltung konnte nicht geladen werden.",
@@ -219,5 +220,6 @@
   "timeline-style-normal": "Normal",
   "timeline-style-detailed": "Detailliert",
   "timeline-style-summarized": "Zusammengefasst",
-  "files-changed": "Geänderte Dateien"
+  "files-changed": "Geänderte Dateien",
+  "view-changes": "Änderungen anzeigen"
 }

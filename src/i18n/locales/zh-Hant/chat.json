@@ -208,6 +208,7 @@
   "timeline-unsupported-event": "目前版本的 Eigent 無法顯示這部分對話。",
   "timeline-unknown-event": "未知",
   "timeline-older-hidden": "較早的訊息未在此顯示。",
+  "timeline-show-older": "顯示較早的訊息",
   "timeline-history-window": "此處僅顯示你最近的活動。",
   "timeline-history-partial-error": "無法載入較早的訊息。",
   "timeline-history-error": "無法載入該對話。",
@@ -219,5 +220,6 @@
   "timeline-style-normal": "一般",
   "timeline-style-detailed": "詳細",
   "timeline-style-summarized": "摘要",
-  "files-changed": "變更的檔案"
+  "files-changed": "變更的檔案",
+  "view-changes": "檢視變更"
 }

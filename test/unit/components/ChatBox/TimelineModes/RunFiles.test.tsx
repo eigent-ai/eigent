@@ -13,6 +13,8 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
+  normalizeRunReviewPath,
+  resolveRunFilePreview,
   runFileReviewPath,
   RunFilesGroup,
   useRunFileInfo,
@@ -20,6 +22,7 @@ import {
 import type { ChatArtifactNode } from '@/lib/projector/chat';
 import type { ProjectedArtifact } from '@/lib/projector/types';
 import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
+import { SPACE_SCHEMA_VERSION, useSpaceStore } from '@/store/spaceStore';
 import { fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 
@@ -58,6 +61,46 @@ describe('RunFiles capability boundary', () => {
       sessionPreviewProjectId: 'project-1',
       sessionPreviewByProject: {},
     });
+    useSpaceStore.setState({
+      activeSpaceId: 'space-active-other',
+      spaces: {
+        'space-1': {
+          id: 'space-1',
+          name: 'Space 1',
+          sourceType: 'folder',
+          rootPath: '/workspace/space-1',
+          rootFingerprint: null,
+          status: 'active',
+          schemaVersion: SPACE_SCHEMA_VERSION,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        'space-active-other': {
+          id: 'space-active-other',
+          name: 'Other active Space',
+          sourceType: 'folder',
+          rootPath: '/workspace/wrong-active-space',
+          rootFingerprint: null,
+          status: 'active',
+          schemaVersion: SPACE_SCHEMA_VERSION,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      },
+      projectsBySpaceId: {
+        'space-1': {
+          'project-1': {
+            id: 'project-1',
+            spaceId: 'space-1',
+            name: 'Project 1',
+            status: 'active',
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        },
+      },
+      projectIdIndex: { 'project-1': 'space-1' },
+    });
   });
 
   it('does not turn portable local or realtime identity into a file path', () => {
@@ -85,7 +128,7 @@ describe('RunFiles capability boundary', () => {
     );
   });
 
-  it('opens an unresolved local Artifact in its Run-scoped Git review', () => {
+  it('opens a changed file in preview using its Project Space root', () => {
     render(
       <RunFilesGroup projectedArtifacts={[projectedArtifact]} runId="run-1" />
     );
@@ -99,12 +142,30 @@ describe('RunFiles capability boundary', () => {
     expect(preview.open).toBe(true);
     expect(preview.tabs).toHaveLength(1);
     expect(preview.tabs[0]).toMatchObject({
+      type: 'file',
+      file: {
+        path: '/workspace/space-1/reports/report.csv',
+        relativePath: 'reports/report.csv',
+        localPathAvailable: true,
+      },
+    });
+  });
+
+  it('offers an explicit entry to review every change in the Run', () => {
+    render(
+      <RunFilesGroup projectedArtifacts={[projectedArtifact]} runId="run-1" />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'View changes' }));
+
+    expect(
+      getSessionPreviewSlice(usePageTabStore.getState()).tabs[0]
+    ).toMatchObject({
       type: 'review',
       title: 'Run review',
       reviewTarget: {
         scope: 'run',
         runId: 'run-1',
-        focusPath: 'reports/report.csv',
       },
     });
   });
@@ -119,10 +180,7 @@ describe('RunFiles capability boundary', () => {
       },
     } satisfies ProjectedArtifact;
     const { result } = renderHook(() =>
-      useRunFileInfo({
-        projectedArtifacts: [cloud],
-        workspaceRoot: '/Users/test/workspace',
-      })
+      useRunFileInfo({ projectedArtifacts: [cloud] })
     );
 
     expect(result.current[0]).toMatchObject({
@@ -132,9 +190,52 @@ describe('RunFiles capability boundary', () => {
       assetRef: cloud.assetRef,
     });
     expect(runFileReviewPath(result.current[0]!)).toBe('reports/report.csv');
+    expect(
+      resolveRunFilePreview(result.current[0]!, '/workspace/space-1')
+    ).toMatchObject({
+      path: '/workspace/space-1/reports/report.csv',
+      relativePath: 'reports/report.csv',
+      localPathAvailable: true,
+      isRemote: false,
+      assetRef: cloud.assetRef,
+    });
+    expect(resolveRunFilePreview(result.current[0]!, null)).toBe(
+      result.current[0]
+    );
   });
 
-  it('keeps resolved local paths while routing changed files to review', () => {
+  it('opens a Cloud-restored HTML Artifact through the local rich preview', () => {
+    const cloudHtml = {
+      ...projectedArtifact,
+      artifactId: 'artifact-html',
+      name: 'index.html',
+      relativePath: 'P5/index.html',
+      localPathAvailable: false,
+      assetRef: {
+        chatFileId: 74,
+        key: 'user/run/files/P5/index.html',
+      },
+    } satisfies ProjectedArtifact;
+
+    render(<RunFilesGroup projectedArtifacts={[cloudHtml]} runId="run-1" />);
+    fireEvent.click(screen.getByTitle('P5/index.html'));
+
+    expect(
+      getSessionPreviewSlice(usePageTabStore.getState()).tabs[0]
+    ).toMatchObject({
+      type: 'file',
+      file: {
+        name: 'index.html',
+        type: 'html',
+        path: '/workspace/space-1/P5/index.html',
+        relativePath: 'P5/index.html',
+        localPathAvailable: true,
+        isRemote: false,
+      },
+    });
+  });
+
+  it('does not manufacture local paths for Run review files', () => {
     const changed = {
       ...projectedArtifact,
       artifactId: 'artifact-2',
@@ -143,20 +244,38 @@ describe('RunFiles capability boundary', () => {
       changeType: 'changed',
     } satisfies ProjectedArtifact;
     const { result } = renderHook(() =>
-      useRunFileInfo({
-        projectedArtifacts: [projectedArtifact, changed],
-        workspaceRoot: '/Users/test/workspace',
-      })
+      useRunFileInfo({ projectedArtifacts: [projectedArtifact, changed] })
     );
 
-    expect(result.current.map((file) => file.path)).toEqual([
-      '/Users/test/workspace/reports/report.csv',
-      '/Users/test/workspace/notes.md',
-    ]);
+    expect(result.current.map((file) => file.path)).toEqual(['', '']);
     expect(result.current.map(runFileReviewPath)).toEqual([
       'reports/report.csv',
       'notes.md',
     ]);
+  });
+
+  it('uses a safe legacy Artifact path when relativePath is absent', () => {
+    const pathOnlyArtifact = {
+      ...realtimeArtifact,
+      path: 'legacy/output.txt',
+      relativePath: undefined,
+      name: 'output.txt',
+    } satisfies ChatArtifactNode;
+
+    render(<RunFilesGroup artifactNodes={[pathOnlyArtifact]} runId="run-1" />);
+    const row = screen.getByTitle('legacy/output.txt');
+    expect(row).toHaveAttribute('data-artifact-preview', 'available');
+    fireEvent.click(row);
+
+    expect(
+      getSessionPreviewSlice(usePageTabStore.getState()).tabs[0]
+    ).toMatchObject({
+      type: 'file',
+      file: {
+        path: '/workspace/space-1/legacy/output.txt',
+        relativePath: 'legacy/output.txt',
+      },
+    });
   });
 
   it('rejects escaping paths before they reach the Run review API', () => {
@@ -169,5 +288,9 @@ describe('RunFiles capability boundary', () => {
     );
 
     expect(runFileReviewPath(result.current[0]!)).toBeNull();
+    expect(normalizeRunReviewPath('https://example.com/file.txt')).toBeNull();
+    expect(normalizeRunReviewPath('%2e%2e/outside.txt')).toBeNull();
+    expect(normalizeRunReviewPath('C:\\outside.txt')).toBeNull();
+    expect(resolveRunFilePreview(result.current[0]!, '/workspace')).toBeNull();
   });
 });

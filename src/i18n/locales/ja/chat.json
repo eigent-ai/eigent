@@ -208,6 +208,7 @@
   "timeline-unsupported-event": "この部分の会話は、このバージョンの Eigent では表示できません。",
   "timeline-unknown-event": "不明",
   "timeline-older-hidden": "以前のメッセージはここには表示されません。",
+  "timeline-show-older": "以前のメッセージを表示",
   "timeline-history-window": "ここには最近のアクティビティのみが表示されます。",
   "timeline-history-partial-error": "以前のメッセージを読み込めませんでした。",
   "timeline-history-error": "この会話を読み込めませんでした。",
@@ -219,5 +220,6 @@
   "timeline-style-normal": "標準",
   "timeline-style-detailed": "詳細",
   "timeline-style-summarized": "要約",
-  "files-changed": "変更されたファイル"
+  "files-changed": "変更されたファイル",
+  "view-changes": "変更を表示"
 }

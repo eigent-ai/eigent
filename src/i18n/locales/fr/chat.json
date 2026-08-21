@@ -208,6 +208,7 @@
   "timeline-unsupported-event": "Cette partie de la conversation ne peut pas être affichée dans cette version d’Eigent.",
   "timeline-unknown-event": "Inconnu",
   "timeline-older-hidden": "Les messages plus anciens ne sont pas affichés ici.",
+  "timeline-show-older": "Afficher les messages précédents",
   "timeline-history-window": "Seule votre activité la plus récente est affichée ici.",
   "timeline-history-partial-error": "Impossible de charger les messages plus anciens.",
   "timeline-history-error": "Impossible de charger cette conversation.",
@@ -219,5 +220,6 @@
   "timeline-style-normal": "Normal",
   "timeline-style-detailed": "Détaillé",
   "timeline-style-summarized": "Résumé",
-  "files-changed": "Fichiers modifiés"
+  "files-changed": "Fichiers modifiés",
+  "view-changes": "Voir les modifications"
 }

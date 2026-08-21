@@ -16,7 +16,10 @@ import { ArtifactChangeList } from '@/components/ChatBox/MessageItem/ArtifactCha
 import type { ChatArtifactNode } from '@/lib/projector/chat';
 import type { ProjectedArtifact } from '@/lib/projector/types';
 import { cn } from '@/lib/utils';
-import { resolveWorkspaceFilePath } from '@/lib/workspaceRelativePath';
+import {
+  normalizeWorkspaceRelativePath,
+  resolveWorkspaceFilePath,
+} from '@/lib/workspaceRelativePath';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { FileText } from 'lucide-react';
@@ -27,18 +30,18 @@ function extension(name: string): string {
   return name.includes('.') ? name.split('.').at(-1) || '' : '';
 }
 
-function fileInfoFromProjectedArtifact(
-  artifact: ProjectedArtifact,
-  workspaceRoot?: string | null
-): FileInfo {
+export function normalizeRunReviewPath(
+  value: string | undefined
+): string | null {
+  return normalizeWorkspaceRelativePath(value);
+}
+
+function fileInfoFromProjectedArtifact(artifact: ProjectedArtifact): FileInfo {
   const localPathAvailable = artifact.localPathAvailable;
-  const resolvedPath = localPathAvailable
-    ? resolveWorkspaceFilePath(workspaceRoot, artifact.relativePath)
-    : '';
   return {
     name: artifact.name,
     type: extension(artifact.name),
-    path: resolvedPath,
+    path: '',
     relativePath: artifact.relativePath,
     artifactId: artifact.artifactId,
     artifactChange: artifact.changeType,
@@ -55,24 +58,21 @@ function fileInfoFromProjectedArtifact(
   };
 }
 
-function fileInfoFromChatArtifact(
-  artifact: ChatArtifactNode,
-  workspaceRoot?: string | null
-): FileInfo {
+function fileInfoFromChatArtifact(artifact: ChatArtifactNode): FileInfo {
+  const relativePath =
+    normalizeRunReviewPath(artifact.relativePath) ??
+    normalizeRunReviewPath(artifact.path) ??
+    undefined;
   const name =
     artifact.name ||
-    artifact.relativePath?.split('/').filter(Boolean).at(-1) ||
+    relativePath?.split('/').filter(Boolean).at(-1) ||
     artifact.path.split('/').filter(Boolean).at(-1) ||
     artifact.path;
-  const resolvedPath = resolveWorkspaceFilePath(
-    workspaceRoot,
-    artifact.relativePath || artifact.path
-  );
   return {
     name,
     type: extension(name),
-    path: resolvedPath,
-    relativePath: artifact.relativePath,
+    path: '',
+    relativePath,
     artifactId: artifact.artifactId,
     artifactChange:
       artifact.operation === 'created'
@@ -81,7 +81,6 @@ function fileInfoFromChatArtifact(
           ? 'changed'
           : undefined,
     mimeType: artifact.mimeType,
-    localPathAvailable: Boolean(resolvedPath),
   };
 }
 
@@ -94,30 +93,39 @@ function uniqueFiles(files: readonly FileInfo[]): FileInfo[] {
   return [...byIdentity.values()];
 }
 
-export function normalizeRunReviewPath(
-  value: string | undefined
-): string | null {
-  const path = value?.trim().replace(/\\/g, '/');
-  if (
-    !path ||
-    path.startsWith('/') ||
-    path.startsWith('~/') ||
-    (path.length > 1 && path[1] === ':') ||
-    path.split('/').includes('..')
-  ) {
-    return null;
-  }
-  return path.replace(/^\.\//, '');
-}
-
 export function runFileReviewPath(file: FileInfo): string | null {
   return normalizeRunReviewPath(file.relativePath);
+}
+
+export function resolveRunFilePreview(
+  file: FileInfo,
+  workspaceRoot: string | null | undefined
+): FileInfo | null {
+  // A projected Artifact may retain its Cloud reference even after the local
+  // Project workspace has been restored. Prefer that workspace copy so file
+  // previews keep using Electron's bounded local loader (including the rich
+  // HTML renderer) instead of a short-lived, CORS-sensitive signed URL.
+  const localPath = resolveWorkspaceFilePath(workspaceRoot, file.relativePath);
+  if (localPath) {
+    return {
+      ...file,
+      path: localPath,
+      localPathAvailable: true,
+      isRemote: false,
+    };
+  }
+
+  const existingPath = file.path?.trim();
+  if (existingPath && !file.isRemote) return file;
+  if (file.isRemote && (file.assetRef || /^https?:\/\//i.test(existingPath))) {
+    return file;
+  }
+  return null;
 }
 
 export interface RunFileSources {
   artifactNodes?: readonly ChatArtifactNode[];
   projectedArtifacts?: readonly ProjectedArtifact[];
-  workspaceRoot?: string | null;
 }
 
 export interface RunFilesProps extends RunFileSources {
@@ -127,44 +135,41 @@ export interface RunFilesProps extends RunFileSources {
 export function useRunFileInfo({
   artifactNodes = [],
   projectedArtifacts = [],
-  workspaceRoot = null,
 }: RunFileSources): FileInfo[] {
   return useMemo(
     () =>
       uniqueFiles(
         projectedArtifacts.length > 0
-          ? projectedArtifacts.map((artifact) =>
-              fileInfoFromProjectedArtifact(artifact, workspaceRoot)
-            )
+          ? projectedArtifacts.map(fileInfoFromProjectedArtifact)
           : artifactNodes
               .filter((artifact) => artifact.operation !== 'deleted')
-              .map((artifact) =>
-                fileInfoFromChatArtifact(artifact, workspaceRoot)
-              )
+              .map(fileInfoFromChatArtifact)
       ),
-    [artifactNodes, projectedArtifacts, workspaceRoot]
+    [artifactNodes, projectedArtifacts]
   );
 }
 
 export function RunFilesGroup(props: RunFilesProps) {
-  const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
-  const spaceRootPath = useSpaceStore((s) =>
-    activeSpaceId ? s.spaces[activeSpaceId]?.rootPath : undefined
-  );
-  const files = useRunFileInfo({
-    ...props,
-    workspaceRoot: props.workspaceRoot ?? spaceRootPath ?? null,
+  const files = useRunFileInfo(props);
+  const projectId = usePageTabStore((state) => state.sessionPreviewProjectId);
+  const workspaceRoot = useSpaceStore((state) => {
+    const spaceId = projectId ? state.getProjectMeta(projectId)?.spaceId : null;
+    return spaceId ? state.spaces[spaceId]?.rootPath : null;
   });
+  const openFilePreview = usePageTabStore((state) => state.openFilePreview);
   const openReviewPreview = usePageTabStore((state) => state.openReviewPreview);
 
   return (
     <ArtifactChangeList
       files={files}
+      onViewChanges={() => openReviewPreview({ runId: props.runId })}
       onOpen={(file) => {
-        const path = runFileReviewPath(file);
-        if (path) openReviewPreview({ runId: props.runId, path });
+        const preview = resolveRunFilePreview(file, workspaceRoot);
+        if (preview) openFilePreview(preview);
       }}
-      canOpenFile={(file) => runFileReviewPath(file) !== null}
+      canOpenFile={(file) =>
+        resolveRunFilePreview(file, workspaceRoot) !== null
+      }
     />
   );
 }

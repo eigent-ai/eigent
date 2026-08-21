@@ -38,10 +38,14 @@ function isAbsolutePath(value: string): boolean {
  * that needs a delete event from the file toolkit; the server-backed overlay
  * path already reports deletions authoritatively.
  */
-export function collectChangedFilePaths(entries: ReviewChatEntry[]): string[] {
+export function collectChangedFilePaths(
+  entries: ReviewChatEntry[],
+  runId?: string
+): string[] {
   const paths = new Set<string>();
   for (const { tasks } of entries) {
-    for (const task of Object.values(tasks)) {
+    const selectedTasks = runId ? [tasks[runId]] : Object.values(tasks);
+    for (const task of selectedTasks) {
       for (const file of collectSidePanelOutputFiles(task)) {
         const raw = (file.path ?? '').trim();
         if (!raw || !isAbsolutePath(raw)) continue;

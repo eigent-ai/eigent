@@ -208,6 +208,7 @@
   "timeline-unsupported-event": "Эту часть переписки нельзя показать в этой версии Eigent.",
   "timeline-unknown-event": "Неизвестно",
   "timeline-older-hidden": "Более старые сообщения здесь не показаны.",
+  "timeline-show-older": "Показать предыдущие сообщения",
   "timeline-history-window": "Здесь показана только ваша недавняя активность.",
   "timeline-history-partial-error": "Не удалось загрузить более старые сообщения.",
   "timeline-history-error": "Не удалось загрузить эту переписку.",
@@ -219,5 +220,6 @@
   "timeline-style-normal": "Обычный",
   "timeline-style-detailed": "Подробный",
   "timeline-style-summarized": "Сводный",
-  "files-changed": "Изменённые файлы"
+  "files-changed": "Изменённые файлы",
+  "view-changes": "Просмотреть изменения"
 }

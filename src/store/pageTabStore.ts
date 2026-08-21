@@ -745,20 +745,31 @@ export const usePageTabStore = create<PageTabState>()(
         setSessionPreviewSlice(set, (slice) => {
           const targetFile = file ?? null;
           const previewTabs = slice.tabs;
-          const matchingTab = targetFile
-            ? previewTabs.find(
+          const matchingIndex = targetFile
+            ? previewTabs.findIndex(
                 (tab) =>
                   tab.type === 'file' &&
                   tab.file !== null &&
                   isSameFilePreview(tab.file, targetFile)
               )
-            : previewTabs.find(
+            : previewTabs.findIndex(
                 (tab) => tab.type === 'file' && tab.file === null
               );
-          if (matchingTab) {
+          if (matchingIndex >= 0) {
+            const matchingTab = previewTabs[matchingIndex] as SessionFileTab;
+            const tabs = [...previewTabs];
+            // Durable Artifact identity intentionally deduplicates the tab,
+            // but its preview source may change after workspace restoration
+            // (for example from a signed Cloud URL to a local Space path).
+            // Refresh the tab payload so a persisted remote source cannot win.
+            tabs[matchingIndex] = {
+              ...matchingTab,
+              title: targetFile?.name || matchingTab.title,
+              file: targetFile,
+            };
             return {
               open: true,
-              tabs: previewTabs,
+              tabs,
               activeTabId: matchingTab.id,
             };
           }
