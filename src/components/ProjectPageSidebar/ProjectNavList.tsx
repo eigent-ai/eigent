@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { NavTab, SidebarScrollArea } from '@/components/Layout/AppSidebar';
+import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { cn } from '@/lib/utils';
 import { Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -87,6 +88,14 @@ export function ProjectNavList({
           onClick={onNewProject}
           leading={<Plus className="h-4 w-4 shrink-0" aria-hidden />}
           label={newProjectLabel}
+          tooltip={
+            <ShortcutTooltipContent
+              label={newProjectLabel}
+              shortcutId="new-project"
+            />
+          }
+          tooltipCompact
+          tooltipVariant="delayed"
           ariaLabel={newProjectLabel}
           ariaCurrentPage={newProjectActive}
         />

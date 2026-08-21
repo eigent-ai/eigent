@@ -536,7 +536,7 @@ export function WorkspaceProjectPicker({
         activeSpaceId,
         projectStore,
         createdFrom: 'workspace_folder_space_picker',
-        onUnavailable: openAgentFolderTab,
+        onUnavailable: openFilesTab,
       });
       if (!spaceId) return false;
       setActiveWorkspaceTab('workforce');
@@ -554,10 +554,10 @@ export function WorkspaceProjectPicker({
     }
   };
 
-  const openAgentFolderTab = () => {
+  const openFilesTab = () => {
     const pid = projectStore.activeProjectId;
-    setActiveWorkspaceTab('inbox', {
-      clearInboxForProjectId: pid ?? undefined,
+    setActiveWorkspaceTab('files', {
+      clearFilesForProjectId: pid ?? undefined,
     });
     setMenuOpen(false);
   };

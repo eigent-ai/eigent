@@ -12,13 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { AUTOMATION_ICON } from '@/lib/triggerIcon';
 import {
   proxyActivateTrigger,
   proxyDeactivateTrigger,
   proxyDeleteTrigger,
 } from '@/service/triggerApi';
 import { Trigger, TriggerStatus, TriggerType } from '@/types';
-import { Zap } from 'lucide-react';
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import HomeHubBoard from './components/HomeHubBoard';
@@ -212,7 +212,7 @@ export default function Triggers({
       <div className="mb-12 w-full min-w-0">
         {triggers.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-8 text-center">
-            <Zap className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default" />
+            <AUTOMATION_ICON className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default" />
             <div className="text-sm text-ds-text-neutral-muted-default">
               {t('triggers.no-triggers') || t('layout.triggers')}
             </div>

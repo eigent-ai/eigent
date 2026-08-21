@@ -360,7 +360,7 @@ describe('useTriggerTaskExecutor — hook behavior', () => {
     // Toast info should have been called on start
     expect(toast.info).toHaveBeenCalledWith(
       'Execution started: Remote Trigger',
-      expect.objectContaining({ description: 'Processing trigger task...' })
+      expect.objectContaining({ description: 'Running the automation...' })
     );
     // Toast success should have been called after queueing
     expect(toast.success).toHaveBeenCalledWith(

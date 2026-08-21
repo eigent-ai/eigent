@@ -19,9 +19,8 @@ export function createHost(): AppHost {
   if (typeof window === 'undefined') {
     return { electronAPI: null, ipcRenderer: null };
   }
-  const win = window as any;
   return {
-    electronAPI: win.electronAPI ?? null,
-    ipcRenderer: win.ipcRenderer ?? null,
+    electronAPI: window.electronAPI ?? null,
+    ipcRenderer: window.ipcRenderer ?? null,
   };
 }

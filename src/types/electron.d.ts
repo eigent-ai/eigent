@@ -13,17 +13,21 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 interface IpcRenderer {
-  getPlatform: () => string;
-  minimizeWindow: () => void;
-  toggleMaximizeWindow: () => void;
-  closeWindow: () => void;
-  triggerMenuAction: (action: string) => void;
-  onExecuteAction: (callback: (action: string) => void) => void;
+  on: (
+    channel: string,
+    listener: (event: unknown, ...args: any[]) => void
+  ) => void;
+  off: (
+    channel: string,
+    listener: (event: unknown, ...args: any[]) => void
+  ) => void;
+  send: (channel: string, ...args: any[]) => void;
   invoke: (channel: string, ...args: any[]) => Promise<any>;
+  removeAllListeners: (channel: string) => void;
 }
 
 interface ElectronAPI {
-  closeWindow: () => void;
+  closeWindow: (isForceQuit?: boolean) => void;
   minimizeWindow: () => void;
   toggleMaximizeWindow: () => void;
   isFullScreen: () => Promise<boolean>;
@@ -67,8 +71,17 @@ interface ElectronAPI {
     fileName?: string;
     error?: string;
   }>;
-  triggerMenuAction: (action: string) => void;
-  onExecuteAction: (callback: (action: string) => void) => void;
+  onAppCommand: (
+    callback: (command: import('@/shared/appCommands').AppCommandId) => void
+  ) => () => void;
+  onCloseRequest: (
+    callback: (
+      request: import('@/shared/windowClose').WindowCloseRequest
+    ) => void
+  ) => () => void;
+  respondToCloseRequest: (
+    response: import('@/shared/windowClose').WindowCloseResponse
+  ) => void;
   getPlatform: () => string;
   getHomeDir: () => Promise<string>;
   createWebView: (id: string, url: string) => Promise<any>;

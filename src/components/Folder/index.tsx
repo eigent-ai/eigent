@@ -2930,7 +2930,7 @@ function BlockedPreviewPlaceholder({
 
 /**
  * Presentational file viewer: breadcrumb header + type-aware content body.
- * Shared by the Inbox/Folder tab and the inline project-page preview so both
+ * Shared by the Files tab and the inline project-page preview so both
  * render markdown/PDF/docs/HTML/media identically. All data and callbacks are
  * supplied by the parent — this component owns no loading state.
  */

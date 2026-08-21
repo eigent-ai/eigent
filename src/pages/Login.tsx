@@ -318,21 +318,6 @@ export default function Login() {
     }
   }, [host]);
 
-  // Handle before-close event for login page
-  useEffect(() => {
-    if (!host?.ipcRenderer || !host?.electronAPI) return;
-
-    const handleBeforeClose = () => {
-      host.electronAPI.closeWindow(true);
-    };
-
-    host.ipcRenderer.on('before-close', handleBeforeClose);
-
-    return () => {
-      host.ipcRenderer?.off('before-close', handleBeforeClose);
-    };
-  }, [host]);
-
   // Hybrid/app mode: prepare auth callback URL on mount (don't auto-open browser)
   useEffect(() => {
     if (IS_LOCAL_MODE) return;

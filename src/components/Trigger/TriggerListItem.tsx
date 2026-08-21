@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Switch } from '@/components/ui/switch';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { iconForTriggerType } from '@/lib/triggerIcon';
 import { formatDateTime } from '@/lib/utils';
 import { Trigger, TriggerStatus, TriggerType } from '@/types';
 import {
@@ -32,7 +33,6 @@ import {
   MoreHorizontal,
   Trash2,
   WebhookIcon,
-  Zap,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -92,6 +92,8 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
     return formatDateTime(dateString, 'HH:mm MMM dd');
   };
 
+  const TriggerIcon = iconForTriggerType(trigger.trigger_type);
+
   return (
     <div
       onClick={() => onSelect(trigger.id)}
@@ -103,12 +105,12 @@ export const TriggerListItem: React.FC<TriggerListItemProps> = ({
             : 'hover:!bg-ds-bg-neutral-strong-default'
       }`}
     >
-      {/* 1. Zap Icon */}
+      {/* 1. Icon for the event that starts this automation */}
       <div className="bg-amber-500/10 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg">
-        <Zap className="h-5 w-5 text-ds-icon-neutral-default-default" />
+        <TriggerIcon className="h-5 w-5 text-ds-icon-neutral-default-default" />
       </div>
 
-      {/* 2. Trigger Name + Task Prompt */}
+      {/* 2. Automation name + task prompt */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <div className="truncate text-sm font-semibold text-ds-text-neutral-default-default transition-colors group-hover:text-ds-text-brand-default-hover">

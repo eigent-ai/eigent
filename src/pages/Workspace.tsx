@@ -133,13 +133,13 @@ export default function WorkspacePage() {
   }, []);
 
   // Project-scoped tabs (except new-project shell) require an active project.
-  // When opening inbox/runs/project from the workspace tab without a selection,
+  // When opening files/runs/project from the workspace tab without a selection,
   // fall back to the last visited (or first) project in the space instead of
   // bouncing back to workforce.
   useLayoutEffect(() => {
     const isProjectScopedTab =
       activeWorkspaceTab === 'project' ||
-      activeWorkspaceTab === 'inbox' ||
+      activeWorkspaceTab === 'files' ||
       activeWorkspaceTab === 'runs';
 
     if (!isProjectScopedTab || activeProjectId) return;
@@ -436,7 +436,7 @@ export default function WorkspacePage() {
             <WorkspaceDispatch />
           </div>
         );
-      case 'inbox':
+      case 'files':
         return (
           <div className={mainPanelContentClass}>
             <Folder />

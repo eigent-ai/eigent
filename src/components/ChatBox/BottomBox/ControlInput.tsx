@@ -14,10 +14,17 @@
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { ShortcutKeycap } from '@/components/ui/shortcut-keycap';
 import { Textarea } from '@/components/ui/textarea';
+import { useDesktopShortcutPlatform } from '@/hooks/useDesktopShortcutPlatform';
 import { cn } from '@/lib/utils';
+import {
+  formatKeyboardShortcutKeys,
+  getEnterKeyLabel,
+  getShiftKeyLabel,
+} from '@/shared/keyboardShortcuts';
 import { Check, TriangleAlert } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BoxHeaderDisplay } from './BoxHeader';
 import type { InputboxProps } from './InputBox';
@@ -101,14 +108,103 @@ function ConfirmationInput({
   );
 }
 
+/**
+ * Keyboard approval is deliberately limited to the two reversible scopes.
+ * `space` grants a standing, space-wide permission -- that stays a deliberate
+ * click, never a keystroke, because Shift+Enter is universal muscle memory for
+ * "newline" and a stray press must not widen an agent's permissions.
+ */
+const APPROVAL_SHORTCUT_SCOPES = {
+  plain: 'once',
+  shift: 'run',
+} as const satisfies Record<'plain' | 'shift', BottomBoxApprovalScope>;
+
 function ApprovalInput({ variant }: { variant: BottomBoxApprovalVariant }) {
   const { t } = useTranslation();
+  const platform = useDesktopShortcutPlatform();
+  const enterLabel = getEnterKeyLabel(platform);
+  const shiftLabel = getShiftKeyLabel(platform);
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  const { disabled, onApprove, submitting } = variant;
+  const offeredScopes = variant.options.map((option) => option.scope);
+  const approveOnceAvailable = offeredScopes.includes(
+    APPROVAL_SHORTCUT_SCOPES.plain
+  );
+  const approveRunAvailable = offeredScopes.includes(
+    APPROVAL_SHORTCUT_SCOPES.shift
+  );
   const approve = (scope: BottomBoxApprovalScope) => {
-    if (!variant.disabled && !variant.submitting) variant.onApprove(scope);
+    if (!disabled && !submitting) onApprove(scope);
   };
+
+  useEffect(() => {
+    if (disabled || submitting) return;
+    if (!approveOnceAvailable && !approveRunAvailable) return;
+
+    const handleApprovalShortcut = (event: KeyboardEvent) => {
+      if (
+        event.key !== 'Enter' ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.repeat ||
+        event.isComposing
+      ) {
+        return;
+      }
+
+      const surface = surfaceRef.current;
+      if (!surface || !surface.isConnected) return;
+
+      // Only claim Enter when this surface owns the keyboard: focus is inside
+      // it, or nothing is focused at all. Anything else -- an open dialog, a
+      // popover, another panel -- keeps its own Enter handling, so a modal can
+      // never silently grant a tool permission behind the user's back.
+      const active = surface.ownerDocument.activeElement;
+      const ownsKeyboard =
+        active === null ||
+        active === surface.ownerDocument.body ||
+        active === surface.ownerDocument.documentElement ||
+        surface.contains(active);
+      if (!ownsKeyboard) return;
+
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A'].includes(
+            target.tagName
+          ))
+      ) {
+        return;
+      }
+
+      const scope = event.shiftKey
+        ? approveRunAvailable
+          ? APPROVAL_SHORTCUT_SCOPES.shift
+          : undefined
+        : approveOnceAvailable
+          ? APPROVAL_SHORTCUT_SCOPES.plain
+          : undefined;
+      if (!scope) return;
+
+      event.preventDefault();
+      onApprove(scope);
+    };
+
+    window.addEventListener('keydown', handleApprovalShortcut);
+    return () => window.removeEventListener('keydown', handleApprovalShortcut);
+  }, [
+    approveOnceAvailable,
+    approveRunAvailable,
+    disabled,
+    onApprove,
+    submitting,
+  ]);
 
   return (
     <div
+      ref={surfaceRef}
       data-bottom-box-input-surface
       data-approval-surface
       className={controlSurfaceClassName}
@@ -132,20 +228,34 @@ function ApprovalInput({ variant }: { variant: BottomBoxApprovalVariant }) {
           >
             {variant.rejectLabel ?? t('chat.control-reject')}
           </Button>
-          {variant.options.map((option) => (
-            <Button
-              key={option.scope}
-              type="button"
-              variant="primary"
-              tone="success"
-              size="sm"
-              buttonRadius="full"
-              disabled={variant.disabled || variant.submitting}
-              onClick={() => approve(option.scope)}
-            >
-              {option.label}
-            </Button>
-          ))}
+          {variant.options.map((option) => {
+            const shortcutLabel =
+              option.scope === APPROVAL_SHORTCUT_SCOPES.plain
+                ? enterLabel
+                : option.scope === APPROVAL_SHORTCUT_SCOPES.shift
+                  ? formatKeyboardShortcutKeys([shiftLabel, enterLabel])
+                  : undefined;
+
+            return (
+              <Button
+                key={option.scope}
+                type="button"
+                variant="primary"
+                tone="success"
+                size="sm"
+                buttonRadius="full"
+                disabled={variant.disabled || variant.submitting}
+                onClick={() => approve(option.scope)}
+              >
+                <span>{option.label}</span>
+                {shortcutLabel ? (
+                  <ShortcutKeycap appearance="button" aria-hidden>
+                    {shortcutLabel}
+                  </ShortcutKeycap>
+                ) : null}
+              </Button>
+            );
+          })}
         </ControlActions>
       </div>
     </div>
@@ -295,6 +405,7 @@ function SelectionInput({ variant }: { variant: BottomBoxSelectionVariant }) {
 
 function FeedbackInput({ variant }: { variant: BottomBoxFeedbackVariant }) {
   const { t } = useTranslation();
+  const enterLabel = getEnterKeyLabel(useDesktopShortcutPlatform());
 
   return (
     <div className={controlSurfaceClassName}>
@@ -335,9 +446,16 @@ function FeedbackInput({ variant }: { variant: BottomBoxFeedbackVariant }) {
           }
           onClick={variant.onSubmit}
         >
-          {variant.submitting
-            ? t('chat.control-submitting')
-            : (variant.submitLabel ?? t('chat.control-send-feedback'))}
+          <span>
+            {variant.submitting
+              ? t('chat.control-submitting')
+              : (variant.submitLabel ?? t('chat.control-send-feedback'))}
+          </span>
+          {!variant.submitting ? (
+            <ShortcutKeycap appearance="button" aria-hidden>
+              {enterLabel}
+            </ShortcutKeycap>
+          ) : null}
         </Button>
       </ControlActions>
     </div>

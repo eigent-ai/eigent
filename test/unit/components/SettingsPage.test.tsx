@@ -237,7 +237,7 @@ describe('SettingsPage', () => {
       within(sidebar).queryByRole('button', { name: 'Tasks' })
     ).not.toBeInTheDocument();
     expect(
-      within(sidebar).queryByRole('button', { name: 'Triggers' })
+      within(sidebar).queryByRole('button', { name: 'Automations' })
     ).not.toBeInTheDocument();
     expect(globalSettingLabel).toBeInTheDocument();
     expect(
@@ -680,7 +680,7 @@ describe('SettingsPage', () => {
     for (const tabName of [
       'Projects',
       'Tasks',
-      'Triggers',
+      'Automations',
       'Context',
       'Memory',
       'Space Settings',

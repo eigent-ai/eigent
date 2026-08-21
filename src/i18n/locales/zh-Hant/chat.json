@@ -95,7 +95,7 @@
   "open-in-file-manager": "檔案管理器",
   "failed-to-open-folder": "無法開啟資料夾",
   "task-completed-card-title": "任務已完成",
-  "task-completed-card-subtitle": "使用觸發器自動化您的任務",
+  "task-completed-card-subtitle": "自動化此任務",
   "single-agent-working": "{{agent}} 正在努力處理",
   "agent-outcome-expand": "展開",
   "agent-outcome-collapse": "收合",

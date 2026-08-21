@@ -95,7 +95,7 @@
   "open-in-file-manager": "파일 관리자",
   "failed-to-open-folder": "폴더를 열 수 없습니다",
   "task-completed-card-title": "작업 완료",
-  "task-completed-card-subtitle": "트리거로 작업을 자동화하세요",
+  "task-completed-card-subtitle": "이 작업 자동화하기",
   "single-agent-working": "{{agent}}가 열심히 작업 중입니다",
   "agent-outcome-expand": "펼치기",
   "agent-outcome-collapse": "접기",

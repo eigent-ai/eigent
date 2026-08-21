@@ -15,8 +15,8 @@
 import { proxyFetchGet } from '@/api/http';
 import eigentAppIconBlack from '@/assets/logo/icon_black.svg';
 import eigentAppIconWhite from '@/assets/logo/icon_white.svg';
-import ReportBugDialog from '@/components/Dialog/ReportBugDialog';
 import NewSpaceDialog from '@/components/Home/NewSpaceDialog';
+import { useAppCommand } from '@/components/Layout/AppCommandProvider';
 import { SpaceSwitchDropdown } from '@/components/ProjectPageSidebar/SpaceSwitchDropdown';
 import {
   TOP_BAR_CONTROL_SELECTED_CLASS,
@@ -28,6 +28,7 @@ import { UserMenu } from '@/components/TopBar/UserMenu';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { WorkspaceVersionHistoryDialog } from '@/components/Workspace/WorkspaceVersionHistoryDialog';
 import { useWorkspaceSavePoint } from '@/hooks/useWorkspaceSavePoint';
@@ -50,6 +51,7 @@ import {
 import { resolveServerBackedSpaceId } from '@/lib/spaceProject';
 import { cn } from '@/lib/utils';
 import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
+import { APP_COMMAND } from '@/shared/appCommands';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationUI } from '@/store/installationStore';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -83,7 +85,7 @@ function HeaderWin() {
   const [platform, setPlatform] = useState<string>('');
   const navigate = useNavigate();
   const location = useLocation();
-  const [reportBugOpen, setReportBugOpen] = useState(false);
+  const executeAppCommand = useAppCommand();
   const [renameSpaceDialogOpen, setRenameSpaceDialogOpen] = useState(false);
   const [newSpaceDialogOpen, setNewSpaceDialogOpen] = useState(false);
   const [renameSpaceValue, setRenameSpaceValue] = useState('');
@@ -518,7 +520,13 @@ function HeaderWin() {
           sidebarControls={
             <>
               <TooltipSimple
-                content={sidebarToggleLabel}
+                content={
+                  <ShortcutTooltipContent
+                    label={sidebarToggleLabel}
+                    shortcutId="toggle-workspace-sidebar"
+                  />
+                }
+                compact
                 side="bottom"
                 align="center"
                 variant="instant"
@@ -545,30 +553,43 @@ function HeaderWin() {
                 </Button>
               </TooltipSimple>
 
-              <button
-                type="button"
-                onClick={openHome}
-                aria-label={t('layout.home')}
-                aria-current={isHomePage ? 'page' : undefined}
-                className={cn(
-                  TOP_BAR_PILL_CLASS,
-                  isHomePage && TOP_BAR_CONTROL_SELECTED_CLASS
-                )}
+              <TooltipSimple
+                content={
+                  <ShortcutTooltipContent
+                    label={t('layout.home')}
+                    shortcutId="navigate-home"
+                  />
+                }
+                compact
+                side="bottom"
+                align="center"
+                variant="delayed"
               >
-                <img
-                  src={
-                    appearance === 'dark'
-                      ? eigentAppIconWhite
-                      : eigentAppIconBlack
-                  }
-                  alt=""
-                  className="mt-[1px] h-[22px] w-[22px] shrink-0 select-none"
-                  width={16}
-                  height={16}
-                  draggable={false}
-                />
-                <span>{t('layout.home')}</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={openHome}
+                  aria-label={t('layout.home')}
+                  aria-current={isHomePage ? 'page' : undefined}
+                  className={cn(
+                    TOP_BAR_PILL_CLASS,
+                    isHomePage && TOP_BAR_CONTROL_SELECTED_CLASS
+                  )}
+                >
+                  <img
+                    src={
+                      appearance === 'dark'
+                        ? eigentAppIconWhite
+                        : eigentAppIconBlack
+                    }
+                    alt=""
+                    className="mt-[1px] h-[22px] w-[22px] shrink-0 select-none"
+                    width={16}
+                    height={16}
+                    draggable={false}
+                  />
+                  <span>{t('layout.home')}</span>
+                </button>
+              </TooltipSimple>
             </>
           }
           contentControls={
@@ -679,7 +700,7 @@ function HeaderWin() {
                 TOP_BAR_CONTROL_STATE_CLASS
               )}
               aria-label={t('layout.support')}
-              onClick={() => setReportBugOpen(true)}
+              onClick={() => executeAppCommand(APP_COMMAND.reportBug)}
               buttonContent="icon-only"
             >
               <CircleHelp aria-hidden />
@@ -722,7 +743,6 @@ function HeaderWin() {
           </button>
         </div>
       )}
-      <ReportBugDialog open={reportBugOpen} onOpenChange={setReportBugOpen} />
     </div>
   );
 }

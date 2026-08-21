@@ -14,6 +14,23 @@
 // Host abstraction: desktop (Electron) vs web. No explicit platform checks.
 // See docs/design/04-client.md.
 
+import type { AppCommandId } from '@/shared/appCommands';
+import type {
+  WindowCloseRequest,
+  WindowCloseResponse,
+} from '@/shared/windowClose';
+
+/** Typed slice for new app-shell IPC without widening the legacy host surface. */
+export interface AppShellElectronAPI {
+  closeWindow?: (isForceQuit?: boolean) => void;
+  getPlatform?: () => string;
+  onAppCommand?: (callback: (command: AppCommandId) => void) => () => void;
+  onCloseRequest?: (
+    callback: (request: WindowCloseRequest) => void
+  ) => () => void;
+  respondToCloseRequest?: (response: WindowCloseResponse) => void;
+}
+
 export interface AppHost {
   electronAPI: any;
   ipcRenderer: any;

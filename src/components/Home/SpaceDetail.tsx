@@ -17,6 +17,7 @@ import { resolveSpaceDetailMemoryTarget } from '@/components/Home/memoryRoute';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
+import { AUTOMATION_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
@@ -31,7 +32,6 @@ import {
   FolderOpen,
   HardDrive,
   ListChecks,
-  Zap,
 } from 'lucide-react';
 import {
   lazy,
@@ -339,8 +339,8 @@ export default function SpaceDetail({
                   loading={data.projectsLoading}
                 />
                 <Stat
-                  icon={<Zap className={statIconClassName} />}
-                  label="Triggers"
+                  icon={<AUTOMATION_ICON className={statIconClassName} />}
+                  label={t('layout.triggers')}
                   value={data.triggerCount}
                   loading={data.triggersLoading}
                 />

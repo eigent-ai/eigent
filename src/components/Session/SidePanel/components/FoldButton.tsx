@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { SessionModeType } from '@/types/constants';
@@ -49,7 +50,16 @@ export function SidePanelFoldButton({
         : t('layout.show-workforce-panel');
 
   return (
-    <TooltipSimple content={sessionSidePanelTooltip} variant="instant">
+    <TooltipSimple
+      content={
+        <ShortcutTooltipContent
+          label={sessionSidePanelTooltip}
+          shortcutId="toggle-session-side-panel"
+        />
+      }
+      compact
+      variant="instant"
+    >
       <Button
         type="button"
         variant="ghost"

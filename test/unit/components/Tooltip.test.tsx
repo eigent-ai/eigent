@@ -18,6 +18,22 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
 describe('TooltipSimple', () => {
+  it('removes vertical padding for compact shortcut content', async () => {
+    const user = userEvent.setup();
+    render(
+      <TooltipProvider delayDuration={0}>
+        <TooltipSimple content="Command B" compact variant="instant">
+          <button type="button">Toggle sidebar</button>
+        </TooltipSimple>
+      </TooltipProvider>
+    );
+
+    await user.hover(screen.getByRole('button', { name: 'Toggle sidebar' }));
+    await screen.findByRole('tooltip');
+    const visibleContent = document.querySelector('[data-side]');
+    expect(visibleContent).toHaveClass('py-0');
+  });
+
   it('does not restore a stale open tooltip when it is re-enabled', async () => {
     const user = userEvent.setup();
     const { rerender } = render(

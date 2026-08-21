@@ -438,7 +438,7 @@ export default function Memory({
             data-memory-scope-summary={scopeType}
             className="flex flex-col gap-3 rounded-2xl bg-ds-bg-information-subtle-default p-4 sm:flex-row sm:items-start"
           >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-ds-bg-neutral-default-default text-ds-icon-information-default-default">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-ds-bg-neutral-subtle-default text-ds-icon-information-default-default">
               <ScopeIcon className="h-5 w-5" aria-hidden />
             </div>
             <div className="min-w-0 flex-1">
@@ -446,13 +446,13 @@ export default function Memory({
                 <div className="text-body-sm font-semibold text-ds-text-neutral-default-default">
                   {scopePresentation.title}
                 </div>
-                <span className="rounded-full bg-ds-bg-neutral-default-default px-2 py-0.5 text-label-xs font-medium text-ds-text-neutral-muted-default">
+                <span className="rounded-full bg-ds-bg-neutral-subtle-default px-2 py-0.5 text-label-xs font-medium text-ds-text-neutral-muted-default">
                   {scopePresentation.eyebrow}
                 </span>
               </div>
-              <p className="mt-1 max-w-3xl text-body-sm text-ds-text-neutral-muted-default">
+              <span className="mt-1 max-w-3xl text-body-sm text-ds-text-neutral-muted-default">
                 {scopePresentation.description}
-              </p>
+              </span>
             </div>
           </div>
           {reconciliationItems.length > 0 && (

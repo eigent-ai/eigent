@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { BrowserWindow, WebContentsView } from 'electron';
+import { BrowserWindow, WebContentsView, type WebContents } from 'electron';
 
 interface WebViewInfo {
   id: string;
@@ -22,6 +22,14 @@ interface WebViewInfo {
   isActive: boolean;
   isShow: boolean;
   browserToolkitAdvertised: boolean;
+  disposeContextMenu?: () => void;
+}
+
+export interface WebViewManagerOptions {
+  installContextMenu?: (
+    contents: WebContents,
+    ownerWindow: BrowserWindow
+  ) => () => void;
 }
 
 interface Size {
@@ -44,6 +52,7 @@ export class WebViewManager {
   private size: Size = { x: 0, y: 0, width: 0, height: 0 };
   private maxInactiveWebviews = 5;
   private lastCleanupTime = Date.now();
+  private readonly installContextMenu?: WebViewManagerOptions['installContextMenu'];
 
   private getHiddenBounds(id: string, width = 100, height = 100) {
     const numericId = Number(id);
@@ -59,8 +68,9 @@ export class WebViewManager {
     };
   }
 
-  constructor(window: BrowserWindow) {
+  constructor(window: BrowserWindow, options: WebViewManagerOptions = {}) {
     this.win = window;
+    this.installContextMenu = options.installContextMenu;
   }
 
   // Remove automatic IPC handler registration from constructor
@@ -305,6 +315,9 @@ export class WebViewManager {
         isActive: false,
         isShow: false,
         browserToolkitAdvertised: false,
+        disposeContextMenu: this.win
+          ? this.installContextMenu?.(view.webContents, this.win)
+          : undefined,
       };
       // view.webContents.on("did-navigate", (event, url) => {
       //   const win = BrowserWindow.fromWebContents(event.sender);
@@ -499,6 +512,7 @@ export class WebViewManager {
         return { success: false, error: `Webview with id ${id} not found` };
       }
 
+      webViewInfo.disposeContextMenu?.();
       if (!webViewInfo.view.webContents.isDestroyed()) {
         webViewInfo.view.webContents.removeAllListeners();
         // DO NOT clear storage data here!

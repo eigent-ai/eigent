@@ -4578,8 +4578,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             setNuwFileNum(currentTaskId, tasks[currentTaskId].nuwFileNum + 1);
             const { activeWorkspaceTab, markTabAsUnviewed } =
               usePageTabStore.getState();
-            if (activeWorkspaceTab !== 'inbox' && project_id) {
-              markTabAsUnviewed('inbox', project_id);
+            if (activeWorkspaceTab !== 'files' && project_id) {
+              markTabAsUnviewed('files', project_id);
             }
             const { file_path } = agentMessages.data;
             const fileName =
@@ -4914,7 +4914,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               if (taskIdToRemove) {
                 const projectStore = useProjectStore.getState();
                 const project_id = agentMessages.data.project_id as
-                  string | undefined;
+                  | string
+                  | undefined;
                 if (project_id) {
                   const project = projectStore.getProjectById(project_id);
                   if (project && project.queuedMessages) {

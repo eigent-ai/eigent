@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { TooltipSimple } from '@/components/ui/tooltip';
+import { TooltipSimple, type TooltipVariant } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import type { ReactNode } from 'react';
@@ -75,7 +75,14 @@ export interface NavTabProps {
    * Hover tooltip. Omit it on rails whose labels are always fully visible —
    * only rows that can truncate (project names) need one.
    */
-  tooltip?: string;
+  tooltip?: ReactNode;
+  /** Removes tooltip vertical padding for a single-line shortcut label. */
+  tooltipCompact?: boolean;
+  /**
+   * Tooltip open timing. Omit to keep the layout default (`instant` on simple
+   * rows, `default` on split rows). Use `delayed` for labeled shortcut hints.
+   */
+  tooltipVariant?: TooltipVariant;
   /** When true, tooltips are hidden (labels are visible in the fixed-width sidebar). */
   tooltipEnabledWhenCollapsed?: boolean;
   ariaLabel?: string;
@@ -172,6 +179,8 @@ export function NavTab({
   layout = 'simple',
   suffix,
   tooltip,
+  tooltipCompact = false,
+  tooltipVariant,
   tooltipEnabledWhenCollapsed = false,
   ariaLabel,
   ariaDescribedBy,
@@ -198,6 +207,8 @@ export function NavTab({
 
   const tooltipEnabled =
     Boolean(tooltip) && (folded || !tooltipEnabledWhenCollapsed);
+  const resolvedTooltipVariant =
+    tooltipVariant ?? (layout === 'split' ? 'default' : 'instant');
 
   if (layout === 'split') {
     return (
@@ -206,6 +217,8 @@ export function NavTab({
         side="right"
         align="center"
         enabled={tooltipEnabled}
+        compact={tooltipCompact}
+        variant={resolvedTooltipVariant}
         className={SIDEBAR_TOOLTIP_CONTENT_CLASS}
       >
         <div
@@ -277,7 +290,8 @@ export function NavTab({
       side="right"
       align="center"
       enabled={tooltipEnabled}
-      variant="instant"
+      compact={tooltipCompact}
+      variant={resolvedTooltipVariant}
       className={SIDEBAR_TOOLTIP_CONTENT_CLASS}
     >
       <button

@@ -114,7 +114,7 @@ export function useHomeHubNavigation() {
         }
         projectStore.createProject(
           project.project_name || 'Project',
-          'Project with triggers',
+          'Project with automations',
           projectId
         );
         setActiveWorkspaceTab('project');
@@ -190,7 +190,7 @@ export function useHomeHubNavigation() {
         } else {
           projectStore.createProject(
             trigger.name || 'Project',
-            'Project with triggers',
+            'Project with automations',
             trigger.project_id
           );
         }

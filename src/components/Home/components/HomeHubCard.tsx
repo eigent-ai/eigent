@@ -15,6 +15,7 @@
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { iconForTriggerType } from '@/lib/triggerIcon';
 import { useSpaceStore } from '@/store/spaceStore';
 import { TriggerStatus } from '@/types';
 import {
@@ -28,7 +29,6 @@ import {
   Power,
   Share2,
   Trash2,
-  Zap,
 } from 'lucide-react';
 import { useCallback, useState, type MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -551,6 +551,8 @@ function TriggerItemContent({
     },
   ];
 
+  const TriggerIcon = iconForTriggerType(trigger.trigger_type);
+
   return (
     <HomeHubItemShell
       onClick={() => void openTrigger(trigger)}
@@ -561,7 +563,7 @@ function TriggerItemContent({
       {layout === 'list' ? (
         <HomeHubItemBody
           title={trigger.name}
-          nameIcon={<Zap className="h-4 w-4" />}
+          nameIcon={<TriggerIcon className="h-4 w-4" />}
           listCells={[
             { id: 'space', content: spaceLabel || '—' },
             { id: 'type', content: triggerTypeLabel },
@@ -580,6 +582,7 @@ function TriggerItemContent({
       ) : layout === 'board' ? (
         <HomeHubTriggerBoardCardBody
           title={trigger.name}
+          triggerType={trigger.trigger_type}
           triggerTypeLabel={triggerTypeLabel}
           executionCount={trigger.execution_count ?? 0}
           spaceLabel={spaceLabel}
@@ -591,6 +594,7 @@ function TriggerItemContent({
       ) : (
         <HomeHubTriggerCardBody
           title={trigger.name}
+          triggerType={trigger.trigger_type}
           triggerTypeLabel={triggerTypeLabel}
           executionCount={trigger.execution_count ?? 0}
           spaceLabel={spaceLabel}
