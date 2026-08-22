@@ -15,6 +15,7 @@
 import {
   Button,
   type ButtonLegacyVariant,
+  type ButtonTone,
   type ButtonVariant,
 } from '@/components/ui/button';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -33,6 +34,7 @@ interface ConfirmModalProps {
   confirmText?: string;
   cancelText?: string;
   confirmVariant?: ConfirmVariant;
+  confirmTone?: ButtonTone;
   hideCancel?: boolean;
   confirmDisabled?: boolean;
   children?: ReactNode;
@@ -46,7 +48,8 @@ export default function ConfirmModal({
   message: messageProp,
   confirmText: confirmTextProp,
   cancelText: cancelTextProp,
-  confirmVariant = 'caution',
+  confirmVariant,
+  confirmTone,
   hideCancel = false,
   confirmDisabled = false,
   children,
@@ -58,6 +61,13 @@ export default function ConfirmModal({
   const message = messageProp ?? t('layout.confirm-content');
   const confirmText = confirmTextProp ?? t('layout.confirm');
   const cancelText = cancelTextProp ?? t('layout.cancel');
+  const isLegacyCaution = confirmVariant === 'caution';
+  const resolvedVariant: ConfirmVariant =
+    confirmVariant == null || isLegacyCaution ? 'primary' : confirmVariant;
+  const resolvedTone: ButtonTone | undefined =
+    confirmVariant == null || isLegacyCaution
+      ? (confirmTone ?? 'error')
+      : confirmTone;
 
   if (typeof document === 'undefined') return null;
 
@@ -83,12 +93,12 @@ export default function ConfirmModal({
             aria-modal="true"
             aria-labelledby={titleId}
             aria-describedby={descriptionId}
-            className="alert-dialog-wrapper fixed left-1/2 top-1/2 z-[100] w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl"
+            className="alert-dialog-wrapper fixed top-1/2 left-1/2 z-[100] w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-xl"
           >
-            <div className="rounded-xl border border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default p-6 shadow-perfect">
+            <div className="rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default p-6 shadow-ds-elevation-dialog">
               <span
                 id={titleId}
-                className="mb-2 block text-body-lg font-bold text-ds-text-neutral-default-default"
+                className="mb-2 block !text-ds-text-section font-bold text-ds-ink-default-default"
               >
                 {title}
               </span>
@@ -99,7 +109,7 @@ export default function ConfirmModal({
               ) : (
                 <span
                   id={descriptionId}
-                  className="mb-6 block text-label-md text-ds-text-neutral-muted-default"
+                  className="mb-6 block !text-ds-text-body-large text-ds-ink-muted-default"
                 >
                   {message}
                 </span>
@@ -112,7 +122,8 @@ export default function ConfirmModal({
                   </Button>
                 )}
                 <Button
-                  variant={confirmVariant}
+                  variant={resolvedVariant}
+                  tone={resolvedTone}
                   disabled={confirmDisabled}
                   onClick={() => {
                     if (confirmDisabled) return;

@@ -49,7 +49,7 @@ export function ShortcutTooltipContent({
     (shortcut ? formatKeyboardShortcutKeys(shortcut.keys) : undefined);
 
   const shortcutRow = (
-    <span className="flex h-4 min-w-0 items-center justify-between gap-3 text-label-xs leading-4">
+    <span className="flex h-4 min-w-0 items-center justify-between gap-3 text-ds-text-meta leading-4">
       <span className="min-w-0 leading-4">{label}</span>
       {hint ? <ShortcutKeycap size="compact">{hint}</ShortcutKeycap> : null}
     </span>
@@ -62,7 +62,7 @@ export function ShortcutTooltipContent({
   return (
     <span className="my-2 flex min-w-0 flex-col gap-1">
       {shortcutRow}
-      <span className="min-w-0 max-w-56 text-label-xs leading-4 text-ds-text-neutral-muted-default">
+      <span className="max-w-56 min-w-0 text-ds-text-meta leading-4 text-ds-ink-muted-default">
         {description}
       </span>
     </span>

@@ -28,33 +28,32 @@ export function mergeLayoutAliasStyles(
 }
 
 // Shared layout-level aliases for TopBar, HistorySidebar, and ProjectPageSidebar.
+// Owner: design-system. Remove once Phase 7 usage is zero.
 export const productLayoutTokenAliases = asCssVarMap({
-  '--border-secondary': 'var(--ds-border-neutral-default-default)',
-  '--border-disabled': 'var(--ds-border-neutral-subtle-default)',
+  '--border-secondary': 'var(--ds-hairline-default-default)',
+  '--border-disabled': 'var(--ds-hairline-subtle-default)',
 
-  '--text-heading': 'var(--ds-text-neutral-default-default)',
-  '--text-body': 'var(--ds-text-neutral-default-default)',
-  '--text-label': 'var(--ds-text-neutral-muted-default)',
-  '--text-primary': 'var(--ds-text-neutral-default-default)',
-  '--text-secondary': 'var(--ds-text-neutral-muted-default)',
+  '--text-heading': 'var(--ds-ink-default-default)',
+  '--text-body': 'var(--ds-ink-default-default)',
+  '--text-label': 'var(--ds-ink-muted-default)',
+  '--text-primary': 'var(--ds-ink-default-default)',
+  '--text-secondary': 'var(--ds-ink-muted-default)',
   '--text-information': 'var(--ds-text-status-splitting-strong-default)',
   '--text-error': 'var(--ds-text-status-error-strong-default)',
 
-  '--icon-primary': 'var(--ds-icon-neutral-default-default)',
-  '--icon-secondary': 'var(--ds-icon-neutral-muted-default)',
+  '--icon-primary': 'var(--ds-ink-default-default)',
+  '--icon-secondary': 'var(--ds-ink-muted-default)',
   '--icon-information': 'var(--ds-icon-status-splitting-default-default)',
   '--icon-success': 'var(--ds-icon-status-completed-default-default)',
   '--icon-warning': 'var(--ds-icon-status-pending-default-default)',
-  '--icon-caution': 'var(--ds-icon-status-error-default-default)',
 
-  '--project-surface': 'var(--ds-bg-neutral-default-default)',
-  '--project-surface-hover': 'var(--ds-bg-neutral-default-hover)',
+  '--project-surface': 'var(--ds-neutral-default-default)',
+  '--project-surface-hover': 'var(--ds-neutral-default-hover)',
 
-  '--dropdown-bg': 'var(--ds-bg-neutral-strong-default)',
-  '--dropdown-border': 'var(--ds-border-neutral-default-default)',
+  '--dropdown-bg': 'var(--ds-neutral-strong-default)',
+  '--dropdown-border': 'var(--ds-hairline-default-default)',
 
   '--button-transparent-fill-default': 'transparent',
-  '--button-transparent-fill-hover': 'var(--ds-bg-neutral-default-hover)',
-  '--button-transparent-fill-active': 'var(--ds-bg-neutral-default-active)',
-  '--button-transparent-text-default': 'var(--ds-text-neutral-default-default)',
+  '--button-transparent-fill-hover': 'var(--ds-neutral-default-hover)',
+  '--button-transparent-text-default': 'var(--ds-ink-default-default)',
 });

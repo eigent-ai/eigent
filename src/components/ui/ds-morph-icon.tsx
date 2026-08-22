@@ -12,21 +12,36 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { cn } from '@/lib/utils';
+import { MorphIcon, type IconInput } from 'morphicons/react';
 
-function Skeleton({
+import type { DsIconRecipe } from './ds-icon';
+
+const RECIPE_SIZE: Record<DsIconRecipe, { size: number; strokeWidth: number }> =
+  {
+    main: { size: 16, strokeWidth: 1.25 },
+    'main-compact': { size: 12, strokeWidth: 1.25 },
+    detailed: { size: 24, strokeWidth: 1.5 },
+  };
+
+export type DsMorphIconProps = {
+  icon: IconInput;
+  recipe?: DsIconRecipe;
+  className?: string;
+};
+
+export function DsMorphIcon({
+  icon,
+  recipe = 'main',
   className,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement>) {
+}: DsMorphIconProps) {
+  const spec = RECIPE_SIZE[recipe];
   return (
-    <div
-      className={cn(
-        'animate-pulse rounded-md bg-ds-neutral-muted-default/30',
-        className
-      )}
-      {...props}
+    <MorphIcon
+      icon={icon}
+      size={spec.size}
+      strokeWidth={spec.strokeWidth}
+      reducedMotion="user"
+      className={className}
     />
   );
 }
-
-export { Skeleton };

@@ -138,7 +138,7 @@ export function ColorPicker({
           }}
         />
         <div
-          className="pointer-events-none absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-ds-border-neutral-default-default bg-white shadow-lg"
+          className="pointer-events-none absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-x-2 border-y-2 border-ds-hairline-default-default bg-white shadow-lg"
           style={{
             left: `${sat * 100}%`,
             top: `${(1 - val) * 100}%`,
@@ -156,7 +156,7 @@ export function ColorPicker({
         onPointerMove={handleHuePointer}
       >
         <div
-          className="pointer-events-none absolute top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-ds-border-neutral-default-default bg-white shadow-lg"
+          className="pointer-events-none absolute top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-x-2 border-y-2 border-ds-hairline-default-default bg-white shadow-lg"
           style={{
             left: `${(hue / 360) * 100}%`,
           }}
@@ -165,7 +165,7 @@ export function ColorPicker({
 
       <div className="flex items-center gap-2">
         <div
-          className="h-8 w-8 shrink-0 rounded-md border border-solid border-ds-border-neutral-default-default"
+          className="h-8 w-8 shrink-0 rounded-md border border-x border-y border-solid border-ds-hairline-default-default"
           style={{ backgroundColor: currentHex }}
         />
         <Input
