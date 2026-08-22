@@ -1,9 +1,12 @@
 # Eigent Design System Plan
 
-> **Status: design review passed, revised after implementation audit.** This is
-> the approved implementation plan. Product code has not yet migrated; values
-> and recipes become the production contract only as the migration gates in
-> this package are completed.
+> **Status: implementation in progress.** Seed corrections, generated tokens,
+> and primitive recipes are landing on this branch. Values in this file are the
+> destination contract; call sites migrate toward it in the same PR.
+>
+> Inverse text on dark Accent fills is a required AA contract (§2.2.1), not a
+> retired emphasis. `caution` merges into `error` (§2.7.1) because the
+> registered seed is destructive red, not warning amber.
 >
 > **Three source defects block Phase 2 and are specified here, not deferred:**
 > the registered Eigent light Accent seed is `#000000` where the brand is
@@ -184,6 +187,42 @@ does not assume the light-mode answer.
 
 The foreground pair is a generated output of the fill, not a fifth public
 emphasis level, so the four-name public scale above is unchanged.
+
+#### 2.2.1 Inverse text is required on dark brand fills
+
+Eigent's light-mode Accent is a dark brand (`#1d1d1d`). Primary buttons, selected
+accent chips, and other content sitting on that fill cannot use default Ink:
+`#1d1d1d` on `#1d1d1d` is 1:1. The shipping product solved this with inverse
+text (`--text-inverse-primary` / `emphasis="inverse"`). That behavior stays in
+the system. What is retired is inverse as a **fill emphasis**, not inverse as a
+**foreground**.
+
+Public inverse-text tokens:
+
+```text
+--ds-ink-inverse     /* label/icon color on Accent strong fills */
+--ds-icon-inverse    /* same value; use for standalone icons on those fills */
+--ds-{group}-on-{emphasis}   /* general pair for any group fill */
+```
+
+`--ds-ink-inverse` is an alias of `--ds-accent-on-strong`. It is the named
+inverse-text role for primary actions. Feedback confirmation fills use
+`--ds-{success|warning|error|information}-on-strong` instead of default Ink.
+
+Rules:
+
+1. Filled primary and confirmation recipes MUST use inverse text (the on-pair).
+   Default Ink, muted Ink, or a hard-coded white/black is a contrast defect.
+2. The pair is computed from the rendered fill after gamut mapping and must
+   meet WCAG AA 4.5:1 for normal text. Light-mode Eigent resolves to near-white
+   on the dark brand. Dark-mode Eigent resolves to near-black on the light
+   brand. Do not hard-code white.
+3. Icons inside those recipes inherit the inverse foreground. A child class
+   such as `text-ds-ink-muted-default` on a Lucide icon overrides inheritance
+   and fails AA.
+4. Inverse text is not a fifth public emphasis and is not used for text sitting
+   on the canvas. Canvas text uses the Ink ladder (`subtle` / `muted` /
+   `default` / `strong`).
 
 ### 2.3 Proposed public interaction states
 
@@ -398,7 +437,7 @@ complete before Phase 4 opens; no tone may remain unassigned.
 | `warning`            | Feedback   | Warning             | Outcome meaning                         |
 | `error`              | Feedback   | Error               | Outcome meaning                         |
 | `information`        | Feedback   | Information         | Outcome meaning                         |
-| `caution`            | Feedback   | Warning             | **Merge.** Duplicate of Warning; 3 uses |
+| `caution`            | Feedback   | Error               | **Merge.** Historical `cuation`/danger red (`#e7000b`), not Warning |
 | `status-running`     | Status     | maps to Information | Fixed anchor, retains own label         |
 | `status-splitting`   | Status     | maps to Information | Fixed anchor, retains own label         |
 | `status-pending`     | Status     | maps to Information | Fixed anchor, retains own label         |
@@ -421,9 +460,10 @@ Two consequences follow from this table:
   eleven distinct anchors so runtime state remains legible, and each one
   declares which Feedback semantic it inherits color behavior from. Collapsing
   the eleven into four would make `paused` and `blocked` indistinguishable.
-- **`caution` is retired into `warning`.** It has three call sites and no
-  meaning distinct from Warning. It is the only tone removed rather than
-  reassigned.
+- **`caution` is retired into `error`.** The registered seed is `#e7000b`
+  (same destructive red as the old `--text-cuation` role), next to warning
+  amber `#d97706`. Merging it into Warning would turn confirm-delete chrome
+  amber. It is the only tone removed rather than reassigned.
 
 `status-warning` is **not** a valid tone and never has been. It is absent from
 the 22-tone manifest, so the single call site referencing it generates no CSS
@@ -488,7 +528,7 @@ production source, so each needs a destination rather than a deletion:
 | -------------- | --------: | -------------------------------------------------------------------- |
 | `active` state |  see note | Pressed feedback via `elevation-control-pressed` and approved motion |
 | `focus` state  |  see note | The separate Ring treatment (§2.6), composed onto the rendered state |
-| `inverse`      |        48 | `--ds-{group}-on-{emphasis}` foreground pair (§2.2)                  |
+| `inverse`      |        48 | Inverse **text** via `--ds-ink-inverse` / `--ds-{group}-on-{emphasis}` (§2.2.1). Inverse is not a fill emphasis. |
 | `transparent`  |         3 | Component recipe with no fill; `ghost`/`text` Button variants (§5.3) |
 
 `active` and `focus` together account for 120 call sites; `inverse` 48;
@@ -503,11 +543,12 @@ Three rules govern the retirement:
 2. `focus` composes rather than replaces. A control that is `selected` and
    focused renders the selected fill **and** the ring; the old `focus` color
    state could not express that, which is why it is retired.
-3. `inverse` is the highest-risk of the four. It is the only mechanism that
-   currently solves mode-flipping foreground contrast, and removing it without
-   the §2.2 pair token would ship a 1.65:1 foreground in dark mode. The pair
-   token lands in Phase 2, before any `inverse` call site is touched in
-   Phase 4.
+3. Inverse **fill emphasis** is retired. Inverse **text** is required on dark
+   brand fills and is the AA mechanism for primary-button labels (§2.2.1).
+   Removing `inverse` without `--ds-ink-inverse` / the on-pair would ship a
+   1:1 label on light-mode Accent and a 1.65:1 white label on dark-mode Accent.
+   The inverse-text tokens land in Phase 2, before any `inverse` call site is
+   touched in Phase 4.
 
 ### 2.10 Proposed perceptual gates
 
@@ -844,7 +885,9 @@ media dimensions are separate categories even when they share a numeric value.
 | `space-4`      |                    4px | Tight inline relationship        |
 | `space-6`      |                    6px | Compact icon/label gap           |
 | `space-8`      |                    8px | Default inline/compact stack gap |
+| `space-10`     |                   10px | Button sm/md inline padding      |
 | `space-12`     |                   12px | Default component inset/gap      |
+| `space-14`     |                   14px | Button lg inline padding         |
 | `space-16`     |                   16px | Comfortable component inset      |
 | `space-20`     |                   20px | Small region separation          |
 | `space-24`     |                   24px | Card/section inset               |
@@ -1391,6 +1434,11 @@ No proposal becomes adopted until the relevant gates below pass.
   dark seed and is not used.
 - Every generated fill has a paired `--ds-{group}-on-{emphasis}` foreground
   meeting the contrast target against the fill as rendered, in both modes.
+- Inverse text is published as `--ds-ink-inverse` (alias of
+  `--ds-accent-on-strong`) and `--ds-icon-inverse`. Light-mode Eigent Accent
+  strong is dark; the inverse pair is near-white and ≥ 4.5:1. Dark-mode Accent
+  strong is light; the inverse pair is near-black and ≥ 4.5:1. Default Ink on
+  that fill is a gate failure.
 - Focus ring and selected color treatment remain visually and semantically
   distinct and can appear together.
 - Fixed Feedback, Status, and Category anchors remain unchanged unless

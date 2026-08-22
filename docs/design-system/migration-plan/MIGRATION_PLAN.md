@@ -191,8 +191,8 @@ recipe without removing the token foundation.
   onto the rendered state), `inverse` (→ the `on-{emphasis}` pair token), and
   `transparent` (→ recipes with no fill). Roughly 171 call sites; regenerate the
   count from the usage report before starting.
-- Merge the `caution` tone into `warning` (3 call sites) — the only tone
-  removed rather than reassigned.
+- Merge the `caution` tone into `error` (historical `cuation`/danger red, not
+  warning amber) — the only tone removed rather than reassigned.
 - Use the Eigent theme as the default matrix seed (`#1d1d1d`, after the Phase
   0.0 hotfix) and verify that hover/selected remain in the same perceptual
   family in light and dark mode.
