@@ -1,8 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-22T14:07:12+01:00",
   "branch": "design-system-enhancement",
-  "commit": "ad8065829dd4",
   "scannedFiles": 577,
   "summary": {
     "cssVariableReferences": 404,
@@ -40,7 +38,7 @@
         "src/style/generated/tokens.css:12",
         "src/style/generated/tokens.css:19",
         "src/style/generated/tokens.css:33",
-        "src/style/generated/tokens.css:82"
+        "src/style/generated/tokens.css:94"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -55,7 +53,7 @@
         "src/style/generated/tokens.css:21",
         "src/style/generated/tokens.css:35",
         "src/style/generated/tokens.css:52",
-        "src/style/generated/tokens.css:72"
+        "src/style/generated/tokens.css:84"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -96,11 +94,11 @@
       "count": 7,
       "files": ["src/style/generated/tokens.css"],
       "examples": [
-        "src/style/generated/tokens.css:73",
-        "src/style/generated/tokens.css:77",
-        "src/style/generated/tokens.css:184",
-        "src/style/generated/tokens.css:190",
-        "src/style/generated/tokens.css:193"
+        "src/style/generated/tokens.css:85",
+        "src/style/generated/tokens.css:89",
+        "src/style/generated/tokens.css:200",
+        "src/style/generated/tokens.css:206",
+        "src/style/generated/tokens.css:209"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -130,11 +128,11 @@
       "count": 6,
       "files": ["src/style/generated/tokens.css", "src/style/index.css"],
       "examples": [
-        "src/style/generated/tokens.css:101",
-        "src/style/generated/tokens.css:108",
-        "src/style/generated/tokens.css:110",
-        "src/style/generated/tokens.css:111",
-        "src/style/generated/tokens.css:234"
+        "src/style/generated/tokens.css:113",
+        "src/style/generated/tokens.css:120",
+        "src/style/generated/tokens.css:122",
+        "src/style/generated/tokens.css:123",
+        "src/style/generated/tokens.css:250"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -146,10 +144,10 @@
       "files": ["src/style/generated/tokens.css", "src/style/index.css"],
       "examples": [
         "src/style/generated/tokens.css:40",
-        "src/style/generated/tokens.css:99",
-        "src/style/generated/tokens.css:205",
-        "src/style/generated/tokens.css:208",
-        "src/style/generated/tokens.css:227"
+        "src/style/generated/tokens.css:111",
+        "src/style/generated/tokens.css:221",
+        "src/style/generated/tokens.css:224",
+        "src/style/generated/tokens.css:243"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -163,8 +161,8 @@
         "src/style/generated/tokens.css:18",
         "src/style/generated/tokens.css:39",
         "src/style/generated/tokens.css:46",
-        "src/style/generated/tokens.css:83",
-        "src/style/generated/tokens.css:88"
+        "src/style/generated/tokens.css:95",
+        "src/style/generated/tokens.css:100"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -270,8 +268,8 @@
       "examples": [
         "src/style/generated/tokens.css:37",
         "src/style/generated/tokens.css:60",
-        "src/style/generated/tokens.css:195",
-        "src/style/generated/tokens.css:229",
+        "src/style/generated/tokens.css:211",
+        "src/style/generated/tokens.css:245",
         "src/style/index.css:335"
       ],
       "target": "Keep semantic token",
@@ -345,10 +343,10 @@
       "count": 4,
       "files": ["src/style/generated/tokens.css"],
       "examples": [
-        "src/style/generated/tokens.css:74",
-        "src/style/generated/tokens.css:78",
-        "src/style/generated/tokens.css:214",
-        "src/style/generated/tokens.css:218"
+        "src/style/generated/tokens.css:86",
+        "src/style/generated/tokens.css:90",
+        "src/style/generated/tokens.css:230",
+        "src/style/generated/tokens.css:234"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -361,8 +359,8 @@
       "examples": [
         "src/style/generated/tokens.css:13",
         "src/style/generated/tokens.css:54",
-        "src/style/generated/tokens.css:96",
-        "src/style/generated/tokens.css:189"
+        "src/style/generated/tokens.css:108",
+        "src/style/generated/tokens.css:205"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -375,8 +373,8 @@
       "examples": [
         "src/style/generated/tokens.css:27",
         "src/style/generated/tokens.css:56",
-        "src/style/generated/tokens.css:186",
-        "src/style/generated/tokens.css:198"
+        "src/style/generated/tokens.css:202",
+        "src/style/generated/tokens.css:214"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -389,8 +387,8 @@
       "examples": [
         "src/style/generated/tokens.css:34",
         "src/style/generated/tokens.css:57",
-        "src/style/generated/tokens.css:71",
-        "src/style/generated/tokens.css:183"
+        "src/style/generated/tokens.css:83",
+        "src/style/generated/tokens.css:199"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -403,8 +401,8 @@
       "examples": [
         "src/style/generated/tokens.css:28",
         "src/style/generated/tokens.css:50",
-        "src/style/generated/tokens.css:81",
-        "src/style/generated/tokens.css:185"
+        "src/style/generated/tokens.css:93",
+        "src/style/generated/tokens.css:201"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -416,8 +414,8 @@
       "files": ["src/style/generated/tokens.css", "src/style/index.css"],
       "examples": [
         "src/style/generated/tokens.css:51",
-        "src/style/generated/tokens.css:109",
-        "src/style/generated/tokens.css:232",
+        "src/style/generated/tokens.css:121",
+        "src/style/generated/tokens.css:248",
         "src/style/index.css:341"
       ],
       "target": "Keep semantic token",
@@ -429,9 +427,9 @@
       "count": 4,
       "files": ["src/style/generated/tokens.css", "src/style/index.css"],
       "examples": [
-        "src/style/generated/tokens.css:197",
-        "src/style/generated/tokens.css:201",
-        "src/style/generated/tokens.css:230",
+        "src/style/generated/tokens.css:213",
+        "src/style/generated/tokens.css:217",
+        "src/style/generated/tokens.css:246",
         "src/style/index.css:336"
       ],
       "target": "Keep semantic token",
@@ -445,8 +443,8 @@
       "examples": [
         "src/style/generated/tokens.css:26",
         "src/style/generated/tokens.css:44",
-        "src/style/generated/tokens.css:79",
-        "src/style/generated/tokens.css:220"
+        "src/style/generated/tokens.css:91",
+        "src/style/generated/tokens.css:236"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -478,7 +476,7 @@
         "src/style/markdown-styles.css"
       ],
       "examples": [
-        "src/style/generated/tokens.css:235",
+        "src/style/generated/tokens.css:251",
         "src/style/index.css:346",
         "src/style/markdown-styles.css:22",
         "src/style/markdown-styles.css:27"
@@ -535,8 +533,8 @@
       "count": 3,
       "files": ["src/style/generated/tokens.css", "src/style/token.css"],
       "examples": [
-        "src/style/generated/tokens.css:94",
-        "src/style/generated/tokens.css:98",
+        "src/style/generated/tokens.css:106",
+        "src/style/generated/tokens.css:110",
         "src/style/token.css:198"
       ],
       "target": "Keep semantic token",
@@ -592,7 +590,7 @@
       "examples": [
         "src/style/generated/tokens.css:20",
         "src/style/generated/tokens.css:55",
-        "src/style/generated/tokens.css:75"
+        "src/style/generated/tokens.css:87"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -604,8 +602,8 @@
       "files": ["src/style/generated/tokens.css"],
       "examples": [
         "src/style/generated/tokens.css:42",
-        "src/style/generated/tokens.css:91",
-        "src/style/generated/tokens.css:209"
+        "src/style/generated/tokens.css:103",
+        "src/style/generated/tokens.css:225"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -616,9 +614,9 @@
       "count": 3,
       "files": ["src/style/generated/tokens.css"],
       "examples": [
-        "src/style/generated/tokens.css:104",
-        "src/style/generated/tokens.css:106",
-        "src/style/generated/tokens.css:107"
+        "src/style/generated/tokens.css:116",
+        "src/style/generated/tokens.css:118",
+        "src/style/generated/tokens.css:119"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -629,8 +627,8 @@
       "count": 3,
       "files": ["src/style/generated/tokens.css", "src/style/index.css"],
       "examples": [
-        "src/style/generated/tokens.css:102",
-        "src/style/generated/tokens.css:233",
+        "src/style/generated/tokens.css:114",
+        "src/style/generated/tokens.css:249",
         "src/style/index.css:342"
       ],
       "target": "Keep semantic token",
@@ -644,7 +642,7 @@
       "examples": [
         "src/style/generated/tokens.css:25",
         "src/style/generated/tokens.css:32",
-        "src/style/generated/tokens.css:237"
+        "src/style/generated/tokens.css:253"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -766,7 +764,7 @@
         "src/style/markdown-styles.css"
       ],
       "examples": [
-        "src/style/generated/tokens.css:226",
+        "src/style/generated/tokens.css:242",
         "src/style/markdown-styles.css:133"
       ],
       "target": "Keep semantic token",
@@ -781,7 +779,7 @@
         "src/style/markdown-styles.css"
       ],
       "examples": [
-        "src/style/generated/tokens.css:225",
+        "src/style/generated/tokens.css:241",
         "src/style/markdown-styles.css:21"
       ],
       "target": "Keep semantic token",
@@ -838,7 +836,7 @@
         "src/style/markdown-styles.css"
       ],
       "examples": [
-        "src/style/generated/tokens.css:222",
+        "src/style/generated/tokens.css:238",
         "src/style/markdown-styles.css:127"
       ],
       "target": "Keep semantic token",
@@ -865,8 +863,8 @@
       "count": 2,
       "files": ["src/style/generated/tokens.css"],
       "examples": [
-        "src/style/generated/tokens.css:95",
-        "src/style/generated/tokens.css:100"
+        "src/style/generated/tokens.css:107",
+        "src/style/generated/tokens.css:112"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -878,7 +876,7 @@
       "files": ["src/style/generated/tokens.css"],
       "examples": [
         "src/style/generated/tokens.css:53",
-        "src/style/generated/tokens.css:200"
+        "src/style/generated/tokens.css:216"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -901,8 +899,8 @@
       "count": 2,
       "files": ["src/style/generated/tokens.css"],
       "examples": [
-        "src/style/generated/tokens.css:80",
-        "src/style/generated/tokens.css:92"
+        "src/style/generated/tokens.css:92",
+        "src/style/generated/tokens.css:104"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -913,8 +911,8 @@
       "count": 2,
       "files": ["src/style/generated/tokens.css"],
       "examples": [
-        "src/style/generated/tokens.css:85",
-        "src/style/generated/tokens.css:93"
+        "src/style/generated/tokens.css:97",
+        "src/style/generated/tokens.css:105"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -937,7 +935,7 @@
       "count": 2,
       "files": ["src/style/generated/tokens.css", "src/style/index.css"],
       "examples": [
-        "src/style/generated/tokens.css:231",
+        "src/style/generated/tokens.css:247",
         "src/style/index.css:337"
       ],
       "target": "Keep semantic token",
@@ -1563,7 +1561,7 @@
       "name": "--ds-elevation-control",
       "count": 1,
       "files": ["src/style/generated/tokens.css"],
-      "examples": ["src/style/generated/tokens.css:240"],
+      "examples": ["src/style/generated/tokens.css:256"],
       "target": "Keep semantic token",
       "action": "No migration required",
       "confidence": "keep"
@@ -1581,7 +1579,7 @@
       "name": "--ds-elevation-floating",
       "count": 1,
       "files": ["src/style/generated/tokens.css"],
-      "examples": ["src/style/generated/tokens.css:219"],
+      "examples": ["src/style/generated/tokens.css:235"],
       "target": "Keep semantic token",
       "action": "No migration required",
       "confidence": "keep"
@@ -1716,7 +1714,7 @@
       "name": "--ds-radius-menu-row",
       "count": 1,
       "files": ["src/style/generated/tokens.css"],
-      "examples": ["src/style/generated/tokens.css:97"],
+      "examples": ["src/style/generated/tokens.css:109"],
       "target": "Keep semantic token",
       "action": "No migration required",
       "confidence": "keep"
@@ -1761,7 +1759,7 @@
       "name": "--ds-ref-icon-size-xl",
       "count": 1,
       "files": ["src/style/generated/tokens.css"],
-      "examples": ["src/style/generated/tokens.css:89"],
+      "examples": ["src/style/generated/tokens.css:101"],
       "target": "Keep semantic token",
       "action": "No migration required",
       "confidence": "keep"
@@ -1770,7 +1768,7 @@
       "name": "--ds-ref-radius-24",
       "count": 1,
       "files": ["src/style/generated/tokens.css"],
-      "examples": ["src/style/generated/tokens.css:103"],
+      "examples": ["src/style/generated/tokens.css:115"],
       "target": "Keep semantic token",
       "action": "No migration required",
       "confidence": "keep"
@@ -1788,7 +1786,7 @@
       "name": "--ds-ref-space-24",
       "count": 1,
       "files": ["src/style/generated/tokens.css"],
-      "examples": ["src/style/generated/tokens.css:191"],
+      "examples": ["src/style/generated/tokens.css:207"],
       "target": "Keep semantic token",
       "action": "No migration required",
       "confidence": "keep"
@@ -1797,7 +1795,7 @@
       "name": "--ds-ref-space-48",
       "count": 1,
       "files": ["src/style/generated/tokens.css"],
-      "examples": ["src/style/generated/tokens.css:194"],
+      "examples": ["src/style/generated/tokens.css:210"],
       "target": "Keep semantic token",
       "action": "No migration required",
       "confidence": "keep"
@@ -1950,7 +1948,7 @@
       "name": "--ds-weight-bold",
       "count": 1,
       "files": ["src/style/generated/tokens.css"],
-      "examples": ["src/style/generated/tokens.css:239"],
+      "examples": ["src/style/generated/tokens.css:255"],
       "target": "Keep semantic token",
       "action": "No migration required",
       "confidence": "keep"
@@ -1959,7 +1957,7 @@
       "name": "--ds-weight-regular",
       "count": 1,
       "files": ["src/style/generated/tokens.css"],
-      "examples": ["src/style/generated/tokens.css:236"],
+      "examples": ["src/style/generated/tokens.css:252"],
       "target": "Keep semantic token",
       "action": "No migration required",
       "confidence": "keep"
@@ -6273,19 +6271,19 @@
         "name": "text-ds-code-base",
         "count": 1,
         "files": ["src/components/ui/ds-text.tsx"],
-        "examples": ["src/components/ui/ds-text.tsx:42"]
+        "examples": ["src/components/ui/ds-text.tsx:36"]
       },
       {
         "name": "text-ds-code-large",
         "count": 1,
         "files": ["src/components/ui/ds-text.tsx"],
-        "examples": ["src/components/ui/ds-text.tsx:43"]
+        "examples": ["src/components/ui/ds-text.tsx:37"]
       },
       {
         "name": "text-ds-code-small",
         "count": 1,
         "files": ["src/components/ui/ds-text.tsx"],
-        "examples": ["src/components/ui/ds-text.tsx:41"]
+        "examples": ["src/components/ui/ds-text.tsx:35"]
       },
       {
         "name": "text-ds-error-on-strong",

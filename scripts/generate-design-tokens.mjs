@@ -4,6 +4,7 @@
 // Deterministic generator for design-system CSS, Tailwind mappings, and types.
 // Hand-authored JSON in src/style/tokens is the source of truth.
 
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -609,6 +610,26 @@ writeFileSync(
 writeFileSync(
   path.join(outputDirectory, 'declared-tokens.json'),
   `${JSON.stringify(declared, null, 2)}\n`
+);
+
+const prettier = path.join(repositoryRoot, 'node_modules', '.bin', 'prettier');
+execFileSync(
+  prettier,
+  [
+    '--write',
+    path.join(outputDirectory, 'tokens.css'),
+    path.join(outputDirectory, 'tokens.types.ts'),
+    path.join(outputDirectory, 'declared-tokens.json'),
+  ],
+  { cwd: repositoryRoot, stdio: 'inherit' }
+);
+execFileSync(
+  process.execPath,
+  [
+    path.join(repositoryRoot, 'licenses', 'update_license.js'),
+    path.join(outputDirectory, 'tokens.types.ts'),
+  ],
+  { cwd: repositoryRoot, stdio: 'inherit' }
 );
 
 process.stdout.write(
