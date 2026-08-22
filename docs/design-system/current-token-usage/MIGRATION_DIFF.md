@@ -1,6 +1,6 @@
 # Current token migration diff
 
-Generated from `design-system-enhancement` at `c21e01cfd784` on 2026-08-21T14:08:52.805Z.
+Generated from `design-system-enhancement` at `9c9208beb34f` on 2026-08-22T12:55:25.721Z.
 
 This report is generated evidence, not an automatic codemod. High-confidence
 mappings may be migrated mechanically after focused visual tests exist. Manual

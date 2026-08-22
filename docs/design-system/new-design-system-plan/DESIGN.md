@@ -1,8 +1,17 @@
 # Eigent Design System Plan
 
-> **Status: design review passed.** This is the approved implementation plan.
-> Product code has not yet migrated; values and recipes become the production
-> contract only as the migration gates in this package are completed.
+> **Status: design review passed, revised after implementation audit.** This is
+> the approved implementation plan. Product code has not yet migrated; values
+> and recipes become the production contract only as the migration gates in
+> this package are completed.
+>
+> **Three source defects block Phase 2 and are specified here, not deferred:**
+> the registered Eigent light Accent seed is `#000000` where the brand is
+> `#1d1d1d`, which collapses the light Accent interaction ladder to ΔEOK
+> `0.000` (§2.4.1); the shipping interaction transforms miss this document's
+> own perceptual gates by 2× (§2.10.1); and no check verifies that a referenced
+> token resolves to a declared one (§14.5). Sections 2.4.1, 2.5.1, 2.7.1,
+> 2.9.1, 2.10.1, 2.10.2, 3.2.1, and 5.3.1 were added by that audit.
 
 This document describes a proposed ground-up organization for Eigent's visual
 system. It is intended to be the source for the proposed HTML review viewer and,
@@ -150,9 +159,31 @@ The following descriptions are approved.
 | Default           | Normal expression for the role         | Primary baseline for most UI                                |
 | Strong            | Highest non-inverse expression         | Maximum approved separation without changing semantic group |
 
-`inverse` is not proposed as a fifth emphasis level. Components that need
-foreground content on a strong or dark fill should resolve an approved
-foreground pair through a component color recipe.
+`inverse` is not proposed as a fifth emphasis level. It is replaced by an
+explicit **foreground-pair token**, generated alongside every fill:
+
+```text
+--ds-{group}-on-{emphasis}
+```
+
+For each generated fill the generator resolves the paired foreground and
+records it. The pair is computed from the fill that is actually rendered after
+gamut mapping, so it flips by mode automatically. Worked example for the Eigent
+Accent `strong` fill:
+
+| Mode  | Resolved strong fill | Paired foreground | Contrast |
+| ----- | -------------------- | ----------------- | -------: |
+| Light | `#0b0b0b`            | near-white ink    |  19.68:1 |
+| Dark  | `#d3c7c1`            | near-black ink    |  10.85:1 |
+
+This pairing is not optional guidance. A dark-mode Accent `strong` fill is
+light, so a hard-coded white foreground yields **1.65:1** and fails every
+contrast target. Any recipe that renders content on a group fill consumes
+`--ds-{group}-on-{emphasis}`; it does not choose a foreground literal, and it
+does not assume the light-mode answer.
+
+The foreground pair is a generated output of the fill, not a fifth public
+emphasis level, so the four-name public scale above is unchanged.
 
 ### 2.3 Proposed public interaction states
 
@@ -199,6 +230,67 @@ displaying the other five catalog palettes must not silently change that matrix
 anchor. The Custom row represents the catalog's seeded user-customizable slot,
 not a seventh generated theme.
 
+#### 2.4.1 Seed corrections required before Phase 2
+
+The table above is the **brand-approved** catalog. Two registered seeds do not
+currently match it, and both must be reconciled in source before token
+generation is built on them.
+
+**Eigent light Accent — `#000000` in source, `#1d1d1d` approved.** The brand
+Accent is `#1d1d1d` and is not changing. `base.color.json` currently registers
+`#000000`. This is not a cosmetic difference: `#000000` sits at OKLCH
+`L = 0.000`, the floor of the lightness axis, so every darkening transform
+clamps to itself and the Accent interaction ladder collapses.
+
+| Seed               | `default` | `hover`   | `selected` | ΔEOK hover | ΔEOK selected |
+| ------------------ | --------- | --------- | ---------- | ---------: | ------------: |
+| `#000000` (source) | `#000000` | `#000000` | `#000000`  |  **0.000** |     **0.000** |
+| `#1d1d1d` (brand)  | `#1d1d1d` | `#161616` | `#0b0b0b`  |      0.030 |         0.080 |
+
+With the shipping seed the default light theme's primary action has no hover
+and no selected feedback whatsoever. The review viewer already overrides the
+seed to `#1d1d1d` in order to render a meaningful matrix, so the viewer and the
+application currently disagree. `THEME_PRESETS` in `OnboardingSteps.tsx` also
+hard-codes `#1d1d1d` — onboarding shows the brand swatch and the app then
+applies `#000000`.
+
+Required: set `light.eigent.accent` to `#1d1d1d` in `base.color.json`, and
+derive the onboarding presets from that file instead of maintaining a second
+hard-coded seed table.
+
+**Whale dark mode is not dark.** Whale registers an identical seed triple for
+both modes — background `#ffffff`, Ink `#000000`. Either it is a light-only
+theme, in which case it is declared as such and exempted from dark-mode gates,
+or its dark seeds are missing and must be authored. It must not stay in the
+catalog as a theme whose dark mode silently renders light.
+
+The `#1d1d1d` Accent and `#1d1d1d` Ink seeds in light mode are **intentionally
+identical**. Eigent's brand mark and its text color are the same value; this is
+a monochrome identity, not a duplicate to be removed under §14.1. See §2.4.2.
+
+#### 2.4.2 Accent and Ink share an anchor in light mode
+
+Because light Accent and light Ink are both `#1d1d1d`, the two groups start
+from the same anchor and diverge only through their own ladders. This is
+approved and load-bearing, so it is recorded rather than normalized away:
+
+- `accent.default.default` and `ink.default.default` resolving to the same hex
+  in light mode is expected. §14.1's duplicate-value rule does not apply to two
+  distinct public groups that share a brand anchor by design.
+- The divergence is safe only because Ink stays stable across `default`,
+  `hover`, and `selected` (§2.5). If Ink ever gains interaction transforms, it
+  will drift against the brand anchor and this justification lapses.
+- Dark mode keeps Accent and Ink distinct. The dark Accent is warm
+  (`#ede1db`, hue ≈ 48°) while the registered dark Ink is pure `#ffffff`, the
+  only fully neutral value in an otherwise warm theme.
+
+Recommended dark Ink revision: `#f2ece8` (14.08:1 on `#1f1f1f`, comfortably
+above the AA target) instead of `#ffffff` (16.48:1). It shares the Accent's warm
+hue family, which removes the cold-text-on-warm-brand clash and reduces
+dark-mode glare. Using the Accent seed `#ede1db` itself as Ink (12.87:1) is
+rejected: it collapses Ink into Accent in the mode where Accent-as-fill is most
+visible. Light Ink stays `#1d1d1d` (15.81:1 on `#faf7f6`).
+
 ### 2.5 Proposed primary-group generation behavior
 
 - The review viewer uses the real Eigent Accent seeds: `#1d1d1d` in light mode
@@ -210,9 +302,36 @@ not a seventh generated theme.
   Proposed interaction transforms change lightness and, for disabled,
   chroma/alpha; they do not inject a warm hue or extra chroma into the
   near-neutral Eigent seeds.
-- Interaction transforms are seed-aware. Eigent's light-black and dark-beige
-  Accent seeds both darken for hover and selected, preserving visible
-  separation without pushing the dark seed into white clipping.
+- Interaction transforms are seed-aware, and direction is chosen by **available
+  gamut headroom, not by mode**. Eigent's light-black and dark-beige Accent
+  seeds both darken for hover and selected, preserving visible separation
+  without pushing the dark seed into white clipping. This is a consequence of
+  the headroom rule below, not an independent convention.
+
+#### 2.5.1 Transform direction is chosen by headroom
+
+A seed near either end of the lightness axis can only move one way. The
+generator selects the direction with room and states it, rather than assuming
+"dark mode lightens":
+
+| Eigent Accent seed | OKLCH `L` | Darken budget | Lighten budget | Direction |
+| ------------------ | --------: | ------------: | -------------: | --------- |
+| Light `#1d1d1d`    |     0.231 |         0.231 |          0.769 | Darken    |
+| Dark `#ede1db`     |     0.918 |         0.918 |      **0.082** | Darken    |
+
+The dark seed has only `0.082` of lightening headroom — less than one hover
+step plus one selected step. Lightening it clips: at `subtle` emphasis the
+generated `default`, `hover`, and `selected` cells all resolve to `#fffcf6`,
+ΔEOK `0.000`. Darkening is therefore the only viable direction in dark mode for
+this seed, and any gate that requires dark hover to be _lighter_ is
+unsatisfiable (see §14.2).
+
+The light seed has headroom in both directions. Darkening is chosen for
+consistency with dark mode, with one constraint: the compound
+`strong` + `selected` cell must not fall below `L = 0.05`. Darken-only lands it
+at `L = 0.071`, which is inside budget but has no margin, so `strong` is lifted
+away from the floor at its row baseline rather than allowed to accumulate.
+
 - Light and dark intentionally have separate Accent ladders because the theme
   owns a seed for each mode. Each ladder stays internally consistent with its
   own Eigent seed.
@@ -256,11 +375,59 @@ Proposed Feedback roles:
 - Information
 
 The existing fixed feedback/status anchors are proposed to remain unchanged
-during the first primary-state redesign. This includes the established runtime
-status meanings such as running, splitting, pending, error, reassigning,
-completed, blocked, paused, skipped, and cancelled. A feedback-colored action
-uses a Component color recipe for its four public interaction states; the fixed
+during the first primary-state redesign. A feedback-colored action uses a
+Component color recipe for its four public interaction states; the fixed
 feedback scale itself is not globally transformed as though it were Accent.
+
+Runtime status meanings are **not** Feedback roles. Feedback has exactly the
+four roles listed above. The eleven `status-*` values are a separate fixed
+Status family whose members map onto Feedback semantics for color while keeping
+their own identity for labelling. The full assignment is in §2.7.1.
+
+#### 2.7.1 Tone axis assignment
+
+The current `manifest.json` declares 22 tones on a single axis. The new model
+distributes them across four families. This table is normative and must be
+complete before Phase 4 opens; no tone may remain unassigned.
+
+| Current tone         | New family | Role                | Notes                                   |
+| -------------------- | ---------- | ------------------- | --------------------------------------- |
+| `neutral`            | Neutral    | —                   | Surfaces, panels, fields, neutral fills |
+| `brand`              | Accent     | —                   | Anchored on the theme Accent seed       |
+| `success`            | Feedback   | Success             | Outcome meaning                         |
+| `warning`            | Feedback   | Warning             | Outcome meaning                         |
+| `error`              | Feedback   | Error               | Outcome meaning                         |
+| `information`        | Feedback   | Information         | Outcome meaning                         |
+| `caution`            | Feedback   | Warning             | **Merge.** Duplicate of Warning; 3 uses |
+| `status-running`     | Status     | maps to Information | Fixed anchor, retains own label         |
+| `status-splitting`   | Status     | maps to Information | Fixed anchor, retains own label         |
+| `status-pending`     | Status     | maps to Information | Fixed anchor, retains own label         |
+| `status-reassigning` | Status     | maps to Information | Fixed anchor, retains own label         |
+| `status-completed`   | Status     | maps to Success     | Fixed anchor, retains own label         |
+| `status-error`       | Status     | maps to Error       | Fixed anchor, retains own label         |
+| `status-blocked`     | Status     | maps to Error       | Fixed anchor, retains own label         |
+| `status-paused`      | Status     | maps to Warning     | Fixed anchor, retains own label         |
+| `status-skipped`     | Status     | maps to Neutral     | Non-failure terminal state              |
+| `status-cancelled`   | Status     | maps to Neutral     | Non-failure terminal state              |
+| `single-agent`       | Category   | Agent identity      | Stable identity, no interaction ladder  |
+| `workforce`          | Category   | Agent identity      | Stable identity, no interaction ladder  |
+| `browser`            | Category   | Tool identity       | Stable identity, no interaction ladder  |
+| `terminal`           | Category   | Tool identity       | Stable identity, no interaction ladder  |
+| `document`           | Category   | Tool identity       | Stable identity, no interaction ladder  |
+
+Two consequences follow from this table:
+
+- **Status is a fourth fixed family, not a Feedback role list.** It keeps
+  eleven distinct anchors so runtime state remains legible, and each one
+  declares which Feedback semantic it inherits color behavior from. Collapsing
+  the eleven into four would make `paused` and `blocked` indistinguishable.
+- **`caution` is retired into `warning`.** It has three call sites and no
+  meaning distinct from Warning. It is the only tone removed rather than
+  reassigned.
+
+`status-warning` is **not** a valid tone and never has been. It is absent from
+the 22-tone manifest, so the single call site referencing it generates no CSS
+(see §14.5 and the scanner requirement in the migration plan).
 
 Feedback must always pair color with text, iconography, or status wording. A
 feedback fill is never the only signal.
@@ -283,9 +450,13 @@ Proposed Category rules:
 
 ### 2.9 Legacy component-color migration
 
-There is no proposed public Component color group and no
-`component.{recipe}.{part}` color-token namespace. The old component aliases are
-migration inputs, not a family to rename or reproduce in the new system.
+Component recipes may **reference** foundation color tokens; they may not
+**mint** color token names. There is no public Component color group and no
+`component.{recipe}.{part}` color-token namespace, even though layer 3 owns a
+`component.recipe.json` source file and a
+`--ds-{component}-{size-or-part}-{property}` grammar for geometry. That grammar
+covers dimensions, not colors. The old component color aliases are migration
+inputs, not a family to rename or reproduce in the new system.
 
 During migration, each legacy declaration and call site is classified by its
 actual visual responsibility and replaced inside the owning primitive recipe:
@@ -307,6 +478,37 @@ those call sites and assigns the correct new foundation token to each recipe.
 `secure` remains a proposed dedicated semantic candidate. It
 must not be modeled as another interaction state.
 
+#### 2.9.1 Retired states and emphasis levels
+
+The public matrix drops two states (`active`, `focus`) and two emphasis levels
+(`inverse`, `transparent`) relative to the shipping axes. These are live in
+production source, so each needs a destination rather than a deletion:
+
+| Retired        | Live uses | Destination                                                          |
+| -------------- | --------: | -------------------------------------------------------------------- |
+| `active` state |  see note | Pressed feedback via `elevation-control-pressed` and approved motion |
+| `focus` state  |  see note | The separate Ring treatment (§2.6), composed onto the rendered state |
+| `inverse`      |        48 | `--ds-{group}-on-{emphasis}` foreground pair (§2.2)                  |
+| `transparent`  |         3 | Component recipe with no fill; `ghost`/`text` Button variants (§5.3) |
+
+`active` and `focus` together account for 120 call sites; `inverse` 48;
+`transparent` 3. Regenerate these counts from the usage report at the start of
+each phase rather than trusting the numbers here.
+
+Three rules govern the retirement:
+
+1. `active` never becomes a color token again. Pressed feedback is elevation
+   and motion, per §2.3 rule 4. A call site currently using an `active` color
+   is re-expressed as the pressed recipe, not remapped to `selected`.
+2. `focus` composes rather than replaces. A control that is `selected` and
+   focused renders the selected fill **and** the ring; the old `focus` color
+   state could not express that, which is why it is retired.
+3. `inverse` is the highest-risk of the four. It is the only mechanism that
+   currently solves mode-flipping foreground contrast, and removing it without
+   the §2.2 pair token would ship a 1.65:1 foreground in dark mode. The pair
+   token lands in Phase 2, before any `inverse` call site is touched in
+   Phase 4.
+
 ### 2.10 Proposed perceptual gates
 
 The following are initial calibration candidates, not adopted values:
@@ -314,10 +516,14 @@ The following are initial calibration candidates, not adopted values:
 - Default → hover: ΔEOK at least `0.06` for approved interactive roles.
 - Default → selected: ΔEOK at least `0.08` for approved interactive roles.
 - Default Accent seed remains visually anchored.
-- Dark-mode hover is lighter than default for approved Accent and Neutral
-  interactive surfaces.
+- Hover and selected are visibly separated from default in the direction that
+  has gamut headroom for the seed (§2.5.1). Direction is not fixed per mode.
 - Subtle, muted, default, and strong remain visibly ordered within each primary
   group.
+- Every generated fill has a paired foreground (§2.2) meeting the approved
+  contrast target against that fill, verified after gamut mapping.
+- No seed may be admitted to the catalog whose ladder collapses under these
+  thresholds (§2.10.2).
 - Ink/background and focus-ring contrast continue to meet the approved WCAG
   target after state transforms and gamut mapping.
 - Feedback and Category anchors remain fixed unless separately approved.
@@ -327,6 +533,42 @@ The following are initial calibration candidates, not adopted values:
 These proposed candidates must be tested across all four primary groups, all
 four emphasis levels, the four applicable interaction states, both modes, and
 the supported contrast-control range before adoption.
+
+#### 2.10.1 The current production transforms do not meet these gates
+
+The thresholds above are met by the proposed contract in the review viewer,
+which is validated at build time. They are **not** met by the transform table
+that ships today in `semantic.color.json`:
+
+| Transform  | Shipping `dL` | Resulting ΔEOK on the Eigent seed | Gate   | Result            |
+| ---------- | ------------: | --------------------------------: | ------ | ----------------- |
+| `hover`    |       `-0.03` |                           `0.030` | `0.06` | **fails by 2×**   |
+| `selected` |       `-0.08` |                           `0.080` | `0.08` | passes, no margin |
+
+The Eigent Accent seed is achromatic (`C = 0.000`), so the accompanying
+`dC` component contributes nothing and ΔEOK reduces to `|dL|`. Chromatic themes
+gain a little from `dC`; the default theme gains none. `selected` sitting
+exactly on its threshold means any gamut clamp drops it below.
+
+Retuning to `hover ≈ ±0.07` and `selected ≈ ±0.10` clears both gates with
+margin. The contrast pairs in §2.2 must be recomputed after any retune, because
+moving a fill moves its paired foreground.
+
+#### 2.10.2 Seed admission gate
+
+Theme seeds are validated before they enter the catalog, not only after the
+ladder is generated. A seed is rejected when, after gamut mapping:
+
+- any adjacent emphasis or state cell pair falls below the ΔEOK thresholds
+  above, in either mode; or
+- any generated fill has no foreground meeting the contrast target; or
+- a mode's background and Ink seeds do not differ enough to establish that mode.
+
+This single gate catches all three seed defects found in the current catalog:
+`#000000` collapsing the light Accent ladder to ΔEOK `0.000`, the dark `subtle`
+row clipping at `#fffcf6`, and Whale's dark mode rendering as a light theme.
+Seed validation is a Phase 2 deliverable and runs on every theme, including
+user-customized Custom seeds.
 
 ## 3. Proposed typography system
 
@@ -411,6 +653,50 @@ When a user changes a base, every role in that channel is recalculated and
 rounded to a whole CSS pixel. If a larger setting no longer fits, the component
 or layout grows, wraps, or truncates through an approved accessible pattern; it
 must not shrink the user's selected type ad hoc.
+
+#### 3.2.1 Migration map from the shipping type scale
+
+The shipping scale is `text-{body,label,heading}-{xs…2xl}`, spanning roughly
+820 call sites. The generated migration diff covers CSS variables only and does
+not reach these utilities, so the mapping is declared here. This table must be
+complete before Phase 3 step 1 opens.
+
+| Shipping utility | Value | Uses | New role          | Change                   |
+| ---------------- | ----- | ---: | ----------------- | ------------------------ |
+| `body-sm`        | 13/20 |  363 | `text.base`       | none                     |
+| `label-sm`       | 13/20 |   96 | `text.base`       | none                     |
+| `label-xs`       | 10/16 |  147 | `text.meta`       | **+1px** size            |
+| `body-xs`        | 10/16 |  134 | `text.meta`       | **+1px** size            |
+| `body-md`        | 15/22 |   30 | `text.body-large` | none                     |
+| `label-md`       | 15/20 |    9 | `text.body-large` | line +2px                |
+| `body-lg`        | 20/30 |    5 | `text.section`    | line −2px                |
+| `label-lg`       | 18/24 |    2 | `text.title`      | none                     |
+| `heading-base`   | 28/36 |    4 | `text.page`       | none                     |
+| `heading-sm`     | 24/32 |    2 | `text.page`       | **−4px**; 24px step gone |
+| `heading-lg`     | 36/46 |    5 | `text.display`    | **+8px**; 36px step gone |
+| `heading-xl`     | 44/58 |    2 | `text.display`    | line −6px                |
+| `body-base`      | —     |   16 | `text.base`       | **undefined today**      |
+| `heading-xs`     | —     |    2 | `text.meta`       | **undefined today**      |
+| `heading-2xl`    | —     |    4 | `text.display`    | **undefined today**      |
+
+Four points need sign-off before this map is applied:
+
+- **The bulk is exact.** 459 of ~820 call sites (`body-sm` and `label-sm`) map
+  to `text.base` at identical 13/20px. The migration is mostly a rename.
+- **281 call sites gain 1px.** `text.meta` floors at 11px while `label-xs` and
+  `body-xs` ship at 10px. §3.2 permits `text.meta` to reach 10px only when the
+  user selects a smaller base. Either accept the 10→11px shift on dense
+  metadata as a deliberate legibility improvement, or lower the `text.meta`
+  floor to 10px at the 13px default. This is a design decision, not a
+  mechanical one.
+- **The 24px and 36px steps disappear.** The new scale jumps 20 → 28 → 44px.
+  Nine call sites currently sit on the removed steps. Accept the reassignment
+  above, or add the missing steps to the scale.
+- **22 call sites reference utilities that generate no CSS.** `body-base`,
+  `heading-xs`, and `heading-2xl` are used in source but absent from
+  `tailwind.config.js`. They render at inherited size today, so their "current"
+  appearance is not what the class name implies. Verify each visually rather
+  than assuming the mapping preserves behavior.
 
 ### 3.3 Families and weights
 
@@ -619,6 +905,39 @@ The values below are approved by component-matrix review.
 | `lg` |   36px | `text.base` / default line   | 16px | 8px |           14px | Pill          |
 | `xl` |   40px | `text.body-large` / own line | 16px | 8px |           16px | Pill          |
 
+#### 5.3.1 Size-axis migration and the icon change
+
+Heights are unchanged for the three common sizes, but the size _set_ and the
+icon contract both move. These are deliberate visual changes, not
+behavior-preserving renames, so they are called out rather than folded into the
+primitive migration:
+
+| Shipping size | Height | Shipping icon | New size | New icon | Change            |
+| ------------- | -----: | ------------: | -------- | -------: | ----------------- |
+| `xxs`         |      — |             — | `xs`     |     12px | **retired**       |
+| `xs`          |      — |             — | `xs`     |     12px | height formalized |
+| `sm`          |   28px |          16px | `sm`     |     14px | icon **−2px**     |
+| `md`          |   32px |          24px | `md`     |     16px | icon **−8px**     |
+| `lg`          |   36px |          24px | `lg`     |     16px | icon **−8px**     |
+| —             |      — |             — | `xl`     |     16px | **new**, 40px     |
+
+- **The icon reduction is the visible change.** Buttons at `md` and `lg` ship
+  24px icons today; the optical contract specifies 16px. This is the intended
+  correction — 24px is the `icon.detailed` recipe and §4.1 states it must not
+  be used as a routine control icon — but it changes every default and
+  prominent button in the product. It requires before/after review on real
+  surfaces, not a swatch sheet.
+- **`xxs` is retired into `xs`.** It has no distinct height contract in the new
+  scale. Call sites move to `xs` at 24px.
+- **`xl` is new.** It exists to give form-adjacent actions a 40px partner for
+  Field `md` (§5.4). Nothing migrates into it automatically.
+
+This section is the exception to §11.2's preserve-then-redesign rule. The rule
+still holds everywhere else: elsewhere, migrate to the new token with the
+current value, then change the value in a separate reviewable commit. Here the
+icon size _is_ the point of the recipe, so the two land together and the phase
+carries the visual diff.
+
 The proposed visual chrome axis is independent from size, tone, and whether the
 content contains text or an icon:
 
@@ -729,6 +1048,13 @@ Proposed semantic roles:
 | `radius-message`         | `radius-16`        | Chat bubble body                  |
 | `radius-message-tail`    | `radius-4`         | Speaker/tail corner override      |
 | `radius-media`           | `radius-12`        | Images, browser/document previews |
+
+Ten of the twelve semantic roles resolve to `radius-12` or `radius-16`. This
+convergence is intentional and is the justification §14.1 requires: the roles
+exist so a surface's radius can be changed by _meaning_ — every menu row, or
+every card — without hunting for which of them happened to share a number.
+Collapsing them back to two tokens would remove that ability. Reference values
+are deduplicated; semantic roles are not.
 
 Proposed shape rules:
 
@@ -901,6 +1227,11 @@ Markdown is a scoped document-rendering system and should not dictate global
 
 ### 11.1 Proposed sequence
 
+0. **Correct the registered theme seeds before anything is generated from
+   them.** Set `light.eigent.accent` to `#1d1d1d`, remove the duplicate
+   `THEME_PRESETS` seed table, and resolve Whale's dark mode (§2.4.1). This
+   ships as an ordinary bug fix and does not wait for the migration — the
+   default light theme currently has no Accent hover or selected feedback.
 1. Freeze a computed-style inventory and render the current Design.md viewer.
 2. Approve reference and semantic token names before changing components.
 3. Generate CSS, Tailwind, TypeScript, and viewer data from the approved source.
@@ -923,7 +1254,10 @@ Markdown is a scoped document-rendering system and should not dictate global
 - Do not perform a repository-wide raw-value replacement.
 - Migrate one component family and its real call sites at a time.
 - Preserve current behavior before applying the visually revised proposal; this
-  separates migration regressions from deliberate redesign.
+  separates migration regressions from deliberate redesign. Two changes are
+  declared exceptions to this rule because the new value _is_ the point of the
+  recipe: the Button icon reduction (§5.3.1) and the `text.meta` floor decision
+  (§3.2.1). Both carry their visual diff inside the phase that introduces them.
 - A repeated raw value does not automatically represent one semantic token.
   For example, a 40px layout header and a 40px form field remain separate
   semantic tokens even though their current reference value matches.
@@ -1034,25 +1368,38 @@ No proposal becomes adopted until the relevant gates below pass.
 - Focus is delivered through the separate Ring treatment and never appears as a
   fifth color state.
 - The review Accent anchor is exactly `#1d1d1d` in light mode and `#ede1db` in
-  dark mode for `accent.default.default`.
+  dark mode for `accent.default.default`. The registered source seed matches
+  the anchor; the viewer does not override it (§2.4.1).
+- Exactly one source of truth registers theme seeds. No component holds a
+  second hard-coded seed table.
+- Every theme seed passes the §2.10.2 admission gate in both modes.
 - The theme specimen displays exactly Eigent, CAMEL, Claw, Starfish, Whale, and
   Custom; the primary matrices declare Eigent as their default theme in both
-  modes.
+  modes. Whale is either declared light-only with a recorded dark-gate
+  exemption, or carries authored dark seeds.
 - The default Accent emphasis ladder is generated separately from each mode's
   Eigent seed; hover and selected darken without rotating either seed's hue.
 - Chromatic Accent default, hover, and selected candidates remain within 1° of
   the seed hue when gamut-safe. Disabled may reduce chroma and alpha without
   rotating hue.
 - Proposed ΔEOK targets pass for approved interactive roles or have a reviewed
-  exception.
-- Dark hover is visibly lighter than default on approved Accent and Neutral
-  surfaces.
+  exception. The shipping `semantic.color.json` transforms do not meet them and
+  must be retuned (§2.10.1).
+- Hover and selected are visibly separated from default in the direction with
+  gamut headroom for that seed (§2.5.1). Direction is not asserted per mode; a
+  gate requiring dark hover to be lighter is not satisfiable for the Eigent
+  dark seed and is not used.
+- Every generated fill has a paired `--ds-{group}-on-{emphasis}` foreground
+  meeting the contrast target against the fill as rendered, in both modes.
 - Focus ring and selected color treatment remain visually and semantically
   distinct and can appear together.
-- Fixed Feedback and Category anchors remain unchanged unless separately
-  approved.
+- Fixed Feedback, Status, and Category anchors remain unchanged unless
+  separately approved.
+- Every tone in the shipping manifest is assigned a destination family by the
+  §2.7.1 table, with none unassigned.
 - No public Component color group or `component.*` color alias namespace is
-  generated.
+  generated. Component recipes reference foundation color tokens without
+  minting new color names.
 - A migration audit maps each legacy component-color call site to Accent,
   Neutral, Ink, Hairline, Ring, Feedback, or Category according to its actual
   responsibility; the generated proposal token rule declares no legacy
@@ -1096,9 +1443,18 @@ No proposal becomes adopted until the relevant gates below pass.
 
 ### 14.5 Proposed engineering gates
 
-- Token generation is deterministic.
+- Token generation is deterministic. A clean-tree check regenerates the token
+  outputs and review artifacts in CI and fails on any diff.
 - No token is missing, circular, unitless where a dimension is required, or
   unresolved at runtime.
+- **Every `ds-*` utility and CSS variable referenced in source resolves to a
+  declared token.** The scanner cross-validates scanned names against
+  `manifest.json` and fails on any name that generates no CSS. This is a
+  Phase 0 deliverable. Nothing enforces it today: `check-design-token-usage.mjs`
+  only rejects hard-coded colors, and the usage report counts an unresolvable
+  name as a healthy semantic reference. One such name
+  (`text-ds-text-status-warning-default-default`) is live in production source
+  and renders nothing.
 - No unapproved stock Tailwind shadow or arbitrary box shadow remains in migrated
   components.
 - Changed-file lint rejects unapproved raw colors, standard-control dimensions,

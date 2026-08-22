@@ -9,18 +9,26 @@ The live count of removed or risky utilities comes from
 [`../current-token-usage/usage-report.json`](../current-token-usage/usage-report.json).
 The numbers below are the audit baseline and must be refreshed after rebasing.
 
+> **Refreshed against the current base branch.** The removed-v3-utility risk is
+> resolved: the scanner now reports **0** occurrences, down from the 44 recorded
+> in the original audit. Configuration risks that were rated High are also
+> largely retired — the config already loads as ESM, PostCSS already uses
+> `@tailwindcss/postcss`, and Preflight is already disabled. The rows below keep
+> their original ratings only where the risk is still live; resolved rows are
+> marked. Re-run the scanner before treating any number here as current.
+
 ## Risk matrix
 
 | Risk                                              | Probability | Impact   | Detection                                                        | Mitigation and rollback                                                                                                                                                                |
 | ------------------------------------------------- | ----------- | -------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Legacy config silently loads as empty             | High        | Critical | Sentinel compile emits no DS color/type/screen/shadow utility    | Keep `tailwind.config.js` ESM because the package is `type: module`, or rename it `.cjs` and update every reference. Revert config and CSS entry together.                             |
-| Incorrect CSS layer order without Preflight       | High        | High     | Base styles override utilities in rendered specimens             | Declare `@layer theme, base, components, utilities;` before imports. Preserve the previous entry file for atomic rollback.                                                             |
+| Legacy config silently loads as empty (RESOLVED)  | Low         | Critical | Sentinel compile emits no DS color/type/screen/shadow utility    | Keep `tailwind.config.js` ESM because the package is `type: module`, or rename it `.cjs` and update every reference. Revert config and CSS entry together.                             |
+| Incorrect CSS layer order without Preflight       | Medium      | High     | Base styles override utilities in rendered specimens             | Declare `@layer theme, base, components, utilities;` before imports. Preserve the previous entry file for atomic rollback.                                                             |
 | Source detection scans generated bundles          | Medium      | High     | Slow builds, inflated CSS, accidental utility matches            | Use explicit source boundaries and never scan `web-ui/dist`. Compare output size and sentinel set.                                                                                     |
-| Removed/renamed v3 utilities disappear            | High        | High     | Scanner and rendered layout regression                           | Replace `flex-shrink-0`, `flex-grow-0`, `flex-shrink`, and `overflow-ellipsis` with v4 names before sign-off.                                                                          |
+| Removed/renamed v3 utilities disappear (RESOLVED) | Low         | High     | Scanner and rendered layout regression                           | Replace `flex-shrink-0`, `flex-grow-0`, `flex-shrink`, and `overflow-ellipsis` with v4 names before sign-off.                                                                          |
 | Selector/transform behavior changes               | Medium      | High     | Snapshot passes but real sibling/child layout differs            | Visually test every `space-*`, `divide-*`, and arbitrary transition/transform consumer in context. Revert the affected component class change.                                         |
 | Preflight changes semantic elements               | Medium      | High     | Headings, controls, lists, and Markdown change globally          | Keep Preflight intentionally disabled until explicit semantic defaults exist, then introduce it only as a dedicated migration.                                                         |
-| Shadow plugin utilities conflict in class merging | High        | Medium   | More than one `smooth-shadow-*` remains after `cn()`/`twMerge()` | Extend the owned Tailwind Merge groups or expose one elevation prop so callers cannot compose competing plugin classes.                                                                |
-| PostCSS pipeline is partly upgraded               | Medium      | Critical | Dev/build differences, missing imports or prefixes               | Use `@tailwindcss/postcss`; remove legacy plugins only after confirming their behavior is no longer required. Roll back `postcss.config.cjs`, CSS entry, and dependencies as one unit. |
+| Shadow plugin utilities conflict in class merging | Medium      | Medium   | More than one `smooth-shadow-*` remains after `cn()`/`twMerge()` | Extend the owned Tailwind Merge groups or expose one elevation prop so callers cannot compose competing plugin classes.                                                                |
+| PostCSS pipeline is partly upgraded (RESOLVED)    | Low         | Critical | Dev/build differences, missing imports or prefixes               | Use `@tailwindcss/postcss`; remove legacy plugins only after confirming their behavior is no longer required. Roll back `postcss.config.cjs`, CSS entry, and dependencies as one unit. |
 | Important/arbitrary utility syntax drifts         | Medium      | Medium   | Source contains a class but generated CSS does not               | Add representative important, arbitrary-value, variant, CSS-variable, and opacity sentinels. Do not accept Vite success alone.                                                         |
 | Theme variables exist but utilities are absent    | High        | Critical | Runtime variables inspect correctly while class has no rule      | Sentinel-test DS colors, semantic typography, custom screens, legacy transition aliases, and plugin elevations.                                                                        |
 | Tailwind Merge version lacks new class knowledge  | Medium      | High     | Caller overrides do not win; CSS source order decides            | Test merge outcomes for every public primitive variant and configure conflicts before exposing classes.                                                                                |
@@ -29,14 +37,20 @@ The numbers below are the audit baseline and must be refreshed after rebasing.
 
 ## Audited compatibility hotspots
 
-- The initial source scan found 44 removed utility occurrences across 30 files:
-  35 `flex-shrink-0`, three `flex-grow-0`, one `flex-shrink`, and five
-  `overflow-ellipsis`. The generated report is authoritative for the current
-  checkout.
-- The audit also found 103 `space-*` uses across 28 files, one `divide-y`, and
-  11 arbitrary transitions containing `transform`. Tailwind 4 changes selector
-  and individual-transform behavior, so these require visual checks rather than
-  blind replacement.
+- **Resolved.** The initial source scan found 44 removed utility occurrences
+  across 30 files: 35 `flex-shrink-0`, three `flex-grow-0`, one `flex-shrink`,
+  and five `overflow-ellipsis`. All are now zero on the base branch. The
+  generated report is authoritative for the current checkout.
+- Roughly 104 `space-*` uses, two `divide-*` uses, and 11 arbitrary transitions
+  containing `transform` remain. Tailwind 4 changes selector and
+  individual-transform behavior, so these require visual checks rather than
+  blind replacement. This is the largest live item in the register.
+- **Still open:** `tailwindcss-animate` is a v3-era plugin and is the only entry
+  in the config's `plugins:` array. It has no v4 disposition here. Sentinel-test
+  it or move to the v4 replacement before sign-off.
+- `shadow-plugin` is imported in `src/style/index.css`, but no `smooth-shadow-*`
+  class is used in product source yet. The class-merging risk is real but not
+  yet triggered — settle the conflict groups before the first consumer lands.
 - A previous trial loaded the CommonJS-shaped configuration as an empty module
   under `type: module`. Compilation still completed but emitted none of the
   custom DS colors, semantic typography, custom screens, variants, or shadows.
@@ -51,6 +65,10 @@ The numbers below are the audit baseline and must be refreshed after rebasing.
 
 ## Mandatory verification sequence
 
+0. Run `npm ci` first. `verify:tailwind4` reads `shadow-plugin/package.json`
+   directly and throws a raw `ENOENT` stack trace when dependencies are stale,
+   which reads as a tooling failure rather than an uninstalled tree. The script
+   should fail with a remediation message instead; until it does, install first.
 1. Run `npm run verify:tailwind4` before the app build. It compiles a small
    fixture and asserts custom DS color, semantic type, screen/variant, legacy
    compatibility, and smooth-shadow outputs.

@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-21T14:08:52.805Z",
+  "generatedAt": "2026-08-22T12:55:25.721Z",
   "branch": "design-system-enhancement",
-  "commit": "c21e01cfd784",
+  "commit": "9c9208beb34f",
   "scannedFiles": 567,
   "summary": {
     "cssVariableReferences": 186,
@@ -4203,7 +4203,7 @@
           "src/components/Trigger/Triggers.tsx"
         ],
         "examples": [
-          "src/components/Trigger/TriggerListItem.tsx:116",
+          "src/components/Trigger/TriggerListItem.tsx:109",
           "src/components/Trigger/Triggers.tsx:290"
         ]
       },
@@ -5453,7 +5453,7 @@
         ],
         "examples": [
           "src/components/ChatBox/MessageItem/FloatingAction.tsx:89",
-          "src/components/Trigger/TriggerListItem.tsx:135"
+          "src/components/Trigger/TriggerListItem.tsx:128"
         ]
       },
       {

@@ -3,6 +3,33 @@
 > **Decision:** the new system plan passed design review. Implementation is a
 > staged migration, not a repository-wide replacement. Each phase must leave the
 > application releasable and the compatibility layer measurable.
+>
+> **Revised after implementation audit.** Phase 0 now carries a seed hotfix and
+> a token-resolution check; Phase 1 is re-baselined against work already landed;
+> Phase 2 adds seed admission and transform retuning. See
+> [`DESIGN.md`](../new-design-system-plan/DESIGN.md) §2.4.1, §2.10.1, §2.10.2.
+
+## Phase 0.0 — Seed hotfix (ships ahead of the migration)
+
+Three registered seeds disagree with the brand and must be corrected before any
+token generation is built on them. This is an ordinary bug fix and does not wait
+for a migration gate.
+
+| Defect                                                          | Fix                                                                        |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `light.eigent.accent` is `#000000`; brand is `#1d1d1d`          | Set the seed to `#1d1d1d` in `src/style/tokens/base.color.json`            |
+| `THEME_PRESETS` in `OnboardingSteps.tsx` is a second seed table | Derive onboarding presets from `base.color.json`; delete the literals      |
+| Whale registers identical light and dark seeds                  | Author dark seeds, or declare it light-only with a recorded gate exemption |
+
+The Accent defect is not cosmetic. `#000000` is at OKLCH `L = 0.000`, so every
+darkening transform clamps to itself: the default light theme's primary action
+currently produces byte-identical `default`, `hover`, and `selected` fills. The
+review viewer already overrides the seed to `#1d1d1d`, so the viewer and the
+shipping app disagree today.
+
+**Evidence:** light and dark screenshots of primary, secondary, and selected
+controls before and after; the onboarding theme picker; ΔEOK readings for the
+Accent ladder. **Rollback:** revert the seed value; it is a single JSON edit.
 
 ## Operating model
 
@@ -30,6 +57,17 @@ Before and after every phase:
 **Work:**
 
 - Generate the token/CSS usage report and classify every unmapped alias.
+- **Add manifest cross-validation to the scanner.** Every scanned `ds-*`
+  utility and CSS variable must resolve to a declared token, and an
+  unresolvable name must fail rather than count as a healthy reference. The
+  known live example is `text-ds-text-status-warning-default-default` in
+  `NarrativeTimeline.tsx`; `status-warning` is not one of the 22 manifest
+  tones, so it generates no CSS. Nothing catches this today —
+  `check-design-token-usage.mjs` only rejects hard-coded colors.
+- **Add a clean-tree regeneration check to CI.** The generator is already
+  deterministic apart from its timestamp, so this is cheap. Without it the
+  committed artifacts drift: the current ones were generated one commit behind
+  HEAD, against a tree that has since changed ~40 source files.
 - Record light and dark screenshots for app shell, chat, settings, files,
   browser, terminal, forms, dialogs, Markdown, and destructive confirmation.
 - Add representative keyboard-focus, disabled, selected, hover, and loading
@@ -37,24 +75,37 @@ Before and after every phase:
 - Freeze new legacy token names and one-off component shadows, radii, and type
   utilities through lint or a reviewed allowlist.
 
-**Exit:** the generated report is reproducible, visual fixtures are named, and
-every current exception has an owner. **Rollback:** documentation only; no
-runtime change.
+**Exit:** the generated report is reproducible, regeneration is enforced in CI,
+no source reference resolves to an undeclared token, visual fixtures are named,
+and every current exception has an owner. **Rollback:** documentation and CI
+only; no runtime change.
 
 ## Phase 1 — Stabilize the Tailwind 4 foundation
 
 **Entry:** Phase 0 baseline is stored.
 
+Most of this phase has already landed and the remaining work is narrower than
+originally scoped. Already true on the base branch: `tailwind.config.js` loads
+as ESM, `postcss.config.cjs` uses `@tailwindcss/postcss`, Preflight is
+disabled, the lockfile pins `tailwindcss@4.3.3`, and the scanner reports **zero**
+removed-v3 utilities — the 44 occurrences in the original risk register are all
+resolved. Re-baseline before starting rather than re-doing this work.
+
 **Work:**
 
 - Keep the configuration loadable as ESM and preserve explicit CSS layer order.
 - Use the Tailwind 4 PostCSS package and intentional source paths only.
-- Replace removed utilities reported by the scanner.
+- **Decide `tailwindcss-animate`.** It is a v3-era plugin and remains the only
+  entry in `plugins:`. It has no disposition in the risk register. Either
+  confirm it works under v4 with a sentinel, or move to the v4 replacement.
+- Replace removed utilities reported by the scanner (currently none).
 - Verify `space-*`, `divide-*`, arbitrary transitions, transforms, and important
   utilities on their real components.
 - Keep Preflight disabled until semantic elements have explicit app defaults.
 - Extend `tailwind-merge` for owned elevation classes, or expose elevation only
-  through primitive props.
+  through primitive props. `shadow-plugin` is imported in `index.css` but no
+  `smooth-shadow-*` class is used in source yet, so settle the merge contract
+  before the first consumer lands rather than after.
 
 **Exit:** the Tailwind sentinel compile, app build, type check, and visual
 baseline pass with no missing design-system utilities. **Rollback:** restore the
@@ -72,12 +123,28 @@ previous CSS entry/PostCSS/config together; do not mix v3 and v4 delivery paths.
   from the same manifest.
 - Add validation for unknown references, cycles, invalid units, duplicate public
   aliases, contrast, and required state coverage.
+- **Retune the interaction transforms.** The shipping `hover` at `dL -0.03`
+  produces ΔEOK `0.030` on the achromatic Eigent seed against a `0.06` gate,
+  and `selected` sits exactly on its `0.08` threshold with no margin. Target
+  `hover ≈ ±0.07`, `selected ≈ ±0.10`, then recompute every contrast pair.
+- **Implement the seed admission gate** (DESIGN.md §2.10.2): reject any seed
+  whose ladder collapses below the ΔEOK thresholds, whose fills have no
+  conforming foreground, or whose mode is not established by its background and
+  Ink seeds. Run it over all six themes plus user Custom seeds.
+- **Emit the `--ds-{group}-on-{emphasis}` foreground pairs** (§2.2) before any
+  `inverse` call site is touched. Dark-mode Accent `strong` resolves to a light
+  fill, so a hard-coded white foreground gives 1.65:1.
+- Publish the §2.7.1 tone assignment as generator input so no manifest tone is
+  left without a destination family.
 - Retain the current color engine behind a compatibility adapter while the new
-  Accent, Neutral, Ink, Hairline, Feedback, and Category contracts are emitted.
+  Accent, Neutral, Ink, Hairline, Feedback, Status, and Category contracts are
+  emitted.
 
-**Exit:** deterministic generation has a clean-tree check and all six Eigent
-themes produce complete light/dark token sets. **Rollback:** consumers still
-resolve through compatibility aliases; remove the new generator outputs.
+**Exit:** deterministic generation has a clean-tree check, all six themes pass
+seed admission, every fill has a conforming foreground pair, every manifest tone
+is assigned, and all six themes produce complete light/dark token sets.
+**Rollback:** consumers still resolve through compatibility aliases; remove the
+new generator outputs.
 
 ## Phase 3 — Migrate shared primitives first
 
@@ -86,12 +153,19 @@ resolve through compatibility aliases; remove the new generator outputs.
 **Order:**
 
 1. Typography and semantic text primitives, including the adjustable 13px text
-   and code seeds and the 10/11px metadata role.
+   and code seeds and the 10/11px metadata role. Apply the DESIGN.md §3.2.1
+   mapping across the ~820 shipping call sites. 459 of them are exact renames;
+   the decisions needing sign-off first are the `text.meta` floor (281 sites
+   move 10→11px), the removed 24px and 36px steps (9 sites), and the 22 sites
+   using utilities that generate no CSS today.
 2. Lucide icon wrapper with the 16px/1.25px and 24px/1.5px optical contracts;
    Morphicons only for approved state-changing pairs.
 3. Button variants: text, ghost, outline, borderless secondary, primary, and
    semantic confirmation tones. Button horizontal padding is twice vertical
-   padding, and icons follow the optical-size contract.
+   padding, and icons follow the optical-size contract. Per §5.3.1 this is a
+   declared visual change, not a rename: `md` and `lg` icons drop from 24px to
+   16px across every default and prominent button, `xxs` retires into `xs`, and
+   `xl` is new. The phase carries before/after review on real surfaces.
 4. Field, select, textarea, row, and header recipes. Key header rows are 40px or
    48px; the canonical 40px row composes a 28px action.
 5. Dialog, popover, tooltip, card, navigation, and Markdown primitives.
@@ -110,15 +184,25 @@ recipe without removing the token foundation.
 - Migrate direct high-confidence mappings from the generated migration diff.
 - Review medium-confidence surface mappings in their rendered context.
 - Replace legacy component-color aliases at call sites with Accent, Neutral,
-  Ink, Hairline, Ring, Feedback, or Category intent; do not recreate a new
-  component-color namespace.
-- Use the Eigent theme as the default matrix seed (`#1d1d1d`) and verify that
-  hover/selected remain in the same perceptual family in light and dark mode.
-- Keep Feedback colors for outcomes, not ordinary interaction states.
+  Ink, Hairline, Ring, Feedback, Status, or Category intent per the §2.7.1
+  assignment; do not recreate a new component-color namespace.
+- **Retire the four dropped axes** per §2.9.1: `active` (→ pressed elevation and
+  motion, never a color token again), `focus` (→ the Ring treatment, composed
+  onto the rendered state), `inverse` (→ the `on-{emphasis}` pair token), and
+  `transparent` (→ recipes with no fill). Roughly 171 call sites; regenerate the
+  count from the usage report before starting.
+- Merge the `caution` tone into `warning` (3 call sites) — the only tone
+  removed rather than reassigned.
+- Use the Eigent theme as the default matrix seed (`#1d1d1d`, after the Phase
+  0.0 hotfix) and verify that hover/selected remain in the same perceptual
+  family in light and dark mode.
+- Keep Feedback colors for outcomes, not ordinary interaction states, and keep
+  Status distinct from Feedback so `paused` and `blocked` stay distinguishable.
 
-**Exit:** no approved component uses a legacy fill-fill alias; state contrast and
-perceptual gates pass for all six themes. **Rollback:** restore the affected
-feature's compatibility alias, not the old global generator.
+**Exit:** no approved component uses a legacy fill-fill alias; no call site
+references `active`, `focus`, `inverse`, `transparent`, or `caution`; state
+contrast and perceptual gates pass for all six themes. **Rollback:** restore the
+affected feature's compatibility alias, not the old global generator.
 
 ## Phase 5 — Migrate geometry, shape, border, and elevation
 

@@ -738,6 +738,172 @@ function themeCatalogPreview(): string {
     .join('')}</div>`;
 }
 
+/**
+ * Renders the seed audit: why the registered light Accent seed collapses the
+ * interaction ladder, and how much gamut headroom each mode seed actually has.
+ * Values are the measured OKLCH readings recorded in DESIGN.md 2.4.1/2.5.1.
+ */
+function seedAudit(): string {
+  const ladder = [
+    {
+      seed: '#000000',
+      label: 'Registered in base.color.json',
+      cells: ['#000000', '#000000', '#000000'],
+      hover: '0.000',
+      selected: '0.000',
+      verdict: 'fail',
+    },
+    {
+      seed: '#1d1d1d',
+      label: 'Brand Accent — required',
+      cells: ['#1d1d1d', '#161616', '#0b0b0b'],
+      hover: '0.030',
+      selected: '0.080',
+      verdict: 'pass',
+    },
+  ];
+
+  const rows = ladder
+    .map(
+      (row) => `<tr data-verdict="${row.verdict}">
+        <th scope="row"><code>${row.seed}</code><span>${escapeHtml(row.label)}</span></th>
+        ${row.cells
+          .map(
+            (hex) =>
+              `<td><span class="seed-chip" style="background:${hex}"></span><code>${hex}</code></td>`
+          )
+          .join('')}
+        <td><code>${row.hover}</code></td>
+        <td><code>${row.selected}</code></td>
+      </tr>`
+    )
+    .join('');
+
+  const headroom = [
+    ['Light', '#1d1d1d', '0.231', '0.231', '0.769', 'Darken'],
+    ['Dark', '#ede1db', '0.918', '0.918', '0.082', 'Darken'],
+  ]
+    .map(
+      ([mode, hex, l, darken, lighten, direction]) =>
+        `<tr><th scope="row">${mode}</th><td><span class="seed-chip" style="background:${hex}"></span><code>${hex}</code></td><td><code>${l}</code></td><td><code>${darken}</code></td><td><code>${lighten}</code></td><td>${direction}</td></tr>`
+    )
+    .join('');
+
+  return `<div class="seed-audit">
+    <p class="seed-audit-lede"><strong>The registered light Accent seed is <code>#000000</code>; the brand Accent is <code>#1d1d1d</code>.</strong> <code>#000000</code> sits at OKLCH <code>L&nbsp;=&nbsp;0.000</code>, the floor of the lightness axis, so every darkening transform clamps to itself. The default light theme&rsquo;s primary action currently produces byte-identical default, hover, and selected fills. This viewer overrides the seed to <code>#1d1d1d</code> in order to render a meaningful matrix, so the viewer and the shipping application disagree today.</p>
+    <table class="seed-table">
+      <caption>Accent ladder at <code>default</code> emphasis</caption>
+      <thead><tr><th scope="col">Seed</th><th scope="col">default</th><th scope="col">hover</th><th scope="col">selected</th><th scope="col">ΔEOK hover</th><th scope="col">ΔEOK selected</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <table class="seed-table">
+      <caption>Gamut headroom — transform direction follows the room available, not the mode</caption>
+      <thead><tr><th scope="col">Mode</th><th scope="col">Seed</th><th scope="col">OKLCH L</th><th scope="col">Darken budget</th><th scope="col">Lighten budget</th><th scope="col">Direction</th></tr></thead>
+      <tbody>${headroom}</tbody>
+    </table>
+    <p class="seed-audit-note">The dark seed has only <code>0.082</code> of lightening headroom — less than one hover step plus one selected step. At <code>subtle</code> emphasis a lightening transform clips: default, hover, and selected all resolve to <code>#fffcf6</code>, ΔEOK <code>0.000</code>. Any gate requiring dark hover to be <em>lighter</em> than default is therefore unsatisfiable for this seed.</p>
+  </div>`;
+}
+
+/**
+ * Renders the foreground pairing that replaces the retired `inverse` emphasis.
+ * A dark-mode Accent strong fill is light, so a fixed white foreground fails.
+ */
+function foregroundPairs(): string {
+  const pairs = [
+    {
+      mode: 'Light',
+      fill: '#0b0b0b',
+      fg: '#ffffff',
+      ratio: '19.68:1',
+      verdict: 'pass',
+    },
+    {
+      mode: 'Dark',
+      fill: '#d3c7c1',
+      fg: '#1d1d1d',
+      ratio: '10.85:1',
+      verdict: 'pass',
+    },
+    {
+      mode: 'Dark, hard-coded white',
+      fill: '#d3c7c1',
+      fg: '#ffffff',
+      ratio: '1.65:1',
+      verdict: 'fail',
+    },
+  ];
+
+  return `<div class="pair-grid">
+    ${pairs
+      .map(
+        (pair) => `<article class="pair-card" data-verdict="${pair.verdict}">
+          <div class="pair-sample" style="background:${pair.fill};color:${pair.fg}">Confirm</div>
+          <div class="pair-meta">
+            <strong>${escapeHtml(pair.mode)}</strong>
+            <span>fill <code>${pair.fill}</code></span>
+            <span>on <code>${pair.fg}</code></span>
+            <span class="pair-ratio">${pair.ratio}</span>
+          </div>
+        </article>`
+      )
+      .join('')}
+  </div>
+  <p class="seed-audit-note"><code>--ds-{group}-on-{emphasis}</code> is generated from the fill as actually rendered, so it flips by mode automatically. The third card is what shipping a fixed foreground produces in dark mode.</p>`;
+}
+
+/**
+ * Renders the tone-axis assignment: 22 shipping tones distributed across the
+ * four destination families. Mirrors DESIGN.md 2.7.1.
+ */
+function toneAssignment(): string {
+  const families: Array<[string, string, string[]]> = [
+    ['Accent / Neutral', 'primary', ['neutral', 'brand']],
+    [
+      'Feedback',
+      'feedback',
+      ['success', 'warning', 'error', 'information', 'caution → warning'],
+    ],
+    [
+      'Status',
+      'status',
+      [
+        'status-running',
+        'status-splitting',
+        'status-pending',
+        'status-reassigning',
+        'status-completed',
+        'status-error',
+        'status-blocked',
+        'status-paused',
+        'status-skipped',
+        'status-cancelled',
+      ],
+    ],
+    [
+      'Category',
+      'category',
+      ['single-agent', 'workforce', 'browser', 'terminal', 'document'],
+    ],
+  ];
+
+  return `<div class="tone-assignment">
+    ${families
+      .map(
+        ([
+          title,
+          kind,
+          tones,
+        ]) => `<article class="tone-family" data-kind="${kind}">
+          <header><strong>${escapeHtml(title)}</strong><span>${tones.length} tones</span></header>
+          <ul>${tones.map((tone) => `<li><code>${escapeHtml(tone)}</code></li>`).join('')}</ul>
+        </article>`
+      )
+      .join('')}
+  </div>
+  <p class="seed-audit-note">Status stays separate from Feedback so <code>paused</code> and <code>blocked</code> remain distinguishable; each Status anchor declares which Feedback semantic it inherits color behavior from. <code>caution</code> is the only tone retired rather than reassigned. <code>status-warning</code> appears in product source but is <strong>not</strong> in the manifest, so it generates no CSS.</p>`;
+}
+
 function currentOverview(): string {
   return `<section class="review-section" id="overview">
     ${sectionHeading('01 · Baseline', 'What exists today', 'The current system has a strong color engine, but other foundations and component recipes remain split across configuration, CSS, and local utilities.')}
@@ -761,6 +927,7 @@ function proposedOverview(): string {
       ${metric('1', 'source for CSS, Tailwind, types, and docs')}
     </div>
     <div class="proposal-callout mt-4"><span class="callout-mark">✓</span><div><strong>Design review passed</strong><span>The destination contract is approved. Production components migrate only through the staged implementation and verification gates.</span></div></div>
+    <div class="debt-callout mt-4"><span class="callout-mark">!</span><div><strong>Three source defects block Phase 2</strong><span>The registered Eigent light Accent seed is <code>#000000</code> where the brand is <code>#1d1d1d</code>, collapsing the light Accent ladder to ΔEOK 0.000; the shipping interaction transforms miss this document&rsquo;s own perceptual gates by 2×; and no check verifies that a referenced token resolves to a declared one. See the seed audit below.</span></div></div>
   </section>`;
 }
 
@@ -798,8 +965,11 @@ function renderColors(version: ViewerVersion): string {
       <div><strong>Ring is separate</strong><span>Focus-visible composes over the current state</span></div>
     </div>
     <div class="spec-grid mt-4">
+      ${specimen('Seed audit', 'Blocks Phase 2 · DESIGN.md §2.4.1 and §2.5.1', seedAudit(), { full: true, bodyClass: 'color-specimen-body' })}
       ${specimen('Themes', 'Six catalog palettes; Eigent is the default for the Eigent Design System matrices', themeCatalogPreview(), { full: true, bodyClass: 'theme-specimen-body' })}
       ${specimen('Primary color matrices', `Eigent is active by default · ${proposedEigentAccentSeeds.light} in light and ${proposedEigentAccentSeeds.dark} in dark`, `<div class="color-matrix-gallery" data-primary-theme="${proposedDefaultThemeId}">${matrixGallery}</div>`, { full: true, bodyClass: 'color-specimen-body' })}
+      ${specimen('Foreground pairing', 'Replaces the retired inverse emphasis · DESIGN.md §2.2', foregroundPairs(), { full: true, bodyClass: 'color-specimen-body' })}
+      ${specimen('Tone assignment', 'All 22 shipping tones have a destination · DESIGN.md §2.7.1', toneAssignment(), { full: true, bodyClass: 'color-specimen-body' })}
       ${specimen('Feedback colors', 'Fixed semantic meaning; never an interaction state', feedbackColors(), { full: true, bodyClass: 'color-specimen-body' })}
       ${specimen('Category colors', 'Identity and grouping; never success or error meaning', categoryColors(), { full: true, bodyClass: 'color-specimen-body' })}
     </div>
