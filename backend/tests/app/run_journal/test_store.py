@@ -1863,8 +1863,22 @@ async def test_event_recorder_requires_admitted_run_and_records_event(
     assert run.project_id == "project-1"
     assert run.timeout_policy_version == "timeouts-v3"
     assert committed.legacy_step == "activate_agent"
-    assert committed.event_type == "legacy.activate_agent"
-    assert committed.payload == {"agent": "browser"}
+    assert committed.event_type == "agent.started"
+    assert committed.payload["semantic_schema_version"] == 1
+    assert committed.payload["semantic"] == {
+        "kind": "agent_turn",
+        "subject": {"type": "agent_turn", "id": ""},
+        "actor": {"type": "agent"},
+        "lifecycle": {"phase": "started", "status": "running"},
+        "completeness": {
+            "state": "partial",
+            "missing_fields": [
+                "correlation.agent_turn_id",
+                "subject.id",
+            ],
+        },
+        "provenance": {"source": "legacy.activate_agent"},
+    }
     assert journal.list_pending_outbox(now=10.0)[0].event_id == "event-1"
 
 

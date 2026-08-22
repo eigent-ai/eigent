@@ -74,3 +74,50 @@ def test_todo_write_emits_todo_state(tmp_path):
         ]
     finally:
         task_locks.pop(project_id, None)
+
+
+@pytest.mark.unit
+def test_todo_state_is_isolated_per_run_and_restored_on_resume(tmp_path):
+    def working_dir_for_task(task_id: str):
+        return tmp_path / task_id
+
+    toolkit = ObservableTodoToolkit(
+        api_task_id="project_run_scoped_todo",
+        task_id="run-one",
+        working_dir_for_task=working_dir_for_task,
+    )
+    toolkit.todo_write(
+        [
+            {
+                "content": "Plan for run one",
+                "active_form": "Planning run one",
+                "status": "in_progress",
+            }
+        ]
+    )
+
+    toolkit.bind_run("run-two")
+
+    assert toolkit.serialized_todos() == []
+    toolkit.todo_write(
+        [
+            {
+                "content": "Plan for run two",
+                "active_form": "Planning run two",
+                "status": "completed",
+            }
+        ]
+    )
+
+    toolkit.bind_run("run-one")
+
+    assert toolkit.serialized_todos() == [
+        {
+            "id": "todo_1",
+            "content": "Plan for run one",
+            "active_form": "Planning run one",
+            "status": "in_progress",
+        }
+    ]
+    assert (tmp_path / "run-one" / ".todo.json").exists()
+    assert (tmp_path / "run-two" / ".todo.json").exists()

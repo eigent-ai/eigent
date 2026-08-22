@@ -124,8 +124,10 @@ function humanizeIdentifier(value: string): string {
  */
 export function deriveSegmentLabel(calls: readonly TimelineCall[]): string {
   const count = calls.length;
-  const suffix = count === 1 ? '1 event' : `${count} events`;
   if (count === 0) return '';
+  if (count === 1) return calls[0]!.title;
+
+  const suffix = `${count} actions`;
 
   const methods = new Set(calls.map((call) => call.methodName?.trim() || ''));
   if (methods.size !== 1) return suffix;
@@ -332,7 +334,22 @@ export function segmentTimelineRows(
 export function segmentTimelineRun(
   run: TimelineRunView
 ): TimelineNarrativeItem[] {
-  return segmentTimelineRows(run.traceRows);
+  const narrativeRows = run.traceRows.filter((row) => {
+    if (row.kind === 'tool') {
+      // todo_write has its own typed lifecycle for the detailed trajectory.
+      // In Chat, the plan snapshot is the useful representation, so showing
+      // both produces a duplicate "Updated plan" action for every change.
+      return !row.invocation.nodes.some(
+        (node) => node.semanticKind === 'plan_operation'
+      );
+    }
+    // The Progress surface owns the live plan. Keeping the complete plan in
+    // narrative Chat makes every later message carry a large, stale-looking
+    // block; the detailed trajectory still retains every plan snapshot.
+    if (row.node.kind === 'plan') return false;
+    return true;
+  });
+  return segmentTimelineRows(narrativeRows);
 }
 
 /**

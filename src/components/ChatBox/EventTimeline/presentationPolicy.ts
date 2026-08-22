@@ -192,14 +192,23 @@ function presentRunStatusLifecycles(
   nodes: readonly ChatProjectionNode[]
 ): readonly ChatProjectionNode[] {
   const latestByRunId = new Map<string, RunStatusNode>();
+  const latestStartedAtByRunId = new Map<string, string>();
   for (const node of nodes) {
-    if (node.kind === 'run_status') latestByRunId.set(node.runId, node);
+    if (node.kind !== 'run_status') continue;
+    latestByRunId.set(node.runId, node);
+    if (node.status === 'running' && node.createdAt) {
+      latestStartedAtByRunId.set(node.runId, node.createdAt);
+    } else if (node.startedAt) {
+      latestStartedAtByRunId.set(node.runId, node.startedAt);
+    }
   }
   if (latestByRunId.size === 0) return nodes;
-  return nodes.filter(
-    (node) =>
-      node.kind !== 'run_status' || latestByRunId.get(node.runId) === node
-  );
+  return nodes.flatMap((node): ChatProjectionNode[] => {
+    if (node.kind !== 'run_status') return [node];
+    if (latestByRunId.get(node.runId) !== node) return [];
+    const startedAt = node.startedAt ?? latestStartedAtByRunId.get(node.runId);
+    return startedAt ? [{ ...node, startedAt }] : [node];
+  });
 }
 
 function interactionCorrelationKey(

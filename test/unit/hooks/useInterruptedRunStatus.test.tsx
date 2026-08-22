@@ -87,8 +87,22 @@ describe('useInterruptedRunStatus', () => {
       status: 'interrupted',
       updated_at: 123,
       origin: 'local' as const,
+      latest_attempt: { attempt_number: 1, status: 'interrupted' },
     };
     expect(actionableInterruptedRun(localRun)).toBe(localRun);
+  });
+
+  it('suppresses an interrupted admission that never created an Attempt', () => {
+    expect(
+      actionableInterruptedRun({
+        run_id: 'orphaned_admission',
+        project_id: 'project_one',
+        status: 'interrupted',
+        updated_at: 123,
+        origin: 'local',
+        latest_attempt: null,
+      })
+    ).toBeNull();
   });
 
   it('refreshes at lifecycle boundaries without installing a polling timer', async () => {

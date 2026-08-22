@@ -12,7 +12,12 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import type { CanonicalProjectEvent, ProjectedLegacyStep } from '../types';
+import type {
+  CanonicalProjectEvent,
+  CanonicalSemanticEnvelopeV1,
+  CanonicalSemanticKind,
+  ProjectedLegacyStep,
+} from '../types';
 
 export type ChatProjectionInput = CanonicalProjectEvent | ProjectedLegacyStep;
 
@@ -103,6 +108,8 @@ export interface ChatProjectionNodeBase {
   cloudCursor: number | null;
   eventType: string;
   legacyStep: string | null;
+  /** Validated V1 domain semantics; absent for legacy or invalid envelopes. */
+  semantic?: CanonicalSemanticEnvelopeV1;
 }
 
 export interface ChatMessageNode extends ChatProjectionNodeBase {
@@ -198,6 +205,12 @@ export interface ChatActivityNode extends ChatProjectionNodeBase {
   toolCallId?: string;
   /** Typed transports may name a tool without a toolkit/method pair. */
   toolName?: string;
+  /** Stable subject identity from the versioned semantic envelope. */
+  activityId?: string;
+  /** Domain discriminator such as command_execution or agent_turn. */
+  semanticKind?: CanonicalSemanticKind;
+  /** Whether the producer supplied every required correlation field. */
+  semanticCompleteness?: 'complete' | 'partial';
 }
 
 export interface ChatArtifactNode extends ChatProjectionNodeBase {
@@ -218,6 +231,8 @@ export interface ChatRunStatusNode extends ChatProjectionNodeBase {
   kind: 'run_status';
   status: ChatRunStatus;
   reason?: string;
+  /** Latest Attempt start retained when lifecycle rows are collapsed. */
+  startedAt?: string;
 }
 
 /**

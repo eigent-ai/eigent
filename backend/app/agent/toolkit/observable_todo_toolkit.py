@@ -13,6 +13,8 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import logging
+from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from camel.toolkits import FunctionTool, TodoToolkit
@@ -41,12 +43,43 @@ class ObservableTodoToolkit(TodoToolkit, AbstractToolkit):
         task_id: str,
         agent_id: str | None = None,
         working_dir: str | None = None,
+        working_dir_for_task: Callable[[str], str | Path] | None = None,
         timeout: float | None = None,
     ) -> None:
-        super().__init__(working_dir=working_dir, timeout=timeout)
+        self._working_dir_for_task = working_dir_for_task
+        initial_working_dir = (
+            working_dir_for_task(task_id)
+            if working_dir_for_task is not None
+            else working_dir
+        )
+        super().__init__(working_dir=initial_working_dir, timeout=timeout)
         self.api_task_id = api_task_id
         self.task_id = task_id
         self.agent_id = agent_id
+
+    def bind_run(self, task_id: str, *, agent_id: str | None = None) -> None:
+        """Bind persisted Todo state to one durable Run.
+
+        A single Agent instance can be reused across follow-up Runs in the
+        same Project. Reloading on a Run switch prevents one Run's plan from
+        leaking into the next while preserving it for Resume.
+        """
+
+        next_working_dir = (
+            Path(self._working_dir_for_task(task_id))
+            if self._working_dir_for_task is not None
+            else self._working_dir
+        )
+        with self._lock:
+            run_changed = task_id != self.task_id
+            directory_changed = next_working_dir != self._working_dir
+            self.task_id = task_id
+            self.agent_id = agent_id
+            if run_changed or directory_changed:
+                self._working_dir = next_working_dir
+                self._md_path = next_working_dir / "todo.md"
+                self._json_path = next_working_dir / ".todo.json"
+                self.todos = self._load()
 
     def todo_write(self, todos: list[TodoItem]) -> str:
         """Create or update the current task todo list.

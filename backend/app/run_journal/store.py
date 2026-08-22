@@ -102,6 +102,7 @@ from app.run_journal.models import (
     WorkspaceWriterRequestRecord,
 )
 from app.run_journal.paths import default_run_journal_path
+from app.run_journal.semantic_events import semantic_event_fields
 from app.run_journal.transitions import (
     ATTEMPT_ACTIVE_STATES,
     ATTEMPT_TRANSITIONS,
@@ -9053,6 +9054,34 @@ class SQLiteRunJournal:
                 for row in rows
             ]
 
+    def list_active_workspace_writer_requests(
+        self,
+    ) -> list[WorkspaceWriterRequestRecord]:
+        """Return every queued/acquired checkout writer for reconciliation.
+
+        Startup recovery cannot enumerate by repository/checkout because the
+        potentially orphaned request is itself the durable record that names
+        those scopes.  Terminal rows remain audit history and are excluded.
+        """
+
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM workspace_writer_requests
+                WHERE status IN ('queued', 'acquired')
+                ORDER BY repository_id, checkout_id,
+                    CASE status
+                        WHEN 'acquired' THEN 0
+                        ELSE 1
+                    END,
+                    created_at, request_id
+                """
+            ).fetchall()
+            return [
+                self._workspace_writer_request_from_row(self._connection, row)
+                for row in rows
+            ]
+
     def release_workspace_writer(
         self,
         *,
@@ -12315,6 +12344,14 @@ class SQLiteRunJournal:
         idempotency_key: str | None = None,
         outcome: str | None = None,
         timeout_reason: str | None = None,
+        toolkit_name: str | None = None,
+        agent_name: str | None = None,
+        task_id: str | None = None,
+        display_title: str | None = None,
+        display_input: str | None = None,
+        display_output: str | None = None,
+        display_summary: str | None = None,
+        display_duration_ms: int | None = None,
         now: float | None = None,
     ) -> ToolCallRecord:
         if status not in {
@@ -12363,10 +12400,6 @@ class SQLiteRunJournal:
                         f"attempt {attempt_id!r} does not belong to run {run_id!r}"
                     )
             previous = existing["status"] if existing is not None else None
-            if not transition_allowed(TOOL_TRANSITIONS, previous, status):
-                raise InvalidRunTransitionError(
-                    f"tool call {tool_call_id!r} cannot move from {previous!r} to {status!r}"
-                )
             if (
                 status == "timed_out"
                 and safety_class is ToolSafetyClass.UNSAFE_WRITE
@@ -12384,6 +12417,16 @@ class SQLiteRunJournal:
             ):
                 raise IdempotencyConflictError(
                     f"tool_call_id {tool_call_id!r} was reused with different data"
+                )
+            if (
+                existing is not None
+                and previous == status
+                and existing["result_json"] == result_json
+            ):
+                return self._tool_call_from_row(existing)
+            if not transition_allowed(TOOL_TRANSITIONS, previous, status):
+                raise InvalidRunTransitionError(
+                    f"tool call {tool_call_id!r} cannot move from {previous!r} to {status!r}"
                 )
             if existing is None:
                 connection.execute(
@@ -12421,7 +12464,9 @@ class SQLiteRunJournal:
                         timeout_reason = COALESCE(?, timeout_reason),
                         dispatched_at = CASE WHEN ? = 'dispatched'
                             THEN COALESCE(dispatched_at, ?) ELSE dispatched_at END,
-                        completed_at = CASE WHEN ? IN ('completed', 'failed')
+                        completed_at = CASE WHEN ? IN (
+                            'completed', 'failed', 'timed_out', 'outcome_unknown'
+                        )
                             THEN COALESCE(completed_at, ?) ELSE completed_at END,
                         updated_at = ?
                     WHERE tool_call_id = ?
@@ -12467,6 +12512,73 @@ class SQLiteRunJournal:
                 "request": request or {},
                 "result": result,
             }
+            normalized_tool_name = tool_name.strip().lower().replace("-", "_")
+            if normalized_tool_name in {"todo_write", "update_plan"}:
+                semantic_kind = "plan_operation"
+            elif normalized_tool_name.startswith(
+                ("shell", "terminal", "exec", "run_")
+            ):
+                semantic_kind = "command_execution"
+            elif any(
+                marker in normalized_tool_name
+                for marker in ("file", "folder", "directory")
+            ):
+                semantic_kind = "file_operation"
+            elif normalized_tool_name.startswith(
+                ("browser", "navigate", "visit")
+            ):
+                semantic_kind = "browser_operation"
+            else:
+                semantic_kind = "tool_call"
+            semantic_phase = {
+                "prepared": "requested",
+                "dispatched": "started",
+                "completed": "completed",
+                "failed": "failed",
+                "timed_out": "failed",
+                "outcome_unknown": "unknown",
+            }.get(status, "progress")
+            semantic_status = {
+                "prepared": "pending",
+                "dispatched": "running",
+                "completed": "completed",
+                "failed": "failed",
+                "timed_out": "timed_out",
+                "outcome_unknown": "outcome_unknown",
+            }.get(status, "unknown")
+            payload.update(
+                semantic_event_fields(
+                    kind=semantic_kind,
+                    subject_type="tool_call",
+                    subject_id=tool_call_id,
+                    phase=semantic_phase,
+                    status=semantic_status,
+                    source="tool_checkpoint",
+                    actor_type="agent",
+                    actor_name=agent_name,
+                    correlation={
+                        "attempt_id": attempt_id,
+                        "task_id": task_id,
+                    },
+                )
+            )
+            display_fields = {
+                "toolkit_name": toolkit_name,
+                "agent_name": agent_name,
+                "process_task_id": task_id,
+                "display_title": display_title,
+                "display_input": display_input,
+                "display_output": display_output,
+                "display_summary": display_summary,
+                "display_duration_ms": display_duration_ms,
+            }
+            payload.update(
+                {
+                    key: value
+                    for key, value in display_fields.items()
+                    if value is not None
+                }
+            )
             self._append_event_in_transaction(
                 connection,
                 run_id,

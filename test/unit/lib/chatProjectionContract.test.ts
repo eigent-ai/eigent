@@ -344,6 +344,7 @@ describe('chat projection presentation contract', () => {
     expect(statuses[0]).toMatchObject({
       eventId: 'event-4',
       status: 'completed',
+      startedAt: '2026-08-18T00:00:03Z',
     });
     expect(presentChatSemanticEntities(presented)).toEqual(presented);
   });

@@ -14,6 +14,78 @@
 
 export type ProjectorMode = 'live' | 'rehydrate' | 'playback';
 
+export type CanonicalSemanticStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'timed_out'
+  | 'outcome_unknown'
+  | 'cancelled'
+  | 'unknown';
+
+export type CanonicalSemanticPhase =
+  | 'requested'
+  | 'started'
+  | 'progress'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'unknown';
+
+export type CanonicalSemanticKind =
+  | 'agent'
+  | 'agent_turn'
+  | 'browser_operation'
+  | 'command_execution'
+  | 'file_change'
+  | 'file_operation'
+  | 'git_conflict_resolution'
+  | 'git_integration'
+  | 'narration'
+  | 'plan'
+  | 'plan_operation'
+  | 'subtask'
+  | 'tool_call'
+  | 'workspace_writer';
+
+export type CanonicalSemanticSubjectType =
+  | 'activity_stream'
+  | 'agent'
+  | 'agent_turn'
+  | 'agent_workspace'
+  | 'artifact'
+  | 'file'
+  | 'plan'
+  | 'task'
+  | 'tool_call'
+  | 'writer_request';
+
+export type CanonicalSemanticActorType = 'agent' | 'system' | 'user';
+
+/** Versioned domain semantics carried by new RunJournal events. */
+export interface CanonicalSemanticEnvelopeV1 {
+  kind: CanonicalSemanticKind;
+  subject: { type: CanonicalSemanticSubjectType; id: string };
+  actor?: { type?: CanonicalSemanticActorType; id?: string; name?: string };
+  lifecycle: {
+    phase: CanonicalSemanticPhase;
+    status: CanonicalSemanticStatus;
+  };
+  correlation?: Record<string, string>;
+  completeness: {
+    state: 'complete' | 'partial';
+    missing_fields: string[];
+  };
+  provenance?: { source?: string };
+}
+
+export type CanonicalSemanticPayloadV1 = Record<string, unknown> & {
+  semantic_schema_version: 1;
+  display_schema_version: 1;
+  semantic: CanonicalSemanticEnvelopeV1;
+};
+
 export type CanonicalProjectEvent = {
   eventId: string;
   projectId: string;

@@ -41,6 +41,8 @@ export interface TimelineCall {
   input?: string;
   /** Presentation-safe response text. Never a raw transport payload. */
   output?: string;
+  /** Short lifecycle/outcome summary, separate from request and response. */
+  detail?: string;
   inputLabel: string;
   outputLabel: string;
   emptyOutputText?: string;
@@ -143,6 +145,7 @@ function toolCall(invocation: TimelineToolInvocation): TimelineCall {
     status: invocation.status,
     input: invocation.input,
     output: invocation.output,
+    detail: invocation.detail,
     inputLabel: 'Request',
     outputLabel: 'Response',
     durationMs: invocation.durationMs,
@@ -193,6 +196,7 @@ function activityCall(id: string, node: ChatActivityNode): TimelineCall {
     status: node.status,
     input: node.input,
     output: node.output || node.detail,
+    detail: node.detail,
     inputLabel: 'Request',
     outputLabel: 'Response',
     durationMs: node.durationMs,

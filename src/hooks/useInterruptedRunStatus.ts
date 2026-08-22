@@ -62,7 +62,11 @@ export function normalizeInterruptedRunState(
 export function actionableInterruptedRun(
   run: DurableRunSummary | null
 ): DurableRunSummary | null {
-  return run?.origin === 'cloud_restore' ? null : run;
+  if (run?.origin === 'cloud_restore') return null;
+  // A Run without an Attempt is an abandoned admission, not resumable work.
+  // Startup reconciliation terminalizes it; suppress the misleading control
+  // during the brief interval before that reconciliation reaches the UI.
+  return run?.latest_attempt ? run : null;
 }
 
 function projectedRunToDurableSummary(

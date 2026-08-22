@@ -147,15 +147,24 @@ class ActionCreateAgentData(BaseModel):
 class ActionActivateAgentData(BaseModel):
     action: Literal[Action.activate_agent] = Action.activate_agent
     data: dict[
-        Literal["agent_name", "process_task_id", "agent_id", "message"], str
+        Literal[
+            "agent_name",
+            "process_task_id",
+            "agent_id",
+            "agent_turn_id",
+            "message",
+        ],
+        str,
     ]
 
 
 class DataDict(TypedDict):
     agent_name: str
     agent_id: str
+    agent_turn_id: str
     process_task_id: str
     message: str
+    status: str
     tokens: int
 
 
@@ -196,6 +205,7 @@ class ActionActivateToolkitData(BaseModel):
             "process_task_id",
             "method_name",
             "message",
+            "tool_call_id",
         ],
         str,
     ]
@@ -210,6 +220,7 @@ class ActionDeactivateToolkitData(BaseModel):
             "process_task_id",
             "method_name",
             "message",
+            "tool_call_id",
         ],
         str,
     ]

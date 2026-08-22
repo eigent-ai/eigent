@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass
 
 from app.run_journal import (
@@ -27,6 +28,7 @@ from app.run_journal import (
     configured_run_journal_path,
     get_default_run_journal,
 )
+from app.run_journal.semantic_events import semantic_event_fields
 
 
 class WorkspaceWriterInterruptedError(RuntimeError):
@@ -37,6 +39,17 @@ class WorkspaceWriterInterruptedError(RuntimeError):
 class WorkspaceWriterAdmission:
     request: WorkspaceWriterRequestRecord
     event_type: str
+
+
+@dataclass(frozen=True)
+class WorkspaceWriterReconciliation:
+    interrupted_request_ids: tuple[str, ...]
+    promoted_request_ids: tuple[str, ...]
+    preserved_request_ids: tuple[str, ...]
+    failed_request_ids: tuple[str, ...]
+
+
+logger = logging.getLogger(__name__)
 
 
 class WorkspaceWriterScheduler:
@@ -64,6 +77,14 @@ class WorkspaceWriterScheduler:
         if not value:
             raise ValueError("Run id is required for writer admission")
         return f"workspace-writer:{value}"
+
+    @staticmethod
+    def run_id_from_request_id(request_id: str) -> str | None:
+        prefix = "workspace-writer:"
+        if not request_id.startswith(prefix):
+            return None
+        run_id = request_id[len(prefix) :].strip()
+        return run_id or None
 
     def admit_task(
         self,
@@ -168,7 +189,133 @@ class WorkspaceWriterScheduler:
             )
             event_type = "workspace.writer.released"
         self._record_state(run_id, result.finished, event_type=event_type)
+        self._record_promoted_request(result.next_acquired)
         return result.finished
+
+    def reconcile_orphaned_admissions(
+        self,
+    ) -> WorkspaceWriterReconciliation:
+        """Interrupt pre-Attempt writer requests left by a crashed admission.
+
+        An interrupted Run with at least one Attempt remains resumable and
+        deliberately keeps its checkout writer.  Only a request whose Run
+        never created any Attempt is a half-finished admission and safe to
+        reclaim during startup.
+        """
+
+        interrupted: list[str] = []
+        promoted: list[str] = []
+        preserved: list[str] = []
+        failed: list[str] = []
+        terminalized_run_ids: set[str] = set()
+        for observed in self.journal.list_active_workspace_writer_requests():
+            request = self.journal.get_workspace_writer_request(
+                observed.request_id
+            )
+            if request is None or request.status not in {"queued", "acquired"}:
+                continue
+            run_id = self.run_id_from_request_id(request.request_id)
+            if run_id is None:
+                failed.append(request.request_id)
+                logger.error(
+                    "Workspace writer request has no recoverable Run identity",
+                    extra={"request_id": request.request_id},
+                )
+                continue
+            run = self.journal.get_run(run_id)
+            attempts = (
+                self.journal.list_run_attempts(run_id)
+                if run is not None
+                else []
+            )
+            if attempts:
+                preserved.append(request.request_id)
+                continue
+            try:
+                result = self.journal.interrupt_workspace_writer(
+                    request_id=request.request_id,
+                    task_id=request.task_id,
+                )
+                if run is not None:
+                    self._record_state(
+                        run_id,
+                        result.finished,
+                        event_type="workspace.writer.interrupted",
+                    )
+                    self._cancel_orphaned_run(run_id)
+                    terminalized_run_ids.add(run_id)
+                interrupted.append(result.finished.request_id)
+                promoted_run_id = self._record_promoted_request(
+                    result.next_acquired
+                )
+                if promoted_run_id is not None:
+                    promoted.append(result.next_acquired.request_id)
+            except Exception:
+                failed.append(request.request_id)
+                logger.exception(
+                    "Failed to reconcile orphaned workspace writer admission",
+                    extra={
+                        "request_id": request.request_id,
+                        "run_id": run_id,
+                    },
+                )
+        # A previous startup may already have reclaimed the writer before the
+        # process stopped. Finish those half-created Runs too so the UI never
+        # offers Resume for a Run that has no Attempt to resume.
+        for run in self.journal.list_all_runs():
+            if (
+                run.run_id in terminalized_run_ids
+                or run.origin != "local"
+                or run.status in {"completed", "failed", "cancelled"}
+                or self.journal.list_run_attempts(run.run_id)
+            ):
+                continue
+            request_id = self.request_id(run.run_id)
+            try:
+                self._cancel_orphaned_run(run.run_id)
+            except Exception:
+                failed.append(request_id)
+                logger.exception(
+                    "Failed to terminalize orphaned pre-Attempt Run",
+                    extra={"request_id": request_id, "run_id": run.run_id},
+                )
+        return WorkspaceWriterReconciliation(
+            interrupted_request_ids=tuple(interrupted),
+            promoted_request_ids=tuple(promoted),
+            preserved_request_ids=tuple(preserved),
+            failed_request_ids=tuple(failed),
+        )
+
+    def _cancel_orphaned_run(self, run_id: str) -> None:
+        run = self.journal.get_run(run_id)
+        if run is None or run.status in {"completed", "failed", "cancelled"}:
+            return
+        request_id = run.cancel_request_id or (
+            f"startup-orphaned-admission:{run_id}"
+        )
+        if run.cancel_request_id is None:
+            self.journal.request_cancel(
+                run_id,
+                request_id=request_id,
+                reason="admission_failed_before_attempt",
+            )
+        self.journal.complete_cancel(run_id, request_id=request_id)
+
+    def _record_promoted_request(
+        self,
+        request: WorkspaceWriterRequestRecord | None,
+    ) -> str | None:
+        if request is None:
+            return None
+        run_id = self.run_id_from_request_id(request.request_id)
+        if run_id is None or self.journal.get_run(run_id) is None:
+            return None
+        self._record_state(
+            run_id,
+            request,
+            event_type="workspace.writer.acquired",
+        )
+        return run_id
 
     def _record_state(
         self,
@@ -196,6 +343,30 @@ class WorkspaceWriterScheduler:
                 ),
                 event_type=event_type,
                 payload={
+                    **semantic_event_fields(
+                        kind="workspace_writer",
+                        subject_type="writer_request",
+                        subject_id=request.request_id,
+                        phase={
+                            "workspace.writer.queued": "requested",
+                            "workspace.writer.acquired": "started",
+                            "workspace.writer.released": "completed",
+                            "workspace.writer.interrupted": "cancelled",
+                        }[event_type],
+                        status={
+                            "workspace.writer.queued": "pending",
+                            "workspace.writer.acquired": "running",
+                            "workspace.writer.released": "completed",
+                            "workspace.writer.interrupted": "cancelled",
+                        }[event_type],
+                        source="workspace_writer_scheduler",
+                        actor_type="system",
+                        correlation={
+                            "task_id": request.task_id,
+                            "project_id": request.project_id,
+                            "checkout_id": request.checkout_id,
+                        },
+                    ),
                     "request_id": request.request_id,
                     "repository_id": request.repository_id,
                     "checkout_id": request.checkout_id,
@@ -207,6 +378,21 @@ class WorkspaceWriterScheduler:
                     "blocker_task_id": request.blocker_task_id,
                     "waited": waited,
                     "wait_duration_ms": wait_duration_ms,
+                    "display_title": {
+                        "workspace.writer.queued": "Waiting for workspace",
+                        "workspace.writer.acquired": "Workspace available",
+                        "workspace.writer.released": "Workspace write completed",
+                        "workspace.writer.interrupted": "Workspace wait stopped",
+                    }[event_type],
+                    "display_summary": (
+                        "Another task is updating this Space"
+                        if event_type == "workspace.writer.queued"
+                        else "This task can continue"
+                        if event_type == "workspace.writer.acquired"
+                        else "Write access was released"
+                        if event_type == "workspace.writer.released"
+                        else "Write access ended before completion"
+                    ),
                 },
             ),
             expected_project_id=request.project_id,

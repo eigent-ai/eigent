@@ -32,6 +32,7 @@ from typing import Any
 
 from app.run_context import get_current_run_context
 from app.run_journal.models import CommittedRunEvent, RunEventDraft, RunRecord
+from app.run_journal.semantic_events import semantic_event_fields
 from app.run_journal.store import SQLiteRunJournal
 from app.utils.file_utils import list_files
 from app.utils.workspace_paths import (
@@ -446,12 +447,37 @@ def record_artifact_manifest(
                 "artifact": artifact,
             }
         )
+        artifact_payload = {
+            **semantic_event_fields(
+                kind="file_change",
+                subject_type="artifact",
+                subject_id=str(artifact["artifact_id"]),
+                phase="completed",
+                status="completed",
+                source="artifact_manifest",
+                actor_type="agent",
+                actor_id=str(artifact.get("agentId") or "") or None,
+                correlation={
+                    "run_id": run_id,
+                    "task_id": artifact.get("taskId"),
+                },
+            ),
+            **artifact,
+            "display_title": str(
+                artifact.get("relativePath") or artifact.get("name") or "File"
+            ),
+            "display_summary": (
+                "File created"
+                if event_type == "artifact.created"
+                else "File updated"
+            ),
+        }
         drafts.append(
             RunEventDraft(
                 # Cloud canonical event ids are capped at 64 characters.
                 event_id=f"ae_{event_digest[:61]}",
                 event_type=event_type,
-                payload=artifact,
+                payload=artifact_payload,
             )
         )
 

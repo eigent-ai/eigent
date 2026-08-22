@@ -54,6 +54,7 @@ from app.run_policy import ToolSafetyClass
 from app.run_runtime.tool_checkpoint import declare_tool_safety
 from app.service.task import Agents, get_task_lock_if_exists
 from app.utils.browser_launcher import normalize_cdp_url
+from app.utils.workspace_paths import runtime_task_root
 from app.workspace_bundle.runtime import ResolvedRuntimeEnvironment
 
 logger = logging.getLogger("toolkit_assembler")
@@ -478,9 +479,25 @@ async def assemble_single_agent_toolkits(
         assembly.add_tools(toolkit.get_tools(), SkillToolkit.toolkit_name())
 
     if _enabled(config, "todo"):
+
+        def todo_working_dir_for_task(run_id: str):
+            return (
+                runtime_task_root(
+                    options.email,
+                    options.project_id,
+                    run_id,
+                    options.user_id,
+                )
+                / "todo"
+            )
+
         todo_options = {
-            "working_dir": working_directory,
             **_options(config, "todo"),
+            # Todo state is Run metadata, not a file in the shared Space
+            # checkout. Resume reuses this directory; a follow-up Run gets a
+            # separate directory even when its Agent instance is reused.
+            "working_dir": str(todo_working_dir_for_task(task_id)),
+            "working_dir_for_task": todo_working_dir_for_task,
         }
         todo_toolkit = ObservableTodoToolkit(
             api_task_id=options.project_id,

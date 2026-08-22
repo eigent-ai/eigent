@@ -93,6 +93,7 @@ describe('chat activity projection', () => {
           tool_call_id: 'call-safe',
           display_input: 'Query: Eigent documentation',
           display_output: 'Found 3 relevant pages',
+          display_summary: 'Completed in 1.3 s',
           input: 'raw secret request',
           output: 'raw secret response',
           display_duration_ms: 1250,
@@ -108,7 +109,84 @@ describe('chat activity projection', () => {
         phase: 'completed',
         input: 'Query: Eigent documentation',
         output: 'Found 3 relevant pages',
+        detail: 'Completed in 1.3 s',
         durationMs: 1250,
+      },
+    });
+  });
+
+  it('uses the versioned semantic envelope for lifecycle and correlation', () => {
+    const node = adaptChatProjectionEvent(
+      event(
+        {
+          semantic_schema_version: 1,
+          display_schema_version: 1,
+          semantic: {
+            kind: 'command_execution',
+            subject: { type: 'tool_call', id: 'command-1' },
+            actor: {
+              type: 'agent',
+              id: 'agent-1',
+              name: 'Developer Agent',
+            },
+            lifecycle: { phase: 'completed', status: 'completed' },
+            correlation: { task_id: 'task-1' },
+            completeness: { state: 'complete', missing_fields: [] },
+          },
+          display_title: 'Ran command',
+          display_input: 'Command: npm test',
+          display_output: '12 tests passed',
+        },
+        'tool.completed'
+      )
+    );
+
+    expect(node).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'activity',
+        activityId: 'command-1',
+        toolCallId: 'command-1',
+        semanticKind: 'command_execution',
+        semanticCompleteness: 'complete',
+        semantic: {
+          kind: 'command_execution',
+          subject: { type: 'tool_call', id: 'command-1' },
+        },
+        phase: 'completed',
+        status: 'completed',
+        agentId: 'agent-1',
+        agentName: 'Developer Agent',
+        taskId: 'task-1',
+      },
+    });
+  });
+
+  it('rejects unknown values instead of casting an invalid V1 envelope', () => {
+    const node = adaptChatProjectionEvent(
+      event(
+        {
+          semantic_schema_version: 1,
+          display_schema_version: 1,
+          semantic: {
+            kind: 'invented_operation',
+            subject: { type: 'tool_call', id: 'command-1' },
+            lifecycle: { phase: 'completed', status: 'completed' },
+            completeness: { state: 'complete', missing_fields: [] },
+          },
+          display_title: 'Ran command',
+        },
+        'tool.completed'
+      )
+    );
+
+    expect(node).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'activity',
+        semantic: undefined,
+        semanticKind: undefined,
+        semanticCompleteness: undefined,
       },
     });
   });

@@ -24,6 +24,7 @@ from app.run_policy import ToolSafetyClass
 from app.run_runtime.tool_checkpoint import (
     ToolCheckpointPersistenceError,
     UnsafeToolOutcomeError,
+    build_tool_display_projection,
     classify_tool_safety,
     declare_tool_safety,
     declared_tool_safety,
@@ -96,9 +97,95 @@ def test_checkpoint_surrounds_tool_and_redacts_credentials(tmp_path):
                 result={"content": "hello"},
                 journal=journal,
             )
+        events = journal.list_events("run-1")
+        completed_event = next(
+            event for event in events if event.event_type == "tool.completed"
+        )
+        assert completed_event.payload["display_title"] == "Read notes.md"
+        assert completed_event.payload["display_input"] == "File: notes.md"
+        assert completed_event.payload["display_output"] == (
+            "Returned 5 characters"
+        )
+        assert completed_event.payload["display_summary"].startswith(
+            "Completed in "
+        )
+        assert completed_event.payload["display_duration_ms"] >= 0
+        semantic = completed_event.payload["semantic"]
+        assert semantic["kind"] == "file_operation"
+        assert semantic["subject"] == {
+            "type": "tool_call",
+            "id": completed_event.payload["tool_call_id"],
+        }
+        assert semantic["lifecycle"] == {
+            "phase": "completed",
+            "status": "completed",
+        }
+        assert (
+            semantic["correlation"]["attempt_id"]
+            == (completed_event.payload["attempt_id"])
+        )
+        assert semantic["completeness"] == {
+            "state": "complete",
+            "missing_fields": [],
+        }
+        assert "secret" not in str(completed_event.payload)
         tool = journal.list_tool_calls("run-1")[0]
         assert tool.status == "completed"
         assert tool.result == {"content": "hello"}
+
+
+def test_display_projection_hides_absolute_paths_and_file_content(tmp_path):
+    with _running_journal(tmp_path) as journal:
+        with run_context_scope(_context(tmp_path)):
+            checkpoint = prepare_tool_checkpoint(
+                raw_tool_call_id="portable-display",
+                tool_name="write_file",
+                arguments={
+                    "path": "/Users/example/private/report.md",
+                    "content": "private body",
+                },
+                journal=journal,
+            )
+            finish_tool_checkpoint(
+                checkpoint,
+                result={"success": True},
+                journal=journal,
+            )
+
+        completed_event = next(
+            event
+            for event in journal.list_events("run-1")
+            if event.event_type == "tool.completed"
+        )
+        display = {
+            key: value
+            for key, value in completed_event.payload.items()
+            if key.startswith("display_")
+        }
+        assert display["display_title"] == "Wrote …/report.md"
+        assert display["display_input"] == "File: …/report.md"
+        assert "Users/example" not in str(display)
+        assert "private body" not in str(display)
+
+
+def test_display_projection_strips_paths_and_url_queries_from_errors():
+    display = build_tool_display_projection(
+        tool_name="read_file",
+        request={"path": "notes.md"},
+        status="failed",
+        result={
+            "error": (
+                "failed reading /Users/alice/private/secret.txt via "
+                "https://example.com/private/secret.txt?token=secret"
+            )
+        },
+        duration_ms=25,
+    )
+
+    assert display.output is not None
+    assert "/Users/alice" not in display.output
+    assert "token=secret" not in display.output
+    assert "…/secret.txt" in display.output
 
 
 def test_checkpoint_redacts_common_nested_credential_keys(tmp_path):

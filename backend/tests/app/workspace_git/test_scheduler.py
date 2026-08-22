@@ -102,6 +102,22 @@ async def test_scheduler_waits_across_projects_and_projects_queue_events(
     ]
     queued, ready = journal.list_events("run-2")
     assert queued.payload["waited"] is False
+    assert queued.payload["semantic"] == {
+        "kind": "workspace_writer",
+        "subject": {
+            "type": "writer_request",
+            "id": "workspace-writer:run-2",
+        },
+        "actor": {"type": "system"},
+        "lifecycle": {"phase": "requested", "status": "pending"},
+        "correlation": {
+            "task_id": "task-2",
+            "project_id": "project-2",
+            "checkout_id": "checkout-primary",
+        },
+        "completeness": {"state": "complete", "missing_fields": []},
+        "provenance": {"source": "workspace_writer_scheduler"},
+    }
     assert ready.payload["waited"] is True
     assert ready.payload["wait_duration_ms"] >= 0
 
@@ -138,4 +154,95 @@ def test_scheduler_interrupts_a_terminal_task_that_never_acquired(journal):
     )
     assert journal.list_events("run-2")[-1].event_type == (
         "workspace.writer.interrupted"
+    )
+
+
+def test_startup_reclaims_only_writer_admissions_without_an_attempt(journal):
+    scheduler = WorkspaceWriterScheduler(journal)
+    for run_id, project_id in (
+        ("run-orphan", "project-orphan"),
+        ("run-resumable", "project-resumable"),
+    ):
+        journal.ensure_run(
+            run_id=run_id,
+            project_id=project_id,
+            status="pending",
+        )
+    journal.create_run_attempt(
+        "run-resumable",
+        request_id="initial:run-resumable",
+        reason="initial_execution",
+        activate=False,
+        now=2,
+    )
+
+    orphan = scheduler.admit_task(
+        run_id="run-orphan",
+        task_id="task-orphan",
+        project_id="project-orphan",
+        binding=_binding(journal, "project-orphan"),
+    )
+    resumable = scheduler.admit_task(
+        run_id="run-resumable",
+        task_id="task-resumable",
+        project_id="project-resumable",
+        binding=_binding(journal, "project-resumable"),
+    )
+    journal.reconcile_startup(now=3)
+
+    result = scheduler.reconcile_orphaned_admissions()
+
+    assert result.interrupted_request_ids == (orphan.request.request_id,)
+    assert result.promoted_request_ids == (resumable.request.request_id,)
+    assert result.preserved_request_ids == (resumable.request.request_id,)
+    assert result.failed_request_ids == ()
+    assert (
+        journal.get_workspace_writer_request(orphan.request.request_id).status
+        == "interrupted"
+    )
+    assert (
+        journal.get_workspace_writer_request(
+            resumable.request.request_id
+        ).status
+        == "acquired"
+    )
+    lease = journal.get_workspace_writer_lease(
+        repository_id="repo-1",
+        checkout_id="checkout-primary",
+    )
+    assert lease is not None and lease.task_id == "task-resumable"
+    assert journal.get_run("run-orphan").status == "cancelled"
+    assert journal.list_events("run-orphan")[-1].event_type == "run.cancelled"
+    assert journal.list_events("run-resumable")[-1].event_type == (
+        "workspace.writer.acquired"
+    )
+
+
+def test_startup_terminalizes_zero_attempt_run_after_writer_was_reclaimed(
+    journal,
+):
+    scheduler = WorkspaceWriterScheduler(journal)
+    journal.ensure_run(
+        run_id="run-already-reclaimed",
+        project_id="project-already-reclaimed",
+        status="pending",
+    )
+    admission = scheduler.admit_task(
+        run_id="run-already-reclaimed",
+        task_id="task-already-reclaimed",
+        project_id="project-already-reclaimed",
+        binding=_binding(journal, "project-already-reclaimed"),
+    )
+    journal.interrupt_workspace_writer(
+        request_id=admission.request.request_id,
+        task_id="task-already-reclaimed",
+    )
+
+    result = scheduler.reconcile_orphaned_admissions()
+
+    assert result.interrupted_request_ids == ()
+    assert result.failed_request_ids == ()
+    assert journal.get_run("run-already-reclaimed").status == "cancelled"
+    assert journal.list_events("run-already-reclaimed")[-1].event_type == (
+        "run.cancelled"
     )

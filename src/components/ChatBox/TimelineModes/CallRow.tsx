@@ -60,6 +60,14 @@ export function CallRow({
   const highlighted = running && call.id === latestRunningCallId;
   const failed = isCallErrorStatus(call.status);
   const pendingHuman = call.executor === 'human' && call.status === 'pending';
+  const showWaitingOutput = !call.output && (running || pendingHuman);
+  const detail =
+    call.detail ||
+    (!call.input && !call.output && !showWaitingOutput
+      ? failed
+        ? 'No failure details were recorded.'
+        : 'Completed.'
+      : undefined);
   // A pending human call is the one thing the user must act on, so it opens
   // itself. Everything else follows the shimmer/auto-collapse rule.
   const autoExpanded = highlighted || pendingHuman;
@@ -142,14 +150,21 @@ export function CallRow({
               inputLabel={call.inputLabel}
               output={call.output}
               outputLabel={call.outputLabel}
-              showEmptyFields
+              showEmptyOutput={showWaitingOutput}
               emptyOutputText={
                 call.emptyOutputText ||
-                (running
-                  ? 'Waiting for a response.'
-                  : 'No response was recorded for this event.')
+                (running ? 'Waiting for a response.' : 'Waiting for you.')
               }
-            />
+            >
+              {detail ? (
+                <p
+                  className="whitespace-pre-wrap break-words px-0.5 !text-label-xs font-normal text-ds-text-neutral-subtle-default"
+                  data-timeline-call-detail
+                >
+                  {detail}
+                </p>
+              ) : null}
+            </ToolInputOutputDetails>
           </motion.div>
         ) : null}
       </AnimatePresence>

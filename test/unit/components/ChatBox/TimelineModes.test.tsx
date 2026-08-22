@@ -935,10 +935,10 @@ describe('ChatBox timeline modes', () => {
     );
     expect(successTrigger.querySelectorAll('svg')).toHaveLength(1);
     fireEvent.click(successTrigger);
-    expect(within(success).getByText('Request')).toBeInTheDocument();
+    expect(within(success).queryByText('Request')).not.toBeInTheDocument();
     expect(
-      within(success).getByText('No request was recorded for this event.')
-    ).toBeInTheDocument();
+      within(success).queryByText('No request was recorded for this event.')
+    ).not.toBeInTheDocument();
     expect(within(success).getByText('Response')).toBeInTheDocument();
     expect(
       within(success).getByText('Safe response value')

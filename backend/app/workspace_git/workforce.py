@@ -28,6 +28,7 @@ from app.run_journal import (
     configured_run_journal_path,
     get_default_run_journal,
 )
+from app.run_journal.semantic_events import semantic_event_fields
 from app.workspace_config import canonical_digest
 from app.workspace_git.content import ContentRepositoryError
 from app.workspace_git.coordinator import (
@@ -837,10 +838,28 @@ class WorkforceGitService:
                     event_id=f"git-agent-merge:{operation_id}",
                     event_type="git.agent_merged",
                     payload={
+                        **semantic_event_fields(
+                            kind="git_integration",
+                            subject_type="agent_workspace",
+                            subject_id=record.workspace_id,
+                            phase="completed",
+                            status="completed",
+                            source="workforce_git",
+                            actor_type="agent",
+                            actor_id=record.agent_id,
+                            correlation={
+                                "run_id": record.run_id,
+                                "operation_id": operation_id,
+                            },
+                        ),
                         "workspace_id": record.workspace_id,
                         "agent_id": record.agent_id,
                         "commit_oid": recovered,
                         "recovered": True,
+                        "display_title": "Integrated agent changes",
+                        "display_summary": (
+                            f"Recovered merge at {recovered[:8]}"
+                        ),
                     },
                     created_at=now,
                 ),
@@ -962,9 +981,27 @@ class WorkforceGitService:
                 event_id=f"git-agent-merge:{operation_id}",
                 event_type="git.agent_merged",
                 payload={
+                    **semantic_event_fields(
+                        kind="git_integration",
+                        subject_type="agent_workspace",
+                        subject_id=record.workspace_id,
+                        phase="completed",
+                        status="completed",
+                        source="workforce_git",
+                        actor_type="agent",
+                        actor_id=record.agent_id,
+                        correlation={
+                            "run_id": record.run_id,
+                            "operation_id": operation_id,
+                        },
+                    ),
                     "workspace_id": record.workspace_id,
                     "agent_id": record.agent_id,
                     "commit_oid": merged_commit,
+                    "display_title": "Integrated agent changes",
+                    "display_summary": (
+                        f"Merged agent work at {merged_commit[:8]}"
+                    ),
                 },
                 created_at=now,
             ),
@@ -1083,11 +1120,28 @@ class WorkforceGitService:
             event_id=f"git-agent-conflict:{interaction_id}:{decision}",
             event_type="git.agent_conflict_resolved",
             payload={
+                **semantic_event_fields(
+                    kind="git_conflict_resolution",
+                    subject_type="agent_workspace",
+                    subject_id=record.workspace_id,
+                    phase="completed",
+                    status="completed",
+                    source="workforce_git",
+                    actor_type="user",
+                    correlation={
+                        "run_id": record.run_id,
+                        "interaction_id": interaction_id,
+                    },
+                ),
                 "workspace_id": record.workspace_id,
                 "agent_id": record.agent_id,
                 "interaction_id": interaction_id,
                 "decision": decision,
                 "commit_oid": commit_oid,
+                "display_title": "Resolved merge conflict",
+                "display_summary": (
+                    f"Resolution: {decision.replace('_', ' ')}"
+                ),
             },
             created_at=now,
         )

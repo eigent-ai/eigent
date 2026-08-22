@@ -17,6 +17,7 @@ import inspect
 import json
 import logging
 import threading
+import uuid
 from collections.abc import Callable
 from contextlib import AsyncExitStack
 from threading import Event
@@ -110,6 +111,15 @@ def _reported_tool_error(result: Any) -> RuntimeError | None:
     if isinstance(result, dict) and result.get("error"):
         return RuntimeError(str(result["error"]))
     return None
+
+
+def _legacy_tool_call_identity(checkpoint: Any) -> dict[str, str]:
+    """Attach correlation only when a real canonical id is available."""
+
+    tool_call_id = getattr(checkpoint, "tool_call_id", None)
+    if isinstance(tool_call_id, str) and tool_call_id:
+        return {"tool_call_id": tool_call_id}
+    return {}
 
 
 def _tool_failure_outcome_known(
@@ -536,7 +546,14 @@ class ListenChatAgent(ChatAgent):
             None, self._reload_model_after_auth_error, error
         )
 
-    def _send_agent_deactivate(self, message: str, tokens: int) -> None:
+    def _send_agent_deactivate(
+        self,
+        message: str,
+        tokens: int,
+        agent_turn_id: str,
+        *,
+        status: str = "completed",
+    ) -> None:
         """Send agent deactivation event to the frontend.
 
         Args:
@@ -561,7 +578,9 @@ class ListenChatAgent(ChatAgent):
                         "agent_name": self.agent_name,
                         "process_task_id": self.process_task_id,
                         "agent_id": self.agent_id,
+                        "agent_turn_id": agent_turn_id,
                         "message": message,
+                        "status": status,
                         "tokens": tokens,
                     },
                 )
@@ -590,6 +609,7 @@ class ListenChatAgent(ChatAgent):
     def _stream_chunks(
         self,
         response_gen,
+        agent_turn_id: str | None = None,
         input_message: BaseMessage | str | None = None,
         response_format: type[BaseModel] | None = None,
         auth_retry_available: bool = True,
@@ -608,8 +628,10 @@ class ListenChatAgent(ChatAgent):
             Tuple of (accumulated_content, total_tokens) via
             StopIteration value
         """
+        agent_turn_id = agent_turn_id or f"agent-turn:{uuid.uuid4().hex}"
         accumulated_content = ""
         last_chunk = None
+        terminal_status = "failed"
 
         try:
             try:
@@ -642,13 +664,23 @@ class ListenChatAgent(ChatAgent):
                     if retry_response.msg and retry_response.msg.content:
                         accumulated_content += retry_response.msg.content
                     yield retry_response
+            terminal_status = "completed"
+        except GeneratorExit:
+            terminal_status = "cancelled"
+            raise
         finally:
             total_tokens = self._extract_tokens(last_chunk)
-            self._send_agent_deactivate(accumulated_content, total_tokens)
+            self._send_agent_deactivate(
+                accumulated_content,
+                total_tokens,
+                agent_turn_id,
+                status=terminal_status,
+            )
 
     async def _astream_chunks(
         self,
         response_gen,
+        agent_turn_id: str | None = None,
         input_message: BaseMessage | str | None = None,
         response_format: type[BaseModel] | None = None,
         auth_retry_available: bool = True,
@@ -663,8 +695,10 @@ class ListenChatAgent(ChatAgent):
         Yields:
             Each chunk from the original generator
         """
+        agent_turn_id = agent_turn_id or f"agent-turn:{uuid.uuid4().hex}"
         accumulated_content = ""
         last_chunk = None
+        terminal_status = "failed"
         hard_timeout: ActiveExecutionTimeout | None = None
         stall_timeout: ActiveExecutionTimeout | None = None
 
@@ -718,6 +752,10 @@ class ListenChatAgent(ChatAgent):
                             accumulated_content += retry_response.msg.content
                         refresh_active_execution_timeout()
                         yield retry_response
+                terminal_status = "completed"
+        except asyncio.CancelledError:
+            terminal_status = "cancelled"
+            raise
         except TimeoutError as error:
             if hard_timeout is not None and hard_timeout.expired:
                 raise TimeoutError(
@@ -731,7 +769,12 @@ class ListenChatAgent(ChatAgent):
             raise
         finally:
             total_tokens = self._extract_tokens(last_chunk)
-            self._send_agent_deactivate(accumulated_content, total_tokens)
+            self._send_agent_deactivate(
+                accumulated_content,
+                total_tokens,
+                agent_turn_id,
+                status=terminal_status,
+            )
 
     def step(
         self,
@@ -739,6 +782,7 @@ class ListenChatAgent(ChatAgent):
         response_format: type[BaseModel] | None = None,
     ) -> ChatAgentResponse | StreamingChatAgentResponse:
         task_lock = get_task_lock(self.api_task_id)
+        agent_turn_id = f"agent-turn:{uuid.uuid4().hex}"
         _schedule_async_task(
             task_lock.put_queue(
                 ActionActivateAgentData(
@@ -746,6 +790,7 @@ class ListenChatAgent(ChatAgent):
                         "agent_name": self.agent_name,
                         "process_task_id": self.process_task_id,
                         "agent_id": self.agent_id,
+                        "agent_turn_id": agent_turn_id,
                         "message": (
                             input_message.content
                             if isinstance(input_message, BaseMessage)
@@ -810,6 +855,7 @@ class ListenChatAgent(ChatAgent):
                 return StreamingChatAgentResponse(
                     self._stream_chunks(
                         res,
+                        agent_turn_id,
                         input_message,
                         response_format,
                         auth_retry_available=not auth_retried,
@@ -830,7 +876,12 @@ class ListenChatAgent(ChatAgent):
 
         assert message is not None
 
-        self._send_agent_deactivate(message, total_tokens)
+        self._send_agent_deactivate(
+            message,
+            total_tokens,
+            agent_turn_id,
+            status="failed" if error_info is not None else "completed",
+        )
 
         if error_info is not None:
             raise error_info
@@ -843,6 +894,7 @@ class ListenChatAgent(ChatAgent):
         response_format: type[BaseModel] | None = None,
     ) -> ChatAgentResponse | AsyncStreamingChatAgentResponse:
         task_lock = get_task_lock(self.api_task_id)
+        agent_turn_id = f"agent-turn:{uuid.uuid4().hex}"
         await task_lock.put_queue(
             ActionActivateAgentData(
                 action=Action.activate_agent,
@@ -850,6 +902,7 @@ class ListenChatAgent(ChatAgent):
                     "agent_name": self.agent_name,
                     "process_task_id": self.process_task_id,
                     "agent_id": self.agent_id,
+                    "agent_turn_id": agent_turn_id,
                     "message": (
                         input_message.content
                         if isinstance(input_message, BaseMessage)
@@ -880,6 +933,7 @@ class ListenChatAgent(ChatAgent):
                 return AsyncStreamingChatAgentResponse(
                     self._astream_chunks(
                         res,
+                        agent_turn_id,
                         input_message,
                         response_format,
                         auth_retry_available=True,
@@ -895,6 +949,7 @@ class ListenChatAgent(ChatAgent):
                         return AsyncStreamingChatAgentResponse(
                             self._astream_chunks(
                                 res,
+                                agent_turn_id,
                                 input_message,
                                 response_format,
                                 auth_retry_available=False,
@@ -949,7 +1004,12 @@ class ListenChatAgent(ChatAgent):
         # Streaming responses handle deactivation in _astream_chunks
         assert message is not None
 
-        self._send_agent_deactivate(message, total_tokens)
+        self._send_agent_deactivate(
+            message,
+            total_tokens,
+            agent_turn_id,
+            status="failed" if error_info is not None else "completed",
+        )
 
         if error_info is not None:
             raise error_info
@@ -1003,6 +1063,9 @@ class ListenChatAgent(ChatAgent):
                     args,
                 ),
                 dispatch_immediately=False,
+                toolkit_name=toolkit_name,
+                agent_name=self.agent_name,
+                task_id=self.process_task_id,
             )
             asyncio.run(
                 authorize_tool_checkpoint(
@@ -1030,6 +1093,7 @@ class ListenChatAgent(ChatAgent):
                                 "message": json.dumps(
                                     args, ensure_ascii=False
                                 ),
+                                **_legacy_tool_call_identity(checkpoint),
                             },
                         )
                     )
@@ -1087,6 +1151,7 @@ class ListenChatAgent(ChatAgent):
                                 "toolkit_name": toolkit_name,
                                 "method_name": func_name,
                                 "message": result_msg,
+                                **_legacy_tool_call_identity(checkpoint),
                             },
                         )
                     )
@@ -1237,6 +1302,9 @@ class ListenChatAgent(ChatAgent):
                 args,
             ),
             dispatch_immediately=False,
+            toolkit_name=toolkit_name,
+            agent_name=self.agent_name,
+            task_id=self.process_task_id,
         )
 
         execution_error: Exception | None = None
@@ -1262,6 +1330,7 @@ class ListenChatAgent(ChatAgent):
                             "toolkit_name": toolkit_name,
                             "method_name": func_name,
                             "message": json.dumps(args, ensure_ascii=False),
+                            **_legacy_tool_call_identity(checkpoint),
                         },
                     )
                 )
@@ -1386,6 +1455,7 @@ class ListenChatAgent(ChatAgent):
                         "toolkit_name": toolkit_name,
                         "method_name": func_name,
                         "message": result_msg,
+                        **_legacy_tool_call_identity(checkpoint),
                     },
                 )
             )
