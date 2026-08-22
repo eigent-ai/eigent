@@ -221,7 +221,7 @@ export function useBackgroundTaskProcessor() {
         );
 
         // Notify backend that we're starting - prevents 60s timeout marking as "missed"
-        // (WebSocket ack may not reach backend in some cases, e.g. multi-worker, connection issues)
+        // (WebSocket ack may not reach backend in some cases, e.g. multi-agent, connection issues)
         proxyUpdateTriggerExecution(
           executionId,
           { status: 'running' },

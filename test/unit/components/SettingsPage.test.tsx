@@ -157,16 +157,16 @@ describe('SettingsPage', () => {
 
     await user.click(await screen.findByRole('button', { name: 'New Space' }));
     await user.click(
-      screen.getByRole('button', { name: 'Import from Workspace Bundle' })
+      screen.getByRole('button', { name: 'Import a Space profile' })
     );
 
     const bundleOptions = screen.getByRole('group', {
-      name: 'Bundle import options',
+      name: 'Space profile import options',
     });
     expect(bundleOptions).toHaveClass('grid-cols-1');
     expect(
       within(bundleOptions).queryByRole('button', {
-        name: 'Import Agent Plugin as Bundle',
+        name: 'Import Agent Plugin as Space profile',
       })
     ).not.toBeInTheDocument();
   });
@@ -189,7 +189,7 @@ describe('SettingsPage', () => {
       within(sidebar).getByRole('navigation', { name: 'Home' })
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Workspace Bundle' })
+      screen.queryByRole('button', { name: 'Space profile' })
     ).not.toBeInTheDocument();
     const selectedTab = screen.getByRole('button', { name: 'Models' });
     const header = getSettingsHeader();
@@ -222,7 +222,7 @@ describe('SettingsPage', () => {
       'w-full'
     );
     const homeLabel = within(sidebar).getByText('Home');
-    const globalSettingLabel = within(sidebar).getByText('Global Settings');
+    const globalSettingLabel = within(sidebar).getByText('App settings');
     expect(
       homeLabel.compareDocumentPosition(globalSettingLabel) &
         Node.DOCUMENT_POSITION_FOLLOWING
@@ -231,7 +231,7 @@ describe('SettingsPage', () => {
       within(sidebar).getByRole('button', { name: 'Spaces' })
     ).toBeInTheDocument();
     expect(
-      within(sidebar).queryByRole('button', { name: 'Projects' })
+      within(sidebar).queryByRole('button', { name: 'Sessions' })
     ).not.toBeInTheDocument();
     expect(
       within(sidebar).queryByRole('button', { name: 'Tasks' })
@@ -250,7 +250,7 @@ describe('SettingsPage', () => {
       screen.getByRole('button', { name: 'Models' }).querySelector('svg')
     ).toHaveClass('lucide-sparkles');
     expect(
-      screen.getByRole('button', { name: 'Sub Agents' }).querySelector('svg')
+      screen.getByRole('button', { name: 'Sub-agents' }).querySelector('svg')
     ).toHaveClass('lucide-bot');
     expect(
       screen.getByRole('button', { name: 'Skills' }).querySelector('svg')
@@ -363,39 +363,39 @@ describe('SettingsPage', () => {
     ).toBeInTheDocument();
     expect(
       within(newSpaceOptions).getByRole('button', {
-        name: 'Use a local folder',
+        name: 'Connect local files',
       })
     ).toBeInTheDocument();
     await user.click(
       within(newSpaceOptions).getByRole('button', {
-        name: 'Import from Workspace Bundle',
+        name: 'Import a Space profile',
       })
     );
 
     const bundleOptionsDialog = await screen.findByRole('dialog', {
-      name: 'Import a Bundle',
+      name: 'Import a Space profile',
     });
     const bundleOptions = within(bundleOptionsDialog).getByRole('group', {
-      name: 'Bundle import options',
+      name: 'Space profile import options',
     });
     expect(bundleOptions).toHaveClass('grid-cols-2');
     expect(
       within(bundleOptions).getByRole('button', {
-        name: 'Import Agent Plugin as Bundle',
+        name: 'Import Agent Plugin as Space profile',
       })
     ).toBeInTheDocument();
     await user.click(
       within(bundleOptions).getByRole('button', {
-        name: 'Add Workspace Bundle name',
+        name: 'Add Space profile name',
       })
     );
 
     const workspaceBundleDialog = await screen.findByRole('dialog', {
-      name: 'Import Workspace Bundle',
+      name: 'Import Space profile',
     });
     expect(
       await within(workspaceBundleDialog).findByRole('textbox', {
-        name: 'Workspace Bundle share handle',
+        name: 'Space profile share handle',
       })
     ).toBeInTheDocument();
     await user.click(
@@ -408,19 +408,19 @@ describe('SettingsPage', () => {
     });
     await user.click(
       within(reopenedNewSpaceDialog).getByRole('button', {
-        name: 'Import from Workspace Bundle',
+        name: 'Import a Space profile',
       })
     );
     const reopenedBundleOptions = await screen.findByRole('dialog', {
-      name: 'Import a Bundle',
+      name: 'Import a Space profile',
     });
     await user.click(
       within(reopenedBundleOptions).getByRole('button', {
-        name: 'Import Agent Plugin as Bundle',
+        name: 'Import Agent Plugin as Space profile',
       })
     );
     const agentPluginDialog = await screen.findByRole('dialog', {
-      name: 'Import Agent Plugin as Bundle',
+      name: 'Import Agent Plugin as Space profile',
     });
     expect(
       await within(agentPluginDialog).findByRole('button', {
@@ -664,7 +664,7 @@ describe('SettingsPage', () => {
     );
     const deleteDialog = screen.getByRole('alertdialog', { name: 'Delete' });
     expect(deleteDialog).toHaveTextContent(
-      'Are you sure you want to delete this Space and all its Projects?'
+      'Are you sure you want to delete this space and all its sessions? This action cannot be undone.'
     );
     await user.click(
       within(deleteDialog).getByRole('button', { name: 'Cancel' })
@@ -678,12 +678,12 @@ describe('SettingsPage', () => {
     expect(screen.getByText('Local')).toBeInTheDocument();
 
     for (const tabName of [
-      'Projects',
-      'Tasks',
+      'Sessions',
+      'Runs',
       'Automations',
-      'Context',
+      'Files',
       'Memory',
-      'Space Settings',
+      'Space settings',
     ]) {
       expect(screen.getByRole('tab', { name: tabName })).toBeInTheDocument();
     }
@@ -704,19 +704,19 @@ describe('SettingsPage', () => {
     expect(openWorkspaceButton).toHaveAttribute('data-variant', 'primary');
     expect(openWorkspaceButton).toHaveClass('!rounded-full');
     expect(
-      within(screen.getByRole('tab', { name: 'Projects' })).getByText(
-        'Projects'
+      within(screen.getByRole('tab', { name: 'Sessions' })).getByText(
+        'Sessions'
       )
     ).toHaveClass('!text-body-sm', 'font-bold');
-    expect(screen.getByRole('tab', { name: 'Projects' })).toHaveAttribute(
+    expect(screen.getByRole('tab', { name: 'Sessions' })).toHaveAttribute(
       'aria-selected',
       'true'
     );
     expect(
-      screen.getByRole('tab', { name: 'Context' }).querySelector('svg')
+      screen.getByRole('tab', { name: 'Files' }).querySelector('svg')
     ).toHaveClass('lucide-library');
     expect(
-      screen.getByRole('tab', { name: 'Space Settings' }).querySelector('svg')
+      screen.getByRole('tab', { name: 'Space settings' }).querySelector('svg')
     ).toHaveClass('lucide-settings');
     fireEvent.pointerEnter(screen.getByRole('tab', { name: 'Memory' }), {
       pointerType: 'mouse',
@@ -749,14 +749,14 @@ describe('SettingsPage', () => {
       'items-center'
     );
 
-    await user.click(screen.getByRole('tab', { name: 'Tasks' }));
+    await user.click(screen.getByRole('tab', { name: 'Runs' }));
     await waitFor(() => {
-      expect(screen.getByRole('tab', { name: 'Tasks' })).toHaveAttribute(
+      expect(screen.getByRole('tab', { name: 'Runs' })).toHaveAttribute(
         'aria-selected',
         'true'
       );
     });
-    expect(screen.getByRole('tab', { name: 'Projects' })).toHaveAttribute(
+    expect(screen.getByRole('tab', { name: 'Sessions' })).toHaveAttribute(
       'aria-selected',
       'false'
     );

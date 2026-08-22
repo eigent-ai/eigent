@@ -330,24 +330,24 @@ describe('EventTimeline', () => {
     );
 
     const group = screen.getByLabelText(
-      'Repeated tool calls: WebFetchToolkit · Web_fetch_and_analyze'
+      'Repeated tool calls: WebFetch · Web_fetch_and_analyze'
     );
     const trigger = screen.getByRole('button', {
-      name: /WebFetchToolkit · Web_fetch_and_analyze · 3 events/,
+      name: /WebFetch · Web_fetch_and_analyze · 3 events/,
     });
 
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
     expect(group).toHaveAttribute('data-tool-call-count', '3');
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
     expect(
-      screen.queryByText('WebFetchToolkit · Web_fetch_and_analyze')
+      screen.queryByText('WebFetch · Web_fetch_and_analyze')
     ).not.toBeInTheDocument();
 
     fireEvent.click(trigger);
 
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
     expect(
-      screen.getAllByText('WebFetchToolkit · Web_fetch_and_analyze')
+      screen.getAllByText('WebFetch · Web_fetch_and_analyze')
     ).toHaveLength(3);
     expect(screen.getByText('Second result')).toBeInTheDocument();
   });
@@ -431,11 +431,11 @@ describe('EventTimeline', () => {
     render(<EventTimeline nodes={sourceNodes} />);
 
     const group = screen.getByLabelText(
-      'Repeated tool calls: WebFetchToolkit · Web_fetch_and_analyze'
+      'Repeated tool calls: WebFetch · Web_fetch_and_analyze'
     );
     expect(group).toHaveAttribute('data-tool-call-count', '2');
     expect(group).toHaveTextContent(
-      'WebFetchToolkit · Web_fetch_and_analyze · 2 events'
+      'WebFetch · Web_fetch_and_analyze · 2 events'
     );
     expect(sourceNodes).toHaveLength(4);
     expect(sourceNodes[0].status).toBe('running');
@@ -468,7 +468,7 @@ describe('EventTimeline', () => {
 
     expect(screen.getByRole('button')).toHaveAttribute('aria-expanded', 'true');
     expect(
-      screen.getAllByText('WebFetchToolkit · Web_fetch_and_analyze')
+      screen.getAllByText('WebFetch · Web_fetch_and_analyze')
     ).toHaveLength(3);
     expect(screen.getByLabelText(/Repeated tool calls:/)).toHaveAttribute(
       'data-tool-call-count',

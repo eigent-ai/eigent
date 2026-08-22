@@ -295,43 +295,43 @@ export default function Memory({
           eyebrow: 'Shared scope',
           title: 'Shared across this Space',
           description:
-            'Eigent can learn stable notes explicitly meant for this Space and reuse them across its Projects. Project-specific notes remain in their Project.',
+            'Eigent can learn stable notes explicitly meant for this Space and reuse them across its Sessions. Session-specific notes remain in their Session.',
           autoDescription:
-            'Automatically learn explicit Space-wide facts, decisions, and preferences from Projects in this Space. You can edit or archive them here at any time.',
+            'Automatically learn explicit Space-wide facts, decisions, and preferences from Sessions in this Space. You can edit or archive them here at any time.',
           useTitle: 'Use Space Memory',
           useDescription:
-            'Include these shared notes in future Agent context for Projects in this Space.',
+            'Include these shared notes in future Agent context for Sessions in this Space.',
           collectionTitle: 'Shared Space Memory',
           collectionDescription:
-            'Only notes saved here are shared. Project Memory remains inside its Project.',
+            'Only notes saved here are shared. Session Memory remains inside its Session.',
           composerPlaceholder:
             'Add a decision, constraint, preference, or fact to share across this Space',
           emptyTitle: 'No shared Memory yet',
           emptyDescription:
-            'Add a stable note above when you want every Project in this Space to remember it.',
+            'Add a stable note above when you want every Session in this Space to remember it.',
         }
       : scopeType === 'project'
         ? {
             icon: Sparkles,
-            eyebrow: 'Project-specific',
-            title: 'Remembered for this Project',
+            eyebrow: 'Session-specific',
+            title: 'Remembered for this Session',
             description:
-              'Eigent can learn a small set of stable notes from this Project. These notes stay with the Project and are separate from its full task history.',
+              'Eigent can learn a small set of stable notes from this Session. These notes stay with the Session and are separate from its full task history.',
             autoDescription:
-              'Automatically learn explicit stable details as this Project runs. You can edit or archive them here at any time.',
-            useTitle: 'Use Project Memory',
+              'Automatically learn explicit stable details as this Session runs. You can edit or archive them here at any time.',
+            useTitle: 'Use Session Memory',
             useDescription:
-              'Include these notes in future Agent context for this Project.',
+              'Include these notes in future Agent context for this Session.',
             collectionTitle: fixedScopeLabel
-              ? 'Saved Project Memory'
-              : 'Project Memory',
+              ? 'Saved Session Memory'
+              : 'Session Memory',
             collectionDescription:
-              'Review, confirm, and manage the stable notes saved for this Project.',
+              'Review, confirm, and manage the stable notes saved for this Session.',
             composerPlaceholder:
-              'Add a decision, constraint, preference, or fact for this Project',
-            emptyTitle: 'No Project Memory yet',
+              'Add a decision, constraint, preference, or fact for this Session',
+            emptyTitle: 'No Session Memory yet',
             emptyDescription:
-              'Add a note above, or turn on Auto Memory so Eigent can learn stable details as this Project runs.',
+              'Add a note above, or turn on Auto Memory so Eigent can learn stable details as this Session runs.',
           }
         : {
             icon: Brain,
@@ -340,7 +340,7 @@ export default function Memory({
             description:
               'Eigent can learn personal preferences and stable facts you explicitly want reused across your work. Task history remains separate.',
             autoDescription:
-              'Automatically learn explicit account-wide preferences and facts from your Projects. You can edit or archive them here at any time.',
+              'Automatically learn explicit account-wide preferences and facts from your Sessions. You can edit or archive them here at any time.',
             useTitle: 'Use Personal Memory',
             useDescription:
               'Include these personal notes in future Agent context.',
@@ -399,7 +399,9 @@ export default function Memory({
                         value={value}
                         className="flex-1 !text-body-sm"
                       >
-                        {value[0].toUpperCase() + value.slice(1)}
+                        {value === 'project'
+                          ? 'Session'
+                          : value[0].toUpperCase() + value.slice(1)}
                       </TabsTrigger>
                     )
                   )}
@@ -419,7 +421,7 @@ export default function Memory({
         <SettingsRowGroup>
           <SettingsRow
             title="Saved Memory"
-            description={`Select a ${scopeType} to manage its Memory.`}
+            description={`Select a ${scopeType === 'project' ? 'session' : scopeType} to manage its Memory.`}
           />
         </SettingsRowGroup>
       ) : (

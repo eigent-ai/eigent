@@ -21,15 +21,19 @@ import { describe, expect, it } from 'vitest';
  * never be "Trigger" (the event, not the thing) nor "Scheduled task" (wrong for
  * Webhook/Slack/App, and it collides with the unrelated `Tasks` stat).
  *
- * This checks the keys that name the entity. Keys that describe the triggering
- * event itself -- `trigger-type`, the per-type labels -- are deliberately free
- * to say "trigger", because there it is the correct word.
+ * This checks the keys that name the entity. The legacy trigger-backed editor
+ * also presents those compatibility values as Automation types.
  */
 const retiredEntityNouns =
   /\btriggers?\b|\btriggered\b|\bscheduled tasks?\b|المحفزات|المشغلات|Disparadores|disparadores|Déclencheurs?|déclencheurs?|トリガー|스케줄된 작업|예약된 작업|트리거|Триггеры?|триггер(?:а|ов|ы)?|触发器|计划任务|触发监听器|觸發器|排程任務|觸發監聽器/i;
 
 /** Keys whose value names the entity, in every locale. */
 const ENTITY_NOUN_KEYS = [
+  'triggers.trigger-type',
+  'triggers.schedule-trigger',
+  'triggers.webhook-trigger',
+  'triggers.slack-trigger',
+  'triggers.app-trigger',
   'triggers.title',
   'triggers.create-new',
   'triggers.trigger-details',
@@ -76,6 +80,20 @@ const automationNavigationLabels = {
   ko: '자동화',
 } as const;
 
+const automationDialogTabLabels = {
+  'en-US': { scheduled: 'Scheduled', app: 'App' },
+  'zh-Hans': { scheduled: '定时', app: '应用' },
+  'zh-Hant': { scheduled: '排程', app: '應用程式' },
+  es: { scheduled: 'Programada', app: 'Aplicación' },
+  ja: { scheduled: 'スケジュール', app: 'アプリ' },
+  de: { scheduled: 'Geplant', app: 'App' },
+  fr: { scheduled: 'Planifiée', app: 'Application' },
+  ru: { scheduled: 'По расписанию', app: 'Приложение' },
+  it: { scheduled: 'Pianificata', app: 'App' },
+  ar: { scheduled: 'مجدولة', app: 'تطبيق' },
+  ko: { scheduled: '예약', app: '앱' },
+} as const;
+
 function readKey(translation: unknown, dotted: string): string {
   const value = dotted
     .split('.')
@@ -119,15 +137,28 @@ describe('Automation surface terminology', () => {
     }
   );
 
-  it('keeps saying "trigger" where the trigger itself is meant', () => {
+  it.each(Object.entries(automationDialogTabLabels))(
+    'keeps %s Automation editor tabs concise',
+    (locale, expectedLabels) => {
+      const { triggers } =
+        resources[locale as keyof typeof automationDialogTabLabels].translation;
+
+      expect({
+        scheduled: triggers['scheduled-tab'],
+        app: triggers['app-tab'],
+      }).toEqual(expectedLabels);
+    }
+  );
+
+  it('keeps concise editor tabs separate from legacy Automation type labels', () => {
     const { triggers } = resources['en-US'].translation;
 
-    // The event field keeps the correct word...
-    expect(triggers['trigger-type']).toBe('Trigger');
-    // ...and the per-type labels stay as the services name themselves.
-    expect(triggers['schedule-trigger']).toBe('Schedule');
-    expect(triggers['webhook-trigger']).toBe('Webhook');
-    expect(triggers['slack-trigger']).toBe('Slack');
-    expect(triggers['app-trigger']).toBe('App');
+    expect(triggers['scheduled-tab']).toBe('Scheduled');
+    expect(triggers['app-tab']).toBe('App');
+    expect(triggers['trigger-type']).toBe('Automation type');
+    expect(triggers['schedule-trigger']).toBe('Scheduled automation');
+    expect(triggers['webhook-trigger']).toBe('Event automation');
+    expect(triggers['slack-trigger']).toBe('App automation');
+    expect(triggers['app-trigger']).toBe('App automation');
   });
 });

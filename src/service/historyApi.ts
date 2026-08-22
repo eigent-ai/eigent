@@ -59,7 +59,7 @@ const groupTasksByProject = (tasks: HistoryTask[]): ProjectGroup[] => {
       projectMap.set(projectId, {
         project_id: projectId,
         space_id: task.space_id,
-        project_name: task.project_name || `Project ${projectId}`,
+        project_name: task.project_name || `Session ${projectId}`,
         total_tokens: 0,
         task_count: 0,
         total_triggers: 0,

@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { ProjectModeToggle } from '@/components/Workspace/ProjectModeToggle';
+import { WorkSessionModeToggle } from '@/components/Workspace/WorkSessionModeToggle';
 import { useIsCompactWidth } from '@/hooks/useIsCompactWidth';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
@@ -82,7 +82,7 @@ export function BoxFooter({
       className="flex w-full items-center justify-between gap-2 px-3 py-1"
     >
       <div className="flex min-w-0 shrink items-center gap-1">
-        <ProjectModeToggle
+        <WorkSessionModeToggle
           value={sessionMode}
           onValueChange={onSessionModeChange ?? (() => {})}
           readOnly={!interactive}

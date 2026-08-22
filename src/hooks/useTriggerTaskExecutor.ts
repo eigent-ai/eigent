@@ -227,11 +227,11 @@ export function useTriggerTaskExecutor() {
         );
 
         if (!queuedTaskId) {
-          throw new Error('Failed to add message to project queue');
+          throw new Error('Failed to add message to session queue');
         }
 
         toast.success(`Queued: ${task.triggerName}`, {
-          description: 'Task has been added to the project queue',
+          description: 'Task has been added to the session queue',
         });
 
         console.log(

@@ -28,7 +28,7 @@ export type HomeSectionCounts = {
 };
 
 export type HomeHubContextValue = {
-  /** Item counts per rail tab (spaces / projects / tasks / triggers). */
+  /** Item counts per rail tab (Spaces / Sessions / Tasks / Automations). */
   sectionCounts: HomeSectionCounts;
   viewMode: HomeViewMode;
   setViewMode: (mode: HomeViewMode) => void;
@@ -40,14 +40,14 @@ export type HomeHubContextValue = {
   setSortDirection: (direction: HomeSortDirection) => void;
   projects: ProjectGroupType[];
   projectsLoading: boolean;
-  triggers: Trigger[];
-  triggersLoading: boolean;
-  reloadTriggers: () => Promise<void>;
+  automations: Trigger[];
+  automationsLoading: boolean;
+  reloadAutomations: () => Promise<void>;
   chatTasks?: ChatStore['tasks'];
   onTaskDelete: (historyId: string, callback?: () => void) => void;
   onTaskShare: (taskId: string) => void;
-  onProjectDelete: (projectId: string) => void;
-  onProjectRename: (projectId: string, newName: string) => void;
+  onWorkSessionDelete: (projectId: string) => void;
+  onWorkSessionRename: (projectId: string, newName: string) => void;
   activeTaskId?: string;
   onOngoingTaskPause?: (
     taskId: string,

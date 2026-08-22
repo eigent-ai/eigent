@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import BrowserAgentWorkspace from '@/components/BrowserAgentWorkspace';
-import Folder from '@/components/Folder';
+import FilesBrowser from '@/components/Files';
 import TerminalAgentWorkspace from '@/components/TerminalAgentWorkspace';
 import Workflow from '@/components/WorkFlow';
 import WorkforceMenu from '@/components/WorkforceMenu';
@@ -88,7 +88,7 @@ function WorkforceOverlayCanvas() {
           <div className="relative flex h-full w-full flex-col">
             <div className="pointer-events-none absolute inset-0 rounded-xl bg-ds-bg-neutral-default-default backdrop-blur-sm"></div>
             <div className="relative z-10 h-full w-full">
-              <Folder />
+              <FilesBrowser />
             </div>
           </div>
         </div>
@@ -100,7 +100,7 @@ function WorkforceOverlayCanvas() {
           <div className="relative flex h-full w-full flex-col">
             <div className="pointer-events-none absolute inset-0 rounded-xl bg-ds-bg-neutral-default-default backdrop-blur-sm"></div>
             <div className="relative z-10 h-full w-full">
-              <Folder
+              <FilesBrowser
                 data={activeTask.taskAssigning?.find(
                   (agent) => agent.agent_id === activeWorkSpace
                 )}
@@ -114,7 +114,7 @@ function WorkforceOverlayCanvas() {
           <div className="relative flex h-full w-full flex-col">
             <div className="pointer-events-none absolute inset-0 rounded-xl bg-ds-bg-neutral-default-default backdrop-blur-sm"></div>
             <div className="relative z-10 h-full w-full">
-              <Folder />
+              <FilesBrowser />
             </div>
           </div>
         </div>

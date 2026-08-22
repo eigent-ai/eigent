@@ -34,7 +34,7 @@ describe('HeaderBox chat timeline mode', () => {
   });
 
   it('places the mode toggle between token usage and preview controls', () => {
-    render(<HeaderBox totalTokens={42} projectName="Timeline project" />);
+    render(<HeaderBox totalTokens={42} workSessionName="Timeline session" />);
 
     const tokenLabel = screen.getByText(/Total:/);
     const toggle = screen.getByRole('radiogroup', {

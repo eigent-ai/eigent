@@ -19,7 +19,7 @@ import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
 import { useAuthStore } from '@/store/authStore';
 import { useTriggerStore } from '@/store/triggerStore';
 import { ExecutionStatus, ExecutionType, TriggerType } from '@/types';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 // Ping interval: send ping every 2 minutes
@@ -114,6 +114,8 @@ type WebSocketMessage =
  */
 export function useExecutionSubscription(enabled: boolean = true) {
   const wsRef = useRef<WebSocket | null>(null);
+  const connectRef = useRef<() => void>(() => {});
+  const [isConnected, setIsConnected] = useState(false);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const sessionIdRef = useRef<string>(crypto.randomUUID());
@@ -211,10 +213,12 @@ export function useExecutionSubscription(enabled: boolean = true) {
         'hasToken:',
         !!token
       );
+      setIsConnected(false);
       setWsConnectionStatusRef.current('disconnected');
       return;
     }
 
+    setIsConnected(false);
     setWsConnectionStatusRef.current('connecting');
 
     try {
@@ -234,6 +238,7 @@ export function useExecutionSubscription(enabled: boolean = true) {
 
       ws.onopen = () => {
         console.log('[ExecutionSubscription] WebSocket connected');
+        setIsConnected(true);
         reconnectAttemptsRef.current = 0;
         authFailedRef.current = false; // Reset auth failure flag on new connection
 
@@ -300,7 +305,7 @@ export function useExecutionSubscription(enabled: boolean = true) {
 
               addLogRef.current({
                 type: ActivityType.TriggerExecuted,
-                message: `"${triggerName}" execution started`,
+                message: `"${triggerName}" automation run started`,
                 triggerId: message.trigger_id,
                 triggerName: triggerName,
                 executionId: message.execution_id,
@@ -346,21 +351,21 @@ export function useExecutionSubscription(enabled: boolean = true) {
               if (message.status === 'completed') {
                 addLogRef.current({
                   type: ActivityType.ExecutionSuccess,
-                  message: `"${triggerName}" execution completed`,
+                  message: `"${triggerName}" automation run completed`,
                   triggerId: message.trigger_id,
                   triggerName: triggerName,
                   executionId: message.execution_id,
                 });
-                toast.success(`Execution completed: ${triggerName}`);
+                toast.success(`Automation run completed: ${triggerName}`);
               } else if (message.status === 'failed') {
                 addLogRef.current({
                   type: ActivityType.ExecutionFailed,
-                  message: `"${triggerName}" execution failed`,
+                  message: `"${triggerName}" automation run failed`,
                   triggerId: message.trigger_id,
                   triggerName: triggerName,
                   executionId: message.execution_id,
                 });
-                toast.error(`Execution failed: ${triggerName}`);
+                toast.error(`Automation run failed: ${triggerName}`);
               }
               break;
             }
@@ -455,6 +460,7 @@ export function useExecutionSubscription(enabled: boolean = true) {
           event.reason
         );
         wsRef.current = null;
+        setIsConnected(false);
         stopPingInterval();
         setWsConnectionStatusRef.current('disconnected');
 
@@ -467,7 +473,7 @@ export function useExecutionSubscription(enabled: boolean = true) {
           console.error(
             '[ExecutionSubscription] Authentication failed - not reconnecting'
           );
-          toast.error('Authentication failed for execution listener');
+          toast.error('Authentication failed for automation updates');
           authFailedRef.current = false; // Reset flag
           return;
         }
@@ -504,13 +510,13 @@ export function useExecutionSubscription(enabled: boolean = true) {
 
               reconnectTimeoutRef.current = setTimeout(() => {
                 reconnectAttemptsRef.current++;
-                connect();
+                connectRef.current();
               }, delay);
             } else {
               console.error(
                 '[ExecutionSubscription] Max reconnection attempts reached'
               );
-              toast.error('Lost connection to execution listener');
+              toast.error('Lost connection to automation updates');
             }
           }
         }, debounceDelay);
@@ -520,9 +526,14 @@ export function useExecutionSubscription(enabled: boolean = true) {
         '[ExecutionSubscription] Failed to establish connection:',
         error
       );
+      setIsConnected(false);
       setWsConnectionStatusRef.current('disconnected');
     }
   }, [enabled, token, startPingInterval, stopPingInterval]); // Only depend on enabled and token - primitives that rarely change
+
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -543,6 +554,7 @@ export function useExecutionSubscription(enabled: boolean = true) {
       wsRef.current = null;
     }
 
+    setIsConnected(false);
     reconnectAttemptsRef.current = 0; // Reset reconnect attempts
     setWsConnectionStatusRef.current('disconnected');
   }, [stopPingInterval]);
@@ -588,7 +600,7 @@ export function useExecutionSubscription(enabled: boolean = true) {
   }, [manualReconnect, setWsReconnectCallback]);
 
   return {
-    isConnected: wsRef.current?.readyState === WebSocket.OPEN,
+    isConnected,
     disconnect,
     reconnect: manualReconnect,
   };

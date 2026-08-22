@@ -17,9 +17,9 @@ import {
   setProjectAchievedState,
 } from '@/lib/projectAchievement';
 import {
-  getSessionNavLeadFromHistoryTask,
-  resolveProjectNavLeadPresentation,
-} from '@/lib/sessionNavLead';
+  getRunNavLeadFromHistoryTask,
+  resolveWorkSessionNavLeadPresentation,
+} from '@/lib/runNavLead';
 import { proxyUpdateSpaceProject } from '@/service/spaceApi';
 import { useProjectStore } from '@/store/projectStore';
 import { useSpaceStore } from '@/store/spaceStore';
@@ -216,14 +216,14 @@ describe('project achievement', () => {
   });
 
   it('uses the neutral message lead for achieved projects', () => {
-    const finishedLead = getSessionNavLeadFromHistoryTask({
+    const finishedLead = getRunNavLeadFromHistoryTask({
       status: 2,
       summary: '',
     });
 
     expect(finishedLead.kind).toBe('finished');
     expect(
-      resolveProjectNavLeadPresentation({
+      resolveWorkSessionNavLeadPresentation({
         cachedLead: finishedLead,
         isAchieved: true,
       }).kind

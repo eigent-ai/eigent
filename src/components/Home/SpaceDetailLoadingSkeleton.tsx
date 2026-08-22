@@ -20,19 +20,19 @@ import HomeHubListTable from './components/HomeHubListTable';
 import type { SpaceDetailTab } from './SpaceDetailTabsNav';
 
 const LIST_SKELETON_WIDTHS: Record<
-  Extract<HomeHubItemKind, 'project' | 'task' | 'trigger'>,
+  Extract<HomeHubItemKind, 'project' | 'task' | 'automation'>,
   string[]
 > = {
   project: ['w-40', 'w-20', 'w-8', 'w-8', 'w-14', 'w-16'],
   task: ['w-48', 'w-20', 'w-14', 'w-16'],
-  trigger: ['w-40', 'w-20', 'w-16', 'w-14', 'w-16'],
+  automation: ['w-40', 'w-20', 'w-16', 'w-14', 'w-16'],
 };
 
 export function SpaceDetailListSkeleton({
   kind,
   rows = 5,
 }: {
-  kind: 'project' | 'task' | 'trigger';
+  kind: 'project' | 'task' | 'automation';
   rows?: number;
 }) {
   return (
@@ -164,13 +164,13 @@ export function MemorySettingsSkeleton() {
   );
 }
 
-export function WorkspaceSettingsSkeleton() {
+export function SpaceSettingsSkeleton() {
   const tabs = [
     'Identity',
     'Model',
     'Environment',
     'Instructions',
-    'Context',
+    'Reference sources',
     'Agents',
     'Skills',
     'Connectors',
@@ -197,12 +197,12 @@ export function WorkspaceSettingsSkeleton() {
         ))}
       </div>
       <div className="space-y-4">
-        <SettingsRowsSkeleton titles={['Draft version', 'Profile']} />
+        <SettingsRowsSkeleton titles={['Draft version', 'Space profile']} />
         <SettingsRowsSkeleton
           titles={[
-            'Bundle name',
-            'Permission profile',
-            'Git workspace environment',
+            'Profile name',
+            'Permission mode',
+            'Git environment',
             'Remote policy',
           ]}
         />
@@ -219,13 +219,13 @@ export function SpaceDetailTabSkeleton({ tab }: { tab: SpaceDetailTab }) {
     ) : tab === 'tasks' ? (
       <SpaceDetailListSkeleton kind="task" />
     ) : tab === 'triggers' ? (
-      <SpaceDetailListSkeleton kind="trigger" />
+      <SpaceDetailListSkeleton kind="automation" />
     ) : tab === 'context' ? (
       <ContextSkeleton />
     ) : tab === 'memory' ? (
       <MemorySettingsSkeleton />
     ) : (
-      <WorkspaceSettingsSkeleton />
+      <SpaceSettingsSkeleton />
     );
 
   return (

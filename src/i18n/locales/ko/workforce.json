@@ -1,6 +1,6 @@
 {
-  "your-ai-workforce": "당신의 AI 작업자",
-  "new-worker": "새 작업자",
+  "your-ai-workforce": "나의 AI 워크포스",
+  "new-worker": "새 에이전트",
   "edit": "편집",
   "configure-mcp-server": "MCP 서버 구성",
   "add-your-agent": "에이전트 추가",
@@ -16,8 +16,8 @@
   "select-platform": "플랫폼 선택",
   "model-type": "모델 유형",
   "model-type-placeholder": "예: gpt-4o-mini",
-  "worker-name-cannot-be-empty": "작업자 이름은 비워둘 수 없습니다",
-  "worker-name-already-exists": "작업자 이름이 이미 존재합니다",
+  "worker-name-cannot-be-empty": "에이전트 이름은 비워둘 수 없습니다",
+  "worker-name-already-exists": "에이전트 이름이 이미 존재합니다",
   "detail": "상세",
   "duplicate": "복제",
   "delete": "삭제"

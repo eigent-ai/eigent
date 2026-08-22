@@ -177,7 +177,7 @@ export function normalizeSkillScopeAgentId(agentName?: string | null): string {
 
 /**
  * Build the Skills page agent-access options:
- * Single Agent (stable) + workforce workers + custom workers (deduped by value).
+ * Single Agent (stable) + Workforce agents + custom agents (deduped by value).
  */
 export function buildSkillScopeAgentOptions(
   workerList: Array<{ name: string }> = []
@@ -196,14 +196,14 @@ export function buildSkillScopeAgentOptions(
     combined.push({ value, label: agent.label });
   }
 
-  for (const worker of workerList) {
-    const value = normalizeSkillScopeAgentId(worker.name);
+  for (const agent of workerList) {
+    const value = normalizeSkillScopeAgentId(agent.name);
     if (!value || seen.has(value)) continue;
     seen.add(value);
     const label =
       value === SINGLE_AGENT_ID
         ? 'Single Agent'
-        : String(worker.name || value).trim() || value;
+        : String(agent.name || value).trim() || value;
     combined.push({ value, label });
   }
 

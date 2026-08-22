@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { FilePreview } from '@/components/Folder/FilePreview';
+import { FilePreview } from '@/components/Files/FilePreview';
 import type { SessionFileTab } from '@/store/pageTabStore';
 
 export interface FileTabProps {

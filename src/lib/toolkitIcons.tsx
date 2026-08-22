@@ -98,6 +98,14 @@ const toolkitIconMap: Record<string, LucideIcon> = {
   ElectronToolkit: Globe,
 };
 
+/** Product-facing Tool name derived from a frozen backend Toolkit identity. */
+export function formatToolDisplayName(toolkitName: string): string {
+  return toolkitName
+    .replace(/_/g, ' ')
+    .replace(/\s*Toolkit\b/gi, '')
+    .trim();
+}
+
 export function getToolkitIcon(
   toolkitName: string,
   size: number = 16,

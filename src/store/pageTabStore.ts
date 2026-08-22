@@ -379,7 +379,7 @@ interface PageTabState {
   // Track if there are triggers (for dynamic menu toggle visibility)
   hasTriggers: boolean;
   setHasTriggers: (value: boolean) => void;
-  // Track if there are files in agent folder (for dynamic menu toggle visibility)
+  // Track whether agent files exist (for dynamic menu toggle visibility)
   hasAgentFiles: boolean;
   setHasAgentFiles: (value: boolean) => void;
   // Track unviewed tabs with new content (for red dot indicator)
@@ -401,7 +401,7 @@ interface PageTabState {
   setScrollToQueryId: (queryId: string | null) => void;
   /**
    * Bumped when the side-panel Progress section asks the chat to surface
-   * the task box: TaskCard expands itself, ProjectChatContainer scrolls
+   * the task box: TaskCard expands itself, WorkSessionChatContainer scrolls
    * the active query group so the task box sits at the top.
    */
   taskBoxFocusRequestId: number;
@@ -412,7 +412,7 @@ interface PageTabState {
     taskId?: string | null
   ) => void;
   /**
-   * Optional absolute path override for the agent folder (per project).
+   * Optional absolute path override for agent files (per project).
    * When unset for a project, the default Eigent project folder is used.
    */
   customAgentFolderPathByProjectId: Record<string, string>;

@@ -116,7 +116,7 @@ describe('Memory scope directory', () => {
     directoryMocks.listMemoryScopeSummaries.mockReset();
   });
 
-  it('shows which Projects have Memory and sorts them first', async () => {
+  it('shows which Sessions have Memory and sorts them first', async () => {
     directoryMocks.listMemoryScopeSummaries.mockResolvedValue({
       items: [
         {
@@ -141,8 +141,8 @@ describe('Memory scope directory', () => {
       </MemoryRouter>
     );
 
-    expect(await screen.findByText('1 Project with Memory')).toBeVisible();
-    expect(screen.getByText('3 saved notes total')).toBeVisible();
+    expect(await screen.findByText('Locations with memory: 1')).toBeVisible();
+    expect(screen.getByText('Saved notes: 3')).toBeVisible();
 
     const rows = document.querySelectorAll('article');
     expect(rows).toHaveLength(2);
@@ -152,16 +152,16 @@ describe('Memory scope directory', () => {
     expect(
       within(rows[0] as HTMLElement).getByText('Space: Research Space')
     ).toBeVisible();
-    expect(within(rows[0] as HTMLElement).getByText('3 notes')).toBeVisible();
+    expect(within(rows[0] as HTMLElement).getByText('Notes: 3')).toBeVisible();
     expect(
       within(rows[1] as HTMLElement).getByText('Brand refresh')
     ).toBeVisible();
-    expect(within(rows[1] as HTMLElement).getByText('Empty')).toBeVisible();
+    expect(within(rows[1] as HTMLElement).getByText('Notes: 0')).toBeVisible();
 
     const user = userEvent.setup();
     await user.click(
       screen.getByRole('button', {
-        name: 'Manage Memory for Customer interviews',
+        name: 'Manage memory for Customer interviews',
       })
     );
     expect(screen.getByTestId('location')).toHaveTextContent(
@@ -193,13 +193,13 @@ describe('Memory scope directory', () => {
       </MemoryRouter>
     );
 
-    expect(await screen.findByText('1 Space with Memory')).toBeVisible();
-    expect(screen.getByLabelText('Search Space Memory')).toBeVisible();
+    expect(await screen.findByText('Locations with memory: 1')).toBeVisible();
+    expect(screen.getByLabelText('Search memory')).toBeVisible();
     expect(
       screen.queryByRole('button', { name: 'Open Space Memory' })
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Manage Memory for Design Space' })
+      screen.getByRole('button', { name: 'Manage memory for Design Space' })
     ).toBeVisible();
   });
 
@@ -225,11 +225,11 @@ describe('Memory scope directory', () => {
       </MemoryRouter>
     );
 
-    expect(await screen.findByText('1 Space with Memory')).toBeVisible();
+    expect(await screen.findByText('Locations with memory: 1')).toBeVisible();
     expect(directoryMocks.listMemoryEntries).toHaveBeenCalledTimes(2);
     expect(
       screen.getByRole('button', {
-        name: 'Manage Memory for Research Space',
+        name: 'Manage memory for Research Space',
       })
     ).toBeVisible();
   });

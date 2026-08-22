@@ -266,8 +266,8 @@ describe('LegacyRouteWorkflowDialog', () => {
       expect.objectContaining({
         open: true,
         initialPage: 'workspace-bundle',
-        initialWorkspaceBundleHandle: '@owner/bundle@1',
-        initialWorkspaceBundleProposalId: 'p-1',
+        initialSpaceProfileHandle: '@owner/bundle@1',
+        initialSpaceProfileProposalId: 'p-1',
       })
     );
   });

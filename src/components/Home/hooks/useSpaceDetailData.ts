@@ -49,8 +49,8 @@ export function useSpaceDetailData(spaceId: string) {
   const {
     projects: historyProjects,
     projectsLoading,
-    triggers,
-    triggersLoading,
+    automations,
+    automationsLoading,
   } = useHomeHub();
   const spaces = useSpaceStore((state) => state.spaces);
   const projectsBySpaceId = useSpaceStore((state) => state.projectsBySpaceId);
@@ -100,15 +100,17 @@ export function useSpaceDetailData(spaceId: string) {
     [projects]
   );
 
-  const spaceTriggers = useMemo<Trigger[]>(
+  const spaceAutomations = useMemo<Trigger[]>(
     () =>
-      triggers.filter(
-        (trigger) =>
-          trigger.space_id === spaceId ||
-          (!trigger.space_id &&
-            Boolean(trigger.project_id && projectIds.has(trigger.project_id)))
+      automations.filter(
+        (automation) =>
+          automation.space_id === spaceId ||
+          (!automation.space_id &&
+            Boolean(
+              automation.project_id && projectIds.has(automation.project_id)
+            ))
       ),
-    [projectIds, spaceId, triggers]
+    [automations, projectIds, spaceId]
   );
 
   const taskCount = useMemo(
@@ -124,11 +126,11 @@ export function useSpaceDetailData(spaceId: string) {
   return {
     space: spaces[spaceId] ?? null,
     projects,
-    triggers: spaceTriggers,
+    automations: spaceAutomations,
     projectsLoading,
-    triggersLoading,
+    automationsLoading,
     projectCount: projects.length,
     taskCount,
-    triggerCount: spaceTriggers.length,
+    automationCount: spaceAutomations.length,
   };
 }

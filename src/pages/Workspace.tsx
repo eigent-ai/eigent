@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { checkLocalServerStale } from '@/api/http';
+import AutomationPanel from '@/components/Automation';
 import {
   DashedLinesBackground,
   DotPatternBackground,
@@ -21,13 +22,12 @@ import {
   RuledLinesBackground,
 } from '@/components/Background';
 import { WorkspaceDispatch } from '@/components/Dispatch';
-import Folder from '@/components/Folder';
+import FilesBrowser from '@/components/Files';
 import AppShellLayout, {
   APP_SHELL_CONTENT_CLASS,
 } from '@/components/Layout/AppShellLayout';
-import ProjectPageSidebar from '@/components/ProjectPageSidebar';
-import SessionGroup from '@/components/Session/SidePanel/components/SessionGroup';
-import TriggerPanel from '@/components/Trigger';
+import RunHistoryPage from '@/components/Runs/RunHistoryPage';
+import SpaceSidebar from '@/components/SpaceSidebar';
 import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
@@ -48,9 +48,9 @@ import { useAuthStore, type WorkspaceMainBackground } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import {
-  EXECUTION_LOGS_OPEN_STORAGE_KEY,
-  type TriggerSortKey,
-} from '../components/Trigger/Triggers';
+  AUTOMATION_RUN_HISTORY_OPEN_STORAGE_KEY,
+  type AutomationSortKey,
+} from '../components/Automation/Automations';
 
 import Session from '@/components/Session';
 import { PreviewBrowserLayer } from '@/components/Session/PreviewPanel/tabs/browser/PreviewBrowserLayer';
@@ -90,41 +90,42 @@ export default function WorkspacePage() {
   );
 
   const [, setActiveWebviewId] = useState<string | null>(null);
-  const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
-  const [triggerSortBy, setTriggerSortBy] =
-    useState<TriggerSortKey>('createdAt');
-  const [triggerSelectedId, setTriggerSelectedId] = useState<number | null>(
-    null
-  );
-  const [triggerExecutionLogsOpen, setTriggerExecutionLogsOpen] = useState(
+  const [automationDialogOpen, setAutomationDialogOpen] = useState(false);
+  const [automationSortBy, setAutomationSortBy] =
+    useState<AutomationSortKey>('createdAt');
+  const [selectedAutomationId, setSelectedAutomationId] = useState<
+    number | null
+  >(null);
+  const [automationRunHistoryOpen, setAutomationRunHistoryOpen] = useState(
     () => {
       if (typeof window === 'undefined') return false;
       return (
-        window.localStorage.getItem(EXECUTION_LOGS_OPEN_STORAGE_KEY) === 'true'
+        window.localStorage.getItem(AUTOMATION_RUN_HISTORY_OPEN_STORAGE_KEY) ===
+        'true'
       );
     }
   );
 
   useEffect(() => {
     window.localStorage.setItem(
-      EXECUTION_LOGS_OPEN_STORAGE_KEY,
-      String(triggerExecutionLogsOpen)
+      AUTOMATION_RUN_HISTORY_OPEN_STORAGE_KEY,
+      String(automationRunHistoryOpen)
     );
-  }, [triggerExecutionLogsOpen]);
+  }, [automationRunHistoryOpen]);
 
   useEffect(() => {
     if (triggerAddDialogRequestId === 0) return;
-    setTriggerDialogOpen(true);
+    setAutomationDialogOpen(true);
   }, [triggerAddDialogRequestId]);
 
   useEffect(() => {
-    setTriggerSelectedId(null);
+    setSelectedAutomationId(null);
   }, [projectStore.activeProjectId]);
 
   useEffect(() => {
     if (triggerSelectRequestId === 0) return;
     if (pendingTriggerSelectId != null) {
-      setTriggerSelectedId(pendingTriggerSelectId);
+      setSelectedAutomationId(pendingTriggerSelectId);
     }
   }, [pendingTriggerSelectId, triggerSelectRequestId]);
 
@@ -388,12 +389,12 @@ export default function WorkspacePage() {
     }
   }, [workspacePatternKey]);
 
-  const handleSessionGroupDeleteSession = useCallback(
-    (sessionId: string) => {
+  const handleRunHistoryDeleteRun = useCallback(
+    (runId: string) => {
       if (!chatStore) return;
-      if (!window.confirm(t('layout.delete-task-confirmation'))) return;
-      const wasActive = chatStore.activeTaskId === sessionId;
-      chatStore.removeTask(sessionId);
+      if (!window.confirm(t('layout.delete-run-confirmation'))) return;
+      const wasActive = chatStore.activeTaskId === runId;
+      chatStore.removeTask(runId);
       if (wasActive) {
         setActiveWorkspaceTab('workforce');
       }
@@ -426,7 +427,7 @@ export default function WorkspacePage() {
           <div className={workspaceMainContentClass}>
             {workspacePatternOverlayEl}
             <div className={workspaceMainForegroundClass}>
-              <Session isNewProject />
+              <Session isNewSession />
             </div>
           </div>
         );
@@ -439,35 +440,35 @@ export default function WorkspacePage() {
       case 'files':
         return (
           <div className={mainPanelContentClass}>
-            <Folder />
+            <FilesBrowser />
           </div>
         );
       case 'triggers':
         return (
-          <TriggerPanel
+          <AutomationPanel
             className={mainPanelContentClass}
-            sortBy={triggerSortBy}
-            onSortByChange={setTriggerSortBy}
-            selectedTriggerId={triggerSelectedId}
-            onSelectedTriggerIdChange={setTriggerSelectedId}
-            isExecutionLogsOpen={triggerExecutionLogsOpen}
-            onExecutionLogsOpenChange={setTriggerExecutionLogsOpen}
-            isDialogOpen={triggerDialogOpen}
-            onDialogOpenChange={setTriggerDialogOpen}
+            sortBy={automationSortBy}
+            onSortByChange={setAutomationSortBy}
+            selectedAutomationId={selectedAutomationId}
+            onSelectedAutomationIdChange={setSelectedAutomationId}
+            isAutomationRunHistoryOpen={automationRunHistoryOpen}
+            onAutomationRunHistoryOpenChange={setAutomationRunHistoryOpen}
+            isDialogOpen={automationDialogOpen}
+            onDialogOpenChange={setAutomationDialogOpen}
           />
         );
       case 'runs':
         return (
-          <SessionGroup
+          <RunHistoryPage
             className={mainPanelContentClass}
             tasks={chatStore?.tasks ?? {}}
-            activeSessionId={chatStore?.activeTaskId ?? undefined}
-            onSelectSession={(sessionId) => {
+            activeRunId={chatStore?.activeTaskId ?? undefined}
+            onSelectRun={(runId) => {
               if (!chatStore) return;
-              chatStore.setActiveTaskId(sessionId);
+              chatStore.setActiveTaskId(runId);
               setActiveWorkspaceTab('project');
             }}
-            onDeleteSession={handleSessionGroupDeleteSession}
+            onDeleteRun={handleRunHistoryDeleteRun}
           />
         );
       default:
@@ -478,7 +479,7 @@ export default function WorkspacePage() {
   return (
     <ReactFlowProvider>
       <AppShellLayout
-        sidebar={<ProjectPageSidebar chatStore={chatStore} />}
+        sidebar={<SpaceSidebar chatStore={chatStore} />}
         sidebarHidden={workspaceSidebarHidden}
         /* Always mounted: hosts preview <webview> guests so their pages and
            history survive panel close, workspace-tab hops, and project

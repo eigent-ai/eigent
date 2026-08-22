@@ -134,6 +134,57 @@ describe('projectStore runtime shape', () => {
     });
   });
 
+  it.each(['Project', 'Session', 'Untitled Project', 'Untitled Session'])(
+    'keeps the user-authored server name "%s" during reconciliation',
+    (name) => {
+      const projectId = 'project_named';
+      useProjectStore
+        .getState()
+        .createProject('Existing custom name', undefined, projectId);
+
+      useProjectStore.getState().upsertProjectsFromServer([
+        {
+          id: projectId,
+          user_id: '2',
+          space_id: 'space_test',
+          name,
+          status: 'active',
+          created_at: '2026-08-22T00:00:00.000Z',
+          updated_at: '2026-08-22T00:00:01.000Z',
+        },
+      ]);
+
+      expect(useProjectStore.getState().projects[projectId].name).toBe(name);
+      expect(useSpaceStore.getState().getProjectMeta(projectId)?.name).toBe(
+        name
+      );
+    }
+  );
+
+  it('uses the documented id-scoped placeholder for an unnamed server project', () => {
+    const projectId = 'project_unnamed';
+
+    useProjectStore.getState().upsertProjectsFromServer([
+      {
+        id: projectId,
+        user_id: '2',
+        space_id: 'space_test',
+        name: '',
+        status: 'active',
+        created_at: '2026-08-22T00:00:00.000Z',
+        updated_at: '2026-08-22T00:00:01.000Z',
+      },
+    ]);
+
+    const placeholder = `Session ${projectId}`;
+    expect(useProjectStore.getState().projects[projectId].name).toBe(
+      placeholder
+    );
+    expect(useSpaceStore.getState().getProjectMeta(projectId)?.name).toBe(
+      placeholder
+    );
+  });
+
   it('disposes the preview shell when its project is removed', () => {
     const projectId = useProjectStore
       .getState()

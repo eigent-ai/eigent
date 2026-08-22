@@ -43,7 +43,7 @@ interface CallRowProps {
 /**
  * One request/response record, whoever produced the response.
  *
- * A toolkit invocation and a human interaction share this row because they
+ * A tool invocation and a human interaction share this row because they
  * share a shape: a request, an executor, and a response. Only the labels and
  * the title grammar differ, both of which arrive on the `TimelineCall`.
  *

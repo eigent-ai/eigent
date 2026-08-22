@@ -23,6 +23,7 @@ import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { ProjectEventRuntimeProvider } from '@/hooks/useProjectEventRuntime';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
+import { resolveWorkSessionDisplayName } from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
 import {
   getSessionPreviewSlice,
@@ -38,6 +39,7 @@ import {
 } from '@/types/constants';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { SessionSidePanel } from './SidePanel';
 
 /** Maximum width the resizable chat column can reclaim while display is open. */
@@ -51,16 +53,17 @@ const DISPLAY_PANEL_EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 const DISPLAY_PANEL_ANIMATION_MS = 300;
 
 /**
- * Active Project: header + chat (left) and a mode-dependent side panel (right).
- * The side panel is selected from Project.mode. Task/session mode fields are
- * retained only to render legacy runs that do not have a Project mode yet.
+ * Active Work Session: header + chat (left) and a mode-dependent side panel
+ * (right). The side panel is selected from the backing Project.mode. Legacy
+ * Run mode fields are retained only when the Project has no mode yet.
  */
 interface SessionProps {
-  /** New Project shell: empty Project that promotes to a live Project on send. */
-  isNewProject?: boolean;
+  /** New Session shell backed by a placeholder Project until first send. */
+  isNewSession?: boolean;
 }
 
-export default function Session({ isNewProject = false }: SessionProps) {
+export default function Session({ isNewSession = false }: SessionProps) {
+  const { t } = useTranslation();
   const { chatStore, projectStore } = useChatStoreAdapter();
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
@@ -96,7 +99,7 @@ export default function Session({ isNewProject = false }: SessionProps) {
   // `null` = mode not yet determined (session still loading its events).
   const inferredSessionMode = inferSessionModeFromTask(activeTask, null);
 
-  const [isSidePanelVisible, setIsSidePanelVisible] = useState(!isNewProject);
+  const [isSidePanelVisible, setIsSidePanelVisible] = useState(!isNewSession);
   const [isExpandedOverlayOpen, setIsExpandedOverlayOpen] = useState(false);
   const sessionSidePanelToggleRequestId = usePageTabStore(
     (s) => s.sessionSidePanelToggleRequestId
@@ -108,11 +111,11 @@ export default function Session({ isNewProject = false }: SessionProps) {
   // Default fold state is tab-specific. React reuses this component when switching
   // between `project` and `new-project`, so reset when the shell or project changes.
   useEffect(() => {
-    setIsSidePanelVisible(!isNewProject);
-    if (isNewProject) {
+    setIsSidePanelVisible(!isNewSession);
+    if (isNewSession) {
       setIsExpandedOverlayOpen(false);
     }
-  }, [isNewProject, activeProjectId]);
+  }, [isNewSession, activeProjectId]);
 
   const getAllChatStoresMemoized = useMemo(() => {
     if (!projectStore.activeProjectId) return [];
@@ -167,7 +170,7 @@ export default function Session({ isNewProject = false }: SessionProps) {
   useEffect(() => {
     // The New Project shell stays selected on its own tab — never redirect
     // away from it (it is empty until the user sends the first message).
-    if (isNewProject) return;
+    if (isNewSession) return;
     // Only redirect while the live project tab is active; ignore files/triggers/etc.
     if (activeWorkspaceTab !== 'project') return;
     // Wait until the project chat store is ready (selectProject still loading).
@@ -191,16 +194,16 @@ export default function Session({ isNewProject = false }: SessionProps) {
     chatStore,
     hasSessionStarted,
     isHistoryLoadingActiveProject,
-    isNewProject,
+    isNewSession,
     setActiveWorkspaceTab,
   ]);
 
   useEffect(() => {
-    if (!isNewProject) return;
+    if (!isNewSession) return;
     setDraftSessionMode(activeProjectMeta?.mode ?? SessionMode.SINGLE_AGENT);
-  }, [activeProjectId, activeProjectMeta?.mode, isNewProject]);
+  }, [activeProjectId, activeProjectMeta?.mode, isNewSession]);
 
-  const handleNewProjectSessionModeChange = useCallback(
+  const handleNewWorkSessionModeChange = useCallback(
     (mode: SessionModeType) => {
       setDraftSessionMode(mode);
       if (activeProjectId) {
@@ -214,7 +217,7 @@ export default function Session({ isNewProject = false }: SessionProps) {
   // is still loading — the side panel renders empty rather than defaulting and
   // flickering once the real mode resolves. Fresh Projects default to single
   // agent until the Project mode toggle writes a value.
-  const displaySessionMode: SessionModeType | null = isNewProject
+  const displaySessionMode: SessionModeType | null = isNewSession
     ? (activeProjectMeta?.mode ?? draftSessionMode)
     : (activeProjectMeta?.mode ??
       inferredSessionMode ??
@@ -451,7 +454,7 @@ export default function Session({ isNewProject = false }: SessionProps) {
     setIsExpandedOverlayOpen(false);
   }, []);
 
-  if (!isNewProject && !chatStore) {
+  if (!isNewSession && !chatStore) {
     return null;
   }
 
@@ -467,7 +470,7 @@ export default function Session({ isNewProject = false }: SessionProps) {
       onCloseExpandedOverlay={closeExpandedOverlay}
     />
   ) : null;
-  if (isNewProject) {
+  if (isNewSession) {
     return (
       // The new-project tab deliberately preserves the last active Project in
       // ProjectStore until the first message creates its replacement. Do not
@@ -481,7 +484,7 @@ export default function Session({ isNewProject = false }: SessionProps) {
                 variant="new-project"
                 embedded
                 sessionMode={displaySessionMode ?? SessionMode.SINGLE_AGENT}
-                onSessionModeChange={handleNewProjectSessionModeChange}
+                onSessionModeChange={handleNewWorkSessionModeChange}
               />
             </div>
           </div>
@@ -531,7 +534,15 @@ export default function Session({ isNewProject = false }: SessionProps) {
           )}
         >
           <HeaderBox
-            projectName={activeProjectMeta?.name}
+            workSessionName={
+              activeProjectId
+                ? resolveWorkSessionDisplayName(
+                    activeProjectMeta?.name,
+                    activeProjectId,
+                    t('layout.new-project')
+                  )
+                : undefined
+            }
             totalTokens={
               chatStore.activeTaskId
                 ? chatStore.tasks[chatStore.activeTaskId]?.tokens || 0

@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import addWorkerVideo from '@/assets/add_worker.mp4';
+import addAgentVideo from '@/assets/add_worker.mp4';
 import dynamicWorkforceVideo from '@/assets/dynamic_workforce.mp4';
 import localModelVideo from '@/assets/local_model.mp4';
 import { Button } from '@/components/ui/button';
@@ -106,8 +106,8 @@ export const CarouselStep: React.FC = () => {
       video: dynamicWorkforceVideo,
     },
     {
-      title: 'Add worker with pluggable MCP',
-      video: addWorkerVideo,
+      title: 'Add an agent with pluggable MCP',
+      video: addAgentVideo,
     },
     {
       title: 'Private and secure with local model settings',

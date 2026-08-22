@@ -74,7 +74,7 @@ export interface ModelSelectProps {
   projectId?: string | null;
   /**
    * When true, shows the current default model in the same shell as
-   * `ProjectModeToggle` (readOnly) — no chevron, not interactive,
+   * `WorkSessionModeToggle` (readOnly) — no chevron, not interactive,
    * no filled background (session input bar).
    * Used for session chat input where the model is fixed for the session.
    */

@@ -1,6 +1,6 @@
 {
   "your-ai-workforce": "あなたのAIワーキングフォース",
-  "new-worker": "新規ワーカー",
+  "new-worker": "新しいエージェント",
   "edit": "編集",
   "configure-mcp-server": "MCPサーバーの設定",
   "add-your-agent": "エージェントを追加",
@@ -16,8 +16,8 @@
   "select-platform": "プラットフォームを選択",
   "model-type": "モデルタイプ",
   "model-type-placeholder": "例：gpt-4o-mini",
-  "worker-name-cannot-be-empty": "ワーカー名は空にできません",
-  "worker-name-already-exists": "ワーカー名は既に存在します",
+  "worker-name-cannot-be-empty": "エージェント名は空にできません",
+  "worker-name-already-exists": "エージェント名は既に存在します",
   "detail": "詳細",
   "duplicate": "複製",
   "delete": "削除"

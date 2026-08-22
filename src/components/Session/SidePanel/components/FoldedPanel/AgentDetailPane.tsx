@@ -12,18 +12,18 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import Folder from '@/components/Folder';
+import FilesBrowser from '@/components/Files';
 import { TaskState, type TaskStateType } from '@/components/TaskState';
 import Terminal from '@/components/Terminal';
 import { TaskLogPanelContent } from '@/components/WorkFlow/TaskLogPanelContent';
-import { getAgentToolkitLabels } from '@/components/WorkFlow/agentToolkitLabels';
+import { getAgentToolLabels } from '@/components/WorkFlow/agentToolLabels';
 import { agentMap, type WorkflowAgentType } from '@/components/WorkFlow/agents';
 import { HoverScrollText } from '@/components/ui/HoverScrollText';
 import ShinyText from '@/components/ui/ShinyText/ShinyText';
 import { Button } from '@/components/ui/button';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
-import { getToolkitIcon } from '@/lib/toolkitIcons';
+import { formatToolDisplayName, getToolkitIcon } from '@/lib/toolkitIcons';
 import { cn } from '@/lib/utils';
 import {
   AgentStatusValue,
@@ -150,8 +150,8 @@ export function AgentDetailPane({
 
   const activeTaskId = chatStore?.activeTaskId as string | undefined;
 
-  const toolkitLabels = getAgentToolkitLabels(agent);
-  const toolkitLine = toolkitLabels.join('  ');
+  const toolLabels = getAgentToolLabels(agent);
+  const toolLine = toolLabels.join('  ');
   const wfType = agent.type as WorkflowAgentType;
   const preset = agentMap[wfType];
 
@@ -241,7 +241,7 @@ export function AgentDetailPane({
           onPointerLeave={() => setToolkitHovered(false)}
         >
           <HoverScrollText
-            text={toolkitLine}
+            text={toolLine}
             active={toolkitHovered}
             className="text-xs font-normal leading-tight text-ds-text-neutral-muted-default"
             innerClassName="text-xs font-normal leading-tight text-ds-text-neutral-muted-default"
@@ -339,7 +339,7 @@ export function AgentDetailPane({
               agent.tasks.length > 0 && (
                 <div className="relative h-[180px] w-full overflow-hidden rounded-sm">
                   <div className="absolute left-0 top-0 h-[500px] w-[900px] origin-top-left scale-[0.36]">
-                    <Folder data={agent} />
+                    <FilesBrowser data={agent} />
                   </div>
                 </div>
               )}
@@ -566,7 +566,9 @@ export function AgentDetailPane({
                             )}
                             <div className="min-w-0 max-w-full flex-shrink flex-grow-0 overflow-hidden text-ellipsis whitespace-nowrap pt-1 text-xs leading-17 text-ds-text-neutral-default-default">
                               <ShinyText
-                                text={task.toolkits?.[0]?.toolkitName ?? ''}
+                                text={formatToolDisplayName(
+                                  task.toolkits?.[0]?.toolkitName ?? ''
+                                )}
                                 className="pointer-events-auto w-full select-text overflow-hidden text-ellipsis whitespace-nowrap text-xs font-bold leading-17 text-ds-text-neutral-default-default"
                               />
                             </div>

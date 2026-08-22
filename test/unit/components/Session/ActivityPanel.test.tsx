@@ -66,8 +66,8 @@ vi.mock('@/hooks/useProjectEventRuntime', () => ({
   }),
 }));
 
-vi.mock('@/hooks/useProjectSessionOverview', () => ({
-  useProjectSessionOverview: (projectId: string | null) =>
+vi.mock('@/hooks/useWorkSessionOverview', () => ({
+  useWorkSessionOverview: (projectId: string | null) =>
     (projectId && mocks.overviews[projectId]) || {
       currentRun: null,
       historicalRuns: [],

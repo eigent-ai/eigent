@@ -21,7 +21,7 @@ import {
   useReactFlow,
 } from '@xyflow/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BASE_WORKFLOW_AGENTS } from './baseWorkers';
+import { BASE_WORKFLOW_AGENTS } from './baseAgents';
 import { Node as CustomNodeComponent } from './node';
 import { createWorkflowWheelHandler } from './workflowWheelHandler';
 
@@ -30,7 +30,6 @@ import { share } from '@/lib/share';
 import { useWorkerList } from '@/store/authStore';
 import { useWorkflowViewportStore } from '@/store/workflowViewportStore';
 import '@xyflow/react/dist/style.css';
-import { useTranslation } from 'react-i18next';
 
 interface NodeData {
   agent: Agent;
@@ -55,7 +54,6 @@ export default function Workflow({
   taskAssigning: Agent[];
   onMoveViewport?: (direction: 'left' | 'right') => void;
 }) {
-  const { t } = useTranslation();
   //Get Chatstore for the active project's task
   const { chatStore } = useChatStoreAdapter();
   const [isEditMode, _setIsEditMode] = useState(false);
@@ -193,7 +191,8 @@ export default function Workflow({
       if (!taskAssigning) return prev;
       // Agents not yet in taskAssigning (from defaults or workerList)
       const base = [...BASE_WORKFLOW_AGENTS, ...workerList].filter(
-        (worker) => !taskAssigning.find((agent) => agent.type === worker.type)
+        (agent) =>
+          !taskAssigning.find((assigned) => assigned.type === agent.type)
       );
       let targetData = [...prev];
       // Merge all agents
@@ -269,25 +268,28 @@ export default function Workflow({
     };
   }, []);
 
-  const moveViewport = (dx: number) => {
-    if (isAnimating) return;
-    const viewport = getViewport();
-    setIsAnimating(true);
-    const newX = clampViewportX(viewport.x + dx);
-    setViewport(
-      { x: newX, y: viewport.y, zoom: viewport.zoom },
-      {
-        duration: VIEWPORT_ANIMATION_DURATION,
+  const moveViewport = useCallback(
+    (dx: number) => {
+      if (isAnimating) return;
+      const viewport = getViewport();
+      setIsAnimating(true);
+      const newX = clampViewportX(viewport.x + dx);
+      setViewport(
+        { x: newX, y: viewport.y, zoom: viewport.zoom },
+        {
+          duration: VIEWPORT_ANIMATION_DURATION,
+        }
+      );
+      setTimeout(() => {
+        setIsAnimating(false);
+      }, VIEWPORT_ANIMATION_DURATION);
+      // Call the callback if provided
+      if (onMoveViewport) {
+        onMoveViewport(dx > 0 ? 'left' : 'right');
       }
-    );
-    setTimeout(() => {
-      setIsAnimating(false);
-    }, VIEWPORT_ANIMATION_DURATION);
-    // Call the callback if provided
-    if (onMoveViewport) {
-      onMoveViewport(dx > 0 ? 'left' : 'right');
-    }
-  };
+    },
+    [clampViewportX, getViewport, isAnimating, onMoveViewport, setViewport]
+  );
 
   const _handleShare = async (taskId: string) => {
     share(taskId);
@@ -302,7 +304,7 @@ export default function Workflow({
       setMoveLeft(null);
       setMoveRight(null);
     };
-  }, [setMoveLeft, setMoveRight, isAnimating, clampViewportX]);
+  }, [moveViewport, setMoveLeft, setMoveRight]);
 
   useEffect(() => {
     const container: HTMLElement | null =

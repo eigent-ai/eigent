@@ -14,6 +14,7 @@
 
 import ShinyText from '@/components/ui/ShinyText/ShinyText';
 import { agentMap, type WorkflowAgentType } from '@/components/WorkFlow/agents';
+import { formatToolDisplayName } from '@/lib/toolkitIcons';
 import { cn } from '@/lib/utils';
 import type {
   DurableRunDisplayStatus,
@@ -190,7 +191,7 @@ function truncateText(text: string, max: number): string {
 }
 
 function toolRowTitle(toolkitName: string, method: string): string {
-  return `${toolkitName} · ${titleCaseMethod(method)}`;
+  return `${formatToolDisplayName(toolkitName)} · ${titleCaseMethod(method)}`;
 }
 
 /**
@@ -491,7 +492,7 @@ export function buildAgentBlocks(
       p.items.push({
         kind: 'tool',
         id: `t-prep-${idx}`,
-        rowTitle: `${tag.agentName} · ${name}`,
+        rowTitle: `${tag.agentName} · ${formatToolDisplayName(name)}`,
         toolkitName: name,
         method,
         detail: hideHumanControlDetail ? '' : rawMsg,
@@ -948,7 +949,7 @@ type BlockHeaderParts = {
 
 /**
  * Splits a block's collapsed-header into agent label + dynamically-tracking
- * detail. The detail is the latest tool's `Toolkit · Method` for action
+ * detail. The detail is the latest `Tool · Method` for action
  * blocks, "Thinking…" while a running block has no tool yet, or
  * "N Registered" for the preparation block.
  *

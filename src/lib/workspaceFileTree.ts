@@ -30,7 +30,7 @@ function sortNodes(nodes: WorkspaceFileTreeNode[]): void {
   nodes.forEach((node) => sortNodes(node.children));
 }
 
-/** Build the Agent Folder hierarchy from paths scoped to the workspace root. */
+/** Build the Files hierarchy from paths scoped to the workspace root. */
 export function buildWorkspaceFileTree(
   files: FileInfo[]
 ): WorkspaceFileTreeNode[] {

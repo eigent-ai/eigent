@@ -35,7 +35,7 @@ describe('SpaceDetail loading skeletons', () => {
     motionMocks.reduced = false;
   });
 
-  it.each(['project', 'task', 'trigger'] as const)(
+  it.each(['project', 'task', 'automation'] as const)(
     'preserves the %s table layout while rows load',
     (kind) => {
       const { container } = render(<SpaceDetailListSkeleton kind={kind} />);

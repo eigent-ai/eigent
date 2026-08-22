@@ -7,7 +7,7 @@ are relative to `src/components/ChatBox/`.
 ## Direction
 
 The target architecture is the event-native timeline plus the shared
-`BottomBox` composer. The older `ProjectChatContainer` → `ProjectSection` →
+`BottomBox` composer. The older `WorkSessionChatContainer` → `RunSection` →
 `UserQueryGroup` renderer remains available behind the event timeline feature
 switch while migration is in progress.
 
@@ -21,13 +21,13 @@ ChatBox
 ├── scroll viewport
 │   └── timeline column (Narrative: 600px max; Trajectory: full width)
 │       ├── event-native path
-│       │   └── EventNativeProjectTimeline
+│       │   └── EventNativeWorkSessionTimeline
 │       │       └── TimelineModeRenderer
 │       │           ├── NarrativeTimeline (segments + CallRow)
 │       │           └── TrajectoryTimeline (trace rows)
 │       └── legacy fallback path
-│           └── ProjectChatContainer
-│               └── ProjectSection (one task/run)
+│           └── WorkSessionChatContainer
+│               └── RunSection (one task/run)
 │                   ├── UserQueryGroup (one user turn)
 │                   │   ├── UserMessageCard
 │                   │   ├── PlanTaskBox or TaskCard
@@ -56,7 +56,7 @@ ChatBox
 ```text
 ChatBox/
 ├── index.tsx
-├── EventNativeProjectTimeline.tsx
+├── EventNativeWorkSessionTimeline.tsx
 ├── EventTimeline/
 │   ├── index.ts
 │   ├── EventTimeline.tsx
@@ -91,7 +91,7 @@ ChatBox/
 3. `presentChatSemanticEntities` folds lifecycle receipts into logical
    entities (L1).
 4. `composeTimelineRuns` builds one `TimelineRunView` per Run.
-5. `EventNativeProjectTimeline` bounds the mounted history window.
+5. `EventNativeWorkSessionTimeline` bounds the mounted history window.
 6. `TimelineModeRenderer` picks Narrative or Trajectory.
 7. `BottomBox` renders the event-derived human control or the standard input.
 
@@ -224,7 +224,7 @@ inside each agent's own chronological list.
 
 - One logical call renders as an accordion with the safe Request then Response.
 - Two or more calls render through `RepeatedToolCallGroup.tsx` as
-  `Toolkit · method · count events`.
+  `Tool · method · count events`.
 - The repeated group is collapsed by default and expands to show each call's
   individual status and safe display detail.
 - Aggregate running, completed, cancelled, and failed states appear on the
@@ -243,8 +243,8 @@ data.
 When the event-native read path is disabled, `TaskWorkLogAccordion.tsx` applies
 the same consecutive-call rule to action rows through
 `groupConsecutiveToolItems`. Its optional inner accordion uses the same
-`Toolkit · method · count events` summary. Every expanded child retains the
-original `Toolkit · method` name. Preparation/registration rows are
+`Tool · method · count events` summary. Every expanded child retains the
+original `Tool · method` name. Preparation/registration rows are
 intentionally excluded because that synthetic block can contain calls from
 multiple agents. Remove this legacy implementation together with
 `TaskWorkLogAccordion.tsx` at final cutover.
@@ -311,7 +311,7 @@ entry, for example `py-[1px]`.
 Both timeline paths currently use a real 12px sibling rhythm:
 
 - Event-native: `EventTimeline` uses `gap-3` between list items.
-- Legacy: `ProjectSection` uses `space-y-3` between query groups.
+- Legacy: `RunSection` uses `space-y-3` between query groups.
 - Legacy: `UserQueryGroup` uses `gap-3` between its direct content blocks.
 
 Do not add a gap to a wrapper that contains only one child. It has no visual
@@ -337,7 +337,7 @@ Parts of the event-native path are deliberately built ahead of their callers.
 They are not dead code, but nothing exercises them yet:
 
 - `EventTimeline/presentationPolicy.ts` is driven by the `detailLevel` prop.
-  `EventNativeProjectTimeline` has no caller that passes it, so `'detailed'` is
+  `EventNativeWorkSessionTimeline` has no caller that passes it, so `'detailed'` is
   always in force until a detail-level control is wired up.
 - `VITE_CHATBOX_EVENT_BUS` gates the ChatBox event-native renderer and control
   path and is unset in every checked-in env file, so the legacy conversation
@@ -369,8 +369,8 @@ can be removed after the event-native path is permanent and no fallback is
 required:
 
 ```text
-ProjectChatContainer.tsx
-ProjectSection.tsx
+WorkSessionChatContainer.tsx
+RunSection.tsx
 UserQueryGroup.tsx
 InterruptedRunBanner.tsx
 
@@ -411,10 +411,10 @@ These components still have consumers outside the legacy ChatBox renderer:
 
 After the dependencies above are resolved:
 
-1. Remove the `ProjectChatContainer` branch from `ChatBox/index.tsx`.
+1. Remove the `WorkSessionChatContainer` branch from `ChatBox/index.tsx`.
 2. Remove the legacy interruption-banner branches.
 3. Remove `PLAN_OVERLAY_SLOT_ID` and the legacy plan overlay portal.
-4. Make `EventNativeProjectTimeline` the only conversation renderer.
+4. Make `EventNativeWorkSessionTimeline` the only conversation renderer.
 5. Remove the legacy/event-native conditional state and handlers from
    `ChatBox/index.tsx`.
 6. Retire `VITE_CHATBOX_EVENT_BUS` after event-native rendering is the default.

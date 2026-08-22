@@ -18,7 +18,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { getToolkitIcon } from '@/lib/toolkitIcons';
+import { formatToolDisplayName, getToolkitIcon } from '@/lib/toolkitIcons';
 import type { ChatStore } from '@/store/chatStore';
 import { AgentStatusValue, ChatTaskStatus } from '@/types/constants';
 import { Copy, LoaderCircle } from 'lucide-react';
@@ -94,7 +94,7 @@ export function TaskLogPanelContent({
                         getToolkitIcon(toolkit.toolkitName)
                       )}
                       <span className="flex items-center gap-sm text-nowrap text-label-xs font-bold text-ds-text-neutral-default-default">
-                        {toolkit.toolkitName}
+                        {formatToolDisplayName(toolkit.toolkitName)}
                       </span>
                     </div>
                     <div className="pointer-events-auto flex w-full select-text items-start justify-center gap-sm overflow-hidden pl-6">

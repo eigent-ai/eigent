@@ -43,13 +43,13 @@ import {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import Automations from './Automations';
 import { useSpaceDetailData } from './hooks/useSpaceDetailData';
-import Projects from './Projects';
 import { SpaceDetailTabSkeleton } from './SpaceDetailLoadingSkeleton';
 import { SpaceDetailTabsNav, type SpaceDetailTab } from './SpaceDetailTabsNav';
 import Tasks from './Tasks';
-import Triggers from './Triggers';
 import { formatHubDate } from './utils';
+import WorkSessions from './WorkSessions';
 
 export {
   isSpaceDetailTab,
@@ -57,11 +57,11 @@ export {
   type SpaceDetailTab,
 } from './SpaceDetailTabsNav';
 
-const Folder = lazy(() => import('@/components/Folder'));
+const FilesBrowser = lazy(() => import('@/components/Files'));
 const Memory = lazy(() => import('@/components/Settings/Memory'));
-const WorkspaceConfigurationEditor = lazy(() =>
-  import('@/pages/WorkspaceConfiguration').then((module) => ({
-    default: module.WorkspaceConfigurationEditor,
+const SpaceSettingsEditor = lazy(() =>
+  import('@/pages/SpaceSettings').then((module) => ({
+    default: module.SpaceSettingsEditor,
   }))
 );
 
@@ -254,8 +254,8 @@ export default function SpaceDetail({
     switch (activeTab) {
       case 'projects':
         return (
-          <Projects
-            projectsOverride={data.projects}
+          <WorkSessions
+            workSessionsOverride={data.projects}
             presentation="space-detail"
           />
         );
@@ -265,13 +265,13 @@ export default function SpaceDetail({
         );
       case 'triggers':
         return (
-          <Triggers
-            triggersOverride={data.triggers}
+          <Automations
+            automationsOverride={data.automations}
             presentation="space-detail"
           />
         );
       case 'context':
-        return <Folder key={spaceId} spaceId={spaceId} />;
+        return <FilesBrowser key={spaceId} spaceId={spaceId} />;
       case 'memory':
         return (
           <Memory
@@ -288,7 +288,7 @@ export default function SpaceDetail({
         );
       case 'workspace-profile':
         return (
-          <WorkspaceConfigurationEditor
+          <SpaceSettingsEditor
             key={spaceId}
             presentation="settings"
             spaceId={spaceId}
@@ -328,7 +328,7 @@ export default function SpaceDetail({
               <div className="grid min-w-0 grid-cols-3 gap-x-6 gap-y-5">
                 <Stat
                   icon={<FolderKanban className={statIconClassName} />}
-                  label="Projects"
+                  label={t('layout.projects')}
                   value={data.projectCount}
                   loading={data.projectsLoading}
                 />
@@ -341,8 +341,8 @@ export default function SpaceDetail({
                 <Stat
                   icon={<AUTOMATION_ICON className={statIconClassName} />}
                   label={t('layout.triggers')}
-                  value={data.triggerCount}
-                  loading={data.triggersLoading}
+                  value={data.automationCount}
+                  loading={data.automationsLoading}
                 />
                 <Stat
                   icon={<Activity className={statIconClassName} />}

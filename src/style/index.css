@@ -91,7 +91,7 @@
   -moz-osx-font-smoothing: grayscale;
   color-scheme: light dark;
 
-  --shadow-workspace-project-picker:
+  --shadow-workspace-space-menu:
     inset 0 0 0 1px var(--ds-bg-neutral-subtle-default),
     0 0 4px var(--ds-bg-neutral-strong-default);
 
@@ -629,39 +629,39 @@ code {
   isolation: isolate;
 }
 
-/* Dark mode overrides for FolderComponent (CSV/table content) */
-[data-theme='dark'] .folder-component-content {
+/* Dark mode overrides for FileContentPreview (CSV/table content) */
+[data-theme='dark'] .file-content-preview {
   color: var(--ds-text-neutral-default-default);
 }
 
-[data-theme='dark'] .folder-component-content * {
+[data-theme='dark'] .file-content-preview * {
   color: inherit;
 }
 
-[data-theme='dark'] .folder-component-content table {
+[data-theme='dark'] .file-content-preview table {
   border-collapse: collapse;
 }
 
-[data-theme='dark'] .folder-component-content table th,
-[data-theme='dark'] .folder-component-content table td {
+[data-theme='dark'] .file-content-preview table th,
+[data-theme='dark'] .file-content-preview table td {
   border-color: #30363d !important;
   color: var(--ds-text-neutral-default-default) !important;
 }
 
-[data-theme='dark'] .folder-component-content table th {
+[data-theme='dark'] .file-content-preview table th {
   background-color: #161b22 !important;
 }
 
-[data-theme='dark'] .folder-component-content table tr {
+[data-theme='dark'] .file-content-preview table tr {
   background-color: transparent !important;
   border-top-color: #30363d !important;
 }
 
-[data-theme='dark'] .folder-component-content table tr:nth-child(2n) {
+[data-theme='dark'] .file-content-preview table tr:nth-child(2n) {
   background-color: rgba(110, 118, 129, 0.1) !important;
 }
 
-/* Folder zoom controls only travel in response to a real hover-capable pointer. */
+/* Files zoom controls only travel in response to a real hover-capable pointer. */
 .zoom-controls-reveal {
   opacity: 0;
   transform: translateY(calc(-100% - 8px));

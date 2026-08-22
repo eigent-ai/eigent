@@ -1,6 +1,6 @@
 {
   "your-ai-workforce": "Your AI Workforce",
-  "new-worker": "New Worker Agent",
+  "new-worker": "New agent",
   "edit": "Edit",
   "configure-mcp-server": "Configure MCP Server",
   "add-your-agent": "Add Your Agent",
@@ -16,8 +16,8 @@
   "select-platform": "Select platform",
   "model-type": "Model Type",
   "model-type-placeholder": "e.g., gpt-4o-mini",
-  "worker-name-cannot-be-empty": "Worker name cannot be empty",
-  "worker-name-already-exists": "Worker name already exists",
+  "worker-name-cannot-be-empty": "Agent name cannot be empty",
+  "worker-name-already-exists": "Agent name already exists",
   "detail": "Detail",
   "duplicate": "Duplicate",
   "delete": "Delete"

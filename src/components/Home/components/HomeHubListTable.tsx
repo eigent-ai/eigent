@@ -30,7 +30,7 @@ const LIST_COLUMNS: Record<HomeHubItemKind, HomeHubListColumn[]> = {
     { id: 'type', labelKey: 'layout.home-list-type' },
     { id: 'projects', labelKey: 'layout.projects', align: 'right' },
     { id: 'tasks', labelKey: 'layout.tasks', align: 'right' },
-    { id: 'triggers', labelKey: 'layout.triggers', align: 'right' },
+    { id: 'automations', labelKey: 'layout.triggers', align: 'right' },
     { id: 'created', labelKey: 'layout.home-list-created', align: 'right' },
     { id: 'action', align: 'right' },
   ],
@@ -38,7 +38,7 @@ const LIST_COLUMNS: Record<HomeHubItemKind, HomeHubListColumn[]> = {
     { id: 'name', labelKey: 'layout.home-list-name' },
     { id: 'space', labelKey: 'layout.home-list-space' },
     { id: 'tasks', labelKey: 'layout.tasks', align: 'right' },
-    { id: 'triggers', labelKey: 'layout.triggers', align: 'right' },
+    { id: 'automations', labelKey: 'layout.triggers', align: 'right' },
     { id: 'updated', labelKey: 'layout.home-list-updated', align: 'right' },
   ],
   task: [
@@ -46,7 +46,7 @@ const LIST_COLUMNS: Record<HomeHubItemKind, HomeHubListColumn[]> = {
     { id: 'space', labelKey: 'layout.home-list-space' },
     { id: 'created', labelKey: 'layout.home-list-created', align: 'right' },
   ],
-  trigger: [
+  automation: [
     { id: 'name', labelKey: 'layout.home-list-name' },
     { id: 'space', labelKey: 'layout.home-list-space' },
     { id: 'type', labelKey: 'layout.home-list-type' },

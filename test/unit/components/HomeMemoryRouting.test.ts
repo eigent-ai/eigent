@@ -36,7 +36,7 @@ const projects = [
 ];
 
 describe('Home Memory routing', () => {
-  it('builds Space and Project Memory editor destinations', () => {
+  it('builds Space and Session Memory editor destinations', () => {
     expect(memoryEditorSearch('space-1')).toBe(
       '?section=spaces&spaceId=space-1&spaceTab=memory'
     );
@@ -45,7 +45,7 @@ describe('Home Memory routing', () => {
     );
   });
 
-  it('opens a valid Project scope and safely falls back to Space Memory', () => {
+  it('opens a valid Session scope and safely falls back to Space Memory', () => {
     expect(
       resolveSpaceDetailMemoryTarget(
         'space-1',

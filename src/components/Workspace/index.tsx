@@ -12,9 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { AddWorker } from '@/components/AddWorker';
+import { AddAgent } from '@/components/AddAgent';
 import BottomBox, { type FileAttachment } from '@/components/ChatBox/BottomBox';
-import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseWorkers';
+import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseAgents';
 import { isBaseWorkflowAgent } from '@/components/Workspace/FoldedAgentCard';
 import { SingleAgentList } from '@/components/Workspace/SingleAgentList';
 import { WorkforceAgentList } from '@/components/Workspace/WorkforceAgentList';
@@ -98,10 +98,8 @@ export default function Workspace({
   const [isStartingDirectProject, setIsStartingDirectProject] = useState(false);
   const { hasModel } = useModelConfigCheck();
   const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
-  const [addWorkerDialogOpen, setAddWorkerDialogOpen] = useState(false);
-  const [editingWorkerAgent, setEditingWorkerAgent] = useState<Agent | null>(
-    null
-  );
+  const [addAgentDialogOpen, setAddAgentDialogOpen] = useState(false);
+  const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
 
   const textareaRef = useRef<HTMLDivElement>(null);
 
@@ -157,7 +155,7 @@ export default function Workspace({
         toast.error(
           t('layout.spaces-legacy-readonly-hint', {
             defaultValue:
-              'Legacy Spaces are read-only. Create a new Space to start a Project.',
+              'Legacy Spaces are read-only. Create a new Space to start a Session.',
           })
         );
         return;
@@ -185,7 +183,7 @@ export default function Workspace({
           ?.getState() ?? null;
 
       if (!targetProjectId || !targetChatStore?.activeTaskId) {
-        throw new Error('No active Project chat available');
+        throw new Error('No active Session chat available');
       }
 
       const taskId = targetChatStore.activeTaskId;
@@ -257,7 +255,7 @@ export default function Workspace({
     placeholder: isLegacyActiveSpace
       ? t('layout.spaces-legacy-readonly-hint', {
           defaultValue:
-            'Legacy Spaces are read-only. Create a new Space to start a Project.',
+            'Legacy Spaces are read-only. Create a new Space to start a Session.',
         })
       : t('layout.project-task-placeholder'),
   };
@@ -270,7 +268,7 @@ export default function Workspace({
 
   const sortedAgents = useMemo(() => {
     const base = [...BASE_WORKFLOW_AGENTS, ...workerList].filter(
-      (worker) => !taskAssigning.find((a) => a.type === worker.type)
+      (agent) => !taskAssigning.find((assigned) => assigned.type === agent.type)
     );
     const allAgents = [...taskAssigning, ...base];
     return [...allAgents].sort((a, b) => {
@@ -292,8 +290,8 @@ export default function Workspace({
     [chatStore, host]
   );
 
-  const onEditWorkerFromMenu = (agent: Agent) => {
-    setEditingWorkerAgent(agent);
+  const onEditAgentFromMenu = (agent: Agent) => {
+    setEditingAgent(agent);
   };
 
   const onDuplicateUserAgent = useCallback(
@@ -347,10 +345,10 @@ export default function Workspace({
         sortedAgents={sortedAgents}
         activeAgentId={activeAgentId}
         onSelectAgent={onSelectAgent}
-        onEditWorkerFromMenu={onEditWorkerFromMenu}
+        onEditAgentFromMenu={onEditAgentFromMenu}
         onDuplicateUserAgent={onDuplicateUserAgent}
         onDeleteUserAgent={onDeleteUserAgent}
-        onAddWorker={() => setAddWorkerDialogOpen(true)}
+        onAddAgent={() => setAddAgentDialogOpen(true)}
         alignment="start"
       />
     );
@@ -393,17 +391,17 @@ export default function Workspace({
           sessionModeSelectInteractive
         />
       </div>
-      <AddWorker
-        isOpen={addWorkerDialogOpen}
-        onOpenChange={setAddWorkerDialogOpen}
+      <AddAgent
+        isOpen={addAgentDialogOpen}
+        onOpenChange={setAddAgentDialogOpen}
       />
-      {editingWorkerAgent && (
-        <AddWorker
+      {editingAgent && (
+        <AddAgent
           edit
-          workerInfo={editingWorkerAgent}
+          agentInfo={editingAgent}
           isOpen={true}
           onOpenChange={(open) => {
-            if (!open) setEditingWorkerAgent(null);
+            if (!open) setEditingAgent(null);
           }}
         />
       )}

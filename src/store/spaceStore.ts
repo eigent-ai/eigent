@@ -15,9 +15,9 @@
 import { generateUniqueId } from '@/lib';
 import { getAuthEnvironmentKey } from '@/lib/authEnvironment';
 import {
-  getSessionNavLeadFromHistoryProject,
-  type SessionNavLeadPresentation,
-} from '@/lib/sessionNavLead';
+  getWorkSessionNavLeadFromHistoryProject,
+  type RunNavLeadPresentation,
+} from '@/lib/runNavLead';
 import {
   isLegacySpace,
   isLocalWorkspaceSpace,
@@ -240,7 +240,7 @@ export const projectMetaFromServer = (
     id: project.id,
     userId: project.user_id,
     spaceId: project.space_id,
-    name: project.name || 'Project',
+    name: project.name || `Session ${project.id}`,
     description: project.description ?? undefined,
     mode: project.mode ?? null,
     workdirMode: project.workdir_mode ?? null,
@@ -472,13 +472,13 @@ const fetchHistoryProjectSidebarMetaMap = async (
         );
   const metaByProjectId = new Map<
     string,
-    { displayName?: string; navLead: SessionNavLeadPresentation }
+    { displayName?: string; navLead: RunNavLeadPresentation }
   >();
   for (const project of projects ?? []) {
     const displayName = projectDisplayNameFromHistory(project) ?? undefined;
     metaByProjectId.set(project.project_id, {
       displayName,
-      navLead: getSessionNavLeadFromHistoryProject(project),
+      navLead: getWorkSessionNavLeadFromHistoryProject(project),
     });
   }
   return metaByProjectId;
@@ -488,7 +488,7 @@ const withHistoryProjectNames = (
   projects: ServerProject[],
   historyMetaByProjectId: Map<
     string,
-    { displayName?: string; navLead: SessionNavLeadPresentation }
+    { displayName?: string; navLead: RunNavLeadPresentation }
   >
 ): ServerProject[] =>
   projects.map((project) => {
@@ -869,7 +869,7 @@ export const useSpaceStore = create<SpaceStore>()(
         const legacySpace: Space = {
           id: spaceId,
           name: 'Legacy Space',
-          description: 'Projects created before the Space layer migration.',
+          description: 'Sessions created before the Space layer migration.',
           userId: ownerId,
           sourceType: 'legacy',
           rootPath: null,
@@ -953,7 +953,7 @@ export const useSpaceStore = create<SpaceStore>()(
                   string,
                   {
                     displayName?: string;
-                    navLead: SessionNavLeadPresentation;
+                    navLead: RunNavLeadPresentation;
                   }
                 >();
               }),
@@ -977,7 +977,7 @@ export const useSpaceStore = create<SpaceStore>()(
               projectModule.useProjectRuntimeStore.getState();
             projectStore.upsertProjectsFromServer(activeNamedProjects);
             if (historyMetaByProjectId.size > 0) {
-              const navLeads: Record<string, SessionNavLeadPresentation> = {};
+              const navLeads: Record<string, RunNavLeadPresentation> = {};
               for (const [projectId, meta] of historyMetaByProjectId) {
                 navLeads[projectId] = meta.navLead;
               }

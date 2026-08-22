@@ -29,7 +29,7 @@ import {
   Globe,
   Image,
 } from 'lucide-react';
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export interface WorkforceMenuProps {
@@ -48,7 +48,7 @@ export default function WorkforceMenu({
 
   const { moveLeft, moveRight } = useWorkflowViewportStore();
 
-  const baseWorker: Agent[] = useMemo(
+  const baseAgents: Agent[] = useMemo(
     () => [
       {
         tasks: [],
@@ -99,16 +99,19 @@ export default function WorkforceMenu({
   const webViewUrls = chatStore?.tasks[activeTaskId]?.webViewUrls;
 
   // Helper to safely access task properties
-  const getCurrentTask = () =>
-    activeTaskId ? chatStore?.tasks?.[activeTaskId] : undefined;
+  const getCurrentTask = useCallback(
+    () => (activeTaskId ? chatStore?.tasks?.[activeTaskId] : undefined),
+    [activeTaskId, chatStore]
+  );
 
   const agentList = useMemo(() => {
     if (!chatStore) return [];
-    const base = [...baseWorker, ...workerList].filter(
-      (worker) => !taskAssigning?.find((agent) => agent.type === worker.type)
+    const base = [...baseAgents, ...workerList].filter(
+      (agent) =>
+        !taskAssigning?.find((assigned) => assigned.type === agent.type)
     );
     return [...base, ...(taskAssigning || [])];
-  }, [chatStore, baseWorker, workerList, taskAssigning]);
+  }, [chatStore, baseAgents, workerList, taskAssigning]);
 
   useEffect(() => {
     if (!chatStore || !host?.electronAPI?.onWebviewNavigated) return;
@@ -244,7 +247,14 @@ export default function WorkforceMenu({
     );
 
     return cleanup;
-  }, [chatStore, activeTaskId, webViewUrls, taskAssigning, host]);
+  }, [
+    chatStore,
+    activeTaskId,
+    webViewUrls,
+    taskAssigning,
+    host,
+    getCurrentTask,
+  ]);
 
   if (!chatStore) {
     return <div>Loading...</div>;
@@ -348,7 +358,7 @@ export default function WorkforceMenu({
   };
 
   return (
-    <div className="h-12 pt-2 relative z-50 flex items-center justify-center">
+    <div className="relative z-50 flex h-12 items-center justify-center pt-2">
       <div className="w-full">
         <div className="relative flex h-full w-full flex-row items-center justify-center">
           {/* activeAgent */}
@@ -359,7 +369,7 @@ export default function WorkforceMenu({
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -30 }}
                 transition={{ duration: 0.3, ease: 'easeInOut' }}
-                className={`gap-2 pl-2 flex w-fit flex-row`}
+                className={`flex w-fit flex-row gap-2 pl-2`}
               >
                 <MenuToggleGroup
                   type="single"
@@ -367,7 +377,7 @@ export default function WorkforceMenu({
                   orientation="horizontal"
                   value={getCurrentTask()?.activeWorkspace as string}
                   onValueChange={onValueChange}
-                  className="gap-2 pb-2 flex w-full items-center"
+                  className="flex w-full items-center gap-2 pb-2"
                 >
                   <AnimatePresence mode="popLayout">
                     {agentList.map((agent) => (
@@ -413,7 +423,7 @@ export default function WorkforceMenu({
           </AnimatePresence>
           {/* Viewport Navigation Buttons */}
           {(moveLeft || moveRight) && (
-            <div className="right-2 pb-2 absolute flex items-center">
+            <div className="absolute right-2 flex items-center pb-2">
               <Button
                 variant="ghost"
                 size="sm"

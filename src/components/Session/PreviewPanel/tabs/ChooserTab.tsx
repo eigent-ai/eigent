@@ -124,7 +124,7 @@ export function ChooserTab({ onChoose, onChooseAgentStream }: ChooserTabProps) {
           <>
             <p className="mb-2 mt-6 px-1 text-sm font-medium text-ds-text-neutral-muted-default">
               {t('layout.preview-chooser-project-title', {
-                defaultValue: 'From this project',
+                defaultValue: 'From this session',
               })}
             </p>
             <div className="flex flex-col gap-1.5">

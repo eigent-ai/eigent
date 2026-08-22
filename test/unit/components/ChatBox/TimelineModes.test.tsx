@@ -365,6 +365,34 @@ describe('ChatBox timeline modes', () => {
     );
   });
 
+  it('preserves method underscores in composed Tool titles across both modes', () => {
+    const runs = composeTimelineRuns([
+      normalToolActivity({
+        id: 'search-tool',
+        runSequence: 1,
+        toolkitName: 'Search Toolkit',
+        methodName: 'search_google',
+        title: 'Search.search_google',
+      }),
+      runningRunStatus(2),
+    ]);
+    const { container, rerender } = render(
+      <TimelineModeRenderer detailLevel="trajectory" runs={runs} />
+    );
+
+    expect(container.querySelector('[data-trace-summary]')).toHaveTextContent(
+      'Search.search_google'
+    );
+
+    rerender(<TimelineModeRenderer detailLevel="narrative" runs={runs} />);
+    openNarrativeSegments(container);
+
+    expect(
+      container.querySelector('[data-timeline-call-trigger]')
+    ).toHaveTextContent('Search.search_google');
+    expect(container).not.toHaveTextContent('Search.search google');
+  });
+
   it('opens a trajectory Artifact in the owning Run review', () => {
     usePageTabStore.setState({
       sessionPreviewProjectId: 'project-1',
@@ -572,7 +600,7 @@ describe('ChatBox timeline modes', () => {
       '[data-timeline-call-trigger]'
     ) as HTMLElement;
     expect(tool).toHaveAttribute('data-timeline-call-status', 'running');
-    expect(tool).toHaveAttribute('data-timeline-call-executor', 'toolkit');
+    expect(tool).toHaveAttribute('data-timeline-call-executor', 'tool');
     expect(trigger.querySelectorAll('svg')).toHaveLength(1);
     expect(within(tool).getByText('Request')).toBeInTheDocument();
     expect(

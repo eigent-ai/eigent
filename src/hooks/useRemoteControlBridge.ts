@@ -518,7 +518,7 @@ function scheduleRemoteProjectHistoryHydration(command: RemoteCommand): void {
         );
     } catch (error) {
       console.warn(
-        '[RemoteControlBridge] Failed to hydrate background Project history:',
+        '[RemoteControlBridge] Failed to hydrate background Session history:',
         { project_id: projectId },
         error
       );
@@ -570,7 +570,7 @@ function ensureRemoteProjectLoaded(command: RemoteCommand): void {
     .getState()
     .createProject(
       String(
-        payload.project_name || meta?.name || project?.name || 'Remote Project'
+        payload.project_name || meta?.name || project?.name || 'Remote Session'
       ),
       meta?.description || project?.description || '',
       projectId,
@@ -631,7 +631,7 @@ async function startLocalRemoteTask(command: RemoteCommand): Promise<void> {
     chatStore = projectStore.getChatStore(projectId);
   }
   if (!chatStore) {
-    throw new Error('Failed to create local Project chat store');
+    throw new Error('Failed to create local Session chat store');
   }
 
   console.info('[RemoteControlBridge][RC-TRACE] startTask launching', {
@@ -745,7 +745,7 @@ async function dispatchPersistedRemoteFollowUp(
   const projectId = getCommandProjectId(command);
   const requestId = command.next_task_id || command.id;
   if (!projectId || !requestId) {
-    throw new Error('Remote follow-up requires Project and request ids');
+    throw new Error('Remote follow-up requires Session and request ids');
   }
   const pending = await listPendingFollowUpRequests(projectId);
   const next = pending[0];
@@ -814,7 +814,7 @@ async function executeRemoteCommand(
       // getCommandProjectId falls back to '', which would otherwise be sent as
       // a request to /projects//follow-ups.
       if (!projectId) {
-        throw new Error('Remote user_message requires a target Project');
+        throw new Error('Remote user_message requires a target Session');
       }
       const content = String(
         command.payload.content || command.payload.question || ''
@@ -987,7 +987,7 @@ async function executeSwitchProjectView(
       );
     } else {
       state.createProject(
-        String(payload.project_name || project?.name || 'New Project'),
+        String(payload.project_name || project?.name || 'New Session'),
         project?.description || '',
         projectId,
         undefined,
@@ -1053,7 +1053,7 @@ async function executeSpaceCommand(
     throw error;
   }
   if (!localProject || localProject.spaceId !== spaceId) {
-    const error: any = new Error('Desktop Project is not loaded in this Space');
+    const error: any = new Error('Desktop Session is not loaded in this Space');
     error.code = 'BRIDGE_SPACE_PROJECT_NOT_READY';
     throw error;
   }

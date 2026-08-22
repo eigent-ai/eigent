@@ -20,17 +20,17 @@ import { uploadFileToBrain } from '@/api/http';
 import { isWeb } from '@/client/platform';
 import { SidePanelAccordionBox } from '@/components/Session/SidePanel/components/AccordionBox';
 import {
-  buildProjectSessionPanelData,
+  buildWorkSessionPanelData,
   isProgressDone,
   mergeProjectFiles,
-  type ProjectSessionPanelData,
   type SessionAgentItem,
   type SessionContextItem,
   type SessionEnvironmentItem,
   type SessionFileItem,
   type SessionProgressItem,
   type SessionResourceItem,
-} from '@/components/Session/SidePanel/sections/buildProjectSessionPanelData';
+  type WorkSessionPanelData,
+} from '@/components/Session/SidePanel/sections/buildWorkSessionPanelData';
 import {
   CountPill,
   EarlierItems,
@@ -52,7 +52,7 @@ import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
-import { useProjectSessionOverview } from '@/hooks/useProjectSessionOverview';
+import { useWorkSessionOverview } from '@/hooks/useWorkSessionOverview';
 import { useHost } from '@/host';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
@@ -84,7 +84,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
-const EMPTY_PANEL_DATA: ProjectSessionPanelData = {
+const EMPTY_PANEL_DATA: WorkSessionPanelData = {
   agents: [],
   contextItems: [],
   environments: [],
@@ -95,14 +95,14 @@ const EMPTY_PANEL_DATA: ProjectSessionPanelData = {
 };
 const PANEL_REBUILD_INTERVAL_MS = 32;
 
-function useDeferredProjectSessionPanelData(
+function useDeferredWorkSessionPanelData(
   projectId: string | null,
-  runs: Parameters<typeof buildProjectSessionPanelData>[0],
-  skills: Parameters<typeof buildProjectSessionPanelData>[1],
-  connectors: Parameters<typeof buildProjectSessionPanelData>[2]
-): ProjectSessionPanelData {
+  runs: Parameters<typeof buildWorkSessionPanelData>[0],
+  skills: Parameters<typeof buildWorkSessionPanelData>[1],
+  connectors: Parameters<typeof buildWorkSessionPanelData>[2]
+): WorkSessionPanelData {
   const [state, setState] = useState<{
-    data: ProjectSessionPanelData;
+    data: WorkSessionPanelData;
     projectId: string | null;
   }>({ data: EMPTY_PANEL_DATA, projectId });
   const latestInputRef = useRef({ connectors, projectId, runs, skills });
@@ -116,7 +116,7 @@ function useDeferredProjectSessionPanelData(
     pendingRef.current = globalThis.setTimeout(() => {
       pendingRef.current = null;
       const latest = latestInputRef.current;
-      const data = buildProjectSessionPanelData(
+      const data = buildWorkSessionPanelData(
         latest.runs,
         latest.skills,
         latest.connectors
@@ -200,7 +200,7 @@ function AgentCategorySection({
           {item.name ||
             (item.subagent
               ? t('layout.session-panel-remote-subagent', {
-                  defaultValue: 'Remote subagent',
+                  defaultValue: 'Remote sub-agent',
                 })
               : t('agents.agent', { defaultValue: 'Agent' }))}
         </SidePanelListRow>
@@ -535,7 +535,7 @@ export function SessionActivityPanel({
   const { chatStore } = useChatStoreAdapter();
   const projectStore = useProjectRuntimeStore();
   const { hydration, projectId } = useProjectEventRuntime();
-  const overview = useProjectSessionOverview(projectId);
+  const overview = useWorkSessionOverview(projectId);
   const scopedChatStore =
     projectId && projectStore.activeProjectId === projectId ? chatStore : null;
   const activeTaskId = scopedChatStore?.activeTaskId ?? null;
@@ -610,7 +610,7 @@ export function SessionActivityPanel({
     () => selectSessionPanelRuns(overview.runs, scope),
     [overview.runs, scope]
   );
-  const panelData = useDeferredProjectSessionPanelData(
+  const panelData = useDeferredWorkSessionPanelData(
     projectId,
     scopedRuns,
     skills,
@@ -831,7 +831,7 @@ export function SessionActivityPanel({
             {subagents.length > 0 ? (
               <AgentCategorySection
                 title={t('agents.sub-agents', {
-                  defaultValue: 'Sub Agents',
+                  defaultValue: 'Sub-agents',
                 })}
                 items={subagents}
                 scope={scope}

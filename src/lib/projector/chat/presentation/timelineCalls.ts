@@ -21,11 +21,11 @@ import type {
 import type { TimelineToolInvocation, TimelineTraceRow } from './types';
 
 /**
- * Who produced the response half of one call. A toolkit invocation and a
+ * Who produced the response half of one call. A tool invocation and a
  * human interaction have the same shape — a request, an executor, and a
  * response — so both render through one row instead of two components.
  */
-export type TimelineCallExecutor = 'toolkit' | 'human';
+export type TimelineCallExecutor = 'tool' | 'human';
 
 /** Presentation families that share one request/response label pair. */
 export type TimelineInteractionFamily = 'ask' | 'authorize' | 'choose';
@@ -34,7 +34,7 @@ export interface TimelineCall {
   id: string;
   runId: string;
   executor: TimelineCallExecutor;
-  /** `Toolkit · method` for a tool, `You · Allowed` for a human decision. */
+  /** `Tool · method` for a tool, `You · Allowed` for a human decision. */
   title: string;
   status: ChatActivityStatus;
   /** Presentation-safe request text. Never a raw transport payload. */
@@ -138,7 +138,7 @@ function toolCall(invocation: TimelineToolInvocation): TimelineCall {
   return {
     id: invocation.id,
     runId: invocation.runId,
-    executor: 'toolkit',
+    executor: 'tool',
     title: invocation.title,
     status: invocation.status,
     input: invocation.input,
@@ -188,7 +188,7 @@ function activityCall(id: string, node: ChatActivityNode): TimelineCall {
   return {
     id,
     runId: node.runId,
-    executor: 'toolkit',
+    executor: 'tool',
     title: node.title,
     status: node.status,
     input: node.input,

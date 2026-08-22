@@ -42,13 +42,13 @@ import {
 import { useTranslation } from 'react-i18next';
 import { formatHubRelativeAgo } from '../utils';
 
-export type HomeHubItemKind = 'space' | 'project' | 'task' | 'trigger';
+export type HomeHubItemKind = 'space' | 'project' | 'task' | 'automation';
 
 export const HOME_HUB_LIST_GRID_CLASS: Record<HomeHubItemKind, string> = {
   space: 'grid-cols-[minmax(0,2fr)_112px_72px_72px_72px_96px_120px]',
   project: 'grid-cols-[minmax(0,2fr)_112px_72px_72px_80px_96px]',
   task: 'grid-cols-[minmax(0,2fr)_112px_80px_96px]',
-  trigger: 'grid-cols-[minmax(0,2fr)_112px_100px_96px_96px]',
+  automation: 'grid-cols-[minmax(0,2fr)_112px_100px_96px_96px]',
 };
 
 export type HomeHubMenuItem = {
@@ -72,7 +72,9 @@ export const homeHubBoardSurfaceClass =
 
 export { getSpaceKindLabel } from '@/lib/spaceLabel';
 
-export function resolveProjectTokenCount(project: ProjectGroupType): number {
+export function resolveWorkSessionTokenCount(
+  project: ProjectGroupType
+): number {
   const direct = Number(project.total_tokens);
   if (Number.isFinite(direct)) return direct;
   return (project.tasks || []).reduce(
@@ -459,7 +461,7 @@ type HomeHubSpaceCardBodyProps = {
   spaceKindLabel: string;
   projectCount: number;
   taskCount: number;
-  triggerCount: number;
+  automationCount: number;
   status: Space['status'];
   updatedAt?: number;
   menuItems: HomeHubMenuItem[];
@@ -471,7 +473,7 @@ export function HomeHubSpaceCardBody({
   spaceKindLabel,
   projectCount,
   taskCount,
-  triggerCount,
+  automationCount,
   status,
   updatedAt,
   menuItems,
@@ -482,7 +484,7 @@ export function HomeHubSpaceCardBody({
   const statItems = [
     t('layout.home-space-stat-projects', { count: projectCount }),
     t('layout.home-space-stat-tasks', { count: taskCount }),
-    t('layout.home-space-stat-triggers', { count: triggerCount }),
+    t('layout.home-space-stat-triggers', { count: automationCount }),
   ];
 
   return (
@@ -508,7 +510,7 @@ export function HomeHubSpaceBoardCardBody({
   spaceKindLabel,
   projectCount,
   taskCount,
-  triggerCount,
+  automationCount,
   status,
   menuItems,
 }: Omit<HomeHubSpaceCardBodyProps, 'updatedAt'>) {
@@ -523,7 +525,7 @@ export function HomeHubSpaceBoardCardBody({
       statRows={[
         { label: t('layout.projects'), value: projectCount },
         { label: t('layout.tasks'), value: taskCount },
-        { label: t('layout.triggers'), value: triggerCount },
+        { label: t('layout.triggers'), value: automationCount },
       ]}
       otherContent={
         <>
@@ -539,10 +541,10 @@ export function HomeHubSpaceBoardCardBody({
   );
 }
 
-type HomeHubProjectCardBodyProps = {
+type HomeHubWorkSessionCardBodyProps = {
   title: string;
   taskCount: number;
-  triggerCount: number;
+  automationCount: number;
   tokenCount: number;
   spaceLabel: string;
   runtimeStatus?: 'running' | 'success' | 'error' | null;
@@ -550,19 +552,19 @@ type HomeHubProjectCardBodyProps = {
   menuItems: HomeHubMenuItem[];
 };
 
-export function HomeHubProjectCardBody({
+export function HomeHubWorkSessionCardBody({
   title,
   taskCount,
-  triggerCount,
+  automationCount,
   spaceLabel,
   runtimeStatus,
   updatedAt,
   menuItems,
-}: HomeHubProjectCardBodyProps) {
+}: HomeHubWorkSessionCardBodyProps) {
   const { t } = useTranslation();
   const statItems = [
     t('layout.home-space-stat-tasks', { count: taskCount }),
-    t('layout.home-space-stat-triggers', { count: triggerCount }),
+    t('layout.home-space-stat-triggers', { count: automationCount }),
   ];
 
   return (
@@ -584,14 +586,14 @@ export function HomeHubProjectCardBody({
   );
 }
 
-export function HomeHubProjectBoardCardBody({
+export function HomeHubWorkSessionBoardCardBody({
   title,
   taskCount,
-  triggerCount,
+  automationCount,
   spaceLabel,
   runtimeStatus,
   menuItems,
-}: Omit<HomeHubProjectCardBodyProps, 'updatedAt'>) {
+}: Omit<HomeHubWorkSessionCardBodyProps, 'updatedAt'>) {
   const { t } = useTranslation();
 
   return (
@@ -601,7 +603,7 @@ export function HomeHubProjectBoardCardBody({
       menuItems={menuItems}
       statRows={[
         { label: t('layout.tasks'), value: taskCount },
-        { label: t('layout.triggers'), value: triggerCount },
+        { label: t('layout.triggers'), value: automationCount },
       ]}
       otherContent={
         <>
@@ -622,7 +624,7 @@ export function HomeHubProjectBoardCardBody({
 type HomeHubTaskCardBodyProps = {
   title: string;
   tokenCount: number;
-  projectName?: string;
+  workSessionName?: string;
   spaceLabel: string;
   updatedAt?: string | number | null;
   menuItems: HomeHubMenuItem[];
@@ -630,12 +632,14 @@ type HomeHubTaskCardBodyProps = {
 
 export function HomeHubTaskCardBody({
   title,
-  projectName,
+  workSessionName,
   spaceLabel,
   updatedAt,
   menuItems,
 }: HomeHubTaskCardBodyProps) {
-  const statItems = [...(projectName?.trim() ? [projectName.trim()] : [])];
+  const statItems = [
+    ...(workSessionName?.trim() ? [workSessionName.trim()] : []),
+  ];
 
   return (
     <HomeHubHubCardBody
@@ -651,17 +655,17 @@ export function HomeHubTaskCardBody({
 
 export function HomeHubTaskBoardCardBody({
   title,
-  projectName,
+  workSessionName,
   spaceLabel,
   menuItems,
 }: Omit<HomeHubTaskCardBodyProps, 'updatedAt'>) {
   const { t } = useTranslation();
   const statRows: HomeHubBoardStatRow[] = [];
 
-  if (projectName?.trim()) {
+  if (workSessionName?.trim()) {
     statRows.push({
       label: t('layout.projects'),
-      value: projectName.trim(),
+      value: workSessionName.trim(),
     });
   }
 
@@ -682,12 +686,12 @@ export function HomeHubTaskBoardCardBody({
   );
 }
 
-type HomeHubTriggerCardBodyProps = {
+type HomeHubAutomationCardBodyProps = {
   title: string;
   /** Drives the card glyph; only Schedule automations get a clock. */
-  triggerType: Trigger['trigger_type'];
-  triggerTypeLabel: string;
-  executionCount: number;
+  automationType: Trigger['trigger_type'];
+  automationTypeLabel: string;
+  automationRunCount: number;
   spaceLabel: string;
   isActive: boolean;
   activeLabel: string;
@@ -696,29 +700,29 @@ type HomeHubTriggerCardBodyProps = {
   menuItems: HomeHubMenuItem[];
 };
 
-export function HomeHubTriggerCardBody({
+export function HomeHubAutomationCardBody({
   title,
-  triggerType,
-  triggerTypeLabel,
-  executionCount,
+  automationType,
+  automationTypeLabel,
+  automationRunCount,
   spaceLabel,
   isActive,
   activeLabel,
   inactiveLabel,
   updatedAt,
   menuItems,
-}: HomeHubTriggerCardBodyProps) {
+}: HomeHubAutomationCardBodyProps) {
   const { t } = useTranslation();
-  const TriggerIcon = iconForTriggerType(triggerType);
+  const AutomationIcon = iconForTriggerType(automationType);
   const statItems = [
-    triggerTypeLabel,
-    t('layout.home-trigger-stat-executions', { count: executionCount }),
+    automationTypeLabel,
+    t('layout.home-trigger-stat-executions', { count: automationRunCount }),
   ];
 
   return (
     <HomeHubHubCardBody
       title={title}
-      icon={<TriggerIcon />}
+      icon={<AutomationIcon />}
       menuItems={menuItems}
       statItems={statItems}
       updatedAt={updatedAt}
@@ -735,30 +739,30 @@ export function HomeHubTriggerCardBody({
   );
 }
 
-export function HomeHubTriggerBoardCardBody({
+export function HomeHubAutomationBoardCardBody({
   title,
-  triggerType,
-  triggerTypeLabel,
-  executionCount,
+  automationType,
+  automationTypeLabel,
+  automationRunCount,
   spaceLabel,
   isActive,
   activeLabel,
   inactiveLabel,
   menuItems,
-}: Omit<HomeHubTriggerCardBodyProps, 'updatedAt'>) {
+}: Omit<HomeHubAutomationCardBodyProps, 'updatedAt'>) {
   const { t } = useTranslation();
-  const TriggerIcon = iconForTriggerType(triggerType);
+  const AutomationIcon = iconForTriggerType(automationType);
 
   return (
     <HomeHubBoardCardBody
       title={title}
-      icon={<TriggerIcon />}
+      icon={<AutomationIcon />}
       menuItems={menuItems}
       statRows={[
-        { label: t('layout.home-list-type'), value: triggerTypeLabel },
+        { label: t('layout.home-list-type'), value: automationTypeLabel },
         {
           label: t('layout.home-board-stat-executions'),
-          value: executionCount,
+          value: automationRunCount,
         },
       ]}
       otherContent={
@@ -875,15 +879,15 @@ export type HomeHubSpaceItemProps = {
   isLegacy: boolean;
   projectCount: number;
   taskCount: number;
-  triggerCount: number;
+  automationCount: number;
 };
 
-export type HomeHubProjectItemProps = {
+export type HomeHubWorkSessionItemProps = {
   layout: 'card' | 'list' | 'board';
   project: ProjectGroupType;
   spaceLabel: string;
-  onProjectDelete?: (projectId: string) => void;
-  onProjectRename?: (projectId: string, newName: string) => void;
+  onWorkSessionDelete?: (projectId: string) => void;
+  onWorkSessionRename?: (projectId: string, newName: string) => void;
 };
 
 export type HomeHubTaskItemProps = {
@@ -898,12 +902,12 @@ export type HomeHubTaskItemProps = {
   onControl?: () => void;
 };
 
-export type HomeHubTriggerItemProps = {
+export type HomeHubAutomationItemProps = {
   layout: 'card' | 'list' | 'board';
-  trigger: Trigger;
+  automation: Trigger;
   spaceLabel: string;
-  triggerTypeLabel: string;
-  onEdit: (trigger: Trigger) => void;
-  onDelete: (trigger: Trigger) => void;
-  onToggleActive: (trigger: Trigger) => void;
+  automationTypeLabel: string;
+  onEdit: (automation: Trigger) => void;
+  onDelete: (automation: Trigger) => void;
+  onToggleActive: (automation: Trigger) => void;
 };

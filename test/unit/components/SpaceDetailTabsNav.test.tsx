@@ -72,36 +72,36 @@ describe('SpaceDetailTabsNav', () => {
     const tablist = screen.getByRole('tablist', { name: 'Space content' });
     const tabs = within(tablist).getAllByRole('tab');
     expect(tabs).toHaveLength(6);
-    expect(screen.getByRole('tab', { name: 'Projects' })).toHaveAttribute(
+    expect(screen.getByRole('tab', { name: 'Sessions' })).toHaveAttribute(
       'aria-selected',
       'true'
     );
 
-    fireEvent.keyDown(screen.getByRole('tab', { name: 'Projects' }), {
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Sessions' }), {
       key: 'ArrowRight',
     });
-    expect(screen.getByRole('tab', { name: 'Tasks' })).toHaveAttribute(
+    expect(screen.getByRole('tab', { name: 'Runs' })).toHaveAttribute(
       'aria-selected',
       'true'
     );
-    expect(screen.getByRole('tab', { name: 'Tasks' })).toHaveFocus();
+    expect(screen.getByRole('tab', { name: 'Runs' })).toHaveFocus();
     expect(tablist).toHaveAttribute('data-layout-movement', 'instant');
 
-    fireEvent.keyDown(screen.getByRole('tab', { name: 'Tasks' }), {
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Runs' }), {
       key: 'End',
     });
-    expect(screen.getByRole('tab', { name: 'Space Settings' })).toHaveFocus();
+    expect(screen.getByRole('tab', { name: 'Space settings' })).toHaveFocus();
 
-    fireEvent.keyDown(screen.getByRole('tab', { name: 'Space Settings' }), {
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Space settings' }), {
       key: 'Home',
     });
-    expect(screen.getByRole('tab', { name: 'Projects' })).toHaveFocus();
+    expect(screen.getByRole('tab', { name: 'Sessions' })).toHaveFocus();
   });
 
   it('uses instant Enter and Space activation until pointer interaction restores the spring', () => {
     render(<TabsHarness />);
     const tablist = screen.getByRole('tablist', { name: 'Space content' });
-    const tasksTab = screen.getByRole('tab', { name: 'Tasks' });
+    const tasksTab = screen.getByRole('tab', { name: 'Runs' });
     const memoryTab = screen.getByRole('tab', { name: 'Memory' });
 
     fireEvent.keyDown(tasksTab, { key: 'Enter' });
@@ -122,18 +122,18 @@ describe('SpaceDetailTabsNav', () => {
 
   it('owns shared surfaces inside their tabs and clears hover for touch pointers', async () => {
     const { container } = render(<TabsHarness />);
-    const projectsTab = screen.getByRole('tab', { name: 'Projects' });
+    const sessionsTab = screen.getByRole('tab', { name: 'Sessions' });
     const memoryTab = screen.getByRole('tab', { name: 'Memory' });
 
     expect(
-      projectsTab.querySelector('[data-space-detail-tab-indicator]')
+      sessionsTab.querySelector('[data-space-detail-tab-indicator]')
     ).toBeInTheDocument();
     fireEvent.pointerEnter(memoryTab, { pointerType: 'mouse' });
     expect(
       memoryTab.querySelector('[data-space-detail-tab-hover]')
     ).toBeInTheDocument();
 
-    fireEvent.pointerEnter(projectsTab, { pointerType: 'touch' });
+    fireEvent.pointerEnter(sessionsTab, { pointerType: 'touch' });
     await waitFor(() =>
       expect(
         container.querySelector('[data-space-detail-tab-hover]')
@@ -144,7 +144,7 @@ describe('SpaceDetailTabsNav', () => {
     expect(
       memoryTab.querySelector('[data-space-detail-tab-hover]')
     ).toBeInTheDocument();
-    fireEvent.pointerDown(projectsTab, { pointerType: 'touch' });
+    fireEvent.pointerDown(sessionsTab, { pointerType: 'touch' });
     await waitFor(() =>
       expect(
         container.querySelector('[data-space-detail-tab-hover]')

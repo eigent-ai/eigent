@@ -85,16 +85,16 @@ function TasksHarness({
       setSortDirection: vi.fn(),
       projects: [project],
       projectsLoading: false,
-      triggers: [],
-      triggersLoading: false,
-      reloadTriggers: async () => {},
+      automations: [],
+      automationsLoading: false,
+      reloadAutomations: async () => {},
       chatTasks: {
         [task.task_id]: { status },
       } as HomeHubContextValue['chatTasks'],
       onTaskDelete: vi.fn(),
       onTaskShare: vi.fn(),
-      onProjectDelete: vi.fn(),
-      onProjectRename: vi.fn(),
+      onWorkSessionDelete: vi.fn(),
+      onWorkSessionRename: vi.fn(),
       onOngoingTaskPause: async (taskId, projectId) => {
         await pauseRequest(taskId, projectId);
         setStatus(ChatTaskStatus.PAUSE);

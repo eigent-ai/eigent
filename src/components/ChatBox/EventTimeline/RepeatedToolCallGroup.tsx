@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { formatToolDisplayName } from '@/lib/toolkitIcons';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -73,7 +74,7 @@ function statusClassName(status: string): string {
 export function RepeatedToolCallGroup({ group }: RepeatedToolCallGroupProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const toolTitle = `${group.toolkitName} · ${group.methodName}`;
+  const toolTitle = `${formatToolDisplayName(group.toolkitName)} · ${group.methodName}`;
   const title = t('chat.repeated-tool-events', {
     tool: toolTitle,
     count: group.calls.length,

@@ -27,24 +27,24 @@ export interface WorkforceAgentListProps {
   sortedAgents: Agent[];
   activeAgentId: string | undefined;
   onSelectAgent: (agentId: string) => void;
-  onEditWorkerFromMenu: (agent: Agent) => void;
+  onEditAgentFromMenu: (agent: Agent) => void;
   onDuplicateUserAgent: (agent: Agent) => void;
   onDeleteUserAgent: (agentId: string) => void;
-  onAddWorker: () => void;
+  onAddAgent: () => void;
   alignment?: 'center' | 'start';
 }
 
 /**
- * Workspace workforce mode: centered horizontal row of agents with add-worker.
+ * Workspace workforce mode: centered horizontal row of agents with add-agent.
  */
 export function WorkforceAgentList({
   sortedAgents,
   activeAgentId,
   onSelectAgent,
-  onEditWorkerFromMenu,
+  onEditAgentFromMenu,
   onDuplicateUserAgent,
   onDeleteUserAgent,
-  onAddWorker,
+  onAddAgent,
   alignment = 'center',
 }: WorkforceAgentListProps) {
   const { t } = useTranslation();
@@ -151,7 +151,7 @@ export function WorkforceAgentList({
                 'opacity-80 hover:text-ds-text-neutral-default-default hover:opacity-100',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-brand-default-focus'
               )}
-              onClick={onAddWorker}
+              onClick={onAddAgent}
               aria-label={t('triggers.add')}
             >
               <Plus className="h-6 w-6 shrink-0" strokeWidth={2} aria-hidden />
@@ -241,7 +241,7 @@ export function WorkforceAgentList({
                     onSelect={() => onSelectAgent(agent.agent_id)}
                     showUserAgentOverflow={false}
                     compactContextMenu={{
-                      onEdit: () => onEditWorkerFromMenu(agent),
+                      onEdit: () => onEditAgentFromMenu(agent),
                       onDuplicate: () => onDuplicateUserAgent(agent),
                       onDelete: () => onDeleteUserAgent(agent.agent_id),
                       editEnabled: !isBaseWorkflowAgent(agent),

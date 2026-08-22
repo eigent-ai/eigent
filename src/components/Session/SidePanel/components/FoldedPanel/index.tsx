@@ -15,7 +15,7 @@
 import { PlanTaskBox } from '@/components/ChatBox/TaskBox/PlanTaskBox';
 import { isPlanSplittingPhase } from '@/components/ChatBox/TaskBox/PlanTaskBox/utils';
 import { TaskCard } from '@/components/ChatBox/TaskBox/TaskCard';
-import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseWorkers';
+import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseAgents';
 import {
   FoldedAgentCard,
   isBaseWorkflowAgent,
@@ -240,7 +240,7 @@ export default function FoldedPanel({
 
   const sortedAgents = useMemo(() => {
     const base = [...BASE_WORKFLOW_AGENTS, ...workerList].filter(
-      (worker) => !taskAssigning.find((a) => a.type === worker.type)
+      (agent) => !taskAssigning.find((assigned) => assigned.type === agent.type)
     );
     const allAgents = [...taskAssigning, ...base];
     return [...allAgents].sort((a, b) => {

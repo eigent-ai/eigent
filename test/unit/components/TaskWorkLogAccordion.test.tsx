@@ -297,17 +297,17 @@ describe('TaskWorkLogAccordion repeated tool-call rendering', () => {
     );
 
     const browserGroup = screen.getByRole('button', {
-      name: 'Browser Toolkit · Browser visit page · 2 events',
+      name: 'Browser · Browser visit page · 2 events',
     });
     const todoGroup = screen.getByRole('button', {
-      name: 'TodoToolkit · Todo_write · 2 events',
+      name: 'Todo · Todo_write · 2 events',
     });
 
     expect(browserGroup).toHaveAttribute('aria-expanded', 'false');
     expect(todoGroup).toHaveAttribute('aria-expanded', 'false');
     expect(
       screen.getAllByRole('button', {
-        name: 'Browser Toolkit · Browser visit page · 2 events',
+        name: 'Browser · Browser visit page · 2 events',
       })
     ).toHaveLength(1);
 
@@ -316,7 +316,7 @@ describe('TaskWorkLogAccordion repeated tool-call rendering', () => {
     expect(browserGroup).toHaveAttribute('aria-expanded', 'true');
     expect(
       screen.getAllByRole('button', {
-        name: 'Browser Toolkit · Browser visit page',
+        name: 'Browser · Browser visit page',
       })
     ).toHaveLength(2);
   });
@@ -401,7 +401,7 @@ describe('TaskWorkLogAccordion human-tool detail', () => {
     );
 
     const pendingTool = screen.getByRole('button', {
-      name: 'Human Toolkit · Ask human via gui',
+      name: 'Human · Ask human via gui',
     });
     expect(pendingTool).toHaveAttribute('aria-expanded', 'true');
     expect(
@@ -418,7 +418,7 @@ describe('TaskWorkLogAccordion human-tool detail', () => {
     );
 
     const completedTool = screen.getByRole('button', {
-      name: 'Human Toolkit · Ask human via gui',
+      name: 'Human · Ask human via gui',
     });
     expect(completedTool).toHaveAttribute('aria-expanded', 'false');
     await waitFor(() =>
@@ -631,9 +631,7 @@ describe('buildAgentBlocks', () => {
       'I will open the page.'
     );
     const tool = findTool(items, 0);
-    expect(tool?.kind === 'tool' && tool.rowTitle).toBe(
-      'Browser Toolkit · Open'
-    );
+    expect(tool?.kind === 'tool' && tool.rowTitle).toBe('Browser · Open');
   });
 
   it('preserves chronological message → tool → message → tool ordering', () => {
@@ -921,7 +919,7 @@ describe('buildAgentBlocks — preparation phase', () => {
       (i): i is Extract<TimelineItem, { kind: 'tool' }> => i.kind === 'tool'
     );
     expect(tools).toHaveLength(3);
-    expect(tools[0]?.rowTitle).toBe('Browser Agent · Browser Toolkit');
+    expect(tools[0]?.rowTitle).toBe('Browser Agent · Browser');
     expect(tools[0]?.status).toBe('done');
     expect(tools[1]?.status).toBe('running');
   });
@@ -1039,16 +1037,16 @@ describe('buildAgentBlocks — preparation phase', () => {
     expect(blocks[0]?.kind).toBe('preparation');
     const prepTools = blocks[0]!.items.filter((i) => i.kind === 'tool');
     expect(prepTools.map((t) => t.kind === 'tool' && t.rowTitle)).toEqual([
-      'Developer Agent · Terminal Toolkit',
-      'Browser Agent · Browser Toolkit',
-      'Multi Modal Agent · Open Ai Image Toolkit',
+      'Developer Agent · Terminal',
+      'Browser Agent · Browser',
+      'Multi Modal Agent · Open Ai Image',
     ]);
     expect(blocks[1]?.kind).toBe('action');
     expect(blocks[1]?.agentId).toBe('a-browser');
     const actionTools = blocks[1]!.items.filter((i) => i.kind === 'tool');
     expect(actionTools).toHaveLength(1);
     expect(actionTools[0]?.kind === 'tool' && actionTools[0].rowTitle).toBe(
-      'Browser Toolkit · Open'
+      'Browser · Open'
     );
   });
 
@@ -1087,7 +1085,7 @@ describe('buildAgentBlocks — preparation phase', () => {
     const prepTools = blocks[0]!.items.filter((i) => i.kind === 'tool');
     expect(prepTools).toHaveLength(1);
     expect(prepTools[0]?.kind === 'tool' && prepTools[0].rowTitle).toBe(
-      'Browser Agent · Browser Toolkit'
+      'Browser Agent · Browser'
     );
     expect(prepTools[0]?.kind === 'tool' && prepTools[0].status).toBe('done');
     // The browser agent's action block must not contain the clone event.
@@ -1158,7 +1156,7 @@ describe('getBlockHeaderParts', () => {
     ]);
     expect(getBlockHeaderParts(block)).toEqual({
       agentLabel: 'Document Agent',
-      detail: 'File Toolkit · Open',
+      detail: 'File · Open',
       detailRunning: true,
     });
   });
@@ -1197,7 +1195,7 @@ describe('getBlockHeaderParts', () => {
       },
     ]);
     const parts = getBlockHeaderParts(block);
-    expect(parts.detail).toBe('File Toolkit · Write');
+    expect(parts.detail).toBe('File · Write');
     expect(parts.detailRunning).toBe(true);
   });
 
@@ -1219,7 +1217,7 @@ describe('getBlockHeaderParts', () => {
       'done'
     );
     const parts = getBlockHeaderParts(block);
-    expect(parts.detail).toBe('File Toolkit · Open');
+    expect(parts.detail).toBe('File · Open');
     expect(parts.detailRunning).toBe(false);
   });
 

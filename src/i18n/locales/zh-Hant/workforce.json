@@ -1,6 +1,6 @@
 {
   "your-ai-workforce": "你的 AI Workforce",
-  "new-worker": "新增 Worker",
+  "new-worker": "新增智能體",
   "edit": "編輯",
   "configure-mcp-server": "設定 MCP 伺服器",
   "add-your-agent": "新增您的智能體",
@@ -16,8 +16,8 @@
   "select-platform": "選擇平台",
   "model-type": "模型類型",
   "model-type-placeholder": "例如：gpt-4o-mini",
-  "worker-name-cannot-be-empty": "Worker 名稱不能為空",
-  "worker-name-already-exists": "Worker 名稱已存在",
+  "worker-name-cannot-be-empty": "智能體名稱不能為空",
+  "worker-name-already-exists": "智能體名稱已存在",
   "detail": "詳情",
   "duplicate": "複製",
   "delete": "刪除"

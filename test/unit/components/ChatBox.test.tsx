@@ -80,11 +80,14 @@ vi.mock('@/hooks/useProjectEventRuntime', () => ({
     snapshot: eventNativeHarness.snapshot,
   }),
 }));
-vi.mock('../../../src/components/ChatBox/EventNativeProjectTimeline', () => ({
-  EventNativeProjectTimeline: ({ floatingControl }: any) => (
-    <div data-testid="event-native-timeline">{floatingControl}</div>
-  ),
-}));
+vi.mock(
+  '../../../src/components/ChatBox/EventNativeWorkSessionTimeline',
+  () => ({
+    EventNativeWorkSessionTimeline: ({ floatingControl }: any) => (
+      <div data-testid="event-native-timeline">{floatingControl}</div>
+    ),
+  })
+);
 vi.mock(
   '../../../src/components/ChatBox/BottomBox/useEventNativeHumanControl',
   () => ({
@@ -195,9 +198,9 @@ vi.mock('../../../src/components/ChatBox/BottomBox', () => ({
   }),
 }));
 
-// Mock ProjectChatContainer to avoid scrollTo issues
-vi.mock('../../../src/components/ChatBox/ProjectChatContainer', () => ({
-  ProjectChatContainer: vi.fn(() => (
+// Mock WorkSessionChatContainer to avoid scrollTo issues
+vi.mock('../../../src/components/ChatBox/WorkSessionChatContainer', () => ({
+  WorkSessionChatContainer: vi.fn(() => (
     <div data-testid="project-chat-container">Chat Container</div>
   )),
 }));
@@ -1111,7 +1114,7 @@ describe('ChatBox Component', async () => {
 
       renderChatBox();
 
-      // With the new architecture, task cards are rendered inside ProjectChatContainer
+      // With the new architecture, task cards are rendered inside WorkSessionChatContainer
       expect(screen.getByTestId('project-chat-container')).toBeInTheDocument();
     });
 
@@ -1141,7 +1144,7 @@ describe('ChatBox Component', async () => {
 
       renderChatBox();
 
-      // With the new architecture, notice cards are rendered inside ProjectChatContainer
+      // With the new architecture, notice cards are rendered inside WorkSessionChatContainer
       expect(screen.getByTestId('project-chat-container')).toBeInTheDocument();
     });
   });
@@ -1172,7 +1175,7 @@ describe('ChatBox Component', async () => {
 
       renderChatBox();
 
-      // With the new architecture, loading states are handled inside ProjectChatContainer
+      // With the new architecture, loading states are handled inside WorkSessionChatContainer
       expect(screen.getByTestId('project-chat-container')).toBeInTheDocument();
     });
   });
@@ -1209,7 +1212,7 @@ describe('ChatBox Component', async () => {
 
       renderChatBox();
 
-      // With the new architecture, file lists are rendered inside ProjectChatContainer
+      // With the new architecture, file lists are rendered inside WorkSessionChatContainer
       expect(screen.getByTestId('project-chat-container')).toBeInTheDocument();
     });
 
@@ -1244,7 +1247,7 @@ describe('ChatBox Component', async () => {
 
       renderChatBox();
 
-      // With the new architecture, file lists are rendered inside ProjectChatContainer
+      // With the new architecture, file lists are rendered inside WorkSessionChatContainer
       expect(screen.getByTestId('project-chat-container')).toBeInTheDocument();
     });
   });

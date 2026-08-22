@@ -20,8 +20,8 @@ import {
   putCachedProject,
   type CachedTask,
 } from '@/lib/projectCache';
-import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
-import { getSessionNavLeadPresentation } from '@/lib/sessionNavLead';
+import type { RunNavLeadPresentation } from '@/lib/runNavLead';
+import { getRunNavLeadPresentation } from '@/lib/runNavLead';
 import { isPlaceholderProjectName } from '@/lib/spaceLabel';
 import { resolveHistoricalRunElapsedMs } from '@/lib/taskDuration';
 import { fetchProjectRuns } from '@/service/projectRunsApi';
@@ -379,7 +379,7 @@ interface ProjectStore {
   activeProjectId: string | null;
   projects: { [projectId: string]: Project };
   /** Preloaded sidebar icon state from history (stable while hydrating). */
-  navLeadByProjectId: Record<string, SessionNavLeadPresentation>;
+  navLeadByProjectId: Record<string, RunNavLeadPresentation>;
   /** Projects currently replaying history at delay 0 — sidebar uses cached lead. */
   historyLoadingProjectIds: Record<string, true>;
   /**
@@ -477,13 +477,8 @@ interface ProjectStore {
     tasks: Array<{ task_id?: string | null; question?: string | null }>,
     fallbackQuestion?: string
   ) => Promise<void>;
-  setProjectNavLead: (
-    projectId: string,
-    lead: SessionNavLeadPresentation
-  ) => void;
-  setProjectNavLeads: (
-    leads: Record<string, SessionNavLeadPresentation>
-  ) => void;
+  setProjectNavLead: (projectId: string, lead: RunNavLeadPresentation) => void;
+  setProjectNavLeads: (leads: Record<string, RunNavLeadPresentation>) => void;
   setHistoryLoadingProject: (projectId: string, loading: boolean) => void;
   setHistoryLoadIncomplete: (projectId: string, incomplete: boolean) => void;
 
@@ -923,7 +918,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         nextProjects[serverProject.id] = {
           id: serverProject.id,
           spaceId: serverProject.space_id,
-          name: serverProject.name || 'Project',
+          name: serverProject.name || `Session ${serverProject.id}`,
           description: serverProject.description ?? undefined,
           createdAt,
           updatedAt,
@@ -1472,7 +1467,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           : existingProjectName &&
               !isPlaceholderProjectName(existingProjectName, projectId)
             ? existingProjectName
-            : question.slice(0, 50) || 'Project';
+            : question.slice(0, 50) || `Session ${projectId}`;
 
     if (projects[projectId]) {
       console.log(
@@ -1718,7 +1713,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
               if (activeTask) {
                 get().setProjectNavLead(
                   loadProjectId,
-                  getSessionNavLeadPresentation(activeTask)
+                  getRunNavLeadPresentation(activeTask)
                 );
               }
               console.log(
@@ -1914,7 +1909,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         if (activeTask) {
           get().setProjectNavLead(
             loadProjectId,
-            getSessionNavLeadPresentation(activeTask)
+            getRunNavLeadPresentation(activeTask)
           );
         }
         console.log(
@@ -2738,7 +2733,7 @@ export const useProjectStore = projectStore;
  * Centralized live nav-lead subscription registry.
  *
  * For every Project that has an active chat store, subscribe to that chat
- * store and push the derived `SessionNavLeadPresentation` into
+ * store and push the derived `RunNavLeadPresentation` into
  * `navLeadByProjectId`. This makes the sidebar row icons react to live task
  * status changes (running → finished, etc.) without requiring each consumer
  * to subscribe to chat-store internals.
@@ -2752,8 +2747,8 @@ const navLeadSubscriptions = new Map<
 >();
 
 const navLeadsEqual = (
-  a: SessionNavLeadPresentation | undefined,
-  b: SessionNavLeadPresentation
+  a: RunNavLeadPresentation | undefined,
+  b: RunNavLeadPresentation
 ) => !!a && a.kind === b.kind && a.Icon === b.Icon && a.spin === b.spin;
 
 const pushLiveNavLead = (projectId: string, chatStore: VanillaChatStore) => {
@@ -2762,7 +2757,7 @@ const pushLiveNavLead = (projectId: string, chatStore: VanillaChatStore) => {
     ? chatState.tasks[chatState.activeTaskId]
     : undefined;
   if (!activeTask) return;
-  const lead = getSessionNavLeadPresentation(activeTask);
+  const lead = getRunNavLeadPresentation(activeTask);
   const current = projectStore.getState().navLeadByProjectId[projectId];
   if (navLeadsEqual(current, lead)) return;
   projectStore.getState().setProjectNavLead(projectId, lead);

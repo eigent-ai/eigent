@@ -240,8 +240,8 @@ function LegacyWorkflowDialogContent({
       onStartFromScratch={createBlankSpace}
       onUseLocalFolder={createSpaceFromFolder}
       initialPage={workflow}
-      initialWorkspaceBundleHandle={initialHandle || undefined}
-      initialWorkspaceBundleProposalId={initialProposalId || undefined}
+      initialSpaceProfileHandle={initialHandle || undefined}
+      initialSpaceProfileProposalId={initialProposalId || undefined}
       initialAgentPluginTargetSpaceId={initialTargetSpaceId}
       agentPluginTargetMode="existing"
     />

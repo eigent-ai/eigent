@@ -13,11 +13,11 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
-  getSessionNavLeadFromHistoryTask,
-  getSessionNavLeadPresentation,
+  getRunNavLeadFromHistoryTask,
+  getRunNavLeadPresentation,
   HISTORY_TASK_STATUS_ONGOING,
-  type SessionNavLeadKind,
-} from '@/lib/sessionNavLead';
+  type RunNavLeadKind,
+} from '@/lib/runNavLead';
 import type { ChatStore } from '@/store/chatStore';
 import { ExecutionStatus, type Trigger } from '@/types';
 import { ChatTaskStatus } from '@/types/constants';
@@ -28,7 +28,7 @@ export type HomeBoardColumn = 'default' | 'running' | 'awaiting_review';
 export type HomeHubRuntimeStatus = 'running' | 'success' | 'error';
 export type TaskRuntimeControlAction = 'pause' | 'resume';
 
-const SESSION_NAV_KIND_PRIORITY: Record<SessionNavLeadKind, number> = {
+const RUN_NAV_KIND_PRIORITY: Record<RunNavLeadKind, number> = {
   error: 8,
   warning: 7,
   hitl: 6,
@@ -40,7 +40,7 @@ const SESSION_NAV_KIND_PRIORITY: Record<SessionNavLeadKind, number> = {
 };
 
 function leadKindToRuntimeStatus(
-  kind: SessionNavLeadKind
+  kind: RunNavLeadKind
 ): HomeHubRuntimeStatus | null {
   switch (kind) {
     case 'running':
@@ -59,30 +59,26 @@ function leadKindToRuntimeStatus(
   }
 }
 
-function pickHighestPriorityLeadKind(
-  kinds: SessionNavLeadKind[]
-): SessionNavLeadKind {
+function pickHighestPriorityLeadKind(kinds: RunNavLeadKind[]): RunNavLeadKind {
   return kinds.reduce(
     (best, kind) =>
-      SESSION_NAV_KIND_PRIORITY[kind] > SESSION_NAV_KIND_PRIORITY[best]
-        ? kind
-        : best,
+      RUN_NAV_KIND_PRIORITY[kind] > RUN_NAV_KIND_PRIORITY[best] ? kind : best,
     'idle'
   );
 }
 
-export function getProjectCardRuntimeStatus(
+export function getWorkSessionCardRuntimeStatus(
   project: ProjectGroup,
   chatTasks?: ChatTasksMap
 ): HomeHubRuntimeStatus | null {
-  const kinds: SessionNavLeadKind[] = [];
+  const kinds: RunNavLeadKind[] = [];
 
   for (const task of project.tasks ?? []) {
     const liveTask = resolveLiveTask(task.task_id, chatTasks);
     kinds.push(
       liveTask
-        ? getSessionNavLeadPresentation(liveTask).kind
-        : getSessionNavLeadFromHistoryTask(task).kind
+        ? getRunNavLeadPresentation(liveTask).kind
+        : getRunNavLeadFromHistoryTask(task).kind
     );
   }
 
@@ -115,12 +111,12 @@ type LiveTask = ChatStore['tasks'][string];
 type ChatTasksMap = ChatStore['tasks'];
 
 function isLiveTaskAwaitingReview(task: LiveTask): boolean {
-  const kind = getSessionNavLeadPresentation(task).kind;
+  const kind = getRunNavLeadPresentation(task).kind;
   return kind === 'hitl' || kind === 'blocked';
 }
 
 function isLiveTaskRunning(task: LiveTask): boolean {
-  return getSessionNavLeadPresentation(task).kind === 'running';
+  return getRunNavLeadPresentation(task).kind === 'running';
 }
 
 function resolveLiveTask(taskId: string | undefined, chatTasks?: ChatTasksMap) {
@@ -157,7 +153,7 @@ export function getTaskBoardColumn(
   return 'default';
 }
 
-export function getProjectBoardColumn(
+export function getWorkSessionBoardColumn(
   project: ProjectGroup,
   chatTasks?: ChatTasksMap
 ): HomeBoardColumn {
@@ -188,8 +184,8 @@ export function getProjectBoardColumn(
   return 'default';
 }
 
-export function getTriggerBoardColumn(trigger: Trigger): HomeBoardColumn {
-  const status = trigger.last_execution_status?.toLowerCase();
+export function getAutomationBoardColumn(automation: Trigger): HomeBoardColumn {
+  const status = automation.last_execution_status?.toLowerCase();
   if (status === ExecutionStatus.Pending) {
     return 'awaiting_review';
   }
@@ -201,16 +197,16 @@ export function getTriggerBoardColumn(trigger: Trigger): HomeBoardColumn {
 
 export function getSpaceBoardColumn(
   spaceProjects: ProjectGroup[],
-  spaceTriggers: Trigger[],
+  spaceAutomations: Trigger[],
   chatTasks?: ChatTasksMap
 ): HomeBoardColumn {
   if (
     spaceProjects.some(
       (project) =>
-        getProjectBoardColumn(project, chatTasks) === 'awaiting_review'
+        getWorkSessionBoardColumn(project, chatTasks) === 'awaiting_review'
     ) ||
-    spaceTriggers.some(
-      (trigger) => getTriggerBoardColumn(trigger) === 'awaiting_review'
+    spaceAutomations.some(
+      (automation) => getAutomationBoardColumn(automation) === 'awaiting_review'
     )
   ) {
     return 'awaiting_review';
@@ -218,10 +214,10 @@ export function getSpaceBoardColumn(
 
   if (
     spaceProjects.some(
-      (project) => getProjectBoardColumn(project, chatTasks) === 'running'
+      (project) => getWorkSessionBoardColumn(project, chatTasks) === 'running'
     ) ||
-    spaceTriggers.some(
-      (trigger) => getTriggerBoardColumn(trigger) === 'running'
+    spaceAutomations.some(
+      (automation) => getAutomationBoardColumn(automation) === 'running'
     )
   ) {
     return 'running';

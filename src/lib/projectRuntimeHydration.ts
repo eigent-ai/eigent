@@ -17,7 +17,7 @@ import {
   buildTaskQuestionsById,
   computeProjectFreshnessAnchor,
 } from '@/lib/replay';
-import { getSessionNavLeadFromHistoryProject } from '@/lib/sessionNavLead';
+import { getWorkSessionNavLeadFromHistoryProject } from '@/lib/runNavLead';
 import type { ProjectRuntimeStore } from '@/store/projectRuntimeStore';
 
 interface EnsureProjectRuntimeLoadedOptions {
@@ -70,7 +70,7 @@ export async function ensureProjectRuntimeLoaded(
 
     projectStore.setProjectNavLead(
       projectId,
-      getSessionNavLeadFromHistoryProject(historyProject)
+      getWorkSessionNavLeadFromHistoryProject(historyProject)
     );
 
     const firstTask = historyProject.tasks[0];

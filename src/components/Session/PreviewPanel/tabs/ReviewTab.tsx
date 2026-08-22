@@ -167,7 +167,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
         message={t('layout.review-scan-failed', {
           defaultValue: runScoped
             ? 'Could not load the changes for this task.'
-            : 'Could not load the changes for this project.',
+            : 'Could not load the changes for this session.',
         })}
         detail={error}
         action={
@@ -185,7 +185,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
         message={t('layout.review-empty', {
           defaultValue: runScoped
             ? 'No file changes in this task.'
-            : 'No file changes in this project yet.',
+            : 'No file changes in this session yet.',
         })}
         detail={t('layout.review-empty-hint', {
           defaultValue: runScoped

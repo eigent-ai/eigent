@@ -32,13 +32,13 @@ import {
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-const WorkspaceBundleInstallWizard = lazy(() =>
-  import('@/components/WorkspaceBundle/WorkspaceBundleInstallWizard').then(
-    (module) => ({ default: module.WorkspaceBundleInstallWizard })
+const SpaceProfileImportWizard = lazy(() =>
+  import('@/components/SpaceProfile/SpaceProfileImportWizard').then(
+    (module) => ({ default: module.SpaceProfileImportWizard })
   )
 );
 const AgentPluginImportWizard = lazy(() =>
-  import('@/components/WorkspaceBundle/AgentPluginImportWizard').then(
+  import('@/components/SpaceProfile/AgentPluginImportWizard').then(
     (module) => ({ default: module.AgentPluginImportWizard })
   )
 );
@@ -53,8 +53,8 @@ export interface NewSpaceDialogProps {
   onStartFromScratch: () => Promise<boolean>;
   onUseLocalFolder: () => Promise<boolean>;
   initialPage?: NewSpaceDialogPage;
-  initialWorkspaceBundleHandle?: string;
-  initialWorkspaceBundleProposalId?: string;
+  initialSpaceProfileHandle?: string;
+  initialSpaceProfileProposalId?: string;
   initialAgentPluginTargetSpaceId?: string | null;
   agentPluginTargetMode?: 'existing' | 'create-space';
 }
@@ -116,8 +116,8 @@ export default function NewSpaceDialog({
   onStartFromScratch,
   onUseLocalFolder,
   initialPage = 'options',
-  initialWorkspaceBundleHandle,
-  initialWorkspaceBundleProposalId,
+  initialSpaceProfileHandle,
+  initialSpaceProfileProposalId,
   initialAgentPluginTargetSpaceId,
   agentPluginTargetMode = 'create-space',
 }: NewSpaceDialogProps) {
@@ -179,7 +179,7 @@ export default function NewSpaceDialog({
                 <NewSpaceOption
                   icon={FolderOpen}
                   title={t('layout.workspace-use-local-folder')}
-                  description="Connect a folder already stored on this device."
+                  description="Connect local files already stored on this device."
                   busy={pendingOption === 'folder'}
                   disabled={pendingOption !== null}
                   onClick={() =>
@@ -188,8 +188,8 @@ export default function NewSpaceDialog({
                 />
                 <NewSpaceOption
                   icon={PackagePlus}
-                  title="Import from Workspace Bundle"
-                  description="Create a Space from a shared Workspace Bundle."
+                  title="Import a Space profile"
+                  description="Create a Space from a shared Space profile."
                   disabled={pendingOption !== null}
                   onClick={() => setPage('import-options')}
                 />
@@ -199,15 +199,15 @@ export default function NewSpaceDialog({
         ) : page === 'import-options' ? (
           <>
             <DialogHeader
-              title="Import a Bundle"
-              subtitle="Add a Workspace Bundle name or convert an Agent Plugin into a Bundle."
+              title="Import a Space profile"
+              subtitle="Add a Space profile name or convert an Agent Plugin into a Space profile."
               showBackButton
               onBackClick={() => setPage('options')}
             />
             <DialogContentSection>
               <div
                 role="group"
-                aria-label="Bundle import options"
+                aria-label="Space profile import options"
                 className={cn(
                   'grid gap-3',
                   canImportAgentPlugin ? 'grid-cols-2' : 'grid-cols-1'
@@ -215,15 +215,15 @@ export default function NewSpaceDialog({
               >
                 <NewSpaceOption
                   icon={PackagePlus}
-                  title="Add Workspace Bundle name"
-                  description="Enter a shared Bundle name or handle and create a Space."
+                  title="Add Space profile name"
+                  description="Enter a shared Space profile name or handle and create a Space."
                   onClick={() => setPage('workspace-bundle')}
                 />
                 {canImportAgentPlugin ? (
                   <NewSpaceOption
                     icon={Puzzle}
-                    title="Import Agent Plugin as Bundle"
-                    description="Inspect a local Agent Plugin and convert it into a Workspace Bundle draft."
+                    title="Import Agent Plugin as Space profile"
+                    description="Inspect a local Agent Plugin and convert it into a Space profile draft."
                     onClick={() => setPage('agent-plugin')}
                   />
                 ) : null}
@@ -233,8 +233,8 @@ export default function NewSpaceDialog({
         ) : page === 'workspace-bundle' ? (
           <>
             <DialogHeader
-              title="Import Workspace Bundle"
-              subtitle="Enter a share handle to review the bundle and create a Space."
+              title="Import Space profile"
+              subtitle="Enter a share handle to review the profile and create a Space."
               showBackButton
               onBackClick={() => setPage('import-options')}
             />
@@ -249,17 +249,15 @@ export default function NewSpaceDialog({
                       className="h-5 w-5 animate-spin"
                       aria-hidden
                     />
-                    <span className="sr-only">
-                      Loading Workspace Bundle form
-                    </span>
+                    <span className="sr-only">Loading Space profile form</span>
                   </div>
                 }
               >
-                <WorkspaceBundleInstallWizard
-                  initialHandle={initialWorkspaceBundleHandle}
-                  initialProposalId={initialWorkspaceBundleProposalId}
+                <SpaceProfileImportWizard
+                  initialHandle={initialSpaceProfileHandle}
+                  initialProposalId={initialSpaceProfileProposalId}
                   showHeader={false}
-                  onWorkspaceOpen={() => handleOpenChange(false)}
+                  onSpaceOpen={() => handleOpenChange(false)}
                 />
               </Suspense>
             </DialogContentSection>
@@ -267,8 +265,8 @@ export default function NewSpaceDialog({
         ) : (
           <>
             <DialogHeader
-              title="Import Agent Plugin as Bundle"
-              subtitle="Inspect a local Agent Plugin and convert it into a Workspace Bundle draft."
+              title="Import Agent Plugin as Space profile"
+              subtitle="Inspect a local Agent Plugin and convert it into a Space profile draft."
               showBackButton
               onBackClick={() => setPage('import-options')}
             />
@@ -291,7 +289,7 @@ export default function NewSpaceDialog({
                   initialTargetSpaceId={initialAgentPluginTargetSpaceId}
                   showHeader={false}
                   targetMode={agentPluginTargetMode}
-                  onConfigurationOpen={() => handleOpenChange(false)}
+                  onSpaceSettingsOpen={() => handleOpenChange(false)}
                 />
               </Suspense>
             </DialogContentSection>

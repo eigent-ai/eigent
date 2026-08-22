@@ -345,7 +345,7 @@ export function WorkspaceVersionHistoryDialog({
                     className="flex-1 gap-1.5 !text-body-sm"
                   >
                     {t('layout.workspace-project-versions', {
-                      defaultValue: 'Project versions',
+                      defaultValue: 'Session versions',
                     })}
                     <span className="rounded-full bg-ds-bg-neutral-muted-default px-1.5 py-0.5 !text-body-xs">
                       {versionView.projectVersions.length}
@@ -390,7 +390,7 @@ export function WorkspaceVersionHistoryDialog({
                   <span className="block text-body-xs text-ds-text-neutral-muted-default">
                     {t('layout.workspace-project-versions-description', {
                       defaultValue:
-                        'The latest retained version for each Project in this Space.',
+                        'The latest retained version for each Session in this Space.',
                     })}
                   </span>
                   <div className="overflow-hidden rounded-xl border border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-4">
@@ -408,7 +408,7 @@ export function WorkspaceVersionHistoryDialog({
                             {(branch.project_id &&
                               projectNames.get(branch.project_id)) ||
                               t('layout.workspace-project-version', {
-                                defaultValue: 'Project version',
+                                defaultValue: 'Session version',
                               })}
                           </span>
                           <span className="block truncate text-body-xs text-ds-text-neutral-muted-default">
@@ -416,10 +416,10 @@ export function WorkspaceVersionHistoryDialog({
                               'Initialize Eigent Project workspace'
                             )
                               ? t('layout.workspace-project-initialized', {
-                                  defaultValue: 'Project initialized',
+                                  defaultValue: 'Session initialized',
                                 })
                               : t('layout.workspace-project-updated', {
-                                  defaultValue: 'Project updated',
+                                  defaultValue: 'Session updated',
                                 })}{' '}
                             · {formatDate(branch.committed_at)}
                           </span>
@@ -433,7 +433,7 @@ export function WorkspaceVersionHistoryDialog({
                       <span className="block py-4 text-body-sm text-ds-text-neutral-muted-default">
                         {t('layout.workspace-no-project-versions', {
                           defaultValue:
-                            'No Project versions are available yet.',
+                            'No Session versions are available yet.',
                         })}
                       </span>
                     ) : null}

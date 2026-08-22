@@ -23,6 +23,7 @@ import {
   canCreateProjectInSpace,
   isLegacySpace,
   isLocalWorkspaceSpace,
+  resolveWorkSessionDisplayName,
 } from '@/lib/spaceLabel';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
 import { cn } from '@/lib/utils';
@@ -57,10 +58,8 @@ const pathBasename = (path?: string | null) => {
   return parts[parts.length - 1] || value;
 };
 
-const projectTitle = (project: SpaceProjectMeta, fallback: string) => {
-  const name = project.name?.trim();
-  if (!name || name.toLowerCase() === 'new project') return fallback;
-  return name;
+const workSessionTitle = (project: SpaceProjectMeta, fallback: string) => {
+  return resolveWorkSessionDisplayName(project.name, project.id, fallback);
 };
 
 export default function SpacesHub() {
@@ -73,7 +72,9 @@ export default function SpacesHub() {
     (state) => state.setActiveWorkspaceTab
   );
   const projectStore = useProjectRuntimeStore();
-  const [loadingProjectId, setLoadingProjectId] = useState<string | null>(null);
+  const [loadingWorkSessionProjectId, setLoadingProjectId] = useState<
+    string | null
+  >(null);
   const [creatingInSpaceId, setCreatingInSpaceId] = useState<string | null>(
     null
   );
@@ -135,7 +136,7 @@ export default function SpacesHub() {
     [projectStore, setActiveSpace, setActiveWorkspaceTab]
   );
 
-  const openProject = useCallback(
+  const openWorkSession = useCallback(
     async (spaceId: string, project: SpaceProjectMeta) => {
       setLoadingProjectId(project.id);
       try {
@@ -361,14 +362,15 @@ export default function SpacesHub() {
                         <span>
                           {t('layout.spaces-legacy-readonly-hint', {
                             defaultValue:
-                              'Legacy Spaces are read-only. Create a new Space to start a Project.',
+                              'Legacy Spaces are read-only. Create a new Space to start a Session.',
                           })}
                         </span>
                       </div>
                     )
                   ) : (
                     projects.map((project) => {
-                      const isProjectLoading = loadingProjectId === project.id;
+                      const isProjectLoading =
+                        loadingWorkSessionProjectId === project.id;
                       const isActiveProject =
                         projectStore.activeProjectId === project.id;
                       return (
@@ -381,7 +383,9 @@ export default function SpacesHub() {
                             isActiveProject &&
                               'bg-ds-bg-neutral-subtle-default text-ds-text-neutral-default-default'
                           )}
-                          onClick={() => void openProject(space.id, project)}
+                          onClick={() =>
+                            void openWorkSession(space.id, project)
+                          }
                         >
                           {isProjectLoading ? (
                             <Loader2
@@ -395,7 +399,7 @@ export default function SpacesHub() {
                             />
                           )}
                           <span className="min-w-0 flex-1 truncate text-body-sm text-ds-text-neutral-default-default">
-                            {projectTitle(
+                            {workSessionTitle(
                               project,
                               t('layout.sessions-start-new')
                             )}

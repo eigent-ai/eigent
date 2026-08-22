@@ -181,7 +181,7 @@ export const ensureWorkspaceBundle = async (input: {
   if (existing) {
     if (existing.workspace_id !== input.workspaceId) {
       throw new Error(
-        'This Workspace Bundle slug already belongs to a different Workspace.'
+        'This Space profile name already belongs to a different Space.'
       );
     }
     if (
@@ -190,7 +190,7 @@ export const ensureWorkspaceBundle = async (input: {
     ) {
       if (existing.visibility === 'team') {
         throw new Error(
-          'Team sharing for this Bundle must be managed by a team administrator.'
+          'Team sharing for this Space profile must be managed by a team administrator.'
         );
       }
       return proxyFetchPatch(

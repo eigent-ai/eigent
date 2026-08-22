@@ -57,8 +57,8 @@ describe('KeyboardShortcutsDialog', () => {
       'GotoFiles⌘2',
       'GotoAutomations⌘3',
       'GotoDispatch⌘4',
-      'GotoConfiguration⌘5',
-      'NewProject⌘N',
+      'Gotospacesettings⌘5',
+      'Newsession⌘N',
     ]);
   });
 

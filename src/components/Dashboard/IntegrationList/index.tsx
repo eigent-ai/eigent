@@ -45,9 +45,9 @@ type IntegrationListVariant = 'select' | 'manage';
 
 interface IntegrationListProps {
   items: IntegrationItem[];
-  variant?: IntegrationListVariant; // "select" for AddWorker, "manage" for Setting
+  variant?: IntegrationListVariant; // "select" for AddAgent, "manage" for Setting
 
-  // Select mode props (AddWorker)
+  // Select mode props (AddAgent)
   addOption?: (mcp: any, isLocal: boolean) => void;
   onShowEnvConfig?: (mcp: any) => void;
 

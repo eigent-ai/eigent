@@ -298,7 +298,7 @@ describe('Memory Center', () => {
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       'User',
       'Space',
-      'Project',
+      'Session',
     ]);
     expect(screen.getByRole('tab', { name: 'User' })).toHaveAttribute(
       'data-state',
@@ -332,7 +332,7 @@ describe('Memory Center', () => {
     ).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('shows searchable Space and Project Memory directories', async () => {
+  it('shows searchable Space and Session Memory directories', async () => {
     const user = userEvent.setup();
     render(
       <MemoryRouter initialEntries={['/home?section=settings&tab=memory']}>
@@ -348,7 +348,7 @@ describe('Memory Center', () => {
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       'User',
       'Space',
-      'Project',
+      'Session',
     ]);
     await waitFor(() =>
       expect(api.list).toHaveBeenCalledWith('user', 'user-1', false)
@@ -357,24 +357,24 @@ describe('Memory Center', () => {
 
     await user.click(screen.getByRole('tab', { name: 'Space' }));
     expect(await screen.findByText('Design Space')).toBeVisible();
-    expect(screen.getByText('1 Project')).toBeVisible();
+    expect(screen.getByText('Sessions: 1')).toBeVisible();
     expect(
       screen.queryByRole('textbox', { name: 'New Memory' })
     ).not.toBeInTheDocument();
     expect(api.list).toHaveBeenCalledTimes(listCallCount);
     await user.click(
-      screen.getByRole('button', { name: 'Manage Memory for Design Space' })
+      screen.getByRole('button', { name: 'Manage memory for Design Space' })
     );
     expect(screen.getByTestId('memory-location')).toHaveTextContent(
       '/home?section=spaces&spaceId=space-1&spaceTab=memory'
     );
 
-    await user.click(screen.getByRole('tab', { name: 'Project' }));
+    await user.click(screen.getByRole('tab', { name: 'Session' }));
     expect(await screen.findByText('Launch Plan')).toBeVisible();
     expect(screen.getByText('Space: Design Space')).toBeVisible();
     expect(api.list).toHaveBeenCalledTimes(listCallCount);
     await user.click(
-      screen.getByRole('button', { name: 'Manage Memory for Launch Plan' })
+      screen.getByRole('button', { name: 'Manage memory for Launch Plan' })
     );
     expect(screen.getByTestId('memory-location')).toHaveTextContent(
       '/home?section=spaces&spaceId=space-1&spaceTab=memory&memoryScope=project&projectId=project-1'

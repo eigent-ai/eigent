@@ -65,7 +65,7 @@ export const PREVIEW_TAB_KINDS: PreviewKindMeta[] = [
     labelKey: 'layout.preview-kind-review',
     defaultLabel: 'Review',
     descriptionKey: 'layout.preview-kind-review-desc',
-    defaultDescription: 'Inspect file changes made in this project.',
+    defaultDescription: 'Inspect file changes made in this session.',
   },
   {
     kind: 'terminal',
@@ -74,7 +74,7 @@ export const PREVIEW_TAB_KINDS: PreviewKindMeta[] = [
     defaultLabel: 'Terminal',
     descriptionKey: 'layout.preview-kind-terminal-desc',
     defaultDescription:
-      'Open a local terminal that starts in this project’s folder.',
+      'Open a local terminal that starts in this session’s workspace.',
   },
 ];
 

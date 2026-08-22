@@ -17,7 +17,7 @@ import {
   FileTree,
   type FileInfo,
   type FileTreeNode,
-} from '@/components/Folder';
+} from '@/components/Files';
 import { Input } from '@/components/ui/input';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';

@@ -12,11 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { AddWorker } from '@/components/AddWorker';
+import { AddAgent } from '@/components/AddAgent';
 import { Button } from '@/components/ui/button';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
-import { getToolkitIcon } from '@/lib/toolkitIcons';
+import { formatToolDisplayName, getToolkitIcon } from '@/lib/toolkitIcons';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import {
   AgentStatusValue,
@@ -38,7 +38,7 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Folder from '../Folder';
+import FilesBrowser from '../Files';
 import { TaskState, TaskStateType } from '../TaskState';
 import Terminal from '../Terminal';
 import {
@@ -49,7 +49,7 @@ import {
 } from '../ui/popover';
 import ShinyText from '../ui/ShinyText/ShinyText';
 import { agentMap, type WorkflowAgentType } from './agents';
-import { getAgentToolkitLabels } from './agentToolkitLabels';
+import { getAgentToolLabels } from './agentToolLabels';
 import { TaskLogPanelContent } from './TaskLogPanelContent';
 
 interface NodeProps {
@@ -352,7 +352,7 @@ export function Node({ id, data }: NodeProps) {
     return idStr;
   };
 
-  const toolkitLabels = getAgentToolkitLabels(data.agent);
+  const toolLabels = getAgentToolLabels(data.agent);
   const browserImages = (data.img || []).filter((img) => img?.img).slice(0, 4);
   const browserImageGridClass =
     browserImages.length === 1
@@ -452,9 +452,9 @@ export function Node({ id, data }: NodeProps) {
                     <PopoverContent className="w-[98px] rounded-[12px] border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default p-sm">
                       <div className="space-y-1">
                         <PopoverClose asChild>
-                          <AddWorker
+                          <AddAgent
                             edit={true}
-                            workerInfo={data.agent as Agent}
+                            agentInfo={data.agent as Agent}
                           />
                         </PopoverClose>
                         <PopoverClose asChild>
@@ -464,10 +464,10 @@ export function Node({ id, data }: NodeProps) {
                             className="w-full justify-start gap-2"
                             onClick={(e) => {
                               e.stopPropagation();
-                              const newWorkerList = workerList.filter(
-                                (worker) => worker.type !== data.workerInfo.name
+                              const newAgentList = workerList.filter(
+                                (agent) => agent.type !== data.workerInfo.name
                               );
-                              setWorkerList(newWorkerList);
+                              setWorkerList(newAgentList);
                             }}
                           >
                             <Trash2
@@ -489,9 +489,9 @@ export function Node({ id, data }: NodeProps) {
             className="mb-sm flex min-h-4 flex-shrink-0 flex-wrap px-3 text-xs font-normal leading-tight text-ds-text-neutral-muted-default"
           >
             {/* {JSON.stringify(data.agent)} */}
-            {toolkitLabels.map((toolkit, index) => (
+            {toolLabels.map((tool, index) => (
               <span key={index} className="mr-2">
-                {toolkit}
+                {tool}
               </span>
             ))}
           </div>
@@ -538,7 +538,7 @@ export function Node({ id, data }: NodeProps) {
               data.agent.tasks.length > 0 && (
                 <div className="relative h-[180px] w-full overflow-hidden rounded-sm">
                   <div className="absolute left-0 top-0 h-[500px] w-[900px] origin-top-left scale-[0.36]">
-                    <Folder data={data.agent as Agent} />
+                    <FilesBrowser data={data.agent as Agent} />
                   </div>
                 </div>
               )}
@@ -817,7 +817,9 @@ export function Node({ id, data }: NodeProps) {
                                 } min-w-0 flex-shrink-0 flex-grow-0 overflow-hidden text-ellipsis whitespace-nowrap pt-1 text-xs leading-17 text-ds-text-status-running-default-default`}
                               >
                                 <ShinyText
-                                  text={task.toolkits?.[0].toolkitName}
+                                  text={formatToolDisplayName(
+                                    task.toolkits?.[0].toolkitName ?? ''
+                                  )}
                                   className="pointer-events-auto w-full select-text overflow-hidden text-ellipsis whitespace-nowrap text-xs font-bold leading-17 text-ds-text-status-running-default-default"
                                 />
                               </div>

@@ -15,6 +15,10 @@
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  getCustomWorkSessionName,
+  resolveWorkSessionDisplayName,
+} from '@/lib/spaceLabel';
 import { iconForTriggerType } from '@/lib/triggerIcon';
 import { useSpaceStore } from '@/store/spaceStore';
 import { TriggerStatus } from '@/types';
@@ -36,32 +40,32 @@ import { toast } from 'sonner';
 import { useHomeHub } from '../context';
 import { useHomeHubNavigation } from '../hooks/useHomeHubNavigation';
 import { formatCompactCount, formatHubCreatedTime } from '../utils';
-import { getProjectCardRuntimeStatus } from '../utils/boardStatus';
+import { getWorkSessionCardRuntimeStatus } from '../utils/boardStatus';
 import {
   getSpaceKindLabel,
+  HomeHubAutomationBoardCardBody,
+  HomeHubAutomationCardBody,
   HomeHubItemBody,
   HomeHubItemShell,
-  HomeHubProjectBoardCardBody,
-  HomeHubProjectCardBody,
   HomeHubSpaceBoardCardBody,
   HomeHubSpaceCardBody,
   HomeHubTaskBoardCardBody,
   HomeHubTaskCardBody,
-  HomeHubTriggerBoardCardBody,
-  HomeHubTriggerCardBody,
-  resolveProjectTokenCount,
+  HomeHubWorkSessionBoardCardBody,
+  HomeHubWorkSessionCardBody,
+  resolveWorkSessionTokenCount,
+  type HomeHubAutomationItemProps,
   type HomeHubItemKind,
-  type HomeHubProjectItemProps,
   type HomeHubSpaceItemProps,
   type HomeHubTaskItemProps,
-  type HomeHubTriggerItemProps,
+  type HomeHubWorkSessionItemProps,
 } from './HomeHubItemShared';
 
 export type HomeHubCardProps = (
   | ({ kind: 'space' } & Omit<HomeHubSpaceItemProps, 'layout'>)
-  | ({ kind: 'project' } & Omit<HomeHubProjectItemProps, 'layout'>)
+  | ({ kind: 'project' } & Omit<HomeHubWorkSessionItemProps, 'layout'>)
   | ({ kind: 'task' } & Omit<HomeHubTaskItemProps, 'layout'>)
-  | ({ kind: 'trigger' } & Omit<HomeHubTriggerItemProps, 'layout'>)
+  | ({ kind: 'automation' } & Omit<HomeHubAutomationItemProps, 'layout'>)
 ) & { kind: HomeHubItemKind };
 
 function SpaceItemContent({
@@ -70,7 +74,7 @@ function SpaceItemContent({
   isLegacy,
   projectCount,
   taskCount,
-  triggerCount,
+  automationCount,
   layout,
 }: HomeHubSpaceItemProps) {
   const { t } = useTranslation();
@@ -201,7 +205,7 @@ function SpaceItemContent({
         title={t('layout.delete')}
         message={t('layout.delete-space-confirmation', {
           defaultValue:
-            'Are you sure you want to delete this Space and all its Projects? This action cannot be undone.',
+            'Are you sure you want to delete this Space and all its Sessions? This action cannot be undone.',
         })}
         confirmText={t('layout.delete')}
         cancelText={t('layout.cancel')}
@@ -232,8 +236,8 @@ function SpaceItemContent({
                   align: 'right',
                 },
                 {
-                  id: 'triggers',
-                  content: formatCompactCount(triggerCount),
+                  id: 'automations',
+                  content: formatCompactCount(automationCount),
                   align: 'right',
                 },
                 {
@@ -252,7 +256,7 @@ function SpaceItemContent({
             spaceKindLabel={spaceKindLabel}
             projectCount={projectCount}
             taskCount={taskCount}
-            triggerCount={triggerCount}
+            automationCount={automationCount}
             status={space.status}
             menuItems={menuItems}
           />
@@ -263,7 +267,7 @@ function SpaceItemContent({
               spaceKindLabel={spaceKindLabel}
               projectCount={projectCount}
               taskCount={taskCount}
-              triggerCount={triggerCount}
+              automationCount={automationCount}
               status={space.status}
               updatedAt={space.updatedAt}
               menuItems={menuItems}
@@ -276,54 +280,62 @@ function SpaceItemContent({
   );
 }
 
-function ProjectItemContent({
+function WorkSessionItemContent({
   project,
   spaceLabel,
-  onProjectDelete,
-  onProjectRename,
+  onWorkSessionDelete,
+  onWorkSessionRename,
   layout,
-}: HomeHubProjectItemProps) {
+}: HomeHubWorkSessionItemProps) {
   const { t } = useTranslation();
   const { chatTasks } = useHomeHub();
-  const { openProject, loadingProjectId } = useHomeHubNavigation();
-  const loading = loadingProjectId === project.project_id;
-  const runtimeStatus = getProjectCardRuntimeStatus(project, chatTasks);
+  const { openWorkSession, loadingWorkSessionProjectId } =
+    useHomeHubNavigation();
+  const loading = loadingWorkSessionProjectId === project.project_id;
+  const runtimeStatus = getWorkSessionCardRuntimeStatus(project, chatTasks);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [renaming, setRenaming] = useState(false);
 
-  const title = project.project_name?.trim() || t('layout.new-project');
-  const tokenCount = resolveProjectTokenCount(project);
+  const title = resolveWorkSessionDisplayName(
+    project.project_name,
+    project.project_id,
+    t('layout.new-project')
+  );
+  const tokenCount = resolveWorkSessionTokenCount(project);
 
   const handleRename = useCallback(async () => {
     const nextName = renameValue.trim();
-    if (!nextName || renaming || !onProjectRename) return;
+    if (!nextName || renaming || !onWorkSessionRename) return;
     setRenaming(true);
     try {
-      await onProjectRename(project.project_id, nextName);
+      await onWorkSessionRename(project.project_id, nextName);
       setRenameDialogOpen(false);
     } finally {
       setRenaming(false);
     }
-  }, [onProjectRename, project.project_id, renameValue, renaming]);
+  }, [onWorkSessionRename, project.project_id, renameValue, renaming]);
 
   const menuItems = [
     {
       label: t('layout.rename-project', {
-        defaultValue: 'Rename Project',
+        defaultValue: 'Rename Session',
       }),
       icon: <Pencil className="h-4 w-4" aria-hidden />,
       onSelect: () => {
-        setRenameValue(project.project_name?.trim() || '');
+        setRenameValue(
+          getCustomWorkSessionName(project.project_name, project.project_id) ??
+            ''
+        );
         setRenameDialogOpen(true);
       },
-      disabled: !onProjectRename,
+      disabled: !onWorkSessionRename,
     },
     {
       label: t('layout.delete'),
       icon: <Trash2 className="h-4 w-4 text-ds-icon-error-default-default" />,
-      onSelect: () => onProjectDelete?.(project.project_id),
-      disabled: !onProjectDelete,
+      onSelect: () => onWorkSessionDelete?.(project.project_id),
+      disabled: !onWorkSessionDelete,
       destructive: true,
     },
   ];
@@ -334,7 +346,7 @@ function ProjectItemContent({
         isOpen={renameDialogOpen}
         onClose={() => setRenameDialogOpen(false)}
         onConfirm={() => void handleRename()}
-        title={t('layout.rename-project', { defaultValue: 'Rename Project' })}
+        title={t('layout.rename-project', { defaultValue: 'Rename Session' })}
         confirmText={t('layout.save')}
         cancelText={t('layout.cancel')}
         confirmVariant="primary"
@@ -344,7 +356,7 @@ function ProjectItemContent({
           autoFocus
           value={renameValue}
           placeholder={t('layout.project-name', {
-            defaultValue: 'Project name',
+            defaultValue: 'Session name',
           })}
           onChange={(event) => setRenameValue(event.target.value)}
           onEnter={() => {
@@ -354,7 +366,7 @@ function ProjectItemContent({
       </AlertDialog>
 
       <HomeHubItemShell
-        onClick={() => void openProject(project)}
+        onClick={() => void openWorkSession(project)}
         layout={layout}
         kind="project"
         menuItems={menuItems}
@@ -377,7 +389,7 @@ function ProjectItemContent({
                 align: 'right',
               },
               {
-                id: 'triggers',
+                id: 'automations',
                 content: formatCompactCount(project.total_triggers),
                 align: 'right',
               },
@@ -390,20 +402,20 @@ function ProjectItemContent({
             ]}
           />
         ) : layout === 'board' ? (
-          <HomeHubProjectBoardCardBody
+          <HomeHubWorkSessionBoardCardBody
             title={title}
             taskCount={project.task_count || 0}
-            triggerCount={project.total_triggers || 0}
+            automationCount={project.total_triggers || 0}
             tokenCount={tokenCount}
             spaceLabel={spaceLabel}
             runtimeStatus={runtimeStatus}
             menuItems={menuItems}
           />
         ) : (
-          <HomeHubProjectCardBody
+          <HomeHubWorkSessionCardBody
             title={title}
             taskCount={project.task_count || 0}
-            triggerCount={project.total_triggers || 0}
+            automationCount={project.total_triggers || 0}
             tokenCount={tokenCount}
             spaceLabel={spaceLabel}
             runtimeStatus={runtimeStatus}
@@ -428,11 +440,16 @@ function TaskItemContent({
   layout,
 }: HomeHubTaskItemProps) {
   const { t } = useTranslation();
-  const { openTask, loadingProjectId } = useHomeHubNavigation();
-  const loading = loadingProjectId === task.project_id;
-  const title = task.question?.trim() || t('layout.new-project');
-  const projectName =
-    project?.project_name?.trim() || task.project_name?.trim() || '';
+  const { openTask, loadingWorkSessionProjectId } = useHomeHubNavigation();
+  const loading = loadingWorkSessionProjectId === task.project_id;
+  const title =
+    task.question?.trim() ||
+    t('layout.sessions-untitled', { defaultValue: 'Untitled run' });
+  const workSessionName = resolveWorkSessionDisplayName(
+    project?.project_name || task.project_name,
+    task.project_id,
+    t('layout.new-project')
+  );
   const menuItems = [
     ...(controlAction && onControl
       ? [
@@ -497,7 +514,7 @@ function TaskItemContent({
         <HomeHubTaskBoardCardBody
           title={title}
           tokenCount={task.tokens || 0}
-          projectName={projectName}
+          workSessionName={workSessionName}
           spaceLabel={spaceLabel}
           menuItems={menuItems}
         />
@@ -505,7 +522,7 @@ function TaskItemContent({
         <HomeHubTaskCardBody
           title={title}
           tokenCount={task.tokens || 0}
-          projectName={projectName}
+          workSessionName={workSessionName}
           spaceLabel={spaceLabel}
           updatedAt={task.created_at || task.updated_at}
           menuItems={menuItems}
@@ -515,18 +532,18 @@ function TaskItemContent({
   );
 }
 
-function TriggerItemContent({
-  trigger,
+function AutomationItemContent({
+  automation,
   spaceLabel,
-  triggerTypeLabel,
+  automationTypeLabel,
   onEdit,
   onDelete,
   onToggleActive,
   layout,
-}: HomeHubTriggerItemProps) {
+}: HomeHubAutomationItemProps) {
   const { t } = useTranslation();
-  const { openTrigger } = useHomeHubNavigation();
-  const isActive = trigger.status === TriggerStatus.Active;
+  const { openAutomation } = useHomeHubNavigation();
+  const isActive = automation.status === TriggerStatus.Active;
   const statusLabel = isActive
     ? t('triggers.status.active')
     : t('triggers.status.inactive');
@@ -534,45 +551,45 @@ function TriggerItemContent({
     {
       label: t('triggers.edit'),
       icon: <Pencil className="h-4 w-4" aria-hidden />,
-      onSelect: () => onEdit(trigger),
+      onSelect: () => onEdit(automation),
     },
     {
       label: isActive
         ? t('triggers.deactivate', { defaultValue: 'Deactivate' })
         : t('triggers.activate', { defaultValue: 'Activate' }),
       icon: <Power className="h-4 w-4" aria-hidden />,
-      onSelect: () => onToggleActive(trigger),
+      onSelect: () => onToggleActive(automation),
     },
     {
       label: t('triggers.delete'),
       icon: <Trash2 className="h-4 w-4 text-ds-icon-error-default-default" />,
-      onSelect: () => onDelete(trigger),
+      onSelect: () => onDelete(automation),
       destructive: true,
     },
   ];
 
-  const TriggerIcon = iconForTriggerType(trigger.trigger_type);
+  const AutomationIcon = iconForTriggerType(automation.trigger_type);
 
   return (
     <HomeHubItemShell
-      onClick={() => void openTrigger(trigger)}
+      onClick={() => void openAutomation(automation)}
       layout={layout}
-      kind="trigger"
+      kind="automation"
       menuItems={menuItems}
     >
       {layout === 'list' ? (
         <HomeHubItemBody
-          title={trigger.name}
-          nameIcon={<TriggerIcon className="h-4 w-4" />}
+          title={automation.name}
+          nameIcon={<AutomationIcon className="h-4 w-4" />}
           listCells={[
             { id: 'space', content: spaceLabel || '—' },
-            { id: 'type', content: triggerTypeLabel },
+            { id: 'type', content: automationTypeLabel },
             { id: 'status', content: statusLabel },
             {
               id: 'created',
               content:
                 formatHubCreatedTime(
-                  trigger.created_at || trigger.last_executed_at
+                  automation.created_at || automation.last_executed_at
                 ) || '—',
               align: 'right',
               textSize: 'xs',
@@ -580,11 +597,11 @@ function TriggerItemContent({
           ]}
         />
       ) : layout === 'board' ? (
-        <HomeHubTriggerBoardCardBody
-          title={trigger.name}
-          triggerType={trigger.trigger_type}
-          triggerTypeLabel={triggerTypeLabel}
-          executionCount={trigger.execution_count ?? 0}
+        <HomeHubAutomationBoardCardBody
+          title={automation.name}
+          automationType={automation.trigger_type}
+          automationTypeLabel={automationTypeLabel}
+          automationRunCount={automation.execution_count ?? 0}
           spaceLabel={spaceLabel}
           isActive={isActive}
           activeLabel={t('triggers.status.active')}
@@ -592,16 +609,16 @@ function TriggerItemContent({
           menuItems={menuItems}
         />
       ) : (
-        <HomeHubTriggerCardBody
-          title={trigger.name}
-          triggerType={trigger.trigger_type}
-          triggerTypeLabel={triggerTypeLabel}
-          executionCount={trigger.execution_count ?? 0}
+        <HomeHubAutomationCardBody
+          title={automation.name}
+          automationType={automation.trigger_type}
+          automationTypeLabel={automationTypeLabel}
+          automationRunCount={automation.execution_count ?? 0}
           spaceLabel={spaceLabel}
           isActive={isActive}
           activeLabel={t('triggers.status.active')}
           inactiveLabel={t('triggers.status.inactive')}
-          updatedAt={trigger.updated_at || trigger.last_executed_at}
+          updatedAt={automation.updated_at || automation.last_executed_at}
           menuItems={menuItems}
         />
       )}
@@ -614,11 +631,11 @@ export function HomeHubBoardCard(props: HomeHubCardProps) {
     case 'space':
       return <SpaceItemContent {...props} layout="board" />;
     case 'project':
-      return <ProjectItemContent {...props} layout="board" />;
+      return <WorkSessionItemContent {...props} layout="board" />;
     case 'task':
       return <TaskItemContent {...props} layout="board" />;
-    case 'trigger':
-      return <TriggerItemContent {...props} layout="board" />;
+    case 'automation':
+      return <AutomationItemContent {...props} layout="board" />;
     default:
       return null;
   }
@@ -629,11 +646,11 @@ export default function HomeHubCard(props: HomeHubCardProps) {
     case 'space':
       return <SpaceItemContent {...props} layout="card" />;
     case 'project':
-      return <ProjectItemContent {...props} layout="card" />;
+      return <WorkSessionItemContent {...props} layout="card" />;
     case 'task':
       return <TaskItemContent {...props} layout="card" />;
-    case 'trigger':
-      return <TriggerItemContent {...props} layout="card" />;
+    case 'automation':
+      return <AutomationItemContent {...props} layout="card" />;
     default:
       return null;
   }
@@ -642,19 +659,19 @@ export default function HomeHubCard(props: HomeHubCardProps) {
 export function HomeHubListItem(
   props:
     | ({ kind: 'space' } & Omit<HomeHubSpaceItemProps, 'layout'>)
-    | ({ kind: 'project' } & Omit<HomeHubProjectItemProps, 'layout'>)
+    | ({ kind: 'project' } & Omit<HomeHubWorkSessionItemProps, 'layout'>)
     | ({ kind: 'task' } & Omit<HomeHubTaskItemProps, 'layout'>)
-    | ({ kind: 'trigger' } & Omit<HomeHubTriggerItemProps, 'layout'>)
+    | ({ kind: 'automation' } & Omit<HomeHubAutomationItemProps, 'layout'>)
 ) {
   switch (props.kind) {
     case 'space':
       return <SpaceItemContent {...props} layout="list" />;
     case 'project':
-      return <ProjectItemContent {...props} layout="list" />;
+      return <WorkSessionItemContent {...props} layout="list" />;
     case 'task':
       return <TaskItemContent {...props} layout="list" />;
-    case 'trigger':
-      return <TriggerItemContent {...props} layout="list" />;
+    case 'automation':
+      return <AutomationItemContent {...props} layout="list" />;
     default:
       return null;
   }

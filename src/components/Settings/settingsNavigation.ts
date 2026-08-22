@@ -45,7 +45,7 @@ export const SETTINGS_NAVIGATION: SettingsNavigationGroup[] = [
   {
     scope: 'global',
     labelKey: 'layout.global-setting',
-    defaultLabel: 'Global Settings',
+    defaultLabel: 'App settings',
     items: [
       {
         id: 'models',

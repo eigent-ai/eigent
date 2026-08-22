@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
+import { AutomationDialog } from '@/components/Automation/AutomationDialog';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
 import { Plus, X } from 'lucide-react';
@@ -29,10 +29,10 @@ export const TaskCompletionCard: React.FC<TaskCompletionCardProps> = ({
   onDismiss,
 }) => {
   const { t } = useTranslation();
-  const [isTriggerDialogOpen, setIsTriggerDialogOpen] = useState(false);
+  const [isAutomationDialogOpen, setIsAutomationDialogOpen] = useState(false);
 
   const handleAddTrigger = () => {
-    setIsTriggerDialogOpen(true);
+    setIsAutomationDialogOpen(true);
   };
 
   return (
@@ -80,11 +80,11 @@ export const TaskCompletionCard: React.FC<TaskCompletionCardProps> = ({
         </Button>
       </motion.div>
 
-      {/* Trigger Dialog */}
-      <TriggerDialog
-        selectedTrigger={null}
-        isOpen={isTriggerDialogOpen}
-        onOpenChange={setIsTriggerDialogOpen}
+      {/* Automation Dialog */}
+      <AutomationDialog
+        selectedAutomation={null}
+        isOpen={isAutomationDialogOpen}
+        onOpenChange={setIsAutomationDialogOpen}
         initialTaskPrompt={taskPrompt}
       />
     </>

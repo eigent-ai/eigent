@@ -61,13 +61,13 @@ const SPACE_DETAIL_TAB_OPTIONS: SpaceDetailTabConfig[] = [
   {
     id: 'projects',
     labelKey: 'layout.projects',
-    defaultLabel: 'Projects',
+    defaultLabel: 'Sessions',
     icon: FolderKanban,
   },
   {
     id: 'tasks',
     labelKey: 'layout.tasks-heading',
-    defaultLabel: 'Tasks',
+    defaultLabel: 'Runs',
     icon: ListChecks,
   },
   {
@@ -78,8 +78,8 @@ const SPACE_DETAIL_TAB_OPTIONS: SpaceDetailTabConfig[] = [
   },
   {
     id: 'context',
-    labelKey: 'layout.context-heading',
-    defaultLabel: 'Context',
+    labelKey: 'layout.files-tab',
+    defaultLabel: 'Files',
     icon: Library,
   },
   {
@@ -90,8 +90,8 @@ const SPACE_DETAIL_TAB_OPTIONS: SpaceDetailTabConfig[] = [
   },
   {
     id: 'workspace-profile',
-    labelKey: 'layout.space-settings-heading',
-    defaultLabel: 'Space Settings',
+    labelKey: 'layout.configuration-tab',
+    defaultLabel: 'Space settings',
     icon: Settings,
   },
 ];

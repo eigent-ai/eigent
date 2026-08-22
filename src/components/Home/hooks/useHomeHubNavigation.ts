@@ -38,7 +38,8 @@ export function useHomeHubNavigation() {
     (s) => s.requestWorkspaceChatFocus
   );
   const requestSelectTrigger = usePageTabStore((s) => s.requestSelectTrigger);
-  const [loadingProjectId, setLoadingProjectId] = useState<string | null>(null);
+  const [loadingWorkSessionProjectId, setLoadingWorkSessionProjectId] =
+    useState<string | null>(null);
 
   const openSpace = useCallback(
     (spaceId: string) => {
@@ -67,10 +68,10 @@ export function useHomeHubNavigation() {
     ]
   );
 
-  const openProject = useCallback(
+  const openWorkSession = useCallback(
     async (project: ProjectGroupType) => {
       const projectId = project.project_id;
-      setLoadingProjectId(projectId);
+      setLoadingWorkSessionProjectId(projectId);
 
       try {
         const existingProject = projectStore.getProjectById(projectId);
@@ -113,16 +114,16 @@ export function useHomeHubNavigation() {
           setActiveSpace(project.space_id);
         }
         projectStore.createProject(
-          project.project_name || 'Project',
-          'Project with automations',
+          project.project_name || `Session ${projectId}`,
+          'Session with automations',
           projectId
         );
         setActiveWorkspaceTab('project');
         navigate('/');
       } catch (error) {
-        console.error('[HomeHub] Failed to open project:', error);
+        console.error('[HomeHub] Failed to open Work Session:', error);
       } finally {
-        setLoadingProjectId(null);
+        setLoadingWorkSessionProjectId(null);
       }
     },
     [navigate, projectStore, setActiveSpace, setActiveWorkspaceTab]
@@ -133,7 +134,7 @@ export function useHomeHubNavigation() {
       const projectId = task.project_id;
       const historyId = String(task.id);
       const question = task.question || project?.last_prompt || '';
-      setLoadingProjectId(projectId);
+      setLoadingWorkSessionProjectId(projectId);
 
       try {
         const existingProject = projectStore.getProjectById(projectId);
@@ -171,27 +172,29 @@ export function useHomeHubNavigation() {
       } catch (error) {
         console.error('[HomeHub] Failed to open task:', error);
       } finally {
-        setLoadingProjectId(null);
+        setLoadingWorkSessionProjectId(null);
       }
     },
     [navigate, projectStore, setActiveSpace, setActiveWorkspaceTab]
   );
 
-  const openTrigger = useCallback(
-    async (trigger: Trigger) => {
-      if (trigger.space_id) {
-        setActiveSpace(trigger.space_id);
+  const openAutomation = useCallback(
+    async (automation: Trigger) => {
+      if (automation.space_id) {
+        setActiveSpace(automation.space_id);
       }
 
-      if (trigger.project_id) {
-        const existingProject = projectStore.getProjectById(trigger.project_id);
+      if (automation.project_id) {
+        const existingProject = projectStore.getProjectById(
+          automation.project_id
+        );
         if (existingProject) {
-          projectStore.setActiveProject(trigger.project_id);
+          projectStore.setActiveProject(automation.project_id);
         } else {
           projectStore.createProject(
-            trigger.name || 'Project',
-            'Project with automations',
-            trigger.project_id
+            automation.name || `Session ${automation.project_id}`,
+            'Session with automations',
+            automation.project_id
           );
         }
       } else {
@@ -199,7 +202,7 @@ export function useHomeHubNavigation() {
       }
 
       setActiveWorkspaceTab('triggers');
-      requestSelectTrigger(trigger.id);
+      requestSelectTrigger(automation.id);
       navigate('/');
     },
     [
@@ -214,9 +217,9 @@ export function useHomeHubNavigation() {
   return {
     openSpace,
     openWorkspace,
-    openProject,
+    openWorkSession,
     openTask,
-    openTrigger,
-    loadingProjectId,
+    openAutomation,
+    loadingWorkSessionProjectId,
   };
 }

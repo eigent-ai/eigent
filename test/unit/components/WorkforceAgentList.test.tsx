@@ -29,18 +29,18 @@ const agents = [
   { agent_id: 'agent-3', name: 'Agent 3', type: 'document_agent' },
 ] as Agent[];
 
-function renderAgentList(onAddWorker = vi.fn()) {
+function renderAgentList(onAddAgent = vi.fn()) {
   return {
-    onAddWorker,
+    onAddAgent,
     ...render(
       <WorkforceAgentList
         sortedAgents={agents}
         activeAgentId={undefined}
         onSelectAgent={vi.fn()}
-        onEditWorkerFromMenu={vi.fn()}
+        onEditAgentFromMenu={vi.fn()}
         onDuplicateUserAgent={vi.fn()}
         onDeleteUserAgent={vi.fn()}
-        onAddWorker={onAddWorker}
+        onAddAgent={onAddAgent}
         alignment="start"
       />
     ),
@@ -49,7 +49,7 @@ function renderAgentList(onAddWorker = vi.fn()) {
 
 describe('WorkforceAgentList', () => {
   it('puts Add first and hides the native horizontal scrollbar', () => {
-    const { container, onAddWorker } = renderAgentList();
+    const { container, onAddAgent } = renderAgentList();
     const controls = container.querySelector('[data-workforce-agent-controls]');
     const addButton = container.querySelector<HTMLButtonElement>(
       '[data-workforce-add-button]'
@@ -71,7 +71,7 @@ describe('WorkforceAgentList', () => {
     );
 
     fireEvent.click(addButton!);
-    expect(onAddWorker).toHaveBeenCalledTimes(1);
+    expect(onAddAgent).toHaveBeenCalledTimes(1);
   });
 
   it('scrolls exactly one agent slot with the floating arrow controls', async () => {

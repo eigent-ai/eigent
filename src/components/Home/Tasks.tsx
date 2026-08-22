@@ -37,7 +37,7 @@ import {
   type TaskRuntimeControlAction,
 } from './utils/boardStatus';
 
-type TaskWithContext = HistoryTask & { projectName?: string };
+type TaskWithContext = HistoryTask & { workSessionName?: string };
 
 function TaskRow({
   task,
@@ -116,7 +116,7 @@ export default function Tasks({
     return projects.flatMap((project) =>
       project.tasks.map((task) => ({
         ...task,
-        projectName: project.project_name,
+        workSessionName: project.project_name,
         space_id: task.space_id || project.space_id,
       }))
     );

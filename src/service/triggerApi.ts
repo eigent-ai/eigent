@@ -279,23 +279,23 @@ export const proxyUpdateTriggerExecution = async (
       switch (updateData.status) {
         case ExecutionStatus.Completed:
           activityType = ActivityType.ExecutionSuccess;
-          message = `Execution ${executionId} completed successfully`;
+          message = `Automation run ${executionId} completed successfully`;
           break;
         case ExecutionStatus.Failed:
           activityType = ActivityType.ExecutionFailed;
-          message = `Execution ${executionId} failed${updateData.error_message ? `: ${updateData.error_message}` : ''}`;
+          message = `Automation run ${executionId} failed${updateData.error_message ? `: ${updateData.error_message}` : ''}`;
           break;
         case ExecutionStatus.Running:
           activityType = ActivityType.TriggerExecuted;
-          message = `Execution ${executionId} started running`;
+          message = `Automation run ${executionId} started`;
           break;
         case ExecutionStatus.Cancelled:
           activityType = ActivityType.ExecutionCancelled;
-          message = `Execution ${executionId} was cancelled`;
+          message = `Automation run ${executionId} was cancelled`;
           break;
         default:
           activityType = ActivityType.TriggerExecuted;
-          message = `Execution ${executionId} status updated to ${updateData.status}`;
+          message = `Automation run ${executionId} status updated to ${updateData.status}`;
       }
 
       // Only include metadata fields that have meaningful values
@@ -338,7 +338,7 @@ export const proxyRetryTriggerExecution = async (
     updateExecutionLog(
       executionId,
       ActivityType.TriggerExecuted,
-      `Execution ${executionId} retry initiated`,
+      `Automation run ${executionId} retry initiated`,
       triggerInfo,
       {
         status: ExecutionStatus.Pending,

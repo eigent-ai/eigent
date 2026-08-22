@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { formatToolDisplayName } from '@/lib/toolkitIcons';
 import type { CanonicalProjectEvent, ProjectedLegacyStep } from '../types';
 import type {
   ChatActivityNode,
@@ -797,9 +798,10 @@ function activityTitle(
   activityType: ChatActivityType,
   names: { methodName: string; toolName: string; toolkitName: string }
 ): string {
+  const toolkitDisplayName = formatToolDisplayName(names.toolkitName);
   const toolkitMethod =
     names.methodName && names.toolkitName
-      ? `${names.toolkitName}.${names.methodName}`
+      ? `${toolkitDisplayName}.${names.methodName}`
       : '';
   if (isTypedActivity) {
     return firstText(
@@ -809,7 +811,7 @@ function activityTitle(
       payload.displayLabel,
       names.toolName,
       toolkitMethod,
-      names.toolkitName,
+      toolkitDisplayName,
       payload.agent_name,
       payload.agentName,
       payload.task_name,
@@ -822,7 +824,7 @@ function activityTitle(
       payload.title,
       names.toolName,
       toolkitMethod,
-      names.toolkitName,
+      toolkitDisplayName,
       payload.message,
       payload.content,
       humanize(base.legacyStep || base.eventType)
@@ -917,7 +919,7 @@ function activityNode(
     toolName
   );
   const title = isHumanInputActivity
-    ? 'Human Toolkit'
+    ? 'Human input'
     : activityTitle(base, payload, isTypedActivity, activityType, {
         methodName,
         toolName,

@@ -123,7 +123,7 @@ export function TaskCard({
   }, [expandStorageKey, isExpanded]);
 
   // Side-panel Progress section can ask the chat to surface this card. Each
-  // bump of the counter forces the card open; ProjectChatContainer handles
+  // bump of the counter forces the card open; WorkSessionChatContainer handles
   // the scroll. Skip the initial value so we don't pop on mount.
   const taskBoxFocusRequestId = usePageTabStore((s) => s.taskBoxFocusRequestId);
   const taskBoxFocusTaskId = usePageTabStore((s) => s.taskBoxFocusTaskId);

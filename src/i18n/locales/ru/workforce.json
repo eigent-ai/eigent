@@ -1,6 +1,6 @@
 {
   "your-ai-workforce": "Ваш ИИ-помощник",
-  "new-worker": "Новый сотрудник",
+  "new-worker": "Новый агент",
   "edit": "Редактировать",
   "configure-mcp-server": "Настроить MCP-сервер",
   "add-your-agent": "Добавьте своего агента",
@@ -16,8 +16,8 @@
   "select-platform": "Выберите платформу",
   "model-type": "Тип модели",
   "model-type-placeholder": "например, gpt-4o-mini",
-  "worker-name-cannot-be-empty": "Имя работника не может быть пустым",
-  "worker-name-already-exists": "Имя работника уже существует",
+  "worker-name-cannot-be-empty": "Имя агента не может быть пустым",
+  "worker-name-already-exists": "Имя агента уже существует",
   "detail": "Подробнее",
   "duplicate": "Дублировать",
   "delete": "Удалить"

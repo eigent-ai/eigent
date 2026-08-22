@@ -1,6 +1,6 @@
 {
-  "your-ai-workforce": "Ihre KI-Arbeitskraft",
-  "new-worker": "Neuer Mitarbeiter",
+  "your-ai-workforce": "Ihre KI-Workforce",
+  "new-worker": "Neuer Agent",
   "edit": "Bearbeiten",
   "configure-mcp-server": "MCP-Server konfigurieren",
   "add-your-agent": "Ihren Agenten hinzufügen",
@@ -16,8 +16,8 @@
   "select-platform": "Plattform auswählen",
   "model-type": "Modelltyp",
   "model-type-placeholder": "z.B. gpt-4o-mini",
-  "worker-name-cannot-be-empty": "Der Worker-Name darf nicht leer sein",
-  "worker-name-already-exists": "Der Worker-Name existiert bereits",
+  "worker-name-cannot-be-empty": "Der Agentenname darf nicht leer sein",
+  "worker-name-already-exists": "Der Agentenname ist bereits vorhanden",
   "detail": "Detail",
   "duplicate": "Duplizieren",
   "delete": "Löschen"

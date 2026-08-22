@@ -96,7 +96,7 @@ export function formatTriggeredTaskMessage(task: TriggeredTask): string {
   }
 
   if (task.inputData && Object.keys(task.inputData).length > 0) {
-    parts.push('\n\n---\n**Trigger context:**');
+    parts.push('\n\n---\n**Automation input:**');
 
     // Format webhook data nicely
     if (task.triggerType === 'webhook') {

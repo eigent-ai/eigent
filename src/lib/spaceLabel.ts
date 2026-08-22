@@ -19,9 +19,9 @@ const normalizedText = (value?: string | null) =>
   (value ?? '').trim().toLowerCase();
 
 /**
- * Static check (no i18n) for default/placeholder Project names produced by the
- * runtime or seeded by the server. Used by stores where pulling translations
- * isn't worth the dependency.
+ * Static check (no i18n) for default backend Project names shown as Work
+ * Sessions in the UI. Both legacy Project copy and current Session copy are
+ * accepted during migration.
  */
 export function isPlaceholderProjectName(
   name: string | null | undefined,
@@ -31,9 +31,31 @@ export function isPlaceholderProjectName(
   return (
     !normalized ||
     normalized === 'new project' ||
+    normalized === 'new session' ||
     normalized === 'new space' ||
-    normalized === `project ${projectId}`.toLowerCase()
+    normalized === `project ${projectId}`.toLowerCase() ||
+    normalized === `session ${projectId}`.toLowerCase()
   );
+}
+
+/** Return only a user-authored Work Session name, excluding stored defaults. */
+export function getCustomWorkSessionName(
+  name: string | null | undefined,
+  projectId: string
+): string | null {
+  const trimmed = name?.trim();
+  return trimmed && !isPlaceholderProjectName(trimmed, projectId)
+    ? trimmed
+    : null;
+}
+
+/** Resolve a safe presentation label without mutating the backing Project. */
+export function resolveWorkSessionDisplayName(
+  name: string | null | undefined,
+  projectId: string,
+  fallback: string
+): string {
+  return getCustomWorkSessionName(name, projectId) ?? fallback;
 }
 
 /**
@@ -47,7 +69,8 @@ export function isPlaceholderSpaceNameStatic(name?: string | null) {
     normalized === 'untitled space' ||
     normalized === '未命名 space' ||
     normalized === 'new space' ||
-    normalized === 'new project'
+    normalized === 'new project' ||
+    normalized === 'new session'
   );
 }
 
@@ -98,7 +121,8 @@ export function isPlaceholderSpaceName(
     trimmed === t('layout.new-project') ||
     trimmed === 'Untitled Space' ||
     trimmed === 'New Space' ||
-    trimmed === 'New Project'
+    trimmed === 'New Project' ||
+    trimmed === 'New Session'
   );
 }
 

@@ -1,0 +1,946 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import { mcpList as fetchMcpConfig } from '@/api/brain';
+import { fetchPost, proxyFetchGet } from '@/api/http';
+import githubIcon from '@/assets/icon/github.svg';
+import {
+  getLocalPlatformName,
+  LOCAL_MODEL_OPTIONS,
+} from '@/components/Settings/Models/localModels';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogContentSection,
+  DialogFooter,
+  DialogHeader,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
+import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { INIT_PROVODERS } from '@/lib/llm';
+import {
+  type AgentModelConfigSource,
+  buildAgentModelConfig,
+  buildAgentModelConfigFromProvider,
+} from '@/lib/modelConfig';
+import { useAuthStore, useWorkerList } from '@/store/authStore';
+import { useCloudModelStore } from '@/store/cloudModelStore';
+import { Bot, Edit, Eye, EyeOff } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import ToolSelect from './ToolSelect';
+
+interface EnvValue {
+  value: string;
+  required: boolean;
+  tip: string;
+  error?: string;
+}
+
+interface McpItem {
+  id: number;
+  name: string;
+  key: string;
+  description: string;
+  category?: { name: string };
+  home_page?: string;
+  install_command?: {
+    env?: { [key: string]: string };
+  };
+  toolkit?: string;
+  isLocal?: boolean;
+  mcp_name?: string;
+}
+
+type AgentModelMode = 'eigent' | 'custom' | 'local';
+
+interface AgentModelOption extends AgentModelConfigSource {
+  value: string;
+  label: string;
+  provider_id?: number;
+}
+
+export function AddAgent({
+  edit = false,
+  agentInfo = null,
+  variant: _variant = 'default',
+  isOpen,
+  onOpenChange,
+}: {
+  edit?: boolean;
+  agentInfo?: Agent | null;
+  variant?: 'default' | 'icon';
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const { t } = useTranslation();
+  const [internalOpen, setInternalOpen] = useState(false);
+
+  // Use controlled state if provided, otherwise internal state
+  const isControlled =
+    typeof isOpen !== 'undefined' && typeof onOpenChange !== 'undefined';
+  const dialogOpen = isControlled ? isOpen : internalOpen;
+  const setDialogOpen = isControlled ? onOpenChange : setInternalOpen;
+  const { chatStore, projectStore } = useChatStoreAdapter();
+  const [showEnvConfig, setShowEnvConfig] = useState(false);
+  const [activeMcp, setActiveMcp] = useState<McpItem | null>(null);
+  const [envValues, setEnvValues] = useState<{ [key: string]: EnvValue }>({});
+  const [isValidating, setIsValidating] = useState(false);
+  const [secretVisible, setSecretVisible] = useState<{
+    [key: string]: boolean;
+  }>({});
+  const toolSelectRef = useRef<{
+    installMcp: (id: number, env?: any, activeMcp?: any) => Promise<void>;
+  } | null>(null);
+  const { email, setWorkerList } = useAuthStore();
+  const workerList = useWorkerList();
+  // save AddAgent form data
+  const [agentName, setAgentName] = useState('');
+  const [agentDescription, setAgentDescription] = useState('');
+  const [selectedTools, setSelectedTools] = useState<McpItem[]>([]);
+
+  // error status management
+  const [nameError, setNameError] = useState<string>('');
+
+  // Model configuration state
+  const [showModelConfig, setShowModelConfig] = useState(false);
+  const [agentModelMode, setAgentModelMode] =
+    useState<AgentModelMode>('eigent');
+  const [agentModelName, setAgentModelName] = useState('');
+  const [modelSelectionTouched, setModelSelectionTouched] = useState(false);
+  const [customModelOptions, setCustomModelOptions] = useState<
+    AgentModelOption[]
+  >([]);
+  const [localModelOptions, setLocalModelOptions] = useState<
+    AgentModelOption[]
+  >([]);
+  const cloudModels = useCloudModelStore((state) => state.models);
+  const fetchCloudModels = useCloudModelStore(
+    (state) => state.fetchCloudModels
+  );
+  const eigentModelOptions = useMemo<AgentModelOption[]>(
+    () =>
+      cloudModels.map((model) => ({
+        value: model.id,
+        label: model.display_name,
+        model_platform: model.model_platform,
+        model_type: model.model_type,
+      })),
+    [cloudModels]
+  );
+
+  const activeProjectId = projectStore?.activeProjectId;
+  const activeTaskId = chatStore?.activeTaskId ?? null;
+  const tasks = chatStore?.tasks ?? {};
+
+  // environment variable management
+  const initializeEnvValues = (mcp: McpItem) => {
+    console.log(mcp);
+    if (mcp?.install_command?.env) {
+      const initialValues: { [key: string]: EnvValue } = {};
+      const initialVisibility: { [key: string]: boolean } = {};
+      for (const key of Object.keys(mcp.install_command.env)) {
+        initialValues[key] = {
+          value: '',
+          required: true,
+          tip:
+            mcp.install_command?.env?.[key]
+              ?.replace(/{{/g, '')
+              ?.replace(/}}/g, '') || '',
+        };
+        // GOOGLE_REFRESH_TOKEN is obtained via OAuth and does not require manual input
+        if (key === 'GOOGLE_REFRESH_TOKEN') {
+          initialValues[key].required = false;
+        }
+        initialVisibility[key] = false;
+      }
+      setEnvValues(initialValues);
+      setSecretVisible(initialVisibility);
+    }
+  };
+
+  const updateEnvValue = (key: string, value: string) => {
+    setEnvValues((prev) => ({
+      ...prev,
+      [key]: {
+        value,
+        required: prev[key]?.required || true,
+        tip: prev[key]?.tip || '',
+        error: '', // Clear error when user types
+      },
+    }));
+  };
+
+  const validateRequiredFields = () => {
+    let hasErrors = false;
+    const updatedEnvValues = { ...envValues };
+
+    Object.keys(envValues).forEach((key) => {
+      const field = envValues[key];
+      if (field?.required && (!field.value || field.value.trim() === '')) {
+        updatedEnvValues[key] = {
+          ...field,
+          error: `${key} is required`,
+        };
+        hasErrors = true;
+      }
+    });
+
+    if (hasErrors) {
+      setEnvValues(updatedEnvValues);
+    }
+
+    return !hasErrors;
+  };
+
+  const handleConfigureMcpEnvSetting = async () => {
+    if (!activeMcp) return;
+    if (isValidating) return;
+
+    // Validate required fields first
+    if (!validateRequiredFields()) {
+      return;
+    }
+
+    setIsValidating(true);
+
+    // For Google Calendar, keep dialog open during authorization
+    // For other tools, close dialog immediately
+    if (activeMcp.key !== 'Google Calendar') {
+      // switch back to tool selection interface, ensure ToolSelect component is visible
+      setShowEnvConfig(false);
+
+      // wait for component re-rendering
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    // call ToolSelect's install method
+    if (toolSelectRef.current) {
+      try {
+        if (
+          activeMcp.key === 'EXA Search' ||
+          activeMcp.key === 'Google Calendar' ||
+          activeMcp.key === 'Lark'
+        ) {
+          await toolSelectRef.current.installMcp(
+            activeMcp.id,
+            { ...envValues },
+            activeMcp
+          );
+        } else {
+          await toolSelectRef.current.installMcp(activeMcp.id, {
+            ...envValues,
+          });
+        }
+      } finally {
+        setIsValidating(false);
+      }
+    }
+
+    // For Google Calendar, close dialog after installMcp completes
+    if (activeMcp.key === 'Google Calendar') {
+      setShowEnvConfig(false);
+    }
+
+    // clean status
+    setActiveMcp(null);
+    setEnvValues({});
+    setSecretVisible({});
+  };
+
+  const handleCloseMcpEnvSetting = () => {
+    setShowEnvConfig(false);
+    setActiveMcp(null);
+    setEnvValues({});
+    setSecretVisible({});
+  };
+
+  const handleShowEnvConfig = (mcp: McpItem) => {
+    setActiveMcp(mcp);
+    initializeEnvValues(mcp);
+    setShowEnvConfig(true);
+  };
+
+  const isSensitiveKey = (key: string) =>
+    /token|key|secret|password|id/i.test(key);
+  const toggleSecretVisibility = (key: string) => {
+    setSecretVisible((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleSelectedToolsChange = (tools: McpItem[]) => {
+    setSelectedTools(tools);
+  };
+
+  const resetForm = () => {
+    setAgentName('');
+    setAgentDescription('');
+    setSelectedTools([]);
+    setShowEnvConfig(false);
+    setActiveMcp(null);
+    setEnvValues({});
+    setSecretVisible({});
+    setNameError('');
+    setShowModelConfig(false);
+    setAgentModelMode('eigent');
+    setAgentModelName('');
+    setModelSelectionTouched(false);
+    setCustomModelOptions([]);
+    setLocalModelOptions([]);
+  };
+
+  const agentModelOptions = useMemo<Record<AgentModelMode, AgentModelOption[]>>(
+    () => ({
+      eigent: eigentModelOptions,
+      custom: customModelOptions,
+      local: localModelOptions,
+    }),
+    [customModelOptions, eigentModelOptions, localModelOptions]
+  );
+
+  const activeAgentModelOptions = agentModelOptions[agentModelMode];
+
+  useEffect(() => {
+    if (!dialogOpen || !edit || !agentInfo) return;
+    setAgentName(agentInfo.workerInfo?.name || '');
+    setAgentDescription(agentInfo.workerInfo?.description || '');
+    setSelectedTools(agentInfo.workerInfo?.selectedTools || []);
+    setAgentModelMode('eigent');
+    setAgentModelName('');
+    setModelSelectionTouched(false);
+    setShowModelConfig(
+      Number.isInteger(agentInfo.workerInfo?.model_provider_id)
+    );
+  }, [dialogOpen, edit, agentInfo]);
+
+  useEffect(() => {
+    if (
+      !dialogOpen ||
+      !edit ||
+      !showModelConfig ||
+      !agentInfo ||
+      modelSelectionTouched
+    )
+      return;
+    const providerId = agentInfo.workerInfo?.model_provider_id;
+    if (!Number.isInteger(providerId)) return;
+
+    const customOption = customModelOptions.find(
+      (option) => option.provider_id === providerId
+    );
+    if (customOption) {
+      setAgentModelMode('custom');
+      setAgentModelName(customOption.value);
+      return;
+    }
+
+    const localOption = localModelOptions.find(
+      (option) => option.provider_id === providerId
+    );
+    if (localOption) {
+      setAgentModelMode('local');
+      setAgentModelName(localOption.value);
+    }
+  }, [
+    customModelOptions,
+    dialogOpen,
+    edit,
+    localModelOptions,
+    modelSelectionTouched,
+    showModelConfig,
+    agentInfo,
+  ]);
+
+  useEffect(() => {
+    if (!showModelConfig) return;
+    const editingProviderId = agentInfo?.workerInfo?.model_provider_id;
+    if (
+      dialogOpen &&
+      edit &&
+      Number.isInteger(editingProviderId) &&
+      !modelSelectionTouched
+    ) {
+      return;
+    }
+    const options = activeAgentModelOptions;
+    if (options.length === 0) {
+      setAgentModelName('');
+      return;
+    }
+    if (!options.some((opt) => opt.value === agentModelName)) {
+      setAgentModelName(options[0].value);
+    }
+  }, [
+    activeAgentModelOptions,
+    dialogOpen,
+    edit,
+    modelSelectionTouched,
+    showModelConfig,
+    agentInfo,
+    agentModelName,
+  ]);
+
+  useEffect(() => {
+    if (!showModelConfig) return;
+    if (import.meta.env.VITE_USE_LOCAL_PROXY !== 'true') {
+      void fetchCloudModels();
+    }
+    (async () => {
+      try {
+        const res = await proxyFetchGet('/api/v1/providers');
+        const providerList = Array.isArray(res) ? res : res?.items || [];
+
+        const customProviderIds = new Set(
+          INIT_PROVODERS.filter((p) => p.id !== 'local').map((p) => p.id)
+        );
+        const localProviderIds = new Set(LOCAL_MODEL_OPTIONS.map((m) => m.id));
+
+        const nextCustomOptions: AgentModelOption[] = providerList
+          .filter((provider: any) =>
+            customProviderIds.has(provider.provider_name)
+          )
+          .map((provider: any) => {
+            const modelType = String(provider.model_type || '');
+            const providerName = String(provider.provider_name || '');
+            const agentModelConfig =
+              buildAgentModelConfigFromProvider(provider);
+            return {
+              value: `${providerName}::${modelType}`,
+              label: modelType
+                ? `${providerName} (${modelType})`
+                : providerName,
+              model_platform: providerName,
+              model_type: modelType,
+              provider_id: Number(provider.id),
+              api_key: agentModelConfig.api_key,
+              api_url: agentModelConfig.api_url,
+              model_config_dict: agentModelConfig.model_config_dict,
+              extra_params: agentModelConfig.extra_params,
+            };
+          });
+
+        const nextLocalOptions: AgentModelOption[] = providerList
+          .filter((provider: any) =>
+            localProviderIds.has(provider.provider_name)
+          )
+          .map((provider: any) => {
+            const agentModelConfig =
+              buildAgentModelConfigFromProvider(provider);
+            const modelPlatform = agentModelConfig.model_platform;
+            const modelType = agentModelConfig.model_type || '';
+            const platformName = getLocalPlatformName(modelPlatform);
+            return {
+              value: `${modelPlatform}::${modelType}`,
+              label: modelType
+                ? `${platformName} (${modelType})`
+                : platformName,
+              model_platform: modelPlatform,
+              model_type: modelType,
+              provider_id: Number(provider.id),
+              api_key: agentModelConfig.api_key,
+              api_url: agentModelConfig.api_url,
+              model_config_dict: agentModelConfig.model_config_dict,
+              extra_params: agentModelConfig.extra_params,
+            };
+          });
+
+        setCustomModelOptions(nextCustomOptions);
+        setLocalModelOptions(nextLocalOptions);
+      } catch (error) {
+        console.error('Error fetching model providers for Add Agent:', error);
+        setCustomModelOptions([]);
+        setLocalModelOptions([]);
+      }
+    })();
+  }, [fetchCloudModels, showModelConfig]);
+
+  // tool function
+  const getCategoryIcon = (categoryName?: string) => {
+    if (!categoryName)
+      return <Bot className="h-10 w-10 text-ds-icon-neutral-default-default" />;
+    return <Bot className="h-10 w-10 text-ds-icon-neutral-default-default" />;
+  };
+
+  const getGithubRepoName = (homePage?: string) => {
+    if (!homePage || !homePage.startsWith('https://github.com/')) return null;
+    const parts = homePage.split('/');
+    return parts.length > 4 ? parts[4] : homePage;
+  };
+
+  // Create an Agent node.
+  const handleAddAgent = async () => {
+    // clear previous errors
+    setNameError('');
+
+    if (!agentName) {
+      setNameError(t('workforce.worker-name-cannot-be-empty'));
+      return;
+    }
+
+    if (!edit && workerList.find((agent: any) => agent.name === agentName)) {
+      setNameError(t('workforce.worker-name-already-exists'));
+      return;
+    }
+    let mcpLocal: any = { mcpServers: {} };
+    try {
+      mcpLocal = await fetchMcpConfig();
+    } catch {
+      // Backend may not be ready
+    }
+    const localTool: string[] = [];
+    const mcpList: string[] = [];
+    selectedTools.forEach((tool: any) => {
+      if (tool.isLocal) {
+        localTool.push(tool.toolkit as string);
+      } else {
+        mcpList.push(tool?.key || tool?.mcp_name);
+      }
+    });
+    console.log('mcpLocal.mcpServers', mcpLocal.mcpServers);
+    if (mcpLocal.mcpServers && typeof mcpLocal.mcpServers === 'object') {
+      for (const key of Object.keys(mcpLocal.mcpServers)) {
+        if (!mcpList.includes(key)) {
+          delete mcpLocal.mcpServers[key];
+        }
+      }
+    }
+    const selectedModelOption = agentModelOptions[agentModelMode].find(
+      (option) => option.value === agentModelName
+    );
+    const customModelConfig =
+      showModelConfig && selectedModelOption
+        ? buildAgentModelConfig(selectedModelOption)
+        : undefined;
+    const modelProviderId =
+      showModelConfig && selectedModelOption?.provider_id
+        ? selectedModelOption.provider_id
+        : showModelConfig &&
+            edit &&
+            !modelSelectionTouched &&
+            Number.isInteger(agentInfo?.workerInfo?.model_provider_id)
+          ? agentInfo?.workerInfo?.model_provider_id
+          : undefined;
+
+    if (edit) {
+      const newAgentList = workerList.map((agent) => {
+        if (agent.type === agentInfo?.type) {
+          const newAgent: Agent = {
+            tasks: [],
+            agent_id: agentName,
+            name: agentName,
+            type: agentName as AgentNameType,
+            log: [],
+            tools: [
+              ...selectedTools.map(
+                (tool) =>
+                  tool.name || tool.mcp_name || tool.key || `tool_${tool.id}`
+              ),
+            ],
+            activeWebviewIds: [],
+            workerInfo: {
+              name: agentName,
+              description: agentDescription,
+              tools: localTool,
+              mcp_tools: mcpLocal,
+              selectedTools: JSON.parse(JSON.stringify(selectedTools)),
+              model_provider_id: modelProviderId,
+            },
+          };
+          return {
+            ...newAgent,
+          };
+        } else {
+          return agent;
+        }
+      });
+      setWorkerList(newAgentList);
+    } else if (activeTaskId && tasks[activeTaskId].messages.length === 0) {
+      const agent: Agent = {
+        tasks: [],
+        agent_id: agentName,
+        name: agentName,
+        type: agentName as AgentNameType,
+        log: [],
+        tools: [
+          ...selectedTools.map(
+            (tool) =>
+              tool.name || tool.mcp_name || tool.key || `tool_${tool.id}`
+          ),
+        ],
+        activeWebviewIds: [],
+        workerInfo: {
+          name: agentName,
+          description: agentDescription,
+          tools: localTool,
+          mcp_tools: mcpLocal,
+          selectedTools: JSON.parse(JSON.stringify(selectedTools)),
+          model_provider_id: modelProviderId,
+        },
+      };
+      setWorkerList([...workerList, agent]);
+    } else {
+      // Add Agent custom model settings apply only to this agent.
+      if (activeProjectId) {
+        fetchPost(`/task/${activeProjectId}/add-agent`, {
+          name: agentName,
+          description: agentDescription,
+          tools: localTool,
+          mcp_tools: mcpLocal,
+          email: email,
+          custom_model_config: customModelConfig,
+        });
+      }
+      const agent: Agent = {
+        tasks: [],
+        agent_id: agentName,
+        name: agentName,
+        type: agentName as AgentNameType,
+        log: [],
+        activeWebviewIds: [],
+        workerInfo: {
+          name: agentName,
+          description: agentDescription,
+          tools: localTool,
+          mcp_tools: mcpLocal,
+          selectedTools: JSON.parse(JSON.stringify(selectedTools)),
+          model_provider_id: modelProviderId,
+        },
+      };
+      setWorkerList([...workerList, agent]);
+    }
+
+    setDialogOpen(false);
+
+    // reset form
+    resetForm();
+  };
+
+  return (
+    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <form>
+        <DialogTrigger asChild>
+          {edit && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDialogOpen(true);
+                setAgentName(agentInfo?.workerInfo?.name || '');
+                setAgentDescription(agentInfo?.workerInfo?.description || '');
+                setSelectedTools(agentInfo?.workerInfo?.selectedTools || []);
+              }}
+            >
+              <Edit size={16} />
+              {t('workforce.edit')}
+            </Button>
+          )}
+        </DialogTrigger>
+        <DialogContent
+          size="md"
+          className="min-h-[60vh] gap-0 p-0"
+          onInteractOutside={(e: any) => {
+            if (isValidating) e.preventDefault();
+          }}
+          onEscapeKeyDown={(e: any) => {
+            if (isValidating) e.preventDefault();
+          }}
+          onPointerDownOutside={(e: any) => {
+            if (isValidating) e.preventDefault();
+          }}
+        >
+          <DialogHeader
+            title={
+              showEnvConfig
+                ? t('workforce.configure-mcp-server')
+                : t('workforce.add-your-agent')
+            }
+            tooltip={t('layout.configure-your-mcp-worker-node-here')}
+            showTooltip={true}
+            showBackButton={showEnvConfig}
+            onBackClick={handleCloseMcpEnvSetting}
+          />
+
+          {showEnvConfig ? (
+            // environment configuration interface
+            <>
+              <DialogContentSection className="scrollbar-always-visible flex flex-col gap-3 overflow-y-auto p-md">
+                <div className="flex items-center gap-md">
+                  {getCategoryIcon(activeMcp?.category?.name)}
+                  <div>
+                    <div className="text-base font-bold leading-9 text-ds-text-neutral-default-default">
+                      {activeMcp?.name}
+                    </div>
+                    <div className="text-sm font-bold leading-normal text-ds-text-neutral-default-default">
+                      {getGithubRepoName(activeMcp?.home_page) && (
+                        <div className="flex items-center">
+                          <img
+                            src={githubIcon}
+                            alt="github"
+                            style={{
+                              width: 14.7,
+                              height: 14.7,
+                              marginRight: 4,
+                              display: 'inline-block',
+                              verticalAlign: 'middle',
+                            }}
+                          />
+                          <span className="line-clamp-1 items-center justify-center self-stretch overflow-hidden text-ellipsis break-words text-xs font-medium leading-normal">
+                            {getGithubRepoName(activeMcp?.home_page)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-sm">
+                  {Object.keys(activeMcp?.install_command?.env || {}).map(
+                    (key) => (
+                      <div key={key}>
+                        <Input
+                          size="default"
+                          title={key}
+                          required={envValues[key]?.required ?? true}
+                          placeholder={envValues[key]?.tip || `Enter ${key}`}
+                          type={
+                            isSensitiveKey(key) && !secretVisible[key]
+                              ? 'password'
+                              : 'text'
+                          }
+                          value={envValues[key]?.value || ''}
+                          onChange={(e) => updateEnvValue(key, e.target.value)}
+                          state={envValues[key]?.error ? 'error' : 'default'}
+                          note={envValues[key]?.error || envValues[key]?.tip}
+                          backIcon={
+                            isSensitiveKey(key) ? (
+                              secretVisible[key] ? (
+                                <EyeOff
+                                  size={16}
+                                  className="text-ds-text-neutral-muted-disabled"
+                                />
+                              ) : (
+                                <Eye
+                                  size={16}
+                                  className="text-ds-text-neutral-muted-disabled"
+                                />
+                              )
+                            ) : undefined
+                          }
+                          onBackIconClick={
+                            isSensitiveKey(key)
+                              ? () => toggleSecretVisibility(key)
+                              : undefined
+                          }
+                        />
+                      </div>
+                    )
+                  )}
+                </div>
+              </DialogContentSection>
+              <DialogFooter
+                className="!rounded-b-xl p-md"
+                showCancelButton={true}
+                showConfirmButton={true}
+                cancelButtonText={t('workforce.cancel')}
+                confirmButtonText={
+                  isValidating ? 'Validating...' : t('layout.connect')
+                }
+                onCancel={handleCloseMcpEnvSetting}
+                onConfirm={handleConfigureMcpEnvSetting}
+                cancelButtonVariant="ghost"
+                confirmButtonVariant="primary"
+              ></DialogFooter>
+              {/* hidden but keep rendering ToolSelect component */}
+              <div style={{ display: 'none' }}>
+                <ToolSelect
+                  onShowEnvConfig={handleShowEnvConfig}
+                  onSelectedToolsChange={handleSelectedToolsChange}
+                  initialSelectedTools={selectedTools}
+                  ref={toolSelectRef}
+                />
+              </div>
+            </>
+          ) : (
+            // default add interface
+            <>
+              <DialogContentSection className="scrollbar-always-visible flex flex-col gap-3 overflow-y-auto p-md">
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center gap-sm">
+                    <div className="flex h-16 w-16 items-center justify-center">
+                      <Bot
+                        size={32}
+                        className="text-ds-icon-neutral-default-default"
+                      />
+                    </div>
+                    <Input
+                      size="sm"
+                      title={t('layout.name-your-agent')}
+                      placeholder={t('layout.add-an-agent-name')}
+                      value={agentName}
+                      onChange={(e) => {
+                        setAgentName(e.target.value);
+                        // when user starts input, clear error
+                        if (nameError) setNameError('');
+                      }}
+                      state={nameError ? 'error' : 'default'}
+                      note={nameError || ''}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <Textarea
+                  variant="enhanced"
+                  size="sm"
+                  title={t('workforce.description-optional')}
+                  placeholder={t('layout.im-an-agent-specially-designed-for')}
+                  value={agentDescription}
+                  onChange={(e) => setAgentDescription(e.target.value)}
+                />
+
+                <ToolSelect
+                  onShowEnvConfig={handleShowEnvConfig}
+                  onSelectedToolsChange={handleSelectedToolsChange}
+                  initialSelectedTools={selectedTools}
+                  ref={toolSelectRef}
+                />
+
+                {/* Model Configuration Section */}
+                <div className="mt-2 flex flex-col gap-2">
+                  <div className="flex items-center justify-start gap-3">
+                    <span className="text-body-sm font-bold text-ds-text-neutral-default-default">
+                      {t('workforce.use-custom-model')}
+                    </span>
+                    <Switch
+                      checked={showModelConfig}
+                      onCheckedChange={(checked) => {
+                        setModelSelectionTouched(true);
+                        setShowModelConfig(checked);
+                        if (!checked) {
+                          setAgentModelName('');
+                        }
+                      }}
+                      aria-label={t('workforce.use-custom-model')}
+                      className="border-[0.5px] border-solid border-ds-border-neutral-default-default"
+                    />
+                  </div>
+
+                  {showModelConfig && (
+                    <div className="flex flex-row gap-3 rounded-lg bg-ds-bg-neutral-muted-default px-3 py-2">
+                      <div className="flex w-full flex-1 flex-col gap-1">
+                        <label className="text-body-sm font-bold text-ds-text-neutral-default-default">
+                          {t('workforce.model-platform')}
+                        </label>
+                        <Select
+                          value={agentModelMode}
+                          onValueChange={(value) => {
+                            setModelSelectionTouched(true);
+                            setAgentModelMode(value as AgentModelMode);
+                          }}
+                        >
+                          <SelectTrigger
+                            className="w-full"
+                            wrapperClassName="w-full min-w-0"
+                          >
+                            <SelectValue
+                              placeholder={t('workforce.select-platform')}
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="eigent">
+                              {t('setting.eigent-cloud')}
+                            </SelectItem>
+                            <SelectItem value="custom">
+                              {t('setting.custom-model')}
+                            </SelectItem>
+                            <SelectItem value="local">
+                              {t('setting.local-model')}
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="flex w-full flex-1 flex-col gap-1">
+                        <label className="text-body-sm font-bold text-ds-text-neutral-default-default">
+                          {t('workforce.model-type')}
+                        </label>
+                        <Select
+                          value={agentModelName}
+                          onValueChange={(value) => {
+                            setModelSelectionTouched(true);
+                            setAgentModelName(value);
+                          }}
+                        >
+                          <SelectTrigger
+                            className="w-full"
+                            wrapperClassName="w-full min-w-0"
+                          >
+                            <SelectValue
+                              placeholder={t('setting.select-default-model')}
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {activeAgentModelOptions.length > 0 ? (
+                              activeAgentModelOptions.map((option) => (
+                                <SelectItem
+                                  key={option.value}
+                                  value={option.value}
+                                >
+                                  {option.label}
+                                </SelectItem>
+                              ))
+                            ) : (
+                              <SelectItem value="__empty__" disabled>
+                                {t('layout.no-results')}
+                              </SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </DialogContentSection>
+              <DialogFooter
+                className="!rounded-b-xl bg-ds-bg-neutral-subtle-default p-md"
+                showCancelButton={true}
+                showConfirmButton={true}
+                cancelButtonText={t('workforce.cancel')}
+                confirmButtonText={t('workforce.save-changes')}
+                onCancel={() => {
+                  resetForm();
+                  setDialogOpen(false);
+                }}
+                onConfirm={handleAddAgent}
+                cancelButtonVariant="ghost"
+                confirmButtonVariant="primary"
+              />
+            </>
+          )}
+        </DialogContent>
+      </form>
+    </Dialog>
+  );
+}

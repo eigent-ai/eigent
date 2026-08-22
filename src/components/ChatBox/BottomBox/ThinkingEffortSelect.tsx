@@ -14,7 +14,7 @@
 
 /**
  * Reasoning/thinking effort picker for the chat input bar — same pill-trigger
- * shell as `ModelSelect` / `ProjectModeToggle` so the three controls
+ * shell as `ModelSelect` / `WorkSessionModeToggle` so the three controls
  * read as one family in the `BoxFooter` row.
  */
 

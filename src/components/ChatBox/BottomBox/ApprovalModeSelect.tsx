@@ -14,7 +14,7 @@
 
 /**
  * Approval-mode picker for the chat input bar — same pill-trigger shell as
- * `ThinkingEffortSelect` / `ModelSelect` / `ProjectModeToggle` so the
+ * `ThinkingEffortSelect` / `ModelSelect` / `WorkSessionModeToggle` so the
  * controls read as one family in the `BoxFooter` row.
  *
  * A Space-level permission-profile picker. Changes apply to future Runs;

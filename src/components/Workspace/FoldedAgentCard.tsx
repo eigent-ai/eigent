@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { AddWorker } from '@/components/AddWorker';
+import { AddAgent } from '@/components/AddAgent';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -33,8 +33,8 @@ import {
   WORKFLOW_AGENT_SUB_ICON_CLASS,
   type WorkflowAgentType,
 } from '@/components/WorkFlow/agents';
-import { getAgentToolkitLabels } from '@/components/WorkFlow/agentToolkitLabels';
-import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseWorkers';
+import { getAgentToolLabels } from '@/components/WorkFlow/agentToolLabels';
+import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseAgents';
 import { cn } from '@/lib/utils';
 import {
   Bird,
@@ -122,8 +122,8 @@ export function FoldedAgentCard({
 }) {
   const { t } = useTranslation();
   const [toolkitHovered, setToolkitHovered] = useState(false);
-  const toolkitLabels = getAgentToolkitLabels(agent);
-  const toolkitLine = toolkitLabels.join('  ');
+  const toolLabels = getAgentToolLabels(agent);
+  const toolLine = toolLabels.join('  ');
   const wfType = agent.type as WorkflowAgentType;
   const preset = agentMap[wfType];
 
@@ -168,7 +168,7 @@ export function FoldedAgentCard({
         </div>
         <div className="mt-0.5 min-h-4 w-full min-w-0">
           <HoverScrollText
-            text={toolkitLine}
+            text={toolLine}
             active={toolkitHovered}
             className="text-xs font-normal leading-tight text-ds-text-neutral-muted-default"
             innerClassName="text-xs font-normal leading-tight text-ds-text-neutral-muted-default"
@@ -297,7 +297,7 @@ export function FoldedAgentCard({
           >
             <div className="space-y-1">
               <PopoverClose asChild>
-                <AddWorker edit workerInfo={agent} />
+                <AddAgent edit agentInfo={agent} />
               </PopoverClose>
               <PopoverClose asChild>
                 <Button

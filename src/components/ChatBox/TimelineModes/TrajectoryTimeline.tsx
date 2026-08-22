@@ -20,6 +20,7 @@ import type {
   TimelineToolInvocation,
   TimelineTraceRow,
 } from '@/lib/projector/chat/presentation';
+import { formatToolDisplayName } from '@/lib/toolkitIcons';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { ChevronRight, FileText } from 'lucide-react';
@@ -266,7 +267,10 @@ function ToolTraceDetails({
 }: {
   invocation: TimelineToolInvocation;
 }) {
-  const identity = [invocation.toolkitName, invocation.methodName]
+  const identity = [
+    formatToolDisplayName(invocation.toolkitName ?? ''),
+    invocation.methodName,
+  ]
     .filter(Boolean)
     .join(' · ');
   const hasDetails = Boolean(

@@ -17,7 +17,7 @@ import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { groupMessagesByQuery } from '@/components/ChatBox/ProjectSection';
+import { groupMessagesByQuery } from '@/components/ChatBox/RunSection';
 import { UserQueryGroup } from '@/components/ChatBox/UserQueryGroup';
 
 vi.mock('@/store/pageTabStore', () => ({

@@ -176,9 +176,7 @@ export async function fetchWorkspaceBundleInstallReview(
 ): Promise<WorkspaceBundleInstallReview> {
   const revision = await getPublicWorkspaceBundleRevision(handle);
   if (revision.status !== 'published') {
-    throw new Error(
-      'Only published Workspace Bundle versions can be installed.'
-    );
+    throw new Error('Only published Space profile versions can be imported.');
   }
   if (
     revision.publisher_namespace !== handle.publisherNamespace ||
@@ -186,7 +184,7 @@ export async function fetchWorkspaceBundleInstallReview(
     revision.version !== handle.version ||
     revision.coordinate !== handle.coordinate
   ) {
-    throw new Error('The Workspace Bundle version identity does not match.');
+    throw new Error('The Space profile version identity does not match.');
   }
   // Public install remains usable even if mutable owner metadata is not
   // readable by this account. The immutable revision is the authority.

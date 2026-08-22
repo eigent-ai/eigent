@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
+import { resolveWorkSessionDisplayName } from '@/lib/spaceLabel';
 import {
   listMemoryEntries,
   listMemoryScopeSummaries,
@@ -31,6 +32,7 @@ import {
 } from '@/store/spaceStore';
 import { ArrowRight, Brain, Folder, FolderKanban, Search } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { SettingsRow, SettingsRowGroup } from '../SettingsRowGroup';
 
@@ -48,9 +50,6 @@ interface MemoryDirectoryItem {
 
 const summaryKey = (scopeType: DirectoryScopeType, scopeId: string) =>
   `${scopeType}:${scopeId}`;
-
-const pluralize = (count: number, singular: string) =>
-  `${count} ${singular}${count === 1 ? '' : 's'}`;
 
 async function loadLegacyScopeSummaries(
   scopeType: DirectoryScopeType,
@@ -83,6 +82,7 @@ export function MemoryScopeDirectory({
 }: {
   scopeType: DirectoryScopeType;
 }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const spacesById = useSpaceStore((state) => state.spaces);
@@ -106,6 +106,7 @@ export function MemoryScopeDirectory({
         .sort((left, right) => left.name.localeCompare(right.name)),
     [projectsBySpaceId, spacesById]
   );
+  const untitledProjectName = t('layout.memory-overview-untitled-project');
 
   const items = useMemo<MemoryDirectoryItem[]>(() => {
     if (scopeType === 'space') {
@@ -127,13 +128,17 @@ export function MemoryScopeDirectory({
           scopeId: project.id,
           spaceId: space.id,
           projectId: project.id,
-          name: project.name,
+          name: resolveWorkSessionDisplayName(
+            project.name,
+            project.id,
+            untitledProjectName
+          ),
           parentName: space.name,
           updatedAt: project.updatedAt,
         })
       )
     );
-  }, [projectsBySpaceId, scopeType, spaces]);
+  }, [projectsBySpaceId, scopeType, spaces, untitledProjectName]);
 
   useEffect(() => {
     const generation = ++requestGeneration.current;
@@ -218,18 +223,20 @@ export function MemoryScopeDirectory({
     0
   );
   const isSpace = scopeType === 'space';
-  const scopeLabel = isSpace ? 'Space' : 'Project';
+  const title = t(
+    isSpace
+      ? 'layout.memory-overview-space-title'
+      : 'layout.memory-overview-project-title'
+  );
+  const description = t(
+    isSpace
+      ? 'layout.memory-directory-space-description'
+      : 'layout.memory-directory-project-description'
+  );
 
   return (
     <SettingsRowGroup data-memory-scope-directory={scopeType}>
-      <SettingsRow
-        title={`${scopeLabel} Memory`}
-        description={
-          isSpace
-            ? 'Shared notes for every Project in a Space. Select a Space to review or add them.'
-            : 'Project-specific notes learned or saved while work runs. Select a Project to manage them.'
-        }
-      >
+      <SettingsRow title={title} description={description}>
         {items.length > 0 ? (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             {loading ? (
@@ -241,9 +248,15 @@ export function MemoryScopeDirectory({
                   variant="secondary"
                   tone={populatedCount > 0 ? 'success' : 'neutral'}
                 >
-                  {pluralize(populatedCount, scopeLabel)} with Memory
+                  {t('layout.memory-directory-locations-with-memory', {
+                    count: populatedCount,
+                  })}
                 </Badge>
-                <span>{pluralize(totalEntryCount, 'saved note')} total</span>
+                <span>
+                  {t('layout.memory-directory-saved-notes', {
+                    count: totalEntryCount,
+                  })}
+                </span>
               </div>
             )}
             <div className="relative min-w-56 flex-1 sm:max-w-80">
@@ -255,8 +268,8 @@ export function MemoryScopeDirectory({
                 size="sm"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder={`Search ${scopeLabel}s`}
-                aria-label={`Search ${scopeLabel} Memory`}
+                placeholder={t('layout.memory-directory-search')}
+                aria-label={t('layout.memory-directory-search')}
                 className="pl-9"
               />
             </div>
@@ -265,13 +278,12 @@ export function MemoryScopeDirectory({
 
         {error ? (
           <div className="mb-4 rounded-xl bg-ds-bg-error-subtle-default p-3 text-body-sm text-ds-text-error-strong-default">
-            Memory locations could not be loaded. Your saved Memory is safe;
-            retry by reopening this tab.
+            {t('layout.memory-directory-load-error')}
           </div>
         ) : null}
 
         {loading ? (
-          <div role="status" aria-label={`Loading ${scopeLabel} Memory`}>
+          <div role="status" aria-label={t('layout.memory-directory-loading')}>
             {Array.from({ length: Math.min(items.length, 5) }, (_, index) => (
               <Skeleton
                 key={index}
@@ -286,17 +298,17 @@ export function MemoryScopeDirectory({
               aria-hidden
             />
             <div className="mt-3 text-body-sm font-semibold">
-              No {scopeLabel}s available
+              {t('layout.memory-directory-empty-title')}
             </div>
             <p className="mt-1 text-body-sm text-ds-text-neutral-muted-default">
-              {isSpace
-                ? 'Create a Space before adding shared Space Memory.'
-                : 'Create a Project before adding or learning Project Memory.'}
+              {t('layout.memory-directory-empty-description')}
             </p>
           </div>
         ) : visibleItems.length === 0 ? (
           <div className="rounded-xl bg-ds-bg-neutral-subtle-default px-6 py-8 text-center text-body-sm text-ds-text-neutral-muted-default">
-            No {scopeLabel} matches “{search.trim()}”.
+            {t('layout.memory-directory-no-match', {
+              query: search.trim(),
+            })}
           </div>
         ) : (
           <div className="flex flex-col gap-2">
@@ -330,29 +342,42 @@ export function MemoryScopeDirectory({
                           variant="secondary"
                           tone={entryCount > 0 ? 'success' : 'neutral'}
                         >
-                          {entryCount > 0
-                            ? pluralize(entryCount, 'note')
-                            : 'Empty'}
+                          {t('layout.memory-directory-note-count', {
+                            count: entryCount,
+                          })}
                         </Badge>
                       </div>
                       <div className="mt-0.5 truncate text-label-sm text-ds-text-neutral-muted-default">
                         {isSpace
-                          ? pluralize(item.projectCount ?? 0, 'Project')
-                          : `Space: ${item.parentName}`}
+                          ? t('layout.memory-directory-session-count', {
+                              count: item.projectCount ?? 0,
+                            })
+                          : t('layout.memory-directory-parent-space', {
+                              name: item.parentName,
+                            })}
                       </div>
                     </div>
                   </div>
 
                   <div className="min-w-0">
                     <div className="flex items-center justify-between gap-2 text-label-xs text-ds-text-neutral-muted-default">
-                      <span>{capacity}% used</span>
                       <span>
-                        {tokenCount} / {tokenLimit} tokens
+                        {t('layout.memory-directory-capacity-used', {
+                          percent: capacity,
+                        })}
+                      </span>
+                      <span>
+                        {t('layout.memory-directory-token-count', {
+                          current: tokenCount,
+                          limit: tokenLimit,
+                        })}
                       </span>
                     </div>
                     <Progress
                       value={capacity}
-                      aria-label={`${item.name} Memory capacity`}
+                      aria-label={t('layout.memory-directory-capacity-label', {
+                        name: item.name,
+                      })}
                       className="mt-1 bg-ds-bg-neutral-default-default"
                       indicatorClassName="bg-ds-bg-brand-default-default"
                     />
@@ -363,7 +388,9 @@ export function MemoryScopeDirectory({
                     size="sm"
                     variant={entryCount > 0 ? 'primary' : 'outline'}
                     buttonRadius="full"
-                    aria-label={`Manage Memory for ${item.name}`}
+                    aria-label={t('layout.memory-directory-manage-label', {
+                      name: item.name,
+                    })}
                     onClick={() =>
                       navigate(
                         {
@@ -377,7 +404,8 @@ export function MemoryScopeDirectory({
                       )
                     }
                   >
-                    Manage <ArrowRight className="h-4 w-4" aria-hidden />
+                    {t('layout.memory-directory-manage')}{' '}
+                    <ArrowRight className="h-4 w-4" aria-hidden />
                   </Button>
                 </article>
               );

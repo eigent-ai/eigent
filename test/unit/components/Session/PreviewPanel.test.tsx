@@ -23,7 +23,7 @@ import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/components/Folder/FilePreview', () => ({
+vi.mock('@/components/Files/FilePreview', () => ({
   FilePreview: ({ file }: { file: FileInfo | null }) => (
     <div data-testid="file-preview">{file?.name || 'No file selected'}</div>
   ),
@@ -118,7 +118,7 @@ describe('PreviewPanel', () => {
     }
   });
 
-  it('lists the project’s agent streams in the chooser and opens one in place', async () => {
+  it('lists the session’s agent streams in the chooser and opens one in place', async () => {
     const user = userEvent.setup();
     mockTerminalSources = [
       {
@@ -131,7 +131,7 @@ describe('PreviewPanel', () => {
     ];
     renderPanel();
 
-    expect(screen.getByText('From this project')).toBeInTheDocument();
+    expect(screen.getByText('From this session')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Start dev server/ }));
 
     const slice = previewSlice();

@@ -33,7 +33,7 @@ import { useSpaceStore } from '@/store/spaceStore';
  */
 export class LegacySpaceProjectError extends Error {
   constructor() {
-    super('Cannot create a Project inside a legacy Space.');
+    super('Cannot create a Session inside a legacy Space.');
     this.name = 'LegacySpaceProjectError';
   }
 }

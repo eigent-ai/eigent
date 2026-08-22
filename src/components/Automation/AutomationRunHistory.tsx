@@ -1,0 +1,401 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import { formatRelativeTime, formatTime } from '@/lib/utils';
+import {
+  proxyFetchTrigger,
+  proxyFetchTriggerExecutions,
+} from '@/service/triggerApi';
+import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
+import { ExecutionStatus, Trigger, TriggerExecution } from '@/types';
+import {
+  AlertTriangle,
+  ArrowRight,
+  CheckCircle2,
+  Clock,
+  Loader2,
+  Play,
+  Terminal,
+  XCircle,
+} from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+
+export interface AutomationRunLogEntry {
+  id: number;
+  timestamp: string;
+  status: 'success' | 'error' | 'running' | 'pending' | 'cancelled';
+  message: string;
+  duration?: string;
+  details?: string;
+}
+
+// Success rate thresholds for color coding (percentage)
+const SUCCESS_CRITERIA_EXCELLENT = 90;
+const SUCCESS_CRITERIA_ACCEPTABLE = 70;
+
+// Helper function to map ExecutionStatus to display status
+const mapExecutionStatus = (
+  status: ExecutionStatus
+): AutomationRunLogEntry['status'] => {
+  switch (status) {
+    case ExecutionStatus.Completed:
+      return 'success';
+    case ExecutionStatus.Failed:
+      return 'error';
+    case ExecutionStatus.Running:
+      return 'running';
+    case ExecutionStatus.Pending:
+      return 'pending';
+    case ExecutionStatus.Cancelled:
+      return 'cancelled';
+    case ExecutionStatus.Missed:
+      return 'error';
+    default:
+      return 'pending';
+  }
+};
+
+// Helper function to format duration
+const formatDuration = (seconds?: number): string | undefined => {
+  if (!seconds) return undefined;
+  if (seconds < 1) return `${(seconds * 1000).toFixed(0)}ms`;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}m ${remainingSeconds.toFixed(0)}s`;
+};
+
+// Helper function to transform TriggerExecution to AutomationRunLogEntry
+const transformToLogEntry = (
+  execution: TriggerExecution,
+  t: any
+): AutomationRunLogEntry => {
+  const status = mapExecutionStatus(execution.status);
+  const duration = formatDuration(execution.duration_seconds);
+
+  let message = '';
+  switch (execution.status) {
+    case ExecutionStatus.Completed:
+      message = t('triggers.execution-completed-success');
+      break;
+    case ExecutionStatus.Failed:
+      message =
+        execution.error_message || t('triggers.execution-failed-message');
+      break;
+    case ExecutionStatus.Running:
+      message = t('triggers.execution-in-progress');
+      break;
+    case ExecutionStatus.Pending:
+      message = t('triggers.waiting-to-execute');
+      break;
+    case ExecutionStatus.Cancelled:
+      message = t('triggers.execution-cancelled');
+      break;
+    case ExecutionStatus.Missed:
+      message = t('triggers.execution-missed');
+      break;
+    default:
+      message = t('triggers.unknown-status');
+  }
+
+  const details =
+    execution.error_message && execution.status === ExecutionStatus.Failed
+      ? execution.error_message
+      : undefined;
+
+  return {
+    id: execution.id,
+    timestamp: formatTime(execution.started_at || execution.created_at),
+    status,
+    message,
+    duration,
+    details,
+  };
+};
+
+const getStatusIcon = (status: AutomationRunLogEntry['status']) => {
+  switch (status) {
+    case 'success':
+      return (
+        <CheckCircle2 className="h-3.5 w-3.5 text-ds-icon-status-completed-default-default" />
+      );
+    case 'error':
+      return (
+        <XCircle className="h-3.5 w-3.5 text-ds-icon-status-error-default-default" />
+      );
+    case 'running':
+      return (
+        <Play className="h-3.5 w-3.5 animate-pulse text-ds-icon-status-running-default-default" />
+      );
+    case 'pending':
+      return (
+        <Clock className="h-3.5 w-3.5 text-ds-icon-status-pending-default-default" />
+      );
+    case 'cancelled':
+      return (
+        <XCircle className="h-3.5 w-3.5 text-ds-icon-neutral-muted-default" />
+      );
+    default:
+      return (
+        <AlertTriangle className="h-3.5 w-3.5 text-ds-icon-neutral-muted-default" />
+      );
+  }
+};
+
+const getStatusColor = (status: AutomationRunLogEntry['status']) => {
+  switch (status) {
+    case 'success':
+      return 'border-l-ds-border-status-completed-default-default';
+    case 'error':
+      return 'border-l-ds-border-status-error-default-default';
+    case 'running':
+      return 'border-l-ds-border-status-running-default-default';
+    case 'pending':
+      return 'border-l-ds-border-status-pending-default-default';
+    case 'cancelled':
+      return 'border-l-ds-border-neutral-muted-default';
+    default:
+      return 'border-l-ds-border-neutral-muted-default';
+  }
+};
+
+const getSuccessRateColorClass = (rate: number | null): string => {
+  if (rate === null) return 'text-ds-text-neutral-muted-default';
+  if (rate >= SUCCESS_CRITERIA_EXCELLENT)
+    return 'text-ds-icon-status-completed-default-default';
+  if (rate >= SUCCESS_CRITERIA_ACCEPTABLE)
+    return 'text-ds-icon-status-pending-default-default';
+  return 'text-ds-icon-status-error-default-default';
+};
+
+interface AutomationRunHistoryProps {
+  automationId: number;
+}
+
+export function AutomationRunHistory({
+  automationId,
+}: AutomationRunHistoryProps) {
+  const { t } = useTranslation();
+  const [automation, setAutomation] = useState<Trigger | null>(null);
+  const [executions, setExecutions] = useState<TriggerExecution[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { logs: activityLogs } = useActivityLogStore();
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Fetch the trigger-backed Automation details.
+        const automationData = await proxyFetchTrigger(automationId);
+        setAutomation(automationData);
+
+        // Fetch executions
+        const executionsResponse = await proxyFetchTriggerExecutions(
+          automationId,
+          1,
+          50
+        );
+        const executionsData = Array.isArray(executionsResponse)
+          ? executionsResponse
+          : Array.isArray(executionsResponse?.items)
+            ? executionsResponse.items
+            : [];
+        setExecutions(executionsData);
+      } catch (err) {
+        console.error('Failed to fetch execution data:', err);
+        setError(t('triggers.failed-to-load-executions'));
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [automationId, t]);
+
+  // Listen to activity logs for real-time updates
+  useEffect(() => {
+    const relevantLogs = activityLogs.filter(
+      (log) => log.triggerId === automationId
+    );
+
+    if (relevantLogs.length > 0) {
+      // Refresh execution data when there's a new relevant activity
+      const latestLog = relevantLogs[0];
+      if (
+        [
+          ActivityType.TriggerExecuted,
+          ActivityType.ExecutionSuccess,
+          ActivityType.ExecutionFailed,
+        ].includes(latestLog.type)
+      ) {
+        proxyFetchTriggerExecutions(automationId, 1, 50)
+          .then((executionsResponse) => {
+            const executionsData = Array.isArray(executionsResponse)
+              ? executionsResponse
+              : Array.isArray(executionsResponse?.items)
+                ? executionsResponse.items
+                : [];
+            setExecutions(executionsData);
+          })
+          .catch((err) => console.error('Failed to refresh executions:', err));
+      }
+    }
+  }, [activityLogs, automationId]);
+
+  if (loading) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center text-ds-text-neutral-muted-default">
+        <Loader2 className="mb-2 h-8 w-8 animate-spin" />
+        <span className="text-sm">{t('triggers.loading-executions')}</span>
+      </div>
+    );
+  }
+
+  if (error || !automation) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center text-ds-text-neutral-muted-default">
+        <Terminal className="mb-2 h-8 w-8 opacity-50" />
+        <span className="text-sm">
+          {error || t('triggers.no-execution-data')}
+        </span>
+      </div>
+    );
+  }
+
+  // Transform executions to log entries
+  const logs = Array.isArray(executions)
+    ? executions.map((e) => transformToLogEntry(e, t))
+    : [];
+
+  // Calculate success rate
+  const completedExecutions = Array.isArray(executions)
+    ? executions.filter(
+        (e) =>
+          e.status === ExecutionStatus.Completed ||
+          e.status === ExecutionStatus.Failed
+      )
+    : [];
+  const successfulExecutions = Array.isArray(executions)
+    ? executions.filter((e) => e.status === ExecutionStatus.Completed)
+    : [];
+  const successRate: number | null =
+    completedExecutions.length > 0
+      ? Math.round(
+          (successfulExecutions.length / completedExecutions.length) * 100
+        )
+      : null;
+
+  return (
+    <div className="flex h-full flex-col">
+      {/* Stats */}
+      <div className="flex flex-col items-start justify-start overflow-hidden border-x-0 border-b border-t-0 border-solid border-ds-border-neutral-subtle-default px-3 pb-3">
+        <div className="mb-4 flex w-full flex-row items-center justify-between">
+          <span
+            className="max-w-[150px] truncate text-label-sm font-medium text-ds-text-neutral-default-default"
+            title={automation.name}
+          >
+            {automation.name}
+          </span>
+          <span className="text-label-xs text-ds-text-neutral-muted-default">
+            {automation.trigger_type === 'schedule'
+              ? t('triggers.schedule-trigger')
+              : automation.trigger_type === 'webhook'
+                ? t('triggers.webhook-trigger')
+                : automation.trigger_type
+                    .replace(/_/g, ' ')
+                    .replace(/\b\w/g, (l) => l.toUpperCase())}
+          </span>
+        </div>
+        <div className="flex flex-row">
+          <div className="mr-4 flex flex-col border-y-0 border-l-0 border-r border-solid border-ds-border-neutral-subtle-default pr-4">
+            <span className="text-label-sm font-medium text-ds-text-neutral-default-default">
+              {automation.execution_count || 0}
+            </span>
+            <span className="text-label-xs text-ds-text-neutral-muted-default">
+              {t('triggers.total-runs')}
+            </span>
+          </div>
+          <div className="mr-4 flex flex-col border-y-0 border-l-0 border-r border-solid border-ds-border-neutral-subtle-default pr-4">
+            <span
+              className={`text-label-sm font-medium ${getSuccessRateColorClass(successRate)}`}
+            >
+              {successRate !== null ? `${successRate}%` : '-'}
+            </span>
+            <span className="text-label-xs text-ds-text-neutral-muted-default">
+              {t('triggers.success-rate')}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Log Entries */}
+      <div className="scrollbar flex-1 overflow-y-auto">
+        {logs.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center py-8 text-ds-text-neutral-muted-default">
+            <Terminal className="mb-2 h-8 w-8 opacity-50" />
+            <span className="text-sm">{t('triggers.no-executions-yet')}</span>
+          </div>
+        ) : (
+          <div className="divide-y divide-ds-border-neutral-subtle-default">
+            {logs.map((log) => (
+              <div
+                key={log.id}
+                className={`flex items-start gap-2.5 px-4 py-2.5 transition-colors hover:bg-ds-bg-neutral-strong-hover ${getStatusColor(log.status)}`}
+              >
+                <div className="mt-0.5 flex-shrink-0">
+                  {getStatusIcon(log.status)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-label-xs text-ds-text-neutral-muted-default">
+                      {log.timestamp}
+                    </span>
+                    {log.duration && (
+                      <>
+                        <ArrowRight className="h-3 w-3 text-ds-text-neutral-muted-default" />
+                        <span className="text-label-xs text-ds-text-neutral-muted-default">
+                          {log.duration}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  <div className="mt-0.5 text-label-xs text-ds-text-neutral-default-default">
+                    {log.message}
+                  </div>
+                  {log.details && (
+                    <div className="mt-0.5 font-mono text-label-xs text-ds-text-neutral-muted-default">
+                      {log.details}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="flex flex-row items-center justify-start px-4 py-2">
+        <span className="text-label-xs text-ds-text-neutral-muted-default">
+          {t('triggers.last-run-label')}:{' '}
+          {formatRelativeTime(automation.last_executed_at)}
+        </span>
+      </div>
+    </div>
+  );
+}

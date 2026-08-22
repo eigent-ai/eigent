@@ -115,7 +115,7 @@ export default function Spaces() {
           (sum, project) => sum + (project.task_count || 0),
           0
         ),
-        triggerCount: hubForSpace.reduce(
+        automationCount: hubForSpace.reduce(
           (sum, project) => sum + (project.total_triggers || 0),
           0
         ),
@@ -188,7 +188,7 @@ export default function Spaces() {
                   isLegacy={isLegacySpace(space)}
                   projectCount={stats.projectCount}
                   taskCount={stats.taskCount}
-                  triggerCount={stats.triggerCount}
+                  automationCount={stats.automationCount}
                 />
               );
             })}
@@ -206,7 +206,7 @@ export default function Spaces() {
                   isLegacy={isLegacySpace(space)}
                   projectCount={stats.projectCount}
                   taskCount={stats.taskCount}
-                  triggerCount={stats.triggerCount}
+                  automationCount={stats.automationCount}
                 />
               );
             })}

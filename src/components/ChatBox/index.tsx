@@ -74,13 +74,12 @@ import type {
   BottomBoxRunControlVariant,
 } from './BottomBox/types';
 import { useEventNativeHumanControl } from './BottomBox/useEventNativeHumanControl';
-import { EventNativeProjectTimeline } from './EventNativeProjectTimeline';
+import { EventNativeWorkSessionTimeline } from './EventNativeWorkSessionTimeline';
 import {
   InterruptedRunBanner,
   InterruptedRunBannerAction,
 } from './InterruptedRunBanner';
 import { FloatingAction } from './MessageItem/FloatingAction';
-import { ProjectChatContainer } from './ProjectChatContainer';
 import {
   isEventNativeRunActionable,
   selectActionableInterruptedRun,
@@ -88,6 +87,7 @@ import {
   selectEventNativeActiveRunId,
 } from './runControlArbitration';
 import { PLAN_OVERLAY_SLOT_ID } from './TaskBox/PlanTaskBox';
+import { WorkSessionChatContainer } from './WorkSessionChatContainer';
 
 /** Minimum scroll padding under messages (matches previous ~8rem floor). */
 const CHAT_SCROLL_BOTTOM_MIN_PX = 128;
@@ -983,7 +983,7 @@ export default function ChatBox(): JSX.Element {
 
     const targetProjectId = projectStore.activeProjectId;
     if (!targetProjectId) {
-      toast.error('No active Project selected.');
+      toast.error('No active Session selected.');
       return;
     }
 
@@ -1079,7 +1079,7 @@ export default function ChatBox(): JSX.Element {
         achieved: false,
       }).catch((error) => {
         console.error('[handleSend] Failed to resume achieved Project:', error);
-        toast.error('Failed to persist resumed Project state.');
+        toast.error('Failed to save the resumed Session state.');
       });
     }
 
@@ -2127,7 +2127,7 @@ export default function ChatBox(): JSX.Element {
           {shouldRenderChatTimeline &&
           eventNativeTimelineEnabled &&
           activeProjectId ? (
-            <EventNativeProjectTimeline
+            <EventNativeWorkSessionTimeline
               chatStore={projectStore.getActiveChatStore() ?? undefined}
               detailLevel={chatTimelineDetailLevel}
               paused={composerTaskControlState === 'paused'}
@@ -2150,7 +2150,7 @@ export default function ChatBox(): JSX.Element {
               scrollBottomInsetPx={scrollBottomInsetPx}
             />
           ) : shouldRenderChatTimeline ? (
-            <ProjectChatContainer
+            <WorkSessionChatContainer
               scrollContainerRef={scrollContainerRef}
               scrollBottomInsetPx={scrollBottomInsetPx}
               onSkip={handleSkip}

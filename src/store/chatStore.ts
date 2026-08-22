@@ -2196,7 +2196,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         ? projectId
         : projectId || projectStore.activeProjectId;
       if (isLiveTask && !project_id) {
-        throw new Error('No active Project selected.');
+        throw new Error('No active Session selected.');
       }
       const startOptions = options || {};
       const project =
@@ -2204,7 +2204,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           ? projectStore.getProjectById(project_id)
           : null;
       if (isLiveTask && !project) {
-        throw new Error('Selected Project is not available.');
+        throw new Error('Selected Session is not available.');
       }
       const sessionModeForRequest =
         sessionMode || project?.mode || SessionMode.SINGLE_AGENT;
@@ -2679,7 +2679,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         } catch (error) {
           finishStartupFailure();
           throw new Error(
-            'Failed to load the model provider configured for a worker.',
+            'Failed to load the model provider configured for an agent.',
             { cause: error }
           );
         }
@@ -2698,7 +2698,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         if (missingWorker) {
           finishStartupFailure();
           throw new Error(
-            `The model provider configured for worker "${missingWorker.name}" is no longer available. Please edit the worker and select another model.`
+            `The model provider configured for agent "${missingWorker.name}" is no longer available. Please edit the agent and select another model.`
           );
         }
       }
@@ -4690,7 +4690,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             // Show toast notification
             toast.dismiss();
             toast.error(
-              `⚠️ Context Limit Exceeded\n\nThe conversation history is too long (${currentLength.toLocaleString()} / ${maxLength.toLocaleString()} characters).\n\nPlease create a new project to continue your work.`,
+              `⚠️ Context Limit Exceeded\n\nThe conversation history is too long (${currentLength.toLocaleString()} / ${maxLength.toLocaleString()} characters).\n\nPlease create a new session to continue your work.`,
               {
                 duration: Infinity,
                 closeButton: true,

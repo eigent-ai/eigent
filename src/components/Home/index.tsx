@@ -31,9 +31,9 @@ import {
   type HomeSortDirection,
   type HomeViewMode,
 } from './context';
+import { useHomeHubAutomations } from './hooks/useHomeHubAutomations';
 import { useHomeHubCounts } from './hooks/useHomeHubCounts';
-import { useHomeHubProjects } from './hooks/useHomeHubProjects';
-import { useHomeHubTriggers } from './hooks/useHomeHubTriggers';
+import { useHomeHubWorkSessions } from './hooks/useHomeHubWorkSessions';
 import { useHomeSection } from './hooks/useHomeSection';
 import { persistHomeViewMode, readStoredHomeViewMode } from './utils';
 
@@ -55,18 +55,23 @@ export default function HomeHubRoot({ children }: { children: ReactNode }) {
     projects,
     loading: projectsLoading,
     removeTaskFromProjects,
-    handleProjectRename,
-    handleProjectDelete: hubHandleProjectDelete,
-  } = useHomeHubProjects();
-  const { triggers, triggersLoading, reloadTriggers } = useHomeHubTriggers();
+    handleWorkSessionRename,
+    handleWorkSessionDelete: hubHandleWorkSessionDelete,
+  } = useHomeHubWorkSessions();
+  const { automations, automationsLoading, reloadAutomations } =
+    useHomeHubAutomations();
   const sectionCounts = useHomeHubCounts(projects);
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteCallback, setDeleteCallback] = useState<() => void>(() => {});
   const [curHistoryId, setCurHistoryId] = useState('');
-  const [deleteProjectModalOpen, setDeleteProjectModalOpen] = useState(false);
-  const [curProjectId, setCurProjectId] = useState('');
-  const [projectDeleteCallback, setProjectDeleteCallback] = useState<
+  const [deleteWorkSessionModalOpen, setDeleteWorkSessionModalOpen] =
+    useState(false);
+  const [
+    pendingDeleteWorkSessionProjectId,
+    setPendingDeleteWorkSessionProjectId,
+  ] = useState('');
+  const [workSessionDeleteCallback, setWorkSessionDeleteCallback] = useState<
     (() => Promise<void>) | null
   >(null);
 
@@ -111,26 +116,26 @@ export default function HomeHubRoot({ children }: { children: ReactNode }) {
     }
   };
 
-  const handleProjectDelete = (projectId: string) => {
-    hubHandleProjectDelete(projectId, (deleteCallbackFn) => {
-      setCurProjectId(projectId);
-      setProjectDeleteCallback(() => deleteCallbackFn);
-      setDeleteProjectModalOpen(true);
+  const handleWorkSessionDelete = (projectId: string) => {
+    hubHandleWorkSessionDelete(projectId, (deleteCallbackFn) => {
+      setPendingDeleteWorkSessionProjectId(projectId);
+      setWorkSessionDeleteCallback(() => deleteCallbackFn);
+      setDeleteWorkSessionModalOpen(true);
     });
   };
 
-  const confirmProjectDelete = async () => {
-    const projectId = curProjectId;
-    if (!projectId || !projectDeleteCallback) return;
+  const confirmWorkSessionDelete = async () => {
+    const projectId = pendingDeleteWorkSessionProjectId;
+    if (!projectId || !workSessionDeleteCallback) return;
 
     try {
-      await projectDeleteCallback();
+      await workSessionDeleteCallback();
     } catch (error) {
-      console.error('Failed to delete project:', error);
+      console.error('Failed to delete Work Session:', error);
     } finally {
-      setCurProjectId('');
-      setProjectDeleteCallback(null);
-      setDeleteProjectModalOpen(false);
+      setPendingDeleteWorkSessionProjectId('');
+      setWorkSessionDeleteCallback(null);
+      setDeleteWorkSessionModalOpen(false);
     }
   };
 
@@ -157,14 +162,14 @@ export default function HomeHubRoot({ children }: { children: ReactNode }) {
       setSortDirection,
       projects,
       projectsLoading,
-      triggers,
-      triggersLoading,
-      reloadTriggers,
+      automations,
+      automationsLoading,
+      reloadAutomations,
       chatTasks: chatStore?.tasks,
       onTaskDelete: handleDelete,
       onTaskShare: handleShare,
-      onProjectDelete: handleProjectDelete,
-      onProjectRename: handleProjectRename,
+      onWorkSessionDelete: handleWorkSessionDelete,
+      onWorkSessionRename: handleWorkSessionRename,
       activeTaskId: chatStore?.activeTaskId || undefined,
       onOngoingTaskPause: async (taskId: string, projectId: string) => {
         await handleTakeControl('pause', taskId, projectId);
@@ -184,9 +189,9 @@ export default function HomeHubRoot({ children }: { children: ReactNode }) {
       sortDirection,
       projects,
       projectsLoading,
-      triggers,
-      triggersLoading,
-      reloadTriggers,
+      automations,
+      automationsLoading,
+      reloadAutomations,
       chatStore?.tasks,
       chatStore?.activeTaskId,
       handleTakeControl,
@@ -206,13 +211,13 @@ export default function HomeHubRoot({ children }: { children: ReactNode }) {
       />
 
       <AlertDialog
-        isOpen={deleteProjectModalOpen}
-        onClose={() => setDeleteProjectModalOpen(false)}
-        onConfirm={confirmProjectDelete}
-        title={t('layout.delete-project') || 'Delete Project'}
+        isOpen={deleteWorkSessionModalOpen}
+        onClose={() => setDeleteWorkSessionModalOpen(false)}
+        onConfirm={confirmWorkSessionDelete}
+        title={t('layout.delete-project') || 'Delete Session'}
         message={
           t('layout.delete-project-confirmation') ||
-          'Are you sure you want to delete this project and all its tasks? This action cannot be undone.'
+          'Are you sure you want to delete this session and all its runs? This action cannot be undone.'
         }
         confirmText={t('layout.delete')}
         cancelText={t('layout.cancel')}

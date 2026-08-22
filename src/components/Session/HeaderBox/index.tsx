@@ -60,10 +60,10 @@ const TIMELINE_MODE_FALLBACK_LABELS: Record<ChatTimelineDetailLevel, string> = {
 };
 
 export interface HeaderBoxProps {
-  /** Total token count for the current project */
+  /** Total token count for the current Work Session. */
   totalTokens?: number;
-  /** Display-only identity for the active Project. */
-  projectName?: string | null;
+  /** Display-only identity for the active Work Session. */
+  workSessionName?: string | null;
   /** Optional extra class names for the outer container */
   className?: string;
   /** Reserve header height without controls or token count. */
@@ -72,7 +72,7 @@ export interface HeaderBoxProps {
 
 export function HeaderBox({
   totalTokens = 0,
-  projectName,
+  workSessionName,
   className,
   empty = false,
 }: HeaderBoxProps) {
@@ -124,7 +124,7 @@ export function HeaderBox({
 
   return (
     <div className={cn(CONTENT_HEADER_CLASS, 'justify-between', className)}>
-      {/* Left: return to workspace + display-only Project identity. */}
+      {/* Left: return to workspace + display-only Work Session identity. */}
       <div className="flex min-w-0 items-center gap-2">
         <TooltipSimple content={backTooltip} variant="instant" side="bottom">
           <Button
@@ -139,17 +139,17 @@ export function HeaderBox({
             <ArrowLeft className="h-4 w-4" aria-hidden />
           </Button>
         </TooltipSimple>
-        {projectName ? (
+        {workSessionName ? (
           <span
             className="min-w-0 max-w-[200px] truncate text-body-sm font-semibold text-ds-text-neutral-default-default"
-            title={projectName}
+            title={workSessionName}
           >
-            {projectName}
+            {workSessionName}
           </span>
         ) : null}
       </div>
 
-      {/* Right: project total token count + unified preview toggle */}
+      {/* Right: Work Session total token count + unified preview toggle */}
       <div className="flex items-center gap-1 text-ds-text-neutral-muted-default">
         <div className="flex items-center gap-1">
           <img src={tokenIcon} alt="" className="h-3.5 w-3.5" />
