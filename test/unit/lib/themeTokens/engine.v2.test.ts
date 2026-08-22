@@ -350,11 +350,34 @@ describe('themeTokens v2 engine', () => {
       }),
       DEFAULT_THEME_CATALOG
     );
-    expect(theme.tokens['bg.brand.default.default']).toBe('#000000');
+    expect(theme.tokens['bg.brand.default.default']).toBe('#1d1d1d');
     expect(theme.tokens['text.brand.inverse.default']).toBe('#ffffff');
+    expect(theme.cssVariables['--ds-ink-inverse']).toBe('#ffffff');
+    expect(theme.cssVariables['--ds-icon-inverse']).toBe('#ffffff');
+    expect(
+      contrastRatio(
+        theme.cssVariables['--ds-ink-inverse'] as string,
+        theme.tokens['bg.brand.strong.default'] as string
+      )
+    ).toBeGreaterThanOrEqual(4.5);
   });
 
-  it('keeps success inverse text as light as brand inverse on filled success (light)', () => {
+  it('uses dark inverse text on light Accent fills in dark mode', () => {
+    const theme = buildThemeV2(
+      createDefaultThemeContractV2('dark', {
+        themeId: 'eigent',
+        contrast: 50,
+      }),
+      DEFAULT_THEME_CATALOG
+    );
+    const inverse = theme.cssVariables['--ds-ink-inverse'] as string;
+    const fill = theme.tokens['bg.brand.strong.default'] as string;
+    expect(inverse).toBe(theme.cssVariables['--ds-accent-on-strong']);
+    expect(contrastRatio(inverse, fill)).toBeGreaterThanOrEqual(4.5);
+    expect(relativeLuminance(inverse)).toBeLessThan(relativeLuminance(fill));
+  });
+
+  it('pairs success inverse text to AA 4.5:1 on filled success (light)', () => {
     const theme = buildThemeV2(
       createDefaultThemeContractV2('light', {
         themeId: 'eigent',
@@ -366,8 +389,18 @@ describe('themeTokens v2 engine', () => {
     const successInverse = theme.tokens[
       'text.success.inverse.default'
     ] as string;
-    expect(contrastRatio(successInverse, successBg)).toBeGreaterThanOrEqual(3);
-    expect(successInverse).toBe('#ffffff');
+    const successOnStrong = theme.cssVariables[
+      '--ds-success-on-strong'
+    ] as string;
+    const successStrongFill = theme.tokens[
+      'bg.success.strong.default'
+    ] as string;
+    expect(contrastRatio(successInverse, successBg)).toBeGreaterThanOrEqual(
+      4.5
+    );
+    expect(
+      contrastRatio(successOnStrong, successStrongFill)
+    ).toBeGreaterThanOrEqual(4.5);
   });
 
   it('maps system status background emphases to fixed shade steps (light vs dark)', () => {
@@ -472,5 +505,75 @@ describe('themeTokens v2 engine', () => {
         expect(isHex(value) || isRgba(value)).toBe(true);
       }
     }
+  });
+
+  it('keeps the registered Eigent Accent seed as the default fill', () => {
+    const light = buildThemeV2(
+      createDefaultThemeContractV2('light', {
+        themeId: 'eigent',
+        contrast: 50,
+      }),
+      DEFAULT_THEME_CATALOG
+    );
+    const dark = buildThemeV2(
+      createDefaultThemeContractV2('dark', {
+        themeId: 'eigent',
+        contrast: 50,
+      }),
+      DEFAULT_THEME_CATALOG
+    );
+    expect(light.tokens['bg.brand.default.default']).toBe('#1d1d1d');
+    expect(dark.tokens['bg.brand.default.default']).toBe('#ede1db');
+    expect(light.cssVariables['--ds-accent-default-default']).toBe('#1d1d1d');
+    expect(light.cssVariables['--ds-accent-on-strong']).toMatch(/^#/);
+    expect(light.cssVariables['--ds-success-on-strong']).toMatch(/^#/);
+    expect(light.cssVariables['--ds-error-on-strong']).toMatch(/^#/);
+    expect(light.diagnostics.seedAdmission).toEqual([]);
+    expect(dark.diagnostics.seedAdmission).toEqual([]);
+  });
+
+  it('separates Whale dark mode from its light seeds', () => {
+    const light = buildThemeV2(
+      createDefaultThemeContractV2('light', { themeId: 'whale', contrast: 50 })
+    );
+    const dark = buildThemeV2(
+      createDefaultThemeContractV2('dark', { themeId: 'whale', contrast: 50 })
+    );
+    expect(
+      relativeLuminance(light.tokens['bg.neutral.subtle.default'] as string)
+    ).toBeGreaterThan(
+      relativeLuminance(dark.tokens['bg.neutral.subtle.default'] as string)
+    );
+    expect(dark.diagnostics.seedAdmission).toEqual([]);
+  });
+
+  it('rejects a collapsed Accent seed at the admission gate', () => {
+    const catalog: ThemeCatalogV2 = {
+      ...DEFAULT_THEME_CATALOG,
+      light: {
+        ...DEFAULT_THEME_CATALOG.light,
+        collapsed: {
+          id: 'collapsed',
+          mode: 'light',
+          seed: {
+            accent: '#000000',
+            background: '#faf7f6',
+            ink: '#1d1d1d',
+          },
+        },
+      },
+    };
+    const theme = buildThemeV2(
+      createDefaultThemeContractV2('light', {
+        themeId: 'collapsed',
+        contrast: 50,
+      }),
+      catalog
+    );
+    expect(
+      theme.diagnostics.seedAdmission.some(
+        (item) => item.code === 'hover-collapse'
+      )
+    ).toBe(true);
   });
 });

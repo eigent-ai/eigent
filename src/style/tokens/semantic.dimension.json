@@ -1,0 +1,49 @@
+{
+  "$description": "Semantic dimension aliases. Values may reference only reference tokens.",
+  "space": {
+    "control-gap": "{ref.space.8}",
+    "control-inline": "{ref.space.12}",
+    "card-inset": "{ref.space.24}",
+    "panel-inset": "{ref.space.16}",
+    "stack-related": "{ref.space.8}",
+    "stack-section": "{ref.space.32}",
+    "page-gutter": "{ref.space.48}"
+  },
+  "radius": {
+    "primary-action": "{ref.radius.full}",
+    "icon-action": "{ref.radius.full}",
+    "field": "{ref.radius.12}",
+    "compact-control": "{ref.radius.8}",
+    "menu-row": "{ref.radius.12}",
+    "card": "{ref.radius.16}",
+    "panel": "{ref.radius.16}",
+    "popover": "{ref.radius.16}",
+    "dialog": "{ref.radius.24}",
+    "message": "{ref.radius.16}",
+    "message-tail": "{ref.radius.4}",
+    "media": "{ref.radius.12}"
+  },
+  "border": {
+    "hairline": "{ref.border.hairline}",
+    "thin": "{ref.border.thin}",
+    "strong": "{ref.border.strong}",
+    "accent": "{ref.border.accent}"
+  },
+  "controlHeight": {
+    "2xs": "{ref.controlHeight.2xs}",
+    "xs": "{ref.controlHeight.xs}",
+    "sm": "{ref.controlHeight.sm}",
+    "md": "{ref.controlHeight.md}",
+    "lg": "{ref.controlHeight.lg}",
+    "xl": "{ref.controlHeight.xl}"
+  },
+  "layout": {
+    "row-header": "{ref.layoutRow.header}",
+    "row-header-prominent": "{ref.layoutRow.header-prominent}"
+  },
+  "icon": {
+    "main": "{ref.iconSize.md}",
+    "main-compact": "{ref.iconSize.xs}",
+    "detailed": "{ref.iconSize.xl}"
+  }
+}

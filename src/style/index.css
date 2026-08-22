@@ -4,6 +4,7 @@
 @import 'tailwindcss/utilities.css' layer(utilities) source(none);
 @import 'shadow-plugin';
 @import './token.css';
+@import './generated/tokens.css';
 
 @config '../../tailwind.config.js';
 @source '../../index.html';
@@ -11,14 +12,15 @@
 @source '../../.storybook';
 @source not inline('container');
 
-/* Tailwind 4 does not consume `safelist` from legacy JavaScript configs. */
-@source inline('{hover:,focus:,active:,disabled:,focus-visible:,group-hover:,dark:,}bg-ds-bg-neutral-{subtle,muted,default,strong,inverse}-{default,hover,active,selected,focus,disabled}');
-@source inline('{hover:,focus:,active:,disabled:,focus-visible:,group-hover:,dark:,placeholder:,}text-ds-text-neutral-{subtle,muted,default,strong,inverse}-{default,hover,active,selected,focus,disabled}');
-@source inline('{hover:,focus:,active:,disabled:,focus-visible:,group-hover:,dark:,}text-ds-icon-neutral-{subtle,muted,default,strong,inverse}-{default,hover,active,selected,focus,disabled}');
-@source inline('{hover:,focus:,active:,disabled:,focus-visible:,group-hover:,dark:,}border-ds-border-neutral-{subtle,muted,default,strong,inverse}-{default,hover,active,selected,focus,disabled}');
-@source inline('{hover:,focus:,active:,disabled:,focus-visible:,group-hover:,dark:,}ring-ds-ring-neutral-{subtle,muted,default,strong,inverse}-{default,hover,active,selected,focus,disabled}');
-@source inline('{hover:,focus:,active:,disabled:,focus-visible:,group-hover:,dark:,}divide-ds-border-neutral-{subtle,muted,default,strong,inverse}-{default,hover,active,selected,focus,disabled}');
-@source inline('{hover:,focus:,active:,disabled:,focus-visible:,group-hover:,dark:,}outline-ds-border-neutral-{subtle,muted,default,strong,inverse}-{default,hover,active,selected,focus,disabled}');
+/* Public Accent / Neutral / Ink / Hairline / Ring groups. Engine still emits
+   compatibility axes; product call sites must use these public names. */
+@source inline('{hover:,focus:,active:,disabled:,focus-visible:,group-hover:,dark:,}bg-ds-neutral-{subtle,muted,default,strong}-{default,hover,selected,disabled}');
+@source inline('{hover:,focus:,active:,disabled:,focus-visible:,group-hover:,dark:,placeholder:,}text-ds-ink-{subtle,muted,default,strong}-{default,hover,selected,disabled}');
+@source inline('{hover:,focus:,active:,disabled:,focus-visible:,group-hover:,dark:,}border-ds-hairline-{subtle,muted,default,strong}-{default,hover,selected,disabled}');
+@source inline('{hover:,focus:,active:,disabled:,focus-visible:,group-hover:,dark:,}bg-ds-accent-{subtle,muted,default,strong}-{default,hover,selected,disabled}');
+@source inline('{hover:,focus:,active:,disabled:,focus-visible:,group-hover:,dark:,}divide-ds-hairline-{subtle,muted,default,strong}-{default,hover,selected,disabled}');
+@source inline('{hover:,focus-visible:,focus:,focus-within:,}ring-ds-ring-focus');
+@source inline('text-ds-ink-inverse text-ds-icon-inverse');
 
 /* Palatino LT — welcome headline on History; files in /public/fonts/palatino-lt/ */
 @font-face {
@@ -271,7 +273,7 @@ body {
 }
 
 .custom-resizable-handle:hover {
-  background: var(--ds-border-brand-default-focus);
+  background: var(--ds-accent-default-hover);
   width: 2px;
   height: 40px;
   transform: none;
@@ -294,38 +296,28 @@ body {
   height: 100vh;
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
+/*
+ * Vite template leftovers. Keep them in `@layer base` so Tailwind utilities
+ * (and component `!` recipes) win in Electron. Unlayered `button { padding }`
+ * and `h1 { font-size }` otherwise crush every control and heading.
+ */
+@layer base {
+  h1 {
+    font-size: inherit;
+    line-height: inherit;
+  }
 
-button {
-  border: none;
-  padding: 0em 0.1em;
-  font-size: 1em;
-  cursor: pointer;
-}
+  button {
+    border-style: none;
+    border-width: 0;
+    padding: 0;
+    font-size: inherit;
+    cursor: pointer;
+  }
 
-input {
-  border-color: transparent;
-}
-
-code {
-  background-color: #1a1a1a;
-  padding: 2px 4px;
-  margin: 0 4px;
-  border-radius: 4px;
-}
-
-/* .card {
-  padding: 2em;
-} */
-
-#app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  input {
+    border-color: transparent;
+  }
 }
 
 .no-drag {
@@ -338,20 +330,20 @@ code {
 
 @layer base {
   :root {
-    --spacing-xs: 4px;
-    --spacing-sm: 8px;
-    --spacing-md: 16px;
-    --spacing-lg: 32px;
-    --spacing-xl: 64px;
+    --spacing-xs: var(--ds-ref-space-4);
+    --spacing-sm: var(--ds-ref-space-8);
+    --spacing-md: var(--ds-ref-space-16);
+    --spacing-lg: var(--ds-ref-space-32);
+    --spacing-xl: var(--ds-ref-space-64);
     --spacing-multi-value: 8 64;
     /* Tailwind spacing-2 / `px-2` — always-visible scrollbar track. */
     --scrollbar-size: 0.5rem;
-    --borderRadius-sm: 4px;
-    --borderRadius-lg: 8px;
-    --borderRadius-xl: 16px;
+    --borderRadius-sm: var(--ds-ref-radius-4);
+    --borderRadius-lg: var(--ds-ref-radius-8);
+    --borderRadius-xl: var(--ds-ref-radius-16);
     --borderRadius-multi-value: 4 8;
     --fontSize-xs: 10px;
-    --fontSize-sm: 13px;
+    --fontSize-sm: var(--ds-text-base-size);
     --fontSize-base: 15px;
     --fontSize-md: 16px;
     --fontSize-lg: 18px;

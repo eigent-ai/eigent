@@ -347,6 +347,18 @@ export function verifyThemeEngine(options: VerifyOptions = {}): VerifyReport {
           }
         }
 
+        if (contrast === 43) {
+          for (const admission of resolved.diagnostics.seedAdmission) {
+            pushFinding(
+              findings,
+              base,
+              'error',
+              `seed-admission-${admission.code}`,
+              admission.message
+            );
+          }
+        }
+
         // Auxiliary (undeclared) pairings — drift detector.
         for (const pairing of auxPairings) {
           const bg = resolved.tokens[pairing.bg];

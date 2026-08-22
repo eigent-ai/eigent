@@ -18,21 +18,37 @@
   overflow-wrap: anywhere;
   color: inherit;
   background-color: inherit;
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica,
-    Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji' !important;
-  font-size: var(--fontSize-sm, 13px);
-  line-height: var(--lineHeight-14, 20px);
+  font-family: var(--ds-font-text);
+  font-size: var(--ds-text-base-size);
+  line-height: var(--ds-text-base-line);
 }
 
 .markdown-profile-compact {
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--ds-text-base-size);
+  line-height: var(--ds-text-base-line);
+}
+
+.markdown-profile-compact p,
+.markdown-profile-compact li,
+.markdown-profile-compact blockquote {
+  margin-block: 0.5rem;
+}
+
+.markdown-profile-standard p,
+.markdown-profile-standard li,
+.markdown-profile-standard blockquote {
+  margin-block: 0.75rem;
 }
 
 .markdown-profile-document {
-  font-size: 15px;
-  line-height: 24px;
+  font-size: var(--ds-text-body-large-size);
+  line-height: var(--ds-text-body-large-line);
+}
+
+.markdown-profile-document p,
+.markdown-profile-document li,
+.markdown-profile-document blockquote {
+  margin-block: 1rem;
 }
 
 .markdown-body > :first-child {
@@ -56,7 +72,8 @@
   margin: 1em 0 0.5em;
   padding-bottom: 0;
   border-bottom: 0;
-  font-size: 1.5em;
+  font-size: var(--ds-text-page-size);
+  line-height: var(--ds-text-page-line);
   font-weight: 700;
 }
 
@@ -64,28 +81,38 @@
   margin: 1em 0 0.5em;
   padding-bottom: 0;
   border-bottom: 0;
-  font-size: 1.25em;
+  font-size: var(--ds-text-section-size);
+  line-height: var(--ds-text-section-line);
   font-weight: 600;
 }
 
 .markdown-body h3 {
   margin: 1em 0 0.5em;
-  font-size: 1.1em;
+  font-size: var(--ds-text-title-size);
+  line-height: var(--ds-text-title-line);
   font-weight: 600;
+}
+
+.markdown-profile-compact h1,
+.markdown-profile-compact h2,
+.markdown-profile-compact h3 {
+  margin: 0.5em 0 0.35em;
 }
 
 .markdown-profile-document h1,
 .markdown-profile-document h2 {
   padding-bottom: 0.3em;
-  border-bottom: 1px solid #d1d9e0;
+  border-bottom: var(--ds-border-thin) solid var(--ds-hairline-default-default);
 }
 
 .markdown-profile-document h1 {
-  font-size: 2em;
+  font-size: var(--ds-text-display-size);
+  line-height: var(--ds-text-display-line);
 }
 
 .markdown-profile-document h2 {
-  font-size: 1.5em;
+  font-size: var(--ds-text-page-size);
+  line-height: var(--ds-text-page-line);
 }
 
 .markdown-body p {
@@ -97,12 +124,14 @@
 /* Inline code */
 .markdown-body code {
   padding: 0.2em 0.4em;
-  border-radius: 4px;
-  background-color: rgba(175, 184, 193, 0.2);
-  font-family:
-    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono',
-    monospace;
-  font-size: 85%;
+  border-radius: var(--ds-radius-compact-control);
+  background-color: color-mix(
+    in srgb,
+    var(--ds-neutral-muted-default) 40%,
+    transparent
+  );
+  font-family: var(--ds-font-code);
+  font-size: var(--ds-code-base-size);
 }
 
 /* Fenced code uses one shell in chat, summaries, workflow details, and files. */

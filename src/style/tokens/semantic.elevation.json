@@ -1,0 +1,14 @@
+{
+  "$description": "Semantic elevation roles. Layer values are reviewed recipes pending full shadow-plugin calibration; product code must consume these roles, not stock Tailwind shadows.",
+  "roles": {
+    "none": "none",
+    "control": "inset 0 1px 0 0 rgb(255 255 255 / 0.33), 0 3px 4px -1px rgb(0 0 0 / 0.25), 0 0 0 1px rgb(212 212 212 / 0.25)",
+    "control-hover": "inset 0 1px 0 0 rgb(255 255 255 / 0.4), 0 4px 8px -1px rgb(0 0 0 / 0.28), 0 0 0 1px rgb(212 212 212 / 0.28)",
+    "control-pressed": "inset 0 1px 2px rgb(0 0 0 / 0.2), 0 0 0 1px rgb(212 212 212 / 0.2)",
+    "card": "0 1px 2px rgb(29 33 41 / 0.06), 0 8px 16px -8px rgb(29 33 41 / 0.1)",
+    "floating": "0 8px 20px -2px rgb(29 33 41 / 0.1), 0 16px 32px -12px rgb(29 33 41 / 0.12)",
+    "popover": "0 8px 20px -2px rgb(29 33 41 / 0.1), 0 32px 48px -12px rgb(29 33 41 / 0.12)",
+    "dialog": "0 8px 20px -2px rgb(29 33 41 / 0.1), 0 32px 48px -12px rgb(29 33 41 / 0.12), 0 48px 64px -16px rgb(65 74 92 / 0.08)",
+    "drag": "0 16px 32px -8px rgb(29 33 41 / 0.18), 0 48px 64px -16px rgb(29 33 41 / 0.16)"
+  }
+}

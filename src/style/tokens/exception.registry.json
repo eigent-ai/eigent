@@ -1,0 +1,89 @@
+{
+  "$description": "Approved runtime and platform exceptions. An exception is not permission to use an arbitrary value elsewhere.",
+  "exceptions": [
+    {
+      "id": "app-shell-sidebar",
+      "owner": "app-shell",
+      "reason": "Sidebar width, column gap, inset, and Framer Motion width math stay coupled to layout measurement.",
+      "platform": "all",
+      "removal": "none"
+    },
+    {
+      "id": "content-header-height",
+      "owner": "app-shell",
+      "reason": "Canonical content-header, panel headers, and file-tree counterparts use layout-row-header (40px). List rows use control-xl (40px), never 44px.",
+      "platform": "all",
+      "removal": "none"
+    },
+    {
+      "id": "chat-scroll-anchor",
+      "owner": "chat",
+      "reason": "Chat scroll-anchor gaps and spacer calculations.",
+      "platform": "all",
+      "removal": "none"
+    },
+    {
+      "id": "electron-guest-rect",
+      "owner": "preview",
+      "reason": "Electron/browser guest rectangle, radius, off-screen parking, and native clipping.",
+      "platform": "electron",
+      "removal": "none"
+    },
+    {
+      "id": "split-pane-geometry",
+      "owner": "workspace",
+      "reason": "Split-pane minimum widths, resize hit areas, and measured drag geometry.",
+      "platform": "all",
+      "removal": "none"
+    },
+    {
+      "id": "radix-collision",
+      "owner": "primitives",
+      "reason": "Radix trigger width, available height, transform origin, and collision values.",
+      "platform": "all",
+      "removal": "none"
+    },
+    {
+      "id": "third-party-viewports",
+      "owner": "preview",
+      "reason": "Monaco, xterm, embedded browser, and other third-party viewport requirements.",
+      "platform": "all",
+      "removal": "none"
+    },
+    {
+      "id": "window-controls",
+      "owner": "app-shell",
+      "reason": "Window controls, title-bar drag regions, platform traffic-light insets, and hit areas.",
+      "platform": "electron",
+      "removal": "none"
+    },
+    {
+      "id": "scrollbar-geometry",
+      "owner": "app-shell",
+      "reason": "Scrollbar track size is coupled to overlay vs always-visible platform behavior.",
+      "platform": "all",
+      "removal": "none"
+    },
+    {
+      "id": "media-frames",
+      "owner": "preview",
+      "reason": "Charts, canvases, media aspect ratios, screenshots, thumbnails, and preview scaling.",
+      "platform": "all",
+      "removal": "none"
+    },
+    {
+      "id": "animation-measured-values",
+      "owner": "motion",
+      "reason": "Animation values such as height: auto, measured underline positions, and off-screen transforms.",
+      "platform": "all",
+      "removal": "none"
+    },
+    {
+      "id": "markdown-document",
+      "owner": "markdown",
+      "reason": "Markdown document details and sanitized third-party content.",
+      "platform": "all",
+      "removal": "none"
+    }
+  ]
+}
