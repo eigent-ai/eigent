@@ -126,14 +126,14 @@ function BentoCard({
   const { t } = useTranslation();
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2 rounded-2xl border border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default p-3">
+    <div className="flex h-full min-h-0 flex-col gap-2 rounded-2xl border border-x border-y border-ds-hairline-subtle-default bg-ds-neutral-default-default p-3">
       {/* Header */}
       <div className="flex min-w-0 items-center gap-2">
         <MonitorSmartphone
-          className="h-4 w-4 shrink-0 text-ds-text-neutral-muted-default"
+          className="h-4 w-4 shrink-0 text-ds-ink-muted-default"
           aria-hidden
         />
-        <span className="min-w-0 flex-1 truncate text-body-sm font-semibold text-ds-text-neutral-default-default">
+        <span className="min-w-0 flex-1 truncate text-ds-text-base font-semibold text-ds-ink-default-default">
           {session.title}
         </span>
         <Button
@@ -167,7 +167,7 @@ function BentoCard({
       </div>
 
       {/* Log */}
-      <div className="min-h-0 flex-1 border-t border-ds-border-neutral-subtle-default pt-2">
+      <div className="min-h-0 flex-1 border-x-0 border-t border-b-0 border-ds-hairline-subtle-default pt-2">
         <LogPanel logs={logs} />
       </div>
     </div>
@@ -203,11 +203,11 @@ function ChannelRow({
   return (
     <div
       className={cn(
-        'group/row flex h-[44px] w-full cursor-default select-none items-center gap-3 rounded-xl',
-        'border border-transparent bg-ds-bg-neutral-default-default px-3',
+        'group/row flex h-ds-control-xl w-full cursor-default items-center gap-3 rounded-xl select-none',
+        'border border-x border-y border-transparent bg-ds-neutral-default-default px-3',
         'transition-colors duration-150',
-        !isDisabled && 'hover:border-ds-border-neutral-subtle-default',
-        hasActiveSessions && 'border-ds-border-neutral-subtle-default',
+        !isDisabled && 'hover:border-ds-hairline-subtle-default',
+        hasActiveSessions && 'border-ds-hairline-subtle-default',
         isDisabled && 'cursor-not-allowed opacity-50'
       )}
     >
@@ -222,26 +222,26 @@ function ChannelRow({
           />
         )}
       </div>
-      <span className="flex-1 truncate text-body-sm font-medium text-ds-text-neutral-default-default">
+      <span className="flex-1 truncate text-ds-text-base font-medium text-ds-ink-default-default">
         {name}
       </span>
 
       {/* Right slot — always the same reserved width so all rows stay the same height */}
       <div className="flex h-6 w-[72px] shrink-0 items-center justify-end">
         {comingSoon && (
-          <span className="shrink-0 rounded-full bg-ds-bg-neutral-muted-default px-2 py-0.5 text-label-xs text-ds-text-neutral-muted-default">
+          <span className="shrink-0 rounded-full bg-ds-neutral-muted-default px-2 py-0.5 text-ds-text-meta text-ds-ink-muted-default">
             {t('layout.dispatch-coming-soon', { defaultValue: 'Coming soon' })}
           </span>
         )}
 
         {isDisabled && !comingSoon && disabledLabel && (
-          <span className="shrink-0 rounded-full bg-ds-bg-neutral-muted-default px-2 py-0.5 text-label-xs text-ds-text-neutral-muted-default">
+          <span className="shrink-0 rounded-full bg-ds-neutral-muted-default px-2 py-0.5 text-ds-text-meta text-ds-ink-muted-default">
             {disabledLabel}
           </span>
         )}
 
         {!isDisabled && !comingSoon && hasActiveSessions && (
-          <span className="shrink-0 rounded-full bg-ds-bg-success-subtle-default px-2 py-0.5 text-label-xs text-ds-text-success-strong-default">
+          <span className="shrink-0 rounded-full bg-ds-bg-success-subtle-default px-2 py-0.5 text-ds-text-meta text-ds-text-success-strong-default">
             {t('layout.dispatch-connected', { defaultValue: 'Connected' })}
           </span>
         )}
@@ -288,7 +288,7 @@ function LogPanel({ logs }: { logs: RemoteControlLogEntry[] }) {
   if (logs.length === 0) {
     return (
       <div className="flex h-full items-center justify-center">
-        <span className="text-label-xs text-ds-text-neutral-muted-default">
+        <span className="text-ds-text-meta text-ds-ink-muted-default">
           {t('layout.dispatch-no-logs', { defaultValue: 'No activity yet' })}
         </span>
       </div>
@@ -300,12 +300,12 @@ function LogPanel({ logs }: { logs: RemoteControlLogEntry[] }) {
       {[...logs].reverse().map((entry) => (
         <div
           key={entry.id}
-          className="flex min-w-0 items-center gap-3 px-1 py-1.5 text-label-xs"
+          className="flex min-w-0 items-center gap-3 px-1 py-1.5 text-ds-text-meta"
         >
-          <span className="w-[72px] shrink-0 tabular-nums text-ds-text-neutral-muted-default">
+          <span className="w-[72px] shrink-0 text-ds-ink-muted-default tabular-nums">
             {formatLogTime(entry.time)}
           </span>
-          <span className="min-w-0 flex-1 truncate text-ds-text-neutral-default-default">
+          <span className="min-w-0 flex-1 truncate text-ds-ink-default-default">
             {entry.name}
           </span>
           <span
@@ -572,7 +572,7 @@ export function WorkspaceDispatch() {
         })}
         icon={
           <MonitorSmartphone
-            className="h-4 w-4 shrink-0 text-ds-text-neutral-muted-default"
+            className="h-4 w-4 shrink-0 text-ds-ink-muted-default"
             aria-hidden
           />
         }
@@ -585,7 +585,7 @@ export function WorkspaceDispatch() {
         onStart={() => void handleCreateRemoteControl()}
       />
 
-      <div className="mx-1 border-t border-ds-border-neutral-subtle-default" />
+      <div className="mx-1 border-x-0 border-t border-b-0 border-ds-hairline-subtle-default" />
 
       <ChannelRow
         name={t('layout.channels-telegram', { defaultValue: 'Telegram' })}
@@ -660,7 +660,7 @@ export function WorkspaceDispatch() {
               {/* Right panel — same width as session side panel */}
               <motion.div
                 className={cn(
-                  'flex shrink-0 flex-col gap-1 overflow-y-auto border-l border-ds-border-neutral-subtle-default p-3',
+                  'flex shrink-0 flex-col gap-1 overflow-y-auto border-y-0 border-r-0 border-l border-ds-hairline-subtle-default p-3',
                   RIGHT_RAIL_CONTENT_WIDTH_CLASS
                 )}
                 initial={{ x: 40, opacity: 0 }}

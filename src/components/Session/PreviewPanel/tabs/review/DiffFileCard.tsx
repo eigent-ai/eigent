@@ -372,10 +372,10 @@ export function DiffFileCard({
       ref={containerRef}
       data-review-id={file.id}
       className={cn(
-        'overflow-hidden rounded-[6px] border border-solid bg-ds-bg-neutral-default-default',
+        'overflow-hidden rounded-[6px] border border-x border-y border-solid bg-ds-neutral-default-default',
         selected
-          ? 'border-ds-border-neutral-strong-default'
-          : 'border-ds-border-neutral-subtle-default'
+          ? 'border-ds-hairline-strong-default'
+          : 'border-ds-hairline-subtle-default'
       )}
     >
       <button
@@ -383,11 +383,11 @@ export function DiffFileCard({
         onClick={() => setCollapsed((value) => !value)}
         aria-expanded={!collapsed}
         aria-controls={contentId}
-        className="sticky top-0 z-10 flex h-10 w-full cursor-pointer items-center gap-2 border-0 border-b border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default px-3 text-left"
+        className="sticky top-0 z-10 flex h-10 w-full cursor-pointer items-center gap-2 border-0 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default px-3 text-left"
       >
         <ChevronRight
           className={cn(
-            'h-3.5 w-3.5 shrink-0 text-ds-icon-neutral-muted-default transition-transform duration-200 ease-out motion-reduce:transition-none',
+            'h-3.5 w-3.5 shrink-0 text-ds-ink-muted-default transition-transform duration-200 ease-out motion-reduce:transition-none',
             !collapsed && 'rotate-90'
           )}
           aria-hidden
@@ -398,10 +398,8 @@ export function DiffFileCard({
         >
           {status.letter}
         </span>
-        <span className="min-w-0 flex-1 truncate font-code text-xs font-medium text-ds-text-neutral-default-default">
-          <span className="font-code text-ds-text-neutral-muted-default">
-            {dirName}
-          </span>
+        <span className="min-w-0 flex-1 truncate font-code text-xs font-medium text-ds-ink-default-default">
+          <span className="font-code text-ds-ink-muted-default">{dirName}</span>
           {baseName}
         </span>
         {counts && (
@@ -418,9 +416,9 @@ export function DiffFileCard({
 
       <ReviewAccordionContent open={!collapsed} id={contentId}>
         {notice ? (
-          <div className="flex items-center gap-2 px-3 py-4 text-xs text-ds-text-neutral-muted-default">
+          <div className="flex items-center gap-2 px-3 py-4 text-xs text-ds-ink-muted-default">
             <FileWarning
-              className="h-4 w-4 shrink-0 text-ds-icon-neutral-muted-default"
+              className="h-4 w-4 shrink-0 text-ds-ink-muted-default"
               aria-hidden
             />
             {notice}
@@ -428,9 +426,9 @@ export function DiffFileCard({
         ) : sides ? (
           <>
             {banner ? (
-              <div className="flex items-center gap-2 border-0 border-b border-solid border-ds-border-neutral-subtle-default px-3 py-2 text-xs text-ds-text-neutral-muted-default">
+              <div className="flex items-center gap-2 border-0 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-3 py-2 text-xs text-ds-ink-muted-default">
                 <FileWarning
-                  className="h-3.5 w-3.5 shrink-0 text-ds-icon-neutral-muted-default"
+                  className="h-3.5 w-3.5 shrink-0 text-ds-ink-muted-default"
                   aria-hidden
                 />
                 {banner}
@@ -458,7 +456,7 @@ export function DiffFileCard({
                   options={WHOLE_FILE_OPTIONS}
                   onMount={handleWholeFileMount}
                   loading={
-                    <div className="h-full w-full animate-pulse bg-ds-bg-neutral-subtle-default" />
+                    <div className="h-full w-full animate-pulse bg-ds-neutral-subtle-default" />
                   }
                 />
               ) : (
@@ -472,14 +470,14 @@ export function DiffFileCard({
                   options={DIFF_OPTIONS}
                   onMount={handleMount}
                   loading={
-                    <div className="h-full w-full animate-pulse bg-ds-bg-neutral-subtle-default" />
+                    <div className="h-full w-full animate-pulse bg-ds-neutral-subtle-default" />
                   }
                 />
               )}
             </div>
           </>
         ) : (
-          <div className="h-24 w-full animate-pulse bg-ds-bg-neutral-subtle-default" />
+          <div className="h-24 w-full animate-pulse bg-ds-neutral-subtle-default" />
         )}
       </ReviewAccordionContent>
     </div>

@@ -93,7 +93,7 @@ const SESSION_NAV_LEAD_BY_KIND: Record<
 > = {
   error: {
     Icon: CircleSlash,
-    iconClassName: '!text-ds-icon-caution-default-default',
+    iconClassName: '!text-ds-icon-error-default-default',
   },
   warning: {
     Icon: AlertTriangle,
@@ -122,7 +122,7 @@ const SESSION_NAV_LEAD_BY_KIND: Record<
   },
   idle: {
     Icon: MessageCircle,
-    iconClassName: '!text-ds-icon-neutral-default-default',
+    iconClassName: '!text-ds-ink-default-default',
   },
 };
 

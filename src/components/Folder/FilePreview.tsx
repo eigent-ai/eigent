@@ -47,7 +47,7 @@ export interface FilePreviewProps {
  */
 export function FilePreview({
   file,
-  surfaceClassName = 'bg-ds-bg-neutral-default-default',
+  surfaceClassName = 'bg-ds-neutral-default-default',
   embedded = false,
   projectFiles = [],
   onClose,
@@ -212,8 +212,8 @@ export function FilePreview({
       onDownloadFile={handleDownloadFile}
       onToggleSourceCode={handleToggleSourceCode}
       emptyState={
-        <div className="flex h-full w-full flex-1 flex-col items-center justify-center gap-3 px-6 text-center text-ds-text-neutral-muted-default">
-          <FileText className="h-12 w-12 text-ds-icon-neutral-muted-default" />
+        <div className="flex h-full w-full flex-1 flex-col items-center justify-center gap-3 px-6 text-center text-ds-ink-muted-default">
+          <FileText className="h-12 w-12 text-ds-ink-muted-default" />
           <p className="text-sm">
             {t('chat.no-file-selected', {
               defaultValue: 'No file selected.',
@@ -242,7 +242,7 @@ export function FilePreview({
             aria-label={t('common.close', { defaultValue: 'Close' })}
             onClick={onClose}
           >
-            <X className="h-4 w-4 text-ds-icon-neutral-muted-default" />
+            <X className="h-4 w-4 text-ds-ink-muted-default" />
           </Button>
         ) : undefined
       }

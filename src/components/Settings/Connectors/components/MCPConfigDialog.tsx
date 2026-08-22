@@ -122,7 +122,7 @@ export default function MCPConfigDialog({
                 )}
               />
 
-              <div className="mb-1 block text-label-sm font-normal">
+              <div className="mb-1 block text-ds-text-base font-normal">
                 {t('connectors.env-key-value')}
               </div>
               {Object.entries(form.env).map(([k, v], idx) => (
@@ -158,7 +158,7 @@ export default function MCPConfigDialog({
             </>
           )}
           {errorMsg && (
-            <div className="mb-2 text-label-md text-ds-text-status-error-strong-default">
+            <div className="mb-2 text-ds-text-body-large text-ds-text-status-error-strong-default">
               {errorMsg}
             </div>
           )}

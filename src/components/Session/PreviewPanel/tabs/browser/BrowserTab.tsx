@@ -236,12 +236,12 @@ export function BrowserTab({
             })}
             aria-invalid={Boolean(addressError)}
             className={cn(
-              'placeholder:text-input-label-default/10 h-[28px] w-full min-w-0 rounded-xl border-none bg-ds-bg-neutral-subtle-default px-3 text-body-sm text-ds-text-neutral-default-default outline-none transition-colors',
-              'hover:bg-ds-bg-neutral-subtle-default hover:ring-1 hover:ring-ds-ring-neutral-strong-default hover:ring-offset-0',
-              'focus:bg-ds-bg-neutral-subtle-default focus:ring-1 focus:ring-ds-ring-brand-default-focus focus:ring-offset-0',
+              'h-[28px] w-full min-w-0 rounded-xl border-x-0 border-y-0 border-none bg-ds-neutral-subtle-default px-3 text-ds-text-base text-ds-ink-default-default transition-colors outline-none placeholder:text-ds-ink-muted-default',
+              'hover:bg-ds-neutral-subtle-default hover:ring-1 hover:ring-ds-hairline-strong-default hover:ring-offset-0',
+              'focus:bg-ds-neutral-subtle-default focus:ring-1 focus:ring-ds-ring-focus focus:ring-offset-0',
               addressError
                 ? 'border-ds-border-status-error-default-default'
-                : 'border-ds-border-neutral-default-default'
+                : 'border-ds-hairline-default-default'
             )}
           />
         </form>
@@ -274,16 +274,16 @@ export function BrowserTab({
           PreviewBrowserLayer via the published viewport rect. */}
       <div
         ref={containerRef}
-        className="relative min-h-0 flex-1 overflow-hidden bg-ds-bg-neutral-strong-default"
+        className="relative min-h-0 flex-1 overflow-hidden bg-ds-neutral-strong-default"
       >
         {!tab.url ? (
-          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-ds-text-neutral-muted-default">
+          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-ds-ink-muted-default">
             {t('layout.browser-blank', {
               defaultValue: 'Enter a URL to start browsing.',
             })}
           </div>
         ) : !isDesktop ? (
-          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-ds-text-neutral-muted-default">
+          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-ds-ink-muted-default">
             {t('layout.browser-desktop-only', {
               defaultValue:
                 'Embedded browsing is available in the desktop app. This URL opened in your system browser.',

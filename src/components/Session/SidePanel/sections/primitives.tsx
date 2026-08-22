@@ -32,18 +32,17 @@ export const sessionPanelRowVariants = cva(
   [
     'group flex h-10 min-h-10 w-full min-w-0 items-center gap-2 rounded-lg px-2 py-0 text-left',
     'transition-colors duration-150',
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-brand-default-focus/40',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-focus/40',
   ],
   {
     variants: {
       variant: {
-        section:
-          '!text-body-sm font-semibold text-ds-text-neutral-default-default',
+        section: '!text-ds-text-base font-semibold text-ds-ink-default-default',
         subcategory:
-          '!text-body-sm font-medium text-ds-text-neutral-default-default',
-        item: '!text-body-sm font-medium text-ds-text-neutral-default-default',
-        history: '!text-body-sm font-medium text-ds-text-neutral-muted-default',
-        earlier: '!text-body-sm font-medium text-ds-text-neutral-muted-default',
+          '!text-ds-text-base font-medium text-ds-ink-default-default',
+        item: '!text-ds-text-base font-medium text-ds-ink-default-default',
+        history: '!text-ds-text-base font-medium text-ds-ink-muted-default',
+        earlier: '!text-ds-text-base font-medium text-ds-ink-muted-default',
       },
       interactive: {
         true: 'cursor-pointer',
@@ -55,7 +54,7 @@ export const sessionPanelRowVariants = cva(
         variant: 'item',
         interactive: true,
         className:
-          'hover:bg-ds-bg-neutral-subtle-hover active:bg-ds-bg-neutral-subtle-default',
+          'hover:bg-ds-neutral-subtle-hover active:bg-ds-neutral-subtle-default',
       },
     ],
     defaultVariants: {
@@ -143,7 +142,7 @@ export const SessionPanelButton = forwardRef<
         {chevron ? (
           <ChevronDown
             className={cn(
-              'size-4 shrink-0 text-ds-text-neutral-muted-default transition-[transform,opacity] duration-200 ease-out motion-reduce:transition-none',
+              'size-4 shrink-0 text-ds-ink-muted-default transition-[transform,opacity] duration-200 ease-out motion-reduce:transition-none',
               earlierRow
                 ? 'opacity-100'
                 : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100',
@@ -227,7 +226,7 @@ export function SessionPanelCollapse({
  */
 export function CountPill({ count }: { count: number }) {
   return (
-    <span className="inline-flex items-center justify-center rounded-full bg-ds-bg-neutral-subtle-default px-1.5 text-label-xs font-bold text-ds-text-neutral-subtle-default">
+    <span className="inline-flex items-center justify-center rounded-full bg-ds-neutral-subtle-default px-1.5 text-ds-text-meta font-bold text-ds-ink-subtle-default">
       {count}
     </span>
   );
@@ -330,7 +329,7 @@ SidePanelListRow.displayName = 'SidePanelListRow';
 /**
  * Progress circle. Incomplete: neutral subtle fill so the ring reads on any
  * panel background. Complete: filled success (matches primary success button)
- * with inverse check mark.
+ * with the success on-fill pair.
  */
 export function ProgressCircle({
   done,
@@ -342,17 +341,17 @@ export function ProgressCircle({
   return (
     <span
       className={cn(
-        'inline-flex shrink-0 items-center justify-center rounded-full border-[0.5px] border-solid',
+        'inline-flex shrink-0 items-center justify-center rounded-full border-[0.5px] border-x-[0.5px] border-y-[0.5px] border-solid',
         done
-          ? 'border-ds-bg-success-default-default bg-ds-bg-success-default-default text-ds-text-success-inverse-default'
-          : 'border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default'
+          ? 'border-ds-bg-success-default-default bg-ds-bg-success-default-default text-ds-success-on-default'
+          : 'border-ds-hairline-default-default bg-ds-neutral-subtle-default'
       )}
       style={{ width: size, height: size }}
       aria-hidden
     >
       {done ? (
         <Check
-          className="!text-ds-text-success-inverse-default"
+          className="!text-ds-success-on-default"
           size={Math.max(8, size - 6)}
           strokeWidth={4}
         />

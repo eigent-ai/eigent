@@ -84,9 +84,9 @@ export function AboutSettings() {
           aria-valuemax={100}
           aria-valuenow={percent}
         >
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-ds-bg-neutral-strong-default">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-ds-neutral-strong-default">
             <div
-              className="h-full origin-left rounded-full bg-ds-bg-brand-default-default transition-transform duration-200 motion-reduce:transition-none"
+              className="h-full origin-left rounded-full bg-ds-accent-default-default transition-transform duration-200 motion-reduce:transition-none"
               style={{ transform: `scaleX(${percent / 100})` }}
             />
           </div>

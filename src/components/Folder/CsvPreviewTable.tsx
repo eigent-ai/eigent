@@ -30,7 +30,7 @@ export function CsvPreviewTable({ preview }: { preview: CsvFilePreview }) {
 
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col gap-2">
-      <div className="rounded-lg bg-ds-bg-neutral-subtle-default px-3 py-2 text-body-xs text-ds-text-neutral-muted-default">
+      <div className="rounded-lg bg-ds-neutral-subtle-default px-3 py-2 text-ds-text-meta text-ds-ink-muted-default">
         Previewing {preview.rows.length.toLocaleString()} rows and{' '}
         {preview.columns.length.toLocaleString()} columns from{' '}
         {formatFileSize(preview.bytesRead)}
@@ -41,18 +41,18 @@ export function CsvPreviewTable({ preview }: { preview: CsvFilePreview }) {
       </div>
 
       {preview.columns.length === 0 ? (
-        <div className="flex min-h-32 items-center justify-center text-body-sm text-ds-text-neutral-muted-default">
+        <div className="flex min-h-32 items-center justify-center text-ds-text-base text-ds-ink-muted-default">
           This CSV does not contain any previewable rows.
         </div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-solid border-ds-border-neutral-subtle-default">
-          <table className="min-w-full border-collapse text-left text-body-xs">
-            <thead className="sticky top-0 z-10 bg-ds-bg-neutral-default-default">
+        <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-x border-y border-solid border-ds-hairline-subtle-default">
+          <table className="min-w-full border-collapse text-left text-ds-text-meta">
+            <thead className="sticky top-0 z-10 bg-ds-neutral-default-default">
               <tr>
                 {preview.columns.map((column, index) => (
                   <th
                     key={`${index}-${column}`}
-                    className="max-w-64 border-x-0 border-b border-t-0 border-solid border-ds-border-neutral-subtle-default px-3 py-2 font-semibold text-ds-text-neutral-default-default"
+                    className="max-w-64 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-3 py-2 font-semibold text-ds-ink-default-default"
                     title={column}
                   >
                     <span className="block truncate">{column}</span>
@@ -62,17 +62,14 @@ export function CsvPreviewTable({ preview }: { preview: CsvFilePreview }) {
             </thead>
             <tbody>
               {rows.map((row, rowIndex) => (
-                <tr
-                  key={rowIndex}
-                  className="odd:bg-ds-bg-neutral-subtle-default"
-                >
+                <tr key={rowIndex} className="odd:bg-ds-neutral-subtle-default">
                   {row.map((cell, columnIndex) => (
                     <td
                       key={columnIndex}
-                      className="max-w-64 border-x-0 border-b border-t-0 border-solid border-ds-border-neutral-subtle-default px-3 py-2 align-top text-ds-text-neutral-default-default"
+                      className="max-w-64 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-3 py-2 align-top text-ds-ink-default-default"
                       title={cell}
                     >
-                      <span className="block max-h-20 overflow-hidden whitespace-pre-wrap break-words">
+                      <span className="block max-h-20 overflow-hidden break-words whitespace-pre-wrap">
                         {cell}
                       </span>
                     </td>

@@ -86,7 +86,7 @@ function WorkforceOverlayCanvas() {
       {activeWorkSpace === 'documentWorkSpace' && (
         <div className="flex h-full w-full flex-1 items-center justify-center">
           <div className="relative flex h-full w-full flex-col">
-            <div className="pointer-events-none absolute inset-0 rounded-xl bg-ds-bg-neutral-default-default backdrop-blur-sm"></div>
+            <div className="pointer-events-none absolute inset-0 rounded-xl bg-ds-neutral-default-default backdrop-blur-sm"></div>
             <div className="relative z-10 h-full w-full">
               <Folder />
             </div>
@@ -98,7 +98,7 @@ function WorkforceOverlayCanvas() {
       )?.type === 'document_agent' && (
         <div className="flex h-full w-full flex-1 items-center justify-center">
           <div className="relative flex h-full w-full flex-col">
-            <div className="pointer-events-none absolute inset-0 rounded-xl bg-ds-bg-neutral-default-default backdrop-blur-sm"></div>
+            <div className="pointer-events-none absolute inset-0 rounded-xl bg-ds-neutral-default-default backdrop-blur-sm"></div>
             <div className="relative z-10 h-full w-full">
               <Folder
                 data={activeTask.taskAssigning?.find(
@@ -112,7 +112,7 @@ function WorkforceOverlayCanvas() {
       {activeWorkSpace === 'inbox' && (
         <div className="flex h-full w-full flex-1 items-center justify-center">
           <div className="relative flex h-full w-full flex-col">
-            <div className="pointer-events-none absolute inset-0 rounded-xl bg-ds-bg-neutral-default-default backdrop-blur-sm"></div>
+            <div className="pointer-events-none absolute inset-0 rounded-xl bg-ds-neutral-default-default backdrop-blur-sm"></div>
             <div className="relative z-10 h-full w-full">
               <Folder />
             </div>
@@ -184,7 +184,7 @@ export default function ExpandedOverlay({
             onClick={onClose}
           />
           <motion.div
-            className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-solid border-ds-border-neutral-inverse-default bg-ds-bg-neutral-muted-default shadow-lg"
+            className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-x border-y border-solid border-ds-hairline-strong-default bg-ds-neutral-muted-default shadow-ds-elevation-dialog"
             role="dialog"
             aria-modal="true"
             aria-label={titleLabel}
@@ -209,7 +209,7 @@ export default function ExpandedOverlay({
           >
             <div className="relative z-50 flex w-full shrink-0 items-center justify-between gap-2 p-2">
               <div className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
-                <span className="shrink-0 px-1 text-body-md font-semibold text-ds-text-neutral-default-default">
+                <span className="shrink-0 px-1 text-ds-text-body-large font-semibold text-ds-ink-default-default">
                   {titleLabel}
                 </span>
               </div>

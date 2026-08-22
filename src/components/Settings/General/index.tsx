@@ -261,15 +261,15 @@ export default function SettingGeneral({
               <Select value={language} onValueChange={switchLanguage}>
                 <SelectTrigger
                   variant="secondary"
-                  className="w-[280px] !bg-ds-bg-neutral-subtle-default hover:!bg-ds-bg-neutral-subtle-default data-[state=open]:!bg-ds-bg-neutral-subtle-default"
+                  className="w-[280px] !bg-ds-neutral-subtle-default hover:!bg-ds-neutral-subtle-default data-[state=open]:!bg-ds-neutral-subtle-default"
                 >
                   <SelectValue placeholder={t('setting.select-language')} />
                 </SelectTrigger>
-                <SelectContent className="border bg-input-bg-default">
+                <SelectContent className="border border-x border-y border-solid bg-ds-neutral-default-default">
                   <SelectGroup>
                     <SelectItem
                       value="system"
-                      className="hover:!bg-ds-bg-neutral-subtle-default focus:!bg-ds-bg-neutral-subtle-default data-[highlighted]:!bg-ds-bg-neutral-subtle-default"
+                      className="hover:!bg-ds-neutral-subtle-default focus:!bg-ds-neutral-subtle-default data-[highlighted]:!bg-ds-neutral-subtle-default"
                     >
                       {t('setting.system-default')}
                     </SelectItem>
@@ -277,7 +277,7 @@ export default function SettingGeneral({
                       <SelectItem
                         key={item.key}
                         value={item.key}
-                        className="hover:!bg-ds-bg-neutral-subtle-default focus:!bg-ds-bg-neutral-subtle-default data-[highlighted]:!bg-ds-bg-neutral-subtle-default"
+                        className="hover:!bg-ds-neutral-subtle-default focus:!bg-ds-neutral-subtle-default data-[highlighted]:!bg-ds-neutral-subtle-default"
                       >
                         {item.label}
                       </SelectItem>

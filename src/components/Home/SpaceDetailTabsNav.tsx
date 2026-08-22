@@ -97,7 +97,7 @@ const SPACE_DETAIL_TAB_OPTIONS: SpaceDetailTabConfig[] = [
 ];
 
 const tabButtonClass =
-  'group relative z-10 inline-flex h-8 min-h-8 shrink-0 items-center gap-2 rounded-full border-0 bg-transparent px-2 !text-body-sm font-bold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ds-border-brand-default-focus focus-visible:ring-offset-2 focus-visible:ring-offset-ds-bg-neutral-default-default';
+  'group relative z-10 inline-flex h-8 min-h-8 shrink-0 items-center gap-2 rounded-full border-x-0 border-y-0 border-solid bg-transparent !px-2 !py-0 !text-ds-text-base font-bold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-ds-neutral-default-default';
 
 const iconSlotClass =
   'relative z-10 inline-flex size-4 shrink-0 items-center justify-center [&_svg]:size-4';
@@ -211,8 +211,8 @@ export function SpaceDetailTabsNav({
               className={cn(
                 tabButtonClass,
                 selected
-                  ? 'text-ds-text-neutral-default-default'
-                  : 'text-ds-text-neutral-muted-default hover:text-ds-text-neutral-default-default'
+                  ? 'text-ds-ink-default-default'
+                  : 'text-ds-ink-muted-default hover:text-ds-ink-default-default'
               )}
             >
               <AnimatePresence initial={false}>
@@ -222,7 +222,7 @@ export function SpaceDetailTabsNav({
                     layoutId="space-detail-tab-hover"
                     data-space-detail-tab-hover
                     aria-hidden
-                    className="pointer-events-none absolute inset-0 z-0 rounded-full bg-ds-bg-neutral-default-default shadow-sm ring-1 ring-ds-border-neutral-default-default"
+                    className="pointer-events-none absolute inset-0 z-0 rounded-full bg-ds-neutral-default-default shadow-sm ring-1 ring-ds-hairline-default-default"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
@@ -241,7 +241,7 @@ export function SpaceDetailTabsNav({
                   layoutId="space-detail-tab-indicator"
                   data-space-detail-tab-indicator
                   aria-hidden
-                  className="pointer-events-none absolute left-0 top-[calc(100%+8px)] z-[11] h-0.5 w-full rounded-full bg-ds-bg-brand-default-default"
+                  className="pointer-events-none absolute top-[calc(100%+8px)] left-0 z-[11] h-0.5 w-full rounded-full bg-ds-accent-default-default"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{
@@ -256,7 +256,7 @@ export function SpaceDetailTabsNav({
               <span className={iconSlotClass} aria-hidden>
                 <Icon />
               </span>
-              <span className="relative z-10 !text-body-sm font-bold">
+              <span className="relative z-10 !text-ds-text-base font-bold">
                 {label}
               </span>
             </button>

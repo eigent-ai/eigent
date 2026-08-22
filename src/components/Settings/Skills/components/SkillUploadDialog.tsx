@@ -493,14 +493,14 @@ export default function SkillUploadDialog({
             <div className="flex flex-col gap-4">
               {mode === 'create' ? (
                 <>
-                  <span className="block text-label-sm text-ds-text-neutral-muted-default">
+                  <span className="block text-ds-text-base text-ds-ink-muted-default">
                     {t('agents.compose-skill-hint')}
                   </span>
                   <Textarea
                     variant="none"
                     value={composeContent}
                     onChange={(e) => setComposeContent(e.target.value)}
-                    className="min-h-[220px] resize-y font-mono text-body-sm"
+                    className="min-h-[220px] resize-y font-mono text-ds-text-base"
                     spellCheck={false}
                   />
                   <div className="flex justify-end gap-2">
@@ -530,8 +530,8 @@ export default function SkillUploadDialog({
                     uploadError
                       ? 'border-ds-border-status-error-default-default bg-ds-bg-status-error-subtle-default'
                       : isDragging
-                        ? 'border-ds-border-brand-default-focus bg-ds-bg-neutral-strong-default'
-                        : 'border-ds-border-neutral-default-default hover:border-ds-border-neutral-strong-default hover:bg-ds-bg-neutral-default-default'
+                        ? 'border-ds-ring-focus bg-ds-neutral-strong-default'
+                        : 'border-ds-hairline-default-default hover:border-ds-hairline-strong-default hover:bg-ds-neutral-default-default'
                   }`}
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
@@ -553,23 +553,23 @@ export default function SkillUploadDialog({
                           className={`flex shrink-0 items-center justify-center rounded-lg p-1 ${
                             uploadError
                               ? 'bg-ds-bg-status-error-subtle-default'
-                              : 'bg-ds-bg-neutral-strong-default'
+                              : 'bg-ds-neutral-strong-default'
                           }`}
                         >
                           <File
                             className={`h-4 w-4 ${
                               uploadError
                                 ? 'text-ds-icon-status-error-default-default'
-                                : 'text-ds-icon-neutral-default-default'
+                                : 'text-ds-ink-default-default'
                             }`}
                           />
                         </div>
                         <div className="flex w-full min-w-0 flex-col">
                           <span
-                            className={`truncate text-body-sm font-medium ${
+                            className={`truncate text-ds-text-base font-medium ${
                               uploadError
                                 ? 'text-ds-text-status-error-strong-default'
-                                : 'text-ds-text-neutral-default-default'
+                                : 'text-ds-ink-default-default'
                             }`}
                           >
                             {selectedFile.name}
@@ -588,10 +588,10 @@ export default function SkillUploadDialog({
                       </div>
 
                       <span
-                        className={`text-label-sm ${
+                        className={`text-ds-text-base ${
                           uploadError
                             ? 'text-ds-text-status-error-strong-default'
-                            : 'text-ds-text-neutral-muted-default'
+                            : 'text-ds-ink-muted-default'
                         }`}
                       >
                         {uploadError
@@ -602,13 +602,13 @@ export default function SkillUploadDialog({
                   ) : (
                     <div className="flex flex-col items-center gap-2">
                       <div className="flex h-12 w-12 items-center justify-center">
-                        <Upload className="h-6 w-6 text-ds-icon-neutral-muted-default" />
+                        <Upload className="h-6 w-6 text-ds-ink-muted-default" />
                       </div>
                       <div className="flex flex-col items-center gap-1 text-center">
-                        <span className="text-body-sm font-medium text-ds-text-neutral-default-default">
+                        <span className="text-ds-text-base font-medium text-ds-ink-default-default">
                           {t('agents.drag-and-drop')}
                         </span>
-                        <span className="mt-1 text-label-sm text-ds-text-neutral-muted-default">
+                        <span className="mt-1 text-ds-text-base text-ds-ink-muted-default">
                           {t('agents.or-click-to-browse')}
                         </span>
                       </div>
@@ -620,11 +620,11 @@ export default function SkillUploadDialog({
               {/* Error notice */}
               {mode === 'upload' && uploadError && errorMessage && (
                 <div
-                  className="flex items-center gap-4 rounded-xl border border-ds-border-status-error-default-default bg-ds-bg-status-error-subtle-default px-4 py-3"
+                  className="flex items-center gap-4 rounded-xl border border-x border-y border-ds-border-status-error-default-default bg-ds-bg-status-error-subtle-default px-4 py-3"
                   role="alert"
                 >
                   <AlertCircle className="h-4 w-4 shrink-0 text-ds-icon-status-error-default-default" />
-                  <span className="text-label-sm text-ds-text-status-error-strong-default">
+                  <span className="text-ds-text-base text-ds-text-status-error-strong-default">
                     {errorMessage}
                   </span>
                 </div>
@@ -632,20 +632,16 @@ export default function SkillUploadDialog({
 
               {/* File Requirements */}
               {mode === 'upload' ? (
-                <div className="rounded-xl bg-ds-bg-neutral-default-default p-4">
-                  <span className="text-label-sm font-bold text-ds-text-neutral-default-default">
+                <div className="rounded-xl bg-ds-neutral-default-default p-4">
+                  <span className="text-ds-text-base font-bold text-ds-ink-default-default">
                     {t('agents.file-requirements')}
                   </span>
-                  <span className="mt-2 flex items-start gap-2 text-label-sm text-ds-text-neutral-muted-default">
-                    <span className="text-ds-text-neutral-muted-default">
-                      •
-                    </span>
+                  <span className="mt-2 flex items-start gap-2 text-ds-text-base text-ds-ink-muted-default">
+                    <span className="text-ds-ink-muted-default">•</span>
                     <span>{t('agents.file-requirements-detail-1')}</span>
                   </span>
-                  <span className="mt-1 flex items-start gap-2 text-label-sm text-ds-text-neutral-muted-default">
-                    <span className="text-ds-text-neutral-muted-default">
-                      •
-                    </span>
+                  <span className="mt-1 flex items-start gap-2 text-ds-text-base text-ds-ink-muted-default">
+                    <span className="text-ds-ink-muted-default">•</span>
                     <span>{t('agents.file-requirements-detail-2')}</span>
                   </span>
                 </div>
@@ -667,7 +663,6 @@ export default function SkillUploadDialog({
           message={t('agents.replace-skill-message')}
           confirmText={t('agents.update-and-replace')}
           cancelText={t('layout.cancel')}
-          confirmVariant="caution"
         />
       )}
     </>

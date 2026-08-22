@@ -362,7 +362,7 @@ function ProjectItemContent({
       >
         {loading ? (
           <div className="absolute inset-0 z-10 flex items-center justify-center">
-            <Loader2 className="h-5 w-5 animate-spin text-ds-icon-neutral-default-default" />
+            <Loader2 className="h-5 w-5 animate-spin text-ds-ink-default-default" />
           </div>
         ) : null}
         {layout === 'list' ? (
@@ -475,7 +475,7 @@ function TaskItemContent({
     >
       {loading ? (
         <div className="absolute inset-0 z-10 flex items-center justify-center">
-          <Loader2 className="h-5 w-5 animate-spin text-ds-icon-neutral-default-default" />
+          <Loader2 className="h-5 w-5 animate-spin text-ds-ink-default-default" />
         </div>
       ) : null}
       {layout === 'list' ? (

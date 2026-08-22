@@ -62,22 +62,22 @@ const AgentResultCard: React.FC<{
       {/* Header (always visible) */}
       <button
         type="button"
-        className="focus-visible:ring-ds-border-brand-default-focus/40 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-ds-text-neutral-default-default transition-colors hover:bg-ds-bg-neutral-default-hover focus-visible:outline-none focus-visible:ring-2 active:bg-ds-bg-neutral-default-active"
+        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-ds-ink-default-default transition-colors hover:bg-ds-neutral-default-hover focus-visible:ring-2 focus-visible:ring-ds-ring-focus/40 focus-visible:outline-none active:shadow-ds-elevation-control-pressed"
         onClick={() => setIsOpen((v) => !v)}
       >
         <span className="min-w-0 flex-1 truncate">{label}</span>
         <ChevronDown
           size={14}
           aria-hidden
-          className={`shrink-0 text-ds-icon-neutral-default-default transition-transform duration-200 ${isOpen ? 'rotate-180' : 'rotate-0'}`}
+          className={`shrink-0 text-ds-ink-default-default transition-transform duration-200 ${isOpen ? 'rotate-180' : 'rotate-0'}`}
         />
       </button>
 
       {/* Collapsible body */}
       <div
-        className={`duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] overflow-hidden transition-opacity ${isOpen ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}
+        className={`overflow-hidden transition-opacity duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] ${isOpen ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}
       >
-        <div className="border-t border-ds-border-neutral-default-default px-1 py-1">
+        <div className="border-x-0 border-t border-b-0 border-ds-hairline-default-default px-1 py-1">
           <AgentMessageCard
             id={id}
             content={content}
@@ -634,9 +634,9 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
         <motion.div
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mx-2 flex flex-row items-center gap-2 rounded-xl bg-ds-bg-neutral-default-default px-4 py-3 text-body-sm text-ds-text-neutral-muted-default"
+          className="mx-2 flex flex-row items-center gap-2 rounded-xl bg-ds-neutral-default-default px-4 py-3 text-ds-text-base text-ds-ink-muted-default"
         >
-          <InfoIcon className="size-4 text-ds-icon-neutral-default-default" />
+          <InfoIcon className="size-4 text-ds-ink-default-default" />
           {t('chat.run-no-final-response')}
         </motion.div>
       ) : null}

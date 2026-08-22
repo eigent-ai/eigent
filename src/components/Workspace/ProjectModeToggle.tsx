@@ -98,7 +98,7 @@ export function ProjectModeToggle({
 
   const shellClass = cn(
     'rounded-xl px-2 py-1 inline-flex items-center gap-1.5',
-    'bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default',
+    'bg-ds-neutral-default-default text-ds-ink-default-default',
     className
   );
 
@@ -129,7 +129,7 @@ export function ProjectModeToggle({
             aria-hidden
           />
           {!compact && (
-            <span className="!text-label-xs font-semibold">{label}</span>
+            <span className="!text-ds-text-meta font-semibold">{label}</span>
           )}
         </span>
       </div>
@@ -145,8 +145,8 @@ export function ProjectModeToggle({
       title={compact ? label : undefined}
       className={cn(
         shellClass,
-        'cursor-pointer border-0 text-left',
-        'hover:bg-ds-bg-neutral-subtle-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-border-neutral-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-bg-neutral-default-default'
+        'cursor-pointer border-0 border-x-0 border-y-0 text-left',
+        'hover:bg-ds-neutral-subtle-default focus-visible:ring-2 focus-visible:ring-ds-hairline-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-neutral-default-default focus-visible:outline-none'
       )}
       onPointerDown={pulseChevrons}
       onClick={toggle}
@@ -167,7 +167,7 @@ export function ProjectModeToggle({
               aria-hidden
             />
             {!compact && (
-              <span className="whitespace-nowrap !text-label-xs font-semibold">
+              <span className="!text-ds-text-meta font-semibold whitespace-nowrap">
                 {label}
               </span>
             )}

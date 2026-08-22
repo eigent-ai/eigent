@@ -75,10 +75,10 @@ function getWorkforceMenuStyleSubIcon(agentType: string): ReactNode {
 function FoldedAgentLeadingIcon({ agentType }: { agentType: string }) {
   const subIcon = getWorkforceMenuStyleSubIcon(agentType);
   return (
-    <div className="relative inline-flex h-6 w-6 shrink-0 items-center justify-center self-center text-ds-text-neutral-muted-default">
+    <div className="relative inline-flex h-6 w-6 shrink-0 items-center justify-center self-center text-ds-ink-muted-default">
       <Bot className="h-6 w-6" strokeWidth={2} aria-hidden />
       {subIcon != null && (
-        <span className="absolute -right-1 -top-1 inline-flex items-center justify-center [&_svg]:shrink-0">
+        <span className="absolute -top-1 -right-1 inline-flex items-center justify-center [&_svg]:shrink-0">
           {subIcon}
         </span>
       )}
@@ -132,21 +132,22 @@ export function FoldedAgentCard({
   const agentLabel = preset?.name ?? agent.name;
 
   const shellClass = cn(
-    'rounded-xl bg-ds-bg-neutral-strong-default focus-within:ring-ds-ring-neutral-default-focus ease-[cubic-bezier(0.23,1,0.32,1)] overflow-hidden transition-[border-color,box-shadow,opacity] duration-200 focus-within:ring-2',
-    borderless ? 'border-0' : 'border border-solid',
+    'rounded-xl bg-ds-neutral-strong-default focus-within:ring-ds-ring-focus ease-[cubic-bezier(0.23,1,0.32,1)] overflow-hidden transition-[border-color,box-shadow,opacity] duration-200 focus-within:ring-2',
+    borderless
+      ? 'border-x-0 border-y-0 border-0'
+      : 'border-x border-y border border-solid',
     compactMode
       ? borderless
-        ? cn('border-0', !isActive && 'opacity-80')
+        ? cn('border-x-0 border-y-0 border-0', !isActive && 'opacity-80')
         : cn(
-            'border-ds-border-neutral-default-default hover:border-ds-border-neutral-subtle-default',
+            'border-ds-hairline-default-default hover:border-ds-hairline-subtle-default',
             isActive &&
-              (preset?.borderColor ??
-                'border-ds-border-neutral-subtle-default'),
+              (preset?.borderColor ?? 'border-ds-hairline-subtle-default'),
             !isActive && 'opacity-80'
           )
       : cn(
           borderless
-            ? 'border-0'
+            ? 'border-x-0 border-y-0 border-0'
             : 'border-transparent hover:border-transparent',
           !isActive && 'opacity-80'
         ),
@@ -155,13 +156,13 @@ export function FoldedAgentCard({
   );
 
   const expandedRow = (
-    <div className="flex w-full min-w-0 max-w-full items-center gap-md px-3 pb-2 pt-2">
+    <div className="flex w-full max-w-full min-w-0 items-center gap-md px-3 pt-2 pb-2">
       <FoldedAgentLeadingIcon agentType={agent.type} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div
           className={cn(
-            'text-base font-bold leading-relaxed',
-            preset?.textColor ?? 'text-ds-text-neutral-default-default'
+            'text-base leading-relaxed font-bold',
+            preset?.textColor ?? 'text-ds-ink-default-default'
           )}
         >
           {preset?.name ?? agent.name}
@@ -170,8 +171,8 @@ export function FoldedAgentCard({
           <HoverScrollText
             text={toolkitLine}
             active={toolkitHovered}
-            className="text-xs font-normal leading-tight text-ds-text-neutral-muted-default"
-            innerClassName="text-xs font-normal leading-tight text-ds-text-neutral-muted-default"
+            className="text-xs leading-tight font-normal text-ds-ink-muted-default"
+            innerClassName="text-xs font-normal leading-tight text-ds-ink-muted-default"
           />
         </div>
       </div>
@@ -180,7 +181,7 @@ export function FoldedAgentCard({
 
   const compactIconButtonClass = cn(
     shellClass,
-    'focus-visible:ring-ds-ring-neutral-default-focus p-2 inline-flex items-center justify-center text-left focus-visible:ring-2 focus-visible:outline-none'
+    'focus-visible:ring-ds-ring-focus p-2 inline-flex items-center justify-center text-left focus-visible:ring-2 focus-visible:outline-none'
   );
 
   const button = iconOnly ? (
@@ -210,7 +211,7 @@ export function FoldedAgentCard({
             }}
           >
             <Pencil
-              className="h-4 w-4 shrink-0 text-ds-icon-neutral-default-default"
+              className="h-4 w-4 shrink-0 text-ds-ink-default-default"
               aria-hidden
             />
             {t('workforce.edit', { defaultValue: 'Edit' })}
@@ -226,7 +227,7 @@ export function FoldedAgentCard({
             }}
           >
             <Copy
-              className="h-4 w-4 shrink-0 text-ds-icon-neutral-default-default"
+              className="h-4 w-4 shrink-0 text-ds-ink-default-default"
               aria-hidden
             />
             {t('workforce.duplicate', { defaultValue: 'Duplicate' })}
@@ -269,13 +270,13 @@ export function FoldedAgentCard({
         type="button"
         onClick={onSelect}
         className={cn(
-          'flex w-full min-w-0 max-w-full flex-col bg-transparent text-left hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-neutral-default-focus focus-visible:ring-offset-0',
+          'flex w-full max-w-full min-w-0 flex-col bg-transparent text-left hover:bg-transparent focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-offset-0 focus-visible:outline-none',
           'pr-9'
         )}
       >
         {expandedRow}
       </button>
-      <div className="pointer-events-none absolute right-1 top-1/2 z-10 -translate-y-1/2 opacity-0 transition-opacity group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100">
+      <div className="pointer-events-none absolute top-1/2 right-1 z-10 -translate-y-1/2 opacity-0 transition-opacity group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100">
         <Popover>
           <PopoverTrigger asChild>
             <Button
@@ -284,7 +285,7 @@ export function FoldedAgentCard({
               variant="ghost"
               size="sm"
               buttonContent="icon-only"
-              className="shrink-0 text-ds-text-neutral-muted-default"
+              className="shrink-0 text-ds-ink-muted-default"
               aria-label={`More actions for ${agentLabel}`}
             >
               <Ellipsis className="h-4 w-4" />
@@ -292,7 +293,7 @@ export function FoldedAgentCard({
           </PopoverTrigger>
           <PopoverContent
             align="end"
-            className="w-[98px] rounded-[12px] border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default p-sm"
+            className="w-[98px] rounded-[12px] border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-strong-default p-sm"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="space-y-1">
@@ -311,7 +312,7 @@ export function FoldedAgentCard({
                 >
                   <Trash2
                     size={16}
-                    className="text-ds-icon-neutral-default-default group-hover:text-ds-icon-status-error-default-default"
+                    className="text-ds-ink-default-default group-hover:text-ds-icon-status-error-default-default"
                   />
                   Delete
                 </Button>
@@ -329,7 +330,7 @@ export function FoldedAgentCard({
       onMouseLeave={() => setToolkitHovered(false)}
       className={cn(
         shellClass,
-        'flex w-full min-w-0 max-w-full flex-col text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-neutral-default-focus'
+        'flex w-full max-w-full min-w-0 flex-col text-left focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:outline-none'
       )}
     >
       {expandedRow}

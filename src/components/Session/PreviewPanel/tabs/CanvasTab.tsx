@@ -65,10 +65,10 @@ function CanvasFlow() {
       onConnect={onConnect}
       fitView
       proOptions={{ hideAttribution: true }}
-      className="bg-ds-bg-neutral-default-default"
+      className="bg-ds-neutral-default-default"
     >
       <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-      <MiniMap pannable zoomable className="!bg-ds-bg-neutral-subtle-default" />
+      <MiniMap pannable zoomable className="!bg-ds-neutral-subtle-default" />
       <Controls />
     </ReactFlow>
   );

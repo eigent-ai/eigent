@@ -86,9 +86,9 @@ export function ExpandedOverlay({
       }}
     >
       <div className="flex w-full max-w-[600px] flex-col">
-        <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-solid border-ds-border-neutral-subtle-disabled bg-ds-bg-splitting-subtle-default">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-x border-y border-solid border-ds-hairline-subtle-disabled bg-ds-bg-splitting-subtle-default">
           <div className="flex shrink-0 items-center gap-2 px-3 pt-2">
-            <div className="min-w-0 flex-1 text-body-sm font-bold text-ds-text-neutral-default-default">
+            <div className="min-w-0 flex-1 text-ds-text-base font-bold text-ds-ink-default-default">
               {t('chat.subtasks-planning')}
             </div>
             <Button
@@ -119,7 +119,7 @@ export function ExpandedOverlay({
             </div>
           )}
 
-          <div className="scrollbar scrollbar-always-visible min-h-0 flex-1 overflow-x-hidden overflow-y-auto border border-x-0 border-b-0 border-solid border-ds-border-neutral-subtle-disabled bg-transparent px-2">
+          <div className="scrollbar scrollbar-always-visible min-h-0 flex-1 overflow-x-hidden overflow-y-auto border border-x-0 border-b-0 border-solid border-ds-hairline-subtle-disabled bg-transparent px-2">
             {hasTaskInfo ? (
               <SubtaskEditor
                 taskInfo={taskInfo}
@@ -147,11 +147,11 @@ export function ExpandedOverlay({
                         ) : (
                           <CircleDashed
                             size={13}
-                            className="text-ds-icon-neutral-muted-default"
+                            className="text-ds-ink-muted-default"
                           />
                         )}
                       </div>
-                      <span className="min-w-0 flex-1 text-label-xs text-ds-text-neutral-default-default">
+                      <span className="min-w-0 flex-1 text-ds-text-meta text-ds-ink-default-default">
                         {content}
                       </span>
                     </div>

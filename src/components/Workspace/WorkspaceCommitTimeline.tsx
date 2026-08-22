@@ -83,7 +83,7 @@ export function WorkspaceCommitTimeline({
   const { t } = useTranslation();
 
   return (
-    <ol className="overflow-hidden rounded-xl border border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-4">
+    <ol className="overflow-hidden rounded-xl border border-x border-y border-ds-hairline-default-default bg-ds-neutral-default-default px-4">
       {events.map((event, index) => {
         const commit = event.type === 'commit' ? event.commit : null;
         const operation = event.type === 'operation' ? event.operation : null;
@@ -123,13 +123,13 @@ export function WorkspaceCommitTimeline({
                 <span className="absolute -top-3 bottom-1/2 left-1/2 w-px -translate-x-1/2 bg-ds-border-neutral-default-default" />
               ) : null}
               {index < events.length - 1 ? (
-                <span className="absolute -bottom-3 left-1/2 top-1/2 w-px -translate-x-1/2 bg-ds-border-neutral-default-default" />
+                <span className="absolute top-1/2 -bottom-3 left-1/2 w-px -translate-x-1/2 bg-ds-border-neutral-default-default" />
               ) : null}
               <span
                 className={
                   userInitiated
-                    ? 'relative z-10 mt-0.5 flex size-5 items-center justify-center rounded-full border border-ds-border-success-default-default bg-ds-bg-success-subtle-default'
-                    : 'relative z-10 mt-0.5 flex size-5 items-center justify-center rounded-full border border-ds-border-information-default-default bg-ds-bg-information-subtle-default'
+                    ? 'relative z-10 mt-0.5 flex size-5 items-center justify-center rounded-full border border-x border-y border-ds-border-success-default-default bg-ds-bg-success-subtle-default'
+                    : 'relative z-10 mt-0.5 flex size-5 items-center justify-center rounded-full border border-x border-y border-ds-border-information-default-default bg-ds-bg-information-subtle-default'
                 }
               >
                 <span
@@ -147,10 +147,10 @@ export function WorkspaceCommitTimeline({
                 <span
                   className={
                     isPush || kind === 'merge'
-                      ? 'rounded-full bg-ds-bg-information-subtle-default px-2 py-0.5 text-body-xs text-ds-text-information-strong-default'
+                      ? 'rounded-full bg-ds-bg-information-subtle-default px-2 py-0.5 text-ds-text-meta text-ds-text-information-strong-default'
                       : kind === 'save_point'
-                        ? 'rounded-full bg-ds-bg-success-subtle-default px-2 py-0.5 text-body-xs text-ds-text-success-strong-default'
-                        : 'rounded-full bg-ds-bg-neutral-strong-default px-2 py-0.5 text-body-xs'
+                        ? 'rounded-full bg-ds-bg-success-subtle-default px-2 py-0.5 text-ds-text-meta text-ds-text-success-strong-default'
+                        : 'rounded-full bg-ds-neutral-strong-default px-2 py-0.5 text-ds-text-meta'
                   }
                 >
                   {kindLabel}
@@ -158,8 +158,8 @@ export function WorkspaceCommitTimeline({
                 <span
                   className={
                     userInitiated
-                      ? 'inline-flex items-center gap-1 rounded-full bg-ds-bg-success-subtle-default px-2 py-0.5 text-body-xs text-ds-text-success-strong-default'
-                      : 'inline-flex items-center gap-1 rounded-full bg-ds-bg-neutral-strong-default px-2 py-0.5 text-body-xs'
+                      ? 'inline-flex items-center gap-1 rounded-full bg-ds-bg-success-subtle-default px-2 py-0.5 text-ds-text-meta text-ds-text-success-strong-default'
+                      : 'inline-flex items-center gap-1 rounded-full bg-ds-neutral-strong-default px-2 py-0.5 text-ds-text-meta'
                   }
                 >
                   {userInitiated ? (
@@ -176,7 +176,7 @@ export function WorkspaceCommitTimeline({
                       })}
                 </span>
                 {commit && commit.parent_oids.length > 1 ? (
-                  <span className="text-body-xs text-ds-text-neutral-muted-default">
+                  <span className="text-ds-text-meta text-ds-ink-muted-default">
                     {t('layout.workspace-commit-parent-count', {
                       count: commit.parent_oids.length,
                       defaultValue: `${commit.parent_oids.length} parents`,
@@ -184,12 +184,12 @@ export function WorkspaceCommitTimeline({
                   </span>
                 ) : null}
                 {(commit?.oid || operation?.head_oid) && (
-                  <code className="ml-auto rounded-md border border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default px-2 py-0.5 text-body-xs text-ds-text-neutral-muted-default">
+                  <code className="ml-auto rounded-md border border-x border-y border-ds-hairline-default-default bg-ds-neutral-subtle-default px-2 py-0.5 text-ds-text-meta text-ds-ink-muted-default">
                     {(commit?.oid || operation?.head_oid || '').slice(0, 8)}
                   </code>
                 )}
               </div>
-              <span className="mt-1.5 block break-words text-body-sm font-semibold">
+              <span className="mt-1.5 block text-ds-text-base font-semibold break-words">
                 {commit ? (
                   commit.subject
                 ) : (
@@ -206,7 +206,7 @@ export function WorkspaceCommitTimeline({
                   </span>
                 )}
               </span>
-              <span className="mt-0.5 block text-body-xs text-ds-text-neutral-muted-default">
+              <span className="mt-0.5 block text-ds-text-meta text-ds-ink-muted-default">
                 {commit
                   ? `${t('layout.workspace-git-author', {
                       defaultValue: 'Git author',

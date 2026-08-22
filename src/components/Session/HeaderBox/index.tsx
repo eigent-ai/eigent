@@ -133,7 +133,7 @@ export function HeaderBox({
             size="sm"
             buttonContent="icon-only"
             onClick={() => setActiveWorkspaceTab('workforce')}
-            className="no-drag shrink-0 text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default"
+            className="no-drag shrink-0 text-ds-ink-muted-default hover:bg-ds-neutral-strong-default"
             aria-label={backTooltip}
           >
             <ArrowLeft className="h-4 w-4" aria-hidden />
@@ -141,7 +141,7 @@ export function HeaderBox({
         </TooltipSimple>
         {projectName ? (
           <span
-            className="min-w-0 max-w-[200px] truncate text-body-sm font-semibold text-ds-text-neutral-default-default"
+            className="max-w-[200px] min-w-0 truncate text-ds-text-base font-semibold text-ds-ink-default-default"
             title={projectName}
           >
             {projectName}
@@ -150,7 +150,7 @@ export function HeaderBox({
       </div>
 
       {/* Right: project total token count + unified preview toggle */}
-      <div className="flex items-center gap-1 text-ds-text-neutral-muted-default">
+      <div className="flex items-center gap-1 text-ds-ink-muted-default">
         <div className="flex items-center gap-1">
           <img src={tokenIcon} alt="" className="h-3.5 w-3.5" />
           <span className="text-xs font-medium">
@@ -207,9 +207,9 @@ export function HeaderBox({
               }
             }}
             className={cn(
-              'no-drag shrink-0 text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default',
+              'no-drag shrink-0 text-ds-ink-muted-default hover:bg-ds-neutral-strong-default',
               sessionPreviewOpen &&
-                'bg-ds-bg-neutral-strong-default text-ds-text-neutral-default-default'
+                'bg-ds-neutral-strong-default text-ds-ink-default-default'
             )}
             aria-label={windowPreviewTooltip}
             aria-pressed={sessionPreviewOpen}

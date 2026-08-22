@@ -107,10 +107,10 @@ function LocalShellTerminal({ tab }: { tab: SessionTerminalTab }) {
     return (
       <div className="flex h-full min-h-0 w-full flex-col items-center justify-center gap-2 px-6 text-center">
         <SquareTerminal
-          className="h-8 w-8 text-ds-icon-neutral-muted-default"
+          className="h-8 w-8 text-ds-ink-muted-default"
           aria-hidden
         />
-        <p className="max-w-[360px] text-sm text-ds-text-neutral-muted-default">
+        <p className="max-w-[360px] text-sm text-ds-ink-muted-default">
           {t('layout.terminal-desktop-only', {
             defaultValue: 'The terminal is available in the desktop app.',
           })}
@@ -155,10 +155,10 @@ function AgentStreamTerminal({ sourceId }: { sourceId: string }) {
     return (
       <div className="flex h-full min-h-0 w-full flex-col items-center justify-center gap-2 px-6 text-center">
         <SquareTerminal
-          className="h-8 w-8 text-ds-icon-neutral-muted-default"
+          className="h-8 w-8 text-ds-ink-muted-default"
           aria-hidden
         />
-        <p className="max-w-[360px] text-sm text-ds-text-neutral-muted-default">
+        <p className="max-w-[360px] text-sm text-ds-ink-muted-default">
           {t('layout.terminal-stream-gone', {
             defaultValue: 'This terminal stream is no longer available.',
           })}
@@ -178,17 +178,17 @@ function AgentStreamTerminal({ sourceId }: { sourceId: string }) {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
-      <div className="flex h-[44px] shrink-0 items-center gap-2 px-3">
+      <div className="flex h-ds-layout-row-header shrink-0 items-center gap-2 overflow-visible px-3">
         <span
           aria-hidden
           className={cn(
             'h-2 w-2 shrink-0 rounded-full',
             source.status === 'running'
               ? 'animate-pulse bg-ds-bg-status-running-default-default'
-              : 'bg-ds-bg-neutral-muted-default'
+              : 'bg-ds-neutral-muted-default'
           )}
         />
-        <span className="truncate text-sm text-ds-text-neutral-muted-default">
+        <span className="truncate text-sm text-ds-ink-muted-default">
           {terminalSourceLabel(source)}
         </span>
         <div className="min-w-0 flex-1" />

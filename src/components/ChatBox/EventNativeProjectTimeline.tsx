@@ -150,7 +150,7 @@ function ChatTimelineSkeleton({ label }: { label: string }) {
       ].map(([width, height], index) => (
         <div
           key={`chat-skeleton-${index}`}
-          className={`${height} ${index % 2 === 0 ? 'ml-auto' : ''} ${width} animate-pulse rounded-xl bg-ds-bg-neutral-strong-default`}
+          className={`${height} ${index % 2 === 0 ? 'ml-auto' : ''} ${width} animate-pulse rounded-xl bg-ds-neutral-strong-default`}
         />
       ))}
       <span className="sr-only">{label}</span>
@@ -659,7 +659,7 @@ export function EventNativeProjectTimeline({
         ) : null}
         {hydration.eventsTruncated ? (
           <span
-            className="block px-4 py-2 text-center text-label-sm font-normal text-ds-text-neutral-muted-default"
+            className="block px-4 py-2 text-center text-ds-text-base font-normal text-ds-ink-muted-default"
             role="status"
           >
             {t('chat.timeline-history-window')}
@@ -670,7 +670,7 @@ export function EventNativeProjectTimeline({
             className="flex flex-col items-center gap-2 px-4 py-2"
             role="alert"
           >
-            <span className="text-center text-body-sm font-normal text-ds-text-status-error-default-default">
+            <span className="text-center text-ds-text-base font-normal text-ds-text-status-error-default-default">
               {t('chat.timeline-history-partial-error')}
             </span>
             <Button
@@ -698,7 +698,7 @@ export function EventNativeProjectTimeline({
             className="flex flex-col items-center gap-2 px-4 py-6"
             role="alert"
           >
-            <span className="text-center text-body-sm font-normal text-ds-text-status-error-default-default">
+            <span className="text-center text-ds-text-base font-normal text-ds-text-status-error-default-default">
               {t('chat.timeline-history-error')}
             </span>
             <Button
@@ -713,7 +713,7 @@ export function EventNativeProjectTimeline({
           </div>
         ) : hydration.status === 'ready' || hydration.status === 'idle' ? (
           <span
-            className="block px-4 py-6 text-center text-body-sm font-normal text-ds-text-neutral-muted-default"
+            className="block px-4 py-6 text-center text-ds-text-base font-normal text-ds-ink-muted-default"
             role="status"
           >
             {t('chat.timeline-empty')}

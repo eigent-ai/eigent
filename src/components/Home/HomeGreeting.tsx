@@ -53,15 +53,15 @@ function OverviewStat({
     <div className="flex min-w-0 items-center gap-3">
       <div
         aria-hidden
-        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default text-ds-icon-neutral-default-default"
+        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-default-default text-ds-ink-default-default"
       >
         <Icon className="h-5 w-5" />
       </div>
       <div className="min-w-0">
-        <span className="block truncate !text-label-xs font-semibold uppercase tracking-wide text-ds-text-neutral-muted-default">
+        <span className="block truncate !text-ds-text-meta font-semibold tracking-wide text-ds-ink-muted-default uppercase">
           {label}
         </span>
-        <span className="mt-1 block truncate !text-body-md font-semibold text-ds-text-neutral-default-default">
+        <span className="mt-1 block truncate !text-ds-text-body-large font-semibold text-ds-ink-default-default">
           {value}
         </span>
       </div>
@@ -133,19 +133,19 @@ export default function HomeGreeting() {
         <h1 className="m-0 flex flex-col items-start">
           <WordCarousel
             words={[t(timeGreetingKey)]}
-            className="history-welcome-headline text-heading-xl font-bold not-italic tracking-tight"
+            className="history-welcome-headline !text-ds-text-display font-bold tracking-tight not-italic"
             rotateIntervalMs={100}
             sweepDurationMs={2000}
             sweepOnce
-            gradient="linear-gradient(90deg, var(--ds-text-brand-subtle-default) 0%, var(--ds-text-brand-muted-default) 100%)"
+            gradient="linear-gradient(90deg, var(--ds-accent-subtle-default) 0%, var(--ds-accent-muted-default) 100%)"
           />
           {welcomeName ? (
-            <span className="history-welcome-headline block text-heading-xl font-bold italic tracking-tight text-ds-text-brand-default-default">
+            <span className="history-welcome-headline block !text-ds-text-display font-bold tracking-tight text-ds-accent-default-default italic">
               {`${welcomeName}!`}
             </span>
           ) : null}
         </h1>
-        <p className="mt-2 max-w-md !text-body-sm text-ds-text-neutral-muted-default">
+        <p className="mt-2 max-w-md !text-ds-text-base text-ds-ink-muted-default">
           Manage your Spaces and connected workspace resources.
         </p>
       </div>

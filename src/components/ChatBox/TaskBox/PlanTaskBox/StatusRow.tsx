@@ -42,25 +42,25 @@ export function StatusRow({ chatStore, taskId, className }: StatusRowProps) {
 
   return (
     <div
-      className={cn('gap-x-2 gap-y-1 flex flex-wrap items-center', className)}
+      className={cn('flex flex-wrap items-center gap-x-2 gap-y-1', className)}
     >
       <AnimateIcon
         animate
         loop
-        className="h-4 w-4 !text-ds-text-information-default-default flex shrink-0 items-center justify-center"
+        className="flex h-4 w-4 shrink-0 items-center justify-center !text-ds-text-information-default-default"
       >
         <ClipboardList size={16} />
       </AnimateIcon>
-      <span className="text-body-sm font-bold text-ds-text-information-default-default shrink-0">
+      <span className="shrink-0 text-ds-text-base font-bold text-ds-text-information-default-default">
         {t('chat.splitting-tasks')}
       </span>
-      <span className="text-body-sm font-normal text-ds-text-neutral-subtle-default shrink-0 tabular-nums">
+      <span className="shrink-0 text-ds-text-base font-normal text-ds-ink-subtle-default tabular-nums">
         {formatSplittingElapsed(elapsedMs)}
       </span>
-      <span className="text-body-sm font-normal text-ds-text-neutral-subtle-default shrink-0">
+      <span className="shrink-0 text-ds-text-base font-normal text-ds-ink-subtle-default">
         •
       </span>
-      <span className="gap-1 text-body-sm font-normal text-ds-text-neutral-subtle-default flex shrink-0 items-center">
+      <span className="flex shrink-0 items-center gap-1 text-ds-text-base font-normal text-ds-ink-subtle-default">
         <AnimatedTokenNumber value={tokens} />
         tokens
       </span>

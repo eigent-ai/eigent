@@ -46,7 +46,7 @@ interface InputVariantRouterProps {
 }
 
 const controlSurfaceClassName =
-  'flex w-full flex-col gap-3 rounded-3xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default p-3';
+  'flex w-full flex-col gap-3 rounded-3xl border-x border-y border border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default p-3';
 
 function ControlActions({ children }: { children: React.ReactNode }) {
   return (
@@ -117,7 +117,7 @@ function ApprovalInput({ variant }: { variant: BottomBoxApprovalVariant }) {
         eyebrow={undefined}
         contextItems={undefined}
         details={undefined}
-        className="px-0 pb-0 pt-0"
+        className="px-0 pt-0 pb-0"
       />
       <div data-approval-actions className="flex w-full justify-end">
         <ControlActions>
@@ -235,7 +235,7 @@ function SelectionInput({ variant }: { variant: BottomBoxSelectionVariant }) {
               tabIndex={multiple || index === activeIndex ? 0 : -1}
               variant={isSelected ? 'secondary' : 'ghost'}
               tone={isSelected ? 'information' : 'neutral'}
-              className="h-auto w-full justify-start gap-2 px-2 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ds-border-brand-default-focus"
+              className="h-auto w-full justify-start gap-2 px-2 py-2 text-left focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:outline-none focus-visible:ring-inset"
               disabled={
                 variant.disabled || variant.submitting || option.disabled
               }
@@ -250,20 +250,22 @@ function SelectionInput({ variant }: { variant: BottomBoxSelectionVariant }) {
               <span
                 aria-hidden
                 className={cn(
-                  'flex size-4 shrink-0 items-center justify-center border border-solid border-ds-border-neutral-default-default',
+                  'flex size-4 shrink-0 items-center justify-center border border-x border-y border-solid border-ds-hairline-default-default',
                   multiple ? 'rounded' : 'rounded-full',
                   isSelected &&
                     'border-ds-border-status-completed-default-default bg-ds-bg-success-default-default'
                 )}
               >
                 {isSelected && (
-                  <Check className="size-3 text-ds-text-brand-inverse-default" />
+                  <Check className="size-3 text-ds-success-on-default" />
                 )}
               </span>
               <span className="flex min-w-0 flex-col">
-                <span className="text-body-sm font-medium">{option.label}</span>
+                <span className="text-ds-text-base font-medium">
+                  {option.label}
+                </span>
                 {option.description && (
-                  <span className="text-body-xs font-normal text-ds-text-neutral-muted-default">
+                  <span className="text-ds-text-meta font-normal text-ds-ink-muted-default">
                     {option.description}
                   </span>
                 )}
@@ -434,7 +436,7 @@ function BlockedInput({ variant }: { variant: BottomBoxBlockedVariant }) {
 
   return (
     <div className={controlSurfaceClassName} role="alert">
-      <div className="flex items-start gap-2 text-body-sm text-ds-text-warning-default-default">
+      <div className="flex items-start gap-2 text-ds-text-base text-ds-text-warning-default-default">
         <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
         <span className="block font-normal">{variant.message}</span>
       </div>
@@ -476,7 +478,7 @@ function RunControlInput({ variant }: { variant: BottomBoxRunControlVariant }) {
     >
       {variant.state === 'read_only' ? (
         <span
-          className="block text-body-sm font-normal text-ds-text-neutral-muted-default"
+          className="block text-ds-text-base font-normal text-ds-ink-muted-default"
           role="status"
         >
           {variant.readOnlyLabel ?? t('chat.control-read-only')}

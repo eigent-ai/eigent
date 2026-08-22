@@ -23,7 +23,7 @@ export function triggerListenerLeadIconClass(
 ): string {
   switch (status) {
     case 'connected':
-      return 'text-ds-icon-neutral-muted-default';
+      return 'text-ds-ink-muted-default';
     case 'connecting':
       return 'text-ds-icon-warning-default-default animate-pulse';
     case 'unhealthy':
@@ -51,8 +51,8 @@ export function NavTabReconnectSuffix({
       <button
         type="button"
         className={cn(
-          'no-drag flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-ds-icon-neutral-muted-default outline-none transition-colors hover:bg-ds-bg-neutral-strong-default',
-          'focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-neutral-subtle-default'
+          'no-drag flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-ds-ink-muted-default transition-colors outline-none hover:bg-ds-neutral-strong-default',
+          'focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ds-hairline-subtle-default focus-visible:outline-none'
         )}
         aria-label={reconnectLabel}
         onClick={(e) => {

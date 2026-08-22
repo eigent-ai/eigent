@@ -79,12 +79,12 @@ function SpaceRowMenu({
           size="sm"
           buttonRadius="full"
           buttonContent="icon-only"
-          className="no-drag shrink-0 data-[state=open]:bg-ds-bg-neutral-subtle-selected data-[state=open]:hover:bg-ds-bg-neutral-subtle-selected"
+          className="no-drag shrink-0 data-[state=open]:bg-ds-neutral-subtle-selected data-[state=open]:hover:bg-ds-neutral-subtle-selected"
           aria-label={`${moreLabel}: ${space.name}`}
           onClick={(event) => event.stopPropagation()}
         >
           <MoreHorizontal
-            className="h-3.5 w-3.5 text-ds-icon-neutral-muted-default"
+            className="h-3.5 w-3.5 text-ds-ink-muted-default"
             aria-hidden
           />
         </Button>

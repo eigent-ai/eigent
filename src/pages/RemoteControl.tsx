@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { Button } from '@/components/ui/button';
 import {
   completeProjectViewResync,
   importLegacyChatSteps,
@@ -597,7 +598,7 @@ export default function RemoteControlPage() {
 
   if (loading) {
     return (
-      <div className="bg-background text-foreground flex min-h-screen items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-ds-neutral-subtle-default text-ds-ink-default-default">
         <Loader2 className="h-5 w-5 animate-spin" />
       </div>
     );
@@ -605,34 +606,38 @@ export default function RemoteControlPage() {
 
   if (error || !session) {
     return (
-      <div className="bg-background text-foreground flex min-h-screen items-center justify-center px-4">
-        <div className="border-border bg-card w-full max-w-md rounded-md border p-5">
-          <h1 className="text-lg font-semibold">Remote control unavailable</h1>
-          <p className="text-muted-foreground mt-2 text-sm">{error}</p>
+      <div className="flex min-h-screen items-center justify-center bg-ds-neutral-subtle-default px-4 text-ds-ink-default-default">
+        <div className="w-full max-w-md rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default p-5">
+          <h1 className="!text-ds-text-title font-semibold text-ds-ink-default-default">
+            Remote control unavailable
+          </h1>
+          <p className="mt-2 !text-ds-text-base text-ds-ink-muted-default">
+            {error}
+          </p>
         </div>
       </div>
     );
   }
 
   return (
-    <main className="bg-background text-foreground flex min-h-screen">
+    <main className="flex min-h-screen bg-ds-neutral-subtle-default text-ds-ink-default-default">
       <section className="mx-auto flex min-h-screen w-full max-w-4xl flex-col px-4 py-4 sm:px-6">
-        <header className="border-border flex flex-col gap-3 border-b pb-3">
+        <header className="flex flex-col gap-3 border-x-0 border-t-0 border-b border-solid border-ds-hairline-default-default pb-3">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <h1 className="truncate text-base font-semibold">
+              <h1 className="truncate !text-ds-text-body-large font-semibold text-ds-ink-default-default">
                 {session.title || 'Remote control'}
               </h1>
-              <p className="text-muted-foreground mt-1 text-xs">
+              <p className="mt-1 !text-ds-text-meta text-ds-ink-muted-default">
                 {bridgeOnline
                   ? 'Desktop is online'
                   : 'Desktop is offline. Keep Eigent open on the original computer and stay on the chat view.'}
               </p>
               <p
-                className={`mt-1 text-xs ${
+                className={`mt-1 !text-ds-text-meta ${
                   projectView?.needsResync
-                    ? 'text-amber-600'
-                    : 'text-muted-foreground'
+                    ? 'text-ds-text-warning-strong-default'
+                    : 'text-ds-ink-muted-default'
                 }`}
               >
                 {freshnessLabel}
@@ -640,14 +645,17 @@ export default function RemoteControlPage() {
             </div>
             <div
               className={`h-2.5 w-2.5 shrink-0 rounded-full ${
-                bridgeOnline ? 'bg-emerald-500' : 'bg-destructive'
+                bridgeOnline
+                  ? 'bg-ds-bg-success-default-default'
+                  : 'bg-ds-bg-error-default-default'
               }`}
               aria-label={bridgeOnline ? 'online' : 'offline'}
             />
           </div>
           <div className="flex flex-wrap gap-2">
-            <button
-              className="border-border bg-background inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+            <Button
+              variant="outline"
+              size="sm"
               disabled={!bridgeOnline || !!controlLoading}
               onClick={() =>
                 sendControlCommand(
@@ -659,9 +667,10 @@ export default function RemoteControlPage() {
             >
               <SkipForward className="h-4 w-4" />
               Stop task
-            </button>
-            <button
-              className="border-border bg-background inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               disabled={!bridgeOnline || !!controlLoading}
               onClick={() =>
                 sendControlCommand(
@@ -673,47 +682,49 @@ export default function RemoteControlPage() {
             >
               <Ban className="h-4 w-4" />
               Force stop
-            </button>
-            <button
-              className="border-border bg-background inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               disabled={!!controlLoading || session.status !== 'active'}
               onClick={extendSession}
             >
               <Clock3 className="h-4 w-4" />
               Extend link
-            </button>
-            <button
-              className="border-border bg-background inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               disabled={!!controlLoading || session.status !== 'active'}
               onClick={revokeSession}
             >
               <ShieldX className="h-4 w-4" />
               Revoke link
-            </button>
+            </Button>
           </div>
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto py-4">
           <div className="space-y-3">
             {steps.length === 0 ? (
-              <div className="border-border bg-card text-muted-foreground rounded-md border p-4 text-sm">
+              <div className="rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default p-4 !text-ds-text-base text-ds-ink-muted-default">
                 No remote events yet.
               </div>
             ) : (
               steps.map((step) => (
                 <article
                   key={step.step_id}
-                  className="border-border bg-card rounded-md border p-3"
+                  className="rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default p-3"
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-muted-foreground text-xs font-medium uppercase">
+                    <span className="!text-ds-text-meta font-medium text-ds-ink-muted-default uppercase">
                       {step.step}
                     </span>
-                    <span className="text-muted-foreground text-xs">
+                    <span className="!text-ds-text-meta text-ds-ink-muted-default">
                       #{step.step_id}
                     </span>
                   </div>
-                  <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words text-sm leading-6">
+                  <pre className="mt-2 max-h-72 overflow-auto !text-ds-text-base leading-6 break-words whitespace-pre-wrap text-ds-ink-default-default">
                     {renderStepData(step.data)}
                   </pre>
                 </article>
@@ -724,29 +735,30 @@ export default function RemoteControlPage() {
 
         {lastCommand?.status === 'failed' &&
           lastCommand.type === 'user_message' && (
-            <div className="border-destructive/30 bg-destructive/10 mb-3 flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
+            <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-x border-y border-solid border-ds-border-error-default-default bg-ds-bg-error-subtle-default p-3 !text-ds-text-base text-ds-text-error-strong-default">
               <span className="min-w-0 truncate">
                 Send failed: {lastCommand.error || lastCommand.content}
               </span>
-              <button
-                className="border-border bg-background inline-flex h-8 shrink-0 items-center gap-2 rounded-md border px-3 text-sm"
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => submit(lastCommand.content)}
               >
                 <RefreshCw className="h-4 w-4" />
                 Resend
-              </button>
+              </Button>
             </div>
           )}
 
         <form
-          className="border-border flex items-end gap-2 border-t pt-3"
+          className="flex items-end gap-2 border-x-0 border-t border-b-0 border-solid border-ds-hairline-default-default pt-3"
           onSubmit={(event) => {
             event.preventDefault();
             void submit(message);
           }}
         >
           <textarea
-            className="border-border bg-card focus:border-primary min-h-12 flex-1 resize-none rounded-md border px-3 py-2 text-sm outline-none"
+            className="min-h-12 flex-1 resize-none rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default px-3 py-2 !text-ds-text-base text-ds-ink-default-default outline-none focus:border-ds-ring-focus"
             value={message}
             onChange={(event) => setMessage(event.target.value)}
             placeholder={
@@ -759,8 +771,10 @@ export default function RemoteControlPage() {
             disabled={!bridgeOnline || sending}
             rows={2}
           />
-          <button
-            className="bg-primary text-primary-foreground inline-flex h-12 w-12 items-center justify-center rounded-md disabled:cursor-not-allowed disabled:opacity-50"
+          <Button
+            variant="primary"
+            size="md"
+            buttonContent="icon-only"
             type="submit"
             disabled={!bridgeOnline || sending || !message.trim()}
             aria-label="Send"
@@ -770,7 +784,7 @@ export default function RemoteControlPage() {
             ) : (
               <SendHorizontal className="h-4 w-4" />
             )}
-          </button>
+          </Button>
         </form>
       </section>
     </main>

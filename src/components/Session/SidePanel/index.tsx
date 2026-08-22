@@ -101,7 +101,7 @@ export function SessionSidePanel({
                 variant="secondary"
                 aria-label={scopeLabel}
                 wrapperClassName="w-fit max-w-full"
-                className="h-7 w-auto justify-center gap-0 rounded-lg border-transparent px-2 !text-body-xs [&>svg]:hidden"
+                className="h-7 w-auto justify-center gap-0 rounded-lg border-transparent px-2 !text-ds-text-meta [&>svg]:hidden"
               >
                 <SelectValue />
               </SelectTrigger>
@@ -115,7 +115,7 @@ export function SessionSidePanel({
 
         {/* Sizes to its content and only shrinks (then scrolls inside) once the
             sections outgrow the column. */}
-        <div className="mx-1 mb-1 flex min-h-0 flex-col overflow-hidden rounded-2xl bg-ds-bg-neutral-default-default pl-2">
+        <div className="mx-1 mb-1 flex min-h-0 flex-col overflow-hidden rounded-2xl bg-ds-neutral-default-default pl-2">
           <SessionActivityPanel
             scope={scope}
             agentHeaderAction={
@@ -159,10 +159,10 @@ export function SessionSidePanel({
             aria-expanded={isSidePanelVisible}
             aria-controls="session-side-panel"
             className={cn(
-              'absolute inset-0 z-20 flex items-center justify-center focus-visible:ring-ds-border-neutral-strong-default',
-              'cursor-pointer border-0 bg-transparent p-0 outline-none',
-              'focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-ds-bg-neutral-default-default',
-              'text-ds-text-neutral-default-default'
+              'absolute inset-0 z-20 flex items-center justify-center focus-visible:ring-ds-hairline-strong-default',
+              'cursor-pointer border-0 border-x-0 border-y-0 bg-transparent p-0 outline-none',
+              'focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-ds-neutral-default-default',
+              'text-ds-ink-default-default'
             )}
           >
             <ChevronLeft

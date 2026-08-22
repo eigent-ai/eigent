@@ -582,14 +582,14 @@ export function WorkspaceBundleSaveDialog({
         />
         <DialogContentSection className="space-y-4 overflow-y-auto">
           {loading ? (
-            <div className="flex items-center justify-center gap-2 py-12 text-body-sm text-ds-text-neutral-muted-default">
+            <div className="flex items-center justify-center gap-2 py-12 text-ds-text-base text-ds-ink-muted-default">
               <RefreshCw className="h-4 w-4 animate-spin" aria-hidden />
               Preparing a secret-free review…
             </div>
           ) : null}
 
           {error ? (
-            <div className="rounded-xl border border-ds-border-error-default-default bg-ds-bg-error-subtle-default p-3 text-body-sm text-ds-text-error-strong-default">
+            <div className="rounded-xl border border-x border-y border-ds-border-error-default-default bg-ds-bg-error-subtle-default p-3 text-ds-text-base text-ds-text-error-strong-default">
               {error}
             </div>
           ) : null}
@@ -597,25 +597,25 @@ export function WorkspaceBundleSaveDialog({
           {review ? (
             <>
               {recoverablePublishedRevision && !publishedHandle ? (
-                <div className="rounded-xl border border-ds-border-information-default-default bg-ds-bg-information-subtle-default p-4">
-                  <p className="text-body-sm font-bold">
+                <div className="rounded-xl border border-x border-y border-ds-border-information-default-default bg-ds-bg-information-subtle-default p-4">
+                  <p className="text-ds-text-base font-bold">
                     This version is already published
                   </p>
-                  <p className="mt-1 text-body-xs text-ds-text-neutral-muted-default">
+                  <p className="mt-1 text-ds-text-meta text-ds-ink-muted-default">
                     Cloud has the immutable version, but the local publish
                     receipt was not saved. Finish saving locally without
                     selecting or uploading the assets again.
                   </p>
                 </div>
               ) : null}
-              <div className="rounded-xl border border-ds-border-success-default-default bg-ds-bg-success-subtle-default p-4">
+              <div className="rounded-xl border border-x border-y border-ds-border-success-default-default bg-ds-bg-success-subtle-default p-4">
                 <div className="flex items-start gap-3">
                   <ShieldCheck className="mt-0.5 h-5 w-5" aria-hidden />
                   <div>
-                    <p className="text-body-sm font-bold">
+                    <p className="text-ds-text-base font-bold">
                       Values stay on this device
                     </p>
-                    <p className="mt-1 text-body-xs text-ds-text-neutral-muted-default">
+                    <p className="mt-1 text-ds-text-meta text-ds-ink-muted-default">
                       {review.local_values_excluded} configured local value
                       fields were excluded. Imported Agent Plugin package files
                       listed below are reviewed upload candidates and may
@@ -627,12 +627,12 @@ export function WorkspaceBundleSaveDialog({
               </div>
 
               <section className="space-y-2">
-                <h3 className="text-body-sm font-bold">
+                <h3 className="text-ds-text-base font-bold">
                   Environment and secret requirements
                 </h3>
                 {review.requirements.environment_variables.length === 0 &&
                 review.requirements.secret_slots.length === 0 ? (
-                  <p className="text-body-xs text-ds-text-neutral-muted-default">
+                  <p className="text-ds-text-meta text-ds-ink-muted-default">
                     No secret or environment input is required.
                   </p>
                 ) : (
@@ -640,10 +640,12 @@ export function WorkspaceBundleSaveDialog({
                     {review.requirements.environment_variables.map((item) => (
                       <div
                         key={item.name}
-                        className="rounded-xl bg-ds-bg-neutral-subtle-default p-3"
+                        className="rounded-xl bg-ds-neutral-subtle-default p-3"
                       >
-                        <p className="font-mono text-body-sm">{item.name}</p>
-                        <p className="mt-1 text-body-xs text-ds-text-neutral-muted-default">
+                        <p className="font-mono text-ds-text-base">
+                          {item.name}
+                        </p>
+                        <p className="mt-1 text-ds-text-meta text-ds-ink-muted-default">
                           {item.sensitive ? 'Sensitive' : 'Non-sensitive'} ·{' '}
                           {item.required ? 'Required' : 'Optional'}
                         </p>
@@ -652,10 +654,10 @@ export function WorkspaceBundleSaveDialog({
                     {review.requirements.secret_slots.map((slot) => (
                       <div
                         key={slot}
-                        className="rounded-xl bg-ds-bg-neutral-subtle-default p-3"
+                        className="rounded-xl bg-ds-neutral-subtle-default p-3"
                       >
-                        <p className="font-mono text-body-sm">{slot}</p>
-                        <p className="mt-1 text-body-xs text-ds-text-neutral-muted-default">
+                        <p className="font-mono text-ds-text-base">{slot}</p>
+                        <p className="mt-1 text-ds-text-meta text-ds-ink-muted-default">
                           Local secret slot
                         </p>
                       </div>
@@ -663,7 +665,7 @@ export function WorkspaceBundleSaveDialog({
                   </div>
                 )}
                 {!requirementsReady ? (
-                  <div className="rounded-xl border border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default p-3 text-body-sm">
+                  <div className="rounded-xl border border-x border-y border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default p-3 text-ds-text-base">
                     <p>
                       Local configuration revealed undeclared or insufficiently
                       protected environment requirements. Add these names to the
@@ -691,16 +693,16 @@ export function WorkspaceBundleSaveDialog({
               </section>
 
               <section className="space-y-2">
-                <h3 className="text-body-sm font-bold">
+                <h3 className="text-ds-text-base font-bold">
                   Bundle assets ({totalAssetCount})
                 </h3>
                 {recoverablePublishedRevision ? (
-                  <p className="rounded-xl bg-ds-bg-neutral-subtle-default p-3 text-body-xs text-ds-text-neutral-muted-default">
+                  <p className="rounded-xl bg-ds-neutral-subtle-default p-3 text-ds-text-meta text-ds-ink-muted-default">
                     Assets are already verified in Cloud. No re-selection or
                     upload is required to finish saving locally.
                   </p>
                 ) : (
-                  <p className="text-body-xs text-ds-text-neutral-muted-default">
+                  <p className="text-ds-text-meta text-ds-ink-muted-default">
                     Eigent does not scan or upload ordinary Workspace files
                     automatically. Choose each manually referenced asset;
                     explicitly imported Agent Plugin files are reviewed
@@ -708,25 +710,25 @@ export function WorkspaceBundleSaveDialog({
                   </p>
                 )}
                 {!recoverablePublishedRevision && assetLimitError ? (
-                  <div className="rounded-xl border border-ds-border-error-default-default bg-ds-bg-error-subtle-default p-3 text-body-sm text-ds-text-error-strong-default">
+                  <div className="rounded-xl border border-x border-y border-ds-border-error-default-default bg-ds-bg-error-subtle-default p-3 text-ds-text-base text-ds-text-error-strong-default">
                     {assetLimitError}
                   </div>
                 ) : null}
                 {recoverablePublishedRevision ? null : totalAssetCount === 0 ? (
-                  <p className="rounded-xl bg-ds-bg-neutral-subtle-default p-3 text-body-xs text-ds-text-neutral-muted-default">
+                  <p className="rounded-xl bg-ds-neutral-subtle-default p-3 text-ds-text-meta text-ds-ink-muted-default">
                     This Bundle has no file assets.
                   </p>
                 ) : manualAssetPaths.length > 0 ? (
                   manualAssetPaths.map((path) => (
                     <label
                       key={path}
-                      className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-ds-border-neutral-subtle-default p-3"
+                      className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-x border-y border-ds-hairline-subtle-default p-3"
                     >
                       <span className="min-w-0">
-                        <span className="block truncate font-mono text-body-sm">
+                        <span className="block truncate font-mono text-ds-text-base">
                           {logicalAssetPath(path)}
                         </span>
-                        <span className="block truncate text-body-xs text-ds-text-neutral-muted-default">
+                        <span className="block truncate text-ds-text-meta text-ds-ink-muted-default">
                           {assetFiles[path]?.name || 'Choose a local file'}
                         </span>
                       </span>
@@ -763,13 +765,13 @@ export function WorkspaceBundleSaveDialog({
                 ) : null}
 
                 {preparedAssets.length > 0 ? (
-                  <div className="space-y-3 rounded-xl border border-ds-border-neutral-subtle-default p-3">
+                  <div className="space-y-3 rounded-xl border border-x border-y border-ds-hairline-subtle-default p-3">
                     <div>
-                      <p className="text-body-sm font-bold">
+                      <p className="text-ds-text-base font-bold">
                         Imported Agent Plugin package files (
                         {preparedAssets.length})
                       </p>
-                      <p className="mt-1 text-body-xs text-ds-text-neutral-muted-default">
+                      <p className="mt-1 text-ds-text-meta text-ds-ink-muted-default">
                         {formatBytes(preparedAssetBytes)} was persisted by Brain
                         when you explicitly imported this package. File bytes
                         stay outside the renderer and ordinary Workspace files
@@ -780,12 +782,12 @@ export function WorkspaceBundleSaveDialog({
                       {preparedAssets.map((asset) => (
                         <div
                           key={assetDescriptorKey(asset)}
-                          className="rounded-lg bg-ds-bg-neutral-subtle-default p-2"
+                          className="rounded-lg bg-ds-neutral-subtle-default p-2"
                         >
-                          <p className="truncate font-mono text-body-xs">
+                          <p className="truncate font-mono text-ds-text-meta">
                             {logicalAssetPath(asset.logical_path)}
                           </p>
-                          <p className="text-caption mt-1 truncate text-ds-text-neutral-muted-default">
+                          <p className="text-caption mt-1 truncate text-ds-ink-muted-default">
                             {formatBytes(asset.size_bytes)} · {asset.media_type}
                             {asset.executable ? ' · executable' : ''} ·{' '}
                             {asset.provenance} · sha256:
@@ -795,7 +797,7 @@ export function WorkspaceBundleSaveDialog({
                       ))}
                     </div>
                     {!recoverablePublishedRevision ? (
-                      <label className="flex items-start gap-3 rounded-lg bg-ds-bg-warning-subtle-default p-3 text-body-sm">
+                      <label className="flex items-start gap-3 rounded-lg bg-ds-bg-warning-subtle-default p-3 text-ds-text-base">
                         <Switch
                           size="sm"
                           checked={preparedUploadConfirmed}
@@ -818,7 +820,7 @@ export function WorkspaceBundleSaveDialog({
               </section>
 
               <section className="space-y-2">
-                <h3 className="text-body-sm font-bold">Sharing</h3>
+                <h3 className="text-ds-text-base font-bold">Sharing</h3>
                 <div className="grid gap-2 md:grid-cols-2">
                   {(['private', 'public'] as const).map((option) => (
                     <button
@@ -826,8 +828,8 @@ export function WorkspaceBundleSaveDialog({
                       type="button"
                       className={`rounded-xl border p-3 text-left ${
                         visibility === option
-                          ? 'border-ds-border-brand-default-default bg-ds-bg-brand-subtle-default'
-                          : 'border-ds-border-neutral-subtle-default'
+                          ? 'border-ds-accent-default-default bg-ds-accent-subtle-default'
+                          : 'border-ds-hairline-subtle-default'
                       }`}
                       disabled={publishing || Boolean(publishedHandle)}
                       onClick={() => {
@@ -837,10 +839,10 @@ export function WorkspaceBundleSaveDialog({
                         setPreparedUploadConfirmed(false);
                       }}
                     >
-                      <span className="text-body-sm font-bold capitalize">
+                      <span className="text-ds-text-base font-bold capitalize">
                         {option}
                       </span>
-                      <span className="mt-1 block text-body-xs text-ds-text-neutral-muted-default">
+                      <span className="mt-1 block text-ds-text-meta text-ds-ink-muted-default">
                         {option === 'private'
                           ? 'Only you can install this version.'
                           : 'Anyone with access to the Bundle can review and install it.'}
@@ -853,13 +855,13 @@ export function WorkspaceBundleSaveDialog({
               {review.warnings.map((warning) => (
                 <div
                   key={warning.code}
-                  className="rounded-xl border border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default p-3 text-body-sm"
+                  className="rounded-xl border border-x border-y border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default p-3 text-ds-text-base"
                 >
                   {warning.message}
                 </div>
               ))}
 
-              <label className="flex items-start gap-3 rounded-xl bg-ds-bg-neutral-subtle-default p-3 text-body-sm">
+              <label className="flex items-start gap-3 rounded-xl bg-ds-neutral-subtle-default p-3 text-ds-text-base">
                 <Switch
                   size="sm"
                   checked={reviewed}
@@ -874,15 +876,15 @@ export function WorkspaceBundleSaveDialog({
               </label>
 
               {publishedHandle ? (
-                <div className="rounded-xl border border-ds-border-success-default-default bg-ds-bg-success-subtle-default p-4">
-                  <p className="flex items-center gap-2 text-body-sm font-bold">
+                <div className="rounded-xl border border-x border-y border-ds-border-success-default-default bg-ds-bg-success-subtle-default p-4">
+                  <p className="flex items-center gap-2 text-ds-text-base font-bold">
                     <Check className="h-4 w-4" aria-hidden /> Published
                   </p>
-                  <p className="mt-2 text-body-xs font-medium text-ds-text-neutral-muted-default">
+                  <p className="mt-2 text-ds-text-meta font-medium text-ds-ink-muted-default">
                     Shareable install handle
                   </p>
                   <p
-                    className="mt-1 font-mono text-body-sm"
+                    className="mt-1 font-mono text-ds-text-base"
                     aria-label="Published Workspace Bundle handle"
                   >
                     {publishedHandle}
@@ -897,12 +899,12 @@ export function WorkspaceBundleSaveDialog({
                     <Copy className="h-4 w-4" aria-hidden />
                     {copied ? 'Copied' : 'Copy share handle'}
                   </Button>
-                  <p className="mt-2 text-body-xs text-ds-text-neutral-muted-default">
+                  <p className="mt-2 text-ds-text-meta text-ds-ink-muted-default">
                     Share this exact <code>@publisher/slug@version</code>{' '}
                     coordinate. Recipients can paste it into Import Workspace
                     Bundle to review and install this immutable version.
                   </p>
-                  <p className="mt-2 text-body-xs text-ds-text-neutral-muted-default">
+                  <p className="mt-2 text-ds-text-meta text-ds-ink-muted-default">
                     {recoveredConcurrentEdits
                       ? 'The Cloud version was recovered. Your newer local edits continue in the next version.'
                       : 'Publishing does not silently replace the environment used by current Runs. Installation and local bindings are a separate reviewed step.'}

@@ -36,11 +36,11 @@ export function SidebarShell({
     <aside
       aria-label={ariaLabel}
       className={cn(
-        'box-border flex h-full min-h-0 w-full min-w-0 shrink-0 flex-col items-start overflow-hidden rounded-2xl bg-ds-bg-neutral-default-default p-1',
+        'box-border flex h-full min-h-0 w-full min-w-0 shrink-0 flex-col items-start overflow-hidden rounded-2xl bg-ds-neutral-default-default p-1',
         className
       )}
     >
-      <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-x-hidden">
+      <div className="flex h-full min-h-0 w-full max-w-full min-w-0 flex-col overflow-x-hidden">
         {children}
       </div>
     </aside>
@@ -101,7 +101,7 @@ export function SidebarNavGroup({
   return (
     <div className={cn('flex w-full min-w-0 flex-col', className)}>
       {label ? (
-        <div className="px-3 pb-1 text-label-xs font-bold uppercase tracking-wide text-ds-text-neutral-subtle-default">
+        <div className="px-3 pb-1 text-ds-text-meta font-bold tracking-wide text-ds-ink-subtle-default uppercase">
           {label}
         </div>
       ) : null}

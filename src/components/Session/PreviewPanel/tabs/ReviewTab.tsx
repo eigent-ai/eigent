@@ -151,10 +151,10 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
     return (
       <div className="flex h-full min-h-0 w-full gap-2 overflow-hidden p-3">
         <div className="flex min-w-0 flex-1 flex-col gap-3">
-          <div className="h-28 animate-pulse rounded-lg bg-ds-bg-neutral-default-default" />
-          <div className="h-28 animate-pulse rounded-lg bg-ds-bg-neutral-default-default" />
+          <div className="h-28 animate-pulse rounded-lg bg-ds-neutral-default-default" />
+          <div className="h-28 animate-pulse rounded-lg bg-ds-neutral-default-default" />
         </div>
-        <div className="w-[248px] shrink-0 animate-pulse rounded-lg bg-ds-bg-neutral-default-default" />
+        <div className="w-[248px] shrink-0 animate-pulse rounded-lg bg-ds-neutral-default-default" />
       </div>
     );
   }
@@ -206,8 +206,8 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
       ref={panelRef}
       className="flex h-full min-h-0 w-full flex-col overflow-hidden"
     >
-      <div className="flex h-10 shrink-0 items-center gap-2 border-0 border-b border-solid border-ds-border-neutral-subtle-default px-3">
-        <span className="text-sm font-medium text-ds-text-neutral-default-default">
+      <div className="flex h-10 shrink-0 items-center gap-2 border-0 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-3">
+        <span className="text-sm font-medium text-ds-ink-default-default">
           {t('layout.review-changed-files', {
             defaultValue: '{{count}} changed files',
             count: files.length,
@@ -224,7 +224,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
           </span>
         )}
         {truncated && (
-          <span className="text-xs text-ds-text-neutral-muted-default">
+          <span className="text-xs text-ds-ink-muted-default">
             {t('layout.review-truncated', {
               defaultValue: 'Showing the first 500 files',
             })}
@@ -332,17 +332,14 @@ function CenteredNotice({
 }) {
   return (
     <div className="flex h-full min-h-0 w-full -translate-y-4 flex-col items-center justify-center gap-3 px-6 text-center">
-      <div className="flex size-12 items-center justify-center rounded-full bg-ds-bg-neutral-subtle-default">
-        <FileDiff
-          className="h-5 w-5 text-ds-icon-neutral-muted-default"
-          aria-hidden
-        />
+      <div className="flex size-12 items-center justify-center rounded-full bg-ds-neutral-subtle-default">
+        <FileDiff className="h-5 w-5 text-ds-ink-muted-default" aria-hidden />
       </div>
-      <p className="m-0 text-sm font-medium text-ds-text-neutral-default-default">
+      <p className="m-0 text-sm font-medium text-ds-ink-default-default">
         {message}
       </p>
       {detail && (
-        <p className="m-0 max-w-[420px] text-xs leading-5 text-ds-text-neutral-muted-default">
+        <p className="m-0 max-w-[420px] text-xs leading-5 text-ds-ink-muted-default">
           {detail}
         </p>
       )}

@@ -98,7 +98,7 @@ export function ProviderModelCombobox({
   return (
     <div className="flex w-full flex-col">
       {title ? (
-        <span className="mb-1.5 flex items-center gap-1 text-body-sm font-bold text-ds-text-neutral-default-default">
+        <span className="mb-1.5 flex items-center gap-1 text-ds-text-base font-bold text-ds-ink-default-default">
           {title}
         </span>
       ) : null}
@@ -123,7 +123,7 @@ export function ProviderModelCombobox({
           </SelectTrigger>
           <SelectContent>
             {!hasAnyModels && !orphanValue ? (
-              <span className="block px-3 py-6 text-center text-xs text-ds-text-neutral-muted-default">
+              <span className="block px-3 py-6 text-center text-xs text-ds-ink-muted-default">
                 {emptyMessage}
               </span>
             ) : (
@@ -165,7 +165,7 @@ export function ProviderModelCombobox({
           aria-label={t('setting.refresh-provider-models', {
             provider: providerName,
           })}
-          className="shrink-0 text-body-sm"
+          className="shrink-0 text-ds-text-base"
         >
           {loading ? (
             <Loader2 className="h-4 w-4 animate-spin" />

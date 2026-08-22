@@ -186,19 +186,19 @@ export function FilesChangedSummaryRow({
       className={cn(
         'flex min-h-10 w-full items-center gap-2 px-3 py-2',
         embedded
-          ? 'border-x-0 border-b-0 border-t border-solid border-ds-border-neutral-subtle-default bg-transparent'
-          : 'rounded-xl border border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default'
+          ? 'border-x-0 border-t border-b-0 border-solid border-ds-hairline-subtle-default bg-transparent'
+          : 'rounded-xl border border-x border-y border-ds-hairline-subtle-default bg-ds-neutral-subtle-default'
       )}
       data-files-changed-summary
     >
       <FileText
         aria-hidden
-        className="size-4 shrink-0 text-ds-icon-neutral-subtle-default"
+        className="size-4 shrink-0 text-ds-ink-subtle-default"
       />
-      <span className="min-w-0 flex-1 text-body-sm font-normal text-ds-text-neutral-default-default">
+      <span className="min-w-0 flex-1 text-ds-text-base font-normal text-ds-ink-default-default">
         {t('chat.files-changed')}
       </span>
-      <span className="shrink-0 text-label-sm font-medium tabular-nums text-ds-text-success-default-default">
+      <span className="shrink-0 text-ds-text-base font-medium text-ds-text-success-default-default tabular-nums">
         {files.length}
       </span>
     </div>

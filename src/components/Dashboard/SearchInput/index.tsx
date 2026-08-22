@@ -80,9 +80,9 @@ export default function SearchInput({
     return (
       <motion.div
         className={cn(
-          'flex items-center justify-center overflow-hidden rounded-lg border border-solid border-transparent bg-transparent py-0.5',
-          'focus-within:border-ds-border-brand-default-focus focus-within:bg-ds-bg-neutral-strong-default',
-          'hover:border-transparent hover:bg-ds-bg-neutral-strong-hover'
+          'flex items-center justify-center overflow-hidden rounded-lg border border-x border-y border-solid border-transparent bg-transparent py-0.5',
+          'focus-within:border-ds-ring-focus focus-within:bg-ds-neutral-strong-default',
+          'hover:border-transparent hover:bg-ds-neutral-strong-hover'
         )}
         initial={false}
         animate={{ width: isExpanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH }}
@@ -128,7 +128,7 @@ export default function SearchInput({
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
             >
-              <span className="pointer-events-none ml-2 inline-flex h-4 w-4 shrink-0 items-center justify-center text-ds-icon-neutral-muted-default">
+              <span className="pointer-events-none ml-2 inline-flex h-4 w-4 shrink-0 items-center justify-center text-ds-ink-muted-default">
                 <Search className="h-4 w-4" />
               </span>
               <input
@@ -145,7 +145,7 @@ export default function SearchInput({
                     onSearch?.();
                   }
                 }}
-                className="h-6 min-w-0 flex-1 bg-transparent pl-2 text-label-sm text-ds-text-neutral-default-default outline-none placeholder:text-ds-text-neutral-muted-default"
+                className="h-6 min-w-0 flex-1 bg-transparent pl-2 text-ds-text-base text-ds-ink-default-default outline-none placeholder:text-ds-ink-muted-default"
               />
               <TooltipSimple
                 content={clearLabel}
@@ -157,7 +157,7 @@ export default function SearchInput({
                   variant="ghost"
                   size="xs"
                   buttonContent="icon-only"
-                  className="shrink-0 rounded-full text-ds-icon-neutral-muted-default"
+                  className="shrink-0 rounded-full text-ds-ink-muted-default"
                   onClick={collapse}
                   aria-label={clearLabel}
                 >
@@ -178,9 +178,7 @@ export default function SearchInput({
         value={value}
         onChange={onChange}
         placeholder={place}
-        leadingIcon={
-          <Search className="h-5 w-5 text-ds-icon-neutral-muted-default" />
-        }
+        leadingIcon={<Search className="h-5 w-5 text-ds-ink-muted-default" />}
       />
     </div>
   );

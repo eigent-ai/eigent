@@ -51,12 +51,12 @@ export default function KeyboardShortcutsDialog({
             {groups.map((group) => (
               <section
                 key={group.id}
-                className="flex min-w-0 flex-col gap-2 rounded-xl bg-ds-bg-neutral-default-default p-4"
+                className="flex min-w-0 flex-col gap-2 rounded-xl bg-ds-neutral-default-default p-4"
                 aria-labelledby={`shortcut-group-${group.id}`}
               >
                 <span
                   id={`shortcut-group-${group.id}`}
-                  className="m-0 text-label-xs font-semibold uppercase tracking-wide text-ds-text-neutral-muted-default"
+                  className="m-0 text-ds-text-meta font-semibold tracking-wide text-ds-ink-muted-default uppercase"
                 >
                   {t(group.labelKey, { defaultValue: group.defaultLabel })}
                 </span>
@@ -69,7 +69,7 @@ export default function KeyboardShortcutsDialog({
                       <li
                         key={shortcut.id}
                         data-keyboard-shortcut-row
-                        className="flex h-9 items-center justify-between gap-4 border-x-0 border-b-[1px] border-t-0 border-solid border-ds-border-neutral-subtle-default px-2 text-body-sm text-ds-text-neutral-default-default"
+                        className="flex h-9 items-center justify-between gap-4 border-x-0 border-t-0 border-b-[1px] border-solid border-ds-hairline-subtle-default px-2 text-ds-text-base text-ds-ink-default-default"
                       >
                         <span className="min-w-0 truncate">{label}</span>
                         <span

@@ -390,17 +390,17 @@ export function AgentPluginImportWizard({
         <>
           <button
             type="button"
-            className="inline-flex items-center gap-1 text-body-sm text-ds-text-neutral-muted-default hover:text-ds-text-neutral-default-default"
+            className="inline-flex items-center gap-1 text-ds-text-base text-ds-ink-muted-default hover:text-ds-ink-default-default"
             onClick={() => navigate(-1)}
           >
             <ArrowLeft className="h-4 w-4" aria-hidden /> Back
           </button>
 
           <header>
-            <h1 className="text-heading-2xl font-semibold">
+            <h1 className="!text-ds-text-display font-semibold">
               Import Agent Plugin
             </h1>
-            <p className="mt-2 max-w-2xl text-body-sm text-ds-text-neutral-muted-default">
+            <p className="mt-2 max-w-2xl !text-ds-text-base text-ds-ink-muted-default">
               Import the Agent Plugins standard. Eigent reviews the package
               before converting it to a local Workspace Bundle draft.
             </p>
@@ -409,12 +409,16 @@ export function AgentPluginImportWizard({
       ) : null}
 
       {error ? (
-        <div className="rounded-xl border border-ds-border-error-default-default bg-ds-bg-error-subtle-default p-4 text-body-sm text-ds-text-error-strong-default">
+        <div className="rounded-xl border border-x border-y border-ds-border-error-default-default bg-ds-bg-error-subtle-default p-4 text-ds-text-base text-ds-text-error-strong-default">
           {error}
         </div>
       ) : null}
 
-      <Card className={showHeader ? undefined : 'space-y-3 !border-0'}>
+      <Card
+        className={
+          showHeader ? undefined : 'space-y-3 !border-0 !border-x-0 !border-y-0'
+        }
+      >
         <CardHeader className={showHeader ? undefined : '!p-0'}>
           <CardTitle>Select an Agent Plugin</CardTitle>
           <CardDescription>
@@ -443,7 +447,7 @@ export function AgentPluginImportWizard({
             Select directory or archive
           </Button>
           {selectedSource ? (
-            <span className="text-body-sm text-ds-text-neutral-muted-default">
+            <span className="text-ds-text-base text-ds-ink-muted-default">
               {selectedSource.display_name} · {selectedSource.source_kind}
             </span>
           ) : null}
@@ -468,41 +472,45 @@ export function AgentPluginImportWizard({
             </CardHeader>
             <CardContent className="space-y-4">
               {inspection.metadata.description ? (
-                <p className="text-body-sm">
+                <p className="text-ds-text-base">
                   {inspection.metadata.description}
                 </p>
               ) : null}
-              <div className="rounded-xl border p-3 text-body-xs">
+              <div className="rounded-xl border p-3 text-ds-text-meta">
                 <strong>Source tree digest</strong>
-                <code className="mt-1 block break-all text-ds-text-neutral-muted-default">
+                <code className="mt-1 block break-all text-ds-ink-muted-default">
                   {inspection.source_tree_digest}
                 </code>
                 <strong className="mt-3 block">Converted tree digest</strong>
-                <code className="mt-1 block break-all text-ds-text-neutral-muted-default">
+                <code className="mt-1 block break-all text-ds-ink-muted-default">
                   {inspection.converted_tree_digest}
                 </code>
               </div>
               <div className="grid gap-3 sm:grid-cols-3">
-                <div className="rounded-xl bg-ds-bg-neutral-subtle-default p-3">
+                <div className="rounded-xl bg-ds-neutral-subtle-default p-3">
                   <Puzzle className="h-4 w-4" aria-hidden />
-                  <strong className="mt-2 block text-body-sm">Skills</strong>
-                  <span className="text-body-sm">
+                  <strong className="mt-2 block text-ds-text-base">
+                    Skills
+                  </strong>
+                  <span className="text-ds-text-base">
                     {inspection.skills.length}
                   </span>
                 </div>
-                <div className="rounded-xl bg-ds-bg-neutral-subtle-default p-3">
+                <div className="rounded-xl bg-ds-neutral-subtle-default p-3">
                   <Server className="h-4 w-4" aria-hidden />
-                  <strong className="mt-2 block text-body-sm">
+                  <strong className="mt-2 block text-ds-text-base">
                     MCP servers
                   </strong>
-                  <span className="text-body-sm">
+                  <span className="text-ds-text-base">
                     {inspection.mcp_servers.length}
                   </span>
                 </div>
-                <div className="rounded-xl bg-ds-bg-neutral-subtle-default p-3">
+                <div className="rounded-xl bg-ds-neutral-subtle-default p-3">
                   <PackageSearch className="h-4 w-4" aria-hidden />
-                  <strong className="mt-2 block text-body-sm">Files</strong>
-                  <span className="text-body-sm">
+                  <strong className="mt-2 block text-ds-text-base">
+                    Files
+                  </strong>
+                  <span className="text-ds-text-base">
                     {inspection.files.length}
                   </span>
                 </div>
@@ -519,28 +527,30 @@ export function AgentPluginImportWizard({
                 {inspection.skills.length ? (
                   inspection.skills.map((skill) => (
                     <div key={skill.id} className="rounded-xl border p-3">
-                      <strong className="text-body-sm">{skill.name}</strong>
+                      <strong className="text-ds-text-base">
+                        {skill.name}
+                      </strong>
                       {skill.description ? (
-                        <p className="mt-1 text-body-xs text-ds-text-neutral-muted-default">
+                        <p className="mt-1 text-ds-text-meta text-ds-ink-muted-default">
                           {skill.description}
                         </p>
                       ) : null}
                     </div>
                   ))
                 ) : (
-                  <p className="text-body-sm text-ds-text-neutral-muted-default">
+                  <p className="text-ds-text-base text-ds-ink-muted-default">
                     No Skills declared.
                   </p>
                 )}
                 {inspection.skipped_skills.map((skill) => (
                   <div
                     key={`${skill.id || skill.name || skill.logical_path}:${skill.reason_code}`}
-                    className="rounded-xl border border-ds-border-warning-default-default p-3"
+                    className="rounded-xl border border-x border-y border-ds-border-warning-default-default p-3"
                   >
-                    <strong className="text-body-sm">
+                    <strong className="text-ds-text-base">
                       Skipped: {skill.name || skill.id || skill.logical_path}
                     </strong>
-                    <p className="mt-1 text-body-xs">
+                    <p className="mt-1 text-ds-text-meta">
                       {skill.reason_code}: {skill.reason}
                     </p>
                   </div>
@@ -556,62 +566,62 @@ export function AgentPluginImportWizard({
                 {inspection.mcp_servers.length ? (
                   inspection.mcp_servers.map((server) => (
                     <div key={server.id} className="rounded-xl border p-3">
-                      <strong className="text-body-sm">
+                      <strong className="text-ds-text-base">
                         {server.name || server.id}
                       </strong>
-                      <p className="mt-1 text-body-xs text-ds-text-neutral-muted-default">
+                      <p className="mt-1 text-ds-text-meta text-ds-ink-muted-default">
                         {server.transport || 'transport not declared'}
                       </p>
                       {server.command ? (
-                        <div className="mt-2 space-y-1 text-body-xs">
+                        <div className="mt-2 space-y-1 text-ds-text-meta">
                           <code className="block break-all">
                             command: {visibleReviewValue(server.command)}
                           </code>
                           {(server.args || []).map((argument, index) => (
                             <code
                               key={`${index}:${argument}`}
-                              className="block break-all pl-3"
+                              className="block pl-3 break-all"
                             >
                               argv[{index}]: {visibleReviewValue(argument)}
                             </code>
                           ))}
                         </div>
                       ) : server.command_summary ? (
-                        <code className="mt-2 block break-all text-body-xs">
+                        <code className="mt-2 block text-ds-text-meta break-all">
                           {visibleReviewValue(server.command_summary)}
                         </code>
                       ) : null}
                       {server.cwd ? (
-                        <p className="mt-2 break-all text-body-xs">
+                        <p className="mt-2 text-ds-text-meta break-all">
                           cwd: {server.cwd}
                         </p>
                       ) : null}
                       {server.url ? (
-                        <p className="mt-2 break-all text-body-xs">
+                        <p className="mt-2 text-ds-text-meta break-all">
                           URL: {server.url}
                         </p>
                       ) : null}
                       {server.env_names.length ? (
-                        <p className="mt-2 text-body-xs">
+                        <p className="mt-2 text-ds-text-meta">
                           Environment names: {server.env_names.join(', ')}
                         </p>
                       ) : null}
                       {server.header_names.length ? (
-                        <p className="mt-1 text-body-xs">
+                        <p className="mt-1 text-ds-text-meta">
                           Header names: {server.header_names.join(', ')}
                         </p>
                       ) : null}
                       {(server.public_environment || []).map((item) => (
                         <div
                           key={`env:${item.name}`}
-                          className="mt-2 rounded-lg bg-ds-bg-neutral-subtle-default p-2 text-body-xs"
+                          className="mt-2 rounded-lg bg-ds-neutral-subtle-default p-2 text-ds-text-meta"
                         >
                           <code className="break-all">
                             env {item.name} = {visibleReviewValue(item.value)}
                             {item.truncated ? '…' : ''}
                           </code>
                           {item.truncated ? (
-                            <code className="mt-1 block break-all text-ds-text-neutral-muted-default">
+                            <code className="mt-1 block break-all text-ds-ink-muted-default">
                               sha256: {item.value_digest}
                             </code>
                           ) : null}
@@ -620,7 +630,7 @@ export function AgentPluginImportWizard({
                       {(server.public_headers || []).map((item) => (
                         <div
                           key={`header:${item.name}`}
-                          className="mt-2 rounded-lg bg-ds-bg-neutral-subtle-default p-2 text-body-xs"
+                          className="mt-2 rounded-lg bg-ds-neutral-subtle-default p-2 text-ds-text-meta"
                         >
                           <code className="break-all">
                             header {item.name} ={' '}
@@ -628,7 +638,7 @@ export function AgentPluginImportWizard({
                             {item.truncated ? '…' : ''}
                           </code>
                           {item.truncated ? (
-                            <code className="mt-1 block break-all text-ds-text-neutral-muted-default">
+                            <code className="mt-1 block break-all text-ds-ink-muted-default">
                               sha256: {item.value_digest}
                             </code>
                           ) : null}
@@ -637,19 +647,19 @@ export function AgentPluginImportWizard({
                     </div>
                   ))
                 ) : (
-                  <p className="text-body-sm text-ds-text-neutral-muted-default">
+                  <p className="text-ds-text-base text-ds-ink-muted-default">
                     No MCP servers declared.
                   </p>
                 )}
                 {inspection.skipped_mcp_servers.map((server) => (
                   <div
                     key={`${server.id || server.name || server.logical_path}:${server.reason_code}`}
-                    className="rounded-xl border border-ds-border-warning-default-default p-3"
+                    className="rounded-xl border border-x border-y border-ds-border-warning-default-default p-3"
                   >
-                    <strong className="text-body-sm">
+                    <strong className="text-ds-text-base">
                       Skipped: {server.name || server.id || server.logical_path}
                     </strong>
-                    <p className="mt-1 text-body-xs">
+                    <p className="mt-1 text-ds-text-meta">
                       {server.reason_code}: {server.reason}
                     </p>
                   </div>
@@ -675,15 +685,15 @@ export function AgentPluginImportWizard({
                   >
                     <FileKey2 className="mt-0.5 h-4 w-4" aria-hidden />
                     <div>
-                      <strong className="text-body-sm">
+                      <strong className="text-ds-text-base">
                         {requirement.label || requirement.requirement_key}
                       </strong>
-                      <p className="text-body-xs text-ds-text-neutral-muted-default">
+                      <p className="text-ds-text-meta text-ds-ink-muted-default">
                         {requirement.requirement_kind}
                         {requirement.required ? ' · required' : ' · optional'}
                       </p>
                       {requirement.description ? (
-                        <p className="mt-1 text-body-xs">
+                        <p className="mt-1 text-ds-text-meta">
                           {requirement.description}
                         </p>
                       ) : null}
@@ -691,7 +701,7 @@ export function AgentPluginImportWizard({
                   </div>
                 ))
               ) : (
-                <p className="text-body-sm text-ds-text-neutral-muted-default">
+                <p className="text-ds-text-base text-ds-ink-muted-default">
                   No credential requirements declared.
                 </p>
               )}
@@ -707,7 +717,7 @@ export function AgentPluginImportWizard({
                 {inspection.warnings.map((warning) => (
                   <div
                     key={`${warning.code}:${warning.message}`}
-                    className="flex gap-3 rounded-xl border border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default p-3 text-body-sm"
+                    className="flex gap-3 rounded-xl border border-x border-y border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default p-3 text-ds-text-base"
                   >
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                     <div>
@@ -732,17 +742,17 @@ export function AgentPluginImportWizard({
                 {inspection.diagnostics.map((diagnostic) => (
                   <div
                     key={`${diagnostic.code}:${diagnostic.logical_path || ''}:${diagnostic.message}`}
-                    className="rounded-xl border p-3 text-body-sm"
+                    className="rounded-xl border p-3 text-ds-text-base"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <strong>{diagnostic.code}</strong>
-                      <span className="text-body-xs uppercase text-ds-text-neutral-muted-default">
+                      <span className="text-ds-text-meta text-ds-ink-muted-default uppercase">
                         {diagnostic.severity}
                       </span>
                     </div>
                     <p className="mt-1">{diagnostic.message}</p>
                     {diagnostic.logical_path ? (
-                      <code className="mt-2 block break-all text-body-xs text-ds-text-neutral-muted-default">
+                      <code className="mt-2 block text-ds-text-meta break-all text-ds-ink-muted-default">
                         {diagnostic.logical_path}
                       </code>
                     ) : null}
@@ -765,13 +775,13 @@ export function AgentPluginImportWizard({
                 {inspection.files.map((file) => (
                   <div
                     key={file.logical_path}
-                    className="grid gap-1 rounded-xl border p-3 text-body-xs sm:grid-cols-[minmax(0,1fr)_auto]"
+                    className="grid gap-1 rounded-xl border p-3 text-ds-text-meta sm:grid-cols-[minmax(0,1fr)_auto]"
                   >
-                    <span className="break-all font-medium">
+                    <span className="font-medium break-all">
                       {file.logical_path}
                     </span>
                     <span>{formatBytes(file.size_bytes)}</span>
-                    <code className="break-all text-ds-text-neutral-muted-default sm:col-span-2">
+                    <code className="break-all text-ds-ink-muted-default sm:col-span-2">
                       {file.content_digest}
                     </code>
                   </div>
@@ -789,7 +799,7 @@ export function AgentPluginImportWizard({
             </CardHeader>
             <CardContent className="space-y-4">
               {targetMode === 'create-space' ? (
-                <label className="block space-y-1.5 text-body-sm font-medium">
+                <label className="block space-y-1.5 text-ds-text-base font-medium">
                   <span>New Space name</span>
                   <Input
                     value={newSpaceName}
@@ -799,10 +809,10 @@ export function AgentPluginImportWizard({
                   />
                 </label>
               ) : (
-                <label className="block space-y-1.5 text-body-sm font-medium">
+                <label className="block space-y-1.5 text-ds-text-base font-medium">
                   <span>Target Workspace</span>
                   <select
-                    className="h-10 w-full rounded-xl border bg-ds-bg-neutral-default-default px-3"
+                    className="h-10 w-full rounded-xl border bg-ds-neutral-default-default px-3"
                     value={targetSpaceId}
                     disabled={busy !== null}
                     onChange={(event) => {
@@ -823,11 +833,11 @@ export function AgentPluginImportWizard({
                 </label>
               )}
               {targetMode === 'existing' && selectableSpaces.length === 0 ? (
-                <p className="text-body-sm text-ds-text-warning-default-default">
+                <p className="text-ds-text-base text-ds-text-warning-default-default">
                   Create a Workspace before converting this Agent Plugin.
                 </p>
               ) : null}
-              <label className="flex items-start gap-3 text-body-sm">
+              <label className="flex items-start gap-3 text-ds-text-base">
                 <Checkbox
                   checked={reviewConfirmed}
                   onCheckedChange={(checked) =>
@@ -841,10 +851,10 @@ export function AgentPluginImportWizard({
                 </span>
               </label>
               {replacementReview ? (
-                <div className="space-y-3 rounded-xl border border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default p-4 text-body-sm">
+                <div className="space-y-3 rounded-xl border border-x border-y border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default p-4 text-ds-text-base">
                   <div>
                     <strong>Replace the existing Workspace draft?</strong>
-                    <p className="mt-1 text-body-xs">
+                    <p className="mt-1 text-ds-text-meta">
                       {replacementReview.targetName} already has saved
                       configuration (draft version {replacementReview.version}).
                       Agent Plugin conversion replaces that working draft; it
@@ -865,7 +875,7 @@ export function AgentPluginImportWizard({
                   </label>
                 </div>
               ) : null}
-              <div className="flex items-center gap-3 rounded-xl bg-ds-bg-neutral-subtle-default p-3 text-body-xs text-ds-text-neutral-muted-default">
+              <div className="flex items-center gap-3 rounded-xl bg-ds-neutral-subtle-default p-3 text-ds-text-meta text-ds-ink-muted-default">
                 <ShieldCheck className="h-4 w-4 shrink-0" aria-hidden />
                 Standard MCP env and header literals are public plugin data and
                 are copied. Values explicitly declared as secret requirements

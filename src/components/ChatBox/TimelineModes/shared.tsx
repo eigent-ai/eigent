@@ -75,7 +75,7 @@ export function statusTone(status: string): string {
   ) {
     return 'text-ds-text-information-default-default';
   }
-  return 'text-ds-text-neutral-muted-default';
+  return 'text-ds-ink-muted-default';
 }
 
 export function statusIcon(status: string): LucideIcon {
@@ -105,7 +105,7 @@ export function StatusInline({
   return (
     <span
       className={cn(
-        'inline-flex shrink-0 items-center gap-1 text-label-xs font-normal capitalize',
+        'inline-flex shrink-0 items-center gap-1 text-ds-text-meta font-normal capitalize',
         statusTone(status),
         className
       )}
@@ -190,7 +190,7 @@ export function RunElapsed({
 }) {
   const elapsedMs = useRunElapsedMs(run, paused);
   return (
-    <span className="tabular-nums text-ds-text-neutral-subtle-default">
+    <span className="text-ds-ink-subtle-default tabular-nums">
       {formatSplittingElapsed(elapsedMs)}
     </span>
   );

@@ -109,7 +109,7 @@ function RuntimeReadinessStatus({
       )
     : [];
   const issueList = visibleIssues.length ? (
-    <ul className="mt-2 list-inside list-disc text-body-xs">
+    <ul className="mt-2 list-inside list-disc text-ds-text-meta">
       {visibleIssues.map((issue, index) => (
         <li key={`${issue}-${index}`}>{issue}</li>
       ))}
@@ -118,9 +118,9 @@ function RuntimeReadinessStatus({
 
   if (status === 'ready') {
     return (
-      <div className="mt-4 rounded-xl bg-ds-bg-success-subtle-default p-3 text-body-sm text-ds-text-success-default-default">
+      <div className="mt-4 rounded-xl bg-ds-bg-success-subtle-default p-3 text-ds-text-base text-ds-text-success-default-default">
         <p className="font-semibold">Runtime ready</p>
-        <p className="mt-1 text-body-xs">
+        <p className="mt-1 text-ds-text-meta">
           Brain preflight confirmed this installed configuration can start a
           Run.
         </p>
@@ -129,9 +129,9 @@ function RuntimeReadinessStatus({
   }
   if (status === 'needs_confirmation') {
     return (
-      <div className="mt-4 rounded-xl border border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default p-3 text-body-sm">
+      <div className="mt-4 rounded-xl border border-x border-y border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default p-3 text-ds-text-base">
         <p className="font-semibold">MCP target review required</p>
-        <p className="mt-1 text-body-xs text-ds-text-neutral-muted-default">
+        <p className="mt-1 text-ds-text-meta text-ds-ink-muted-default">
           Review and approve each supported MCP destination in Actions and
           readiness below. Unsupported destination types must be removed or
           replaced before a Run can start.
@@ -142,9 +142,9 @@ function RuntimeReadinessStatus({
   }
   if (status === 'unavailable') {
     return (
-      <div className="mt-4 rounded-xl border border-ds-border-error-default-default bg-ds-bg-error-subtle-default p-3 text-body-sm text-ds-text-error-strong-default">
+      <div className="mt-4 rounded-xl border border-x border-y border-ds-border-error-default-default bg-ds-bg-error-subtle-default p-3 text-ds-text-base text-ds-text-error-strong-default">
         <p className="font-semibold">Runtime unavailable</p>
-        <p className="mt-1 text-body-xs">
+        <p className="mt-1 text-ds-text-meta">
           Resolve these runtime preflight issues before starting a Run.
         </p>
         {issueList}
@@ -152,9 +152,9 @@ function RuntimeReadinessStatus({
     );
   }
   return (
-    <div className="mt-4 rounded-xl bg-ds-bg-neutral-subtle-default p-3 text-body-sm">
+    <div className="mt-4 rounded-xl bg-ds-neutral-subtle-default p-3 text-ds-text-base">
       <p className="font-semibold">Runtime check unavailable</p>
-      <p className="mt-1 text-body-xs text-ds-text-neutral-muted-default">
+      <p className="mt-1 text-ds-text-meta text-ds-ink-muted-default">
         Workspace files and local bindings are installed, but runtime readiness
         has not been verified.
       </p>
@@ -189,16 +189,18 @@ function McpDestinationReview({
   const secretBindings = destination.secret_environment_bindings ?? [];
 
   return (
-    <div className="rounded-xl border border-ds-border-warning-default-default p-3">
+    <div className="rounded-xl border border-x border-y border-ds-border-warning-default-default p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-body-sm font-semibold">{destination.mcp_id}</p>
-          <p className="text-body-xs text-ds-text-neutral-muted-default">
+          <p className="text-ds-text-base font-semibold">
+            {destination.mcp_id}
+          </p>
+          <p className="text-ds-text-meta text-ds-ink-muted-default">
             MCP destination · {destination.destination_kind}
           </p>
         </div>
         {approved ? (
-          <div className="flex items-center gap-1 text-body-xs text-ds-text-success-default-default">
+          <div className="flex items-center gap-1 text-ds-text-meta text-ds-text-success-default-default">
             <Check className="h-4 w-4" aria-hidden /> Approved
           </div>
         ) : canApprove ? (
@@ -215,11 +217,11 @@ function McpDestinationReview({
         ) : null}
       </div>
 
-      <dl className="mt-3 grid gap-3 text-body-xs">
+      <dl className="mt-3 grid gap-3 text-ds-text-meta">
         {isStdio ? (
           <div>
             <dt className="font-semibold">Command and arguments</dt>
-            <dd className="mt-1 break-all rounded-lg bg-ds-bg-neutral-subtle-default p-2 font-mono">
+            <dd className="mt-1 rounded-lg bg-ds-neutral-subtle-default p-2 font-mono break-all">
               <span>{destination.executable_command || 'Unavailable'}</span>
               {destination.argument_preview.map((argument, index) => (
                 <span key={`${argument}-${index}`} className="ml-2">
@@ -231,29 +233,29 @@ function McpDestinationReview({
         ) : (
           <div>
             <dt className="font-semibold">Endpoint</dt>
-            <dd className="mt-1 break-all font-mono">
+            <dd className="mt-1 font-mono break-all">
               {destination.endpoint_url || 'Not provided'}
             </dd>
           </div>
         )}
         <div>
           <dt className="font-semibold">Working directory scope</dt>
-          <dd className="mt-1 break-all font-mono">
+          <dd className="mt-1 font-mono break-all">
             {destination.cwd_scope || 'Workspace default'}
           </dd>
         </div>
         <div>
           <dt className="font-semibold">Definition</dt>
-          <dd className="mt-1 break-all font-mono">
+          <dd className="mt-1 font-mono break-all">
             {destination.definition_ref}
           </dd>
-          <dd className="mt-1 break-all font-mono text-ds-text-neutral-muted-default">
+          <dd className="mt-1 font-mono break-all text-ds-ink-muted-default">
             SHA-256: {destination.definition_digest || 'Unavailable'}
           </dd>
         </div>
         <div>
           <dt className="font-semibold">Destination attestation</dt>
-          <dd className="mt-1 break-all font-mono">
+          <dd className="mt-1 font-mono break-all">
             {destination.attestation_digest || 'Unavailable'}
           </dd>
         </div>
@@ -292,7 +294,7 @@ function McpDestinationReview({
               <div
                 role="region"
                 aria-label={`Public environment for ${destination.mcp_id}`}
-                className="max-h-32 overflow-y-auto rounded-lg bg-ds-bg-neutral-subtle-default p-2"
+                className="max-h-32 overflow-y-auto rounded-lg bg-ds-neutral-subtle-default p-2"
               >
                 <ul className="space-y-1">
                   {destination.public_environment.map((item, index) => (
@@ -316,7 +318,7 @@ function McpDestinationReview({
               <div
                 role="region"
                 aria-label={`Public headers for ${destination.mcp_id}`}
-                className="max-h-32 overflow-y-auto rounded-lg bg-ds-bg-neutral-subtle-default p-2"
+                className="max-h-32 overflow-y-auto rounded-lg bg-ds-neutral-subtle-default p-2"
               >
                 <ul className="space-y-1">
                   {destination.public_headers.map((item, index) => (
@@ -336,14 +338,14 @@ function McpDestinationReview({
       </dl>
 
       {!approved && canApprove && missingSecretSlots.length > 0 ? (
-        <p className="mt-3 rounded-lg bg-ds-bg-warning-subtle-default p-2 text-body-xs">
+        <p className="mt-3 rounded-lg bg-ds-bg-warning-subtle-default p-2 text-ds-text-meta">
           Add the required local secrets before approving:{' '}
           {missingSecretSlots.join(', ')}.
         </p>
       ) : null}
 
       {!approved && !canApprove ? (
-        <p className="mt-3 rounded-lg bg-ds-bg-error-subtle-default p-2 text-body-xs text-ds-text-error-strong-default">
+        <p className="mt-3 rounded-lg bg-ds-bg-error-subtle-default p-2 text-ds-text-meta text-ds-text-error-strong-default">
           {destination.destination_kind === 'stdio_unstable'
             ? 'This MCP executable is not pinned to a reviewed Bundle asset and cannot be approved or started.'
             : destination.destination_kind === 'http_secret_unavailable'
@@ -462,7 +464,7 @@ function LocalValueRow({
 }) {
   return (
     <form
-      className="rounded-xl border border-ds-border-neutral-subtle-default p-3"
+      className="rounded-xl border border-x border-y border-ds-hairline-subtle-default p-3"
       onSubmit={(event) => {
         event.preventDefault();
         const form = event.currentTarget;
@@ -475,10 +477,10 @@ function LocalValueRow({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate font-mono text-body-sm font-semibold">
+          <p className="truncate font-mono text-ds-text-base font-semibold">
             {requirementLabel(item)}
           </p>
-          <p className="mt-1 text-body-xs text-ds-text-neutral-muted-default">
+          <p className="mt-1 text-ds-text-meta text-ds-ink-muted-default">
             {item.requirement_kind === 'mcp_secret'
               ? `Secret for ${item.mcp_id || 'MCP server'}`
               : item.description || 'Local environment value'}
@@ -487,13 +489,13 @@ function LocalValueRow({
           </p>
         </div>
         {item.configured && item.available ? (
-          <span className="inline-flex items-center gap-1 text-body-xs font-semibold text-ds-text-success-default-default">
+          <span className="inline-flex items-center gap-1 text-ds-text-meta font-semibold text-ds-text-success-default-default">
             <Check className="h-3.5 w-3.5" aria-hidden /> Stored locally
           </span>
         ) : null}
       </div>
       {item.configured && !item.available ? (
-        <p className="mt-2 text-body-xs font-semibold text-ds-text-warning-default-default">
+        <p className="mt-2 text-ds-text-meta font-semibold text-ds-text-warning-default-default">
           The previous local value is unavailable. Re-enter it to repair this
           binding.
         </p>
@@ -1131,7 +1133,7 @@ export function WorkspaceBundleInstallWizard({
           <CardTitle>Installation cancelled</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-body-sm text-ds-text-neutral-muted-default">
+          <p className="text-ds-text-base text-ds-ink-muted-default">
             This durable proposal was rejected and cannot be reused.
           </p>
           <Button className="mt-5" variant="secondary" onClick={resetInstall}>
@@ -1146,10 +1148,10 @@ export function WorkspaceBundleInstallWizard({
     <div className="mx-auto w-full max-w-4xl space-y-5">
       {showHeader ? (
         <header>
-          <h1 className="text-heading-2xl font-semibold">
+          <h1 className="!text-ds-text-display font-semibold">
             Install Workspace Bundle
           </h1>
-          <p className="mt-2 text-body-sm text-ds-text-neutral-muted-default">
+          <p className="mt-2 !text-ds-text-base text-ds-ink-muted-default">
             Review what the workspace environment can access, then configure
             required values and connections locally.
           </p>
@@ -1157,10 +1159,10 @@ export function WorkspaceBundleInstallWizard({
       ) : null}
 
       {error ? (
-        <div className="rounded-xl border border-ds-border-error-default-default bg-ds-bg-error-subtle-default p-4 text-body-sm text-ds-text-error-strong-default">
+        <div className="rounded-xl border border-x border-y border-ds-border-error-default-default bg-ds-bg-error-subtle-default p-4 text-ds-text-base text-ds-text-error-strong-default">
           <p>{error}</p>
           {retryMode === 'start' && installSeed ? (
-            <p className="mt-2 text-ds-text-neutral-muted-default">
+            <p className="mt-2 text-ds-ink-muted-default">
               The inactive Workspace draft was kept for recovery. Retry reuses
               the same draft and does not create another Workspace.
             </p>
@@ -1180,7 +1182,13 @@ export function WorkspaceBundleInstallWizard({
       ) : null}
 
       {!review && !snapshot ? (
-        <Card className={showHeader ? undefined : 'space-y-3 !border-0'}>
+        <Card
+          className={
+            showHeader
+              ? undefined
+              : 'space-y-3 !border-0 !border-x-0 !border-y-0'
+          }
+        >
           <CardHeader className={showHeader ? undefined : '!p-0'}>
             <CardTitle>Import by share handle</CardTitle>
           </CardHeader>
@@ -1216,31 +1224,31 @@ export function WorkspaceBundleInstallWizard({
             <CardTitle>
               {review.bundle?.name || review.revision.manifest.metadata.name}
             </CardTitle>
-            <p className="font-mono text-body-xs text-ds-text-neutral-muted-default">
+            <p className="font-mono text-ds-text-meta text-ds-ink-muted-default">
               {review.revision.id}
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl bg-ds-bg-neutral-subtle-default p-3 text-body-sm">
+              <div className="rounded-xl bg-ds-neutral-subtle-default p-3 text-ds-text-base">
                 <strong>Permission profile</strong>
                 <p className="mt-1">
                   {review.revision.manifest.spec.permissions.profile}
                 </p>
               </div>
-              <div className="rounded-xl bg-ds-bg-neutral-subtle-default p-3 text-body-sm">
+              <div className="rounded-xl bg-ds-neutral-subtle-default p-3 text-ds-text-base">
                 <strong>Assets</strong>
                 <p className="mt-1">
                   {review.revision.assets.length} verified files
                 </p>
               </div>
-              <div className="rounded-xl bg-ds-bg-neutral-subtle-default p-3 text-body-sm">
+              <div className="rounded-xl bg-ds-neutral-subtle-default p-3 text-ds-text-base">
                 <strong>Connectors</strong>
                 <p className="mt-1">
                   {review.revision.manifest.spec.connectors.length} requested
                 </p>
               </div>
-              <div className="rounded-xl bg-ds-bg-neutral-subtle-default p-3 text-body-sm">
+              <div className="rounded-xl bg-ds-neutral-subtle-default p-3 text-ds-text-base">
                 <strong>Local requirements</strong>
                 <p className="mt-1">
                   {(review.revision.manifest.spec.environment?.variables
@@ -1254,11 +1262,11 @@ export function WorkspaceBundleInstallWizard({
               </div>
             </div>
             {reviewedSetup.length > 0 ? (
-              <section className="rounded-xl border border-ds-border-neutral-subtle-default p-3">
-                <p className="text-body-sm font-semibold">
+              <section className="rounded-xl border border-x border-y border-ds-hairline-subtle-default p-3">
+                <p className="text-ds-text-base font-semibold">
                   Required local setup and actions
                 </p>
-                <ul className="mt-2 list-inside list-disc space-y-1 text-body-xs text-ds-text-neutral-muted-default">
+                <ul className="mt-2 list-inside list-disc space-y-1 text-ds-text-meta text-ds-ink-muted-default">
                   {reviewedSetup.map((item) => (
                     <li key={item}>{item}</li>
                   ))}
@@ -1268,34 +1276,34 @@ export function WorkspaceBundleInstallWizard({
             {review.revision.manifest.spec.connectors.map((connector) => (
               <div
                 key={connector.connectionSlot}
-                className="rounded-xl border border-ds-border-neutral-subtle-default p-3"
+                className="rounded-xl border border-x border-y border-ds-hairline-subtle-default p-3"
               >
-                <p className="text-body-sm font-semibold">
+                <p className="text-ds-text-base font-semibold">
                   {connector.connector}
                 </p>
-                <p className="mt-1 text-body-xs text-ds-text-neutral-muted-default">
+                <p className="mt-1 text-ds-text-meta text-ds-ink-muted-default">
                   Grants:{' '}
                   {connector.requiredGrants.join(', ') ||
                     'No additional grants declared'}
                 </p>
               </div>
             ))}
-            <details className="rounded-xl border border-ds-border-neutral-subtle-default p-3">
-              <summary className="cursor-pointer text-body-sm font-semibold">
+            <details className="rounded-xl border border-x border-y border-ds-hairline-subtle-default p-3">
+              <summary className="cursor-pointer text-ds-text-base font-semibold">
                 Inspect manifest and verified assets
               </summary>
-              <div className="mt-3 space-y-3 text-body-xs">
-                <p className="break-all font-mono text-ds-text-neutral-muted-default">
+              <div className="mt-3 space-y-3 text-ds-text-meta">
+                <p className="font-mono break-all text-ds-ink-muted-default">
                   Manifest SHA-256: {review.revision.manifest_digest}
                 </p>
                 {review.revision.assets.length > 0 ? (
-                  <ul className="max-h-48 space-y-2 overflow-y-auto rounded-lg bg-ds-bg-neutral-subtle-default p-3">
+                  <ul className="max-h-48 space-y-2 overflow-y-auto rounded-lg bg-ds-neutral-subtle-default p-3">
                     {review.revision.assets.map((asset) => (
                       <li key={asset.id}>
-                        <p className="break-all font-mono">
+                        <p className="font-mono break-all">
                           {asset.logical_path}
                         </p>
-                        <p className="break-all text-ds-text-neutral-muted-default">
+                        <p className="break-all text-ds-ink-muted-default">
                           SHA-256 {asset.content_digest} · {asset.size_bytes}{' '}
                           bytes
                         </p>
@@ -1303,21 +1311,21 @@ export function WorkspaceBundleInstallWizard({
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-ds-text-neutral-muted-default">
+                  <p className="text-ds-ink-muted-default">
                     No packaged assets.
                   </p>
                 )}
-                <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-ds-bg-neutral-subtle-default p-3 font-mono">
+                <pre className="max-h-72 overflow-auto rounded-lg bg-ds-neutral-subtle-default p-3 font-mono break-words whitespace-pre-wrap">
                   {JSON.stringify(review.revision.manifest, null, 2)}
                 </pre>
               </div>
             </details>
-            <div className="rounded-xl border border-ds-border-success-default-default bg-ds-bg-success-subtle-default p-3 text-body-sm">
+            <div className="rounded-xl border border-x border-y border-ds-border-success-default-default bg-ds-bg-success-subtle-default p-3 text-ds-text-base">
               <p className="flex items-center gap-2 font-semibold">
                 <ShieldCheck className="h-4 w-4" aria-hidden /> Secrets are not
                 part of this Bundle
               </p>
-              <p className="mt-1 text-body-xs text-ds-text-neutral-muted-default">
+              <p className="mt-1 text-ds-text-meta text-ds-ink-muted-default">
                 Required values are collected only after approval and stored
                 using the operating system encryption service.
               </p>
@@ -1344,7 +1352,7 @@ export function WorkspaceBundleInstallWizard({
                 <CardTitle>Workspace files installed</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-body-sm text-ds-text-neutral-muted-default">
+                <p className="text-ds-text-base text-ds-ink-muted-default">
                   {proposal.revision_id} is installed. Local bindings are
                   encrypted on this device and can be repaired or replaced
                   below. They are not exposed globally to unrelated tools.
@@ -1365,12 +1373,12 @@ export function WorkspaceBundleInstallWizard({
                 <CardTitle>Review and approve this installation</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <p className="text-body-sm text-ds-text-neutral-muted-default">
+                <p className="text-ds-text-base text-ds-ink-muted-default">
                   The proposal is saved, but nothing has been approved or
                   materialized yet. Review every local capability before
                   continuing.
                 </p>
-                <div className="rounded-xl border border-ds-border-neutral-subtle-default p-3 text-body-sm">
+                <div className="rounded-xl border border-x border-y border-ds-hairline-subtle-default p-3 text-ds-text-base">
                   <p>
                     Permission profile:{' '}
                     <span className="font-mono">
@@ -1402,19 +1410,19 @@ export function WorkspaceBundleInstallWizard({
                     (destination) => (
                       <div
                         key={destination.mcp_id}
-                        className="mt-2 rounded-lg bg-ds-bg-neutral-subtle-default p-2"
+                        className="mt-2 rounded-lg bg-ds-neutral-subtle-default p-2"
                       >
                         <p className="font-semibold">
                           MCP: {destination.mcp_id}
                         </p>
                         {destination.executable_command ? (
-                          <p className="break-all font-mono">
+                          <p className="font-mono break-all">
                             {destination.executable_command}{' '}
                             {destination.argument_preview.join(' ')}
                           </p>
                         ) : null}
                         {destination.endpoint_url ? (
-                          <p className="break-all font-mono">
+                          <p className="font-mono break-all">
                             {destination.endpoint_url}
                           </p>
                         ) : null}
@@ -1440,7 +1448,7 @@ export function WorkspaceBundleInstallWizard({
                 <CardTitle>Checking installation progress</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-body-sm text-ds-text-neutral-muted-default">
+                <p className="text-ds-text-base text-ds-ink-muted-default">
                   The previous materialization was interrupted. Refresh the
                   durable proposal before retrying.
                 </p>
@@ -1465,7 +1473,7 @@ export function WorkspaceBundleInstallWizard({
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {snapshot.value_requirements.length === 0 ? (
-                    <p className="text-body-sm text-ds-text-neutral-muted-default">
+                    <p className="text-ds-text-base text-ds-ink-muted-default">
                       No local values required.
                     </p>
                   ) : (
@@ -1489,11 +1497,11 @@ export function WorkspaceBundleInstallWizard({
                   {proposal.install_plan.local_path_slots.map((slotId) => (
                     <div
                       key={slotId}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-ds-border-neutral-subtle-default p-3"
+                      className="flex items-center justify-between gap-3 rounded-xl border border-x border-y border-ds-hairline-subtle-default p-3"
                     >
                       <div>
-                        <p className="font-mono text-body-sm">{slotId}</p>
-                        <p className="text-body-xs text-ds-text-neutral-muted-default">
+                        <p className="font-mono text-ds-text-base">{slotId}</p>
+                        <p className="text-ds-text-meta text-ds-ink-muted-default">
                           Local folder access
                         </p>
                       </div>
@@ -1523,16 +1531,16 @@ export function WorkspaceBundleInstallWizard({
                     return (
                       <div
                         key={slot.slot_id}
-                        className="rounded-xl border border-ds-border-neutral-subtle-default p-3"
+                        className="rounded-xl border border-x border-y border-ds-hairline-subtle-default p-3"
                       >
                         <div className="flex items-center justify-between gap-3">
                           <div>
-                            <p className="text-body-sm font-semibold">
+                            <p className="text-ds-text-base font-semibold">
                               {provider
                                 ? providerLabel(provider)
                                 : slot.connector_id}
                             </p>
-                            <p className="text-body-xs text-ds-text-neutral-muted-default">
+                            <p className="text-ds-text-meta text-ds-ink-muted-default">
                               Grants:{' '}
                               {slot.required_grants.join(', ') || 'None'}
                             </p>
@@ -1562,7 +1570,7 @@ export function WorkspaceBundleInstallWizard({
                   })}
                   {proposal.install_plan.local_path_slots.length === 0 &&
                   proposal.install_plan.connector_slots.length === 0 ? (
-                    <p className="text-body-sm text-ds-text-neutral-muted-default">
+                    <p className="text-ds-text-base text-ds-ink-muted-default">
                       No folder or connector binding required.
                     </p>
                   ) : null}
@@ -1607,11 +1615,13 @@ export function WorkspaceBundleInstallWizard({
                     .map((actionId) => (
                       <div
                         key={actionId}
-                        className="flex items-center justify-between gap-3 rounded-xl border border-ds-border-warning-default-default p-3"
+                        className="flex items-center justify-between gap-3 rounded-xl border border-x border-y border-ds-border-warning-default-default p-3"
                       >
                         <div>
-                          <p className="font-mono text-body-sm">{actionId}</p>
-                          <p className="text-body-xs text-ds-text-neutral-muted-default">
+                          <p className="font-mono text-ds-text-base">
+                            {actionId}
+                          </p>
+                          <p className="text-ds-text-meta text-ds-ink-muted-default">
                             This action may execute local code.
                           </p>
                         </div>
@@ -1630,21 +1640,21 @@ export function WorkspaceBundleInstallWizard({
                       </div>
                     ))}
                   {!snapshot.readiness.ready ? (
-                    <div className="rounded-xl bg-ds-bg-neutral-subtle-default p-3 text-body-sm">
+                    <div className="rounded-xl bg-ds-neutral-subtle-default p-3 text-ds-text-base">
                       <p className="font-semibold">Still required</p>
-                      <ul className="mt-1 list-inside list-disc text-body-xs text-ds-text-neutral-muted-default">
+                      <ul className="mt-1 list-inside list-disc text-ds-text-meta text-ds-ink-muted-default">
                         {snapshot.readiness.missing_requirements.map((item) => (
                           <li key={item}>{item}</li>
                         ))}
                       </ul>
                     </div>
                   ) : (
-                    <div className="rounded-xl bg-ds-bg-success-subtle-default p-3 text-body-sm text-ds-text-success-default-default">
+                    <div className="rounded-xl bg-ds-bg-success-subtle-default p-3 text-ds-text-base text-ds-text-success-default-default">
                       All declared local bindings are currently available.
                     </div>
                   )}
                   {proposal.state === 'materialized' ? (
-                    <p className="text-body-xs text-ds-text-neutral-muted-default">
+                    <p className="text-ds-text-meta text-ds-ink-muted-default">
                       Changes on this screen are saved immediately. Runtime
                       access is consumer-specific; this installation step does
                       not inject values into the global process environment or

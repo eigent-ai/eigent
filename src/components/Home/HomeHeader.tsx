@@ -75,13 +75,13 @@ export default function HomeHeader() {
     <section
       data-home-spaces-toolbar
       aria-label="Spaces toolbar"
-      className="sticky -top-px z-20 flex min-w-0 flex-wrap items-center justify-between gap-4 border-x-0 border-b border-t-0 border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default py-4"
+      className="sticky -top-px z-20 flex min-w-0 flex-wrap items-center justify-between gap-4 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default py-4"
     >
       <div className="flex min-w-0 items-center gap-2">
-        <h2 className="!text-body-lg font-bold text-ds-text-neutral-default-default">
+        <h2 className="!text-ds-text-section font-bold text-ds-ink-default-default">
           {t('layout.spaces')}
         </h2>
-        <span className="inline-flex shrink-0 items-center rounded-xl bg-ds-bg-neutral-muted-default px-2 py-0.5 !text-label-xs font-medium tabular-nums text-ds-text-neutral-muted-default">
+        <span className="inline-flex shrink-0 items-center rounded-xl bg-ds-neutral-muted-default px-2 py-0.5 !text-ds-text-meta font-medium text-ds-ink-muted-default tabular-nums">
           {sectionCounts.spaces}{' '}
           {sectionCounts.spaces === 1 ? 'Space' : 'Spaces'}
         </span>

@@ -272,13 +272,13 @@ export default function AddCustomConnectorPage({
               <TabsList appearance="default">
                 <TabsTrigger value="local">
                   <Wrench className="h-3.5 w-3.5" />
-                  <span className="!text-body-sm !font-bold !text-ds-text-neutral-default-default">
+                  <span className="!text-ds-text-base !font-bold !text-ds-ink-default-default">
                     {t('connectors.source-local')}
                   </span>
                 </TabsTrigger>
                 <TabsTrigger value="remote">
                   <Server className="h-3.5 w-3.5" />
-                  <span className="!text-body-sm !font-bold !text-ds-text-neutral-default-default">
+                  <span className="!text-ds-text-base !font-bold !text-ds-ink-default-default">
                     {t('connectors.source-remote')}
                   </span>
                 </TabsTrigger>
@@ -286,13 +286,13 @@ export default function AddCustomConnectorPage({
             </Tabs>
           </div>
 
-          <div className="rounded-xl border border-solid border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default p-4 text-body-sm text-ds-text-warning-strong-default">
+          <div className="rounded-xl border border-x border-y border-solid border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default p-4 text-ds-text-base text-ds-text-warning-strong-default">
             {t('connectors.custom-warning')}
           </div>
 
           {customType === 'local' ? (
             <div className="space-y-2">
-              <span className="block text-body-sm text-ds-text-neutral-muted-default">
+              <span className="block text-ds-text-base text-ds-ink-muted-default">
                 {t('connectors.local-json-desc')}{' '}
                 <a
                   href="https://modelcontextprotocol.io/docs/getting-started/intro"
@@ -304,11 +304,11 @@ export default function AddCustomConnectorPage({
                 </a>
               </span>
               {jsonError ? (
-                <span className="block text-label-sm text-ds-text-error-strong-default">
+                <span className="block text-ds-text-base text-ds-text-error-strong-default">
                   {jsonError}
                 </span>
               ) : null}
-              <div className="overflow-hidden rounded-xl border border-solid border-ds-border-neutral-strong-default">
+              <div className="overflow-hidden rounded-xl border border-x border-y border-solid border-ds-hairline-strong-default">
                 <MonacoEditor
                   height="300px"
                   width="100%"
@@ -349,7 +349,7 @@ export default function AddCustomConnectorPage({
           )}
 
           {formError ? (
-            <div className="rounded-xl bg-ds-bg-error-subtle-default p-3 text-body-sm text-ds-text-error-strong-default">
+            <div className="rounded-xl bg-ds-bg-error-subtle-default p-3 text-ds-text-base text-ds-text-error-strong-default">
               {formError}
             </div>
           ) : null}

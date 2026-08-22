@@ -27,7 +27,7 @@ export function PreparingToExecuteTasks() {
     >
       <ShinyText
         text={t('chat.preparing-to-execute-tasks')}
-        className="!text-body-sm !font-normal"
+        className="!text-ds-text-base !font-normal"
         speed={2.5}
       />
     </div>

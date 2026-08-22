@@ -105,7 +105,7 @@ export function ReviewFileTree({
   };
 
   return (
-    <div className="flex h-full min-h-0 w-[248px] shrink-0 flex-col gap-2 border-0 border-l border-solid border-ds-border-neutral-subtle-default py-3 pl-2">
+    <div className="flex h-full min-h-0 w-[248px] shrink-0 flex-col gap-2 border-0 border-y-0 border-r-0 border-l border-solid border-ds-hairline-subtle-default py-3 pl-2">
       <div className="flex items-center gap-2 pr-2">
         <Input
           value={filter}
@@ -124,7 +124,7 @@ export function ReviewFileTree({
       </div>
       <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto">
         {visibleFiles.length === 0 ? (
-          <p className="px-2 py-3 text-xs text-ds-text-neutral-muted-default">
+          <p className="px-2 py-3 text-xs text-ds-ink-muted-default">
             {t('layout.review-no-matches', {
               defaultValue: 'No files match the filter.',
             })}

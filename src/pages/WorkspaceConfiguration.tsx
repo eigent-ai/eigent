@@ -125,7 +125,7 @@ const nextEnvironmentVariableName = (
 
 function EmptyRow({ children }: { children: React.ReactNode }) {
   return (
-    <div className="px-4 py-6 text-center text-body-sm text-ds-text-neutral-muted-default">
+    <div className="px-4 py-6 text-center text-ds-text-base text-ds-ink-muted-default">
       {children}
     </div>
   );
@@ -226,11 +226,11 @@ function SettingRow({
       className="grid min-h-16 items-center gap-4 px-4 py-3 md:grid-cols-[minmax(180px,0.8fr)_minmax(260px,1.2fr)]"
     >
       <div className="flex min-w-0 flex-col gap-0.5">
-        <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
+        <div className="text-ds-text-base font-bold text-ds-ink-default-default">
           {label}
         </div>
         {description ? (
-          <div className="text-body-xs text-ds-text-neutral-muted-default">
+          <div className="text-ds-text-meta text-ds-ink-muted-default">
             {description}
           </div>
         ) : null}
@@ -255,8 +255,7 @@ const workspaceSettingSections = [
 type WorkspaceSettingSectionId =
   (typeof workspaceSettingSections)[number]['id'];
 
-const tableBoxClassName =
-  'w-full rounded-xl bg-ds-bg-neutral-subtle-default p-0';
+const tableBoxClassName = 'w-full rounded-xl bg-ds-neutral-subtle-default p-0';
 
 function CollectionSummaryTitle({
   label,
@@ -270,7 +269,7 @@ function CollectionSummaryTitle({
       <span>{label}</span>
       <span
         data-workspace-collection-count
-        className="rounded-lg bg-ds-bg-information-subtle-default px-2 text-label-sm font-bold tabular-nums text-ds-text-information-strong-default"
+        className="rounded-lg bg-ds-bg-information-subtle-default px-2 text-ds-text-base font-bold text-ds-text-information-strong-default tabular-nums"
       >
         {count}
       </span>
@@ -533,7 +532,7 @@ export function WorkspaceConfigurationEditor({
 
   if (!targetSpaceId || !targetSpace) {
     return (
-      <main className="flex h-full items-center justify-center p-8 text-ds-text-neutral-muted-default">
+      <main className="flex h-full items-center justify-center p-8 text-ds-ink-muted-default">
         Select a Space before configuring its workforce.
       </main>
     );
@@ -541,7 +540,7 @@ export function WorkspaceConfigurationEditor({
 
   if (!email) {
     return (
-      <main className="flex h-full items-center justify-center p-8 text-ds-text-neutral-muted-default">
+      <main className="flex h-full items-center justify-center p-8 text-ds-ink-muted-default">
         Sign in to edit this Workspace Configuration.
       </main>
     );
@@ -554,7 +553,7 @@ export function WorkspaceConfigurationEditor({
         aria-label="Loading Workspace Configuration"
         className={cn(
           'h-full overflow-y-auto',
-          presentation === 'page' && 'bg-ds-bg-neutral-muted-default',
+          presentation === 'page' && 'bg-ds-neutral-muted-default',
           presentation === 'settings' &&
             'h-auto overflow-visible bg-transparent'
         )}
@@ -838,7 +837,7 @@ export function WorkspaceConfigurationEditor({
       }
       className={cn(
         'h-full overflow-y-auto',
-        presentation === 'page' && 'bg-ds-bg-neutral-muted-default',
+        presentation === 'page' && 'bg-ds-neutral-muted-default',
         presentation === 'settings' && 'h-auto overflow-visible bg-transparent'
       )}
     >
@@ -852,15 +851,15 @@ export function WorkspaceConfigurationEditor({
         {presentation !== 'settings' ? (
           <header className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <span className="text-body-xs font-medium uppercase tracking-wide text-ds-text-neutral-muted-default">
+              <span className="text-ds-text-meta font-medium tracking-wide text-ds-ink-muted-default uppercase">
                 {targetSpace.name}
               </span>
               {presentation === 'page' ? (
-                <h1 className="text-heading-2xl mt-1 font-semibold text-ds-text-neutral-default-default">
+                <h1 className="mt-1 !text-ds-text-display font-semibold text-ds-ink-default-default">
                   Workspace Configuration
                 </h1>
               ) : null}
-              <span className="mt-2 max-w-2xl text-body-sm text-ds-text-neutral-muted-default">
+              <span className="mt-2 max-w-2xl text-ds-text-base text-ds-ink-muted-default">
                 Configure the context, tools, agents, permissions, and
                 versioning that every Run in this Space inherits.
               </span>
@@ -878,7 +877,7 @@ export function WorkspaceConfigurationEditor({
           >
             <nav
               aria-label="Space settings sections"
-              className="w-full min-w-0 rounded-2xl bg-ds-bg-neutral-default-default p-1"
+              className="w-full min-w-0 rounded-2xl bg-ds-neutral-default-default p-1"
             >
               <ul
                 data-workspace-settings-tab-list
@@ -903,7 +902,7 @@ export function WorkspaceConfigurationEditor({
                           <span
                             data-workspace-settings-tab-count={section.id}
                             aria-hidden
-                            className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-lg bg-ds-bg-information-subtle-default px-1.5 text-label-xs font-bold tabular-nums text-ds-text-information-strong-default"
+                            className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-lg bg-ds-bg-information-subtle-default px-1.5 text-ds-text-meta font-bold text-ds-text-information-strong-default tabular-nums"
                           >
                             {itemCount}
                           </span>
@@ -945,7 +944,7 @@ export function WorkspaceConfigurationEditor({
             </AnimatePresence>
 
             {error ? (
-              <div className="flex items-center justify-between gap-4 rounded-xl bg-ds-bg-error-subtle-default px-4 py-3 text-body-sm text-ds-text-error-strong-default">
+              <div className="flex items-center justify-between gap-4 rounded-xl bg-ds-bg-error-subtle-default px-4 py-3 text-ds-text-base text-ds-text-error-strong-default">
                 <span>{error}</span>
                 <Button
                   type="button"
@@ -965,7 +964,7 @@ export function WorkspaceConfigurationEditor({
               >
                 <SettingRow label={`Draft version ${draft?.version ?? 0}`}>
                   <div className="flex min-h-10 items-center justify-end gap-2">
-                    <span className="text-body-sm text-ds-text-neutral-muted-default">
+                    <span className="text-ds-text-base text-ds-ink-muted-default">
                       {saveState === 'saving'
                         ? 'Saving…'
                         : saveState === 'saved'

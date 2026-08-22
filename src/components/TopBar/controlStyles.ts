@@ -21,30 +21,29 @@
  * hover/active/focus fills at the same specificity.
  */
 export const TOP_BAR_CONTROL_STATE_CLASS = [
-  'hover:!bg-ds-bg-neutral-subtle-default',
-  'focus:!bg-ds-bg-neutral-subtle-default',
-  'active:!bg-ds-bg-neutral-subtle-default',
-  'data-[state=open]:!bg-ds-bg-neutral-subtle-default',
-  'aria-expanded:!bg-ds-bg-neutral-subtle-default',
-  'aria-pressed:!bg-ds-bg-neutral-subtle-default',
+  'hover:!bg-ds-neutral-subtle-default',
+  'focus:!bg-ds-neutral-subtle-default',
+  'active:!bg-ds-neutral-subtle-default',
+  'data-[state=open]:!bg-ds-neutral-subtle-default',
+  'aria-expanded:!bg-ds-neutral-subtle-default',
+  'aria-pressed:!bg-ds-neutral-subtle-default',
 ].join(' ');
 
 /** Selected/open fill for a control that tracks its state in React. */
-export const TOP_BAR_CONTROL_SELECTED_CLASS =
-  '!bg-ds-bg-neutral-subtle-default';
+export const TOP_BAR_CONTROL_SELECTED_CLASS = '!bg-ds-neutral-subtle-default';
 
 /**
  * The labelled pill in the title bar — Home, the centered Space switcher,
  * and the Home/Settings back button all render identically.
  *
- * The type scale is forced (`!text-label-sm`): these are bare `<button>`
+ * The type scale is forced (`!text-ds-text-base`): these are bare `<button>`
  * elements and Tailwind's preflight is disabled, so the browser's own control
  * font would otherwise size the label.
  */
 export const TOP_BAR_PILL_CLASS = [
   'no-drag flex min-h-[28px] min-w-0 items-center gap-1.5 rounded-full px-2 ml-1.5',
-  '!text-label-sm font-bold text-ds-text-neutral-default-default',
+  '!text-ds-text-base font-bold text-ds-ink-default-default',
   'outline-none transition-colors',
-  'focus-visible:ring-ds-ring-brand-default-focus/50 focus-visible:ring-[3px]',
+  'focus-visible:ring-ds-ring-focus/50 focus-visible:ring-[3px]',
   TOP_BAR_CONTROL_STATE_CLASS,
 ].join(' ');

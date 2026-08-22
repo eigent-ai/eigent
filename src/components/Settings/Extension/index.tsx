@@ -26,11 +26,11 @@ export default function Extension() {
         title={t('layout.coming-soon')}
         boxClassName="min-h-[200px] items-center justify-center py-16"
       >
-        <Puzzle className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default opacity-50" />
-        <div className="text-body-base text-center font-bold text-ds-text-neutral-muted-default">
+        <Puzzle className="mb-4 h-12 w-12 text-ds-ink-muted-default opacity-50" />
+        <div className="text-center text-ds-text-base font-bold text-ds-ink-muted-default">
           {t('layout.coming-soon')}
         </div>
-        <span className="mt-2 block text-center text-label-sm text-ds-text-neutral-muted-default">
+        <span className="mt-2 block text-center text-ds-text-base text-ds-ink-muted-default">
           {t('layout.browser-plugins-description')}
         </span>
       </SettingsSection>

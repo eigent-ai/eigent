@@ -83,16 +83,16 @@ export function FoldedView({
         'relative flex flex-col overflow-hidden rounded-2xl bg-ds-bg-splitting-subtle-default'
       )}
     >
-      <div className="flex items-center gap-2 border-x-0 border-t-0 border-b border-solid border-ds-border-neutral-subtle-default px-3 py-2">
+      <div className="flex items-center gap-2 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-3 py-2">
         <div className="flex min-w-0 flex-1 items-center justify-start truncate text-left">
           {isSplitting ? (
             <ShinyText
               text={headerText}
-              className="block w-full truncate text-left !text-body-sm !font-bold"
+              className="block w-full truncate text-left !text-ds-text-base !font-bold"
               speed={3}
             />
           ) : (
-            <div className="w-full truncate text-left text-body-sm font-bold text-ds-text-neutral-default-default">
+            <div className="w-full truncate text-left text-ds-text-base font-bold text-ds-ink-default-default">
               {headerText}
             </div>
           )}
@@ -140,11 +140,11 @@ export function FoldedView({
                   ) : (
                     <CircleDashed
                       size={13}
-                      className="text-ds-icon-neutral-muted-default"
+                      className="text-ds-ink-muted-default"
                     />
                   )}
                 </div>
-                <span className="min-w-0 flex-1 text-label-xs text-ds-text-neutral-default-default">
+                <span className="min-w-0 flex-1 text-ds-text-meta text-ds-ink-default-default">
                   {row.content}
                 </span>
               </div>

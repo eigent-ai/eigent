@@ -68,14 +68,14 @@ export function UnknownEventFallback({
   return (
     <section
       aria-label={t('chat.timeline-unsupported-event-label')}
-      className="rounded-xl border border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default px-4 py-3"
+      className="rounded-xl border border-x border-y border-ds-hairline-subtle-default bg-ds-neutral-subtle-default px-4 py-3"
       data-event-fallback={reason}
       role="status"
     >
-      <span className="block text-body-sm font-medium text-ds-text-neutral-default-default">
+      <span className="block text-ds-text-base font-medium text-ds-ink-default-default">
         {t('chat.timeline-unsupported-event')}
       </span>
-      <span className="mt-1 block truncate text-label-xs font-normal text-ds-text-neutral-muted-default">
+      <span className="mt-1 block truncate text-ds-text-meta font-normal text-ds-ink-muted-default">
         {eventLabel(node, t('chat.timeline-unknown-event'))}
       </span>
     </section>

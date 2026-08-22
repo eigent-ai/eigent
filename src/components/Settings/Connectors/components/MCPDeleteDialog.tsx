@@ -68,13 +68,13 @@ export default function MCPDeleteDialog({
       >
         <DialogTitle
           asChild
-          className="text-body-md text-ds-text-error-strong-default"
+          className="text-ds-text-body-large text-ds-text-error-strong-default"
         >
           <span className="block">{t('setting.confirm-delete')}</span>
         </DialogTitle>
         <DialogDescription
           asChild
-          className="text-body-base text-ds-text-neutral-default-default"
+          className="text-ds-text-base text-ds-ink-default-default"
         >
           <span className="block">
             {t('setting.are-you-sure-you-want-to-delete')}{' '}

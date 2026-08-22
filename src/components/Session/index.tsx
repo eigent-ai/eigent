@@ -574,11 +574,11 @@ export default function Session({ isNewProject = false }: SessionProps) {
                 }
                 className={cn(
                   // Transparent 2px rail with a centered line and wider hit area.
-                  'relative z-10 flex w-[2px] shrink-0 cursor-col-resize items-center justify-center bg-transparent transition-colors hover:bg-ds-bg-brand-subtle-default',
-                  "before:absolute before:inset-y-0 before:-left-1 before:-right-1 before:content-['']",
-                  'after:absolute after:inset-y-0 after:left-1/2 after:w-1 after:-translate-x-1/2 after:bg-ds-bg-neutral-default-default after:transition-colors',
+                  'relative z-10 flex w-[2px] shrink-0 cursor-col-resize items-center justify-center bg-transparent transition-colors hover:bg-ds-accent-subtle-default',
+                  "before:absolute before:inset-y-0 before:-right-1 before:-left-1 before:content-['']",
+                  'after:absolute after:inset-y-0 after:left-1/2 after:w-1 after:-translate-x-1/2 after:bg-ds-neutral-default-default after:transition-colors',
                   isResizingPreview &&
-                    'bg-ds-bg-brand-subtle-default after:bg-ds-bg-brand-default-focus'
+                    'bg-ds-accent-subtle-default after:bg-ds-accent-default-hover'
                 )}
               />
 

@@ -175,7 +175,7 @@ export default function Projects({
     }
     return (
       <div className="flex w-full min-w-0 flex-col">
-        <div className="pb-12 text-body-sm text-ds-text-neutral-muted-default">
+        <div className="pb-12 text-ds-text-base text-ds-ink-muted-default">
           {t('layout.loading')}
         </div>
       </div>
@@ -187,14 +187,14 @@ export default function Projects({
       <div className="mb-12 w-full min-w-0">
         {projects.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-8 text-center">
-            <MessageCircle className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default" />
-            <div className="text-sm text-ds-text-neutral-muted-default">
+            <MessageCircle className="mb-4 h-12 w-12 text-ds-ink-muted-default" />
+            <div className="text-sm text-ds-ink-muted-default">
               {t('dashboard.no-projects-found')}
             </div>
           </div>
         ) : filteredProjects.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-8 text-center">
-            <div className="text-sm text-ds-text-neutral-muted-default">
+            <div className="text-sm text-ds-ink-muted-default">
               {t('layout.search-no-results')}
             </div>
           </div>

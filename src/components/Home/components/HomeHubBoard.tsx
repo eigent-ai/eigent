@@ -28,9 +28,9 @@ const COLUMN_STYLES: Record<
   { pill: string; count: string; column: string }
 > = {
   default: {
-    pill: 'bg-ds-bg-neutral-subtle-default text-ds-text-neutral-muted-default',
-    count: 'text-ds-text-neutral-muted-default',
-    column: 'bg-ds-bg-neutral-subtle-default/40',
+    pill: 'bg-ds-neutral-subtle-default text-ds-ink-muted-default',
+    count: 'text-ds-ink-muted-default',
+    column: 'bg-ds-neutral-subtle-default/40',
   },
   running: {
     pill: 'bg-ds-bg-status-running-subtle-default text-ds-text-status-running-strong-default',
@@ -70,20 +70,20 @@ export default function HomeHubBoard({
           <section
             key={columnId}
             className={cn(
-              'flex min-h-[320px] min-w-0 flex-col rounded-2xl !bg-ds-bg-neutral-default-default px-3 pb-3',
+              'flex min-h-[320px] min-w-0 flex-col rounded-2xl !bg-ds-neutral-default-default px-3 pb-3',
               styles.column
             )}
           >
             <header
               className={cn(
-                'sticky top-0 z-[9] -mx-3 mb-3 flex items-center gap-2 rounded-t-2xl px-3 pb-3 pt-3',
-                '!bg-ds-bg-neutral-default-default',
+                'sticky top-0 z-[9] -mx-3 mb-3 flex items-center gap-2 rounded-t-2xl px-3 pt-3 pb-3',
+                '!bg-ds-neutral-default-default',
                 styles.column
               )}
             >
               <span
                 className={cn(
-                  'rounded-full px-2.5 py-1 !text-body-sm !font-semibold',
+                  'rounded-full px-2.5 py-1 !text-ds-text-base !font-semibold',
                   styles.pill
                 )}
               >
@@ -91,7 +91,7 @@ export default function HomeHubBoard({
               </span>
               <span
                 className={cn(
-                  '!text-label-sm !font-medium tabular-nums text-ds-text-neutral-muted-default',
+                  '!text-ds-text-base !font-medium text-ds-ink-muted-default tabular-nums',
                   styles.count
                 )}
               >
@@ -103,7 +103,7 @@ export default function HomeHubBoard({
               {items.length > 0 ? (
                 items
               ) : (
-                <div className="rounded-2xl border border-dashed border-ds-border-neutral-muted-default px-3 py-8 text-center !text-label-sm text-ds-text-neutral-muted-default">
+                <div className="rounded-2xl border border-x border-y border-dashed border-ds-hairline-muted-default px-3 py-8 text-center !text-ds-text-base text-ds-ink-muted-default">
                   {t('layout.home-board-column-empty')}
                 </div>
               )}

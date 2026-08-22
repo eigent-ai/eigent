@@ -79,7 +79,7 @@ export default function SettingPrivacy() {
             <div className="pr-12">
               <ol
                 id="how-we-handle-your-data"
-                className="pl-5 text-body-sm font-normal text-ds-text-neutral-default-default"
+                className="pl-5 text-ds-text-base font-normal text-ds-ink-default-default"
               >
                 <li>
                   {t(

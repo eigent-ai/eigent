@@ -101,7 +101,7 @@ const toolkitIconMap: Record<string, LucideIcon> = {
 export function getToolkitIcon(
   toolkitName: string,
   size: number = 16,
-  className: string = 'text-text-primary'
+  className: string = 'text-ds-ink-default-default'
 ): React.ReactNode {
   const Icon = toolkitIconMap[toolkitName] ?? Wrench;
   return <Icon size={size} className={className} />;

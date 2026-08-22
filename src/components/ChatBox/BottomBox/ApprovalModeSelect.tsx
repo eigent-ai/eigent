@@ -85,7 +85,7 @@ const MENU_CONTENT_WIDTH_CLASS = 'w-[280px]';
 
 const triggerShellClass = cn(
   'rounded-xl px-2 py-1 inline-flex max-w-[min(100%,320px)] shrink-0 items-center gap-1.5',
-  'bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default'
+  'bg-ds-neutral-default-default text-ds-ink-default-default'
 );
 
 export interface ApprovalModeSelectProps {
@@ -195,7 +195,7 @@ export function ApprovalModeSelect({
             aria-hidden
           />
           {!compact && (
-            <span className="min-w-0 truncate !text-label-xs font-semibold">
+            <span className="min-w-0 truncate !text-ds-text-meta font-semibold">
               {current.label}
             </span>
           )}
@@ -215,10 +215,10 @@ export function ApprovalModeSelect({
           aria-haspopup="menu"
           className={cn(
             triggerShellClass,
-            'min-w-0 cursor-pointer border-0 text-left',
+            'min-w-0 cursor-pointer border-0 border-x-0 border-y-0 text-left',
             'justify-between font-semibold transition-colors',
-            'hover:bg-ds-bg-neutral-subtle-default active:bg-ds-bg-neutral-subtle-default data-[state=open]:bg-ds-bg-neutral-subtle-default',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-border-neutral-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-bg-neutral-default-default',
+            'hover:bg-ds-neutral-subtle-default active:bg-ds-neutral-subtle-default data-[state=open]:bg-ds-neutral-subtle-default',
+            'focus-visible:ring-2 focus-visible:ring-ds-hairline-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-neutral-default-default focus-visible:outline-none',
             'disabled:pointer-events-none disabled:opacity-50',
             className
           )}
@@ -229,7 +229,7 @@ export function ApprovalModeSelect({
               aria-hidden
             />
             {!compact && (
-              <span className="min-w-0 flex-1 truncate text-left !text-label-xs text-ds-text-neutral-default-default">
+              <span className="min-w-0 flex-1 truncate text-left !text-ds-text-meta text-ds-ink-default-default">
                 {current.label}
               </span>
             )}
@@ -263,8 +263,10 @@ export function ApprovalModeSelect({
                   aria-hidden
                 />
                 <span className="min-w-0">
-                  <span className="block text-body-sm">{option.label}</span>
-                  <span className="block text-xs text-ds-text-neutral-subtle-default">
+                  <span className="block text-ds-text-base">
+                    {option.label}
+                  </span>
+                  <span className="block text-xs text-ds-ink-subtle-default">
                     {option.description}
                   </span>
                 </span>

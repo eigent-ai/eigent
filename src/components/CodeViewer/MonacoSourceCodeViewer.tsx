@@ -61,7 +61,7 @@ export default function MonacoSourceCodeViewer({
         theme={codeThemeForAppearance(appearance)}
         options={options}
         loading={
-          <div className="h-full w-full animate-pulse bg-ds-bg-neutral-subtle-default" />
+          <div className="h-full w-full animate-pulse bg-ds-neutral-subtle-default" />
         }
       />
     </div>

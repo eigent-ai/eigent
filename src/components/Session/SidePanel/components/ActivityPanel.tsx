@@ -289,7 +289,7 @@ function ContextSubcategory({
             leading={<ContextItemIcon item={item} />}
             onClick={() => onSelect(item)}
           >
-            <span className="!text-body-sm">{item.label}</span>
+            <span className="!text-ds-text-base">{item.label}</span>
           </SidePanelListRow>
         )}
       />
@@ -317,7 +317,7 @@ function ContextSection({
           leading={<ContextItemIcon item={item} />}
           onClick={() => onSelect(item)}
         >
-          <span className="!text-body-sm">{item.label}</span>
+          <span className="!text-ds-text-base">{item.label}</span>
         </SidePanelListRow>
       )}
     />
@@ -485,7 +485,7 @@ function FilesSection({
           leading={<FileText size={16} aria-hidden />}
           trailing={
             !item.previewable ? (
-              <span className="text-label-xs text-ds-text-neutral-muted-default">
+              <span className="text-ds-text-meta text-ds-ink-muted-default">
                 {t('layout.session-panel-file-unavailable', {
                   defaultValue: 'Preview unavailable',
                 })}
@@ -508,7 +508,7 @@ function FilesSection({
       headerAction={headerAction}
     >
       {items.length === 0 ? (
-        <div className="px-3 py-3 text-body-sm text-ds-text-neutral-muted-default">
+        <div className="px-3 py-3 text-ds-text-base text-ds-ink-muted-default">
           {t('layout.session-panel-files-empty', {
             defaultValue: 'No output files yet.',
           })}
@@ -771,7 +771,7 @@ export function SessionActivityPanel({
           height so the panel card hugs, and only shrinks (scrolling here) once
           the sections outgrow the column. */}
       <div className="relative flex min-h-0 w-full min-w-0 flex-col overflow-hidden">
-        <div className="scrollbar-always-visible flex min-h-0 min-w-0 flex-col overflow-y-auto overflow-x-hidden">
+        <div className="scrollbar-always-visible flex min-h-0 min-w-0 flex-col overflow-x-hidden overflow-y-auto">
           {projectId && hydration.status === 'error' ? (
             <div className="px-3 pt-3">
               <Alert tone="warning">
@@ -808,7 +808,7 @@ export function SessionActivityPanel({
             (hydration.status === 'loading' ||
               hydration.status === 'retrying') ? (
             <div
-              className="px-3 pt-3 text-body-sm text-ds-text-neutral-muted-default"
+              className="px-3 pt-3 text-ds-text-base text-ds-ink-muted-default"
               role="status"
             >
               {t(
@@ -923,7 +923,7 @@ export function SessionActivityPanel({
           panelData.resources.length === 0 &&
           files.length === 0 &&
           !projectId ? (
-            <div className="px-3 py-6 text-center text-body-sm text-ds-text-neutral-muted-default">
+            <div className="px-3 py-6 text-center text-ds-text-base text-ds-ink-muted-default">
               {t('layout.session-activity-empty', {
                 defaultValue:
                   'Session activity will appear here as work begins.',

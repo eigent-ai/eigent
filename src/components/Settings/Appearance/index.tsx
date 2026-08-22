@@ -106,8 +106,8 @@ function ColorSeedEditor({
   };
 
   return (
-    <div className="flex flex-row items-center justify-between gap-2 border-x-0 border-t-0 border-b border-solid border-ds-border-neutral-subtle-disabled px-6 py-4">
-      <span className="w-24 text-body-md font-semibold text-ds-text-neutral-default-default">
+    <div className="flex flex-row items-center justify-between gap-2 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-disabled px-6 py-4">
+      <span className="w-24 text-ds-text-body-large font-semibold text-ds-ink-default-default">
         {label}
       </span>
       <div className="flex w-56 flex-row items-center gap-2">
@@ -122,7 +122,7 @@ function ColorSeedEditor({
           <PopoverTrigger asChild>
             <button
               type="button"
-              className="h-8 w-10 shrink-0 cursor-pointer rounded-md border border-solid border-ds-border-neutral-default-default focus-visible:ring-2 focus-visible:outline-none"
+              className="h-8 w-10 shrink-0 cursor-pointer rounded-md border border-x border-y border-solid border-ds-hairline-default-default focus-visible:ring-2 focus-visible:outline-none"
               style={{ backgroundColor: normalizedPreview }}
               title={t('setting.pick-color', { color: label })}
               aria-label={t('setting.pick-color', { color: label })}
@@ -130,12 +130,12 @@ function ColorSeedEditor({
           </PopoverTrigger>
 
           <PopoverContent
-            className="flex w-64 flex-col gap-3 rounded-xl bg-ds-bg-neutral-subtle-default p-4"
+            className="flex w-64 flex-col gap-3 rounded-xl bg-ds-neutral-subtle-default p-4"
             side="top"
             align="end"
             sideOffset={8}
           >
-            <span className="block text-body-sm font-semibold text-ds-text-neutral-default-default">
+            <span className="block text-ds-text-base font-semibold text-ds-ink-default-default">
               {label}
             </span>
 
@@ -182,7 +182,7 @@ function ContrastSlider({
   const { t } = useTranslation();
   return (
     <div className="flex w-full flex-row items-center justify-between gap-2 px-6 py-4">
-      <span className="w-24 text-body-md font-semibold text-ds-text-neutral-default-default">
+      <span className="w-24 text-ds-text-body-large font-semibold text-ds-ink-default-default">
         {t('setting.theme-contrast')}
       </span>
       <div className="flex w-80 flex-row items-center gap-2">
@@ -193,10 +193,10 @@ function ContrastSlider({
           step={1}
           value={value}
           onChange={(e) => onChange(Number(e.target.value))}
-          className="my-auto h-2 w-full cursor-pointer appearance-none rounded-full bg-ds-bg-neutral-subtle-disabled accent-ds-bg-brand-default-default"
+          className="my-auto h-2 w-full cursor-pointer appearance-none rounded-full bg-ds-neutral-subtle-disabled accent-ds-accent-default-default"
           aria-label={t('setting.theme-contrast')}
         />
-        <span className="w-10 text-center text-body-sm font-semibold text-ds-text-neutral-muted-default">
+        <span className="w-10 text-center text-ds-text-base font-semibold text-ds-ink-muted-default">
           {value}
         </span>
       </div>
@@ -415,19 +415,19 @@ export default function AppearanceSettings() {
             >
               <TabsList appearance="default" className="w-full">
                 <TabsTrigger value="light" className="flex-1">
-                  <span className="flex items-center gap-1 text-label-sm">
+                  <span className="flex items-center gap-1 text-ds-text-base">
                     <Sun size={16} />
                     <span>{t('setting.light')}</span>
                   </span>
                 </TabsTrigger>
                 <TabsTrigger value="dark" className="flex-1">
-                  <span className="flex items-center gap-1 text-label-sm">
+                  <span className="flex items-center gap-1 text-ds-text-base">
                     <Moon size={16} />
                     <span>{t('setting.dark')}</span>
                   </span>
                 </TabsTrigger>
                 <TabsTrigger value="system" className="flex-1">
-                  <span className="flex items-center gap-1 text-label-sm">
+                  <span className="flex items-center gap-1 text-ds-text-base">
                     <Monitor size={16} />
                     <span>{t('setting.system-default')}</span>
                   </span>
@@ -452,7 +452,7 @@ export default function AppearanceSettings() {
                       value={option.id}
                       appearance="default"
                     >
-                      <span className="flex items-center gap-1 text-label-sm">
+                      <span className="flex items-center gap-1 text-ds-text-base">
                         {option.label}
                       </span>
                     </TabsTrigger>
@@ -462,7 +462,7 @@ export default function AppearanceSettings() {
             </div>
           }
         >
-          <div className="flex flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
+          <div className="flex flex-col rounded-2xl bg-ds-neutral-subtle-default">
             <ColorSeedEditor
               label={t('setting.theme-accent')}
               value={accent}
@@ -489,7 +489,7 @@ export default function AppearanceSettings() {
               textWeight="semibold"
               onClick={resetActiveTheme}
             >
-              <span className="flex items-center gap-1 text-label-sm">
+              <span className="flex items-center gap-1 text-ds-text-base">
                 <RotateCcw />
                 <span>{t('setting.reset')}</span>
               </span>

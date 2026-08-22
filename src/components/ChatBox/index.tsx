@@ -2122,7 +2122,7 @@ export default function ChatBox(): JSX.Element {
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div
           ref={scrollContainerRef}
-          className="scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pl-2.5"
+          className="scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto pl-2.5"
         >
           {shouldRenderChatTimeline &&
           eventNativeTimelineEnabled &&
@@ -2236,7 +2236,7 @@ export default function ChatBox(): JSX.Element {
             data-bottom-box-overlay
             className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-2.5"
           >
-            <div className="pointer-events-auto mx-auto w-full max-w-[600px] rounded-t-3xl bg-ds-bg-neutral-subtle-default pb-1">
+            <div className="pointer-events-auto mx-auto w-full max-w-[600px] rounded-t-3xl bg-ds-neutral-subtle-default pb-1">
               {interruptedRun && !eventNativeTimelineEnabled && (
                 <InterruptedRunBanner
                   compact

@@ -48,7 +48,7 @@ export function SpaceDetailListSkeleton({
             key={rowIndex}
             data-space-detail-skeleton-row
             className={cn(
-              'grid min-h-14 items-center gap-x-4 rounded-xl bg-ds-bg-neutral-default-default px-3 py-2.5',
+              'grid min-h-14 items-center gap-x-4 rounded-xl bg-ds-neutral-default-default px-3 py-2.5',
               HOME_HUB_LIST_GRID_CLASS[kind]
             )}
           >
@@ -79,8 +79,8 @@ export function SpaceDetailListSkeleton({
 
 function ContextSkeleton() {
   return (
-    <div className="flex h-full min-h-[32rem] flex-col overflow-hidden rounded-xl bg-ds-bg-neutral-subtle-default">
-      <div className="flex h-11 shrink-0 items-center justify-between border-x-0 border-b border-l-0 border-r-0 border-t-0 border-solid border-ds-border-neutral-subtle-default px-3">
+    <div className="flex h-full min-h-[32rem] flex-col overflow-hidden rounded-xl bg-ds-neutral-subtle-default">
+      <div className="flex h-ds-layout-row-header shrink-0 items-center justify-between border-x-0 border-t-0 border-r-0 border-b border-l-0 border-solid border-ds-hairline-subtle-default px-3">
         <div className="flex items-center gap-2">
           <Skeleton className="h-7 w-7 rounded-lg" />
           <Skeleton className="h-3 w-28" />
@@ -91,7 +91,7 @@ function ContextSkeleton() {
         </div>
       </div>
       <div className="flex min-h-0 flex-1">
-        <div className="w-64 shrink-0 space-y-3 border-y-0 border-l-0 border-r border-solid border-ds-border-neutral-subtle-default p-3">
+        <div className="w-64 shrink-0 space-y-3 border-y-0 border-r border-l-0 border-solid border-ds-hairline-subtle-default p-3">
           <Skeleton className="h-3 w-20" />
           {Array.from({ length: 7 }, (_, index) => (
             <Skeleton
@@ -113,18 +113,18 @@ function ContextSkeleton() {
 
 function SettingsRowsSkeleton({ titles }: { titles: string[] }) {
   return (
-    <div className="overflow-hidden rounded-2xl bg-ds-bg-neutral-default-default">
+    <div className="overflow-hidden rounded-2xl bg-ds-neutral-default-default">
       {titles.map((title, index) => (
         <div
           key={title}
           className={cn(
             'grid min-h-16 items-center gap-4 px-4 py-3 md:grid-cols-[minmax(180px,0.8fr)_minmax(260px,1.2fr)]',
             index > 0 &&
-              'border-x-0 border-b-0 border-l-0 border-r-0 border-t border-solid border-ds-border-neutral-subtle-default'
+              'border-x-0 border-t border-r-0 border-b-0 border-l-0 border-solid border-ds-hairline-subtle-default'
           )}
         >
           <div className="min-w-0">
-            <span className="block text-body-sm font-bold text-ds-text-neutral-default-default">
+            <span className="block text-ds-text-base font-bold text-ds-ink-default-default">
               {title}
             </span>
             <Skeleton className="mt-2 h-2.5 w-40 max-w-full" />
@@ -148,8 +148,8 @@ export function MemorySettingsSkeleton() {
           'Organise Memory',
         ]}
       />
-      <div className="rounded-2xl bg-ds-bg-neutral-default-default p-4">
-        <span className="text-body-sm font-bold text-ds-text-neutral-default-default">
+      <div className="rounded-2xl bg-ds-neutral-default-default p-4">
+        <span className="text-ds-text-base font-bold text-ds-ink-default-default">
           Saved Memory
         </span>
         <Skeleton className="mt-2 h-2.5 w-64 max-w-full" />
@@ -181,15 +181,15 @@ export function WorkspaceSettingsSkeleton() {
       className="grid gap-6 py-4 md:grid-cols-[180px_minmax(0,1fr)] md:items-start"
       data-workspace-settings-skeleton
     >
-      <div className="rounded-2xl bg-ds-bg-neutral-default-default p-1">
+      <div className="rounded-2xl bg-ds-neutral-default-default p-1">
         {tabs.map((tab, index) => (
           <div
             key={tab}
             className={cn(
-              'flex h-8 items-center rounded-xl px-3 text-body-sm',
+              'flex h-8 items-center rounded-xl px-3 text-ds-text-base',
               index === 0
-                ? 'bg-ds-bg-neutral-subtle-default font-medium'
-                : 'text-ds-text-neutral-muted-default'
+                ? 'bg-ds-neutral-subtle-default font-medium'
+                : 'text-ds-ink-muted-default'
             )}
           >
             {tab}

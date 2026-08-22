@@ -77,7 +77,7 @@ export default function HomeHubListTable({
           <span
             key={column.id}
             className={cn(
-              'truncate !text-label-sm font-normal leading-none text-ds-text-neutral-muted-default',
+              'truncate !text-ds-text-base leading-none font-normal text-ds-ink-muted-default',
               column.align === 'right' ? 'text-right' : 'text-left'
             )}
           >

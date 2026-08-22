@@ -279,13 +279,9 @@ export const Inputbox = ({
   const getFileIcon = (fileName: string) => {
     const ext = fileName.split('.').pop()?.toLowerCase() || '';
     if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
-      return (
-        <Image className="size-3.5 text-ds-icon-neutral-default-default" />
-      );
+      return <Image className="size-3.5 text-ds-ink-default-default" />;
     }
-    return (
-      <FileText className="size-3.5 text-ds-icon-neutral-default-default" />
-    );
+    return <FileText className="size-3.5 text-ds-ink-default-default" />;
   };
 
   // Drag & drop handlers
@@ -378,11 +374,11 @@ export const Inputbox = ({
     <div
       data-bottom-box-input-surface
       className={cn(
-        'relative flex w-full flex-col items-start rounded-3xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default p-3 transition-colors',
+        'relative flex w-full flex-col items-start rounded-3xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default p-3 transition-colors',
         (isFocused || hasContent) &&
           'border-ds-border-information-default-default',
         isDragging &&
-          'border-ds-border-neutral-strong-default bg-ds-bg-information-subtle-default',
+          'border-ds-hairline-strong-default bg-ds-bg-information-subtle-default',
         className
       )}
       onDragEnter={handleDragEnter}
@@ -391,9 +387,9 @@ export const Inputbox = ({
       onDrop={handleDrop}
     >
       {isDragging && (
-        <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-ds-border-neutral-strong-default bg-ds-bg-information-subtle-default text-ds-text-neutral-default-default backdrop-blur-sm">
+        <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-x-2 border-y-2 border-dashed border-ds-hairline-strong-default bg-ds-bg-information-subtle-default text-ds-ink-default-default backdrop-blur-sm">
           <UploadCloud className="h-8 w-8" />
-          <span className="block text-body-sm font-semibold">
+          <span className="block text-ds-text-base font-semibold">
             {t('chat.drop-files-to-attach')}
           </span>
         </div>
@@ -409,7 +405,7 @@ export const Inputbox = ({
               <div
                 key={file.filePath}
                 className={cn(
-                  'relative box-border flex h-auto max-w-24 items-center gap-0.5 rounded-md bg-ds-bg-neutral-default-default pr-1'
+                  'relative box-border flex h-auto max-w-24 items-center gap-0.5 rounded-md bg-ds-neutral-default-default pr-1'
                 )}
                 onMouseEnter={() => setHoveredFilePath(file.filePath)}
                 onMouseLeave={() =>
@@ -432,7 +428,7 @@ export const Inputbox = ({
                   title={isHovered ? t('chat.remove-file') : file.fileName}
                 >
                   {isHovered ? (
-                    <X className="size-3.5 text-ds-icon-neutral-muted-default" />
+                    <X className="size-3.5 text-ds-ink-muted-default" />
                   ) : (
                     getFileIcon(file.fileName)
                   )}
@@ -441,7 +437,7 @@ export const Inputbox = ({
                 {/* File Name */}
                 <span
                   className={cn(
-                    "relative block min-h-px min-w-px flex-1 overflow-hidden font-['Inter'] text-xs leading-tight font-bold text-ellipsis whitespace-nowrap text-ds-text-neutral-default-default"
+                    "relative block min-h-px min-w-px flex-1 overflow-hidden font-['Inter'] text-xs leading-tight font-bold text-ellipsis whitespace-nowrap text-ds-ink-default-default"
                   )}
                   title={file.fileName}
                 >
@@ -460,14 +456,14 @@ export const Inputbox = ({
                   buttonContent="text"
                   textWeight="bold"
                   buttonRadius="full"
-                  className="relative box-border flex h-auto items-center rounded-lg bg-ds-bg-neutral-strong-default"
+                  className="relative box-border flex h-auto items-center rounded-lg bg-ds-neutral-strong-default"
                   onMouseEnter={openRemainingPopover}
                   onMouseLeave={scheduleCloseRemainingPopover}
                   onClick={(e) => {
                     e.stopPropagation();
                   }}
                 >
-                  <span className="block font-['Inter'] text-xs leading-tight font-bold whitespace-nowrap text-ds-text-neutral-default-default">
+                  <span className="block font-['Inter'] text-xs leading-tight font-bold whitespace-nowrap text-ds-ink-default-default">
                     {remainingCount}+
                   </span>
                 </Button>
@@ -476,7 +472,7 @@ export const Inputbox = ({
                 align="end"
                 side="right"
                 sideOffset={4}
-                className="!w-auto max-w-40 rounded-lg border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default p-1 shadow-perfect"
+                className="!w-auto max-w-40 rounded-lg border-solid border-ds-hairline-subtle-default bg-ds-neutral-default-default p-1 shadow-ds-elevation-popover"
                 onMouseEnter={openRemainingPopover}
                 onMouseLeave={scheduleCloseRemainingPopover}
               >
@@ -486,7 +482,7 @@ export const Inputbox = ({
                     return (
                       <div
                         key={file.filePath}
-                        className="flex cursor-pointer items-center gap-1 rounded-lg bg-ds-bg-neutral-strong-default px-1 py-0.5 transition-colors duration-300 hover:bg-ds-bg-neutral-default-hover"
+                        className="flex cursor-pointer items-center gap-1 rounded-lg bg-ds-neutral-strong-default px-1 py-0.5 transition-colors duration-300 hover:bg-ds-neutral-default-hover"
                         onMouseEnter={() => setHoveredFilePath(file.filePath)}
                         onMouseLeave={() =>
                           setHoveredFilePath((prev) =>
@@ -510,12 +506,12 @@ export const Inputbox = ({
                           }
                         >
                           {isHovered ? (
-                            <X className="size-4 text-ds-icon-neutral-muted-default" />
+                            <X className="size-4 text-ds-ink-muted-default" />
                           ) : (
                             getFileIcon(file.fileName)
                           )}
                         </a>
-                        <span className="block flex-1 overflow-hidden font-['Inter'] text-xs leading-tight font-bold text-ellipsis whitespace-nowrap text-ds-text-neutral-default-default">
+                        <span className="block flex-1 overflow-hidden font-['Inter'] text-xs leading-tight font-bold text-ellipsis whitespace-nowrap text-ds-ink-default-default">
                           {file.fileName}
                         </span>
                       </div>
@@ -552,7 +548,7 @@ export const Inputbox = ({
             'border-none shadow-none focus-visible:ring-0',
             'max-h-[200px] min-h-[40px]'
           )}
-          textClassName="text-ds-text-neutral-default-default"
+          textClassName="text-ds-ink-default-default"
           style={{
             fontFamily: 'Inter',
             fontSize: '13px',
@@ -606,7 +602,7 @@ export const Inputbox = ({
                 aria-haspopup="true"
                 aria-expanded={connectorPanelOpen}
                 className={cn(
-                  connectorPanelOpen && 'bg-ds-bg-neutral-strong-default'
+                  connectorPanelOpen && 'bg-ds-neutral-strong-default'
                 )}
                 onClick={onToggleConnectorPanel}
               >
@@ -630,9 +626,7 @@ export const Inputbox = ({
                 })}
                 aria-haspopup="true"
                 aria-expanded={skillPanelOpen}
-                className={cn(
-                  skillPanelOpen && 'bg-ds-bg-neutral-strong-default'
-                )}
+                className={cn(skillPanelOpen && 'bg-ds-neutral-strong-default')}
                 onClick={onToggleSkillPanel}
               >
                 <WandSparkles />

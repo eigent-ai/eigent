@@ -47,9 +47,9 @@ import {
  * label treatment, so the reader can always tell narration from inference.
  */
 const PRIMARY_TEXT_CLASS =
-  '!text-body-sm font-normal text-ds-text-neutral-default-default';
+  '!text-ds-text-base font-normal text-ds-ink-default-default';
 const DERIVED_TEXT_CLASS =
-  '!text-body-sm font-normal text-ds-text-neutral-default-default';
+  '!text-ds-text-base font-normal text-ds-ink-default-default';
 
 type NarrativeWorkEntry =
   | {
@@ -195,7 +195,7 @@ function NarrativeSegment({
     >
       {segment.narration ? (
         <span
-          className={cn('whitespace-pre-wrap break-words', PRIMARY_TEXT_CLASS)}
+          className={cn('break-words whitespace-pre-wrap', PRIMARY_TEXT_CLASS)}
           data-narrative-segment-narration
         >
           {segment.narration}
@@ -207,7 +207,7 @@ function NarrativeSegment({
             type="button"
             aria-expanded={open}
             onClick={() => setOpen((value) => !value)}
-            className="group inline-flex min-w-0 max-w-full items-center gap-1 self-start px-0 py-0.5 text-left opacity-60 transition-opacity hover:opacity-100"
+            className="group inline-flex max-w-full min-w-0 items-center gap-1 self-start px-0 py-0.5 text-left opacity-60 transition-opacity hover:opacity-100"
             data-narrative-segment-trigger
           >
             {shimmerOnLabel ? (
@@ -215,7 +215,7 @@ function NarrativeSegment({
                 speed={2.5}
                 text={segment.label}
                 className={cn(
-                  'min-w-0 shrink overflow-hidden text-ellipsis whitespace-nowrap !font-normal',
+                  'min-w-0 shrink overflow-hidden !font-normal text-ellipsis whitespace-nowrap',
                   labelIsOnlyText ? PRIMARY_TEXT_CLASS : DERIVED_TEXT_CLASS
                 )}
               />
@@ -237,7 +237,7 @@ function NarrativeSegment({
                 'size-4 shrink-0 transition-[opacity,transform] duration-200',
                 segment.status === 'failed'
                   ? 'text-ds-text-status-error-default-default'
-                  : 'text-ds-icon-neutral-subtle-default',
+                  : 'text-ds-ink-subtle-default',
                 open
                   ? 'rotate-90 opacity-100'
                   : 'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100'
@@ -311,8 +311,7 @@ function NarrativeNotice({
         DERIVED_TEXT_CLASS,
         node.severity === 'error' &&
           'text-ds-text-status-error-default-default',
-        node.severity === 'warning' &&
-          'text-ds-text-status-warning-default-default'
+        node.severity === 'warning' && 'text-ds-text-warning-strong-default'
       )}
       data-narrative-notice-id={node.id}
     >
@@ -430,22 +429,22 @@ function NarrativeAgentGroup({
           <ShinyText
             speed={2.5}
             text={agentName}
-            className="min-w-0 shrink overflow-hidden text-ellipsis whitespace-nowrap !text-body-sm !font-medium text-ds-text-neutral-muted-default"
+            className="min-w-0 shrink overflow-hidden !text-ds-text-base !font-medium text-ellipsis whitespace-nowrap text-ds-ink-muted-default"
           />
         ) : (
-          <span className="min-w-0 shrink overflow-hidden text-ellipsis whitespace-nowrap text-body-sm font-medium text-ds-text-neutral-muted-default">
+          <span className="min-w-0 shrink overflow-hidden text-ds-text-base font-medium text-ellipsis whitespace-nowrap text-ds-ink-muted-default">
             {agentName}
           </span>
         )}
         {open ? (
           <ChevronDown
             aria-hidden
-            className="size-4 shrink-0 text-ds-icon-neutral-muted-default"
+            className="size-4 shrink-0 text-ds-ink-muted-default"
           />
         ) : (
           <ChevronRight
             aria-hidden
-            className="size-4 shrink-0 text-ds-icon-neutral-muted-default"
+            className="size-4 shrink-0 text-ds-ink-muted-default"
           />
         )}
       </button>
@@ -550,20 +549,20 @@ function NarrativeRunWorkLog({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full min-w-0 items-center justify-start gap-1 border-x-0 border-b border-t-0 border-solid border-ds-border-neutral-subtle-default px-0 py-2 text-left"
+        className="flex w-full min-w-0 items-center justify-start gap-1 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-0 py-2 text-left"
       >
-        <span className="text-body-sm font-medium text-ds-text-neutral-muted-default">
+        <span className="text-ds-text-base font-medium text-ds-ink-muted-default">
           {workLogSummary(run, paused)} <RunElapsed paused={paused} run={run} />
         </span>
         {open ? (
           <ChevronDown
             aria-hidden
-            className="size-4 shrink-0 text-ds-icon-neutral-muted-default"
+            className="size-4 shrink-0 text-ds-ink-muted-default"
           />
         ) : (
           <ChevronRight
             aria-hidden
-            className="size-4 shrink-0 text-ds-icon-neutral-muted-default"
+            className="size-4 shrink-0 text-ds-ink-muted-default"
           />
         )}
       </button>

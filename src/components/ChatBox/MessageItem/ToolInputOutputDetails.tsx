@@ -46,9 +46,9 @@ export function ToolInputOutputDetails({
   if (!showEmptyFields && !input && !output && children == null) return null;
 
   const labelClassName =
-    'mb-1 block !text-label-xs font-medium uppercase tracking-wide text-ds-text-neutral-subtle-default';
+    'mb-1 block !text-ds-text-meta font-medium uppercase tracking-wide text-ds-ink-subtle-default';
   const surfaceClassName =
-    'w-full rounded-md bg-ds-bg-neutral-muted-default p-2 opacity-60';
+    'w-full rounded-md bg-ds-neutral-muted-default p-2 opacity-60';
 
   return (
     <div className={`flex w-full flex-col gap-1.5 ${className || ''}`}>
@@ -63,10 +63,10 @@ export function ToolInputOutputDetails({
             <MarkDown
               content={input}
               enableTypewriter={false}
-              pTextSize="!text-label-xs !font-normal text-ds-text-neutral-default-default"
+              pTextSize="!text-ds-text-meta !font-normal text-ds-ink-default-default"
             />
           ) : (
-            <span className="block whitespace-pre-wrap break-words !text-label-xs font-normal text-ds-text-neutral-subtle-default">
+            <span className="block !text-ds-text-meta font-normal break-words whitespace-pre-wrap text-ds-ink-subtle-default">
               {emptyInputText}
             </span>
           )}
@@ -83,10 +83,10 @@ export function ToolInputOutputDetails({
             <MarkDown
               content={output}
               enableTypewriter={false}
-              pTextSize="!text-label-xs !font-normal text-ds-text-neutral-default-default"
+              pTextSize="!text-ds-text-meta !font-normal text-ds-ink-default-default"
             />
           ) : (
-            <span className="block whitespace-pre-wrap break-words !text-label-xs font-normal text-ds-text-neutral-subtle-default">
+            <span className="block !text-ds-text-meta font-normal break-words whitespace-pre-wrap text-ds-ink-subtle-default">
               {emptyOutputText}
             </span>
           )}

@@ -73,16 +73,16 @@ export function BoxHeaderDisplay({
       {hasCopy && (
         <div className="flex min-w-0 flex-col gap-1">
           {eyebrow && (
-            <span className="text-body-xs font-medium text-ds-text-neutral-muted-default">
+            <span className="text-ds-text-meta font-medium text-ds-ink-muted-default">
               {eyebrow}
             </span>
           )}
           {title && (
-            <span className="flex items-center gap-1.5 text-body-sm font-bold text-ds-text-neutral-default-default">
+            <span className="flex items-center gap-1.5 text-ds-text-base font-bold text-ds-ink-default-default">
               {showQuestionIcon ? (
                 <MessageCircleQuestionMark
                   aria-hidden
-                  className="size-4 shrink-0 text-ds-icon-neutral-default-default"
+                  className="size-4 shrink-0 text-ds-ink-default-default"
                   data-bottom-box-question-icon
                 />
               ) : null}
@@ -91,7 +91,7 @@ export function BoxHeaderDisplay({
           )}
           {description && descriptionAsMarkdown ? (
             <div
-              className="bottom-box-question-markdown min-w-0 text-body-sm text-ds-text-neutral-default-default"
+              className="bottom-box-question-markdown min-w-0 text-ds-text-base text-ds-ink-default-default"
               data-bottom-box-question-markdown
             >
               <MarkDown content={description} enableTypewriter={false} />
@@ -100,8 +100,8 @@ export function BoxHeaderDisplay({
             <span
               className={
                 descriptionAsTitle
-                  ? 'block text-body-sm font-bold text-ds-text-neutral-default-default'
-                  : 'block text-body-xs font-normal text-ds-text-neutral-muted-default'
+                  ? 'block text-ds-text-base font-bold text-ds-ink-default-default'
+                  : 'block text-ds-text-meta font-normal text-ds-ink-muted-default'
               }
             >
               {description}
@@ -118,19 +118,19 @@ export function BoxHeaderDisplay({
           {contextItems.map((item) => (
             <li
               key={item.id}
-              className="flex min-w-0 max-w-full items-center gap-1 rounded-lg bg-ds-bg-neutral-strong-default px-2 py-1"
+              className="flex max-w-full min-w-0 items-center gap-1 rounded-lg bg-ds-neutral-strong-default px-2 py-1"
             >
               {item.kind === 'file' && (
                 <FileText
                   aria-hidden
-                  className="size-3.5 shrink-0 text-ds-icon-neutral-muted-default"
+                  className="size-3.5 shrink-0 text-ds-ink-muted-default"
                 />
               )}
               <span className="sr-only">
                 {contextKindLabel[item.kind ?? 'other']}:{' '}
               </span>
               <span
-                className="truncate text-body-xs font-medium text-ds-text-neutral-default-default"
+                className="truncate text-ds-text-meta font-medium text-ds-ink-default-default"
                 title={item.description || item.label}
               >
                 {item.label}
@@ -156,12 +156,12 @@ export function BoxHeaderDisplay({
       {details.map((detail) => (
         <details
           key={detail.id}
-          className="rounded-xl bg-ds-bg-neutral-strong-default px-3 py-2 text-label-sm text-ds-text-neutral-subtle-default"
+          className="rounded-xl bg-ds-neutral-strong-default px-3 py-2 text-ds-text-base text-ds-ink-subtle-default"
         >
           <summary className="cursor-pointer font-medium">
             {detail.label}
           </summary>
-          <pre className="m-0 mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-all font-mono text-label-xs">
+          <pre className="m-0 mt-2 max-h-40 overflow-auto font-mono text-ds-text-meta break-all whitespace-pre-wrap">
             {detail.content}
           </pre>
         </details>
@@ -233,7 +233,7 @@ export const BoxHeaderConfirm = ({
         <div className="flex items-center gap-2">
           {remainingSeconds !== null && (
             <span
-              className="whitespace-nowrap text-body-xs font-medium tabular-nums text-ds-text-success-default-default"
+              className="text-ds-text-meta font-medium whitespace-nowrap text-ds-text-success-default-default tabular-nums"
               aria-label={t('chat.auto-start-in', {
                 seconds: remainingSeconds,
               })}

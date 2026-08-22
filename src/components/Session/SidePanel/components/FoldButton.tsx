@@ -69,7 +69,7 @@ export function SidePanelFoldButton({
         aria-expanded={isSidePanelVisible}
         aria-controls="session-side-panel"
         className={cn(
-          'no-drag shrink-0 text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default',
+          'no-drag shrink-0 text-ds-ink-muted-default hover:bg-ds-neutral-strong-default',
           className
         )}
         aria-label={sessionSidePanelTooltip}

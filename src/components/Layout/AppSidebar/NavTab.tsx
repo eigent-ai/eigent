@@ -26,25 +26,25 @@ import {
 export function sidebarTabButtonClass(active: boolean): string {
   return cn(
     'no-drag h-8 min-h-8 w-full min-w-0 shrink-0 rounded-xl cursor-pointer ease-in-out flex items-center justify-start gap-3 px-3 text-left outline-none overflow-hidden transition-colors duration-200',
-    'hover:bg-ds-bg-neutral-subtle-default focus-visible:ring-ds-ring-neutral-subtle-default focus-visible:ring-2 focus-visible:outline-none',
+    'hover:bg-ds-neutral-subtle-default focus-visible:ring-ds-hairline-subtle-default focus-visible:ring-2 focus-visible:outline-none',
     active
       ? [
-          'bg-ds-bg-neutral-subtle-default text-ds-text-neutral-muted-default',
+          'bg-ds-neutral-subtle-default text-ds-ink-muted-default',
           // Beat global `button .lucide` color so icon matches label emphasis.
-          '[&_.lucide]:!text-ds-icon-neutral-muted-default',
+          '[&_.lucide]:!text-ds-ink-muted-default',
         ]
       : [
-          'text-ds-text-neutral-subtle-default',
-          '[&_.lucide]:!text-ds-icon-neutral-subtle-default',
+          'text-ds-ink-subtle-default',
+          '[&_.lucide]:!text-ds-ink-subtle-default',
         ]
   );
 }
 
 export const SIDEBAR_TAB_LABEL_CLASS =
-  'min-w-0 flex-1 truncate !text-body-sm font-medium';
+  'min-w-0 flex-1 truncate !text-ds-text-base font-medium';
 
 const SPLIT_MAIN_BUTTON_CLASS =
-  'no-drag min-h-8 min-w-0 gap-3 rounded-xl py-0 px-3 relative flex flex-1 items-center text-left outline-none focus-visible:ring-ds-ring-neutral-subtle-default hover:bg-transparent focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none';
+  'no-drag min-h-8 min-w-0 gap-3 rounded-xl py-0 px-3 relative flex flex-1 items-center text-left outline-none focus-visible:ring-ds-hairline-subtle-default hover:bg-transparent focus-visible:z-10 focus-visible:ring-2 focus-visible:outline-none';
 
 const SPLIT_OUTER_EXTRA_CLASS =
   'min-w-0 gap-0 !p-0 relative flex items-stretch overflow-visible';
@@ -138,9 +138,7 @@ function tabMainInner({
         <span
           className={cn(
             SIDEBAR_TAB_LABEL_CLASS,
-            active
-              ? 'text-ds-text-neutral-muted-default'
-              : 'text-ds-text-neutral-subtle-default'
+            active ? 'text-ds-ink-muted-default' : 'text-ds-ink-subtle-default'
           )}
         >
           {label}
@@ -149,10 +147,10 @@ function tabMainInner({
         {showNotificationDot && (
           <span
             className={cn(
-              'duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] shrink-0 rounded-full transition-colors',
+              'shrink-0 rounded-full transition-colors duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)]',
               notificationDotTone === 'attention'
                 ? 'bg-ds-text-status-error-strong-default'
-                : 'bg-ds-bg-brand-default-default',
+                : 'bg-ds-accent-default-default',
               notificationDotClassName
             )}
             aria-hidden
@@ -270,7 +268,7 @@ export function NavTab({
                     'pointer-events-none opacity-0',
                     'group-hover:pointer-events-auto group-hover:opacity-100',
                     endActionMaxWidthClass ??
-                      'focus-within:max-w-10 group-hover:max-w-10',
+                      'group-hover:max-w-10 focus-within:max-w-10',
                     'focus-within:pointer-events-auto focus-within:opacity-100'
                   )}
                 >

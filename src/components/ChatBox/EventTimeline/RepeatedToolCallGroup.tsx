@@ -66,7 +66,7 @@ function statusClassName(status: string): string {
   if (status === 'completed') {
     return 'text-ds-text-success-default-default';
   }
-  return 'text-ds-text-neutral-muted-default';
+  return 'text-ds-ink-muted-default';
 }
 
 /** Optional second-level accordion for one consecutive burst of repeat calls. */
@@ -82,7 +82,7 @@ export function RepeatedToolCallGroup({ group }: RepeatedToolCallGroupProps) {
   return (
     <section
       aria-label={t('chat.repeated-tool-calls-label', { tool: toolTitle })}
-      className="overflow-hidden rounded-xl border border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default"
+      className="overflow-hidden rounded-xl border border-x border-y border-ds-hairline-subtle-default bg-ds-neutral-subtle-default"
       data-tool-call-group
       data-tool-call-count={group.calls.length}
       data-tool-call-method={group.methodName}
@@ -92,51 +92,51 @@ export function RepeatedToolCallGroup({ group }: RepeatedToolCallGroupProps) {
       <button
         type="button"
         aria-expanded={open}
-        className="group flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-ds-bg-neutral-default-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ds-border-brand-default-focus"
+        className="group flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-ds-neutral-default-hover focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:outline-none focus-visible:ring-inset"
         onClick={() => setOpen((current) => !current)}
       >
         <span className="flex min-w-0 items-center gap-2">
           {open ? (
             <ChevronDown
               aria-hidden
-              className="size-4 shrink-0 text-ds-icon-neutral-subtle-default opacity-100 transition-opacity duration-200"
+              className="size-4 shrink-0 text-ds-ink-subtle-default opacity-100 transition-opacity duration-200"
             />
           ) : (
             <ChevronRight
               aria-hidden
-              className="size-4 shrink-0 text-ds-icon-neutral-subtle-default opacity-0 transition-opacity duration-200 group-focus-within:opacity-100 group-hover:opacity-100"
+              className="size-4 shrink-0 text-ds-ink-subtle-default opacity-0 transition-opacity duration-200 group-focus-within:opacity-100 group-hover:opacity-100"
             />
           )}
-          <span className="truncate text-body-sm font-medium text-ds-text-neutral-default-default">
+          <span className="truncate text-ds-text-base font-medium text-ds-ink-default-default">
             {title}
           </span>
         </span>
         <span
-          className={`shrink-0 text-label-xs ${statusClassName(group.status)}`}
+          className={`shrink-0 text-ds-text-meta ${statusClassName(group.status)}`}
         >
           {groupStatusLabel(group, t)}
         </span>
       </button>
 
       {open ? (
-        <div className="border-x-0 border-b-0 border-t border-solid border-ds-border-neutral-subtle-default px-4 py-2">
+        <div className="border-x-0 border-t border-b-0 border-solid border-ds-hairline-subtle-default px-4 py-2">
           <ol className="m-0 flex list-none flex-col gap-2 p-0">
             {group.calls.map((call, index) => {
               const node = call.presentedNode;
               return (
                 <li
                   key={call.id}
-                  className="rounded-lg bg-ds-bg-neutral-default-default px-3 py-2"
+                  className="rounded-lg bg-ds-neutral-default-default px-3 py-2"
                   data-tool-call-id={node.toolCallId || call.id}
                   data-tool-call-index={index + 1}
                   data-tool-call-status={node.status}
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-label-sm font-medium text-ds-text-neutral-default-default">
+                    <span className="text-ds-text-base font-medium text-ds-ink-default-default">
                       {toolTitle}
                     </span>
                     <span
-                      className={`text-label-xs ${statusClassName(node.status)}`}
+                      className={`text-ds-text-meta ${statusClassName(node.status)}`}
                     >
                       {t(`chat.tool-status-${node.status}`, {
                         defaultValue: displayStatus(node.status),
@@ -144,7 +144,7 @@ export function RepeatedToolCallGroup({ group }: RepeatedToolCallGroupProps) {
                     </span>
                   </div>
                   {node.detail ? (
-                    <span className="mt-1 block whitespace-pre-wrap break-words text-label-sm font-normal text-ds-text-neutral-subtle-default">
+                    <span className="mt-1 block text-ds-text-base font-normal break-words whitespace-pre-wrap text-ds-ink-subtle-default">
                       {node.detail}
                     </span>
                   ) : null}

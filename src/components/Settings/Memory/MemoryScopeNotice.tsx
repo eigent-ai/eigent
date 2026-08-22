@@ -235,7 +235,7 @@ export function MemoryScopeDirectory({
             {loading ? (
               <Skeleton className="h-5 w-56" />
             ) : (
-              <div className="flex flex-wrap items-center gap-2 text-body-sm text-ds-text-neutral-muted-default">
+              <div className="flex flex-wrap items-center gap-2 text-ds-text-base text-ds-ink-muted-default">
                 <Badge
                   size="sm"
                   variant="secondary"
@@ -248,7 +248,7 @@ export function MemoryScopeDirectory({
             )}
             <div className="relative min-w-56 flex-1 sm:max-w-80">
               <Search
-                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ds-icon-neutral-muted-default"
+                className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-ds-ink-muted-default"
                 aria-hidden
               />
               <Input
@@ -264,7 +264,7 @@ export function MemoryScopeDirectory({
         ) : null}
 
         {error ? (
-          <div className="mb-4 rounded-xl bg-ds-bg-error-subtle-default p-3 text-body-sm text-ds-text-error-strong-default">
+          <div className="mb-4 rounded-xl bg-ds-bg-error-subtle-default p-3 text-ds-text-base text-ds-text-error-strong-default">
             Memory locations could not be loaded. Your saved Memory is safe;
             retry by reopening this tab.
           </div>
@@ -280,22 +280,19 @@ export function MemoryScopeDirectory({
             ))}
           </div>
         ) : items.length === 0 ? (
-          <div className="flex flex-col items-center rounded-xl bg-ds-bg-neutral-subtle-default px-6 py-10 text-center">
-            <Brain
-              className="h-8 w-8 text-ds-icon-neutral-muted-default"
-              aria-hidden
-            />
-            <div className="mt-3 text-body-sm font-semibold">
+          <div className="flex flex-col items-center rounded-xl bg-ds-neutral-subtle-default px-6 py-10 text-center">
+            <Brain className="h-8 w-8 text-ds-ink-muted-default" aria-hidden />
+            <div className="mt-3 text-ds-text-base font-semibold">
               No {scopeLabel}s available
             </div>
-            <p className="mt-1 text-body-sm text-ds-text-neutral-muted-default">
+            <p className="mt-1 text-ds-text-base text-ds-ink-muted-default">
               {isSpace
                 ? 'Create a Space before adding shared Space Memory.'
                 : 'Create a Project before adding or learning Project Memory.'}
             </p>
           </div>
         ) : visibleItems.length === 0 ? (
-          <div className="rounded-xl bg-ds-bg-neutral-subtle-default px-6 py-8 text-center text-body-sm text-ds-text-neutral-muted-default">
+          <div className="rounded-xl bg-ds-neutral-subtle-default px-6 py-8 text-center text-ds-text-base text-ds-ink-muted-default">
             No {scopeLabel} matches “{search.trim()}”.
           </div>
         ) : (
@@ -314,15 +311,15 @@ export function MemoryScopeDirectory({
               return (
                 <article
                   key={item.scopeId}
-                  className="grid items-center gap-3 rounded-xl border border-solid border-transparent bg-ds-bg-neutral-subtle-default px-4 py-3 transition-colors hover:border-ds-border-neutral-default-default md:grid-cols-[minmax(0,1fr)_minmax(160px,240px)_auto]"
+                  className="grid items-center gap-3 rounded-xl border border-x border-y border-solid border-transparent bg-ds-neutral-subtle-default px-4 py-3 transition-colors hover:border-ds-hairline-default-default md:grid-cols-[minmax(0,1fr)_minmax(160px,240px)_auto]"
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-default-default text-ds-icon-neutral-muted-default">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ds-neutral-default-default text-ds-ink-muted-default">
                       <ItemIcon className="h-4 w-4" aria-hidden />
                     </div>
                     <div className="min-w-0">
                       <div className="flex min-w-0 flex-wrap items-center gap-2">
-                        <span className="truncate text-body-sm font-semibold text-ds-text-neutral-default-default">
+                        <span className="truncate text-ds-text-base font-semibold text-ds-ink-default-default">
                           {item.name}
                         </span>
                         <Badge
@@ -335,7 +332,7 @@ export function MemoryScopeDirectory({
                             : 'Empty'}
                         </Badge>
                       </div>
-                      <div className="mt-0.5 truncate text-label-sm text-ds-text-neutral-muted-default">
+                      <div className="mt-0.5 truncate text-ds-text-base text-ds-ink-muted-default">
                         {isSpace
                           ? pluralize(item.projectCount ?? 0, 'Project')
                           : `Space: ${item.parentName}`}
@@ -344,7 +341,7 @@ export function MemoryScopeDirectory({
                   </div>
 
                   <div className="min-w-0">
-                    <div className="flex items-center justify-between gap-2 text-label-xs text-ds-text-neutral-muted-default">
+                    <div className="flex items-center justify-between gap-2 text-ds-text-meta text-ds-ink-muted-default">
                       <span>{capacity}% used</span>
                       <span>
                         {tokenCount} / {tokenLimit} tokens
@@ -353,8 +350,8 @@ export function MemoryScopeDirectory({
                     <Progress
                       value={capacity}
                       aria-label={`${item.name} Memory capacity`}
-                      className="mt-1 bg-ds-bg-neutral-default-default"
-                      indicatorClassName="bg-ds-bg-brand-default-default"
+                      className="mt-1 bg-ds-neutral-default-default"
+                      indicatorClassName="bg-ds-accent-default-default"
                     />
                   </div>
 

@@ -278,7 +278,7 @@ export function SpaceSwitchDropdown({
             value={searchQuery}
             placeholder={t('layout.search-spaces')}
             leadingIcon={
-              <Search className="h-4 w-4 text-ds-icon-neutral-muted-default" />
+              <Search className="h-4 w-4 text-ds-ink-muted-default" />
             }
             className="w-full"
             onChange={(event) => setSearchQuery(event.target.value)}
@@ -292,7 +292,7 @@ export function SpaceSwitchDropdown({
             )}
           >
             {filteredSpaces.length === 0 ? (
-              <div className="px-2 py-3 text-center text-body-sm text-ds-text-neutral-muted-default">
+              <div className="px-2 py-3 text-center text-ds-text-base text-ds-ink-muted-default">
                 {t('layout.search-no-results')}
               </div>
             ) : (
@@ -317,7 +317,7 @@ export function SpaceSwitchDropdown({
                     />
                   ) : activeSpaceId === space.id ? (
                     <Check
-                      className="h-4 w-4 shrink-0 text-ds-icon-brand-default-default"
+                      className="h-4 w-4 shrink-0 text-ds-accent-default-default"
                       aria-hidden
                     />
                   ) : null}
@@ -342,8 +342,8 @@ export function SpaceSwitchDropdown({
 
         <DropdownMenuSeparator />
 
-        <DropdownMenuLabel className="truncate px-2 py-1.5 font-normal text-ds-text-neutral-muted-default">
-          <span className="text-label-xs font-medium">
+        <DropdownMenuLabel className="truncate px-2 py-1.5 font-normal text-ds-ink-muted-default">
+          <span className="text-ds-text-meta font-medium">
             {t('layout.spaces-current-space')}
           </span>
         </DropdownMenuLabel>
@@ -372,7 +372,7 @@ export function SpaceSwitchDropdown({
               alignOffset={-4}
             >
               {pendingChangesMenu.loadFailed ? (
-                <div className="flex items-start gap-2 px-2 py-2 text-body-sm text-ds-text-neutral-muted-default">
+                <div className="flex items-start gap-2 px-2 py-2 text-ds-text-base text-ds-ink-muted-default">
                   <TriangleAlert
                     className="mt-0.5 h-4 w-4 shrink-0 text-ds-icon-warning-default-default"
                     aria-hidden

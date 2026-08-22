@@ -134,14 +134,14 @@ export function AgentMessageCard({
                   );
                 }}
                 key={'attache-' + file.fileName}
-                className="flex w-full cursor-pointer items-center gap-2 rounded-2xl border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default py-1 pl-2"
+                className="flex w-full cursor-pointer items-center gap-2 rounded-2xl border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-default-default py-1 pl-2"
               >
                 <FileText size={24} className="shrink-0" />
                 <div className="flex flex-col">
-                  <span className="block max-w-48 overflow-hidden text-body-sm font-bold text-ellipsis whitespace-nowrap text-ds-text-neutral-default-default">
+                  <span className="block max-w-48 overflow-hidden text-ds-text-base font-bold text-ellipsis whitespace-nowrap text-ds-ink-default-default">
                     {file?.fileName?.split('.')[0]}
                   </span>
-                  <span className="block text-label-xs font-medium text-ds-text-neutral-muted-default">
+                  <span className="block text-ds-text-meta font-medium text-ds-ink-muted-default">
                     {file?.fileName?.split('.')[1]}
                   </span>
                 </div>
@@ -178,7 +178,7 @@ export function AgentMessageCard({
             disabled={feedback === 'down'}
           >
             <ThumbsUp
-              className={`h-4 w-4 ${feedback === 'up' ? 'text-ds-text-brand-default-default' : ''}`}
+              className={`h-4 w-4 ${feedback === 'up' ? 'text-ds-accent-default-default' : ''}`}
             />
           </Button>
           <Button
@@ -191,7 +191,7 @@ export function AgentMessageCard({
             disabled={feedback === 'up'}
           >
             <ThumbsDown
-              className={`h-4 w-4 ${feedback === 'down' ? 'text-ds-text-brand-default-default' : ''}`}
+              className={`h-4 w-4 ${feedback === 'down' ? 'text-ds-accent-default-default' : ''}`}
             />
           </Button>
         </div>

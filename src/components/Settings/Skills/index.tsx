@@ -220,12 +220,12 @@ export default function Skills() {
         <Tabs value={activeSkillTab} onValueChange={setActiveSkillTab}>
           <TabsList appearance="default">
             <TabsTrigger value="your-skills">
-              <span className="text-body-sm font-semibold text-ds-text-neutral-default-default">
+              <span className="text-ds-text-base font-semibold text-ds-ink-default-default">
                 {t('agents.your-skills')}
               </span>
             </TabsTrigger>
             <TabsTrigger value="example-skills">
-              <span className="text-body-sm font-semibold text-ds-text-neutral-default-default">
+              <span className="text-ds-text-base font-semibold text-ds-ink-default-default">
                 {t('agents.example-skills')}
               </span>
             </TabsTrigger>
