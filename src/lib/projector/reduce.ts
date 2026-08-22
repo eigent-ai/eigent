@@ -32,6 +32,7 @@ const RUN_STATUS_BY_EVENT: Record<string, ProjectedRun['status']> = {
   'approval.requested': 'waiting_for_user',
   'approval.decided': 'interrupted',
   'approval.expired_rejected': 'interrupted',
+  'approval.cancelled': 'interrupted',
   'run.completed': 'completed',
   'run.failed': 'failed',
   'run.deadline_reached': 'failed',

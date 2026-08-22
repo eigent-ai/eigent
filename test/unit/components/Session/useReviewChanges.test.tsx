@@ -356,6 +356,33 @@ describe('useReviewChanges', () => {
     });
   });
 
+  it('falls back to retained overlays when Run Git was never materialized', async () => {
+    mockFetchRunGitChanges.mockResolvedValue({
+      available: false,
+      reason: 'run_git_not_materialized',
+      run_id: 'run-1',
+      project_id: 'project-1',
+    });
+    mockReviewListBackups.mockResolvedValue([]);
+    mockFetchOverlays.mockResolvedValue({
+      space_id: 'space-1',
+      project_id: 'project-1',
+      overlays: [],
+    });
+
+    const { result } = renderHook(() =>
+      useReviewChanges({
+        scope: 'run',
+        runId: 'run-1',
+        focusRequestId: 0,
+      })
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(mockFetchOverlays).toHaveBeenCalledWith('space-1', 'project-1');
+    expect(result.current.error).toBeNull();
+  });
+
   it('uses authoritative overlays and removes applied entries on refresh', async () => {
     mockFetchOverlays
       .mockResolvedValueOnce({

@@ -23,6 +23,8 @@ import {
   fetchProjectGitChanges,
   fetchRunGitChangeContent,
   fetchRunGitChanges,
+  type ProjectGitChanges,
+  type RunGitChangesUnavailable,
 } from '@/service/workspaceGitApi';
 import { useAuthStore } from '@/store/authStore';
 import {
@@ -44,6 +46,11 @@ export type ReviewFileStatus = 'added' | 'modified' | 'deleted';
  * shipping a huge buffer over IPC just to reject it in the renderer).
  */
 export const MAX_DIFF_BYTES = 2_000_000;
+
+const isRunGitChangesUnavailable = (
+  value: ProjectGitChanges | RunGitChangesUnavailable
+): value is RunGitChangesUnavailable =>
+  'available' in value && value.available === false;
 
 /** One changed file of the current project, ready for the diff view. */
 export interface ReviewFile {
@@ -410,6 +417,9 @@ export function useReviewChanges(
           const response = runId
             ? await fetchRunGitChanges(runId, spaceId, identity)
             : await fetchProjectGitChanges(projectId, spaceId, identity);
+          if (isRunGitChangesUnavailable(response)) {
+            return loadLegacyFiles();
+          }
           const files = response.files.map((file): ReviewFile => {
             const baseCommit = response.base_commit;
             const targetCommit = response.target_commit;
