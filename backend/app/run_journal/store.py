@@ -107,6 +107,7 @@ from app.run_journal.transitions import (
     ATTEMPT_TRANSITIONS,
     COMMAND_TRANSITIONS,
     RUN_TRANSITIONS,
+    TOOL_TERMINAL_STATES,
     TOOL_TRANSITIONS,
     transition_allowed,
 )
@@ -11486,6 +11487,12 @@ class SQLiteRunJournal:
                 raise InvalidRunTransitionError(
                     f"run {run_id!r} has a persisted cancel intent"
                 )
+            self._cancel_orphaned_tool_approvals_in_transaction(
+                connection,
+                run_id=run_id,
+                timestamp=timestamp,
+                source="recovery",
+            )
             active = connection.execute(
                 """
                 SELECT attempt_id FROM run_attempts
@@ -12432,6 +12439,21 @@ class SQLiteRunJournal:
                         tool_call_id,
                     ),
                 )
+            tool = connection.execute(
+                "SELECT * FROM tool_calls WHERE tool_call_id = ?",
+                (tool_call_id,),
+            ).fetchone()
+            assert tool is not None
+            if (
+                status in TOOL_TERMINAL_STATES
+                and tool["dispatched_at"] is None
+            ):
+                self._cancel_orphaned_tool_approval_in_transaction(
+                    connection,
+                    tool=tool,
+                    timestamp=timestamp,
+                    source="desktop",
+                )
             event_type = f"tool.{status}"
             event_id = f"tool:{tool_call_id}:{status}"
             payload = {
@@ -12461,6 +12483,161 @@ class SQLiteRunJournal:
             ).fetchone()
             assert row is not None
             return self._tool_call_from_row(row)
+
+    def _cancel_orphaned_tool_approval_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        tool: sqlite3.Row,
+        timestamp: float,
+        source: str,
+    ) -> bool:
+        """Close a pending approval whose ToolCall can no longer dispatch."""
+
+        if tool["status"] not in TOOL_TERMINAL_STATES:
+            return False
+        if tool["dispatched_at"] is not None:
+            return False
+        approval_id = f"approval:{tool['tool_call_id']}"
+        approval = connection.execute(
+            """
+            SELECT * FROM approvals
+            WHERE approval_id = ? AND run_id = ? AND status = 'pending'
+            """,
+            (approval_id, tool["run_id"]),
+        ).fetchone()
+        if approval is None:
+            return False
+
+        reason = "tool_terminal_before_dispatch"
+        decision_json = json.dumps(
+            {"decision": "rejected", "reason": reason},
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        connection.execute(
+            """
+            UPDATE approvals
+            SET status = 'rejected', decision_json = ?, resolved_at = ?,
+                version = version + 1
+            WHERE approval_id = ? AND status = 'pending'
+            """,
+            (decision_json, timestamp, approval_id),
+        )
+        connection.execute(
+            """
+            UPDATE human_interactions
+            SET status = 'cancelled', resolved_at = ?, updated_at = ?,
+                version = version + 1
+            WHERE interaction_id = ?
+              AND status IN ('requested', 'presented')
+            """,
+            (timestamp, timestamp, approval_id),
+        )
+        decision_request_id = f"{source}:{approval_id}:{reason}"
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO human_interaction_decisions(
+                decision_id, interaction_id, decision_request_id,
+                decision_json, actor_type, actor_id, source,
+                action_digest, created_at
+            ) VALUES (?, ?, ?, ?, 'system', NULL, ?, ?, ?)
+            """,
+            (
+                f"decision:{decision_request_id}",
+                approval_id,
+                decision_request_id,
+                decision_json,
+                source,
+                approval["action_digest"],
+                timestamp,
+            ),
+        )
+        remaining_interaction = connection.execute(
+            """
+            SELECT 1 FROM human_interactions
+            WHERE run_id = ? AND status IN ('requested', 'presented')
+            LIMIT 1
+            """,
+            (tool["run_id"],),
+        ).fetchone()
+        run = connection.execute(
+            "SELECT status FROM runs WHERE run_id = ?",
+            (tool["run_id"],),
+        ).fetchone()
+        interrupt_run = bool(
+            remaining_interaction is None
+            and run is not None
+            and run["status"] not in {"completed", "failed", "cancelled"}
+        )
+        if interrupt_run and approval["attempt_id"] is not None:
+            connection.execute(
+                """
+                UPDATE run_attempts
+                SET status = 'interrupted', ended_at = COALESCE(ended_at, ?),
+                    outcome = COALESCE(outcome, ?)
+                WHERE attempt_id = ? AND status = 'waiting_for_user'
+                """,
+                (timestamp, reason, approval["attempt_id"]),
+            )
+        self._append_event_in_transaction(
+            connection,
+            tool["run_id"],
+            RunEventDraft(
+                event_id=f"approval:{approval_id}:cancelled:{reason}",
+                event_type="approval.cancelled",
+                payload={
+                    "approval_id": approval_id,
+                    "interaction_id": approval_id,
+                    "attempt_id": approval["attempt_id"],
+                    "tool_call_id": tool["tool_call_id"],
+                    "decision": "rejected",
+                    "reason": reason,
+                    "source": source,
+                    "continued_attempt": False,
+                },
+                created_at=timestamp,
+            ),
+            run_status="interrupted" if interrupt_run else None,
+            clear_active_attempt=interrupt_run,
+        )
+        return True
+
+    def _cancel_orphaned_tool_approvals_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        run_id: str | None,
+        timestamp: float,
+        source: str,
+    ) -> tuple[str, ...]:
+        tools = connection.execute(
+            """
+            SELECT calls.*
+            FROM tool_calls AS calls
+            JOIN approvals AS approval
+              ON approval.approval_id = 'approval:' || calls.tool_call_id
+             AND approval.run_id = calls.run_id
+             AND approval.status = 'pending'
+            WHERE calls.status IN (
+                'completed', 'failed', 'timed_out', 'outcome_unknown'
+            )
+              AND calls.dispatched_at IS NULL
+              AND (? IS NULL OR calls.run_id = ?)
+            ORDER BY calls.created_at, calls.tool_call_id
+            """,
+            (run_id, run_id),
+        ).fetchall()
+        cancelled: list[str] = []
+        for tool in tools:
+            if self._cancel_orphaned_tool_approval_in_transaction(
+                connection,
+                tool=tool,
+                timestamp=timestamp,
+                source=source,
+            ):
+                cancelled.append(f"approval:{tool['tool_call_id']}")
+        return tuple(cancelled)
 
     def list_tool_calls(self, run_id: str) -> list[ToolCallRecord]:
         with self._lock:
@@ -14206,6 +14383,12 @@ class SQLiteRunJournal:
                         extra={"tool_call_id": tool["tool_call_id"]},
                     )
                     continue
+            self._cancel_orphaned_tool_approvals_in_transaction(
+                connection,
+                run_id=None,
+                timestamp=timestamp,
+                source="recovery",
+            )
             runs = connection.execute(
                 """
                 SELECT * FROM runs

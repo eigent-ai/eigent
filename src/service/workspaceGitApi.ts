@@ -151,6 +151,13 @@ export interface RunGitChanges extends ProjectGitChanges {
   run_id: string;
 }
 
+export interface RunGitChangesUnavailable {
+  available: false;
+  reason: 'run_git_not_materialized';
+  run_id: string;
+  project_id: string;
+}
+
 export interface RunGitChangeContent extends ProjectGitChangeContent {
   run_id: string;
   project_id: string;
@@ -275,7 +282,7 @@ export const fetchRunGitChanges = async (
   runId: string,
   spaceId: string,
   identity: WorkspaceGitIdentity
-): Promise<RunGitChanges> =>
+): Promise<RunGitChanges | RunGitChangesUnavailable> =>
   fetchGet(`/runs/${encodeURIComponent(runId)}/git/changes`, {
     ...identityParams(identity),
     space_id: spaceId,

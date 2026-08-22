@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+import sqlite3
+
 import pytest
 
 from app.run_journal import (
@@ -174,6 +176,9 @@ def test_pending_approval_survives_restart_but_old_attempt_detaches(tmp_path):
         assert reopened.list_approvals("run-1", pending_only=True)[
             0
         ].prompt == {"question": "Allow write?"}
+        active = reopened.get_active_project_run("project-1")
+        assert active is not None
+        assert active.run_id == "run-1"
         with pytest.raises(
             InvalidRunTransitionError, match="pending approvals"
         ):
@@ -183,6 +188,125 @@ def test_pending_approval_survives_restart_but_old_attempt_detaches(tmp_path):
                 reason="explicit_resume",
                 now=4,
             )
+
+
+def test_terminal_tool_before_dispatch_cancels_its_pending_approval(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        values = dict(
+            tool_call_id="tool-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            tool_name="send_message_to_user",
+            safety_class=ToolSafetyClass.UNSAFE_WRITE,
+            request={"message": "hello"},
+        )
+        journal.checkpoint_tool_call(status="prepared", now=2, **values)
+        journal.create_approval(
+            approval_id="approval:tool-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            prompt={"question": "Allow message?"},
+            now=3,
+        )
+
+        journal.checkpoint_tool_call(
+            status="failed",
+            outcome="failed",
+            result={"error": "tool execution cancelled or timed out"},
+            now=4,
+            **values,
+        )
+
+        approval = journal.list_approvals("run-1")[0]
+        interaction = journal.get_human_interaction("approval:tool-1")
+        assert approval.status == "rejected"
+        assert approval.decision == {
+            "decision": "rejected",
+            "reason": "tool_terminal_before_dispatch",
+        }
+        assert interaction is not None
+        assert interaction.status == "cancelled"
+        assert journal.get_run_attempt(attempt.attempt_id).status == (
+            "interrupted"
+        )
+        assert journal.get_run("run-1").status == "interrupted"
+        assert journal.get_active_project_run("project-1") is None
+        assert "approval.cancelled" in {
+            event.event_type for event in journal.list_events("run-1")
+        }
+
+        resumed = journal.create_run_attempt(
+            "run-1",
+            request_id="resume-1",
+            reason="explicit_resume",
+            now=5,
+        )
+        assert resumed.status == "pending"
+
+
+def test_resume_repairs_legacy_terminal_tool_with_pending_approval(tmp_path):
+    path = tmp_path / "journal.sqlite3"
+    with SQLiteRunJournal(path) as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        journal.checkpoint_tool_call(
+            tool_call_id="tool-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            tool_name="send_message_to_user",
+            status="prepared",
+            safety_class=ToolSafetyClass.UNSAFE_WRITE,
+            request={"message": "hello"},
+            now=2,
+        )
+        journal.create_approval(
+            approval_id="approval:tool-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            prompt={"question": "Allow message?"},
+            now=3,
+        )
+
+    # Reproduce a pre-fix row: the waiter was cancelled and the ToolCall was
+    # closed, but its durable Approval/interaction remained pending.
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            """
+            UPDATE tool_calls
+            SET status = 'failed', outcome = 'failed', completed_at = 4,
+                updated_at = 4
+            WHERE tool_call_id = 'tool-1'
+            """
+        )
+
+    with SQLiteRunJournal(path) as reopened:
+        resumed = reopened.create_run_attempt(
+            "run-1",
+            request_id="resume-legacy",
+            reason="explicit_resume",
+            now=5,
+        )
+
+        assert resumed.status == "pending"
+        assert reopened.list_approvals("run-1")[0].status == "rejected"
+        assert (
+            reopened.get_human_interaction("approval:tool-1").status
+            == "cancelled"
+        )
 
 
 def test_dispatched_unsafe_tool_is_fail_closed_after_restart(tmp_path):

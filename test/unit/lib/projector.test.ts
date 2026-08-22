@@ -896,6 +896,7 @@ describe('projector pipeline', () => {
   it.each([
     ['run.deadline_reached', 'failed'],
     ['runtime.interrupted', 'interrupted'],
+    ['approval.cancelled', 'interrupted'],
   ] as const)('projects %s as the terminal status %s', (eventType, status) => {
     const result = projectRawEvents(
       'project-1',

@@ -1253,6 +1253,26 @@ async def run_git_changes(
 ):
     """List one finalized Run's authoritative Git changes lazily."""
 
+    # A Run can legitimately have no Git materialization yet: materialization
+    # is lazy and legacy/overlay-only Runs may never need one.  This is an
+    # availability result for the review UI, not a missing canonical Run.
+    root = _binding_root(space_id=space_id, email=email, user_id=user_id)
+    service = _service()
+    canonical_run = service.journal.get_run(run_id)
+    run_materialization = service.journal.get_run_git_materialization(run_id)
+    if canonical_run is not None and run_materialization is None:
+        repository = service.journal.get_space_git_repository(
+            space_id=space_id
+        )
+        if repository is not None:
+            _assert_repository_binding(repository, root)
+        return {
+            "available": False,
+            "reason": "run_git_not_materialized",
+            "run_id": run_id,
+            "project_id": canonical_run.project_id,
+        }
+
     service, repository, run, base_commit, target_commit = _run_change_context(
         run_id=run_id,
         space_id=space_id,

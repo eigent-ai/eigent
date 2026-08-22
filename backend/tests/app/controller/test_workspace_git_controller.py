@@ -464,7 +464,6 @@ def test_project_git_changes_returns_lazy_authoritative_diff(git_api):
     assert files["note.md"]["status"] == "added"
     assert files["image.bin"]["binary"] is True
     assert str(space) not in response.text
-
     run_response = client.get(
         "/api/v1/runs/run-review/git/changes",
         params={"space_id": "space-1", "email": "user@example.com"},
@@ -526,6 +525,35 @@ def test_project_git_changes_returns_lazy_authoritative_diff(git_api):
         headers=_headers(),
     )
     assert response.status_code == 404
+
+
+def test_run_git_changes_reports_unmaterialized_run_without_404(git_api):
+    client, service, _, _ = git_api
+    service.journal.ensure_run(
+        run_id="run-not-materialized",
+        project_id="project-not-materialized",
+    )
+
+    response = client.get(
+        "/api/v1/runs/run-not-materialized/git/changes",
+        params={"space_id": "space-1", "email": "user@example.com"},
+        headers=_headers(),
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "available": False,
+        "reason": "run_git_not_materialized",
+        "run_id": "run-not-materialized",
+        "project_id": "project-not-materialized",
+    }
+
+    missing = client.get(
+        "/api/v1/runs/run-does-not-exist/git/changes",
+        params={"space_id": "space-1", "email": "user@example.com"},
+        headers=_headers(),
+    )
+    assert missing.status_code == 404
 
 
 def test_run_workspace_api_stays_lazy_until_explicit_materialization(git_api):
