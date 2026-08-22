@@ -90,6 +90,12 @@ jobs:
       - name: Design tokens (engine + no hard-coded colors in UI)
         run: npm run check:design-tokens
 
+      - name: Tailwind 4 sentinels
+        run: npm run verify:tailwind4
+
+      - name: Generated design-system artifacts
+        run: npm run check:design-system:clean-tree
+
       - name: Check frontend formatting
         env:
           FORMAT_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}

@@ -37,18 +37,26 @@ const tailwindBinary = path.join(
 );
 
 const fixture = `@import './index.css';
-@source inline('short:block max-lg:block smooth-shadow-md smooth-shadow-ring-md');
+@source inline('short:block max-lg:block smooth-shadow-md smooth-shadow-ring-md bg-ds-accent-strong-default bg-ds-neutral-default-default bg-ds-bg-neutral-default-default text-ds-text-base text-body-sm text-ds-ink-default-default border-ds-hairline-default-default ring-ds-ring-focus shadow-ds-elevation-control h-ds-control-md');
 `;
 
 const requiredOutput = [
-  ['semantic color utility', '.bg-ds-bg-neutral-default-default'],
-  ['semantic typography utility', '.text-body-sm'],
+  ['public Neutral fill utility', '.bg-ds-neutral-default-default'],
+  ['compatibility Neutral fill utility', '.bg-ds-bg-neutral-default-default'],
+  ['compatibility typography alias', '.text-body-sm'],
   ['legacy custom shadow utility', '.shadow-button-shadow'],
   ['Tailwind 4 replacement utility', '.shrink-0'],
   ['shadow-plugin utility', '.smooth-shadow-md'],
   ['shadow-plugin ring utility', '.smooth-shadow-ring-md'],
   ['custom short-screen media query', '@media (max-height: 800px)'],
   ['custom max-lg responsive utility', '.max-lg\\:block'],
+  ['public accent fill utility', '.bg-ds-accent-strong-default'],
+  ['public Ink utility', '.text-ds-ink-default-default'],
+  ['public Hairline utility', '.border-ds-hairline-default-default'],
+  ['public focus ring utility', '.ring-ds-ring-focus'],
+  ['generated type role utility', '.text-ds-text-base'],
+  ['semantic elevation utility', '.shadow-ds-elevation-control'],
+  ['control height utility', '.h-ds-control-md'],
 ];
 
 const forbiddenOutput = [

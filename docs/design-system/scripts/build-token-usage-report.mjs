@@ -10,6 +10,13 @@ const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptDirectory, '../../..');
 const outputDirectory = path.resolve(scriptDirectory, '../current-token-usage');
 const sourceRoot = path.join(repositoryRoot, 'src');
+const declaredTokensPath = path.join(
+  repositoryRoot,
+  'src',
+  'style',
+  'generated',
+  'declared-tokens.json'
+);
 const sourceExtensions = new Set(['.css', '.js', '.jsx', '.ts', '.tsx']);
 const excludedFile = /\.(?:test|spec|stories)\.(?:js|jsx|ts|tsx)$/;
 
@@ -142,6 +149,15 @@ function scanMatches(text, regex, file, map) {
   regex.lastIndex = 0;
   let match;
   while ((match = regex.exec(text)) !== null) {
+    const rest = text.slice(match.index + match[0].length);
+    if (
+      rest.startsWith('{') ||
+      rest.startsWith('-{') ||
+      rest.startsWith('*') ||
+      rest.startsWith('-*')
+    ) {
+      continue;
+    }
     const key = match[1] ?? match[0];
     const line = text.slice(0, match.index).split('\n').length;
     addOccurrence(map, key, file, line);
@@ -206,7 +222,7 @@ for (const absolute of sourceFiles) {
   scanMatches(text, /var\(\s*(--[a-zA-Z0-9_-]+)/g, relative, cssVariables);
   scanMatches(
     text,
-    /\b((?:bg|text|border|ring|fill|stroke)-ds-[a-z0-9-]+)\b/g,
+    /\b((?:bg|text|border|ring-offset|ring|fill|stroke|shadow|rounded|divide|outline|min-h|max-h|min-w|max-w|size|gap|px|py|pt|pr|pb|pl|h|w)-ds-[a-z0-9-]+)\b/g,
     relative,
     semanticUtilities
   );
@@ -259,9 +275,10 @@ const cssVariableRows = serialiseOccurrences(cssVariables).map((row) => {
   };
 });
 
+const generatedAt = gitValue(['log', '-1', '--format=%cI'], 'unknown');
 const report = {
   schemaVersion: 1,
-  generatedAt: new Date().toISOString(),
+  generatedAt,
   branch: gitValue(['branch', '--show-current'], 'unknown'),
   commit: gitValue(['rev-parse', '--short=12', 'HEAD'], 'unknown'),
   scannedFiles: sourceFiles.length,
@@ -387,6 +404,63 @@ writeFileSync(
   'utf8'
 );
 writeFileSync(path.join(outputDirectory, 'index.html'), html, 'utf8');
+
+let declaredTokens;
+try {
+  declaredTokens = JSON.parse(readFileSync(declaredTokensPath, 'utf8'));
+} catch {
+  process.stderr.write(
+    'FAIL  src/style/generated/declared-tokens.json is missing. Run npm run generate:design-tokens first.\n'
+  );
+  process.exit(1);
+}
+const declaredCssVars = new Set(declaredTokens.cssVariables);
+const declaredUtilityTokens = new Set(declaredTokens.utilityTokens);
+const unresolved = [];
+
+function utilityTokenFromClass(className) {
+  const match = className.match(
+    /^(?:bg|text|border|ring-offset|ring|fill|stroke|shadow|rounded|divide|outline|min-h|max-h|min-w|max-w|size|gap|px|py|pt|pr|pb|pl|h|w)-(ds-[a-z0-9-]+)$/
+  );
+  return match?.[1] ?? null;
+}
+
+for (const row of serialiseOccurrences(semanticUtilities)) {
+  const token = utilityTokenFromClass(row.name);
+  if (token && !declaredUtilityTokens.has(token)) {
+    unresolved.push({
+      kind: 'utility',
+      name: row.name,
+      token,
+      count: row.count,
+      examples: row.examples,
+    });
+  }
+}
+
+for (const row of cssVariableRows) {
+  if (row.name.startsWith('--ds-') && !declaredCssVars.has(row.name)) {
+    unresolved.push({
+      kind: 'css-variable',
+      name: row.name,
+      token: row.name,
+      count: row.count,
+      examples: row.examples,
+    });
+  }
+}
+
+if (unresolved.length > 0) {
+  const details = unresolved
+    .map(
+      (item) => `  ${item.name} (${item.count}×) e.g. ${item.examples[0] ?? ''}`
+    )
+    .join('\n');
+  process.stderr.write(
+    `FAIL  Unresolved design-system tokens (not declared in manifest/generated tokens):\n${details}\n`
+  );
+  process.exitCode = 1;
+}
 
 process.stdout.write(
   `Built ${path.relative(repositoryRoot, outputDirectory)} (${report.scannedFiles} files scanned)\n`

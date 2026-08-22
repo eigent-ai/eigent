@@ -9,6 +9,7 @@ import tailwindcssAnimate from 'tailwindcss-animate';
 // (Monaco can't read Tailwind classes). Single source of truth for `font-code`.
 const require = createRequire(import.meta.url);
 const fontStacks = require('./src/style/fontStacks.json');
+const dsGeneratedTokens = require('./src/style/generated/tokens.tailwind.cjs');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -198,6 +199,7 @@ export default {
         ...buildDsTokenColorMap(),
         ...buildDsCategoryColorMap(),
         ...buildDsBgStatusSubtleShortAliases(),
+        ...dsGeneratedTokens.colors,
         red: {
           50: 'var(--colors-red-50)',
           100: 'var(--colors-red-100)',
@@ -814,11 +816,12 @@ export default {
         // Preserve Tailwind 3's `shadow-sm` visual during the v4 migration.
         sm: '0 1px 2px 0 rgb(0 0 0 / 0.05)',
         'history-item': '0px 3px 4px -1px rgba(0, 0, 0, 0.10)',
-        perfect: 'var(--shadow-perfect)',
+        perfect: 'var(--ds-elevation-popover)',
         soft: 'var(--shadow-soft)',
         'blur-effect': 'var(--shadow-blur-effect)',
         'button-shadow': 'var(--shadow-button)',
         'workspace-project-picker': 'var(--shadow-workspace-project-picker)',
+        ...dsGeneratedTokens.boxShadow,
       },
       blur: {
         // Tailwind 4 renamed the old 4px `blur-sm` step to `blur-xs`.
@@ -831,17 +834,20 @@ export default {
         lg: 'var(--spacing-lg, 32px)',
         xl: 'var(--spacing-xl, 64px)',
         'multi-value': 'var(--spacing-multi-value, 8 64)',
+        ...dsGeneratedTokens.spacing,
       },
       borderRadius: {
         sm: 'var(--borderRadius-sm, 4px)',
         lg: 'var(--borderRadius-lg, 8px)',
         xl: 'var(--borderRadius-xl, 16px)',
         'multi-value': 'var(--borderRadius-multi-value, 4 8)',
+        ...dsGeneratedTokens.borderRadius,
       },
       fontFamily: {
         sans: ['Inter', 'sans-serif'],
         mono: ['SFMono-Regular', 'Menlo', 'monospace'],
         code: fontStacks.code,
+        text: dsGeneratedTokens.fontFamily.text,
         inter: ['Inter'],
         menlo: ['Menlo'],
         serif: ['Palatino'],
@@ -912,6 +918,22 @@ export default {
           'var(--fontSize-5xl, 44px)',
           { lineHeight: 'var(--lineHeight-0, 58px)' },
         ],
+        ...dsGeneratedTokens.fontSize,
+      },
+      height: {
+        ...dsGeneratedTokens.height,
+      },
+      width: {
+        ...dsGeneratedTokens.width,
+      },
+      size: {
+        ...dsGeneratedTokens.size,
+      },
+      minHeight: {
+        ...dsGeneratedTokens.minHeight,
+      },
+      borderWidth: {
+        ...dsGeneratedTokens.borderWidth,
       },
       lineHeight: {
         0: 'var(--lineHeight-0, 58)',
@@ -957,10 +979,10 @@ export default {
         '6xl': 'var(--lineHeight-6xl, 58px)',
       },
       fontWeight: {
-        regular: 'var(--fontWeight-regular, 400)',
-        medium: 'var(--fontWeight-medium, 500)',
-        semibold: 'var(--fontWeight-semibold, 600)',
-        bold: 'var(--fontWeight-bold, 700)',
+        regular: 'var(--ds-weight-regular)',
+        medium: 'var(--ds-weight-medium)',
+        semibold: 'var(--ds-weight-semibold)',
+        bold: 'var(--ds-weight-bold)',
         'inter-0': 'var(--fontWeight-inter-0, 700)',
         'inter-1': 'var(--fontWeight-inter-1, 400)',
         'inter-2': 'var(--fontWeight-inter-2, 500)',
