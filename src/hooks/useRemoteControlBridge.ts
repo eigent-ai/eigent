@@ -1144,7 +1144,10 @@ function serverBridgeError(message: any): RemoteControlBridgeError | null {
   return { code, message: text, retryable };
 }
 
-export function useRemoteControlBridge(token: string | null | undefined) {
+export function useRemoteControlBridge(
+  token: string | null | undefined,
+  backendReady: boolean
+) {
   const cacheRef = useRef<Map<string, CacheEntry>>(new Map());
   const rateLimitRef = useRef<number[]>([]);
   const tokenRef = useRef<string | null | undefined>(token);
@@ -1154,7 +1157,7 @@ export function useRemoteControlBridge(token: string | null | undefined) {
   }, [token]);
 
   useEffect(() => {
-    if (!token || !isDesktop()) {
+    if (!backendReady || !token || !isDesktop()) {
       setRemoteControlBridgeConnected(false, null);
       return;
     }
@@ -1712,5 +1715,5 @@ export function useRemoteControlBridge(token: string | null | undefined) {
       setRemoteControlBridgeConnected(false);
       ws?.close();
     };
-  }, [token]);
+  }, [backendReady, token]);
 }

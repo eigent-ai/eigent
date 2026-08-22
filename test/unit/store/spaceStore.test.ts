@@ -30,9 +30,15 @@ const authStoreMock = vi.hoisted(() => ({
   },
 }));
 
+const backendReadinessMock = vi.hoisted(() => ({
+  waitForBackendReadiness: vi.fn(() => Promise.resolve()),
+}));
+
 vi.mock('@/store/authStore', () => ({
   getAuthStore: () => authStoreMock.state,
 }));
+
+vi.mock('@/store/installationStore', () => backendReadinessMock);
 
 vi.mock('@/api/http', () => ({
   proxyFetchGet: vi.fn().mockResolvedValue({ projects: [] }),
@@ -87,6 +93,7 @@ const makeServerProject = (
 describe('spaceStore user scoping', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    backendReadinessMock.waitForBackendReadiness.mockResolvedValue(undefined);
     const spaceApi = await import('@/service/spaceApi');
     vi.mocked(spaceApi.proxyFetchSpaces).mockResolvedValue([]);
     vi.mocked(spaceApi.proxyFetchSpaceProjects).mockResolvedValue([]);
@@ -285,6 +292,39 @@ describe('spaceStore user scoping', () => {
     );
     expect(Object.keys(state.spaces)).toEqual(['space_new_blank']);
     expect(state.activeSpaceId).toBe('space_new_blank');
+  });
+
+  it('defers local workspace reconciliation until the backend is ready', async () => {
+    const spaceApi = await import('@/service/spaceApi');
+    const workspaceApi = await import('@/service/workspaceApi');
+    let resolveBackendReady: (() => void) | undefined;
+    backendReadinessMock.waitForBackendReadiness.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveBackendReady = resolve;
+      })
+    );
+    vi.mocked(spaceApi.proxyFetchSpaces).mockResolvedValue([
+      makeSpace('space_ready_later', 'Ready later', 'folder', '2'),
+    ]);
+
+    await useSpaceStore.getState().hydrateFromServer(2);
+
+    await vi.waitFor(() => {
+      expect(
+        backendReadinessMock.waitForBackendReadiness
+      ).toHaveBeenCalledTimes(1);
+    });
+    expect(workspaceApi.reconcileWorkspaceBindings).not.toHaveBeenCalled();
+
+    resolveBackendReady?.();
+
+    await vi.waitFor(() => {
+      expect(workspaceApi.reconcileWorkspaceBindings).toHaveBeenCalledWith(
+        'new@example.com',
+        ['space_ready_later'],
+        2
+      );
+    });
   });
 
   it('keeps the previously selected active space when hydrating existing spaces', async () => {

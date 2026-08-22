@@ -29,6 +29,7 @@ import { useRemoteControlBridge } from './hooks/useRemoteControlBridge';
 import { useTriggerTaskExecutor } from './hooks/useTriggerTaskExecutor';
 import { hasStackKeys } from './lib';
 import { useAuthStore } from './store/authStore';
+import { useInstallationStore } from './store/installationStore';
 
 const HAS_STACK_KEYS = hasStackKeys();
 
@@ -37,6 +38,7 @@ function App() {
   const navigate = useNavigate();
   const { setInitState } = useAuthStore();
   const { token } = useAuthStore();
+  const isBackendReady = useInstallationStore((state) => state.isBackendReady);
 
   // Subscribe to execution events when user is authenticated
   // Note: Removed triggers.length check to prevent reconnection on every trigger update
@@ -46,7 +48,9 @@ function App() {
 
   // Execute triggered tasks automatically when WebSocket events are received
   useTriggerTaskExecutor();
-  useRemoteControlBridge(token);
+  // The bridge can receive commands immediately after registration. Do not
+  // advertise it until the local Brain can durably persist the command inbox.
+  useRemoteControlBridge(token, isBackendReady);
 
   useEffect(() => {
     const handleShareCode = (event: any, share_token: string) => {

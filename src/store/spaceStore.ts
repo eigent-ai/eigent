@@ -730,8 +730,13 @@ export const useSpaceStore = create<SpaceStore>()(
           void Promise.all([
             import('@/service/workspaceApi'),
             import('@/store/authStore'),
+            import('@/store/installationStore'),
           ])
-            .then(([workspaceModule, authModule]) => {
+            .then(async ([workspaceModule, authModule, installationModule]) => {
+              await installationModule.waitForBackendReadiness();
+              if (!(await isHydrationStillCurrentForUser(ownerId))) {
+                return;
+              }
               const email = authModule.getAuthStore().email;
               const userId = authModule.getAuthStore().user_id;
               if (!email) return;
