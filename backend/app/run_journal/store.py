@@ -12611,10 +12611,8 @@ class SQLiteRunJournal:
         timestamp: float,
         source: str,
     ) -> tuple[str, ...]:
-        params: tuple[object, ...] = () if run_id is None else (run_id,)
-        run_clause = "" if run_id is None else "AND calls.run_id = ?"
         tools = connection.execute(
-            f"""
+            """
             SELECT calls.*
             FROM tool_calls AS calls
             JOIN approvals AS approval
@@ -12625,10 +12623,10 @@ class SQLiteRunJournal:
                 'completed', 'failed', 'timed_out', 'outcome_unknown'
             )
               AND calls.dispatched_at IS NULL
-              {run_clause}
+              AND (? IS NULL OR calls.run_id = ?)
             ORDER BY calls.created_at, calls.tool_call_id
             """,
-            params,
+            (run_id, run_id),
         ).fetchall()
         cancelled: list[str] = []
         for tool in tools:
