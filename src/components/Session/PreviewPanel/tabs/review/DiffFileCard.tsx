@@ -310,6 +310,10 @@ export function DiffFileCard({
           isWholeLine: true,
           className:
             wholeFileSide === 'modified' ? 'line-insert' : 'line-delete',
+          linesDecorationsClassName:
+            wholeFileSide === 'modified'
+              ? 'line-insert-marker'
+              : 'line-delete-marker',
         },
       },
     ]);

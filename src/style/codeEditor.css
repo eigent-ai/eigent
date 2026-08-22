@@ -27,12 +27,30 @@
  * marker and use a restrained content tint. */
 .review-diff-surface .monaco-editor .line-insert {
   background: rgba(46, 160, 67, 0.08);
-  box-shadow: inset 2px 0 rgba(46, 160, 67, 0.55);
 }
 
 .review-diff-surface .monaco-editor .line-delete {
   background: rgba(248, 81, 73, 0.08);
-  box-shadow: inset 2px 0 rgba(248, 81, 73, 0.55);
+}
+
+/* Keep the status rail in Monaco's decorations gutter instead of painting it
+ * directly against the first source glyph. The 8px gutter leaves 6px of
+ * breathing room between this 2px rail and the code without shifting Monaco's
+ * measured text, cursor, or selection geometry. */
+.review-diff-surface .monaco-editor .line-insert-marker {
+  background: linear-gradient(
+    to right,
+    rgba(46, 160, 67, 0.55) 0 2px,
+    transparent 2px
+  );
+}
+
+.review-diff-surface .monaco-editor .line-delete-marker {
+  background: linear-gradient(
+    to right,
+    rgba(248, 81, 73, 0.55) 0 2px,
+    transparent 2px
+  );
 }
 
 [data-theme='dark'] .review-diff-surface .monaco-editor .line-insert {
