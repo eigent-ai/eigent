@@ -19,7 +19,6 @@ import os
 from typing import Any
 
 from camel.agents.chat_agent import AsyncStreamingChatAgentResponse
-from camel.responses import ChatAgentResponse
 from fastapi import Request
 
 from app.agent.factory.single_agent import single_agent
@@ -51,6 +50,7 @@ from app.utils.agent_memory import (
     record_agent_memory_snapshot,
 )
 from app.utils.file_utils import get_working_directory
+from camel.responses import ChatAgentResponse
 
 logger = logging.getLogger("single_agent_service")
 
@@ -428,8 +428,7 @@ async def single_agent_solve(
             agent_run_id = task_id
         observable_todo = getattr(agent, "_observable_todo_toolkit", None)
         if observable_todo is not None:
-            observable_todo.task_id = task_id
-            observable_todo.agent_id = agent.agent_id
+            observable_todo.bind_run(task_id, agent_id=agent.agent_id)
             observable_todo.emit_todo_state()
         return agent
 

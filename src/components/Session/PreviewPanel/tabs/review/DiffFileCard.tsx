@@ -12,6 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useHost } from '@/host';
 import {
   CODE_FONT_FAMILY,
@@ -21,64 +23,69 @@ import {
   registerCodeThemes,
 } from '@/lib/codePresentation';
 import { ensureMonacoWorkers } from '@/lib/monacoWorkers';
-import { cn } from '@/lib/utils';
+import { formatFileSize } from '@/shared/filePreviewContract';
+import type {
+  ReviewLineSelection,
+  SessionReviewComment,
+} from '@/store/pageTabStore';
 import loader from '@monaco-editor/loader';
 import { DiffEditor, Editor } from '@monaco-editor/react';
-import { ChevronRight, FileWarning } from 'lucide-react';
+import { CheckCheck, CodeXml, Eye, FileWarning } from 'lucide-react';
 import * as monaco from 'monaco-editor';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { countLineChanges, type LineCounts } from './diffMetrics';
-import { ReviewAccordionContent } from './ReviewAccordionContent';
 import { decodeFileText, diffSidePaths } from './reviewContent';
+import { SemanticDiffView, semanticDiffKindForPath } from './SemanticDiffView';
 import { MAX_DIFF_BYTES, type ReviewFile } from './useReviewChanges';
 
 ensureMonacoWorkers();
 loader.config({ monaco });
 registerCodeThemes(monaco);
 
-const MIN_EDITOR_HEIGHT = 72;
-const MAX_EDITOR_HEIGHT = 520;
+export type DiffViewMode = 'inline' | 'split';
 
-const DIFF_OPTIONS: monaco.editor.IDiffEditorConstructionOptions = {
-  ...READ_ONLY_CODE_OPTIONS,
-  renderOverviewRuler: false,
-  originalEditable: false,
-  renderSideBySide: false,
-  hideUnchangedRegions: { enabled: true, contextLineCount: 3 },
-  diffAlgorithm: 'advanced',
-};
-
-const WHOLE_FILE_OPTIONS: monaco.editor.IStandaloneEditorConstructionOptions = {
-  ...READ_ONLY_CODE_OPTIONS,
-  occurrencesHighlight: 'off',
-  selectionHighlight: false,
-};
-
-/** Content lines, ignoring the trailing newline most files end with. */
-function countLines(text: string): number {
-  if (!text) return 0;
-  return text.replace(/\r?\n$/, '').split('\n').length;
+export interface DiffFileCardHandle {
+  goToDiff: (target: 'next' | 'previous') => void;
+  revealSelection: (selection: ReviewLineSelection) => void;
 }
+
+export type ReviewSelection = ReviewLineSelection;
 
 export interface DiffFileCardProps {
   file: ReviewFile;
-  selected: boolean;
   appearance: string;
-  /** Available vertical space for a single-file review on this panel. */
-  maxEditorHeight?: number;
-  /**
-   * Fold state the "collapse/expand all" control last asked for. The card
-   * still owns its own state — this only re-applies when `foldNonce` changes,
-   * so folding one card by hand does not get undone by a re-render.
-   */
-  foldAll?: boolean;
-  foldNonce?: number;
+  viewMode: DiffViewMode;
+  wordWrap: boolean;
+  reviewed?: boolean;
+  comments?: readonly SessionReviewComment[];
+  onSelectionChange?: (selection: ReviewSelection | null) => void;
+  onCommentRequest?: (selection: ReviewSelection) => void;
 }
 
 interface DiffSides {
   original: string;
   modified: string;
+}
+
+const WHOLE_FILE_OPTIONS: monaco.editor.IStandaloneEditorConstructionOptions = {
+  ...READ_ONLY_CODE_OPTIONS,
+  glyphMargin: true,
+  lineDecorationsWidth: 22,
+  occurrencesHighlight: 'off',
+  selectionHighlight: false,
+};
+
+function countLines(text: string): number {
+  if (!text) return 0;
+  return text.replace(/\r?\n$/, '').split('\n').length;
 }
 
 function reviewModelPath(side: 'original' | 'modified', file: ReviewFile) {
@@ -90,355 +97,643 @@ function reviewModelPath(side: 'original' | 'modified', file: ReviewFile) {
   return `review://${side}/${encodeURIComponent(file.id)}/${encodedPath}`;
 }
 
-/**
- * One changed file: sticky path header plus a read-only inline Monaco diff
- * (the file's earliest backup vs its current on-disk content). The editor
- * mounts lazily when the card first approaches the viewport.
- */
-export function DiffFileCard({
-  file,
-  selected,
-  appearance,
-  maxEditorHeight = MAX_EDITOR_HEIGHT,
-  foldAll = false,
-  foldNonce = 0,
-}: DiffFileCardProps) {
-  const { t } = useTranslation();
-  const host = useHost();
-  const contentId = useId();
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [nearViewport, setNearViewport] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
-  const [sides, setSides] = useState<DiffSides | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [counts, setCounts] = useState<LineCounts | null>(null);
-  const [contentHeight, setContentHeight] = useState(148);
-  const wholeFileEditorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(
-    null
-  );
-  const wholeFileDecorationsRef =
-    useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
-  const [wholeFileEditorGeneration, setWholeFileEditorGeneration] = useState(0);
-
-  // Follow the toolbar's collapse/expand-all only when it is actually clicked.
-  useEffect(() => {
-    if (foldNonce === 0) return;
-    setCollapsed(foldAll);
-  }, [foldAll, foldNonce]);
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setNearViewport(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: '400px 0px' }
+/** One active changed file rendered as a full-height review workbench. */
+export const DiffFileCard = forwardRef<DiffFileCardHandle, DiffFileCardProps>(
+  function DiffFileCard(
+    {
+      file,
+      appearance,
+      viewMode,
+      wordWrap,
+      reviewed = false,
+      comments = [],
+      onSelectionChange,
+      onCommentRequest,
+    },
+    ref
+  ) {
+    const { t } = useTranslation();
+    const host = useHost();
+    const semanticKind = semanticDiffKindForPath(file.path);
+    const [displayMode, setDisplayMode] = useState<'source' | 'preview'>(() =>
+      semanticKind === 'image' ? 'preview' : 'source'
     );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
+    const [sides, setSides] = useState<DiffSides | null>(null);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [counts, setCounts] = useState<LineCounts | null>(null);
+    const diffEditorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(
+      null
+    );
+    const diffCommentDecorationsRef = useRef<{
+      original: monaco.editor.IEditorDecorationsCollection;
+      modified: monaco.editor.IEditorDecorationsCollection;
+    } | null>(null);
+    const wholeFileEditorRef =
+      useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+    const wholeFileDecorationsRef =
+      useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
+    const wholeFileCommentDecorationsRef =
+      useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
+    const [diffEditorGeneration, setDiffEditorGeneration] = useState(0);
+    const [wholeFileEditorGeneration, setWholeFileEditorGeneration] =
+      useState(0);
 
-  useEffect(() => {
-    if (!nearViewport) return;
-    setSides(null);
-    setLoadError(null);
-    setCounts(null);
-    setContentHeight(148);
-    if (file.inline) {
-      setSides(file.inline);
-      return;
-    }
-    // Sizes come from the backup scan, so an oversized file is rejected before
-    // its bytes are read and shipped across IPC.
-    if (file.tooLarge) {
-      setLoadError('too_large');
-      return;
-    }
-    if (file.binary) {
-      setLoadError('binary');
-      return;
-    }
-    let cancelled = false;
-    if (file.loadContent) {
-      file
-        .loadContent()
-        .then((content) => {
-          if (!cancelled) setSides(content);
+    useImperativeHandle(
+      ref,
+      () => ({
+        goToDiff(target) {
+          if (diffEditorRef.current) {
+            diffEditorRef.current.goToDiff(target);
+            diffEditorRef.current.getModifiedEditor().focus();
+            return;
+          }
+          const editor = wholeFileEditorRef.current;
+          if (!editor) return;
+          const lineNumber =
+            target === 'next' ? 1 : (editor.getModel()?.getLineCount() ?? 1);
+          editor.revealLineInCenter(lineNumber);
+          editor.setPosition({ lineNumber, column: 1 });
+          editor.focus();
+        },
+        revealSelection(selection) {
+          const diffEditor = diffEditorRef.current;
+          const editor = diffEditor
+            ? selection.side === 'original'
+              ? diffEditor.getOriginalEditor()
+              : diffEditor.getModifiedEditor()
+            : wholeFileEditorRef.current;
+          const model = editor?.getModel();
+          if (!editor || !model) return;
+          const startLine = Math.min(
+            Math.max(selection.startLine, 1),
+            model.getLineCount()
+          );
+          const endLine = Math.min(
+            Math.max(selection.endLine, startLine),
+            model.getLineCount()
+          );
+          editor.revealLinesInCenter(startLine, endLine);
+          editor.setSelection(
+            new monaco.Selection(
+              startLine,
+              1,
+              endLine,
+              model.getLineMaxColumn(endLine)
+            )
+          );
+          editor.focus();
+        },
+      }),
+      []
+    );
+
+    useEffect(() => {
+      if (displayMode !== 'preview') return;
+      onSelectionChange?.(null);
+      // @monaco-editor/react disposes the editor when Preview replaces Source,
+      // but exposes no unmount callback. Drop every imperative handle here so
+      // comment updates cannot target a disposed model while Preview is open.
+      diffEditorRef.current = null;
+      diffCommentDecorationsRef.current = null;
+      wholeFileEditorRef.current = null;
+      wholeFileDecorationsRef.current = null;
+      wholeFileCommentDecorationsRef.current = null;
+    }, [displayMode, onSelectionChange]);
+
+    useEffect(() => {
+      setSides(null);
+      setLoadError(null);
+      setCounts(null);
+      diffEditorRef.current = null;
+      diffCommentDecorationsRef.current = null;
+      wholeFileEditorRef.current = null;
+      wholeFileDecorationsRef.current = null;
+      wholeFileCommentDecorationsRef.current = null;
+      onSelectionChange?.(null);
+
+      if (file.inline) {
+        setSides(file.inline);
+        return;
+      }
+      if (file.tooLarge) {
+        setLoadError('too_large');
+        return;
+      }
+      if (file.binary) {
+        if (semanticKind !== 'image') setLoadError('binary');
+        return;
+      }
+
+      let cancelled = false;
+      if (file.loadContent) {
+        file
+          .loadContent()
+          .then((content) => {
+            if (!cancelled) setSides(content);
+          })
+          .catch((err: unknown) => {
+            if (!cancelled) {
+              setLoadError(err instanceof Error ? err.message : String(err));
+            }
+          });
+        return () => {
+          cancelled = true;
+        };
+      }
+
+      const api = host?.electronAPI;
+      if (!api?.readFile) return;
+      const readSide = async (path: string | null): Promise<string> => {
+        if (!path) return '';
+        const result = await api.readFile(path);
+        if (!result?.success) {
+          throw new Error(result?.error || 'Failed to read file');
+        }
+        if (typeof result.size === 'number' && result.size > MAX_DIFF_BYTES) {
+          throw new Error('too_large');
+        }
+        const text = decodeFileText(result.data);
+        if (text === null) throw new Error('binary');
+        return text;
+      };
+
+      if (file.status === 'deleted' && !file.bakPath) {
+        setLoadError('no_before_content');
+        return;
+      }
+      const { original: originalPath, modified: modifiedPath } =
+        diffSidePaths(file);
+      Promise.all([readSide(originalPath), readSide(modifiedPath)])
+        .then(([original, modified]) => {
+          if (!cancelled) setSides({ original, modified });
         })
         .catch((err: unknown) => {
-          if (cancelled) return;
-          setLoadError(err instanceof Error ? err.message : String(err));
+          if (!cancelled) {
+            setLoadError(err instanceof Error ? err.message : String(err));
+          }
         });
       return () => {
         cancelled = true;
       };
-    }
-    const api = host?.electronAPI;
-    if (!api?.readFile) return;
+    }, [file, host, onSelectionChange, semanticKind]);
 
-    const readSide = async (path: string | null): Promise<string> => {
-      if (!path) return '';
-      const result = await api.readFile(path);
-      if (!result?.success) {
-        // A missing original for an added file (or missing source for a
-        // deletion) is expected — everything else is a real load failure.
-        throw new Error(result?.error || 'Failed to read file');
-      }
-      if (typeof result.size === 'number' && result.size > MAX_DIFF_BYTES) {
-        throw new Error('too_large');
-      }
-      const text = decodeFileText(result.data);
-      if (text === null) throw new Error('binary');
-      return text;
-    };
-
-    if (file.status === 'deleted' && !file.bakPath) {
-      setLoadError('no_before_content');
-      return;
-    }
-    const { original: originalPath, modified: modifiedPath } =
-      diffSidePaths(file);
-
-    Promise.all([readSide(originalPath), readSide(modifiedPath)])
-      .then(([original, modified]) => {
-        if (!cancelled) setSides({ original, modified });
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        const message = err instanceof Error ? err.message : String(err);
-        setLoadError(message);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [nearViewport, host, file]);
-
-  const language = useMemo(
-    () => languageForPath(file.path, monaco.languages.getLanguages()),
-    [file.path]
-  );
-  const codeTheme = codeThemeForAppearance(appearance);
-
-  /**
-   * Which side to show on its own, uncompared: a file that only exists on one
-   * side (added or deleted) has nothing to diff against. Monaco's empty model
-   * still holds one blank line, so diffing against it reported a phantom
-   * removed line ("−1") and drew a red blank row above the content.
-   *
-   * `tinted` says whether those lines are really all added/removed. A modified
-   * file whose backup is missing also renders one-sided, but its lines are not
-   * new — tinting them green (and counting them as additions) would contradict
-   * the "M" marker, so it shows as plain content with a notice instead.
-   */
-  const wholeFileSide: 'modified' | 'original' | null = !sides
-    ? null
-    : file.beforeUnavailable
-      ? 'modified'
-      : !sides.original && sides.modified
-        ? 'modified'
-        : !sides.modified && sides.original
-          ? 'original'
-          : null;
-  const wholeFileTinted = wholeFileSide !== null && !file.beforeUnavailable;
-
-  const editorHeight = Math.min(
-    maxEditorHeight,
-    Math.max(MIN_EDITOR_HEIGHT, contentHeight + 12)
-  );
-
-  const fitHeight = (nextContentHeight: number) =>
-    setContentHeight(nextContentHeight);
-
-  const handleMount = (editor: monaco.editor.IStandaloneDiffEditor) => {
-    const applyMetrics = () => {
-      const changes = editor.getLineChanges();
-      // Null means no diff is available — either it has not been computed yet,
-      // or the editor is being torn down because the card was collapsed. Both
-      // fire a content-size change, so overwriting here would blank the header
-      // counts of a folded card. Keep the last real measurement instead; an
-      // unchanged file reports an empty array, not null.
-      if (!changes) return;
-      const models = editor.getModel();
-      setCounts(
-        countLineChanges(changes, {
-          originalEmpty: models?.original.getValueLength() === 0,
-          modifiedEmpty: models?.modified.getValueLength() === 0,
-        })
-      );
-      fitHeight(editor.getModifiedEditor().getContentHeight());
-    };
-    editor.onDidUpdateDiff(applyMetrics);
-    editor.getModifiedEditor().onDidContentSizeChange(applyMetrics);
-  };
-
-  const handleWholeFileMount = (
-    editor: monaco.editor.IStandaloneCodeEditor
-  ) => {
-    wholeFileEditorRef.current = editor;
-    // Any collection still held belongs to the editor this one replaces, which
-    // is already disposed — clearing it later would touch a dead model.
-    wholeFileDecorationsRef.current = null;
-    fitHeight(editor.getContentHeight());
-    editor.onDidContentSizeChange(() => fitHeight(editor.getContentHeight()));
-    // A counter, not a flag: collapsing unmounts the editor, so re-expanding
-    // has to re-run the decoration effect against the newly mounted one.
-    setWholeFileEditorGeneration((generation) => generation + 1);
-  };
-
-  // Tint every line of a one-sided file the way the diff editor tints its own
-  // inserted/deleted lines, and count them all as added or removed.
-  useEffect(() => {
-    const editor = wholeFileEditorRef.current;
-    const model = editor?.getModel();
-    if (!wholeFileSide || !editor || !model) return;
-    wholeFileDecorationsRef.current?.clear();
-    wholeFileDecorationsRef.current = null;
-    if (!wholeFileTinted) {
-      // Content whose baseline is unknown: show it plainly, and claim no counts.
-      setCounts(null);
-      return;
-    }
-    const lines = countLines(model.getValue());
-    wholeFileDecorationsRef.current = editor.createDecorationsCollection([
-      {
-        range: new monaco.Range(1, 1, model.getLineCount(), 1),
-        options: {
-          isWholeLine: true,
-          className:
-            wholeFileSide === 'modified' ? 'line-insert' : 'line-delete',
-        },
-      },
-    ]);
-    setCounts(
-      wholeFileSide === 'modified'
-        ? { added: lines, removed: 0 }
-        : { added: 0, removed: lines }
+    const language = useMemo(
+      () => languageForPath(file.path, monaco.languages.getLanguages()),
+      [file.path]
     );
-  }, [wholeFileSide, wholeFileTinted, sides, wholeFileEditorGeneration]);
+    const codeTheme = codeThemeForAppearance(appearance);
+    const diffOptions = useMemo<monaco.editor.IDiffEditorConstructionOptions>(
+      () => ({
+        ...READ_ONLY_CODE_OPTIONS,
+        wordWrap: wordWrap ? 'on' : 'off',
+        glyphMargin: true,
+        lineDecorationsWidth: 22,
+        renderOverviewRuler: false,
+        originalEditable: false,
+        renderSideBySide: viewMode === 'split',
+        useInlineViewWhenSpaceIsLimited: true,
+        hideUnchangedRegions: { enabled: true, contextLineCount: 3 },
+        diffAlgorithm: 'advanced',
+      }),
+      [viewMode, wordWrap]
+    );
+    const wholeFileOptions =
+      useMemo<monaco.editor.IStandaloneEditorConstructionOptions>(
+        () => ({ ...WHOLE_FILE_OPTIONS, wordWrap: wordWrap ? 'on' : 'off' }),
+        [wordWrap]
+      );
 
-  const statusMeta: Record<
-    ReviewFile['status'],
-    { letter: string; className: string }
-  > = {
-    added: { letter: 'A', className: 'text-ds-text-success-default-default' },
-    modified: {
-      letter: 'M',
-      className: 'text-ds-text-warning-default-default',
-    },
-    deleted: { letter: 'D', className: 'text-ds-text-error-default-default' },
-  };
-  const status = statusMeta[file.status];
-  const lastSlash = file.path.lastIndexOf('/');
-  const dirName = lastSlash >= 0 ? file.path.slice(0, lastSlash + 1) : '';
-  const baseName = lastSlash >= 0 ? file.path.slice(lastSlash + 1) : file.path;
-
-  // Shown above the content, which is still worth reading.
-  const banner =
-    file.beforeUnavailable && !loadError
-      ? t('layout.review-before-unavailable', {
-          defaultValue:
-            'No saved copy of the original — showing the current file, not a diff.',
-        })
-      : null;
-
-  // Replaces the content entirely: there is nothing to show.
-  const notice =
-    loadError === 'binary'
-      ? t('layout.review-binary-file', {
-          defaultValue: 'Binary file — no text diff available.',
-        })
-      : loadError === 'too_large'
-        ? t('layout.review-file-too-large', {
-            defaultValue: 'File is too large to diff.',
-          })
-        : loadError === 'no_before_content'
-          ? t('layout.review-no-before-content', {
-              defaultValue:
-                'This file was deleted and no backup of its content exists.',
-            })
-          : loadError
-            ? t('layout.review-file-load-failed', {
-                defaultValue: 'Could not load this file: {{message}}',
-                message: loadError,
-              })
+    const wholeFileSide: 'modified' | 'original' | null = !sides
+      ? null
+      : file.beforeUnavailable
+        ? 'modified'
+        : !sides.original && sides.modified
+          ? 'modified'
+          : !sides.modified && sides.original
+            ? 'original'
             : null;
+    const wholeFileTinted = wholeFileSide !== null && !file.beforeUnavailable;
 
-  return (
-    <div
-      ref={containerRef}
-      data-review-id={file.id}
-      className={cn(
-        'overflow-hidden rounded-[6px] border border-x border-y border-solid bg-ds-neutral-default-default',
-        selected
-          ? 'border-ds-hairline-strong-default'
-          : 'border-ds-hairline-subtle-default'
-      )}
-    >
-      <button
-        type="button"
-        onClick={() => setCollapsed((value) => !value)}
-        aria-expanded={!collapsed}
-        aria-controls={contentId}
-        className="sticky top-0 z-10 flex h-10 w-full cursor-pointer items-center gap-2 border-0 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default px-3 text-left"
+    const reviewSelectionFor = (
+      side: 'original' | 'modified',
+      codeEditor: monaco.editor.IStandaloneCodeEditor,
+      selection: monaco.Selection
+    ): ReviewSelection | null => {
+      const model = codeEditor.getModel();
+      if (!model) return null;
+      const startLine = Math.min(
+        selection.startLineNumber,
+        selection.endLineNumber
+      );
+      let endLine = Math.max(
+        selection.startLineNumber,
+        selection.endLineNumber
+      );
+      if (endLine > startLine && selection.getEndPosition().column === 1) {
+        endLine -= 1;
+      }
+      return {
+        side,
+        startLine,
+        endLine,
+        text: model.getValueInRange(
+          new monaco.Range(
+            startLine,
+            1,
+            endLine,
+            model.getLineMaxColumn(endLine)
+          )
+        ),
+      };
+    };
+
+    const bindCommenting = (
+      side: 'original' | 'modified',
+      codeEditor: monaco.editor.IStandaloneCodeEditor
+    ) => {
+      const hoverDecorations = codeEditor.createDecorationsCollection();
+      let hoveredLine: number | null = null;
+      let commentDragStartLine: number | null = null;
+      let commentDragEndLine: number | null = null;
+
+      const selectWholeLines = (
+        startLine: number,
+        endLine: number
+      ): ReviewSelection | null => {
+        const model = codeEditor.getModel();
+        if (!model) return null;
+        const firstLine = Math.min(startLine, endLine);
+        const lastLine = Math.max(startLine, endLine);
+        const selected = new monaco.Selection(
+          firstLine,
+          1,
+          lastLine,
+          model.getLineMaxColumn(lastLine)
+        );
+        codeEditor.setSelection(selected);
+        return reviewSelectionFor(side, codeEditor, selected);
+      };
+
+      const cancelCommentDrag = () => {
+        commentDragStartLine = null;
+        commentDragEndLine = null;
+      };
+
+      window.addEventListener('mouseup', cancelCommentDrag);
+      codeEditor.onDidDispose(() => {
+        window.removeEventListener('mouseup', cancelCommentDrag);
+      });
+
+      codeEditor.onDidChangeCursorSelection(({ selection }) => {
+        onSelectionChange?.(
+          reviewSelectionFor(side, codeEditor, selection as monaco.Selection)
+        );
+      });
+      codeEditor.onMouseMove(({ target }) => {
+        const lineNumber = target.position?.lineNumber;
+        if (commentDragStartLine !== null && lineNumber) {
+          commentDragEndLine = lineNumber;
+          selectWholeLines(commentDragStartLine, lineNumber);
+        }
+        if (!lineNumber) {
+          if (hoveredLine !== null) {
+            hoveredLine = null;
+            hoverDecorations.clear();
+          }
+          return;
+        }
+        if (hoveredLine === lineNumber) return;
+        hoveredLine = lineNumber;
+        hoverDecorations.set([
+          {
+            range: new monaco.Range(lineNumber, 1, lineNumber, 1),
+            options: {
+              isWholeLine: true,
+              linesDecorationsClassName: 'review-comment-add-glyph',
+              linesDecorationsTooltip: 'Add review comment',
+            },
+          },
+        ]);
+      });
+      codeEditor.onMouseLeave(() => {
+        hoveredLine = null;
+        hoverDecorations.clear();
+      });
+      codeEditor.onMouseDown(({ event, target }) => {
+        const lineNumber = target.position?.lineNumber;
+        if (
+          !event.leftButton ||
+          target.type !==
+            monaco.editor.MouseTargetType.GUTTER_LINE_DECORATIONS ||
+          !lineNumber
+        ) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        commentDragStartLine = lineNumber;
+        commentDragEndLine = lineNumber;
+        selectWholeLines(lineNumber, lineNumber);
+      });
+      codeEditor.onMouseUp(({ event, target }) => {
+        if (commentDragStartLine === null) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const endLine = target.position?.lineNumber ?? commentDragEndLine;
+        const startLine = commentDragStartLine;
+        cancelCommentDrag();
+        if (!endLine) return;
+        const reviewSelection = selectWholeLines(startLine, endLine);
+        if (reviewSelection) onCommentRequest?.(reviewSelection);
+      });
+    };
+
+    const handleMount = (editor: monaco.editor.IStandaloneDiffEditor) => {
+      diffEditorRef.current = editor;
+      setDiffEditorGeneration((generation) => generation + 1);
+      bindCommenting('original', editor.getOriginalEditor());
+      bindCommenting('modified', editor.getModifiedEditor());
+      const applyMetrics = () => {
+        const changes = editor.getLineChanges();
+        if (!changes) return;
+        const models = editor.getModel();
+        setCounts(
+          countLineChanges(changes, {
+            originalEmpty: models?.original.getValueLength() === 0,
+            modifiedEmpty: models?.modified.getValueLength() === 0,
+          })
+        );
+      };
+      editor.onDidUpdateDiff(applyMetrics);
+      applyMetrics();
+    };
+
+    const handleWholeFileMount = (
+      editor: monaco.editor.IStandaloneCodeEditor
+    ) => {
+      wholeFileEditorRef.current = editor;
+      wholeFileDecorationsRef.current = null;
+      setWholeFileEditorGeneration((generation) => generation + 1);
+      bindCommenting(wholeFileSide ?? 'modified', editor);
+    };
+
+    useEffect(() => {
+      const decorationsFor = (
+        side: 'original' | 'modified',
+        editor: monaco.editor.IStandaloneCodeEditor
+      ): monaco.editor.IModelDeltaDecoration[] => {
+        const model = editor.getModel();
+        if (!model) return [];
+        return comments.flatMap((comment) => {
+          const target = comment.selection;
+          if (!target || target.side !== side) return [];
+          const startLine = Math.min(
+            Math.max(target.startLine, 1),
+            model.getLineCount()
+          );
+          const endLine = Math.min(
+            Math.max(target.endLine, startLine),
+            model.getLineCount()
+          );
+          return [
+            {
+              range: new monaco.Range(startLine, 1, endLine, 1),
+              options: {
+                isWholeLine: true,
+                className: 'review-comment-line',
+                linesDecorationsClassName: 'review-comment-line-marker',
+                glyphMarginClassName: 'review-comment-thread-glyph',
+                glyphMarginHoverMessage: { value: comment.body },
+              },
+            },
+          ];
+        });
+      };
+
+      const diffEditor = diffEditorRef.current;
+      if (diffEditor) {
+        diffCommentDecorationsRef.current?.original.clear();
+        diffCommentDecorationsRef.current?.modified.clear();
+        diffCommentDecorationsRef.current = {
+          original: diffEditor
+            .getOriginalEditor()
+            .createDecorationsCollection(
+              decorationsFor('original', diffEditor.getOriginalEditor())
+            ),
+          modified: diffEditor
+            .getModifiedEditor()
+            .createDecorationsCollection(
+              decorationsFor('modified', diffEditor.getModifiedEditor())
+            ),
+        };
+      }
+
+      const wholeEditor = wholeFileEditorRef.current;
+      if (wholeEditor && wholeFileSide) {
+        wholeFileCommentDecorationsRef.current?.clear();
+        wholeFileCommentDecorationsRef.current =
+          wholeEditor.createDecorationsCollection(
+            decorationsFor(wholeFileSide, wholeEditor)
+          );
+      }
+    }, [
+      comments,
+      diffEditorGeneration,
+      wholeFileEditorGeneration,
+      wholeFileSide,
+    ]);
+
+    useEffect(() => {
+      const editor = wholeFileEditorRef.current;
+      const model = editor?.getModel();
+      if (!wholeFileSide || !editor || !model) return;
+      wholeFileDecorationsRef.current?.clear();
+      wholeFileDecorationsRef.current = null;
+      if (!wholeFileTinted) {
+        setCounts(null);
+        return;
+      }
+      const lines = countLines(model.getValue());
+      wholeFileDecorationsRef.current = editor.createDecorationsCollection([
+        {
+          range: new monaco.Range(1, 1, model.getLineCount(), 1),
+          options: {
+            isWholeLine: true,
+            className:
+              wholeFileSide === 'modified' ? 'line-insert' : 'line-delete',
+            linesDecorationsClassName:
+              wholeFileSide === 'modified'
+                ? 'line-insert-marker'
+                : 'line-delete-marker',
+          },
+        },
+      ]);
+      setCounts(
+        wholeFileSide === 'modified'
+          ? { added: lines, removed: 0 }
+          : { added: 0, removed: lines }
+      );
+    }, [wholeFileEditorGeneration, wholeFileSide, wholeFileTinted]);
+
+    const statusMeta: Record<
+      ReviewFile['status'],
+      { letter: string; className: string }
+    > = {
+      added: { letter: 'A', className: 'text-ds-text-success-default-default' },
+      modified: {
+        letter: 'M',
+        className: 'text-ds-text-warning-default-default',
+      },
+      deleted: { letter: 'D', className: 'text-ds-text-error-default-default' },
+    };
+    const status = statusMeta[file.status];
+    const lastSlash = file.path.lastIndexOf('/');
+    const dirName = lastSlash >= 0 ? file.path.slice(0, lastSlash + 1) : '';
+    const baseName =
+      lastSlash >= 0 ? file.path.slice(lastSlash + 1) : file.path;
+
+    const banner =
+      file.beforeUnavailable && !loadError
+        ? t('layout.review-before-unavailable', {
+            defaultValue:
+              'No saved copy of the original — showing the current file, not a diff.',
+          })
+        : null;
+    const notice =
+      loadError === 'binary'
+        ? t('layout.review-binary-file', {
+            defaultValue: 'Binary file — no text diff available.',
+          })
+        : loadError === 'too_large'
+          ? t('layout.review-file-too-large', {
+              defaultValue: 'File is too large to diff.',
+            })
+          : loadError === 'no_before_content'
+            ? t('layout.review-no-before-content', {
+                defaultValue:
+                  'This file was deleted and no backup of its content exists.',
+              })
+            : loadError
+              ? t('layout.review-file-load-failed', {
+                  defaultValue: 'Could not load this file: {{message}}',
+                  message: loadError,
+                })
+              : null;
+
+    return (
+      <section
+        data-review-id={file.id}
+        className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-ds-neutral-default-default"
       >
-        <ChevronRight
-          className={cn(
-            'h-3.5 w-3.5 shrink-0 text-ds-ink-muted-default transition-transform duration-200 ease-out motion-reduce:transition-none',
-            !collapsed && 'rotate-90'
-          )}
-          aria-hidden
-        />
-        <span
-          className={cn('w-3 shrink-0 text-xs font-bold', status.className)}
-          aria-label={file.status}
-        >
-          {status.letter}
-        </span>
-        <span className="min-w-0 flex-1 truncate font-code text-xs font-medium text-ds-ink-default-default">
-          <span className="font-code text-ds-ink-muted-default">{dirName}</span>
-          {baseName}
-        </span>
-        {counts && (
-          <span className="flex shrink-0 items-center gap-1.5 text-xs font-medium">
-            <span className="text-ds-text-success-default-default">
-              +{counts.added}
-            </span>
-            <span className="text-ds-text-error-default-default">
-              −{counts.removed}
-            </span>
+        <header className="flex h-ds-layout-row-header shrink-0 items-center gap-2 border-0 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-3">
+          <span
+            className={`w-3 shrink-0 text-ds-text-meta font-bold ${status.className}`}
+            aria-label={file.status}
+          >
+            {status.letter}
           </span>
-        )}
-      </button>
+          <span className="min-w-0 flex-1 truncate font-code text-ds-code-small font-medium text-ds-ink-default-default">
+            <span className="font-code text-ds-ink-muted-default">
+              {dirName}
+            </span>
+            {baseName}
+          </span>
+          {reviewed ? (
+            <span className="hidden items-center gap-1 text-ds-text-meta text-ds-text-success-default-default sm:flex">
+              <DsIcon icon={CheckCheck} recipe="main-compact" />
+              {t('layout.review-reviewed', { defaultValue: 'Reviewed' })}
+            </span>
+          ) : null}
+          {semanticKind ? (
+            <ToggleGroup
+              type="single"
+              value={displayMode}
+              onValueChange={(value) => {
+                if (value) setDisplayMode(value as 'source' | 'preview');
+              }}
+              size="sm"
+              aria-label={t('layout.review-content-view', {
+                defaultValue: 'Content view',
+              })}
+            >
+              {semanticKind !== 'image' ? (
+                <ToggleGroupItem
+                  value="source"
+                  aria-label={t('layout.review-source-view', {
+                    defaultValue: 'Source diff',
+                  })}
+                >
+                  <CodeXml aria-hidden />
+                </ToggleGroupItem>
+              ) : null}
+              <ToggleGroupItem
+                value="preview"
+                aria-label={t('layout.review-preview-view', {
+                  defaultValue: 'Rendered diff',
+                })}
+              >
+                <Eye aria-hidden />
+              </ToggleGroupItem>
+            </ToggleGroup>
+          ) : null}
+          {counts && (
+            <span className="flex shrink-0 items-center gap-1.5 text-ds-text-meta font-medium">
+              <span className="text-ds-text-success-default-default">
+                +{counts.added}
+              </span>
+              <span className="text-ds-text-error-default-default">
+                −{counts.removed}
+              </span>
+            </span>
+          )}
+        </header>
 
-      <ReviewAccordionContent open={!collapsed} id={contentId}>
-        {notice ? (
-          <div className="flex items-center gap-2 px-3 py-4 text-xs text-ds-ink-muted-default">
-            <FileWarning
-              className="h-4 w-4 shrink-0 text-ds-ink-muted-default"
-              aria-hidden
-            />
-            {notice}
+        {banner ? (
+          <div className="flex shrink-0 items-center gap-2 border-0 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-3 py-2 text-ds-text-meta text-ds-ink-muted-default">
+            <DsIcon icon={FileWarning} recipe="main-compact" />
+            {banner}
           </div>
-        ) : sides ? (
-          <>
-            {banner ? (
-              <div className="flex items-center gap-2 border-0 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-3 py-2 text-xs text-ds-ink-muted-default">
-                <FileWarning
-                  className="h-3.5 w-3.5 shrink-0 text-ds-ink-muted-default"
-                  aria-hidden
-                />
-                {banner}
+        ) : null}
+
+        <div className="min-h-0 flex-1">
+          {displayMode === 'preview' && semanticKind ? (
+            <SemanticDiffView file={file} kind={semanticKind} sides={sides} />
+          ) : notice ? (
+            <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-ds-text-meta text-ds-ink-muted-default">
+              <div className="flex items-center gap-2">
+                <DsIcon icon={FileWarning} />
+                {notice}
               </div>
-            ) : null}
+              {(loadError === 'binary' || loadError === 'too_large') &&
+              (file.beforeSize != null || file.afterSize != null) ? (
+                <div className="flex items-center gap-3 font-code text-ds-code-small">
+                  <span>
+                    {t('layout.review-before-size', {
+                      defaultValue: 'Before {{size}}',
+                      size:
+                        file.beforeSize == null
+                          ? '—'
+                          : formatFileSize(file.beforeSize),
+                    })}
+                  </span>
+                  <span aria-hidden>→</span>
+                  <span>
+                    {t('layout.review-after-size', {
+                      defaultValue: 'After {{size}}',
+                      size:
+                        file.afterSize == null
+                          ? '—'
+                          : formatFileSize(file.afterSize),
+                    })}
+                  </span>
+                </div>
+              ) : null}
+            </div>
+          ) : sides ? (
             <div
-              className="code-editor-surface review-diff-surface"
+              className="code-editor-surface review-diff-surface h-full w-full"
               style={
                 {
-                  height: editorHeight,
                   '--code-font-family': CODE_FONT_FAMILY,
                 } as React.CSSProperties
               }
@@ -453,7 +748,7 @@ export function DiffFileCard({
                   language={language}
                   path={reviewModelPath(wholeFileSide, file)}
                   theme={codeTheme}
-                  options={WHOLE_FILE_OPTIONS}
+                  options={wholeFileOptions}
                   onMount={handleWholeFileMount}
                   loading={
                     <div className="h-full w-full animate-pulse bg-ds-neutral-subtle-default" />
@@ -467,7 +762,7 @@ export function DiffFileCard({
                   originalModelPath={reviewModelPath('original', file)}
                   modifiedModelPath={reviewModelPath('modified', file)}
                   theme={codeTheme}
-                  options={DIFF_OPTIONS}
+                  options={diffOptions}
                   onMount={handleMount}
                   loading={
                     <div className="h-full w-full animate-pulse bg-ds-neutral-subtle-default" />
@@ -475,11 +770,13 @@ export function DiffFileCard({
                 />
               )}
             </div>
-          </>
-        ) : (
-          <div className="h-24 w-full animate-pulse bg-ds-neutral-subtle-default" />
-        )}
-      </ReviewAccordionContent>
-    </div>
-  );
-}
+          ) : (
+            <div className="h-full w-full animate-pulse bg-ds-neutral-subtle-default" />
+          )}
+        </div>
+      </section>
+    );
+  }
+);
+
+DiffFileCard.displayName = 'DiffFileCard';

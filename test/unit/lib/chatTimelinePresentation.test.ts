@@ -197,10 +197,28 @@ describe('event-native Timeline Run presentation', () => {
     });
   });
 
+  it('uses a retained Attempt start after Run status receipts are collapsed', () => {
+    const completed: ChatRunStatusNode = {
+      ...base('completed', 'run-1', 3, '2026-08-19T08:30:20.000Z'),
+      kind: 'run_status',
+      status: 'completed',
+      startedAt: '2026-08-19T08:30:10.000Z',
+    };
+    const queuedNotice = message('queued', 'run-1', 1, {
+      createdAt: '2026-08-19T01:00:00.000Z',
+      purpose: 'narration',
+    });
+
+    const run = composeTimelineRun([queuedNotice, completed], 'run-1');
+
+    expect(run?.timestamps.startedAt).toBe('2026-08-19T08:30:10.000Z');
+    expect(run?.timestamps.durationMs).toBe(10_000);
+  });
+
   it('pairs non-adjacent tool lifecycle receipts by toolCallId with stable safe fields', () => {
     const started = tool('tool-started', 'run-1', 2, {
       toolCallId: 'call-1',
-      detail: 'safe request fallback',
+      input: 'safe request',
       createdAt: '2026-08-19T00:00:02.000Z',
     });
     const narration = message('narration', 'run-1', 3, {
@@ -210,7 +228,7 @@ describe('event-native Timeline Run presentation', () => {
       toolCallId: 'call-1',
       status: 'completed',
       phase: 'completed',
-      detail: 'safe response fallback',
+      output: 'safe response',
       createdAt: '2026-08-19T00:00:07.000Z',
     });
 
@@ -225,8 +243,8 @@ describe('event-native Timeline Run presentation', () => {
       'tool-started',
       'tool-completed',
     ]);
-    expect(toolRow.invocation.input).toBe('safe request fallback');
-    expect(toolRow.invocation.output).toBe('safe response fallback');
+    expect(toolRow.invocation.input).toBe('safe request');
+    expect(toolRow.invocation.output).toBe('safe response');
     expect(toolRow.invocation.detail).toBeUndefined();
     expect(toolRow.invocation.status).toBe('completed');
     expect(toolRow.invocation.durationMs).toBe(5_000);
@@ -234,6 +252,57 @@ describe('event-native Timeline Run presentation', () => {
     expect(second?.traceRows.map((row) => row.id)).toEqual(
       first?.traceRows.map((row) => row.id)
     );
+  });
+
+  it('merges canonical and legacy receipts by call id without exposing legacy payloads', () => {
+    const canonicalStarted = tool('canonical-started', 'run-1', 1, {
+      eventType: 'tool.dispatched',
+      toolCallId: 'call-safe',
+      title: 'Read notes.md',
+      input: 'File: notes.md',
+      detail: 'Running',
+    });
+    const legacyStarted = tool('legacy-started', 'run-1', 2, {
+      eventType: 'legacy.activate_toolkit',
+      legacyStep: 'activate_toolkit',
+      toolCallId: 'call-safe',
+      input: 'raw request with secret',
+    });
+    const canonicalCompleted = tool('canonical-completed', 'run-1', 3, {
+      eventType: 'tool.completed',
+      toolCallId: 'call-safe',
+      title: 'Read notes.md',
+      status: 'completed',
+      phase: 'completed',
+      output: 'Returned 42 characters',
+      detail: 'Completed in 12 ms',
+      durationMs: 12,
+    });
+    const legacyCompleted = tool('legacy-completed', 'run-1', 4, {
+      eventType: 'legacy.deactivate_toolkit',
+      legacyStep: 'deactivate_toolkit',
+      toolCallId: 'call-safe',
+      status: 'completed',
+      phase: 'completed',
+      output: 'raw response with secret',
+    });
+
+    const run = composeTimelineRun(
+      [legacyCompleted, canonicalStarted, legacyStarted, canonicalCompleted],
+      'run-1'
+    );
+    const rows = run?.traceRows.filter((row) => row.kind === 'tool');
+    expect(rows).toHaveLength(1);
+    const invocation = rows?.[0]?.kind === 'tool' ? rows[0].invocation : null;
+    expect(invocation).toMatchObject({
+      title: 'Read notes.md',
+      input: 'File: notes.md',
+      output: 'Returned 42 characters',
+      detail: 'Completed in 12 ms',
+      durationMs: 12,
+    });
+    expect(JSON.stringify(invocation)).not.toContain('raw request');
+    expect(JSON.stringify(invocation)).not.toContain('raw response');
   });
 
   it('does not guess lifecycle correlation when a toolCallId is absent', () => {

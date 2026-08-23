@@ -8,9 +8,7 @@
 
 Visual references:
 
-- [Applied design-system viewer](new-design-system-plan/index.html)
-- [Current visual baseline](current-token-usage/baseline.html)
-- [Current token-usage display](current-token-usage/index.html)
+- [Applied design-system viewer](index.html)
 
 ## 1. Instructions for UI agents
 
@@ -470,11 +468,9 @@ Before handing off generated UI, report:
 4. Whether any exception was used or added.
 5. Which checks passed and which were not run.
 
-## 16. Legacy process archive
+## 16. Historical process material
 
-Historical proposals, migration plans, usage-report data, reviews, viewer
-sources, and build scripts live in `docs/design-system/legacy-process`. Their
-three generated HTML displays remain beside this guideline for convenient
-visual reference. The archived process material explains how the system was
-reviewed and applied, but it is not the active UI-generation contract. Do not
-cite it as current product behavior.
+Historical proposals, migration plans, usage reports, reviews, and viewer build
+sources are not shipped as part of the active design-system documentation. The
+retained [applied design-system viewer](index.html) is a static visual snapshot;
+this guideline and the executable sources named above remain authoritative.

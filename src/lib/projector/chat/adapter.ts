@@ -12,7 +12,16 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import type { CanonicalProjectEvent, ProjectedLegacyStep } from '../types';
+import type {
+  CanonicalProjectEvent,
+  CanonicalSemanticActorType,
+  CanonicalSemanticEnvelopeV1,
+  CanonicalSemanticKind,
+  CanonicalSemanticPhase,
+  CanonicalSemanticStatus,
+  CanonicalSemanticSubjectType,
+  ProjectedLegacyStep,
+} from '../types';
 import type {
   ChatActivityNode,
   ChatActivityPhase,
@@ -87,6 +96,63 @@ const RECEIPT_ONLY_EVENT_PREFIXES = [
 
 const HIDDEN_LEGACY_STEPS = new Set(['request_usage', 'sync']);
 
+const SEMANTIC_KINDS = new Set<CanonicalSemanticKind>([
+  'agent',
+  'agent_turn',
+  'browser_operation',
+  'command_execution',
+  'file_change',
+  'file_operation',
+  'git_conflict_resolution',
+  'git_integration',
+  'narration',
+  'plan',
+  'plan_operation',
+  'subtask',
+  'tool_call',
+  'workspace_writer',
+]);
+
+const SEMANTIC_SUBJECT_TYPES = new Set<CanonicalSemanticSubjectType>([
+  'activity_stream',
+  'agent',
+  'agent_turn',
+  'agent_workspace',
+  'artifact',
+  'file',
+  'plan',
+  'task',
+  'tool_call',
+  'writer_request',
+]);
+
+const SEMANTIC_ACTOR_TYPES = new Set<CanonicalSemanticActorType>([
+  'agent',
+  'system',
+  'user',
+]);
+
+const SEMANTIC_PHASES = new Set<CanonicalSemanticPhase>([
+  'requested',
+  'started',
+  'progress',
+  'completed',
+  'failed',
+  'cancelled',
+  'unknown',
+]);
+
+const SEMANTIC_STATUSES = new Set<CanonicalSemanticStatus>([
+  'pending',
+  'running',
+  'completed',
+  'failed',
+  'timed_out',
+  'outcome_unknown',
+  'cancelled',
+  'unknown',
+]);
+
 function isRecord(value: unknown): value is JsonRecord {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -101,6 +167,73 @@ function own(record: JsonRecord, key: string): boolean {
 
 function ownsAny(record: JsonRecord, keys: readonly string[]): boolean {
   return keys.some((key) => own(record, key));
+}
+
+function semanticEnvelopeV1(
+  payload: JsonRecord
+): CanonicalSemanticEnvelopeV1 | null {
+  if (
+    payload.semantic_schema_version !== 1 ||
+    payload.display_schema_version !== 1
+  ) {
+    return null;
+  }
+  const semantic = asRecord(payload.semantic);
+  const subject = asRecord(semantic.subject);
+  const lifecycle = asRecord(semantic.lifecycle);
+  const completeness = asRecord(semantic.completeness);
+  const kind = firstText(semantic.kind) as CanonicalSemanticKind;
+  const subjectType = firstText(subject.type) as CanonicalSemanticSubjectType;
+  const phase = firstText(lifecycle.phase) as CanonicalSemanticPhase;
+  const status = firstText(lifecycle.status) as CanonicalSemanticStatus;
+  const completenessState = firstText(completeness.state);
+  if (
+    !SEMANTIC_KINDS.has(kind) ||
+    !SEMANTIC_SUBJECT_TYPES.has(subjectType) ||
+    !SEMANTIC_PHASES.has(phase) ||
+    !SEMANTIC_STATUSES.has(status) ||
+    !['complete', 'partial'].includes(completenessState)
+  ) {
+    return null;
+  }
+  const actor = asRecord(semantic.actor);
+  const actorType = firstText(actor.type) as CanonicalSemanticActorType;
+  if (actorType && !SEMANTIC_ACTOR_TYPES.has(actorType)) return null;
+  const correlation = asRecord(semantic.correlation);
+  const provenance = asRecord(semantic.provenance);
+  return {
+    kind,
+    subject: { type: subjectType, id: firstText(subject.id) },
+    actor: Object.keys(actor).length
+      ? {
+          type: actorType || undefined,
+          id: firstText(actor.id) || undefined,
+          name: firstText(actor.name) || undefined,
+        }
+      : undefined,
+    lifecycle: {
+      phase,
+      status,
+    },
+    correlation: Object.fromEntries(
+      Object.entries(correlation).flatMap(([key, value]) => {
+        const text = firstText(value);
+        return text ? [[key, text]] : [];
+      })
+    ),
+    completeness: {
+      state: completenessState as 'complete' | 'partial',
+      missing_fields: Array.isArray(completeness.missing_fields)
+        ? completeness.missing_fields.flatMap((value) => {
+            const text = firstText(value);
+            return text ? [text] : [];
+          })
+        : [],
+    },
+    provenance: Object.keys(provenance).length
+      ? { source: firstText(provenance.source) || undefined }
+      : undefined,
+  };
 }
 
 function firstText(...values: unknown[]): string {
@@ -371,6 +504,7 @@ function isCanonicalEvent(
 
 function normalizeInput(input: ChatProjectionInput): NormalizedInput {
   if (isCanonicalEvent(input)) {
+    const semantic = semanticEnvelopeV1(input.payload) || undefined;
     return {
       base: {
         id: input.eventId,
@@ -382,6 +516,7 @@ function normalizeInput(input: ChatProjectionInput): NormalizedInput {
         cloudCursor: input.cloudCursor,
         eventType: input.eventType,
         legacyStep: input.legacyStep,
+        semantic,
       },
       data: input.payload.__legacy_data ?? input.payload,
     };
@@ -630,10 +765,22 @@ function planNode(base: ChatProjectionNodeBase, data: unknown): ChatPlanNode {
         ? 'completed'
         : 'active'
       : undefined,
-    title: firstText(payload.title, payload.name, derivedTitle) || undefined,
+    title:
+      firstText(
+        payload.display_title,
+        payload.displayTitle,
+        payload.title,
+        payload.name,
+        derivedTitle
+      ) || undefined,
     summary:
-      firstText(payload.summary, payload.description, derivedSummary) ||
-      undefined,
+      firstText(
+        payload.display_summary,
+        payload.displaySummary,
+        payload.summary,
+        payload.description,
+        derivedSummary
+      ) || undefined,
     tasks: planTasks(payload, base.id),
   };
 }
@@ -758,8 +905,23 @@ function activityOutput(
 
 function activityPhase(
   base: ChatProjectionNodeBase,
-  status: ChatActivityStatus
+  status: ChatActivityStatus,
+  semanticPhase?: string
 ): ChatActivityPhase {
+  if (
+    semanticPhase &&
+    [
+      'requested',
+      'started',
+      'progress',
+      'completed',
+      'failed',
+      'cancelled',
+      'unknown',
+    ].includes(semanticPhase)
+  ) {
+    return semanticPhase as ChatActivityPhase;
+  }
   if (base.legacyStep === 'activate_toolkit') return 'started';
   if (base.legacyStep === 'deactivate_toolkit') return 'completed';
 
@@ -875,6 +1037,9 @@ function activityNode(
 ): ChatActivityNode {
   const payload = asRecord(data);
   const tool = asRecord(payload.tool);
+  const semantic = base.semantic;
+  const semanticActor = semantic?.actor;
+  const semanticCorrelation = semantic?.correlation;
   const isTypedActivity = !base.eventType.startsWith('legacy.');
   const toolkitName = firstText(
     payload.toolkit_name,
@@ -909,7 +1074,8 @@ function activityNode(
     tool.call_id,
     tool.callId,
     tool.invocation_id,
-    tool.invocationId
+    tool.invocationId,
+    semantic?.subject.type === 'tool_call' ? semantic.subject.id : undefined
   );
   const isHumanInputActivity = isHumanInputToolkitActivity(
     toolkitName,
@@ -924,7 +1090,8 @@ function activityNode(
         toolkitName,
       });
   const status = normalizeActivityStatus(
-    payload.status ??
+    semantic?.lifecycle.status ??
+      payload.status ??
       payload.state ??
       (isTypedActivity ? base.eventType.split('.').at(-1) : undefined),
     fallbackStatus
@@ -940,7 +1107,7 @@ function activityNode(
     kind: 'activity',
     activityType,
     status,
-    phase: activityPhase(base, status),
+    phase: activityPhase(base, status, semantic?.lifecycle.phase),
     title,
     // Human input content belongs exclusively to the BottomBox header and its
     // durable interaction receipt. Toolkit activity frames can carry the
@@ -952,17 +1119,30 @@ function activityNode(
     input: input || undefined,
     output: output || undefined,
     durationMs: activityDurationMs(payload),
-    agentId: firstText(payload.agent_id, payload.agentId) || undefined,
+    agentId:
+      firstText(payload.agent_id, payload.agentId, semanticActor?.id) ||
+      undefined,
     agentName:
-      firstText(payload.agent_name, payload.agentName, payload.agent) ||
-      undefined,
+      firstText(
+        payload.agent_name,
+        payload.agentName,
+        payload.agent,
+        semanticActor?.name
+      ) || undefined,
     taskId:
-      firstText(payload.process_task_id, payload.task_id, payload.taskId) ||
-      undefined,
+      firstText(
+        payload.process_task_id,
+        payload.task_id,
+        payload.taskId,
+        semanticCorrelation?.task_id
+      ) || undefined,
     toolkitName: toolkitName || undefined,
     methodName: methodName || undefined,
     toolCallId: toolCallId || undefined,
     toolName: toolName || undefined,
+    activityId: semantic?.subject.id || undefined,
+    semanticKind: semantic?.kind,
+    semanticCompleteness: semantic?.completeness.state,
   };
 }
 
@@ -995,6 +1175,7 @@ function artifactNode(
   fallbackOperation: ChatArtifactOperation
 ): ChatArtifactNode {
   const payload = asRecord(data);
+  const semantic = base.semantic;
   const isTypedArtifact = !base.eventType.startsWith('legacy.');
   // Shared typed projections carry only portable identity. A Desktop-local
   // absolute path belongs in the resolver/transport layer, never in this node.
@@ -1020,16 +1201,27 @@ function artifactNode(
       payload.operation ?? payload.action ?? payload.artifactChange,
       fallbackOperation
     ),
-    artifactId: firstText(payload.artifact_id, payload.artifactId) || undefined,
+    artifactId:
+      firstText(
+        payload.artifact_id,
+        payload.artifactId,
+        semantic?.subject.type === 'artifact' ? semantic.subject.id : undefined
+      ) || undefined,
     path,
     name: name || safeArtifactBasename(path) || undefined,
     relativePath:
       portableRelativePath(explicitRelativePath) || portablePath || undefined,
     mimeType: firstText(payload.mime_type, payload.mimeType) || undefined,
-    agentId: firstText(payload.agent_id, payload.agentId) || undefined,
-    taskId:
-      firstText(payload.process_task_id, payload.task_id, payload.taskId) ||
+    agentId:
+      firstText(payload.agent_id, payload.agentId, semantic?.actor?.id) ||
       undefined,
+    taskId:
+      firstText(
+        payload.process_task_id,
+        payload.task_id,
+        payload.taskId,
+        semantic?.correlation?.task_id
+      ) || undefined,
   };
 }
 

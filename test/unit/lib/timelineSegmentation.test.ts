@@ -17,6 +17,7 @@ import {
   humanCallTitle,
   interactionFamily,
   segmentTimelineRows,
+  segmentTimelineRun,
   toTimelineCall,
   type TimelineSegment,
 } from '@/lib/projector/chat/presentation';
@@ -105,6 +106,11 @@ function segmentsOf(nodes: ChatProjectionNode[]) {
   return segmentTimelineRows(run!.traceRows);
 }
 
+function narrativeItemsOf(nodes: ChatProjectionNode[]) {
+  const [run] = composeTimelineRuns(nodes);
+  return segmentTimelineRun(run!);
+}
+
 function onlySegments(nodes: ChatProjectionNode[]): TimelineSegment[] {
   return segmentsOf(nodes).filter(
     (item): item is TimelineSegment => item.kind === 'segment'
@@ -126,8 +132,46 @@ describe('timeline segmentation', () => {
     expect(segments).toHaveLength(1);
     expect(segments[0]!.narration).toBe('I will inspect the repository.');
     expect(segments[0]!.calls).toHaveLength(2);
-    expect(segments[0]!.label).toBe('Read · 2 events');
+    expect(segments[0]!.label).toBe('Read · 2 actions');
     expect(segments[0]!.boundaryReason).toBe('narration');
+  });
+
+  it('keeps plans out of Chat and hides duplicate plan tool lifecycles', () => {
+    const firstPlan: ChatProjectionNode = {
+      ...base,
+      kind: 'plan',
+      id: 'plan-1',
+      eventId: 'plan-1',
+      eventType: 'plan.updated',
+      runSequence: 1,
+      createdAt: '2026-08-19T00:00:01Z',
+      status: 'active',
+      title: 'Plan',
+      tasks: [{ id: 'one', title: 'Do it', status: 'in_progress' }],
+    };
+    const finalPlan: ChatProjectionNode = {
+      ...firstPlan,
+      id: 'plan-3',
+      eventId: 'plan-3',
+      runSequence: 3,
+      createdAt: '2026-08-19T00:00:03Z',
+      status: 'completed',
+      tasks: [{ id: 'one', title: 'Do it', status: 'completed' }],
+    };
+
+    const items = narrativeItemsOf([
+      firstPlan,
+      tool('TodoToolkit', 'todo_write', {
+        semanticKind: 'plan_operation',
+      }),
+      finalPlan,
+      tool('Terminal Toolkit', 'shell_exec'),
+    ]);
+
+    expect(items.filter((item) => item.kind === 'plan')).toEqual([]);
+    expect(
+      items.flatMap((item) => (item.kind === 'segment' ? item.calls : []))
+    ).toEqual([expect.objectContaining({ toolkitName: 'Terminal Toolkit' })]);
   });
 
   it('keeps every derived segment marked as derived until steps are authored', () => {
@@ -145,8 +189,8 @@ describe('timeline segmentation', () => {
 
     expect(segments).toHaveLength(2);
     expect(segments[1]!.boundaryReason).toBe('toolkit_change');
-    expect(segments[0]!.label).toBe('Read · 1 event');
-    expect(segments[1]!.label).toBe('Searched · 1 event');
+    expect(segments[0]!.label).toBe('File Toolkit · read_file');
+    expect(segments[1]!.label).toBe('Search Toolkit · web_search');
   });
 
   it('keeps differently titled calls from one toolkit in the same segment', () => {
@@ -166,7 +210,7 @@ describe('timeline segmentation', () => {
     ]);
 
     expect(segments).toHaveLength(1);
-    expect(segments[0]!.label).toBe('2 events');
+    expect(segments[0]!.label).toBe('2 actions');
   });
 
   it('starts a new segment when the agent changes', () => {

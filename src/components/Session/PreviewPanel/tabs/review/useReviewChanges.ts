@@ -75,6 +75,9 @@ export interface ReviewFile {
   beforeUnavailable?: boolean;
   /** Git reported a binary path; no text content request is needed. */
   binary?: boolean;
+  /** Side sizes power binary/large-file summaries without reading content. */
+  beforeSize?: number | null;
+  afterSize?: number | null;
   /** Either side exceeds `MAX_DIFF_BYTES`; the card skips reading it. */
   tooLarge?: boolean;
   /**
@@ -362,6 +365,8 @@ export function useReviewChanges(
             status,
             absPath: sourcePath ?? '',
             bakPath: before?.path ?? null,
+            beforeSize: before?.size ?? null,
+            afterSize,
             ...reviewFileFlags(
               status,
               before?.path ?? null,
@@ -399,6 +404,8 @@ export function useReviewChanges(
           status,
           absPath: entry.path,
           bakPath: backup?.path ?? null,
+          beforeSize: backup?.size ?? null,
+          afterSize: entry.exists ? entry.size : null,
           ...reviewFileFlags(
             status,
             backup?.path ?? null,
@@ -430,6 +437,8 @@ export function useReviewChanges(
               absPath: '',
               bakPath: null,
               binary: file.binary,
+              beforeSize: file.before_size,
+              afterSize: file.after_size,
               tooLarge:
                 (file.before_size ?? 0) > MAX_DIFF_BYTES ||
                 (file.after_size ?? 0) > MAX_DIFF_BYTES,

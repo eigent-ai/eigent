@@ -202,6 +202,8 @@ describe('useReviewChanges', () => {
       path: 'src/example.ts',
       status: 'modified',
       binary: false,
+      beforeSize: 8,
+      afterSize: 9,
       tooLarge: false,
     });
 
@@ -282,6 +284,8 @@ describe('useReviewChanges', () => {
       id: 'run-git:run-1:src/run-only.ts',
       path: 'src/run-only.ts',
       status: 'added',
+      beforeSize: null,
+      afterSize: 8,
     });
 
     await expect(result.current.files[0].loadContent?.()).resolves.toEqual({
@@ -417,6 +421,8 @@ describe('useReviewChanges', () => {
         status: 'modified',
         absPath: '/scratch/src/example.ts',
         bakPath: '/scratch/src/example.ts.20260722_120000.bak',
+        beforeSize: 90,
+        afterSize: 120,
         beforeUnavailable: false,
         tooLarge: false,
       },

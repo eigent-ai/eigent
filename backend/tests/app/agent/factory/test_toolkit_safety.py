@@ -15,6 +15,7 @@
 from types import SimpleNamespace
 
 from app.agent.factory.toolkit_assembler import _mcp_config, _tag_tools
+from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
 from app.agent.toolkit.observable_todo_toolkit import ObservableTodoToolkit
 from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
@@ -75,6 +76,28 @@ def test_code_owned_todo_write_is_safe_internal_progress_state():
         None,
     )
     assert declared_tool_safety(other_todo_tool, "todo_delete", {}) == (
+        ToolSafetyClass.UNSAFE_WRITE,
+        None,
+    )
+
+
+def test_code_owned_human_notice_is_safe_internal_progress_message():
+    send_message = NamedTool("send_message_to_user")
+
+    _tag_tools([send_message], HumanToolkit.toolkit_name())
+
+    assert declared_tool_safety(send_message, "send_message_to_user", {}) == (
+        ToolSafetyClass.SAFE_READ,
+        None,
+    )
+
+
+def test_untrusted_send_message_name_does_not_bypass_approval():
+    send_message = NamedTool("send_message_to_user")
+
+    _tag_tools([send_message], "Third Party MCP")
+
+    assert declared_tool_safety(send_message, "send_message_to_user", {}) == (
         ToolSafetyClass.UNSAFE_WRITE,
         None,
     )

@@ -22,27 +22,16 @@ function run(command, args) {
 }
 
 run('node', ['scripts/generate-design-tokens.mjs']);
-run('node', [
-  'docs/design-system/legacy-process/scripts/build-token-usage-report.mjs',
-]);
 
 const diff = spawnSync(
   'git',
-  [
-    'diff',
-    '--exit-code',
-    '--',
-    'src/style/generated',
-    'docs/design-system/legacy-process/current-token-usage/usage-report.json',
-    'docs/design-system/legacy-process/current-token-usage/MIGRATION_DIFF.md',
-    'docs/design-system/current-token-usage/index.html',
-  ],
+  ['diff', '--exit-code', '--', 'src/style/generated'],
   { cwd: repositoryRoot, encoding: 'utf8' }
 );
 
 if (diff.status !== 0) {
   process.stderr.write(
-    'FAIL  Generated design-system artifacts are dirty. Run `npm run generate:design-tokens` and `npm run build:design-system:usage`, then commit the output.\n'
+    'FAIL  Generated design-system tokens are dirty. Run `npm run generate:design-tokens`, then commit the output.\n'
   );
   if (diff.stdout) process.stderr.write(diff.stdout);
   process.exit(1);
@@ -50,27 +39,18 @@ if (diff.status !== 0) {
 
 const untracked = spawnSync(
   'git',
-  [
-    'ls-files',
-    '--others',
-    '--exclude-standard',
-    '--',
-    'src/style/generated',
-    'docs/design-system/legacy-process/current-token-usage/usage-report.json',
-    'docs/design-system/legacy-process/current-token-usage/MIGRATION_DIFF.md',
-    'docs/design-system/current-token-usage/index.html',
-  ],
+  ['ls-files', '--others', '--exclude-standard', '--', 'src/style/generated'],
   { cwd: repositoryRoot, encoding: 'utf8' }
 );
 
 if (untracked.stdout && untracked.stdout.trim().length > 0) {
   process.stderr.write(
-    'FAIL  Generated design-system artifacts are untracked. Commit src/style/generated and the usage-report outputs.\n'
+    'FAIL  Generated design-system tokens are untracked. Commit src/style/generated.\n'
   );
   process.stderr.write(untracked.stdout);
   process.exit(1);
 }
 
 process.stdout.write(
-  'PASS  Generated design-system artifacts match the git tree.\n'
+  'PASS  Generated design-system tokens match the git tree.\n'
 );

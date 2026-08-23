@@ -157,8 +157,12 @@ async def startup_event():
         get_default_workforce_git_service,
         get_default_workspace_git_lifecycle,
         get_default_workspace_mutation_service,
+        get_default_workspace_writer_scheduler,
     )
 
+    writer_reconciliation = await asyncio.to_thread(
+        get_default_workspace_writer_scheduler().reconcile_orphaned_admissions
+    )
     workforce_reconciliation = await asyncio.to_thread(
         get_default_workforce_git_service().reconcile_startup
     )
@@ -210,6 +214,18 @@ async def startup_event():
                 reconciliation.outcome_unknown_model_invocation_ids
             ),
             "pending_approvals": len(reconciliation.pending_approval_ids),
+            "interrupted_orphaned_workspace_writers": len(
+                writer_reconciliation.interrupted_request_ids
+            ),
+            "promoted_workspace_writers": len(
+                writer_reconciliation.promoted_request_ids
+            ),
+            "preserved_workspace_writers": len(
+                writer_reconciliation.preserved_request_ids
+            ),
+            "workspace_writer_reconciliation_failures": len(
+                writer_reconciliation.failed_request_ids
+            ),
             "recovered_agent_workspaces": len(
                 workforce_reconciliation.recovered_workspace_ids
             ),

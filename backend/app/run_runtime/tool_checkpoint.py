@@ -18,12 +18,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+import time
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import Any
+from urllib.parse import urlsplit
 
 from app.run_context import get_current_run_context
 from app.run_journal import SQLiteRunJournal, get_default_run_journal
@@ -56,6 +60,15 @@ _IDEMPOTENT_WRITE_TOOL_KEYS: dict[str, str] = {}
 _TOOL_SAFETY_ATTRIBUTE = "_eigent_tool_safety"
 _TOOL_IDEMPOTENCY_ARGUMENT_ATTRIBUTE = "_eigent_idempotency_argument"
 _MAX_CHECKPOINT_JSON_BYTES = 16_000
+_MAX_DISPLAY_TEXT_LENGTH = 600
+_MAX_DISPLAY_TITLE_LENGTH = 96
+_DISPLAY_URL_PATTERN = re.compile(r"https?://[^\s\"'<>]+")
+_DISPLAY_POSIX_PATH_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9:])/(?:[^/\s\"'<>]+/)+[^/\s\"'<>]+"
+)
+_DISPLAY_WINDOWS_PATH_PATTERN = re.compile(
+    r"\b[A-Za-z]:[\\/](?:[^\\/\s\"'<>]+[\\/])+[^\\/\s\"'<>]+"
+)
 
 
 @dataclass(frozen=True)
@@ -67,6 +80,22 @@ class ToolCheckpointContext:
     safety_class: ToolSafetyClass
     idempotency_key: str | None
     request: dict[str, Any]
+    toolkit_name: str | None = None
+    agent_name: str | None = None
+    task_id: str | None = None
+    display_title: str | None = None
+    display_input: str | None = None
+    started_monotonic: float = 0.0
+
+
+@dataclass(frozen=True)
+class ToolDisplayProjection:
+    """Presentation-safe fields emitted beside canonical tool evidence."""
+
+    title: str
+    input: str | None = None
+    output: str | None = None
+    summary: str | None = None
 
 
 current_tool_checkpoint: ContextVar[ToolCheckpointContext | None] = ContextVar(
@@ -159,6 +188,277 @@ def _bounded_record(value: Any) -> dict[str, Any]:
         "preview": encoded[:4000],
         "original_bytes": len(encoded.encode("utf-8")),
     }
+
+
+def _truncate_display(
+    value: Any, limit: int = _MAX_DISPLAY_TEXT_LENGTH
+) -> str:
+    text = " ".join(str(value).split())
+    if len(text) <= limit:
+        return text
+    return f"{text[: max(0, limit - 1)].rstrip()}…"
+
+
+def _display_path(value: Any) -> str:
+    """Return a portable target label without exposing a device path."""
+
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if "://" in text:
+        parsed = urlsplit(text)
+        suffix = PurePosixPath(parsed.path).name
+        target = parsed.netloc
+        if suffix:
+            target = f"{target}/…/{suffix}"
+        return _truncate_display(target, 120)
+    normalized = text.replace("\\", "/")
+    if normalized.startswith("/") or re.match(r"^[A-Za-z]:/", normalized):
+        return f"…/{PurePosixPath(normalized).name}"
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    return _truncate_display(normalized, 120)
+
+
+def _sanitize_display_text(
+    value: Any, limit: int = _MAX_DISPLAY_TEXT_LENGTH
+) -> str:
+    """Redact portable display text that may embed URLs or device paths."""
+
+    text = str(value)
+    text = _DISPLAY_URL_PATTERN.sub(
+        lambda match: _display_path(match.group(0)), text
+    )
+    text = _DISPLAY_WINDOWS_PATH_PATTERN.sub(
+        lambda match: _display_path(match.group(0)), text
+    )
+    text = _DISPLAY_POSIX_PATH_PATTERN.sub(
+        lambda match: _display_path(match.group(0)), text
+    )
+    return _truncate_display(text, limit)
+
+
+def _first_mapping_value(
+    mapping: dict[str, Any], keys: tuple[str, ...]
+) -> Any:
+    normalized = {
+        str(key).replace("-", "_").lower(): value
+        for key, value in mapping.items()
+    }
+    for key in keys:
+        value = normalized.get(key)
+        if value not in (None, "", [], {}):
+            return value
+    return None
+
+
+def _humanize_tool_name(tool_name: str) -> str:
+    words = tool_name.strip().replace("-", "_").replace("_", " ")
+    return words[:1].upper() + words[1:] if words else "Tool call"
+
+
+def _tool_display_title(tool_name: str, request: dict[str, Any]) -> str:
+    normalized = tool_name.strip().lower().replace("-", "_")
+    path = _display_path(
+        _first_mapping_value(
+            request,
+            ("path", "file_path", "filepath", "relative_path", "filename"),
+        )
+    )
+    query = _sanitize_display_text(
+        _first_mapping_value(
+            request,
+            ("query", "search_query", "pattern", "keyword"),
+        )
+        or "",
+        52,
+    )
+    if normalized in {"todo_write", "update_plan"}:
+        title = "Updated plan"
+    elif normalized in {"read_file", "read_files"}:
+        title = f"Read {path}" if path else "Read files"
+    elif normalized in {
+        "write_file",
+        "write_to_file",
+        "shell_write_content_to_file",
+    }:
+        title = f"Wrote {path}" if path else "Wrote file"
+    elif normalized in {"glob_files", "list_files", "list_directory"}:
+        title = f"Listed {path}" if path else "Listed files"
+    elif "search_memory" in normalized:
+        title = "Searched memory"
+    elif "search" in normalized:
+        title = f"Searched for {query}" if query else "Searched"
+    elif normalized.startswith(("shell", "terminal", "exec", "run_")):
+        title = "Ran command"
+    elif normalized == "cleanup":
+        title = "Cleaned up tools"
+    elif normalized.startswith(("browser", "navigate", "visit")):
+        title = "Used browser"
+    else:
+        title = _humanize_tool_name(tool_name)
+    return _truncate_display(title, _MAX_DISPLAY_TITLE_LENGTH)
+
+
+def _tool_display_input(tool_name: str, request: dict[str, Any]) -> str | None:
+    normalized = tool_name.strip().lower().replace("-", "_")
+    path = _display_path(
+        _first_mapping_value(
+            request,
+            ("path", "file_path", "filepath", "relative_path", "filename"),
+        )
+    )
+    if path:
+        return f"File: {path}"
+
+    query = _first_mapping_value(
+        request, ("query", "search_query", "pattern", "keyword")
+    )
+    if query is not None:
+        return f"Query: {_sanitize_display_text(query, 240)}"
+
+    url = _first_mapping_value(request, ("url", "uri"))
+    if url is not None:
+        return f"URL: {_display_path(url)}"
+
+    if normalized in {"todo_write", "update_plan"}:
+        todos = _first_mapping_value(request, ("todos", "steps", "tasks"))
+        if isinstance(todos, list):
+            statuses: dict[str, int] = {}
+            for item in todos:
+                if not isinstance(item, dict):
+                    continue
+                status = str(item.get("status") or "item").replace("_", " ")
+                statuses[status] = statuses.get(status, 0) + 1
+            details = " · ".join(
+                f"{count} {status}" for status, count in statuses.items()
+            )
+            return f"{len(todos)} plan items" + (
+                f" · {details}" if details else ""
+            )
+
+    command = _first_mapping_value(request, ("command", "cmd"))
+    if command is not None:
+        return f"Command: {_sanitize_display_text(command, 360)}"
+    argv = _first_mapping_value(request, ("argv",))
+    if isinstance(argv, dict):
+        preview = argv.get("redacted_preview")
+        if isinstance(preview, list):
+            return "Command: " + _sanitize_display_text(
+                " ".join(map(str, preview)), 360
+            )
+        count = argv.get("argument_count")
+        if count is not None:
+            return f"Command arguments: {count}"
+
+    content = _first_mapping_value(request, ("content", "text", "data"))
+    if isinstance(content, str):
+        return f"Content: {len(content)} characters"
+    if isinstance(content, (list, dict)):
+        return f"Content: {len(content)} items"
+
+    visible_keys = sorted(
+        str(key).replace("_", " ")
+        for key, value in request.items()
+        if value not in (None, "", [], {})
+        and str(key) not in {"truncated", "preview", "original_bytes"}
+    )
+    return (
+        f"Parameters: {_truncate_display(', '.join(visible_keys), 240)}"
+        if visible_keys
+        else None
+    )
+
+
+def _tool_display_output(
+    tool_name: str,
+    result: dict[str, Any] | None,
+) -> str | None:
+    if not result:
+        return None
+    error = _first_mapping_value(result, ("error", "reason"))
+    if error is not None:
+        return f"Error: {_sanitize_display_text(error, 420)}"
+    message = _first_mapping_value(result, ("message", "summary"))
+    if message is not None:
+        if isinstance(message, str):
+            return f"Returned a message ({len(message)} characters)"
+        return "Returned a message"
+    path = _first_mapping_value(
+        result, ("path", "file_path", "relative_path", "filename")
+    )
+    if path is not None:
+        return f"File: {_display_path(path)}"
+    count = _first_mapping_value(
+        result, ("count", "result_count", "items_count", "match_count")
+    )
+    if count is not None:
+        return f"Returned {count} items"
+    if "content" in result:
+        content = result["content"]
+        if isinstance(content, str):
+            return f"Returned {len(content)} characters"
+        if isinstance(content, (list, dict)):
+            return f"Returned {len(content)} items"
+    if set(result) == {"value"}:
+        value = result["value"]
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return f"Returned text ({len(value)} characters)"
+        if isinstance(value, (list, dict)):
+            return f"Returned {len(value)} items"
+        return f"Returned {_truncate_display(value, 120)}"
+    if result.get("truncated"):
+        size = result.get("original_bytes")
+        return "Returned a large result" + (f" ({size} bytes)" if size else "")
+    if result.get("success") is True:
+        return "Completed successfully"
+    return None
+
+
+def _format_duration(duration_ms: int | None) -> str:
+    if duration_ms is None:
+        return ""
+    if duration_ms < 1000:
+        return f"{duration_ms} ms"
+    seconds = duration_ms / 1000
+    return f"{seconds:.1f} s" if seconds < 10 else f"{seconds:.0f} s"
+
+
+def build_tool_display_projection(
+    *,
+    tool_name: str,
+    request: dict[str, Any],
+    status: str,
+    result: dict[str, Any] | None = None,
+    duration_ms: int | None = None,
+) -> ToolDisplayProjection:
+    """Build bounded display text without exposing raw request/result data."""
+
+    title = _tool_display_title(tool_name, request)
+    output = _tool_display_output(tool_name, result)
+    duration = _format_duration(duration_ms)
+    if status == "prepared":
+        summary = "Prepared"
+    elif status == "dispatched":
+        summary = "Running"
+    elif status == "completed":
+        summary = f"Completed in {duration}" if duration else "Completed"
+    elif status == "outcome_unknown":
+        summary = (
+            f"Outcome unknown after {duration}"
+            if duration
+            else "Outcome unknown"
+        )
+    else:
+        summary = f"Failed after {duration}" if duration else "Failed"
+    return ToolDisplayProjection(
+        title=title,
+        input=_tool_display_input(tool_name, request),
+        output=output,
+        summary=summary,
+    )
 
 
 def classify_tool_safety(
@@ -260,6 +560,9 @@ def prepare_tool_checkpoint(
     arguments: dict[str, Any],
     declared_safety: tuple[ToolSafetyClass, str | None] | None = None,
     dispatch_immediately: bool = True,
+    toolkit_name: str | None = None,
+    agent_name: str | None = None,
+    task_id: str | None = None,
     journal: SQLiteRunJournal | None = None,
 ) -> ToolCheckpointContext | None:
     run_context = get_current_run_context()
@@ -284,6 +587,11 @@ def prepare_tool_checkpoint(
     call_id = raw_tool_call_id.strip() or uuid.uuid4().hex
     canonical_id = f"{run_context.run_id}:{call_id}"
     request = _bounded_record(arguments)
+    display = build_tool_display_projection(
+        tool_name=tool_name,
+        request=request,
+        status="prepared",
+    )
     checkpoint = ToolCheckpointContext(
         tool_call_id=canonical_id,
         run_id=run_context.run_id,
@@ -292,6 +600,12 @@ def prepare_tool_checkpoint(
         safety_class=safety,
         idempotency_key=idempotency_key,
         request=request,
+        toolkit_name=toolkit_name,
+        agent_name=agent_name,
+        task_id=task_id,
+        display_title=display.title,
+        display_input=display.input,
+        started_monotonic=time.monotonic(),
     )
     values = dict(
         tool_call_id=checkpoint.tool_call_id,
@@ -301,11 +615,24 @@ def prepare_tool_checkpoint(
         safety_class=checkpoint.safety_class,
         request=checkpoint.request,
         idempotency_key=checkpoint.idempotency_key,
+        toolkit_name=checkpoint.toolkit_name,
+        agent_name=checkpoint.agent_name,
+        task_id=checkpoint.task_id,
+        display_title=checkpoint.display_title,
+        display_input=checkpoint.display_input,
     )
     try:
-        store.checkpoint_tool_call(status="prepared", **values)
+        store.checkpoint_tool_call(
+            status="prepared",
+            display_summary="Prepared",
+            **values,
+        )
         if dispatch_immediately:
-            store.checkpoint_tool_call(status="dispatched", **values)
+            store.checkpoint_tool_call(
+                status="dispatched",
+                display_summary="Running",
+                **values,
+            )
     except Exception as error:
         raise ToolCheckpointPersistenceError(
             f"failed to persist checkpoint before tool {tool_name!r}"
@@ -334,6 +661,12 @@ def dispatch_tool_checkpoint(
             status="dispatched",
             request=checkpoint.request,
             idempotency_key=checkpoint.idempotency_key,
+            toolkit_name=checkpoint.toolkit_name,
+            agent_name=checkpoint.agent_name,
+            task_id=checkpoint.task_id,
+            display_title=checkpoint.display_title,
+            display_input=checkpoint.display_input,
+            display_summary="Running",
         )
     except Exception as error:
         raise ToolCheckpointPersistenceError(
@@ -379,6 +712,17 @@ def finish_tool_checkpoint(
         status = "failed"
         outcome = "failed"
         result_payload = _bounded_record({"error": str(error)})
+    duration_ms = max(
+        0,
+        round((time.monotonic() - checkpoint.started_monotonic) * 1000),
+    )
+    display = build_tool_display_projection(
+        tool_name=checkpoint.tool_name,
+        request=checkpoint.request,
+        status=status,
+        result=result_payload,
+        duration_ms=duration_ms,
+    )
     try:
         store.checkpoint_tool_call(
             tool_call_id=checkpoint.tool_call_id,
@@ -391,6 +735,14 @@ def finish_tool_checkpoint(
             result=result_payload,
             idempotency_key=checkpoint.idempotency_key,
             outcome=outcome,
+            toolkit_name=checkpoint.toolkit_name,
+            agent_name=checkpoint.agent_name,
+            task_id=checkpoint.task_id,
+            display_title=checkpoint.display_title or display.title,
+            display_input=checkpoint.display_input or display.input,
+            display_output=display.output,
+            display_summary=display.summary,
+            display_duration_ms=duration_ms,
         )
     except Exception as persistence_error:
         raise ToolCheckpointPersistenceError(

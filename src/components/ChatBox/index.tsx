@@ -322,8 +322,18 @@ export default function ChatBox(): JSX.Element {
 
   const { t } = useTranslation();
   const textareaRef = useRef<HTMLDivElement>(null);
+  const handledChatDraftRequestRef = useRef<number | null>(null);
   const workspaceChatFocusRequestId = usePageTabStore(
     (s) => s.workspaceChatFocusRequestId
+  );
+  const workspaceChatDraftRequest = usePageTabStore(
+    (s) => s.workspaceChatDraftRequest
+  );
+  const consumeWorkspaceChatDraft = usePageTabStore(
+    (s) => s.consumeWorkspaceChatDraft
+  );
+  const acknowledgeWorkspaceReviewHandoffs = usePageTabStore(
+    (s) => s.acknowledgeWorkspaceReviewHandoffs
   );
   const chatTimelineDetailLevel = usePageTabStore(
     (s) => s.chatTimelineDetailLevel ?? DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL
@@ -494,6 +504,24 @@ export default function ChatBox(): JSX.Element {
     }, 180);
     return () => clearTimeout(focusTimer);
   }, [workspaceChatFocusRequestId]);
+
+  useEffect(() => {
+    if (
+      !workspaceChatDraftRequest ||
+      workspaceChatDraftRequest.projectId !== activeProjectId ||
+      handledChatDraftRequestRef.current === workspaceChatDraftRequest.requestId
+    ) {
+      return;
+    }
+    handledChatDraftRequestRef.current = workspaceChatDraftRequest.requestId;
+    setMessage((current) => {
+      const existing = current.trimEnd();
+      return existing
+        ? `${existing}\n\n${workspaceChatDraftRequest.content}`
+        : workspaceChatDraftRequest.content;
+    });
+    consumeWorkspaceChatDraft(workspaceChatDraftRequest.requestId);
+  }, [activeProjectId, consumeWorkspaceChatDraft, workspaceChatDraftRequest]);
 
   useEffect(() => {
     proxyFetchGet('/api/v1/configs').catch((err) =>
@@ -1068,6 +1096,7 @@ export default function ChatBox(): JSX.Element {
       });
       chatStore.setAttaches(_taskId, []);
       setMessage('');
+      acknowledgeWorkspaceReviewHandoffs(targetProjectId, displayContent);
       toast.success('Message queued. It will run after the current task.');
       return;
     }
@@ -1084,6 +1113,7 @@ export default function ChatBox(): JSX.Element {
     }
 
     if (textareaRef.current) textareaRef.current.style.height = '60px';
+    let messageAccepted = false;
     try {
       if (queuedRequestId) {
         chatStore.setNextTaskId(queuedRequestId);
@@ -1124,6 +1154,7 @@ export default function ChatBox(): JSX.Element {
             }
           );
         }
+        messageAccepted = true;
       } else if (requiresHumanReply) {
         if (requiresApprovalDecision) {
           toast.error(
@@ -1179,6 +1210,7 @@ export default function ChatBox(): JSX.Element {
           );
           return;
         }
+        messageAccepted = true;
         chatStore.setAttaches(_taskId, []);
         if (chatStore.tasks[_taskId].askList.length === 0) {
           chatStore.setActiveAsk(_taskId, '');
@@ -1262,6 +1294,7 @@ export default function ChatBox(): JSX.Element {
                 targetProjectId,
                 effectiveSessionMode
               );
+              messageAccepted = true;
               if (!preserveComposer) chatStore.setAttaches(_taskId, []);
               // If activeTaskId changed (new task created), clear its draft too
               const newActiveId = chatStore.activeTaskId;
@@ -1349,6 +1382,7 @@ export default function ChatBox(): JSX.Element {
                 ),
                 target: undefined,
               });
+              messageAccepted = true;
             } catch (error: any) {
               // Keep the failed turn as a traceable receipt instead of moving
               // the reply back into (or mutating) the completed history Run.
@@ -1386,6 +1420,7 @@ export default function ChatBox(): JSX.Element {
               targetProjectId,
               effectiveSessionMode
             );
+            messageAccepted = true;
             chatStore.setHasWaitComfirm(_taskId as string, true);
             if (!preserveComposer) chatStore.setAttaches(_taskId, []);
             // If activeTaskId changed (new task created), clear its draft too
@@ -1408,6 +1443,9 @@ export default function ChatBox(): JSX.Element {
       console.error('error:', error);
       if (preserveComposer) throw error;
     } finally {
+      if (messageAccepted) {
+        acknowledgeWorkspaceReviewHandoffs(targetProjectId, displayContent);
+      }
       scheduleUsageRefresh();
     }
   };

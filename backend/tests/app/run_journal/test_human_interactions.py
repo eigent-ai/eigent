@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from __future__ import annotations
 
 import sqlite3
@@ -7,6 +21,7 @@ import pytest
 from app.run_journal import (
     IdempotencyConflictError,
     InvalidRunTransitionError,
+    RunEventDraft,
     SQLiteRunJournal,
 )
 
@@ -172,6 +187,131 @@ def test_generic_interaction_blocks_resume_after_restart(tmp_path):
                 reason="explicit_resume",
                 now=5,
             )
+
+
+def test_terminal_run_cancels_open_human_interaction_atomically(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        attempt = _running_attempt(journal)
+        journal.create_human_interaction(
+            interaction_id="question-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            interaction_type="question",
+            request={"question": "Continue?"},
+            requested_by="agent:worker",
+            now=3,
+        )
+
+        journal.append_event(
+            "run-1",
+            RunEventDraft(
+                event_id="run-1-failed",
+                event_type="run.failed",
+                payload={"reason": "execution_backend_failure"},
+                created_at=4,
+            ),
+        )
+
+        interaction = journal.get_human_interaction("question-1")
+        assert interaction is not None
+        assert interaction.status == "cancelled"
+        assert interaction.resolved_at == 4
+        assert journal.get_run("run-1").status == "failed"
+        assert [
+            event.event_type for event in journal.list_events("run-1")
+        ] == [
+            "run.attempt_created",
+            "interaction.requested",
+            "interaction.cancelled",
+            "run.failed",
+        ]
+        decisions = journal.list_human_interaction_decisions("question-1")
+        assert len(decisions) == 1
+        assert decisions[0].actor_type == "system"
+
+
+def test_terminal_run_rejects_open_approval_and_cancels_interaction(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        attempt = _running_attempt(journal)
+        journal.create_approval(
+            approval_id="approval-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            prompt={"title": "Allow write?"},
+            action_digest="a" * 64,
+            policy_revision="policy-1",
+            safety_class="unsafe_write",
+            now=3,
+        )
+
+        journal.append_event(
+            "run-1",
+            RunEventDraft(
+                event_id="run-1-failed",
+                event_type="run.failed",
+                payload={"reason": "execution_backend_failure"},
+                created_at=4,
+            ),
+        )
+
+        approval = journal.list_approvals("run-1")[0]
+        interaction = journal.get_human_interaction("approval-1")
+        assert approval.status == "rejected"
+        assert interaction is not None and interaction.status == "cancelled"
+        decisions = journal.list_human_interaction_decisions("approval-1")
+        assert decisions[0].decision == {
+            "decision": "rejected",
+            "reason": "run_terminal:failed",
+        }
+        assert "approval.cancelled" in {
+            event.event_type for event in journal.list_events("run-1")
+        }
+
+
+def test_startup_cancels_historical_interaction_on_terminal_run(tmp_path):
+    path = tmp_path / "journal.sqlite3"
+    with SQLiteRunJournal(path) as journal:
+        attempt = _running_attempt(journal)
+        journal.create_human_interaction(
+            interaction_id="question-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            interaction_type="question",
+            request={"question": "Continue?"},
+            requested_by="agent:worker",
+            now=3,
+        )
+
+    # Reproduce a row written by an older terminal path that did not close its
+    # still-requested HumanInteraction.
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            """
+            UPDATE runs
+            SET status = 'failed', active_attempt_id = NULL, updated_at = 4
+            WHERE run_id = 'run-1'
+            """
+        )
+        connection.execute(
+            """
+            UPDATE run_attempts
+            SET status = 'failed', ended_at = 4, outcome = 'run.failed'
+            WHERE attempt_id = ?
+            """,
+            (attempt.attempt_id,),
+        )
+
+    with SQLiteRunJournal(path) as reopened:
+        reopened.reconcile_startup(now=5)
+
+        interaction = reopened.get_human_interaction("question-1")
+        assert interaction is not None
+        assert interaction.status == "cancelled"
+        assert interaction.resolved_at == 5
+        assert reopened.get_run("run-1").status == "failed"
+        assert "interaction.cancelled" in {
+            event.event_type for event in reopened.list_events("run-1")
+        }
 
 
 def test_v10_approval_is_backfilled_with_the_same_interaction_id(tmp_path):

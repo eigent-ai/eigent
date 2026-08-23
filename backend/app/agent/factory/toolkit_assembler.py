@@ -21,15 +21,6 @@ from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
 
-from camel.toolkits import (
-    FunctionTool,
-    MCPToolkit,
-    PlanningWorktreeToolkit,
-    RegisteredAgentToolkit,
-    ToolkitMessageIntegration,
-    WebFetchToolkit,
-)
-
 from app.agent.toolkit.depth_limited_agent_toolkit import (
     DepthLimitedAgentToolkit,
 )
@@ -54,7 +45,16 @@ from app.run_policy import ToolSafetyClass
 from app.run_runtime.tool_checkpoint import declare_tool_safety
 from app.service.task import Agents, get_task_lock_if_exists
 from app.utils.browser_launcher import normalize_cdp_url
+from app.utils.workspace_paths import runtime_task_root
 from app.workspace_bundle.runtime import ResolvedRuntimeEnvironment
+from camel.toolkits import (
+    FunctionTool,
+    MCPToolkit,
+    PlanningWorktreeToolkit,
+    RegisteredAgentToolkit,
+    ToolkitMessageIntegration,
+    WebFetchToolkit,
+)
 
 logger = logging.getLogger("toolkit_assembler")
 
@@ -71,7 +71,13 @@ _SAFE_READ_TOOLKIT_FUNCTIONS: dict[str, frozenset[str] | None] = {
     "webfetchtoolkit": None,
     "screenshottoolkit": frozenset({"read_image"}),
     "workspacegittoolkit": None,
-    "humantoolkit": frozenset({"ask_human_via_gui"}),
+    # Both functions stay inside Eigent's task UI. Asking creates a durable
+    # HumanInteraction; notifying only publishes Run-local progress. Neither
+    # mutates the user workspace nor an external service, so prompting for an
+    # `mcp.tool.write` approval would be a false safety boundary. Third-party
+    # tools with the same names remain conservative because declarations are
+    # scoped to this code-owned toolkit.
+    "humantoolkit": frozenset({"ask_human_via_gui", "send_message_to_user"}),
     # Eigent's code-owned todo_write only replaces the Run-local todo.md and
     # .todo.json projection. It is deterministic internal progress metadata,
     # not a user-workspace or external side effect, so approval would only
@@ -478,9 +484,25 @@ async def assemble_single_agent_toolkits(
         assembly.add_tools(toolkit.get_tools(), SkillToolkit.toolkit_name())
 
     if _enabled(config, "todo"):
+
+        def todo_working_dir_for_task(run_id: str):
+            return (
+                runtime_task_root(
+                    options.email,
+                    options.project_id,
+                    run_id,
+                    options.user_id,
+                )
+                / "todo"
+            )
+
         todo_options = {
-            "working_dir": working_directory,
             **_options(config, "todo"),
+            # Todo state is Run metadata, not a file in the shared Space
+            # checkout. Resume reuses this directory; a follow-up Run gets a
+            # separate directory even when its Agent instance is reused.
+            "working_dir": str(todo_working_dir_for_task(task_id)),
+            "working_dir_for_task": todo_working_dir_for_task,
         }
         todo_toolkit = ObservableTodoToolkit(
             api_task_id=options.project_id,

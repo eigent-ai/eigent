@@ -42,7 +42,7 @@ from app.controller.chat_controller import (
 from app.exception.exception import UserException
 from app.model.chat import Chat, HumanReply, McpServers, Status, SupplementChat
 from app.run_context import RunContext
-from app.run_journal import SQLiteRunJournal
+from app.run_journal import InvalidRunTransitionError, SQLiteRunJournal
 from app.run_runtime import RunCoordinator
 from app.workspace_bundle.runtime import EnvironmentSetupRequiredError
 
@@ -645,6 +645,84 @@ class TestChatController:
                 "legacy_environment_backfill"
             )
             git_coordinator.admit_run.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_initial_attempt_precedes_workspace_writer_admission(
+        self,
+        sample_chat_data,
+        mock_request,
+        mock_task_lock,
+        tmp_path,
+    ):
+        chat_data = Chat(
+            **sample_chat_data,
+            run_id="run-writer-must-not-leak",
+            session_mode="single-agent",
+        )
+        resolver = MagicMock()
+        resolver.freeze_task_directories.return_value = SimpleNamespace(
+            working_directory=tmp_path,
+            task_output_root=tmp_path / "output",
+            base_snapshot_id=None,
+            snapshot=MagicMock(),
+            binding_source="test",
+            workdir_mode=None,
+        )
+        resolver.space_root.return_value = tmp_path
+        git_coordinator = MagicMock()
+
+        with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+            journal.ensure_run(
+                run_id="run-project-blocker",
+                project_id=chat_data.project_id,
+            )
+            journal.create_run_attempt(
+                "run-project-blocker",
+                request_id="initial:run-project-blocker",
+                reason="initial_execution",
+                activate=True,
+            )
+            with (
+                patch(
+                    "app.controller.chat_controller.get_default_run_journal",
+                    return_value=journal,
+                ),
+                patch(
+                    "app.controller.chat_controller.get_or_create_task_lock",
+                    return_value=mock_task_lock,
+                ),
+                patch(
+                    "app.controller.chat_controller.get_workspace_resolver",
+                    return_value=resolver,
+                ),
+                patch(
+                    "app.controller.chat_controller."
+                    "get_default_workspace_git_coordinator",
+                    return_value=git_coordinator,
+                ),
+                patch(
+                    "app.controller.chat_controller."
+                    "_prepare_browser_for_request_with_timeout",
+                    new=AsyncMock(return_value=True),
+                ),
+                patch(
+                    "app.controller.chat_controller._assemble_runtime_environment",
+                    return_value=None,
+                ),
+                patch(
+                    "app.controller.chat_controller._camel_log_dir",
+                    return_value=tmp_path / "camel-log",
+                ),
+                patch("app.controller.chat_controller.set_current_task_id"),
+                patch("app.controller.chat_controller.load_dotenv"),
+            ):
+                with pytest.raises(
+                    InvalidRunTransitionError,
+                    match="already executes Run 'run-project-blocker'",
+                ):
+                    await _prepare_chat_run(chat_data, mock_request)
+
+        git_coordinator.admit_run.assert_not_called()
 
     def test_bundle_runtime_rejects_legacy_workforce_session_mode(self):
         with pytest.raises(EnvironmentSetupRequiredError) as error:

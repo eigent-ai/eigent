@@ -21,6 +21,8 @@ interface ToolInputOutputDetailsProps {
   inputLabel?: string;
   outputLabel?: string;
   showEmptyFields?: boolean;
+  showEmptyInput?: boolean;
+  showEmptyOutput?: boolean;
   emptyInputText?: string;
   emptyOutputText?: string;
   children?: ReactNode;
@@ -38,12 +40,23 @@ export function ToolInputOutputDetails({
   inputLabel = 'Request',
   outputLabel = 'Response',
   showEmptyFields = false,
+  showEmptyInput = false,
+  showEmptyOutput = false,
   emptyInputText = 'No request was recorded for this event.',
   emptyOutputText = 'No response was recorded for this event.',
   children,
   className,
 }: ToolInputOutputDetailsProps) {
-  if (!showEmptyFields && !input && !output && children == null) return null;
+  const renderEmptyInput = showEmptyFields || showEmptyInput;
+  const renderEmptyOutput = showEmptyFields || showEmptyOutput;
+  if (
+    !renderEmptyInput &&
+    !renderEmptyOutput &&
+    !input &&
+    !output &&
+    children == null
+  )
+    return null;
 
   const labelClassName =
     'mb-1 block !text-ds-text-meta font-medium uppercase tracking-wide text-ds-ink-subtle-default';
@@ -52,7 +65,7 @@ export function ToolInputOutputDetails({
 
   return (
     <div className={`flex w-full flex-col gap-1.5 ${className || ''}`}>
-      {input || showEmptyFields ? (
+      {input || renderEmptyInput ? (
         <div
           className={surfaceClassName}
           data-tool-input
@@ -72,7 +85,7 @@ export function ToolInputOutputDetails({
           )}
         </div>
       ) : null}
-      {output || showEmptyFields ? (
+      {output || renderEmptyOutput ? (
         <div
           className={surfaceClassName}
           data-tool-output

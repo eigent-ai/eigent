@@ -22,6 +22,7 @@ from collections.abc import Callable
 from typing import Any
 
 from app.run_journal.models import CommittedRunEvent, RunEventDraft
+from app.run_journal.semantic_events import project_legacy_semantic_event
 from app.run_journal.store import SQLiteRunJournal
 
 logger = logging.getLogger("event_recorder")
@@ -84,9 +85,18 @@ class EventRecorder:
                 "legacy end is reserved for the trusted execution stream"
             )
 
+        semantic = project_legacy_semantic_event(
+            step=step,
+            data=data,
+            run_id=run_id,
+        )
         values: dict[str, Any] = {
-            "event_type": f"legacy.{step}",
-            "payload": data,
+            "event_type": (
+                semantic.event_type
+                if semantic is not None
+                else f"legacy.{step}"
+            ),
+            "payload": semantic.payload if semantic is not None else data,
             "legacy_step": step,
         }
         if event_id is not None:

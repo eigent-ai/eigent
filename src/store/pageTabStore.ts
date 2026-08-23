@@ -78,6 +78,28 @@ export interface SessionReviewTarget {
   focusRequestId: number;
 }
 
+export type ReviewCommentSide = 'original' | 'modified';
+
+export interface ReviewLineSelection {
+  side: ReviewCommentSide;
+  startLine: number;
+  endLine: number;
+  text: string;
+}
+
+/** A user-authored review draft. It becomes canonical only after Chat sends it. */
+export interface SessionReviewComment {
+  id: string;
+  fileId: string;
+  path: string;
+  selection: ReviewLineSelection | null;
+  body: string;
+  createdAt: number;
+  /** Missing on older persisted drafts and therefore treated as pending. */
+  status?: 'pending' | 'sent';
+  sentAt?: number;
+}
+
 /** Code/diff review surface for a Project aggregate or one finalized Run. */
 export interface SessionReviewTab {
   id: string;
@@ -85,6 +107,27 @@ export interface SessionReviewTab {
   title: string;
   /** Optional only for tabs restored from storage before Run review existed. */
   reviewTarget?: SessionReviewTarget;
+  /** Local review drafts, persisted with this Project's preview tabs. */
+  reviewComments?: SessionReviewComment[];
+}
+
+export interface WorkspaceChatDraftRequest {
+  requestId: number;
+  projectId: string;
+  content: string;
+}
+
+export interface WorkspaceReviewHandoff {
+  requestId: number;
+  projectId: string;
+  reviewTabId: string;
+  commentIds: string[];
+  content: string;
+}
+
+export interface WorkspaceReviewHandoffSource {
+  reviewTabId: string;
+  commentIds: string[];
 }
 
 export interface OpenReviewPreviewInput {
@@ -259,6 +302,7 @@ function createReviewPreviewTab(
     type: 'review',
     title: reviewTarget.scope === 'run' ? 'Run review' : 'Review',
     reviewTarget,
+    reviewComments: [],
   };
 }
 
@@ -426,6 +470,20 @@ interface PageTabState {
    */
   workspaceChatFocusRequestId: number;
   requestWorkspaceChatFocus: () => void;
+  /** One-shot handoff that appends review feedback to the matching Chat draft. */
+  workspaceChatDraftRequest: WorkspaceChatDraftRequest | null;
+  workspaceChatDraftRequestSequence: number;
+  /** Review handoffs stay pending until Chat confirms their content was sent. */
+  workspaceReviewHandoffs: WorkspaceReviewHandoff[];
+  requestWorkspaceChatDraft: (
+    content: string,
+    reviewSource?: WorkspaceReviewHandoffSource
+  ) => void;
+  consumeWorkspaceChatDraft: (requestId: number) => void;
+  acknowledgeWorkspaceReviewHandoffs: (
+    projectId: string,
+    sentContent: string
+  ) => void;
   /** Incremented to open the add-trigger dialog from the sidebar (Home owns dialog state). */
   triggerAddDialogRequestId: number;
   requestOpenTriggerAddDialog: () => void;
@@ -477,6 +535,11 @@ interface PageTabState {
   openFilePreview: (file?: FileInfo | null) => void;
   /** Open Project/Run Git review and optionally focus one changed path. */
   openReviewPreview: (input?: OpenReviewPreviewInput) => void;
+  /** Replace the local comment drafts owned by one Review tab. */
+  updateReviewComments: (
+    tabId: string,
+    comments: SessionReviewComment[]
+  ) => void;
   /**
    * Open a URL in this project's preview browser — the default target for
    * links mentioned in chat content, so they stay inside the session instead
@@ -665,6 +728,9 @@ export const usePageTabStore = create<PageTabState>()(
           return { customAgentFolderPathByProjectId: next };
         }),
       workspaceChatFocusRequestId: 0,
+      workspaceChatDraftRequest: null,
+      workspaceChatDraftRequestSequence: 0,
+      workspaceReviewHandoffs: [],
       requestWorkspaceChatFocus: () =>
         set((state) => {
           const tab = state.activeWorkspaceTab;
@@ -680,6 +746,106 @@ export const usePageTabStore = create<PageTabState>()(
             workspaceChatFocusRequestId: state.workspaceChatFocusRequestId + 1,
           };
         }),
+      requestWorkspaceChatDraft: (content, reviewSource) => {
+        const normalized = content.trim();
+        const projectId = get().sessionPreviewProjectId;
+        if (!normalized || !projectId) return;
+        set((state) => {
+          const requestId = state.workspaceChatDraftRequestSequence + 1;
+          const commentIds = [
+            ...new Set(
+              reviewSource?.commentIds.map((commentId) => commentId.trim()) ??
+                []
+            ),
+          ].filter(Boolean);
+          const reviewHandoff =
+            reviewSource?.reviewTabId && commentIds.length > 0
+              ? {
+                  requestId,
+                  projectId,
+                  reviewTabId: reviewSource.reviewTabId,
+                  commentIds,
+                  content: normalized,
+                }
+              : null;
+          return {
+            workspaceChatDraftRequestSequence: requestId,
+            workspaceChatDraftRequest: {
+              requestId,
+              projectId,
+              content: normalized,
+            },
+            ...(reviewHandoff
+              ? {
+                  workspaceReviewHandoffs: [
+                    ...state.workspaceReviewHandoffs,
+                    reviewHandoff,
+                  ],
+                }
+              : {}),
+          };
+        });
+        get().requestWorkspaceChatFocus();
+      },
+      consumeWorkspaceChatDraft: (requestId) =>
+        set((state) =>
+          state.workspaceChatDraftRequest?.requestId === requestId
+            ? { workspaceChatDraftRequest: null }
+            : state
+        ),
+      acknowledgeWorkspaceReviewHandoffs: (projectId, sentContent) => {
+        const normalized = sentContent.trim();
+        if (!projectId || !normalized) return;
+        set((state) => {
+          const matched = state.workspaceReviewHandoffs.filter(
+            (handoff) =>
+              handoff.projectId === projectId &&
+              normalized.includes(handoff.content)
+          );
+          if (matched.length === 0) return state;
+
+          const matchedRequestIds = new Set(
+            matched.map((handoff) => handoff.requestId)
+          );
+          const commentIdsByTab = new Map<string, Set<string>>();
+          for (const handoff of matched) {
+            const ids =
+              commentIdsByTab.get(handoff.reviewTabId) ?? new Set<string>();
+            handoff.commentIds.forEach((commentId) => ids.add(commentId));
+            commentIdsByTab.set(handoff.reviewTabId, ids);
+          }
+
+          const slice = state.sessionPreviewByProject[projectId];
+          const sentAt = Date.now();
+          const tabs = slice?.tabs.map((tab) => {
+            if (tab.type !== 'review') return tab;
+            const commentIds = commentIdsByTab.get(tab.id);
+            if (!commentIds) return tab;
+            return {
+              ...tab,
+              reviewComments: (tab.reviewComments ?? []).map((comment) =>
+                commentIds.has(comment.id)
+                  ? { ...comment, status: 'sent' as const, sentAt }
+                  : comment
+              ),
+            };
+          });
+
+          return {
+            workspaceReviewHandoffs: state.workspaceReviewHandoffs.filter(
+              (handoff) => !matchedRequestIds.has(handoff.requestId)
+            ),
+            ...(slice && tabs
+              ? {
+                  sessionPreviewByProject: {
+                    ...state.sessionPreviewByProject,
+                    [projectId]: { ...slice, tabs },
+                  },
+                }
+              : {}),
+          };
+        });
+      },
       triggerAddDialogRequestId: 0,
       requestOpenTriggerAddDialog: () =>
         set((state) => {
@@ -872,6 +1038,17 @@ export const usePageTabStore = create<PageTabState>()(
           if (reusableIndex >= 0) tabs[reusableIndex] = tab;
           else tabs.push(tab);
           return { open: true, tabs, activeTabId: tab.id };
+        }),
+      updateReviewComments: (tabId, comments) =>
+        setSessionPreviewSlice(set, (slice) => {
+          const index = slice.tabs.findIndex(
+            (tab) => tab.id === tabId && tab.type === 'review'
+          );
+          if (index < 0) return null;
+          const current = slice.tabs[index] as SessionReviewTab;
+          const tabs = [...slice.tabs];
+          tabs[index] = { ...current, reviewComments: comments };
+          return { ...slice, tabs };
         }),
       openBrowserPreview: (url) =>
         setSessionPreviewSlice(set, (slice, state) => {

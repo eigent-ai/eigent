@@ -246,19 +246,34 @@ function composeToolInvocation(
   nodes: readonly ChatActivityNode[]
 ): TimelineToolInvocation {
   const first = nodes[0]!;
-  const last = nodes.at(-1)!;
-  const explicitInput = firstText(nodes.map((node) => node.input));
-  const explicitOutput = lastText(nodes.map((node) => node.output));
-  const fallbackInput = firstText(
-    nodes.filter(isStartingActivity).map((node) => node.detail)
+  // Canonical events and legacy SSE receipts can coexist during the migration.
+  // When they share a call id, use the canonical display-safe projection for
+  // all user-visible fields. Legacy messages may contain raw arguments/results
+  // and therefore serve only as a compatibility fallback.
+  const typedNodes = nodes.filter(
+    (node) => !node.eventType.startsWith('legacy.')
   );
-  const fallbackOutput = lastText(
-    nodes.filter(isTerminalActivity).map((node) => node.detail)
-  );
+  const semanticNodes = typedNodes.length > 0 ? typedNodes : nodes;
+  const semanticFirst = semanticNodes[0]!;
+  const semanticLast = semanticNodes.at(-1)!;
+  const explicitInput = firstText(semanticNodes.map((node) => node.input));
+  const explicitOutput = lastText(semanticNodes.map((node) => node.output));
+  const fallbackInput =
+    typedNodes.length === 0
+      ? firstText(
+          semanticNodes.filter(isStartingActivity).map((node) => node.detail)
+        )
+      : undefined;
+  const fallbackOutput =
+    typedNodes.length === 0
+      ? lastText(
+          semanticNodes.filter(isTerminalActivity).map((node) => node.detail)
+        )
+      : undefined;
   const input = explicitInput || fallbackInput;
   const output = explicitOutput || fallbackOutput;
   const remainingDetail = lastText(
-    nodes
+    semanticNodes
       .map((node) => node.detail)
       .filter(
         (detail) =>
@@ -267,13 +282,13 @@ function composeToolInvocation(
           detail?.trim() !== output?.trim()
       )
   );
-  const startedAt = firstTimestamp(nodes, (node) =>
+  const startedAt = firstTimestamp(semanticNodes, (node) =>
     isStartingActivity(node as ChatActivityNode)
   );
-  const endedAt = lastTimestamp(nodes, (node) =>
+  const endedAt = lastTimestamp(semanticNodes, (node) =>
     isTerminalActivity(node as ChatActivityNode)
   );
-  const explicitDuration = [...nodes]
+  const explicitDuration = [...semanticNodes]
     .reverse()
     .map((node) => node.durationMs)
     .find(
@@ -295,25 +310,25 @@ function composeToolInvocation(
     runId: first.runId,
     activityType: first.activityType === 'terminal' ? 'terminal' : 'tool',
     toolCallId: firstText(nodes.map((node) => node.toolCallId)),
-    nodes,
-    firstNodeId: first.id,
-    lastNodeId: last.id,
-    runSequence: first.runSequence,
-    title: last.title || first.title,
-    status: last.status,
-    phase: activityPhase(last),
+    nodes: semanticNodes,
+    firstNodeId: semanticFirst.id,
+    lastNodeId: semanticLast.id,
+    runSequence: semanticFirst.runSequence,
+    title: semanticLast.title || semanticFirst.title,
+    status: semanticLast.status,
+    phase: activityPhase(semanticLast),
     input,
     output,
     detail: remainingDetail,
     durationMs: explicitDuration ?? derivedDuration,
     startedAt,
     endedAt,
-    agentId: firstText(nodes.map((node) => node.agentId)),
-    agentName: firstText(nodes.map((node) => node.agentName)),
-    taskId: firstText(nodes.map((node) => node.taskId)),
-    toolkitName: firstText(nodes.map((node) => node.toolkitName)),
-    methodName: firstText(nodes.map((node) => node.methodName)),
-    toolName: firstText(nodes.map((node) => node.toolName)),
+    agentId: firstText(semanticNodes.map((node) => node.agentId)),
+    agentName: firstText(semanticNodes.map((node) => node.agentName)),
+    taskId: firstText(semanticNodes.map((node) => node.taskId)),
+    toolkitName: firstText(semanticNodes.map((node) => node.toolkitName)),
+    methodName: firstText(semanticNodes.map((node) => node.methodName)),
+    toolName: firstText(semanticNodes.map((node) => node.toolName)),
   };
 }
 
@@ -423,10 +438,12 @@ function composeRunTimestamps(
   const createdAt = firstTimestamp(nodes);
   const updatedAt = lastTimestamp(nodes);
   const startedAt =
+    runStatus?.startedAt ||
     firstTimestamp(
       nodes,
       (node) => node.kind === 'run_status' && node.status === 'running'
-    ) || createdAt;
+    ) ||
+    createdAt;
   const endedAt =
     (runStatus && TERMINAL_RUN_STATUSES.has(runStatus.status)
       ? runStatus.createdAt

@@ -22,11 +22,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import type { LucideIcon } from 'lucide-react';
 import {
   AlertTriangle,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   CodeXml,
@@ -40,6 +42,7 @@ import {
   Folder as FolderIcon,
   FolderOpen,
   Image,
+  MessageSquare,
   Music,
   PanelRight,
   PanelRightClose,
@@ -616,6 +619,10 @@ export interface FileTreeProps {
   isShowSourceCode: boolean;
   /** Review keeps the Context tree layout and adds change-status markers. */
   variant?: 'default' | 'review';
+  /** Review-only identities that the user has explicitly marked as read. */
+  reviewedFileIds?: ReadonlySet<string>;
+  /** Review-only pending comment count keyed by the adapted file identity. */
+  reviewCommentCounts?: ReadonlyMap<string, number>;
 }
 
 const FILE_TREE_STATUS_META: Record<
@@ -639,6 +646,8 @@ export const FileTree: React.FC<FileTreeProps> = ({
   onSelectFile,
   isShowSourceCode,
   variant = 'default',
+  reviewedFileIds,
+  reviewCommentCounts,
 }) => {
   if (!node.children || node.children.length === 0) return null;
 
@@ -672,6 +681,8 @@ export const FileTree: React.FC<FileTreeProps> = ({
         const status = child.status
           ? FILE_TREE_STATUS_META[child.status]
           : null;
+        const isReviewed = reviewedFileIds?.has(child.path) ?? false;
+        const reviewCommentCount = reviewCommentCounts?.get(child.path) ?? 0;
         const rowIconClass = `size-4 shrink-0 ${
           isRowSelected
             ? 'text-ds-ink-default-default'
@@ -706,7 +717,11 @@ export const FileTree: React.FC<FileTreeProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => onSelectFile(fileInfo)}
+                  onClick={() =>
+                    variant === 'review'
+                      ? onToggleFolder(child.path)
+                      : onSelectFile(fileInfo)
+                  }
                   className="flex h-7 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md border-0 border-x-0 border-y-0 bg-transparent px-1 text-left text-inherit focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:outline-none"
                 >
                   <FolderIcon className={rowIconClass} aria-hidden />
@@ -748,6 +763,24 @@ export const FileTree: React.FC<FileTreeProps> = ({
                     {status.letter}
                   </span>
                 ) : null}
+                {variant === 'review' && isReviewed ? (
+                  <DsIcon
+                    icon={CheckCircle2}
+                    recipe="main-compact"
+                    decorative={false}
+                    className="text-ds-icon-success-default-default"
+                    aria-label="Reviewed"
+                  />
+                ) : null}
+                {variant === 'review' && reviewCommentCount > 0 ? (
+                  <span
+                    className="min-w-ds-control-2xs inline-flex min-h-ds-control-2xs shrink-0 items-center justify-center gap-ds-2 rounded-full bg-ds-accent-subtle-default px-ds-4 text-ds-text-meta font-semibold text-ds-ink-default-default"
+                    aria-label={`${reviewCommentCount} review comments`}
+                  >
+                    <DsIcon icon={MessageSquare} recipe="main-compact" />
+                    {reviewCommentCount}
+                  </span>
+                ) : null}
               </button>
             )}
 
@@ -762,6 +795,8 @@ export const FileTree: React.FC<FileTreeProps> = ({
                   onSelectFile={onSelectFile}
                   isShowSourceCode={isShowSourceCode}
                   variant={variant}
+                  reviewedFileIds={reviewedFileIds}
+                  reviewCommentCounts={reviewCommentCounts}
                 />
               </div>
             ) : null}

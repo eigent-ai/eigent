@@ -909,12 +909,13 @@ class WorkspaceMutationService:
         root: Path,
         operation_request_id: str,
     ):
-        managed = any(
-            self.journal.list_git_change_set_items(item.change_set_id)
-            for item in self.journal.list_git_change_sets()
-            if item.run_id == context.run_id
-        )
-        if managed:
+        # A direct ChangeSet freezes the Run's diff base as soon as the first
+        # mutation is prepared, not only after it records its first item. A
+        # tool can return a no-op after creating incidental files (for example
+        # an editor backup). Treating those files as a fresh User preimage on
+        # the next tool call rebases the Run while the existing ChangeSet still
+        # owns the old base, producing a false "has another owner" conflict.
+        if self.journal.get_git_change_set_for_run(context.run_id) is not None:
             return run
         status = self.git.worktree_status(root)
         if not status:

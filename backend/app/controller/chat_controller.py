@@ -1325,6 +1325,15 @@ async def _prepare_chat_run(
                 template=template,
                 runtime_environment=runtime_environment,
             )
+        attempt = await asyncio.to_thread(
+            journal.create_run_attempt,
+            run_context.run_id,
+            request_id=request_id,
+            reason="initial_execution",
+            activate=False,
+            environment=(environment.binding if environment else None),
+        )
+        if isinstance(journal, SQLiteRunJournal):
             try:
                 await asyncio.to_thread(
                     get_default_workspace_git_coordinator().admit_run,
@@ -1337,7 +1346,9 @@ async def _prepare_chat_run(
             except Exception:
                 # Git is optional at Run admission. A broken repository blocks
                 # later Git/file mutation, while pure conversation remains
-                # available for recovery and user guidance.
+                # available for recovery and user guidance. The Attempt is
+                # created first so a failed Project lease admission can never
+                # leave a checkout writer without an owning Attempt.
                 chat_logger.warning(
                     "Failed to pin optional Run Git workspace",
                     extra={
@@ -1347,14 +1358,6 @@ async def _prepare_chat_run(
                     },
                     exc_info=True,
                 )
-        attempt = await asyncio.to_thread(
-            journal.create_run_attempt,
-            run_context.run_id,
-            request_id=request_id,
-            reason="initial_execution",
-            activate=False,
-            environment=(environment.binding if environment else None),
-        )
         await _record_canonical_user_message(
             journal,
             run_context=run_context,

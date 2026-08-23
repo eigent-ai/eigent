@@ -87,6 +87,7 @@ from app.workspace_git.retention import (
 from app.workspace_git.scheduler import (
     WorkspaceWriterAdmission,
     WorkspaceWriterInterruptedError,
+    WorkspaceWriterReconciliation,
     WorkspaceWriterScheduler,
     get_default_workspace_writer_scheduler,
 )
@@ -159,6 +160,7 @@ __all__ = [
     "WorkspaceMutationReconciliation",
     "WorkspaceWriterAdmission",
     "WorkspaceWriterInterruptedError",
+    "WorkspaceWriterReconciliation",
     "WorkspaceWriterScheduler",
     "WorkspaceOverlayConflictError",
     "WorkspacePathNotFoundError",
