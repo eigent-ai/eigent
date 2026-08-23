@@ -18,6 +18,7 @@ import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseWorkers';
 import { isBaseWorkflowAgent } from '@/components/Workspace/FoldedAgentCard';
 import { SingleAgentList } from '@/components/Workspace/SingleAgentList';
 import { WorkforceAgentList } from '@/components/Workspace/WorkforceAgentList';
+import { WorkspaceDashboard } from '@/components/Workspace/WorkspaceDashboard';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useHost } from '@/host';
@@ -409,6 +410,15 @@ export default function Workspace({
       )}
     </>
   );
+
+  if (variant === 'workspace' && !embedded) {
+    return (
+      <WorkspaceDashboard
+        composerTop={workspaceComposerTop}
+        composerInput={composerInput}
+      />
+    );
+  }
 
   return (
     <div

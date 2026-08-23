@@ -71,11 +71,26 @@ const mocks = vi.hoisted(() => {
         id: 'space-1',
         sourceType: 'blank',
         status: 'active',
+        metadata: {},
       },
     },
     projectsBySpaceId: {},
     getProjectMeta: vi.fn(() => null),
     setActiveSpace: vi.fn(),
+    updateSpace: vi.fn(),
+    updateSpaceOnServer: vi.fn().mockResolvedValue(undefined),
+  };
+  const dashboardLoadContent = vi.fn(async (file: FileInfo) => ({
+    ...file,
+    content: '# Delivery\n- [ ] Send client sample',
+  }));
+  const dashboardFileState = {
+    activeSpace: spaceState.spaces['space-1'],
+    files: [] as FileInfo[],
+    loading: false,
+    error: null as string | null,
+    refresh: vi.fn(),
+    loadContent: dashboardLoadContent,
   };
   const pageState = {
     activeWorkspaceTab: 'workforce',
@@ -93,6 +108,8 @@ const mocks = vi.hoisted(() => {
     pageState,
     projectState,
     spaceState,
+    dashboardFileState,
+    dashboardLoadContent,
   };
 });
 
@@ -158,6 +175,10 @@ vi.mock('@/lib/spaceProject', () => ({
   createSyncedProjectInSpace: vi.fn(),
 }));
 
+vi.mock('@/components/Workspace/useWorkspaceDashboardFiles', () => ({
+  useWorkspaceDashboardFiles: () => mocks.dashboardFileState,
+}));
+
 vi.mock('@/components/ChatBox/BottomBox', () => ({
   default: ({ inputProps }: { inputProps: any }) => (
     <div>
@@ -206,6 +227,15 @@ describe('Workspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.spaceState.projectsBySpaceId = {};
+    mocks.spaceState.spaces['space-1'].metadata = {};
+    mocks.dashboardFileState.activeSpace = mocks.spaceState.spaces['space-1'];
+    mocks.dashboardFileState.files = [];
+    mocks.dashboardFileState.loading = false;
+    mocks.dashboardFileState.error = null;
+    mocks.dashboardLoadContent.mockImplementation(async (file: FileInfo) => ({
+      ...file,
+      content: '# Delivery\n- [ ] Send client sample',
+    }));
     vi.mocked(createSyncedProjectInSpace).mockResolvedValue({
       projectId: 'new-project',
       spaceId: 'space-1',
@@ -253,8 +283,8 @@ describe('Workspace', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('centers the composer without Workspace management subpages', () => {
-    renderWorkspace();
+  it('places the composer above the CRM dashboard without management subpages', () => {
+    const { container } = renderWorkspace();
 
     expect(
       screen.queryByRole('complementary', { name: 'Workspace management' })
@@ -269,9 +299,45 @@ describe('Workspace', () => {
       screen.queryByRole('button', { name: /All projects/ })
     ).not.toBeInTheDocument();
     expect(screen.getByLabelText('Workspace header')).toHaveClass(
-      'flex-1',
-      'items-center'
+      'shrink-0',
+      'min-h-[55vh]',
+      'items-end',
+      'justify-center',
+      'pb-ds-64'
     );
+    expect(screen.getByLabelText('Workspace header')).not.toHaveClass(
+      'border-b'
+    );
+    expect(
+      container.querySelector('[data-workspace-dashboard-scroll-root]')
+    ).toHaveClass('scrollbar-always-visible', 'overflow-y-auto');
+    expect(screen.getByRole('tab', { name: 'Overview' })).toBeInTheDocument();
+    expect(screen.getByRole('complementary', { name: 'To-dos' })).toHaveClass(
+      'max-w-[400px]'
+    );
+    const tabsRegion = container.querySelector(
+      '[data-workspace-dashboard-tabs-region]'
+    );
+    const stickyTabs = container.querySelector(
+      '[data-workspace-dashboard-tabs-sticky]'
+    );
+    expect(stickyTabs).toHaveClass('sticky', 'border-b');
+    expect(stickyTabs).not.toHaveClass('blur-[2px]');
+    expect(tabsRegion).toHaveClass('opacity-40', 'transition-opacity');
+    expect(tabsRegion).toHaveAttribute(
+      'data-workspace-dashboard-tabs-revealed',
+      'false'
+    );
+    expect(
+      screen.getByText(
+        'Link the Markdown documents that should appear in this dashboard section.'
+      ).className
+    ).not.toMatch(/(?:^|\s)max-w-/);
+    expect(
+      screen.getByText(
+        'Link one or more Markdown files containing task checkboxes.'
+      ).className
+    ).not.toMatch(/(?:^|\s)max-w-/);
   });
 
   it('uses one left-aligned Cowork row without the Space switch above BottomBox', () => {
@@ -288,10 +354,19 @@ describe('Workspace', () => {
     );
     const workspaceHeader = screen.getByLabelText('Workspace header');
 
-    expect(coworkLabel).toHaveClass('text-heading-lg', 'font-display');
-    expect(singleAgentLabel).toHaveClass('text-heading-lg', 'font-display');
-    expect(workspaceHeader).toHaveClass('flex-1', 'items-center', 'gap-0');
-    expect(inputSection).toHaveClass('items-center', 'p-4');
+    expect(coworkLabel).toHaveClass('text-ds-text-display', 'font-display');
+    expect(singleAgentLabel).toHaveClass(
+      'text-ds-text-display',
+      'font-display'
+    );
+    expect(workspaceHeader).toHaveClass(
+      'shrink-0',
+      'min-h-[55vh]',
+      'items-end',
+      'justify-center',
+      'pb-ds-64'
+    );
+    expect(inputSection).toHaveClass('max-w-[600px]', 'min-w-0', 'flex-col');
     expect(coworkRow).toHaveClass(
       'min-h-[46px]',
       'items-center',
@@ -350,6 +425,36 @@ describe('Workspace', () => {
     renderWorkspace({ sessionMode: 'workforce' });
 
     expect(screen.queryByText('Single Agent')).not.toBeInTheDocument();
+  });
+
+  it('manually links a Markdown file to the active CRM section', () => {
+    mocks.dashboardFileState.files = [
+      {
+        name: 'acme.md',
+        type: 'md',
+        path: '/space/clients/acme.md',
+        relativePath: 'clients/acme.md',
+      },
+    ];
+    renderWorkspace();
+
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Link files' })[0] as HTMLElement
+    );
+    fireEvent.click(screen.getByLabelText(/acme\.md/));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(mocks.spaceState.updateSpace).toHaveBeenCalledWith(
+      'space-1',
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          workspaceDashboard: {
+            version: 1,
+            sources: { overview: ['clients/acme.md'] },
+          },
+        }),
+      })
+    );
   });
 
   it('guards against duplicate submissions while project creation is pending', async () => {

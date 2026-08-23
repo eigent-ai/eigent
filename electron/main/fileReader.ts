@@ -1354,6 +1354,94 @@ export class FileReader {
   }
 
   /**
+   * Enumerate dashboard-ready Markdown documents without walking dependency,
+   * build, or runtime-output folders. The renderer still has to register and
+   * authorize the owning Space root at the IPC boundary.
+   */
+  public getWorkspaceMarkdownFileList(workspacePath: string): FileInfo[] {
+    const rootPath = path.resolve(workspacePath);
+    const ignoredFolders = new Set([
+      ...this.hiddenFolders,
+      'node_modules',
+      'dist',
+      'build',
+      'coverage',
+      'out',
+      'target',
+      'vendor',
+    ]);
+    const markdownExtensions = new Set(['md', 'mdx', 'markdown']);
+    const maxFiles = 500;
+
+    try {
+      if (!fs.existsSync(rootPath) || !fs.statSync(rootPath).isDirectory()) {
+        return [];
+      }
+
+      const rootRealPath = fs.realpathSync(rootPath);
+      const files: FileInfo[] = [];
+      const visit = (directoryPath: string) => {
+        if (files.length >= maxFiles) return;
+        const entries = fs
+          .readdirSync(directoryPath)
+          .sort((left, right) => left.localeCompare(right));
+
+        for (const entry of entries) {
+          if (files.length >= maxFiles) break;
+          if (entry.startsWith('.') || ignoredFolders.has(entry)) continue;
+
+          const candidatePath = path.join(directoryPath, entry);
+          try {
+            const stats = fs.lstatSync(candidatePath);
+            if (stats.isSymbolicLink()) continue;
+            const realPath = fs.realpathSync(candidatePath);
+            const relativePath = path.relative(rootRealPath, realPath);
+            if (
+              relativePath.startsWith('..') ||
+              path.isAbsolute(relativePath)
+            ) {
+              continue;
+            }
+
+            if (stats.isDirectory()) {
+              visit(realPath);
+              continue;
+            }
+            if (!stats.isFile()) continue;
+
+            const type = path.extname(entry).slice(1).toLowerCase();
+            if (!markdownExtensions.has(type)) continue;
+            files.push({
+              path: realPath,
+              name: path.basename(realPath),
+              type,
+              isFolder: false,
+              relativePath,
+              size: stats.size,
+              modifiedAt: stats.mtimeMs,
+              mimeType: mime.getType(realPath) || 'text/markdown',
+            });
+          } catch (error) {
+            console.warn(
+              'Skipping inaccessible Markdown file:',
+              candidatePath,
+              error
+            );
+          }
+        }
+      };
+
+      visit(rootRealPath);
+      return files.sort((left, right) =>
+        left.relativePath.localeCompare(right.relativePath)
+      );
+    } catch (error) {
+      console.error('Get workspace Markdown file list failed:', error);
+      return [];
+    }
+  }
+
+  /**
    * Enumerate files from an already-authorized Space workspace root.
    *
    * The IPC boundary is responsible for authorizing the root against the

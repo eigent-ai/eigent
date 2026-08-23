@@ -25,5 +25,32 @@
   "multi-modal-agent": "Multi-Modal-Agent",
   "social-media-agent": "Social-Media-Agent",
   "no-projects-found": "Keine Projekte gefunden.",
-  "no-tasks-found": "Keine Aufgaben gefunden."
+  "no-tasks-found": "Keine Aufgaben gefunden.",
+  "workspace-crm": {
+    "overview": "Übersicht",
+    "accounts": "Kunden",
+    "delivery": "Umsetzung",
+    "approvals": "Freigaben",
+    "launch": "Einführung",
+    "risks": "Risiken",
+    "todos": "Aufgaben",
+    "link-files": "Dateien verknüpfen",
+    "link-files-title": "Dateien mit {{section}} verknüpfen",
+    "link-files-description": "Wählen Sie Markdown-Dateien aus der Datei-Ansicht dieses Space. Eine Datei kann in mehreren Bereichen erscheinen.",
+    "refresh-files": "Markdown-Dateien aktualisieren",
+    "retry": "Erneut versuchen",
+    "files-error": "Dateien konnten nicht geladen werden",
+    "file-preview-error": "Diese Markdown-Datei konnte nicht gelesen werden.",
+    "empty-file": "Diese Markdown-Datei ist leer.",
+    "no-markdown-files": "Keine Markdown-Dateien gefunden",
+    "no-markdown-files-description": "Fügen Sie diesem Space eine .md-, .mdx- oder .markdown-Datei hinzu und aktualisieren Sie dann.",
+    "no-linked-files": "Keine Dateien mit {{section}} verknüpft",
+    "no-linked-files-description": "Verknüpfen Sie die Markdown-Dokumente, die in diesem Dashboard-Bereich erscheinen sollen.",
+    "no-todo-files": "Keine Aufgabendateien verknüpft",
+    "no-todo-files-description": "Verknüpfen Sie eine oder mehrere Markdown-Dateien mit Aufgaben-Checkboxen.",
+    "no-tasks-in-file": "In dieser Datei wurden keine Markdown-Aufgaben gefunden.",
+    "task-progress": "{{completed}} von {{total}} erledigt",
+    "linked-file-count": "{{count}} verknüpft",
+    "save-error": "Die Dashboard-Dateiverknüpfungen konnten nicht gespeichert werden."
+  }
 }

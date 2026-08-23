@@ -25,5 +25,32 @@
   "multi-modal-agent": "멀티모달 에이전트",
   "social-media-agent": "소셜미디어 에이전트",
   "no-projects-found": "프로젝트를 찾을 수 없습니다.",
-  "no-tasks-found": "작업을 찾을 수 없습니다."
+  "no-tasks-found": "작업을 찾을 수 없습니다.",
+  "workspace-crm": {
+    "overview": "개요",
+    "accounts": "고객",
+    "delivery": "납품",
+    "approvals": "승인",
+    "launch": "출시",
+    "risks": "위험",
+    "todos": "할 일",
+    "link-files": "파일 연결",
+    "link-files-title": "{{section}}에 파일 연결",
+    "link-files-description": "이 스페이스의 파일 보기에서 Markdown 파일을 선택하세요. 하나의 파일을 여러 섹션에 표시할 수 있습니다.",
+    "refresh-files": "Markdown 파일 새로고침",
+    "retry": "다시 시도",
+    "files-error": "파일을 불러올 수 없습니다",
+    "file-preview-error": "이 Markdown 파일을 읽을 수 없습니다.",
+    "empty-file": "이 Markdown 파일은 비어 있습니다.",
+    "no-markdown-files": "Markdown 파일이 없습니다",
+    "no-markdown-files-description": "이 스페이스에 .md, .mdx 또는 .markdown 파일을 추가한 후 새로고침하세요.",
+    "no-linked-files": "{{section}}에 연결된 파일이 없습니다",
+    "no-linked-files-description": "이 대시보드 섹션에 표시할 Markdown 문서를 연결하세요.",
+    "no-todo-files": "연결된 할 일 파일이 없습니다",
+    "no-todo-files-description": "작업 체크박스가 포함된 Markdown 파일을 하나 이상 연결하세요.",
+    "no-tasks-in-file": "이 파일에서 Markdown 작업을 찾을 수 없습니다.",
+    "task-progress": "{{total}}개 중 {{completed}}개 완료",
+    "linked-file-count": "{{count}}개 연결됨",
+    "save-error": "대시보드 파일 연결을 저장할 수 없습니다."
+  }
 }

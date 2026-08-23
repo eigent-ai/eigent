@@ -6831,6 +6831,7 @@ html[data-theme='dark'] {
   </div></div>
   </article>
     <div class="proposal-callout mt-5"><span class="callout-mark">A</span><div><strong>Meaning and appearance are independent</strong><span>Choose the semantic element first, then its visual role. A compact h2 stays an h2; a styled div never substitutes for a heading.</span></div></div>
+    <div class="proposal-callout mt-4"><span class="callout-mark">W</span><div><strong>Description width belongs to the layout</strong><span>Descriptions and supporting paragraphs inherit their owner's inline size. Feature code must not shorten copy with a local <code>max-w-*</code>; only a shared prose or document recipe may own a constrained reading measure.</span></div></div>
   </section>
 <section class="review-section" id="icons">
     <div class="section-heading">
@@ -6970,6 +6971,7 @@ html[data-theme='dark'] {
   </div></div>
   </article>
     </div>
+    <div class="proposal-callout mt-5"><span class="callout-mark">S</span><div><strong>Scroll owners use shared custom chrome</strong><span>Persistent working surfaces apply <code>scrollbar-always-visible</code> to the element that owns overflow. Feature code must not fall back to browser-default chrome or restyle scrollbar pseudo-elements locally.</span></div></div>
   </section>
 <section class="review-section" id="radius">
     <div class="section-heading">
@@ -8363,6 +8365,12 @@ semantic element.</li>
 <code>time</code> for dates/times, and <code>code</code>/<code>pre</code> for code.</li>
 <li>Headings and paragraphs have no unscoped global margins. A Stack or content
 profile owns rhythm.</li>
+<li>Descriptions and supporting paragraphs inherit the available inline size from
+their owning layout. Feature code must not add a local <code>max-w-*</code> constraint
+merely to shorten the copy.</li>
+<li>A constrained reading measure is valid only when it belongs to a shared prose
+or document recipe. The recipe, not an individual paragraph, owns the constraint
+and must support narrow layouts, 200% zoom, and longer localized content.</li>
 <li>A proposed typography primitive may accept <code>as</code>, but its default semantic
 element must match its role and be visible in review tooling.</li>
 <li>Feature code must not imitate a heading with a bold <code>div</code> when a heading is
@@ -9344,6 +9352,17 @@ not part of the normal API.</li>
 in the review viewer.</li>
 <li>A primitive may expose an <code>unstyled</code> mode only for composition by another
 approved primitive, not as a shortcut in feature code.</li>
+</ul>
+<h3>9.2 Proposed scroll-area rules</h3>
+<ul>
+<li>Product-owned overflow regions use a shared custom scrollbar recipe instead of
+unstyled browser-default scrollbar chrome.</li>
+<li>Persistent working surfaces apply <code>scrollbar-always-visible</code> and
+<code>overflow-y-auto</code> to the element that owns overflow, preserving a stable gutter.</li>
+<li><code>scrollbar-overlay</code> is reserved for transient overlay panels, and
+<code>scrollbar-hide</code> requires another visible scrolling control or affordance.</li>
+<li>Feature code does not restyle scrollbar pseudo-elements locally; track geometry
+remains owned by the registered scrollbar exception.</li>
 </ul>
 <h2>10. Proposed Markdown typography profiles</h2>
 <p>Markdown is a scoped document-rendering system and should not dictate global

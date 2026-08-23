@@ -25,5 +25,32 @@
   "multi-modal-agent": "Multi Modal Agent",
   "social-media-agent": "Social Media Agent",
   "no-projects-found": "No projects found.",
-  "no-tasks-found": "No tasks found."
+  "no-tasks-found": "No tasks found.",
+  "workspace-crm": {
+    "overview": "Overview",
+    "accounts": "Accounts",
+    "delivery": "Delivery",
+    "approvals": "Approvals",
+    "launch": "Launch",
+    "risks": "Risks",
+    "todos": "To-dos",
+    "link-files": "Link files",
+    "link-files-title": "Link files to {{section}}",
+    "link-files-description": "Choose Markdown files from this Space's Files view. A file can appear in more than one section.",
+    "refresh-files": "Refresh Markdown files",
+    "retry": "Retry",
+    "files-error": "Files could not be loaded",
+    "file-preview-error": "This Markdown file could not be read.",
+    "empty-file": "This Markdown file is empty.",
+    "no-markdown-files": "No Markdown files found",
+    "no-markdown-files-description": "Add a .md, .mdx, or .markdown file to this Space, then refresh.",
+    "no-linked-files": "No files linked to {{section}}",
+    "no-linked-files-description": "Link the Markdown documents that should appear in this dashboard section.",
+    "no-todo-files": "No to-do files linked",
+    "no-todo-files-description": "Link one or more Markdown files containing task checkboxes.",
+    "no-tasks-in-file": "No Markdown tasks found in this file.",
+    "task-progress": "{{completed}} of {{total}} completed",
+    "linked-file-count": "{{count}} linked",
+    "save-error": "The dashboard file links could not be saved."
+  }
 }

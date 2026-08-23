@@ -25,5 +25,32 @@
   "multi-modal-agent": "多模態智能體",
   "social-media-agent": "社群媒體智能體",
   "no-projects-found": "沒有找到專案",
-  "no-tasks-found": "找不到任務。"
+  "no-tasks-found": "找不到任務。",
+  "workspace-crm": {
+    "overview": "概覽",
+    "accounts": "客戶",
+    "delivery": "交付",
+    "approvals": "審批",
+    "launch": "發佈",
+    "risks": "風險",
+    "todos": "待辦",
+    "link-files": "連結檔案",
+    "link-files-title": "連結檔案到{{section}}",
+    "link-files-description": "從此空間的檔案檢視中選擇 Markdown 檔案。同一個檔案可以顯示在多個區段中。",
+    "refresh-files": "重新整理 Markdown 檔案",
+    "retry": "重試",
+    "files-error": "無法載入檔案",
+    "file-preview-error": "無法讀取此 Markdown 檔案。",
+    "empty-file": "此 Markdown 檔案為空。",
+    "no-markdown-files": "找不到 Markdown 檔案",
+    "no-markdown-files-description": "將 .md、.mdx 或 .markdown 檔案新增至此空間，然後重新整理。",
+    "no-linked-files": "{{section}}尚未連結檔案",
+    "no-linked-files-description": "連結要顯示在此儀表板區段中的 Markdown 文件。",
+    "no-todo-files": "尚未連結待辦檔案",
+    "no-todo-files-description": "連結一個或多個包含任務核取方塊的 Markdown 檔案。",
+    "no-tasks-in-file": "此檔案中沒有 Markdown 任務。",
+    "task-progress": "已完成 {{completed}} / {{total}}",
+    "linked-file-count": "已連結 {{count}} 個",
+    "save-error": "無法儲存儀表板檔案連結。"
+  }
 }

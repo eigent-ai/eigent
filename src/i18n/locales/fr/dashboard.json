@@ -25,5 +25,32 @@
   "multi-modal-agent": "Agent Multi Modal",
   "social-media-agent": "Agent de Médias Sociaux",
   "no-projects-found": "Aucun projet trouvé.",
-  "no-tasks-found": "Aucune tâche trouvée."
+  "no-tasks-found": "Aucune tâche trouvée.",
+  "workspace-crm": {
+    "overview": "Vue d'ensemble",
+    "accounts": "Comptes",
+    "delivery": "Livraison",
+    "approvals": "Validations",
+    "launch": "Lancement",
+    "risks": "Risques",
+    "todos": "Tâches",
+    "link-files": "Lier des fichiers",
+    "link-files-title": "Lier des fichiers à {{section}}",
+    "link-files-description": "Choisissez des fichiers Markdown dans la vue Fichiers de cet espace. Un fichier peut apparaître dans plusieurs sections.",
+    "refresh-files": "Actualiser les fichiers Markdown",
+    "retry": "Réessayer",
+    "files-error": "Impossible de charger les fichiers",
+    "file-preview-error": "Ce fichier Markdown n'a pas pu être lu.",
+    "empty-file": "Ce fichier Markdown est vide.",
+    "no-markdown-files": "Aucun fichier Markdown trouvé",
+    "no-markdown-files-description": "Ajoutez un fichier .md, .mdx ou .markdown à cet espace, puis actualisez.",
+    "no-linked-files": "Aucun fichier lié à {{section}}",
+    "no-linked-files-description": "Liez les documents Markdown qui doivent apparaître dans cette section du tableau de bord.",
+    "no-todo-files": "Aucun fichier de tâches lié",
+    "no-todo-files-description": "Liez un ou plusieurs fichiers Markdown contenant des cases à cocher.",
+    "no-tasks-in-file": "Aucune tâche Markdown trouvée dans ce fichier.",
+    "task-progress": "{{completed}} sur {{total}} terminées",
+    "linked-file-count": "{{count}} liés",
+    "save-error": "Impossible d'enregistrer les liens de fichiers du tableau de bord."
+  }
 }

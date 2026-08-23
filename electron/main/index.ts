@@ -386,8 +386,7 @@ type BackendStartOptions = {
 };
 
 type BackendStartResult =
-  | { success: true; port: number }
-  | { success: false; error: string };
+  { success: true; port: number } | { success: false; error: string };
 
 function formatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -2703,6 +2702,21 @@ function registerIpcHandlers() {
         authorizedRoot,
         requestedRelativePaths
       );
+    }
+  );
+
+  ipcMain.handle(
+    'get-workspace-markdown-file-list',
+    async (event, workspaceRoot: unknown) => {
+      if (typeof workspaceRoot !== 'string') {
+        throw new Error('Invalid workspace Markdown file request');
+      }
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      const authorizedRoot = await requireAuthorizedPreviewFile(
+        event,
+        workspaceRoot
+      );
+      return manager.getWorkspaceMarkdownFileList(authorizedRoot);
     }
   );
 

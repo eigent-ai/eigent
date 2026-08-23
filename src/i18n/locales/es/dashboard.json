@@ -25,5 +25,32 @@
   "multi-modal-agent": "Agente Multi Modal",
   "social-media-agent": "Agente de Redes Sociales",
   "no-projects-found": "No se encontraron proyectos.",
-  "no-tasks-found": "No se encontraron tareas."
+  "no-tasks-found": "No se encontraron tareas.",
+  "workspace-crm": {
+    "overview": "Resumen",
+    "accounts": "Cuentas",
+    "delivery": "Entrega",
+    "approvals": "Aprobaciones",
+    "launch": "Lanzamiento",
+    "risks": "Riesgos",
+    "todos": "Tareas",
+    "link-files": "Vincular archivos",
+    "link-files-title": "Vincular archivos a {{section}}",
+    "link-files-description": "Elige archivos Markdown de la vista Archivos de este espacio. Un archivo puede aparecer en varias secciones.",
+    "refresh-files": "Actualizar archivos Markdown",
+    "retry": "Reintentar",
+    "files-error": "No se pudieron cargar los archivos",
+    "file-preview-error": "No se pudo leer este archivo Markdown.",
+    "empty-file": "Este archivo Markdown está vacío.",
+    "no-markdown-files": "No se encontraron archivos Markdown",
+    "no-markdown-files-description": "Añade un archivo .md, .mdx o .markdown a este espacio y actualiza.",
+    "no-linked-files": "No hay archivos vinculados a {{section}}",
+    "no-linked-files-description": "Vincula los documentos Markdown que deben aparecer en esta sección del panel.",
+    "no-todo-files": "No hay archivos de tareas vinculados",
+    "no-todo-files-description": "Vincula uno o más archivos Markdown que contengan casillas de tareas.",
+    "no-tasks-in-file": "No se encontraron tareas Markdown en este archivo.",
+    "task-progress": "{{completed}} de {{total}} completadas",
+    "linked-file-count": "{{count}} vinculados",
+    "save-error": "No se pudieron guardar los vínculos de archivos del panel."
+  }
 }

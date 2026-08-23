@@ -25,5 +25,32 @@
   "multi-modal-agent": "マルチモーダルエージェント",
   "social-media-agent": "ソーシャルメディアエージェント",
   "no-projects-found": "プロジェクトが見つかりませんでした。",
-  "no-tasks-found": "タスクが見つかりません。"
+  "no-tasks-found": "タスクが見つかりません。",
+  "workspace-crm": {
+    "overview": "概要",
+    "accounts": "顧客",
+    "delivery": "納品",
+    "approvals": "承認",
+    "launch": "リリース",
+    "risks": "リスク",
+    "todos": "To-do",
+    "link-files": "ファイルをリンク",
+    "link-files-title": "{{section}} にファイルをリンク",
+    "link-files-description": "このスペースのファイル画面から Markdown ファイルを選択します。1つのファイルを複数のセクションに表示できます。",
+    "refresh-files": "Markdown ファイルを更新",
+    "retry": "再試行",
+    "files-error": "ファイルを読み込めませんでした",
+    "file-preview-error": "この Markdown ファイルを読み取れませんでした。",
+    "empty-file": "この Markdown ファイルは空です。",
+    "no-markdown-files": "Markdown ファイルがありません",
+    "no-markdown-files-description": ".md、.mdx、または .markdown ファイルをこのスペースに追加して更新してください。",
+    "no-linked-files": "{{section}} にリンクされたファイルはありません",
+    "no-linked-files-description": "このダッシュボードセクションに表示する Markdown ドキュメントをリンクしてください。",
+    "no-todo-files": "To-do ファイルがリンクされていません",
+    "no-todo-files-description": "タスクのチェックボックスを含む Markdown ファイルをリンクしてください。",
+    "no-tasks-in-file": "このファイルに Markdown タスクはありません。",
+    "task-progress": "{{total}} 件中 {{completed}} 件完了",
+    "linked-file-count": "{{count}} 件リンク済み",
+    "save-error": "ダッシュボードのファイルリンクを保存できませんでした。"
+  }
 }

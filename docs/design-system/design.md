@@ -184,6 +184,13 @@ Rules:
 - Follow heading order; do not choose heading elements for visual size.
 - Use `button` for actions and `a` for navigation.
 - Do not add unscoped global margins to headings or paragraphs.
+- Descriptions and supporting paragraphs inherit the available inline size from
+  their owning layout. Feature code must not add a local `max-w-*` constraint
+  merely to shorten the copy.
+- A constrained reading measure is valid only when it belongs to a shared
+  prose or document recipe. The recipe, not an individual paragraph, owns the
+  constraint and must support narrow layouts, 200% zoom, and longer localized
+  content.
 - Weight may change emphasis but never size, icon size, component height, or
   layout geometry.
 - Truncated text must expose the full accessible label or an accessible
@@ -371,6 +378,23 @@ guest bounds, terminals, and preview geometry. These patterns may use
 registered exceptions because their values are coupled to runtime measurement
 or platform behavior.
 
+### Scroll areas
+
+Product-owned overflow regions use the shared scrollbar recipes from
+`src/style/index.css`; do not expose unstyled browser-default scrollbar chrome.
+
+- Use `scrollbar-always-visible` on persistent working surfaces together with
+  `overflow-y-auto`. The thumb appears only when content overflows, while the
+  stable gutter prevents horizontal layout shift.
+- Apply the scrollbar recipe to the element that owns `overflow`, not to an
+  outer layout wrapper.
+- Use `scrollbar-overlay` only when the scrollbar must sit over transient panel
+  content. Use `scrollbar-hide` only when scrolling has another visible control
+  or affordance.
+- Feature code chooses an approved recipe and must not restyle scrollbar
+  pseudo-elements locally. Scrollbar track geometry remains owned by the
+  registered `scrollbar-geometry` exception.
+
 ## 12. Motion
 
 - Use motion to explain entry, exit, hierarchy, state, or spatial continuity.
@@ -418,6 +442,8 @@ New UI must not introduce:
 - New unprefixed CSS variables or compatibility aliases.
 - Public `active`, `focus`, or `inverse` emphasis/state axes.
 - Local icon sizing that fights a primitive recipe.
+- Feature-level `max-w-*` constraints on descriptions or supporting paragraphs
+  outside an approved prose or document recipe.
 - Global element styles to fix a scoped surface.
 - A new primitive when an existing primitive supports the behavior.
 - A new component color namespace; components consume foundation color roles.

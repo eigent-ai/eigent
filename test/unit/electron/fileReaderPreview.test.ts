@@ -112,6 +112,27 @@ describe('FileReader bounded preview', () => {
     }
   });
 
+  it('enumerates Markdown dashboard sources without dependency folders', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'eigent-workspace-'));
+    temporaryDirectories.push(directory);
+    const clients = path.join(directory, 'clients');
+    const dependency = path.join(directory, 'node_modules', 'package');
+    await mkdir(clients, { recursive: true });
+    await mkdir(dependency, { recursive: true });
+    await writeFile(path.join(directory, 'README.md'), '# Overview');
+    await writeFile(path.join(clients, 'acme.mdx'), '# Acme');
+    await writeFile(path.join(clients, 'notes.txt'), 'Ignore me');
+    await writeFile(path.join(dependency, 'README.md'), '# Dependency');
+
+    const reader = new FileReader(null as never);
+    const files = reader.getWorkspaceMarkdownFileList(directory);
+
+    expect(files.map((file) => file.relativePath)).toHaveLength(2);
+    expect(files.map((file) => file.relativePath)).toEqual(
+      expect.arrayContaining(['README.md', path.join('clients', 'acme.mdx')])
+    );
+  });
+
   it('fails closed before fully reading oversized rich text', async () => {
     const filePath = await temporaryFile('large.md', '');
     await truncate(filePath, FILE_PREVIEW_LIMITS.textBytes + 1);

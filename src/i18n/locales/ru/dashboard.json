@@ -25,5 +25,32 @@
   "multi-modal-agent": "Мультимодальный агент",
   "social-media-agent": "Агент социальных сетей",
   "no-projects-found": "Проекты не найдены",
-  "no-tasks-found": "Задачи не найдены."
+  "no-tasks-found": "Задачи не найдены.",
+  "workspace-crm": {
+    "overview": "Обзор",
+    "accounts": "Клиенты",
+    "delivery": "Выполнение",
+    "approvals": "Согласования",
+    "launch": "Запуск",
+    "risks": "Риски",
+    "todos": "Задачи",
+    "link-files": "Связать файлы",
+    "link-files-title": "Связать файлы с {{section}}",
+    "link-files-description": "Выберите Markdown-файлы в разделе файлов этого пространства. Один файл может отображаться в нескольких разделах.",
+    "refresh-files": "Обновить Markdown-файлы",
+    "retry": "Повторить",
+    "files-error": "Не удалось загрузить файлы",
+    "file-preview-error": "Не удалось прочитать этот Markdown-файл.",
+    "empty-file": "Этот Markdown-файл пуст.",
+    "no-markdown-files": "Markdown-файлы не найдены",
+    "no-markdown-files-description": "Добавьте файл .md, .mdx или .markdown в это пространство и обновите список.",
+    "no-linked-files": "Нет файлов, связанных с {{section}}",
+    "no-linked-files-description": "Свяжите Markdown-документы, которые должны отображаться в этом разделе панели.",
+    "no-todo-files": "Файлы задач не связаны",
+    "no-todo-files-description": "Свяжите один или несколько Markdown-файлов с флажками задач.",
+    "no-tasks-in-file": "В этом файле нет Markdown-задач.",
+    "task-progress": "Выполнено {{completed}} из {{total}}",
+    "linked-file-count": "Связано: {{count}}",
+    "save-error": "Не удалось сохранить связи файлов панели."
+  }
 }

@@ -25,5 +25,32 @@
   "multi-modal-agent": "وكيل متعدد الوسائط",
   "social-media-agent": "وكيل وسائل التواصل الاجتماعي",
   "no-projects-found": "لا توجد مشاريع",
-  "no-tasks-found": "لم يتم العثور على مهام."
+  "no-tasks-found": "لم يتم العثور على مهام.",
+  "workspace-crm": {
+    "overview": "نظرة عامة",
+    "accounts": "العملاء",
+    "delivery": "التسليم",
+    "approvals": "الموافقات",
+    "launch": "الإطلاق",
+    "risks": "المخاطر",
+    "todos": "المهام",
+    "link-files": "ربط الملفات",
+    "link-files-title": "ربط الملفات بـ {{section}}",
+    "link-files-description": "اختر ملفات Markdown من عرض الملفات في هذه المساحة. يمكن أن يظهر الملف في أكثر من قسم.",
+    "refresh-files": "تحديث ملفات Markdown",
+    "retry": "إعادة المحاولة",
+    "files-error": "تعذر تحميل الملفات",
+    "file-preview-error": "تعذرت قراءة ملف Markdown هذا.",
+    "empty-file": "ملف Markdown هذا فارغ.",
+    "no-markdown-files": "لم يتم العثور على ملفات Markdown",
+    "no-markdown-files-description": "أضف ملف .md أو .mdx أو .markdown إلى هذه المساحة ثم حدّث.",
+    "no-linked-files": "لا توجد ملفات مرتبطة بـ {{section}}",
+    "no-linked-files-description": "اربط مستندات Markdown التي يجب أن تظهر في قسم لوحة المعلومات هذا.",
+    "no-todo-files": "لا توجد ملفات مهام مرتبطة",
+    "no-todo-files-description": "اربط ملف Markdown واحدًا أو أكثر يحتوي على مربعات اختيار للمهام.",
+    "no-tasks-in-file": "لا توجد مهام Markdown في هذا الملف.",
+    "task-progress": "اكتمل {{completed}} من {{total}}",
+    "linked-file-count": "{{count}} مرتبط",
+    "save-error": "تعذر حفظ روابط ملفات لوحة المعلومات."
+  }
 }

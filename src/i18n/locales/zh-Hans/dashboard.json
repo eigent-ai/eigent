@@ -25,5 +25,32 @@
   "multi-modal-agent": "多模态智能体",
   "social-media-agent": "社交媒体智能体",
   "no-projects-found": "没有找到项目",
-  "no-tasks-found": "未找到任务。"
+  "no-tasks-found": "未找到任务。",
+  "workspace-crm": {
+    "overview": "概览",
+    "accounts": "客户",
+    "delivery": "交付",
+    "approvals": "审批",
+    "launch": "发布",
+    "risks": "风险",
+    "todos": "待办",
+    "link-files": "关联文件",
+    "link-files-title": "关联文件到{{section}}",
+    "link-files-description": "从此空间的文件视图中选择 Markdown 文件。同一个文件可以显示在多个分区中。",
+    "refresh-files": "刷新 Markdown 文件",
+    "retry": "重试",
+    "files-error": "无法加载文件",
+    "file-preview-error": "无法读取此 Markdown 文件。",
+    "empty-file": "此 Markdown 文件为空。",
+    "no-markdown-files": "未找到 Markdown 文件",
+    "no-markdown-files-description": "向此空间添加 .md、.mdx 或 .markdown 文件，然后刷新。",
+    "no-linked-files": "{{section}}尚未关联文件",
+    "no-linked-files-description": "关联要显示在此仪表板分区中的 Markdown 文档。",
+    "no-todo-files": "尚未关联待办文件",
+    "no-todo-files-description": "关联一个或多个包含任务复选框的 Markdown 文件。",
+    "no-tasks-in-file": "此文件中没有 Markdown 任务。",
+    "task-progress": "已完成 {{completed}} / {{total}}",
+    "linked-file-count": "已关联 {{count}} 个",
+    "save-error": "无法保存仪表板文件关联。"
+  }
 }

@@ -25,5 +25,32 @@
   "multi-modal-agent": "Agente Multi Modale",
   "social-media-agent": "Agente Social Media",
   "no-projects-found": "Nessun progetto trovato.",
-  "no-tasks-found": "Nessuna attività trovata."
+  "no-tasks-found": "Nessuna attività trovata.",
+  "workspace-crm": {
+    "overview": "Panoramica",
+    "accounts": "Clienti",
+    "delivery": "Consegna",
+    "approvals": "Approvazioni",
+    "launch": "Lancio",
+    "risks": "Rischi",
+    "todos": "Attività",
+    "link-files": "Collega file",
+    "link-files-title": "Collega file a {{section}}",
+    "link-files-description": "Scegli i file Markdown dalla vista File di questo spazio. Un file può apparire in più sezioni.",
+    "refresh-files": "Aggiorna file Markdown",
+    "retry": "Riprova",
+    "files-error": "Impossibile caricare i file",
+    "file-preview-error": "Impossibile leggere questo file Markdown.",
+    "empty-file": "Questo file Markdown è vuoto.",
+    "no-markdown-files": "Nessun file Markdown trovato",
+    "no-markdown-files-description": "Aggiungi un file .md, .mdx o .markdown a questo spazio, quindi aggiorna.",
+    "no-linked-files": "Nessun file collegato a {{section}}",
+    "no-linked-files-description": "Collega i documenti Markdown da mostrare in questa sezione della dashboard.",
+    "no-todo-files": "Nessun file attività collegato",
+    "no-todo-files-description": "Collega uno o più file Markdown contenenti caselle di attività.",
+    "no-tasks-in-file": "Nessuna attività Markdown trovata in questo file.",
+    "task-progress": "{{completed}} di {{total}} completate",
+    "linked-file-count": "{{count}} collegati",
+    "save-error": "Impossibile salvare i collegamenti ai file della dashboard."
+  }
 }
