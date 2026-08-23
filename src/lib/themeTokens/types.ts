@@ -50,7 +50,6 @@ export const TOKEN_TONES = [
   'terminal',
   'document',
   'success',
-  'caution',
   'error',
   'warning',
   'information',
@@ -164,8 +163,16 @@ export type ContrastDiagnostic = {
   apcaLc: number;
 };
 
+export type SeedAdmissionFinding = {
+  themeId: string;
+  mode: Mode;
+  code: string;
+  message: string;
+};
+
 export type ThemeDiagnostics = {
   contrast: ContrastDiagnostic[];
+  seedAdmission: SeedAdmissionFinding[];
 };
 
 export type ResolvedThemeV2 = {

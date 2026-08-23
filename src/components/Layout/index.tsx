@@ -150,7 +150,7 @@ const Layout = () => {
     location.pathname === '/' || isSettingsRoutePath(location.pathname);
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden bg-ds-bg-neutral-strong-default">
+    <div className="relative flex h-full flex-col overflow-hidden bg-ds-neutral-strong-default">
       <div
         className={
           actualShouldShowInstallScreen

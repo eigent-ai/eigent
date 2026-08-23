@@ -199,8 +199,8 @@ export function ShellTerminal({
     >
       <div ref={containerRef} className="h-full w-full p-3" />
       {notice ? (
-        <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 bg-ds-bg-neutral-strong-default px-3 py-2">
-          <span className="truncate text-xs text-ds-text-neutral-inverse-default">
+        <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 bg-ds-neutral-strong-default px-3 py-2">
+          <span className="truncate text-xs text-ds-neutral-on-strong">
             {notice}
           </span>
           <Button

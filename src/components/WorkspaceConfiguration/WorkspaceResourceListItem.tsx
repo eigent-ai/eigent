@@ -44,38 +44,38 @@ export function WorkspaceResourceListItem({
     <div
       data-workspace-resource-list-item
       className={cn(
-        'flex w-full min-w-0 items-center gap-2 rounded-xl bg-ds-bg-neutral-subtle-default px-3 py-2',
+        'flex w-full min-w-0 items-center gap-2 rounded-xl bg-ds-neutral-subtle-default px-3 py-2',
         className
       )}
     >
       <button
         type="button"
         aria-label={editLabel}
-        className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-1 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-brand-default-focus"
+        className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-1 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-focus"
         onClick={onEdit}
       >
         {leading ? (
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-default-default text-ds-icon-neutral-default-default">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ds-neutral-default-default text-ds-ink-default-default">
             {leading}
           </span>
         ) : null}
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-body-sm font-bold text-ds-text-neutral-default-default">
+          <span className="block truncate text-ds-text-base font-bold text-ds-ink-default-default">
             {title}
           </span>
           {subtitle ? (
-            <span className="mt-0.5 block truncate text-body-xs text-ds-text-neutral-muted-default">
+            <span className="mt-0.5 block truncate text-ds-text-meta text-ds-ink-muted-default">
               {subtitle}
             </span>
           ) : null}
         </span>
         {meta ? (
-          <span className="hidden shrink-0 text-label-xs font-medium text-ds-text-neutral-muted-default sm:inline">
+          <span className="hidden shrink-0 text-ds-text-meta font-medium text-ds-ink-muted-default sm:inline">
             {meta}
           </span>
         ) : null}
         <ChevronRight
-          className="h-4 w-4 shrink-0 text-ds-icon-neutral-muted-default"
+          className="h-4 w-4 shrink-0 text-ds-ink-muted-default"
           aria-hidden
         />
       </button>

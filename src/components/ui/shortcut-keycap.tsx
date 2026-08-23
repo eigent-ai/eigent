@@ -30,12 +30,12 @@ export function ShortcutKeycap({
   return (
     <kbd
       className={cn(
-        'inline-flex shrink-0 items-center justify-center self-center rounded-md border-0 bg-ds-bg-neutral-strong-default px-1 font-sans font-medium text-ds-text-neutral-muted-default ring-1 ring-ds-border-neutral-default-default ring-offset-0',
+        'inline-flex shrink-0 items-center justify-center self-center rounded-md border-0 border-x-0 border-y-0 bg-ds-neutral-strong-default px-1 font-sans font-medium text-ds-ink-muted-default ring-1 ring-ds-hairline-default-default ring-offset-0',
         size === 'compact'
-          ? 'h-4 min-w-4 text-label-xs leading-none'
-          : 'h-5 min-w-5 text-label-xs leading-none',
+          ? 'h-4 min-w-4 text-ds-text-meta leading-none'
+          : 'h-5 min-w-5 text-ds-text-meta leading-none',
         appearance === 'button' &&
-          'rounded-full bg-primary-2 text-[9px] text-primary-11 opacity-60 ring-[var(--colors-black-10)]',
+          'rounded-full bg-ds-accent-subtle-default !text-ds-text-meta text-ds-accent-default-default opacity-60 ring-ds-hairline-muted-default',
         className
       )}
       {...props}

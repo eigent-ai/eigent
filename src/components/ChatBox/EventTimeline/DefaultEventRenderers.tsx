@@ -46,7 +46,7 @@ function statusClassName(status: string): string {
     return 'text-ds-text-information-default-default';
   }
   if (status === 'completed') return 'text-ds-text-success-default-default';
-  return 'text-ds-text-neutral-muted-default';
+  return 'text-ds-ink-muted-default';
 }
 
 function statusIcon(status: string): LucideIcon {
@@ -65,7 +65,7 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span
       className={cn(
-        'flex shrink-0 items-center gap-1 text-label-xs',
+        'flex shrink-0 items-center gap-1 text-ds-text-meta',
         statusClassName(status)
       )}
     >
@@ -98,10 +98,10 @@ export function MessageEventRenderer({
           : t('chat.timeline-assistant-message')
       }
       className={cn(
-        'w-full whitespace-pre-wrap break-words rounded-xl px-4 py-3 text-body-sm text-ds-text-neutral-default-default',
+        'w-full rounded-xl px-4 py-3 text-ds-text-base break-words whitespace-pre-wrap text-ds-ink-default-default',
         isUser
-          ? 'rounded-br-sm bg-ds-bg-neutral-strong-default'
-          : 'bg-ds-bg-neutral-subtle-default'
+          ? 'rounded-br-sm bg-ds-neutral-strong-default'
+          : 'bg-ds-neutral-subtle-default'
       )}
       data-message-role={node.role}
     >
@@ -128,7 +128,7 @@ export function NoticeEventRenderer({
   return (
     <aside
       className={cn(
-        'w-full whitespace-pre-wrap break-words rounded-xl border px-4 py-3 text-body-sm',
+        'w-full rounded-xl border px-4 py-3 text-ds-text-base break-words whitespace-pre-wrap',
         noticeTone(node.severity)
       )}
       data-notice-severity={node.severity}
@@ -150,7 +150,7 @@ export function InteractionEventRenderer({
   return (
     <section
       aria-label={t('chat.control-region-label')}
-      className="rounded-xl border border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default px-4 py-3"
+      className="rounded-xl border border-x border-y border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default px-4 py-3"
       data-interaction-id={node.interactionId}
       data-interaction-request-event-id={requestEventId}
       data-interaction-resolution-event-id={node.resolutionEventId}
@@ -158,10 +158,10 @@ export function InteractionEventRenderer({
       data-interaction-status={node.status}
     >
       <div className="flex items-center justify-between gap-3">
-        <span className="block text-body-sm font-semibold text-ds-text-neutral-default-default">
+        <span className="block text-ds-text-base font-semibold text-ds-ink-default-default">
           {t('chat.control-input-required')}
         </span>
-        <span className="shrink-0 text-label-xs text-ds-text-neutral-muted-default">
+        <span className="shrink-0 text-ds-text-meta text-ds-ink-muted-default">
           {t(`chat.tool-status-${node.status}`, {
             defaultValue: displayStatus(node.status),
           })}
@@ -169,20 +169,20 @@ export function InteractionEventRenderer({
       </div>
       {node.response && node.prompt ? (
         <div className="mt-2" data-interaction-question>
-          <span className="block text-label-xs font-medium text-ds-text-neutral-muted-default">
+          <span className="block text-ds-text-meta font-medium text-ds-ink-muted-default">
             {t('chat.timeline-question')}
           </span>
-          <span className="mt-1 block whitespace-pre-wrap break-words text-body-sm font-normal text-ds-text-neutral-subtle-default">
+          <span className="mt-1 block text-ds-text-base font-normal break-words whitespace-pre-wrap text-ds-ink-subtle-default">
             {node.prompt}
           </span>
         </div>
       ) : null}
       {node.response ? (
         <div className="mt-2" data-interaction-answer>
-          <span className="block text-label-xs font-medium text-ds-text-neutral-muted-default">
+          <span className="block text-ds-text-meta font-medium text-ds-ink-muted-default">
             {t('chat.timeline-answer')}
           </span>
-          <span className="mt-1 block whitespace-pre-wrap break-words text-body-sm font-normal text-ds-text-neutral-subtle-default">
+          <span className="mt-1 block text-ds-text-base font-normal break-words whitespace-pre-wrap text-ds-ink-subtle-default">
             {node.response}
           </span>
         </div>
@@ -198,19 +198,19 @@ export function PlanEventRenderer({
   const taskCount = node.tasks.length;
 
   return (
-    <section className="rounded-xl border border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default px-4 py-3">
+    <section className="rounded-xl border border-x border-y border-ds-hairline-subtle-default bg-ds-neutral-subtle-default px-4 py-3">
       <div className="flex items-center justify-between gap-3">
-        <span className="block text-body-sm font-semibold text-ds-text-neutral-default-default">
+        <span className="block text-ds-text-base font-semibold text-ds-ink-default-default">
           {node.title || t('chat.timeline-plan')}
         </span>
-        <span className="shrink-0 text-label-xs text-ds-text-neutral-muted-default">
+        <span className="shrink-0 text-ds-text-meta text-ds-ink-muted-default">
           {taskCount === 1
             ? t('chat.timeline-plan-task-count-one', { count: taskCount })
             : t('chat.timeline-plan-task-count-other', { count: taskCount })}
         </span>
       </div>
       {node.summary ? (
-        <span className="mt-2 block whitespace-pre-wrap break-words text-body-sm font-normal text-ds-text-neutral-subtle-default">
+        <span className="mt-2 block text-ds-text-base font-normal break-words whitespace-pre-wrap text-ds-ink-subtle-default">
           {node.summary}
         </span>
       ) : null}
@@ -223,21 +223,21 @@ export function ActivityEventRenderer({
 }: EventRendererProps<ChatProjectionNodeOfKind<'activity'>>) {
   const { t } = useTranslation();
   return (
-    <section className="rounded-xl border border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default px-4 py-3">
+    <section className="rounded-xl border border-x border-y border-ds-hairline-subtle-default bg-ds-neutral-subtle-default px-4 py-3">
       <div className="flex items-center justify-between gap-3">
-        <span className="block min-w-0 truncate text-body-sm font-medium text-ds-text-neutral-default-default">
+        <span className="block min-w-0 truncate text-ds-text-base font-medium text-ds-ink-default-default">
           {node.title}
         </span>
         <StatusBadge status={node.status} />
       </div>
       {node.detail ? (
-        <span className="mt-1 block whitespace-pre-wrap break-words text-label-sm font-normal text-ds-text-neutral-subtle-default">
+        <span className="mt-1 block text-ds-text-base font-normal break-words whitespace-pre-wrap text-ds-ink-subtle-default">
           {node.detail}
         </span>
       ) : null}
       {node.status === 'outcome_unknown' ? (
         <span
-          className="mt-2 block text-label-sm font-medium text-ds-text-error-default-default"
+          className="mt-2 block text-ds-text-base font-medium text-ds-text-error-default-default"
           role="alert"
         >
           {t('chat.tool-outcome-unknown-warning', {
@@ -261,16 +261,16 @@ export function ArtifactEventRenderer({
   );
 
   return (
-    <section className="rounded-xl border border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default px-4 py-3">
+    <section className="rounded-xl border border-x border-y border-ds-hairline-subtle-default bg-ds-neutral-subtle-default px-4 py-3">
       <div className="flex items-center justify-between gap-3">
-        <span className="flex min-w-0 items-center gap-2 text-body-sm font-medium text-ds-text-neutral-default-default">
+        <span className="flex min-w-0 items-center gap-2 text-ds-text-base font-medium text-ds-ink-default-default">
           <FileText
             aria-hidden
-            className="size-4 shrink-0 text-ds-icon-neutral-subtle-default"
+            className="size-4 shrink-0 text-ds-ink-subtle-default"
           />
           <span className="min-w-0 truncate">{label}</span>
         </span>
-        <span className="shrink-0 text-label-xs text-ds-text-neutral-muted-default">
+        <span className="shrink-0 text-ds-text-meta text-ds-ink-muted-default">
           {displayStatus(node.operation)}
         </span>
       </div>
@@ -287,7 +287,7 @@ export function RunStatusEventRenderer({
   return (
     <div
       className={cn(
-        'flex items-center gap-2 px-4 py-2 text-label-sm',
+        'flex items-center gap-2 px-4 py-2 text-ds-text-base',
         statusClassName(node.status)
       )}
       role="status"

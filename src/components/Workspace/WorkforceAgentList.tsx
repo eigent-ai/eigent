@@ -137,7 +137,7 @@ export function WorkforceAgentList({
     >
       <div
         data-workforce-agent-controls
-        className="flex w-full min-w-0 max-w-full items-center gap-2"
+        className="flex w-full max-w-full min-w-0 items-center gap-2"
       >
         <div className="flex shrink-0 flex-col justify-center">
           <TooltipSimple content={t('triggers.add')} side="top" sideOffset={8}>
@@ -145,11 +145,11 @@ export function WorkforceAgentList({
               data-workforce-add-button
               type="button"
               className={cn(
-                'rounded-xl border-0 bg-ds-bg-neutral-default-default',
+                'rounded-xl border-0 border-x-0 border-y-0 bg-ds-neutral-default-default',
                 'inline-flex items-center justify-center p-2',
-                'text-ds-text-neutral-muted-default transition-[color,opacity,box-shadow] duration-200',
-                'opacity-80 hover:text-ds-text-neutral-default-default hover:opacity-100',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-brand-default-focus'
+                'text-ds-ink-muted-default transition-[color,opacity,box-shadow] duration-200',
+                'opacity-80 hover:text-ds-ink-default-default hover:opacity-100',
+                'focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:outline-none'
               )}
               onClick={onAddWorker}
               aria-label={t('triggers.add')}
@@ -177,7 +177,7 @@ export function WorkforceAgentList({
                   data-workforce-scroll-left
                   type="button"
                   variant="secondary"
-                  size="xxs"
+                  size="xs"
                   buttonContent="icon-only"
                   buttonRadius="full"
                   className="pointer-events-auto shadow-md"
@@ -198,7 +198,7 @@ export function WorkforceAgentList({
                   data-workforce-scroll-right
                   type="button"
                   variant="secondary"
-                  size="xxs"
+                  size="xs"
                   buttonContent="icon-only"
                   buttonRadius="full"
                   className="pointer-events-auto shadow-md"
@@ -215,7 +215,7 @@ export function WorkforceAgentList({
             ref={agentViewportRef}
             role="list"
             aria-label={t('layout.aiWorkforce')}
-            className="scrollbar-hide min-w-0 max-w-[min(100%,calc(100vw-3rem))] overflow-x-auto overflow-y-hidden"
+            className="scrollbar-hide max-w-[min(100%,calc(100vw-3rem))] min-w-0 overflow-x-auto overflow-y-hidden"
           >
             <div
               ref={agentTrackRef}

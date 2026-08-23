@@ -91,7 +91,7 @@ export default function Sessions({
               size="sm"
               buttonContent="icon-only"
               onClick={() => setActiveWorkspaceTab('workforce')}
-              className="no-drag shrink-0 rounded-lg text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default"
+              className="no-drag shrink-0 rounded-lg text-ds-ink-muted-default hover:bg-ds-neutral-strong-default"
               aria-label={backToWorkspaceTooltip}
             >
               <ArrowLeft className="h-4 w-4" aria-hidden />
@@ -102,7 +102,7 @@ export default function Sessions({
       />
       <div className="scrollbar-always-visible m-0 mx-auto flex min-h-0 w-full max-w-[800px] flex-1 flex-col gap-0.5 overflow-y-auto p-2">
         {sessions.length === 0 ? (
-          <p className="m-0 px-3 py-6 text-center text-body-sm text-ds-text-neutral-muted-default">
+          <p className="m-0 px-3 py-6 text-center text-ds-text-base text-ds-ink-muted-default">
             {t('layout.sessions-create-task-hint')}
           </p>
         ) : (

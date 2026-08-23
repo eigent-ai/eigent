@@ -281,8 +281,8 @@ describe('ChatBox timeline modes', () => {
       const rowButton = row.querySelector(':scope > button');
       expect(row).toHaveAttribute('data-expanded', 'false');
       expect(row).toHaveClass(
-        'bg-ds-bg-neutral-subtle-default',
-        'hover:bg-ds-bg-neutral-default-default'
+        'bg-ds-neutral-subtle-default',
+        'hover:bg-ds-neutral-default-default'
       );
       expect(row.querySelectorAll(':scope > button')).toHaveLength(1);
       expect(rowButton).toHaveClass('flex', 'flex-row', 'items-center');
@@ -290,7 +290,7 @@ describe('ChatBox timeline modes', () => {
       expect(row.querySelector('[data-trace-summary]')).toHaveClass(
         'flex-1',
         'truncate',
-        '!text-label-xs'
+        '!text-ds-text-meta'
       );
       expect(row.querySelector('[data-trace-tag-column]')).toHaveClass(
         'w-28',
@@ -300,7 +300,7 @@ describe('ChatBox timeline modes', () => {
       expect(row.querySelector('[data-trace-tag]')).toHaveClass(
         'max-w-full',
         'text-right',
-        '!text-label-xs'
+        '!text-ds-text-meta'
       );
       expect(row.querySelector('[data-trace-ending]')).toHaveClass(
         'ml-auto',
@@ -361,7 +361,7 @@ describe('ChatBox timeline modes', () => {
     ).toBeInTheDocument();
     expect(within(toolRow).getByText('Loaded 220 lines')).toBeInTheDocument();
     expect(within(toolRow).getByText('completed').parentElement).toHaveClass(
-      '!text-label-xs'
+      '!text-ds-text-meta'
     );
   });
 
@@ -410,10 +410,10 @@ describe('ChatBox timeline modes', () => {
       'bg-ds-category-amber-background-default',
       'text-ds-category-amber-text-strong'
     );
-    expect(within(row).getByText('Question')).toHaveClass('!text-label-xs');
+    expect(within(row).getByText('Question')).toHaveClass('!text-ds-text-meta');
     expect(
       within(row).getAllByText('Which output format should I use?')[1]
-    ).toHaveClass('!text-label-xs');
+    ).toHaveClass('!text-ds-text-meta');
 
     rerender(
       <TimelineModeRenderer
@@ -431,13 +431,13 @@ describe('ChatBox timeline modes', () => {
 
     fireEvent.click(within(resolvedRow).getByRole('button'));
     expect(within(resolvedRow).getByText('Question')).toHaveClass(
-      '!text-label-xs'
+      '!text-ds-text-meta'
     );
     expect(within(resolvedRow).getByText('Answer')).toHaveClass(
-      '!text-label-xs'
+      '!text-ds-text-meta'
     );
     expect(within(resolvedRow).getByText('Markdown file')).toHaveClass(
-      '!text-label-xs'
+      '!text-ds-text-meta'
     );
   });
 
@@ -548,7 +548,9 @@ describe('ChatBox timeline modes', () => {
       container.querySelector('[data-timeline-mode="narrative"]')
     ).toBeTruthy();
     expect(screen.getByText('Review the event timeline')).toBeInTheDocument();
-    expect(screen.getByText('timeline-notes.md')).toHaveClass('!text-label-xs');
+    expect(screen.getByText('timeline-notes.md')).toHaveClass(
+      '!text-ds-text-meta'
+    );
     expect(screen.getByText(/Working on tasks for/)).toBeInTheDocument();
     expect(
       container.querySelector('[data-narrative-timeline]')
@@ -558,7 +560,7 @@ describe('ChatBox timeline modes', () => {
     // for, which is the whole point of the narrative mode.
     expect(
       container.querySelector('[data-narrative-segment-narration]')
-    ).toHaveClass('text-ds-text-neutral-default-default');
+    ).toHaveClass('text-ds-ink-default-default');
     expect(container.querySelector('[data-timeline-call-id]')).toBeNull();
     expect(screen.queryByText('Developer Agent')).toBeNull();
     expect(container.querySelector('[data-narrative-agent-group]')).toBeNull();
@@ -723,9 +725,9 @@ describe('ChatBox timeline modes', () => {
     const reasoning = screen.getByText(
       'Searching for README files in the project'
     );
-    expect(reasoning).toHaveClass('text-ds-text-neutral-default-default');
+    expect(reasoning).toHaveClass('text-ds-ink-default-default');
     expect(reasoning).not.toHaveClass(
-      'text-ds-text-neutral-subtle-default',
+      'text-ds-ink-subtle-default',
       'shiny-text'
     );
     expect(container.querySelector('.shiny-text')).toBeNull();

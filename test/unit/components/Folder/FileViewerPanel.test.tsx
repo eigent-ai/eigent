@@ -130,7 +130,7 @@ describe('FileViewerPanel toolbar', () => {
     });
 
     const openInButton = screen.getByRole('button', { name: 'Open in' });
-    expect(openInButton).toHaveClass('bg-ds-bg-brand-default-default');
+    expect(openInButton).toHaveClass('bg-ds-accent-strong-default');
     expect(openInButton.firstChild?.nodeName).toBe('#text');
     expect(openInButton.querySelectorAll('svg')).toHaveLength(1);
     expect(

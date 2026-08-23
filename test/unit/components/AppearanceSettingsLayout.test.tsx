@@ -53,9 +53,11 @@ describe('Appearance settings layout', () => {
     expect(dividers).toHaveLength(2);
     expect(dividers[0]).toHaveClass(
       'mx-4',
+      'border-x-0',
       'border-t',
+      'border-b-0',
       'border-solid',
-      'border-ds-border-neutral-subtle-default'
+      'border-ds-hairline-subtle-default'
     );
 
     const colorMode = screen.getByText('Color mode');

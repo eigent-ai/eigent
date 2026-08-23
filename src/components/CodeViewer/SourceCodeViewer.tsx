@@ -30,7 +30,7 @@ export function SourceCodeViewer(props: SourceCodeViewerProps) {
       fallback={
         <div
           data-testid="source-code-viewer-loading"
-          className="h-full min-h-48 w-full animate-pulse bg-ds-bg-neutral-subtle-default"
+          className="h-full min-h-48 w-full animate-pulse bg-ds-neutral-subtle-default"
         />
       }
     >

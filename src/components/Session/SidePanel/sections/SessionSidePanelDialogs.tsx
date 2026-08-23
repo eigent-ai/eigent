@@ -72,27 +72,27 @@ export function AgentInformationDialog({
           {agent ? (
             <div className="flex min-w-0 flex-col gap-4">
               <div className="flex items-start gap-3">
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-muted-default">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-ds-neutral-muted-default">
                   <Bot
                     size={20}
-                    className="text-ds-icon-neutral-default-default"
+                    className="text-ds-ink-default-default"
                     aria-hidden
                   />
                 </span>
-                <p className="m-0 text-body-sm text-ds-text-neutral-default-default">
+                <p className="m-0 text-ds-text-base text-ds-ink-default-default">
                   {agentDescription}
                 </p>
               </div>
               {agent.tools.length > 0 ? (
                 <div className="flex flex-col gap-2">
-                  <span className="text-label-xs font-semibold uppercase tracking-wide text-ds-text-neutral-muted-default">
+                  <span className="text-ds-text-meta font-semibold tracking-wide text-ds-ink-muted-default uppercase">
                     {t('layout.capabilities')}
                   </span>
                   <div className="flex flex-wrap gap-1.5">
                     {agent.tools.map((tool) => (
                       <span
                         key={tool}
-                        className="rounded-md bg-ds-bg-neutral-muted-default px-2 py-1 text-label-xs text-ds-text-neutral-default-default"
+                        className="rounded-md bg-ds-neutral-muted-default px-2 py-1 text-ds-text-meta text-ds-ink-default-default"
                       >
                         {tool}
                       </span>
@@ -136,13 +136,13 @@ export function ToolCallsDialog({
               {item.calls.map((call, index) => (
                 <div
                   key={call.id}
-                  className="flex min-w-0 flex-col gap-2 rounded-xl border border-solid border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-default-default p-3"
+                  className="flex min-w-0 flex-col gap-2 rounded-xl border border-x border-y border-solid border-ds-hairline-subtle-disabled bg-ds-neutral-default-default p-3"
                 >
                   <div className="flex min-w-0 items-center gap-2">
                     <span className="flex shrink-0 items-center">
                       {getToolkitIcon(call.toolkitName)}
                     </span>
-                    <span className="min-w-0 truncate text-body-sm font-semibold text-ds-text-neutral-default-default">
+                    <span className="min-w-0 truncate text-ds-text-base font-semibold text-ds-ink-default-default">
                       {call.method ||
                         t('layout.session-panel-call', {
                           defaultValue: '{{name}} call {{number}}',
@@ -152,8 +152,8 @@ export function ToolCallsDialog({
                     </span>
                   </div>
                   {call.input ? (
-                    <div className="min-w-0 rounded-lg bg-ds-bg-neutral-muted-default p-3">
-                      <div className="mb-1 text-label-xs font-medium uppercase tracking-wide text-ds-text-neutral-muted-default">
+                    <div className="min-w-0 rounded-lg bg-ds-neutral-muted-default p-3">
+                      <div className="mb-1 text-ds-text-meta font-medium tracking-wide text-ds-ink-muted-default uppercase">
                         {t('layout.session-panel-request', {
                           defaultValue: 'Request',
                         })}
@@ -161,13 +161,13 @@ export function ToolCallsDialog({
                       <MarkDown
                         content={call.input}
                         enableTypewriter={false}
-                        pTextSize="text-label-xs text-ds-text-neutral-default-default"
+                        pTextSize="text-ds-text-meta text-ds-ink-default-default"
                       />
                     </div>
                   ) : null}
                   {call.output ? (
-                    <div className="min-w-0 rounded-lg bg-ds-bg-neutral-muted-default p-3">
-                      <div className="mb-1 text-label-xs font-medium uppercase tracking-wide text-ds-text-neutral-muted-default">
+                    <div className="min-w-0 rounded-lg bg-ds-neutral-muted-default p-3">
+                      <div className="mb-1 text-ds-text-meta font-medium tracking-wide text-ds-ink-muted-default uppercase">
                         {t('layout.session-panel-response', {
                           defaultValue: 'Response',
                         })}
@@ -175,7 +175,7 @@ export function ToolCallsDialog({
                       <MarkDown
                         content={call.output}
                         enableTypewriter={false}
-                        pTextSize="text-label-xs text-ds-text-neutral-default-default"
+                        pTextSize="text-ds-text-meta text-ds-ink-default-default"
                       />
                     </div>
                   ) : null}
@@ -183,7 +183,7 @@ export function ToolCallsDialog({
               ))}
             </div>
           ) : (
-            <p className="m-0 text-body-sm text-ds-text-neutral-muted-default">
+            <p className="m-0 text-ds-text-base text-ds-ink-muted-default">
               {t('layout.session-panel-no-call-details', {
                 defaultValue:
                   'No stored request or response details are available.',

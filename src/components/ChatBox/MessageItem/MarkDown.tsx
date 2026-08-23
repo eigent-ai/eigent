@@ -331,7 +331,7 @@ export const MarkDown = memo(
                   // Fallback: show alt text or placeholder
                   const altMatch = fullTag.match(/alt=["']([^"']*)["']/);
                   const alt = altMatch ? altMatch[1] : 'image';
-                  const placeholder = `<span class="inline-block text-sm text-ds-text-neutral-muted-default">[${alt}]</span>`;
+                  const placeholder = `<span class="inline-block text-sm text-ds-ink-muted-default">[${alt}]</span>`;
                   rawHtml = rawHtml.replace(fullTag, placeholder);
                 }
               } catch (error) {
@@ -625,7 +625,7 @@ export const MarkDown = memo(
         <div
           ref={contentRef}
           className={cn(
-            'markdown-body min-w-0 max-w-none overflow-hidden',
+            'markdown-body max-w-none min-w-0 overflow-hidden',
             `markdown-profile-${profile}`,
             className
           )}

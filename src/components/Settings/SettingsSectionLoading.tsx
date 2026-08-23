@@ -36,7 +36,7 @@ export default function SettingsSectionLoading({
         <div
           key={index}
           aria-hidden
-          className="h-24 w-full animate-pulse rounded-2xl bg-ds-bg-neutral-subtle-default motion-reduce:animate-none"
+          className="h-24 w-full animate-pulse rounded-2xl bg-ds-neutral-subtle-default motion-reduce:animate-none"
         />
       ))}
     </div>

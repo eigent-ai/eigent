@@ -407,8 +407,10 @@ describe('TaskWorkLogAccordion human-tool detail', () => {
     expect(
       screen.getByText('Which output tone should I use: concise or detailed?')
     ).toBeInTheDocument();
-    expect(screen.getByText('Input required')).toHaveClass('!text-label-xs');
-    expect(screen.getByText('Question')).toHaveClass('!text-label-xs');
+    expect(screen.getByText('Input required')).toHaveClass(
+      '!text-ds-text-meta'
+    );
+    expect(screen.getByText('Question')).toHaveClass('!text-ds-text-meta');
 
     rerender(
       <TaskWorkLogAccordion
@@ -426,8 +428,8 @@ describe('TaskWorkLogAccordion human-tool detail', () => {
     );
 
     fireEvent.click(completedTool);
-    expect(screen.getByText('Answer')).toHaveClass('!text-label-xs');
-    expect(screen.getByText('detailed')).toHaveClass('!text-label-xs');
+    expect(screen.getByText('Answer')).toHaveClass('!text-ds-text-meta');
+    expect(screen.getByText('detailed')).toHaveClass('!text-ds-text-meta');
     scrollTo.mockRestore();
   });
 });

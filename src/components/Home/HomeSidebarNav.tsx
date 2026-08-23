@@ -32,8 +32,8 @@ const SECTION_LABEL_KEYS: Record<HomeSection, string> = {
 /** Home-only trailing count chip for a sidebar tab. */
 function HomeSidebarCountBadge({ count }: { count: number }) {
   return (
-    <div className="flex shrink-0 flex-col items-center rounded-xl bg-ds-bg-neutral-muted-default px-1.5">
-      <span className="!text-label-xs font-medium tabular-nums text-ds-text-neutral-muted-default">
+    <div className="flex shrink-0 flex-col items-center rounded-xl bg-ds-neutral-muted-default px-1.5">
+      <span className="!text-ds-text-meta font-medium text-ds-ink-muted-default tabular-nums">
         {count}
       </span>
     </div>

@@ -31,7 +31,7 @@ export function SettingsRowGroup({
       {...props}
       data-settings-row-group
       className={cn(
-        'overflow-hidden rounded-2xl bg-ds-bg-neutral-default-default',
+        'overflow-hidden rounded-2xl bg-ds-neutral-default-default',
         className
       )}
     >
@@ -41,7 +41,7 @@ export function SettingsRowGroup({
             <div
               data-settings-row-divider
               aria-hidden
-              className="mx-4 border-x-0 border-b-0 border-t border-solid border-ds-border-neutral-subtle-default"
+              className="mx-4 border-x-0 border-t border-b-0 border-solid border-ds-hairline-subtle-default"
             />
           ) : null}
           {row}
@@ -70,11 +70,11 @@ export function SettingsRow({
     <div data-settings-row className="flex flex-col gap-4 px-4 py-4">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <div className="text-body-sm font-semibold text-ds-text-neutral-default-default">
+          <div className="text-ds-text-base font-semibold text-ds-ink-default-default">
             {title}
           </div>
           {description ? (
-            <div className="mt-1 text-body-sm text-ds-text-neutral-muted-default">
+            <div className="mt-1 text-ds-text-base text-ds-ink-muted-default">
               {description}
             </div>
           ) : null}

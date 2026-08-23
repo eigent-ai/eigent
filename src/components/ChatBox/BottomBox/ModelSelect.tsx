@@ -83,7 +83,7 @@ export interface ModelSelectProps {
 
 const modelTriggerShellClass = cn(
   'rounded-xl px-2 py-1 inline-flex max-w-[min(100%,320px)] shrink-0 items-center gap-1.5',
-  'bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default'
+  'bg-ds-neutral-default-default text-ds-ink-default-default'
 );
 
 export function ModelSelect({
@@ -515,7 +515,7 @@ export function ModelSelect({
         )}
       >
         <span className="inline-flex min-h-[1.25rem] min-w-0 items-center gap-1.5 overflow-hidden">
-          <span className="min-w-0 truncate !text-label-xs font-semibold">
+          <span className="min-w-0 truncate !text-ds-text-meta font-semibold">
             {triggerModelName}
           </span>
         </span>
@@ -539,10 +539,10 @@ export function ModelSelect({
           aria-haspopup="menu"
           className={cn(
             modelTriggerShellClass,
-            'min-w-0 cursor-pointer border-0 text-left',
-            'duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] justify-between font-semibold transition-[background-color,box-shadow,opacity]',
-            'hover:bg-ds-bg-neutral-subtle-default active:bg-ds-bg-neutral-subtle-default data-[state=open]:bg-ds-bg-neutral-subtle-default',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-border-neutral-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-bg-neutral-default-default',
+            'min-w-0 cursor-pointer border-0 border-x-0 border-y-0 text-left',
+            'justify-between font-semibold transition-[background-color,box-shadow,opacity] duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)]',
+            'hover:bg-ds-neutral-subtle-default active:shadow-ds-elevation-control-pressed data-[state=open]:bg-ds-neutral-subtle-default',
+            'focus-visible:ring-2 focus-visible:ring-ds-hairline-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-neutral-default-default focus-visible:outline-none',
             'disabled:pointer-events-none disabled:opacity-50',
             // While open, only the trigger's content grows to the menu width;
             // the chevron stays pinned at the right edge.
@@ -550,7 +550,7 @@ export function ModelSelect({
           )}
         >
           <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
-            <span className="min-w-0 flex-1 truncate text-center !text-label-xs text-ds-text-neutral-default-default">
+            <span className="min-w-0 flex-1 truncate text-center !text-ds-text-meta text-ds-ink-default-default">
               {triggerModelName}
             </span>
           </span>
@@ -583,7 +583,7 @@ export function ModelSelect({
                 className="mt-0.5 h-4 w-4 shrink-0"
                 aria-hidden
               />
-              <span className="min-w-0 flex-1 text-left text-body-sm">
+              <span className="min-w-0 flex-1 text-left text-ds-text-base">
                 {t('setting.eigent-cloud')}
               </span>
             </DropdownMenuSubTrigger>
@@ -599,7 +599,7 @@ export function ModelSelect({
                   }}
                   className="flex items-center justify-between"
                 >
-                  <span className="text-body-sm">{model.name}</span>
+                  <span className="text-ds-text-base">{model.name}</span>
                   {(pinnedSelection
                     ? pinnedSelection.modelType === 'cloud' &&
                       (pinnedSelection.cloud_model_type ||
@@ -621,10 +621,10 @@ export function ModelSelect({
             }}
           >
             <Layers
-              className="shrink-0 text-ds-icon-neutral-default-default"
+              className="shrink-0 text-ds-ink-default-default"
               aria-hidden
             />
-            <span className="min-w-0 flex-1 text-left text-body-sm">
+            <span className="min-w-0 flex-1 text-left text-ds-text-base">
               {t('setting.custom-model')}
             </span>
           </DropdownMenuSubTrigger>
@@ -686,10 +686,10 @@ export function ModelSelect({
                           }
                         />
                       ) : (
-                        <Key className="h-3 w-3 text-ds-icon-neutral-muted-default" />
+                        <Key className="h-3 w-3 text-ds-ink-muted-default" />
                       )}
                       <span
-                        className={`text-body-sm ${isConfigured ? 'text-ds-text-neutral-default-default' : 'text-ds-text-neutral-subtle-default'}`}
+                        className={`text-ds-text-base ${isConfigured ? 'text-ds-ink-default-default' : 'text-ds-ink-subtle-default'}`}
                       >
                         {item.name}
                       </span>
@@ -719,10 +719,10 @@ export function ModelSelect({
             }}
           >
             <HardDrive
-              className="shrink-0 text-ds-icon-neutral-default-default"
+              className="shrink-0 text-ds-ink-default-default"
               aria-hidden
             />
-            <span className="min-w-0 flex-1 text-left text-body-sm">
+            <span className="min-w-0 flex-1 text-left text-ds-text-base">
               {t('setting.local-model')}
             </span>
           </DropdownMenuSubTrigger>
@@ -760,10 +760,10 @@ export function ModelSelect({
                         }
                       />
                     ) : (
-                      <Server className="h-4 w-4 text-ds-icon-neutral-muted-default" />
+                      <Server className="h-4 w-4 text-ds-ink-muted-default" />
                     )}
                     <span
-                      className={`text-body-sm ${isConfigured ? 'text-ds-text-neutral-default-default' : 'text-ds-text-neutral-subtle-default'}`}
+                      className={`text-ds-text-base ${isConfigured ? 'text-ds-ink-default-default' : 'text-ds-ink-subtle-default'}`}
                     >
                       {model.name}
                     </span>

@@ -216,6 +216,8 @@ export default function HomeHubRoot({ children }: { children: ReactNode }) {
         }
         confirmText={t('layout.delete')}
         cancelText={t('layout.cancel')}
+        confirmVariant="secondary"
+        confirmTone="error"
       />
 
       {children}

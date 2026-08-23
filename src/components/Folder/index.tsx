@@ -22,6 +22,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import type { LucideIcon } from 'lucide-react';
@@ -684,8 +685,8 @@ export const FileTree: React.FC<FileTreeProps> = ({
         const reviewCommentCount = reviewCommentCounts?.get(child.path) ?? 0;
         const rowIconClass = `size-4 shrink-0 ${
           isRowSelected
-            ? 'text-ds-icon-neutral-default-default'
-            : 'text-ds-icon-neutral-muted-default'
+            ? 'text-ds-ink-default-default'
+            : 'text-ds-ink-muted-default'
         }`;
 
         return (
@@ -696,17 +697,17 @@ export const FileTree: React.FC<FileTreeProps> = ({
                 aria-expanded={isExpanded}
                 aria-selected={isRowSelected}
                 className={cn(
-                  'mb-1 flex w-full min-w-0 items-center rounded-lg px-1 py-0.5 transition-colors hover:bg-ds-bg-neutral-subtle-hover',
+                  'mb-1 flex w-full min-w-0 items-center rounded-lg px-1 py-0.5 transition-colors hover:bg-ds-neutral-subtle-hover',
                   isRowSelected
-                    ? 'bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default'
-                    : 'bg-transparent text-ds-text-neutral-muted-default'
+                    ? 'bg-ds-neutral-default-default text-ds-ink-default-default'
+                    : 'bg-transparent text-ds-ink-muted-default'
                 )}
               >
                 <button
                   type="button"
                   onClick={() => onToggleFolder(child.path)}
                   aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${child.name}`}
-                  className="inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent text-inherit hover:bg-ds-bg-neutral-default-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-brand-default-focus"
+                  className="inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md border-0 border-x-0 border-y-0 bg-transparent text-inherit hover:bg-ds-neutral-default-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:outline-none"
                 >
                   {isExpanded ? (
                     <ChevronDown className={rowIconClass} />
@@ -721,10 +722,10 @@ export const FileTree: React.FC<FileTreeProps> = ({
                       ? onToggleFolder(child.path)
                       : onSelectFile(fileInfo)
                   }
-                  className="flex h-7 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md border-0 bg-transparent px-1 text-left text-inherit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-brand-default-focus"
+                  className="flex h-7 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md border-0 border-x-0 border-y-0 bg-transparent px-1 text-left text-inherit focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:outline-none"
                 >
                   <FolderIcon className={rowIconClass} aria-hidden />
-                  <span className="min-w-0 flex-1 truncate text-left text-body-sm font-medium leading-normal">
+                  <span className="min-w-0 flex-1 truncate text-left text-ds-text-base leading-normal font-medium">
                     {child.name}
                   </span>
                 </button>
@@ -736,10 +737,10 @@ export const FileTree: React.FC<FileTreeProps> = ({
                 aria-selected={isRowSelected}
                 onClick={() => onSelectFile(fileInfo)}
                 className={cn(
-                  'mb-1 flex w-full min-w-0 cursor-pointer flex-row items-center justify-start gap-2 rounded-lg border-0 px-2 py-1.5 text-left transition-colors hover:bg-ds-bg-neutral-subtle-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-brand-default-focus',
+                  'mb-1 flex w-full min-w-0 cursor-pointer flex-row items-center justify-start gap-2 rounded-lg border-0 border-x-0 border-y-0 px-2 py-1.5 text-left transition-colors hover:bg-ds-neutral-subtle-hover focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:outline-none',
                   isRowSelected
-                    ? 'bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default'
-                    : 'bg-transparent text-ds-text-neutral-muted-default'
+                    ? 'bg-ds-neutral-default-default text-ds-ink-default-default'
+                    : 'bg-transparent text-ds-ink-muted-default'
                 )}
               >
                 {createElement(
@@ -751,29 +752,32 @@ export const FileTree: React.FC<FileTreeProps> = ({
                     }),
                   { className: rowIconClass, 'aria-hidden': true }
                 )}
-                <span className="min-w-0 flex-1 truncate text-left text-body-sm font-medium leading-normal">
+                <span className="min-w-0 flex-1 truncate text-left text-ds-text-base leading-normal font-medium">
                   {child.name}
                 </span>
                 {variant === 'review' && status ? (
                   <span
-                    className={`w-4 shrink-0 text-center text-label-xs font-bold ${status.className}`}
+                    className={`w-4 shrink-0 text-center text-ds-text-meta font-bold ${status.className}`}
                     aria-label={child.status}
                   >
                     {status.letter}
                   </span>
                 ) : null}
                 {variant === 'review' && isReviewed ? (
-                  <CheckCircle2
-                    className="size-3.5 shrink-0 text-ds-icon-success-default-default"
-                    aria-label="reviewed"
+                  <DsIcon
+                    icon={CheckCircle2}
+                    recipe="main-compact"
+                    decorative={false}
+                    className="text-ds-icon-success-default-default"
+                    aria-label="Reviewed"
                   />
                 ) : null}
                 {variant === 'review' && reviewCommentCount > 0 ? (
                   <span
-                    className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center gap-0.5 rounded-full bg-ds-bg-brand-subtle-default px-1 text-[10px] font-semibold text-ds-text-brand-default-default"
+                    className="min-w-ds-control-2xs inline-flex min-h-ds-control-2xs shrink-0 items-center justify-center gap-ds-2 rounded-full bg-ds-accent-subtle-default px-ds-4 text-ds-text-meta font-semibold text-ds-ink-default-default"
                     aria-label={`${reviewCommentCount} review comments`}
                   >
-                    <MessageSquare className="size-2.5" aria-hidden />
+                    <DsIcon icon={MessageSquare} recipe="main-compact" />
                     {reviewCommentCount}
                   </span>
                 ) : null}
@@ -781,7 +785,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
             )}
 
             {hasNested ? (
-              <div className="ml-4 border-y-0 border-l border-r-0 border-solid border-ds-border-neutral-subtle-default pl-1">
+              <div className="ml-4 border-y-0 border-r-0 border-l border-solid border-ds-hairline-subtle-default pl-1">
                 <FileTree
                   node={child}
                   level={level + 1}
@@ -1716,7 +1720,7 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
         isShowSourceCode={isShowSourceCode}
         breadcrumbSegments={fileBreadcrumbSegments}
         projectFiles={fileGroups[0]?.files || []}
-        surfaceClassName="bg-ds-bg-neutral-subtle-default"
+        surfaceClassName="bg-ds-neutral-subtle-default"
         embedded
         openInActions={openInActions}
         isFileTreeOpen={isFileSidebarOpen}
@@ -1763,7 +1767,7 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
         <aside
           data-file-tree-rail
           className={cn(
-            'flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-y-0 border-l border-r-0 border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default',
+            'flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-y-0 border-r-0 border-l border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default',
             RIGHT_RAIL_CONTENT_WIDTH_CLASS
           )}
           style={{ maxWidth: '50%' }}
@@ -1771,9 +1775,9 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
         >
           <div
             data-file-tree-header
-            className="flex h-11 min-h-11 shrink-0 items-center gap-2 px-2"
+            className="flex h-ds-layout-row-header min-h-ds-layout-row-header shrink-0 items-center gap-2 px-2"
           >
-            <span className="min-w-0 flex-1 truncate px-1 text-body-sm font-semibold text-ds-text-neutral-default-default">
+            <span className="min-w-0 flex-1 truncate px-1 text-ds-text-base font-semibold text-ds-ink-default-default">
               {t('chat.files')}
             </span>
           </div>
@@ -1781,13 +1785,13 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
           <div id={fileTreeControlsId} className="flex min-h-0 flex-1 flex-col">
             <div className="flex shrink-0 items-center gap-1.5 px-2 pb-2">
               <div className="relative min-w-0 flex-1">
-                <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-ds-icon-neutral-muted-default" />
+                <Search className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-ds-ink-muted-default" />
                 <input
                   type="search"
                   value={fileSearchQuery}
                   onChange={(event) => setFileSearchQuery(event.target.value)}
                   placeholder={t('chat.search')}
-                  className="h-8 w-full rounded-lg border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default py-0 pl-7 pr-2 text-body-sm text-ds-text-neutral-default-default outline-none placeholder:text-ds-text-neutral-muted-default focus:ring-2 focus:ring-ds-ring-brand-default-focus"
+                  className="h-8 w-full rounded-lg border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-default-default py-0 pr-2 pl-7 text-ds-text-base text-ds-ink-default-default outline-none placeholder:text-ds-ink-muted-default focus:ring-2 focus:ring-ds-ring-focus"
                   aria-label={t('folder.search-files', {
                     defaultValue: 'Search files',
                   })}
@@ -1824,7 +1828,7 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
                   isShowSourceCode={isShowSourceCode}
                 />
               ) : (
-                <div className="flex min-h-48 flex-col items-center justify-center gap-2 px-4 text-center text-body-sm text-ds-text-neutral-muted-default">
+                <div className="flex min-h-48 flex-col items-center justify-center gap-2 px-4 text-center text-ds-text-base text-ds-ink-muted-default">
                   <FileText className="size-7" aria-hidden />
                   <p className="m-0">
                     {fileSearchQuery.trim()
@@ -1920,7 +1924,7 @@ function AudioLoader({ selectedFile }: { selectedFile: FileInfo }) {
 
   return (
     <div className="flex w-full flex-col items-center gap-4 px-8">
-      <p className="text-sm font-medium text-ds-text-neutral-default-default">
+      <p className="text-sm font-medium text-ds-ink-default-default">
         {selectedFile.name}
       </p>
       <audio
@@ -2779,18 +2783,18 @@ function HtmlRenderer({
 
   if (remoteOrigins.length && !remoteContentAllowed) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-code-surface p-6">
-        <div className="max-w-xl rounded-2xl border border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default p-5 shadow-sm">
+      <div className="flex h-full w-full items-center justify-center bg-ds-neutral-strong-default p-6">
+        <div className="max-w-xl rounded-2xl border border-x border-y border-ds-hairline-subtle-default bg-ds-neutral-subtle-default p-5 shadow-sm">
           <div className="flex items-start gap-3">
             <AlertTriangle
               className="mt-0.5 h-5 w-5 shrink-0 text-ds-icon-warning-default-default"
               aria-hidden
             />
             <div className="min-w-0">
-              <h3 className="text-body-md font-bold">
+              <h3 className="!text-ds-text-body-large font-bold">
                 This HTML uses external content
               </h3>
-              <p className="mt-1 text-body-sm text-ds-text-neutral-muted-default">
+              <p className="mt-1 text-ds-text-base text-ds-ink-muted-default">
                 Loading it gives remote code access to this report&apos;s
                 rendered content. Access applies only to this preview session.
               </p>
@@ -2798,7 +2802,7 @@ function HtmlRenderer({
                 {remoteOrigins.map((origin) => (
                   <code
                     key={origin}
-                    className="rounded-md bg-ds-bg-neutral-default-default px-2 py-1 text-body-xs"
+                    className="rounded-md bg-ds-neutral-default-default px-2 py-1 text-ds-text-meta"
                   >
                     {origin}
                   </code>
@@ -2840,7 +2844,7 @@ function HtmlRenderer({
 
       {/* Content area with zoom */}
       <div
-        className="min-h-0 flex-1 overflow-hidden bg-code-surface"
+        className="min-h-0 flex-1 overflow-hidden bg-ds-neutral-strong-default"
         onWheel={handleWheel}
       >
         <div
@@ -2855,7 +2859,7 @@ function HtmlRenderer({
           <iframe
             ref={iframeRef}
             srcDoc={processedHtml}
-            className="bg-white h-full w-full border-0"
+            className="h-full w-full border-0 border-x-0 border-y-0 bg-white"
             sandbox="allow-scripts allow-forms allow-downloads"
             title={selectedFile.name}
             tabIndex={0}
@@ -2912,7 +2916,7 @@ export interface FileViewerPanelProps {
 function TruncatedPreviewNotice({ file }: { file: FileInfo }) {
   if (file.preview?.kind !== 'truncated-text') return null;
   return (
-    <div className="mb-2 rounded-lg bg-ds-bg-neutral-subtle-default px-3 py-2 text-body-xs text-ds-text-neutral-muted-default">
+    <div className="mb-2 rounded-lg bg-ds-neutral-subtle-default px-3 py-2 text-ds-text-meta text-ds-ink-muted-default">
       Previewing {formatFileSize(file.preview.bytesRead)}
       {file.preview.totalBytes !== null
         ? ` of ${formatFileSize(file.preview.totalBytes)}`
@@ -2933,7 +2937,7 @@ function SourceFilePreview({
   return (
     <div className="flex h-full min-h-0 w-full flex-col p-2">
       <TruncatedPreviewNotice file={file} />
-      <div className="min-h-0 flex-1 overflow-hidden rounded-[6px] border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default">
+      <div className="min-h-0 flex-1 overflow-hidden rounded-[6px] border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-default-default">
         <SourceCodeViewer
           value={file.content || ''}
           path={sourcePath}
@@ -2964,16 +2968,16 @@ function BlockedPreviewPlaceholder({
   return (
     <div className="flex h-full min-h-64 w-full items-center justify-center px-6 py-10">
       <div className="flex max-w-md flex-col items-center gap-3 text-center">
-        <AlertTriangle className="size-10 text-ds-icon-neutral-muted-default" />
+        <AlertTriangle className="size-10 text-ds-ink-muted-default" />
         <div>
-          <p className="m-0 text-body-md font-semibold text-ds-text-neutral-default-default">
+          <p className="m-0 text-ds-text-body-large font-semibold text-ds-ink-default-default">
             Preview not loaded
           </p>
-          <p className="mt-1 text-body-sm text-ds-text-neutral-muted-default">
+          <p className="mt-1 text-ds-text-base text-ds-ink-muted-default">
             {reason}
           </p>
         </div>
-        <div className="text-body-xs text-ds-text-neutral-muted-default">
+        <div className="text-ds-text-meta text-ds-ink-muted-default">
           File size: {formatFileSize(file.preview.size)}
           {file.preview.limit !== null
             ? ` · Preview limit: ${formatFileSize(file.preview.limit)}`
@@ -3006,7 +3010,7 @@ export function FileViewerPanel({
   isShowSourceCode,
   breadcrumbSegments,
   projectFiles,
-  surfaceClassName = 'bg-ds-bg-neutral-subtle-default',
+  surfaceClassName = 'bg-ds-neutral-subtle-default',
   embedded = false,
   onRevealFile,
   onBreadcrumbSegmentClick,
@@ -3062,7 +3066,7 @@ export function FileViewerPanel({
     >
       {/* head */}
       {(selectedFile || onToggleFileTree) && (
-        <div className="flex min-h-11 flex-shrink-0 flex-wrap items-center justify-between gap-2 border-y-0 border-l-0 border-r-0 border-solid border-ds-border-neutral-subtle-default py-1.5 pl-4 pr-2">
+        <div className="flex min-h-ds-layout-row-header shrink-0 flex-wrap items-center justify-between gap-2 border-y-0 border-r-0 border-l-0 border-solid border-ds-hairline-subtle-default pr-2 pl-4">
           {selectedFile ? (
             <div
               onClick={segmentsClickable ? undefined : onRevealFile}
@@ -3071,7 +3075,7 @@ export function FileViewerPanel({
               }`}
             >
               <nav
-                className="flex min-w-0 max-w-full items-center gap-1 overflow-hidden text-body-sm text-ds-text-neutral-muted-default"
+                className="flex max-w-full min-w-0 items-center gap-1 overflow-hidden text-ds-text-base text-ds-ink-muted-default"
                 aria-label={t('folder.file-path-breadcrumb', {
                   defaultValue: 'File path',
                 })}
@@ -3083,14 +3087,14 @@ export function FileViewerPanel({
                   const segmentClassName = cn(
                     'min-w-0 truncate',
                     isLast
-                      ? 'shrink font-bold text-ds-text-neutral-default-default'
+                      ? 'shrink font-bold text-ds-ink-default-default'
                       : 'min-w-[1.25em] shrink-[1000] font-normal'
                   );
                   return (
                     <Fragment key={`${index}-${segment}`}>
                       {index > 0 ? (
                         <ChevronRight
-                          className="h-3.5 w-3.5 shrink-0 text-ds-icon-neutral-muted-default"
+                          className="h-3.5 w-3.5 shrink-0 text-ds-ink-muted-default"
                           aria-hidden
                         />
                       ) : null}
@@ -3100,7 +3104,7 @@ export function FileViewerPanel({
                           onClick={() => onBreadcrumbSegmentClick?.(index)}
                           className={cn(
                             segmentClassName,
-                            'cursor-pointer text-ds-text-neutral-muted-default hover:text-ds-text-neutral-default-default hover:underline'
+                            'cursor-pointer text-ds-ink-muted-default hover:text-ds-ink-default-default hover:underline'
                           )}
                           title={segment}
                         >
@@ -3119,24 +3123,24 @@ export function FileViewerPanel({
           ) : (
             <div className="min-w-0 flex-1" />
           )}
-          <div className="scrollbar-hide ml-auto flex max-w-full flex-shrink-0 items-center gap-1 overflow-x-auto">
+          <div className="scrollbar-hide ml-auto flex max-w-full shrink-0 items-center gap-1 overflow-x-auto">
             {supportsRichView ? (
               <div
                 role="group"
                 aria-label={t('folder.view-mode', {
                   defaultValue: 'View mode',
                 })}
-                className="flex h-8 items-center rounded-[6px] bg-ds-bg-neutral-subtle-default p-0.5"
+                className="flex h-8 items-center rounded-[6px] bg-ds-neutral-subtle-default p-0.5"
               >
                 <button
                   type="button"
                   onClick={isShowSourceCode ? onToggleSourceCode : undefined}
                   aria-pressed={!isShowSourceCode}
                   className={cn(
-                    'flex h-7 items-center gap-1.5 rounded-[5px] border-0 px-2 text-xs transition-colors',
+                    'flex h-7 items-center gap-1.5 rounded-[5px] border-0 border-x-0 border-y-0 px-2 text-xs transition-colors',
                     !isShowSourceCode
-                      ? 'bg-ds-bg-neutral-default-default font-medium text-ds-text-neutral-default-default shadow-sm'
-                      : 'cursor-pointer bg-transparent text-ds-text-neutral-muted-default hover:text-ds-text-neutral-default-default'
+                      ? 'bg-ds-neutral-default-default font-medium text-ds-ink-default-default shadow-sm'
+                      : 'cursor-pointer bg-transparent text-ds-ink-muted-default hover:text-ds-ink-default-default'
                   )}
                 >
                   <Eye className="size-3.5" aria-hidden />
@@ -3147,10 +3151,10 @@ export function FileViewerPanel({
                   onClick={!isShowSourceCode ? onToggleSourceCode : undefined}
                   aria-pressed={isShowSourceCode}
                   className={cn(
-                    'flex h-7 items-center gap-1.5 rounded-[5px] border-0 px-2 text-xs transition-colors',
+                    'flex h-7 items-center gap-1.5 rounded-[5px] border-0 border-x-0 border-y-0 px-2 text-xs transition-colors',
                     isShowSourceCode
-                      ? 'bg-ds-bg-neutral-default-default font-medium text-ds-text-neutral-default-default shadow-sm'
-                      : 'cursor-pointer bg-transparent text-ds-text-neutral-muted-default hover:text-ds-text-neutral-default-default'
+                      ? 'bg-ds-neutral-default-default font-medium text-ds-ink-default-default shadow-sm'
+                      : 'cursor-pointer bg-transparent text-ds-ink-muted-default hover:text-ds-ink-default-default'
                   )}
                 >
                   <CodeXml className="size-3.5" aria-hidden />
@@ -3169,12 +3173,12 @@ export function FileViewerPanel({
                     buttonContent="text"
                   >
                     {t('folder.open-in', { defaultValue: 'Open in' })}
-                    <ChevronDown className="size-3.5" aria-hidden />
+                    <ChevronDown className="size-ds-icon-md" aria-hidden />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
                   align="end"
-                  className="z-50 min-w-[12rem] border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default"
+                  className="z-50 min-w-[12rem] border-ds-hairline-default-default bg-ds-neutral-strong-default"
                 >
                   {openInActions.map((action) => (
                     <DropdownMenuItem
@@ -3245,7 +3249,7 @@ export function FileViewerPanel({
           className={`flex flex-col ${
             showsHtmlPreview || showsCodeSource
               ? 'h-full min-h-0'
-              : 'min-h-full py-2 pl-4 pr-2'
+              : 'min-h-full py-2 pr-2 pl-4'
           } file-viewer-content`}
         >
           {selectedFile ? (
@@ -3253,11 +3257,11 @@ export function FileViewerPanel({
               selectedFile.isFolder ? (
                 <div className="flex h-full min-h-64 w-full items-center justify-center px-6 py-10">
                   <div className="flex max-w-md flex-col items-center gap-2 text-center">
-                    <FolderOpen className="size-10 text-ds-icon-neutral-muted-default" />
-                    <p className="m-0 text-body-md font-semibold text-ds-text-neutral-default-default">
+                    <FolderOpen className="size-10 text-ds-ink-muted-default" />
+                    <p className="m-0 text-ds-text-body-large font-semibold text-ds-ink-default-default">
                       {selectedFile.name}
                     </p>
-                    <p className="m-0 text-body-sm text-ds-text-neutral-muted-default">
+                    <p className="m-0 text-ds-text-base text-ds-ink-muted-default">
                       {t('folder.folder-selected-description', {
                         defaultValue: openInActions.length
                           ? 'Use Open in to open this exact folder in Finder or an editor.'
@@ -3292,7 +3296,7 @@ export function FileViewerPanel({
               ) : selectedType === 'pdf' ? (
                 <iframe
                   src={selectedFile.content as string}
-                  className="h-full w-full border-0"
+                  className="h-full w-full border-0 border-x-0 border-y-0"
                   title={selectedFile.name}
                 />
               ) : ['doc', 'docx', 'pptx', 'xlsx'].includes(selectedType) ? (
@@ -3311,9 +3315,9 @@ export function FileViewerPanel({
                   />
                 )
               ) : selectedType === 'zip' ? (
-                <div className="flex h-full w-full items-center justify-center text-ds-text-neutral-muted-default">
+                <div className="flex h-full w-full items-center justify-center text-ds-ink-muted-default">
                   <div className="text-center">
-                    <FileText className="mx-auto mb-4 h-12 w-12 text-ds-text-neutral-muted-default" />
+                    <FileText className="mx-auto mb-4 h-12 w-12 text-ds-ink-muted-default" />
                     <p className="text-sm">
                       {t('folder.zip-file-is-not-supported-yet')}
                     </p>
@@ -3341,7 +3345,7 @@ export function FileViewerPanel({
               <div className="flex h-full w-full items-center justify-center">
                 <div className="text-center">
                   <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full"></div>
-                  <p className="text-body-sm text-ds-text-neutral-muted-default">
+                  <p className="text-ds-text-base text-ds-ink-muted-default">
                     {t('chat.loading')}
                   </p>
                 </div>
@@ -3349,9 +3353,9 @@ export function FileViewerPanel({
             )
           ) : (
             (emptyState ?? (
-              <div className="flex h-full w-full flex-1 items-center justify-center text-ds-text-neutral-muted-default">
+              <div className="flex h-full w-full flex-1 items-center justify-center text-ds-ink-muted-default">
                 <div className="text-center">
-                  <FileText className="mx-auto mb-4 h-12 w-12 text-ds-text-neutral-muted-default" />
+                  <FileText className="mx-auto mb-4 h-12 w-12 text-ds-ink-muted-default" />
                   <p className="text-sm">
                     {t('chat.select-a-file-to-view-its-contents')}
                   </p>

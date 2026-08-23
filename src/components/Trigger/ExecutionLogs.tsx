@@ -153,12 +153,10 @@ const getStatusIcon = (status: ExecutionLogEntry['status']) => {
         <Clock className="h-3.5 w-3.5 text-ds-icon-status-pending-default-default" />
       );
     case 'cancelled':
-      return (
-        <XCircle className="h-3.5 w-3.5 text-ds-icon-neutral-muted-default" />
-      );
+      return <XCircle className="h-3.5 w-3.5 text-ds-ink-muted-default" />;
     default:
       return (
-        <AlertTriangle className="h-3.5 w-3.5 text-ds-icon-neutral-muted-default" />
+        <AlertTriangle className="h-3.5 w-3.5 text-ds-ink-muted-default" />
       );
   }
 };
@@ -181,7 +179,7 @@ const getStatusColor = (status: ExecutionLogEntry['status']) => {
 };
 
 const getSuccessRateColorClass = (rate: number | null): string => {
-  if (rate === null) return 'text-ds-text-neutral-muted-default';
+  if (rate === null) return 'text-ds-ink-muted-default';
   if (rate >= SUCCESS_CRITERIA_EXCELLENT)
     return 'text-ds-icon-status-completed-default-default';
   if (rate >= SUCCESS_CRITERIA_ACCEPTABLE)
@@ -266,7 +264,7 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
 
   if (loading) {
     return (
-      <div className="flex h-full flex-col items-center justify-center text-ds-text-neutral-muted-default">
+      <div className="flex h-full flex-col items-center justify-center text-ds-ink-muted-default">
         <Loader2 className="mb-2 h-8 w-8 animate-spin" />
         <span className="text-sm">{t('triggers.loading-executions')}</span>
       </div>
@@ -275,7 +273,7 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
 
   if (error || !trigger) {
     return (
-      <div className="flex h-full flex-col items-center justify-center text-ds-text-neutral-muted-default">
+      <div className="flex h-full flex-col items-center justify-center text-ds-ink-muted-default">
         <Terminal className="mb-2 h-8 w-8 opacity-50" />
         <span className="text-sm">
           {error || t('triggers.no-execution-data')}
@@ -310,15 +308,15 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
   return (
     <div className="flex h-full flex-col">
       {/* Stats */}
-      <div className="flex flex-col items-start justify-start overflow-hidden border-x-0 border-b border-t-0 border-solid border-ds-border-neutral-subtle-default px-3 pb-3">
+      <div className="flex flex-col items-start justify-start overflow-hidden border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-3 pb-3">
         <div className="mb-4 flex w-full flex-row items-center justify-between">
           <span
-            className="max-w-[150px] truncate text-label-sm font-medium text-ds-text-neutral-default-default"
+            className="max-w-[150px] truncate text-ds-text-base font-medium text-ds-ink-default-default"
             title={trigger.name}
           >
             {trigger.name}
           </span>
-          <span className="text-label-xs text-ds-text-neutral-muted-default">
+          <span className="text-ds-text-meta text-ds-ink-muted-default">
             {trigger.trigger_type === 'schedule'
               ? t('triggers.schedule-trigger')
               : trigger.trigger_type === 'webhook'
@@ -329,21 +327,21 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
           </span>
         </div>
         <div className="flex flex-row">
-          <div className="mr-4 flex flex-col border-y-0 border-l-0 border-r border-solid border-ds-border-neutral-subtle-default pr-4">
-            <span className="text-label-sm font-medium text-ds-text-neutral-default-default">
+          <div className="mr-4 flex flex-col border-y-0 border-r border-l-0 border-solid border-ds-hairline-subtle-default pr-4">
+            <span className="text-ds-text-base font-medium text-ds-ink-default-default">
               {trigger.execution_count || 0}
             </span>
-            <span className="text-label-xs text-ds-text-neutral-muted-default">
+            <span className="text-ds-text-meta text-ds-ink-muted-default">
               {t('triggers.total-runs')}
             </span>
           </div>
-          <div className="mr-4 flex flex-col border-y-0 border-l-0 border-r border-solid border-ds-border-neutral-subtle-default pr-4">
+          <div className="mr-4 flex flex-col border-y-0 border-r border-l-0 border-solid border-ds-hairline-subtle-default pr-4">
             <span
-              className={`text-label-sm font-medium ${getSuccessRateColorClass(successRate)}`}
+              className={`text-ds-text-base font-medium ${getSuccessRateColorClass(successRate)}`}
             >
               {successRate !== null ? `${successRate}%` : '-'}
             </span>
-            <span className="text-label-xs text-ds-text-neutral-muted-default">
+            <span className="text-ds-text-meta text-ds-ink-muted-default">
               {t('triggers.success-rate')}
             </span>
           </div>
@@ -353,39 +351,39 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
       {/* Log Entries */}
       <div className="scrollbar flex-1 overflow-y-auto">
         {logs.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center py-8 text-ds-text-neutral-muted-default">
+          <div className="flex h-full flex-col items-center justify-center py-8 text-ds-ink-muted-default">
             <Terminal className="mb-2 h-8 w-8 opacity-50" />
             <span className="text-sm">{t('triggers.no-executions-yet')}</span>
           </div>
         ) : (
-          <div className="divide-y divide-ds-border-neutral-subtle-default">
+          <div className="divide-y divide-ds-hairline-subtle-default">
             {logs.map((log) => (
               <div
                 key={log.id}
-                className={`flex items-start gap-2.5 px-4 py-2.5 transition-colors hover:bg-ds-bg-neutral-strong-hover ${getStatusColor(log.status)}`}
+                className={`flex items-start gap-2.5 px-4 py-2.5 transition-colors hover:bg-ds-neutral-strong-hover ${getStatusColor(log.status)}`}
               >
-                <div className="mt-0.5 flex-shrink-0">
+                <div className="mt-0.5 shrink-0">
                   {getStatusIcon(log.status)}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-label-xs text-ds-text-neutral-muted-default">
+                    <span className="font-mono text-ds-text-meta text-ds-ink-muted-default">
                       {log.timestamp}
                     </span>
                     {log.duration && (
                       <>
-                        <ArrowRight className="h-3 w-3 text-ds-text-neutral-muted-default" />
-                        <span className="text-label-xs text-ds-text-neutral-muted-default">
+                        <ArrowRight className="h-3 w-3 text-ds-ink-muted-default" />
+                        <span className="text-ds-text-meta text-ds-ink-muted-default">
                           {log.duration}
                         </span>
                       </>
                     )}
                   </div>
-                  <div className="mt-0.5 text-label-xs text-ds-text-neutral-default-default">
+                  <div className="mt-0.5 text-ds-text-meta text-ds-ink-default-default">
                     {log.message}
                   </div>
                   {log.details && (
-                    <div className="mt-0.5 font-mono text-label-xs text-ds-text-neutral-muted-default">
+                    <div className="mt-0.5 font-mono text-ds-text-meta text-ds-ink-muted-default">
                       {log.details}
                     </div>
                   )}
@@ -398,7 +396,7 @@ export function ExecutionLogs({ triggerId }: ExecutionLogsProps) {
 
       {/* Footer */}
       <div className="flex flex-row items-center justify-start px-4 py-2">
-        <span className="text-label-xs text-ds-text-neutral-muted-default">
+        <span className="text-ds-text-meta text-ds-ink-muted-default">
           {t('triggers.last-run-label')}:{' '}
           {formatRelativeTime(trigger.last_executed_at)}
         </span>

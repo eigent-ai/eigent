@@ -55,7 +55,7 @@ import { toast } from 'sonner';
 
 /** Shared chrome so read-only and dropdown trigger stay the same height (Button md = 32px). */
 const PROJECT_PICKER_SHELL_CLASS =
-  'bg-ds-bg-neutral-subtle-default shadow-workspace-project-picker box-border inline-flex h-8 min-h-8 w-fit min-w-[180px] max-w-[300px] items-center gap-2 rounded-full px-3 py-0 font-semibold';
+  'bg-ds-neutral-subtle-default shadow-workspace-project-picker box-border inline-flex h-8 min-h-8 w-fit min-w-[180px] max-w-[300px] items-center gap-2 rounded-full px-3 py-0 font-semibold';
 
 export interface WorkspaceProjectPickerProps {
   /** Display-only: render the current project name without the dropdown. */
@@ -569,7 +569,7 @@ export function WorkspaceProjectPicker({
         aria-label={activeSpaceTitle}
       >
         <FolderIcon className="size-4 shrink-0" aria-hidden />
-        <span className="min-w-0 truncate text-label-sm text-ds-text-neutral-default-default">
+        <span className="min-w-0 truncate text-ds-text-base text-ds-ink-default-default">
           {activeSpaceTitle}
         </span>
       </div>
@@ -666,13 +666,13 @@ export function WorkspaceProjectPicker({
             buttonRadius="full"
             className={cn(
               PROJECT_PICKER_SHELL_CLASS,
-              'no-drag justify-between hover:bg-ds-bg-neutral-default-hover'
+              'no-drag justify-between hover:bg-ds-neutral-default-hover'
             )}
             aria-expanded={menuOpen}
             aria-haspopup="menu"
           >
             <FolderIcon className="size-4 shrink-0" aria-hidden />
-            <span className="min-w-0 truncate text-label-sm text-ds-text-neutral-default-default">
+            <span className="min-w-0 truncate text-ds-text-base text-ds-ink-default-default">
               {activeSpaceTitle}
             </span>
             <ChevronsUpDown

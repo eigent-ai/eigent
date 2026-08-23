@@ -62,7 +62,7 @@ function SectionFallback() {
     <div
       role="status"
       aria-live="polite"
-      className="flex min-h-[320px] w-full items-center justify-center text-ds-icon-neutral-muted-default"
+      className="flex min-h-[320px] w-full items-center justify-center text-ds-ink-muted-default"
     >
       <LoaderCircle className="h-5 w-5 animate-spin" aria-hidden />
       <span className="sr-only">

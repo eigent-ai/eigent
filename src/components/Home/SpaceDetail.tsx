@@ -154,12 +154,12 @@ function Stat({
     <div data-space-stat={label} className="flex min-w-0 items-center gap-3">
       <div
         aria-hidden
-        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default text-ds-icon-neutral-default-default"
+        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-default-default text-ds-ink-default-default"
       >
         {icon}
       </div>
       <div className="min-w-0">
-        <span className="block truncate !text-label-xs font-semibold uppercase tracking-wide text-ds-text-neutral-muted-default">
+        <span className="block truncate !text-ds-text-meta font-semibold tracking-wide text-ds-ink-muted-default uppercase">
           {label}
         </span>
         {loading ? (
@@ -169,7 +169,7 @@ function Stat({
           />
         ) : (
           <span
-            className="mt-1 block truncate !text-body-md font-semibold text-ds-text-neutral-default-default"
+            className="mt-1 block truncate !text-ds-text-body-large font-semibold text-ds-ink-default-default"
             title={typeof value === 'string' ? value : undefined}
           >
             {value}
@@ -232,10 +232,10 @@ export default function SpaceDetail({
       <div className="flex h-full flex-col">
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
           <FolderOpen
-            className="h-10 w-10 text-ds-icon-neutral-muted-default"
+            className="h-10 w-10 text-ds-ink-muted-default"
             aria-hidden
           />
-          <span className="block !text-body-sm text-ds-text-neutral-muted-default">
+          <span className="block !text-ds-text-base text-ds-ink-muted-default">
             This Space is unavailable or has been removed.
           </span>
           <Button type="button" variant="secondary" size="sm" onClick={onBack}>
@@ -304,7 +304,7 @@ export default function SpaceDetail({
       <div className="flex min-h-0 flex-1 flex-col">
         <div
           data-space-detail-scroll-container
-          className="scrollbar-always-visible min-h-0 flex-1 overflow-y-scroll [scrollbar-gutter:stable]"
+          className="scrollbar-always-visible min-h-0 flex-1 [scrollbar-gutter:stable] overflow-y-scroll"
         >
           <div className="px-8 py-8">
             <div
@@ -316,12 +316,12 @@ export default function SpaceDetail({
             >
               <div className="min-w-0 overflow-hidden">
                 <span
-                  className="block truncate !text-body-lg font-bold text-ds-text-neutral-default-default"
+                  className="block truncate !text-ds-text-section font-bold text-ds-ink-default-default"
                   title={space.name?.trim() || 'Untitled Space'}
                 >
                   {space.name?.trim() || 'Untitled Space'}
                 </span>
-                <span className="mt-2 block max-w-xl !text-body-sm text-ds-text-neutral-muted-default">
+                <span className="mt-2 block !text-ds-text-base text-ds-ink-muted-default">
                   {space.description?.trim() || 'No description added.'}
                 </span>
               </div>
@@ -373,7 +373,7 @@ export default function SpaceDetail({
 
           <div
             data-space-tabs-sticky
-            className="border-b-1 sticky -top-px z-20 border-x-0 border-t-0 border-solid border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-subtle-default px-8 pt-2"
+            className="sticky -top-px z-20 border-x-0 border-t-0 border-b-1 border-solid border-ds-hairline-subtle-disabled bg-ds-neutral-subtle-default px-8 pt-2"
           >
             <div
               data-space-detail-tabs-rail

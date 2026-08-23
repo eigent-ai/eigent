@@ -107,7 +107,7 @@ describe('SpaceSwitchDropdown', () => {
       spaceSettingsItem.compareDocumentPosition(memorySettingsItem) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
-    expect(currentSpaceLabel).toHaveClass('text-label-xs', 'font-medium');
+    expect(currentSpaceLabel).toHaveClass('text-ds-text-meta', 'font-medium');
     const settingsSeparator = menu.querySelector(
       '[data-space-settings-separator]'
     ) as HTMLElement;
@@ -122,7 +122,7 @@ describe('SpaceSwitchDropdown', () => {
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
     expect(designSpaceItem.lastElementChild).toHaveClass(
-      'text-ds-icon-brand-default-default'
+      'text-ds-accent-default-default'
     );
     expect(
       within(menu).queryByRole('menuitem', { name: 'Start from scratch' })

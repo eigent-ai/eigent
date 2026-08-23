@@ -97,11 +97,11 @@ export function GoogleSearchPanel({ onConfigured }: GoogleSearchPanelProps) {
     <div className="flex flex-col gap-3 px-6 py-4">
       {requiresApiKey ? (
         <>
-          <span className="whitespace-pre-wrap text-body-sm text-ds-text-neutral-muted-default">
+          <span className="text-ds-text-base whitespace-pre-wrap text-ds-ink-muted-default">
             {t('connectors.google-search-custom-desc')}
           </span>
 
-          <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
+          <div className="text-ds-text-base font-bold text-ds-ink-default-default">
             {t('connectors.configuration-title')}
           </div>
 
@@ -140,7 +140,7 @@ export function GoogleSearchPanel({ onConfigured }: GoogleSearchPanelProps) {
           </div>
         </>
       ) : (
-        <div className="rounded-lg bg-ds-bg-neutral-default-default px-4 py-3 text-body-sm text-ds-text-neutral-muted-default">
+        <div className="rounded-lg bg-ds-neutral-default-default px-4 py-3 text-ds-text-base text-ds-ink-muted-default">
           {t('connectors.google-search-default-desc')}
         </div>
       )}

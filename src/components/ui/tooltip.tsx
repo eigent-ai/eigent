@@ -69,7 +69,7 @@ const TooltipTrigger = TooltipPrimitive.Trigger;
  *   sidebar tabs where the tooltip is a shortcut hint, not the only label.
  */
 const tooltipContentVariants = cva(
-  'rounded-lg border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default px-2 py-1.5 text-xs text-ds-text-neutral-default-default shadow-lg backdrop-blur-sm z-[100] origin-[--radix-tooltip-content-transform-origin] overflow-hidden border-solid',
+  'rounded-ds-compact-control border-ds-hairline-subtle-default bg-ds-neutral-subtle-default px-ds-8 py-ds-6 text-ds-text-meta text-ds-ink-default-default shadow-ds-elevation-floating backdrop-blur-sm z-[100] origin-(--radix-tooltip-content-transform-origin) overflow-hidden border-solid',
   {
     variants: {
       variant: {

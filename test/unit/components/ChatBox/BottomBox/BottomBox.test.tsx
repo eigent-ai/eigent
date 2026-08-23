@@ -435,7 +435,7 @@ describe('BottomBox structure', () => {
     expect(screen.getByRole('textbox', { name: 'Feedback' })).toHaveClass(
       'border',
       'shadow-sm',
-      'focus-visible:ring-1'
+      'focus-visible:ring-2'
     );
   });
 
@@ -462,7 +462,7 @@ describe('BottomBox structure', () => {
 
     const questionLabel = screen.getByText('Question');
     expect(questionLabel.parentElement).toHaveClass(
-      'text-body-sm',
+      'text-ds-text-base',
       'font-bold'
     );
     expect(
@@ -484,8 +484,8 @@ describe('BottomBox structure', () => {
       questionPrompt.closest('[data-bottom-box-question-markdown]')
     ).toHaveClass(
       'bottom-box-question-markdown',
-      'text-body-sm',
-      'text-ds-text-neutral-default-default'
+      'text-ds-text-base',
+      'text-ds-ink-default-default'
     );
     expect(
       questionPrompt.closest('[data-bottom-box-header]')

@@ -218,7 +218,7 @@ export default function SettingGeneral({
                   variant="primary"
                   textWeight="semibold"
                   buttonContent="text"
-                  buttonRadius="lg"
+                  buttonRadius="full"
                   tone="neutral"
                   size="sm"
                 >
@@ -229,7 +229,7 @@ export default function SettingGeneral({
                   variant="outline"
                   textWeight="semibold"
                   buttonContent="text"
-                  buttonRadius="lg"
+                  buttonRadius="full"
                   tone="neutral"
                   size="sm"
                   onClick={() => {
@@ -261,15 +261,15 @@ export default function SettingGeneral({
               <Select value={language} onValueChange={switchLanguage}>
                 <SelectTrigger
                   variant="secondary"
-                  className="w-[280px] !bg-ds-bg-neutral-subtle-default hover:!bg-ds-bg-neutral-subtle-default data-[state=open]:!bg-ds-bg-neutral-subtle-default"
+                  className="w-[280px] !bg-ds-neutral-subtle-default hover:!bg-ds-neutral-subtle-default data-[state=open]:!bg-ds-neutral-subtle-default"
                 >
                   <SelectValue placeholder={t('setting.select-language')} />
                 </SelectTrigger>
-                <SelectContent className="border bg-input-bg-default">
+                <SelectContent className="border border-x border-y border-solid bg-ds-neutral-default-default">
                   <SelectGroup>
                     <SelectItem
                       value="system"
-                      className="hover:!bg-ds-bg-neutral-subtle-default focus:!bg-ds-bg-neutral-subtle-default data-[highlighted]:!bg-ds-bg-neutral-subtle-default"
+                      className="hover:!bg-ds-neutral-subtle-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-inset data-[highlighted]:ring-2 data-[highlighted]:ring-ds-ring-focus data-[highlighted]:ring-inset"
                     >
                       {t('setting.system-default')}
                     </SelectItem>
@@ -277,7 +277,7 @@ export default function SettingGeneral({
                       <SelectItem
                         key={item.key}
                         value={item.key}
-                        className="hover:!bg-ds-bg-neutral-subtle-default focus:!bg-ds-bg-neutral-subtle-default data-[highlighted]:!bg-ds-bg-neutral-subtle-default"
+                        className="hover:!bg-ds-neutral-subtle-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-inset data-[highlighted]:ring-2 data-[highlighted]:ring-ds-ring-focus data-[highlighted]:ring-inset"
                       >
                         {item.label}
                       </SelectItem>

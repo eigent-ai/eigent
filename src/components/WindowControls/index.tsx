@@ -48,7 +48,7 @@ export default function WindowControls() {
       <button
         type="button"
         aria-label="Minimize"
-        className="control-btn h-full flex-1 border-0 bg-transparent p-0 text-inherit"
+        className="control-btn h-full flex-1 border-0 border-x-0 border-y-0 bg-transparent p-0 text-inherit"
         onClick={() => host?.electronAPI?.minimizeWindow()}
       >
         <Minus className="h-4 w-4" aria-hidden />
@@ -56,7 +56,7 @@ export default function WindowControls() {
       <button
         type="button"
         aria-label="Maximize"
-        className="control-btn h-full flex-1 border-0 bg-transparent p-0 text-inherit"
+        className="control-btn h-full flex-1 border-0 border-x-0 border-y-0 bg-transparent p-0 text-inherit"
         onClick={() => host?.electronAPI?.toggleMaximizeWindow()}
       >
         <Square className="h-4 w-4" aria-hidden />
@@ -64,7 +64,7 @@ export default function WindowControls() {
       <button
         type="button"
         aria-label="Close"
-        className="control-btn h-full flex-1 border-0 bg-transparent p-0 text-inherit"
+        className="control-btn h-full flex-1 border-0 border-x-0 border-y-0 bg-transparent p-0 text-inherit"
         onClick={(e) => {
           e.stopPropagation();
           e.preventDefault();

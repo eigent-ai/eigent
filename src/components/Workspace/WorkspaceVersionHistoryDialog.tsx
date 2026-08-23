@@ -254,12 +254,12 @@ export function WorkspaceVersionHistoryDialog({
               <section className="shrink-0 space-y-2">
                 <div className="flex items-center justify-between">
                   <div>
-                    <span className="block text-body-sm font-bold">
+                    <span className="block text-ds-text-base font-bold">
                       {t('layout.workspace-current-version', {
                         defaultValue: 'Current Space',
                       })}
                     </span>
-                    <span className="block text-body-xs text-ds-text-neutral-muted-default">
+                    <span className="block text-ds-text-meta text-ds-ink-muted-default">
                       {t('layout.workspace-current-version-description', {
                         defaultValue:
                           'The latest save point for files visible in this Space.',
@@ -280,7 +280,7 @@ export function WorkspaceVersionHistoryDialog({
                   </Button>
                 </div>
                 {versionView.currentSpace ? (
-                  <div className="flex items-center gap-3 rounded-xl border border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default p-4">
+                  <div className="flex items-center gap-3 rounded-xl border border-x border-y border-ds-hairline-default-default bg-ds-neutral-subtle-default p-4">
                     <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-ds-bg-success-subtle-default">
                       <CheckCircle2
                         className="size-5 text-ds-icon-success-default-default"
@@ -288,12 +288,12 @@ export function WorkspaceVersionHistoryDialog({
                       />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <span className="block text-body-sm font-semibold">
+                      <span className="block text-ds-text-base font-semibold">
                         {t('layout.workspace-latest-save-point', {
                           defaultValue: 'Latest save point',
                         })}
                       </span>
-                      <span className="block truncate text-body-xs text-ds-text-neutral-muted-default">
+                      <span className="block truncate text-ds-text-meta text-ds-ink-muted-default">
                         {versionView.currentSpace.subject ||
                           t('layout.workspace-saved-version', {
                             defaultValue: 'Saved version',
@@ -301,12 +301,12 @@ export function WorkspaceVersionHistoryDialog({
                         · {formatDate(versionView.currentSpace.committed_at)}
                       </span>
                     </div>
-                    <code className="shrink-0 rounded-md border border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-2 py-1 text-body-xs text-ds-text-neutral-muted-default">
+                    <code className="shrink-0 rounded-md border border-x border-y border-ds-hairline-default-default bg-ds-neutral-default-default px-2 py-1 text-ds-text-meta text-ds-ink-muted-default">
                       {versionView.currentSpace.oid.slice(0, 8)}
                     </code>
                   </div>
                 ) : (
-                  <div className="rounded-xl border border-dashed border-ds-border-neutral-default-default p-4 text-body-sm text-ds-text-neutral-muted-default">
+                  <div className="rounded-xl border border-x border-y border-dashed border-ds-hairline-default-default p-4 text-ds-text-base text-ds-ink-muted-default">
                     {t('layout.workspace-no-save-point', {
                       defaultValue: 'No Space save point is available yet.',
                     })}
@@ -315,7 +315,7 @@ export function WorkspaceVersionHistoryDialog({
               </section>
 
               {history.large_repository.warning ? (
-                <div className="flex shrink-0 gap-2 rounded-xl border border-ds-border-warning-default-default p-3 text-body-sm">
+                <div className="flex shrink-0 gap-2 rounded-xl border border-x border-y border-ds-border-warning-default-default p-3 text-ds-text-base">
                   <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
                   <span>
                     {t('layout.workspace-large-repository-warning', {
@@ -342,40 +342,40 @@ export function WorkspaceVersionHistoryDialog({
                 >
                   <TabsTrigger
                     value="projects"
-                    className="flex-1 gap-1.5 !text-body-sm"
+                    className="flex-1 gap-1.5 !text-ds-text-base"
                   >
                     {t('layout.workspace-project-versions', {
                       defaultValue: 'Project versions',
                     })}
-                    <span className="rounded-full bg-ds-bg-neutral-muted-default px-1.5 py-0.5 !text-body-xs">
+                    <span className="rounded-full bg-ds-neutral-muted-default px-1.5 py-0.5 !text-ds-text-meta">
                       {versionView.projectVersions.length}
                     </span>
                   </TabsTrigger>
                   <TabsTrigger
                     value="tasks"
-                    className="flex-1 gap-1.5 !text-body-sm"
+                    className="flex-1 gap-1.5 !text-ds-text-base"
                   >
                     {t('layout.workspace-task-versions', {
                       defaultValue: 'Task versions',
                     })}
-                    <span className="rounded-full bg-ds-bg-neutral-muted-default px-1.5 py-0.5 !text-body-xs">
+                    <span className="rounded-full bg-ds-neutral-muted-default px-1.5 py-0.5 !text-ds-text-meta">
                       {versionView.taskVersions.length}
                     </span>
                   </TabsTrigger>
                   <TabsTrigger
                     value="commits"
-                    className="flex-1 gap-1.5 !text-body-sm"
+                    className="flex-1 gap-1.5 !text-ds-text-base"
                   >
                     {t('layout.workspace-recent-commits', {
                       defaultValue: 'Checkpoints',
                     })}
-                    <span className="rounded-full bg-ds-bg-neutral-muted-default px-1.5 py-0.5 !text-body-xs">
+                    <span className="rounded-full bg-ds-neutral-muted-default px-1.5 py-0.5 !text-ds-text-meta">
                       {timelineEvents.length}
                     </span>
                   </TabsTrigger>
                   <TabsTrigger
                     value="technical"
-                    className="flex-1 gap-1.5 !text-body-sm"
+                    className="flex-1 gap-1.5 !text-ds-text-base"
                   >
                     {t('layout.workspace-technical-details', {
                       defaultValue: 'Technical',
@@ -387,31 +387,31 @@ export function WorkspaceVersionHistoryDialog({
                   value="projects"
                   className="scrollbar-overlay my-2 min-h-0 flex-1 overflow-y-auto pl-2.5"
                 >
-                  <span className="block text-body-xs text-ds-text-neutral-muted-default">
+                  <span className="block text-ds-text-meta text-ds-ink-muted-default">
                     {t('layout.workspace-project-versions-description', {
                       defaultValue:
                         'The latest retained version for each Project in this Space.',
                     })}
                   </span>
-                  <div className="overflow-hidden rounded-xl border border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-4">
+                  <div className="overflow-hidden rounded-xl border border-x border-y border-ds-hairline-default-default bg-ds-neutral-default-default px-4">
                     {versionView.projectVersions.map((branch) => (
                       <div
                         key={branch.ref}
-                        className="flex items-center gap-3 border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default py-3 last:border-b-0"
+                        className="flex items-center gap-3 border-x-0 border-t-0 border-b-[0.5px] border-solid border-ds-hairline-default-default py-3 last:border-x-0 last:border-t-0 last:border-b-0"
                       >
                         <FolderGit2
-                          className="size-4 shrink-0 text-ds-icon-neutral-muted-default"
+                          className="size-4 shrink-0 text-ds-ink-muted-default"
                           aria-hidden
                         />
                         <div className="min-w-0 flex-1">
-                          <span className="block truncate text-body-sm font-semibold">
+                          <span className="block truncate text-ds-text-base font-semibold">
                             {(branch.project_id &&
                               projectNames.get(branch.project_id)) ||
                               t('layout.workspace-project-version', {
                                 defaultValue: 'Project version',
                               })}
                           </span>
-                          <span className="block truncate text-body-xs text-ds-text-neutral-muted-default">
+                          <span className="block truncate text-ds-text-meta text-ds-ink-muted-default">
                             {branch.subject.startsWith(
                               'Initialize Eigent Project workspace'
                             )
@@ -424,13 +424,13 @@ export function WorkspaceVersionHistoryDialog({
                             · {formatDate(branch.committed_at)}
                           </span>
                         </div>
-                        <code className="shrink-0 rounded-md border border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default px-2 py-0.5 text-body-xs text-ds-text-neutral-muted-default">
+                        <code className="shrink-0 rounded-md border border-x border-y border-ds-hairline-default-default bg-ds-neutral-subtle-default px-2 py-0.5 text-ds-text-meta text-ds-ink-muted-default">
                           {branch.oid.slice(0, 8)}
                         </code>
                       </div>
                     ))}
                     {versionView.projectVersions.length === 0 ? (
-                      <span className="block py-4 text-body-sm text-ds-text-neutral-muted-default">
+                      <span className="block py-4 text-ds-text-base text-ds-ink-muted-default">
                         {t('layout.workspace-no-project-versions', {
                           defaultValue:
                             'No Project versions are available yet.',
@@ -444,13 +444,13 @@ export function WorkspaceVersionHistoryDialog({
                   value="tasks"
                   className="scrollbar-overlay my-2 min-h-0 flex-1 overflow-y-auto pl-2.5"
                 >
-                  <span className="block text-body-xs text-ds-text-neutral-muted-default">
+                  <span className="block text-ds-text-meta text-ds-ink-muted-default">
                     {t('layout.workspace-task-versions-description', {
                       defaultValue:
                         'One saved entry per task. Internal execution branches are grouped automatically.',
                     })}
                   </span>
-                  <div className="overflow-hidden rounded-xl border border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-4">
+                  <div className="overflow-hidden rounded-xl border border-x border-y border-ds-hairline-default-default bg-ds-neutral-default-default px-4">
                     {(showAllTaskVersions
                       ? versionView.taskVersions
                       : versionView.taskVersions.slice(0, 5)
@@ -462,20 +462,20 @@ export function WorkspaceVersionHistoryDialog({
                       return (
                         <div
                           key={taskVersion.id}
-                          className="flex items-center gap-3 border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default py-3 last:border-b-0"
+                          className="flex items-center gap-3 border-x-0 border-t-0 border-b-[0.5px] border-solid border-ds-hairline-default-default py-3 last:border-x-0 last:border-t-0 last:border-b-0"
                         >
                           <History
-                            className="size-4 shrink-0 text-ds-icon-neutral-muted-default"
+                            className="size-4 shrink-0 text-ds-ink-muted-default"
                             aria-hidden
                           />
                           <div className="min-w-0 flex-1">
-                            <span className="block truncate text-body-sm font-semibold">
+                            <span className="block truncate text-ds-text-base font-semibold">
                               {projectName ||
                                 t('layout.workspace-task-version', {
                                   defaultValue: 'Task version',
                                 })}
                             </span>
-                            <span className="block truncate text-body-xs text-ds-text-neutral-muted-default">
+                            <span className="block truncate text-ds-text-meta text-ds-ink-muted-default">
                               {taskVersion.branch.subject.startsWith(
                                 'Initialize Eigent Project workspace'
                               )
@@ -495,7 +495,7 @@ export function WorkspaceVersionHistoryDialog({
                                 : ''}
                             </span>
                           </div>
-                          <span className="shrink-0 rounded-full bg-ds-bg-neutral-strong-default px-2 py-0.5 text-body-xs">
+                          <span className="shrink-0 rounded-full bg-ds-neutral-strong-default px-2 py-0.5 text-ds-text-meta">
                             {taskVersion.archived
                               ? t('layout.workspace-version-retained', {
                                   defaultValue: 'Retained',
@@ -508,7 +508,7 @@ export function WorkspaceVersionHistoryDialog({
                       );
                     })}
                     {versionView.taskVersions.length === 0 ? (
-                      <span className="block py-4 text-body-sm text-ds-text-neutral-muted-default">
+                      <span className="block py-4 text-ds-text-base text-ds-ink-muted-default">
                         {t('layout.workspace-no-task-versions', {
                           defaultValue: 'No task versions are available yet.',
                         })}
@@ -537,7 +537,7 @@ export function WorkspaceVersionHistoryDialog({
                   value="commits"
                   className="scrollbar-overlay my-2 min-h-0 flex-1 overflow-y-auto pl-2.5"
                 >
-                  <span className="block text-body-xs text-ds-text-neutral-muted-default">
+                  <span className="block text-ds-text-meta text-ds-ink-muted-default">
                     {t('layout.workspace-recent-commits-description', {
                       defaultValue:
                         'A chronological Git view of save points, task checkpoints, and merges.',
@@ -576,12 +576,12 @@ export function WorkspaceVersionHistoryDialog({
                     <div className="flex min-w-0 items-center gap-3 py-2">
                       <GitBranch className="size-4 shrink-0" aria-hidden />
                       <div className="min-w-0">
-                        <span className="block text-body-sm font-semibold">
+                        <span className="block text-ds-text-base font-semibold">
                           {t('layout.workspace-technical-details', {
                             defaultValue: 'Technical details',
                           })}
                         </span>
-                        <span className="block text-body-xs font-normal text-ds-text-neutral-muted-default">
+                        <span className="block text-ds-text-meta font-normal text-ds-ink-muted-default">
                           {t('layout.workspace-technical-details-description', {
                             count: versionView.technicalBranches.length,
                             defaultValue: `${versionView.technicalBranches.length} internal Git references and retention details`,
@@ -589,39 +589,39 @@ export function WorkspaceVersionHistoryDialog({
                         </span>
                       </div>
                     </div>
-                    <span className="block text-body-xs font-semibold">
+                    <span className="block text-ds-text-meta font-semibold">
                       {t('layout.workspace-git-references', {
                         defaultValue: 'Git references',
                       })}
                     </span>
-                    <div className="overflow-hidden rounded-xl border border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-4">
+                    <div className="overflow-hidden rounded-xl border border-x border-y border-ds-hairline-default-default bg-ds-neutral-default-default px-4">
                       {versionView.technicalBranches.map((branch) => (
                         <div
                           key={branch.ref}
-                          className="flex min-w-0 items-center gap-3 border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default py-3 last:border-b-0"
+                          className="flex min-w-0 items-center gap-3 border-x-0 border-t-0 border-b-[0.5px] border-solid border-ds-hairline-default-default py-3 last:border-x-0 last:border-t-0 last:border-b-0"
                         >
                           <GitBranch
-                            className="size-4 shrink-0 text-ds-icon-neutral-muted-default"
+                            className="size-4 shrink-0 text-ds-ink-muted-default"
                             aria-hidden
                           />
                           <div className="min-w-0 flex-1">
-                            <span className="block truncate text-body-sm font-semibold">
+                            <span className="block truncate text-ds-text-base font-semibold">
                               {technicalRefLabel(branch.ref)}
                             </span>
-                            <span className="block truncate text-body-xs text-ds-text-neutral-muted-default">
+                            <span className="block truncate text-ds-text-meta text-ds-ink-muted-default">
                               {branch.oid.slice(0, 8)} ·{' '}
                               {formatDate(branch.committed_at)}
                             </span>
                           </div>
                           {branch.archived ? (
-                            <span className="shrink-0 rounded-full bg-ds-bg-neutral-strong-default px-2 py-0.5 text-body-xs">
+                            <span className="shrink-0 rounded-full bg-ds-neutral-strong-default px-2 py-0.5 text-ds-text-meta">
                               archived
                             </span>
                           ) : null}
                         </div>
                       ))}
                       {versionView.technicalBranches.length === 0 ? (
-                        <span className="block py-4 text-body-sm text-ds-text-neutral-muted-default">
+                        <span className="block py-4 text-ds-text-base text-ds-ink-muted-default">
                           {t('layout.workspace-no-git-references', {
                             defaultValue:
                               'No Git references are available yet.',
@@ -629,7 +629,7 @@ export function WorkspaceVersionHistoryDialog({
                         </span>
                       ) : null}
                     </div>
-                    <span className="block text-body-xs text-ds-text-neutral-muted-default">
+                    <span className="block text-ds-text-meta text-ds-ink-muted-default">
                       Automatic archive deletion and object GC are disabled.
                       Encrypted Space backup is not configured implicitly and
                       remains a separate, explicit product setup.
@@ -643,15 +643,15 @@ export function WorkspaceVersionHistoryDialog({
                         aria-hidden
                       />
                       <div className="min-w-0">
-                        <span className="block text-body-sm font-semibold">
+                        <span className="block text-ds-text-base font-semibold">
                           Advanced Git
                         </span>
-                        <span className="block text-body-xs font-normal text-ds-text-neutral-muted-default">
+                        <span className="block text-ds-text-meta font-normal text-ds-ink-muted-default">
                           Preview and run policy-gated Git commands.
                         </span>
                       </div>
                     </div>
-                    <span className="block text-body-xs text-ds-text-neutral-muted-default">
+                    <span className="block text-ds-text-meta text-ds-ink-muted-default">
                       Enter argv as a JSON string array. No shell is used. The
                       exact classified action is reviewed before execution.
                     </span>
@@ -666,12 +666,12 @@ export function WorkspaceVersionHistoryDialog({
                       spellCheck={false}
                     />
                     {preview ? (
-                      <div className="rounded-lg bg-ds-bg-neutral-strong-default p-3 text-body-xs">
+                      <div className="rounded-lg bg-ds-neutral-strong-default p-3 text-ds-text-meta">
                         <span className="block">
                           <strong>{preview.classification}</strong> ·{' '}
                           {preview.effect}
                         </span>
-                        <span className="mt-1 block break-all font-mono">
+                        <span className="mt-1 block font-mono break-all">
                           {preview.display_argv.join(' ')}
                         </span>
                         {preview.requires_confirmation ? (
@@ -707,7 +707,7 @@ export function WorkspaceVersionHistoryDialog({
                       </Button>
                     </div>
                     {commandOutput ? (
-                      <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-ds-bg-neutral-strong-default p-3 text-body-xs">
+                      <pre className="max-h-48 overflow-auto rounded-lg bg-ds-neutral-strong-default p-3 text-ds-text-meta whitespace-pre-wrap">
                         {commandOutput}
                       </pre>
                     ) : null}

@@ -214,10 +214,10 @@ export function ProviderIcon({
     size === 'list'
       ? 'h-5 w-5'
       : size === 'detail'
-        ? 'h-7 w-7 rounded-lg border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default'
+        ? 'h-7 w-7 rounded-lg border-x border-y border border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default'
         : size === 'lg'
-          ? 'h-12 w-12 rounded-xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default'
-          : 'h-10 w-10 rounded-xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default';
+          ? 'h-12 w-12 rounded-xl border-x border-y border border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default'
+          : 'h-10 w-10 rounded-xl border-x border-y border border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default';
   const imageClass =
     size === 'list' || size === 'detail'
       ? 'h-5 w-5'
@@ -238,7 +238,7 @@ export function ProviderIcon({
         />
       ) : (
         <PlugZap
-          className={`${size === 'list' ? 'h-5 w-5' : 'h-4 w-4'} text-ds-icon-neutral-muted-default`}
+          className={`${size === 'list' ? 'h-5 w-5' : 'h-4 w-4'} text-ds-ink-muted-default`}
         />
       )}
     </div>
@@ -247,7 +247,7 @@ export function ProviderIcon({
 
 function CatalogCardSkeleton() {
   return (
-    <div className="flex h-20 items-center gap-3 rounded-2xl bg-ds-bg-neutral-default-default px-4 py-3">
+    <div className="flex h-20 items-center gap-3 rounded-2xl bg-ds-neutral-default-default px-4 py-3">
       <Skeleton className="h-10 w-10 shrink-0 rounded-xl" />
       <div className="min-w-0 flex-1 space-y-2">
         <Skeleton className="h-4 w-32" />
@@ -289,9 +289,9 @@ function CatalogLoadingBanner({ label }: { label: string }) {
       }}
       className="overflow-hidden"
     >
-      <div className="flex flex-col items-center justify-center gap-2 py-3 text-ds-text-neutral-muted-default">
+      <div className="flex flex-col items-center justify-center gap-2 py-3 text-ds-ink-muted-default">
         <Loader2 className="h-5 w-5 animate-spin" />
-        <span className="text-body-xs">{label}</span>
+        <span className="text-ds-text-meta">{label}</span>
       </div>
     </motion.div>
   );
@@ -862,13 +862,13 @@ export default function ConnectorBrowserPage({
     <SettingsSectionPage className="min-h-full w-full">
       {!showingDetail ? (
         <SettingsHeaderActions>
-          <SearchInput
-            variant="icon"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={t('connectors.search-connectors')}
-            searchTooltip={t('connectors.search-connectors')}
-          />
+          <div className="w-56 max-w-full">
+            <SearchInput
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={t('connectors.search-connectors')}
+            />
+          </div>
           {localMode && connectorGatewayEnabled ? (
             <Button
               type="button"
@@ -907,16 +907,16 @@ export default function ConnectorBrowserPage({
               {browseSource === 'open' ? (
                 !connectorGatewayEnabled ? (
                   <div className="flex min-h-48 flex-col items-center justify-center gap-1 px-6 text-center">
-                    <span className="text-body-sm font-bold text-ds-text-neutral-default-default">
+                    <span className="text-ds-text-base font-bold text-ds-ink-default-default">
                       {t('connectors.gateway-unavailable')}
                     </span>
-                    <span className="text-body-sm text-ds-text-neutral-muted-default">
+                    <span className="text-ds-text-base text-ds-ink-muted-default">
                       {t('connectors.gateway-unavailable-desc')}
                     </span>
                   </div>
                 ) : catalogError && catalog.length === 0 && !catalogLoading ? (
                   <div className="flex min-h-48 flex-col items-center justify-center gap-3 text-center">
-                    <span className="block text-body-sm text-ds-text-error-default-default">
+                    <span className="block text-ds-text-base text-ds-text-error-default-default">
                       {catalogError}
                     </span>
                     <Button
@@ -933,7 +933,7 @@ export default function ConnectorBrowserPage({
                 ) : !catalogLoading &&
                   !catalogRefreshing &&
                   catalog.length === 0 ? (
-                  <div className="flex min-h-48 items-center justify-center text-body-sm text-ds-text-neutral-muted-default">
+                  <div className="flex min-h-48 items-center justify-center text-ds-text-base text-ds-ink-muted-default">
                     {t('connectors.no-gateway-found')}
                   </div>
                 ) : (
@@ -961,37 +961,37 @@ export default function ConnectorBrowserPage({
                                 key={provider.service}
                                 type="button"
                                 onClick={() => openProvider(provider)}
-                                className="group flex h-20 items-center gap-3 rounded-2xl border border-solid border-transparent bg-ds-bg-neutral-subtle-default px-4 py-3 text-left transition-colors hover:border-ds-border-neutral-default-default hover:bg-ds-bg-neutral-default-hover"
+                                className="group flex h-20 items-center gap-3 rounded-2xl border border-x border-y border-solid border-transparent bg-ds-neutral-subtle-default px-4 py-3 text-left transition-colors hover:border-ds-hairline-default-default hover:bg-ds-neutral-default-hover"
                               >
                                 <ProviderIcon provider={provider} />
                                 <div className="min-w-0 flex-1">
                                   <div className="flex min-w-0 items-center gap-1.5">
-                                    <span className="text-body-base truncate font-bold text-ds-text-neutral-default-default">
+                                    <span className="truncate text-ds-text-base font-bold text-ds-ink-default-default">
                                       {providerLabel(provider)}
                                     </span>
                                     <BadgeCheck
                                       className={`h-3.5 w-3.5 shrink-0 ${
                                         installed
                                           ? 'text-ds-icon-success-default-default'
-                                          : 'text-ds-icon-neutral-muted-default'
+                                          : 'text-ds-ink-muted-default'
                                       }`}
                                     />
                                     {provider.recommended ? (
-                                      <span className="shrink-0 text-label-xs font-bold text-ds-text-warning-strong-default">
+                                      <span className="shrink-0 text-ds-text-meta font-bold text-ds-text-warning-strong-default">
                                         {t('connectors.new')}
                                       </span>
                                     ) : null}
                                   </div>
                                   {provider.description?.trim() ? (
-                                    <span className="mt-1 line-clamp-1 block text-body-xs text-ds-text-neutral-muted-default">
+                                    <span className="mt-1 line-clamp-1 block text-ds-text-meta text-ds-ink-muted-default">
                                       {provider.description.trim()}
                                     </span>
                                   ) : null}
                                 </div>
                                 {installed ? (
-                                  <Settings className="h-4 w-4 shrink-0 text-ds-icon-neutral-muted-default" />
+                                  <Settings className="h-4 w-4 shrink-0 text-ds-ink-muted-default" />
                                 ) : (
-                                  <Plus className="h-4 w-4 shrink-0 text-ds-icon-neutral-muted-default" />
+                                  <Plus className="h-4 w-4 shrink-0 text-ds-ink-muted-default" />
                                 )}
                               </button>
                             );
@@ -1004,7 +1004,7 @@ export default function ConnectorBrowserPage({
                           >
                             {loadingMore ? (
                               <>
-                                <div className="flex flex-col items-center gap-2 text-body-xs text-ds-text-neutral-muted-default">
+                                <div className="flex flex-col items-center gap-2 text-ds-text-meta text-ds-ink-muted-default">
                                   <Loader2 className="h-4 w-4 animate-spin" />
                                   {t('connectors.loading-more')}
                                 </div>
@@ -1020,7 +1020,7 @@ export default function ConnectorBrowserPage({
                   </div>
                 )
               ) : filteredBuiltIns.length === 0 ? (
-                <div className="flex min-h-48 items-center justify-center text-body-sm text-ds-text-neutral-muted-default">
+                <div className="flex min-h-48 items-center justify-center text-ds-text-base text-ds-ink-muted-default">
                   {t('connectors.no-built-in-found')}
                 </div>
               ) : (
@@ -1037,30 +1037,30 @@ export default function ConnectorBrowserPage({
                           setSelectedBuiltIn(item);
                           setFormError(null);
                         }}
-                        className="group flex h-20 items-center gap-3 rounded-2xl border border-solid border-transparent bg-ds-bg-neutral-subtle-default px-4 py-3 text-left transition-colors hover:border-ds-border-neutral-default-default hover:bg-ds-bg-neutral-subtle-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-brand-default-focus"
+                        className="group flex h-20 items-center gap-3 rounded-2xl border border-x border-y border-solid border-transparent bg-ds-neutral-subtle-default px-4 py-3 text-left transition-colors hover:border-ds-hairline-default-default hover:bg-ds-neutral-subtle-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:outline-none"
                       >
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default">
-                          <Server className="h-5 w-5 text-ds-icon-neutral-muted-default" />
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default">
+                          <Server className="h-5 w-5 text-ds-ink-muted-default" />
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex min-w-0 items-center gap-1.5">
-                            <span className="truncate text-body-sm font-bold text-ds-text-neutral-default-default">
+                            <span className="truncate text-ds-text-base font-bold text-ds-ink-default-default">
                               {item.name}
                             </span>
                             <Badge size="xs" variant="outline">
                               {t('connectors.source-built-in')}
                             </Badge>
                           </div>
-                          <span className="mt-1 line-clamp-1 block text-body-xs text-ds-text-neutral-muted-default">
+                          <span className="mt-1 line-clamp-1 block text-ds-text-meta text-ds-ink-muted-default">
                             {typeof item.desc === 'string'
                               ? item.desc
                               : t('connectors.local-integration')}
                           </span>
                         </div>
                         {installed ? (
-                          <Settings className="h-4 w-4 shrink-0 text-ds-icon-neutral-muted-default" />
+                          <Settings className="h-4 w-4 shrink-0 text-ds-ink-muted-default" />
                         ) : (
-                          <Plus className="h-4 w-4 shrink-0 text-ds-icon-neutral-muted-default" />
+                          <Plus className="h-4 w-4 shrink-0 text-ds-ink-muted-default" />
                         )}
                       </button>
                     );
@@ -1074,18 +1074,18 @@ export default function ConnectorBrowserPage({
             <div className="min-h-0 flex-1 overflow-y-auto p-6">
               {detailLoading ? (
                 <div className="space-y-3">
-                  <div className="h-24 animate-pulse rounded-xl bg-ds-bg-neutral-strong-default" />
-                  <div className="h-44 animate-pulse rounded-xl bg-ds-bg-neutral-strong-default" />
+                  <div className="h-24 animate-pulse rounded-xl bg-ds-neutral-strong-default" />
+                  <div className="h-44 animate-pulse rounded-xl bg-ds-neutral-strong-default" />
                 </div>
               ) : (
                 <div className="mx-auto flex max-w-3xl flex-col gap-5">
                   <div className="flex items-center gap-3">
                     <ProviderIcon provider={selectedProvider} size="lg" />
                     <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-                      <span className="text-heading-xs truncate font-bold text-ds-text-neutral-default-default">
+                      <span className="truncate text-ds-text-meta font-bold text-ds-ink-default-default">
                         {providerLabel(selectedProvider)}
                       </span>
-                      <span className="shrink-0 text-body-sm text-ds-text-neutral-muted-default">
+                      <span className="shrink-0 text-ds-text-base text-ds-ink-muted-default">
                         {t('connectors.supported-actions-count', {
                           num: providerActionCount(selectedProvider),
                         })}
@@ -1096,7 +1096,7 @@ export default function ConnectorBrowserPage({
                         href={selectedProvider.homepageUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex shrink-0 items-center gap-1 text-label-sm text-ds-text-neutral-muted-default underline-offset-2 hover:underline"
+                        className="inline-flex shrink-0 items-center gap-1 text-ds-text-base text-ds-ink-muted-default underline-offset-2 hover:underline"
                       >
                         {t('connectors.provider-website')}
                         <ExternalLink className="h-3.5 w-3.5" />
@@ -1105,7 +1105,7 @@ export default function ConnectorBrowserPage({
                   </div>
 
                   {selectedProvider.actions?.length ? (
-                    <div className="overflow-hidden rounded-xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default">
+                    <div className="overflow-hidden rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default">
                       <div className="relative">
                         <div
                           ref={actionsListRef}
@@ -1118,21 +1118,21 @@ export default function ConnectorBrowserPage({
                           {selectedProvider.actions.map((action, index) => (
                             <span
                               key={action.id || action.name || index}
-                              className="inline-flex items-center rounded-full bg-ds-bg-neutral-subtle-default px-3 py-1 text-label-xs text-ds-text-neutral-default-default"
+                              className="inline-flex items-center rounded-full bg-ds-neutral-subtle-default px-3 py-1 text-ds-text-meta text-ds-ink-default-default"
                             >
                               {actionLabel(action, t)}
                             </span>
                           ))}
                         </div>
                         {!actionsExpanded && actionsOverflow ? (
-                          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-ds-bg-neutral-default-default to-transparent" />
+                          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-ds-neutral-default-default to-transparent" />
                         ) : null}
                       </div>
                       {actionsOverflow ? (
                         <button
                           type="button"
                           onClick={() => setActionsExpanded((value) => !value)}
-                          className="flex w-full items-center justify-center gap-1.5 border-0 bg-transparent px-4 py-2.5 text-label-xs text-ds-text-neutral-muted-default transition-colors hover:bg-ds-bg-neutral-default-hover hover:text-ds-text-neutral-default-default"
+                          className="flex w-full items-center justify-center gap-1.5 border-0 border-x-0 border-y-0 bg-transparent px-4 py-2.5 text-ds-text-meta text-ds-ink-muted-default transition-colors hover:bg-ds-neutral-default-hover hover:text-ds-ink-default-default"
                         >
                           {actionsExpanded
                             ? t('connectors.show-less')
@@ -1149,7 +1149,7 @@ export default function ConnectorBrowserPage({
 
                   {authDefinitions(selectedProvider).length > 1 ? (
                     <div className="space-y-2">
-                      <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
+                      <div className="text-ds-text-base font-bold text-ds-ink-default-default">
                         {t('connectors.authentication')}
                       </div>
                       <Tabs
@@ -1165,7 +1165,7 @@ export default function ConnectorBrowserPage({
                             <TabsTrigger
                               key={auth.type}
                               value={auth.type}
-                              className="!text-label-sm"
+                              className="!text-ds-text-base"
                             >
                               {authLabel(auth.type, t)}
                             </TabsTrigger>
@@ -1176,13 +1176,13 @@ export default function ConnectorBrowserPage({
                   ) : null}
 
                   {selectedAuth?.type === 'oauth2' ? (
-                    <div className="rounded-xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default p-4 text-body-sm text-ds-text-neutral-muted-default">
-                      <div className="mb-2 font-bold text-ds-text-neutral-default-default">
+                    <div className="rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default p-4 text-ds-text-base text-ds-ink-muted-default">
+                      <div className="mb-2 font-bold text-ds-ink-default-default">
                         {t('connectors.oauth-title')}
                       </div>
                       {t('connectors.oauth-desc')}
                       {selectedAuth.scopes?.length ? (
-                        <span className="mt-3 block text-body-xs">
+                        <span className="mt-3 block text-ds-text-meta">
                           {t('connectors.oauth-scopes', {
                             scopes: selectedAuth.scopes.join(', '),
                           })}
@@ -1190,7 +1190,7 @@ export default function ConnectorBrowserPage({
                       ) : null}
                     </div>
                   ) : selectedAuth?.type === 'no_auth' ? (
-                    <div className="flex items-start gap-3 rounded-xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default p-4 text-body-sm text-ds-text-neutral-muted-default">
+                    <div className="flex items-start gap-3 rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default p-4 text-ds-text-base text-ds-ink-muted-default">
                       <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
                       {t('connectors.no-auth-desc')}
                     </div>
@@ -1237,20 +1237,20 @@ export default function ConnectorBrowserPage({
                   ) : null}
 
                   {authorizationPending ? (
-                    <div className="flex items-center gap-2 rounded-xl bg-ds-bg-information-subtle-default p-3 text-body-sm text-ds-text-information-strong-default">
+                    <div className="flex items-center gap-2 rounded-xl bg-ds-bg-information-subtle-default p-3 text-ds-text-base text-ds-text-information-strong-default">
                       <Loader2 className="h-4 w-4 animate-spin" />
                       {t('connectors.waiting-authorization')}
                     </div>
                   ) : null}
                   {formError ? (
-                    <div className="rounded-xl bg-ds-bg-error-subtle-default p-3 text-body-sm text-ds-text-error-strong-default">
+                    <div className="rounded-xl bg-ds-bg-error-subtle-default p-3 text-ds-text-base text-ds-text-error-strong-default">
                       {formError}
                     </div>
                   ) : null}
                 </div>
               )}
             </div>
-            <div className="flex items-center justify-end gap-2 border-x-0 border-b-0 border-t border-solid border-ds-border-neutral-muted-default p-4">
+            <div className="flex items-center justify-end gap-2 border-x-0 border-t border-b-0 border-solid border-ds-hairline-muted-default p-4">
               <Button variant="ghost" size="sm" onClick={closePage}>
                 {t('connectors.cancel')}
               </Button>
@@ -1273,12 +1273,12 @@ export default function ConnectorBrowserPage({
             <div className="min-h-0 flex-1 overflow-y-auto p-6">
               <div className="mx-auto flex max-w-2xl flex-col gap-5">
                 <div className="flex items-start gap-4">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default">
-                    <Server className="h-6 w-6 text-ds-icon-neutral-muted-default" />
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default">
+                    <Server className="h-6 w-6 text-ds-ink-muted-default" />
                   </div>
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-heading-xs text-ds-text-neutral-default-default">
+                      <span className="text-ds-text-meta text-ds-ink-default-default">
                         {selectedBuiltIn.name}
                       </span>
                       <Badge size="sm" variant="outline">
@@ -1290,7 +1290,7 @@ export default function ConnectorBrowserPage({
                         </Badge>
                       ) : null}
                     </div>
-                    <span className="mt-2 block text-body-sm text-ds-text-neutral-muted-default">
+                    <span className="mt-2 block text-ds-text-base text-ds-ink-muted-default">
                       {typeof selectedBuiltIn.desc === 'string'
                         ? selectedBuiltIn.desc
                         : t('connectors.built-in-generic-desc')}
@@ -1321,7 +1321,7 @@ export default function ConnectorBrowserPage({
                     ))}
                   </div>
                 ) : (
-                  <div className="rounded-xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default p-4 text-body-sm text-ds-text-neutral-muted-default">
+                  <div className="rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default p-4 text-ds-text-base text-ds-ink-muted-default">
                     {t('connectors.built-in-auth-desc')}
                   </div>
                 )}
@@ -1374,7 +1374,7 @@ export default function ConnectorBrowserPage({
                               },
                             }
                       }
-                      className="flex items-center justify-between gap-3 rounded-xl bg-ds-bg-information-subtle-default p-3 text-body-sm text-ds-text-information-strong-default"
+                      className="flex items-center justify-between gap-3 rounded-xl bg-ds-bg-information-subtle-default p-3 text-ds-text-base text-ds-text-information-strong-default"
                     >
                       <span>{t('connectors.complete-authorization')}</span>
                       <Button
@@ -1391,13 +1391,13 @@ export default function ConnectorBrowserPage({
                   ) : null}
                 </AnimatePresence>
                 {formError ? (
-                  <div className="rounded-xl bg-ds-bg-error-subtle-default p-3 text-body-sm text-ds-text-error-strong-default">
+                  <div className="rounded-xl bg-ds-bg-error-subtle-default p-3 text-ds-text-base text-ds-text-error-strong-default">
                     {formError}
                   </div>
                 ) : null}
               </div>
             </div>
-            <div className="flex items-center justify-end gap-2 border-x-0 border-b-0 border-t border-solid border-ds-border-neutral-muted-default p-4">
+            <div className="flex items-center justify-end gap-2 border-x-0 border-t border-b-0 border-solid border-ds-hairline-muted-default p-4">
               <Button variant="ghost" size="sm" onClick={closePage}>
                 {t('connectors.cancel')}
               </Button>

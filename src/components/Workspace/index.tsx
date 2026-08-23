@@ -35,7 +35,7 @@ import { toast } from 'sonner';
 
 const EMPTY_TASK_ASSIGNING: Agent[] = [];
 const WORKSPACE_COWORK_TEXT_CLASS =
-  'inline-flex shrink-0 items-center font-display text-heading-lg font-semibold text-ds-text-neutral-default-default';
+  'inline-flex shrink-0 items-center font-display text-ds-text-display font-semibold text-ds-ink-default-default';
 
 interface WorkspaceProps {
   /**
@@ -428,7 +428,7 @@ export default function Workspace({
             data-workspace-input-section
             className="flex min-w-0 flex-1 items-center justify-center p-4"
           >
-            <div className="flex w-full min-w-0 max-w-[600px] flex-col pb-[58px]">
+            <div className="flex w-full max-w-[600px] min-w-0 flex-col pb-[58px]">
               {workspaceComposerTop}
               {composerInput}
             </div>

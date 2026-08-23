@@ -94,7 +94,7 @@ export function CallRow({
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
         className={cn(
-          'group inline-flex min-w-0 max-w-full items-center gap-1 self-start px-0 py-0.5 text-left transition-opacity hover:opacity-80',
+          'group inline-flex max-w-full min-w-0 items-center gap-1 self-start px-0 py-0.5 text-left transition-opacity hover:opacity-80',
           failed && 'text-ds-text-status-error-default-default'
         )}
         data-timeline-call-trigger
@@ -103,15 +103,15 @@ export function CallRow({
           <ShinyText
             text={call.title}
             speed={2.5}
-            className="min-w-0 shrink overflow-hidden text-ellipsis whitespace-nowrap !text-label-sm !font-normal text-ds-text-neutral-subtle-default"
+            className="min-w-0 shrink overflow-hidden !text-ds-text-base !font-normal text-ellipsis whitespace-nowrap text-ds-ink-subtle-default"
           />
         ) : (
           <span
             className={cn(
-              'min-w-0 shrink overflow-hidden text-ellipsis whitespace-nowrap !text-label-sm font-normal',
+              'min-w-0 shrink overflow-hidden !text-ds-text-base font-normal text-ellipsis whitespace-nowrap',
               failed
                 ? 'text-ds-text-status-error-default-default'
-                : 'text-ds-text-neutral-subtle-default'
+                : 'text-ds-ink-subtle-default'
             )}
           >
             {call.title}
@@ -130,7 +130,7 @@ export function CallRow({
             'size-4 shrink-0 transition-[opacity,transform] duration-200',
             failed
               ? 'text-ds-text-status-error-default-default'
-              : 'text-ds-icon-neutral-subtle-default',
+              : 'text-ds-ink-subtle-default',
             open
               ? 'rotate-90 opacity-100'
               : 'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100'
@@ -158,7 +158,7 @@ export function CallRow({
             >
               {detail ? (
                 <p
-                  className="whitespace-pre-wrap break-words px-0.5 !text-label-xs font-normal text-ds-text-neutral-subtle-default"
+                  className="px-0.5 !text-ds-text-meta font-normal break-words whitespace-pre-wrap text-ds-ink-subtle-default"
                   data-timeline-call-detail
                 >
                   {detail}

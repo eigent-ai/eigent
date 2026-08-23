@@ -33,14 +33,14 @@ export function SidePanelHeader({
   end,
 }: SidePanelHeaderProps) {
   return (
-    <div className="relative z-50 flex h-11 min-h-11 w-full min-w-0 shrink-0 items-center px-2">
+    <div className="relative z-50 flex h-ds-layout-row-header min-h-ds-layout-row-header w-full min-w-0 shrink-0 items-center overflow-visible px-ds-8">
       <div className="flex min-w-0 flex-1 items-center justify-start gap-1">
         <SidePanelFoldButton
           sessionSidePanelMode={mode}
           isSidePanelVisible={isSidePanelVisible}
           onToggle={onToggle}
         />
-        <span className="min-w-0 max-w-full truncate text-center text-body-md font-semibold text-ds-text-neutral-default-default">
+        <span className="max-w-full min-w-0 truncate text-center text-ds-text-body-large font-semibold text-ds-ink-default-default">
           {title}
         </span>
       </div>

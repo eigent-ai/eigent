@@ -194,7 +194,7 @@ describe('Memory scope directory', () => {
     );
 
     expect(await screen.findByText('1 Space with Memory')).toBeVisible();
-    expect(screen.getByLabelText('Search Space Memory')).toBeVisible();
+    expect(screen.getByPlaceholderText('Search Spaces')).toBeVisible();
     expect(
       screen.queryByRole('button', { name: 'Open Space Memory' })
     ).not.toBeInTheDocument();

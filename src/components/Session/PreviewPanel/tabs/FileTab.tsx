@@ -26,7 +26,7 @@ export function FileTab({ tab, onJumpToFiles }: FileTabProps) {
     <FilePreview
       file={tab.file}
       embedded
-      surfaceClassName="bg-ds-bg-neutral-default-default"
+      surfaceClassName="bg-ds-neutral-default-default"
       onJumpToFiles={onJumpToFiles}
     />
   );

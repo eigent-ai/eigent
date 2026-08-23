@@ -144,7 +144,7 @@ const ProtectedRoute = () => {
   if (state.loading || !state.initialized) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600"></div>
+        <div className="h-8 w-8 animate-spin rounded-full border-x-0 border-t-0 border-b-2 border-blue-600"></div>
       </div>
     );
   }

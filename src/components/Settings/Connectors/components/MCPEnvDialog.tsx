@@ -129,8 +129,8 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
 
   const getCategoryIcon = (categoryName?: string) => {
     if (!categoryName)
-      return <Bot className="h-10 w-10 text-ds-icon-neutral-default-default" />;
-    return <Bot className="h-10 w-10 text-ds-icon-neutral-default-default" />;
+      return <Bot className="h-10 w-10 text-ds-ink-default-default" />;
+    return <Bot className="h-10 w-10 text-ds-ink-default-default" />;
   };
 
   const getGithubRepoName = (homePage?: string) => {
@@ -304,10 +304,10 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
             <div className="flex items-center gap-md">
               {getCategoryIcon(activeMcp?.category?.name)}
               <div>
-                <span className="block text-base font-bold leading-9 text-ds-text-brand-default-default">
+                <span className="block text-base leading-9 font-bold text-ds-accent-default-default">
                   {activeMcp?.name}
                 </span>
-                <div className="text-sm font-bold leading-normal text-ds-text-neutral-default-default">
+                <div className="text-sm leading-normal font-bold text-ds-ink-default-default">
                   {getGithubRepoName(activeMcp?.home_page) && (
                     <div className="flex items-center">
                       <img
@@ -321,7 +321,7 @@ export const MCPEnvDialog: FC<MCPEnvDialogProps> = ({
                           verticalAlign: 'middle',
                         }}
                       />
-                      <span className="line-clamp-1 items-center justify-center self-stretch overflow-hidden text-ellipsis break-words text-xs font-medium leading-normal">
+                      <span className="line-clamp-1 items-center justify-center self-stretch overflow-hidden text-xs leading-normal font-medium break-words text-ellipsis">
                         {getGithubRepoName(activeMcp?.home_page)}
                       </span>
                     </div>

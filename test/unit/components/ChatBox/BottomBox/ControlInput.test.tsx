@@ -119,12 +119,12 @@ describe('BottomBox approval keyboard safety', () => {
       name: 'Send feedback',
     });
     expect(within(sendFeedback).getByText('Enter')).toHaveClass(
-      'bg-primary-2',
+      'bg-ds-accent-subtle-default',
       'rounded-full',
       'opacity-60',
-      'text-[9px]',
-      'text-primary-11',
-      'ring-[var(--colors-black-10)]'
+      '!text-ds-text-meta',
+      'text-ds-accent-default-default',
+      'ring-ds-hairline-muted-default'
     );
 
     fireEvent.keyDown(screen.getByRole('textbox', { name: 'Feedback' }), {

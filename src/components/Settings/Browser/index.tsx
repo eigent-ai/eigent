@@ -287,7 +287,8 @@ export default function CDP() {
         })}
         confirmText={t('layout.remove')}
         cancelText={t('layout.cancel')}
-        confirmVariant="caution"
+        confirmVariant="primary"
+        confirmTone="error"
       />
 
       <SettingsRowGroup>
@@ -330,7 +331,7 @@ export default function CDP() {
               <span>
                 {t('layout.browser-pool', { defaultValue: 'Browser Pool' })}
               </span>
-              <span className="rounded-lg bg-ds-bg-information-subtle-default px-2 text-label-sm font-bold text-ds-text-information-strong-default">
+              <span className="rounded-lg bg-ds-bg-information-subtle-default px-2 text-ds-text-base font-bold text-ds-text-information-strong-default">
                 {cdpBrowsers.length}
               </span>
             </span>
@@ -349,7 +350,7 @@ export default function CDP() {
               disabled={
                 closingAll || browsersLoading || cdpBrowsers.length === 0
               }
-              className="uppercase !text-ds-text-status-error-strong-default"
+              className="!text-ds-text-status-error-strong-default uppercase"
             >
               {closingAll
                 ? t('layout.closing', { defaultValue: 'Closing' })
@@ -366,7 +367,7 @@ export default function CDP() {
           ) : browsersError && cdpBrowsers.length === 0 ? (
             <div
               role="alert"
-              className="flex flex-col items-center justify-center gap-3 px-4 py-8 text-center text-body-sm text-ds-text-error-strong-default"
+              className="flex flex-col items-center justify-center gap-3 px-4 py-8 text-center text-ds-text-base text-ds-text-error-strong-default"
             >
               <span>{browsersError}</span>
               <Button variant="outline" size="sm" onClick={loadCdpBrowsers}>
@@ -378,16 +379,16 @@ export default function CDP() {
               {cdpBrowsers.map((browser) => (
                 <div
                   key={browser.id}
-                  className="flex items-center justify-between rounded-xl bg-ds-bg-neutral-subtle-default px-4 py-2"
+                  className="flex items-center justify-between rounded-xl bg-ds-neutral-subtle-default px-4 py-2"
                 >
                   <div className="flex w-full flex-row items-center gap-3">
                     <div className="h-2 w-2 shrink-0 rounded-full bg-ds-text-success-default-default" />
                     <div className="flex flex-col items-start justify-start">
-                      <span className="text-body-sm font-bold text-ds-text-neutral-default-default">
+                      <span className="text-ds-text-base font-bold text-ds-ink-default-default">
                         {browser.name ||
                           t('layout.browser-name', { port: browser.port })}
                       </span>
-                      <span className="text-label-xs text-ds-text-neutral-muted-default">
+                      <span className="text-ds-text-meta text-ds-ink-muted-default">
                         {t('layout.port')} {browser.port}
                       </span>
                     </div>
@@ -398,7 +399,7 @@ export default function CDP() {
                     buttonContent="icon-only"
                     onClick={() => setBrowserToRemove(browser)}
                     disabled={deletingBrowser === browser.id}
-                    className="ml-3 flex-shrink-0"
+                    className="ml-3 shrink-0"
                     aria-label={t('layout.remove-browser')}
                   >
                     <Trash2
@@ -411,11 +412,11 @@ export default function CDP() {
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center px-4 py-8">
-              <Globe className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default opacity-50" />
-              <span className="text-body-base text-center font-bold text-ds-text-neutral-muted-default">
+              <Globe className="mb-4 h-12 w-12 text-ds-ink-muted-default opacity-50" />
+              <span className="text-center text-ds-text-base font-bold text-ds-ink-muted-default">
                 {t('layout.no-browsers-in-pool')}
               </span>
-              <span className="block text-center text-label-xs font-medium text-ds-text-neutral-muted-default">
+              <span className="block text-center text-ds-text-meta font-medium text-ds-ink-muted-default">
                 {t('layout.add-browsers-hint')}
               </span>
             </div>
@@ -443,12 +444,12 @@ export default function CDP() {
           }}
         >
           <DialogTitle asChild>
-            <span className="text-body-base mb-2 block font-bold text-ds-text-neutral-default-default">
+            <span className="mb-2 block text-ds-text-base font-bold text-ds-ink-default-default">
               {t('layout.connect-existing-browser')}
             </span>
           </DialogTitle>
           <DialogDescription asChild>
-            <span className="mb-4 block text-label-xs text-ds-text-neutral-muted-default">
+            <span className="mb-4 block text-ds-text-meta text-ds-ink-muted-default">
               {t('layout.connect-existing-browser-description')}
             </span>
           </DialogDescription>
@@ -460,13 +461,13 @@ export default function CDP() {
               setConnectError('');
             }}
             placeholder={t('layout.enter-port-number')}
-            className="w-full rounded-lg border border-ds-border-neutral-muted-disabled bg-ds-bg-neutral-default-default px-4 py-2 text-body-sm text-ds-text-neutral-default-default outline-none focus:border-ds-border-brand-default-focus"
+            className="w-full rounded-lg border border-x border-y border-ds-hairline-muted-disabled bg-ds-neutral-default-default px-4 py-2 text-ds-text-base text-ds-ink-default-default outline-none focus:border-ds-ring-focus"
             onKeyDown={(event) => {
               if (event.key === 'Enter') void handleCheckAndConnect();
             }}
           />
           {connectError && (
-            <span className="mt-2 block text-label-xs text-ds-text-status-error-strong-default">
+            <span className="mt-2 block text-ds-text-meta text-ds-text-status-error-strong-default">
               {connectError}
             </span>
           )}

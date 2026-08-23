@@ -70,12 +70,12 @@ export function FeedbackCard({
   return (
     <div
       key={id}
-      className={`group relative flex w-full flex-col items-center justify-center gap-4 overflow-hidden rounded-xl border bg-ds-bg-neutral-default-default px-4 py-3 ${className || ''}`}
+      className={`group relative flex w-full flex-col items-center justify-center gap-4 overflow-hidden rounded-xl border bg-ds-neutral-default-default px-4 py-3 ${className || ''}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
       {/* Copy button - appears on hover */}
-      <div className="absolute bottom-1 right-1 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+      <div className="absolute right-1 bottom-1 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
         <Button
           onClick={handleCopy}
           variant="ghost"
@@ -91,12 +91,12 @@ export function FeedbackCard({
       </div>
 
       {/* Title */}
-      <p className="w-full font-inter text-sm font-bold leading-normal text-ds-text-neutral-default-default">
+      <p className="w-full font-inter text-sm leading-normal font-bold text-ds-ink-default-default">
         {title}
       </p>
 
       {/* Content */}
-      <p className="w-full font-inter text-sm font-medium leading-normal text-ds-text-neutral-default-default">
+      <p className="w-full font-inter text-sm leading-normal font-medium text-ds-ink-default-default">
         {content}
       </p>
 

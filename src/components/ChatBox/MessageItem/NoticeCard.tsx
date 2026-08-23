@@ -52,7 +52,7 @@ export function NoticeCard() {
 
   if (!chatStore) {
     return (
-      <span className="block px-4 py-3 text-body-sm font-normal text-ds-text-neutral-muted-default">
+      <span className="block px-4 py-3 text-ds-text-base font-normal text-ds-ink-muted-default">
         Loading…
       </span>
     );
@@ -64,7 +64,7 @@ export function NoticeCard() {
         size="xs"
         buttonContent="icon-only"
         variant="ghost"
-        className="absolute right-2 top-2 z-10"
+        className="absolute top-2 right-2 z-10"
         aria-label={
           isExpanded
             ? t('chat.agent-outcome-collapse')
@@ -75,7 +75,7 @@ export function NoticeCard() {
       >
         <ChevronDown
           size={16}
-          className={`duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] transition-transform motion-reduce:transition-none ${
+          className={`transition-transform duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none ${
             isExpanded ? 'rotate-180' : ''
           }`}
         />
@@ -98,13 +98,13 @@ export function NoticeCard() {
           {cotList.map((cot: string, index: number) => (
             <div
               key={`taskList-${index}`}
-              className="ease-[cubic-bezier(0.23,1,0.32,1)] flex items-start gap-2 rounded-lg border border-solid border-transparent duration-200 animate-in fade-in-0 slide-in-from-left-2"
+              className="flex items-start gap-2 rounded-lg border border-x border-y border-solid border-transparent duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] animate-in fade-in-0 slide-in-from-left-2"
             >
               <span
                 aria-hidden
-                className="mt-2 h-1 w-1 shrink-0 rounded-full bg-ds-icon-neutral-default-default"
+                className="mt-2 h-1 w-1 shrink-0 rounded-full bg-ds-ink-muted-default"
               />
-              <span className="min-w-0 flex-1 text-body-sm font-normal text-ds-text-neutral-subtle-default">
+              <span className="min-w-0 flex-1 text-ds-text-base font-normal text-ds-ink-subtle-default">
                 {cot}
               </span>
             </div>

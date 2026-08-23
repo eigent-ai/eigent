@@ -17,8 +17,8 @@ import tokenLightIcon from '@/assets/custom/token-light.svg';
 import { AnimatedTokenNumber } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { CONTENT_HEADER_CLASS } from '@/components/Layout/ContentHeader';
 import { Button } from '@/components/ui/button';
-import { IconPillToggle } from '@/components/ui/icon-pill-toggle';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
@@ -39,10 +39,13 @@ import {
 import { useTranslation } from 'react-i18next';
 
 const SquareText = createLucideIcon('square-text', [
-  ['rect', { width: '18', height: '18', x: '3', y: '3', rx: '2' }],
-  ['path', { d: 'M7 8h10' }],
-  ['path', { d: 'M7 12h10' }],
-  ['path', { d: 'M7 16h6' }],
+  [
+    'rect',
+    { width: '18', height: '18', x: '3', y: '3', rx: '2', key: 'frame' },
+  ],
+  ['path', { d: 'M7 8h10', key: 'line-top' }],
+  ['path', { d: 'M7 12h10', key: 'line-middle' }],
+  ['path', { d: 'M7 16h6', key: 'line-bottom' }],
 ]);
 
 /**
@@ -133,7 +136,7 @@ export function HeaderBox({
             size="sm"
             buttonContent="icon-only"
             onClick={() => setActiveWorkspaceTab('workforce')}
-            className="no-drag shrink-0 text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default"
+            className="no-drag shrink-0 text-ds-ink-muted-default hover:bg-ds-neutral-strong-default"
             aria-label={backTooltip}
           >
             <ArrowLeft className="h-4 w-4" aria-hidden />
@@ -141,7 +144,7 @@ export function HeaderBox({
         </TooltipSimple>
         {projectName ? (
           <span
-            className="min-w-0 max-w-[200px] truncate text-body-sm font-semibold text-ds-text-neutral-default-default"
+            className="max-w-[200px] min-w-0 truncate text-ds-text-base font-semibold text-ds-ink-default-default"
             title={projectName}
           >
             {projectName}
@@ -150,7 +153,7 @@ export function HeaderBox({
       </div>
 
       {/* Right: project total token count + unified preview toggle */}
-      <div className="flex items-center gap-1 text-ds-text-neutral-muted-default">
+      <div className="flex items-center gap-1 text-ds-ink-muted-default">
         <div className="flex items-center gap-1">
           <img src={tokenIcon} alt="" className="h-3.5 w-3.5" />
           <span className="text-xs font-medium">
@@ -159,27 +162,42 @@ export function HeaderBox({
           </span>
         </div>
         {eventNativeTimelineEnabled ? (
-          <TooltipSimple
-            content={
-              <ShortcutTooltipContent
-                label={timelineStyleTooltip}
-                shortcutId="toggle-timeline-view"
-              />
+          <Tabs
+            value={chatTimelineDetailLevel}
+            onValueChange={(value) =>
+              handleTimelineStyleChange(value as ChatTimelineDetailLevel)
             }
-            compact
-            variant="instant"
-            side="bottom"
+            className="no-drag inline-flex shrink-0"
           >
-            <span className="no-drag inline-flex shrink-0">
-              <IconPillToggle
-                aria-label={timelineStyleTooltip}
-                layoutId="chat-timeline-mode"
-                onValueChange={handleTimelineStyleChange}
-                options={timelineModeOptions}
-                value={chatTimelineDetailLevel}
-              />
-            </span>
-          </TooltipSimple>
+            <TabsList appearance="default" aria-label={timelineStyleTooltip}>
+              {timelineModeOptions.map((option) => {
+                const Icon = option.icon;
+                return (
+                  <TabsTrigger
+                    key={option.value}
+                    value={option.value}
+                    aria-label={option.label}
+                  >
+                    <TooltipSimple
+                      content={
+                        <ShortcutTooltipContent
+                          label={option.label}
+                          shortcutId="toggle-timeline-view"
+                        />
+                      }
+                      compact
+                      variant="instant"
+                      side="bottom"
+                    >
+                      <div className="inline-flex h-5 w-5 items-center justify-center">
+                        <Icon size={16} />
+                      </div>
+                    </TooltipSimple>
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+          </Tabs>
         ) : null}
         <TooltipSimple
           content={
@@ -207,9 +225,9 @@ export function HeaderBox({
               }
             }}
             className={cn(
-              'no-drag shrink-0 text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-strong-default',
+              'no-drag shrink-0 text-ds-ink-muted-default hover:bg-ds-neutral-strong-default',
               sessionPreviewOpen &&
-                'bg-ds-bg-neutral-strong-default text-ds-text-neutral-default-default'
+                'bg-ds-neutral-strong-default text-ds-ink-default-default'
             )}
             aria-label={windowPreviewTooltip}
             aria-pressed={sessionPreviewOpen}

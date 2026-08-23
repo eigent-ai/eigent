@@ -13,7 +13,6 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -22,12 +21,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export type SearchInputVariant = 'default' | 'icon';
+export type SearchInputColor = 'default-default' | 'subtle-default';
 
 interface SearchInputProps {
   value: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   placeholder?: string;
   variant?: SearchInputVariant;
+  /** Neutral fill. Defaults to `default-default`. */
+  color?: SearchInputColor;
   /** Optional: called when user presses Enter in the field (e.g. to submit search) */
   onSearch?: () => void;
   /** Tooltip for the search icon button (icon variant). Defaults to agents.search-tooltip */
@@ -44,6 +46,7 @@ export default function SearchInput({
   onChange,
   placeholder,
   variant = 'default',
+  color = 'default-default',
   onSearch,
   searchTooltip,
   clearTooltip,
@@ -80,9 +83,9 @@ export default function SearchInput({
     return (
       <motion.div
         className={cn(
-          'flex items-center justify-center overflow-hidden rounded-lg border border-solid border-transparent bg-transparent py-0.5',
-          'focus-within:border-ds-border-brand-default-focus focus-within:bg-ds-bg-neutral-strong-default',
-          'hover:border-transparent hover:bg-ds-bg-neutral-strong-hover'
+          'flex items-center justify-center overflow-hidden rounded-lg border border-x border-y border-solid border-transparent bg-transparent py-0.5',
+          'focus-within:border-ds-ring-focus focus-within:bg-ds-neutral-strong-default',
+          'hover:border-transparent hover:bg-ds-neutral-strong-hover'
         )}
         initial={false}
         animate={{ width: isExpanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH }}
@@ -128,7 +131,7 @@ export default function SearchInput({
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
             >
-              <span className="pointer-events-none ml-2 inline-flex h-4 w-4 shrink-0 items-center justify-center text-ds-icon-neutral-muted-default">
+              <span className="pointer-events-none ml-2 inline-flex h-4 w-4 shrink-0 items-center justify-center text-ds-ink-muted-default">
                 <Search className="h-4 w-4" />
               </span>
               <input
@@ -145,7 +148,7 @@ export default function SearchInput({
                     onSearch?.();
                   }
                 }}
-                className="h-6 min-w-0 flex-1 bg-transparent pl-2 text-label-sm text-ds-text-neutral-default-default outline-none placeholder:text-ds-text-neutral-muted-default"
+                className="h-6 min-w-0 flex-1 bg-transparent pl-2 text-ds-text-base text-ds-ink-default-default outline-none placeholder:text-ds-ink-muted-default"
               />
               <TooltipSimple
                 content={clearLabel}
@@ -157,7 +160,7 @@ export default function SearchInput({
                   variant="ghost"
                   size="xs"
                   buttonContent="icon-only"
-                  className="shrink-0 rounded-full text-ds-icon-neutral-muted-default"
+                  className="shrink-0 rounded-full text-ds-ink-muted-default"
                   onClick={collapse}
                   aria-label={clearLabel}
                 >
@@ -172,15 +175,28 @@ export default function SearchInput({
   }
 
   return (
-    <div className="relative w-full">
-      <Input
-        size="sm"
+    <div
+      className={cn(
+        'relative flex h-ds-control-sm min-h-ds-control-sm w-full items-center gap-ds-6 rounded-ds-field border-0 border-x-0 border-y-0 px-ds-8 transition-colors',
+        color === 'subtle-default'
+          ? 'bg-ds-neutral-subtle-default focus-within:bg-ds-neutral-subtle-hover hover:bg-ds-neutral-subtle-hover'
+          : 'bg-ds-neutral-default-default focus-within:bg-ds-neutral-default-hover hover:bg-ds-neutral-default-hover'
+      )}
+    >
+      <span className="leading-icon-wrapper pointer-events-none inline-flex shrink-0 items-center justify-center text-ds-ink-muted-default">
+        <Search className="size-ds-icon-sm" />
+      </span>
+      <input
+        type="text"
         value={value}
         onChange={onChange}
         placeholder={place}
-        leadingIcon={
-          <Search className="h-5 w-5 text-ds-icon-neutral-muted-default" />
-        }
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            onSearch?.();
+          }
+        }}
+        className="h-full min-w-0 flex-1 bg-transparent text-ds-text-base text-ds-ink-default-default outline-none placeholder:text-ds-ink-muted-default"
       />
     </div>
   );

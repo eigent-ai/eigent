@@ -156,8 +156,8 @@ export function UserMessageRichContent({
 
   const bodyClass =
     variant === 'card'
-      ? 'text-ds-text-neutral-default-default font-sans relative z-0 break-words whitespace-pre-wrap'
-      : 'text-ds-text-neutral-muted-default font-sans relative z-0 min-w-0 break-words font-normal line-clamp-1';
+      ? 'text-ds-ink-default-default font-sans relative z-0 break-words whitespace-pre-wrap'
+      : 'text-ds-ink-muted-default font-sans relative z-0 min-w-0 break-words font-normal line-clamp-1';
 
   return (
     <div className={cn('min-w-0', className)}>
@@ -183,12 +183,14 @@ export function UserMessageRichContent({
               }}
               title="Open skill folder"
               className={cn(
-                'mx-0 cursor-pointer border-0 [font:inherit] hover:opacity-90',
+                'mx-0 cursor-pointer border-0 border-x-0 border-y-0 [font:inherit] hover:opacity-90',
                 RICH_TAG_BASE_STYLE_CLASSES,
                 RICH_SKILL_STYLE_CLASSES[clsIdx]
               )}
             >
-              <span className="!text-body-sm !font-normal">{skillToken}</span>
+              <span className="!text-ds-text-base !font-normal">
+                {skillToken}
+              </span>
             </button>
           );
         })}

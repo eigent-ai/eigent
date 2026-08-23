@@ -113,6 +113,7 @@ vi.mock('@/store/spaceStore', () => ({
 }));
 vi.mock('framer-motion', () => ({
   AnimatePresence: ({ children }: { children: React.ReactNode }) => children,
+  useReducedMotion: () => false,
   motion: {
     div: ({
       children,
@@ -162,6 +163,12 @@ async function renderResizableSession() {
   const separator = screen.getByRole('separator');
   const row = separator.parentElement?.parentElement;
   if (!row) throw new Error('missing Session row');
+
+  expect(separator).toHaveClass('after:opacity-0', 'hover:after:opacity-100');
+  expect(separator).not.toHaveClass(
+    'hover:bg-ds-accent-subtle-default',
+    'after:bg-ds-accent-default-hover'
+  );
 
   await waitFor(() =>
     expect(row.style.getPropertyValue('--session-chat-width')).toBe('360px')

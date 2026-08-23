@@ -81,14 +81,14 @@ function NewSpaceOption({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        'group flex min-h-40 min-w-0 flex-col items-start rounded-xl border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default p-4 text-left transition-colors',
-        'hover:bg-ds-bg-neutral-subtle-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-border-information-default-default',
+        'group flex min-h-40 min-w-0 flex-col items-start rounded-xl border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-default-default p-4 text-left transition-colors',
+        'hover:bg-ds-neutral-subtle-default focus-visible:ring-2 focus-visible:ring-ds-border-information-default-default focus-visible:outline-none',
         'disabled:opacity-60',
         busy ? 'cursor-wait' : 'disabled:cursor-not-allowed'
       )}
     >
       <span className="flex w-full items-center justify-between gap-3">
-        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-ds-bg-neutral-subtle-default text-ds-icon-neutral-default-default">
+        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-ds-neutral-subtle-default text-ds-ink-default-default">
           {busy ? (
             <LoaderCircle className="h-5 w-5 animate-spin" aria-hidden />
           ) : (
@@ -96,14 +96,14 @@ function NewSpaceOption({
           )}
         </span>
         <ArrowRight
-          className="h-4 w-4 text-ds-icon-neutral-muted-default transition-colors group-hover:text-ds-icon-neutral-default-default"
+          className="h-4 w-4 text-ds-ink-muted-default transition-colors group-hover:text-ds-ink-default-default"
           aria-hidden
         />
       </span>
-      <span className="mt-5 block !text-body-md font-bold text-ds-text-neutral-default-default">
+      <span className="mt-5 block !text-ds-text-body-large font-bold text-ds-ink-default-default">
         {title}
       </span>
-      <span className="mt-1 block !text-body-xs text-ds-text-neutral-muted-default">
+      <span className="mt-1 block !text-ds-text-meta text-ds-ink-muted-default">
         {description}
       </span>
     </button>
@@ -243,7 +243,7 @@ export default function NewSpaceDialog({
                 fallback={
                   <div
                     role="status"
-                    className="flex min-h-32 items-center justify-center text-ds-icon-neutral-muted-default"
+                    className="flex min-h-32 items-center justify-center text-ds-ink-muted-default"
                   >
                     <LoaderCircle
                       className="h-5 w-5 animate-spin"
@@ -277,7 +277,7 @@ export default function NewSpaceDialog({
                 fallback={
                   <div
                     role="status"
-                    className="flex min-h-32 items-center justify-center text-ds-icon-neutral-muted-default"
+                    className="flex min-h-32 items-center justify-center text-ds-ink-muted-default"
                   >
                     <LoaderCircle
                       className="h-5 w-5 animate-spin"

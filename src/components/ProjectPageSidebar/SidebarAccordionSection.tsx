@@ -44,12 +44,12 @@ export function SidebarAccordionSection({
         className="group/section-header flex w-full items-center gap-1 rounded-lg px-3 py-0.5 text-left"
         aria-expanded={expanded}
       >
-        <span className="text-label-sm font-normal text-ds-text-neutral-subtle-default">
+        <span className="text-ds-text-base font-normal text-ds-ink-subtle-default">
           {label}
         </span>
         <ChevronDown
           className={cn(
-            'h-4 w-4 shrink-0 !text-ds-icon-neutral-muted-default transition-[opacity,transform] duration-200',
+            'h-4 w-4 shrink-0 !text-ds-ink-muted-default transition-[opacity,transform] duration-200',
             !expanded && '-rotate-90',
             expanded && 'opacity-0 group-hover/section-header:opacity-100'
           )}

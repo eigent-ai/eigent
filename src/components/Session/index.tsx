@@ -36,7 +36,7 @@ import {
   SessionMode,
   type SessionModeType,
 } from '@/types/constants';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SessionSidePanel } from './SidePanel';
 
@@ -46,9 +46,17 @@ const CHAT_PRIORITY_WIDTH = 680;
 const CHAT_MIN_WIDTH = 360;
 /** Keep at least this much room for the preview when the chat is widened. */
 const PREVIEW_MIN_WIDTH = 320;
-const DISPLAY_PANEL_EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
+const DISPLAY_PANEL_SPRING = {
+  type: 'spring' as const,
+  duration: 0.5,
+  bounce: 0.2,
+};
+const DISPLAY_PANEL_FADE = {
+  duration: 0.2,
+  ease: [0.23, 1, 0.32, 1] as [number, number, number, number],
+};
 /** Display panel open/close animation duration (framer transition below). */
-const DISPLAY_PANEL_ANIMATION_MS = 300;
+const DISPLAY_PANEL_ANIMATION_MS = 500;
 
 /**
  * Active Project: header + chat (left) and a mode-dependent side panel (right).
@@ -61,6 +69,7 @@ interface SessionProps {
 }
 
 export default function Session({ isNewProject = false }: SessionProps) {
+  const shouldReduceMotion = Boolean(useReducedMotion());
   const { chatStore, projectStore } = useChatStoreAdapter();
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
@@ -291,7 +300,7 @@ export default function Session({ isNewProject = false }: SessionProps) {
   );
 
   // Embedded browser guests are `position: fixed` in a separate layer, so the
-  // panel's clip-path entrance can't clip them. Hold the guest parked until
+  // panel's animated bounds can't clip them. Hold the guest parked until
   // the entrance finishes (then it fades in over the settled rect) instead of
   // letting the page pop in full-size over the chat mid-animation.
   const [displaySettled, setDisplaySettled] = useState(false);
@@ -547,22 +556,34 @@ export default function Session({ isNewProject = false }: SessionProps) {
           {previewOpen && (
             <motion.div
               key="session-display-content"
-              initial={{
-                clipPath: 'inset(0 0 0 100%)',
-                opacity: 0,
-              }}
+              initial={
+                shouldReduceMotion
+                  ? { flexGrow: 1, opacity: 0, transform: 'translateX(0%)' }
+                  : { flexGrow: 0, opacity: 0, transform: 'translateX(3%)' }
+              }
               animate={{
-                clipPath: 'inset(0 0 0 0%)',
-                opacity: 1,
                 flexGrow: 1,
+                opacity: 1,
+                transform: 'translateX(0%)',
               }}
-              exit={{
-                clipPath: 'inset(0 0 0 100%)',
-                opacity: 0,
-                flexGrow: 0,
-              }}
-              transition={{ duration: 0.3, ease: DISPLAY_PANEL_EASE }}
-              style={{ transformOrigin: 'right center' }}
+              exit={
+                shouldReduceMotion
+                  ? { flexGrow: 0, opacity: 0, transform: 'translateX(0%)' }
+                  : { flexGrow: 0, opacity: 0, transform: 'translateX(3%)' }
+              }
+              transition={
+                shouldReduceMotion
+                  ? {
+                      flexGrow: { duration: 0 },
+                      transform: { duration: 0 },
+                      opacity: DISPLAY_PANEL_FADE,
+                    }
+                  : {
+                      flexGrow: DISPLAY_PANEL_SPRING,
+                      transform: DISPLAY_PANEL_SPRING,
+                      opacity: DISPLAY_PANEL_FADE,
+                    }
+              }
               className="flex min-h-0 min-w-0 flex-1 overflow-hidden"
             >
               <div
@@ -572,14 +593,8 @@ export default function Session({ isNewProject = false }: SessionProps) {
                 data-resize-handle-state={
                   isResizingPreview ? 'drag' : 'inactive'
                 }
-                className={cn(
-                  // Transparent 2px rail with a centered line and wider hit area.
-                  'relative z-10 flex w-[2px] shrink-0 cursor-col-resize items-center justify-center bg-transparent transition-colors hover:bg-ds-bg-brand-subtle-default',
-                  "before:absolute before:inset-y-0 before:-left-1 before:-right-1 before:content-['']",
-                  'after:absolute after:inset-y-0 after:left-1/2 after:w-1 after:-translate-x-1/2 after:bg-ds-bg-neutral-default-default after:transition-colors',
-                  isResizingPreview &&
-                    'bg-ds-bg-brand-subtle-default after:bg-ds-bg-brand-default-focus'
-                )}
+                // Transparent 2px rail with a centered line and wider hit area.
+                className="relative z-10 flex w-[2px] shrink-0 cursor-col-resize items-center justify-center bg-transparent before:absolute before:inset-y-0 before:-right-1 before:-left-1 before:content-[''] after:absolute after:inset-y-0 after:left-1/2 after:w-1 after:-translate-x-1/2 after:bg-ds-neutral-default-default after:opacity-0 after:transition-opacity hover:after:opacity-100"
               />
 
               {/* Display content: middle column between chat and session. */}

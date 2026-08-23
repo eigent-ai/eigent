@@ -23,13 +23,13 @@ const meta: Meta<typeof Button> = {
   argTypes: {
     variant: {
       control: 'select',
-      options: ['primary', 'secondary', 'outline', 'ghost'],
+      options: ['primary', 'secondary', 'outline', 'ghost', 'text'],
       description:
         'Component chrome pattern. Legacy one-word variants are still accepted for compatibility.',
     },
     emphasis: {
       control: 'select',
-      options: ['subtle', 'muted', 'default', 'strong', 'inverse'],
+      options: ['subtle', 'muted', 'default', 'strong'],
       description: 'Visual intensity axis, independent from semantic tone.',
     },
     tone: {
@@ -39,7 +39,7 @@ const meta: Meta<typeof Button> = {
     },
     size: {
       control: 'select',
-      options: ['xxs', 'xs', 'sm', 'md', 'lg', 'icon'],
+      options: ['xxs', 'xs', 'sm', 'md', 'lg', 'xl', 'icon'],
     },
     buttonContent: {
       control: 'select',
@@ -103,11 +103,11 @@ export const Ghost: Story = {
   },
 };
 
-export const Inverse: Story = {
+export const Strong: Story = {
   args: {
     variant: 'primary',
-    emphasis: 'inverse',
-    children: 'Inverse (canvas + ink)',
+    emphasis: 'strong',
+    children: 'Strong',
   },
 };
 
@@ -160,17 +160,17 @@ export const IconOnly: Story = {
 
 export const AllVariants: Story = {
   render: () => (
-    <div className="gap-6 flex flex-col">
-      <div className="gap-4 flex flex-wrap items-center">
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center gap-4">
         <Button variant="primary">Primary</Button>
         <Button variant="secondary">Secondary</Button>
         <Button variant="outline">Outline</Button>
         <Button variant="ghost">Ghost</Button>
-        <Button variant="primary" emphasis="inverse">
-          Inverse
+        <Button variant="primary" emphasis="strong">
+          Strong
         </Button>
       </div>
-      <div className="gap-4 flex flex-wrap items-center">
+      <div className="flex flex-wrap items-center gap-4">
         <Button variant="primary" tone="success">
           Success
         </Button>
@@ -184,7 +184,7 @@ export const AllVariants: Story = {
           Warning
         </Button>
       </div>
-      <div className="gap-4 flex flex-wrap items-center">
+      <div className="flex flex-wrap items-center gap-4">
         <Button variant="primary" emphasis="subtle">
           Subtle
         </Button>
@@ -204,10 +204,7 @@ export const AllVariants: Story = {
 
 export const AllSizes: Story = {
   render: () => (
-    <div className="gap-4 flex flex-wrap items-center">
-      <Button variant="primary" size="xxs">
-        XXS
-      </Button>
+    <div className="flex flex-wrap items-center gap-4">
       <Button variant="primary" size="xs">
         XS
       </Button>
@@ -219,6 +216,9 @@ export const AllSizes: Story = {
       </Button>
       <Button variant="primary" size="lg">
         LG
+      </Button>
+      <Button variant="primary" size="xl">
+        XL
       </Button>
       <Button variant="primary" size="xs" buttonContent="icon-only">
         <Trash2 />

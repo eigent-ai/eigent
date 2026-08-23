@@ -132,7 +132,6 @@ const AUXILIARY_BADGE_TONES: Array<{
   { tone: 'terminal', threshold: MIN_CONTRAST_NORMAL_AA },
   { tone: 'document', threshold: MIN_CONTRAST_NORMAL_AA },
   { tone: 'success', threshold: MIN_CONTRAST_NORMAL_AA },
-  { tone: 'caution', threshold: MIN_CONTRAST_NORMAL_AA },
   { tone: 'error', threshold: MIN_CONTRAST_NORMAL_AA },
   { tone: 'warning', threshold: MIN_CONTRAST_NORMAL_AA },
   { tone: 'information', threshold: MIN_CONTRAST_NORMAL_AA },
@@ -343,6 +342,18 @@ export function verifyThemeEngine(options: VerifyOptions = {}): VerifyReport {
                 ratio: diag.ratio,
                 threshold: diag.minRequired,
               }
+            );
+          }
+        }
+
+        if (contrast === 43) {
+          for (const admission of resolved.diagnostics.seedAdmission) {
+            pushFinding(
+              findings,
+              base,
+              'error',
+              `seed-admission-${admission.code}`,
+              admission.message
             );
           }
         }

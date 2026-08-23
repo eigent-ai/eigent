@@ -116,7 +116,7 @@ const HIDDEN_BUILT_INS = new Set([
 
 /** Shared surface for recommended and installed connector cards. */
 const CONNECTOR_ITEM_SURFACE_CLASS =
-  'rounded-2xl border border-solid border-transparent !bg-ds-bg-neutral-subtle-default transition-colors hover:border-ds-border-neutral-default-default hover:!bg-ds-bg-neutral-subtle-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-brand-default-focus';
+  'rounded-2xl border-x border-y border border-solid border-transparent !bg-ds-neutral-subtle-default transition-colors hover:border-ds-hairline-default-default hover:!bg-ds-neutral-subtle-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-focus';
 
 /** Preferred hosted connector service keys for the overview recommendations. */
 const RECOMMENDED_SERVICE_KEYS = [
@@ -914,13 +914,13 @@ export default function ConnectorGateway() {
       return iconUrl ? (
         <img src={iconUrl} alt="" className="h-5 w-5 shrink-0 object-contain" />
       ) : (
-        <Server className="h-5 w-5 shrink-0 text-ds-icon-neutral-muted-default" />
+        <Server className="h-5 w-5 shrink-0 text-ds-ink-muted-default" />
       );
     }
     return item.subtype === 'remote' ? (
-      <Server className="h-5 w-5 shrink-0 text-ds-icon-neutral-muted-default" />
+      <Server className="h-5 w-5 shrink-0 text-ds-ink-muted-default" />
     ) : (
-      <Wrench className="h-5 w-5 shrink-0 text-ds-icon-neutral-muted-default" />
+      <Wrench className="h-5 w-5 shrink-0 text-ds-ink-muted-default" />
     );
   };
 
@@ -930,13 +930,13 @@ export default function ConnectorGateway() {
     !searchRequiresApiKey;
 
   const renderDetailHeader = (item: ConnectorListItem) => (
-    <div className="mx-6 flex items-center gap-3 border-x-0 border-b border-t-0 border-solid border-ds-border-neutral-default-default py-4">
+    <div className="mx-6 flex items-center gap-3 border-x-0 border-t-0 border-b border-solid border-ds-hairline-default-default py-4">
       {item.source === 'open' ? (
         <ProviderIcon provider={openDetail || item.provider} size="detail" />
       ) : (
         renderListIcon(item)
       )}
-      <span className="text-body-base min-w-0 flex-1 truncate font-bold text-ds-text-neutral-default-default">
+      <span className="min-w-0 flex-1 truncate text-ds-text-base font-bold text-ds-ink-default-default">
         {item.name}
       </span>
       {item.source !== 'open' ? (
@@ -1032,17 +1032,17 @@ export default function ConnectorGateway() {
     const provider = openDetail || item.provider;
     if (detailLoading) {
       return (
-        <div className="h-32 animate-pulse rounded-xl bg-ds-bg-neutral-strong-default" />
+        <div className="h-32 animate-pulse rounded-xl bg-ds-neutral-strong-default" />
       );
     }
     return (
       <>
         {provider.connection?.profile?.displayName ? (
-          <div className="rounded-xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default p-4">
-            <span className="block text-body-xs font-bold uppercase tracking-wide text-ds-text-neutral-muted-default">
+          <div className="rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default p-4">
+            <span className="block text-ds-text-meta font-bold tracking-wide text-ds-ink-muted-default uppercase">
               {t('connectors.connected-account')}
             </span>
-            <span className="mt-1 block text-body-sm font-bold text-ds-text-neutral-default-default">
+            <span className="mt-1 block text-ds-text-base font-bold text-ds-ink-default-default">
               {provider.connection.profile.displayName}
             </span>
           </div>
@@ -1051,14 +1051,14 @@ export default function ConnectorGateway() {
         {provider.actions?.length ? (
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
-              <span className="text-body-sm font-bold text-ds-text-neutral-default-default">
+              <span className="text-ds-text-base font-bold text-ds-ink-default-default">
                 {t('connectors.supported-actions')}
               </span>
-              <span className="text-body-sm text-ds-text-neutral-muted-default">
+              <span className="text-ds-text-base text-ds-ink-muted-default">
                 {provider.actions.length || providerActionCount(provider)}
               </span>
             </div>
-            <div className="overflow-hidden rounded-xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default">
+            <div className="overflow-hidden rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default">
               <div className="relative">
                 <div
                   ref={actionsListRef}
@@ -1069,21 +1069,21 @@ export default function ConnectorGateway() {
                   {provider.actions.map((action, index) => (
                     <span
                       key={action.id || action.name || index}
-                      className="inline-flex items-center rounded-full bg-ds-bg-neutral-subtle-default px-3 py-1 text-label-xs text-ds-text-neutral-default-default"
+                      className="inline-flex items-center rounded-full bg-ds-neutral-subtle-default px-3 py-1 text-ds-text-meta text-ds-ink-default-default"
                     >
                       {actionLabel(action, t)}
                     </span>
                   ))}
                 </div>
                 {!actionsExpanded && actionsOverflow ? (
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-ds-bg-neutral-default-default to-transparent" />
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-ds-neutral-default-default to-transparent" />
                 ) : null}
               </div>
               {actionsOverflow ? (
                 <button
                   type="button"
                   onClick={() => setActionsExpanded((value) => !value)}
-                  className="flex w-full items-center justify-center gap-1.5 border-0 bg-transparent px-4 py-2.5 text-label-xs text-ds-text-neutral-muted-default transition-colors hover:bg-ds-bg-neutral-default-hover hover:text-ds-text-neutral-default-default"
+                  className="flex w-full items-center justify-center gap-1.5 border-0 border-x-0 border-y-0 bg-transparent px-4 py-2.5 text-ds-text-meta text-ds-ink-muted-default transition-colors hover:bg-ds-neutral-default-hover hover:text-ds-ink-default-default"
                 >
                   {actionsExpanded
                     ? t('connectors.show-less')
@@ -1104,7 +1104,7 @@ export default function ConnectorGateway() {
             href={provider.homepageUrl}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 text-label-sm text-ds-text-neutral-muted-default underline-offset-2 hover:underline"
+            className="inline-flex items-center gap-1 text-ds-text-base text-ds-ink-muted-default underline-offset-2 hover:underline"
           >
             {t('connectors.provider-website')}
             <ExternalLink className="h-3.5 w-3.5" />
@@ -1119,21 +1119,21 @@ export default function ConnectorGateway() {
   ) => {
     if (item.item.key === 'Search') {
       return (
-        <div className="rounded-xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default">
+        <div className="rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default">
           <GoogleSearchPanel onConfigured={() => void refreshBuiltIns()} />
         </div>
       );
     }
     return (
-      <div className="rounded-xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default p-4">
-        <span className="block text-body-sm font-bold text-ds-text-neutral-default-default">
+      <div className="rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default p-4">
+        <span className="block text-ds-text-base font-bold text-ds-ink-default-default">
           {t('connectors.built-in-title')}
         </span>
-        <span className="mt-1 block text-body-sm leading-6 text-ds-text-neutral-muted-default">
+        <span className="mt-1 block text-ds-text-base leading-6 text-ds-ink-muted-default">
           {t('connectors.built-in-desc')}
         </span>
         {item.item.env_vars.length ? (
-          <span className="mt-3 block text-body-xs text-ds-text-neutral-muted-default">
+          <span className="mt-3 block text-ds-text-meta text-ds-ink-muted-default">
             {t('connectors.configuration', {
               vars: item.item.env_vars.join(', '),
             })}
@@ -1148,9 +1148,9 @@ export default function ConnectorGateway() {
   ) => {
     const mcp = item.item;
     return (
-      <div className="rounded-xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default p-4">
+      <div className="rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default p-4">
         <div className="flex items-center justify-between gap-3">
-          <span className="text-body-sm font-bold text-ds-text-neutral-default-default">
+          <span className="text-ds-text-base font-bold text-ds-ink-default-default">
             {t('connectors.status')}
           </span>
           <Badge
@@ -1163,29 +1163,29 @@ export default function ConnectorGateway() {
         </div>
         {item.subtype === 'remote' ? (
           <div className="mt-4">
-            <span className="block text-body-xs font-bold uppercase tracking-wide text-ds-text-neutral-muted-default">
+            <span className="block text-ds-text-meta font-bold tracking-wide text-ds-ink-muted-default uppercase">
               {t('connectors.server-url')}
             </span>
-            <span className="mt-1 block break-all font-mono text-body-sm text-ds-text-neutral-default-default">
+            <span className="mt-1 block font-mono text-ds-text-base break-all text-ds-ink-default-default">
               {mcp.server_url || t('connectors.not-configured')}
             </span>
           </div>
         ) : (
           <div className="mt-4 space-y-3">
             <div>
-              <span className="block text-body-xs font-bold uppercase tracking-wide text-ds-text-neutral-muted-default">
+              <span className="block text-ds-text-meta font-bold tracking-wide text-ds-ink-muted-default uppercase">
                 {t('connectors.command')}
               </span>
-              <span className="mt-1 block font-mono text-body-sm text-ds-text-neutral-default-default">
+              <span className="mt-1 block font-mono text-ds-text-base text-ds-ink-default-default">
                 {mcp.command || t('connectors.not-configured')}
               </span>
             </div>
             {mcp.args ? (
               <div>
-                <span className="block text-body-xs font-bold uppercase tracking-wide text-ds-text-neutral-muted-default">
+                <span className="block text-ds-text-meta font-bold tracking-wide text-ds-ink-muted-default uppercase">
                   {t('connectors.arguments')}
                 </span>
-                <span className="mt-1 block break-words font-mono text-body-sm text-ds-text-neutral-default-default">
+                <span className="mt-1 block font-mono text-ds-text-base break-words text-ds-ink-default-default">
                   {parseArgsToArray(mcp.args).join(' ')}
                 </span>
               </div>
@@ -1197,7 +1197,7 @@ export default function ConnectorGateway() {
   };
 
   const renderDetailPanel = (item: ConnectorListItem) => (
-    <div className="flex min-h-0 w-full flex-1 flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
+    <div className="flex min-h-0 w-full flex-1 flex-col rounded-2xl bg-ds-neutral-subtle-default">
       {renderDetailHeader(item)}
       <div className="space-y-5 px-6 py-4">
         {item.source === 'open'
@@ -1216,7 +1216,7 @@ export default function ConnectorGateway() {
           {Array.from({ length: 6 }).map((_, index) => (
             <div
               key={index}
-              className="h-16 animate-pulse rounded-2xl bg-ds-bg-neutral-subtle-default"
+              className="h-16 animate-pulse rounded-2xl bg-ds-neutral-subtle-default"
             />
           ))}
         </div>
@@ -1225,7 +1225,7 @@ export default function ConnectorGateway() {
 
     if (recommendedProviders.length === 0) {
       return (
-        <div className="flex min-h-20 w-full items-center justify-center text-body-sm text-ds-text-neutral-muted-default">
+        <div className="flex min-h-20 w-full items-center justify-center text-ds-text-base text-ds-ink-muted-default">
           {connectorGatewayEnabled
             ? t('connectors.no-recommended')
             : t('connectors.gateway-unavailable')}
@@ -1247,10 +1247,10 @@ export default function ConnectorGateway() {
               className={`group flex h-16 min-w-0 items-center gap-3 px-3 text-left ${CONNECTOR_ITEM_SURFACE_CLASS}`}
             >
               <ProviderIcon provider={liveProvider} />
-              <span className="min-w-0 flex-1 truncate text-body-sm font-bold text-ds-text-neutral-default-default">
+              <span className="min-w-0 flex-1 truncate text-ds-text-base font-bold text-ds-ink-default-default">
                 {providerLabel(liveProvider)}
               </span>
-              <Plus className="h-4 w-4 shrink-0 text-ds-icon-neutral-muted-default transition-colors group-hover:text-ds-icon-neutral-default-default" />
+              <Plus className="h-4 w-4 shrink-0 text-ds-ink-muted-default transition-colors group-hover:text-ds-ink-default-default" />
             </button>
           );
         })}
@@ -1265,7 +1265,7 @@ export default function ConnectorGateway() {
           {Array.from({ length: 4 }).map((_, index) => (
             <div
               key={index}
-              className="h-16 animate-pulse rounded-2xl bg-ds-bg-neutral-subtle-default"
+              className="h-16 animate-pulse rounded-2xl bg-ds-neutral-subtle-default"
             />
           ))}
         </div>
@@ -1274,7 +1274,7 @@ export default function ConnectorGateway() {
 
     if (visibleItems.length === 0) {
       return (
-        <div className="flex min-h-32 w-full items-center justify-center text-body-sm text-ds-text-neutral-muted-default">
+        <div className="flex min-h-32 w-full items-center justify-center text-ds-text-base text-ds-ink-muted-default">
           {t('connectors.no-matching')}
         </div>
       );
@@ -1301,13 +1301,13 @@ export default function ConnectorGateway() {
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span
                   id={`${cardId}-name`}
-                  className="truncate text-body-sm font-medium text-ds-text-neutral-default-default"
+                  className="truncate text-ds-text-base font-medium text-ds-ink-default-default"
                 >
                   {item.name}
                 </span>
                 <span
                   id={`${cardId}-source`}
-                  className="truncate text-body-sm text-ds-text-neutral-muted-default"
+                  className="truncate text-ds-text-base text-ds-ink-muted-default"
                 >
                   {sourceLabel(item, t)}
                 </span>
@@ -1361,11 +1361,11 @@ export default function ConnectorGateway() {
             </span>
             <div
               aria-hidden
-              className="h-12 animate-pulse rounded-2xl bg-ds-bg-neutral-subtle-default motion-reduce:animate-none"
+              className="h-12 animate-pulse rounded-2xl bg-ds-neutral-subtle-default motion-reduce:animate-none"
             />
             <div
               aria-hidden
-              className="h-80 animate-pulse rounded-2xl bg-ds-bg-neutral-subtle-default motion-reduce:animate-none"
+              className="h-80 animate-pulse rounded-2xl bg-ds-neutral-subtle-default motion-reduce:animate-none"
             />
           </div>
         }
@@ -1383,13 +1383,13 @@ export default function ConnectorGateway() {
     <SettingsSectionPage className={selected ? 'min-h-full' : undefined}>
       {!selected ? (
         <SettingsHeaderActions>
-          <SearchInput
-            variant="icon"
-            value={listQuery}
-            onChange={(event) => setListQuery(event.target.value)}
-            placeholder={t('connectors.search-placeholder')}
-            searchTooltip={t('connectors.search-placeholder')}
-          />
+          <div className="w-56 max-w-full">
+            <SearchInput
+              value={listQuery}
+              onChange={(event) => setListQuery(event.target.value)}
+              placeholder={t('connectors.search-placeholder')}
+            />
+          </div>
           <Button variant="primary" size="sm" onClick={() => openBrowsePage()}>
             {t('connectors.browse')}
           </Button>
@@ -1406,7 +1406,7 @@ export default function ConnectorGateway() {
         </SettingsHeaderActions>
       ) : null}
       {pageError ? (
-        <div className="flex items-center justify-between gap-3 rounded-xl bg-ds-bg-error-subtle-default px-4 py-3 text-body-sm text-ds-text-error-strong-default">
+        <div className="flex items-center justify-between gap-3 rounded-xl bg-ds-bg-error-subtle-default px-4 py-3 text-ds-text-base text-ds-text-error-strong-default">
           <span>{pageError}</span>
           <Button
             variant="ghost"

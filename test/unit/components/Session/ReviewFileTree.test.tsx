@@ -49,7 +49,7 @@ describe('ReviewFileTree', () => {
 
     expect(screen.getByRole('treeitem', { name: /added\.ts/i })).toBeVisible();
     expect(screen.getByRole('treeitem', { name: /modified\.ts/i })).toHaveClass(
-      'bg-ds-bg-neutral-default-default'
+      'bg-ds-neutral-default-default'
     );
     expect(
       within(

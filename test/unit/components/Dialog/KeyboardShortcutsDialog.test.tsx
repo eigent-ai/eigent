@@ -22,9 +22,14 @@ describe('KeyboardShortcutsDialog', () => {
       <KeyboardShortcutsDialog open onOpenChange={vi.fn()} platform="darwin" />
     );
 
-    expect(
-      screen.getByRole('dialog', { name: 'Keyboard Shortcuts' })
-    ).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: 'Keyboard Shortcuts' });
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toHaveStyle({ transformOrigin: 'center' });
+    expect(dialog.style.transform).toContain('translate(-50%, -50%)');
+    expect(dialog).not.toHaveClass(
+      'slide-in-from-left-1/2',
+      'slide-in-from-top-[48%]'
+    );
     expect(
       screen.getByLabelText('Keyboard Shortcuts: ⌘+/')
     ).toBeInTheDocument();

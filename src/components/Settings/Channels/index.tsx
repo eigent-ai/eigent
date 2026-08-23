@@ -27,12 +27,12 @@ export default function Channels() {
         boxClassName="items-center justify-between"
       >
         <div className="flex h-16 w-16 items-center justify-center">
-          <MessageSquare className="h-8 w-8 text-ds-icon-neutral-muted-default" />
+          <MessageSquare className="h-8 w-8 text-ds-ink-muted-default" />
         </div>
-        <span className="mb-2 block text-body-md font-bold text-ds-text-neutral-default-default">
+        <span className="mb-2 block text-ds-text-body-large font-bold text-ds-ink-default-default">
           {t('layout.coming-soon')}
         </span>
-        <span className="block max-w-md text-center text-body-sm text-ds-text-neutral-muted-default">
+        <span className="block text-center text-ds-text-base text-ds-ink-muted-default">
           {t('layout.channels-overview-coming-soon-description')}
         </span>
       </SettingsSection>

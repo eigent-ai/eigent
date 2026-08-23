@@ -259,7 +259,7 @@ export default function Cookies() {
                 {t('layout.saved-cookies', { defaultValue: 'Saved cookies' })}
               </span>
               {groupedDomains.length > 0 ? (
-                <span className="rounded-lg bg-ds-bg-information-subtle-default px-2 text-label-sm font-bold text-ds-text-information-strong-default">
+                <span className="rounded-lg bg-ds-bg-information-subtle-default px-2 text-ds-text-base font-bold text-ds-text-information-strong-default">
                   {groupedDomains.length}
                 </span>
               ) : null}
@@ -276,7 +276,7 @@ export default function Cookies() {
                 buttonRadius="full"
                 onClick={handleDeleteAll}
                 disabled={deletingAll || cookieDomains.length === 0}
-                className="uppercase !text-ds-text-status-error-strong-default"
+                className="!text-ds-text-status-error-strong-default uppercase"
               >
                 {deletingAll ? t('layout.deleting') : t('layout.delete-all')}
               </Button>
@@ -307,13 +307,13 @@ export default function Cookies() {
               {groupedDomains.map((group, index) => (
                 <div
                   key={index}
-                  className="flex items-center justify-between rounded-xl bg-ds-bg-neutral-subtle-default px-4 py-2"
+                  className="flex items-center justify-between rounded-xl bg-ds-neutral-subtle-default px-4 py-2"
                 >
                   <div className="flex w-full flex-col items-start justify-start">
-                    <span className="truncate text-body-sm font-bold text-ds-text-neutral-default-default">
+                    <span className="truncate text-ds-text-base font-bold text-ds-ink-default-default">
                       {group.mainDomain}
                     </span>
-                    <span className="mt-1 text-label-xs text-ds-text-neutral-muted-default">
+                    <span className="mt-1 text-ds-text-meta text-ds-ink-muted-default">
                       {t('layout.cookie-count', {
                         count: group.totalCookies,
                       })}
@@ -327,7 +327,7 @@ export default function Cookies() {
                       handleDeleteMainDomain(group.mainDomain, group.subdomains)
                     }
                     disabled={deletingDomain === group.mainDomain}
-                    className="ml-3 flex-shrink-0"
+                    className="ml-3 shrink-0"
                     aria-label={t('layout.delete-cookies-for-domain', {
                       domain: group.mainDomain,
                     })}
@@ -342,11 +342,11 @@ export default function Cookies() {
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center px-4 py-8">
-              <Cookie className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default opacity-50" />
-              <span className="text-body-base text-center font-bold text-ds-text-neutral-muted-default">
+              <Cookie className="mb-4 h-12 w-12 text-ds-ink-muted-default opacity-50" />
+              <span className="text-center text-ds-text-base font-bold text-ds-ink-muted-default">
                 {t('layout.no-cookies-saved-yet')}
               </span>
-              <span className="block text-center text-label-xs font-medium text-ds-text-neutral-muted-default">
+              <span className="block text-center text-ds-text-meta font-medium text-ds-ink-muted-default">
                 {t('layout.no-cookies-saved-yet-description')}
               </span>
             </div>
@@ -354,7 +354,7 @@ export default function Cookies() {
         </SettingsRow>
       </SettingsRowGroup>
 
-      <span className="block w-full text-center text-label-xs text-ds-text-neutral-muted-default">
+      <span className="block w-full text-center text-ds-text-meta text-ds-ink-muted-default">
         <span>{t('layout.for-more-info')}</span>
         <a
           href={`${SITE_URL}/privacy-policy`}

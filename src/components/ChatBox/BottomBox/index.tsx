@@ -211,7 +211,7 @@ export default function BottomBox({
     inputValue.includes(token) ? removeToken(token) : insertToken(token);
 
   // Background color reflects current state only
-  let backgroundClass = 'bg-ds-bg-neutral-default-default';
+  let backgroundClass = 'bg-ds-neutral-default-default';
   if (state === 'confirm' || state === 'save')
     backgroundClass = 'bg-ds-bg-status-completed-subtle-default';
 
@@ -247,7 +247,7 @@ export default function BottomBox({
   return (
     <div
       data-bottom-box
-      className="relative z-50 flex w-full flex-col gap-1 rounded-3xl bg-ds-bg-neutral-default-default"
+      className="relative z-50 flex w-full flex-col gap-1 rounded-3xl bg-ds-neutral-default-default"
     >
       {/* QueryBox — queued user requests remain separate from BoxMain. */}
       {showQueuedBox && (
@@ -399,7 +399,7 @@ export default function BottomBox({
               className="h-4 w-4 shrink-0 text-ds-icon-warning-default-default"
               aria-hidden
             />
-            <span className="block text-body-sm font-normal text-ds-text-warning-default-default">
+            <span className="block text-ds-text-base font-normal text-ds-text-warning-default-default">
               {t('layout.please-select-model')}
             </span>
             <Button

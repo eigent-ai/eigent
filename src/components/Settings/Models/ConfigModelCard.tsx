@@ -21,7 +21,7 @@ export type ConfigCardRingStatus = 'idle' | 'configuring' | 'success' | 'error';
 const RING_INSET = '-1px';
 
 const BORDER_COLOR: Record<Exclude<ConfigCardRingStatus, 'idle'>, string> = {
-  configuring: 'var(--ds-border-neutral-subtle-disabled)',
+  configuring: 'var(--ds-hairline-subtle-disabled)',
   success: 'var(--ds-border-success-default-default)',
   error: 'var(--ds-border-error-default-default)',
 };
@@ -106,7 +106,7 @@ export function ConfigModelCard({
         {ringMotion && (
           <motion.div
             key="config-card-ring"
-            className="pointer-events-none absolute z-0 rounded-2xl border-2 border-solid"
+            className="pointer-events-none absolute z-0 rounded-2xl border-2 border-x-2 border-y-2 border-solid"
             style={{ inset: RING_INSET, borderColor: ringColor }}
             initial={{
               transform: 'scale(1)',
@@ -118,7 +118,7 @@ export function ConfigModelCard({
           />
         )}
       </AnimatePresence>
-      <div className="relative z-[1] flex w-full flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
+      <div className="relative z-[1] flex w-full flex-col rounded-2xl bg-ds-neutral-subtle-default">
         {children}
       </div>
     </div>

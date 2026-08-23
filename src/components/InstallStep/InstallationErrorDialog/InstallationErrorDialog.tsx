@@ -44,9 +44,9 @@ const InstallationErrorDialog = ({
         <DialogContent size="sm">
           <DialogHeader title={t('layout.backend-startup-failed')} />
           <DialogContentSection>
-            <div className="text-body-sm font-normal leading-normal text-ds-text-neutral-muted-default">
+            <div className="text-ds-text-base leading-normal font-normal text-ds-ink-muted-default">
               <div className="mb-1">
-                <span className="text-ds-text-neutral-muted-default">
+                <span className="text-ds-ink-muted-default">
                   {backendError}
                 </span>
               </div>
@@ -67,11 +67,9 @@ const InstallationErrorDialog = ({
       <DialogContent size="sm">
         <DialogHeader title={t('layout.installation-failed')} />
         <DialogContentSection>
-          <div className="text-body-sm font-normal leading-normal text-ds-text-neutral-muted-default">
+          <div className="text-ds-text-base leading-normal font-normal text-ds-ink-muted-default">
             <div className="mb-1">
-              <span className="text-ds-text-neutral-muted-default">
-                {error}
-              </span>
+              <span className="text-ds-ink-muted-default">{error}</span>
             </div>
           </div>
         </DialogContentSection>

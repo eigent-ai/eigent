@@ -670,6 +670,8 @@ export default function ProjectPageSidebar({
         message={t('layout.delete-project-confirmation')}
         confirmText={t('layout.delete')}
         cancelText={t('layout.cancel')}
+        confirmVariant="secondary"
+        confirmTone="error"
         confirmDisabled={deleteProjectLoading}
       />
 
@@ -685,7 +687,8 @@ export default function ProjectPageSidebar({
         message={t('layout.ending-this-project-will-stop')}
         confirmText={t('layout.yes-end-project')}
         cancelText={t('layout.cancel')}
-        confirmVariant="caution"
+        confirmVariant="primary"
+        confirmTone="error"
         confirmDisabled={achieveProjectLoading}
       />
 
@@ -720,7 +723,7 @@ export default function ProjectPageSidebar({
                     <Inbox className="h-4 w-4 shrink-0" aria-hidden />
                     {filesTabHasUnviewedFiles && !isActiveSpaceUnbound ? (
                       <span
-                        className="absolute -right-1 -top-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-error-default-default ease-in-out"
+                        className="absolute -top-1 -right-1 h-2 w-2 shrink-0 rounded-full bg-ds-text-error-default-default ease-in-out"
                         aria-hidden
                       />
                     ) : null}
@@ -739,8 +742,8 @@ export default function ProjectPageSidebar({
                 trailing={
                   filesTabBinding ? (
                     <>
-                      <div className="flex shrink-0 flex-col items-center rounded-xl bg-ds-bg-neutral-muted-default px-1.5">
-                        <span className="text-label-xs font-medium text-ds-text-neutral-muted-default">
+                      <div className="flex shrink-0 flex-col items-center rounded-xl bg-ds-neutral-muted-default px-1.5">
+                        <span className="text-ds-text-meta font-medium text-ds-ink-muted-default">
                           {filesTabBinding.label}
                         </span>
                       </div>
@@ -796,8 +799,8 @@ export default function ProjectPageSidebar({
                       size="sm"
                       buttonContent="icon-only"
                       className={cn(
-                        'no-drag mr-1 shrink-0 rounded-xl hover:bg-ds-bg-neutral-strong-default',
-                        'focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-border-neutral-default-default'
+                        'no-drag mr-1 shrink-0 rounded-xl hover:bg-ds-neutral-strong-default',
+                        'focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ds-hairline-default-default focus-visible:outline-none'
                       )}
                       aria-label={t('triggers.add-trigger')}
                       onClick={(e) => {
@@ -807,7 +810,7 @@ export default function ProjectPageSidebar({
                       }}
                     >
                       <Plus
-                        className="h-4 w-4 text-ds-icon-neutral-muted-default"
+                        className="h-4 w-4 text-ds-ink-muted-default"
                         aria-hidden
                       />
                     </Button>

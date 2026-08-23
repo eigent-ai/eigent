@@ -179,17 +179,17 @@ function PickerOption({
     <button
       type="button"
       aria-label={title}
-      className="flex w-full items-start gap-3 rounded-xl bg-ds-bg-neutral-default-default p-3 text-left outline-none transition-colors hover:bg-ds-bg-neutral-default-hover focus-visible:ring-2 focus-visible:ring-ds-ring-brand-default-focus"
+      className="flex w-full items-start gap-3 rounded-xl bg-ds-neutral-default-default p-3 text-left transition-colors outline-none hover:bg-ds-neutral-default-hover focus-visible:ring-2 focus-visible:ring-ds-ring-focus"
       onClick={onClick}
     >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-subtle-default text-ds-icon-neutral-default-default">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ds-neutral-subtle-default text-ds-ink-default-default">
         {icon}
       </span>
       <span className="min-w-0">
-        <span className="block text-body-sm font-bold text-ds-text-neutral-default-default">
+        <span className="block text-ds-text-base font-bold text-ds-ink-default-default">
           {title}
         </span>
-        <span className="mt-0.5 block text-body-xs text-ds-text-neutral-muted-default">
+        <span className="mt-0.5 block text-ds-text-meta text-ds-ink-muted-default">
           {description}
         </span>
       </span>
@@ -468,7 +468,7 @@ function EditorFields({
           }
         />
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="flex min-h-10 items-center gap-2 rounded-xl bg-ds-bg-neutral-default-default px-3 text-body-sm font-bold">
+          <label className="flex min-h-10 items-center gap-2 rounded-xl bg-ds-neutral-default-default px-3 text-ds-text-meta font-bold">
             <Switch
               size="sm"
               aria-label={`Required ${label}`}
@@ -482,7 +482,7 @@ function EditorFields({
             />
             <span>Required</span>
           </label>
-          <label className="flex min-h-10 items-center gap-2 rounded-xl bg-ds-bg-neutral-default-default px-3 text-body-sm font-bold">
+          <label className="flex min-h-10 items-center gap-2 rounded-xl bg-ds-neutral-default-default px-3 text-ds-text-meta font-bold">
             <Switch
               size="sm"
               aria-label={`Sensitive ${label}`}
@@ -497,7 +497,7 @@ function EditorFields({
           </label>
         </div>
         {editor.item.sensitive ? (
-          <span className="block text-body-xs text-ds-text-neutral-muted-default">
+          <span className="block text-ds-text-meta text-ds-ink-muted-default">
             The recipient will provide this value locally during setup.
           </span>
         ) : (
@@ -755,21 +755,21 @@ function EditorFields({
           </SelectContent>
         </Select>
 
-        <div className="border-x-0 border-b-0 border-t border-solid border-ds-border-neutral-subtle-default pt-4">
-          <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
+        <div className="border-x-0 border-t border-b-0 border-solid border-ds-hairline-subtle-default pt-4">
+          <div className="text-ds-text-base font-bold text-ds-ink-default-default">
             Assigned resources
           </div>
-          <div className="mt-2 space-y-2 text-body-xs text-ds-text-neutral-muted-default">
-            <div className="rounded-xl bg-ds-bg-neutral-default-default p-3">
-              <span className="font-semibold text-ds-text-neutral-default-default">
+          <div className="mt-2 space-y-2 text-ds-text-meta text-ds-ink-muted-default">
+            <div className="rounded-xl bg-ds-neutral-default-default p-3">
+              <span className="font-semibold text-ds-ink-default-default">
                 Instruction
               </span>
               <span className="mt-1 block truncate">
                 {instruction || 'No instruction for this role'}
               </span>
             </div>
-            <div className="rounded-xl bg-ds-bg-neutral-default-default p-3">
-              <span className="font-semibold text-ds-text-neutral-default-default">
+            <div className="rounded-xl bg-ds-neutral-default-default p-3">
+              <span className="font-semibold text-ds-ink-default-default">
                 Skills
               </span>
               <span className="mt-1 block truncate">
@@ -778,8 +778,8 @@ function EditorFields({
                   : 'No assigned skills'}
               </span>
             </div>
-            <div className="rounded-xl bg-ds-bg-neutral-default-default p-3">
-              <span className="font-semibold text-ds-text-neutral-default-default">
+            <div className="rounded-xl bg-ds-neutral-default-default p-3">
+              <span className="font-semibold text-ds-ink-default-default">
                 MCP servers
               </span>
               <span className="mt-1 block truncate">
@@ -1038,9 +1038,9 @@ export function WorkspaceResourceEditorPanel({
           ease: drawerEase,
         },
       }}
-      className="pointer-events-auto ml-auto flex max-h-[calc(100dvh-5rem)] min-h-[80dvh] w-full flex-col overflow-hidden rounded-2xl border border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default shadow-xl md:w-1/2 md:min-w-[420px]"
+      className="pointer-events-auto ml-auto flex max-h-[calc(100dvh-5rem)] min-h-[80dvh] w-full flex-col overflow-hidden rounded-2xl border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default shadow-xl md:w-1/2 md:min-w-[420px]"
     >
-      <header className="flex items-start justify-between gap-4 border-x-0 border-b border-l-0 border-r-0 border-t-0 border-solid border-ds-border-neutral-subtle-default px-5 py-4">
+      <header className="flex items-start justify-between gap-4 border-x-0 border-t-0 border-r-0 border-b border-l-0 border-solid border-ds-hairline-subtle-default px-5 py-4">
         <div className="flex min-w-0 items-start gap-2">
           {canGoBack ? (
             <Button
@@ -1056,10 +1056,10 @@ export function WorkspaceResourceEditorPanel({
             </Button>
           ) : null}
           <div className="min-w-0">
-            <span className="block text-body-lg font-bold text-ds-text-neutral-default-default">
+            <span className="block text-ds-text-section font-bold text-ds-ink-default-default">
               {title}
             </span>
-            <span className="mt-1 block text-body-xs text-ds-text-neutral-muted-default">
+            <span className="mt-1 block text-ds-text-meta text-ds-ink-muted-default">
               {editor.step === 'picker'
                 ? `Choose the type of ${resourceName} to configure.`
                 : editor.mode === 'create'
@@ -1080,7 +1080,7 @@ export function WorkspaceResourceEditorPanel({
         </Button>
       </header>
 
-      <div className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-5">
+      <div className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-5">
         <AnimatePresence
           initial={false}
           mode="popLayout"
@@ -1113,7 +1113,7 @@ export function WorkspaceResourceEditorPanel({
         </AnimatePresence>
       </div>
 
-      <footer className="border-x-0 border-b-0 border-l-0 border-r-0 border-t border-solid border-ds-border-neutral-subtle-default px-4 py-2">
+      <footer className="border-x-0 border-t border-r-0 border-b-0 border-l-0 border-solid border-ds-hairline-subtle-default px-4 py-2">
         <div className="flex items-center gap-2">
           {editor.mode === 'edit' ? (
             <Button
@@ -1147,7 +1147,7 @@ export function WorkspaceResourceEditorPanel({
             Save
           </Button>
         </div>
-        <span className="relative mt-1 block min-h-5 overflow-hidden text-center text-label-xs text-ds-text-neutral-muted-default">
+        <span className="relative mt-1 block min-h-5 overflow-hidden text-center text-ds-text-meta text-ds-ink-muted-default">
           <AnimatePresence initial={false} mode="popLayout">
             <motion.span
               key={footerStatus}

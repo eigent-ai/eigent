@@ -19,6 +19,7 @@ import {
   type FileTreeNode,
   type FileTreeStatus,
 } from '@/components/Folder';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { CheckCircle2 } from 'lucide-react';
@@ -110,9 +111,10 @@ export function ReviewFileTree({
   };
 
   return (
-    <aside className="flex h-full min-h-0 w-[264px] shrink-0 flex-col border-0 border-r border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default">
-      <div className="flex flex-col gap-2 border-0 border-b border-solid border-ds-border-neutral-subtle-default p-2.5">
+    <aside className="flex h-full min-h-0 w-[264px] shrink-0 flex-col border-0 border-y-0 border-r border-l-0 border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default">
+      <div className="flex flex-col gap-2 border-0 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default p-2.5">
         <Input
+          size="sm"
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
           onKeyDown={(event) => {
@@ -124,7 +126,6 @@ export function ReviewFileTree({
           aria-label={t('layout.review-filter-files', {
             defaultValue: 'Filter files…',
           })}
-          className="h-8 shrink-0 bg-ds-bg-neutral-default-default text-xs"
         />
         <div className="flex items-center justify-between gap-2">
           <ToggleGroup
@@ -142,27 +143,28 @@ export function ReviewFileTree({
               <ToggleGroupItem
                 key={status}
                 value={status}
-                className="h-7 min-w-7 px-1.5 font-code text-[11px] font-semibold"
+                className="font-code font-semibold"
                 aria-label={status}
               >
                 {status[0].toUpperCase()}
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
-          <button
+          <Button
             type="button"
+            variant={unreviewedOnly ? 'secondary' : 'ghost'}
+            size="sm"
             onClick={() => setUnreviewedOnly((value) => !value)}
             aria-pressed={unreviewedOnly}
-            className="flex h-7 cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-1.5 text-[11px] text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-default-default aria-pressed:bg-ds-bg-neutral-default-default aria-pressed:text-ds-text-neutral-default-default"
           >
-            <CheckCircle2 className="size-3.5" aria-hidden />
+            <CheckCircle2 aria-hidden />
             {t('layout.review-unreviewed', { defaultValue: 'Unreviewed' })}
-          </button>
+          </Button>
         </div>
       </div>
       <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto p-2">
         {visibleFiles.length === 0 ? (
-          <p className="px-2 py-3 text-xs text-ds-text-neutral-muted-default">
+          <p className="px-2 py-3 text-ds-text-meta text-ds-ink-muted-default">
             {t('layout.review-no-matches', {
               defaultValue: 'No files match the current filters.',
             })}
@@ -181,7 +183,7 @@ export function ReviewFileTree({
           />
         )}
       </div>
-      <div className="shrink-0 border-0 border-t border-solid border-ds-border-neutral-subtle-default px-3 py-2 text-[11px] text-ds-text-neutral-muted-default">
+      <div className="shrink-0 border-0 border-x-0 border-t border-b-0 border-solid border-ds-hairline-subtle-default px-3 py-2 text-ds-text-meta text-ds-ink-muted-default">
         {t('layout.review-visible-files', {
           defaultValue: '{{visible}} of {{total}} files',
           visible: visibleFiles.length,

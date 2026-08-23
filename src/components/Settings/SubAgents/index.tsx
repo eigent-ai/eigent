@@ -248,8 +248,8 @@ export default function SubAgents() {
         onClick={() => setSelectedProvider(REMOTE_SUB_AGENT_PROVIDER)}
         className={`flex w-full items-center justify-between rounded-xl px-3 py-2 transition-colors duration-200 ${
           isActive
-            ? 'bg-ds-bg-neutral-subtle-default'
-            : 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
+            ? 'bg-ds-neutral-subtle-default'
+            : 'bg-ds-neutral-subtle-default hover:bg-ds-neutral-subtle-default'
         }`}
       >
         <div className="flex min-w-0 items-center justify-center gap-3">
@@ -259,10 +259,10 @@ export default function SubAgents() {
             className="h-5 w-5 shrink-0"
           />
           <span
-            className={`truncate text-body-sm font-medium ${
+            className={`truncate text-ds-text-base font-medium ${
               isActive
-                ? 'text-ds-text-neutral-default-default'
-                : 'text-ds-text-neutral-muted-default'
+                ? 'text-ds-ink-default-default'
+                : 'text-ds-ink-muted-default'
             }`}
           >
             {t('setting.gemini-agent')}
@@ -270,7 +270,7 @@ export default function SubAgents() {
         </div>
         {remoteSubAgentLoading ? (
           <Loader2
-            className="m-0.5 h-3 w-3 shrink-0 animate-spin text-ds-icon-neutral-muted-default motion-reduce:animate-none"
+            className="m-0.5 h-3 w-3 shrink-0 animate-spin text-ds-ink-muted-default motion-reduce:animate-none"
             aria-hidden
           />
         ) : isConfigured ? (
@@ -285,11 +285,11 @@ export default function SubAgents() {
   const renderGeminiProviderContent = () => (
     <div
       aria-busy={remoteSubAgentLoading}
-      className="flex w-full flex-col rounded-2xl bg-ds-bg-neutral-subtle-default"
+      className="flex w-full flex-col rounded-2xl bg-ds-neutral-subtle-default"
     >
-      <div className="mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default px-6 pb-4 pt-2">
+      <div className="mb-4 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid border-ds-hairline-default-default px-6 pt-2 pb-4">
         <div className="inline-flex items-center justify-between gap-2 self-stretch">
-          <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default">
+          <div className="my-2 text-ds-text-base font-bold text-ds-ink-default-default">
             {t('setting.gemini-remote-sub-agent')}
           </div>
           <div className="flex items-center gap-3">
@@ -305,14 +305,14 @@ export default function SubAgents() {
             />
           </div>
         </div>
-        <div className="text-body-sm text-ds-text-neutral-muted-default">
+        <div className="text-ds-text-base text-ds-ink-muted-default">
           {t('setting.remote-sub-agent-description')}
         </div>
         {remoteSubAgentLoading ? (
           <div
             role="status"
             aria-live="polite"
-            className="mt-2 flex items-center gap-2 text-label-sm text-ds-text-neutral-muted-default"
+            className="mt-2 flex items-center gap-2 text-ds-text-base text-ds-ink-muted-default"
           >
             <Loader2
               className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
@@ -418,7 +418,7 @@ export default function SubAgents() {
         </div>
 
         {remoteSubAgentError && (
-          <span className="w-full text-label-sm text-text-error">
+          <span className="w-full !text-ds-text-base text-ds-text-error-strong-default">
             {remoteSubAgentError}
           </span>
         )}
@@ -428,7 +428,8 @@ export default function SubAgents() {
         <Button
           variant="ghost"
           size="sm"
-          className="!text-text-label"
+          buttonRadius="full"
+          className="!text-ds-ink-muted-default"
           onClick={handleRemoteSubAgentReset}
           disabled={remoteSubAgentLoading || remoteSubAgentSaving}
         >
@@ -437,14 +438,11 @@ export default function SubAgents() {
         <Button
           variant="primary"
           size="sm"
+          buttonRadius="full"
           onClick={handleRemoteSubAgentSave}
           disabled={remoteSubAgentLoading || remoteSubAgentSaving}
         >
-          <span className="text-text-inverse-primary">
-            {remoteSubAgentSaving
-              ? t('setting.configuring')
-              : t('setting.save')}
-          </span>
+          {remoteSubAgentSaving ? t('setting.configuring') : t('setting.save')}
         </Button>
       </div>
     </div>
@@ -457,10 +455,10 @@ export default function SubAgents() {
         boxClassName="items-start gap-2"
       >
         <div className="flex w-full flex-row items-start justify-between">
-          <div className="-ml-2 mr-4 h-full w-[240px] rounded-2xl bg-surface-secondary">
+          <div className="mr-4 -ml-2 h-full w-[240px] rounded-2xl bg-ds-neutral-muted-default">
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-1">
-                <div className="px-3 py-2 text-body-sm font-bold text-text-heading">
+                <div className="px-3 py-2 !text-ds-text-base font-bold text-ds-ink-default-default">
                   {t('setting.agent-provider')}
                 </div>
                 {renderProviderItem()}

@@ -233,7 +233,7 @@ export function UserMenu() {
             aria-expanded={open}
           >
             <span
-              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ds-bg-brand-default-default text-[10px] font-semibold leading-none text-ds-text-brand-inverse-default"
+              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ds-accent-default-default text-[10px] leading-none font-semibold text-ds-accent-on-default"
               aria-hidden
             >
               {profileInitial}
@@ -248,7 +248,7 @@ export function UserMenu() {
           onCloseAutoFocus={(event) => event.preventDefault()}
         >
           <DropdownMenuLabel
-            className="truncate px-2 py-1.5 text-label-sm font-normal text-ds-text-neutral-muted-default"
+            className="truncate px-2 py-1.5 text-ds-text-base font-normal text-ds-ink-muted-default"
             onPointerEnter={closeLanguageSub}
           >
             {email?.trim() || profileDisplayName || t('setting.profile')}
@@ -282,7 +282,7 @@ export function UserMenu() {
                 </span>
               )}
               <ArrowUpRight
-                className="h-4 w-4 shrink-0 text-ds-icon-neutral-muted-default"
+                className="h-4 w-4 shrink-0 text-ds-ink-muted-default"
                 aria-hidden
               />
             </DropdownMenuItem>
@@ -304,7 +304,7 @@ export function UserMenu() {
             onPointerEnter={closeLanguageSub}
             onPointerDown={(event) => event.preventDefault()}
           >
-            <span className="text-label-xs font-medium text-ds-text-neutral-muted-default">
+            <span className="text-ds-text-meta font-medium text-ds-ink-muted-default">
               {t('setting.appearance')}
             </span>
             <IconPillToggle
@@ -349,7 +349,7 @@ export function UserMenu() {
                     </span>
                     {selected ? (
                       <Check
-                        className="h-4 w-4 shrink-0 text-ds-icon-brand-default-default"
+                        className="h-4 w-4 shrink-0 text-ds-accent-default-default"
                         aria-hidden
                       />
                     ) : null}

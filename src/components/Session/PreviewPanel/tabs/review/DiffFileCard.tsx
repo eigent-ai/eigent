@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsIcon } from '@/components/ui/ds-icon';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useHost } from '@/host';
 import {
@@ -622,24 +623,24 @@ export const DiffFileCard = forwardRef<DiffFileCardHandle, DiffFileCardProps>(
     return (
       <section
         data-review-id={file.id}
-        className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-ds-bg-neutral-default-default"
+        className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-ds-neutral-default-default"
       >
-        <header className="flex h-10 shrink-0 items-center gap-2 border-0 border-b border-solid border-ds-border-neutral-subtle-default px-3">
+        <header className="flex h-ds-layout-row-header shrink-0 items-center gap-2 border-0 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-3">
           <span
-            className={`w-3 shrink-0 text-xs font-bold ${status.className}`}
+            className={`w-3 shrink-0 text-ds-text-meta font-bold ${status.className}`}
             aria-label={file.status}
           >
             {status.letter}
           </span>
-          <span className="min-w-0 flex-1 truncate font-code text-xs font-medium text-ds-text-neutral-default-default">
-            <span className="font-code text-ds-text-neutral-muted-default">
+          <span className="min-w-0 flex-1 truncate font-code text-ds-code-small font-medium text-ds-ink-default-default">
+            <span className="font-code text-ds-ink-muted-default">
               {dirName}
             </span>
             {baseName}
           </span>
           {reviewed ? (
-            <span className="hidden items-center gap-1 text-xs text-ds-text-success-default-default sm:flex">
-              <CheckCheck className="h-3.5 w-3.5" aria-hidden />
+            <span className="hidden items-center gap-1 text-ds-text-meta text-ds-text-success-default-default sm:flex">
+              <DsIcon icon={CheckCheck} recipe="main-compact" />
               {t('layout.review-reviewed', { defaultValue: 'Reviewed' })}
             </span>
           ) : null}
@@ -658,27 +659,25 @@ export const DiffFileCard = forwardRef<DiffFileCardHandle, DiffFileCardProps>(
               {semanticKind !== 'image' ? (
                 <ToggleGroupItem
                   value="source"
-                  className="h-7 min-w-7 px-1.5"
                   aria-label={t('layout.review-source-view', {
                     defaultValue: 'Source diff',
                   })}
                 >
-                  <CodeXml className="size-3.5" aria-hidden />
+                  <CodeXml aria-hidden />
                 </ToggleGroupItem>
               ) : null}
               <ToggleGroupItem
                 value="preview"
-                className="h-7 min-w-7 px-1.5"
                 aria-label={t('layout.review-preview-view', {
                   defaultValue: 'Rendered diff',
                 })}
               >
-                <Eye className="size-3.5" aria-hidden />
+                <Eye aria-hidden />
               </ToggleGroupItem>
             </ToggleGroup>
           ) : null}
           {counts && (
-            <span className="flex shrink-0 items-center gap-1.5 text-xs font-medium">
+            <span className="flex shrink-0 items-center gap-1.5 text-ds-text-meta font-medium">
               <span className="text-ds-text-success-default-default">
                 +{counts.added}
               </span>
@@ -690,8 +689,8 @@ export const DiffFileCard = forwardRef<DiffFileCardHandle, DiffFileCardProps>(
         </header>
 
         {banner ? (
-          <div className="flex shrink-0 items-center gap-2 border-0 border-b border-solid border-ds-border-neutral-subtle-default px-3 py-2 text-xs text-ds-text-neutral-muted-default">
-            <FileWarning className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          <div className="flex shrink-0 items-center gap-2 border-0 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-3 py-2 text-ds-text-meta text-ds-ink-muted-default">
+            <DsIcon icon={FileWarning} recipe="main-compact" />
             {banner}
           </div>
         ) : null}
@@ -700,14 +699,14 @@ export const DiffFileCard = forwardRef<DiffFileCardHandle, DiffFileCardProps>(
           {displayMode === 'preview' && semanticKind ? (
             <SemanticDiffView file={file} kind={semanticKind} sides={sides} />
           ) : notice ? (
-            <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-xs text-ds-text-neutral-muted-default">
+            <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-ds-text-meta text-ds-ink-muted-default">
               <div className="flex items-center gap-2">
-                <FileWarning className="h-4 w-4 shrink-0" aria-hidden />
+                <DsIcon icon={FileWarning} />
                 {notice}
               </div>
               {(loadError === 'binary' || loadError === 'too_large') &&
               (file.beforeSize != null || file.afterSize != null) ? (
-                <div className="flex items-center gap-3 font-code text-[11px]">
+                <div className="flex items-center gap-3 font-code text-ds-code-small">
                   <span>
                     {t('layout.review-before-size', {
                       defaultValue: 'Before {{size}}',
@@ -752,7 +751,7 @@ export const DiffFileCard = forwardRef<DiffFileCardHandle, DiffFileCardProps>(
                   options={wholeFileOptions}
                   onMount={handleWholeFileMount}
                   loading={
-                    <div className="h-full w-full animate-pulse bg-ds-bg-neutral-subtle-default" />
+                    <div className="h-full w-full animate-pulse bg-ds-neutral-subtle-default" />
                   }
                 />
               ) : (
@@ -766,13 +765,13 @@ export const DiffFileCard = forwardRef<DiffFileCardHandle, DiffFileCardProps>(
                   options={diffOptions}
                   onMount={handleMount}
                   loading={
-                    <div className="h-full w-full animate-pulse bg-ds-bg-neutral-subtle-default" />
+                    <div className="h-full w-full animate-pulse bg-ds-neutral-subtle-default" />
                   }
                 />
               )}
             </div>
           ) : (
-            <div className="h-full w-full animate-pulse bg-ds-bg-neutral-subtle-default" />
+            <div className="h-full w-full animate-pulse bg-ds-neutral-subtle-default" />
           )}
         </div>
       </section>

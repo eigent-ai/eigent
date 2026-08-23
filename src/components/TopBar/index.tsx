@@ -24,6 +24,7 @@ import {
   TOP_BAR_PILL_CLASS,
 } from '@/components/TopBar/controlStyles';
 import { TopBarPrimaryNavigation } from '@/components/TopBar/TopBarPrimaryNavigation';
+import UpdateButton from '@/components/TopBar/UpdateButton';
 import { UserMenu } from '@/components/TopBar/UserMenu';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
@@ -456,7 +457,7 @@ function HeaderWin() {
   return (
     <div
       className={cn(
-        'drag absolute left-0 right-0 top-0 z-50 flex !h-10 min-w-0 items-center py-1',
+        'drag absolute top-0 right-0 left-0 z-50 flex !h-10 min-w-0 items-center py-1',
         platform === 'darwin' && 'pr-1'
       )}
       style={{ paddingLeft: topBarLeadingInset }}
@@ -610,11 +611,11 @@ function HeaderWin() {
                     aria-label={activeSpaceTitle}
                   >
                     <Folder className="h-4 w-4 shrink-0" aria-hidden />
-                    <span className="min-w-0 max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap">
+                    <span className="max-w-[220px] min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
                       {activeSpaceTitle}
                     </span>
                     <ChevronsUpDown
-                      className="h-3.5 w-3.5 shrink-0 text-ds-icon-neutral-subtle-default"
+                      className="h-3.5 w-3.5 shrink-0 text-ds-ink-subtle-default"
                       aria-hidden
                     />
                   </button>
@@ -667,11 +668,11 @@ function HeaderWin() {
                 onClick={openWorkspace}
               >
                 <Folder className="h-4 w-4 shrink-0" aria-hidden />
-                <span className="min-w-0 max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap">
+                <span className="max-w-[220px] min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
                   {activeSpaceTitle}
                 </span>
                 <ChevronsUpDown
-                  className="h-3.5 w-3.5 shrink-0 text-ds-icon-neutral-subtle-default"
+                  className="h-3.5 w-3.5 shrink-0 text-ds-ink-subtle-default"
                   aria-hidden
                 />
               </button>
@@ -685,6 +686,7 @@ function HeaderWin() {
             platform === 'darwin' && 'px-0'
           )}
         >
+          <UpdateButton />
           <TooltipSimple
             content={t('layout.support')}
             side="bottom"
@@ -720,7 +722,7 @@ function HeaderWin() {
           <button
             type="button"
             aria-label={t('layout.minimize', { defaultValue: 'Minimize' })}
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-center leading-5 text-inherit hover:bg-ds-bg-neutral-subtle-default"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center border-0 border-x-0 border-y-0 bg-transparent p-0 text-center leading-5 text-inherit hover:bg-ds-neutral-subtle-default"
             onClick={() => host?.electronAPI?.minimizeWindow()}
           >
             <Minus className="h-4 w-4" aria-hidden />
@@ -728,7 +730,7 @@ function HeaderWin() {
           <button
             type="button"
             aria-label={t('layout.maximize', { defaultValue: 'Maximize' })}
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-center leading-5 text-inherit hover:bg-ds-bg-neutral-subtle-default"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center border-0 border-x-0 border-y-0 bg-transparent p-0 text-center leading-5 text-inherit hover:bg-ds-neutral-subtle-default"
             onClick={() => host?.electronAPI?.toggleMaximizeWindow()}
           >
             <Square className="h-4 w-4" aria-hidden />
@@ -736,7 +738,7 @@ function HeaderWin() {
           <button
             type="button"
             aria-label={t('layout.close', { defaultValue: 'Close' })}
-            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-center leading-5 text-inherit hover:bg-ds-bg-neutral-subtle-default"
+            className="flex h-full w-[35px] flex-1 cursor-pointer items-center justify-center border-0 border-x-0 border-y-0 bg-transparent p-0 text-center leading-5 text-inherit hover:bg-ds-neutral-subtle-default"
             onClick={() => host?.electronAPI?.closeWindow(false)}
           >
             <X className="h-4 w-4" aria-hidden />

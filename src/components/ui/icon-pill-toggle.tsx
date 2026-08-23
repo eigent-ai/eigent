@@ -53,7 +53,7 @@ export function IconPillToggle<T extends string>({
       role="radiogroup"
       aria-label={ariaLabel}
       className={cn(
-        'relative inline-flex shrink-0 items-center rounded-lg border-0 bg-ds-bg-neutral-strong-default p-0.5 shadow-none ring-0',
+        'relative inline-flex shrink-0 items-center rounded-lg border-0 border-x-0 border-y-0 bg-ds-neutral-strong-default p-0.5 shadow-none ring-0',
         fullWidth && 'flex w-full',
         className
       )}
@@ -71,18 +71,18 @@ export function IconPillToggle<T extends string>({
             title={option.label}
             onClick={() => onValueChange(option.value)}
             className={cn(
-              'relative z-0 flex h-7 items-center justify-center rounded-lg outline-none transition-colors',
+              'relative z-0 flex h-7 items-center justify-center rounded-lg transition-colors outline-none',
               fullWidth ? 'min-w-0 flex-1' : 'w-7',
-              'focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ds-ring-neutral-subtle-default',
+              'focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ds-hairline-subtle-default',
               selected
-                ? 'text-ds-icon-neutral-default-default'
-                : 'text-ds-icon-neutral-muted-default hover:text-ds-icon-neutral-default-default'
+                ? 'text-ds-ink-default-default'
+                : 'text-ds-ink-muted-default hover:text-ds-ink-default-default'
             )}
           >
             {selected ? (
               <motion.span
                 layoutId={`${layoutId}-thumb`}
-                className="absolute inset-0 rounded-lg bg-ds-bg-neutral-subtle-default shadow-sm"
+                className="absolute inset-0 rounded-lg bg-ds-neutral-subtle-default shadow-sm"
                 transition={{
                   type: 'spring',
                   stiffness: 420,

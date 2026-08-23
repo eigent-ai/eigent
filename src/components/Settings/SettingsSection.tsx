@@ -44,7 +44,7 @@ export default function SettingsSection({
     <section id={id} className={cn('flex w-full flex-col', className)}>
       {showTitle ? (
         <div className="mb-2 grid min-h-6 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 px-4">
-          <span className="m-0 block min-w-0 text-body-sm font-bold text-ds-text-neutral-default-default">
+          <span className="m-0 block min-w-0 text-ds-text-base font-bold text-ds-ink-default-default">
             {title}
           </span>
           {action ? (
@@ -53,7 +53,7 @@ export default function SettingsSection({
             </div>
           ) : null}
           {description ? (
-            <span className="col-start-1 mt-0.5 block text-body-xs text-ds-text-neutral-muted-default">
+            <span className="col-start-1 mt-0.5 block text-ds-text-meta text-ds-ink-muted-default">
               {description}
             </span>
           ) : null}
@@ -63,7 +63,7 @@ export default function SettingsSection({
         className={cn(
           // Borderless: the section reads as a filled panel against the
           // subtle content-pane background instead of an outlined card.
-          'flex rounded-2xl border-0 bg-ds-bg-neutral-default-default p-4',
+          'flex rounded-2xl border-0 border-x-0 border-y-0 bg-ds-neutral-default-default p-4',
           variant === 'horizontal' ? 'flex-row' : 'flex-col',
           boxClassName
         )}

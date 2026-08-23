@@ -200,7 +200,7 @@ export default function Triggers({
     }
     return (
       <div className="flex w-full min-w-0 flex-col">
-        <div className="pb-12 text-body-sm text-ds-text-neutral-muted-default">
+        <div className="pb-12 text-ds-text-base text-ds-ink-muted-default">
           {t('layout.loading')}
         </div>
       </div>
@@ -212,14 +212,14 @@ export default function Triggers({
       <div className="mb-12 w-full min-w-0">
         {triggers.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-8 text-center">
-            <AUTOMATION_ICON className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default" />
-            <div className="text-sm text-ds-text-neutral-muted-default">
+            <AUTOMATION_ICON className="mb-4 h-12 w-12 text-ds-ink-muted-default" />
+            <div className="text-sm text-ds-ink-muted-default">
               {t('triggers.no-triggers') || t('layout.triggers')}
             </div>
           </div>
         ) : filteredTriggers.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-8 text-center">
-            <div className="text-sm text-ds-text-neutral-muted-default">
+            <div className="text-sm text-ds-ink-muted-default">
               {t('layout.search-no-results')}
             </div>
           </div>

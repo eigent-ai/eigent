@@ -50,11 +50,11 @@ export const FloatingAction = ({
   return (
     <div
       className={cn(
-        'pointer-events-none sticky bottom-40 left-0 right-0 top-2 z-20 mt-4 flex w-full items-center justify-center',
+        'pointer-events-none sticky top-2 right-0 bottom-40 left-0 z-20 mt-4 flex w-full items-center justify-center',
         className
       )}
     >
-      <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default p-1 shadow-button-shadow backdrop-blur-md">
+      <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-x border-y border-ds-hairline-default-default bg-ds-neutral-subtle-default p-1 shadow-button-shadow backdrop-blur-md">
         {/* Always show Stop Task button when running (removed pause/resume logic) */}
         <Button
           variant="outline"
@@ -63,14 +63,15 @@ export const FloatingAction = ({
           disabled={loading}
           className="gap-1.5 rounded-full"
         >
-          <span className="!text-label-sm font-semibold">Stop Task</span>
+          <span className="!text-ds-text-base font-semibold">Stop Task</span>
         </Button>
 
         {/* Commented out pause/resume functionality
 				{status === "running" ? (
 					// State 1: Running - Show Pause button
 					<Button
-						variant="caution"
+						variant="primary"
+						tone="error"
 						size="sm"
 						onClick={onPause}
 						disabled={loading}
@@ -88,7 +89,7 @@ export const FloatingAction = ({
 							disabled={loading}
 							className="gap-1.5 rounded-full min-w-[80px]"
 						>
-							<Play className="w-3.5 h-3.5" />
+							<Play className="size-ds-icon-md" />
 							<span className="text-sm font-semibold">Resume</span>
 						</Button>
 						<Button

@@ -16,20 +16,19 @@ import { cn } from '@/lib/utils';
 import type { ReactNode } from 'react';
 
 /**
- * Canonical Layout header row for the content pane: 44px tall, 8px horizontal
- * padding. Every page header (project, context, triggers, home, settings)
- * uses this so they line up across tabs.
+ * Canonical layout header row: 40px, 8px inline inset, overflow visible so
+ * the 2px focus ring is not clipped. Composes Button `sm` (28px).
  */
 export const CONTENT_HEADER_CLASS =
-  'flex h-[44px] min-h-[44px] w-full shrink-0 items-center gap-2 px-2';
+  'flex h-ds-layout-row-header min-h-ds-layout-row-header w-full shrink-0 items-center gap-ds-6 overflow-visible px-ds-8';
 
 /** Bottom hairline for headers that sit above a scrolling list. */
 export const CONTENT_HEADER_BORDER_CLASS =
-  'border-b border-x-0 border-t-0 border-solid border-ds-border-neutral-subtle-default';
+  'border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default';
 
 /**
  * Controls placed in a `ContentHeader` share one size so their heights match
- * the 44px row: `size="sm"` (28px) with `buttonContent="icon-only"` for icon
+ * the 40px row: `size="sm"` (28px) with `buttonContent="icon-only"` for icon
  * buttons and `buttonContent="text"` for labelled ones.
  */
 export interface ContentHeaderProps {
@@ -64,13 +63,13 @@ export default function ContentHeader({
     >
       {leading}
       {title ? (
-        <span className="min-w-0 shrink truncate text-body-md font-bold text-ds-text-neutral-muted-default">
+        <span className="min-w-0 shrink truncate !text-ds-text-body-large font-semibold text-ds-ink-default-default">
           {title}
         </span>
       ) : null}
       {children}
       {actions ? (
-        <div className="ml-auto flex shrink-0 items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-ds-8">
           {actions}
         </div>
       ) : null}

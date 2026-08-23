@@ -51,7 +51,7 @@ export function ChooserTab({ onChoose, onChooseAgentStream }: ChooserTabProps) {
   return (
     <div className="flex h-full min-h-0 w-full flex-col items-center justify-center overflow-y-auto p-4">
       <div className="w-full max-w-[420px]">
-        <p className="mb-3 px-1 text-sm font-medium text-ds-text-neutral-muted-default">
+        <p className="mb-3 px-1 text-sm font-medium text-ds-ink-muted-default">
           {t('layout.preview-chooser-title', {
             defaultValue: 'Open a new view',
           })}
@@ -92,25 +92,25 @@ export function ChooserTab({ onChoose, onChooseAgentStream }: ChooserTabProps) {
                     type="button"
                     onClick={() => onChoose(kind)}
                     className={cn(
-                      'group flex w-full items-center gap-3 rounded-xl border-solid border-transparent bg-ds-bg-neutral-default-default px-3 py-2.5 text-left transition-colors',
-                      'hover:border-ds-border-neutral-default-default hover:bg-ds-bg-neutral-default-hover'
+                      'group flex w-full items-center gap-3 rounded-xl border-solid border-transparent bg-ds-neutral-default-default px-3 py-2.5 text-left transition-colors',
+                      'hover:border-ds-hairline-default-default hover:bg-ds-neutral-default-hover'
                     )}
                   >
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-subtle-default text-ds-text-neutral-default-default">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ds-neutral-subtle-default text-ds-ink-default-default">
                       <Icon className="h-[18px] w-[18px]" aria-hidden />
                     </span>
                     <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="text-sm font-medium text-ds-text-neutral-default-default">
+                      <span className="text-sm font-medium text-ds-ink-default-default">
                         {label}
                       </span>
-                      <span className="truncate text-xs text-ds-text-neutral-muted-default">
+                      <span className="truncate text-xs text-ds-ink-muted-default">
                         {t(descriptionKey, {
                           defaultValue: defaultDescription,
                         })}
                       </span>
                     </span>
                     <ChevronRight
-                      className="h-4 w-4 shrink-0 text-ds-text-neutral-muted-default opacity-0 transition-opacity group-hover:opacity-100"
+                      className="h-4 w-4 shrink-0 text-ds-ink-muted-default opacity-0 transition-opacity group-hover:opacity-100"
                       aria-hidden
                     />
                   </button>
@@ -122,7 +122,7 @@ export function ChooserTab({ onChoose, onChooseAgentStream }: ChooserTabProps) {
 
         {onChooseAgentStream && projectStreams.length > 0 ? (
           <>
-            <p className="mb-2 mt-6 px-1 text-sm font-medium text-ds-text-neutral-muted-default">
+            <p className="mt-6 mb-2 px-1 text-sm font-medium text-ds-ink-muted-default">
               {t('layout.preview-chooser-project-title', {
                 defaultValue: 'From this project',
               })}
@@ -134,24 +134,24 @@ export function ChooserTab({ onChoose, onChooseAgentStream }: ChooserTabProps) {
                   type="button"
                   onClick={() => onChooseAgentStream(source)}
                   className={cn(
-                    'group flex w-full items-center gap-3 rounded-xl border-solid border-transparent bg-ds-bg-neutral-default-default px-3 py-2.5 text-left transition-colors',
-                    'hover:border-ds-border-neutral-default-default hover:bg-ds-bg-neutral-default-hover'
+                    'group flex w-full items-center gap-3 rounded-xl border-solid border-transparent bg-ds-neutral-default-default px-3 py-2.5 text-left transition-colors',
+                    'hover:border-ds-hairline-default-default hover:bg-ds-neutral-default-hover'
                   )}
                 >
-                  <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-subtle-default text-ds-text-neutral-default-default">
+                  <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ds-neutral-subtle-default text-ds-ink-default-default">
                     <SquareTerminal className="h-[18px] w-[18px]" aria-hidden />
                     {source.status === 'running' ? (
                       <span
                         aria-hidden
-                        className="absolute -right-0.5 -top-0.5 h-2 w-2 animate-pulse rounded-full bg-ds-bg-status-running-default-default"
+                        className="absolute -top-0.5 -right-0.5 h-2 w-2 animate-pulse rounded-full bg-ds-bg-status-running-default-default"
                       />
                     ) : null}
                   </span>
                   <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-sm font-medium text-ds-text-neutral-default-default">
+                    <span className="truncate text-sm font-medium text-ds-ink-default-default">
                       {source.agentName}
                     </span>
-                    <span className="truncate text-xs text-ds-text-neutral-muted-default">
+                    <span className="truncate text-xs text-ds-ink-muted-default">
                       {source.taskLabel ||
                         t('layout.preview-chooser-stream-desc', {
                           defaultValue: 'Command output from this session.',
@@ -159,7 +159,7 @@ export function ChooserTab({ onChoose, onChooseAgentStream }: ChooserTabProps) {
                     </span>
                   </span>
                   <ChevronRight
-                    className="h-4 w-4 shrink-0 text-ds-text-neutral-muted-default opacity-0 transition-opacity group-hover:opacity-100"
+                    className="h-4 w-4 shrink-0 text-ds-ink-muted-default opacity-0 transition-opacity group-hover:opacity-100"
                     aria-hidden
                   />
                 </button>

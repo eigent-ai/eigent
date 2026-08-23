@@ -164,14 +164,14 @@ export default function Spaces() {
       <div className="mb-12 w-full min-w-0">
         {spaceSections.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-8 text-center">
-            <Folder className="mb-4 h-12 w-12 text-ds-icon-neutral-muted-default" />
-            <div className="text-sm text-ds-text-neutral-muted-default">
+            <Folder className="mb-4 h-12 w-12 text-ds-ink-muted-default" />
+            <div className="text-sm text-ds-ink-muted-default">
               {t('layout.spaces-hub-empty-title')}
             </div>
           </div>
         ) : filteredSpaceSections.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-8 text-center">
-            <div className="text-sm text-ds-text-neutral-muted-default">
+            <div className="text-sm text-ds-ink-muted-default">
               {t('layout.search-no-results')}
             </div>
           </div>

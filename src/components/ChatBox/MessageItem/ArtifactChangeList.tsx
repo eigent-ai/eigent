@@ -57,22 +57,22 @@ export function ArtifactChangeList({
     : fileItems.slice(0, collapsedCount);
 
   return (
-    <section className="my-3 overflow-hidden rounded-xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default">
-      <div className="flex items-center gap-2 border-x-0 border-b-[1px] border-t-0 border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default px-4 py-3">
-        <span className="flex size-4 shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-strong-default text-ds-icon-neutral-default-default">
+    <section className="my-3 overflow-hidden rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default">
+      <div className="flex items-center gap-2 border-x-0 border-t-0 border-b-[1px] border-solid border-ds-hairline-default-default bg-ds-neutral-default-default px-4 py-3">
+        <span className="flex size-4 shrink-0 items-center justify-center rounded-lg bg-ds-neutral-strong-default text-ds-ink-default-default">
           <FileText size={18} aria-hidden />
         </span>
-        <span className="text-body-sm font-semibold text-ds-text-neutral-default-default">
+        <span className="text-ds-text-base font-semibold text-ds-ink-default-default">
           {t('chat.files-changed')}
         </span>
-        <span className="text-body-sm font-medium text-ds-text-success-default-default">
+        <span className="text-ds-text-base font-medium text-ds-text-success-default-default">
           {fileItems.length}
         </span>
         {onViewChanges && fileItems.length > 0 ? (
           <button
             type="button"
             onClick={onViewChanges}
-            className="ml-auto inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default px-2.5 text-label-xs font-medium text-ds-text-neutral-default-default transition-colors hover:bg-ds-bg-neutral-default-hover active:bg-ds-bg-neutral-default-active"
+            className="ml-auto inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default px-2.5 text-ds-text-meta font-medium text-ds-ink-default-default transition-colors hover:bg-ds-neutral-default-hover active:shadow-ds-elevation-control-pressed"
           >
             <FileDiff size={14} aria-hidden />
             {t('chat.view-changes')}
@@ -80,7 +80,7 @@ export function ArtifactChangeList({
         ) : null}
       </div>
       {scanWarning ? (
-        <div className="border-b border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default px-4 py-2 text-body-xs text-ds-text-warning-strong-default">
+        <div className="border-x-0 border-t-0 border-b border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default px-4 py-2 text-ds-text-meta text-ds-text-warning-strong-default">
           {scanWarning}
         </div>
       ) : null}
@@ -98,19 +98,19 @@ export function ArtifactChangeList({
             <>
               <span
                 className={cn(
-                  'min-w-0 flex-1 truncate !text-body-sm font-medium text-ds-text-neutral-default-default',
+                  'min-w-0 flex-1 truncate !text-ds-text-base font-medium text-ds-ink-default-default',
                   canOpen && 'group-hover:underline'
                 )}
               >
                 {detail}
               </span>
-              <span className="shrink-0 text-body-xs font-semibold text-ds-text-success-default-default">
+              <span className="shrink-0 text-ds-text-meta font-semibold text-ds-text-success-default-default">
                 {changeLabel}
               </span>
             </>
           );
           const rowClassName = cn(
-            'flex w-full min-w-0 items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-ds-bg-neutral-default-default',
+            'flex w-full min-w-0 items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-ds-neutral-default-default',
             canOpen && 'group'
           );
           return canOpen ? (
@@ -141,7 +141,7 @@ export function ArtifactChangeList({
             type="button"
             aria-expanded={isExpanded}
             onClick={() => setIsExpanded((value) => !value)}
-            className="mt-1 flex items-center gap-1 px-4 py-3 text-body-sm font-semibold text-ds-text-neutral-default-default transition-colors hover:bg-ds-bg-neutral-default-default"
+            className="mt-1 flex items-center gap-1 px-4 py-3 text-ds-text-base font-semibold text-ds-ink-default-default transition-colors hover:bg-ds-neutral-default-default"
           >
             {isExpanded ? 'Show fewer files' : `Show ${hiddenCount} more files`}
             <ChevronDown

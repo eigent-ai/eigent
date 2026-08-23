@@ -12,7 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { TooltipSimple } from '@/components/ui/tooltip';
@@ -411,8 +413,8 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
   if (loading) {
     return (
       <div className="flex h-full min-h-0 w-full overflow-hidden">
-        <div className="w-[248px] shrink-0 animate-pulse border-0 border-r border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default" />
-        <div className="m-3 min-w-0 flex-1 animate-pulse rounded-lg bg-ds-bg-neutral-subtle-default" />
+        <div className="w-[248px] shrink-0 animate-pulse border-0 border-y-0 border-r border-l-0 border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default" />
+        <div className="m-3 min-w-0 flex-1 animate-pulse rounded-lg bg-ds-neutral-subtle-default" />
       </div>
     );
   }
@@ -460,9 +462,9 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
   return (
     <div
       ref={panelRef}
-      className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-ds-bg-neutral-default-default"
+      className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-ds-neutral-default-default"
     >
-      <div className="flex h-11 shrink-0 items-center gap-2 border-0 border-b border-solid border-ds-border-neutral-subtle-default px-2.5">
+      <div className="flex h-ds-layout-row-header shrink-0 items-center gap-2 border-0 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-ds-10">
         <TooltipSimple content={treeToggleLabel}>
           <Button
             type="button"
@@ -474,25 +476,25 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
             aria-label={treeToggleLabel}
           >
             {treeHidden ? (
-              <FolderClosed className="h-3.5 w-3.5" aria-hidden />
+              <FolderClosed aria-hidden />
             ) : (
-              <FolderOpen className="h-3.5 w-3.5" aria-hidden />
+              <FolderOpen aria-hidden />
             )}
           </Button>
         </TooltipSimple>
 
-        <span className="hidden text-xs font-medium text-ds-text-neutral-default-default sm:inline">
+        <span className="hidden text-ds-text-meta font-medium text-ds-ink-default-default sm:inline">
           {runScoped
             ? t('layout.review-task-changes', { defaultValue: 'Task changes' })
             : t('layout.review-project-changes', {
                 defaultValue: 'Project changes',
               })}
         </span>
-        <span className="shrink-0 text-xs text-ds-text-neutral-muted-default">
+        <span className="shrink-0 text-ds-text-meta text-ds-ink-muted-default">
           {selectedIndex + 1}/{files.length}
         </span>
         {totals && (
-          <span className="hidden shrink-0 items-center gap-1.5 text-xs font-medium md:flex">
+          <span className="hidden shrink-0 items-center gap-1.5 text-ds-text-meta font-medium md:flex">
             <span className="text-ds-text-success-default-default">
               +{totals.added}
             </span>
@@ -502,14 +504,14 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
           </span>
         )}
         {truncated && (
-          <span className="hidden text-xs text-ds-text-neutral-muted-default xl:inline">
+          <span className="hidden text-ds-text-meta text-ds-ink-muted-default xl:inline">
             {t('layout.review-truncated', {
               defaultValue: 'Showing the first 500 files',
             })}
           </span>
         )}
 
-        <div className="h-4 w-px shrink-0 bg-ds-border-neutral-subtle-default" />
+        <div className="h-4 w-px shrink-0 bg-ds-hairline-subtle-default" />
         <TooltipSimple
           content={t('layout.review-previous-file', {
             defaultValue: 'Previous file',
@@ -525,7 +527,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
               defaultValue: 'Previous file',
             })}
           >
-            <ArrowUp className="h-3.5 w-3.5" aria-hidden />
+            <ArrowUp aria-hidden />
           </Button>
         </TooltipSimple>
 
@@ -542,13 +544,13 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
               defaultValue: 'Next file',
             })}
           >
-            <ArrowDown className="h-3.5 w-3.5" aria-hidden />
+            <ArrowDown aria-hidden />
           </Button>
         </TooltipSimple>
 
         <div className="flex-1" />
 
-        <span className="hidden text-xs text-ds-text-neutral-muted-default lg:inline">
+        <span className="hidden text-ds-text-meta text-ds-ink-muted-default lg:inline">
           {t('layout.review-reviewed-progress', {
             defaultValue: '{{reviewed}} of {{total}} reviewed',
             reviewed: reviewedCount,
@@ -587,11 +589,11 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
           >
             {selectedFile && reviewedIds.has(selectedFile.id) ? (
               <CheckCheck
-                className="h-3.5 w-3.5 text-ds-icon-success-default-default"
+                className="text-ds-icon-success-default-default"
                 aria-hidden
               />
             ) : (
-              <Check className="h-3.5 w-3.5" aria-hidden />
+              <Check aria-hidden />
             )}
           </Button>
         </TooltipSimple>
@@ -618,7 +620,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                 : 'Add a file review note',
             })}
           >
-            <MessageSquarePlus className="h-3.5 w-3.5" aria-hidden />
+            <MessageSquarePlus aria-hidden />
           </Button>
         </TooltipSimple>
         {comments.length > 0 ? (
@@ -637,7 +639,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                 defaultValue: notesCopied ? 'Copied' : 'Copy review comments',
               })}
             >
-              <Copy className="h-3.5 w-3.5" aria-hidden />
+              <Copy aria-hidden />
             </Button>
           </TooltipSimple>
         ) : null}
@@ -651,9 +653,8 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
               defaultValue: 'Add {{count}} comments to chat',
               count: pendingComments.length,
             })}
-            className="h-8 gap-1.5 px-2 text-xs"
           >
-            <SendHorizontal className="size-3.5" aria-hidden />
+            <SendHorizontal aria-hidden />
             <span className="hidden xl:inline">
               {commentsAddedToChat
                 ? t('layout.review-comments-added-to-chat', {
@@ -686,7 +687,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
               defaultValue: 'Inline diff',
             })}
           >
-            <Rows3 className="h-3.5 w-3.5" aria-hidden />
+            <Rows3 aria-hidden />
           </ToggleGroupItem>
           <ToggleGroupItem
             value="split"
@@ -695,7 +696,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
             })}
             disabled={panelWidth !== null && panelWidth < MIN_SPLIT_DIFF_WIDTH}
           >
-            <Columns2 className="h-3.5 w-3.5" aria-hidden />
+            <Columns2 aria-hidden />
           </ToggleGroupItem>
         </ToggleGroup>
 
@@ -727,11 +728,11 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                   })
             }
           >
-            <WrapText className="h-3.5 w-3.5" aria-hidden />
+            <WrapText aria-hidden />
           </Button>
         </TooltipSimple>
 
-        <div className="hidden h-4 w-px shrink-0 bg-ds-border-neutral-subtle-default md:block" />
+        <div className="hidden h-4 w-px shrink-0 bg-ds-hairline-subtle-default md:block" />
         <TooltipSimple
           content={t('layout.review-previous-change', {
             defaultValue: 'Previous change',
@@ -747,7 +748,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
               defaultValue: 'Previous change',
             })}
           >
-            <ArrowUp className="h-3.5 w-3.5" aria-hidden />
+            <ArrowUp aria-hidden />
           </Button>
         </TooltipSimple>
         <TooltipSimple
@@ -765,7 +766,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
               defaultValue: 'Next change',
             })}
           >
-            <ArrowDown className="h-3.5 w-3.5" aria-hidden />
+            <ArrowDown aria-hidden />
           </Button>
         </TooltipSimple>
 
@@ -782,7 +783,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
               defaultValue: 'Refresh',
             })}
           >
-            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+            <RefreshCw aria-hidden />
           </Button>
         </TooltipSimple>
       </div>
@@ -818,16 +819,16 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                 />
               </div>
               {selectedFileNotes.length > 0 || noteComposerOpen ? (
-                <div className="max-h-[42%] shrink-0 overflow-y-auto border-0 border-t border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default">
+                <div className="max-h-[42%] shrink-0 overflow-y-auto border-0 border-x-0 border-t border-b-0 border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default">
                   {selectedFileNotes.length > 0 ? (
-                    <div className="divide-y divide-ds-border-neutral-subtle-default">
-                      <div className="flex items-center justify-between px-3 py-2 text-xs font-medium text-ds-text-neutral-default-default">
+                    <div className="divide-y divide-ds-hairline-subtle-default">
+                      <div className="flex items-center justify-between px-3 py-2 text-ds-text-meta font-medium text-ds-ink-default-default">
                         <span>
                           {t('layout.review-pending-comments', {
                             defaultValue: 'Review comments',
                           })}
                         </span>
-                        <span className="text-ds-text-neutral-muted-default">
+                        <span className="text-ds-ink-muted-default">
                           {selectedFilePendingCount > 0
                             ? t('layout.review-comments-pending-count', {
                                 defaultValue: '{{count}} pending',
@@ -844,21 +845,25 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                           className="group flex items-start gap-2 px-3 py-2.5"
                         >
                           {comment.status === 'sent' ? (
-                            <CheckCheck
-                              className="mt-0.5 size-3.5 shrink-0 text-ds-icon-success-default-default"
-                              aria-hidden
+                            <DsIcon
+                              icon={CheckCheck}
+                              recipe="main-compact"
+                              className="mt-0.5 text-ds-icon-success-default-default"
                             />
                           ) : (
-                            <MessageSquarePlus
-                              className="mt-0.5 size-3.5 shrink-0 text-ds-icon-brand-default-default"
-                              aria-hidden
+                            <DsIcon
+                              icon={MessageSquarePlus}
+                              recipe="main-compact"
+                              className="mt-0.5 text-ds-icon-brand-default-default"
                             />
                           )}
                           <div className="min-w-0 flex-1">
                             <div className="flex min-w-0 items-center gap-2">
-                              <button
+                              <Button
                                 type="button"
-                                className="block min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-code text-[11px] text-ds-text-brand-default-default hover:underline"
+                                variant="text"
+                                size="xs"
+                                className="min-w-0 justify-start truncate font-code"
                                 onClick={() => {
                                   if (comment.selection) {
                                     diffRef.current?.revealSelection(
@@ -868,16 +873,21 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                                 }}
                               >
                                 {reviewLocation(comment)}
-                              </button>
+                              </Button>
                               {comment.status === 'sent' ? (
-                                <span className="shrink-0 rounded-full bg-ds-bg-success-subtle-default px-1.5 py-0.5 text-[10px] font-medium text-ds-text-success-default-default">
+                                <Badge
+                                  variant="secondary"
+                                  tone="success"
+                                  size="xs"
+                                  className="shrink-0"
+                                >
                                   {t('layout.review-comment-sent', {
                                     defaultValue: 'Sent',
                                   })}
-                                </span>
+                                </Badge>
                               ) : null}
                             </div>
-                            <p className="m-0 mt-1 whitespace-pre-wrap break-words text-xs leading-5 text-ds-text-neutral-default-default">
+                            <p className="m-0 mt-1 text-ds-text-base break-words whitespace-pre-wrap text-ds-ink-default-default">
                               {comment.body}
                             </p>
                           </div>
@@ -892,7 +902,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                                 defaultValue: 'Edit review comment',
                               })}
                             >
-                              <Pencil className="size-3.5" aria-hidden />
+                              <Pencil aria-hidden />
                             </Button>
                             <Button
                               type="button"
@@ -904,7 +914,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                                 defaultValue: 'Delete review comment',
                               })}
                             >
-                              <Trash2 className="size-3.5" aria-hidden />
+                              <Trash2 aria-hidden />
                             </Button>
                           </div>
                         </article>
@@ -913,9 +923,12 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                   ) : null}
 
                   {noteComposerOpen ? (
-                    <div className="border-0 border-t border-solid border-ds-border-neutral-subtle-default p-3 first:border-t-0">
-                      <div className="mb-2 flex items-center gap-2 text-xs text-ds-text-neutral-muted-default">
-                        <MessageSquarePlus className="size-3.5" aria-hidden />
+                    <div className="border-0 border-x-0 border-t border-b-0 border-solid border-ds-hairline-subtle-default p-3 first:border-x-0 first:border-t-0 first:border-b-0">
+                      <div className="mb-2 flex items-center gap-2 text-ds-text-meta text-ds-ink-muted-default">
+                        <DsIcon
+                          icon={MessageSquarePlus}
+                          recipe="main-compact"
+                        />
                         <span className="min-w-0 flex-1 truncate font-code">
                           {commentTarget
                             ? `${selectedFile.path}:${commentTarget.startLine}${
@@ -936,7 +949,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                         aria-label={t('layout.review-note-placeholder', {
                           defaultValue: 'Describe what should change…',
                         })}
-                        className="min-h-20 resize-none bg-ds-bg-neutral-default-default text-sm"
+                        className="min-h-ds-20 resize-none"
                         autoFocus
                       />
                       <div className="mt-2 flex justify-end gap-2">
@@ -986,17 +999,18 @@ function CenteredNotice({
 }) {
   return (
     <div className="flex h-full min-h-0 w-full -translate-y-4 flex-col items-center justify-center gap-3 px-6 text-center">
-      <div className="flex size-12 items-center justify-center rounded-full bg-ds-bg-neutral-subtle-default">
-        <FileDiff
-          className="h-5 w-5 text-ds-icon-neutral-muted-default"
-          aria-hidden
+      <div className="flex size-12 items-center justify-center rounded-full bg-ds-neutral-subtle-default">
+        <DsIcon
+          icon={FileDiff}
+          recipe="detailed"
+          className="text-ds-ink-muted-default"
         />
       </div>
-      <p className="m-0 text-sm font-medium text-ds-text-neutral-default-default">
+      <p className="m-0 text-ds-text-base font-medium text-ds-ink-default-default">
         {message}
       </p>
       {detail && (
-        <p className="m-0 max-w-[420px] text-xs leading-5 text-ds-text-neutral-muted-default">
+        <p className="m-0 text-ds-text-meta text-ds-ink-muted-default">
           {detail}
         </p>
       )}

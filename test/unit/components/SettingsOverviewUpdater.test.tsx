@@ -57,9 +57,10 @@ describe('Settings Overview updater', () => {
     act(() => {
       useDesktopUpdateStore.getState().setProgress(37);
     });
-    expect(screen.getByRole('progressbar')).toHaveAttribute(
-      'aria-valuenow',
-      '37'
+    const progressbar = screen.getByRole('progressbar');
+    expect(progressbar).toHaveAttribute('aria-valuenow', '37');
+    expect(progressbar.firstElementChild).toHaveClass(
+      'bg-ds-neutral-subtle-default'
     );
 
     act(() => {

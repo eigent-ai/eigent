@@ -240,13 +240,13 @@ export function HumanInteractionCard({
       <div
         data-human-input-receipt
         data-approval-timeline-receipt
-        className="flex w-full min-w-0 items-center gap-2 rounded-lg border border-ds-border-warning-subtle-default bg-ds-bg-warning-subtle-default px-3 py-2"
+        className="flex w-full min-w-0 items-center gap-2 rounded-lg border border-x border-y border-ds-border-warning-subtle-default bg-ds-bg-warning-subtle-default px-3 py-2"
       >
         <ShieldAlert
           aria-hidden
           className="size-4 shrink-0 text-ds-icon-warning-default-default"
         />
-        <span className="text-label-sm font-medium text-ds-text-neutral-default-default">
+        <span className="text-ds-text-base font-medium text-ds-ink-default-default">
           {t('chat.control-input-required')}
         </span>
       </div>
@@ -262,19 +262,19 @@ export function HumanInteractionCard({
         <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-ds-icon-warning-default-default" />
         <div className="min-w-0 flex-1 space-y-3">
           <div>
-            <span className="block text-sm font-semibold text-ds-text-neutral-default-default">
+            <span className="block text-sm font-semibold text-ds-ink-default-default">
               {title}
             </span>
             {interaction.question &&
             (!timelineReceipt || Boolean(displayedResponse)) ? (
-              <span className="mt-1 block text-sm font-normal text-ds-text-neutral-subtle-default">
+              <span className="mt-1 block text-sm font-normal text-ds-ink-subtle-default">
                 {interaction.question}
               </span>
             ) : null}
           </div>
 
           {!timelineReceipt && interaction.operation ? (
-            <div className="rounded-xl bg-ds-bg-neutral-default-default px-3 py-2 text-xs text-ds-text-neutral-subtle-default">
+            <div className="rounded-xl bg-ds-neutral-default-default px-3 py-2 text-xs text-ds-ink-subtle-default">
               <span className="block font-normal">{interaction.operation}</span>
               {targets.slice(0, 3).map((target) => (
                 <span
@@ -291,18 +291,18 @@ export function HumanInteractionCard({
           {!timelineReceipt &&
           interaction.display_arguments &&
           Object.keys(interaction.display_arguments).length > 0 ? (
-            <details className="rounded-xl bg-ds-bg-neutral-default-default px-3 py-2 text-xs text-ds-text-neutral-subtle-default">
+            <details className="rounded-xl bg-ds-neutral-default-default px-3 py-2 text-xs text-ds-ink-subtle-default">
               <summary className="cursor-pointer font-medium">
                 {t('chat.control-review-arguments')}
               </summary>
-              <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono">
+              <pre className="mt-2 max-h-48 overflow-auto font-mono break-all whitespace-pre-wrap">
                 {JSON.stringify(interaction.display_arguments, null, 2)}
               </pre>
             </details>
           ) : null}
 
           {!timelineReceipt && interaction.rule_matcher?.resource_pattern ? (
-            <div className="rounded-xl border border-ds-border-warning-subtle-default px-3 py-2 text-xs text-ds-text-neutral-subtle-default">
+            <div className="rounded-xl border border-x border-y border-ds-border-warning-subtle-default px-3 py-2 text-xs text-ds-ink-subtle-default">
               <span className="block font-medium">
                 {t('chat.control-persistent-approval-applies-to')}
               </span>
@@ -320,12 +320,12 @@ export function HumanInteractionCard({
           {displayedResponse ? (
             <div
               data-interaction-response
-              className="rounded-xl bg-ds-bg-neutral-default-default px-3 py-2"
+              className="rounded-xl bg-ds-neutral-default-default px-3 py-2"
             >
-              <span className="block text-xs font-medium text-ds-text-neutral-muted-default">
+              <span className="block text-xs font-medium text-ds-ink-muted-default">
                 {t('chat.control-your-response')}
               </span>
-              <span className="mt-1 block whitespace-pre-wrap break-words text-sm font-normal text-ds-text-neutral-default-default">
+              <span className="mt-1 block text-sm font-normal break-words whitespace-pre-wrap text-ds-ink-default-default">
                 {displayedResponse}
               </span>
             </div>
@@ -334,7 +334,7 @@ export function HumanInteractionCard({
           {!displayedResponse && interaction.interaction_type === 'form' ? (
             <div className="space-y-2">
               {(interaction.fields || []).map((field) => (
-                <label key={field.id} className="block text-xs">
+                <label key={field.id} className="block text-ds-text-meta">
                   <span>{field.label}</span>
                   <Input
                     className="mt-1"
@@ -470,7 +470,7 @@ export function HumanInteractionCard({
           {submitting ? (
             <span
               role="status"
-              className="block text-xs font-normal text-ds-text-neutral-subtle-default"
+              className="block text-xs font-normal text-ds-ink-subtle-default"
             >
               {t('chat.control-decision-saving')}
             </span>

@@ -1443,8 +1443,8 @@ export default function SettingModels() {
         onClick={() => setSelectedTab(tabId)}
         className={`flex w-full items-center justify-between rounded-xl px-3 py-2 transition-colors duration-200 ${isSubItem ? 'pl-3' : ''} ${
           isActive
-            ? 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
-            : 'bg-fill-fill-transparent hover:bg-fill-fill-transparent-hover'
+            ? 'bg-ds-neutral-subtle-default hover:bg-ds-neutral-subtle-default'
+            : 'bg-transparent hover:bg-ds-neutral-subtle-hover'
         } `}
       >
         <div className="flex items-center justify-center gap-3">
@@ -1459,15 +1459,15 @@ export default function SettingModels() {
             <span
               className={
                 isActive
-                  ? 'text-ds-text-neutral-default-default'
-                  : 'text-ds-text-neutral-muted-default'
+                  ? 'text-ds-ink-default-default'
+                  : 'text-ds-ink-muted-default'
               }
             >
               {fallbackIcon}
             </span>
           )}
           <span
-            className={`text-body-sm font-medium ${isActive ? 'text-ds-text-neutral-default-default' : 'text-ds-text-neutral-muted-default'}`}
+            className={`text-ds-text-base font-medium ${isActive ? 'text-ds-ink-default-default' : 'text-ds-ink-muted-default'}`}
           >
             {label}
           </span>
@@ -1632,7 +1632,7 @@ export default function SettingModels() {
     if (selectedTab === 'cloud') {
       if (import.meta.env.VITE_USE_LOCAL_PROXY === 'true') {
         return (
-          <div className="flex h-64 items-center justify-center text-ds-text-neutral-muted-default">
+          <div className="flex h-64 items-center justify-center text-ds-ink-muted-default">
             {t('setting.cloud-not-available-in-local-proxy')}
           </div>
         );
@@ -1644,10 +1644,10 @@ export default function SettingModels() {
       const trialTotalLimit =
         Number(subscription?.trial_total_credits_limit) || 1000;
       return (
-        <div className="flex w-full flex-col rounded-2xl bg-ds-bg-neutral-subtle-default">
-          <div className="mx-6 mb-4 flex flex-col justify-start self-stretch border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default pb-4 pt-2">
+        <div className="flex w-full flex-col rounded-2xl bg-ds-neutral-subtle-default">
+          <div className="mx-6 mb-4 flex flex-col justify-start self-stretch border-x-0 border-t-0 border-b-[0.5px] border-solid border-ds-hairline-default-default pt-2 pb-4">
             <div className="inline-flex items-center justify-start gap-2 self-stretch">
-              <div className="text-body-base my-2 flex-1 justify-center font-bold text-ds-text-neutral-default-default">
+              <div className="my-2 flex-1 justify-center text-ds-text-base font-bold text-ds-ink-default-default">
                 {t('setting.eigent-cloud')}
               </div>
               <div className="flex items-center gap-2">
@@ -1671,7 +1671,7 @@ export default function SettingModels() {
                     buttonContent="text"
                     textWeight="bold"
                     buttonRadius="full"
-                    className="!text-ds-text-neutral-muted-default"
+                    className="!text-ds-ink-muted-default"
                     onClick={() => {
                       setLocalPrefer(false);
                       setActiveModelIdx(null);
@@ -1687,7 +1687,7 @@ export default function SettingModels() {
                     grey = server not connected, error = out of credits. */}
                 {loadingCredits ? (
                   <Loader2
-                    className="h-3.5 w-3.5 animate-spin text-ds-icon-neutral-muted-default motion-reduce:animate-none"
+                    className="h-3.5 w-3.5 animate-spin text-ds-ink-muted-default motion-reduce:animate-none"
                     aria-hidden
                   />
                 ) : (
@@ -1708,7 +1708,7 @@ export default function SettingModels() {
                 <span
                   role="status"
                   aria-live="polite"
-                  className="inline-flex items-center gap-2 text-body-sm text-ds-text-neutral-muted-default"
+                  className="inline-flex items-center gap-2 text-ds-text-base text-ds-ink-muted-default"
                 >
                   <Loader2
                     className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
@@ -1720,7 +1720,7 @@ export default function SettingModels() {
                 </span>
               ) : (
                 <>
-                  <span className="text-body-sm text-ds-text-neutral-muted-default">
+                  <span className="text-ds-text-base text-ds-ink-muted-default">
                     {t('setting.you-are-currently-subscribed-to-the')}{' '}
                     {getPlanName()}. {t('setting.discover-more-about-our')}{' '}
                   </span>
@@ -1728,11 +1728,11 @@ export default function SettingModels() {
                     onClick={() => {
                       window.location.href = `${SITE_URL}/pricing`;
                     }}
-                    className="cursor-pointer text-body-sm text-ds-text-neutral-muted-default underline"
+                    className="cursor-pointer text-ds-text-base text-ds-ink-muted-default underline"
                   >
                     {t('setting.pricing-options')}
                   </span>
-                  <span className="text-label-sm font-normal text-ds-text-neutral-default-default">
+                  <span className="text-ds-text-base font-normal text-ds-ink-default-default">
                     .
                   </span>
                 </>
@@ -1740,9 +1740,9 @@ export default function SettingModels() {
             </div>
           </div>
           {/*Content Area*/}
-          <div className="flex w-full flex-row items-start justify-between gap-4 px-6 pb-4">
+          <div className="flex w-full flex-row items-center justify-between gap-4 px-6 pb-4">
             <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <div className="flex items-center gap-1 text-body-sm text-text-body">
+              <div className="flex items-center gap-1 !text-ds-text-base text-ds-ink-default-default">
                 <span>{t('setting.credits')}:</span>
                 {loadingCredits ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -1751,7 +1751,7 @@ export default function SettingModels() {
                 )}
               </div>
               {isTrialing && (
-                <span className="block max-w-[560px] text-label-sm leading-5 text-text-label">
+                <span className="block max-w-[560px] !text-ds-text-base leading-5 text-ds-ink-muted-default">
                   {t('setting.trial-plan-notice-before-upgrade', {
                     defaultValue:
                       "You're on a trial. Your {{planName}} plan includes {{planCredits}} credits; the trial unlocks {{daily}} credits/day (up to {{total}}) before you upgrade.",
@@ -1763,7 +1763,7 @@ export default function SettingModels() {
                   <button
                     type="button"
                     onClick={() => setTrialUpgradeDialogOpen(true)}
-                    className="cursor-pointer border-0 bg-transparent p-0 text-label-sm font-medium text-text-body underline"
+                    className="cursor-pointer border-x-0 border-y-0 border-solid bg-transparent p-0 !text-ds-text-base font-medium text-ds-ink-default-default underline"
                   >
                     {t('setting.upgrade', { defaultValue: 'Upgrade' })}
                   </button>{' '}
@@ -1783,7 +1783,7 @@ export default function SettingModels() {
               size="sm"
               buttonContent="text"
               textWeight="bold"
-              buttonRadius="lg"
+              buttonRadius="full"
             >
               {subscriptionLoading ? (
                 <Loader2
@@ -1811,7 +1811,7 @@ export default function SettingModels() {
                 })}
               />
               <DialogContentSection className="px-4 py-4">
-                <span className="block text-body-sm text-text-body">
+                <span className="block !text-ds-text-base text-ds-ink-default-default">
                   {t('setting.trial-upgrade-body', {
                     defaultValue:
                       'Upgrade now to unlock full credits instantly.',
@@ -1838,11 +1838,11 @@ export default function SettingModels() {
           </Dialog>
           <div className="flex w-full flex-1 items-center justify-between px-6 pb-4">
             <div className="flex min-w-0 flex-1 items-center">
-              <span className="overflow-hidden text-ellipsis whitespace-nowrap text-body-sm">
+              <span className="overflow-hidden text-ds-text-base text-ellipsis whitespace-nowrap">
                 {t('setting.select-model-type')}
               </span>
             </div>
-            <div className="ml-4 flex-shrink-0">
+            <div className="ml-4 shrink-0">
               <Select
                 value={effectiveCloudModelId ?? cloud_model_type}
                 onValueChange={setCloudModelType}
@@ -1880,9 +1880,9 @@ export default function SettingModels() {
 
         return (
           <ConfigModelCard status={configCardRing}>
-            <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default pb-4 pt-2">
+            <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid border-ds-hairline-default-default pt-2 pb-4">
               <div className="inline-flex items-center justify-between gap-2 self-stretch">
-                <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default">
+                <div className="my-2 text-ds-text-base font-bold text-ds-ink-default-default">
                   {item.name}
                 </div>
                 <div className="flex items-center gap-2">
@@ -1907,7 +1907,7 @@ export default function SettingModels() {
                         buttonContent="text"
                         textWeight="bold"
                         buttonRadius="full"
-                        className="!text-ds-text-neutral-muted-default"
+                        className="!text-ds-ink-muted-default"
                         disabled={codexBusy}
                         onClick={handleCodexSetDefault}
                       >
@@ -1924,7 +1924,7 @@ export default function SettingModels() {
                   />
                 </div>
               </div>
-              <span className="block text-body-sm text-ds-text-neutral-muted-default">
+              <span className="block text-ds-text-base text-ds-ink-muted-default">
                 {getProviderDescription(item)}
               </span>
             </div>
@@ -1932,18 +1932,18 @@ export default function SettingModels() {
               {/* Login row: left status text, right action */}
               <div className="flex w-full items-center justify-between gap-3">
                 <div className="flex min-w-0 flex-1 flex-col">
-                  <span className="text-body-sm text-ds-text-neutral-default-default">
+                  <span className="text-ds-text-base text-ds-ink-default-default">
                     {isConnected
                       ? codexStatus.account_label || t('connectors.connected')
                       : t('setting.not-configured')}
                   </span>
                   {codexStatus.expires_at ? (
-                    <span className="text-body-xs text-ds-text-neutral-muted-default">
+                    <span className="text-ds-text-meta text-ds-ink-muted-default">
                       {codexStatus.expires_at}
                     </span>
                   ) : null}
                   {!isConnected && codexStatus.last_error_code ? (
-                    <span className="text-body-xs text-ds-text-neutral-muted-default">
+                    <span className="text-ds-text-meta text-ds-ink-muted-default">
                       {codexStatus.last_error_code}
                     </span>
                   ) : null}
@@ -1986,11 +1986,11 @@ export default function SettingModels() {
               {/* Model type row: left label, right input */}
               <div className="flex w-full items-center justify-between gap-3">
                 <div className="flex min-w-0 flex-1 items-center">
-                  <span className="overflow-hidden text-ellipsis whitespace-nowrap text-body-sm">
+                  <span className="overflow-hidden text-ds-text-base text-ellipsis whitespace-nowrap">
                     {t('setting.model-type')}
                   </span>
                 </div>
-                <div className="ml-4 flex-shrink-0">
+                <div className="ml-4 shrink-0">
                   <Input
                     value={codex_model_type}
                     onChange={(e) => setCodexModelType(e.target.value)}
@@ -2006,9 +2006,9 @@ export default function SettingModels() {
 
       return (
         <ConfigModelCard status={configCardRing}>
-          <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default pb-4 pt-2">
+          <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid border-ds-hairline-default-default pt-2 pb-4">
             <div className="inline-flex items-center justify-between gap-2 self-stretch">
-              <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default">
+              <div className="my-2 text-ds-text-base font-bold text-ds-ink-default-default">
                 {item.name}
               </div>
               <div className="flex items-center gap-2">
@@ -2057,7 +2057,7 @@ export default function SettingModels() {
                 )}
               </div>
             </div>
-            <span className="block text-body-sm text-ds-text-neutral-muted-default">
+            <span className="block text-ds-text-base text-ds-ink-muted-default">
               {getProviderDescription(item)}
               {item.websiteUrl ? (
                 <>
@@ -2066,7 +2066,7 @@ export default function SettingModels() {
                     href={item.websiteUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-text-information hover:underline"
+                    className="text-ds-text-information-strong-default hover:underline"
                   >
                     {t('setting.visit-provider', { provider: item.name })}
                   </a>
@@ -2189,7 +2189,7 @@ export default function SettingModels() {
             <Accordion type="single" collapsible className="w-full">
               <AccordionItem value="model-parameters" className="border-none">
                 <AccordionTrigger className="bg-transparent px-0 py-2 hover:no-underline">
-                  <span className="text-body-sm font-medium text-ds-text-neutral-default-default">
+                  <span className="text-ds-text-base font-medium text-ds-ink-default-default">
                     {t('setting.model-parameters-setting')}
                   </span>
                 </AccordionTrigger>
@@ -2332,7 +2332,7 @@ export default function SettingModels() {
               size="sm"
               buttonContent="text"
               textWeight="medium"
-              buttonRadius="lg"
+              buttonRadius="full"
               onClick={() => handleDelete(idx)}
             >
               {t('setting.reset')}
@@ -2343,7 +2343,7 @@ export default function SettingModels() {
               size="sm"
               buttonContent="text"
               textWeight="bold"
-              buttonRadius="lg"
+              buttonRadius="full"
               onClick={() => handleVerify(idx)}
               disabled={loading === idx}
             >
@@ -2371,10 +2371,10 @@ export default function SettingModels() {
 
       return (
         <ConfigModelCard status={configCardRing}>
-          <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-b-[0.5px] border-t-0 border-solid border-ds-border-neutral-default-default pb-4 pt-2">
+          <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid border-ds-hairline-default-default pt-2 pb-4">
             <div className="inline-flex items-center justify-between gap-2 self-stretch">
               <div className="flex items-center gap-2">
-                <div className="text-body-base my-2 font-bold text-ds-text-neutral-default-default">
+                <div className="my-2 text-ds-text-base font-bold text-ds-ink-default-default">
                   {getLocalPlatformName(platform)}
                 </div>
                 {isPreferred ? (
@@ -2403,7 +2403,7 @@ export default function SettingModels() {
                     onClick={() => handleLocalSwitch(true)}
                     className={
                       isConfigured
-                        ? 'bg-ds-bg-neutral-default-hover !text-ds-text-neutral-muted-default shadow-none hover:bg-ds-bg-neutral-default-active'
+                        ? 'bg-ds-neutral-default-hover !text-ds-ink-muted-default shadow-none hover:bg-ds-neutral-muted-hover'
                         : ''
                     }
                   >
@@ -2414,9 +2414,9 @@ export default function SettingModels() {
                 )}
               </div>
               {isConfigured ? (
-                <div className="h-2 w-2 rounded-full bg-text-success" />
+                <div className="h-2 w-2 rounded-full bg-ds-bg-success-strong-default" />
               ) : (
-                <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
+                <div className="h-2 w-2 rounded-full bg-ds-ink-muted-default opacity-10" />
               )}
             </div>
           </div>
@@ -2519,7 +2519,7 @@ export default function SettingModels() {
                   <Button
                     variant="ghost"
                     tone="neutral"
-                    size="xs"
+                    size="md"
                     buttonContent="icon-only"
                     textWeight="bold"
                     onClick={() =>
@@ -2529,7 +2529,7 @@ export default function SettingModels() {
                       )
                     }
                     disabled={!localEnabled || platformModelsLoading}
-                    className="mb-1 flex-shrink-0"
+                    className="mb-1 shrink-0"
                   >
                     {platformModelsLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -2539,7 +2539,7 @@ export default function SettingModels() {
                   </Button>
                 </div>
                 {platformModelsError && (
-                  <span className="text-label-sm text-ds-text-status-error-strong-default">
+                  <span className="text-ds-text-base text-ds-text-status-error-strong-default">
                     {platformModelsError}
                   </span>
                 )}
@@ -2569,7 +2569,7 @@ export default function SettingModels() {
               size="sm"
               buttonContent="text"
               textWeight="medium"
-              buttonRadius="lg"
+              buttonRadius="full"
               onClick={handleLocalReset}
             >
               {t('setting.reset')}
@@ -2582,7 +2582,7 @@ export default function SettingModels() {
               size="sm"
               buttonContent="text"
               textWeight="bold"
-              buttonRadius="lg"
+              buttonRadius="full"
             >
               {localVerifying ? t('setting.configuring') : t('setting.save')}
             </Button>
@@ -2599,7 +2599,7 @@ export default function SettingModels() {
       {providersError ? (
         <span
           role="alert"
-          className="block rounded-xl bg-ds-bg-error-subtle-default px-4 py-3 text-body-sm text-ds-text-error-strong-default"
+          className="block rounded-xl bg-ds-bg-error-subtle-default px-4 py-3 text-ds-text-base text-ds-text-error-strong-default"
         >
           {providersError}
         </span>
@@ -2611,7 +2611,7 @@ export default function SettingModels() {
         variant="horizontal"
       >
         <div className="flex w-full flex-col items-start justify-center gap-1">
-          <div className="text-body-sm">
+          <div className="text-ds-text-base">
             {t('setting.models-default-setting-description')}
           </div>
         </div>
@@ -2621,23 +2621,26 @@ export default function SettingModels() {
           }}
         >
           <DropdownMenuTrigger asChild>
-            <button
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              buttonContent="text"
+              textWeight="semibold"
+              buttonRadius="lg"
               disabled={providersLoading}
               aria-busy={providersLoading}
-              className="flex w-fit items-center gap-2 rounded-lg border-[0.5px] border-solid border-ds-bg-brand-default-default bg-ds-bg-brand-default-default px-3 py-1 font-semibold text-ds-text-brand-inverse-default outline-none transition-colors hover:border-ds-bg-brand-default-hover hover:bg-ds-bg-brand-default-hover focus:outline-none focus-visible:outline-none active:border-ds-bg-brand-default-active active:bg-ds-bg-brand-default-active disabled:cursor-wait disabled:opacity-70"
             >
-              <span className="whitespace-nowrap text-body-sm leading-none">
-                {getDefaultModelDisplayText()}
-              </span>
+              {getDefaultModelDisplayText()}
               {providersLoading ? (
                 <Loader2
-                  className="h-4 w-4 flex-shrink-0 animate-spin !text-ds-text-brand-inverse-default motion-reduce:animate-none"
+                  className="animate-spin motion-reduce:animate-none"
                   aria-hidden
                 />
               ) : (
-                <ChevronDown className="h-4 w-4 flex-shrink-0 !text-ds-text-brand-inverse-default" />
+                <ChevronDown />
               )}
-            </button>
+            </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-[180px]">
             {/* Cloud Category */}
@@ -2645,7 +2648,7 @@ export default function SettingModels() {
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger className="gap-2">
                   <img src={eigentImage} alt="" className="h-5 w-5" />
-                  <span className="text-body-sm">
+                  <span className="text-ds-text-base">
                     {t('setting.eigent-cloud')}
                   </span>
                 </DropdownMenuSubTrigger>
@@ -2658,7 +2661,7 @@ export default function SettingModels() {
                       }
                       className="flex items-center justify-between"
                     >
-                      <span className="text-body-sm">{model.name}</span>
+                      <span className="text-ds-text-base">{model.name}</span>
                       {cloudPrefer && effectiveCloudModelId === model.id && (
                         <Check className="h-4 w-4 text-ds-text-status-completed-strong-default" />
                       )}
@@ -2671,8 +2674,8 @@ export default function SettingModels() {
             {/* Custom Model Category */}
             <DropdownMenuSub>
               <DropdownMenuSubTrigger className="gap-2">
-                <Key className="h-5 w-5 text-ds-icon-neutral-default-default" />
-                <span className="text-body-sm">
+                <Key className="h-5 w-5 text-ds-ink-default-default" />
+                <span className="text-ds-text-base">
                   {t('setting.custom-model')}
                 </span>
               </DropdownMenuSubTrigger>
@@ -2717,23 +2720,23 @@ export default function SettingModels() {
                             }
                           />
                         ) : (
-                          <Key className="h-4 w-4 text-ds-icon-neutral-muted-default" />
+                          <Key className="h-4 w-4 text-ds-ink-muted-default" />
                         )}
                         <span
-                          className={`text-body-sm ${isConfigured ? 'text-ds-text-neutral-default-default' : 'text-ds-text-neutral-muted-default'}`}
+                          className={`text-ds-text-base ${isConfigured ? 'text-ds-ink-default-default' : 'text-ds-ink-muted-default'}`}
                         >
                           {item.name}
                         </span>
                       </div>
                       <div className="flex items-center gap-1">
                         {!isConfigured && (
-                          <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
+                          <div className="h-2 w-2 rounded-full bg-ds-ink-muted-default opacity-10" />
                         )}
                         {isPreferred && (
                           <Check className="h-4 w-4 text-ds-text-status-completed-strong-default" />
                         )}
                         {isConfigured && !isPreferred && (
-                          <div className="h-2 w-2 rounded-full bg-text-success" />
+                          <div className="h-2 w-2 rounded-full bg-ds-bg-success-strong-default" />
                         )}
                       </div>
                     </DropdownMenuItem>
@@ -2745,8 +2748,10 @@ export default function SettingModels() {
             {/* Local Host Category */}
             <DropdownMenuSub>
               <DropdownMenuSubTrigger className="gap-2">
-                <Server className="h-5 w-5 text-ds-icon-neutral-default-default" />
-                <span className="text-body-sm">{t('setting.local-model')}</span>
+                <Server className="h-5 w-5 text-ds-ink-default-default" />
+                <span className="text-ds-text-base">
+                  {t('setting.local-model')}
+                </span>
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent className="w-[200px]">
                 {LOCAL_MODEL_OPTIONS.map((model) => {
@@ -2775,23 +2780,23 @@ export default function SettingModels() {
                             }
                           />
                         ) : (
-                          <Server className="h-4 w-4 text-ds-icon-neutral-muted-default" />
+                          <Server className="h-4 w-4 text-ds-ink-muted-default" />
                         )}
                         <span
-                          className={`text-body-sm ${isConfigured ? 'text-ds-text-neutral-default-default' : 'text-ds-text-neutral-muted-default'}`}
+                          className={`text-ds-text-base ${isConfigured ? 'text-ds-ink-default-default' : 'text-ds-ink-muted-default'}`}
                         >
                           {model.name}
                         </span>
                       </div>
                       <div className="flex items-center gap-1">
                         {!isConfigured && (
-                          <div className="h-2 w-2 rounded-full bg-text-label opacity-10" />
+                          <div className="h-2 w-2 rounded-full bg-ds-ink-muted-default opacity-10" />
                         )}
                         {isPreferred && (
                           <Check className="h-4 w-4 text-ds-text-status-completed-strong-default" />
                         )}
                         {isConfigured && !isPreferred && (
-                          <div className="h-2 w-2 rounded-full bg-text-success" />
+                          <div className="h-2 w-2 rounded-full bg-ds-bg-success-strong-default" />
                         )}
                       </div>
                     </DropdownMenuItem>
@@ -2810,11 +2815,11 @@ export default function SettingModels() {
       >
         <div className="flex w-full flex-row items-start justify-between">
           {/* Sidebar */}
-          <div className="-ml-2 mr-4 h-full w-[240px] rounded-2xl bg-ds-bg-neutral-default-default">
+          <div className="mr-4 -ml-2 h-full w-[240px] rounded-2xl bg-ds-neutral-default-default">
             <div className="flex flex-col gap-4">
               {/* Eigent Cloud Section */}
               <div className="flex flex-col gap-1">
-                <div className="px-3 py-2 text-body-sm font-bold text-ds-text-neutral-default-default">
+                <div className="px-3 py-2 text-ds-text-base font-bold text-ds-ink-default-default">
                   {t('setting.eigent-cloud')}
                 </div>
                 {import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' &&
@@ -2834,7 +2839,7 @@ export default function SettingModels() {
               </div>
               {/* Custom Model Section */}
               <div className="flex flex-col gap-1">
-                <div className="px-3 py-2 text-body-sm font-bold text-ds-text-neutral-default-default">
+                <div className="px-3 py-2 text-ds-text-base font-bold text-ds-ink-default-default">
                   {t('setting.custom-model')}
                 </div>
                 <div className="flex flex-col gap-2">
@@ -2847,21 +2852,21 @@ export default function SettingModels() {
                         onClick={() =>
                           setSubscriptionCollapsed(!subscriptionCollapsed)
                         }
-                        className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-default"
+                        className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-neutral-default-default"
                       >
-                        <div className="text-body-sm font-medium text-ds-text-neutral-muted-default">
+                        <div className="text-ds-text-base font-medium text-ds-ink-muted-default">
                           {t('setting.subscription', {
                             defaultValue: 'Subscription',
                           })}
                         </div>
                         {subscriptionCollapsed ? (
-                          <ChevronDown className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                          <ChevronDown className="h-4 w-4 text-ds-ink-muted-default" />
                         ) : (
-                          <ChevronUp className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                          <ChevronUp className="h-4 w-4 text-ds-ink-muted-default" />
                         )}
                       </button>
                       <div
-                        className={`duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] overflow-hidden transition-opacity ${
+                        className={`overflow-hidden transition-opacity duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] ${
                           subscriptionCollapsed
                             ? 'max-h-0 opacity-0'
                             : 'max-h-[2000px] opacity-100'
@@ -2891,19 +2896,19 @@ export default function SettingModels() {
                         onClick={() =>
                           setByokGroupCollapsed(!byokGroupCollapsed)
                         }
-                        className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-default"
+                        className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-neutral-default-default"
                       >
-                        <div className="text-body-sm font-medium text-ds-text-neutral-muted-default">
+                        <div className="text-ds-text-base font-medium text-ds-ink-muted-default">
                           {t('setting.byok', { defaultValue: 'BYOK' })}
                         </div>
                         {byokGroupCollapsed ? (
-                          <ChevronDown className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                          <ChevronDown className="h-4 w-4 text-ds-ink-muted-default" />
                         ) : (
-                          <ChevronUp className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                          <ChevronUp className="h-4 w-4 text-ds-ink-muted-default" />
                         )}
                       </button>
                       <div
-                        className={`duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] overflow-hidden transition-opacity ${
+                        className={`overflow-hidden transition-opacity duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] ${
                           byokGroupCollapsed
                             ? 'max-h-0 opacity-0'
                             : 'max-h-[2000px] opacity-100'
@@ -2931,19 +2936,19 @@ export default function SettingModels() {
               <div className="flex flex-col gap-1">
                 <button
                   onClick={() => setLocalCollapsed(!localCollapsed)}
-                  className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-bg-neutral-default-default"
+                  className="flex items-center justify-between rounded-lg bg-transparent px-3 py-2 transition-colors hover:bg-ds-neutral-default-default"
                 >
-                  <div className="text-body-sm font-bold text-ds-text-neutral-default-default">
+                  <div className="text-ds-text-base font-bold text-ds-ink-default-default">
                     {t('setting.local-model')}
                   </div>
                   {localCollapsed ? (
-                    <ChevronDown className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                    <ChevronDown className="h-4 w-4 text-ds-ink-muted-default" />
                   ) : (
-                    <ChevronUp className="h-4 w-4 text-ds-text-neutral-muted-default" />
+                    <ChevronUp className="h-4 w-4 text-ds-ink-muted-default" />
                   )}
                 </button>
                 <div
-                  className={`duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] overflow-hidden transition-opacity ${
+                  className={`overflow-hidden transition-opacity duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] ${
                     localCollapsed
                       ? 'max-h-0 opacity-0'
                       : 'max-h-[2000px] opacity-100'

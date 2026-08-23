@@ -27,7 +27,7 @@ export const APP_SHELL_COLUMN_GAP_PX = 2;
 
 /** Content pane surface — the rounded card every page renders its body into. */
 export const APP_SHELL_CONTENT_SURFACE_CLASS =
-  'rounded-l-2xl bg-ds-bg-neutral-subtle-default min-w-0 flex h-full w-full flex-col overflow-hidden';
+  'rounded-l-2xl bg-ds-neutral-subtle-default min-w-0 flex h-full w-full flex-col overflow-hidden';
 /** Inner column inside the surface (header + body). */
 export const APP_SHELL_CONTENT_CLASS =
   'min-h-0 min-w-0 flex h-full w-full flex-col';
@@ -90,7 +90,7 @@ export default function AppShellLayout({
         className
       )}
     >
-      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-row overflow-hidden rounded-2xl bg-ds-bg-neutral-default-default">
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-row overflow-hidden rounded-2xl bg-ds-neutral-default-default">
         <motion.div
           ref={sidebarRailRef}
           className="h-full min-h-0 shrink-0 overflow-hidden"

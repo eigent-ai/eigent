@@ -253,9 +253,7 @@ export default function WorkforceMenu({
   const agentMap = {
     developer_agent: {
       name: t('layout.developer-agent'),
-      icon: (
-        <CodeXml size={16} className="text-ds-text-neutral-default-default" />
-      ),
+      icon: <CodeXml size={16} className="text-ds-ink-default-default" />,
       textColor: 'text-ds-text-terminal-default-default',
       bgColor: 'bg-ds-bg-terminal-default-default',
       shapeColor: 'bg-ds-bg-terminal-subtle-default',
@@ -264,9 +262,7 @@ export default function WorkforceMenu({
     },
     browser_agent: {
       name: t('layout.browser-agent'),
-      icon: (
-        <Globe size={16} className="text-ds-text-neutral-default-default" />
-      ),
+      icon: <Globe size={16} className="text-ds-ink-default-default" />,
       textColor: 'text-blue-700',
       bgColor: 'bg-ds-bg-browser-default-default',
       shapeColor: 'bg-ds-bg-browser-subtle-default',
@@ -275,9 +271,7 @@ export default function WorkforceMenu({
     },
     document_agent: {
       name: t('layout.document-agent'),
-      icon: (
-        <FileText size={16} className="text-ds-text-neutral-default-default" />
-      ),
+      icon: <FileText size={16} className="text-ds-ink-default-default" />,
       textColor: 'text-yellow-700',
       bgColor: 'bg-ds-bg-document-default-default',
       shapeColor: 'bg-ds-bg-document-subtle-default',
@@ -286,18 +280,16 @@ export default function WorkforceMenu({
     },
     multi_modal_agent: {
       name: t('layout.multi-modal-agent'),
-      icon: (
-        <Image size={16} className="text-ds-text-neutral-default-default" />
-      ),
+      icon: <Image size={16} className="text-ds-ink-default-default" />,
       textColor: 'text-fuchsia-700',
-      bgColor: 'bg-ds-bg-neutral-default-default',
-      shapeColor: 'bg-ds-bg-neutral-subtle-default',
-      borderColor: 'border-ds-border-neutral-default-default',
+      bgColor: 'bg-ds-neutral-default-default',
+      shapeColor: 'bg-ds-neutral-subtle-default',
+      borderColor: 'border-ds-hairline-default-default',
       bgColorLight: 'bg-fuchsia-200',
     },
     social_media_agent: {
       name: t('layout.social-media-agent'),
-      icon: <Bird size={16} className="text-ds-text-neutral-default-default" />,
+      icon: <Bird size={16} className="text-ds-ink-default-default" />,
       textColor: 'text-purple-700',
       bgColor: 'bg-violet-700',
       shapeColor: 'bg-violet-300',
@@ -348,7 +340,7 @@ export default function WorkforceMenu({
   };
 
   return (
-    <div className="h-12 pt-2 relative z-50 flex items-center justify-center">
+    <div className="relative z-50 flex h-12 items-center justify-center pt-2">
       <div className="w-full">
         <div className="relative flex h-full w-full flex-row items-center justify-center">
           {/* activeAgent */}
@@ -359,7 +351,7 @@ export default function WorkforceMenu({
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -30 }}
                 transition={{ duration: 0.3, ease: 'easeInOut' }}
-                className={`gap-2 pl-2 flex w-fit flex-row`}
+                className={`flex w-fit flex-row gap-2 pl-2`}
               >
                 <MenuToggleGroup
                   type="single"
@@ -367,7 +359,7 @@ export default function WorkforceMenu({
                   orientation="horizontal"
                   value={getCurrentTask()?.activeWorkspace as string}
                   onValueChange={onValueChange}
-                  className="gap-2 pb-2 flex w-full items-center"
+                  className="flex w-full items-center gap-2 pb-2"
                 >
                   <AnimatePresence mode="popLayout">
                     {agentList.map((agent) => (
@@ -413,7 +405,7 @@ export default function WorkforceMenu({
           </AnimatePresence>
           {/* Viewport Navigation Buttons */}
           {(moveLeft || moveRight) && (
-            <div className="right-2 pb-2 absolute flex items-center">
+            <div className="absolute right-2 flex items-center pb-2">
               <Button
                 variant="ghost"
                 size="sm"

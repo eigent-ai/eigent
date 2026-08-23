@@ -65,10 +65,10 @@ export type HomeHubStat = {
 };
 
 export const homeHubSurfaceClass =
-  'rounded-xl bg-ds-bg-neutral-default-default px-6 py-4 shadow-sm hover:bg-ds-bg-neutral-default-hover hover:ring-ds-bg-neutral-muted-default ease-[cubic-bezier(0.23,1,0.32,1)] cursor-pointer text-left transition-[background-color,box-shadow] duration-200 hover:ring-4';
+  'rounded-xl bg-ds-neutral-default-default px-6 py-4 shadow-sm hover:bg-ds-neutral-default-hover hover:ring-ds-neutral-muted-default ease-[cubic-bezier(0.23,1,0.32,1)] cursor-pointer text-left transition-[background-color,box-shadow] duration-200 hover:ring-4';
 
 export const homeHubBoardSurfaceClass =
-  'h-auto w-full rounded-xl bg-ds-bg-neutral-subtle-default px-6 py-4 ring-1 ring-transparent hover:ring-ds-ring-neutral-subtle-disabled ease-[cubic-bezier(0.23,1,0.32,1)] cursor-pointer text-left transition-[background-color,box-shadow] duration-200 hover:ring-4';
+  'h-auto w-full rounded-xl bg-ds-neutral-subtle-default px-6 py-4 ring-1 ring-transparent hover:ring-ds-hairline-subtle-disabled ease-[cubic-bezier(0.23,1,0.32,1)] cursor-pointer text-left transition-[background-color,box-shadow] duration-200 hover:ring-4';
 
 export { getSpaceKindLabel } from '@/lib/spaceLabel';
 
@@ -182,11 +182,11 @@ export function HomeHubRuntimeStatusTag({
 function HomeHubCardStatsLine({ items }: { items: string[] }) {
   if (items.length === 0) return null;
   return (
-    <div className="flex flex-wrap items-center gap-2 text-body-xs text-ds-text-neutral-muted-default">
+    <div className="flex flex-wrap items-center gap-2 text-ds-text-meta text-ds-ink-muted-default">
       {items.map((item, index) => (
         <Fragment key={index}>
           {index > 0 ? (
-            <span className="text-ds-text-neutral-subtle-default" aria-hidden>
+            <span className="text-ds-ink-subtle-default" aria-hidden>
               |
             </span>
           ) : null}
@@ -208,10 +208,10 @@ function HomeHubBoardStats({ rows }: { rows: HomeHubBoardStatRow[] }) {
     <div className="mt-4 flex w-fit flex-col items-start gap-2">
       {rows.map((row) => (
         <div key={row.label} className="flex w-fit items-baseline gap-x-2">
-          <span className="text-body-xs text-ds-text-neutral-muted-default">
+          <span className="text-ds-text-meta text-ds-ink-muted-default">
             {row.label}
           </span>
-          <span className="text-body-xs tabular-nums text-ds-text-neutral-default-default">
+          <span className="text-ds-text-meta text-ds-ink-default-default tabular-nums">
             {row.value}
           </span>
         </div>
@@ -241,12 +241,12 @@ export function HomeHubBoardCardBody({
     <div className="flex w-full min-w-0 flex-col items-start">
       <div className="flex w-full min-w-0 items-start justify-between gap-2">
         <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
-          <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-ds-icon-neutral-muted-default [&_svg]:h-4 [&_svg]:w-4">
+          <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-ds-ink-muted-default [&_svg]:h-4 [&_svg]:w-4">
             {icon}
           </span>
           <span
             className={cn(
-              'w-full min-w-0 whitespace-normal break-words text-body-md font-semibold text-ds-text-neutral-default-default',
+              'w-full min-w-0 text-ds-text-body-large font-semibold break-words whitespace-normal text-ds-ink-default-default',
               titleClassName
             )}
           >
@@ -297,12 +297,12 @@ export function HomeHubHubCardBody({
     <>
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-ds-icon-neutral-muted-default [&_svg]:h-4 [&_svg]:w-4">
+          <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-ds-ink-muted-default [&_svg]:h-4 [&_svg]:w-4">
             {icon}
           </span>
           <span
             className={cn(
-              'min-w-0 truncate text-body-md font-semibold text-ds-text-neutral-default-default',
+              'min-w-0 truncate text-ds-text-body-large font-semibold text-ds-ink-default-default',
               titleClassName
             )}
           >
@@ -324,7 +324,7 @@ export function HomeHubHubCardBody({
         </div>
         {footerAction ??
           (lastUpdated ? (
-            <span className="shrink-0 text-body-xs text-ds-text-neutral-subtle-default">
+            <span className="shrink-0 text-ds-text-meta text-ds-ink-subtle-default">
               {t('layout.home-space-last-updated', { time: lastUpdated })}
             </span>
           ) : null)}
@@ -340,7 +340,7 @@ function HomeHubMenuDropdownItems({ items }: { items: HomeHubMenuItem[] }) {
       className={cn(
         'cursor-pointer',
         item.destructive &&
-          'bg-ds-bg-neutral-subtle-default text-ds-text-error-default-default hover:bg-ds-bg-neutral-subtle-hover hover:text-ds-text-error-default-default focus:text-ds-text-error-default-default data-[highlighted]:text-ds-text-error-default-default [&>svg]:text-ds-icon-error-default-default hover:[&>svg]:text-ds-icon-error-default-default focus:[&>svg]:text-ds-icon-error-default-default data-[highlighted]:[&>svg]:text-ds-icon-error-default-default'
+          'bg-ds-neutral-subtle-default text-ds-text-error-default-default hover:bg-ds-neutral-subtle-hover hover:text-ds-text-error-default-default focus:text-ds-text-error-default-default data-[highlighted]:text-ds-text-error-default-default [&>svg]:text-ds-icon-error-default-default hover:[&>svg]:text-ds-icon-error-default-default focus:[&>svg]:text-ds-icon-error-default-default data-[highlighted]:[&>svg]:text-ds-icon-error-default-default'
       )}
       disabled={item.disabled}
       onSelect={(event) => {
@@ -366,13 +366,13 @@ export function HomeHubCardMenu({ items }: { items: HomeHubMenuItem[] }) {
           size="xs"
           buttonContent="icon-only"
           buttonRadius="full"
-          className="hover:bg-ds-bg-neutral-subtle-default"
+          className="hover:bg-ds-neutral-subtle-default"
           aria-label={t('layout.more-actions', {
             defaultValue: 'More actions',
           })}
           onClick={(event) => event.stopPropagation()}
         >
-          <MoreHorizontal className="h-4 w-4 text-ds-icon-neutral-default-default" />
+          <MoreHorizontal className="h-4 w-4 text-ds-ink-default-default" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -415,7 +415,7 @@ export type HomeHubListCell = {
 };
 
 const homeHubListNameClass =
-  'truncate !text-label-sm font-normal leading-none text-ds-text-neutral-default-default';
+  'truncate !text-ds-text-base font-normal leading-none text-ds-ink-default-default';
 
 type HomeHubItemBodyProps = {
   title: string;
@@ -432,7 +432,7 @@ export function HomeHubItemBody({
     <>
       <div className="flex min-w-0 items-center gap-2">
         {nameIcon ? (
-          <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-ds-icon-neutral-muted-default [&_svg]:h-4 [&_svg]:w-4">
+          <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-ds-ink-muted-default [&_svg]:h-4 [&_svg]:w-4">
             {nameIcon}
           </span>
         ) : null}
@@ -442,8 +442,10 @@ export function HomeHubItemBody({
         <span
           key={cell.id}
           className={cn(
-            'truncate font-normal leading-none text-ds-text-neutral-muted-default',
-            cell.textSize === 'xs' ? '!text-label-xs' : '!text-label-sm',
+            'truncate leading-none font-normal text-ds-ink-muted-default',
+            cell.textSize === 'xs'
+              ? '!text-ds-text-meta'
+              : '!text-ds-text-base',
             cell.align === 'right' ? 'text-right tabular-nums' : 'text-left'
           )}
         >
@@ -830,7 +832,7 @@ export function HomeHubItemShell({
             'relative flex h-auto w-full min-w-0 flex-col items-start overflow-hidden',
           layout === 'list' &&
             cn(
-              'grid w-full cursor-pointer items-center gap-x-4 rounded-xl border border-solid border-transparent bg-ds-bg-neutral-default-default px-3 py-2.5 text-left transition-colors duration-150 hover:border-ds-border-neutral-subtle-default hover:bg-ds-bg-neutral-default-hover',
+              'grid w-full cursor-pointer items-center gap-x-4 rounded-xl border border-x border-y border-solid border-transparent bg-ds-neutral-default-default px-3 py-2.5 text-left transition-colors duration-150 hover:border-ds-hairline-subtle-default hover:bg-ds-neutral-default-hover',
               kind ? HOME_HUB_LIST_GRID_CLASS[kind] : undefined
             ),
           className

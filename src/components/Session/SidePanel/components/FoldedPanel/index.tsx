@@ -393,7 +393,7 @@ export default function FoldedPanel({
 
   return (
     <div
-      className="flex h-full min-h-0 w-full min-w-0 flex-col bg-ds-bg-neutral-default-default"
+      className="flex h-full min-h-0 w-full min-w-0 flex-col bg-ds-neutral-default-default"
       data-workforce-folded={isTaskLiveLayout ? 'task-live' : 'initial'}
     >
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -409,7 +409,7 @@ export default function FoldedPanel({
               onPointerDownCapture={onFoldedPanelEngagement}
               onWheelCapture={onFoldedPanelEngagement}
             >
-              <div className="scrollbar scrollbar-always-visible shrink-0 overflow-x-auto overflow-y-hidden py-2 pl-2 pr-2">
+              <div className="scrollbar scrollbar-always-visible shrink-0 overflow-x-auto overflow-y-hidden py-2 pr-2 pl-2">
                 <div className="flex w-max min-w-full flex-row flex-nowrap items-center gap-2">
                   {sortedAgents.map((agent) => (
                     <div key={agent.agent_id} className="shrink-0">
@@ -435,7 +435,7 @@ export default function FoldedPanel({
                 activeTaskId &&
                 activeTask &&
                 chatStore && (
-                  <div className="scrollbar scrollbar-always-visible flex h-full min-h-0 min-w-0 shrink-0 flex-col overflow-y-auto overflow-x-hidden pb-2">
+                  <div className="scrollbar scrollbar-always-visible flex h-full min-h-0 min-w-0 shrink-0 flex-col overflow-x-hidden overflow-y-auto pb-2">
                     <TaskCard
                       key={`task-folded-${activeTaskId}`}
                       chatId={taskPanelChatId}
@@ -479,7 +479,7 @@ export default function FoldedPanel({
                     }
                   />
                 ) : (
-                  <div className="p-3 text-body-sm text-ds-text-neutral-muted-default">
+                  <div className="p-3 text-ds-text-base text-ds-ink-muted-default">
                     {t('chat.select-agent')}
                   </div>
                 )}
@@ -488,13 +488,13 @@ export default function FoldedPanel({
           ) : (
             <motion.div
               key="initial"
-              className="scrollbar scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pb-2 pl-2 pt-1"
+              className="scrollbar scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto pt-1 pb-2 pl-2"
               initial={{ opacity: 0, x: 10 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -10 }}
               transition={FOLDED_LAYOUT_TRANSITION}
             >
-              <div className="flex w-full min-w-0 max-w-full flex-col gap-2 opacity-80">
+              <div className="flex w-full max-w-full min-w-0 flex-col gap-2 opacity-80">
                 {showPlanTaskBox && activeTaskId && activeChatStore ? (
                   <PlanTaskBox
                     chatStore={activeChatStore}

@@ -116,13 +116,13 @@ function ProjectNavRowMenu({
             buttonContent="icon-only"
             className={cn(
               'no-drag shrink-0',
-              'data-[state=open]:bg-ds-bg-neutral-subtle-selected data-[state=open]:hover:bg-ds-bg-neutral-subtle-selected'
+              'data-[state=open]:bg-ds-neutral-subtle-selected data-[state=open]:hover:bg-ds-neutral-subtle-selected'
             )}
             aria-label={moreLabel}
             onClick={(e) => e.stopPropagation()}
           >
             <MoreHorizontal
-              className="h-3.5 w-3.5 text-ds-icon-neutral-muted-default"
+              className="size-ds-icon-md text-ds-ink-muted-default"
               aria-hidden
             />
           </Button>
@@ -140,7 +140,7 @@ function ProjectNavRowMenu({
             <Pin
               className={cn(
                 'h-4 w-4',
-                pinned && 'fill-current text-ds-icon-brand-default-default'
+                pinned && 'fill-current text-ds-accent-default-default'
               )}
               aria-hidden
             />
@@ -220,15 +220,15 @@ function ProjectNavRow({
       >
         <div
           className={cn(
-            'group/session-item relative flex h-8 w-full min-w-0 items-center overflow-hidden rounded-xl pl-3 pr-3',
+            'group/session-item relative flex h-8 w-full min-w-0 items-center overflow-hidden rounded-xl pr-3 pl-3',
             'transition-colors duration-150',
             selected
               ? panelListHover
-                ? 'bg-ds-bg-neutral-muted-default hover:bg-ds-bg-neutral-default-default'
-                : 'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-subtle-default'
+                ? 'bg-ds-neutral-muted-default hover:bg-ds-neutral-default-default'
+                : 'bg-ds-neutral-subtle-default hover:bg-ds-neutral-subtle-default'
               : !panelListHover
-                ? 'bg-transparent hover:bg-ds-bg-neutral-subtle-default'
-                : 'bg-transparent hover:bg-ds-bg-neutral-default-default'
+                ? 'bg-transparent hover:bg-ds-neutral-subtle-default'
+                : 'bg-transparent hover:bg-ds-neutral-default-default'
           )}
         >
           <button
@@ -236,11 +236,11 @@ function ProjectNavRow({
             onClick={() => onProjectClick?.(project.id)}
             className={cn(
               'no-drag relative z-0 flex min-h-0 min-w-0 flex-1 items-center gap-3 overflow-hidden px-0 py-1 text-left outline-none',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-neutral-subtle-default'
+              'focus-visible:ring-2 focus-visible:ring-ds-hairline-subtle-default focus-visible:outline-none'
             )}
           >
             <LeadIcon className={leadClassName} aria-hidden />
-            <span className="min-w-0 flex-1 truncate text-body-sm font-medium text-ds-text-neutral-muted-default">
+            <span className="min-w-0 flex-1 truncate text-ds-text-base font-medium text-ds-ink-muted-default">
               {project.title}
             </span>
             {project.source === 'trigger' ? (
@@ -250,7 +250,7 @@ function ProjectNavRow({
               />
             ) : null}
             {!showRowMenu && project.trailing ? (
-              <span className="shrink-0 pl-1 text-body-xs tabular-nums text-ds-text-neutral-muted-default">
+              <span className="shrink-0 pl-1 text-ds-text-meta text-ds-ink-muted-default tabular-nums">
                 {project.trailing}
               </span>
             ) : null}

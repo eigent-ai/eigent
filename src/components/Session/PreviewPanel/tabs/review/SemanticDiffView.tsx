@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { useHost } from '@/host';
 import DOMPurify from 'dompurify';
 import { AlertTriangle, FileImage, Minus, Plus } from 'lucide-react';
@@ -93,21 +94,23 @@ function TwoPaneSemanticDiff({
   const { t } = useTranslation();
   return (
     <div className="grid h-full min-h-0 grid-cols-1 overflow-y-auto lg:grid-cols-2 lg:overflow-hidden">
-      <section className="flex min-h-[240px] min-w-0 flex-col border-0 border-b border-solid border-ds-border-neutral-subtle-default lg:min-h-0 lg:border-b-0 lg:border-r">
-        <div className="flex h-8 shrink-0 items-center gap-1.5 bg-ds-bg-neutral-subtle-default px-3 text-[11px] font-medium uppercase tracking-wide text-ds-text-neutral-muted-default">
-          <Minus
-            className="size-3 text-ds-icon-error-default-default"
-            aria-hidden
+      <section className="flex min-h-[240px] min-w-0 flex-col border-0 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default lg:min-h-0 lg:border-t-0 lg:border-r lg:border-b-0 lg:border-l-0">
+        <div className="flex h-ds-control-md shrink-0 items-center gap-1.5 bg-ds-neutral-subtle-default px-3 text-ds-text-meta font-medium tracking-wide text-ds-ink-muted-default uppercase">
+          <DsIcon
+            icon={Minus}
+            recipe="main-compact"
+            className="text-ds-icon-error-default-default"
           />
           {t('layout.review-before', { defaultValue: 'Before' })}
         </div>
         <div className="min-h-0 flex-1 overflow-auto">{before}</div>
       </section>
       <section className="flex min-h-[240px] min-w-0 flex-col lg:min-h-0">
-        <div className="flex h-8 shrink-0 items-center gap-1.5 bg-ds-bg-neutral-subtle-default px-3 text-[11px] font-medium uppercase tracking-wide text-ds-text-neutral-muted-default">
-          <Plus
-            className="size-3 text-ds-icon-success-default-default"
-            aria-hidden
+        <div className="flex h-ds-control-md shrink-0 items-center gap-1.5 bg-ds-neutral-subtle-default px-3 text-ds-text-meta font-medium tracking-wide text-ds-ink-muted-default uppercase">
+          <DsIcon
+            icon={Plus}
+            recipe="main-compact"
+            className="text-ds-icon-success-default-default"
           />
           {t('layout.review-after', { defaultValue: 'After' })}
         </div>
@@ -163,7 +166,7 @@ function HtmlDocument({ content }: { content: string }) {
       title={t('layout.review-html-preview', { defaultValue: 'HTML preview' })}
       sandbox=""
       srcDoc={sanitizeHtmlPreview(content)}
-      className="bg-white h-full min-h-[420px] w-full border-0"
+      className="h-full min-h-[420px] w-full border-0 border-x-0 border-y-0 bg-white"
     />
   );
 }
@@ -225,8 +228,8 @@ function StructuredJsonDiff({
 
   if (result.error) {
     return (
-      <div className="flex h-full items-center justify-center gap-2 px-6 text-xs text-ds-text-neutral-muted-default">
-        <AlertTriangle className="size-4" aria-hidden />
+      <div className="flex h-full items-center justify-center gap-2 px-6 text-ds-text-meta text-ds-ink-muted-default">
+        <DsIcon icon={AlertTriangle} />
         {t('layout.review-json-preview-failed', {
           defaultValue: 'Could not parse this JSON: {{message}}',
           message: result.error,
@@ -237,16 +240,16 @@ function StructuredJsonDiff({
 
   return (
     <div className="h-full overflow-auto p-3">
-      <table className="w-full table-fixed border-collapse overflow-hidden rounded-lg text-left font-code text-xs">
-        <thead className="sticky top-0 z-10 bg-ds-bg-neutral-subtle-default text-ds-text-neutral-muted-default">
+      <table className="w-full table-fixed border-collapse overflow-hidden rounded-lg text-left font-code text-ds-code-small">
+        <thead className="sticky top-0 z-10 bg-ds-neutral-subtle-default text-ds-ink-muted-default">
           <tr>
-            <th className="w-[34%] border border-solid border-ds-border-neutral-subtle-default px-3 py-2 font-medium">
+            <th className="w-[34%] border border-x border-y border-solid border-ds-hairline-subtle-default px-3 py-2 font-medium">
               {t('layout.review-json-path', { defaultValue: 'JSON path' })}
             </th>
-            <th className="w-[33%] border border-solid border-ds-border-neutral-subtle-default px-3 py-2 font-medium">
+            <th className="w-[33%] border border-x border-y border-solid border-ds-hairline-subtle-default px-3 py-2 font-medium">
               {t('layout.review-before', { defaultValue: 'Before' })}
             </th>
-            <th className="w-[33%] border border-solid border-ds-border-neutral-subtle-default px-3 py-2 font-medium">
+            <th className="w-[33%] border border-x border-y border-solid border-ds-hairline-subtle-default px-3 py-2 font-medium">
               {t('layout.review-after', { defaultValue: 'After' })}
             </th>
           </tr>
@@ -261,7 +264,7 @@ function StructuredJsonDiff({
                   changed ? 'bg-ds-bg-warning-subtle-default' : undefined
                 }
               >
-                <td className="border border-solid border-ds-border-neutral-subtle-default px-3 py-2 align-top text-ds-text-neutral-default-default">
+                <td className="border border-x border-y border-solid border-ds-hairline-subtle-default px-3 py-2 align-top text-ds-ink-default-default">
                   <span className="block truncate" title={row.path}>
                     {row.path}
                   </span>
@@ -296,11 +299,11 @@ function JsonValueCell({
 }) {
   return (
     <td
-      className={`break-words border border-solid border-ds-border-neutral-subtle-default px-3 py-2 align-top ${
+      className={`border border-solid border-ds-hairline-subtle-default px-3 py-2 align-top break-words ${
         value === undefined
-          ? 'text-ds-text-neutral-muted-default'
+          ? 'text-ds-ink-muted-default'
           : !changed
-            ? 'text-ds-text-neutral-default-default'
+            ? 'text-ds-ink-default-default'
             : tone === 'added'
               ? 'text-ds-text-success-default-default'
               : 'text-ds-text-error-default-default'
@@ -368,8 +371,8 @@ function ImageDiff({
   if (loading) return <SemanticLoading />;
   if (!urls.before && !urls.after) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-xs text-ds-text-neutral-muted-default">
-        <FileImage className="size-8" aria-hidden />
+      <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-ds-text-meta text-ds-ink-muted-default">
+        <DsIcon icon={FileImage} recipe="detailed" />
         {t('layout.review-image-preview-unavailable', {
           defaultValue:
             'Image metadata is available, but this Git-backed change has no local preview payload.',
@@ -388,11 +391,11 @@ function ImageDiff({
 function ImageSide({ url }: { url: string | null }) {
   if (!url) return <EmptySide />;
   return (
-    <div className="flex h-full min-h-[320px] items-center justify-center bg-ds-bg-neutral-subtle-default p-6">
+    <div className="flex h-full min-h-[320px] items-center justify-center bg-ds-neutral-subtle-default p-6">
       <img
         src={url}
         alt=""
-        className="max-h-full max-w-full object-contain shadow-sm"
+        className="max-h-full max-w-full object-contain shadow-ds-elevation-card"
       />
     </div>
   );
@@ -401,7 +404,7 @@ function ImageSide({ url }: { url: string | null }) {
 function EmptySide() {
   const { t } = useTranslation();
   return (
-    <div className="flex h-full min-h-[180px] items-center justify-center text-xs text-ds-text-neutral-muted-default">
+    <div className="flex h-full min-h-[180px] items-center justify-center text-ds-text-meta text-ds-ink-muted-default">
       {t('layout.review-file-not-present', {
         defaultValue: 'File not present on this side',
       })}
@@ -411,6 +414,6 @@ function EmptySide() {
 
 function SemanticLoading() {
   return (
-    <div className="h-full w-full animate-pulse bg-ds-bg-neutral-subtle-default" />
+    <div className="h-full w-full animate-pulse bg-ds-neutral-subtle-default" />
   );
 }

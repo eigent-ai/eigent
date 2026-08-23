@@ -397,7 +397,7 @@ export default function Memory({
                       <TabsTrigger
                         key={value}
                         value={value}
-                        className="flex-1 !text-body-sm"
+                        className="flex-1 !text-ds-text-base"
                       >
                         {value[0].toUpperCase() + value.slice(1)}
                       </TabsTrigger>
@@ -438,19 +438,19 @@ export default function Memory({
             data-memory-scope-summary={scopeType}
             className="flex flex-col gap-3 rounded-2xl bg-ds-bg-information-subtle-default p-4 sm:flex-row sm:items-start"
           >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-ds-bg-neutral-subtle-default text-ds-icon-information-default-default">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-ds-neutral-subtle-default text-ds-icon-information-default-default">
               <ScopeIcon className="h-5 w-5" aria-hidden />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <div className="text-body-sm font-semibold text-ds-text-neutral-default-default">
+                <div className="text-ds-text-base font-semibold text-ds-ink-default-default">
                   {scopePresentation.title}
                 </div>
-                <span className="rounded-full bg-ds-bg-neutral-subtle-default px-2 py-0.5 text-label-xs font-medium text-ds-text-neutral-muted-default">
+                <span className="rounded-full bg-ds-neutral-subtle-default px-2 py-0.5 text-ds-text-meta font-medium text-ds-ink-muted-default">
                   {scopePresentation.eyebrow}
                 </span>
               </div>
-              <span className="mt-1 max-w-3xl text-body-sm text-ds-text-neutral-muted-default">
+              <span className="mt-1 max-w-3xl text-ds-text-base text-ds-ink-muted-default">
                 {scopePresentation.description}
               </span>
             </div>
@@ -465,14 +465,14 @@ export default function Memory({
                   {reconciliationItems.map((item) => (
                     <article
                       key={item.reconciliation_id}
-                      className="rounded-xl bg-ds-bg-neutral-default-default p-4"
+                      className="rounded-xl bg-ds-neutral-default-default p-4"
                     >
                       <div className="grid gap-3 md:grid-cols-2">
                         <div>
                           <div className="text-xs font-semibold">
                             This device
                           </div>
-                          <p className="mt-1 whitespace-pre-wrap text-body-sm">
+                          <p className="mt-1 text-ds-text-base whitespace-pre-wrap">
                             {String(item.local_entry.content ?? 'Archived')}
                           </p>
                         </div>
@@ -480,7 +480,7 @@ export default function Memory({
                           <div className="text-xs font-semibold">
                             Cloud copy
                           </div>
-                          <p className="mt-1 whitespace-pre-wrap text-body-sm">
+                          <p className="mt-1 text-ds-text-base whitespace-pre-wrap">
                             {item.cloud_entry.deleted_at
                               ? 'Archived'
                               : String(item.cloud_entry.content ?? '')}
@@ -591,7 +591,7 @@ export default function Memory({
                 ) : syncStatus === 'synced' ? (
                   <span
                     role="status"
-                    className="inline-flex items-center gap-1 rounded-full border border-solid border-ds-border-neutral-default-default px-3 py-1 text-label-sm font-medium text-ds-text-neutral-muted-default"
+                    className="inline-flex items-center gap-1 rounded-full border border-x border-y border-solid border-ds-hairline-default-default px-3 py-1 text-ds-text-base font-medium text-ds-ink-muted-default"
                   >
                     <Check className="h-3.5 w-3.5" aria-hidden /> Synced
                   </span>
@@ -626,10 +626,10 @@ export default function Memory({
                     <Progress
                       value={capacity}
                       aria-label="Memory storage used"
-                      className="bg-ds-bg-neutral-subtle-default"
-                      indicatorClassName="bg-ds-bg-brand-default-default"
+                      className="bg-ds-neutral-subtle-default"
+                      indicatorClassName="bg-ds-accent-default-default"
                     />
-                    <div className="mt-2 flex items-center justify-between gap-3 text-xs text-ds-text-neutral-muted-default">
+                    <div className="mt-2 flex items-center justify-between gap-3 text-xs text-ds-ink-muted-default">
                       <span>{capacity}% full</span>
                       <span>
                         {scopeState?.current_token_count ?? 0} /{' '}
@@ -675,7 +675,7 @@ export default function Memory({
                 <span className="flex items-center gap-2">
                   <span>{scopePresentation.collectionTitle}</span>
                   {!initialLoading ? (
-                    <span className="rounded-full bg-ds-bg-neutral-subtle-default px-2 py-0.5 text-label-xs font-medium text-ds-text-neutral-muted-default">
+                    <span className="rounded-full bg-ds-neutral-subtle-default px-2 py-0.5 text-ds-text-meta font-medium text-ds-ink-muted-default">
                       {activeEntryCount}
                     </span>
                   ) : null}
@@ -685,7 +685,7 @@ export default function Memory({
             >
               <div
                 data-memory-composer
-                className="overflow-hidden rounded-2xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default"
+                className="overflow-hidden rounded-2xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default"
               >
                 <Textarea
                   aria-label="New Memory"
@@ -693,9 +693,9 @@ export default function Memory({
                   onChange={(event) => setDraft(event.target.value)}
                   placeholder={scopePresentation.composerPlaceholder}
                   maxLength={8192}
-                  className="min-h-24 resize-none rounded-none border-0 bg-transparent shadow-none focus-visible:ring-0"
+                  className="min-h-24 resize-none rounded-none border-0 border-x-0 border-y-0 bg-transparent shadow-none focus-visible:ring-0"
                 />
-                <div className="flex items-center justify-end gap-2 border-x-0 border-b-0 border-t border-solid border-ds-border-neutral-subtle-default p-2">
+                <div className="flex items-center justify-end gap-2 border-x-0 border-t border-b-0 border-solid border-ds-hairline-subtle-default p-2">
                   <Select
                     value={draftKind}
                     onValueChange={(value) => setDraftKind(value as MemoryKind)}
@@ -787,7 +787,7 @@ export default function Memory({
                       aria-pressed={showArchived}
                       className={
                         showArchived
-                          ? 'bg-ds-bg-neutral-strong-default'
+                          ? 'bg-ds-neutral-strong-default'
                           : undefined
                       }
                       onClick={() => setShowArchived((current) => !current)}
@@ -802,7 +802,7 @@ export default function Memory({
                 </div>
               ) : null}
               {error && (
-                <div className="mt-4 text-body-sm text-ds-text-error-default-default">
+                <div className="mt-4 text-ds-text-base text-ds-text-error-default-default">
                   {error}
                 </div>
               )}
@@ -817,19 +817,19 @@ export default function Memory({
                   ))}
                 </div>
               ) : visibleEntries.length === 0 ? (
-                <div className="mt-4 flex flex-col items-center rounded-2xl bg-ds-bg-neutral-subtle-default px-6 py-8 text-center">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-ds-bg-neutral-default-default text-ds-icon-neutral-muted-default">
+                <div className="mt-4 flex flex-col items-center rounded-2xl bg-ds-neutral-subtle-default px-6 py-8 text-center">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-ds-neutral-default-default text-ds-ink-muted-default">
                     <Lightbulb className="h-5 w-5" aria-hidden />
                   </div>
-                  <div className="mt-3 text-body-sm font-semibold text-ds-text-neutral-default-default">
+                  <div className="mt-3 text-ds-text-base font-semibold text-ds-ink-default-default">
                     {emptyStateCopy.title}
                   </div>
-                  <p className="mt-1 max-w-xl text-body-sm text-ds-text-neutral-muted-default">
+                  <p className="mt-1 max-w-xl text-ds-text-base text-ds-ink-muted-default">
                     {emptyStateCopy.description}
                   </p>
                   {!search.trim() && !showArchived ? (
                     <>
-                      <p className="mt-3 text-label-xs text-ds-text-neutral-muted-default">
+                      <p className="mt-3 text-ds-text-meta text-ds-ink-muted-default">
                         Full task history stays available to the Agent and is
                         not stored here.
                       </p>
@@ -851,14 +851,14 @@ export default function Memory({
                   {visibleEntries.map((entry) => (
                     <article
                       key={entry.memory_id}
-                      className={`rounded-xl bg-ds-bg-neutral-subtle-default p-3 ${entry.deleted_at ? 'opacity-70' : ''}`}
+                      className={`rounded-xl bg-ds-neutral-subtle-default p-3 ${entry.deleted_at ? 'opacity-70' : ''}`}
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div
-                          className="flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap text-xs text-ds-text-neutral-muted-default"
+                          className="flex min-w-0 items-center gap-2 overflow-hidden text-xs whitespace-nowrap text-ds-ink-muted-default"
                           title={`${TRUST_LABELS[entry.source_trust]} · Created by ${entry.created_by}`}
                         >
-                          <span className="shrink-0 font-semibold capitalize text-ds-text-neutral-default-default">
+                          <span className="shrink-0 font-semibold text-ds-ink-default-default capitalize">
                             {entry.kind}
                           </span>
                           <span aria-hidden>·</span>
@@ -925,7 +925,7 @@ export default function Memory({
                               <span
                                 role="img"
                                 aria-label="Starred Memory"
-                                className="box-border flex h-[28px] min-h-[28px] w-[28px] min-w-[28px] shrink-0 items-center justify-center text-ds-icon-neutral-default-default"
+                                className="box-border flex h-[28px] min-h-[28px] w-[28px] min-w-[28px] shrink-0 items-center justify-center text-ds-ink-default-default"
                               >
                                 <Star
                                   aria-hidden
@@ -1011,7 +1011,7 @@ export default function Memory({
                         />
                       ) : (
                         <span
-                          className="mt-3 line-clamp-4 block max-h-20 overflow-hidden whitespace-pre-wrap break-words text-body-sm"
+                          className="mt-3 line-clamp-4 block max-h-20 overflow-hidden text-ds-text-base break-words whitespace-pre-wrap"
                           title={entry.content}
                         >
                           {entry.content}

@@ -63,7 +63,7 @@ export default function SettingsHeader({ activeSection }: SettingsHeaderProps) {
             <h1
               ref={headingRef}
               tabIndex={-1}
-              className="max-w-52 shrink-0 truncate text-body-md font-bold text-ds-text-neutral-default-default outline-none"
+              className="max-w-52 shrink-0 truncate text-ds-text-body-large font-bold text-ds-ink-default-default outline-none"
             >
               {title}
             </h1>
@@ -75,7 +75,7 @@ export default function SettingsHeader({ activeSection }: SettingsHeaderProps) {
             className={
               headerOverride?.hideTitle
                 ? 'sr-only outline-none'
-                : 'min-w-0 shrink-0 truncate px-1 text-body-md font-bold text-ds-text-neutral-default-default outline-none'
+                : 'min-w-0 shrink-0 truncate px-1 text-ds-text-body-large font-bold text-ds-ink-default-default outline-none'
             }
           >
             {title}

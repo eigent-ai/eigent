@@ -35,7 +35,7 @@ const REPO_ROOT = resolve(__dirname, '..');
 
 const EXT = new Set(['.ts', '.tsx', '.js', '.jsx']);
 
-const SKIP_PREFIXES = ['src/lib/themeTokens/'];
+const SKIP_PREFIXES = ['src/lib/themeTokens/', 'docs/'];
 
 const SKIP_FILE_RE =
   /\.(test|spec)\.(ts|tsx|js|jsx)$|vite-env\.d\.ts$|\.stories\.(ts|tsx)$/;
@@ -116,6 +116,7 @@ function checkLine(rawLine, lineNum, fileRel, out) {
   while ((m = HEX_RE.exec(line)) !== null) {
     const start = m.index;
     const before = line.slice(Math.max(0, start - 4), start);
+    if (start > 0 && line[start - 1] === '&') continue;
     if (/url\s*\(\s*$/i.test(before)) continue;
     out.push({
       file: fileRel,
