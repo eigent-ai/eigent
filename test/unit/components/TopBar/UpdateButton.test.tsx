@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { AboutSettings } from '@/components/Settings/SettingsOverview';
+import UpdateButton from '@/components/TopBar/UpdateButton';
 import { HostProvider } from '@/host';
 import {
   resetDesktopUpdateStore,
@@ -21,23 +21,17 @@ import {
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/hooks/use-app-version', () => ({ default: () => '1.9.0' }));
-
-describe('Settings Overview updater', () => {
+describe('TopBar UpdateButton', () => {
   const ipcRenderer = {
     invoke: vi.fn().mockResolvedValue(undefined),
     on: vi.fn(),
     off: vi.fn(),
   };
-  const renderAbout = (withIpc = true) =>
+
+  const renderButton = () =>
     render(
-      <HostProvider
-        host={{
-          electronAPI: withIpc ? {} : null,
-          ipcRenderer: withIpc ? ipcRenderer : null,
-        }}
-      >
-        <AboutSettings />
+      <HostProvider host={{ electronAPI: {}, ipcRenderer }}>
+        <UpdateButton />
       </HostProvider>
     );
 
@@ -46,50 +40,56 @@ describe('Settings Overview updater', () => {
     resetDesktopUpdateStore();
   });
 
-  it('renders update, progress, retry, and install actions from global state', () => {
+  it('stays hidden until an update is available', () => {
+    renderButton();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('shows the update action and starts the download', () => {
     act(() => {
       useDesktopUpdateStore.getState().setAvailable('2.0.0');
     });
-    const view = renderAbout();
+    renderButton();
+
     fireEvent.click(screen.getByRole('button', { name: 'Update' }));
     expect(ipcRenderer.invoke).toHaveBeenCalledWith('start-download');
+  });
 
+  it('shows persistent download progress', () => {
     act(() => {
-      useDesktopUpdateStore.getState().setProgress(37);
+      useDesktopUpdateStore.getState().setProgress(42.4);
     });
+    renderButton();
+
     const progressbar = screen.getByRole('progressbar');
-    expect(progressbar).toHaveAttribute('aria-valuenow', '37');
+    expect(progressbar).toHaveAttribute('aria-valuenow', '42');
     expect(progressbar.firstElementChild).toHaveClass(
       'bg-ds-neutral-subtle-default'
     );
+    expect(screen.getByText('42%')).toBeInTheDocument();
+  });
 
+  it('shows retry after an error', () => {
     act(() => {
       useDesktopUpdateStore.getState().setError('offline');
     });
+    renderButton();
+
     fireEvent.click(
       screen.getByRole('button', {
         name: 'Update failed — click to retry',
       })
     );
-    expect(
-      ipcRenderer.invoke.mock.calls.filter(
-        ([channel]) => channel === 'start-download'
-      )
-    ).toHaveLength(2);
+    expect(ipcRenderer.invoke).toHaveBeenCalledWith('start-download');
+  });
 
+  it('shows the install action after the download completes', () => {
     act(() => {
       useDesktopUpdateStore.getState().setDownloaded();
     });
-    view.unmount();
-    renderAbout();
+    renderButton();
+
     fireEvent.click(screen.getByRole('button', { name: 'Launch new version' }));
     expect(ipcRenderer.invoke).toHaveBeenCalledWith('quit-and-install');
-  });
-
-  it('falls back to the version action without Electron IPC', () => {
-    renderAbout(false);
-    expect(screen.getByRole('button', { name: 'Version' })).toHaveTextContent(
-      '1.9.0'
-    );
   });
 });

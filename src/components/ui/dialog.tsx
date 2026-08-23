@@ -16,6 +16,7 @@
 
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { cva, type VariantProps } from 'class-variance-authority';
+import { motion, useReducedMotion } from 'framer-motion';
 import { AlertCircle, ChevronLeft, X } from 'lucide-react';
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
@@ -35,6 +36,9 @@ const DialogTrigger = DialogPrimitive.Trigger;
 const DialogPortal = DialogPrimitive.Portal;
 
 const DialogClose = DialogPrimitive.Close;
+
+const DIALOG_ENTER_EASE: [number, number, number, number] = [0.23, 1, 0.32, 1];
+const DIALOG_CENTERED_TRANSFORM = 'translate(-50%, -50%) scale(1)';
 
 const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
@@ -61,7 +65,7 @@ export type DialogOverlayVariant = 'default' | 'light' | 'dark' | 'dimmed';
 
 // Size variants for dialog content
 const dialogContentVariants = cva(
-  'fixed left-[50%] top-[50%] z-50 grid w-full translate-x-[-50%] translate-y-[-50%] gap-0 overflow-hidden border border-solid border-x border-y border-ds-hairline-default-default bg-ds-neutral-subtle-default shadow-ds-elevation-dialog duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] rounded-ds-dialog max-h-[90vh] flex flex-col',
+  'fixed left-[50%] top-[50%] z-50 grid w-full gap-0 overflow-hidden border border-solid border-x border-y border-ds-hairline-default-default bg-ds-neutral-subtle-default shadow-ds-elevation-dialog rounded-ds-dialog max-h-[90vh] flex flex-col',
   {
     variants: {
       size: {
@@ -111,6 +115,7 @@ const DialogContent = React.forwardRef<
     ref
   ) => {
     const { t } = useTranslation();
+    const shouldReduceMotion = Boolean(useReducedMotion());
 
     return (
       <DialogPortal>
@@ -122,30 +127,42 @@ const DialogContent = React.forwardRef<
             overlayClassName
           )}
         />
-        <DialogPrimitive.Content
-          ref={ref}
-          className={cn(
-            dialogContentVariants({ size }),
-            overlayVariant !== 'default' && 'z-[51]',
-            className
-          )}
-          {...props}
-        >
-          {children}
-          {showCloseButton && (
-            <DialogPrimitive.Close asChild>
-              <Button
-                variant="ghost"
-                size="xs"
-                buttonContent="icon-only"
-                className={cn('absolute top-4 right-4', closeButtonClassName)}
-                onClick={onClose}
-              >
-                {closeButtonIcon || <X className="h-4 w-4" aria-hidden />}
-                <span className="sr-only">{t('layout.close')}</span>
-              </Button>
-            </DialogPrimitive.Close>
-          )}
+        <DialogPrimitive.Content ref={ref} asChild {...props}>
+          <motion.div
+            initial={{
+              opacity: 0,
+              transform: shouldReduceMotion
+                ? DIALOG_CENTERED_TRANSFORM
+                : 'translate(-50%, -50%) scale(0.95)',
+            }}
+            animate={{
+              opacity: 1,
+              transform: DIALOG_CENTERED_TRANSFORM,
+            }}
+            transition={{ duration: 0.2, ease: DIALOG_ENTER_EASE }}
+            style={{ transformOrigin: 'center' }}
+            className={cn(
+              dialogContentVariants({ size }),
+              overlayVariant !== 'default' && 'z-[51]',
+              className
+            )}
+          >
+            {children}
+            {showCloseButton && (
+              <DialogPrimitive.Close asChild>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  buttonContent="icon-only"
+                  className={cn('absolute top-4 right-4', closeButtonClassName)}
+                  onClick={onClose}
+                >
+                  {closeButtonIcon || <X className="h-4 w-4" aria-hidden />}
+                  <span className="sr-only">{t('layout.close')}</span>
+                </Button>
+              </DialogPrimitive.Close>
+            )}
+          </motion.div>
         </DialogPrimitive.Content>
       </DialogPortal>
     );

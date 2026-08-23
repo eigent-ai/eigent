@@ -24,6 +24,7 @@ import {
   TOP_BAR_PILL_CLASS,
 } from '@/components/TopBar/controlStyles';
 import { TopBarPrimaryNavigation } from '@/components/TopBar/TopBarPrimaryNavigation';
+import UpdateButton from '@/components/TopBar/UpdateButton';
 import { UserMenu } from '@/components/TopBar/UserMenu';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
@@ -685,6 +686,7 @@ function HeaderWin() {
             platform === 'darwin' && 'px-0'
           )}
         >
+          <UpdateButton />
           <TooltipSimple
             content={t('layout.support')}
             side="bottom"

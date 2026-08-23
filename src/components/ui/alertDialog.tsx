@@ -18,12 +18,17 @@ import {
   type ButtonTone,
   type ButtonVariant,
 } from '@/components/ui/button';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useId, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
 type ConfirmVariant = ButtonVariant | ButtonLegacyVariant;
+
+const ALERT_DIALOG_TRANSITION = {
+  duration: 0.2,
+  ease: [0.23, 1, 0.32, 1] as [number, number, number, number],
+};
 
 interface ConfirmModalProps {
   isOpen: boolean;
@@ -55,6 +60,7 @@ export default function ConfirmModal({
   children,
 }: ConfirmModalProps) {
   const { t } = useTranslation();
+  const shouldReduceMotion = Boolean(useReducedMotion());
   const titleId = useId();
   const descriptionId = useId();
   const title = titleProp ?? t('layout.confirm');
@@ -80,62 +86,76 @@ export default function ConfirmModal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={ALERT_DIALOG_TRANSITION}
             className="alert-dialog fixed inset-0 z-[99] bg-dialog-overlay-scrim"
             onClick={onClose}
           />
 
-          {/* Modal */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby={titleId}
-            aria-describedby={descriptionId}
-            className="alert-dialog-wrapper fixed top-1/2 left-1/2 z-[100] w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-xl"
+          {/* Viewport-sized layer owns centering; the card only scales/fades. */}
+          <div
+            data-alert-dialog-viewport
+            className="pointer-events-none fixed inset-0 z-[100] grid place-items-center p-4"
           >
-            <div className="rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default p-6 shadow-ds-elevation-dialog">
-              <span
-                id={titleId}
-                className="mb-2 block !text-ds-text-section font-bold text-ds-ink-default-default"
-              >
-                {title}
-              </span>
-              {children ? (
-                <div id={descriptionId} className="mb-6">
-                  {children}
-                </div>
-              ) : (
+            <motion.div
+              initial={{
+                opacity: 0,
+                transform: shouldReduceMotion ? 'scale(1)' : 'scale(0.95)',
+              }}
+              animate={{ opacity: 1, transform: 'scale(1)' }}
+              exit={{
+                opacity: 0,
+                transform: shouldReduceMotion ? 'scale(1)' : 'scale(0.95)',
+              }}
+              transition={ALERT_DIALOG_TRANSITION}
+              style={{ transformOrigin: 'center' }}
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby={titleId}
+              aria-describedby={descriptionId}
+              className="alert-dialog-wrapper pointer-events-auto w-full max-w-[400px] overflow-hidden rounded-xl"
+            >
+              <div className="rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default p-6 shadow-ds-elevation-dialog">
                 <span
-                  id={descriptionId}
-                  className="mb-6 block !text-ds-text-body-large text-ds-ink-muted-default"
+                  id={titleId}
+                  className="mb-2 block !text-ds-text-section font-bold text-ds-ink-default-default"
                 >
-                  {message}
+                  {title}
                 </span>
-              )}
-
-              <div className="flex justify-end gap-3">
-                {!hideCancel && (
-                  <Button variant="ghost" onClick={onClose}>
-                    {cancelText}
-                  </Button>
+                {children ? (
+                  <div id={descriptionId} className="mb-6">
+                    {children}
+                  </div>
+                ) : (
+                  <span
+                    id={descriptionId}
+                    className="mb-6 block !text-ds-text-body-large text-ds-ink-muted-default"
+                  >
+                    {message}
+                  </span>
                 )}
-                <Button
-                  variant={resolvedVariant}
-                  tone={resolvedTone}
-                  disabled={confirmDisabled}
-                  onClick={() => {
-                    if (confirmDisabled) return;
-                    onConfirm();
-                    onClose();
-                  }}
-                >
-                  {confirmText}
-                </Button>
+
+                <div className="flex justify-end gap-3">
+                  {!hideCancel && (
+                    <Button variant="ghost" onClick={onClose}>
+                      {cancelText}
+                    </Button>
+                  )}
+                  <Button
+                    variant={resolvedVariant}
+                    tone={resolvedTone}
+                    disabled={confirmDisabled}
+                    onClick={() => {
+                      if (confirmDisabled) return;
+                      onConfirm();
+                      onClose();
+                    }}
+                  >
+                    {confirmText}
+                  </Button>
+                </div>
               </div>
-            </div>
-          </motion.div>
+            </motion.div>
+          </div>
         </>
       )}
     </AnimatePresence>,
