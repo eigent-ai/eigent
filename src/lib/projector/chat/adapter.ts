@@ -583,6 +583,18 @@ function messageNode(
             base.legacyStep === 'agent_summary_end'
           ? 'agent_result'
           : 'narration';
+  const rawReviewHandoffIds =
+    messagePayload.review_handoff_ids ?? messagePayload.reviewHandoffIds;
+  const reviewHandoffIds = Array.isArray(rawReviewHandoffIds)
+    ? [
+        ...new Set(
+          rawReviewHandoffIds.flatMap((value) => {
+            const id = typeof value === 'string' ? value.trim() : '';
+            return id && id.length <= 128 ? [id] : [];
+          })
+        ),
+      ].slice(0, 64)
+    : [];
   return {
     ...base,
     kind: 'message',
@@ -600,6 +612,8 @@ function messageNode(
         messagePayload.agentName,
         messagePayload.agent
       ) || undefined,
+    reviewHandoffIds:
+      reviewHandoffIds.length > 0 ? reviewHandoffIds : undefined,
   };
 }
 
@@ -625,6 +639,13 @@ function noticeNode(
       ) || humanize(base.legacyStep || base.eventType),
     title: firstText(payload.title) || undefined,
     code: firstText(payload.code) || undefined,
+    toolCallId:
+      firstText(
+        payload.tool_call_id,
+        payload.toolCallId,
+        payload.call_id,
+        payload.callId
+      ) || undefined,
   };
 }
 

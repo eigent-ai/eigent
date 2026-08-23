@@ -247,6 +247,7 @@ class ActionNoticeData(BaseModel):
     action: Literal[Action.notice] = Action.notice
     process_task_id: str
     data: str
+    tool_call_id: str | None = None
 
 
 class ActionSearchMcpData(BaseModel):

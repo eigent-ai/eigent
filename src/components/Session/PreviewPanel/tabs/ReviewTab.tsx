@@ -114,6 +114,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
   const updateReviewComments = usePageTabStore(
     (state) => state.updateReviewComments
   );
+  const setReviewIdentity = usePageTabStore((state) => state.setReviewIdentity);
   const requestWorkspaceChatDraft = usePageTabStore(
     (state) => state.requestWorkspaceChatDraft
   );
@@ -121,8 +122,17 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
   const [comments, setComments] = useState<SessionReviewComment[]>(
     () => tab.reviewComments ?? []
   );
-  const { loading, files, desktopOnly, error, totals, truncated, refresh } =
-    useReviewChanges(reviewTarget);
+  const {
+    loading,
+    files,
+    desktopOnly,
+    error,
+    totals,
+    truncated,
+    reviewIdentity,
+    stale,
+    refresh,
+  } = useReviewChanges(reviewTarget, tab.reviewIdentity);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [treeMode, setTreeMode] = useState<'auto' | 'visible' | 'hidden'>(
     'auto'
@@ -147,6 +157,12 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
   useEffect(() => {
     setComments(tab.reviewComments ?? []);
   }, [tab.id, tab.reviewComments]);
+
+  useEffect(() => {
+    if (!tab.reviewIdentity && reviewIdentity && !stale) {
+      setReviewIdentity(tab.id, reviewIdentity);
+    }
+  }, [reviewIdentity, setReviewIdentity, stale, tab.id, tab.reviewIdentity]);
 
   const persistReviewComments = useCallback(
     (next: SessionReviewComment[]) => {
@@ -341,6 +357,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
             selection: commentTarget,
             body,
             createdAt: Date.now(),
+            reviewIdentity: tab.reviewIdentity ?? reviewIdentity ?? undefined,
           },
         ];
     persistReviewComments(next);
@@ -353,6 +370,8 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
     noteDraft,
     selectedFile,
     persistReviewComments,
+    reviewIdentity,
+    tab.reviewIdentity,
   ]);
 
   const editComment = useCallback((comment: SessionReviewComment) => {
@@ -386,14 +405,14 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
   }, [comments]);
 
   const addCommentsToChat = useCallback(() => {
-    if (pendingComments.length === 0) return;
+    if (pendingComments.length === 0 || stale) return;
     requestWorkspaceChatDraft(buildReviewFeedbackPrompt(pendingComments), {
       reviewTabId: tab.id,
       commentIds: pendingComments.map((comment) => comment.id),
     });
     setCommentsAddedToChat(true);
     window.setTimeout(() => setCommentsAddedToChat(false), 1800);
-  }, [pendingComments, requestWorkspaceChatDraft, tab.id]);
+  }, [pendingComments, requestWorkspaceChatDraft, stale, tab.id]);
 
   const treeToggleLabel = treeHidden
     ? t('layout.review-show-tree', { defaultValue: 'Show file tree' })
@@ -433,6 +452,20 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
             {t('layout.review-retry', { defaultValue: 'Try again' })}
           </Button>
         }
+      />
+    );
+  }
+
+  if (stale) {
+    return (
+      <CenteredNotice
+        message={t('layout.review-revision-changed', {
+          defaultValue: 'This review is out of date.',
+        })}
+        detail={t('layout.review-revision-changed-detail', {
+          defaultValue:
+            'The Git base or target changed after this review opened. Close this tab and open a new Review before adding or sending comments.',
+        })}
       />
     );
   }

@@ -315,6 +315,9 @@ const buildUsageLimitBannerState = (
 };
 export default function ChatBox(): JSX.Element {
   const [message, setMessage] = useState<string>('');
+  const [pendingReviewHandoffIds, setPendingReviewHandoffIds] = useState<
+    string[]
+  >([]);
   const host = useHost();
 
   //Get Chatstore for the active project's task
@@ -346,6 +349,19 @@ export default function ChatBox(): JSX.Element {
     sharedProjectEventSnapshot?.view.projectId === activeProjectId
       ? sharedProjectEventSnapshot
       : null;
+  useEffect(() => {
+    if (!activeProjectId || !eventNativeProjectSnapshot) return;
+    const admittedIds = eventNativeProjectSnapshot.chat.nodes.flatMap((node) =>
+      node.kind === 'message' && node.role === 'user'
+        ? (node.reviewHandoffIds ?? [])
+        : []
+    );
+    acknowledgeWorkspaceReviewHandoffs(activeProjectId, admittedIds);
+  }, [
+    acknowledgeWorkspaceReviewHandoffs,
+    activeProjectId,
+    eventNativeProjectSnapshot,
+  ]);
   const eventNativeReadOnlyRun = selectLatestReadOnlyEventNativeRun(
     eventNativeProjectSnapshot
   );
@@ -506,6 +522,10 @@ export default function ChatBox(): JSX.Element {
   }, [workspaceChatFocusRequestId]);
 
   useEffect(() => {
+    setPendingReviewHandoffIds([]);
+  }, [activeProjectId]);
+
+  useEffect(() => {
     if (
       !workspaceChatDraftRequest ||
       workspaceChatDraftRequest.projectId !== activeProjectId ||
@@ -520,6 +540,12 @@ export default function ChatBox(): JSX.Element {
         ? `${existing}\n\n${workspaceChatDraftRequest.content}`
         : workspaceChatDraftRequest.content;
     });
+    setPendingReviewHandoffIds((current) => [
+      ...new Set([
+        ...current,
+        ...(workspaceChatDraftRequest.reviewHandoffIds ?? []),
+      ]),
+    ]);
     consumeWorkspaceChatDraft(workspaceChatDraftRequest.requestId);
   }, [activeProjectId, consumeWorkspaceChatDraft, workspaceChatDraftRequest]);
 
@@ -538,7 +564,8 @@ export default function ChatBox(): JSX.Element {
         taskId?: string,
         executionId?: string,
         queuedAttaches?: File[],
-        queuedRequestId?: string
+        queuedRequestId?: string,
+        queuedReviewHandoffIds?: string[]
       ) => Promise<void>)
     | null
   >(null);
@@ -985,7 +1012,8 @@ export default function ChatBox(): JSX.Element {
     taskId?: string,
     executionId?: string,
     queuedAttaches?: File[],
-    queuedRequestId?: string
+    queuedRequestId?: string,
+    queuedReviewHandoffIds?: string[]
   ) => {
     const _taskId = taskId || chatStore.activeTaskId;
     const composerAttachments =
@@ -1028,6 +1056,7 @@ export default function ChatBox(): JSX.Element {
       });
     }
     const displayContent = tempMessageContent;
+    const reviewHandoffIds = queuedReviewHandoffIds ?? pendingReviewHandoffIds;
     const preserveComposer = queuedAttaches !== undefined;
 
     if (executionId && targetProjectId) {
@@ -1080,6 +1109,7 @@ export default function ChatBox(): JSX.Element {
           requestId,
           content: displayContent,
           attachmentPaths: queuedFiles.map((file: File) => file.filePath),
+          reviewHandoffIds,
         });
       } catch (error: any) {
         console.error('[FollowUpQueue] Failed to persist message', error);
@@ -1093,10 +1123,12 @@ export default function ChatBox(): JSX.Element {
         timestamp: getCurrentTimestamp(),
         attaches: queuedFiles,
         source: 'local',
+        reviewHandoffIds,
       });
       chatStore.setAttaches(_taskId, []);
       setMessage('');
-      acknowledgeWorkspaceReviewHandoffs(targetProjectId, displayContent);
+      acknowledgeWorkspaceReviewHandoffs(targetProjectId, reviewHandoffIds);
+      setPendingReviewHandoffIds([]);
       toast.success('Message queued. It will run after the current task.');
       return;
     }
@@ -1127,6 +1159,9 @@ export default function ChatBox(): JSX.Element {
             question: tempMessageContent,
             task_id: queuedRequestId,
             attaches: queuedFiles.map((file) => file.filePath),
+            ...(reviewHandoffIds.length
+              ? { review_handoff_ids: reviewHandoffIds }
+              : {}),
             target: undefined,
           });
           // The accepted request becomes a new durable Run. Do not append its
@@ -1151,6 +1186,7 @@ export default function ChatBox(): JSX.Element {
             {
               preserveTaskId: true,
               awaitAdmission: true,
+              ...(reviewHandoffIds.length ? { reviewHandoffIds } : {}),
             }
           );
         }
@@ -1292,7 +1328,8 @@ export default function ChatBox(): JSX.Element {
                 attachesToSend,
                 executionId,
                 targetProjectId,
-                effectiveSessionMode
+                effectiveSessionMode,
+                reviewHandoffIds.length ? { reviewHandoffIds } : undefined
               );
               messageAccepted = true;
               if (!preserveComposer) chatStore.setAttaches(_taskId, []);
@@ -1380,6 +1417,9 @@ export default function ChatBox(): JSX.Element {
                   targetProjectId,
                   nextTaskId
                 ),
+                ...(reviewHandoffIds.length
+                  ? { review_handoff_ids: reviewHandoffIds }
+                  : {}),
                 target: undefined,
               });
               messageAccepted = true;
@@ -1418,7 +1458,8 @@ export default function ChatBox(): JSX.Element {
               attachesToSend,
               executionId,
               targetProjectId,
-              effectiveSessionMode
+              effectiveSessionMode,
+              reviewHandoffIds.length ? { reviewHandoffIds } : undefined
             );
             messageAccepted = true;
             chatStore.setHasWaitComfirm(_taskId as string, true);
@@ -1443,8 +1484,9 @@ export default function ChatBox(): JSX.Element {
       console.error('error:', error);
       if (preserveComposer) throw error;
     } finally {
-      if (messageAccepted) {
-        acknowledgeWorkspaceReviewHandoffs(targetProjectId, displayContent);
+      if (messageAccepted && !requiresHumanReply) {
+        acknowledgeWorkspaceReviewHandoffs(targetProjectId, reviewHandoffIds);
+        setPendingReviewHandoffIds([]);
       }
       scheduleUsageRefresh();
     }
@@ -1574,6 +1616,7 @@ export default function ChatBox(): JSX.Element {
             })) as unknown as File[],
             sendNow: item.delivery_mode === 'send_now',
             source: item.source,
+            reviewHandoffIds: item.review_handoff_ids,
           });
         }
       })
@@ -1656,7 +1699,8 @@ export default function ChatBox(): JSX.Element {
       activeId,
       undefined,
       next.attaches,
-      next.task_id
+      next.task_id,
+      next.reviewHandoffIds
     )
       .then(() => {
         setAdmittedQueuedRun({ projectId, runId: next.task_id });

@@ -133,6 +133,8 @@ export interface ChatMessageNode extends ChatProjectionNodeBase {
    */
   interactionId?: string;
   interactionResponse?: boolean;
+  /** Durable review handoffs admitted with this user message. */
+  reviewHandoffIds?: string[];
 }
 
 export interface ChatNoticeNode extends ChatProjectionNodeBase {
@@ -141,6 +143,8 @@ export interface ChatNoticeNode extends ChatProjectionNodeBase {
   content: string;
   title?: string;
   code?: string;
+  /** Stable correlation to the code-owned tool invocation that emitted it. */
+  toolCallId?: string;
 }
 
 export interface ChatInteractionOption {

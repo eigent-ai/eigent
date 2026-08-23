@@ -23,6 +23,7 @@ from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.run_context import RunContext
 from app.run_journal import get_default_run_journal
 from app.run_runtime.active_timeout import pause_active_execution_timeout
+from app.run_runtime.tool_checkpoint import get_current_tool_checkpoint
 from app.service.task import (
     TASK_LOCK_CLEANUP_SENTINEL,
     Action,
@@ -201,6 +202,11 @@ class HumanToolkit(BaseToolkit, AbstractToolkit):
         notice_data = ActionNoticeData(
             process_task_id=current_process_task_id,
             data=f"{message_description}",
+            tool_call_id=(
+                checkpoint.tool_call_id
+                if (checkpoint := get_current_tool_checkpoint()) is not None
+                else None
+            ),
         )
         _safe_put_queue(task_lock, notice_data)
 

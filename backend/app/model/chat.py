@@ -52,6 +52,19 @@ class QuestionAnalysisResult(BaseModel):
 McpServers = dict[Literal["mcpServers"], dict[str, dict]]
 
 
+def _normalize_review_handoff_ids(values: list[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        handoff_id = value.strip()
+        if not handoff_id or len(handoff_id) > 128:
+            raise ValueError("review handoff ids must be 1-128 characters")
+        if handoff_id not in seen:
+            seen.add(handoff_id)
+            normalized.append(handoff_id)
+    return normalized
+
+
 class Chat(BaseModel):
     task_id: str
     project_id: str
@@ -64,9 +77,16 @@ class Chat(BaseModel):
     question: str
     email: str
     attaches: list[str] = []
+    review_handoff_ids: list[str] = Field(default_factory=list, max_length=64)
     model_platform: NormalizedModelPlatform
     model_type: str
     api_key: str
+
+    @field_validator("review_handoff_ids")
+    @classmethod
+    def validate_review_handoff_ids(cls, values: list[str]) -> list[str]:
+        return _normalize_review_handoff_ids(values)
+
     # for cloud version, user don't need to set api_url
     api_url: str | None = None
     # Marker for subscription-auth providers (e.g. Codex). When set, the token
@@ -225,17 +245,29 @@ class SupplementChat(BaseModel):
     task_id: str | None = None
     attaches: list[str] = []
     project_context: str | None = None
+    review_handoff_ids: list[str] = Field(default_factory=list, max_length=64)
+
+    @field_validator("review_handoff_ids")
+    @classmethod
+    def validate_review_handoff_ids(cls, values: list[str]) -> list[str]:
+        return _normalize_review_handoff_ids(values)
 
 
 class FollowUpRequestCreate(BaseModel):
     request_id: str = Field(min_length=1, max_length=128)
     content: str = Field(min_length=1, max_length=200_000)
     attachment_paths: list[str] = Field(default_factory=list, max_length=32)
+    review_handoff_ids: list[str] = Field(default_factory=list, max_length=64)
     delivery_mode: Literal["wait", "send_now"] = "wait"
     source: Literal["local", "remote_control", "scheduled"] = "local"
     source_command_id: str | None = Field(
         default=None, min_length=1, max_length=128
     )
+
+    @field_validator("review_handoff_ids")
+    @classmethod
+    def validate_review_handoff_ids(cls, values: list[str]) -> list[str]:
+        return _normalize_review_handoff_ids(values)
 
 
 class FollowUpRequestAdmitted(BaseModel):

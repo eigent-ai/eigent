@@ -315,6 +315,30 @@ class TestChatController:
         assert retry == "retry"
         assert conflict == "conflict"
 
+    def test_review_handoff_ids_participate_in_admission_identity(self):
+        common = {
+            "run_id": "run-review",
+            "question": "Apply review feedback",
+            "attaches": [],
+            "project_context": None,
+        }
+
+        first = _admission_request_id(
+            **common,
+            review_handoff_ids=["review-handoff-1"],
+        )
+        retry = _admission_request_id(
+            **common,
+            review_handoff_ids=["review-handoff-1"],
+        )
+        different = _admission_request_id(
+            **common,
+            review_handoff_ids=["review-handoff-2"],
+        )
+
+        assert retry == first
+        assert different != first
+
     @pytest.mark.asyncio
     async def test_legacy_admission_without_fingerprint_is_replay_only(
         self, tmp_path

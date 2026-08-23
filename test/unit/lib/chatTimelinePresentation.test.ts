@@ -215,6 +215,61 @@ describe('event-native Timeline Run presentation', () => {
     expect(run?.timestamps.durationMs).toBe(10_000);
   });
 
+  it('freezes a terminal Run duration when late cleanup events arrive', () => {
+    const started: ChatRunStatusNode = {
+      ...base('started', 'run-1', 1, '2026-08-19T08:30:00.000Z'),
+      kind: 'run_status',
+      status: 'running',
+    };
+    const final = message('final', 'run-1', 2, {
+      purpose: 'final',
+      createdAt: '2026-08-19T08:30:09.000Z',
+    });
+    const completed: ChatRunStatusNode = {
+      ...base('completed', 'run-1', 3, '2026-08-19T08:30:10.000Z'),
+      kind: 'run_status',
+      status: 'completed',
+    };
+    const cleanup = tool('cleanup', 'run-1', 4, {
+      methodName: 'cleanup',
+      status: 'completed',
+      phase: 'completed',
+      createdAt: '2026-08-19T09:00:00.000Z',
+    });
+
+    const run = composeTimelineRun(
+      [started, final, completed, cleanup],
+      'run-1'
+    );
+
+    expect(run?.timestamps.updatedAt).toBe('2026-08-19T09:00:00.000Z');
+    expect(run?.timestamps.endedAt).toBe('2026-08-19T08:30:10.000Z');
+    expect(run?.timestamps.durationMs).toBe(10_000);
+  });
+
+  it('uses the final assistant receipt when a terminal status slice is absent', () => {
+    const started: ChatRunStatusNode = {
+      ...base('started', 'run-1', 1, '2026-08-19T08:30:00.000Z'),
+      kind: 'run_status',
+      status: 'running',
+    };
+    const final = message('final', 'run-1', 2, {
+      purpose: 'final',
+      createdAt: '2026-08-19T08:30:09.000Z',
+    });
+    const cleanup = tool('cleanup', 'run-1', 3, {
+      methodName: 'cleanup',
+      status: 'completed',
+      phase: 'completed',
+      createdAt: '2026-08-19T09:00:00.000Z',
+    });
+
+    const run = composeTimelineRun([started, final, cleanup], 'run-1');
+
+    expect(run?.timestamps.endedAt).toBe('2026-08-19T08:30:09.000Z');
+    expect(run?.timestamps.durationMs).toBe(9_000);
+  });
+
   it('pairs non-adjacent tool lifecycle receipts by toolCallId with stable safe fields', () => {
     const started = tool('tool-started', 'run-1', 2, {
       toolCallId: 'call-1',

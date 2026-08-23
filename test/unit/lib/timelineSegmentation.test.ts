@@ -101,6 +101,24 @@ function interaction(
   } as ChatProjectionNode;
 }
 
+function notice(content: string, toolCallId?: string): ChatProjectionNode {
+  sequence += 1;
+  const id = `notice-${sequence}`;
+  return {
+    ...base,
+    kind: 'notice',
+    id,
+    eventId: id,
+    eventType: 'legacy.notice',
+    legacyStep: 'notice',
+    runSequence: sequence,
+    createdAt: `2026-08-19T00:00:${String(sequence).padStart(2, '0')}Z`,
+    severity: 'info',
+    content,
+    toolCallId,
+  };
+}
+
 function segmentsOf(nodes: ChatProjectionNode[]) {
   const [run] = composeTimelineRuns(nodes);
   return segmentTimelineRows(run!.traceRows);
@@ -172,6 +190,45 @@ describe('timeline segmentation', () => {
     expect(
       items.flatMap((item) => (item.kind === 'segment' ? item.calls : []))
     ).toEqual([expect.objectContaining({ toolkitName: 'Terminal Toolkit' })]);
+  });
+
+  it('hides successful framework lifecycle calls only from Narrative', () => {
+    const nodes = [
+      tool('Terminal Toolkit', 'cleanup'),
+      tool('Screenshot Toolkit', 'register_agent'),
+      tool('Terminal Toolkit', 'cleanup', { status: 'failed' }),
+      tool('File Toolkit', 'read_file'),
+    ];
+    const [run] = composeTimelineRuns(nodes);
+    const narrativeCalls = segmentTimelineRun(run!).flatMap((item) =>
+      item.kind === 'segment' ? item.calls : []
+    );
+
+    expect(run!.traceRows.filter((row) => row.kind === 'tool')).toHaveLength(4);
+    expect(narrativeCalls.map((call) => call.methodName)).toEqual([
+      'cleanup',
+      'read_file',
+    ]);
+    expect(narrativeCalls[0]?.status).toBe('failed');
+  });
+
+  it('uses call identity to show one user notice in Narrative', () => {
+    const correlatedTool = tool('Human Toolkit', 'send_message_to_user', {
+      toolCallId: 'notice-call-1',
+    });
+    const nodes = [
+      correlatedTool,
+      notice('The report is ready.', 'notice-call-1'),
+    ];
+    const [run] = composeTimelineRuns(nodes);
+    const items = segmentTimelineRun(run!);
+
+    expect(run!.traceRows.filter((row) => row.kind === 'tool')).toHaveLength(1);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      kind: 'notice',
+      node: { content: 'The report is ready.', toolCallId: 'notice-call-1' },
+    });
   });
 
   it('keeps every derived segment marked as derived until steps are authored', () => {

@@ -283,10 +283,17 @@ describe('pageTabStore session preview', () => {
     usePageTabStore.getState().consumeWorkspaceChatDraft(request!.requestId);
     expect(usePageTabStore.getState().workspaceChatDraftRequest).toBeNull();
     expect(usePageTabStore.getState().workspaceReviewHandoffs).toHaveLength(1);
+    const handoffId =
+      usePageTabStore.getState().workspaceReviewHandoffs[0].handoffId;
 
     usePageTabStore
       .getState()
-      .acknowledgeWorkspaceReviewHandoffs('project-a', 'Review feedback');
+      .acknowledgeWorkspaceReviewHandoffs('project-a', ['not-this-handoff']);
+    expect(usePageTabStore.getState().workspaceReviewHandoffs).toHaveLength(1);
+
+    usePageTabStore
+      .getState()
+      .acknowledgeWorkspaceReviewHandoffs('project-a', [handoffId]);
     const sentReview = slice().tabs.find((tab) => tab.id === review!.id);
     expect(sentReview).toMatchObject({
       reviewComments: [

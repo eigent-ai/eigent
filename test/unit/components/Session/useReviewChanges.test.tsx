@@ -223,6 +223,72 @@ describe('useReviewChanges', () => {
     );
   });
 
+  it('marks an open review stale when its pinned Git revision moves', async () => {
+    mockFetchGitChanges.mockResolvedValue({
+      repository_id: 'repo-1',
+      project_id: 'project-1',
+      base_commit: 'c'.repeat(40),
+      target_commit: 'd'.repeat(40),
+      files: [],
+      totals: { added: 0, removed: 0 },
+      truncated: false,
+    });
+
+    const { result } = renderHook(() =>
+      useReviewChanges(
+        { scope: 'project', focusRequestId: 0 },
+        { baseCommit: 'a'.repeat(40), targetCommit: 'b'.repeat(40) }
+      )
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.stale).toBe(true);
+    expect(result.current.files).toEqual([]);
+    expect(result.current.reviewIdentity).toEqual({
+      baseCommit: 'c'.repeat(40),
+      targetCommit: 'd'.repeat(40),
+    });
+  });
+
+  it('revalidates the pinned revision when the same Review tab is reopened', async () => {
+    mockFetchGitChanges
+      .mockResolvedValueOnce({
+        repository_id: 'repo-1',
+        project_id: 'project-1',
+        base_commit: 'a'.repeat(40),
+        target_commit: 'b'.repeat(40),
+        files: [],
+        totals: { added: 0, removed: 0 },
+        truncated: false,
+      })
+      .mockResolvedValueOnce({
+        repository_id: 'repo-1',
+        project_id: 'project-1',
+        base_commit: 'a'.repeat(40),
+        target_commit: 'c'.repeat(40),
+        files: [],
+        totals: { added: 0, removed: 0 },
+        truncated: false,
+      });
+    const pinned = {
+      baseCommit: 'a'.repeat(40),
+      targetCommit: 'b'.repeat(40),
+    };
+
+    const { result, rerender } = renderHook(
+      ({ focusRequestId }: { focusRequestId: number }) =>
+        useReviewChanges({ scope: 'project', focusRequestId }, pinned),
+      { initialProps: { focusRequestId: 0 } }
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.stale).toBe(false);
+
+    rerender({ focusRequestId: 1 });
+    await waitFor(() => expect(mockFetchGitChanges).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(result.current.stale).toBe(true));
+  });
+
   it('uses a finalized Run Git range without falling back to Project data', async () => {
     mockFetchRunGitChanges.mockResolvedValue({
       repository_id: 'repo-1',

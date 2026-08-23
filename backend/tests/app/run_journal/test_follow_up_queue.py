@@ -38,6 +38,7 @@ def test_follow_up_queue_is_durable_ordered_and_idempotent(journal):
         project_id="project-1",
         content="Continue with the report",
         attachment_paths=["/workspace/brief.pdf"],
+        review_handoff_ids=["review-handoff-1"],
         now=1,
     )
     replay = journal.put_follow_up_request(
@@ -45,6 +46,7 @@ def test_follow_up_queue_is_durable_ordered_and_idempotent(journal):
         project_id="project-1",
         content="Continue with the report",
         attachment_paths=["/workspace/brief.pdf"],
+        review_handoff_ids=["review-handoff-1"],
         now=2,
     )
     journal.put_follow_up_request(
@@ -55,6 +57,7 @@ def test_follow_up_queue_is_durable_ordered_and_idempotent(journal):
     )
 
     assert replay == first
+    assert first.review_handoff_ids == ("review-handoff-1",)
     prioritized = journal.set_follow_up_delivery_mode(
         request_id="follow-2",
         project_id="project-1",
@@ -82,6 +85,14 @@ def test_follow_up_queue_is_durable_ordered_and_idempotent(journal):
             request_id="follow-1",
             project_id="project-1",
             content="A different instruction",
+        )
+    with pytest.raises(IdempotencyConflictError):
+        journal.put_follow_up_request(
+            request_id="follow-1",
+            project_id="project-1",
+            content="Continue with the report",
+            attachment_paths=["/workspace/brief.pdf"],
+            review_handoff_ids=["another-handoff"],
         )
 
 

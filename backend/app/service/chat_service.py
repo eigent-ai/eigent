@@ -1750,12 +1750,15 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             elif item.action == Action.ask:
                 yield sse_json("ask", item.data)
             elif item.action == Action.notice:
+                notice_payload = {
+                    "notice": item.data,
+                    "process_task_id": item.process_task_id,
+                }
+                if item.tool_call_id:
+                    notice_payload["tool_call_id"] = item.tool_call_id
                 yield sse_json(
                     "notice",
-                    {
-                        "notice": item.data,
-                        "process_task_id": item.process_task_id,
-                    },
+                    notice_payload,
                 )
             elif item.action == Action.search_mcp:
                 yield sse_json("search_mcp", item.data)

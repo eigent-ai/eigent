@@ -126,7 +126,7 @@ from app.workspace_config.models import (
     canonical_json,
 )
 
-SCHEMA_VERSION = 32
+SCHEMA_VERSION = 33
 logger = logging.getLogger("run_journal")
 # Per redacted request or response. Oversized documents retain a bounded JSON
 # prefix plus the byte count and digest of the full redacted projection.
@@ -2154,6 +2154,19 @@ INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
 VALUES (32, CAST(strftime('%s', 'now') AS REAL));
 
 PRAGMA user_version = 32;
+COMMIT;
+"""
+
+_MIGRATION_V33 = """
+BEGIN IMMEDIATE;
+
+ALTER TABLE follow_up_requests
+ADD COLUMN review_handoff_ids_json TEXT NOT NULL DEFAULT '[]';
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (33, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 33;
 COMMIT;
 """
 
@@ -8300,6 +8313,7 @@ class SQLiteRunJournal:
         project_id: str,
         content: str,
         attachment_paths: list[str] | tuple[str, ...] = (),
+        review_handoff_ids: list[str] | tuple[str, ...] = (),
         delivery_mode: str = "wait",
         source: str = "local",
         source_command_id: str | None = None,
@@ -8316,6 +8330,9 @@ class SQLiteRunJournal:
         normalized_project = project_id.strip()
         normalized_content = content.strip()
         normalized_paths = tuple(str(path) for path in attachment_paths)
+        normalized_handoff_ids = tuple(
+            dict.fromkeys(str(value).strip() for value in review_handoff_ids)
+        )
         if (
             not normalized_id
             or not normalized_project
@@ -8343,8 +8360,17 @@ class SQLiteRunJournal:
             not path.strip() for path in normalized_paths
         ):
             raise ValueError("follow-up attachment paths are invalid")
+        if len(normalized_handoff_ids) > 64 or any(
+            not value or len(value) > 128 for value in normalized_handoff_ids
+        ):
+            raise ValueError("follow-up review handoff ids are invalid")
         paths_json = json.dumps(
             normalized_paths,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        handoff_ids_json = json.dumps(
+            normalized_handoff_ids,
             ensure_ascii=False,
             separators=(",", ":"),
         )
@@ -8366,6 +8392,8 @@ class SQLiteRunJournal:
                         command_row["project_id"] != normalized_project
                         or command_row["content"] != normalized_content
                         or command_row["attachment_paths_json"] != paths_json
+                        or command_row["review_handoff_ids_json"]
+                        != handoff_ids_json
                     ):
                         raise IdempotencyConflictError(
                             f"remote command {normalized_command_id!r} was reused"
@@ -8380,6 +8408,7 @@ class SQLiteRunJournal:
                     existing["project_id"] != normalized_project
                     or existing["content"] != normalized_content
                     or existing["attachment_paths_json"] != paths_json
+                    or existing["review_handoff_ids_json"] != handoff_ids_json
                     or existing["source"] != source
                     or existing["source_command_id"] != normalized_command_id
                 ):
@@ -8399,15 +8428,17 @@ class SQLiteRunJournal:
                 """
                 INSERT INTO follow_up_requests(
                     request_id, project_id, content, attachment_paths_json,
+                    review_handoff_ids_json,
                     delivery_mode, status, admitted_run_id, last_error,
                     created_at, updated_at, source, source_command_id
-                ) VALUES (?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?, ?, ?)
                 """,
                 (
                     normalized_id,
                     normalized_project,
                     normalized_content,
                     paths_json,
+                    handoff_ids_json,
                     delivery_mode,
                     timestamp,
                     timestamp,
@@ -17569,6 +17600,22 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             self._connection.executescript(_MIGRATION_V31)
         if version < 32:
             self._connection.executescript(_MIGRATION_V32)
+        if version < 33:
+            follow_up_columns = {
+                row["name"]
+                for row in self._connection.execute(
+                    "PRAGMA table_info(follow_up_requests)"
+                ).fetchall()
+            }
+            migration = _MIGRATION_V33
+            if "review_handoff_ids_json" in follow_up_columns:
+                migration = migration.replace(
+                    "ALTER TABLE follow_up_requests\n"
+                    "ADD COLUMN review_handoff_ids_json TEXT NOT NULL "
+                    "DEFAULT '[]';\n",
+                    "",
+                )
+            self._connection.executescript(migration)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:
@@ -18758,6 +18805,9 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             project_id=row["project_id"],
             content=row["content"],
             attachment_paths=tuple(json.loads(row["attachment_paths_json"])),
+            review_handoff_ids=tuple(
+                json.loads(row["review_handoff_ids_json"])
+            ),
             delivery_mode=row["delivery_mode"],
             status=row["status"],
             admitted_run_id=row["admitted_run_id"],

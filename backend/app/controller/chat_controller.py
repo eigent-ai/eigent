@@ -137,6 +137,7 @@ def _follow_up_response(record: FollowUpRequestRecord) -> dict[str, Any]:
         "project_id": record.project_id,
         "content": record.content,
         "attachment_paths": list(record.attachment_paths),
+        "review_handoff_ids": list(record.review_handoff_ids),
         "delivery_mode": record.delivery_mode,
         "status": record.status,
         "admitted_run_id": record.admitted_run_id,
@@ -166,6 +167,7 @@ async def _record_canonical_user_message(
     content: str,
     source: str,
     attaches: list[str],
+    review_handoff_ids: list[str] | None = None,
 ) -> None:
     """Persist admission input against the injected journal instance."""
 
@@ -176,6 +178,7 @@ async def _record_canonical_user_message(
         content=content,
         source=source,
         attachment_names=[Path(path).name for path in attaches],
+        review_handoff_ids=review_handoff_ids,
     )
 
 
@@ -465,7 +468,8 @@ def _admission_request_id(
     *,
     question: str,
     attaches: list[str],
-    project_context: str | None,
+    review_handoff_ids: list[str] | None = None,
+    project_context: str | None = None,
 ) -> str:
     # ``project_context`` is a rebuildable renderer projection and can change
     # between retries.  It must never participate in durable admission
@@ -475,6 +479,7 @@ def _admission_request_id(
         {
             "question": question,
             "attaches": attaches,
+            "review_handoff_ids": list(review_handoff_ids or []),
         },
         ensure_ascii=False,
         separators=(",", ":"),
@@ -1284,6 +1289,7 @@ async def _prepare_chat_run(
             run_context.run_id,
             question=data.question,
             attaches=data.attaches or [],
+            review_handoff_ids=data.review_handoff_ids,
             project_context=data.project_context,
         )
         environment = None
@@ -1365,6 +1371,7 @@ async def _prepare_chat_run(
             content=data.question,
             source="chat",
             attaches=data.attaches or [],
+            review_handoff_ids=data.review_handoff_ids,
         )
     if attempt is not None:
         run_context = replace(run_context, attempt_id=attempt.attempt_id)
@@ -1632,6 +1639,7 @@ async def start_chat_stream(data: Chat, request: Request):
             run_id,
             question=data.question,
             attaches=data.attaches or [],
+            review_handoff_ids=data.review_handoff_ids,
             project_context=data.project_context,
         )
         admission, _attempt = await _classify_persisted_admission(
@@ -1740,6 +1748,7 @@ async def enqueue_follow_up(project_id: str, data: FollowUpRequestCreate):
             project_id=project_id,
             content=data.content,
             attachment_paths=data.attachment_paths,
+            review_handoff_ids=data.review_handoff_ids,
             delivery_mode=data.delivery_mode,
             source=data.source,
             source_command_id=data.source_command_id,
@@ -1867,6 +1876,7 @@ async def improve(id: str, data: SupplementChat, request: Request):
                 data.task_id,
                 question=data.question,
                 attaches=data.attaches or [],
+                review_handoff_ids=data.review_handoff_ids,
                 project_context=data.project_context,
             )
             admission, attempt = await _classify_persisted_admission(
@@ -2110,6 +2120,7 @@ async def _improve_chat(
             refreshed_context.run_id,
             question=data.question,
             attaches=data.attaches or [],
+            review_handoff_ids=data.review_handoff_ids,
             project_context=data.project_context,
         )
         journal = get_default_run_journal()
@@ -2189,6 +2200,7 @@ async def _improve_chat(
                 content=data.question,
                 source="improve",
                 attaches=data.attaches or [],
+                review_handoff_ids=data.review_handoff_ids,
             )
             refreshed_context = replace(
                 refreshed_context,

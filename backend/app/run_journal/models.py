@@ -48,6 +48,7 @@ class FollowUpRequestRecord:
     project_id: str
     content: str
     attachment_paths: tuple[str, ...]
+    review_handoff_ids: tuple[str, ...]
     delivery_mode: str
     status: str
     admitted_run_id: str | None

@@ -274,6 +274,26 @@ describe('chat activity projection', () => {
     });
   });
 
+  it('projects only bounded durable review handoff ids from user messages', () => {
+    const node = adaptChatProjectionEvent(
+      event(
+        {
+          content: 'Apply these review comments',
+          review_handoff_ids: ['handoff-1', '', 42, 'x'.repeat(129)],
+        },
+        'user.message'
+      )
+    );
+
+    expect(node).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'message',
+        reviewHandoffIds: ['handoff-1'],
+      },
+    });
+  });
+
   it('restores durable attachment names without exposing local paths', () => {
     const node = adaptChatProjectionEvent(
       event(

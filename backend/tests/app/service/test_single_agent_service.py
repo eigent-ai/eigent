@@ -96,6 +96,29 @@ def test_write_file_sse_omits_untrusted_relative_identity():
     )
 
 
+def test_notice_sse_carries_stable_tool_call_identity():
+    from app.service.single_agent_service import _action_to_sse
+    from app.service.task import ActionNoticeData
+
+    line = _action_to_sse(
+        ActionNoticeData(
+            process_task_id="task-1",
+            data="The report is ready.",
+            tool_call_id="tool-call-1",
+        )
+    )
+
+    assert line is not None
+    assert _parse_sse(line) == (
+        "notice",
+        {
+            "notice": "The report is ready.",
+            "process_task_id": "task-1",
+            "tool_call_id": "tool-call-1",
+        },
+    )
+
+
 @pytest.mark.asyncio
 async def test_retryable_model_error_emits_resume_metadata_and_interrupts():
     from app.model.chat import Chat

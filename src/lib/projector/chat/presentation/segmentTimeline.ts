@@ -94,6 +94,37 @@ const FAILED_STATUSES = new Set<ChatActivityStatus>([
   'outcome_unknown',
 ]);
 
+const NARRATIVE_LIFECYCLE_NOISE = new Set([
+  'cleanup',
+  'registeragent',
+  'requestusage',
+  'modelinvocation',
+]);
+
+function normalizedOperation(value: string | undefined): string {
+  return (value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+/**
+ * Narrative deliberately omits successful framework bookkeeping. Failures
+ * remain visible and Trajectory receives the unfiltered source rows.
+ */
+function isSuccessfulLifecycleNoise(row: TimelineTraceRow): boolean {
+  if (row.kind !== 'tool' || row.invocation.status !== 'completed') {
+    return false;
+  }
+  const identities = [
+    row.invocation.methodName,
+    row.invocation.toolName,
+    row.invocation.title,
+  ].map(normalizedOperation);
+  return identities.some((identity) =>
+    [...NARRATIVE_LIFECYCLE_NOISE].some(
+      (operation) => identity === operation || identity.endsWith(operation)
+    )
+  );
+}
+
 /**
  * Method-name verb heuristics. Deliberately pattern-based rather than a
  * toolkit lookup table so a new toolkit reads sensibly without registration.
@@ -334,11 +365,27 @@ export function segmentTimelineRows(
 export function segmentTimelineRun(
   run: TimelineRunView
 ): TimelineNarrativeItem[] {
+  const noticeToolCallIds = new Set(
+    run.traceRows.flatMap((row) =>
+      row.kind === 'node' && row.node.kind === 'notice'
+        ? [row.node.toolCallId].filter((toolCallId): toolCallId is string =>
+            Boolean(toolCallId)
+          )
+        : []
+    )
+  );
   const narrativeRows = run.traceRows.filter((row) => {
     if (row.kind === 'tool') {
       // todo_write has its own typed lifecycle for the detailed trajectory.
       // In Chat, the plan snapshot is the useful representation, so showing
       // both produces a duplicate "Updated plan" action for every change.
+      if (
+        row.invocation.toolCallId &&
+        noticeToolCallIds.has(row.invocation.toolCallId)
+      ) {
+        return false;
+      }
+      if (isSuccessfulLifecycleNoise(row)) return false;
       return !row.invocation.nodes.some(
         (node) => node.semanticKind === 'plan_operation'
       );

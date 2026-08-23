@@ -300,7 +300,9 @@ async def test_model_context_persists_secret_free_projection_diagnostics(
         request_id="request-previous",
         content="Prior durable instruction",
         source="chat",
+        review_handoff_ids=["review-handoff-1"],
     )
+    assert user_event.payload["review_handoff_ids"] == ["review-handoff-1"]
     _complete_run(
         journal,
         "run-previous",

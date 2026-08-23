@@ -350,12 +350,15 @@ def _action_to_sse(item: ActionData) -> str | None:
     if item.action == Action.ask:
         return sse_json("ask", item.data)
     if item.action == Action.notice:
+        payload = {
+            "notice": item.data,
+            "process_task_id": item.process_task_id,
+        }
+        if item.tool_call_id:
+            payload["tool_call_id"] = item.tool_call_id
         return sse_json(
             "notice",
-            {
-                "notice": item.data,
-                "process_task_id": item.process_task_id,
-            },
+            payload,
         )
     if item.action == Action.terminal:
         return sse_json(

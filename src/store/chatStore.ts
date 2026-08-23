@@ -1152,6 +1152,8 @@ export interface StartTaskOptions {
   replaySource?: 'cloud' | 'local_durable';
   /** Resolve only after Brain has accepted the initial SSE request. */
   awaitAdmission?: boolean;
+  /** Stable review handoffs durably admitted with this user message. */
+  reviewHandoffIds?: string[];
   /**
    * Resolve a local durable replay once its persisted backlog is projected,
    * while keeping the live stream attached in the background.
@@ -2986,6 +2988,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               startOptions.resumeRequestId ? undefined : newTaskId
             ),
             resume_request_id: startOptions.resumeRequestId,
+            review_handoff_ids: startOptions.reviewHandoffIds ?? [],
           }
         : undefined;
 

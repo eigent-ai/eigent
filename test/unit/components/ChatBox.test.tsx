@@ -553,9 +553,11 @@ describe('ChatBox Component', async () => {
             requestId: 1,
             projectId: 'test-project-id',
             content: 'Please address review comment 1.',
+            reviewHandoffIds: ['handoff-1'],
           },
           workspaceReviewHandoffs: [
             {
+              handoffId: 'handoff-1',
               requestId: 1,
               projectId: 'test-project-id',
               reviewTabId: 'review-1',
@@ -588,6 +590,77 @@ describe('ChatBox Component', async () => {
           usePageTabStore.getState().sessionPreviewByProject['test-project-id']
             .tabs[0];
         expect(reviewTab).toMatchObject({
+          reviewComments: [
+            expect.objectContaining({ id: 'comment-1', status: 'sent' }),
+          ],
+        });
+      });
+      expect(usePageTabStore.getState().workspaceReviewHandoffs).toEqual([]);
+    });
+
+    it('recovers an admitted review handoff from the durable user message', async () => {
+      eventNativeHarness.enabled = true;
+      eventNativeHarness.snapshot = runningEventNativeSnapshot();
+      eventNativeHarness.snapshot.chat.nodes.push({
+        id: 'review-user-message',
+        eventId: 'review-user-message',
+        projectId: 'test-project-id',
+        runId: 'test-task-id',
+        createdAt: '2026-08-20T00:00:01Z',
+        runSequence: 2,
+        cloudCursor: 2,
+        eventType: 'user.message',
+        legacyStep: null,
+        kind: 'message',
+        role: 'user',
+        content: 'Review feedback',
+        status: 'completed',
+        reviewHandoffIds: ['handoff-recovered'],
+      });
+      usePageTabStore.setState({
+        sessionPreviewProjectId: 'test-project-id',
+        sessionPreviewByProject: {
+          'test-project-id': {
+            open: true,
+            activeTabId: 'review-1',
+            tabs: [
+              {
+                id: 'review-1',
+                type: 'review',
+                title: 'Review',
+                reviewComments: [
+                  {
+                    id: 'comment-1',
+                    fileId: 'src/app.ts',
+                    path: 'src/app.ts',
+                    selection: null,
+                    body: 'Keep this compatible.',
+                    createdAt: 1,
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        workspaceReviewHandoffs: [
+          {
+            handoffId: 'handoff-recovered',
+            requestId: 1,
+            projectId: 'test-project-id',
+            reviewTabId: 'review-1',
+            commentIds: ['comment-1'],
+            content: 'Review feedback',
+          },
+        ],
+      });
+
+      renderChatBox();
+
+      await waitFor(() => {
+        const tab =
+          usePageTabStore.getState().sessionPreviewByProject['test-project-id']
+            .tabs[0];
+        expect(tab).toMatchObject({
           reviewComments: [
             expect.objectContaining({ id: 'comment-1', status: 'sent' }),
           ],
@@ -746,7 +819,8 @@ describe('ChatBox Component', async () => {
           [attachment],
           undefined,
           'test-project-id',
-          'single-agent'
+          'single-agent',
+          undefined
         );
       });
     });

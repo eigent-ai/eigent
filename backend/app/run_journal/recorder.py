@@ -144,6 +144,7 @@ class EventRecorder:
         content: str,
         source: str,
         attachment_names: list[str] | None = None,
+        review_handoff_ids: list[str] | None = None,
         created_at: float | None = None,
     ) -> CommittedRunEvent:
         """Commit the Run's canonical user instruction before execution."""
@@ -152,6 +153,7 @@ class EventRecorder:
             "content": content,
             "source": source,
             "attachment_names": list(attachment_names or []),
+            "review_handoff_ids": list(review_handoff_ids or []),
         }
         values: dict[str, Any] = {
             "event_id": f"user-message:{request_id}",

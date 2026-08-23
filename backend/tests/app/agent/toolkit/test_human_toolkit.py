@@ -133,3 +133,35 @@ async def test_ask_human_pauses_active_agent_timeout(tmp_path):
                 reply = await toolkit.ask_human_via_gui("Continue?")
 
     assert reply == "continue"
+
+
+def test_send_message_notice_uses_current_tool_call_identity():
+    task_lock = MagicMock()
+    task_lock.add_human_input_listen = MagicMock()
+    put_queue = MagicMock()
+
+    with (
+        patch(
+            "app.agent.toolkit.human_toolkit.get_task_lock",
+            return_value=task_lock,
+        ),
+        patch(
+            "app.utils.listen.toolkit_listen.get_task_lock",
+            return_value=task_lock,
+        ),
+        patch(
+            "app.agent.toolkit.human_toolkit.get_current_tool_checkpoint",
+            return_value=MagicMock(tool_call_id="tool-call-1"),
+        ),
+        patch(
+            "app.utils.listen.toolkit_listen._safe_put_queue",
+            put_queue,
+        ),
+    ):
+        HumanToolkit("project-1", "worker").send_message_to_user(
+            "Ready", "The report is ready."
+        )
+
+    notice = put_queue.call_args.args[1]
+    assert notice.data == "The report is ready."
+    assert notice.tool_call_id == "tool-call-1"

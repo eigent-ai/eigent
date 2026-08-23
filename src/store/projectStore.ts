@@ -202,6 +202,7 @@ interface TaskQueue {
   processing?: boolean;
   sendNow?: boolean;
   source?: 'local' | 'remote_control' | 'scheduled';
+  reviewHandoffIds?: string[];
 }
 
 /**

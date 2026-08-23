@@ -29,6 +29,7 @@ import {
 import { useAuthStore } from '@/store/authStore';
 import {
   usePageTabStore,
+  type SessionReviewIdentity,
   type SessionReviewTarget,
 } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
@@ -108,6 +109,8 @@ export interface ReviewChangesState {
   totals: LineCounts | null;
   /** More files changed than the bounded list returned by the backend. */
   truncated?: boolean;
+  reviewIdentity: SessionReviewIdentity | null;
+  stale: boolean;
   refresh: () => void;
 }
 
@@ -116,6 +119,8 @@ interface LoadedReviewFiles {
   totals: LineCounts | null;
   truncated: boolean;
   desktopOnly: boolean;
+  reviewIdentity: SessionReviewIdentity | null;
+  stale: boolean;
 }
 
 /** Shape returned by the `review-list-backups` IPC (electron/main/reviewChanges.ts). */
@@ -200,14 +205,18 @@ export function useReviewChanges(
   reviewTarget: SessionReviewTarget = {
     scope: 'project',
     focusRequestId: 0,
-  }
+  },
+  pinnedIdentity?: SessionReviewIdentity
 ): ReviewChangesState {
   const host = useHost();
   const email = useAuthStore((state) => state.email);
   const userId = useAuthStore((state) => state.user_id);
   const projectId = usePageTabStore((state) => state.sessionPreviewProjectId);
   const reviewScope = reviewTarget.scope;
+  const focusRequestId = reviewTarget.focusRequestId;
   const runId = reviewScope === 'run' ? reviewTarget.runId?.trim() : undefined;
+  const pinnedBaseCommit = pinnedIdentity?.baseCommit;
+  const pinnedTargetCommit = pinnedIdentity?.targetCommit;
   const projectStore = useProjectRuntimeStore();
   const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
   const projectMeta = useSpaceStore((state) =>
@@ -272,6 +281,9 @@ export function useReviewChanges(
   const [desktopOnly, setDesktopOnly] = useState(false);
   const [gitTotals, setGitTotals] = useState<LineCounts | null>(null);
   const [truncated, setTruncated] = useState(false);
+  const [reviewIdentity, setReviewIdentity] =
+    useState<SessionReviewIdentity | null>(null);
+  const [stale, setStale] = useState(false);
   const [fetchNonce, setFetchNonce] = useState(0);
   const refresh = useCallback(() => {
     setLoading(true);
@@ -292,6 +304,8 @@ export function useReviewChanges(
       setFiles(REVIEW_FIXTURE_FILES);
       setGitTotals(null);
       setTruncated(false);
+      setReviewIdentity(null);
+      setStale(false);
       setDesktopOnly(false);
       setError(null);
       setLoading(false);
@@ -311,6 +325,8 @@ export function useReviewChanges(
           totals: null,
           truncated: false,
           desktopOnly: true,
+          reviewIdentity: null,
+          stale: false,
         };
       }
       if (overlayBacked) {
@@ -320,6 +336,8 @@ export function useReviewChanges(
             totals: null,
             truncated: false,
             desktopOnly: false,
+            reviewIdentity: null,
+            stale: false,
           };
         }
         const response = await proxyFetchSpaceProjectOverlays(
@@ -375,7 +393,14 @@ export function useReviewChanges(
             ),
           };
         });
-        return { files, totals: null, truncated: false, desktopOnly: false };
+        return {
+          files,
+          totals: null,
+          truncated: false,
+          desktopOnly: false,
+          reviewIdentity: null,
+          stale: false,
+        };
       }
 
       if (changedPaths.length === 0) {
@@ -384,6 +409,8 @@ export function useReviewChanges(
           totals: null,
           truncated: false,
           desktopOnly: false,
+          reviewIdentity: null,
+          stale: false,
         };
       }
       const entries = (await api.reviewListBackups(
@@ -414,7 +441,14 @@ export function useReviewChanges(
           ),
         };
       });
-      return { files, totals: null, truncated: false, desktopOnly: false };
+      return {
+        files,
+        totals: null,
+        truncated: false,
+        desktopOnly: false,
+        reviewIdentity: null,
+        stale: false,
+      };
     };
 
     const loadFiles = async (): Promise<LoadedReviewFiles> => {
@@ -426,6 +460,30 @@ export function useReviewChanges(
             : await fetchProjectGitChanges(projectId, spaceId, identity);
           if (isRunGitChangesUnavailable(response)) {
             return loadLegacyFiles();
+          }
+          const currentIdentity =
+            response.base_commit && response.target_commit
+              ? {
+                  baseCommit: response.base_commit,
+                  targetCommit: response.target_commit,
+                }
+              : null;
+          const identityChanged = Boolean(
+            pinnedBaseCommit &&
+            pinnedTargetCommit &&
+            (!currentIdentity ||
+              pinnedBaseCommit !== currentIdentity.baseCommit ||
+              pinnedTargetCommit !== currentIdentity.targetCommit)
+          );
+          if (identityChanged) {
+            return {
+              files: [],
+              totals: response.totals,
+              truncated: response.truncated,
+              desktopOnly: false,
+              reviewIdentity: currentIdentity,
+              stale: true,
+            };
           }
           const files = response.files.map((file): ReviewFile => {
             const baseCommit = response.base_commit;
@@ -482,6 +540,8 @@ export function useReviewChanges(
             totals: response.totals,
             truncated: response.truncated,
             desktopOnly: false,
+            reviewIdentity: currentIdentity,
+            stale: false,
           };
         } catch (cause: unknown) {
           if ((cause as { status?: number })?.status !== 404) throw cause;
@@ -502,6 +562,8 @@ export function useReviewChanges(
         setGitTotals(result.totals);
         setTruncated(result.truncated);
         setDesktopOnly(result.desktopOnly);
+        setReviewIdentity(result.reviewIdentity);
+        setStale(result.stale);
         setLoading(false);
       })
       .catch((cause: unknown) => {
@@ -520,8 +582,11 @@ export function useReviewChanges(
     email,
     fetchNonce,
     fixtureEnabled,
+    focusRequestId,
     gitEligible,
     overlayBacked,
+    pinnedBaseCommit,
+    pinnedTargetCommit,
     projectId,
     reviewScope,
     runId,
@@ -596,6 +661,8 @@ export function useReviewChanges(
     error,
     totals,
     truncated,
+    reviewIdentity,
+    stale,
     refresh,
   };
 }

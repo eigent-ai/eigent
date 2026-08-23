@@ -65,6 +65,7 @@ export interface DurableFollowUpRequest {
   project_id: string;
   content: string;
   attachment_paths: string[];
+  review_handoff_ids: string[];
   delivery_mode: 'wait' | 'send_now';
   status: 'pending' | 'admitted' | 'cancelled';
   admitted_run_id?: string | null;
@@ -106,6 +107,9 @@ function parseFollowUpRecord(
     attachment_paths: Array.isArray(record.attachment_paths)
       ? record.attachment_paths
       : [],
+    review_handoff_ids: Array.isArray(record.review_handoff_ids)
+      ? record.review_handoff_ids
+      : [],
   };
 }
 
@@ -114,6 +118,7 @@ export async function createFollowUpRequest(input: {
   requestId: string;
   content: string;
   attachmentPaths: string[];
+  reviewHandoffIds?: string[];
   source?: 'local' | 'remote_control' | 'scheduled';
   sourceCommandId?: string;
 }): Promise<DurableFollowUpRequest> {
@@ -122,6 +127,9 @@ export async function createFollowUpRequest(input: {
     request_id: input.requestId,
     content: input.content,
     attachment_paths: input.attachmentPaths,
+    ...(input.reviewHandoffIds?.length
+      ? { review_handoff_ids: input.reviewHandoffIds }
+      : {}),
     delivery_mode: 'wait',
     source: input.source || 'local',
     source_command_id: input.sourceCommandId,

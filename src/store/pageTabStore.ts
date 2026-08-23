@@ -78,6 +78,11 @@ export interface SessionReviewTarget {
   focusRequestId: number;
 }
 
+export interface SessionReviewIdentity {
+  baseCommit: string;
+  targetCommit: string;
+}
+
 export type ReviewCommentSide = 'original' | 'modified';
 
 export interface ReviewLineSelection {
@@ -98,6 +103,8 @@ export interface SessionReviewComment {
   /** Missing on older persisted drafts and therefore treated as pending. */
   status?: 'pending' | 'sent';
   sentAt?: number;
+  /** Exact Git revision on which the line selection was authored. */
+  reviewIdentity?: SessionReviewIdentity;
 }
 
 /** Code/diff review surface for a Project aggregate or one finalized Run. */
@@ -109,15 +116,19 @@ export interface SessionReviewTab {
   reviewTarget?: SessionReviewTarget;
   /** Local review drafts, persisted with this Project's preview tabs. */
   reviewComments?: SessionReviewComment[];
+  /** First successfully loaded base/target pair; immutable for this tab. */
+  reviewIdentity?: SessionReviewIdentity;
 }
 
 export interface WorkspaceChatDraftRequest {
   requestId: number;
   projectId: string;
   content: string;
+  reviewHandoffIds: string[];
 }
 
 export interface WorkspaceReviewHandoff {
+  handoffId: string;
   requestId: number;
   projectId: string;
   reviewTabId: string;
@@ -219,6 +230,13 @@ const sessionPreviewTabIdSeed = Math.random().toString(36).slice(2, 8);
 function nextSessionPreviewTabId(type: SessionPreviewTab['type']): string {
   sessionPreviewTabSequence += 1;
   return `${type}-${sessionPreviewTabIdSeed}-${sessionPreviewTabSequence}`;
+}
+
+function nextReviewHandoffId(): string {
+  const randomUuid = globalThis.crypto?.randomUUID?.();
+  return (
+    randomUuid ?? `review-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
 }
 
 function createBrowserPreviewTab(projectId: string | null): SessionBrowserTab {
@@ -482,7 +500,7 @@ interface PageTabState {
   consumeWorkspaceChatDraft: (requestId: number) => void;
   acknowledgeWorkspaceReviewHandoffs: (
     projectId: string,
-    sentContent: string
+    handoffIds: readonly string[]
   ) => void;
   /** Incremented to open the add-trigger dialog from the sidebar (Home owns dialog state). */
   triggerAddDialogRequestId: number;
@@ -540,6 +558,7 @@ interface PageTabState {
     tabId: string,
     comments: SessionReviewComment[]
   ) => void;
+  setReviewIdentity: (tabId: string, identity: SessionReviewIdentity) => void;
   /**
    * Open a URL in this project's preview browser — the default target for
    * links mentioned in chat content, so they stay inside the session instead
@@ -761,6 +780,7 @@ export const usePageTabStore = create<PageTabState>()(
           const reviewHandoff =
             reviewSource?.reviewTabId && commentIds.length > 0
               ? {
+                  handoffId: nextReviewHandoffId(),
                   requestId,
                   projectId,
                   reviewTabId: reviewSource.reviewTabId,
@@ -774,6 +794,7 @@ export const usePageTabStore = create<PageTabState>()(
               requestId,
               projectId,
               content: normalized,
+              reviewHandoffIds: reviewHandoff ? [reviewHandoff.handoffId] : [],
             },
             ...(reviewHandoff
               ? {
@@ -793,14 +814,16 @@ export const usePageTabStore = create<PageTabState>()(
             ? { workspaceChatDraftRequest: null }
             : state
         ),
-      acknowledgeWorkspaceReviewHandoffs: (projectId, sentContent) => {
-        const normalized = sentContent.trim();
-        if (!projectId || !normalized) return;
+      acknowledgeWorkspaceReviewHandoffs: (projectId, handoffIds) => {
+        const acknowledged = new Set(
+          handoffIds.map((handoffId) => handoffId.trim()).filter(Boolean)
+        );
+        if (!projectId || acknowledged.size === 0) return;
         set((state) => {
           const matched = state.workspaceReviewHandoffs.filter(
             (handoff) =>
               handoff.projectId === projectId &&
-              normalized.includes(handoff.content)
+              acknowledged.has(handoff.handoffId)
           );
           if (matched.length === 0) return state;
 
@@ -1050,6 +1073,23 @@ export const usePageTabStore = create<PageTabState>()(
           tabs[index] = { ...current, reviewComments: comments };
           return { ...slice, tabs };
         }),
+      setReviewIdentity: (tabId, identity) =>
+        setSessionPreviewSlice(set, (slice) => {
+          const index = slice.tabs.findIndex(
+            (tab) => tab.id === tabId && tab.type === 'review'
+          );
+          if (index < 0) return null;
+          const current = slice.tabs[index] as SessionReviewTab;
+          if (
+            current.reviewIdentity?.baseCommit === identity.baseCommit &&
+            current.reviewIdentity?.targetCommit === identity.targetCommit
+          ) {
+            return null;
+          }
+          const tabs = [...slice.tabs];
+          tabs[index] = { ...current, reviewIdentity: identity };
+          return { ...slice, tabs };
+        }),
       openBrowserPreview: (url) =>
         setSessionPreviewSlice(set, (slice, state) => {
           const normalized = normalizeBrowserUrl(url);
@@ -1226,7 +1266,7 @@ export const usePageTabStore = create<PageTabState>()(
     }),
     {
       name: 'eigent-page-tab',
-      version: 3,
+      version: 4,
       // v1: Project.mode becomes the source of truth. Drop the legacy global
       // sessionSidePanelMode so mode no longer drifts between Projects.
       // v2: Project sidebar fold was removed; drop persisted fold state.
@@ -1246,6 +1286,9 @@ export const usePageTabStore = create<PageTabState>()(
               next.chatTimelineDetailLevel
             );
           }
+          if (version < 4) {
+            next.workspaceReviewHandoffs = [];
+          }
           return next as unknown as PageTabState;
         }
         return persistedState as PageTabState;
@@ -1255,6 +1298,7 @@ export const usePageTabStore = create<PageTabState>()(
         chatTimelineDetailLevel: state.chatTimelineDetailLevel,
         customAgentFolderPathByProjectId:
           state.customAgentFolderPathByProjectId,
+        workspaceReviewHandoffs: state.workspaceReviewHandoffs,
         sessionPreviewByProject: sanitizeSessionPreviewForPersist(
           state.sessionPreviewByProject
         ),
