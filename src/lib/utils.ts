@@ -14,10 +14,32 @@
 
 import { clsx, type ClassValue } from 'clsx';
 import { format, formatDistanceToNow, parseISO } from 'date-fns';
-import { twMerge } from 'tailwind-merge';
+import { extendTailwindMerge } from 'tailwind-merge';
+
+const mergeTailwindClasses = extendTailwindMerge({
+  extend: {
+    theme: {
+      // Tailwind Merge cannot infer that these custom `text-*` utilities are
+      // font sizes. Registering the semantic roles keeps them from evicting
+      // semantic foreground colors such as `text-ds-ink-inverse`.
+      text: [
+        'ds-text-meta',
+        'ds-text-base',
+        'ds-text-body-large',
+        'ds-text-title',
+        'ds-text-section',
+        'ds-text-page',
+        'ds-text-display',
+        'ds-code-small',
+        'ds-code-base',
+        'ds-code-large',
+      ],
+    },
+  },
+});
 
 export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
+  return mergeTailwindClasses(clsx(inputs));
 }
 
 /**

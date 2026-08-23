@@ -43,12 +43,13 @@ const sizeClasses = {
 const variantClasses: Record<SwitchVariant, { root: string; thumb: string }> = {
   default: {
     root: 'border-transparent data-[state=checked]:bg-ds-bg-success-default-default data-[state=unchecked]:bg-ds-neutral-subtle-default',
-    thumb: 'bg-ds-success-on-default',
+    thumb:
+      'data-[state=checked]:bg-ds-success-indicator-on-default data-[state=unchecked]:bg-ds-neutral-strong-default',
   },
   outline: {
     root: 'data-[state=checked]:bg-ds-bg-success-default-default data-[state=checked]:border-ds-border-success-default-default data-[state=unchecked]:bg-ds-neutral-default-default data-[state=unchecked]:border-ds-hairline-default-default',
     thumb:
-      'bg-ds-success-on-default data-[state=unchecked]:bg-ds-neutral-strong-default',
+      'data-[state=checked]:bg-ds-success-indicator-on-default data-[state=unchecked]:bg-ds-neutral-strong-default',
   },
 };
 

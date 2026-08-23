@@ -12,10 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import SearchInput from '@/components/Dashboard/SearchInput';
 import { memoryEditorSearch } from '@/components/Home/memoryRoute';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -29,7 +29,7 @@ import {
   isUnconfiguredPlaceholderSpace,
   useSpaceStore,
 } from '@/store/spaceStore';
-import { ArrowRight, Brain, Folder, FolderKanban, Search } from 'lucide-react';
+import { ArrowRight, Brain, Folder, FolderKanban } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { SettingsRow, SettingsRowGroup } from '../SettingsRowGroup';
@@ -246,18 +246,12 @@ export function MemoryScopeDirectory({
                 <span>{pluralize(totalEntryCount, 'saved note')} total</span>
               </div>
             )}
-            <div className="relative min-w-56 flex-1 sm:max-w-80">
-              <Search
-                className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-ds-ink-muted-default"
-                aria-hidden
-              />
-              <Input
-                size="sm"
+            <div className="w-56 max-w-full">
+              <SearchInput
+                color="subtle-default"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder={`Search ${scopeLabel}s`}
-                aria-label={`Search ${scopeLabel} Memory`}
-                className="pl-9"
               />
             </div>
           </div>

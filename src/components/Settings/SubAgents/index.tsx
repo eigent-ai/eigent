@@ -428,6 +428,7 @@ export default function SubAgents() {
         <Button
           variant="ghost"
           size="sm"
+          buttonRadius="full"
           className="!text-ds-ink-muted-default"
           onClick={handleRemoteSubAgentReset}
           disabled={remoteSubAgentLoading || remoteSubAgentSaving}
@@ -437,6 +438,7 @@ export default function SubAgents() {
         <Button
           variant="primary"
           size="sm"
+          buttonRadius="full"
           onClick={handleRemoteSubAgentSave}
           disabled={remoteSubAgentLoading || remoteSubAgentSaving}
         >

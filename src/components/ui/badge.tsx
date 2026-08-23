@@ -35,7 +35,7 @@ const badgeBase = cva(
       size: {
         xs: 'gap-0.5 px-1 py-0 !text-ds-text-meta',
         default: 'px-2 py-1 !text-ds-text-meta',
-        sm: 'gap-1 px-2 py-1 !text-ds-text-base',
+        sm: 'gap-1 px-2 py-1 !text-ds-text-meta',
       },
     },
     defaultVariants: {

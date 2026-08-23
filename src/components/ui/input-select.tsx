@@ -294,11 +294,11 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
 
     return (
       <div
-        className={cn('relative w-full', stateCls.wrapper, className)}
+        className={cn('relative w-full min-w-0', stateCls.wrapper, className)}
         style={formControlTokenAliases}
       >
         {title && (
-          <div className="mb-1.5 flex items-center gap-1 text-ds-text-base font-bold text-ds-ink-default-default">
+          <div className="mb-1.5 flex items-center gap-1 text-ds-text-meta font-bold text-ds-ink-default-default">
             <span>{title}</span>
             {required && <span className="text-ds-ink-default-default">*</span>}
             {tooltip && (
@@ -317,7 +317,7 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
           ref={containerRef}
           onClick={handleContainerClick}
           className={cn(
-            'relative flex w-full cursor-text items-center gap-2 rounded-lg border border-x border-y border-solid px-3 text-ds-ink-default-default shadow-sm transition-[background-color,border-color,box-shadow,opacity] outline-none',
+            'relative flex w-full min-w-0 cursor-text items-center gap-2 rounded-lg border border-x border-y border-solid px-3 text-ds-ink-default-default shadow-sm transition-[background-color,border-color,box-shadow,opacity] outline-none',
             formFieldInputSelectSizeClasses[size],
             stateCls.container,
             !disabled &&
@@ -344,7 +344,7 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
             onKeyDown={handleInputKeyDown}
             placeholder={placeholder}
             disabled={disabled}
-            className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-ds-ink-muted-default/20"
+            className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-ds-ink-muted-default"
           />
           <ChevronDown
             className={cn(

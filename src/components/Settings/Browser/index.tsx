@@ -287,6 +287,8 @@ export default function CDP() {
         })}
         confirmText={t('layout.remove')}
         cancelText={t('layout.cancel')}
+        confirmVariant="primary"
+        confirmTone="error"
       />
 
       <SettingsRowGroup>

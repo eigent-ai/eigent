@@ -21,7 +21,6 @@
       "terminal",
       "document",
       "success",
-      "caution",
       "error",
       "warning",
       "information"
@@ -89,7 +88,6 @@
     "terminal": { "source": "fixed" },
     "document": { "source": "fixed" },
     "success": { "source": "fixed" },
-    "caution": { "source": "fixed" },
     "error": { "source": "fixed" },
     "warning": { "source": "fixed" },
     "information": { "source": "fixed" }
@@ -189,11 +187,6 @@
     {
       "fg": "text.success.strong.default",
       "bg": "bg.success.subtle.default",
-      "minContrast": 4.5
-    },
-    {
-      "fg": "text.caution.strong.default",
-      "bg": "bg.caution.subtle.default",
       "minContrast": 4.5
     },
     {

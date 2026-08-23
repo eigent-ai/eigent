@@ -535,7 +535,7 @@ const SidebarMenuItem = React.forwardRef<
 SidebarMenuItem.displayName = 'SidebarMenuItem';
 
 const sidebarMenuButtonVariants = cva(
-  'peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-none ring-ds-ring-focus hover:bg-ds-neutral-default-hover hover:text-ds-ink-default-default focus-visible:ring-2 active:bg-ds-neutral-default-hover active:text-ds-ink-default-default disabled:pointer-events-none disabled:opacity-50 group-has-[[data-sidebar=menu-action]]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-ds-neutral-default-hover data-[active=true]:font-medium data-[active=true]:text-ds-ink-default-default data-[state=open]:hover:bg-ds-neutral-default-hover data-[state=open]:hover:text-ds-ink-default-default group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-2 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0',
+  'peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-none ring-ds-ring-focus hover:bg-ds-neutral-default-hover hover:text-ds-ink-default-default focus-visible:ring-2 active:shadow-ds-elevation-control-pressed active:text-ds-ink-default-default disabled:pointer-events-none disabled:opacity-50 group-has-[[data-sidebar=menu-action]]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-ds-neutral-default-hover data-[active=true]:font-medium data-[active=true]:text-ds-ink-default-default data-[state=open]:hover:bg-ds-neutral-default-hover data-[state=open]:hover:text-ds-ink-default-default group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-2 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0',
   {
     variants: {
       variant: {
@@ -747,7 +747,7 @@ const SidebarMenuSubButton = React.forwardRef<
       data-size={size}
       data-active={isActive}
       className={cn(
-        'flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-ds-ink-default-default ring-ds-ring-focus outline-none hover:bg-ds-neutral-default-hover hover:text-ds-ink-default-default focus-visible:ring-2 active:bg-ds-neutral-default-hover active:text-ds-ink-default-default disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-ds-ink-default-default',
+        'flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-ds-ink-default-default ring-ds-ring-focus outline-none hover:bg-ds-neutral-default-hover hover:text-ds-ink-default-default focus-visible:ring-2 active:text-ds-ink-default-default active:shadow-ds-elevation-control-pressed disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-ds-ink-default-default',
         'data-[active=true]:bg-ds-neutral-default-hover data-[active=true]:text-ds-ink-default-default',
         size === 'sm' && 'text-xs',
         size === 'md' && 'text-sm',

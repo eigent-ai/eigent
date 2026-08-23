@@ -192,17 +192,17 @@ export default function SkillListItem(props: SkillListItemProps) {
 
   return (
     <div
-      className={`w-full flex-1 flex-col justify-between rounded-2xl bg-ds-neutral-subtle-default p-4 transition-colors ${skill.isExample && !skill.enabled ? 'opacity-50' : ''}`}
+      className={`flex w-full flex-1 flex-col justify-between gap-2 rounded-2xl bg-ds-neutral-subtle-default p-4 transition-colors ${skill.isExample && !skill.enabled ? 'opacity-50' : ''}`}
     >
       {/* Row 1: Name / Actions */}
       <div className="flex items-center justify-between">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-ds-text-base font-bold text-ds-ink-default-default">
+          <span className="text-ds-text-lg truncate font-bold text-ds-ink-default-default">
             {skill.name}
           </span>
         </div>
 
-        <div className="flex shrink-0 items-center gap-md">
+        <div className="flex shrink-0 items-center gap-2">
           <Switch
             checked={skill.enabled}
             onCheckedChange={() => toggleSkill(skill.id)}
@@ -240,16 +240,11 @@ export default function SkillListItem(props: SkillListItemProps) {
       </div>
 
       {/* Row 2: Description - 5 lines max, hover shows full */}
-      <TooltipSimple
-        content={skill.description}
-        className="max-w-sm break-words whitespace-pre-wrap"
-      >
-        <div className="w-full cursor-default">
-          <span className="line-clamp-5 block overflow-hidden text-ds-text-base break-words text-ds-ink-muted-default">
-            {skill.description}
-          </span>
-        </div>
-      </TooltipSimple>
+      <div className="w-full cursor-default">
+        <span className="line-clamp-5 block overflow-hidden text-ds-text-base break-words text-ds-ink-muted-default">
+          {skill.description}
+        </span>
+      </div>
 
       {/* Row 3: Added time / Skill scope */}
       <div className="flex flex-col items-start gap-2">

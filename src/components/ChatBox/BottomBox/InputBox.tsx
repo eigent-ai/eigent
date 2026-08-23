@@ -45,7 +45,7 @@ import { RichChatInput } from './RichChatInput';
 import type { BottomBoxHeaderContent } from './types';
 
 const PRIMARY_ACTION_ICON_MOTION_CLASS =
-  'absolute inset-0 size-[14px] text-current transition-[transform,opacity] motion-reduce:transition-none';
+  'absolute inset-0 size-ds-icon-md text-current transition-[transform,opacity] motion-reduce:transition-none';
 const PRIMARY_ACTION_ICON_MOTION_STYLE: React.CSSProperties = {
   transitionDuration: '160ms',
   transitionTimingFunction: 'cubic-bezier(0.77, 0, 0.175, 1)',
@@ -564,12 +564,12 @@ export const Inputbox = ({
         className="flex w-full flex-wrap items-center justify-between gap-y-2"
       >
         {/* Left: add files/photos + connector picker + skill picker */}
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 items-center gap-1">
           <TooltipSimple content="Attach" side="top">
             <Button
               type="button"
               variant="ghost"
-              size="xs"
+              size="sm"
               buttonContent="icon-only"
               textWeight="bold"
               buttonRadius="lg"
@@ -591,7 +591,7 @@ export const Inputbox = ({
                 type="button"
                 data-picker-trigger
                 variant="ghost"
-                size="xs"
+                size="sm"
                 buttonContent="icon-only"
                 textWeight="bold"
                 buttonRadius="lg"
@@ -616,7 +616,7 @@ export const Inputbox = ({
                 type="button"
                 data-picker-trigger
                 variant="ghost"
-                size="xs"
+                size="sm"
                 buttonContent="icon-only"
                 textWeight="bold"
                 buttonRadius="lg"
@@ -652,7 +652,7 @@ export const Inputbox = ({
           >
             <Button
               type="button"
-              size="xs"
+              size="sm"
               buttonContent="icon-only"
               textWeight="bold"
               buttonRadius="full"
@@ -669,7 +669,7 @@ export const Inputbox = ({
               disabled={primaryActionDisabled}
             >
               <span
-                className="relative grid size-[14px] place-items-center leading-none"
+                className="relative grid size-ds-icon-md place-items-center leading-none"
                 aria-hidden
               >
                 <ArrowRight

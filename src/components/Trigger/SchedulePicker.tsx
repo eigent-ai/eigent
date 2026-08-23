@@ -736,11 +736,11 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
   }, []);
 
   return (
-    <div className="flex h-full w-full flex-col space-y-4">
+    <div className="flex h-full w-full min-w-0 flex-col space-y-4">
       <Tabs
         value={frequency}
         onValueChange={(value) => setFrequency(value as FrequencyType)}
-        className="flex-1"
+        className="min-w-0 flex-1"
       >
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="one-time" className="text-ds-text-base">
@@ -778,8 +778,8 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 : undefined
             }
           />
-          <div className="flex items-end gap-3">
-            <div className="flex-1">
+          <div className="grid min-w-0 grid-cols-2 items-end gap-3">
+            <div className="min-w-0">
               <InputSelect
                 value={hour}
                 onChange={(value) => setHour(value)}
@@ -791,7 +791,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 state={showErrors && !hour ? 'error' : undefined}
               />
             </div>
-            <div className="flex-1">
+            <div className="min-w-0">
               <InputSelect
                 value={minute}
                 onChange={(value) => setMinute(value)}
@@ -807,8 +807,8 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
         </TabsContent>
 
         <TabsContent value="daily" className="mt-4 space-y-3">
-          <div className="flex items-end gap-3">
-            <div className="flex-1">
+          <div className="grid min-w-0 grid-cols-2 items-end gap-3">
+            <div className="min-w-0">
               <InputSelect
                 value={hour}
                 onChange={(value) => setHour(value)}
@@ -820,7 +820,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 state={showErrors && !hour ? 'error' : undefined}
               />
             </div>
-            <div className="flex-1">
+            <div className="min-w-0">
               <InputSelect
                 value={minute}
                 onChange={(value) => setMinute(value)}
@@ -850,8 +850,8 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
         </TabsContent>
 
         <TabsContent value="weekly" className="mt-4 space-y-3">
-          <div className="flex items-end gap-3">
-            <div className="flex-1">
+          <div className="grid min-w-0 grid-cols-2 items-end gap-3">
+            <div className="min-w-0">
               <InputSelect
                 value={hour}
                 onChange={(value) => setHour(value)}
@@ -863,7 +863,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 state={showErrors && !hour ? 'error' : undefined}
               />
             </div>
-            <div className="flex-1">
+            <div className="min-w-0">
               <InputSelect
                 value={minute}
                 onChange={(value) => setMinute(value)}
@@ -877,7 +877,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
             </div>
           </div>
           <div>
-            <div className="mb-1.5 text-ds-text-base font-bold text-ds-ink-default-default">
+            <div className="mb-1.5 text-ds-text-meta font-bold text-ds-ink-default-default">
               {t('triggers.schedule-weekdays')} *
             </div>
             <ToggleGroup
@@ -977,8 +977,8 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
             required
             state={showErrors && !dayOfMonth ? 'error' : undefined}
           />
-          <div className="flex items-end gap-3">
-            <div className="flex-1">
+          <div className="grid min-w-0 grid-cols-2 items-end gap-3">
+            <div className="min-w-0">
               <InputSelect
                 value={hour}
                 onChange={(value) => setHour(value)}
@@ -990,7 +990,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 state={showErrors && !hour ? 'error' : undefined}
               />
             </div>
-            <div className="flex-1">
+            <div className="min-w-0">
               <InputSelect
                 value={minute}
                 onChange={(value) => setMinute(value)}

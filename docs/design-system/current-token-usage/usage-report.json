@@ -1,34 +1,16 @@
 {
   "schemaVersion": 1,
   "branch": "design-system-enhancement",
-  "scannedFiles": 577,
+  "scannedFiles": 576,
   "summary": {
-    "cssVariableReferences": 404,
-    "uniqueCssVariables": 189,
-    "semanticUtilityReferences": 4044,
+    "cssVariableReferences": 383,
+    "uniqueCssVariables": 182,
+    "semanticUtilityReferences": 4054,
     "arbitraryGeometryReferences": 313,
     "removedTailwindUtilities": 0,
     "manualTokenReferences": 43
   },
   "cssVariables": [
-    {
-      "name": "--ds-ink-default-default",
-      "count": 16,
-      "files": [
-        "src/components/Layout/tokenAliases.ts",
-        "src/components/ui/tokenAliases.ts"
-      ],
-      "examples": [
-        "src/components/Layout/tokenAliases.ts:36",
-        "src/components/Layout/tokenAliases.ts:37",
-        "src/components/Layout/tokenAliases.ts:39",
-        "src/components/Layout/tokenAliases.ts:44",
-        "src/components/Layout/tokenAliases.ts:58"
-      ],
-      "target": "Keep semantic token",
-      "action": "No migration required",
-      "confidence": "keep"
-    },
     {
       "name": "--ds-ref-space-8",
       "count": 15,
@@ -75,6 +57,21 @@
       "confidence": "keep"
     },
     {
+      "name": "--ds-ink-default-default",
+      "count": 11,
+      "files": ["src/components/ui/tokenAliases.ts"],
+      "examples": [
+        "src/components/ui/tokenAliases.ts:41",
+        "src/components/ui/tokenAliases.ts:42",
+        "src/components/ui/tokenAliases.ts:44",
+        "src/components/ui/tokenAliases.ts:45",
+        "src/components/ui/tokenAliases.ts:50"
+      ],
+      "target": "Keep semantic token",
+      "action": "No migration required",
+      "confidence": "keep"
+    },
+    {
       "name": "--ds-text-neutral-default-default",
       "count": 11,
       "files": ["src/style/index.css"],
@@ -99,25 +96,6 @@
         "src/style/generated/tokens.css:200",
         "src/style/generated/tokens.css:206",
         "src/style/generated/tokens.css:209"
-      ],
-      "target": "Keep semantic token",
-      "action": "No migration required",
-      "confidence": "keep"
-    },
-    {
-      "name": "--ds-hairline-default-default",
-      "count": 6,
-      "files": [
-        "src/components/Layout/tokenAliases.ts",
-        "src/components/ui/tokenAliases.ts",
-        "src/style/markdown-styles.css"
-      ],
-      "examples": [
-        "src/components/Layout/tokenAliases.ts:33",
-        "src/components/Layout/tokenAliases.ts:54",
-        "src/components/ui/tokenAliases.ts:37",
-        "src/components/ui/tokenAliases.ts:102",
-        "src/components/ui/tokenAliases.ts:116"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -244,24 +222,6 @@
       "confidence": "keep"
     },
     {
-      "name": "--ds-ink-muted-default",
-      "count": 5,
-      "files": [
-        "src/components/Layout/tokenAliases.ts",
-        "src/components/ui/tokenAliases.ts"
-      ],
-      "examples": [
-        "src/components/Layout/tokenAliases.ts:38",
-        "src/components/Layout/tokenAliases.ts:40",
-        "src/components/Layout/tokenAliases.ts:45",
-        "src/components/ui/tokenAliases.ts:43",
-        "src/components/ui/tokenAliases.ts:46"
-      ],
-      "target": "Keep semantic token",
-      "action": "No migration required",
-      "confidence": "keep"
-    },
-    {
       "name": "--ds-ref-space-16",
       "count": 5,
       "files": ["src/style/generated/tokens.css", "src/style/index.css"],
@@ -305,34 +265,17 @@
       "confidence": "manual"
     },
     {
-      "name": "--ds-neutral-default-default",
+      "name": "--ds-hairline-default-default",
       "count": 4,
       "files": [
-        "src/components/Layout/tokenAliases.ts",
-        "src/components/ui/tokenAliases.ts"
+        "src/components/ui/tokenAliases.ts",
+        "src/style/markdown-styles.css"
       ],
       "examples": [
-        "src/components/Layout/tokenAliases.ts:50",
-        "src/components/ui/tokenAliases.ts:33",
-        "src/components/ui/tokenAliases.ts:97",
-        "src/components/ui/tokenAliases.ts:103"
-      ],
-      "target": "Keep semantic token",
-      "action": "No migration required",
-      "confidence": "keep"
-    },
-    {
-      "name": "--ds-neutral-default-hover",
-      "count": 4,
-      "files": [
-        "src/components/Layout/tokenAliases.ts",
-        "src/components/ui/tokenAliases.ts"
-      ],
-      "examples": [
-        "src/components/Layout/tokenAliases.ts:51",
-        "src/components/Layout/tokenAliases.ts:57",
-        "src/components/ui/tokenAliases.ts:34",
-        "src/components/ui/tokenAliases.ts:51"
+        "src/components/ui/tokenAliases.ts:37",
+        "src/components/ui/tokenAliases.ts:102",
+        "src/components/ui/tokenAliases.ts:116",
+        "src/style/markdown-styles.css:108"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -522,7 +465,7 @@
       "examples": [
         "src/components/ui/separator.tsx:35",
         "src/components/ui/separator.tsx:36",
-        "src/style/markdown-styles.css:105"
+        "src/style/markdown-styles.css:108"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -562,6 +505,19 @@
         "src/components/ui/tokenAliases.ts:60",
         "src/components/ui/tokenAliases.ts:67",
         "src/components/ui/tokenAliases.ts:74"
+      ],
+      "target": "Keep semantic token",
+      "action": "No migration required",
+      "confidence": "keep"
+    },
+    {
+      "name": "--ds-neutral-default-default",
+      "count": 3,
+      "files": ["src/components/ui/tokenAliases.ts"],
+      "examples": [
+        "src/components/ui/tokenAliases.ts:33",
+        "src/components/ui/tokenAliases.ts:97",
+        "src/components/ui/tokenAliases.ts:103"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -765,7 +721,7 @@
       ],
       "examples": [
         "src/style/generated/tokens.css:242",
-        "src/style/markdown-styles.css:133"
+        "src/style/markdown-styles.css:136"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -799,6 +755,30 @@
       "confidence": "keep"
     },
     {
+      "name": "--ds-ink-muted-default",
+      "count": 2,
+      "files": ["src/components/ui/tokenAliases.ts"],
+      "examples": [
+        "src/components/ui/tokenAliases.ts:43",
+        "src/components/ui/tokenAliases.ts:46"
+      ],
+      "target": "Keep semantic token",
+      "action": "No migration required",
+      "confidence": "keep"
+    },
+    {
+      "name": "--ds-neutral-default-hover",
+      "count": 2,
+      "files": ["src/components/ui/tokenAliases.ts"],
+      "examples": [
+        "src/components/ui/tokenAliases.ts:34",
+        "src/components/ui/tokenAliases.ts:51"
+      ],
+      "target": "Keep semantic token",
+      "action": "No migration required",
+      "confidence": "keep"
+    },
+    {
       "name": "--ds-neutral-muted-default",
       "count": 2,
       "files": [
@@ -807,22 +787,7 @@
       ],
       "examples": [
         "src/components/ui/tokenAliases.ts:62",
-        "src/style/markdown-styles.css:130"
-      ],
-      "target": "Keep semantic token",
-      "action": "No migration required",
-      "confidence": "keep"
-    },
-    {
-      "name": "--ds-neutral-strong-default",
-      "count": 2,
-      "files": [
-        "src/components/Layout/tokenAliases.ts",
-        "src/components/ui/tokenAliases.ts"
-      ],
-      "examples": [
-        "src/components/Layout/tokenAliases.ts:53",
-        "src/components/ui/tokenAliases.ts:35"
+        "src/style/markdown-styles.css:133"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -837,7 +802,7 @@
       ],
       "examples": [
         "src/style/generated/tokens.css:238",
-        "src/style/markdown-styles.css:127"
+        "src/style/markdown-styles.css:130"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -943,7 +908,7 @@
       "confidence": "keep"
     },
     {
-      "name": "--ds-success-on-default",
+      "name": "--ds-success-indicator-on-default",
       "count": 2,
       "files": ["src/components/ui/tokenAliases.ts"],
       "examples": [
@@ -963,7 +928,7 @@
       ],
       "examples": [
         "src/style/generated/tokens.css:36",
-        "src/style/markdown-styles.css:45"
+        "src/style/markdown-styles.css:48"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -986,8 +951,8 @@
       "count": 2,
       "files": ["src/style/markdown-styles.css"],
       "examples": [
-        "src/style/markdown-styles.css:76",
-        "src/style/markdown-styles.css:115"
+        "src/style/markdown-styles.css:79",
+        "src/style/markdown-styles.css:118"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -998,8 +963,8 @@
       "count": 2,
       "files": ["src/style/markdown-styles.css"],
       "examples": [
-        "src/style/markdown-styles.css:75",
-        "src/style/markdown-styles.css:114"
+        "src/style/markdown-styles.css:78",
+        "src/style/markdown-styles.css:117"
       ],
       "target": "Keep semantic token",
       "action": "No migration required",
@@ -1543,7 +1508,7 @@
       "name": "--ds-code-base-size",
       "count": 1,
       "files": ["src/style/markdown-styles.css"],
-      "examples": ["src/style/markdown-styles.css:134"],
+      "examples": ["src/style/markdown-styles.css:137"],
       "target": "Keep semantic token",
       "action": "No migration required",
       "confidence": "keep"
@@ -1594,15 +1559,6 @@
       "confidence": "keep"
     },
     {
-      "name": "--ds-hairline-subtle-default",
-      "count": 1,
-      "files": ["src/components/Layout/tokenAliases.ts"],
-      "examples": ["src/components/Layout/tokenAliases.ts:34"],
-      "target": "Keep semantic token",
-      "action": "No migration required",
-      "confidence": "keep"
-    },
-    {
       "name": "--ds-hairline-subtle-disabled",
       "count": 1,
       "files": ["src/components/Settings/Models/ConfigModelCard.tsx"],
@@ -1612,46 +1568,10 @@
       "confidence": "keep"
     },
     {
-      "name": "--ds-icon-neutral-default-default",
-      "count": 1,
-      "files": ["src/style/index.css"],
-      "examples": ["src/style/index.css:178"],
-      "target": "Keep semantic token",
-      "action": "No migration required",
-      "confidence": "keep"
-    },
-    {
       "name": "--ds-icon-neutral-muted-default",
       "count": 1,
       "files": ["src/style/index.css"],
       "examples": ["src/style/index.css:171"],
-      "target": "Keep semantic token",
-      "action": "No migration required",
-      "confidence": "keep"
-    },
-    {
-      "name": "--ds-icon-status-completed-default-default",
-      "count": 1,
-      "files": ["src/components/Layout/tokenAliases.ts"],
-      "examples": ["src/components/Layout/tokenAliases.ts:47"],
-      "target": "Keep semantic token",
-      "action": "No migration required",
-      "confidence": "keep"
-    },
-    {
-      "name": "--ds-icon-status-pending-default-default",
-      "count": 1,
-      "files": ["src/components/Layout/tokenAliases.ts"],
-      "examples": ["src/components/Layout/tokenAliases.ts:48"],
-      "target": "Keep semantic token",
-      "action": "No migration required",
-      "confidence": "keep"
-    },
-    {
-      "name": "--ds-icon-status-splitting-default-default",
-      "count": 1,
-      "files": ["src/components/Layout/tokenAliases.ts"],
-      "examples": ["src/components/Layout/tokenAliases.ts:46"],
       "target": "Keep semantic token",
       "action": "No migration required",
       "confidence": "keep"
@@ -1679,6 +1599,15 @@
       "count": 1,
       "files": ["src/components/ui/tokenAliases.ts"],
       "examples": ["src/components/ui/tokenAliases.ts:63"],
+      "target": "Keep semantic token",
+      "action": "No migration required",
+      "confidence": "keep"
+    },
+    {
+      "name": "--ds-neutral-strong-default",
+      "count": 1,
+      "files": ["src/components/ui/tokenAliases.ts"],
+      "examples": ["src/components/ui/tokenAliases.ts:35"],
       "target": "Keep semantic token",
       "action": "No migration required",
       "confidence": "keep"
@@ -1831,7 +1760,7 @@
       "name": "--ds-text-body-large-size",
       "count": 1,
       "files": ["src/style/markdown-styles.css"],
-      "examples": ["src/style/markdown-styles.css:44"],
+      "examples": ["src/style/markdown-styles.css:47"],
       "target": "Keep semantic token",
       "action": "No migration required",
       "confidence": "keep"
@@ -1840,7 +1769,7 @@
       "name": "--ds-text-display-line",
       "count": 1,
       "files": ["src/style/markdown-styles.css"],
-      "examples": ["src/style/markdown-styles.css:110"],
+      "examples": ["src/style/markdown-styles.css:113"],
       "target": "Keep semantic token",
       "action": "No migration required",
       "confidence": "keep"
@@ -1849,7 +1778,7 @@
       "name": "--ds-text-display-size",
       "count": 1,
       "files": ["src/style/markdown-styles.css"],
-      "examples": ["src/style/markdown-styles.css:109"],
+      "examples": ["src/style/markdown-styles.css:112"],
       "target": "Keep semantic token",
       "action": "No migration required",
       "confidence": "keep"
@@ -1876,7 +1805,7 @@
       "name": "--ds-text-section-line",
       "count": 1,
       "files": ["src/style/markdown-styles.css"],
-      "examples": ["src/style/markdown-styles.css:85"],
+      "examples": ["src/style/markdown-styles.css:88"],
       "target": "Keep semantic token",
       "action": "No migration required",
       "confidence": "keep"
@@ -1885,25 +1814,7 @@
       "name": "--ds-text-section-size",
       "count": 1,
       "files": ["src/style/markdown-styles.css"],
-      "examples": ["src/style/markdown-styles.css:84"],
-      "target": "Keep semantic token",
-      "action": "No migration required",
-      "confidence": "keep"
-    },
-    {
-      "name": "--ds-text-status-error-strong-default",
-      "count": 1,
-      "files": ["src/components/Layout/tokenAliases.ts"],
-      "examples": ["src/components/Layout/tokenAliases.ts:42"],
-      "target": "Keep semantic token",
-      "action": "No migration required",
-      "confidence": "keep"
-    },
-    {
-      "name": "--ds-text-status-splitting-strong-default",
-      "count": 1,
-      "files": ["src/components/Layout/tokenAliases.ts"],
-      "examples": ["src/components/Layout/tokenAliases.ts:41"],
+      "examples": ["src/style/markdown-styles.css:87"],
       "target": "Keep semantic token",
       "action": "No migration required",
       "confidence": "keep"
@@ -1912,7 +1823,7 @@
       "name": "--ds-text-title-line",
       "count": 1,
       "files": ["src/style/markdown-styles.css"],
-      "examples": ["src/style/markdown-styles.css:92"],
+      "examples": ["src/style/markdown-styles.css:95"],
       "target": "Keep semantic token",
       "action": "No migration required",
       "confidence": "keep"
@@ -1921,7 +1832,7 @@
       "name": "--ds-text-title-size",
       "count": 1,
       "files": ["src/style/markdown-styles.css"],
-      "examples": ["src/style/markdown-styles.css:91"],
+      "examples": ["src/style/markdown-styles.css:94"],
       "target": "Keep semantic token",
       "action": "No migration required",
       "confidence": "keep"
@@ -2088,7 +1999,7 @@
     "semantic": [
       {
         "name": "text-ds-ink-muted-default",
-        "count": 564,
+        "count": 565,
         "files": [
           "src/components/AddWorker/ToolSelect.tsx",
           "src/components/BrowserAgentWorkspace/index.tsx",
@@ -2244,154 +2155,8 @@
         ]
       },
       {
-        "name": "text-ds-text-base",
-        "count": 505,
-        "files": [
-          "src/components/AddWorker/ToolSelect.tsx",
-          "src/components/AddWorker/index.tsx",
-          "src/components/ChatBox/BottomBox/ApprovalModeSelect.tsx",
-          "src/components/ChatBox/BottomBox/BoxHeader.tsx",
-          "src/components/ChatBox/BottomBox/ControlInput.tsx",
-          "src/components/ChatBox/BottomBox/InputBox.tsx",
-          "src/components/ChatBox/BottomBox/ModelSelect.tsx",
-          "src/components/ChatBox/BottomBox/PickerPanel.tsx",
-          "src/components/ChatBox/BottomBox/RichChatInput.tsx",
-          "src/components/ChatBox/BottomBox/ThinkingEffortSelect.tsx",
-          "src/components/ChatBox/BottomBox/UsageLimitBanner.tsx",
-          "src/components/ChatBox/BottomBox/index.tsx",
-          "src/components/ChatBox/EventNativeProjectTimeline.tsx",
-          "src/components/ChatBox/EventTimeline/DefaultEventRenderers.tsx",
-          "src/components/ChatBox/EventTimeline/RepeatedToolCallGroup.tsx",
-          "src/components/ChatBox/EventTimeline/UnknownEventFallback.tsx",
-          "src/components/ChatBox/InterruptedRunBanner.tsx",
-          "src/components/ChatBox/MessageItem/AgentMessageCard.tsx",
-          "src/components/ChatBox/MessageItem/ArtifactChangeList.tsx",
-          "src/components/ChatBox/MessageItem/FloatingAction.tsx",
-          "src/components/ChatBox/MessageItem/HumanInteractionCard.tsx",
-          "src/components/ChatBox/MessageItem/NoticeCard.tsx",
-          "src/components/ChatBox/MessageItem/PreparingToExecuteTasks.tsx",
-          "src/components/ChatBox/MessageItem/TaskCompletionCard.tsx",
-          "src/components/ChatBox/MessageItem/TaskWorkLogAccordion.tsx",
-          "src/components/ChatBox/MessageItem/UserMessageCard.tsx",
-          "src/components/ChatBox/MessageItem/UserMessageRichContent.tsx",
-          "src/components/ChatBox/TaskBox/PlanTaskBox/ExpandedOverlay.tsx",
-          "src/components/ChatBox/TaskBox/PlanTaskBox/FoldedView.tsx",
-          "src/components/ChatBox/TaskBox/PlanTaskBox/StatusRow.tsx",
-          "src/components/ChatBox/TaskBox/PlanTaskBox/SubtaskEditor.tsx",
-          "src/components/ChatBox/TimelineModes/CallRow.tsx",
-          "src/components/ChatBox/TimelineModes/NarrativeTimeline.tsx",
-          "src/components/ChatBox/TimelineModes/RunFiles.tsx",
-          "src/components/ChatBox/UserQueryGroup.tsx",
-          "src/components/Dashboard/SearchInput/index.tsx",
-          "src/components/Dialog/InviteCodeDialog.tsx",
-          "src/components/Dialog/KeyboardShortcutsDialog.tsx",
-          "src/components/Dialog/ReportBugDialog.tsx",
-          "src/components/Dispatch/DispatchChannelCard.tsx",
-          "src/components/Dispatch/index.tsx",
-          "src/components/ErrorBoundary/index.tsx",
-          "src/components/Folder/CsvPreviewTable.tsx",
-          "src/components/Folder/index.tsx",
-          "src/components/Home/HomeGreeting.tsx",
-          "src/components/Home/Projects.tsx",
-          "src/components/Home/SpaceDetail.tsx",
-          "src/components/Home/SpaceDetailLoadingSkeleton.tsx",
-          "src/components/Home/SpaceDetailTabsNav.tsx",
-          "src/components/Home/Tasks.tsx",
-          "src/components/Home/Triggers.tsx",
-          "src/components/Home/components/HomeHubBoard.tsx",
-          "src/components/Home/components/HomeHubItemShared.tsx",
-          "src/components/Home/components/HomeHubListTable.tsx",
-          "src/components/InstallStep/InstallDependencies.tsx",
-          "src/components/InstallStep/InstallationErrorDialog/InstallationErrorDialog.tsx",
-          "src/components/InstallStep/OnboardingSteps.tsx",
-          "src/components/Layout/AppSidebar/NavTab.tsx",
-          "src/components/Notification/index.tsx",
-          "src/components/ProjectPageSidebar/ProjectNavListRows.tsx",
-          "src/components/ProjectPageSidebar/SidebarAccordionSection.tsx",
-          "src/components/ProjectPageSidebar/SpaceSwitchDropdown.tsx",
-          "src/components/Session/HeaderBox/ChatTimeline.tsx",
-          "src/components/Session/HeaderBox/index.tsx",
-          "src/components/Session/PreviewPanel/tabs/TerminalTab.tsx",
-          "src/components/Session/PreviewPanel/tabs/browser/BrowserTab.tsx",
-          "src/components/Session/SidePanel/components/ActivityPanel.tsx",
-          "src/components/Session/SidePanel/components/FoldedPanel/AgentDetailPane.tsx",
-          "src/components/Session/SidePanel/components/FoldedPanel/index.tsx",
-          "src/components/Session/SidePanel/components/SessionGroup.tsx",
-          "src/components/Session/SidePanel/sections/SessionSidePanelDialogs.tsx",
-          "src/components/Session/SidePanel/sections/primitives.tsx",
-          "src/components/Settings/Appearance/index.tsx",
-          "src/components/Settings/Browser/index.tsx",
-          "src/components/Settings/Channels/index.tsx",
-          "src/components/Settings/Connectors/ConnectorGateway.tsx",
-          "src/components/Settings/Connectors/components/AddCustomConnectorPage.tsx",
-          "src/components/Settings/Connectors/components/ConnectorBrowserPage.tsx",
-          "src/components/Settings/Connectors/components/GoogleSearchPanel.tsx",
-          "src/components/Settings/Connectors/components/MCPConfigDialog.tsx",
-          "src/components/Settings/Connectors/components/MCPDeleteDialog.tsx",
-          "src/components/Settings/Cookies/index.tsx",
-          "src/components/Settings/Extension/index.tsx",
-          "src/components/Settings/Memory/MemoryScopeNotice.tsx",
-          "src/components/Settings/Memory/index.tsx",
-          "src/components/Settings/Models/components/ProviderModelCombobox.tsx",
-          "src/components/Settings/Models/index.tsx",
-          "src/components/Settings/Privacy/index.tsx",
-          "src/components/Settings/SettingsRowGroup.tsx",
-          "src/components/Settings/SettingsSection.tsx",
-          "src/components/Settings/Skills/components/SkillListItem.tsx",
-          "src/components/Settings/Skills/components/SkillUploadDialog.tsx",
-          "src/components/Settings/Skills/index.tsx",
-          "src/components/Settings/SubAgents/index.tsx",
-          "src/components/SpacesHub/index.tsx",
-          "src/components/TopBar/UserMenu.tsx",
-          "src/components/TopBar/controlStyles.ts",
-          "src/components/Trigger/ActivityLogItem.tsx",
-          "src/components/Trigger/ExecutionLogs.tsx",
-          "src/components/Trigger/SchedulePicker.tsx",
-          "src/components/Trigger/TriggerDialog.tsx",
-          "src/components/Trigger/Triggers.tsx",
-          "src/components/WorkFlow/TaskLogPanelContent.tsx",
-          "src/components/Workspace/WorkspaceCommitTimeline.tsx",
-          "src/components/Workspace/WorkspaceProjectPicker.tsx",
-          "src/components/Workspace/WorkspaceVersionHistoryDialog.tsx",
-          "src/components/WorkspaceBundle/AgentPluginImportWizard.tsx",
-          "src/components/WorkspaceBundle/WorkspaceBundleInstallWizard.tsx",
-          "src/components/WorkspaceConfiguration/WorkspaceBundleSaveDialog.tsx",
-          "src/components/WorkspaceConfiguration/WorkspaceResourceEditorPanel.tsx",
-          "src/components/WorkspaceConfiguration/WorkspaceResourceListItem.tsx",
-          "src/components/ui/alert.tsx",
-          "src/components/ui/badge.tsx",
-          "src/components/ui/button.tsx",
-          "src/components/ui/card.tsx",
-          "src/components/ui/command.tsx",
-          "src/components/ui/dialog.tsx",
-          "src/components/ui/dropdown-menu.tsx",
-          "src/components/ui/ds-text.tsx",
-          "src/components/ui/formFieldSurface.ts",
-          "src/components/ui/input-select.tsx",
-          "src/components/ui/input.tsx",
-          "src/components/ui/menu-button.tsx",
-          "src/components/ui/popover.tsx",
-          "src/components/ui/select.tsx",
-          "src/components/ui/sheet.tsx",
-          "src/components/ui/tabs.tsx",
-          "src/components/ui/tag.tsx",
-          "src/components/ui/textarea.tsx",
-          "src/components/ui/toggle.tsx",
-          "src/lib/richText.ts",
-          "src/pages/RemoteControl.tsx",
-          "src/pages/WorkspaceConfiguration.tsx"
-        ],
-        "examples": [
-          "src/components/AddWorker/ToolSelect.tsx:909",
-          "src/components/AddWorker/ToolSelect.tsx:927",
-          "src/components/AddWorker/index.tsx:832",
-          "src/components/AddWorker/index.tsx:852",
-          "src/components/AddWorker/index.tsx:885"
-        ]
-      },
-      {
         "name": "text-ds-ink-default-default",
-        "count": 500,
+        "count": 501,
         "files": [
           "src/components/AddWorker/ToolSelect.tsx",
           "src/components/AddWorker/index.tsx",
@@ -2547,9 +2312,152 @@
         ]
       },
       {
-        "name": "text-ds-text-meta",
-        "count": 297,
+        "name": "text-ds-text-base",
+        "count": 489,
         "files": [
+          "src/components/AddWorker/ToolSelect.tsx",
+          "src/components/AddWorker/index.tsx",
+          "src/components/ChatBox/BottomBox/ApprovalModeSelect.tsx",
+          "src/components/ChatBox/BottomBox/BoxHeader.tsx",
+          "src/components/ChatBox/BottomBox/ControlInput.tsx",
+          "src/components/ChatBox/BottomBox/InputBox.tsx",
+          "src/components/ChatBox/BottomBox/ModelSelect.tsx",
+          "src/components/ChatBox/BottomBox/PickerPanel.tsx",
+          "src/components/ChatBox/BottomBox/RichChatInput.tsx",
+          "src/components/ChatBox/BottomBox/ThinkingEffortSelect.tsx",
+          "src/components/ChatBox/BottomBox/UsageLimitBanner.tsx",
+          "src/components/ChatBox/BottomBox/index.tsx",
+          "src/components/ChatBox/EventNativeProjectTimeline.tsx",
+          "src/components/ChatBox/EventTimeline/DefaultEventRenderers.tsx",
+          "src/components/ChatBox/EventTimeline/RepeatedToolCallGroup.tsx",
+          "src/components/ChatBox/EventTimeline/UnknownEventFallback.tsx",
+          "src/components/ChatBox/InterruptedRunBanner.tsx",
+          "src/components/ChatBox/MessageItem/AgentMessageCard.tsx",
+          "src/components/ChatBox/MessageItem/ArtifactChangeList.tsx",
+          "src/components/ChatBox/MessageItem/FloatingAction.tsx",
+          "src/components/ChatBox/MessageItem/HumanInteractionCard.tsx",
+          "src/components/ChatBox/MessageItem/NoticeCard.tsx",
+          "src/components/ChatBox/MessageItem/PreparingToExecuteTasks.tsx",
+          "src/components/ChatBox/MessageItem/TaskCompletionCard.tsx",
+          "src/components/ChatBox/MessageItem/TaskWorkLogAccordion.tsx",
+          "src/components/ChatBox/MessageItem/UserMessageCard.tsx",
+          "src/components/ChatBox/MessageItem/UserMessageRichContent.tsx",
+          "src/components/ChatBox/TaskBox/PlanTaskBox/ExpandedOverlay.tsx",
+          "src/components/ChatBox/TaskBox/PlanTaskBox/FoldedView.tsx",
+          "src/components/ChatBox/TaskBox/PlanTaskBox/StatusRow.tsx",
+          "src/components/ChatBox/TaskBox/PlanTaskBox/SubtaskEditor.tsx",
+          "src/components/ChatBox/TimelineModes/CallRow.tsx",
+          "src/components/ChatBox/TimelineModes/NarrativeTimeline.tsx",
+          "src/components/ChatBox/TimelineModes/RunFiles.tsx",
+          "src/components/ChatBox/UserQueryGroup.tsx",
+          "src/components/Dashboard/SearchInput/index.tsx",
+          "src/components/Dialog/InviteCodeDialog.tsx",
+          "src/components/Dialog/KeyboardShortcutsDialog.tsx",
+          "src/components/Dialog/ReportBugDialog.tsx",
+          "src/components/Dispatch/DispatchChannelCard.tsx",
+          "src/components/Dispatch/index.tsx",
+          "src/components/ErrorBoundary/index.tsx",
+          "src/components/Folder/CsvPreviewTable.tsx",
+          "src/components/Folder/index.tsx",
+          "src/components/Home/HomeGreeting.tsx",
+          "src/components/Home/Projects.tsx",
+          "src/components/Home/SpaceDetail.tsx",
+          "src/components/Home/SpaceDetailLoadingSkeleton.tsx",
+          "src/components/Home/SpaceDetailTabsNav.tsx",
+          "src/components/Home/Tasks.tsx",
+          "src/components/Home/Triggers.tsx",
+          "src/components/Home/components/HomeHubBoard.tsx",
+          "src/components/Home/components/HomeHubItemShared.tsx",
+          "src/components/Home/components/HomeHubListTable.tsx",
+          "src/components/InstallStep/InstallDependencies.tsx",
+          "src/components/InstallStep/InstallationErrorDialog/InstallationErrorDialog.tsx",
+          "src/components/InstallStep/OnboardingSteps.tsx",
+          "src/components/Layout/AppSidebar/NavTab.tsx",
+          "src/components/Notification/index.tsx",
+          "src/components/ProjectPageSidebar/ProjectNavListRows.tsx",
+          "src/components/ProjectPageSidebar/SidebarAccordionSection.tsx",
+          "src/components/ProjectPageSidebar/SpaceSwitchDropdown.tsx",
+          "src/components/Session/HeaderBox/ChatTimeline.tsx",
+          "src/components/Session/HeaderBox/index.tsx",
+          "src/components/Session/PreviewPanel/tabs/TerminalTab.tsx",
+          "src/components/Session/PreviewPanel/tabs/browser/BrowserTab.tsx",
+          "src/components/Session/SidePanel/components/ActivityPanel.tsx",
+          "src/components/Session/SidePanel/components/FoldedPanel/AgentDetailPane.tsx",
+          "src/components/Session/SidePanel/components/FoldedPanel/index.tsx",
+          "src/components/Session/SidePanel/components/SessionGroup.tsx",
+          "src/components/Session/SidePanel/sections/SessionSidePanelDialogs.tsx",
+          "src/components/Session/SidePanel/sections/primitives.tsx",
+          "src/components/Settings/Appearance/index.tsx",
+          "src/components/Settings/Browser/index.tsx",
+          "src/components/Settings/Channels/index.tsx",
+          "src/components/Settings/Connectors/ConnectorGateway.tsx",
+          "src/components/Settings/Connectors/components/AddCustomConnectorPage.tsx",
+          "src/components/Settings/Connectors/components/ConnectorBrowserPage.tsx",
+          "src/components/Settings/Connectors/components/GoogleSearchPanel.tsx",
+          "src/components/Settings/Connectors/components/MCPConfigDialog.tsx",
+          "src/components/Settings/Connectors/components/MCPDeleteDialog.tsx",
+          "src/components/Settings/Cookies/index.tsx",
+          "src/components/Settings/Extension/index.tsx",
+          "src/components/Settings/Memory/MemoryScopeNotice.tsx",
+          "src/components/Settings/Memory/index.tsx",
+          "src/components/Settings/Models/components/ProviderModelCombobox.tsx",
+          "src/components/Settings/Models/index.tsx",
+          "src/components/Settings/Privacy/index.tsx",
+          "src/components/Settings/SettingsRowGroup.tsx",
+          "src/components/Settings/SettingsSection.tsx",
+          "src/components/Settings/Skills/components/SkillListItem.tsx",
+          "src/components/Settings/Skills/components/SkillUploadDialog.tsx",
+          "src/components/Settings/Skills/index.tsx",
+          "src/components/Settings/SubAgents/index.tsx",
+          "src/components/SpacesHub/index.tsx",
+          "src/components/TopBar/UserMenu.tsx",
+          "src/components/TopBar/controlStyles.ts",
+          "src/components/Trigger/ActivityLogItem.tsx",
+          "src/components/Trigger/ExecutionLogs.tsx",
+          "src/components/Trigger/SchedulePicker.tsx",
+          "src/components/Trigger/TriggerDialog.tsx",
+          "src/components/Trigger/Triggers.tsx",
+          "src/components/WorkFlow/TaskLogPanelContent.tsx",
+          "src/components/Workspace/WorkspaceCommitTimeline.tsx",
+          "src/components/Workspace/WorkspaceProjectPicker.tsx",
+          "src/components/Workspace/WorkspaceVersionHistoryDialog.tsx",
+          "src/components/WorkspaceBundle/AgentPluginImportWizard.tsx",
+          "src/components/WorkspaceBundle/WorkspaceBundleInstallWizard.tsx",
+          "src/components/WorkspaceConfiguration/WorkspaceBundleSaveDialog.tsx",
+          "src/components/WorkspaceConfiguration/WorkspaceResourceEditorPanel.tsx",
+          "src/components/WorkspaceConfiguration/WorkspaceResourceListItem.tsx",
+          "src/components/ui/alert.tsx",
+          "src/components/ui/button.tsx",
+          "src/components/ui/card.tsx",
+          "src/components/ui/command.tsx",
+          "src/components/ui/dialog.tsx",
+          "src/components/ui/dropdown-menu.tsx",
+          "src/components/ui/ds-text.tsx",
+          "src/components/ui/formFieldSurface.ts",
+          "src/components/ui/menu-button.tsx",
+          "src/components/ui/popover.tsx",
+          "src/components/ui/select.tsx",
+          "src/components/ui/sheet.tsx",
+          "src/components/ui/tabs.tsx",
+          "src/components/ui/textarea.tsx",
+          "src/components/ui/toggle.tsx",
+          "src/lib/richText.ts",
+          "src/pages/RemoteControl.tsx",
+          "src/pages/WorkspaceConfiguration.tsx"
+        ],
+        "examples": [
+          "src/components/AddWorker/ToolSelect.tsx:909",
+          "src/components/AddWorker/ToolSelect.tsx:927",
+          "src/components/AddWorker/index.tsx:832",
+          "src/components/ChatBox/BottomBox/ApprovalModeSelect.tsx:266",
+          "src/components/ChatBox/BottomBox/BoxHeader.tsx:81"
+        ]
+      },
+      {
+        "name": "text-ds-text-meta",
+        "count": 317,
+        "files": [
+          "src/components/AddWorker/index.tsx",
           "src/components/ChatBox/BottomBox/ApprovalModeSelect.tsx",
           "src/components/ChatBox/BottomBox/BoxHeader.tsx",
           "src/components/ChatBox/BottomBox/ControlInput.tsx",
@@ -2562,6 +2470,7 @@
           "src/components/ChatBox/InterruptedRunBanner.tsx",
           "src/components/ChatBox/MessageItem/AgentMessageCard.tsx",
           "src/components/ChatBox/MessageItem/ArtifactChangeList.tsx",
+          "src/components/ChatBox/MessageItem/HumanInteractionCard.tsx",
           "src/components/ChatBox/MessageItem/TaskWorkLogAccordion.tsx",
           "src/components/ChatBox/MessageItem/ToolInputOutputDetails.tsx",
           "src/components/ChatBox/MessageItem/UserMessageCard.tsx",
@@ -2604,6 +2513,7 @@
           "src/components/Trigger/ActivityLogItem.tsx",
           "src/components/Trigger/DynamicTriggerConfig.tsx",
           "src/components/Trigger/ExecutionLogs.tsx",
+          "src/components/Trigger/SchedulePicker.tsx",
           "src/components/WorkFlow/TaskLogPanelContent.tsx",
           "src/components/Workspace/ProjectModeToggle.tsx",
           "src/components/Workspace/WorkspaceCommitTimeline.tsx",
@@ -2618,7 +2528,11 @@
           "src/components/ui/command.tsx",
           "src/components/ui/dropdown-menu.tsx",
           "src/components/ui/ds-text.tsx",
+          "src/components/ui/input-select.tsx",
           "src/components/ui/input.tsx",
+          "src/components/ui/label.tsx",
+          "src/components/ui/popover.tsx",
+          "src/components/ui/select.tsx",
           "src/components/ui/shortcut-keycap.tsx",
           "src/components/ui/shortcut-tooltip.tsx",
           "src/components/ui/tag.tsx",
@@ -2628,16 +2542,16 @@
           "src/pages/WorkspaceConfiguration.tsx"
         ],
         "examples": [
+          "src/components/AddWorker/index.tsx:852",
+          "src/components/AddWorker/index.tsx:885",
           "src/components/ChatBox/BottomBox/ApprovalModeSelect.tsx:198",
           "src/components/ChatBox/BottomBox/ApprovalModeSelect.tsx:232",
-          "src/components/ChatBox/BottomBox/BoxHeader.tsx:76",
-          "src/components/ChatBox/BottomBox/BoxHeader.tsx:104",
-          "src/components/ChatBox/BottomBox/BoxHeader.tsx:133"
+          "src/components/ChatBox/BottomBox/BoxHeader.tsx:76"
         ]
       },
       {
         "name": "bg-ds-neutral-subtle-default",
-        "count": 260,
+        "count": 251,
         "files": [
           "src/components/AddWorker/ToolSelect.tsx",
           "src/components/AddWorker/index.tsx",
@@ -2660,6 +2574,7 @@
           "src/components/CodeViewer/MonacoSourceCodeViewer.tsx",
           "src/components/CodeViewer/SourceCodeViewer.tsx",
           "src/components/Dashboard/IntegrationList/index.tsx",
+          "src/components/Dashboard/SearchInput/index.tsx",
           "src/components/ErrorBoundary/index.tsx",
           "src/components/Folder/CsvPreviewTable.tsx",
           "src/components/Folder/index.tsx",
@@ -2752,7 +2667,7 @@
       },
       {
         "name": "bg-ds-neutral-default-default",
-        "count": 181,
+        "count": 178,
         "files": [
           "src/components/AddWorker/ToolSelect.tsx",
           "src/components/BrowserAgentWorkspace/index.tsx",
@@ -2773,6 +2688,7 @@
           "src/components/ChatBox/TaskBox/TaskCard.tsx",
           "src/components/ChatBox/TimelineModes/TrajectoryTimeline.tsx",
           "src/components/ChatBox/UserQueryGroup.tsx",
+          "src/components/Dashboard/SearchInput/index.tsx",
           "src/components/Dialog/InviteCodeDialog.tsx",
           "src/components/Dialog/KeyboardShortcutsDialog.tsx",
           "src/components/Dispatch/DispatchChannelCard.tsx",
@@ -2860,7 +2776,7 @@
       },
       {
         "name": "border-ds-hairline-default-default",
-        "count": 129,
+        "count": 130,
         "files": [
           "src/components/AddWorker/index.tsx",
           "src/components/BrowserAgentWorkspace/index.tsx",
@@ -2872,6 +2788,7 @@
           "src/components/ChatBox/MessageItem/FloatingAction.tsx",
           "src/components/ChatBox/UserQueryGroup.tsx",
           "src/components/Dashboard/IntegrationList/index.tsx",
+          "src/components/Dashboard/SearchInput/index.tsx",
           "src/components/Dialog/InviteCodeDialog.tsx",
           "src/components/Dialog/ReportBugDialog.tsx",
           "src/components/ErrorBoundary/index.tsx",
@@ -2991,7 +2908,7 @@
       },
       {
         "name": "bg-ds-neutral-strong-default",
-        "count": 81,
+        "count": 82,
         "files": [
           "src/components/BrowserAgentWorkspace/index.tsx",
           "src/components/ChatBox/BottomBox/BoxHeader.tsx",
@@ -3093,8 +3010,88 @@
         ]
       },
       {
-        "name": "bg-ds-neutral-default-hover",
+        "name": "ring-ds-ring-focus",
+        "count": 58,
+        "files": [
+          "src/components/AddWorker/ToolSelect.tsx",
+          "src/components/ChatBox/BottomBox/ControlInput.tsx",
+          "src/components/ChatBox/EventTimeline/RepeatedToolCallGroup.tsx",
+          "src/components/ChatBox/UserQueryGroup.tsx",
+          "src/components/Dashboard/SearchInput/index.tsx",
+          "src/components/Folder/index.tsx",
+          "src/components/Home/SpaceDetailTabsNav.tsx",
+          "src/components/Session/PreviewPanel/tabs/browser/BrowserTab.tsx",
+          "src/components/Session/SidePanel/sections/primitives.tsx",
+          "src/components/Settings/Connectors/ConnectorGateway.tsx",
+          "src/components/Settings/Connectors/components/ConnectorBrowserPage.tsx",
+          "src/components/Settings/General/index.tsx",
+          "src/components/Settings/Skills/components/SkillListItem.tsx",
+          "src/components/SpacesHub/index.tsx",
+          "src/components/TopBar/controlStyles.ts",
+          "src/components/Workspace/FoldedAgentCard.tsx",
+          "src/components/Workspace/WorkforceAgentList.tsx",
+          "src/components/WorkspaceConfiguration/WorkspaceResourceEditorPanel.tsx",
+          "src/components/WorkspaceConfiguration/WorkspaceResourceListItem.tsx",
+          "src/components/ui/dropdown-menu.tsx",
+          "src/components/ui/input-select.tsx",
+          "src/components/ui/input.tsx",
+          "src/components/ui/popover.tsx",
+          "src/components/ui/resizable.tsx",
+          "src/components/ui/select.tsx",
+          "src/components/ui/semanticProps.ts",
+          "src/components/ui/sheet.tsx",
+          "src/components/ui/sidebar.tsx",
+          "src/components/ui/tabs.tsx",
+          "src/components/ui/textarea.tsx",
+          "src/style/index.css"
+        ],
+        "examples": [
+          "src/components/AddWorker/ToolSelect.tsx:845",
+          "src/components/ChatBox/BottomBox/ControlInput.tsx:238",
+          "src/components/ChatBox/EventTimeline/RepeatedToolCallGroup.tsx:95",
+          "src/components/ChatBox/UserQueryGroup.tsx:65",
+          "src/components/Dashboard/SearchInput/index.tsx:181"
+        ]
+      },
+      {
+        "name": "text-ds-text-error-strong-default",
         "count": 52,
+        "files": [
+          "src/components/ChatBox/BottomBox/UsageLimitBanner.tsx",
+          "src/components/Home/SpaceDetailSidebar.tsx",
+          "src/components/ProjectPageSidebar/ProjectNavListRows.tsx",
+          "src/components/Settings/Browser/index.tsx",
+          "src/components/Settings/Connectors/ConnectorGateway.tsx",
+          "src/components/Settings/Connectors/components/AddCustomConnectorPage.tsx",
+          "src/components/Settings/Connectors/components/ConnectorBrowserPage.tsx",
+          "src/components/Settings/Connectors/components/MCPDeleteDialog.tsx",
+          "src/components/Settings/Memory/MemoryScopeNotice.tsx",
+          "src/components/Settings/Models/index.tsx",
+          "src/components/Settings/SubAgents/index.tsx",
+          "src/components/TopBar/UserMenu.tsx",
+          "src/components/Trigger/DynamicTriggerConfig.tsx",
+          "src/components/Trigger/TriggerListItem.tsx",
+          "src/components/WorkspaceBundle/AgentPluginImportWizard.tsx",
+          "src/components/WorkspaceBundle/WorkspaceBundleInstallWizard.tsx",
+          "src/components/WorkspaceConfiguration/WorkspaceBundleSaveDialog.tsx",
+          "src/components/ui/badge.tsx",
+          "src/components/ui/button.tsx",
+          "src/components/ui/formFieldSurface.ts",
+          "src/components/ui/tag.tsx",
+          "src/pages/RemoteControl.tsx",
+          "src/pages/WorkspaceConfiguration.tsx"
+        ],
+        "examples": [
+          "src/components/ChatBox/BottomBox/UsageLimitBanner.tsx:40",
+          "src/components/ChatBox/BottomBox/UsageLimitBanner.tsx:53",
+          "src/components/Home/SpaceDetailSidebar.tsx:103",
+          "src/components/ProjectPageSidebar/ProjectNavListRows.tsx:159",
+          "src/components/Settings/Browser/index.tsx:370"
+        ]
+      },
+      {
+        "name": "bg-ds-neutral-default-hover",
+        "count": 45,
         "files": [
           "src/components/ChatBox/BottomBox/InputBox.tsx",
           "src/components/ChatBox/BottomBox/QueuedBox.tsx",
@@ -3131,85 +3128,8 @@
         ]
       },
       {
-        "name": "text-ds-text-error-strong-default",
-        "count": 52,
-        "files": [
-          "src/components/ChatBox/BottomBox/UsageLimitBanner.tsx",
-          "src/components/Home/SpaceDetailSidebar.tsx",
-          "src/components/ProjectPageSidebar/ProjectNavListRows.tsx",
-          "src/components/Settings/Browser/index.tsx",
-          "src/components/Settings/Connectors/ConnectorGateway.tsx",
-          "src/components/Settings/Connectors/components/AddCustomConnectorPage.tsx",
-          "src/components/Settings/Connectors/components/ConnectorBrowserPage.tsx",
-          "src/components/Settings/Connectors/components/MCPDeleteDialog.tsx",
-          "src/components/Settings/Memory/MemoryScopeNotice.tsx",
-          "src/components/Settings/Models/index.tsx",
-          "src/components/Settings/SubAgents/index.tsx",
-          "src/components/TopBar/UserMenu.tsx",
-          "src/components/Trigger/DynamicTriggerConfig.tsx",
-          "src/components/Trigger/TriggerListItem.tsx",
-          "src/components/WorkspaceBundle/AgentPluginImportWizard.tsx",
-          "src/components/WorkspaceBundle/WorkspaceBundleInstallWizard.tsx",
-          "src/components/WorkspaceConfiguration/WorkspaceBundleSaveDialog.tsx",
-          "src/components/ui/badge.tsx",
-          "src/components/ui/button.tsx",
-          "src/components/ui/formFieldSurface.ts",
-          "src/components/ui/tag.tsx",
-          "src/pages/RemoteControl.tsx",
-          "src/pages/WorkspaceConfiguration.tsx"
-        ],
-        "examples": [
-          "src/components/ChatBox/BottomBox/UsageLimitBanner.tsx:40",
-          "src/components/ChatBox/BottomBox/UsageLimitBanner.tsx:53",
-          "src/components/Home/SpaceDetailSidebar.tsx:103",
-          "src/components/ProjectPageSidebar/ProjectNavListRows.tsx:159",
-          "src/components/Settings/Browser/index.tsx:368"
-        ]
-      },
-      {
-        "name": "ring-ds-ring-focus",
-        "count": 47,
-        "files": [
-          "src/components/AddWorker/ToolSelect.tsx",
-          "src/components/ChatBox/BottomBox/ControlInput.tsx",
-          "src/components/ChatBox/EventTimeline/RepeatedToolCallGroup.tsx",
-          "src/components/ChatBox/UserQueryGroup.tsx",
-          "src/components/Folder/index.tsx",
-          "src/components/Home/SpaceDetailTabsNav.tsx",
-          "src/components/Session/PreviewPanel/tabs/browser/BrowserTab.tsx",
-          "src/components/Session/SidePanel/sections/primitives.tsx",
-          "src/components/Settings/Connectors/ConnectorGateway.tsx",
-          "src/components/Settings/Connectors/components/ConnectorBrowserPage.tsx",
-          "src/components/Settings/Skills/components/SkillListItem.tsx",
-          "src/components/SpacesHub/index.tsx",
-          "src/components/TopBar/controlStyles.ts",
-          "src/components/Workspace/FoldedAgentCard.tsx",
-          "src/components/Workspace/WorkforceAgentList.tsx",
-          "src/components/WorkspaceConfiguration/WorkspaceResourceEditorPanel.tsx",
-          "src/components/WorkspaceConfiguration/WorkspaceResourceListItem.tsx",
-          "src/components/ui/input-select.tsx",
-          "src/components/ui/input.tsx",
-          "src/components/ui/popover.tsx",
-          "src/components/ui/resizable.tsx",
-          "src/components/ui/select.tsx",
-          "src/components/ui/semanticProps.ts",
-          "src/components/ui/sheet.tsx",
-          "src/components/ui/sidebar.tsx",
-          "src/components/ui/tabs.tsx",
-          "src/components/ui/textarea.tsx",
-          "src/style/index.css"
-        ],
-        "examples": [
-          "src/components/AddWorker/ToolSelect.tsx:845",
-          "src/components/ChatBox/BottomBox/ControlInput.tsx:238",
-          "src/components/ChatBox/EventTimeline/RepeatedToolCallGroup.tsx:95",
-          "src/components/ChatBox/UserQueryGroup.tsx:65",
-          "src/components/Folder/index.tsx:699"
-        ]
-      },
-      {
         "name": "text-ds-text-body-large",
-        "count": 39,
+        "count": 38,
         "files": [
           "src/components/AddWorker/ToolSelect.tsx",
           "src/components/Dashboard/IntegrationList/index.tsx",
@@ -3234,7 +3154,6 @@
           "src/components/ui/button.tsx",
           "src/components/ui/ds-text.tsx",
           "src/components/ui/menu-button.tsx",
-          "src/components/ui/tag.tsx",
           "src/pages/Login.tsx",
           "src/pages/RemoteControl.tsx",
           "src/pages/SignUp.tsx"
@@ -3390,7 +3309,7 @@
           "src/pages/WorkspaceConfiguration.tsx"
         ],
         "examples": [
-          "src/components/Settings/Browser/index.tsx:332",
+          "src/components/Settings/Browser/index.tsx:334",
           "src/components/Settings/Connectors/components/AddCustomConnectorPage.tsx:301",
           "src/components/Settings/Connectors/components/ConnectorBrowserPage.tsx:1240",
           "src/components/Settings/Connectors/components/ConnectorBrowserPage.tsx:1377",
@@ -3422,8 +3341,8 @@
           "src/components/Dispatch/index.tsx:272",
           "src/components/Session/SidePanel/components/FoldedPanel/AgentDetailPane.tsx:499",
           "src/components/Session/SidePanel/components/FoldedPanel/AgentDetailPane.tsx:543",
-          "src/components/Settings/Browser/index.tsx:351",
-          "src/components/Settings/Browser/index.tsx:468"
+          "src/components/Settings/Browser/index.tsx:353",
+          "src/components/Settings/Browser/index.tsx:470"
         ]
       },
       {
@@ -3576,8 +3495,33 @@
         ]
       },
       {
+        "name": "bg-ds-bg-information-subtle-default",
+        "count": 18,
+        "files": [
+          "src/components/ChatBox/BottomBox/InputBox.tsx",
+          "src/components/ChatBox/EventTimeline/DefaultEventRenderers.tsx",
+          "src/components/Settings/Browser/index.tsx",
+          "src/components/Settings/Connectors/components/ConnectorBrowserPage.tsx",
+          "src/components/Settings/Cookies/index.tsx",
+          "src/components/Settings/Memory/index.tsx",
+          "src/components/Workspace/WorkspaceCommitTimeline.tsx",
+          "src/components/WorkspaceConfiguration/WorkspaceBundleSaveDialog.tsx",
+          "src/components/ui/badge.tsx",
+          "src/components/ui/button.tsx",
+          "src/components/ui/tag.tsx",
+          "src/pages/WorkspaceConfiguration.tsx"
+        ],
+        "examples": [
+          "src/components/ChatBox/BottomBox/InputBox.tsx:381",
+          "src/components/ChatBox/BottomBox/InputBox.tsx:390",
+          "src/components/ChatBox/EventTimeline/DefaultEventRenderers.tsx:122",
+          "src/components/Settings/Browser/index.tsx:334",
+          "src/components/Settings/Connectors/components/ConnectorBrowserPage.tsx:1240"
+        ]
+      },
+      {
         "name": "bg-ds-neutral-subtle-hover",
-        "count": 19,
+        "count": 18,
         "files": [
           "src/components/ChatBox/BottomBox/UsageLimitBanner.tsx",
           "src/components/Folder/ZoomControls.tsx",
@@ -3602,31 +3546,6 @@
         ]
       },
       {
-        "name": "bg-ds-bg-information-subtle-default",
-        "count": 18,
-        "files": [
-          "src/components/ChatBox/BottomBox/InputBox.tsx",
-          "src/components/ChatBox/EventTimeline/DefaultEventRenderers.tsx",
-          "src/components/Settings/Browser/index.tsx",
-          "src/components/Settings/Connectors/components/ConnectorBrowserPage.tsx",
-          "src/components/Settings/Cookies/index.tsx",
-          "src/components/Settings/Memory/index.tsx",
-          "src/components/Workspace/WorkspaceCommitTimeline.tsx",
-          "src/components/WorkspaceConfiguration/WorkspaceBundleSaveDialog.tsx",
-          "src/components/ui/badge.tsx",
-          "src/components/ui/button.tsx",
-          "src/components/ui/tag.tsx",
-          "src/pages/WorkspaceConfiguration.tsx"
-        ],
-        "examples": [
-          "src/components/ChatBox/BottomBox/InputBox.tsx:381",
-          "src/components/ChatBox/BottomBox/InputBox.tsx:390",
-          "src/components/ChatBox/EventTimeline/DefaultEventRenderers.tsx:122",
-          "src/components/Settings/Browser/index.tsx:332",
-          "src/components/Settings/Connectors/components/ConnectorBrowserPage.tsx:1240"
-        ]
-      },
-      {
         "name": "bg-ds-bg-success-subtle-default",
         "count": 16,
         "files": [
@@ -3646,6 +3565,29 @@
           "src/components/Workspace/WorkspaceCommitTimeline.tsx:152",
           "src/components/Workspace/WorkspaceCommitTimeline.tsx:161",
           "src/components/Workspace/WorkspaceVersionHistoryDialog.tsx:284"
+        ]
+      },
+      {
+        "name": "shadow-ds-elevation-control-pressed",
+        "count": 16,
+        "files": [
+          "src/components/ChatBox/BottomBox/ApprovalModeSelect.tsx",
+          "src/components/ChatBox/BottomBox/ModelSelect.tsx",
+          "src/components/ChatBox/BottomBox/ThinkingEffortSelect.tsx",
+          "src/components/ChatBox/MessageItem/ArtifactChangeList.tsx",
+          "src/components/ChatBox/UserQueryGroup.tsx",
+          "src/components/Session/SidePanel/sections/primitives.tsx",
+          "src/components/Settings/Models/index.tsx",
+          "src/components/TopBar/controlStyles.ts",
+          "src/components/ui/button.tsx",
+          "src/components/ui/sidebar.tsx"
+        ],
+        "examples": [
+          "src/components/ChatBox/BottomBox/ApprovalModeSelect.tsx:220",
+          "src/components/ChatBox/BottomBox/ModelSelect.tsx:544",
+          "src/components/ChatBox/BottomBox/ThinkingEffortSelect.tsx:106",
+          "src/components/ChatBox/MessageItem/ArtifactChangeList.tsx:75",
+          "src/components/ChatBox/UserQueryGroup.tsx:65"
         ]
       },
       {
@@ -3781,6 +3723,31 @@
         ]
       },
       {
+        "name": "ring-ds-hairline-strong-default",
+        "count": 13,
+        "files": [
+          "src/components/ChatBox/BottomBox/ApprovalModeSelect.tsx",
+          "src/components/ChatBox/BottomBox/ModelSelect.tsx",
+          "src/components/ChatBox/BottomBox/ThinkingEffortSelect.tsx",
+          "src/components/Dashboard/SearchInput/index.tsx",
+          "src/components/Session/PreviewPanel/tabs/browser/BrowserTab.tsx",
+          "src/components/Session/SidePanel/index.tsx",
+          "src/components/Workspace/ProjectModeToggle.tsx",
+          "src/components/ui/input-select.tsx",
+          "src/components/ui/input.tsx",
+          "src/components/ui/popover.tsx",
+          "src/components/ui/select.tsx",
+          "src/components/ui/textarea.tsx"
+        ],
+        "examples": [
+          "src/components/ChatBox/BottomBox/ApprovalModeSelect.tsx:221",
+          "src/components/ChatBox/BottomBox/ModelSelect.tsx:545",
+          "src/components/ChatBox/BottomBox/ThinkingEffortSelect.tsx:107",
+          "src/components/Dashboard/SearchInput/index.tsx:180",
+          "src/components/Session/PreviewPanel/tabs/browser/BrowserTab.tsx:240"
+        ]
+      },
+      {
         "name": "text-ds-icon-status-completed-default-default",
         "count": 13,
         "files": [
@@ -3827,27 +3794,21 @@
         ]
       },
       {
-        "name": "ring-ds-hairline-strong-default",
+        "name": "rounded-ds-field",
         "count": 12,
         "files": [
-          "src/components/ChatBox/BottomBox/ApprovalModeSelect.tsx",
-          "src/components/ChatBox/BottomBox/ModelSelect.tsx",
-          "src/components/ChatBox/BottomBox/ThinkingEffortSelect.tsx",
-          "src/components/Session/PreviewPanel/tabs/browser/BrowserTab.tsx",
-          "src/components/Session/SidePanel/index.tsx",
-          "src/components/Workspace/ProjectModeToggle.tsx",
-          "src/components/ui/input-select.tsx",
-          "src/components/ui/input.tsx",
+          "src/components/Dashboard/SearchInput/index.tsx",
+          "src/components/ui/command.tsx",
+          "src/components/ui/formFieldSurface.ts",
           "src/components/ui/popover.tsx",
-          "src/components/ui/select.tsx",
           "src/components/ui/textarea.tsx"
         ],
         "examples": [
-          "src/components/ChatBox/BottomBox/ApprovalModeSelect.tsx:221",
-          "src/components/ChatBox/BottomBox/ModelSelect.tsx:545",
-          "src/components/ChatBox/BottomBox/ThinkingEffortSelect.tsx:107",
-          "src/components/Session/PreviewPanel/tabs/browser/BrowserTab.tsx:240",
-          "src/components/Session/SidePanel/index.tsx:162"
+          "src/components/Dashboard/SearchInput/index.tsx:177",
+          "src/components/ui/command.tsx:85",
+          "src/components/ui/formFieldSurface.ts:27",
+          "src/components/ui/formFieldSurface.ts:28",
+          "src/components/ui/formFieldSurface.ts:33"
         ]
       },
       {
@@ -3913,23 +3874,6 @@
         ]
       },
       {
-        "name": "rounded-ds-field",
-        "count": 11,
-        "files": [
-          "src/components/ui/command.tsx",
-          "src/components/ui/formFieldSurface.ts",
-          "src/components/ui/popover.tsx",
-          "src/components/ui/textarea.tsx"
-        ],
-        "examples": [
-          "src/components/ui/command.tsx:85",
-          "src/components/ui/formFieldSurface.ts:27",
-          "src/components/ui/formFieldSurface.ts:28",
-          "src/components/ui/formFieldSurface.ts:33",
-          "src/components/ui/formFieldSurface.ts:34"
-        ]
-      },
-      {
         "name": "text-ds-icon-warning-default-default",
         "count": 11,
         "files": [
@@ -3986,7 +3930,7 @@
           "src/components/Session/SidePanel/components/FoldedPanel/AgentDetailPane.tsx:401",
           "src/components/Trigger/ActivityLogItem.tsx:158",
           "src/components/Trigger/DynamicTriggerConfig.tsx:1165",
-          "src/components/Trigger/TriggerDialog.tsx:856"
+          "src/components/Trigger/TriggerDialog.tsx:854"
         ]
       },
       {
@@ -4022,7 +3966,7 @@
         "examples": [
           "src/components/ChatBox/BottomBox/ModelSelect.tsx:705",
           "src/components/ChatBox/BottomBox/ModelSelect.tsx:779",
-          "src/components/Settings/Browser/index.tsx:383",
+          "src/components/Settings/Browser/index.tsx:385",
           "src/components/Settings/Models/index.tsx:1480",
           "src/components/Settings/Models/index.tsx:1488"
         ]
@@ -4120,23 +4064,6 @@
           "src/components/ChatBox/BottomBox/ModelSelect.tsx:545",
           "src/components/ChatBox/BottomBox/ThinkingEffortSelect.tsx:107",
           "src/components/Home/SpaceDetailTabsNav.tsx:100"
-        ]
-      },
-      {
-        "name": "shadow-ds-elevation-control-pressed",
-        "count": 9,
-        "files": [
-          "src/components/ChatBox/MessageItem/ArtifactChangeList.tsx",
-          "src/components/ChatBox/UserQueryGroup.tsx",
-          "src/components/Settings/Models/index.tsx",
-          "src/components/ui/button.tsx"
-        ],
-        "examples": [
-          "src/components/ChatBox/MessageItem/ArtifactChangeList.tsx:75",
-          "src/components/ChatBox/UserQueryGroup.tsx:65",
-          "src/components/Settings/Models/index.tsx:2627",
-          "src/components/ui/button.tsx:180",
-          "src/components/ui/button.tsx:187"
         ]
       },
       {
@@ -4336,8 +4263,8 @@
           "src/pages/RemoteControl.tsx"
         ],
         "examples": [
-          "src/components/Dashboard/SearchInput/index.tsx:84",
-          "src/components/Settings/Browser/index.tsx:462",
+          "src/components/Dashboard/SearchInput/index.tsx:83",
+          "src/components/Settings/Browser/index.tsx:464",
           "src/components/Settings/Skills/components/SkillUploadDialog.tsx:533",
           "src/components/ui/formFieldSurface.ts:77",
           "src/components/ui/menu-button.tsx:34"
@@ -4396,24 +4323,6 @@
           "src/components/Session/SidePanel/components/FoldedPanel/AgentDetailPane.tsx:443",
           "src/components/TaskState/index.tsx:152",
           "src/components/TaskState/index.tsx:154"
-        ]
-      },
-      {
-        "name": "text-ds-success-on-default",
-        "count": 7,
-        "files": [
-          "src/components/ChatBox/BottomBox/ControlInput.tsx",
-          "src/components/Session/SidePanel/sections/primitives.tsx",
-          "src/components/ui/badge.tsx",
-          "src/components/ui/checkbox.tsx",
-          "src/components/ui/tag.tsx"
-        ],
-        "examples": [
-          "src/components/ChatBox/BottomBox/ControlInput.tsx:260",
-          "src/components/Session/SidePanel/sections/primitives.tsx:346",
-          "src/components/Session/SidePanel/sections/primitives.tsx:354",
-          "src/components/ui/badge.tsx:55",
-          "src/components/ui/checkbox.tsx:46"
         ]
       },
       {
@@ -4508,24 +4417,6 @@
         ]
       },
       {
-        "name": "ring-ds-hairline-subtle-default",
-        "count": 6,
-        "files": [
-          "src/components/Layout/AppSidebar/NavTab.tsx",
-          "src/components/ProjectPageSidebar/ProjectNavListRows.tsx",
-          "src/components/ProjectPageSidebar/TriggerNavTab.tsx",
-          "src/components/ui/icon-pill-toggle.tsx",
-          "src/components/ui/tabs.tsx"
-        ],
-        "examples": [
-          "src/components/Layout/AppSidebar/NavTab.tsx:29",
-          "src/components/Layout/AppSidebar/NavTab.tsx:47",
-          "src/components/ProjectPageSidebar/ProjectNavListRows.tsx:239",
-          "src/components/ProjectPageSidebar/TriggerNavTab.tsx:55",
-          "src/components/ui/icon-pill-toggle.tsx:76"
-        ]
-      },
-      {
         "name": "text-ds-ink-muted-disabled",
         "count": 6,
         "files": [
@@ -4540,6 +4431,23 @@
           "src/components/Trigger/ActivityLogItem.tsx:302",
           "src/components/ui/button.tsx:277",
           "src/components/ui/button.tsx:311"
+        ]
+      },
+      {
+        "name": "text-ds-success-on-default",
+        "count": 6,
+        "files": [
+          "src/components/ChatBox/BottomBox/ControlInput.tsx",
+          "src/components/Session/SidePanel/sections/primitives.tsx",
+          "src/components/ui/badge.tsx",
+          "src/components/ui/tag.tsx"
+        ],
+        "examples": [
+          "src/components/ChatBox/BottomBox/ControlInput.tsx:260",
+          "src/components/Session/SidePanel/sections/primitives.tsx:346",
+          "src/components/Session/SidePanel/sections/primitives.tsx:354",
+          "src/components/ui/badge.tsx:55",
+          "src/components/ui/tag.tsx:90"
         ]
       },
       {
@@ -4609,6 +4517,40 @@
         ]
       },
       {
+        "name": "ring-ds-hairline-default-default",
+        "count": 5,
+        "files": [
+          "src/components/Home/SpaceDetailTabsNav.tsx",
+          "src/components/ProjectPageSidebar/index.tsx",
+          "src/components/ui/shortcut-keycap.tsx",
+          "src/components/ui/tabs.tsx"
+        ],
+        "examples": [
+          "src/components/Home/SpaceDetailTabsNav.tsx:225",
+          "src/components/ProjectPageSidebar/index.tsx:801",
+          "src/components/ui/shortcut-keycap.tsx:33",
+          "src/components/ui/tabs.tsx:44",
+          "src/components/ui/tabs.tsx:173"
+        ]
+      },
+      {
+        "name": "ring-ds-hairline-subtle-default",
+        "count": 5,
+        "files": [
+          "src/components/Layout/AppSidebar/NavTab.tsx",
+          "src/components/ProjectPageSidebar/ProjectNavListRows.tsx",
+          "src/components/ProjectPageSidebar/TriggerNavTab.tsx",
+          "src/components/ui/icon-pill-toggle.tsx"
+        ],
+        "examples": [
+          "src/components/Layout/AppSidebar/NavTab.tsx:29",
+          "src/components/Layout/AppSidebar/NavTab.tsx:47",
+          "src/components/ProjectPageSidebar/ProjectNavListRows.tsx:239",
+          "src/components/ProjectPageSidebar/TriggerNavTab.tsx:55",
+          "src/components/ui/icon-pill-toggle.tsx:76"
+        ]
+      },
+      {
         "name": "ring-offset-ds-neutral-subtle-default",
         "count": 5,
         "files": [
@@ -4620,9 +4562,9 @@
         "examples": [
           "src/components/ui/resizable.tsx:65",
           "src/components/ui/sheet.tsx:82",
-          "src/components/ui/switch.tsx:67",
+          "src/components/ui/switch.tsx:68",
           "src/components/ui/tabs.tsx:37",
-          "src/components/ui/tabs.tsx:276"
+          "src/components/ui/tabs.tsx:281"
         ]
       },
       {
@@ -4847,8 +4789,8 @@
           "src/components/ui/input.tsx"
         ],
         "examples": [
-          "src/components/Trigger/TriggerDialog.tsx:489",
-          "src/components/Trigger/TriggerDialog.tsx:728",
+          "src/components/Trigger/TriggerDialog.tsx:487",
+          "src/components/Trigger/TriggerDialog.tsx:726",
           "src/components/ui/button.tsx:219",
           "src/components/ui/input.tsx:94"
         ]
@@ -4959,22 +4901,6 @@
         ]
       },
       {
-        "name": "ring-ds-hairline-default-default",
-        "count": 4,
-        "files": [
-          "src/components/Home/SpaceDetailTabsNav.tsx",
-          "src/components/ProjectPageSidebar/index.tsx",
-          "src/components/ui/shortcut-keycap.tsx",
-          "src/components/ui/tabs.tsx"
-        ],
-        "examples": [
-          "src/components/Home/SpaceDetailTabsNav.tsx:225",
-          "src/components/ProjectPageSidebar/index.tsx:799",
-          "src/components/ui/shortcut-keycap.tsx:33",
-          "src/components/ui/tabs.tsx:44"
-        ]
-      },
-      {
         "name": "rounded-ds-compact-control",
         "count": 4,
         "files": [
@@ -5067,6 +4993,21 @@
           "src/components/ChatBox/TaskBox/TaskCard.tsx:504",
           "src/components/Settings/Connectors/components/ConnectorBrowserPage.tsx:975",
           "src/components/Workspace/WorkspaceVersionHistoryDialog.tsx:286"
+        ]
+      },
+      {
+        "name": "text-ds-ink-inverse",
+        "count": 4,
+        "files": [
+          "src/components/ui/button.tsx",
+          "src/lib/utils.ts",
+          "src/style/index.css"
+        ],
+        "examples": [
+          "src/components/ui/button.tsx:177",
+          "src/lib/utils.ts:24",
+          "src/style/index.css:23",
+          "src/style/index.css:23"
         ]
       },
       {
@@ -5200,7 +5141,7 @@
         ],
         "examples": [
           "src/components/ChatBox/TaskBox/TaskType.tsx:22",
-          "src/components/Trigger/TriggerDialog.tsx:921",
+          "src/components/Trigger/TriggerDialog.tsx:919",
           "src/components/ui/tag.tsx:104"
         ]
       },
@@ -5243,7 +5184,7 @@
           "src/components/Trigger/ExecutionLogs.tsx"
         ],
         "examples": [
-          "src/components/Dashboard/SearchInput/index.tsx:85",
+          "src/components/Dashboard/SearchInput/index.tsx:84",
           "src/components/Settings/Skills/components/SkillListItem.tsx:96",
           "src/components/Trigger/ExecutionLogs.tsx:363"
         ]
@@ -5256,7 +5197,7 @@
           "src/components/Settings/Models/index.tsx"
         ],
         "examples": [
-          "src/components/ProjectPageSidebar/index.tsx:722",
+          "src/components/ProjectPageSidebar/index.tsx:724",
           "src/components/Settings/Models/index.tsx:1482",
           "src/components/Settings/Models/index.tsx:1700"
         ]
@@ -5470,12 +5411,12 @@
         ]
       },
       {
-        "name": "bg-ds-success-on-default",
+        "name": "bg-ds-success-indicator-on-default",
         "count": 2,
         "files": ["src/components/ui/switch.tsx"],
         "examples": [
-          "src/components/ui/switch.tsx:46",
-          "src/components/ui/switch.tsx:51"
+          "src/components/ui/switch.tsx:47",
+          "src/components/ui/switch.tsx:52"
         ]
       },
       {
@@ -5605,7 +5546,7 @@
           "src/components/ui/toggle-group.tsx"
         ],
         "examples": [
-          "src/components/Settings/Browser/index.tsx:462",
+          "src/components/Settings/Browser/index.tsx:464",
           "src/components/ui/toggle-group.tsx:62"
         ]
       },
@@ -5662,7 +5603,7 @@
           "src/components/Trigger/Triggers.tsx"
         ],
         "examples": [
-          "src/components/Trigger/TriggerListItem.tsx:109",
+          "src/components/Trigger/TriggerListItem.tsx:116",
           "src/components/Trigger/Triggers.tsx:290"
         ]
       },
@@ -5671,6 +5612,12 @@
         "count": 2,
         "files": ["src/pages/SignUp.tsx"],
         "examples": ["src/pages/SignUp.tsx:370", "src/pages/SignUp.tsx:382"]
+      },
+      {
+        "name": "text-ds-icon-inverse",
+        "count": 2,
+        "files": ["src/style/index.css"],
+        "examples": ["src/style/index.css:23", "src/style/index.css:23"]
       },
       {
         "name": "text-ds-icon-status-blocked-default-default",
@@ -5703,15 +5650,6 @@
         "examples": [
           "src/components/Trigger/DynamicTriggerConfig.tsx:259",
           "src/components/ui/button.tsx:310"
-        ]
-      },
-      {
-        "name": "text-ds-ink-inverse",
-        "count": 2,
-        "files": ["src/components/ui/button.tsx", "src/style/index.css"],
-        "examples": [
-          "src/components/ui/button.tsx:177",
-          "src/style/index.css:23"
         ]
       },
       {
@@ -5989,7 +5927,7 @@
         "name": "bg-ds-ink-default-default",
         "count": 1,
         "files": ["src/components/ui/tabs.tsx"],
-        "examples": ["src/components/ui/tabs.tsx:191"]
+        "examples": ["src/components/ui/tabs.tsx:196"]
       },
       {
         "name": "bg-ds-neutral-subtle-disabled",
@@ -6292,12 +6230,6 @@
         "examples": ["src/components/ui/button.tsx:191"]
       },
       {
-        "name": "text-ds-icon-inverse",
-        "count": 1,
-        "files": ["src/style/index.css"],
-        "examples": ["src/style/index.css:23"]
-      },
-      {
         "name": "text-ds-information-on-strong",
         "count": 1,
         "files": ["src/components/ui/button.tsx"],
@@ -6308,6 +6240,12 @@
         "count": 1,
         "files": ["src/components/AddWorker/ToolSelect.tsx"],
         "examples": ["src/components/AddWorker/ToolSelect.tsx:821"]
+      },
+      {
+        "name": "text-ds-success-indicator-on-default",
+        "count": 1,
+        "files": ["src/components/ui/checkbox.tsx"],
+        "examples": ["src/components/ui/checkbox.tsx:46"]
       },
       {
         "name": "text-ds-success-on-strong",
@@ -6881,7 +6819,7 @@
         ],
         "examples": [
           "src/components/Settings/Memory/index.tsx:928",
-          "src/components/TopBar/controlStyles.ts:44"
+          "src/components/TopBar/controlStyles.ts:43"
         ]
       },
       {
@@ -7007,7 +6945,7 @@
         ],
         "examples": [
           "src/components/ChatBox/MessageItem/FloatingAction.tsx:90",
-          "src/components/Trigger/TriggerListItem.tsx:128"
+          "src/components/Trigger/TriggerListItem.tsx:135"
         ]
       },
       {
@@ -7188,7 +7126,7 @@
         "name": "h-[1.5px]",
         "count": 1,
         "files": ["src/components/ui/tabs.tsx"],
-        "examples": ["src/components/ui/tabs.tsx:191"]
+        "examples": ["src/components/ui/tabs.tsx:196"]
       },
       {
         "name": "h-[22px]",
@@ -7250,7 +7188,7 @@
         "name": "h-[min(90vh,100dvh)]",
         "count": 1,
         "files": ["src/components/Trigger/TriggerDialog.tsx"],
-        "examples": ["src/components/Trigger/TriggerDialog.tsx:813"]
+        "examples": ["src/components/Trigger/TriggerDialog.tsx:811"]
       },
       {
         "name": "h-[var(--ds-button-lg-height)]",
@@ -7338,7 +7276,7 @@
         "name": "max-h-[min(90vh,100dvh)]",
         "count": 1,
         "files": ["src/components/Trigger/TriggerDialog.tsx"],
-        "examples": ["src/components/Trigger/TriggerDialog.tsx:813"]
+        "examples": ["src/components/Trigger/TriggerDialog.tsx:811"]
       },
       {
         "name": "max-h-[var(--radix-dropdown-menu-content-available-height)]",
@@ -7796,7 +7734,7 @@
     "typography": [
       {
         "name": "text-base",
-        "count": 530,
+        "count": 515,
         "files": [
           "src/components/AddWorker/ToolSelect.tsx",
           "src/components/AddWorker/index.tsx",
@@ -7916,7 +7854,6 @@
           "src/components/WorkspaceConfiguration/WorkspaceResourceEditorPanel.tsx",
           "src/components/WorkspaceConfiguration/WorkspaceResourceListItem.tsx",
           "src/components/ui/alert.tsx",
-          "src/components/ui/badge.tsx",
           "src/components/ui/button.tsx",
           "src/components/ui/card.tsx",
           "src/components/ui/command.tsx",
@@ -7924,17 +7861,15 @@
           "src/components/ui/dropdown-menu.tsx",
           "src/components/ui/ds-text.tsx",
           "src/components/ui/formFieldSurface.ts",
-          "src/components/ui/input-select.tsx",
-          "src/components/ui/input.tsx",
           "src/components/ui/menu-button.tsx",
           "src/components/ui/popover.tsx",
           "src/components/ui/select.tsx",
           "src/components/ui/sheet.tsx",
           "src/components/ui/tabs.tsx",
-          "src/components/ui/tag.tsx",
           "src/components/ui/textarea.tsx",
           "src/components/ui/toggle.tsx",
           "src/lib/richText.ts",
+          "src/lib/utils.ts",
           "src/pages/RemoteControl.tsx",
           "src/pages/WorkspaceConfiguration.tsx",
           "src/style/generated/tokens.css",
@@ -7952,7 +7887,7 @@
       },
       {
         "name": "text-xs",
-        "count": 90,
+        "count": 89,
         "files": [
           "src/components/AddWorker/index.tsx",
           "src/components/ChatBox/BottomBox/ApprovalModeSelect.tsx",
@@ -8001,7 +7936,7 @@
       },
       {
         "name": "text-sm",
-        "count": 84,
+        "count": 70,
         "files": [
           "src/components/AddWorker/ToolSelect.tsx",
           "src/components/AddWorker/index.tsx",
@@ -8034,7 +7969,6 @@
           "src/components/ui/accordion.tsx",
           "src/components/ui/input-select.tsx",
           "src/components/ui/input.tsx",
-          "src/components/ui/label.tsx",
           "src/components/ui/select.tsx",
           "src/components/ui/sidebar.tsx",
           "src/components/ui/table.tsx",
@@ -8052,13 +7986,13 @@
         "name": "text-lg",
         "count": 1,
         "files": ["src/components/Trigger/TriggerDialog.tsx"],
-        "examples": ["src/components/Trigger/TriggerDialog.tsx:878"]
+        "examples": ["src/components/Trigger/TriggerDialog.tsx:876"]
       }
     ],
     "radius": [
       {
         "name": "rounded-xl",
-        "count": 219,
+        "count": 220,
         "files": [
           "src/components/BrowserAgentWorkspace/index.tsx",
           "src/components/ChatBox/BottomBox/ApprovalModeSelect.tsx",
@@ -8155,7 +8089,7 @@
       },
       {
         "name": "rounded-full",
-        "count": 139,
+        "count": 140,
         "files": [
           "src/components/BrowserAgentWorkspace/index.tsx",
           "src/components/ChatBox/BottomBox/ControlInput.tsx",
@@ -8228,7 +8162,7 @@
       },
       {
         "name": "rounded-lg",
-        "count": 134,
+        "count": 133,
         "files": [
           "src/components/AddWorker/ToolSelect.tsx",
           "src/components/AddWorker/index.tsx",
@@ -8250,7 +8184,6 @@
           "src/components/Folder/CsvPreviewTable.tsx",
           "src/components/Folder/index.tsx",
           "src/components/GlobalSearch/index.tsx",
-          "src/components/Home/HomeHeader.tsx",
           "src/components/Home/NewSpaceDialog.tsx",
           "src/components/Home/SpaceDetailLoadingSkeleton.tsx",
           "src/components/Home/components/HomeHubCard.tsx",
@@ -8309,7 +8242,7 @@
       },
       {
         "name": "rounded",
-        "count": 91,
+        "count": 92,
         "files": [
           "src/components/AddWorker/index.tsx",
           "src/components/BrowserAgentWorkspace/index.tsx",
@@ -8320,6 +8253,7 @@
           "src/components/ChatBox/MessageItem/UserMessageCard.tsx",
           "src/components/ChatBox/TaskBox/TaskItem.tsx",
           "src/components/ChatBox/index.tsx",
+          "src/components/Dashboard/SearchInput/index.tsx",
           "src/components/Dialog/ReportBugDialog.tsx",
           "src/components/Dispatch/DispatchChannelCard.tsx",
           "src/components/Folder/FilePreview.tsx",
@@ -8541,9 +8475,33 @@
         ]
       },
       {
-        "name": "shadow-sm",
-        "count": 15,
+        "name": "shadow-ds-elevation-control-pressed",
+        "count": 16,
         "files": [
+          "src/components/ChatBox/BottomBox/ApprovalModeSelect.tsx",
+          "src/components/ChatBox/BottomBox/ModelSelect.tsx",
+          "src/components/ChatBox/BottomBox/ThinkingEffortSelect.tsx",
+          "src/components/ChatBox/MessageItem/ArtifactChangeList.tsx",
+          "src/components/ChatBox/UserQueryGroup.tsx",
+          "src/components/Session/SidePanel/sections/primitives.tsx",
+          "src/components/Settings/Models/index.tsx",
+          "src/components/TopBar/controlStyles.ts",
+          "src/components/ui/button.tsx",
+          "src/components/ui/sidebar.tsx"
+        ],
+        "examples": [
+          "src/components/ChatBox/BottomBox/ApprovalModeSelect.tsx:220",
+          "src/components/ChatBox/BottomBox/ModelSelect.tsx:544",
+          "src/components/ChatBox/BottomBox/ThinkingEffortSelect.tsx:106",
+          "src/components/ChatBox/MessageItem/ArtifactChangeList.tsx:75",
+          "src/components/ChatBox/UserQueryGroup.tsx:65"
+        ]
+      },
+      {
+        "name": "shadow-sm",
+        "count": 16,
+        "files": [
+          "src/components/Dashboard/SearchInput/index.tsx",
           "src/components/Dialog/InviteCodeDialog.tsx",
           "src/components/Dialog/ReportBugDialog.tsx",
           "src/components/Folder/index.tsx",
@@ -8558,11 +8516,11 @@
           "src/components/ui/textarea.tsx"
         ],
         "examples": [
+          "src/components/Dashboard/SearchInput/index.tsx:177",
           "src/components/Dialog/InviteCodeDialog.tsx:100",
           "src/components/Dialog/ReportBugDialog.tsx:215",
           "src/components/Folder/index.tsx:2752",
-          "src/components/Folder/index.tsx:3107",
-          "src/components/Folder/index.tsx:3121"
+          "src/components/Folder/index.tsx:3107"
         ]
       },
       {
@@ -8582,23 +8540,6 @@
           "src/components/ui/button.tsx:178",
           "src/components/ui/button.tsx:185",
           "src/components/ui/button.tsx:192"
-        ]
-      },
-      {
-        "name": "shadow-ds-elevation-control-pressed",
-        "count": 9,
-        "files": [
-          "src/components/ChatBox/MessageItem/ArtifactChangeList.tsx",
-          "src/components/ChatBox/UserQueryGroup.tsx",
-          "src/components/Settings/Models/index.tsx",
-          "src/components/ui/button.tsx"
-        ],
-        "examples": [
-          "src/components/ChatBox/MessageItem/ArtifactChangeList.tsx:75",
-          "src/components/ChatBox/UserQueryGroup.tsx:65",
-          "src/components/Settings/Models/index.tsx:2627",
-          "src/components/ui/button.tsx:180",
-          "src/components/ui/button.tsx:187"
         ]
       },
       {

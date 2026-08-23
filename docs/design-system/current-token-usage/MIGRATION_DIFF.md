@@ -10,10 +10,10 @@ mappings require component-intent review.
 
 | Measure | Count |
 | --- | ---: |
-| Production source files scanned | 577 |
-| CSS variable references | 404 |
-| Unique CSS variables | 189 |
-| Existing semantic utility references | 4044 |
+| Production source files scanned | 576 |
+| CSS variable references | 383 |
+| Unique CSS variables | 182 |
+| Existing semantic utility references | 4054 |
 | Arbitrary geometry references | 313 |
 | Manual token references | 43 |
 | Removed Tailwind 4 utility references | 0 |

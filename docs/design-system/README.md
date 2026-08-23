@@ -14,6 +14,7 @@
 | Current visual baseline     | [`current-token-usage/baseline.html`](current-token-usage/baseline.html)   | [`current-token-usage/CURRENT_STATE.md`](current-token-usage/CURRENT_STATE.md)              |
 | Migration plan              | [`migration-plan/MIGRATION_PLAN.md`](migration-plan/MIGRATION_PLAN.md)     | Staged delivery and rollback gates                                                          |
 | Tailwind 4 risks            | [`migration-plan/TAILWIND_4_RISKS.md`](migration-plan/TAILWIND_4_RISKS.md) | Upgrade-specific risk register                                                              |
+| Review v1 (22 Aug 2026)     | [`reviews/v1/REVIEW.md`](reviews/v1/REVIEW.md)                             | Frozen snapshot of plan + working-tree review; not a live status board                      |
 
 The usage page is generated from the checked-out production source. It includes
 counts and call sites, a machine-readable JSON snapshot, and a suggested

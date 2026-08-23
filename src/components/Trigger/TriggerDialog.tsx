@@ -429,7 +429,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
       selectedTrigger?.config?.authentication_required;
 
     return (
-      <div className="flex w-full flex-col gap-6 py-6 pr-4 pl-6">
+      <div className="flex w-full flex-col gap-6">
         {/* Trigger Name */}
         <Input
           id="name"
@@ -465,9 +465,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
 
         {/* Trigger Type */}
         <div className="space-y-3">
-          <Label className="text-sm font-bold">
-            {t('triggers.trigger-type')}
-          </Label>
+          <Label className="font-bold">{t('triggers.trigger-type')}</Label>
           <Tabs
             value={activeTab}
             onValueChange={(value) => {
@@ -486,7 +484,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
               // Don't change trigger_type when switching to app tab
               // The actual type will be set when user selects an app
             }}
-            className="w-full rounded-2xl bg-ds-neutral-muted-disabled"
+            className="w-full rounded-2xl bg-ds-neutral-muted-default"
           >
             <TabsList appearance="default" className="w-full">
               <TabsTrigger
@@ -523,7 +521,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
             <TabsContent value="app" className="px-6 py-4">
               {!selectedApp ? (
                 <div className="space-y-4">
-                  <Label className="text-sm font-bold">
+                  <Label className="font-bold">
                     {t('triggers.select-app')}
                   </Label>
                   <div className="grid grid-cols-2 gap-3">
@@ -601,7 +599,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                       {selectedApp === 'webhook' && (
                         <WebhookIcon className="h-5 w-5" />
                       )}
-                      <Label className="text-sm font-bold">
+                      <Label className="font-bold">
                         {selectedApp.charAt(0).toUpperCase() +
                           selectedApp.slice(1)}{' '}
                         Configuration
@@ -662,7 +660,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                   {selectedApp === 'webhook' && (
                     <div className="space-y-4">
                       <div className="space-y-2">
-                        <Label className="text-sm font-bold">
+                        <Label className="font-bold">
                           {t('triggers.webhook-method')}
                         </Label>
                         <Select
@@ -890,7 +888,7 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
           {/* Webhook URL Section */}
           <div className="flex flex-col p-4">
             <div className="mb-4 flex items-center justify-start gap-2">
-              <Label className="text-sm font-semibold text-ds-ink-default-default">
+              <Label className="font-semibold text-ds-ink-default-default">
                 {t('triggers.your-webhook-url')}
               </Label>
               <TooltipSimple content={t('triggers.webhook-instructions')}>
@@ -953,7 +951,7 @@ type TriggerDialogButtonProps = {
   onTriggerCreating?: (triggerData: TriggerInput) => void;
   onTriggerCreated?: (triggerData: TriggerInput) => void;
   buttonVariant?: 'primary' | 'secondary' | 'outline' | 'ghost';
-  buttonSize?: 'xs' | 'sm' | 'md' | 'lg' | 'icon';
+  buttonSize?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'icon';
   buttonText?: string;
   buttonIcon?: React.ReactNode;
   className?: string;

@@ -31,12 +31,12 @@ const menuButtonVariants = cva(
     variants: {
       look: {
         default:
-          'border-x border-y border border-solid text-ds-ink-default-default border-ds-hairline-default-default hover:border-ds-hairline-strong-default focus-visible:bg-ds-neutral-default-default focus-visible:border-ds-ring-focus data-[state=on]:border-ds-accent-default-selected data-[state=on]:shadow-button-shadow',
+          'border-x border-y border border-solid text-ds-ink-default-default border-ds-hairline-default-default hover:border-ds-hairline-strong-default focus-visible:border-ds-ring-focus data-[state=on]:border-ds-accent-default-selected data-[state=on]:shadow-button-shadow',
         clear:
-          'border-x border-y border border-solid text-ds-ink-default-default border-ds-hairline-default-default hover:border-ds-hairline-strong-default focus-visible:bg-ds-neutral-default-default focus-visible:border-ds-hairline-default-default data-[state=on]:shadow-button-shadow',
-        info: 'text-ds-ink-default-default !font-medium hover:bg-ds-neutral-default-default focus-visible:bg-ds-neutral-default-default data-[state=on]:text-ds-ink-default-default data-[state=on]:!font-bold',
+          'border-x border-y border border-solid text-ds-ink-default-default border-ds-hairline-default-default hover:border-ds-hairline-strong-default focus-visible:border-ds-hairline-default-default data-[state=on]:shadow-button-shadow',
+        info: 'text-ds-ink-default-default !font-medium hover:bg-ds-neutral-default-default data-[state=on]:text-ds-ink-default-default data-[state=on]:!font-bold',
         clearInfo:
-          'border-x border-y border border-solid text-ds-ink-default-default border-ds-hairline-default-default hover:border-ds-hairline-strong-default focus-visible:bg-ds-neutral-default-default focus-visible:border-ds-hairline-default-default data-[state=on]:shadow-button-shadow !font-medium data-[state=on]:!font-bold',
+          'border-x border-y border border-solid text-ds-ink-default-default border-ds-hairline-default-default hover:border-ds-hairline-strong-default focus-visible:border-ds-hairline-default-default data-[state=on]:shadow-button-shadow !font-medium data-[state=on]:!font-bold',
       },
       size: {
         xs: 'px-2 py-1 text-ds-text-base font-bold [&_svg]:size-[16px] rounded-lg',

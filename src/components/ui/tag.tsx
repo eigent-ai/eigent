@@ -305,9 +305,9 @@ const tagVariants = cva(
       size: {
         xxs: 'gap-0.5 rounded-full !px-1.5 !py-px !text-ds-text-meta font-medium [&_svg]:size-[12px]',
         xs: 'gap-1 rounded-full !px-2 !py-0.5 !text-ds-text-meta font-medium [&_svg]:size-[12px]',
-        sm: 'gap-1 rounded-full !px-2 !py-1 !text-ds-text-base font-medium [&_svg]:size-[16px]',
-        md: 'gap-1.5 rounded-full !px-2.5 !py-1 !text-ds-text-base font-medium [&_svg]:size-[16px]',
-        lg: 'gap-2 rounded-full !px-3 !py-1.5 !text-ds-text-body-large font-semibold [&_svg]:size-[16px]',
+        sm: 'gap-1 rounded-full !px-2 !py-1 !text-ds-text-meta font-medium [&_svg]:size-[16px]',
+        md: 'gap-1.5 rounded-full !px-2.5 !py-1 !text-ds-text-meta font-medium [&_svg]:size-[16px]',
+        lg: 'gap-2 rounded-full !px-3 !py-1.5 !text-ds-text-meta font-semibold [&_svg]:size-[16px]',
       },
     },
     defaultVariants: {

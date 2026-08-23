@@ -425,6 +425,25 @@ function applyAdjustment(base: Oklch, adjustment: Adjustment): Oklch {
   };
 }
 
+function applyBrandSeedAdjustment(base: Oklch, adjustment: Adjustment): Oklch {
+  const authoredDelta = adjustment.dL ?? 0;
+  const darkenedLightness = base.l + authoredDelta;
+  const darkeningWouldCollapse =
+    authoredDelta < 0 &&
+    base.l > MIN_FILL_LIGHTNESS &&
+    darkenedLightness < MIN_FILL_LIGHTNESS;
+
+  if (!darkeningWouldCollapse) return applyAdjustment(base, adjustment);
+
+  // Preserve the authored state distance for very dark but still usable
+  // Accent seeds by moving toward the side with available headroom. Exact or
+  // already-collapsed black seeds still fail admission instead of being hidden.
+  return applyAdjustment(base, {
+    ...adjustment,
+    dL: Math.abs(authoredDelta),
+  });
+}
+
 function setTokenIfMissing(
   tokens: ThemeTokens,
   tokenKey: TokenKey,
@@ -869,6 +888,22 @@ function solveForegroundContrast(
   return chooseReadableText(bgHex, fgHex, minContrast);
 }
 
+function solveFillContrastForLightForeground(
+  bgHex: `#${string}`,
+  minContrast: number
+): `#${string}` {
+  if (contrastRatio('#ffffff', bgHex) >= minContrast) return bgHex;
+
+  const base = hexToOklch(bgHex);
+  for (let i = 1; i <= 100; i += 1) {
+    const targetL = base.l * (1 - i / 100);
+    const probeHex = oklchToHex({ l: targetL, c: base.c, h: base.h });
+    if (contrastRatio('#ffffff', probeHex) >= minContrast) return probeHex;
+  }
+
+  return '#000000';
+}
+
 function enforceContrastPairs(tokens: ThemeTokens): {
   tokens: ThemeTokens;
   diagnostics: ContrastDiagnostic[];
@@ -957,7 +992,7 @@ function buildSemanticTokens(
               continue;
             }
             const colorHex = oklchToHex(
-              applyAdjustment(seedColor, brandAdjustment)
+              applyBrandSeedAdjustment(seedColor, brandAdjustment)
             );
             tokens[tokenKey] =
               typeof brandAdjustment.alpha === 'number' &&
@@ -1069,6 +1104,25 @@ const FILLED_ACCENT_INVERSE_TONES: Tone[] = [
   'warning',
   'information',
 ];
+
+function preserveLightInverseOnLightAccentStrongFills(
+  tokens: ThemeTokens,
+  mode: ThemeContractV2['mode']
+): ThemeTokens {
+  if (mode !== 'light') return tokens;
+
+  // Primary controls keep light inverse content in light mode. When an
+  // authored Accent is too bright, adjust the derived strong surface instead
+  // of flipping its foreground to dark ink.
+  const out: ThemeTokens = { ...tokens };
+  for (const state of SEMANTIC.axes.states) {
+    const bgKey = `bg.brand.strong.${state}` as TokenKey;
+    const bgHex = parseHexOnly(out[bgKey]);
+    if (!bgHex) continue;
+    out[bgKey] = solveFillContrastForLightForeground(bgHex, 4.5);
+  }
+  return out;
+}
 
 function applyFilledAccentInverseTextHeuristic(
   tokens: ThemeTokens
@@ -1197,6 +1251,19 @@ function buildPublicGroupVariables(
     }
   }
 
+  const successDefaultFill = parsePublicHex(
+    tokens['bg.success.default.default']
+  );
+  if (successDefaultFill) {
+    // Switch thumbs and checkbox marks are non-text indicators. Their token is
+    // paired with the fixed Success surface instead of the theme Accent seed.
+    out['--ds-success-indicator-on-default'] = solveForegroundContrast(
+      '#ffffff',
+      successDefaultFill,
+      3
+    );
+  }
+
   const ring =
     tokens['ring.brand.default.default'] ??
     tokens['ring.brand.default.focus'] ??
@@ -1241,9 +1308,15 @@ function computeThemeV2(
 
   const semantic = buildSemanticTokens(normalized, seed);
   const category = buildCategoryTokens(normalized.mode);
+  const inverseFillAdjusted = preserveLightInverseOnLightAccentStrongFills(
+    {
+      ...semantic,
+      ...category,
+    },
+    normalized.mode
+  );
   const accentInverseAdjusted = applyFilledAccentInverseTextHeuristic({
-    ...semantic,
-    ...category,
+    ...inverseFillAdjusted,
   });
   const enforced = enforceContrastPairs(accentInverseAdjusted);
   const semanticCssVars = toCssVariables(enforced.tokens);

@@ -92,7 +92,7 @@ const SelectTrigger = React.forwardRef<
     return (
       <div className={cn(wrapperClassName ?? 'w-fit', stateCls.wrapper)}>
         {title ? (
-          <div className="mb-1.5 flex items-center gap-1 text-ds-text-base font-bold text-ds-ink-default-default">
+          <div className="mb-1.5 flex items-center gap-1 text-ds-text-meta font-bold text-ds-ink-default-default">
             <span>{title}</span>
             {required && <span className="text-ds-ink-default-default">*</span>}
             {tooltip && (
@@ -232,7 +232,7 @@ const SelectItem = React.forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      'relative flex min-h-ds-control-lg w-full cursor-pointer items-center rounded-ds-menu-row py-1.5 pr-8 pl-2 text-ds-text-base outline-none select-none hover:bg-ds-neutral-default-hover focus-visible:bg-ds-neutral-default-hover focus-visible:text-ds-ink-default-default data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'relative flex min-h-ds-control-lg w-full cursor-pointer items-center rounded-ds-menu-row py-1.5 pr-8 pl-2 text-ds-text-base outline-none select-none hover:bg-ds-neutral-default-hover focus-visible:text-ds-ink-default-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-inset data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       className
     )}
     {...props}
@@ -289,7 +289,7 @@ const SelectItemWithButton = React.forwardRef<
       value={value}
       disabled={!enabled}
       className={cn(
-        'group relative flex min-h-ds-control-lg w-full cursor-pointer items-center rounded-ds-menu-row py-1.5 pr-8 pl-2 text-ds-text-base outline-none select-none hover:bg-ds-neutral-default-hover focus-visible:bg-ds-neutral-default-hover focus-visible:text-ds-ink-default-default data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+        'group relative flex min-h-ds-control-lg w-full cursor-pointer items-center rounded-ds-menu-row py-1.5 pr-8 pl-2 text-ds-text-base outline-none select-none hover:bg-ds-neutral-default-hover focus-visible:text-ds-ink-default-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-inset data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
         className
       )}
       {...props}

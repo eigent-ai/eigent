@@ -362,6 +362,52 @@ describe('themeTokens v2 engine', () => {
     ).toBeGreaterThanOrEqual(4.5);
   });
 
+  it('preserves light inverse ink on light-mode Accent strong fills', () => {
+    const theme = buildThemeV2(
+      createDefaultThemeContractV2('light', {
+        themeId: 'claw',
+        contrast: 43,
+      }),
+      DEFAULT_THEME_CATALOG
+    );
+    const fill = theme.tokens['bg.brand.strong.default'] as string;
+    const inverse = theme.cssVariables['--ds-ink-inverse'] as string;
+
+    expect(inverse).toBe('#ffffff');
+    expect(theme.cssVariables['--ds-accent-on-strong']).toBe('#ffffff');
+    expect(contrastRatio(inverse, fill)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('preserves light inverse ink for a bright custom green Accent', () => {
+    const catalog: ThemeCatalogV2 = {
+      ...DEFAULT_THEME_CATALOG,
+      light: {
+        ...DEFAULT_THEME_CATALOG.light,
+        'bright-green': {
+          id: 'bright-green',
+          mode: 'light',
+          seed: {
+            accent: '#00c950',
+            background: '#ffffff',
+            ink: '#0d0d0d',
+          },
+        },
+      },
+    };
+    const theme = buildThemeV2(
+      createDefaultThemeContractV2('light', {
+        themeId: 'bright-green',
+        contrast: 43,
+      }),
+      catalog
+    );
+    const fill = theme.tokens['bg.brand.strong.default'] as string;
+    const inverse = theme.cssVariables['--ds-ink-inverse'] as string;
+
+    expect(inverse).toBe('#ffffff');
+    expect(contrastRatio(inverse, fill)).toBeGreaterThanOrEqual(4.5);
+  });
+
   it('uses dark inverse text on light Accent fills in dark mode', () => {
     const theme = buildThemeV2(
       createDefaultThemeContractV2('dark', {
@@ -401,6 +447,52 @@ describe('themeTokens v2 engine', () => {
     expect(
       contrastRatio(successOnStrong, successStrongFill)
     ).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('keeps every public feedback foreground at text contrast', () => {
+    const feedbackTones = [
+      'success',
+      'warning',
+      'error',
+      'information',
+    ] as const;
+    const emphases = ['subtle', 'muted', 'default', 'strong'] as const;
+
+    for (const mode of ['light', 'dark'] as const) {
+      const theme = buildThemeV2(
+        createDefaultThemeContractV2(mode, {
+          themeId: 'eigent',
+          contrast: 50,
+        }),
+        DEFAULT_THEME_CATALOG
+      );
+      for (const tone of feedbackTones) {
+        for (const emphasis of emphases) {
+          const foreground = theme.cssVariables[
+            `--ds-${tone}-on-${emphasis}`
+          ] as string;
+          const fill = theme.tokens[`bg.${tone}.${emphasis}.default`] as string;
+          expect(contrastRatio(foreground, fill)).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    }
+  });
+
+  it('uses a light success indicator on the light-mode green control fill', () => {
+    const light = buildThemeV2(
+      createDefaultThemeContractV2('light', {
+        themeId: 'eigent',
+        contrast: 50,
+      }),
+      DEFAULT_THEME_CATALOG
+    );
+    const indicator = light.cssVariables[
+      '--ds-success-indicator-on-default'
+    ] as string;
+    const fill = light.tokens['bg.success.default.default'] as string;
+
+    expect(indicator).toBe('#ffffff');
+    expect(contrastRatio(indicator, fill)).toBeGreaterThanOrEqual(3);
   });
 
   it('maps system status background emphases to fixed shade steps (light vs dark)', () => {
@@ -575,5 +667,43 @@ describe('themeTokens v2 engine', () => {
         (item) => item.code === 'hover-collapse'
       )
     ).toBe(true);
+  });
+
+  it('uses available lightness headroom for a very dark chromatic Accent seed', () => {
+    const catalog: ThemeCatalogV2 = {
+      ...DEFAULT_THEME_CATALOG,
+      light: {
+        ...DEFAULT_THEME_CATALOG.light,
+        'dark-chromatic': {
+          id: 'dark-chromatic',
+          mode: 'light',
+          seed: {
+            accent: '#101817',
+            background: '#faf7f6',
+            ink: '#1d1d1d',
+          },
+        },
+      },
+    };
+    const theme = buildThemeV2(
+      createDefaultThemeContractV2('light', {
+        themeId: 'dark-chromatic',
+        contrast: 50,
+      }),
+      catalog
+    );
+
+    expect(
+      theme.diagnostics.seedAdmission.some(
+        (item) =>
+          item.code === 'hover-collapse' || item.code === 'selected-collapse'
+      )
+    ).toBe(false);
+    expect(theme.tokens['bg.brand.default.hover']).not.toBe(
+      theme.tokens['bg.brand.default.default']
+    );
+    expect(theme.tokens['bg.brand.default.selected']).not.toBe(
+      theme.tokens['bg.brand.default.default']
+    );
   });
 });

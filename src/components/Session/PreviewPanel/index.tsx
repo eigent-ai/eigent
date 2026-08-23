@@ -218,7 +218,7 @@ export function PreviewPanel({
                     // Every tab uses the selected colors; unselected tabs are
                     // just dimmed (40% at rest, 80% on hover) so selection
                     // reads as full opacity rather than a color change.
-                    'group relative h-7 rounded-lg bg-ds-neutral-strong-default text-ds-ink-default-default transition-opacity',
+                    'group relative h-7 rounded-full bg-ds-neutral-strong-default text-ds-ink-default-default transition-opacity',
                     selected ? 'opacity-100' : 'opacity-40 hover:opacity-80'
                   )}
                 >

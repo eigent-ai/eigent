@@ -235,7 +235,7 @@ export default function ReportBugDialog({
             })}
           </h3>
           <label
-            className="text-ds-text-base font-medium text-ds-ink-default-default"
+            className="text-ds-text-meta font-medium text-ds-ink-default-default"
             htmlFor="report-bug-description"
           >
             {t('layout.report-bug-field-description')}
@@ -248,7 +248,7 @@ export default function ReportBugDialog({
             className="min-h-[88px] resize-y"
           />
           <label
-            className="text-ds-text-base font-medium text-ds-ink-default-default"
+            className="text-ds-text-meta font-medium text-ds-ink-default-default"
             htmlFor="report-bug-steps"
           >
             {t('layout.report-bug-field-steps')}

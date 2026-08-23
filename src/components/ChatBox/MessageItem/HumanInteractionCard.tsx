@@ -334,7 +334,7 @@ export function HumanInteractionCard({
           {!displayedResponse && interaction.interaction_type === 'form' ? (
             <div className="space-y-2">
               {(interaction.fields || []).map((field) => (
-                <label key={field.id} className="block text-xs">
+                <label key={field.id} className="block text-ds-text-meta">
                   <span>{field.label}</span>
                   <Input
                     className="mt-1"

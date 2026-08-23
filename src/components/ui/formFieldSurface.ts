@@ -60,7 +60,7 @@ export function formFieldInputStateClasses(
       container: 'opacity-50 cursor-not-allowed',
       field: 'border-ds-hairline-default-default bg-ds-neutral-default-default',
       input: 'text-ds-ink-default-default',
-      placeholder: 'placeholder-input-label-default',
+      placeholder: 'placeholder:text-ds-ink-muted-default',
     };
   }
   if (state === 'hover') {
@@ -68,7 +68,7 @@ export function formFieldInputStateClasses(
       container: '',
       field: 'border-ds-hairline-strong-default bg-ds-neutral-subtle-default',
       input: 'text-ds-ink-default-default',
-      placeholder: 'placeholder-input-label-default',
+      placeholder: 'placeholder:text-ds-ink-muted-default',
     };
   }
   if (state === 'input') {
@@ -76,7 +76,7 @@ export function formFieldInputStateClasses(
       container: '',
       field: 'border-ds-ring-focus bg-ds-neutral-subtle-default',
       input: 'text-ds-ink-default-default',
-      placeholder: 'placeholder-input-label-default',
+      placeholder: 'placeholder:text-ds-ink-muted-default',
     };
   }
   if (state === 'error') {
@@ -85,7 +85,7 @@ export function formFieldInputStateClasses(
       field:
         'border-ds-border-status-error-default-default bg-ds-neutral-default-default',
       input: 'text-ds-ink-default-default',
-      placeholder: 'placeholder-input-label-default',
+      placeholder: 'placeholder:text-ds-ink-muted-default',
     };
   }
   if (state === 'success') {
@@ -94,14 +94,14 @@ export function formFieldInputStateClasses(
       field:
         'border-ds-border-status-completed-default-default bg-ds-bg-status-completed-subtle-default',
       input: 'text-ds-ink-default-default',
-      placeholder: 'placeholder-input-label-default',
+      placeholder: 'placeholder:text-ds-ink-muted-default',
     };
   }
   return {
     container: '',
     field: 'border-ds-hairline-default-default bg-ds-neutral-default-default',
     input: 'text-ds-ink-default-default',
-    placeholder: 'placeholder-input-label-default/10',
+    placeholder: 'placeholder:text-ds-ink-muted-default',
   };
 }
 
@@ -117,7 +117,7 @@ export function formFieldTextareaStateClasses(
       container: 'opacity-50 cursor-not-allowed',
       field:
         'border-transparent bg-ds-neutral-default-default text-ds-ink-default-default',
-      placeholder: 'text-ds-ink-muted-default',
+      placeholder: 'placeholder:text-ds-ink-muted-default',
     };
   }
   if (state === 'hover') {
@@ -125,7 +125,7 @@ export function formFieldTextareaStateClasses(
       container: '',
       field:
         'border-transparent bg-ds-neutral-subtle-default text-ds-ink-default-default',
-      placeholder: 'text-ds-ink-muted-default',
+      placeholder: 'placeholder:text-ds-ink-muted-default',
     };
   }
   if (state === 'input') {
@@ -133,7 +133,7 @@ export function formFieldTextareaStateClasses(
       container: '',
       field:
         'border-transparent bg-ds-neutral-subtle-default text-ds-ink-default-default',
-      placeholder: 'text-ds-ink-muted-default',
+      placeholder: 'placeholder:text-ds-ink-muted-default',
     };
   }
   if (state === 'error') {
@@ -141,7 +141,7 @@ export function formFieldTextareaStateClasses(
       container: '',
       field:
         'border-ds-border-status-error-default-default bg-ds-neutral-default-default text-ds-ink-default-default',
-      placeholder: 'text-ds-ink-muted-default',
+      placeholder: 'placeholder:text-ds-ink-muted-default',
     };
   }
   if (state === 'success') {
@@ -149,14 +149,14 @@ export function formFieldTextareaStateClasses(
       container: '',
       field:
         'border-ds-border-status-completed-default-default bg-ds-bg-status-completed-subtle-default text-ds-ink-default-default',
-      placeholder: 'text-ds-ink-muted-default',
+      placeholder: 'placeholder:text-ds-ink-muted-default',
     };
   }
   return {
     container: '',
     field:
       'border-transparent bg-ds-neutral-default-default text-ds-ink-default-default',
-    placeholder: 'text-ds-ink-muted-default/10',
+    placeholder: 'placeholder:text-ds-ink-muted-default',
   };
 }
 

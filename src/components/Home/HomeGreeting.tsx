@@ -145,7 +145,7 @@ export default function HomeGreeting() {
             </span>
           ) : null}
         </h1>
-        <p className="mt-2 max-w-md !text-ds-text-base text-ds-ink-muted-default">
+        <p className="mt-2 !text-ds-text-base text-ds-ink-muted-default">
           Manage your Spaces and connected workspace resources.
         </p>
       </div>

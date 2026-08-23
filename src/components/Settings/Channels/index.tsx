@@ -32,7 +32,7 @@ export default function Channels() {
         <span className="mb-2 block text-ds-text-body-large font-bold text-ds-ink-default-default">
           {t('layout.coming-soon')}
         </span>
-        <span className="block max-w-md text-center text-ds-text-base text-ds-ink-muted-default">
+        <span className="block text-center text-ds-text-base text-ds-ink-muted-default">
           {t('layout.channels-overview-coming-soon-description')}
         </span>
       </SettingsSection>

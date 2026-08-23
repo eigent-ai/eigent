@@ -504,6 +504,7 @@ export const DS_CSS_VARIABLES = [
   '--ds-space-panel-inset',
   '--ds-space-stack-related',
   '--ds-space-stack-section',
+  '--ds-success-indicator-on-default',
   '--ds-success-on-default',
   '--ds-success-on-muted',
   '--ds-success-on-strong',

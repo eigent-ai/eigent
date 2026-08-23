@@ -1383,13 +1383,13 @@ export default function ConnectorGateway() {
     <SettingsSectionPage className={selected ? 'min-h-full' : undefined}>
       {!selected ? (
         <SettingsHeaderActions>
-          <SearchInput
-            variant="icon"
-            value={listQuery}
-            onChange={(event) => setListQuery(event.target.value)}
-            placeholder={t('connectors.search-placeholder')}
-            searchTooltip={t('connectors.search-placeholder')}
-          />
+          <div className="w-56 max-w-full">
+            <SearchInput
+              value={listQuery}
+              onChange={(event) => setListQuery(event.target.value)}
+              placeholder={t('connectors.search-placeholder')}
+            />
+          </div>
           <Button variant="primary" size="sm" onClick={() => openBrowsePage()}>
             {t('connectors.browse')}
           </Button>

@@ -106,7 +106,7 @@ export function FoldedView({
             onClick={onExpand}
             aria-label={t('chat.expand-plan')}
           >
-            <Maximize2 size={14} />
+            <Maximize2 className="size-ds-icon-md" />
           </Button>
         ) : null}
       </div>

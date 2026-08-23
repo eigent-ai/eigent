@@ -103,13 +103,13 @@ export const checkboxTokenAliases = asCssVarMap({
   '--input-bg-default': 'var(--ds-neutral-default-default)',
   '--input-border-hover': 'var(--ds-hairline-strong-default)',
   '--switch-on-fill-track-fill': 'var(--ds-bg-success-default-default)',
-  '--switch-on-fill-thumb-fill': 'var(--ds-success-on-default)',
+  '--switch-on-fill-thumb-fill': 'var(--ds-success-indicator-on-default)',
 });
 
 export const switchTokenAliases = asCssVarMap({
   '--switch-on-fill-track-fill': 'var(--ds-bg-success-default-default)',
   '--switch-off-fill-track-fill': 'var(--ds-neutral-subtle-default)',
-  '--switch-on-fill-thumb-fill': 'var(--ds-success-on-default)',
+  '--switch-on-fill-thumb-fill': 'var(--ds-success-indicator-on-default)',
 });
 
 export const tooltipTokenAliases = asCssVarMap({

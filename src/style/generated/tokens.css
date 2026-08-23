@@ -25,7 +25,7 @@
   --ds-button-md-weight: var(--ds-weight-medium);
   --ds-button-sm-gap: var(--ds-ref-space-6);
   --ds-button-sm-height: var(--ds-ref-control-height-sm);
-  --ds-button-sm-icon: var(--ds-ref-icon-size-sm);
+  --ds-button-sm-icon: var(--ds-ref-icon-size-md);
   --ds-button-sm-line-height: 1rem;
   --ds-button-sm-padding-inline: var(--ds-ref-space-10);
   --ds-button-sm-radius: var(--ds-ref-radius-full);

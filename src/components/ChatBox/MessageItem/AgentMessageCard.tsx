@@ -158,7 +158,7 @@ export function AgentMessageCard({
           <Button
             onClick={handleCopy}
             variant="ghost"
-            size="xs"
+            size="sm"
             buttonContent="icon-only"
             aria-label={t('setting.copy')}
           >
@@ -171,7 +171,7 @@ export function AgentMessageCard({
           <Button
             onClick={handleThumbUp}
             variant="ghost"
-            size="xs"
+            size="sm"
             buttonContent="icon-only"
             aria-label="Thumb up"
             aria-pressed={feedback === 'up'}
@@ -184,7 +184,7 @@ export function AgentMessageCard({
           <Button
             onClick={handleThumbDown}
             variant="ghost"
-            size="xs"
+            size="sm"
             buttonContent="icon-only"
             aria-label="Thumb down"
             aria-pressed={feedback === 'down'}

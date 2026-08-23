@@ -232,12 +232,13 @@ export default function Skills() {
           </TabsList>
         </Tabs>
         <div className="ml-auto flex items-center gap-2">
-          <SearchInput
-            variant="icon"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder={t('agents.search-skills')}
-          />
+          <div className="w-56 max-w-full">
+            <SearchInput
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder={t('agents.search-skills')}
+            />
+          </div>
           <Button
             variant="primary"
             size="sm"
@@ -246,7 +247,7 @@ export default function Skills() {
               setUploadDialogOpen(true);
             }}
           >
-            <Plus className="h-3.5 w-3.5" />
+            <Plus className="size-ds-icon-md" />
             {t('agents.add-skill')}
           </Button>
         </div>

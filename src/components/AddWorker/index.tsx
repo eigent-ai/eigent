@@ -849,7 +849,7 @@ export function AddWorker({
                   {showModelConfig && (
                     <div className="flex flex-row gap-3 rounded-lg bg-ds-neutral-muted-default px-3 py-2">
                       <div className="flex w-full flex-1 flex-col gap-1">
-                        <label className="text-ds-text-base font-bold text-ds-ink-default-default">
+                        <label className="text-ds-text-meta font-bold text-ds-ink-default-default">
                           {t('workforce.model-platform')}
                         </label>
                         <Select
@@ -882,7 +882,7 @@ export function AddWorker({
                       </div>
 
                       <div className="flex w-full flex-1 flex-col gap-1">
-                        <label className="text-ds-text-base font-bold text-ds-ink-default-default">
+                        <label className="text-ds-text-meta font-bold text-ds-ink-default-default">
                           {t('workforce.model-type')}
                         </label>
                         <Select

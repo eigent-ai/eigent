@@ -468,7 +468,7 @@ function EditorFields({
           }
         />
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="flex min-h-10 items-center gap-2 rounded-xl bg-ds-neutral-default-default px-3 text-ds-text-base font-bold">
+          <label className="flex min-h-10 items-center gap-2 rounded-xl bg-ds-neutral-default-default px-3 text-ds-text-meta font-bold">
             <Switch
               size="sm"
               aria-label={`Required ${label}`}
@@ -482,7 +482,7 @@ function EditorFields({
             />
             <span>Required</span>
           </label>
-          <label className="flex min-h-10 items-center gap-2 rounded-xl bg-ds-neutral-default-default px-3 text-ds-text-base font-bold">
+          <label className="flex min-h-10 items-center gap-2 rounded-xl bg-ds-neutral-default-default px-3 text-ds-text-meta font-bold">
             <Switch
               size="sm"
               aria-label={`Sensitive ${label}`}

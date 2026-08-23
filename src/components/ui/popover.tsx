@@ -96,7 +96,7 @@ const PopoverTrigger = React.forwardRef<
     return (
       <div className={cn('w-full', stateCls.wrapper)}>
         {title ? (
-          <div className="mb-1.5 flex items-center gap-1 text-ds-text-base font-semibold text-ds-ink-default-default">
+          <div className="mb-1.5 flex items-center gap-1 text-ds-text-meta font-semibold text-ds-ink-default-default">
             <span>{title}</span>
             {required && <span className="text-ds-ink-default-default">*</span>}
             {tooltip && (

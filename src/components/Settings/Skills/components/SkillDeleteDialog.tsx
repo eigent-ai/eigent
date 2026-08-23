@@ -52,6 +52,8 @@ export default function SkillDeleteDialog({
       })}
       confirmText={t('layout.delete')}
       cancelText={t('layout.cancel')}
+      confirmVariant="primary"
+      confirmTone="error"
     />
   );
 }

@@ -20,7 +20,7 @@
 @source inline('{hover:,focus:,active:,disabled:,focus-visible:,group-hover:,dark:,}bg-ds-accent-{subtle,muted,default,strong}-{default,hover,selected,disabled}');
 @source inline('{hover:,focus:,active:,disabled:,focus-visible:,group-hover:,dark:,}divide-ds-hairline-{subtle,muted,default,strong}-{default,hover,selected,disabled}');
 @source inline('{hover:,focus-visible:,focus:,focus-within:,}ring-ds-ring-focus');
-@source inline('text-ds-ink-inverse text-ds-icon-inverse');
+@source inline('text-ds-ink-inverse text-ds-icon-inverse !text-ds-ink-inverse !text-ds-icon-inverse');
 
 /* Palatino LT — welcome headline on History; files in /public/fonts/palatino-lt/ */
 @font-face {
@@ -175,7 +175,7 @@ body {
   button .lucide,
   a .lucide,
   .lucide[data-state='active'] {
-    color: var(--ds-icon-neutral-default-default);
+    color: inherit;
   }
 
   :is(
@@ -444,12 +444,14 @@ body {
 }
 
 .scrollbar-always-visible::-webkit-scrollbar-thumb {
-  background-color: rgba(156, 163, 175, 0.3);
+  background-color: rgba(156, 163, 175, 0.6);
   border-radius: 4px;
+  opacity: 0.5;
+  transition: opacity 160ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 .scrollbar-always-visible::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(156, 163, 175, 0.6);
+  opacity: 1;
 }
 
 .scrollbar-always-visible::-webkit-scrollbar-track {
@@ -576,20 +578,6 @@ body {
 
 .xterm .xterm-viewport::-webkit-scrollbar-corner {
   background: rgba(255, 255, 255, 0.05);
-}
-
-.alert-dialog {
-  z-index: 9998;
-  pointer-events: auto;
-}
-
-.alert-dialog-wrapper {
-  width: 450px;
-  height: auto;
-  z-index: 9999;
-  top: calc(50vh - 110px);
-  left: calc(50vw - 225px);
-  background: rgba(255, 255, 255, 0.8);
 }
 
 .stack-login-btn,

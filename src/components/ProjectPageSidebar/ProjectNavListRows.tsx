@@ -122,7 +122,7 @@ function ProjectNavRowMenu({
             onClick={(e) => e.stopPropagation()}
           >
             <MoreHorizontal
-              className="h-3.5 w-3.5 text-ds-ink-muted-default"
+              className="size-ds-icon-md text-ds-ink-muted-default"
               aria-hidden
             />
           </Button>

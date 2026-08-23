@@ -275,13 +275,24 @@ walkObject(componentRecipe, (parts, value) => {
   }
 });
 
-const assignedTones = Object.keys(toneAssignment.families).sort();
+const assignedTones = Object.entries(toneAssignment.families)
+  .filter(([, assignment]) => assignment.kind !== 'retired')
+  .map(([tone]) => tone)
+  .sort();
 const manifestTones = [...colorManifest.tones].sort();
 assert(
   assignedTones.length === manifestTones.length &&
     assignedTones.every((tone, index) => tone === manifestTones[index]),
-  `Tone assignment must cover every manifest tone. Missing or extra: assigned=[${assignedTones.join(',')}] manifest=[${manifestTones.join(',')}]`
+  `Every shipping manifest tone must have a non-retired assignment. assigned=[${assignedTones.join(',')}] manifest=[${manifestTones.join(',')}]`
 );
+for (const [tone, assignment] of Object.entries(toneAssignment.families)) {
+  if (assignment.kind === 'retired') {
+    assert(
+      !colorManifest.tones.includes(tone),
+      `Retired tone "${tone}" must not be published by the manifest`
+    );
+  }
+}
 assert(
   Array.isArray(exceptionRegistry.exceptions) &&
     exceptionRegistry.exceptions.length > 0,
@@ -437,6 +448,8 @@ for (const tone of FEEDBACK_TONES) {
 colors['ds-ring-focus'] = 'var(--ds-ring-focus)';
 colors['ds-ink-inverse'] = 'var(--ds-ink-inverse)';
 colors['ds-icon-inverse'] = 'var(--ds-icon-inverse)';
+colors['ds-success-indicator-on-default'] =
+  'var(--ds-success-indicator-on-default)';
 
 const staticCssVariables = [
   ...orderedTokens.map(([, token]) => token.cssVar),
@@ -453,6 +466,7 @@ const staticCssVariables = [
   '--ds-theme-contrast',
   '--ds-ink-inverse',
   '--ds-icon-inverse',
+  '--ds-success-indicator-on-default',
 ].sort();
 
 const colorMatrixCssVariables = [];
@@ -523,6 +537,7 @@ for (const tone of FEEDBACK_TONES) {
 declaredUtilityTokens.add('ds-ring-focus');
 declaredUtilityTokens.add('ds-ink-inverse');
 declaredUtilityTokens.add('ds-icon-inverse');
+declaredUtilityTokens.add('ds-success-indicator-on-default');
 for (const key of Object.keys(fontSize)) {
   declaredUtilityTokens.add(key.startsWith('ds-') ? key : `text-${key}`);
 }

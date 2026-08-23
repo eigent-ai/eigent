@@ -36,13 +36,16 @@
 
 .markdown-profile-standard p,
 .markdown-profile-standard li,
-.markdown-profile-standard blockquote {
+.markdown-profile-standard blockquote,
+.markdown-profile-conversation p,
+.markdown-profile-conversation li,
+.markdown-profile-conversation blockquote {
   margin-block: 0.75rem;
 }
 
 .markdown-profile-document {
-  font-size: var(--ds-text-body-large-size);
-  line-height: var(--ds-text-body-large-line);
+  font-size: var(--ds-text-base-size);
+  line-height: var(--ds-text-base-line);
 }
 
 .markdown-profile-document p,
@@ -106,13 +109,13 @@
 }
 
 .markdown-profile-document h1 {
-  font-size: var(--ds-text-display-size);
-  line-height: var(--ds-text-display-line);
+  font-size: var(--ds-text-page-size);
+  line-height: var(--ds-text-page-line);
 }
 
 .markdown-profile-document h2 {
-  font-size: var(--ds-text-page-size);
-  line-height: var(--ds-text-page-line);
+  font-size: var(--ds-text-section-size);
+  line-height: var(--ds-text-section-line);
 }
 
 .markdown-body p {

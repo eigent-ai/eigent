@@ -1740,7 +1740,7 @@ export default function SettingModels() {
             </div>
           </div>
           {/*Content Area*/}
-          <div className="flex w-full flex-row items-start justify-between gap-4 px-6 pb-4">
+          <div className="flex w-full flex-row items-center justify-between gap-4 px-6 pb-4">
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               <div className="flex items-center gap-1 !text-ds-text-base text-ds-ink-default-default">
                 <span>{t('setting.credits')}:</span>
@@ -1783,7 +1783,7 @@ export default function SettingModels() {
               size="sm"
               buttonContent="text"
               textWeight="bold"
-              buttonRadius="lg"
+              buttonRadius="full"
             >
               {subscriptionLoading ? (
                 <Loader2
@@ -2332,7 +2332,7 @@ export default function SettingModels() {
               size="sm"
               buttonContent="text"
               textWeight="medium"
-              buttonRadius="lg"
+              buttonRadius="full"
               onClick={() => handleDelete(idx)}
             >
               {t('setting.reset')}
@@ -2343,7 +2343,7 @@ export default function SettingModels() {
               size="sm"
               buttonContent="text"
               textWeight="bold"
-              buttonRadius="lg"
+              buttonRadius="full"
               onClick={() => handleVerify(idx)}
               disabled={loading === idx}
             >
@@ -2519,7 +2519,7 @@ export default function SettingModels() {
                   <Button
                     variant="ghost"
                     tone="neutral"
-                    size="xs"
+                    size="md"
                     buttonContent="icon-only"
                     textWeight="bold"
                     onClick={() =>
@@ -2569,7 +2569,7 @@ export default function SettingModels() {
               size="sm"
               buttonContent="text"
               textWeight="medium"
-              buttonRadius="lg"
+              buttonRadius="full"
               onClick={handleLocalReset}
             >
               {t('setting.reset')}
@@ -2582,7 +2582,7 @@ export default function SettingModels() {
               size="sm"
               buttonContent="text"
               textWeight="bold"
-              buttonRadius="lg"
+              buttonRadius="full"
             >
               {localVerifying ? t('setting.configuring') : t('setting.save')}
             </Button>
@@ -2621,23 +2621,26 @@ export default function SettingModels() {
           }}
         >
           <DropdownMenuTrigger asChild>
-            <button
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              buttonContent="text"
+              textWeight="semibold"
+              buttonRadius="lg"
               disabled={providersLoading}
               aria-busy={providersLoading}
-              className="flex w-fit items-center gap-2 rounded-lg border-[0.5px] border-x-[0.5px] border-y-[0.5px] border-solid border-ds-accent-default-default bg-ds-accent-default-default px-3 py-1 font-semibold text-ds-accent-on-default transition-colors outline-none hover:border-ds-accent-default-hover hover:bg-ds-accent-default-hover focus:outline-none focus-visible:outline-none active:shadow-ds-elevation-control-pressed disabled:cursor-wait disabled:opacity-70"
             >
-              <span className="text-ds-text-base leading-none whitespace-nowrap">
-                {getDefaultModelDisplayText()}
-              </span>
+              {getDefaultModelDisplayText()}
               {providersLoading ? (
                 <Loader2
-                  className="h-4 w-4 shrink-0 animate-spin !text-ds-accent-on-default motion-reduce:animate-none"
+                  className="animate-spin motion-reduce:animate-none"
                   aria-hidden
                 />
               ) : (
-                <ChevronDown className="h-4 w-4 shrink-0 !text-ds-accent-on-default" />
+                <ChevronDown />
               )}
-            </button>
+            </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-[180px]">
             {/* Cloud Category */}

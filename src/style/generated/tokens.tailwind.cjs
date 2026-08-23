@@ -99,7 +99,8 @@ module.exports = {
     "ds-information-on-strong": "var(--ds-information-on-strong)",
     "ds-ring-focus": "var(--ds-ring-focus)",
     "ds-ink-inverse": "var(--ds-ink-inverse)",
-    "ds-icon-inverse": "var(--ds-icon-inverse)"
+    "ds-icon-inverse": "var(--ds-icon-inverse)",
+    "ds-success-indicator-on-default": "var(--ds-success-indicator-on-default)"
   },
   "spacing": {
     "ds-0": "var(--ds-ref-space-0)",

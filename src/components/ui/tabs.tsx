@@ -166,7 +166,12 @@ const TabsList = React.forwardRef<
       <TabsContext.Provider value={{ appearance }}>
         <div
           ref={wrapperRef}
-          className={cn('relative', appearance === 'border' && 'pb-2')}
+          className={cn(
+            'relative flex',
+            appearance === 'border' ? 'pb-2' : 'overflow-hidden',
+            appearance === 'default' &&
+              'rounded-xl ring-1 ring-ds-hairline-default-default'
+          )}
         >
           <TabsPrimitive.List
             ref={combinedRef}
@@ -177,7 +182,7 @@ const TabsList = React.forwardRef<
               appearance === 'outline' &&
                 'relative rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-strong-default p-0.5',
               appearance === 'default' &&
-                'rounded-xl bg-ds-neutral-strong-default ring-1 ring-ds-hairline-subtle-default',
+                'rounded-xl bg-ds-neutral-strong-default',
               appearance === 'ghost' &&
                 'gap-1.5 rounded-none border-x-0 border-y-0 border-solid bg-transparent p-0 shadow-none ring-0',
               'data-[orientation=vertical]:flex data-[orientation=vertical]:h-full data-[orientation=vertical]:w-full data-[orientation=vertical]:flex-col data-[orientation=vertical]:items-stretch data-[orientation=vertical]:justify-start',

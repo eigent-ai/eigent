@@ -245,7 +245,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
                 defaultValue: 'Refresh',
               })}
             >
-              <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+              <RefreshCw className="size-ds-icon-md" aria-hidden />
             </Button>
           </TooltipSimple>
           <TooltipSimple content={foldToggleLabel}>
@@ -259,9 +259,9 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
               aria-label={foldToggleLabel}
             >
               {foldAll ? (
-                <ListChevronsUpDown className="h-3.5 w-3.5" aria-hidden />
+                <ListChevronsUpDown className="size-ds-icon-md" aria-hidden />
               ) : (
-                <ListChevronsDownUp className="h-3.5 w-3.5" aria-hidden />
+                <ListChevronsDownUp className="size-ds-icon-md" aria-hidden />
               )}
             </Button>
           </TooltipSimple>
@@ -278,9 +278,9 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
               {/* The icon shows the rail's current state; the tooltip and
                   label carry the action it would take. */}
               {treeHidden ? (
-                <FolderClosed className="h-3.5 w-3.5" aria-hidden />
+                <FolderClosed className="size-ds-icon-md" aria-hidden />
               ) : (
-                <FolderOpen className="h-3.5 w-3.5" aria-hidden />
+                <FolderOpen className="size-ds-icon-md" aria-hidden />
               )}
             </Button>
           </TooltipSimple>

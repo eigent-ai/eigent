@@ -34,13 +34,18 @@ describe('ShortcutTooltipContent', () => {
       </HostProvider>
     );
 
-    expect(screen.getByText('Toggle sidebar')).toBeInTheDocument();
+    const label = screen.getByText('Toggle sidebar');
+    expect(label).toBeInTheDocument();
+    expect(label).not.toHaveClass('leading-4');
+    expect(label.parentElement).toHaveClass('text-ds-text-meta');
+    expect(label.parentElement).not.toHaveClass('leading-4');
+    expect(label.parentElement?.parentElement).not.toHaveClass('my-2');
     const keycap = screen.getByText('⌘B');
     expect(keycap.tagName).toBe('KBD');
     expect(keycap).toHaveClass(
       'h-4',
       'border-0',
-      'bg-ds-bg-neutral-strong-default',
+      'bg-ds-neutral-strong-default',
       'ring-1'
     );
     expect(keycap).not.toHaveClass('shadow-sm', 'py-0.5');

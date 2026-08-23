@@ -16,7 +16,7 @@
         "height": "{ref.controlHeight.sm}",
         "typeRole": "text.base",
         "lineHeight": "1rem",
-        "icon": "{ref.iconSize.sm}",
+        "icon": "{ref.iconSize.md}",
         "gap": "{ref.space.6}",
         "paddingInline": "{ref.space.10}",
         "radius": "{ref.radius.full}",
@@ -164,7 +164,7 @@
       "gap": "{ref.space.4}"
     },
     "sm": {
-      "typeRole": "text.base",
+      "typeRole": "text.meta",
       "icon": "{ref.iconSize.md}",
       "paddingInline": "{ref.space.8}",
       "gap": "{ref.space.4}"
@@ -174,6 +174,9 @@
     "radius": "{ref.radius.full}",
     "typeRole": "text.meta",
     "paddingInline": "{ref.space.8}"
+  },
+  "label": {
+    "typeRole": "text.meta"
   },
   "menu": {
     "radius": "{radius.popover}",

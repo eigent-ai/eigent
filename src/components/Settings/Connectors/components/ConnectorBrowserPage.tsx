@@ -862,13 +862,13 @@ export default function ConnectorBrowserPage({
     <SettingsSectionPage className="min-h-full w-full">
       {!showingDetail ? (
         <SettingsHeaderActions>
-          <SearchInput
-            variant="icon"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={t('connectors.search-connectors')}
-            searchTooltip={t('connectors.search-connectors')}
-          />
+          <div className="w-56 max-w-full">
+            <SearchInput
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={t('connectors.search-connectors')}
+            />
+          </div>
           {localMode && connectorGatewayEnabled ? (
             <Button
               type="button"

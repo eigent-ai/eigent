@@ -102,10 +102,10 @@ export default function HomeHeader() {
               <DropdownMenuTrigger asChild>
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="secondary"
                   buttonContent="icon-only"
                   size="sm"
-                  className="rounded-lg"
+                  className="rounded-full"
                   aria-label={sortLabel}
                 >
                   <ArrowUpDown className="h-4 w-4" />

@@ -102,7 +102,7 @@ export function SubtaskEditor({
             }}
             onKeyDown={(e) => handleKey(e, index, task.content)}
             rows={1}
-            className="min-w-0 flex-1 resize-none border-none bg-transparent text-ds-text-base leading-10 font-normal text-ds-ink-default-default placeholder:text-ds-ink-subtle-disabled focus:outline-none"
+            className="min-w-0 flex-1 resize-none border-none bg-transparent text-ds-text-base leading-10 font-normal text-ds-ink-default-default placeholder:text-ds-ink-muted-default focus:outline-none"
           />
         </div>
       ))}

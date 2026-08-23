@@ -235,7 +235,7 @@ const TextInputField: React.FC<FieldProps> = ({
 
   return (
     <div className="space-y-2">
-      <Label className="text-sm">
+      <Label>
         {label}
         {isRequired && (
           <span className="ml-1 text-ds-text-error-strong-default">*</span>
@@ -318,7 +318,7 @@ const SwitchField: React.FC<FieldProps> = ({
   return (
     <div className="flex items-center justify-between">
       <div className="space-y-0.5">
-        <Label className="text-sm">
+        <Label>
           {label}
           {isRequired && (
             <span className="ml-1 text-ds-text-error-strong-default">*</span>
@@ -401,7 +401,7 @@ const MultiSelectField: React.FC<FieldProps> = ({
 
   return (
     <div className="space-y-2">
-      <Label className="text-sm">
+      <Label>
         {label}
         {isRequired && (
           <span className="ml-1 text-ds-text-error-strong-default">*</span>
@@ -556,7 +556,7 @@ const MultiTextInputField: React.FC<FieldProps> = ({
 
   return (
     <div className="space-y-2">
-      <Label className="text-sm">
+      <Label>
         {label}
         {isRequired && (
           <span className="ml-1 text-ds-text-error-strong-default">*</span>
@@ -680,7 +680,7 @@ const NumberInputField: React.FC<FieldProps> = ({
 
   return (
     <div className="space-y-2">
-      <Label className="text-sm">
+      <Label>
         {label}
         {isRequired && (
           <span className="ml-1 text-ds-text-error-strong-default">*</span>
@@ -1151,7 +1151,7 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
         <div className="space-y-4">
           {showSectionTitles && (
             <div className="flex items-center gap-2">
-              <Label className="text-sm font-bold text-ds-ink-default-default">
+              <Label className="font-bold text-ds-ink-default-default">
                 {t('triggers.dynamic.credentials')}
               </Label>
               <TooltipSimple content={t('triggers.dynamic.credentials-notice')}>
@@ -1176,7 +1176,7 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
       {config.length > 0 && (
         <div className="space-y-4 border-x-0 border-t border-b-0 border-ds-hairline-default-default pt-4">
           {showSectionTitles && (
-            <Label className="text-sm font-bold text-ds-ink-default-default">
+            <Label className="font-bold text-ds-ink-default-default">
               {t('triggers.dynamic.configuration')}
             </Label>
           )}
@@ -1188,7 +1188,7 @@ export const DynamicTriggerConfig: React.FC<DynamicTriggerConfigProps> = ({
       {behavior.length > 0 && (
         <div className="space-y-4 border-x-0 border-t border-b-0 border-ds-hairline-default-default pt-4">
           {showSectionTitles && (
-            <Label className="text-sm font-bold text-ds-ink-default-default">
+            <Label className="font-bold text-ds-ink-default-default">
               {t('triggers.dynamic.behavior-settings')}
             </Label>
           )}

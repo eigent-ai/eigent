@@ -80,7 +80,7 @@ export function InterruptedRunBanner({
                 onClick={onResume}
                 disabled={action !== null}
               >
-                <RotateCcw className="size-3.5" aria-hidden="true" />
+                <RotateCcw className="size-ds-icon-md" aria-hidden="true" />
                 <span>
                   {action === 'resuming' ? resumingLabel : resumeLabel}
                 </span>
@@ -93,7 +93,7 @@ export function InterruptedRunBanner({
                 onClick={onCancel}
                 disabled={action !== null}
               >
-                <X className="size-3.5" aria-hidden="true" />
+                <X className="size-ds-icon-md" aria-hidden="true" />
                 <span>
                   {action === 'cancelling' ? cancellingLabel : cancelLabel}
                 </span>

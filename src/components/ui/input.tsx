@@ -87,7 +87,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
         style={formControlTokenAliases}
       >
         {title ? (
-          <div className="mb-1.5 flex items-center gap-1 text-ds-text-base font-bold text-ds-ink-default-default">
+          <div className="mb-1.5 flex items-center gap-1 text-ds-text-meta font-bold text-ds-ink-default-default">
             <span>{title}</span>
             {required && <span className="text-ds-ink-default-default">*</span>}
             {optional && (

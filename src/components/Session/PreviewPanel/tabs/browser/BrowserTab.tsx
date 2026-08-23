@@ -238,7 +238,7 @@ export function BrowserTab({
             className={cn(
               'h-[28px] w-full min-w-0 rounded-xl border-x-0 border-y-0 border-none bg-ds-neutral-subtle-default px-3 text-ds-text-base text-ds-ink-default-default transition-colors outline-none placeholder:text-ds-ink-muted-default',
               'hover:bg-ds-neutral-subtle-default hover:ring-1 hover:ring-ds-hairline-strong-default hover:ring-offset-0',
-              'focus:bg-ds-neutral-subtle-default focus:ring-1 focus:ring-ds-ring-focus focus:ring-offset-0',
+              'focus-visible:ring-1 focus-visible:ring-ds-ring-focus focus-visible:ring-offset-0',
               addressError
                 ? 'border-ds-border-status-error-default-default'
                 : 'border-ds-hairline-default-default'

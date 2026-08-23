@@ -626,7 +626,7 @@ export const MarkDown = memo(
           ref={contentRef}
           className={cn(
             'markdown-body max-w-none min-w-0 overflow-hidden',
-            `markdown-profile-${profile === 'conversation' ? 'standard' : profile}`,
+            `markdown-profile-${profile}`,
             className
           )}
           dangerouslySetInnerHTML={{ __html: html }}

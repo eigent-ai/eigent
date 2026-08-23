@@ -54,7 +54,7 @@ export const sessionPanelRowVariants = cva(
         variant: 'item',
         interactive: true,
         className:
-          'hover:bg-ds-neutral-subtle-hover active:bg-ds-neutral-subtle-default',
+          'hover:bg-ds-neutral-subtle-hover active:shadow-ds-elevation-control-pressed',
       },
     ],
     defaultVariants: {
@@ -328,8 +328,8 @@ SidePanelListRow.displayName = 'SidePanelListRow';
 
 /**
  * Progress circle. Incomplete: neutral subtle fill so the ring reads on any
- * panel background. Complete: filled success (matches primary success button)
- * with the success on-fill pair.
+ * panel background. Complete: primary-success pair — strong fill with light
+ * on-strong mark, same contrast contract as a success primary button.
  */
 export function ProgressCircle({
   done,
@@ -343,19 +343,13 @@ export function ProgressCircle({
       className={cn(
         'inline-flex shrink-0 items-center justify-center rounded-full border-[0.5px] border-x-[0.5px] border-y-[0.5px] border-solid',
         done
-          ? 'border-ds-bg-success-default-default bg-ds-bg-success-default-default text-ds-success-on-default'
+          ? 'border-ds-bg-success-strong-default bg-ds-bg-success-strong-default text-ds-success-on-strong [&_svg]:!text-ds-success-on-strong'
           : 'border-ds-hairline-default-default bg-ds-neutral-subtle-default'
       )}
       style={{ width: size, height: size }}
       aria-hidden
     >
-      {done ? (
-        <Check
-          className="!text-ds-success-on-default"
-          size={Math.max(8, size - 6)}
-          strokeWidth={4}
-        />
-      ) : null}
+      {done ? <Check size={Math.max(8, size - 6)} strokeWidth={4} /> : null}
     </span>
   );
 }

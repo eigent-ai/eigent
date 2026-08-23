@@ -50,7 +50,6 @@ export const TOKEN_TONES = [
   'terminal',
   'document',
   'success',
-  'caution',
   'error',
   'warning',
   'information',

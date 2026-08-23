@@ -17,13 +17,12 @@
  * active, and open/selected: `bg-neutral-subtle-default`. Brand CTAs (e.g. the
  * update button) keep their own tone.
  *
- * `!` is needed because the `Button` ghost tone ships its own
- * hover/active/focus fills at the same specificity.
+ * `!` keeps the shared hover/open treatment above a Button variant's chrome;
+ * focus remains the shared ring and pressed feedback remains elevation.
  */
 export const TOP_BAR_CONTROL_STATE_CLASS = [
   'hover:!bg-ds-neutral-subtle-default',
-  'focus:!bg-ds-neutral-subtle-default',
-  'active:!bg-ds-neutral-subtle-default',
+  'active:!shadow-ds-elevation-control-pressed',
   'data-[state=open]:!bg-ds-neutral-subtle-default',
   'aria-expanded:!bg-ds-neutral-subtle-default',
   'aria-pressed:!bg-ds-neutral-subtle-default',

@@ -103,7 +103,7 @@ export function ThinkingEffortSelect({
             triggerShellClass,
             'min-w-0 cursor-pointer border-0 border-x-0 border-y-0 text-left',
             'justify-between font-semibold transition-colors',
-            'hover:bg-ds-neutral-subtle-default active:bg-ds-neutral-subtle-default data-[state=open]:bg-ds-neutral-subtle-default',
+            'hover:bg-ds-neutral-subtle-default active:shadow-ds-elevation-control-pressed data-[state=open]:bg-ds-neutral-subtle-default',
             'focus-visible:ring-2 focus-visible:ring-ds-hairline-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-neutral-default-default focus-visible:outline-none',
             'disabled:pointer-events-none disabled:opacity-50',
             className

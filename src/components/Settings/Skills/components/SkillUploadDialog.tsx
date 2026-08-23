@@ -663,6 +663,8 @@ export default function SkillUploadDialog({
           message={t('agents.replace-skill-message')}
           confirmText={t('agents.update-and-replace')}
           cancelText={t('layout.cancel')}
+          confirmVariant="primary"
+          confirmTone="error"
         />
       )}
     </>

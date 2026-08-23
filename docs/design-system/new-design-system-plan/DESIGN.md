@@ -429,30 +429,30 @@ The current `manifest.json` declares 22 tones on a single axis. The new model
 distributes them across four families. This table is normative and must be
 complete before Phase 4 opens; no tone may remain unassigned.
 
-| Current tone         | New family | Role                | Notes                                   |
-| -------------------- | ---------- | ------------------- | --------------------------------------- |
-| `neutral`            | Neutral    | —                   | Surfaces, panels, fields, neutral fills |
-| `brand`              | Accent     | —                   | Anchored on the theme Accent seed       |
-| `success`            | Feedback   | Success             | Outcome meaning                         |
-| `warning`            | Feedback   | Warning             | Outcome meaning                         |
-| `error`              | Feedback   | Error               | Outcome meaning                         |
-| `information`        | Feedback   | Information         | Outcome meaning                         |
+| Current tone         | New family | Role                | Notes                                                               |
+| -------------------- | ---------- | ------------------- | ------------------------------------------------------------------- |
+| `neutral`            | Neutral    | —                   | Surfaces, panels, fields, neutral fills                             |
+| `brand`              | Accent     | —                   | Anchored on the theme Accent seed                                   |
+| `success`            | Feedback   | Success             | Outcome meaning                                                     |
+| `warning`            | Feedback   | Warning             | Outcome meaning                                                     |
+| `error`              | Feedback   | Error               | Outcome meaning                                                     |
+| `information`        | Feedback   | Information         | Outcome meaning                                                     |
 | `caution`            | Feedback   | Error               | **Merge.** Historical `cuation`/danger red (`#e7000b`), not Warning |
-| `status-running`     | Status     | maps to Information | Fixed anchor, retains own label         |
-| `status-splitting`   | Status     | maps to Information | Fixed anchor, retains own label         |
-| `status-pending`     | Status     | maps to Information | Fixed anchor, retains own label         |
-| `status-reassigning` | Status     | maps to Information | Fixed anchor, retains own label         |
-| `status-completed`   | Status     | maps to Success     | Fixed anchor, retains own label         |
-| `status-error`       | Status     | maps to Error       | Fixed anchor, retains own label         |
-| `status-blocked`     | Status     | maps to Error       | Fixed anchor, retains own label         |
-| `status-paused`      | Status     | maps to Warning     | Fixed anchor, retains own label         |
-| `status-skipped`     | Status     | maps to Neutral     | Non-failure terminal state              |
-| `status-cancelled`   | Status     | maps to Neutral     | Non-failure terminal state              |
-| `single-agent`       | Category   | Agent identity      | Stable identity, no interaction ladder  |
-| `workforce`          | Category   | Agent identity      | Stable identity, no interaction ladder  |
-| `browser`            | Category   | Tool identity       | Stable identity, no interaction ladder  |
-| `terminal`           | Category   | Tool identity       | Stable identity, no interaction ladder  |
-| `document`           | Category   | Tool identity       | Stable identity, no interaction ladder  |
+| `status-running`     | Status     | maps to Information | Fixed anchor, retains own label                                     |
+| `status-splitting`   | Status     | maps to Information | Fixed anchor, retains own label                                     |
+| `status-pending`     | Status     | maps to Information | Fixed anchor, retains own label                                     |
+| `status-reassigning` | Status     | maps to Information | Fixed anchor, retains own label                                     |
+| `status-completed`   | Status     | maps to Success     | Fixed anchor, retains own label                                     |
+| `status-error`       | Status     | maps to Error       | Fixed anchor, retains own label                                     |
+| `status-blocked`     | Status     | maps to Error       | Fixed anchor, retains own label                                     |
+| `status-paused`      | Status     | maps to Warning     | Fixed anchor, retains own label                                     |
+| `status-skipped`     | Status     | maps to Neutral     | Non-failure terminal state                                          |
+| `status-cancelled`   | Status     | maps to Neutral     | Non-failure terminal state                                          |
+| `single-agent`       | Category   | Agent identity      | Stable identity, no interaction ladder                              |
+| `workforce`          | Category   | Agent identity      | Stable identity, no interaction ladder                              |
+| `browser`            | Category   | Tool identity       | Stable identity, no interaction ladder                              |
+| `terminal`           | Category   | Tool identity       | Stable identity, no interaction ladder                              |
+| `document`           | Category   | Tool identity       | Stable identity, no interaction ladder                              |
 
 Two consequences follow from this table:
 
@@ -524,12 +524,12 @@ The public matrix drops two states (`active`, `focus`) and two emphasis levels
 (`inverse`, `transparent`) relative to the shipping axes. These are live in
 production source, so each needs a destination rather than a deletion:
 
-| Retired        | Live uses | Destination                                                          |
-| -------------- | --------: | -------------------------------------------------------------------- |
-| `active` state |  see note | Pressed feedback via `elevation-control-pressed` and approved motion |
-| `focus` state  |  see note | The separate Ring treatment (§2.6), composed onto the rendered state |
+| Retired        | Live uses | Destination                                                                                                      |
+| -------------- | --------: | ---------------------------------------------------------------------------------------------------------------- |
+| `active` state |  see note | Pressed feedback via `elevation-control-pressed` and approved motion                                             |
+| `focus` state  |  see note | The separate Ring treatment (§2.6), composed onto the rendered state                                             |
 | `inverse`      |        48 | Inverse **text** via `--ds-ink-inverse` / `--ds-{group}-on-{emphasis}` (§2.2.1). Inverse is not a fill emphasis. |
-| `transparent`  |         3 | Component recipe with no fill; `ghost`/`text` Button variants (§5.3) |
+| `transparent`  |         3 | Component recipe with no fill; `ghost`/`text` Button variants (§5.3)                                             |
 
 `active` and `focus` together account for 120 call sites; `inverse` 48;
 `transparent` 3. Regenerate these counts from the usage report at the start of
@@ -943,7 +943,7 @@ The values below are approved by component-matrix review.
 | Size | Height | Type role                    | Icon | Gap | Inline padding | Default shape |
 | ---- | -----: | ---------------------------- | ---: | --: | -------------: | ------------- |
 | `xs` |   24px | `text.meta` / 16px line      | 12px | 4px |            6px | Pill          |
-| `sm` |   28px | `text.base` / compact line   | 14px | 6px |           10px | Pill          |
+| `sm` |   28px | `text.base` / compact line   | 16px | 6px |           10px | Pill          |
 | `md` |   32px | `text.base` / default line   | 16px | 8px |           10px | Pill          |
 | `lg` |   36px | `text.base` / default line   | 16px | 8px |           14px | Pill          |
 | `xl` |   40px | `text.body-large` / own line | 16px | 8px |           16px | Pill          |
@@ -959,7 +959,7 @@ primitive migration:
 | ------------- | -----: | ------------: | -------- | -------: | ----------------- |
 | `xxs`         |      — |             — | `xs`     |     12px | **retired**       |
 | `xs`          |      — |             — | `xs`     |     12px | height formalized |
-| `sm`          |   28px |          16px | `sm`     |     14px | icon **−2px**     |
+| `sm`          |   28px |          16px | `sm`     |     16px | unchanged         |
 | `md`          |   32px |          24px | `md`     |     16px | icon **−8px**     |
 | `lg`          |   36px |          24px | `lg`     |     16px | icon **−8px**     |
 | —             |      — |             — | `xl`     |     16px | **new**, 40px     |
@@ -1018,8 +1018,9 @@ Proposed button rules:
   changes to icon-only.
 - A leading/trailing icon uses the size recipe; feature code does not choose a
   second icon size. Standard labeled buttons use the 16px `icon.main` recipe;
-  `xs` and `sm` scale that same optical recipe to 12px and 14px. The 24px
-  detailed recipe is not used inside routine buttons.
+  `xs` scales that same optical recipe to 12px; `sm` and above keep it at 16px
+  so button icons align with tabs and navigation. The 24px detailed recipe is
+  not used inside routine buttons.
 - Destructive and validation meaning come from semantic tone, not a different
   geometry.
 
@@ -1209,7 +1210,8 @@ choose supported axes but should not reconstruct the recipe.
 | Icon button                  | Matching Button height, circle, recipe-owned icon                       |
 | Input/Select/Popover trigger | Field `md`, 40px, `text.base`, radius field, thin border                |
 | Textarea                     | Field `md` profile with 80px minimum and multiline behavior             |
-| Tag/Badge                    | Pill, `text.meta`/`text.base`, no elevation, semantic tone              |
+| Tag/Badge                    | Pill, `text.meta` at every size, no elevation, semantic tone            |
+| Label                        | `text.meta`; weight and color come from the owning field recipe         |
 | Checkbox                     | 16px control, 4px radius, thin boundary, check icon owned by recipe     |
 | Switch                       | Pill track and circular thumb, strong boundary only for outline style   |
 | Tabs                         | Pill or connected pattern selected by appearance; one focus recipe      |

@@ -48,6 +48,16 @@ describe('utils', () => {
       expect(result).toBe('p-4');
     });
 
+    it('keeps semantic typography and foreground utilities together', () => {
+      const result = cn('!text-ds-ink-inverse', '!text-ds-text-base');
+      expect(result).toBe('!text-ds-ink-inverse !text-ds-text-base');
+    });
+
+    it('still merges conflicting semantic typography roles', () => {
+      const result = cn('text-ds-text-meta', 'text-ds-text-base');
+      expect(result).toBe('text-ds-text-base');
+    });
+
     it('should handle empty inputs', () => {
       const result = cn();
       expect(result).toBe('');

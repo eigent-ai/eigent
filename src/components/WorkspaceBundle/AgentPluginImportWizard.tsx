@@ -799,7 +799,7 @@ export function AgentPluginImportWizard({
             </CardHeader>
             <CardContent className="space-y-4">
               {targetMode === 'create-space' ? (
-                <label className="block space-y-1.5 text-ds-text-base font-medium">
+                <label className="block space-y-1.5 text-ds-text-meta font-medium">
                   <span>New Space name</span>
                   <Input
                     value={newSpaceName}
@@ -809,7 +809,7 @@ export function AgentPluginImportWizard({
                   />
                 </label>
               ) : (
-                <label className="block space-y-1.5 text-ds-text-base font-medium">
+                <label className="block space-y-1.5 text-ds-text-meta font-medium">
                   <span>Target Workspace</span>
                   <select
                     className="h-10 w-full rounded-xl border bg-ds-neutral-default-default px-3"

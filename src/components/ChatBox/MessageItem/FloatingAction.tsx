@@ -89,7 +89,7 @@ export const FloatingAction = ({
 							disabled={loading}
 							className="gap-1.5 rounded-full min-w-[80px]"
 						>
-							<Play className="w-3.5 h-3.5" />
+							<Play className="size-ds-icon-md" />
 							<span className="text-sm font-semibold">Resume</span>
 						</Button>
 						<Button

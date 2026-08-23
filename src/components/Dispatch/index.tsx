@@ -630,7 +630,7 @@ export function WorkspaceDispatch() {
               exit={{ opacity: 0, transition: { duration: 0.15 } }}
               transition={{ duration: 0.2 }}
             >
-              <div className="w-full max-w-xl">{channelList}</div>
+              <div className="w-full max-w-2xl">{channelList}</div>
             </motion.div>
           )}
         </AnimatePresence>

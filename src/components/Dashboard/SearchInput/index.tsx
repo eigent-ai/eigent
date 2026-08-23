@@ -13,7 +13,6 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -22,12 +21,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export type SearchInputVariant = 'default' | 'icon';
+export type SearchInputColor = 'default-default' | 'subtle-default';
 
 interface SearchInputProps {
   value: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   placeholder?: string;
   variant?: SearchInputVariant;
+  /** Neutral fill. Defaults to `default-default`. */
+  color?: SearchInputColor;
   /** Optional: called when user presses Enter in the field (e.g. to submit search) */
   onSearch?: () => void;
   /** Tooltip for the search icon button (icon variant). Defaults to agents.search-tooltip */
@@ -44,6 +46,7 @@ export default function SearchInput({
   onChange,
   placeholder,
   variant = 'default',
+  color = 'default-default',
   onSearch,
   searchTooltip,
   clearTooltip,
@@ -172,13 +175,28 @@ export default function SearchInput({
   }
 
   return (
-    <div className="relative w-full">
-      <Input
-        size="sm"
+    <div
+      className={cn(
+        'relative flex h-ds-control-sm min-h-ds-control-sm w-full items-center gap-ds-6 rounded-ds-field border-0 border-x-0 border-y-0 px-ds-8 transition-colors',
+        color === 'subtle-default'
+          ? 'bg-ds-neutral-subtle-default focus-within:bg-ds-neutral-subtle-hover hover:bg-ds-neutral-subtle-hover'
+          : 'bg-ds-neutral-default-default focus-within:bg-ds-neutral-default-hover hover:bg-ds-neutral-default-hover'
+      )}
+    >
+      <span className="leading-icon-wrapper pointer-events-none inline-flex shrink-0 items-center justify-center text-ds-ink-muted-default">
+        <Search className="size-ds-icon-sm" />
+      </span>
+      <input
+        type="text"
         value={value}
         onChange={onChange}
         placeholder={place}
-        leadingIcon={<Search className="h-5 w-5 text-ds-ink-muted-default" />}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            onSearch?.();
+          }
+        }}
+        className="h-full min-w-0 flex-1 bg-transparent text-ds-text-base text-ds-ink-default-default outline-none placeholder:text-ds-ink-muted-default"
       />
     </div>
   );

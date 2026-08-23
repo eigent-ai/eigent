@@ -84,7 +84,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
             {...textareaProps}
             data-scrollbar="ui-textarea"
             className={cn(
-              'flex min-h-[4rem] w-full [scrollbar-gutter:stable] rounded-ds-field border border-x border-y border-ds-hairline-default-default bg-transparent py-2 pr-3 pl-3 text-ds-text-base shadow-sm placeholder:text-ds-ink-muted-default/20 focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
+              'flex min-h-[4rem] w-full [scrollbar-gutter:stable] rounded-ds-field border border-x border-y border-ds-hairline-default-default bg-transparent py-2 pr-3 pl-3 text-ds-text-base shadow-sm placeholder:text-ds-ink-muted-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
               isComposing && 'placeholder:opacity-0',
               className
             )}
@@ -141,7 +141,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
           style={formControlTokenAliases}
         >
           {title ? (
-            <div className="mb-1.5 flex items-center gap-1 text-ds-text-base font-bold text-ds-ink-default-default">
+            <div className="mb-1.5 flex items-center gap-1 text-ds-text-meta font-bold text-ds-ink-default-default">
               <span>{title}</span>
               {required && (
                 <span className="text-ds-ink-default-default">*</span>

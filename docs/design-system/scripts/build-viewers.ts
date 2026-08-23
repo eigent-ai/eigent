@@ -227,7 +227,7 @@ function proposedAccentStateCells(mode: Mode): CellOverrides {
       const baseline = darkBaselineCell[emphasis];
       const emphasisChroma = emphasis === 'strong' ? -0.02 : 0;
       cells[`brand.${emphasis}.default`] = {
-        dL: baseline,
+        dL: emphasis === 'default' ? 0 : baseline,
         dC: emphasisChroma,
       };
       cells[`brand.${emphasis}.hover`] = {
@@ -247,11 +247,12 @@ function proposedAccentStateCells(mode: Mode): CellOverrides {
   for (const emphasis of emphases) {
     const emphasisChroma = emphasis === 'strong' ? -0.02 : 0;
     const isStrong = emphasis === 'strong';
+    const isDefault = emphasis === 'default';
     // Cancel the engine's mode contrast bias at the row baseline, then move
     // only lightness for interaction. Lift the Strong row away from black so
     // its darker interaction states retain visible separation.
     cells[`brand.${emphasis}.default`] = {
-      dL: isStrong ? 0.2 : 0.04,
+      dL: isDefault ? 0 : isStrong ? 0.2 : 0.04,
       dC: emphasisChroma,
     };
     cells[`brand.${emphasis}.hover`] = {
@@ -297,12 +298,6 @@ function proposedContract(mode: Mode): ThemeContractV2 {
     themeId: proposedDefaultThemeId,
     overrides: {
       ...base.overrides,
-      tone: {
-        ...base.overrides?.tone,
-        // The semantic brand tone currently injects chroma. Cancel that
-        // addition so interaction states inherit the supplied seed exactly.
-        brand: { dC: -0.03 },
-      },
       cell: {
         ...base.overrides?.cell,
         ...proposedAccentStateCells(mode),
@@ -862,7 +857,7 @@ function toneAssignment(): string {
     [
       'Feedback',
       'feedback',
-      ['success', 'warning', 'error', 'information', 'caution → warning'],
+      ['success', 'warning', 'error', 'information', 'caution → error'],
     ],
     [
       'Status',

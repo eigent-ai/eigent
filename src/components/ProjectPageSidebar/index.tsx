@@ -670,6 +670,8 @@ export default function ProjectPageSidebar({
         message={t('layout.delete-project-confirmation')}
         confirmText={t('layout.delete')}
         cancelText={t('layout.cancel')}
+        confirmVariant="secondary"
+        confirmTone="error"
         confirmDisabled={deleteProjectLoading}
       />
 
@@ -685,6 +687,8 @@ export default function ProjectPageSidebar({
         message={t('layout.ending-this-project-will-stop')}
         confirmText={t('layout.yes-end-project')}
         cancelText={t('layout.cancel')}
+        confirmVariant="primary"
+        confirmTone="error"
         confirmDisabled={achieveProjectLoading}
       />
 

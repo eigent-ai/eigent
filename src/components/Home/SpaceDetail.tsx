@@ -321,7 +321,7 @@ export default function SpaceDetail({
                 >
                   {space.name?.trim() || 'Untitled Space'}
                 </span>
-                <span className="mt-2 block max-w-xl !text-ds-text-base text-ds-ink-muted-default">
+                <span className="mt-2 block !text-ds-text-base text-ds-ink-muted-default">
                   {space.description?.trim() || 'No description added.'}
                 </span>
               </div>

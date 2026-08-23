@@ -63,9 +63,9 @@ export default function ContentHeader({
     >
       {leading}
       {title ? (
-        <h1 className="min-w-0 shrink truncate !text-ds-text-body-large font-semibold text-ds-ink-default-default">
+        <span className="min-w-0 shrink truncate !text-ds-text-body-large font-semibold text-ds-ink-default-default">
           {title}
-        </h1>
+        </span>
       ) : null}
       {children}
       {actions ? (

@@ -31,7 +31,8 @@ describe('TooltipSimple', () => {
     await user.hover(screen.getByRole('button', { name: 'Toggle sidebar' }));
     await screen.findByRole('tooltip');
     const visibleContent = document.querySelector('[data-side]');
-    expect(visibleContent).toHaveClass('py-0');
+    expect(visibleContent).toHaveClass('py-0', 'text-ds-text-meta');
+    expect(visibleContent).not.toHaveClass('text-xs', 'leading-4');
   });
 
   it('does not restore a stale open tooltip when it is re-enabled', async () => {

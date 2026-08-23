@@ -99,7 +99,7 @@ export function ExpandedOverlay({
               onClick={onMinimize}
               aria-label={t('chat.minimize-plan')}
             >
-              <Minimize2 size={14} />
+              <Minimize2 className="size-ds-icon-md" />
             </Button>
           </div>
 

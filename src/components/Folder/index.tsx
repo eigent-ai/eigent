@@ -3031,7 +3031,7 @@ export function FileViewerPanel({
     >
       {/* head */}
       {(selectedFile || onToggleFileTree) && (
-        <div className="flex min-h-ds-layout-row-header shrink-0 flex-wrap items-center justify-between gap-2 border-y-0 border-r-0 border-l-0 border-solid border-ds-hairline-subtle-default py-1.5 pr-2 pl-4">
+        <div className="flex min-h-ds-layout-row-header shrink-0 flex-wrap items-center justify-between gap-2 border-y-0 border-r-0 border-l-0 border-solid border-ds-hairline-subtle-default pr-2 pl-4">
           {selectedFile ? (
             <div
               onClick={segmentsClickable ? undefined : onRevealFile}
@@ -3138,7 +3138,7 @@ export function FileViewerPanel({
                     buttonContent="text"
                   >
                     {t('folder.open-in', { defaultValue: 'Open in' })}
-                    <ChevronDown className="size-3.5" aria-hidden />
+                    <ChevronDown className="size-ds-icon-md" aria-hidden />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent

@@ -218,7 +218,7 @@ export default function SettingGeneral({
                   variant="primary"
                   textWeight="semibold"
                   buttonContent="text"
-                  buttonRadius="lg"
+                  buttonRadius="full"
                   tone="neutral"
                   size="sm"
                 >
@@ -229,7 +229,7 @@ export default function SettingGeneral({
                   variant="outline"
                   textWeight="semibold"
                   buttonContent="text"
-                  buttonRadius="lg"
+                  buttonRadius="full"
                   tone="neutral"
                   size="sm"
                   onClick={() => {
@@ -269,7 +269,7 @@ export default function SettingGeneral({
                   <SelectGroup>
                     <SelectItem
                       value="system"
-                      className="hover:!bg-ds-neutral-subtle-default focus:!bg-ds-neutral-subtle-default data-[highlighted]:!bg-ds-neutral-subtle-default"
+                      className="hover:!bg-ds-neutral-subtle-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-inset data-[highlighted]:ring-2 data-[highlighted]:ring-ds-ring-focus data-[highlighted]:ring-inset"
                     >
                       {t('setting.system-default')}
                     </SelectItem>
@@ -277,7 +277,7 @@ export default function SettingGeneral({
                       <SelectItem
                         key={item.key}
                         value={item.key}
-                        className="hover:!bg-ds-neutral-subtle-default focus:!bg-ds-neutral-subtle-default data-[highlighted]:!bg-ds-neutral-subtle-default"
+                        className="hover:!bg-ds-neutral-subtle-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-inset data-[highlighted]:ring-2 data-[highlighted]:ring-ds-ring-focus data-[highlighted]:ring-inset"
                       >
                         {item.label}
                       </SelectItem>

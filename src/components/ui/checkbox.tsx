@@ -43,7 +43,7 @@ const Checkbox = React.forwardRef<
     <CheckboxPrimitives.Indicator className="flex items-center justify-center">
       <Check
         className={cn(
-          'size-ds-icon-sm shrink-0 group-data-[state=checked]/checkbox:text-ds-success-on-default',
+          'size-ds-icon-sm shrink-0 group-data-[state=checked]/checkbox:!text-ds-success-indicator-on-default',
           iconClassName
         )}
       />
