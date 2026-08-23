@@ -846,6 +846,73 @@ def test_primary_checkout_preserves_dirty_user_preimage_before_agent_diff(
     ) == ("generated.txt",)
 
 
+def test_primary_checkout_noop_keeps_change_set_base_after_tool_side_effect(
+    tmp_path,
+    journal,
+):
+    content, coordinator, _, backend = _services(tmp_path, journal)
+    direct = WorkspaceMutationService(
+        journal,
+        state_root=tmp_path / "state",
+        coordinator=coordinator,
+    )
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    seed = space / "seed.txt"
+    seed.write_text("seed", encoding="utf-8")
+    backend.commit_paths(space, (seed,), message="seed")
+    (space / "user-draft.txt").write_text("user preimage", encoding="utf-8")
+    _admit(journal, coordinator)
+
+    first = direct.prepare_file_write(
+        context=_context(space),
+        filename="seed.txt",
+        operation_request_id="direct-noop-1",
+        actor_id="developer-agent",
+        trigger="filesystem.edit",
+    )
+    assert first is not None
+    frozen_base = first.change_set.base_commit
+
+    # Some editor adapters create a backup even when their exact replacement
+    # is a no-op. The next mutation must not reclassify that Agent side effect
+    # as a new User preimage and move the already-created ChangeSet base.
+    (space / "seed.txt.20260823_122919.bak").write_text(
+        "seed", encoding="utf-8"
+    )
+    assert (
+        direct.complete_file_write(
+            first,
+            operation_request_id="direct-noop-1",
+            actor_id="developer-agent",
+            trigger="filesystem.edit",
+        )
+        is None
+    )
+    assert (
+        journal.list_git_change_set_items(first.change_set.change_set_id) == []
+    )
+
+    second = direct.prepare_file_write(
+        context=_context(space),
+        filename="seed.txt",
+        operation_request_id="direct-noop-2",
+        actor_id="developer-agent",
+        trigger="filesystem.edit",
+    )
+
+    assert second is not None
+    assert second.change_set.change_set_id == first.change_set.change_set_id
+    assert second.change_set.base_commit == frozen_base
+    run = journal.get_run_git_materialization("run-1")
+    assert run is not None and run.workspace_base_commit == frozen_base
+
+
 def test_primary_checkout_broad_process_commits_only_visible_checkout(
     tmp_path,
     journal,

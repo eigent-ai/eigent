@@ -739,7 +739,11 @@ def test_terminal_run_expired_approval_does_not_abort_other_startup_recovery(
 
         assert result.interrupted_run_ids == ("recoverable",)
         assert journal.get_run("terminal").status == "completed"
-        assert journal.list_approvals("terminal")[0].status == "pending"
+        assert journal.list_approvals("terminal")[0].status == "rejected"
+        assert (
+            journal.get_human_interaction("stale-approval").status
+            == "cancelled"
+        )
         assert journal.get_run("recoverable").status == "interrupted"
         assert (
             journal.get_run_attempt(recoverable_attempt.attempt_id).status
