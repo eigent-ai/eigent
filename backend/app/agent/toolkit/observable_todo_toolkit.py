@@ -17,12 +17,12 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from camel.toolkits import FunctionTool, TodoToolkit
 from camel.toolkits.todo_toolkit import TodoItem
 
 from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.service.task import ActionTodoStateData, Agents, get_task_lock
 from app.utils.listen.toolkit_listen import _safe_put_queue
-from camel.toolkits import FunctionTool, TodoToolkit
 
 logger = logging.getLogger("observable_todo_toolkit")
 

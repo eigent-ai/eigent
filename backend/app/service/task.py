@@ -21,6 +21,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Literal
 
+from camel.tasks import Task
 from pydantic import BaseModel
 from typing_extensions import TypedDict
 
@@ -33,7 +34,6 @@ from app.model.chat import (
 )
 from app.model.enums import Status
 from app.run_context import RunContext
-from camel.tasks import Task
 
 logger = logging.getLogger("task_service")
 

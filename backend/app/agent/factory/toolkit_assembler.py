@@ -21,6 +21,15 @@ from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
 
+from camel.toolkits import (
+    FunctionTool,
+    MCPToolkit,
+    PlanningWorktreeToolkit,
+    RegisteredAgentToolkit,
+    ToolkitMessageIntegration,
+    WebFetchToolkit,
+)
+
 from app.agent.toolkit.depth_limited_agent_toolkit import (
     DepthLimitedAgentToolkit,
 )
@@ -47,14 +56,6 @@ from app.service.task import Agents, get_task_lock_if_exists
 from app.utils.browser_launcher import normalize_cdp_url
 from app.utils.workspace_paths import runtime_task_root
 from app.workspace_bundle.runtime import ResolvedRuntimeEnvironment
-from camel.toolkits import (
-    FunctionTool,
-    MCPToolkit,
-    PlanningWorktreeToolkit,
-    RegisteredAgentToolkit,
-    ToolkitMessageIntegration,
-    WebFetchToolkit,
-)
 
 logger = logging.getLogger("toolkit_assembler")
 

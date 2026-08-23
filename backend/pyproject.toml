@@ -65,6 +65,7 @@ ignore = [
 [tool.ruff.lint.isort]
 force-single-line = false
 combine-as-imports = true
+known-third-party = ["camel"]
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["F841"]  # unused variables OK in tests
