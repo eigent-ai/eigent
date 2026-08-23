@@ -237,6 +237,30 @@ describe('FileViewerPanel toolbar', () => {
     );
   });
 
+  it('keeps the external-content consent card readable', () => {
+    renderViewer(
+      textFile({
+        name: 'remote-report.html',
+        path: '/workspace/remote-report.html',
+        relativePath: 'remote-report.html',
+        type: 'html',
+        content:
+          '<script type="module">import "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js";</script>',
+      })
+    );
+
+    const heading = screen.getByRole('heading', {
+      name: 'This HTML uses external content',
+    });
+    const consentCard = heading.parentElement?.parentElement?.parentElement;
+
+    expect(consentCard).toHaveClass('w-full', 'max-w-[36rem]');
+    expect(consentCard).not.toHaveClass('max-w-xl');
+    expect(
+      screen.getByRole('button', { name: 'Load external content' })
+    ).toBeInTheDocument();
+  });
+
   it('hides source switching and removed toolbar actions for a local blocked file', () => {
     renderViewer(
       textFile({

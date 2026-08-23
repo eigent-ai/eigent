@@ -2784,7 +2784,7 @@ function HtmlRenderer({
   if (remoteOrigins.length && !remoteContentAllowed) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-ds-neutral-strong-default p-6">
-        <div className="max-w-xl rounded-2xl border border-x border-y border-ds-hairline-subtle-default bg-ds-neutral-subtle-default p-5 shadow-sm">
+        <div className="w-full max-w-[36rem] rounded-2xl border border-x border-y border-ds-hairline-subtle-default bg-ds-neutral-subtle-default p-5 shadow-sm">
           <div className="flex items-start gap-3">
             <AlertTriangle
               className="mt-0.5 h-5 w-5 shrink-0 text-ds-icon-warning-default-default"
