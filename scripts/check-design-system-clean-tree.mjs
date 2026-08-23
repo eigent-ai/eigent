@@ -22,7 +22,9 @@ function run(command, args) {
 }
 
 run('node', ['scripts/generate-design-tokens.mjs']);
-run('node', ['docs/design-system/scripts/build-token-usage-report.mjs']);
+run('node', [
+  'docs/design-system/legacy-process/scripts/build-token-usage-report.mjs',
+]);
 
 const diff = spawnSync(
   'git',
@@ -31,8 +33,8 @@ const diff = spawnSync(
     '--exit-code',
     '--',
     'src/style/generated',
-    'docs/design-system/current-token-usage/usage-report.json',
-    'docs/design-system/current-token-usage/MIGRATION_DIFF.md',
+    'docs/design-system/legacy-process/current-token-usage/usage-report.json',
+    'docs/design-system/legacy-process/current-token-usage/MIGRATION_DIFF.md',
     'docs/design-system/current-token-usage/index.html',
   ],
   { cwd: repositoryRoot, encoding: 'utf8' }
@@ -54,8 +56,8 @@ const untracked = spawnSync(
     '--exclude-standard',
     '--',
     'src/style/generated',
-    'docs/design-system/current-token-usage/usage-report.json',
-    'docs/design-system/current-token-usage/MIGRATION_DIFF.md',
+    'docs/design-system/legacy-process/current-token-usage/usage-report.json',
+    'docs/design-system/legacy-process/current-token-usage/MIGRATION_DIFF.md',
     'docs/design-system/current-token-usage/index.html',
   ],
   { cwd: repositoryRoot, encoding: 'utf8' }
