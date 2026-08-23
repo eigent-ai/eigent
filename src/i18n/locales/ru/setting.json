@@ -335,7 +335,7 @@
   "minimax-m2-7-name": "Minimax M2.7",
 
   "preferred-ide": "Предпочитаемая IDE",
-  "preferred-ide-description": "Выберите приложение для открытия папок проектов агента.",
+  "preferred-ide-description": "Выберите приложение для открытия файлов агента.",
   "system-file-manager": "Системный файловый менеджер",
   "agents": "Агенты",
   "help-improve-eigent": "Помогите улучшить Eigent",

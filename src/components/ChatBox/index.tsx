@@ -1039,7 +1039,7 @@ export default function ChatBox(): JSX.Element {
 
     const targetProjectId = projectStore.activeProjectId;
     if (!targetProjectId) {
-      toast.error('No active Project selected.');
+      toast.error('No active session selected.');
       return;
     }
 
@@ -1140,7 +1140,7 @@ export default function ChatBox(): JSX.Element {
         achieved: false,
       }).catch((error) => {
         console.error('[handleSend] Failed to resume achieved Project:', error);
-        toast.error('Failed to persist resumed Project state.');
+        toast.error('Failed to persist resumed session state.');
       });
     }
 

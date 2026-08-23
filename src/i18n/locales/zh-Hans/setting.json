@@ -260,7 +260,7 @@
   "minimax-m2-7-name": "Minimax M2.7",
 
   "preferred-ide": "首选 IDE",
-  "preferred-ide-description": "选择打开智能体项目文件夹时使用的应用程序。",
+  "preferred-ide-description": "选择用于打开智能体文件的应用程序。",
   "system-file-manager": "系统文件管理器",
   "agents": "智能体",
   "help-improve-eigent": "帮助改进 Eigent",

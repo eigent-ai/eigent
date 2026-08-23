@@ -59,7 +59,7 @@
   "your-account-or-switch-to-a-self-hosted-model-and-api-in": "ваш аккаунт или переключиться на модель и API с самостоятельным хостингом в",
   "your-cloud-storage-has-reached-the-limit-of-your-current-plan": "Ваше облачное хранилище достигло лимита вашего текущего плана.",
   "we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "Мы испытываем высокую нагрузку. Пожалуйста, попробуйте еще раз через несколько минут.",
-  "new-project": "Новый проект",
+  "new-project": "Сессия без названия",
   "no-reply-received-task-continue": "Ответ не получен, задача продолжается",
   "splitting-tasks": "Разделение задач",
   "working-on-tasks-for": "Работа над задачами · <elapsed>{{time}}</elapsed>",

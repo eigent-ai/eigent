@@ -59,7 +59,7 @@
   "your-account-or-switch-to-a-self-hosted-model-and-api-in": "您的账户或切换到自部署模型和 API",
   "your-cloud-storage-has-reached-the-limit-of-your-current-plan": "您的云存储已达到当前计划的限制。",
   "we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "我们正在经历高流量。请稍后再试。",
-  "new-project": "新项目",
+  "new-project": "未命名会话",
   "no-reply-received-task-continue": "没有收到回复，任务继续",
   "splitting-tasks": "拆分任务",
   "working-on-tasks-for": "正在处理任务 · <elapsed>{{time}}</elapsed>",

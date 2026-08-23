@@ -298,7 +298,7 @@ describe('Memory Center', () => {
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       'User',
       'Space',
-      'Project',
+      'Session',
     ]);
     expect(screen.getByRole('tab', { name: 'User' })).toHaveAttribute(
       'data-state',
@@ -332,6 +332,24 @@ describe('Memory Center', () => {
     ).toHaveAttribute('aria-pressed', 'false');
   });
 
+  it.each([
+    ['user', 'user-1', 'Space used by saved personal Memory.'],
+    ['space', 'space-1', 'Space used by saved shared Memory.'],
+    ['project', 'project-1', 'Space used by saved session Memory.'],
+  ] as const)(
+    'uses UI terminology for the %s capacity description',
+    async (scopeType, scopeId, description) => {
+      render(
+        <Memory
+          fixedScope={{ type: scopeType, id: scopeId }}
+          showScopeSelector={false}
+        />
+      );
+
+      expect(await screen.findByText(description)).toBeInTheDocument();
+    }
+  );
+
   it('shows searchable Space and Project Memory directories', async () => {
     const user = userEvent.setup();
     render(
@@ -348,7 +366,7 @@ describe('Memory Center', () => {
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       'User',
       'Space',
-      'Project',
+      'Session',
     ]);
     await waitFor(() =>
       expect(api.list).toHaveBeenCalledWith('user', 'user-1', false)
@@ -357,7 +375,7 @@ describe('Memory Center', () => {
 
     await user.click(screen.getByRole('tab', { name: 'Space' }));
     expect(await screen.findByText('Design Space')).toBeVisible();
-    expect(screen.getByText('1 Project')).toBeVisible();
+    expect(screen.getByText('1 Session')).toBeVisible();
     expect(
       screen.queryByRole('textbox', { name: 'New Memory' })
     ).not.toBeInTheDocument();
@@ -369,7 +387,7 @@ describe('Memory Center', () => {
       '/home?section=spaces&spaceId=space-1&spaceTab=memory'
     );
 
-    await user.click(screen.getByRole('tab', { name: 'Project' }));
+    await user.click(screen.getByRole('tab', { name: 'Session' }));
     expect(await screen.findByText('Launch Plan')).toBeVisible();
     expect(screen.getByText('Space: Design Space')).toBeVisible();
     expect(api.list).toHaveBeenCalledTimes(listCallCount);

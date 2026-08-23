@@ -37,7 +37,7 @@ import {
 } from '@/lib/projectAchievement';
 import { ensureProjectRuntimeLoaded } from '@/lib/projectRuntimeHydration';
 import { ensureScratchSpaceWorkspaceBinding } from '@/lib/scratchSpaceWorkspace';
-import { resolveProjectNavLeadPresentation } from '@/lib/sessionNavLead';
+import { resolveSessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
 import {
   getFilesTabBindingLabel,
@@ -63,23 +63,23 @@ import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ProjectNavList } from './ProjectNavList';
+import { SessionNavList } from './SessionNavList';
 import {
   NavTabReconnectSuffix,
   triggerListenerLeadIconClass,
 } from './TriggerNavTab';
 
-export interface ProjectPageSidebarProps {
+export interface SpaceSidebarProps {
   chatStore: ChatStore | null;
   className?: string;
 }
 
 let didAttemptBootSessionResume = false;
 
-export default function ProjectPageSidebar({
+export default function SpaceSidebar({
   chatStore: _chatStore,
   className,
-}: ProjectPageSidebarProps) {
+}: SpaceSidebarProps) {
   const executeAppCommand = useAppCommand();
   const filesTabDescriptionId = useId();
   const activeWorkspaceTab = usePageTabStore((s) => s.activeWorkspaceTab);
@@ -209,7 +209,7 @@ export default function ProjectPageSidebar({
     [projectStore]
   );
 
-  const shouldShowProjectInNavList = useCallback(
+  const shouldShowSessionInNavList = useCallback(
     (project: (typeof projectMetasForActiveSpace)[number]) => {
       if (project.metadata?.historyId) return true;
       const historyDisplayName =
@@ -232,7 +232,7 @@ export default function ProjectPageSidebar({
     [projectHasStarted]
   );
 
-  const isProjectNavSelectionActive =
+  const isSessionNavSelectionActive =
     activeWorkspaceTab === 'project' || activeWorkspaceTab === 'new-project';
 
   const ensureProjectLoaded = useCallback(
@@ -244,14 +244,14 @@ export default function ProjectPageSidebar({
     [projectStore]
   );
 
-  const selectProject = useCallback(
+  const selectSession = useCallback(
     async (projectId: string) => {
       projectStore.setActiveProject(projectId);
       const needsRemoteHistoryHydration =
         projectStore.getProjectById(projectId)?.metadata
           ?.remoteHistoryHydrationPending === true;
 
-      // Already loaded — flip to the live Project shell immediately.
+      // Already loaded — flip to the live Session shell immediately.
       if (
         projectStore.peekActiveChatStore(projectId) &&
         !projectStore.historyLoadIncompleteProjectIds[projectId] &&
@@ -271,7 +271,7 @@ export default function ProjectPageSidebar({
       });
 
       // A slower, older click may finish after the user selected another
-      // Project. It must not change the shared shell for the newer selection.
+      // Session. It must not change the shared shell for the newer selection.
       if (projectStore.activeProjectId !== projectId) return;
       if (projectStore.historyLoadIncompleteProjectIds[projectId]) return;
 
@@ -299,13 +299,13 @@ export default function ProjectPageSidebar({
     ]
   );
 
-  // Boot-time session resume: reopen the last visited Project (the way an
+  // Boot-time session resume: reopen the last visited Session (the way an
   // editor reopens its last workspace) instead of landing on the empty home
   // tab. One-shot per renderer boot (launch or reload; the flag is module
   // scoped so sidebar remounts within a session never re-trigger it), and
-  // only from the pristine boot state (default tab, no active Project), so
+  // only from the pristine boot state (default tab, no active Session), so
   // deliberately navigating home later is never hijacked. Uses the same
-  // path as clicking the Project in the sidebar.
+  // path as clicking the Session in the sidebar.
   useEffect(() => {
     if (didAttemptBootSessionResume) return;
     didAttemptBootSessionResume = true;
@@ -319,19 +319,19 @@ export default function ProjectPageSidebar({
     const lastVisitedMeta = projectMetasForActiveSpace.find(
       (project) => project.id === lastVisitedId
     );
-    if (!lastVisitedMeta || !shouldShowProjectInNavList(lastVisitedMeta)) {
+    if (!lastVisitedMeta || !shouldShowSessionInNavList(lastVisitedMeta)) {
       return;
     }
-    void selectProject(lastVisitedId);
+    void selectSession(lastVisitedId);
     // One-shot boot effect: later changes to these values must not
     // re-trigger a resume.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const navProjects = useMemo(
+  const navSessions = useMemo(
     () =>
       projectMetasForActiveSpace
-        .filter((project) => shouldShowProjectInNavList(project))
+        .filter((project) => shouldShowSessionInNavList(project))
         .map((project) => {
           // `navLeadByProjectId` is kept live by `projectStore`'s chat-store
           // subscription registry — no need to peek into chat-store internals
@@ -347,7 +347,7 @@ export default function ProjectPageSidebar({
               project.name && project.name !== 'new project'
                 ? project.name
                 : t('layout.new-project'),
-            sessionLead: resolveProjectNavLeadPresentation({
+            sessionLead: resolveSessionNavLeadPresentation({
               cachedLead: navLeadByProjectId[project.id],
               isHistoryLoading: Boolean(historyLoadingProjectIds[project.id]),
               isAchieved: isProjectAchieved(project.metadata),
@@ -363,12 +363,12 @@ export default function ProjectPageSidebar({
       pinnedProjectIds,
       projectMetasForActiveSpace,
       projectStore,
-      shouldShowProjectInNavList,
+      shouldShowSessionInNavList,
       t,
     ]
   );
 
-  const handleNewProject = useCallback(() => {
+  const handleNewSession = useCallback(() => {
     executeAppCommand(APP_COMMAND.newProject);
   }, [executeAppCommand]);
 
@@ -455,7 +455,7 @@ export default function ProjectPageSidebar({
     t,
   ]);
 
-  const handlePinProject = useCallback((projectId: string) => {
+  const handlePinSession = useCallback((projectId: string) => {
     setPinnedProjectIds((prev) => {
       const next = new Set(prev);
       if (next.has(projectId)) {
@@ -475,16 +475,16 @@ export default function ProjectPageSidebar({
     });
   }, []);
 
-  const requestDeleteProject = useCallback((projectId: string) => {
+  const requestDeleteSession = useCallback((projectId: string) => {
     setDeleteProjectId(projectId);
   }, []);
 
-  const requestAchieveProject = useCallback((projectId: string) => {
+  const requestEndSession = useCallback((projectId: string) => {
     setAchieveProjectId(projectId);
     setAchieveDialogOpen(true);
   }, []);
 
-  const confirmDeleteProject = useCallback(async () => {
+  const confirmDeleteSession = useCallback(async () => {
     const projectId = deleteProjectId;
     if (!projectId) return;
 
@@ -509,7 +509,7 @@ export default function ProjectPageSidebar({
         );
       } catch (error) {
         console.warn(
-          `[ProjectPageSidebar] No grouped history for project ${projectId}:`,
+          `[SpaceSidebar] No grouped history for project ${projectId}:`,
           error
         );
       }
@@ -524,7 +524,7 @@ export default function ProjectPageSidebar({
             proxyFetchDelete(`/api/v1/chat/history/${task.id}`).catch(
               (error) => {
                 console.warn(
-                  `[ProjectPageSidebar] Failed to delete history task ${task.task_id}:`,
+                  `[SpaceSidebar] Failed to delete history task ${task.task_id}:`,
                   error
                 );
               }
@@ -541,7 +541,7 @@ export default function ProjectPageSidebar({
                 )
                 .catch((error: unknown) => {
                   console.warn(
-                    `[ProjectPageSidebar] Local file cleanup failed for task ${task.task_id}:`,
+                    `[SpaceSidebar] Local file cleanup failed for task ${task.task_id}:`,
                     error
                   );
                 })
@@ -566,7 +566,7 @@ export default function ProjectPageSidebar({
           });
         } catch (error) {
           console.warn(
-            `[ProjectPageSidebar] Failed to archive server project ${projectId}:`,
+            `[SpaceSidebar] Failed to archive server project ${projectId}:`,
             error
           );
         }
@@ -581,7 +581,7 @@ export default function ProjectPageSidebar({
 
       toast.success(t('layout.delete-project'));
     } catch (error) {
-      console.error('[ProjectPageSidebar] Failed to delete project:', error);
+      console.error('[SpaceSidebar] Failed to delete project:', error);
       toast.error(t('layout.delete-project'));
     } finally {
       setDeleteProjectLoading(false);
@@ -598,7 +598,7 @@ export default function ProjectPageSidebar({
     t,
   ]);
 
-  const confirmAchieveProject = useCallback(async () => {
+  const confirmEndSession = useCallback(async () => {
     const projectId = achieveProjectId;
     if (!projectId) return;
 
@@ -635,7 +635,7 @@ export default function ProjectPageSidebar({
         closeButton: true,
       });
     } catch (error) {
-      console.error('[ProjectPageSidebar] Failed to achieve project:', error);
+      console.error('[SpaceSidebar] Failed to achieve project:', error);
       toast.error(t('layout.failed-to-end-project'), {
         closeButton: true,
       });
@@ -665,7 +665,7 @@ export default function ProjectPageSidebar({
           if (deleteProjectLoading) return;
           setDeleteProjectId(null);
         }}
-        onConfirm={() => void confirmDeleteProject()}
+        onConfirm={() => void confirmDeleteSession()}
         title={t('layout.delete-project')}
         message={t('layout.delete-project-confirmation')}
         confirmText={t('layout.delete')}
@@ -682,7 +682,7 @@ export default function ProjectPageSidebar({
           setAchieveDialogOpen(false);
           setAchieveProjectId(null);
         }}
-        onConfirm={() => void confirmAchieveProject()}
+        onConfirm={() => void confirmEndSession()}
         title={t('layout.achieve-project')}
         message={t('layout.ending-this-project-will-stop')}
         confirmText={t('layout.yes-end-project')}
@@ -863,18 +863,18 @@ export default function ProjectPageSidebar({
           <SidebarSeparator />
 
           <SidebarSection grow="fill">
-            <ProjectNavList
+            <SessionNavList
               className="flex min-h-0 flex-1 flex-col"
-              projects={navProjects}
-              activeProjectId={
-                isProjectNavSelectionActive ? activeProjectId : null
+              sessions={navSessions}
+              activeSessionId={
+                isSessionNavSelectionActive ? activeProjectId : null
               }
-              onProjectClick={selectProject}
-              onDeleteProject={requestDeleteProject}
-              onAchieveProject={requestAchieveProject}
-              onPinProject={handlePinProject}
-              onNewProject={handleNewProject}
-              newProjectActive={activeWorkspaceTab === 'new-project'}
+              onSessionClick={selectSession}
+              onDeleteSession={requestDeleteSession}
+              onEndSession={requestEndSession}
+              onPinSession={handlePinSession}
+              onNewSession={handleNewSession}
+              newSessionActive={activeWorkspaceTab === 'new-project'}
             />
           </SidebarSection>
         </div>

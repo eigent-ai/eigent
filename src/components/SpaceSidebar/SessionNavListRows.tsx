@@ -30,7 +30,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SIDEBAR_TAB_TOOLTIP_CONTENT_CLASS } from './constants';
 
-export interface ProjectNavItem {
+export interface SessionNavItem {
   id: string;
   title: string;
   /** Leading icon + color from `getSessionNavLeadPresentation`. */
@@ -42,56 +42,56 @@ export interface ProjectNavItem {
   trailing?: string;
 }
 
-export interface ProjectNavListRowsProps {
-  projects: ProjectNavItem[];
-  activeProjectId?: string | null;
-  onProjectClick?: (projectId: string) => void;
-  onDeleteProject?: (projectId: string) => void;
-  onAchieveProject?: (projectId: string) => void;
-  onPinProject?: (projectId: string) => void;
+export interface SessionNavListRowsProps {
+  sessions: SessionNavItem[];
+  activeSessionId?: string | null;
+  onSessionClick?: (sessionId: string) => void;
+  onDeleteSession?: (sessionId: string) => void;
+  onEndSession?: (sessionId: string) => void;
+  onPinSession?: (sessionId: string) => void;
   /** Icon rail: one icon per row. */
   folded: boolean;
-  /** If set, only the first N projects are rendered. */
+  /** If set, only the first N sessions are rendered. */
   maxItems?: number;
   /**
-   * Main-panel project lists use the default
+   * Main-panel session lists use the default
    * neutral hover fill; sidebar keeps the subtle fill.
    */
   panelListHover?: boolean;
-  /** When false, hide the trailing action area (project list and workspace recent: time only). */
+  /** When false, hide the trailing action area (session list and workspace recent: time only). */
   showRowMenu?: boolean;
 }
 
 /**
- * Renders compact Project rows; cap with `maxItems` for recency-prefixed UIs.
+ * Renders compact Session rows; cap with `maxItems` for recency-prefixed UIs.
  */
-export const NAV_LIST_PROJECTS_RECENT_MAX = 5;
+export const NAV_LIST_SESSIONS_RECENT_MAX = 5;
 
-function ProjectNavRowMenu({
-  projectId,
+function SessionNavRowMenu({
+  sessionId,
   pinned,
   achieved,
   open,
   onOpenChange,
-  onPinProject,
-  onAchieveProject,
-  onDeleteProject,
+  onPinSession,
+  onEndSession,
+  onDeleteSession,
 }: {
-  projectId: string;
+  sessionId: string;
   pinned?: boolean;
   achieved?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onPinProject?: (projectId: string) => void;
-  onAchieveProject?: (projectId: string) => void;
-  onDeleteProject?: (projectId: string) => void;
+  onPinSession?: (sessionId: string) => void;
+  onEndSession?: (sessionId: string) => void;
+  onDeleteSession?: (sessionId: string) => void;
 }) {
   const { t } = useTranslation();
   const pinLabel = pinned
     ? t('layout.unpin', { defaultValue: 'Unpin' })
     : t('layout.pin', { defaultValue: 'Pin' });
   const achieveLabel = t('layout.achieve-project', {
-    defaultValue: 'Achieve Project',
+    defaultValue: 'End session',
   });
   const deleteLabel = t('layout.delete-project');
   const moreLabel = t('layout.more-actions');
@@ -134,8 +134,8 @@ function ProjectNavRowMenu({
         >
           <DropdownMenuItem
             className="gap-2"
-            disabled={!onPinProject}
-            onSelect={() => onPinProject?.(projectId)}
+            disabled={!onPinSession}
+            onSelect={() => onPinSession?.(sessionId)}
           >
             <Pin
               className={cn(
@@ -148,8 +148,8 @@ function ProjectNavRowMenu({
           </DropdownMenuItem>
           <DropdownMenuItem
             className="gap-2"
-            disabled={!onAchieveProject || achieved}
-            onSelect={() => onAchieveProject?.(projectId)}
+            disabled={!onEndSession || achieved}
+            onSelect={() => onEndSession?.(sessionId)}
           >
             <Archive className="h-4 w-4" aria-hidden />
             {achieveLabel}
@@ -157,8 +157,8 @@ function ProjectNavRowMenu({
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="gap-2 text-ds-text-error-default-default focus:text-ds-text-error-strong-default data-[highlighted]:text-ds-text-error-default-default [&>svg]:text-ds-icon-error-default-default focus:[&>svg]:text-ds-icon-error-default-default data-[highlighted]:[&>svg]:text-ds-icon-error-default-default"
-            disabled={!onDeleteProject}
-            onSelect={() => onDeleteProject?.(projectId)}
+            disabled={!onDeleteSession}
+            onSelect={() => onDeleteSession?.(sessionId)}
           >
             <Trash2
               className="h-4 w-4 text-ds-icon-error-default-default"
@@ -172,33 +172,33 @@ function ProjectNavRowMenu({
   );
 }
 
-function ProjectNavRow({
-  project,
+function SessionNavRow({
+  session,
   active,
   panelListHover,
   showRowMenu,
   triggerSourceLabel,
-  onProjectClick,
-  onPinProject,
-  onAchieveProject,
-  onDeleteProject,
+  onSessionClick,
+  onPinSession,
+  onEndSession,
+  onDeleteSession,
 }: {
-  project: ProjectNavItem;
+  session: SessionNavItem;
   active: boolean;
   panelListHover: boolean;
   showRowMenu: boolean;
   triggerSourceLabel: string;
-  onProjectClick?: (projectId: string) => void;
-  onPinProject?: (projectId: string) => void;
-  onAchieveProject?: (projectId: string) => void;
-  onDeleteProject?: (projectId: string) => void;
+  onSessionClick?: (sessionId: string) => void;
+  onPinSession?: (sessionId: string) => void;
+  onEndSession?: (sessionId: string) => void;
+  onDeleteSession?: (sessionId: string) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const LeadIcon = project.sessionLead.Icon;
+  const LeadIcon = session.sessionLead.Icon;
   const leadClassName = cn(
     'h-4 w-4 shrink-0',
-    project.sessionLead.iconClassName,
-    project.sessionLead.spin && 'animate-spin'
+    session.sessionLead.iconClassName,
+    session.sessionLead.spin && 'animate-spin'
   );
   const selected = active || menuOpen;
 
@@ -209,7 +209,7 @@ function ProjectNavRow({
           from treating the sidebar’s overflow clip as the boundary and shifting
           the tip back over the row. */}
       <TooltipSimple
-        content={project.title}
+        content={session.title}
         side="right"
         align="start"
         sideOffset={4}
@@ -233,7 +233,7 @@ function ProjectNavRow({
         >
           <button
             type="button"
-            onClick={() => onProjectClick?.(project.id)}
+            onClick={() => onSessionClick?.(session.id)}
             className={cn(
               'no-drag relative z-0 flex min-h-0 min-w-0 flex-1 items-center gap-3 overflow-hidden px-0 py-1 text-left outline-none',
               'focus-visible:ring-2 focus-visible:ring-ds-hairline-subtle-default focus-visible:outline-none'
@@ -241,31 +241,31 @@ function ProjectNavRow({
           >
             <LeadIcon className={leadClassName} aria-hidden />
             <span className="min-w-0 flex-1 truncate text-ds-text-base font-medium text-ds-ink-muted-default">
-              {project.title}
+              {session.title}
             </span>
-            {project.source === 'trigger' ? (
+            {session.source === 'trigger' ? (
               <AUTOMATION_ICON
                 className="h-3.5 w-3.5 shrink-0 text-ds-icon-warning-default-default"
                 aria-label={triggerSourceLabel}
               />
             ) : null}
-            {!showRowMenu && project.trailing ? (
+            {!showRowMenu && session.trailing ? (
               <span className="shrink-0 pl-1 text-ds-text-meta text-ds-ink-muted-default tabular-nums">
-                {project.trailing}
+                {session.trailing}
               </span>
             ) : null}
           </button>
 
           {showRowMenu ? (
-            <ProjectNavRowMenu
-              projectId={project.id}
-              pinned={project.pinned}
-              achieved={project.achieved}
+            <SessionNavRowMenu
+              sessionId={session.id}
+              pinned={session.pinned}
+              achieved={session.achieved}
               open={menuOpen}
               onOpenChange={setMenuOpen}
-              onPinProject={onPinProject}
-              onAchieveProject={onAchieveProject}
-              onDeleteProject={onDeleteProject}
+              onPinSession={onPinSession}
+              onEndSession={onEndSession}
+              onDeleteSession={onDeleteSession}
             />
           ) : null}
         </div>
@@ -274,38 +274,38 @@ function ProjectNavRow({
   );
 }
 
-export function ProjectNavListRows({
-  projects,
-  activeProjectId,
-  onProjectClick,
-  onDeleteProject,
-  onAchieveProject,
-  onPinProject,
+export function SessionNavListRows({
+  sessions,
+  activeSessionId,
+  onSessionClick,
+  onDeleteSession,
+  onEndSession,
+  onPinSession,
   folded,
   maxItems,
   panelListHover = false,
   showRowMenu = true,
-}: ProjectNavListRowsProps) {
+}: SessionNavListRowsProps) {
   const { t } = useTranslation();
   const triggerSourceLabel = t('layout.task-source-trigger');
-  const list = maxItems != null ? projects.slice(0, maxItems) : projects;
+  const list = maxItems != null ? sessions.slice(0, maxItems) : sessions;
 
   return (
     <>
-      {list.map((project) => {
-        const active = activeProjectId === project.id;
-        const LeadIcon = project.sessionLead.Icon;
+      {list.map((session) => {
+        const active = activeSessionId === session.id;
+        const LeadIcon = session.sessionLead.Icon;
         const leadClassName = cn(
           'h-4 w-4 shrink-0',
-          project.sessionLead.iconClassName,
-          project.sessionLead.spin && 'animate-spin'
+          session.sessionLead.iconClassName,
+          session.sessionLead.spin && 'animate-spin'
         );
 
         if (folded) {
           return (
-            <div key={project.id} className="min-w-0">
+            <div key={session.id} className="min-w-0">
               <TooltipSimple
-                content={project.title}
+                content={session.title}
                 side="right"
                 align="start"
                 sideOffset={4}
@@ -316,12 +316,12 @@ export function ProjectNavListRows({
               >
                 <button
                   type="button"
-                  onClick={() => onProjectClick?.(project.id)}
+                  onClick={() => onSessionClick?.(session.id)}
                   className={cn(
                     sidebarTabButtonClass(active),
                     'w-full min-w-0 gap-0'
                   )}
-                  aria-label={project.title}
+                  aria-label={session.title}
                   aria-current={active ? 'true' : undefined}
                 >
                   <LeadIcon className={leadClassName} aria-hidden />
@@ -332,52 +332,20 @@ export function ProjectNavListRows({
         }
 
         return (
-          <ProjectNavRow
-            key={project.id}
-            project={project}
+          <SessionNavRow
+            key={session.id}
+            session={session}
             active={active}
             panelListHover={panelListHover}
             showRowMenu={showRowMenu}
             triggerSourceLabel={triggerSourceLabel}
-            onProjectClick={onProjectClick}
-            onPinProject={onPinProject}
-            onAchieveProject={onAchieveProject}
-            onDeleteProject={onDeleteProject}
+            onSessionClick={onSessionClick}
+            onPinSession={onPinSession}
+            onEndSession={onEndSession}
+            onDeleteSession={onDeleteSession}
           />
         );
       })}
     </>
-  );
-}
-
-export const NAV_LIST_SESSIONS_RECENT_MAX = NAV_LIST_PROJECTS_RECENT_MAX;
-export type NavListSession = ProjectNavItem;
-
-export interface NavListSessionRowsProps {
-  sessions: ProjectNavItem[];
-  activeSessionId?: string | null;
-  onSessionClick?: (sessionId: string) => void;
-  onDeleteSession?: (sessionId: string) => void;
-  folded: boolean;
-  maxItems?: number;
-  panelListHover?: boolean;
-  showRowMenu?: boolean;
-}
-
-export function NavListSessionRows({
-  sessions,
-  activeSessionId,
-  onSessionClick,
-  onDeleteSession,
-  ...rest
-}: NavListSessionRowsProps) {
-  return (
-    <ProjectNavListRows
-      projects={sessions}
-      activeProjectId={activeSessionId}
-      onProjectClick={onSessionClick}
-      onDeleteProject={onDeleteSession}
-      {...rest}
-    />
   );
 }

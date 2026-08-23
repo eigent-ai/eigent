@@ -455,7 +455,7 @@
   "proxy-restart-hint": "Restart required to apply proxy changes.",
 
   "preferred-ide": "Preferred IDE",
-  "preferred-ide-description": "Choose which application to use when opening agent project folders.",
+  "preferred-ide-description": "Choose which application to use when opening agent files.",
   "system-file-manager": "System File Manager",
   "agents": "Agents",
   "help-improve-eigent": "Help Improve Eigent",

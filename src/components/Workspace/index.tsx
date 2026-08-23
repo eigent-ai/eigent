@@ -157,7 +157,7 @@ export default function Workspace({
         toast.error(
           t('layout.spaces-legacy-readonly-hint', {
             defaultValue:
-              'Legacy Spaces are read-only. Create a new Space to start a Project.',
+              'Legacy Spaces are read-only. Create a new Space to start a session.',
           })
         );
         return;
@@ -257,7 +257,7 @@ export default function Workspace({
     placeholder: isLegacyActiveSpace
       ? t('layout.spaces-legacy-readonly-hint', {
           defaultValue:
-            'Legacy Spaces are read-only. Create a new Space to start a Project.',
+            'Legacy Spaces are read-only. Create a new Space to start a session.',
         })
       : t('layout.project-task-placeholder'),
   };

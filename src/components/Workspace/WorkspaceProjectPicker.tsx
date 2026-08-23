@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import NewSpaceDialog from '@/components/Home/NewSpaceDialog';
-import { SpaceSwitchDropdown } from '@/components/ProjectPageSidebar/SpaceSwitchDropdown';
+import { SpaceSwitchDropdown } from '@/components/SpaceSidebar/SpaceSwitchDropdown';
 import { WorkspaceVersionHistoryDialog } from '@/components/Workspace/WorkspaceVersionHistoryDialog';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';

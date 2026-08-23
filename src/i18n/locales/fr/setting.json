@@ -335,7 +335,7 @@
   "minimax-m2-7-name": "Minimax M2.7",
 
   "preferred-ide": "IDE préféré",
-  "preferred-ide-description": "Choisissez l'application à utiliser lors de l'ouverture des dossiers de projets d'agent.",
+  "preferred-ide-description": "Choisissez l’application à utiliser pour ouvrir les fichiers de l’agent.",
   "system-file-manager": "Gestionnaire de fichiers système",
   "agents": "Agents",
   "help-improve-eigent": "Aidez à améliorer Eigent",

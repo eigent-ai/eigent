@@ -141,7 +141,7 @@ describe('Memory scope directory', () => {
       </MemoryRouter>
     );
 
-    expect(await screen.findByText('1 Project with Memory')).toBeVisible();
+    expect(await screen.findByText('1 Session with Memory')).toBeVisible();
     expect(screen.getByText('3 saved notes total')).toBeVisible();
 
     const rows = document.querySelectorAll('article');

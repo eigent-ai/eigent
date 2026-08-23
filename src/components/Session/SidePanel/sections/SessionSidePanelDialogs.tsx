@@ -48,11 +48,11 @@ export function AgentInformationDialog({
     (agent?.subagent
       ? t('layout.session-panel-subagent-description', {
           defaultValue:
-            'A delegated agent used for a bounded part of this project.',
+            'A delegated agent used for a bounded part of this session.',
         })
       : t('layout.session-panel-agent-description', {
           defaultValue:
-            'A general-purpose agent that plans and completes the project using the available tools.',
+            'A general-purpose agent that plans and completes work in this session using the available tools.',
         }));
 
   return (

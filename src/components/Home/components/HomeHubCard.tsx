@@ -201,7 +201,7 @@ function SpaceItemContent({
         title={t('layout.delete')}
         message={t('layout.delete-space-confirmation', {
           defaultValue:
-            'Are you sure you want to delete this Space and all its Projects? This action cannot be undone.',
+            'Are you sure you want to delete this space and all its sessions? This action cannot be undone.',
         })}
         confirmText={t('layout.delete')}
         cancelText={t('layout.cancel')}
@@ -310,7 +310,7 @@ function ProjectItemContent({
   const menuItems = [
     {
       label: t('layout.rename-project', {
-        defaultValue: 'Rename Project',
+        defaultValue: 'Rename session',
       }),
       icon: <Pencil className="h-4 w-4" aria-hidden />,
       onSelect: () => {
@@ -334,7 +334,7 @@ function ProjectItemContent({
         isOpen={renameDialogOpen}
         onClose={() => setRenameDialogOpen(false)}
         onConfirm={() => void handleRename()}
-        title={t('layout.rename-project', { defaultValue: 'Rename Project' })}
+        title={t('layout.rename-project', { defaultValue: 'Rename session' })}
         confirmText={t('layout.save')}
         cancelText={t('layout.cancel')}
         confirmVariant="primary"
@@ -344,7 +344,7 @@ function ProjectItemContent({
           autoFocus
           value={renameValue}
           placeholder={t('layout.project-name', {
-            defaultValue: 'Project name',
+            defaultValue: 'Session name',
           })}
           onChange={(event) => setRenameValue(event.target.value)}
           onEnter={() => {

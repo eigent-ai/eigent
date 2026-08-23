@@ -17,7 +17,7 @@ import eigentAppIconBlack from '@/assets/logo/icon_black.svg';
 import eigentAppIconWhite from '@/assets/logo/icon_white.svg';
 import NewSpaceDialog from '@/components/Home/NewSpaceDialog';
 import { useAppCommand } from '@/components/Layout/AppCommandProvider';
-import { SpaceSwitchDropdown } from '@/components/ProjectPageSidebar/SpaceSwitchDropdown';
+import { SpaceSwitchDropdown } from '@/components/SpaceSidebar/SpaceSwitchDropdown';
 import {
   TOP_BAR_CONTROL_SELECTED_CLASS,
   TOP_BAR_CONTROL_STATE_CLASS,

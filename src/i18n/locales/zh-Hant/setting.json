@@ -258,7 +258,7 @@
   "proxy-invalid-url": "無效的代理 URL。必須以 http://、https://、socks4:// 或 socks5:// 開頭。",
   "proxy-restart-hint": "需要重新啟動應用程式以套用代理變更。",
   "preferred-ide": "偏好 IDE",
-  "preferred-ide-description": "選擇開啟智能體專案資料夾時使用的應用程式。",
+  "preferred-ide-description": "選擇用於開啟智能體檔案的應用程式。",
   "system-file-manager": "系統檔案管理器",
   "agents": "智能體",
   "help-improve-eigent": "幫助改進 Eigent",

@@ -256,7 +256,7 @@ export default function SpaceDetailSidebar({
         title={t('layout.delete')}
         message={t('layout.delete-space-confirmation', {
           defaultValue:
-            'Are you sure you want to delete this Space and all its Projects? This action cannot be undone.',
+            'Are you sure you want to delete this space and all its sessions? This action cannot be undone.',
         })}
         confirmText={t('layout.delete')}
         cancelText={t('layout.cancel')}

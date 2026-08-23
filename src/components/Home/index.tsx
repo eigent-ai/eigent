@@ -209,10 +209,10 @@ export default function HomeHubRoot({ children }: { children: ReactNode }) {
         isOpen={deleteProjectModalOpen}
         onClose={() => setDeleteProjectModalOpen(false)}
         onConfirm={confirmProjectDelete}
-        title={t('layout.delete-project') || 'Delete Project'}
+        title={t('layout.delete-project') || 'Delete session'}
         message={
           t('layout.delete-project-confirmation') ||
-          'Are you sure you want to delete this project and all its tasks? This action cannot be undone.'
+          'Are you sure you want to delete this session and all its tasks? This action cannot be undone.'
         }
         confirmText={t('layout.delete')}
         cancelText={t('layout.cancel')}

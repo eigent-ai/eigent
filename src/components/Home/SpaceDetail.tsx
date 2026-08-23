@@ -28,10 +28,10 @@ import {
   ArrowLeft,
   CalendarDays,
   Cloud,
-  FolderKanban,
   FolderOpen,
   HardDrive,
   ListChecks,
+  MessageCircle,
 } from 'lucide-react';
 import {
   lazy,
@@ -327,8 +327,8 @@ export default function SpaceDetail({
               </div>
               <div className="grid min-w-0 grid-cols-3 gap-x-6 gap-y-5">
                 <Stat
-                  icon={<FolderKanban className={statIconClassName} />}
-                  label="Projects"
+                  icon={<MessageCircle className={statIconClassName} />}
+                  label="Sessions"
                   value={data.projectCount}
                   loading={data.projectsLoading}
                 />

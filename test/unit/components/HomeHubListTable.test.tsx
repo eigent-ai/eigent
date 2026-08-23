@@ -12,4 +12,19 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-export * from './ProjectNavList';
+import HomeHubListTable from '@/components/Home/components/HomeHubListTable';
+import { render, screen } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
+
+describe('HomeHubListTable', () => {
+  it('uses title case for the Tasks column in the Spaces table', () => {
+    render(
+      <HomeHubListTable kind="space">
+        <div>Space row</div>
+      </HomeHubListTable>
+    );
+
+    expect(screen.getByText('Tasks')).toBeVisible();
+    expect(screen.queryByText('TASKS')).not.toBeInTheDocument();
+  });
+});

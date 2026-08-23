@@ -336,7 +336,7 @@
   "minimax-m2-7-name": "Minimax M2.7",
 
   "preferred-ide": "優先IDE",
-  "preferred-ide-description": "エージェントプロジェクトフォルダを開くときに使用するアプリケーションを選択します。",
+  "preferred-ide-description": "エージェントのファイルを開くアプリケーションを選択します。",
   "system-file-manager": "システムファイルマネージャー",
   "agents": "エージェント",
   "help-improve-eigent": "Eigentの改善に協力する",

@@ -29,7 +29,7 @@ const LIST_COLUMNS: Record<HomeHubItemKind, HomeHubListColumn[]> = {
     { id: 'name', labelKey: 'layout.home-list-name' },
     { id: 'type', labelKey: 'layout.home-list-type' },
     { id: 'projects', labelKey: 'layout.projects', align: 'right' },
-    { id: 'tasks', labelKey: 'layout.tasks', align: 'right' },
+    { id: 'tasks', labelKey: 'layout.tasks-heading', align: 'right' },
     { id: 'triggers', labelKey: 'layout.triggers', align: 'right' },
     { id: 'created', labelKey: 'layout.home-list-created', align: 'right' },
     { id: 'action', align: 'right' },
@@ -37,7 +37,7 @@ const LIST_COLUMNS: Record<HomeHubItemKind, HomeHubListColumn[]> = {
   project: [
     { id: 'name', labelKey: 'layout.home-list-name' },
     { id: 'space', labelKey: 'layout.home-list-space' },
-    { id: 'tasks', labelKey: 'layout.tasks', align: 'right' },
+    { id: 'tasks', labelKey: 'layout.tasks-heading', align: 'right' },
     { id: 'triggers', labelKey: 'layout.triggers', align: 'right' },
     { id: 'updated', labelKey: 'layout.home-list-updated', align: 'right' },
   ],

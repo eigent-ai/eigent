@@ -14,9 +14,9 @@
 
 import ContentHeader from '@/components/Layout/ContentHeader';
 import {
-  NavListSessionRows,
-  type NavListSession,
-} from '@/components/ProjectPageSidebar/NavList';
+  SessionNavListRows,
+  type SessionNavItem,
+} from '@/components/SpaceSidebar/SessionNavListRows';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { taskIdToCreatedMs } from '@/lib/chatTaskIdTime';
@@ -50,7 +50,7 @@ export default function Sessions({
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const backToWorkspaceTooltip = t('layout.back-to-workspace-tooltip');
 
-  const sessions: NavListSession[] = useMemo(() => {
+  const sessions: SessionNavItem[] = useMemo(() => {
     const entries = Object.entries(tasks)
       .filter(([, task]) => {
         const hasStarted =
@@ -106,7 +106,7 @@ export default function Sessions({
             {t('layout.sessions-create-task-hint')}
           </p>
         ) : (
-          <NavListSessionRows
+          <SessionNavListRows
             sessions={sessions}
             activeSessionId={activeSessionId}
             onSessionClick={onSelectSession}

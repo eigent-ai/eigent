@@ -336,7 +336,7 @@
   "minimax-m2-7-name": "Minimax M2.7",
 
   "preferred-ide": "선호 IDE",
-  "preferred-ide-description": "에이전트 프로젝트 폴더를 열 때 사용할 애플리케이션을 선택합니다.",
+  "preferred-ide-description": "에이전트 파일을 열 때 사용할 애플리케이션을 선택합니다.",
   "system-file-manager": "시스템 파일 관리자",
   "agents": "에이전트",
   "help-improve-eigent": "Eigent 개선에 도움주기",

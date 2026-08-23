@@ -131,7 +131,7 @@ describe('PreviewPanel', () => {
     ];
     renderPanel();
 
-    expect(screen.getByText('From this project')).toBeInTheDocument();
+    expect(screen.getByText('From this session')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Start dev server/ }));
 
     const slice = previewSlice();

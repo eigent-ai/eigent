@@ -179,10 +179,10 @@ export default function Session({ isNewProject = false }: SessionProps) {
     if (isNewProject) return;
     // Only redirect while the live project tab is active; ignore files/triggers/etc.
     if (activeWorkspaceTab !== 'project') return;
-    // Wait until the project chat store is ready (selectProject still loading).
+    // Wait until the project chat store is ready (selectSession still loading).
     if (!chatStore) return;
     // While history is still replaying, the chat store exists but messages
-    // haven't been written yet. Don't bounce away — selectProject will pick
+    // haven't been written yet. Don't bounce away — selectSession will pick
     // the correct shell ('project' vs 'new-project') once loading settles.
     if (isHistoryLoadingActiveProject) return;
     // A history-loaded project is known to have content. The hasSessionStarted

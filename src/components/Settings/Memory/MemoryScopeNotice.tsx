@@ -218,7 +218,7 @@ export function MemoryScopeDirectory({
     0
   );
   const isSpace = scopeType === 'space';
-  const scopeLabel = isSpace ? 'Space' : 'Project';
+  const scopeLabel = isSpace ? 'Space' : 'Session';
 
   return (
     <SettingsRowGroup data-memory-scope-directory={scopeType}>
@@ -226,8 +226,8 @@ export function MemoryScopeDirectory({
         title={`${scopeLabel} Memory`}
         description={
           isSpace
-            ? 'Shared notes for every Project in a Space. Select a Space to review or add them.'
-            : 'Project-specific notes learned or saved while work runs. Select a Project to manage them.'
+            ? 'Shared notes for every Session in a Space. Select a Space to review or add them.'
+            : 'Session-specific notes learned or saved while work runs. Select a Session to manage them.'
         }
       >
         {items.length > 0 ? (
@@ -282,7 +282,7 @@ export function MemoryScopeDirectory({
             <p className="mt-1 text-ds-text-base text-ds-ink-muted-default">
               {isSpace
                 ? 'Create a Space before adding shared Space Memory.'
-                : 'Create a Project before adding or learning Project Memory.'}
+                : 'Create a Session before adding or learning Session Memory.'}
             </p>
           </div>
         ) : visibleItems.length === 0 ? (
@@ -328,7 +328,7 @@ export function MemoryScopeDirectory({
                       </div>
                       <div className="mt-0.5 truncate text-ds-text-base text-ds-ink-muted-default">
                         {isSpace
-                          ? pluralize(item.projectCount ?? 0, 'Project')
+                          ? pluralize(item.projectCount ?? 0, 'Session')
                           : `Space: ${item.parentName}`}
                       </div>
                     </div>

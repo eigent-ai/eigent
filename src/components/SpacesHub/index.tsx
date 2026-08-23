@@ -361,7 +361,7 @@ export default function SpacesHub() {
                         <span>
                           {t('layout.spaces-legacy-readonly-hint', {
                             defaultValue:
-                              'Legacy Spaces are read-only. Create a new Space to start a Project.',
+                              'Legacy Spaces are read-only. Create a new Space to start a session.',
                           })}
                         </span>
                       </div>

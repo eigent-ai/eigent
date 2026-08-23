@@ -285,7 +285,7 @@ function workingFolderBasename(path: string) {
   return parts[parts.length - 1] || normalized;
 }
 
-function treeSegmentLabel(value?: string | null, fallback = 'Project') {
+function treeSegmentLabel(value?: string | null, fallback = 'Session') {
   const trimmed = (value || '').trim();
   return (trimmed || fallback).replace(/[\\/]/g, '-');
 }

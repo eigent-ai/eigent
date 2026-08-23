@@ -234,7 +234,7 @@ describe('SettingsPage', () => {
       within(sidebar).getByRole('button', { name: 'Spaces' })
     ).toBeInTheDocument();
     expect(
-      within(sidebar).queryByRole('button', { name: 'Projects' })
+      within(sidebar).queryByRole('button', { name: 'Sessions' })
     ).not.toBeInTheDocument();
     expect(
       within(sidebar).queryByRole('button', { name: 'Tasks' })
@@ -666,7 +666,7 @@ describe('SettingsPage', () => {
     );
     const deleteDialog = screen.getByRole('alertdialog', { name: 'Delete' });
     expect(deleteDialog).toHaveTextContent(
-      'Are you sure you want to delete this Space and all its Projects?'
+      'Are you sure you want to delete this space and all its sessions?'
     );
     await user.click(
       within(deleteDialog).getByRole('button', { name: 'Cancel' })
@@ -680,7 +680,7 @@ describe('SettingsPage', () => {
     expect(screen.getByText('Local')).toBeInTheDocument();
 
     for (const tabName of [
-      'Projects',
+      'Sessions',
       'Tasks',
       'Automations',
       'Context',
@@ -706,14 +706,20 @@ describe('SettingsPage', () => {
     expect(openWorkspaceButton).toHaveAttribute('data-variant', 'primary');
     expect(openWorkspaceButton).toHaveClass('!rounded-full');
     expect(
-      within(screen.getByRole('tab', { name: 'Projects' })).getByText(
-        'Projects'
+      within(screen.getByRole('tab', { name: 'Sessions' })).getByText(
+        'Sessions'
       )
     ).toHaveClass('!text-ds-text-base', 'font-bold');
-    expect(screen.getByRole('tab', { name: 'Projects' })).toHaveAttribute(
+    expect(screen.getByRole('tab', { name: 'Sessions' })).toHaveAttribute(
       'aria-selected',
       'true'
     );
+    expect(
+      screen.getByRole('tab', { name: 'Sessions' }).querySelector('svg')
+    ).toHaveClass('lucide-message-circle');
+    expect(
+      document.querySelector('[data-space-stat="Sessions"] svg')
+    ).toHaveClass('lucide-message-circle');
     expect(
       screen.getByRole('tab', { name: 'Context' }).querySelector('svg')
     ).toHaveClass('lucide-library');
@@ -758,7 +764,7 @@ describe('SettingsPage', () => {
         'true'
       );
     });
-    expect(screen.getByRole('tab', { name: 'Projects' })).toHaveAttribute(
+    expect(screen.getByRole('tab', { name: 'Sessions' })).toHaveAttribute(
       'aria-selected',
       'false'
     );

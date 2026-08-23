@@ -59,7 +59,7 @@
   "your-account-or-switch-to-a-self-hosted-model-and-api-in": "tu cuenta o cambia a un modelo y API autohospedados en",
   "your-cloud-storage-has-reached-the-limit-of-your-current-plan": "Tu almacenamiento en la nube ha alcanzado el límite de tu plan actual.",
   "we-re-experiencing-high-traffic-please-try-again-in-a-few-moments": "Estamos experimentando mucho tráfico. Inténtalo de nuevo en unos momentos.",
-  "new-project": "Nuevo proyecto",
+  "new-project": "Nueva sesión",
   "no-reply-received-task-continue": "No se recibió respuesta, la tarea continúa",
   "splitting-tasks": "Dividiendo tareas",
   "working-on-tasks-for": "Trabajando en tareas durante <elapsed>{{time}}</elapsed>",

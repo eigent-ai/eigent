@@ -25,8 +25,8 @@ import Folder from '@/components/Folder';
 import AppShellLayout, {
   APP_SHELL_CONTENT_CLASS,
 } from '@/components/Layout/AppShellLayout';
-import ProjectPageSidebar from '@/components/ProjectPageSidebar';
 import SessionGroup from '@/components/Session/SidePanel/components/SessionGroup';
+import SpaceSidebar from '@/components/SpaceSidebar';
 import TriggerPanel from '@/components/Trigger';
 import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
@@ -478,7 +478,7 @@ export default function WorkspacePage() {
   return (
     <ReactFlowProvider>
       <AppShellLayout
-        sidebar={<ProjectPageSidebar chatStore={chatStore} />}
+        sidebar={<SpaceSidebar chatStore={chatStore} />}
         sidebarHidden={workspaceSidebarHidden}
         /* Always mounted: hosts preview <webview> guests so their pages and
            history survive panel close, workspace-tab hops, and project

@@ -151,7 +151,7 @@ export function getKeyboardShortcutGroups(
         {
           id: 'new-project',
           labelKey: 'layout.shortcuts.new-project',
-          defaultLabel: 'New Project',
+          defaultLabel: 'New session',
           keys: [primary, 'N'],
         },
       ],
@@ -159,7 +159,7 @@ export function getKeyboardShortcutGroups(
     {
       id: 'project',
       labelKey: 'layout.shortcuts.group-project',
-      defaultLabel: 'Project',
+      defaultLabel: 'Session',
       shortcuts: [
         {
           id: 'toggle-timeline-view',

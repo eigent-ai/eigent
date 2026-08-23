@@ -17,9 +17,9 @@ import { cn } from '@/lib/utils';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   Brain,
-  FolderKanban,
   Library,
   ListChecks,
+  MessageCircle,
   Settings,
   type LucideIcon,
 } from 'lucide-react';
@@ -61,8 +61,8 @@ const SPACE_DETAIL_TAB_OPTIONS: SpaceDetailTabConfig[] = [
   {
     id: 'projects',
     labelKey: 'layout.projects',
-    defaultLabel: 'Projects',
-    icon: FolderKanban,
+    defaultLabel: 'Sessions',
+    icon: MessageCircle,
   },
   {
     id: 'tasks',

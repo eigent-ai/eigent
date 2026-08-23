@@ -12,6 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-/** Project / tab name tooltips: narrower so they sit beside the row without covering it. */
+/** Session / tab name tooltips: narrower so they sit beside the row without covering it. */
 export const SIDEBAR_TAB_TOOLTIP_CONTENT_CLASS =
   'max-w-[160px] break-words whitespace-normal';

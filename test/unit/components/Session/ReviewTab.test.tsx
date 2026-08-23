@@ -140,7 +140,7 @@ describe('ReviewTab', () => {
       screen.getByText('Change review is available in the desktop app.')
     ).toBeInTheDocument();
     expect(
-      screen.queryByText('No file changes in this project yet.')
+      screen.queryByText('No file changes in this session yet.')
     ).not.toBeInTheDocument();
   });
 
@@ -157,11 +157,11 @@ describe('ReviewTab', () => {
     render(<ReviewTab tab={reviewTab} />);
 
     expect(
-      screen.getByText('Could not load the changes for this project.')
+      screen.getByText('Could not load the changes for this session.')
     ).toBeInTheDocument();
     expect(screen.getByText('overlay service down')).toBeInTheDocument();
     expect(
-      screen.queryByText('No file changes in this project yet.')
+      screen.queryByText('No file changes in this session yet.')
     ).not.toBeInTheDocument();
   });
 

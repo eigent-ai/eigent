@@ -181,9 +181,9 @@ export function getSessionNavLeadFromHistoryProject(
 }
 
 /**
- * Sidebar project rows: prefer cached/history lead while hydrating; otherwise live task state.
+ * Sidebar session rows: prefer cached/history lead while hydrating; otherwise live task state.
  */
-export function resolveProjectNavLeadPresentation(options: {
+export function resolveSessionNavLeadPresentation(options: {
   activeTask?: TaskRow;
   cachedLead?: SessionNavLeadPresentation;
   isHistoryLoading?: boolean;
