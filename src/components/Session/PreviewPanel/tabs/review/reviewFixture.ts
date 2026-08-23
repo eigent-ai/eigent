@@ -19,14 +19,16 @@ export const REVIEW_FIXTURE_STORAGE_KEY = 'eigent-review-fixture';
 /**
  * Dev-only sample changes for building/reviewing the diff UI without a
  * backend that records overlays. Enable from DevTools with
- * `localStorage.setItem('eigent-review-fixture', '1')` and hit Refresh;
- * remove the key to go back to real data.
+ * `localStorage.setItem('eigent-review-fixture', '1')` and hit Refresh, or add
+ * `?reviewFixture=1` to the development URL. Remove it to go back to real data.
  */
 export function reviewFixtureEnabled(): boolean {
   return (
     import.meta.env.DEV &&
-    typeof localStorage !== 'undefined' &&
-    localStorage.getItem(REVIEW_FIXTURE_STORAGE_KEY) === '1'
+    ((typeof localStorage !== 'undefined' &&
+      localStorage.getItem(REVIEW_FIXTURE_STORAGE_KEY) === '1') ||
+      (typeof location !== 'undefined' &&
+        new URLSearchParams(location.search).get('reviewFixture') === '1'))
   );
 }
 
@@ -76,6 +78,52 @@ const ORPHANED_MODIFIED = `def parse(payload: dict) -> dict:
     return {key: value for key, value in payload.items() if value is not None}
 `;
 
+const README_ORIGINAL = `# Greeter
+
+Call \`greet(name)\` to create a greeting.
+
+## Example
+
+\`\`\`python
+print(greet("Ada"))
+\`\`\`
+`;
+
+const README_MODIFIED = `# Greeter
+
+Create friendly greetings and farewells with typed helpers.
+
+## Example
+
+\`\`\`python
+print(greet("Ada"))
+print(farewell("Ada"))
+\`\`\`
+
+> The public functions now include type annotations.
+`;
+
+const MANIFEST_ORIGINAL = `{
+  "name": "greeter",
+  "version": 1,
+  "features": ["hello"]
+}`;
+
+const MANIFEST_MODIFIED = `{
+  "name": "greeter",
+  "version": 2,
+  "features": ["hello", "farewell", "shout"],
+  "typed": true
+}`;
+
+const PAGE_ORIGINAL = `<!doctype html>
+<html><head><style>body{font-family:system-ui;padding:32px}h1{color:dimgray}</style></head>
+<body><h1>Hello</h1><p>Welcome to Greeter.</p></body></html>`;
+
+const PAGE_MODIFIED = `<!doctype html>
+<html><head><style>body{font-family:system-ui;padding:32px}h1{color:seagreen}</style></head>
+<body><h1>Hello, Ada</h1><p>Greeter now supports farewells and shout.</p></body></html>`;
+
 export const REVIEW_FIXTURE_FILES: ReviewFile[] = [
   {
     id: 'fixture:src/greeter.py',
@@ -119,5 +167,29 @@ export const REVIEW_FIXTURE_FILES: ReviewFile[] = [
     bakPath: null,
     beforeUnavailable: true,
     inline: { original: '', modified: ORPHANED_MODIFIED },
+  },
+  {
+    id: 'fixture:README.md',
+    path: 'README.md',
+    status: 'modified',
+    absPath: '',
+    bakPath: null,
+    inline: { original: README_ORIGINAL, modified: README_MODIFIED },
+  },
+  {
+    id: 'fixture:manifest.json',
+    path: 'manifest.json',
+    status: 'modified',
+    absPath: '',
+    bakPath: null,
+    inline: { original: MANIFEST_ORIGINAL, modified: MANIFEST_MODIFIED },
+  },
+  {
+    id: 'fixture:site/index.html',
+    path: 'site/index.html',
+    status: 'modified',
+    absPath: '',
+    bakPath: null,
+    inline: { original: PAGE_ORIGINAL, modified: PAGE_MODIFIED },
   },
 ];

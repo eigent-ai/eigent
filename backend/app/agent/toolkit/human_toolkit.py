@@ -22,6 +22,7 @@ from camel.toolkits.function_tool import FunctionTool
 from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.run_context import RunContext
 from app.run_journal import get_default_run_journal
+from app.run_runtime.active_timeout import pause_active_execution_timeout
 from app.service.task import (
     TASK_LOCK_CLEANUP_SENTINEL,
     Action,
@@ -120,7 +121,12 @@ class HumanToolkit(BaseToolkit, AbstractToolkit):
             )
         )
 
-        reply = await task_lock.get_human_input(self.agent_name)
+        # A durable HumanInteraction is user-owned waiting time, not stalled
+        # Agent execution. Keep both the hard step timeout and sliding stall
+        # watchdog paused until the UI supplies a reply or cleanup interrupts
+        # the wait, matching the durable Approval path.
+        async with pause_active_execution_timeout():
+            reply = await task_lock.get_human_input(self.agent_name)
         if reply == TASK_LOCK_CLEANUP_SENTINEL:
             logger.info(
                 "Human input wait interrupted by task cleanup",

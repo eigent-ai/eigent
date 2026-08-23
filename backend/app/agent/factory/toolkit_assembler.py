@@ -72,7 +72,13 @@ _SAFE_READ_TOOLKIT_FUNCTIONS: dict[str, frozenset[str] | None] = {
     "webfetchtoolkit": None,
     "screenshottoolkit": frozenset({"read_image"}),
     "workspacegittoolkit": None,
-    "humantoolkit": frozenset({"ask_human_via_gui"}),
+    # Both functions stay inside Eigent's task UI. Asking creates a durable
+    # HumanInteraction; notifying only publishes Run-local progress. Neither
+    # mutates the user workspace nor an external service, so prompting for an
+    # `mcp.tool.write` approval would be a false safety boundary. Third-party
+    # tools with the same names remain conservative because declarations are
+    # scoped to this code-owned toolkit.
+    "humantoolkit": frozenset({"ask_human_via_gui", "send_message_to_user"}),
     # Eigent's code-owned todo_write only replaces the Run-local todo.md and
     # .todo.json projection. It is deterministic internal progress metadata,
     # not a user-workspace or external side effect, so approval would only

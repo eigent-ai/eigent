@@ -14,7 +14,7 @@
 
 import { ReviewFileTree } from '@/components/Session/PreviewPanel/tabs/review/ReviewFileTree';
 import type { ReviewFile } from '@/components/Session/PreviewPanel/tabs/review/useReviewChanges';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -51,8 +51,16 @@ describe('ReviewFileTree', () => {
     expect(screen.getByRole('treeitem', { name: /modified\.ts/i })).toHaveClass(
       'bg-ds-bg-neutral-default-default'
     );
-    expect(screen.getByLabelText('added')).toHaveTextContent('A');
-    expect(screen.getByLabelText('modified')).toHaveTextContent('M');
+    expect(
+      within(
+        screen.getByRole('treeitem', { name: /added\.ts/i })
+      ).getByLabelText('added')
+    ).toHaveTextContent('A');
+    expect(
+      within(
+        screen.getByRole('treeitem', { name: /modified\.ts/i })
+      ).getByLabelText('modified')
+    ).toHaveTextContent('M');
 
     await user.click(screen.getByRole('treeitem', { name: /added\.ts/i }));
     expect(onSelect).toHaveBeenCalledWith(files[0].id);
@@ -70,5 +78,52 @@ describe('ReviewFileTree', () => {
     expect(
       screen.queryByRole('treeitem', { name: /modified\.ts/i })
     ).not.toBeInTheDocument();
+  });
+
+  it('filters by review progress and change status', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <ReviewFileTree
+        files={files}
+        selectedId={null}
+        reviewedIds={new Set([files[0].id])}
+        onSelect={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Unreviewed' }));
+    expect(
+      screen.queryByRole('treeitem', { name: /added\.ts/i })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('treeitem', { name: /modified\.ts/i })
+    ).toBeVisible();
+
+    rerender(
+      <ReviewFileTree
+        files={files}
+        selectedId={null}
+        reviewedIds={new Set()}
+        onSelect={vi.fn()}
+      />
+    );
+    await user.click(screen.getByRole('button', { name: 'added' }));
+    expect(screen.getByRole('treeitem', { name: /added\.ts/i })).toBeVisible();
+    expect(
+      screen.queryByRole('treeitem', { name: /modified\.ts/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows pending review comment counts next to changed files', () => {
+    render(
+      <ReviewFileTree
+        files={files}
+        selectedId={null}
+        commentCounts={new Map([[files[1].id, 2]])}
+        onSelect={vi.fn()}
+      />
+    );
+
+    expect(screen.getByLabelText('2 review comments')).toHaveTextContent('2');
   });
 });

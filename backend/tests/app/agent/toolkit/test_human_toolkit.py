@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -8,6 +9,7 @@ import pytest
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.run_context import RunContext
 from app.run_journal import SQLiteRunJournal
+from app.run_runtime.active_timeout import ActiveExecutionTimeout
 
 
 def _run_context(tmp_path: Path) -> RunContext:
@@ -73,3 +75,47 @@ async def test_ask_human_creates_question_not_approval(tmp_path):
         )
         assert queued.data["interaction_id"] == interaction.interaction_id
         assert "approval_id" not in queued.data
+
+
+@pytest.mark.asyncio
+async def test_ask_human_pauses_active_agent_timeout(tmp_path):
+    task_lock = MagicMock()
+    task_lock.run_context = _run_context(tmp_path)
+    task_lock.add_human_input_listen = MagicMock()
+    task_lock.put_queue = AsyncMock()
+
+    async def delayed_reply(_agent_name: str) -> str:
+        await asyncio.sleep(0.04)
+        return "continue"
+
+    task_lock.get_human_input = AsyncMock(side_effect=delayed_reply)
+
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        with (
+            patch(
+                "app.agent.toolkit.human_toolkit.get_task_lock",
+                return_value=task_lock,
+            ),
+            patch(
+                "app.utils.listen.toolkit_listen.get_task_lock",
+                return_value=task_lock,
+            ),
+            patch(
+                "app.agent.toolkit.human_toolkit.get_default_run_journal",
+                return_value=journal,
+            ),
+            patch("app.run_sync.runtime.notify_default_cloud_sync_worker"),
+        ):
+            toolkit = HumanToolkit("project-1", "worker")
+            async with ActiveExecutionTimeout(0.01, refresh_on_progress=True):
+                reply = await toolkit.ask_human_via_gui("Continue?")
+
+    assert reply == "continue"

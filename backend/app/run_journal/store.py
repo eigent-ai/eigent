@@ -12715,6 +12715,154 @@ class SQLiteRunJournal:
         )
         return True
 
+    def _cancel_open_human_interactions_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        run_id: str,
+        timestamp: float,
+        reason: str,
+    ) -> int:
+        """Close HumanInteractions that cannot outlive a terminal Run."""
+
+        interactions = connection.execute(
+            """
+            SELECT * FROM human_interactions
+            WHERE run_id = ? AND status IN ('requested', 'presented')
+            ORDER BY created_at, interaction_id
+            """,
+            (run_id,),
+        ).fetchall()
+        cancelled = 0
+        for interaction in interactions:
+            updated = connection.execute(
+                """
+                UPDATE human_interactions
+                SET status = 'cancelled', resolved_at = ?, updated_at = ?,
+                    version = version + 1
+                WHERE interaction_id = ?
+                  AND status IN ('requested', 'presented')
+                """,
+                (
+                    timestamp,
+                    timestamp,
+                    interaction["interaction_id"],
+                ),
+            )
+            if updated.rowcount != 1:
+                continue
+
+            approval = None
+            if interaction["interaction_type"] == "approval":
+                approval = connection.execute(
+                    "SELECT * FROM approvals WHERE approval_id = ?",
+                    (interaction["interaction_id"],),
+                ).fetchone()
+                if approval is not None and approval["status"] == "pending":
+                    connection.execute(
+                        """
+                        UPDATE approvals
+                        SET status = 'rejected', decision_json = ?,
+                            resolved_at = ?, version = version + 1
+                        WHERE approval_id = ? AND status = 'pending'
+                        """,
+                        (
+                            canonical_json(
+                                {"decision": "rejected", "reason": reason}
+                            ),
+                            timestamp,
+                            interaction["interaction_id"],
+                        ),
+                    )
+
+            is_approval = interaction["interaction_type"] == "approval"
+            decision = {
+                "decision": "rejected" if is_approval else "cancelled",
+                "reason": reason,
+            }
+            decision_request_id = (
+                f"system:{interaction['interaction_id']}:{reason}"
+            )
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO human_interaction_decisions(
+                    decision_id, interaction_id, decision_request_id,
+                    decision_json, actor_type, actor_id, source,
+                    action_digest, created_at
+                ) VALUES (?, ?, ?, ?, 'system', NULL, 'recovery', ?, ?)
+                """,
+                (
+                    f"decision:{decision_request_id}",
+                    interaction["interaction_id"],
+                    decision_request_id,
+                    canonical_json(decision),
+                    approval["action_digest"]
+                    if approval is not None
+                    else None,
+                    timestamp,
+                ),
+            )
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO security_audit_events(
+                    audit_event_id, space_id, run_id, interaction_id,
+                    event_type, actor_type, actor_id, action_digest,
+                    details_json, created_at
+                ) VALUES (?, NULL, ?, ?, 'human_interaction.cancelled',
+                          'system', NULL, ?, ?, ?)
+                """,
+                (
+                    f"interaction-cancelled:{interaction['interaction_id']}:{reason}",
+                    run_id,
+                    interaction["interaction_id"],
+                    approval["action_digest"]
+                    if approval is not None
+                    else None,
+                    canonical_json(
+                        {
+                            "interaction_type": interaction[
+                                "interaction_type"
+                            ],
+                            "reason": reason,
+                        }
+                    ),
+                    timestamp,
+                ),
+            )
+
+            event_type = (
+                "approval.cancelled"
+                if is_approval
+                else "interaction.cancelled"
+            )
+            payload = {
+                "interaction_id": interaction["interaction_id"],
+                "interaction_type": interaction["interaction_type"],
+                "attempt_id": interaction["attempt_id"],
+                "reason": reason,
+                "source": "system",
+            }
+            if is_approval:
+                payload.update(
+                    approval_id=interaction["interaction_id"],
+                    decision="rejected",
+                    continued_attempt=False,
+                )
+            self._append_event_in_transaction(
+                connection,
+                run_id,
+                RunEventDraft(
+                    event_id=(
+                        f"{event_type}:{interaction['interaction_id']}:{reason}"
+                    ),
+                    event_type=event_type,
+                    payload=payload,
+                    created_at=timestamp,
+                ),
+            )
+            cancelled += 1
+        return cancelled
+
     def _cancel_orphaned_tool_approvals_in_transaction(
         self,
         connection: sqlite3.Connection,
@@ -14313,6 +14461,28 @@ class SQLiteRunJournal:
         unknown_tools: list[str] = []
         unknown_model_invocations: list[str] = []
         with self._write_transaction() as connection:
+            # Older terminal paths could leave a question or approval open.
+            # Repair those rows before normal startup reconciliation so a
+            # failed/completed Run never keeps rendering actionable input.
+            terminal_interaction_runs = connection.execute(
+                """
+                SELECT DISTINCT runs.run_id, runs.status
+                FROM runs
+                JOIN human_interactions
+                  ON human_interactions.run_id = runs.run_id
+                WHERE runs.status IN ('completed', 'failed', 'cancelled')
+                  AND human_interactions.status IN ('requested', 'presented')
+                ORDER BY runs.created_at, runs.run_id
+                """
+            ).fetchall()
+            for terminal_run in terminal_interaction_runs:
+                self._cancel_open_human_interactions_in_transaction(
+                    connection,
+                    run_id=terminal_run["run_id"],
+                    timestamp=timestamp,
+                    reason=f"terminal_run_recovery:{terminal_run['status']}",
+                )
+
             # A provider call is already across its dispatch boundary.  If the
             # Brain exited before committing its response, the model outcome
             # cannot be inferred from the interrupted Run.  Close it
@@ -17068,6 +17238,20 @@ class SQLiteRunJournal:
                 f"run_id {run_id!r} expected version {expected_version}, "
                 f"found {current_version}"
             )
+        if run_status in {"completed", "failed", "cancelled"}:
+            self._cancel_open_human_interactions_in_transaction(
+                connection,
+                run_id=run_id,
+                timestamp=draft.created_at,
+                reason=f"run_terminal:{run_status}",
+            )
+            # Cancellation events advance the Run version inside this same
+            # transaction. Commit the terminal event against that new head.
+            run = connection.execute(
+                "SELECT * FROM runs WHERE run_id = ?", (run_id,)
+            ).fetchone()
+            assert run is not None
+            current_version = int(run["version"])
         sequence = int(
             connection.execute(
                 "SELECT COALESCE(MAX(sequence), 0) + 1 FROM run_events WHERE run_id = ?",

@@ -18,6 +18,7 @@ import type {
   SessionReviewTab,
   SessionReviewTarget,
 } from '@/store/pageTabStore';
+import { usePageTabStore } from '@/store/pageTabStore';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -44,30 +45,62 @@ vi.mock('@/store/authStore', () => ({
     selector({ appearance: 'light' }),
 }));
 
-vi.mock('@/components/Session/PreviewPanel/tabs/review/DiffFileCard', () => ({
-  DiffFileCard: ({
-    file,
-    selected,
-    foldAll,
-    foldNonce,
-    maxEditorHeight,
-  }: {
-    file: { id: string };
-    selected?: boolean;
-    foldAll?: boolean;
-    foldNonce?: number;
-    maxEditorHeight?: number;
-  }) => (
-    <div
-      data-testid={`diff:${file.id}`}
-      data-review-id={file.id}
-      data-selected={String(selected)}
-      data-fold-all={String(foldAll)}
-      data-fold-nonce={String(foldNonce)}
-      data-max-editor-height={maxEditorHeight}
-    />
-  ),
-}));
+vi.mock(
+  '@/components/Session/PreviewPanel/tabs/review/DiffFileCard',
+  async () => {
+    const { forwardRef } = await import('react');
+    const MockDiffFileCard = forwardRef(
+      (
+        {
+          file,
+          viewMode,
+          wordWrap,
+          reviewed,
+          comments,
+          onCommentRequest,
+        }: {
+          file: { id: string };
+          viewMode: string;
+          wordWrap: boolean;
+          reviewed: boolean;
+          comments?: unknown[];
+          onCommentRequest?: (selection: {
+            side: 'modified';
+            startLine: number;
+            endLine: number;
+            text: string;
+          }) => void;
+        },
+        _ref
+      ) => (
+        <div>
+          <div
+            data-testid={`diff:${file.id}`}
+            data-review-id={file.id}
+            data-view-mode={viewMode}
+            data-word-wrap={String(wordWrap)}
+            data-reviewed={String(reviewed)}
+            data-comment-count={String(comments?.length ?? 0)}
+          />
+          <button
+            type="button"
+            aria-label="Comment on mock lines"
+            onClick={() =>
+              onCommentRequest?.({
+                side: 'modified',
+                startLine: 4,
+                endLine: 6,
+                text: 'const answer = 42;',
+              })
+            }
+          />
+        </div>
+      )
+    );
+    MockDiffFileCard.displayName = 'MockDiffFileCard';
+    return { DiffFileCard: MockDiffFileCard };
+  }
+);
 
 vi.mock('@/components/Session/PreviewPanel/tabs/review/ReviewFileTree', () => ({
   ReviewFileTree: () => <div data-testid="review-tree" />,
@@ -76,6 +109,19 @@ vi.mock('@/components/Session/PreviewPanel/tabs/review/ReviewFileTree', () => ({
 describe('ReviewTab', () => {
   beforeEach(() => {
     mockUseReviewChanges.mockReset();
+    usePageTabStore.setState({
+      sessionPreviewProjectId: 'project-1',
+      sessionPreviewByProject: {
+        'project-1': {
+          open: true,
+          tabs: [reviewTab],
+          activeTabId: reviewTab.id,
+        },
+      },
+      workspaceChatDraftRequest: null,
+      workspaceChatDraftRequestSequence: 0,
+      workspaceReviewHandoffs: [],
+    });
   });
 
   it('shows the desktop requirement instead of an empty review on web', () => {
@@ -144,7 +190,7 @@ describe('ReviewTab', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByTestId('diff:file:/outside/src/example.ts')
-    ).toHaveAttribute('data-max-editor-height', '120');
+    ).toHaveAttribute('data-view-mode', 'inline');
     expect(screen.queryByTestId('review-tree')).not.toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Show file tree' })
@@ -198,7 +244,7 @@ describe('ReviewTab', () => {
     expect(screen.queryByText(/^\+\d/)).not.toBeInTheDocument();
   });
 
-  it('drives collapse and expand all from the toolbar', () => {
+  it('mounts one active diff and navigates files from the toolbar', () => {
     mockUseReviewChanges.mockReturnValue({
       loading: false,
       desktopOnly: false,
@@ -213,23 +259,32 @@ describe('ReviewTab', () => {
           absPath: '/outside/src/example.ts',
           bakPath: '/outside/src/example.ts.20260722_120000.bak',
         },
+        {
+          id: 'file:/outside/src/second.ts',
+          path: '/outside/src/second.ts',
+          status: 'added',
+          absPath: '/outside/src/second.ts',
+          bakPath: null,
+        },
       ],
     });
 
     render(<ReviewTab tab={reviewTab} />);
-    const card = () => screen.getByTestId('diff:file:/outside/src/example.ts');
 
-    // Nonce starts at zero so cards keep their own state until asked.
-    expect(card()).toHaveAttribute('data-fold-all', 'false');
-    expect(card()).toHaveAttribute('data-fold-nonce', '0');
+    expect(
+      screen.getByTestId('diff:file:/outside/src/example.ts')
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('diff:file:/outside/src/second.ts')
+    ).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse all files' }));
-    expect(card()).toHaveAttribute('data-fold-all', 'true');
-    expect(card()).toHaveAttribute('data-fold-nonce', '1');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Expand all files' }));
-    expect(card()).toHaveAttribute('data-fold-all', 'false');
-    expect(card()).toHaveAttribute('data-fold-nonce', '2');
+    fireEvent.click(screen.getByRole('button', { name: 'Next file' }));
+    expect(
+      screen.queryByTestId('diff:file:/outside/src/example.ts')
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId('diff:file:/outside/src/second.ts')
+    ).toBeInTheDocument();
   });
 
   it('toggles the file tree so the diffs can use the full width', () => {
@@ -313,6 +368,174 @@ describe('ReviewTab', () => {
     expect(mockUseReviewChanges).toHaveBeenCalledWith(runTarget);
     expect(
       screen.getByTestId('diff:run-git:run-1:src/example.ts')
-    ).toHaveAttribute('data-selected', 'true');
+    ).toBeInTheDocument();
+  });
+
+  it('marks the current file reviewed and advances to the next file', () => {
+    mockUseReviewChanges.mockReturnValue({
+      loading: false,
+      desktopOnly: false,
+      error: null,
+      totals: { added: 0, removed: 0 },
+      refresh: vi.fn(),
+      files: [
+        {
+          id: 'first',
+          path: 'first.ts',
+          status: 'modified',
+          absPath: '/first.ts',
+          bakPath: '/first.ts.bak',
+        },
+        {
+          id: 'second',
+          path: 'second.ts',
+          status: 'added',
+          absPath: '/second.ts',
+          bakPath: null,
+        },
+      ],
+    });
+
+    render(<ReviewTab tab={reviewTab} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as reviewed' }));
+
+    expect(screen.getByTestId('diff:second')).toBeInTheDocument();
+    expect(screen.getByText('1 of 2 reviewed')).toBeInTheDocument();
+  });
+
+  it('collects a visible file review comment and exposes handoff actions', () => {
+    mockUseReviewChanges.mockReturnValue({
+      loading: false,
+      desktopOnly: false,
+      error: null,
+      totals: { added: 0, removed: 0 },
+      refresh: vi.fn(),
+      files: [
+        {
+          id: 'first',
+          path: 'src/first.ts',
+          status: 'modified',
+          absPath: '/first.ts',
+          bakPath: '/first.ts.bak',
+        },
+      ],
+    });
+
+    render(<ReviewTab tab={reviewTab} />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Add a file review note' })
+    );
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'Describe what should change…' }),
+      { target: { value: 'Keep this API backward compatible.' } }
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Add comment' }));
+
+    expect(
+      screen.getByRole('button', { name: 'Copy review comments' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Keep this API backward compatible.')
+    ).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Add 1 comments to chat' })
+    ).toBeInTheDocument();
+  });
+
+  it('shows an acknowledged review comment as sent instead of pending', () => {
+    mockUseReviewChanges.mockReturnValue({
+      loading: false,
+      desktopOnly: false,
+      error: null,
+      totals: { added: 0, removed: 0 },
+      refresh: vi.fn(),
+      files: [
+        {
+          id: 'first',
+          path: 'src/first.ts',
+          status: 'modified',
+          absPath: '/first.ts',
+          bakPath: '/first.ts.bak',
+        },
+      ],
+    });
+
+    render(
+      <ReviewTab
+        tab={{
+          ...reviewTab,
+          reviewComments: [
+            {
+              id: 'comment-1',
+              fileId: 'first',
+              path: 'src/first.ts',
+              selection: null,
+              body: 'Keep this API backward compatible.',
+              createdAt: 1,
+              status: 'sent',
+              sentAt: 2,
+            },
+          ],
+        }}
+      />
+    );
+
+    expect(screen.getByText('All sent')).toBeVisible();
+    expect(screen.getByText('Sent')).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: 'Add 1 comments to chat' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('anchors a multi-line comment and hands it to the matching Chat draft', () => {
+    mockUseReviewChanges.mockReturnValue({
+      loading: false,
+      desktopOnly: false,
+      error: null,
+      totals: { added: 0, removed: 0 },
+      refresh: vi.fn(),
+      files: [
+        {
+          id: 'first',
+          path: 'src/first.ts',
+          status: 'modified',
+          absPath: '/first.ts',
+          bakPath: '/first.ts.bak',
+        },
+      ],
+    });
+
+    render(<ReviewTab tab={reviewTab} />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Comment on mock lines' })
+    );
+    expect(screen.getByText('src/first.ts:4-6 (modified)')).toBeVisible();
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'Describe what should change…' }),
+      { target: { value: 'Avoid a magic number here.' } }
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Add comment' }));
+
+    expect(screen.getByText('Avoid a magic number here.')).toBeVisible();
+    expect(screen.getByTestId('diff:first')).toHaveAttribute(
+      'data-comment-count',
+      '1'
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Add 1 comments to chat' })
+    );
+    const request = usePageTabStore.getState().workspaceChatDraftRequest;
+    expect(request?.projectId).toBe('project-1');
+    expect(request?.content).toContain('src/first.ts:4-6 (modified)');
+    expect(request?.content).toContain('Avoid a magic number here.');
+    expect(request?.content).toContain('const answer = 42;');
+    expect(usePageTabStore.getState().workspaceReviewHandoffs).toEqual([
+      expect.objectContaining({
+        projectId: 'project-1',
+        reviewTabId: reviewTab.id,
+        commentIds: [expect.any(String)],
+      }),
+    ]);
   });
 });

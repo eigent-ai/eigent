@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 // Comprehensive unit tests for ChatBox component
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -27,6 +27,7 @@ import {
 } from '../../../src/api/http';
 import ChatBox from '../../../src/components/ChatBox/index';
 import { useAuthStore } from '../../../src/store/authStore';
+import { usePageTabStore } from '../../../src/store/pageTabStore';
 
 const eventNativeHarness = vi.hoisted(() => ({
   enabled: false,
@@ -415,6 +416,14 @@ describe('ChatBox Component', async () => {
     eventNativeHarness.enabled = false;
     eventNativeHarness.snapshot = null;
     eventNativeHarness.controlOptions = null;
+    usePageTabStore.setState({
+      workspaceChatDraftRequest: null,
+      workspaceChatDraftRequestSequence: 0,
+      workspaceReviewHandoffs: [],
+      workspaceChatFocusRequestId: 0,
+      sessionPreviewProjectId: null,
+      sessionPreviewByProject: {},
+    });
     defaultProjectStoreState.activeProjectId = 'test-project-id';
     defaultProjectStoreState.getActiveChatStore.mockImplementation(() => ({
       getState: () => defaultChatStoreState,
@@ -484,6 +493,107 @@ describe('ChatBox Component', async () => {
       renderChatBox();
 
       expect(screen.getByTestId('message-input')).toBeInTheDocument();
+    });
+
+    it('appends a Project-scoped review handoff to the Chat draft', async () => {
+      renderChatBox();
+
+      act(() => {
+        usePageTabStore.setState({
+          workspaceChatDraftRequestSequence: 1,
+          workspaceChatFocusRequestId: 1,
+          workspaceChatDraftRequest: {
+            requestId: 1,
+            projectId: 'test-project-id',
+            content: 'Please address review comment 1.',
+          },
+        });
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('message-input')).toHaveValue(
+          'Please address review comment 1.'
+        );
+      });
+      expect(usePageTabStore.getState().workspaceChatDraftRequest).toBeNull();
+    });
+
+    it('marks review comments sent only after Chat accepts the message', async () => {
+      renderChatBox();
+
+      act(() => {
+        usePageTabStore.setState({
+          sessionPreviewProjectId: 'test-project-id',
+          sessionPreviewByProject: {
+            'test-project-id': {
+              open: true,
+              activeTabId: 'review-1',
+              tabs: [
+                {
+                  id: 'review-1',
+                  type: 'review',
+                  title: 'Review',
+                  reviewComments: [
+                    {
+                      id: 'comment-1',
+                      fileId: 'src/app.ts',
+                      path: 'src/app.ts',
+                      selection: null,
+                      body: 'Keep this compatible.',
+                      createdAt: 1,
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+          workspaceChatDraftRequestSequence: 1,
+          workspaceChatFocusRequestId: 1,
+          workspaceChatDraftRequest: {
+            requestId: 1,
+            projectId: 'test-project-id',
+            content: 'Please address review comment 1.',
+          },
+          workspaceReviewHandoffs: [
+            {
+              requestId: 1,
+              projectId: 'test-project-id',
+              reviewTabId: 'review-1',
+              commentIds: ['comment-1'],
+              content: 'Please address review comment 1.',
+            },
+          ],
+        });
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('message-input')).toHaveValue(
+          'Please address review comment 1.'
+        );
+      });
+      const pendingReviewTab =
+        usePageTabStore.getState().sessionPreviewByProject['test-project-id']
+          .tabs[0];
+      expect(pendingReviewTab.type).toBe('review');
+      expect(
+        pendingReviewTab.type === 'review'
+          ? pendingReviewTab.reviewComments?.[0].status
+          : 'wrong-tab-type'
+      ).toBeUndefined();
+
+      await userEvent.click(screen.getByTestId('send-button'));
+
+      await waitFor(() => {
+        const reviewTab =
+          usePageTabStore.getState().sessionPreviewByProject['test-project-id']
+            .tabs[0];
+        expect(reviewTab).toMatchObject({
+          reviewComments: [
+            expect.objectContaining({ id: 'comment-1', status: 'sent' }),
+          ],
+        });
+      });
+      expect(usePageTabStore.getState().workspaceReviewHandoffs).toEqual([]);
     });
 
     it('should not fetch privacy settings on mount', async () => {
