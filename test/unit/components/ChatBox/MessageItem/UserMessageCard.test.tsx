@@ -64,7 +64,7 @@ describe('UserMessageCard', () => {
 
       expect(tag).toHaveClass(
         'align-baseline',
-        '!text-body-sm',
+        '!text-ds-text-base',
         '!font-normal'
       );
     }

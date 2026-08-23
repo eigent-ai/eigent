@@ -395,10 +395,10 @@ describe('WorkspaceConfigurationEditor', () => {
     });
     expect(bundleNameInput).toHaveValue('Research Bundle');
     expect(bundleNameInput.parentElement).toHaveClass(
-      'bg-ds-bg-neutral-subtle-default'
+      'bg-ds-neutral-subtle-default'
     );
-    expect(permissionSelect).toHaveClass('bg-ds-bg-neutral-subtle-default');
-    expect(remotePolicySelect).toHaveClass('bg-ds-bg-neutral-subtle-default');
+    expect(permissionSelect).toHaveClass('bg-ds-neutral-subtle-default');
+    expect(remotePolicySelect).toHaveClass('bg-ds-neutral-subtle-default');
     expect(
       within(identitySection).getByRole('switch', {
         name: 'Git workspace environment',
@@ -464,7 +464,7 @@ describe('WorkspaceConfigurationEditor', () => {
     ) as HTMLElement;
     expect(instructionItem).toHaveClass(
       'w-full',
-      'bg-ds-bg-neutral-subtle-default'
+      'bg-ds-neutral-subtle-default'
     );
     expect(
       instructionItem.querySelector('[data-workspace-collection-index]')
@@ -508,8 +508,8 @@ describe('WorkspaceConfigurationEditor', () => {
     expect(editorPanel.querySelector('h1, h2, h3, h4, h5, h6, p')).toBeNull();
     const panelTitle = within(editorPanel).getByText('Edit instruction');
     expect(panelTitle.tagName).toBe('SPAN');
-    expect(panelTitle).toHaveClass('text-body-lg');
-    expect(panelTitle).not.toHaveClass('text-heading-lg');
+    expect(panelTitle).toHaveClass('text-ds-text-section');
+    expect(panelTitle).not.toHaveClass('text-ds-text-display');
     expect(container.querySelector('main')).not.toHaveClass('sm:pr-[420px]');
     await waitFor(() =>
       expect(within(editorPanel).getByDisplayValue('coordinator')).toBeVisible()

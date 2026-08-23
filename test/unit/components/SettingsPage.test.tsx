@@ -199,9 +199,12 @@ describe('SettingsPage', () => {
     });
     expect(main).toContainElement(header);
     expect(heading).toHaveFocus();
-    expect(header).toHaveClass('h-[44px]');
+    expect(header).toHaveClass(
+      'h-ds-layout-row-header',
+      'min-h-ds-layout-row-header'
+    );
     expect(within(header).getByText('Models')).toHaveClass(
-      'text-body-md',
+      'text-ds-text-body-large',
       'font-bold'
     );
     expect(
@@ -217,7 +220,7 @@ describe('SettingsPage', () => {
     ).not.toBeInTheDocument();
     expect(selectedTab).toHaveAttribute('aria-current', 'page');
     expect(selectedTab).toHaveClass(
-      'bg-ds-bg-neutral-subtle-default',
+      'bg-ds-neutral-subtle-default',
       'h-8',
       'w-full'
     );
@@ -302,7 +305,7 @@ describe('SettingsPage', () => {
       'sticky',
       '-top-px',
       'z-20',
-      'bg-ds-bg-neutral-subtle-default'
+      'bg-ds-neutral-subtle-default'
     );
     expect(document.querySelector('main > header')).not.toBeInTheDocument();
     expect(overview).toHaveTextContent(/Morning|Good Afternoon|Evening/);
@@ -491,16 +494,15 @@ describe('SettingsPage', () => {
     expect(header).toContainElement(exampleSkillsTab);
     expect(within(header).getByRole('tablist')).toHaveClass(
       'rounded-xl',
-      'bg-ds-bg-neutral-strong-default',
-      'ring-1'
+      'bg-ds-neutral-strong-default'
     );
     expect(exampleSkillsTab).toHaveAttribute('data-tabs-appearance', 'default');
     expect(exampleSkillsTab).toHaveClass(
       'rounded-xl',
-      'bg-ds-bg-neutral-strong-default'
+      'bg-ds-neutral-strong-default'
     );
     expect(
-      within(header).getByRole('button', { name: 'Search' })
+      within(header).getByPlaceholderText('Search skills...')
     ).toBeInTheDocument();
     expect(
       within(header).getByRole('button', { name: 'Add Skill' })
@@ -673,7 +675,7 @@ describe('SettingsPage', () => {
     expect(detailHeader).not.toBeInTheDocument();
     expect(
       within(screen.getByRole('main')).getByText('Design Space')
-    ).toHaveClass('!text-body-lg');
+    ).toHaveClass('!text-ds-text-section');
     expect(screen.getByText('Product design work')).toBeInTheDocument();
     expect(screen.getByText('Local')).toBeInTheDocument();
 
@@ -707,7 +709,7 @@ describe('SettingsPage', () => {
       within(screen.getByRole('tab', { name: 'Projects' })).getByText(
         'Projects'
       )
-    ).toHaveClass('!text-body-sm', 'font-bold');
+    ).toHaveClass('!text-ds-text-base', 'font-bold');
     expect(screen.getByRole('tab', { name: 'Projects' })).toHaveAttribute(
       'aria-selected',
       'true'
@@ -723,7 +725,7 @@ describe('SettingsPage', () => {
     });
     expect(document.querySelector('[data-space-detail-tab-hover]')).toHaveClass(
       'rounded-full',
-      'bg-ds-bg-neutral-default-default'
+      'bg-ds-neutral-default-default'
     );
     expect(screen.getByRole('tab', { name: 'Memory' })).toHaveClass(
       'rounded-full'
@@ -733,7 +735,7 @@ describe('SettingsPage', () => {
       'sticky',
       '-top-px',
       'border-b-1',
-      'bg-ds-bg-neutral-subtle-default'
+      'bg-ds-neutral-subtle-default'
     );
     const detailRails = [
       document.querySelector('[data-space-detail-summary-rail]'),
@@ -971,7 +973,7 @@ describe('SettingsPage', () => {
     expect(screen.getByText('Section content').parentElement).toHaveClass(
       'rounded-2xl',
       'border-0',
-      'bg-ds-bg-neutral-default-default',
+      'bg-ds-neutral-default-default',
       'p-4'
     );
   });

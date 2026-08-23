@@ -288,8 +288,11 @@ describe('Workspace', () => {
     );
     const workspaceHeader = screen.getByLabelText('Workspace header');
 
-    expect(coworkLabel).toHaveClass('text-heading-lg', 'font-display');
-    expect(singleAgentLabel).toHaveClass('text-heading-lg', 'font-display');
+    expect(coworkLabel).toHaveClass('text-ds-text-display', 'font-display');
+    expect(singleAgentLabel).toHaveClass(
+      'text-ds-text-display',
+      'font-display'
+    );
     expect(workspaceHeader).toHaveClass('flex-1', 'items-center', 'gap-0');
     expect(inputSection).toHaveClass('items-center', 'p-4');
     expect(coworkRow).toHaveClass(

@@ -314,9 +314,9 @@ describe('Memory Center', () => {
     const storageProgress = screen.getByRole('progressbar', {
       name: 'Memory storage used',
     });
-    expect(storageProgress).toHaveClass('bg-ds-bg-neutral-subtle-default');
+    expect(storageProgress).toHaveClass('bg-ds-neutral-subtle-default');
     expect(storageProgress.firstElementChild).toHaveClass(
-      'bg-ds-bg-brand-default-default'
+      'bg-ds-accent-default-default'
     );
     expect(
       screen.getByRole('textbox', { name: 'New Memory' })

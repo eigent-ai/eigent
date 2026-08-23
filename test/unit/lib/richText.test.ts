@@ -24,7 +24,7 @@ describe('rich chat tag typography', () => {
 
       expect(html).toContain('<span');
       expect(html).toContain('align-baseline');
-      expect(html).toContain('!text-body-sm');
+      expect(html).toContain('!text-ds-text-base');
       expect(html).toContain('!font-normal');
       expect(html).not.toContain('py-px');
     }
