@@ -53,10 +53,59 @@
   );
 }
 
+/* Put the hover control in the line-decorations gutter immediately after the
+ * line number. Submitted drafts keep a compact thread marker in the glyph
+ * gutter and a quiet line accent without competing with add/delete colors. */
+.review-diff-surface .monaco-editor .review-comment-add-glyph,
+.review-diff-surface .monaco-editor .review-comment-thread-glyph {
+  position: relative;
+  cursor: pointer;
+}
+
+.review-diff-surface .monaco-editor .review-comment-add-glyph::before,
+.review-diff-surface .monaco-editor .review-comment-thread-glyph::before {
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  display: flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(-50%);
+  border-radius: 5px;
+  background: #0969da;
+  color: #fff;
+  font-family: var(--font-sans, sans-serif);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 16px;
+  box-shadow: 0 1px 2px rgba(31, 35, 40, 0.18);
+  content: '+';
+}
+
+.review-diff-surface .monaco-editor .review-comment-thread-glyph::before {
+  background: #8250df;
+  font-size: 10px;
+  content: '\2022\2022\2022';
+}
+
+.review-diff-surface .monaco-editor .review-comment-line {
+  background: rgba(130, 80, 223, 0.06);
+}
+
+.review-diff-surface .monaco-editor .review-comment-line-marker {
+  border-left: 2px solid rgba(130, 80, 223, 0.7);
+}
+
 [data-theme='dark'] .review-diff-surface .monaco-editor .line-insert {
   background: rgba(63, 185, 80, 0.1);
 }
 
 [data-theme='dark'] .review-diff-surface .monaco-editor .line-delete {
   background: rgba(248, 81, 73, 0.1);
+}
+
+[data-theme='dark'] .review-diff-surface .monaco-editor .review-comment-line {
+  background: rgba(188, 140, 255, 0.1);
 }

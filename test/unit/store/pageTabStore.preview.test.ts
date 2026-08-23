@@ -29,6 +29,9 @@ describe('pageTabStore session preview', () => {
     usePageTabStore.setState({
       sessionPreviewProjectId: null,
       sessionPreviewByProject: {},
+      workspaceChatDraftRequest: null,
+      workspaceChatDraftRequestSequence: 0,
+      workspaceReviewHandoffs: [],
     });
     usePageTabStore.getState().setSessionPreviewProject('project-a');
   });
@@ -239,6 +242,62 @@ describe('pageTabStore session preview', () => {
     });
     expect(slice().tabs).toHaveLength(2);
     expect(slice().activeTabId).toBe(runReview?.id);
+  });
+
+  it('persists Review comments and creates a one-shot Project Chat draft', () => {
+    const store = usePageTabStore.getState();
+    store.openReviewPreview();
+    const review = slice().tabs.find((tab) => tab.type === 'review');
+    expect(review).toBeDefined();
+
+    const comments = [
+      {
+        id: 'comment-1',
+        fileId: 'src/app.ts',
+        path: 'src/app.ts',
+        selection: {
+          side: 'modified' as const,
+          startLine: 3,
+          endLine: 4,
+          text: 'const value = 1;',
+        },
+        body: 'Avoid the magic number.',
+        createdAt: 1,
+      },
+    ];
+    store.updateReviewComments(review!.id, comments);
+
+    expect(slice().tabs.find((tab) => tab.id === review!.id)).toMatchObject({
+      reviewComments: comments,
+    });
+
+    usePageTabStore.getState().requestWorkspaceChatDraft('Review feedback', {
+      reviewTabId: review!.id,
+      commentIds: ['comment-1'],
+    });
+    const request = usePageTabStore.getState().workspaceChatDraftRequest;
+    expect(request).toMatchObject({
+      projectId: 'project-a',
+      content: 'Review feedback',
+    });
+    usePageTabStore.getState().consumeWorkspaceChatDraft(request!.requestId);
+    expect(usePageTabStore.getState().workspaceChatDraftRequest).toBeNull();
+    expect(usePageTabStore.getState().workspaceReviewHandoffs).toHaveLength(1);
+
+    usePageTabStore
+      .getState()
+      .acknowledgeWorkspaceReviewHandoffs('project-a', 'Review feedback');
+    const sentReview = slice().tabs.find((tab) => tab.id === review!.id);
+    expect(sentReview).toMatchObject({
+      reviewComments: [
+        expect.objectContaining({
+          id: 'comment-1',
+          status: 'sent',
+          sentAt: expect.any(Number),
+        }),
+      ],
+    });
+    expect(usePageTabStore.getState().workspaceReviewHandoffs).toEqual([]);
   });
 
   it('reuses the empty file tab and deduplicates files by path', () => {
