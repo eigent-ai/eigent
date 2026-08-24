@@ -202,6 +202,7 @@ class PermissionPolicyService:
         *,
         space_id: str,
         prompt: dict[str, Any],
+        step_id: str | None = None,
         approval_id: str | None = None,
         expires_at: float | None = None,
         permission_profile_revision: str | None = None,
@@ -310,6 +311,7 @@ class PermissionPolicyService:
             policy_revision=profile.revision,
             safety_class=descriptor.safety_class.value,
             decision_scope="once",
+            step_id=step_id,
             expires_at=expires_at,
             expiry_action="reject",
         )

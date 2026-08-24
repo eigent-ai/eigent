@@ -786,6 +786,8 @@ class TestListenChatAgent:
         api_task_id = "test_api_task_123"
         agent_name = "TestAgent"
         observed_process_task_ids: list[str] = []
+        observed_thread_ids: list[int] = []
+        owner_thread_id = threading.get_ident()
 
         class SyncTool:
             is_async = False
@@ -795,6 +797,7 @@ class TestListenChatAgent:
 
             def __call__(self, **kwargs):
                 observed_process_task_ids.append(process_task.get(""))
+                observed_thread_ids.append(threading.get_ident())
                 return f"ok:{kwargs['arg1']}"
 
         with (
@@ -834,6 +837,7 @@ class TestListenChatAgent:
             assert result.tool_name == "stream_tool"
             assert result.result == "ok:value1"
             assert observed_process_task_ids == ["follow_up_task_123"]
+            assert observed_thread_ids != [owner_thread_id]
             assert mock_task_lock.put_queue.call_count >= 2
 
     def test_listen_chat_agent_clone(self, mock_task_lock):

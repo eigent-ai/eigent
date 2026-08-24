@@ -134,6 +134,14 @@ class PermissionPolicyEngine:
                 ),
             )
 
+        if descriptor.safety_class is ToolSafetyClass.INTERNAL_CONTROL:
+            return self._decision(
+                PolicyEffect.ALLOW,
+                "trusted_internal_control",
+                descriptor,
+                profile,
+            )
+
         if descriptor.safety_class is ToolSafetyClass.SAFE_READ:
             return self._decision(
                 PolicyEffect.ALLOW,

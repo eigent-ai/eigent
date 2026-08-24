@@ -81,6 +81,7 @@ async def authorize_tool_checkpoint(
     result = PermissionPolicyService(store).evaluate_and_request_approval(
         descriptor,
         space_id=run_context.space_id,
+        step_id=checkpoint.step_id,
         prompt={
             "title": f"Allow {checkpoint.tool_name}?",
             "question": (

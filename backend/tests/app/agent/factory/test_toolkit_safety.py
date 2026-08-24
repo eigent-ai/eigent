@@ -15,11 +15,16 @@
 from types import SimpleNamespace
 
 from app.agent.factory.toolkit_assembler import _mcp_config, _tag_tools
+from app.agent.toolkit.depth_limited_agent_toolkit import (
+    DepthLimitedAgentToolkit,
+)
+from app.agent.toolkit.file_write_toolkit import FileToolkit
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
 from app.agent.toolkit.observable_todo_toolkit import ObservableTodoToolkit
 from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
 from app.agent.toolkit.search_toolkit import SearchToolkit
+from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.run_policy import ToolSafetyClass
 from app.run_runtime.tool_checkpoint import declared_tool_safety
@@ -64,14 +69,19 @@ def test_titleized_toolkit_names_apply_trusted_read_declarations():
 
 def test_code_owned_todo_write_is_safe_internal_progress_state():
     todo_write = NamedTool("todo_write")
+    step_update = NamedTool("step_update")
     other_todo_tool = NamedTool("todo_delete")
 
     _tag_tools(
-        [todo_write, other_todo_tool],
+        [todo_write, step_update, other_todo_tool],
         ObservableTodoToolkit.toolkit_name(),
     )
 
     assert declared_tool_safety(todo_write, "todo_write", {}) == (
+        ToolSafetyClass.SAFE_READ,
+        None,
+    )
+    assert declared_tool_safety(step_update, "step_update", {}) == (
         ToolSafetyClass.SAFE_READ,
         None,
     )
@@ -109,6 +119,53 @@ def test_untrusted_mcp_todo_write_name_does_not_bypass_approval():
     _tag_tools([todo_write], "Third Party MCP")
 
     assert declared_tool_safety(todo_write, "todo_write", {}) == (
+        ToolSafetyClass.UNSAFE_WRITE,
+        None,
+    )
+
+
+def test_code_owned_discovery_and_file_reads_are_exactly_safe():
+    list_skills = NamedTool("list_skills")
+    load_skill = NamedTool("load_skill")
+    read_file = NamedTool("read_file")
+    glob_files = NamedTool("glob_files")
+    write_file = NamedTool("write_to_file")
+
+    _tag_tools([list_skills, load_skill], SkillToolkit.toolkit_name())
+    _tag_tools(
+        [read_file, glob_files, write_file],
+        FileToolkit.toolkit_name(),
+    )
+
+    for tool in (list_skills, load_skill, read_file, glob_files):
+        assert declared_tool_safety(tool, tool.name, {}) == (
+            ToolSafetyClass.SAFE_READ,
+            None,
+        )
+    assert declared_tool_safety(write_file, "write_to_file", {}) == (
+        ToolSafetyClass.UNSAFE_WRITE,
+        None,
+    )
+
+
+def test_code_owned_agent_delegation_is_internal_control_only():
+    run_subagent = NamedTool("agent_run_subagent")
+    get_output = NamedTool("agent_get_task_output")
+    stop_task = NamedTool("agent_stop_task")
+    untrusted = NamedTool("agent_run_subagent")
+
+    _tag_tools(
+        [run_subagent, get_output, stop_task],
+        DepthLimitedAgentToolkit.toolkit_name(),
+    )
+    _tag_tools([untrusted], "Third Party MCP")
+
+    for tool in (run_subagent, get_output, stop_task):
+        assert declared_tool_safety(tool, tool.name, {}) == (
+            ToolSafetyClass.INTERNAL_CONTROL,
+            None,
+        )
+    assert declared_tool_safety(untrusted, untrusted.name, {}) == (
         ToolSafetyClass.UNSAFE_WRITE,
         None,
     )

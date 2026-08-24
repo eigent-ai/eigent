@@ -395,12 +395,18 @@ function planStatus(status: ChatPlanTaskStatus): TaskStatusType {
 function activityTaskStatus(node: ChatActivityNode): TaskStatusType {
   switch (node.status) {
     case 'cancelled':
+    case 'interrupted':
       return TaskStatus.SKIPPED;
     case 'timed_out':
       return TaskStatus.FAILED;
     case 'outcome_unknown':
+    case 'blocked':
       return TaskStatus.BLOCKED;
-    default:
+    case 'pending':
+    case 'running':
+    case 'completed':
+    case 'failed':
+    case 'unknown':
       return planStatus(node.status);
   }
 }
@@ -607,6 +613,8 @@ function safeNodeText(node: ChatProjectionNode): string {
       return `${node.prompt || ''}\n${node.response || ''}`;
     case 'plan':
       return `${node.title || ''}\n${node.summary || ''}`;
+    case 'step':
+      return `${node.title}\n${node.summary || ''}`;
     case 'activity':
       return `${node.title}\n${node.detail || ''}`;
     case 'artifact':

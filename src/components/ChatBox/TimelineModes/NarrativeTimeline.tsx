@@ -188,10 +188,16 @@ function NarrativeSegment({
 
   return (
     <div
-      className="flex w-full min-w-0 flex-col gap-2"
+      className={cn(
+        'flex min-w-0 flex-col gap-2',
+        segment.parentStepId
+          ? 'ml-4 w-[calc(100%-1rem)] border-x-0 border-t-0 border-r-0 border-b-0 border-solid border-ds-border-neutral-subtle-default pl-3'
+          : 'w-full'
+      )}
       data-narrative-segment-id={segment.id}
       data-narrative-segment-source={segment.source}
       data-narrative-segment-status={segment.status}
+      data-narrative-parent-step-id={segment.parentStepId}
     >
       {segment.narration ? (
         <span
@@ -624,7 +630,10 @@ export function NarrativeTimeline({
       {runs.map((run) => {
         const projectedArtifacts = projectedArtifactsByRun[run.runId] || [];
         const interactivePlan = interactivePlansByRun[run.runId];
-        const narrativeItems = segmentTimelineRun(run);
+        const narrativeItems = segmentTimelineRun(
+          run,
+          interactivePlan?.eventId
+        );
         const hasWorkBand = narrativeItems.length > 0;
         const hasFiles =
           run.artifacts.length > 0 || projectedArtifacts.length > 0;

@@ -217,6 +217,7 @@ export function useReviewChanges(
   const runId = reviewScope === 'run' ? reviewTarget.runId?.trim() : undefined;
   const pinnedBaseCommit = pinnedIdentity?.baseCommit;
   const pinnedTargetCommit = pinnedIdentity?.targetCommit;
+  const hasPinnedIdentity = Boolean(pinnedBaseCommit && pinnedTargetCommit);
   const projectStore = useProjectRuntimeStore();
   const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
   const projectMeta = useSpaceStore((state) =>
@@ -459,6 +460,16 @@ export function useReviewChanges(
             ? await fetchRunGitChanges(runId, spaceId, identity)
             : await fetchProjectGitChanges(projectId, spaceId, identity);
           if (isRunGitChangesUnavailable(response)) {
+            if (hasPinnedIdentity) {
+              return {
+                files: [],
+                totals: null,
+                truncated: false,
+                desktopOnly: false,
+                reviewIdentity: null,
+                stale: true,
+              };
+            }
             return loadLegacyFiles();
           }
           const currentIdentity =
@@ -545,6 +556,16 @@ export function useReviewChanges(
           };
         } catch (cause: unknown) {
           if ((cause as { status?: number })?.status !== 404) throw cause;
+          if (hasPinnedIdentity) {
+            return {
+              files: [],
+              totals: null,
+              truncated: false,
+              desktopOnly: false,
+              reviewIdentity: null,
+              stale: true,
+            };
+          }
         }
       }
       return loadLegacyFiles();
@@ -584,6 +605,7 @@ export function useReviewChanges(
     fixtureEnabled,
     focusRequestId,
     gitEligible,
+    hasPinnedIdentity,
     overlayBacked,
     pinnedBaseCommit,
     pinnedTargetCommit,

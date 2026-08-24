@@ -598,6 +598,81 @@ describe('ChatBox Component', async () => {
       expect(usePageTabStore.getState().workspaceReviewHandoffs).toEqual([]);
     });
 
+    it('does not acknowledge review feedback removed from the composer', async () => {
+      renderChatBox();
+
+      act(() => {
+        usePageTabStore.setState({
+          sessionPreviewProjectId: 'test-project-id',
+          sessionPreviewByProject: {
+            'test-project-id': {
+              open: true,
+              activeTabId: 'review-1',
+              tabs: [
+                {
+                  id: 'review-1',
+                  type: 'review',
+                  title: 'Review',
+                  reviewComments: [
+                    {
+                      id: 'comment-1',
+                      fileId: 'src/app.ts',
+                      path: 'src/app.ts',
+                      selection: null,
+                      body: 'Keep this compatible.',
+                      createdAt: 1,
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+          workspaceChatDraftRequestSequence: 1,
+          workspaceChatFocusRequestId: 1,
+          workspaceChatDraftRequest: {
+            requestId: 1,
+            projectId: 'test-project-id',
+            content: 'Please address review comment 1.',
+            reviewHandoffIds: ['handoff-1'],
+          },
+          workspaceReviewHandoffs: [
+            {
+              handoffId: 'handoff-1',
+              requestId: 1,
+              projectId: 'test-project-id',
+              reviewTabId: 'review-1',
+              commentIds: ['comment-1'],
+              content: 'Please address review comment 1.',
+            },
+          ],
+        });
+      });
+
+      const input = await screen.findByTestId('message-input');
+      await userEvent.clear(input);
+      await userEvent.type(input, 'Unrelated request');
+      await userEvent.click(screen.getByTestId('send-button'));
+
+      await waitFor(() =>
+        expect(defaultChatStoreState.startTask).toHaveBeenCalled()
+      );
+      const call = defaultChatStoreState.startTask.mock.calls.at(-1) ?? [];
+      expect(call[4]).toBe('Unrelated request');
+      expect(call[9]).toBeUndefined();
+      const reviewTabAfterSend =
+        usePageTabStore.getState().sessionPreviewByProject['test-project-id']
+          .tabs[0];
+      expect(reviewTabAfterSend).toMatchObject({
+        reviewComments: [expect.objectContaining({ id: 'comment-1' })],
+      });
+      expect(
+        reviewTabAfterSend.type === 'review'
+          ? reviewTabAfterSend.reviewComments?.[0].status
+          : 'wrong-tab-type'
+      ).toBeUndefined();
+      expect(usePageTabStore.getState().workspaceReviewHandoffs).toEqual([]);
+    });
+
     it('recovers an admitted review handoff from the durable user message', async () => {
       eventNativeHarness.enabled = true;
       eventNativeHarness.snapshot = runningEventNativeSnapshot();
@@ -698,6 +773,38 @@ describe('ChatBox Component', async () => {
   });
 
   describe('Chat Interface', () => {
+    it('keeps cloud history visible when local event history is unavailable', () => {
+      eventNativeHarness.enabled = true;
+      eventNativeHarness.snapshot = null;
+      const restoredChatStore = {
+        ...defaultChatStoreState,
+        tasks: {
+          'test-task-id': {
+            ...defaultChatStoreState.tasks['test-task-id'],
+            messages: [
+              {
+                id: 'restored-message',
+                role: 'agent',
+                content: 'Restored cloud history',
+              },
+            ],
+            hasMessages: true,
+          },
+        },
+      };
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: restoredChatStore as any,
+      });
+
+      renderChatBox();
+
+      expect(screen.getByTestId('project-chat-container')).toBeInTheDocument();
+      expect(
+        screen.queryByTestId('event-native-timeline')
+      ).not.toBeInTheDocument();
+    });
+
     beforeEach(() => {
       const updatedChatState = {
         ...defaultChatStoreState,

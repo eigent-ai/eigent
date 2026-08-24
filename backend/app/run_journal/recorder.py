@@ -85,18 +85,47 @@ class EventRecorder:
                 "legacy end is reserved for the trusted execution stream"
             )
 
+        enriched_data = dict(data)
+        step_id = str(enriched_data.get("step_id") or "").strip() or None
+        if step_id is None:
+            from app.run_runtime.step_coordinator import (
+                RunStepCoordinator,
+                get_current_step_id,
+            )
+
+            step_id = get_current_step_id()
+            if step_id is None:
+                step_id = await asyncio.to_thread(
+                    RunStepCoordinator(self._journal).current_running_step_id,
+                    run_id,
+                )
+        if step_id:
+            enriched_data["step_id"] = step_id
+
         semantic = project_legacy_semantic_event(
             step=step,
-            data=data,
+            data=enriched_data,
             run_id=run_id,
         )
+        projected_payload = (
+            dict(semantic.payload) if semantic is not None else enriched_data
+        )
+        if step_id:
+            projected_payload["step_id"] = step_id
+            envelope = projected_payload.get("semantic")
+            if isinstance(envelope, dict):
+                correlation = envelope.get("correlation")
+                if not isinstance(correlation, dict):
+                    correlation = {}
+                    envelope["correlation"] = correlation
+                correlation["step_id"] = step_id
         values: dict[str, Any] = {
             "event_type": (
                 semantic.event_type
                 if semantic is not None
                 else f"legacy.{step}"
             ),
-            "payload": semantic.payload if semantic is not None else data,
+            "payload": projected_payload,
             "legacy_step": step,
         }
         if event_id is not None:

@@ -24,6 +24,10 @@ from app.run_journal import (
     RunEventDraft,
     SQLiteRunJournal,
 )
+from app.run_runtime.step_coordinator import (
+    PlanStepInput,
+    RunStepCoordinator,
+)
 
 
 def _running_attempt(journal: SQLiteRunJournal):
@@ -161,6 +165,273 @@ def test_approval_is_a_digest_bound_interaction_subtype(tmp_path):
         assert journal.get_human_interaction("approval-1").status == "resolved"
         decision = journal.list_human_interaction_decisions("approval-1")[0]
         assert decision.action_digest == "a" * 64
+
+
+def test_approval_blocks_and_resumes_its_authored_step(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        attempt = _running_attempt(journal)
+        steps = RunStepCoordinator(journal)
+        steps.reconcile_plan(
+            project_id="project-1",
+            run_id="run-1",
+            agent_id="agent-1",
+            items=[
+                PlanStepInput(
+                    plan_item_id="pli-1",
+                    title="Write the report",
+                    active_form="Writing the report",
+                    status="in_progress",
+                    ordinal=1,
+                )
+            ],
+        )
+        step_id = steps.current_running_step_id("run-1")
+        assert step_id is not None
+
+        journal.create_approval(
+            approval_id="approval-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            prompt={"title": "Allow write?"},
+            action_digest="a" * 64,
+            now=3,
+        )
+
+        assert steps.replay("run-1")[step_id].status == "blocked"
+        requested = next(
+            event
+            for event in journal.list_events("run-1")
+            if event.event_type == "approval.requested"
+        )
+        assert requested.payload["step_id"] == step_id
+
+        journal.decide_approval(
+            "approval-1",
+            decision="approved",
+            expected_version=0,
+            action_digest="a" * 64,
+            decision_request_id="decision-1",
+            continue_active_attempt=True,
+            now=4,
+        )
+
+        assert steps.replay("run-1")[step_id].status == "running"
+        decided = next(
+            event
+            for event in journal.list_events("run-1")
+            if event.event_type == "approval.decided"
+        )
+        assert decided.payload["step_id"] == step_id
+
+
+def test_parallel_approvals_share_wait_and_resume_after_last_decision(
+    tmp_path,
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        attempt = _running_attempt(journal)
+        steps = RunStepCoordinator(journal)
+        steps.reconcile_plan(
+            project_id="project-1",
+            run_id="run-1",
+            agent_id="agent-1",
+            items=[
+                PlanStepInput(
+                    plan_item_id="pli-1",
+                    title="Write the report",
+                    active_form="Writing the report",
+                    status="in_progress",
+                    ordinal=1,
+                )
+            ],
+        )
+        step_id = steps.current_running_step_id("run-1")
+        assert step_id is not None
+        for index in (1, 2):
+            journal.create_approval(
+                approval_id=f"approval-{index}",
+                run_id="run-1",
+                attempt_id=attempt.attempt_id,
+                prompt={"title": f"Allow action {index}?"},
+                action_digest=str(index) * 64,
+                policy_revision="policy-1",
+                safety_class="unsafe_write",
+                now=2 + index,
+            )
+
+        requests = [
+            event
+            for event in journal.list_events("run-1")
+            if event.event_type == "approval.requested"
+        ]
+        assert [event.payload["step_id"] for event in requests] == [
+            step_id,
+            step_id,
+        ]
+        assert (
+            sum(
+                event.event_type == "step.blocked"
+                for event in journal.list_events("run-1")
+            )
+            == 1
+        )
+
+        assert journal.get_run("run-1").status == "waiting_for_user"
+        assert journal.get_run("run-1").active_attempt_id == attempt.attempt_id
+        assert journal.get_run_attempt(attempt.attempt_id).status == (
+            "waiting_for_user"
+        )
+
+        journal.decide_approval(
+            "approval-1",
+            decision="approved",
+            expected_version=0,
+            action_digest="1" * 64,
+            decision_request_id="decision-1",
+            continue_active_attempt=True,
+            now=5,
+        )
+
+        assert journal.get_run("run-1").status == "waiting_for_user"
+        assert journal.get_run("run-1").active_attempt_id == attempt.attempt_id
+        assert journal.get_run_attempt(attempt.attempt_id).status == (
+            "waiting_for_user"
+        )
+        first_decision = next(
+            event
+            for event in journal.list_events("run-1")
+            if event.event_id == "approval:approval-1:decision:1"
+        )
+        assert first_decision.payload["continued_attempt"] is False
+        assert first_decision.payload["remaining_interaction_count"] == 1
+
+        journal.decide_approval(
+            "approval-2",
+            decision="approved",
+            expected_version=0,
+            action_digest="2" * 64,
+            decision_request_id="decision-2",
+            continue_active_attempt=True,
+            now=6,
+        )
+
+        assert journal.get_run("run-1").status == "running"
+        assert journal.get_run("run-1").active_attempt_id == attempt.attempt_id
+        assert journal.get_run_attempt(attempt.attempt_id).status == "running"
+        second_decision = next(
+            event
+            for event in journal.list_events("run-1")
+            if event.event_id == "approval:approval-2:decision:1"
+        )
+        assert second_decision.payload["continued_attempt"] is True
+        assert second_decision.payload["remaining_interaction_count"] == 0
+        assert second_decision.payload["step_id"] == step_id
+        assert steps.replay("run-1")[step_id].status == "running"
+
+
+def test_approval_without_step_id_does_not_guess_between_parent_and_child(
+    tmp_path,
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        attempt = _running_attempt(journal)
+        steps = RunStepCoordinator(journal)
+        steps.reconcile_plan(
+            project_id="project-1",
+            run_id="run-1",
+            agent_id="agent-1",
+            items=[
+                PlanStepInput(
+                    plan_item_id="pli-1",
+                    title="Write the report",
+                    active_form="Writing the report",
+                    status="in_progress",
+                    ordinal=1,
+                )
+            ],
+        )
+        parent_step_id = steps.current_running_step_id(
+            "run-1", agent_id="agent-1"
+        )
+        assert parent_step_id is not None
+        child_step_id = steps.create_child_step(
+            project_id="project-1",
+            run_id="run-1",
+            parent_step_id=parent_step_id,
+            task_identity="parallel-child",
+            title="Review the report",
+            agent_id="reviewer",
+        )
+
+        journal.create_approval(
+            approval_id="approval-with-ambiguous-step",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            prompt={"title": "Allow write?"},
+            action_digest="a" * 64,
+            now=3,
+        )
+
+        requested = next(
+            event
+            for event in journal.list_events("run-1")
+            if event.event_type == "approval.requested"
+        )
+        assert requested.payload["step_id"] is None
+        snapshots = steps.replay("run-1")
+        assert snapshots[parent_step_id].status == "running"
+        assert snapshots[child_step_id].status == "running"
+
+
+def test_approval_with_explicit_pending_child_step_blocks_that_child(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        attempt = _running_attempt(journal)
+        steps = RunStepCoordinator(journal)
+        steps.reconcile_plan(
+            project_id="project-1",
+            run_id="run-1",
+            agent_id="agent-1",
+            items=[
+                PlanStepInput(
+                    plan_item_id="pli-1",
+                    title="Write the report",
+                    active_form="Writing the report",
+                    status="in_progress",
+                    ordinal=1,
+                )
+            ],
+        )
+        parent_step_id = steps.current_running_step_id(
+            "run-1", agent_id="agent-1"
+        )
+        assert parent_step_id is not None
+        child_step_id = steps.create_child_step(
+            project_id="project-1",
+            run_id="run-1",
+            parent_step_id=parent_step_id,
+            task_identity="approval-child",
+            title="Review the report",
+            agent_id="reviewer",
+            start=False,
+        )
+
+        journal.create_approval(
+            approval_id="approval-for-child",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            prompt={"title": "Allow delegation?"},
+            action_digest="b" * 64,
+            step_id=child_step_id,
+            now=3,
+        )
+
+        requested = next(
+            event
+            for event in journal.list_events("run-1")
+            if event.event_type == "approval.requested"
+        )
+        assert requested.payload["step_id"] == child_step_id
+        snapshots = steps.replay("run-1")
+        assert snapshots[parent_step_id].status == "running"
+        assert snapshots[child_step_id].status == "blocked"
 
 
 def test_generic_interaction_blocks_resume_after_restart(tmp_path):

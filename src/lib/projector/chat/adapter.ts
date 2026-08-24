@@ -15,11 +15,15 @@
 import type {
   CanonicalProjectEvent,
   CanonicalSemanticActorType,
-  CanonicalSemanticEnvelopeV1,
+  CanonicalSemanticEnvelope,
   CanonicalSemanticKind,
+  CanonicalSemanticKindV2,
   CanonicalSemanticPhase,
+  CanonicalSemanticPhaseV2,
   CanonicalSemanticStatus,
+  CanonicalSemanticStatusV2,
   CanonicalSemanticSubjectType,
+  CanonicalSemanticSubjectTypeV2,
   ProjectedLegacyStep,
 } from '../types';
 import type {
@@ -44,6 +48,8 @@ import type {
   ChatProjectionNodeBase,
   ChatRunStatus,
   ChatRunStatusNode,
+  ChatStepNode,
+  ChatStepStatus,
   ChatUnknownNode,
 } from './types';
 
@@ -153,6 +159,26 @@ const SEMANTIC_STATUSES = new Set<CanonicalSemanticStatus>([
   'unknown',
 ]);
 
+const SEMANTIC_KINDS_V2 = new Set<CanonicalSemanticKindV2>([
+  ...SEMANTIC_KINDS,
+  'step',
+]);
+const SEMANTIC_SUBJECT_TYPES_V2 = new Set<CanonicalSemanticSubjectTypeV2>([
+  ...SEMANTIC_SUBJECT_TYPES,
+  'step',
+]);
+const SEMANTIC_PHASES_V2 = new Set<CanonicalSemanticPhaseV2>([
+  ...SEMANTIC_PHASES,
+  'blocked',
+  'resumed',
+  'interrupted',
+]);
+const SEMANTIC_STATUSES_V2 = new Set<CanonicalSemanticStatusV2>([
+  ...SEMANTIC_STATUSES,
+  'blocked',
+  'interrupted',
+]);
+
 function isRecord(value: unknown): value is JsonRecord {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -169,11 +195,12 @@ function ownsAny(record: JsonRecord, keys: readonly string[]): boolean {
   return keys.some((key) => own(record, key));
 }
 
-function semanticEnvelopeV1(
+function semanticEnvelope(
   payload: JsonRecord
-): CanonicalSemanticEnvelopeV1 | null {
+): CanonicalSemanticEnvelope | null {
+  const version = payload.semantic_schema_version;
   if (
-    payload.semantic_schema_version !== 1 ||
+    ![1, 2].includes(Number(version)) ||
     payload.display_schema_version !== 1
   ) {
     return null;
@@ -182,16 +209,21 @@ function semanticEnvelopeV1(
   const subject = asRecord(semantic.subject);
   const lifecycle = asRecord(semantic.lifecycle);
   const completeness = asRecord(semantic.completeness);
-  const kind = firstText(semantic.kind) as CanonicalSemanticKind;
-  const subjectType = firstText(subject.type) as CanonicalSemanticSubjectType;
-  const phase = firstText(lifecycle.phase) as CanonicalSemanticPhase;
-  const status = firstText(lifecycle.status) as CanonicalSemanticStatus;
+  const kind = firstText(semantic.kind) as CanonicalSemanticKindV2;
+  const subjectType = firstText(subject.type) as CanonicalSemanticSubjectTypeV2;
+  const phase = firstText(lifecycle.phase) as CanonicalSemanticPhaseV2;
+  const status = firstText(lifecycle.status) as CanonicalSemanticStatusV2;
   const completenessState = firstText(completeness.state);
+  const kinds = version === 2 ? SEMANTIC_KINDS_V2 : SEMANTIC_KINDS;
+  const subjectTypes =
+    version === 2 ? SEMANTIC_SUBJECT_TYPES_V2 : SEMANTIC_SUBJECT_TYPES;
+  const phases = version === 2 ? SEMANTIC_PHASES_V2 : SEMANTIC_PHASES;
+  const statuses = version === 2 ? SEMANTIC_STATUSES_V2 : SEMANTIC_STATUSES;
   if (
-    !SEMANTIC_KINDS.has(kind) ||
-    !SEMANTIC_SUBJECT_TYPES.has(subjectType) ||
-    !SEMANTIC_PHASES.has(phase) ||
-    !SEMANTIC_STATUSES.has(status) ||
+    !kinds.has(kind as never) ||
+    !subjectTypes.has(subjectType as never) ||
+    !phases.has(phase as never) ||
+    !statuses.has(status as never) ||
     !['complete', 'partial'].includes(completenessState)
   ) {
     return null;
@@ -233,7 +265,7 @@ function semanticEnvelopeV1(
     provenance: Object.keys(provenance).length
       ? { source: firstText(provenance.source) || undefined }
       : undefined,
-  };
+  } as CanonicalSemanticEnvelope;
 }
 
 function firstText(...values: unknown[]): string {
@@ -504,7 +536,7 @@ function isCanonicalEvent(
 
 function normalizeInput(input: ChatProjectionInput): NormalizedInput {
   if (isCanonicalEvent(input)) {
-    const semantic = semanticEnvelopeV1(input.payload) || undefined;
+    const semantic = semanticEnvelope(input.payload) || undefined;
     return {
       base: {
         id: input.eventId,
@@ -646,6 +678,12 @@ function noticeNode(
         payload.call_id,
         payload.callId
       ) || undefined,
+    stepId:
+      firstText(
+        payload.step_id,
+        payload.stepId,
+        base.semantic?.correlation?.step_id
+      ) || undefined,
   };
 }
 
@@ -689,6 +727,7 @@ function interactionNode(
     ...base,
     kind: 'interaction',
     interactionId: explicitInteractionId(payload),
+    stepId: firstText(payload.step_id, payload.stepId) || undefined,
     interactionType:
       firstText(
         payload.interaction_type,
@@ -829,6 +868,8 @@ function normalizeActivityStatus(
   if (status === 'timed_out') return 'timed_out';
   if (status === 'outcome_unknown') return 'outcome_unknown';
   if (['cancelled', 'canceled'].includes(status)) return 'cancelled';
+  if (status === 'blocked') return 'blocked';
+  if (status === 'interrupted') return 'interrupted';
   return 'unknown';
 }
 
@@ -938,6 +979,9 @@ function activityPhase(
       'completed',
       'failed',
       'cancelled',
+      'blocked',
+      'resumed',
+      'interrupted',
       'unknown',
     ].includes(semanticPhase)
   ) {
@@ -1160,6 +1204,12 @@ function activityNode(
     toolkitName: toolkitName || undefined,
     methodName: methodName || undefined,
     toolCallId: toolCallId || undefined,
+    stepId:
+      firstText(
+        payload.step_id,
+        payload.stepId,
+        semanticCorrelation?.step_id
+      ) || undefined,
     toolName: toolName || undefined,
     activityId: semantic?.subject.id || undefined,
     semanticKind: semantic?.kind,
@@ -1243,6 +1293,12 @@ function artifactNode(
         payload.taskId,
         semantic?.correlation?.task_id
       ) || undefined,
+    stepId:
+      firstText(
+        payload.step_id,
+        payload.stepId,
+        semantic?.correlation?.step_id
+      ) || undefined,
   };
 }
 
@@ -1313,6 +1369,76 @@ function workspaceWriterNotice(
   return null;
 }
 
+function stepNode(
+  base: ChatProjectionNodeBase,
+  data: unknown
+): ChatStepNode | null {
+  const payload = asRecord(data);
+  const step = asRecord(payload.step);
+  const semantic = base.semantic;
+  const stepId = firstText(
+    step.step_id,
+    step.stepId,
+    payload.step_id,
+    payload.stepId,
+    semantic?.subject.type === 'step' ? semantic.subject.id : undefined
+  );
+  const rawStatus = firstText(
+    step.status,
+    semantic?.lifecycle.status,
+    base.eventType.split('.').at(-1)
+  ).toLowerCase();
+  const statuses = new Set<ChatStepStatus>([
+    'pending',
+    'running',
+    'blocked',
+    'completed',
+    'failed',
+    'cancelled',
+    'interrupted',
+  ]);
+  if (!stepId || !statuses.has(rawStatus as ChatStepStatus)) return null;
+  const ordinal = Number(step.ordinal);
+  const owner = asRecord(step.owner);
+  return {
+    ...base,
+    kind: 'step',
+    stepId,
+    planId: firstText(step.plan_id, step.planId) || undefined,
+    planItemId:
+      firstText(
+        step.plan_item_id,
+        step.planItemId,
+        semantic?.correlation?.plan_item_id
+      ) || undefined,
+    parentStepId:
+      firstText(
+        step.parent_step_id,
+        step.parentStepId,
+        semantic?.correlation?.parent_step_id
+      ) || undefined,
+    title: firstText(step.title, payload.display_title) || 'Task step',
+    summary: firstText(step.summary, payload.display_summary) || undefined,
+    status: rawStatus as ChatStepStatus,
+    phase: activityPhase(
+      base,
+      rawStatus as ChatActivityStatus,
+      semantic?.lifecycle.phase
+    ),
+    ordinal: Number.isFinite(ordinal) ? ordinal : undefined,
+    agentId:
+      firstText(owner.agent_id, owner.agentId, semantic?.actor?.id) ||
+      undefined,
+    agentName:
+      firstText(owner.agent_name, owner.agentName, semantic?.actor?.name) ||
+      undefined,
+    attemptId:
+      firstText(payload.attempt_id, semantic?.correlation?.attempt_id) ||
+      undefined,
+    source: 'authored',
+  };
+}
+
 function typedNode(
   base: ChatProjectionNodeBase,
   data: unknown
@@ -1323,6 +1449,10 @@ function typedNode(
 
   if (eventType.startsWith('workspace.writer.')) {
     return workspaceWriterNotice(base, data);
+  }
+
+  if (eventType.startsWith('step.')) {
+    return stepNode(base, data);
   }
 
   if (eventType === 'user.message') {

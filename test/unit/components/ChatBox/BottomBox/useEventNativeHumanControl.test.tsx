@@ -233,6 +233,36 @@ describe('useEventNativeHumanControl', () => {
     consoleError.mockRestore();
   });
 
+  it('reconciles an already-resolved conflict instead of keeping a retry loop', async () => {
+    const onDurableResolution = vi.fn();
+    const onSubmissionFailure = vi.fn();
+    const conflict = Object.assign(new Error('approval is already resolved'), {
+      status: 409,
+      response: { status: 409 },
+    });
+    mocks.projection = projection([interaction()]);
+    mocks.decide.mockRejectedValueOnce(conflict);
+    const { result } = renderHook(() =>
+      useEventNativeHumanControl({
+        projectId: 'project-1',
+        activeRunId: 'run-1',
+        onDurableResolution,
+        onSubmissionFailure,
+      })
+    );
+
+    act(() => {
+      if (result.current.variant?.kind === 'approval') {
+        result.current.variant.onApprove('once');
+      }
+    });
+
+    await waitFor(() => expect(mocks.reconcile).toHaveBeenCalledOnce());
+    await waitFor(() => expect(onDurableResolution).toHaveBeenCalledOnce());
+    expect(onSubmissionFailure).not.toHaveBeenCalled();
+    expect(result.current.phase).toBe('reconciling');
+  });
+
   it('does not use a legacy connection ordinal as a durable replay cursor', async () => {
     mocks.projection = projection([
       interaction({ sequence: 48, requestSource: 'chat_step_v1' }),

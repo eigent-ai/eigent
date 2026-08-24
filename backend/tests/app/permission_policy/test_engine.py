@@ -97,6 +97,48 @@ def test_profile_defaults_are_deterministic():
     )
 
 
+def test_internal_agent_control_is_allowed_without_bypassing_policy():
+    descriptor = build_tool_action_descriptor(
+        action_id="delegate-1",
+        tool_name="agent_run_subagent",
+        toolkit_name="AgentToolkit",
+        safety_class=ToolSafetyClass.INTERNAL_CONTROL,
+        arguments={"description": "Research references", "wait": True},
+        run_id="run-1",
+        attempt_id="attempt-1",
+        environment_spec_digest="e" * 64,
+        idempotency_key=None,
+    )
+    engine = PermissionPolicyEngine()
+
+    decision = engine.evaluate(
+        descriptor,
+        profile=PRESET_PROFILES[PermissionProfileName.REQUEST_APPROVAL],
+    )
+    explicit_prompt = engine.evaluate(
+        descriptor,
+        profile=PRESET_PROFILES[PermissionProfileName.REQUEST_APPROVAL],
+        rules=(
+            PolicyRule(
+                rule_id="prompt-delegation",
+                effect=PolicyEffect.PROMPT,
+                action_pattern="agent.control",
+            ),
+        ),
+    )
+    read_only = engine.evaluate(
+        descriptor,
+        profile=PRESET_PROFILES[PermissionProfileName.READ_ONLY],
+    )
+
+    assert descriptor.operation == "agent.control"
+    assert descriptor.external_side_effect is False
+    assert decision.effect is PolicyEffect.ALLOW
+    assert decision.reason == "trusted_internal_control"
+    assert explicit_prompt.effect is PolicyEffect.PROMPT
+    assert read_only.effect is PolicyEffect.DENY
+
+
 def test_rule_precedence_is_deny_then_prompt_then_allow():
     decision = PermissionPolicyEngine().evaluate(
         _action(),

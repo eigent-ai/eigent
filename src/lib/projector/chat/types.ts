@@ -14,8 +14,8 @@
 
 import type {
   CanonicalProjectEvent,
-  CanonicalSemanticEnvelopeV1,
-  CanonicalSemanticKind,
+  CanonicalSemanticEnvelope,
+  CanonicalSemanticKindV2,
   ProjectedLegacyStep,
 } from '../types';
 
@@ -26,6 +26,7 @@ export type ChatProjectionNodeKind =
   | 'notice'
   | 'interaction'
   | 'plan'
+  | 'step'
   | 'activity'
   | 'artifact'
   | 'run_status'
@@ -69,6 +70,8 @@ export type ChatActivityStatus =
   | 'timed_out'
   | 'outcome_unknown'
   | 'cancelled'
+  | 'blocked'
+  | 'interrupted'
   | 'unknown';
 export type ChatActivityPhase =
   | 'requested'
@@ -77,6 +80,9 @@ export type ChatActivityPhase =
   | 'completed'
   | 'failed'
   | 'cancelled'
+  | 'blocked'
+  | 'resumed'
+  | 'interrupted'
   | 'unknown';
 export type ChatArtifactOperation =
   'created' | 'updated' | 'deleted' | 'unknown';
@@ -108,8 +114,8 @@ export interface ChatProjectionNodeBase {
   cloudCursor: number | null;
   eventType: string;
   legacyStep: string | null;
-  /** Validated V1 domain semantics; absent for legacy or invalid envelopes. */
-  semantic?: CanonicalSemanticEnvelopeV1;
+  /** Validated V1/V2 semantics; absent for legacy or invalid envelopes. */
+  semantic?: CanonicalSemanticEnvelope;
 }
 
 export interface ChatMessageNode extends ChatProjectionNodeBase {
@@ -145,6 +151,8 @@ export interface ChatNoticeNode extends ChatProjectionNodeBase {
   code?: string;
   /** Stable correlation to the code-owned tool invocation that emitted it. */
   toolCallId?: string;
+  /** Authored task Step that produced this notice, when explicit. */
+  stepId?: string;
 }
 
 export interface ChatInteractionOption {
@@ -157,6 +165,8 @@ export interface ChatInteractionNode extends ChatProjectionNodeBase {
   kind: 'interaction';
   /** Explicit backend identity used only to correlate lifecycle receipts. */
   interactionId?: string;
+  /** Authored task Step blocked or resumed by this interaction. */
+  stepId?: string;
   interactionType: string;
   status: ChatInteractionStatus;
   prompt?: string;
@@ -186,6 +196,32 @@ export interface ChatPlanNode extends ChatProjectionNodeBase {
   tasks: ChatPlanTask[];
 }
 
+export type ChatStepStatus =
+  | 'pending'
+  | 'running'
+  | 'blocked'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'interrupted';
+
+export interface ChatStepNode extends ChatProjectionNodeBase {
+  kind: 'step';
+  stepId: string;
+  planId?: string;
+  planItemId?: string;
+  parentStepId?: string;
+  title: string;
+  summary?: string;
+  status: ChatStepStatus;
+  phase: ChatActivityPhase;
+  ordinal?: number;
+  agentId?: string;
+  agentName?: string;
+  attemptId?: string;
+  source: 'authored';
+}
+
 export interface ChatActivityNode extends ChatProjectionNodeBase {
   kind: 'activity';
   activityType: ChatActivityType;
@@ -207,12 +243,14 @@ export interface ChatActivityNode extends ChatProjectionNodeBase {
   methodName?: string;
   /** Backend correlation for one tool invocation when the transport supplies it. */
   toolCallId?: string;
+  /** Authored task Step that owns this tool lifecycle, when explicit. */
+  stepId?: string;
   /** Typed transports may name a tool without a toolkit/method pair. */
   toolName?: string;
   /** Stable subject identity from the versioned semantic envelope. */
   activityId?: string;
   /** Domain discriminator such as command_execution or agent_turn. */
-  semanticKind?: CanonicalSemanticKind;
+  semanticKind?: CanonicalSemanticKindV2;
   /** Whether the producer supplied every required correlation field. */
   semanticCompleteness?: 'complete' | 'partial';
 }
@@ -229,6 +267,8 @@ export interface ChatArtifactNode extends ChatProjectionNodeBase {
   mimeType?: string;
   agentId?: string;
   taskId?: string;
+  /** Authored task Step that produced this artifact, when explicit. */
+  stepId?: string;
 }
 
 export interface ChatRunStatusNode extends ChatProjectionNodeBase {
@@ -254,6 +294,7 @@ export type ChatProjectionNode =
   | ChatNoticeNode
   | ChatInteractionNode
   | ChatPlanNode
+  | ChatStepNode
   | ChatActivityNode
   | ChatArtifactNode
   | ChatRunStatusNode

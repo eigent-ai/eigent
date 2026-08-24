@@ -135,14 +135,6 @@ class WorkspaceGitLifecycle:
             in {"primary_checkout", "explicit_worktree"}
         ):
             root = Path(binding.worktree_path)
-            terminal_commit = self.git.current_head(root)
-            if terminal_commit is None:
-                return GitRunFinalization(
-                    run_id,
-                    "direct_no_commit",
-                    None,
-                    None,
-                )
             ref_suffix = (
                 "completed"
                 if terminal_status == "completed"
@@ -153,6 +145,34 @@ class WorkspaceGitLifecycle:
                 + canonical_digest({"run_id": run_id})[:32]
                 + f"/{ref_suffix}"
             )
+            if run.promoted_commit is not None:
+                # Startup reconciliation visits every terminal Run. The
+                # shared checkout may have advanced through many later Runs,
+                # so replay must use the Run's persisted boundary rather than
+                # interpreting today's HEAD as a new terminal commit.
+                self.git.update_eigent_ref(
+                    root,
+                    task_ref,
+                    run.promoted_commit,
+                )
+                return GitRunFinalization(
+                    run_id,
+                    (
+                        "committed_primary"
+                        if terminal_status == "completed"
+                        else f"preserved_primary_{terminal_status}"
+                    ),
+                    run.promoted_commit,
+                    task_ref,
+                )
+            terminal_commit = self.git.current_head(root)
+            if terminal_commit is None:
+                return GitRunFinalization(
+                    run_id,
+                    "direct_no_commit",
+                    None,
+                    None,
+                )
             self.git.update_eigent_ref(root, task_ref, terminal_commit)
             completed = self.journal.complete_direct_git_run(
                 run_id=run_id,

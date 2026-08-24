@@ -21,6 +21,7 @@ import pytest
 from app.run_context import RunContext, run_context_scope
 from app.run_journal import RunEventDraft, SQLiteRunJournal
 from app.run_policy import ToolSafetyClass
+from app.run_runtime.step_coordinator import PlanStepInput, RunStepCoordinator
 from app.run_runtime.tool_checkpoint import (
     ToolCheckpointPersistenceError,
     UnsafeToolOutcomeError,
@@ -28,6 +29,7 @@ from app.run_runtime.tool_checkpoint import (
     classify_tool_safety,
     declare_tool_safety,
     declared_tool_safety,
+    dispatch_tool_checkpoint,
     finish_tool_checkpoint,
     prepare_tool_checkpoint,
 )
@@ -134,6 +136,49 @@ def test_checkpoint_surrounds_tool_and_redacts_credentials(tmp_path):
         assert tool.result == {"content": "hello"}
 
 
+def test_checkpoint_correlates_tool_lifecycle_to_running_step(tmp_path):
+    with _running_journal(tmp_path) as journal:
+        [_, started] = RunStepCoordinator(journal).reconcile_plan(
+            project_id="project-1",
+            run_id="run-1",
+            agent_id="agent-1",
+            items=[
+                PlanStepInput(
+                    plan_item_id="pli-1",
+                    title="Inspect files",
+                    active_form="Inspecting files",
+                    status="in_progress",
+                    ordinal=1,
+                )
+            ],
+        )
+        step_id = started.payload["step"]["step_id"]
+        with run_context_scope(_context(tmp_path)):
+            checkpoint = prepare_tool_checkpoint(
+                raw_tool_call_id="step-call",
+                tool_name="read_file",
+                arguments={"path": "notes.md"},
+                agent_name="agent-1",
+                journal=journal,
+            )
+            finish_tool_checkpoint(
+                checkpoint, result={"content": "ok"}, journal=journal
+            )
+
+        tool_events = [
+            event
+            for event in journal.list_events("run-1")
+            if event.event_type.startswith("tool.")
+        ]
+        assert checkpoint is not None
+        assert checkpoint.step_id == step_id
+        assert {event.payload["step_id"] for event in tool_events} == {step_id}
+        assert {
+            event.payload["semantic"]["correlation"]["step_id"]
+            for event in tool_events
+        } == {step_id}
+
+
 def test_display_projection_hides_absolute_paths_and_file_content(tmp_path):
     with _running_journal(tmp_path) as journal:
         with run_context_scope(_context(tmp_path)):
@@ -186,6 +231,256 @@ def test_display_projection_strips_paths_and_url_queries_from_errors():
     assert "/Users/alice" not in display.output
     assert "token=secret" not in display.output
     assert "…/secret.txt" in display.output
+
+
+def test_subagent_tool_projection_uses_typed_delegation_language():
+    started = build_tool_display_projection(
+        tool_name="agent_run_subagent",
+        request={
+            "subagent_type": "research",
+            "description": "Review visual references",
+            "prompt": "private detailed prompt",
+            "wait": True,
+        },
+        status="completed",
+        result={"task_id": "task-1", "status": "completed"},
+        duration_ms=1250,
+    )
+    checked = build_tool_display_projection(
+        tool_name="agent_get_task_output",
+        request={"task_id": "task-1"},
+        status="completed",
+        result={"task_id": "task-1", "status": "running"},
+    )
+
+    assert started.title == "Started research sub-agent"
+    assert started.input == "Task: Review visual references"
+    assert "private detailed prompt" not in str(started)
+    assert started.output == "Sub-agent status: completed"
+    assert checked.title == "Checked sub-agent status"
+    assert checked.input == "Sub-agent task: task-1"
+    assert checked.output == "Sub-agent status: running"
+
+
+def test_subagent_checkpoint_emits_subtask_semantics(tmp_path):
+    with _running_journal(tmp_path) as journal:
+        steps = RunStepCoordinator(journal)
+        steps.reconcile_plan(
+            project_id="project-1",
+            run_id="run-1",
+            agent_id="single_agent",
+            items=[
+                PlanStepInput(
+                    plan_item_id="pli-root",
+                    title="Build the report",
+                    active_form="Building the report",
+                    status="in_progress",
+                    ordinal=1,
+                )
+            ],
+        )
+        parent_step_id = steps.current_running_step_id("run-1")
+        with run_context_scope(_context(tmp_path)):
+            checkpoint = prepare_tool_checkpoint(
+                raw_tool_call_id="delegate-1",
+                tool_name="agent_run_subagent",
+                arguments={
+                    "subagent_type": "research",
+                    "description": "Review references",
+                    "prompt": "inspect sources",
+                },
+                journal=journal,
+                declared_safety=(ToolSafetyClass.INTERNAL_CONTROL, None),
+            )
+            finish_tool_checkpoint(
+                checkpoint,
+                result={"task_id": "child-1", "status": "completed"},
+                journal=journal,
+            )
+
+        completed = next(
+            event
+            for event in journal.list_events("run-1")
+            if event.event_type == "tool.completed"
+        )
+        assert completed.payload["semantic"]["kind"] == "subtask"
+        assert completed.payload["display_title"] == (
+            "Started research sub-agent"
+        )
+        child_steps = [
+            event
+            for event in journal.list_events("run-1")
+            if event.event_type.startswith("step.")
+            and str(event.payload["step"]["plan_item_id"]).startswith(
+                "subtask:"
+            )
+        ]
+        assert [event.event_type for event in child_steps] == [
+            "step.created",
+            "step.started",
+            "step.completed",
+        ]
+        child_step_id = child_steps[0].payload["step"]["step_id"]
+        assert completed.payload["step_id"] == child_step_id
+        assert child_steps[-1].payload["step"]["status"] == "completed"
+        assert child_steps[0].payload["step"]["parent_step_id"] == (
+            parent_step_id
+        )
+        assert {
+            event.payload["step"]["owner"]["kind"] for event in child_steps
+        } == {"subagent"}
+        assert {event.payload["step"]["source"] for event in child_steps} == {
+            "subagent"
+        }
+
+
+def test_subagent_step_does_not_start_before_deferred_dispatch(tmp_path):
+    with _running_journal(tmp_path) as journal:
+        steps = RunStepCoordinator(journal)
+        steps.reconcile_plan(
+            project_id="project-1",
+            run_id="run-1",
+            agent_id="single_agent",
+            items=[
+                PlanStepInput(
+                    plan_item_id="pli-root",
+                    title="Build the report",
+                    active_form="Building the report",
+                    status="in_progress",
+                    ordinal=1,
+                )
+            ],
+        )
+        with run_context_scope(_context(tmp_path)):
+            checkpoint = prepare_tool_checkpoint(
+                raw_tool_call_id="delegate-after-approval",
+                tool_name="agent_run_subagent",
+                arguments={
+                    "subagent_type": "research",
+                    "description": "Review references",
+                },
+                dispatch_immediately=False,
+                journal=journal,
+                declared_safety=(ToolSafetyClass.INTERNAL_CONTROL, None),
+            )
+
+            assert checkpoint is not None
+            assert checkpoint.delegated_step_id is not None
+            child_step_id = checkpoint.delegated_step_id
+            assert steps.replay("run-1")[child_step_id].status == "pending"
+            assert journal.list_tool_calls("run-1")[0].status == "prepared"
+
+            dispatch_tool_checkpoint(checkpoint, journal=journal)
+
+        assert steps.replay("run-1")[child_step_id].status == "running"
+        assert journal.list_tool_calls("run-1")[0].status == "dispatched"
+
+
+def test_async_subagent_step_stays_running_until_status_is_terminal(tmp_path):
+    with _running_journal(tmp_path) as journal:
+        steps = RunStepCoordinator(journal)
+        steps.reconcile_plan(
+            project_id="project-1",
+            run_id="run-1",
+            agent_id="single_agent",
+            items=[
+                PlanStepInput(
+                    plan_item_id="pli-root",
+                    title="Build the report",
+                    active_form="Building the report",
+                    status="in_progress",
+                    ordinal=1,
+                )
+            ],
+        )
+        with run_context_scope(_context(tmp_path)):
+            dispatched = prepare_tool_checkpoint(
+                raw_tool_call_id="delegate-async",
+                tool_name="agent_run_subagent",
+                arguments={
+                    "subagent_type": "research",
+                    "description": "Review references",
+                    "wait": False,
+                },
+                journal=journal,
+                declared_safety=(ToolSafetyClass.INTERNAL_CONTROL, None),
+            )
+            finish_tool_checkpoint(
+                dispatched,
+                result={"task_id": "child-async", "status": "running"},
+                journal=journal,
+            )
+
+            assert dispatched is not None
+            assert (
+                steps.replay("run-1")[dispatched.step_id].status == "running"
+            )
+
+            checked = prepare_tool_checkpoint(
+                raw_tool_call_id="check-async",
+                tool_name="agent_get_task_output",
+                arguments={"task_id": "child-async"},
+                journal=journal,
+                declared_safety=(ToolSafetyClass.INTERNAL_CONTROL, None),
+            )
+            assert checked is not None
+            assert checked.step_id == dispatched.step_id
+            finish_tool_checkpoint(
+                checked,
+                result={"task_id": "child-async", "status": "completed"},
+                journal=journal,
+            )
+
+        assert steps.replay("run-1")[dispatched.step_id].status == "completed"
+        status_events = [
+            event
+            for event in journal.list_events("run-1")
+            if event.payload.get("tool_call_id") == checked.tool_call_id
+        ]
+        assert {event.payload.get("step_id") for event in status_events} == {
+            dispatched.step_id
+        }
+
+
+def test_unmatched_subagent_status_does_not_finish_parent_step(tmp_path):
+    with _running_journal(tmp_path) as journal:
+        steps = RunStepCoordinator(journal)
+        steps.reconcile_plan(
+            project_id="project-1",
+            run_id="run-1",
+            agent_id="single_agent",
+            items=[
+                PlanStepInput(
+                    plan_item_id="pli-root",
+                    title="Build the report",
+                    active_form="Building the report",
+                    status="in_progress",
+                    ordinal=1,
+                )
+            ],
+        )
+        parent_step_id = steps.current_running_step_id("run-1")
+        with run_context_scope(_context(tmp_path)):
+            checked = prepare_tool_checkpoint(
+                raw_tool_call_id="check-legacy-child",
+                tool_name="agent_get_task_output",
+                arguments={"task_id": "unknown-legacy-child"},
+                journal=journal,
+                declared_safety=(ToolSafetyClass.INTERNAL_CONTROL, None),
+            )
+            assert checked is not None
+            assert checked.delegated_step_id is None
+            finish_tool_checkpoint(
+                checked,
+                result={
+                    "task_id": "unknown-legacy-child",
+                    "status": "completed",
+                },
+                journal=journal,
+            )
+
+        assert parent_step_id is not None
+        assert steps.replay("run-1")[parent_step_id].status == "running"
 
 
 def test_checkpoint_redacts_common_nested_credential_keys(tmp_path):
@@ -243,6 +538,31 @@ def test_unsafe_external_error_is_recorded_then_fails_closed(tmp_path):
         tool = journal.list_tool_calls("run-1")[0]
         assert tool.status == "outcome_unknown"
         assert tool.result["external_effect_may_have_occurred"] is True
+
+
+def test_interrupted_subagent_control_is_ambiguous_and_fails_closed(tmp_path):
+    with _running_journal(tmp_path) as journal:
+        with run_context_scope(_context(tmp_path)):
+            checkpoint = prepare_tool_checkpoint(
+                raw_tool_call_id="delegate-ambiguous",
+                tool_name="agent_run_subagent",
+                arguments={"description": "Research references"},
+                journal=journal,
+                declared_safety=(ToolSafetyClass.INTERNAL_CONTROL, None),
+            )
+            with pytest.raises(UnsafeToolOutcomeError):
+                finish_tool_checkpoint(
+                    checkpoint,
+                    error=TimeoutError("parent stopped waiting"),
+                    journal=journal,
+                )
+
+        tool = journal.list_tool_calls("run-1")[0]
+        assert tool.status == "outcome_unknown"
+        assert tool.result["external_effect_may_have_occurred"] is False
+        assert tool.result["delegated_work_may_still_be_running"] is True
+        child = RunStepCoordinator(journal).replay("run-1")[checkpoint.step_id]
+        assert child.status == "blocked"
 
 
 def test_tool_error_remains_useful_without_persisting_embedded_credentials(

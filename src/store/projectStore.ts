@@ -75,6 +75,12 @@ import {
  */
 const HISTORY_STATUS_DONE = 2;
 const STOPPED_BY_USER_SUMMARY_PREFIX = '<summary>Task stopped</summary>';
+/**
+ * Local RunJournal data enriches a cloud history replay, but it must never be
+ * a first-paint dependency. During an active Run SQLite can be briefly busy;
+ * after this budget we continue with the already available cloud/IDB history.
+ */
+const LOCAL_RUN_ENRICHMENT_BUDGET_MS = 1_200;
 const DURABLE_RUN_DISPLAY_STATUSES = new Set<DurableRunDisplayStatus>([
   'pending',
   'running',
@@ -1542,7 +1548,16 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       >();
       let localCanonicalUpdatedAt: number | null = null;
       try {
-        const localRuns = await fetchProjectRuns(loadProjectId, 100);
+        const localRunController = new AbortController();
+        const localRunDeadline = setTimeout(
+          () => localRunController.abort(),
+          LOCAL_RUN_ENRICHMENT_BUDGET_MS
+        );
+        const localRuns = await fetchProjectRuns(
+          loadProjectId,
+          100,
+          localRunController.signal
+        ).finally(() => clearTimeout(localRunDeadline));
         for (const run of localRuns?.runs ?? []) {
           if (run?.run_id) {
             if (

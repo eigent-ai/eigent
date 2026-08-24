@@ -33,7 +33,14 @@ type RunControlRequest = (
   data: { request_id: string; reason: string }
 ) => Promise<unknown>;
 
-const inFlightProjectRuns = new Map<string, Promise<ProjectRunsResponse>>();
+type InFlightProjectRunsRequest = {
+  controller: AbortController;
+  request: Promise<ProjectRunsResponse>;
+  settled: boolean;
+  subscribers: number;
+};
+
+const inFlightProjectRuns = new Map<string, InFlightProjectRunsRequest>();
 
 export const ACTIVE_DURABLE_RUN_STATUSES = [
   'pending',
@@ -43,6 +50,19 @@ export const ACTIVE_DURABLE_RUN_STATUSES = [
 
 function abortError(signal: AbortSignal): Error {
   if (signal.reason instanceof Error) return signal.reason;
+  // DOMException can come from a different browser/jsdom realm and therefore
+  // fail `instanceof Error`. Preserve its semantic name so a hydration
+  // deadline remains retryable instead of looking like navigation cleanup.
+  if (
+    signal.reason &&
+    typeof signal.reason === 'object' &&
+    'name' in signal.reason &&
+    'message' in signal.reason
+  ) {
+    const error = new Error(String(signal.reason.message));
+    error.name = String(signal.reason.name);
+    return error;
+  }
   return new DOMException('Project Run loading was aborted', 'AbortError');
 }
 
@@ -78,9 +98,9 @@ function waitForCaller<T>(
  * The legacy Project projection and the event-native projection hydrate at the
  * same time while the migration flag is enabled. They need the same payload,
  * so issuing two identical SQLite reads only adds work and makes first paint
- * wait behind duplicate traffic. The underlying request deliberately has no
- * caller-owned AbortSignal: cancelling one projection must not cancel the
- * response still needed by the other projection.
+ * wait behind duplicate traffic. Each caller owns only its subscription. The
+ * shared HTTP request is aborted once every subscriber has left, which keeps a
+ * previous Space from occupying Brain's RunJournal read lane after navigation.
  */
 export function fetchProjectRuns(
   projectId: string,
@@ -88,26 +108,47 @@ export function fetchProjectRuns(
   signal?: AbortSignal
 ): Promise<ProjectRunsResponse> {
   const key = `${projectId}\u0000${limit}`;
-  let request = inFlightProjectRuns.get(key);
-  if (!request) {
-    request = Promise.resolve(
-      fetchGet('/runs', { project_id: projectId, limit })
+  let entry = inFlightProjectRuns.get(key);
+  if (!entry) {
+    const controller = new AbortController();
+    const request = Promise.resolve(
+      fetchGet('/runs', { project_id: projectId, limit }, undefined, {
+        signal: controller.signal,
+      })
     ) as Promise<ProjectRunsResponse>;
-    inFlightProjectRuns.set(key, request);
+    entry = {
+      controller,
+      request,
+      settled: false,
+      subscribers: 0,
+    };
+    inFlightProjectRuns.set(key, entry);
     void request.then(
       () => {
-        if (inFlightProjectRuns.get(key) === request) {
+        entry!.settled = true;
+        if (inFlightProjectRuns.get(key) === entry) {
           inFlightProjectRuns.delete(key);
         }
       },
       () => {
-        if (inFlightProjectRuns.get(key) === request) {
+        entry!.settled = true;
+        if (inFlightProjectRuns.get(key) === entry) {
           inFlightProjectRuns.delete(key);
         }
       }
     );
   }
-  return waitForCaller(request, signal);
+
+  const subscribedEntry = entry;
+  subscribedEntry.subscribers += 1;
+  return waitForCaller(subscribedEntry.request, signal).finally(() => {
+    subscribedEntry.subscribers = Math.max(0, subscribedEntry.subscribers - 1);
+    if (subscribedEntry.settled || subscribedEntry.subscribers > 0) return;
+    if (inFlightProjectRuns.get(key) === subscribedEntry) {
+      inFlightProjectRuns.delete(key);
+    }
+    subscribedEntry.controller.abort();
+  });
 }
 
 /** Read only canonical Runs that still own live execution state. */

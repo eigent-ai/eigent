@@ -191,6 +191,108 @@ describe('chat activity projection', () => {
     });
   });
 
+  it('projects authored Step semantics from the V2 envelope', () => {
+    const node = adaptChatProjectionEvent(
+      event(
+        {
+          step_schema_version: 1,
+          step: {
+            step_id: 'stp-1',
+            plan_id: 'plan:run-1',
+            plan_item_id: 'pli-1',
+            title: 'Inspect the workspace',
+            summary: 'Located the relevant source and tests.',
+            status: 'completed',
+            ordinal: 1,
+            owner: { agent_id: 'agent-1' },
+          },
+          attempt_id: 'attempt-1',
+          semantic_schema_version: 2,
+          display_schema_version: 1,
+          semantic: {
+            kind: 'step',
+            subject: { type: 'step', id: 'stp-1' },
+            actor: { type: 'agent', id: 'agent-1' },
+            lifecycle: { phase: 'completed', status: 'completed' },
+            correlation: {
+              attempt_id: 'attempt-1',
+              plan_item_id: 'pli-1',
+            },
+            completeness: { state: 'complete', missing_fields: [] },
+          },
+        },
+        'step.completed'
+      )
+    );
+
+    expect(node).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'step',
+        stepId: 'stp-1',
+        planItemId: 'pli-1',
+        title: 'Inspect the workspace',
+        summary: 'Located the relevant source and tests.',
+        status: 'completed',
+        phase: 'completed',
+        agentId: 'agent-1',
+        attemptId: 'attempt-1',
+        source: 'authored',
+      },
+    });
+  });
+
+  it('projects explicit Step correlation on typed tool activities', () => {
+    const node = adaptChatProjectionEvent(
+      event(
+        {
+          tool_call_id: 'call-step-1',
+          step_id: 'stp-1',
+          semantic_schema_version: 1,
+          display_schema_version: 1,
+          semantic: {
+            kind: 'file_operation',
+            subject: { type: 'tool_call', id: 'call-step-1' },
+            lifecycle: { phase: 'completed', status: 'completed' },
+            correlation: { step_id: 'stp-1' },
+            completeness: { state: 'complete', missing_fields: [] },
+          },
+          display_title: 'Read README.md',
+        },
+        'tool.completed'
+      )
+    );
+
+    expect(node).toMatchObject({
+      kind: 'display',
+      node: { kind: 'activity', stepId: 'stp-1' },
+    });
+  });
+
+  it('projects explicit Step correlation on human interactions', () => {
+    const node = adaptChatProjectionEvent(
+      event(
+        {
+          interaction_id: 'approval-1',
+          interaction_type: 'approval',
+          step_id: 'stp-1',
+          prompt: { title: 'Allow write?' },
+        },
+        'approval.requested'
+      )
+    );
+
+    expect(node).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'interaction',
+        interactionId: 'approval-1',
+        stepId: 'stp-1',
+        status: 'requested',
+      },
+    });
+  });
+
   it('does not expose raw typed tool payloads without display fields', () => {
     const node = adaptChatProjectionEvent(
       event(

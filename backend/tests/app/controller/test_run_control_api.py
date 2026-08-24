@@ -228,6 +228,62 @@ async def test_typed_interaction_api_lists_and_resolves_question(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_interaction_decision_converges_on_terminal_state(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        task_lock = AsyncMock()
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        approval = journal.create_approval(
+            approval_id="approval-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            prompt={"question": "Allow write?", "agent": "worker"},
+            action_digest="digest-1",
+            now=2,
+        )
+        journal.decide_approval(
+            "approval-1",
+            decision="rejected",
+            expected_version=0,
+            action_digest=approval.action_digest,
+            decision_request_id="system-rejected",
+            continue_active_attempt=True,
+            now=3,
+        )
+
+        with (
+            patch(
+                "app.controller.run_controller.get_default_run_journal",
+                return_value=journal,
+            ),
+            patch(
+                "app.service.task.get_task_lock_if_exists",
+                return_value=task_lock,
+            ),
+        ):
+            result = await decide_run_interaction(
+                "run-1",
+                "approval-1",
+                InteractionDecisionBody(
+                    decision_request_id="stale-user-decision",
+                    decision={"decision": "approved", "scope": "once"},
+                    expected_version=0,
+                    action_digest=approval.action_digest,
+                ),
+            )
+
+        assert result["status"] == "resolved"
+        assert journal.list_approvals("run-1")[0].status == "rejected"
+        task_lock.put_human_input.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_list_project_runs_reads_canonical_interrupted_state(tmp_path):
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
         journal.ensure_run(run_id="older", project_id="project-1", now=1)

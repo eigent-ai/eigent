@@ -48,10 +48,15 @@ describe('project Runs API', () => {
     const eventProjection = fetchProjectRuns('project-1', 100);
 
     expect(fetchGetMock).toHaveBeenCalledTimes(1);
-    expect(fetchGetMock).toHaveBeenCalledWith('/runs', {
-      project_id: 'project-1',
-      limit: 100,
-    });
+    expect(fetchGetMock).toHaveBeenCalledWith(
+      '/runs',
+      {
+        project_id: 'project-1',
+        limit: 100,
+      },
+      undefined,
+      { signal: expect.any(AbortSignal) }
+    );
 
     const payload = { project_id: 'project-1', runs: [] as never[] };
     firstResponse.resolve(payload);
@@ -73,10 +78,46 @@ describe('project Runs API', () => {
     controller.abort();
 
     await expect(cancelled).rejects.toMatchObject({ name: 'AbortError' });
+    expect(fetchGetMock.mock.calls[0]?.[3]?.signal.aborted).toBe(false);
     const payload = { project_id: 'project-abort', runs: [] as never[] };
     response.resolve(payload);
     await expect(remaining).resolves.toBe(payload);
     expect(fetchGetMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('aborts an orphaned shared read and lets the next Space start fresh', async () => {
+    const abandonedResponse = deferred<{
+      project_id: string;
+      runs: never[];
+    }>();
+    fetchGetMock.mockReturnValueOnce(abandonedResponse.promise);
+    const firstController = new AbortController();
+    const secondController = new AbortController();
+
+    const first = fetchProjectRuns(
+      'project-abandoned',
+      100,
+      firstController.signal
+    );
+    const second = fetchProjectRuns(
+      'project-abandoned',
+      100,
+      secondController.signal
+    );
+    const sharedSignal = fetchGetMock.mock.calls[0]?.[3]?.signal;
+
+    firstController.abort();
+    secondController.abort();
+    await expect(first).rejects.toMatchObject({ name: 'AbortError' });
+    await expect(second).rejects.toMatchObject({ name: 'AbortError' });
+    expect(sharedSignal?.aborted).toBe(true);
+
+    const payload = { project_id: 'project-abandoned', runs: [] as never[] };
+    fetchGetMock.mockResolvedValueOnce(payload);
+    await expect(fetchProjectRuns('project-abandoned', 100)).resolves.toBe(
+      payload
+    );
+    expect(fetchGetMock).toHaveBeenCalledTimes(2);
   });
 
   it('asks the canonical registry only for active Run states', async () => {

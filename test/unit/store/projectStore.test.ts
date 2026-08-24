@@ -479,6 +479,41 @@ describe('projectStore runtime shape', () => {
     expect(replayMock).not.toHaveBeenCalled();
   });
 
+  it('does not block cloud history on a busy local RunJournal read', async () => {
+    vi.useFakeTimers();
+    try {
+      fetchGetMock.mockReturnValueOnce(new Promise(() => undefined));
+
+      const load = useProjectStore
+        .getState()
+        .loadProjectFromHistory(
+          ['task_cloud'],
+          'restored cloud prompt',
+          'project_cloud',
+          'history_cloud',
+          'Cloud history project',
+          'space_test',
+          { task_cloud: 'restored cloud prompt' },
+          null
+        );
+
+      await vi.advanceTimersByTimeAsync(2_000);
+      await load;
+
+      expect(replayMock).toHaveBeenCalledWith(
+        'task_cloud',
+        'restored cloud prompt',
+        0,
+        'project_cloud'
+      );
+      expect(
+        useProjectStore.getState().historyLoadingProjectIds.project_cloud
+      ).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('retries a cancelled history shell instead of treating it as loaded', async () => {
     let resolveRuns: ((value: { runs: never[] }) => void) | undefined;
     fetchGetMock.mockImplementationOnce(
@@ -616,10 +651,15 @@ describe('projectStore runtime shape', () => {
           200
         );
 
-      expect(fetchGetMock).toHaveBeenCalledWith('/runs', {
-        project_id: 'project_local',
-        limit: 100,
-      });
+      expect(fetchGetMock).toHaveBeenCalledWith(
+        '/runs',
+        {
+          project_id: 'project_local',
+          limit: 100,
+        },
+        undefined,
+        { signal: expect.any(AbortSignal) }
+      );
       expect(getCachedProjectMock).toHaveBeenCalledWith({
         userId: 10,
         projectId: 'project_local',

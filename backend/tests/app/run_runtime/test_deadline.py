@@ -151,7 +151,9 @@ async def test_execution_backend_failure_is_a_durable_terminal_event(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_retryable_execution_failure_is_durably_interrupted(tmp_path):
+async def test_retryable_execution_failure_is_durably_interrupted(
+    tmp_path, caplog
+):
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
         journal.ensure_run(run_id="run-1", project_id="project-1")
         journal.create_run_attempt(
@@ -185,6 +187,12 @@ async def test_retryable_execution_failure_is_durably_interrupted(tmp_path):
         assert event.event_type == "runtime.interrupted"
         assert event.payload["reason"] == "model_transport_error"
         assert event.payload["retryable"] is True
+        warning = next(
+            record
+            for record in caplog.records
+            if record.getMessage() == "Detached Run execution interrupted"
+        )
+        assert warning.interruption_message == "Client Closed Request"
         await coordinator.close()
 
 

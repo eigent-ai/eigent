@@ -166,15 +166,12 @@ class WorkspaceWriterScheduler:
                 "workspace writer finalization belongs to another Task"
             )
         if request.status in {"released", "interrupted"}:
-            self._record_state(
-                run_id,
-                request,
-                event_type=(
-                    "workspace.writer.released"
-                    if request.status == "released"
-                    else "workspace.writer.interrupted"
-                ),
-            )
+            # The transition that made the request terminal already emitted
+            # its durable event. Re-emitting here is not an upgrade path: an
+            # older app may have stored the same deterministic event_id with
+            # a pre-semantic payload, which correctly conflicts with a newer
+            # payload. Returning the terminal record makes finish idempotent
+            # across restarts and schema-independent event evolution.
             return request
         if request.status == "queued":
             result = self.journal.interrupt_workspace_writer(

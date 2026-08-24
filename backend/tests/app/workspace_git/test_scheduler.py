@@ -18,7 +18,7 @@ import asyncio
 
 import pytest
 
-from app.run_journal import SQLiteRunJournal
+from app.run_journal import RunEventDraft, SQLiteRunJournal
 from app.workspace_git import WorkspaceWriterScheduler
 
 
@@ -155,6 +155,40 @@ def test_scheduler_interrupts_a_terminal_task_that_never_acquired(journal):
     assert journal.list_events("run-2")[-1].event_type == (
         "workspace.writer.interrupted"
     )
+
+
+def test_scheduler_does_not_reemit_a_legacy_terminal_writer_event(journal):
+    scheduler = WorkspaceWriterScheduler(journal)
+    journal.ensure_run(run_id="run-1", project_id="project-1")
+    admission = scheduler.admit_task(
+        run_id="run-1",
+        task_id="task-1",
+        project_id="project-1",
+        binding=_binding(journal, "project-1"),
+    )
+    released = journal.release_workspace_writer(
+        request_id=admission.request.request_id,
+        task_id="task-1",
+    ).finished
+    event_id = "workspace.writer.released:workspace-writer:run-1:0:none"
+    journal.append_event(
+        "run-1",
+        RunEventDraft(
+            event_id=event_id,
+            event_type="workspace.writer.released",
+            payload={"legacy": True},
+        ),
+    )
+
+    replay = scheduler.finish_task(run_id="run-1", task_id="task-1")
+
+    assert replay == released
+    stored = next(
+        event
+        for event in journal.list_events("run-1")
+        if event.event_id == event_id
+    )
+    assert stored.payload == {"legacy": True}
 
 
 def test_startup_reclaims_only_writer_admissions_without_an_attempt(journal):

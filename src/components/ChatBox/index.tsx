@@ -338,6 +338,9 @@ export default function ChatBox(): JSX.Element {
   const acknowledgeWorkspaceReviewHandoffs = usePageTabStore(
     (s) => s.acknowledgeWorkspaceReviewHandoffs
   );
+  const discardWorkspaceReviewHandoffs = usePageTabStore(
+    (s) => s.discardWorkspaceReviewHandoffs
+  );
   const chatTimelineDetailLevel = usePageTabStore(
     (s) => s.chatTimelineDetailLevel ?? DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL
   );
@@ -823,6 +826,18 @@ export default function ChatBox(): JSX.Element {
   const shouldRenderChatTimeline = eventNativeTimelineEnabled
     ? Boolean(activeProjectId)
     : hasAnyMessages;
+  const hasEventNativeTimelineContent = Boolean(
+    eventNativeProjectSnapshot?.chat.nodes.length
+  );
+  // Local durable events are the preferred read model, but cloud-restored and
+  // legacy Sessions may have usable ChatStore history before `/runs` responds
+  // (or no local RunJournal replica at all). Keep that history visible while
+  // event hydration catches up instead of replacing the page with a skeleton.
+  const shouldRenderEventNativeTimeline = Boolean(
+    eventNativeTimelineEnabled &&
+    activeProjectId &&
+    (hasEventNativeTimelineContent || !hasAnyMessages)
+  );
   const shouldRenderBottomBoxOverlay =
     shouldRenderChatTimeline &&
     Boolean(
@@ -1056,7 +1071,8 @@ export default function ChatBox(): JSX.Element {
       });
     }
     const displayContent = tempMessageContent;
-    const reviewHandoffIds = queuedReviewHandoffIds ?? pendingReviewHandoffIds;
+    const requestedReviewHandoffIds =
+      queuedReviewHandoffIds ?? pendingReviewHandoffIds;
     const preserveComposer = queuedAttaches !== undefined;
 
     if (executionId && targetProjectId) {
@@ -1077,6 +1093,38 @@ export default function ChatBox(): JSX.Element {
     // Multi-turn support: Check if task is running or planning (splitting/confirm)
     const task = chatStore.tasks[_taskId];
     const requiresHumanReply = Boolean(task?.activeAsk);
+    const reviewHandoffIds = queuedReviewHandoffIds
+      ? requestedReviewHandoffIds
+      : requestedReviewHandoffIds.filter((handoffId) => {
+          const handoff = usePageTabStore
+            .getState()
+            .workspaceReviewHandoffs.find(
+              (candidate) =>
+                candidate.projectId === targetProjectId &&
+                candidate.handoffId === handoffId
+            );
+          return Boolean(
+            handoff && tempMessageContent.includes(handoff.content)
+          );
+        });
+    const discardedReviewHandoffIds = queuedReviewHandoffIds
+      ? []
+      : requestedReviewHandoffIds.filter(
+          (handoffId) => !reviewHandoffIds.includes(handoffId)
+        );
+    if (discardedReviewHandoffIds.length > 0) {
+      discardWorkspaceReviewHandoffs(
+        targetProjectId,
+        discardedReviewHandoffIds
+      );
+      setPendingReviewHandoffIds(reviewHandoffIds);
+    }
+    if (requiresHumanReply && reviewHandoffIds.length > 0) {
+      toast.error(
+        'Answer the pending question before sending review feedback.'
+      );
+      return;
+    }
     const requiresApprovalDecision =
       activeInteraction?.interaction_type === 'approval';
     const isTaskBusy =
@@ -2207,7 +2255,7 @@ export default function ChatBox(): JSX.Element {
           className="scrollbar-always-visible min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto pl-2.5"
         >
           {shouldRenderChatTimeline &&
-          eventNativeTimelineEnabled &&
+          shouldRenderEventNativeTimeline &&
           activeProjectId ? (
             <EventNativeProjectTimeline
               chatStore={projectStore.getActiveChatStore() ?? undefined}

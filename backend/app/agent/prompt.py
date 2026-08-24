@@ -709,6 +709,11 @@ occur here. Use absolute paths for local file operations.
 - Mark exactly one todo as `in_progress` while actively working on it.
 - Mark a todo `completed` immediately after it is done.
 - Update todos when the plan changes.
+- Pass `id: null` for every new todo item.
+- Preserve the stable item IDs returned by `todo_write` in later updates.
+- For long-running work, call `step_update` only when the active todo reaches
+  a meaningful new result or decision. Keep the update concise and factual;
+  do not send heartbeats, raw command output, secrets, or absolute paths.
 - For simple conversational answers, a todo list is optional.
 </todo_workflow>
 

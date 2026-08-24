@@ -30,6 +30,8 @@ from typing import Any, Literal, TypedDict, get_args
 
 SEMANTIC_SCHEMA_VERSION = 1
 DISPLAY_SCHEMA_VERSION = 1
+STEP_SEMANTIC_SCHEMA_VERSION = 2
+STEP_DISPLAY_SCHEMA_VERSION = 1
 _MAX_DISPLAY_TEXT = 600
 _MAX_DISPLAY_TITLE = 120
 _MAX_ID_LENGTH = 200
@@ -83,11 +85,34 @@ SemanticStatus = Literal[
     "unknown",
 ]
 
+StepSemanticPhase = Literal[
+    "requested",
+    "started",
+    "progress",
+    "blocked",
+    "resumed",
+    "completed",
+    "failed",
+    "cancelled",
+    "interrupted",
+]
+StepSemanticStatus = Literal[
+    "pending",
+    "running",
+    "blocked",
+    "completed",
+    "failed",
+    "cancelled",
+    "interrupted",
+]
+
 _SEMANTIC_KINDS = frozenset(get_args(SemanticKind))
 _SEMANTIC_SUBJECT_TYPES = frozenset(get_args(SemanticSubjectType))
 _SEMANTIC_ACTOR_TYPES = frozenset(get_args(SemanticActorType))
 _SEMANTIC_PHASES = frozenset(get_args(SemanticPhase))
 _SEMANTIC_STATUSES = frozenset(get_args(SemanticStatus))
+_STEP_SEMANTIC_PHASES = frozenset(get_args(StepSemanticPhase))
+_STEP_SEMANTIC_STATUSES = frozenset(get_args(StepSemanticStatus))
 
 
 class SemanticSubject(TypedDict):
@@ -230,6 +255,71 @@ def semantic_event_fields(
         "display_schema_version": DISPLAY_SCHEMA_VERSION,
         "semantic": envelope,
     }
+
+
+def semantic_step_event_fields(
+    *,
+    step_id: str,
+    phase: StepSemanticPhase,
+    status: StepSemanticStatus,
+    source: str,
+    actor_type: SemanticActorType = "agent",
+    actor_id: str | None = None,
+    actor_name: str | None = None,
+    correlation: dict[str, Any] | None = None,
+    missing_fields: tuple[str, ...] | list[str] = (),
+) -> dict[str, Any]:
+    """Build the V2 semantic envelope reserved for authored task Steps.
+
+    V1 stays closed and unchanged for existing producers.  Step lifecycle
+    needs the additional ``step`` subject plus blocked/interrupted states, so
+    emitting it as V2 prevents older clients from accepting a vocabulary they
+    do not actually understand.
+    """
+
+    if phase not in _STEP_SEMANTIC_PHASES:
+        raise ValueError(f"Unsupported step semantic phase: {phase}")
+    if status not in _STEP_SEMANTIC_STATUSES:
+        raise ValueError(f"Unsupported step semantic status: {status}")
+
+    missing = [value for value in missing_fields if value]
+    subject_id = _identifier(step_id)
+    if not subject_id:
+        missing.append("subject.id")
+    if actor_type not in _SEMANTIC_ACTOR_TYPES:
+        raise ValueError(f"Unsupported step semantic actor_type: {actor_type}")
+    actor: SemanticActor = {"type": actor_type}
+    if actor_id:
+        actor["id"] = _identifier(actor_id)
+    if actor_name:
+        actor["name"] = _bounded_text(actor_name, limit=_MAX_DISPLAY_TITLE)
+    correlated = {
+        str(key): _identifier(value)
+        for key, value in (correlation or {}).items()
+        if value not in (None, "")
+    }
+    return {
+        "semantic_schema_version": STEP_SEMANTIC_SCHEMA_VERSION,
+        "display_schema_version": STEP_DISPLAY_SCHEMA_VERSION,
+        "semantic": {
+            "kind": "step",
+            "subject": {"type": "step", "id": subject_id},
+            "actor": actor,
+            "lifecycle": {"phase": phase, "status": status},
+            "correlation": correlated,
+            "completeness": {
+                "state": "partial" if missing else "complete",
+                "missing_fields": sorted(set(missing)),
+            },
+            "provenance": {"source": source},
+        },
+    }
+
+
+def display_safe_semantic_text(value: Any, *, limit: int = 600) -> str:
+    """Expose the shared redaction/bounding policy to typed event producers."""
+
+    return _bounded_text(value, limit=limit)
 
 
 def _status(value: Any) -> SemanticStatus:

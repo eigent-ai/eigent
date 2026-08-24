@@ -71,6 +71,23 @@ function deferred<T>() {
 describe('hydrateProjectEventStore', () => {
   beforeEach(() => fetchGetMock.mockReset());
 
+  it('abandons a stuck Run listing within the hydration deadline', async () => {
+    const store = new ProjectEventStore('project-1', {
+      scheduleFlush: () => () => undefined,
+    });
+    fetchGetMock.mockReturnValueOnce(new Promise(() => undefined));
+
+    await expect(
+      hydrateProjectEventStore({
+        projectId: 'project-1',
+        store,
+        runListTimeoutMs: 5,
+      })
+    ).rejects.toMatchObject({ name: 'TimeoutError' });
+
+    expect(fetchGetMock.mock.calls[0]?.[3]?.signal.aborted).toBe(true);
+  });
+
   it('loads bounded Run pages and atomically replaces the projection', async () => {
     const store = new ProjectEventStore('project-1', {
       scheduleFlush: () => () => undefined,
@@ -110,10 +127,16 @@ describe('hydrateProjectEventStore', () => {
       pageCount: 2,
     });
 
-    expect(fetchGetMock).toHaveBeenNthCalledWith(1, '/runs', {
-      project_id: 'project-1',
-      limit: 100,
-    });
+    expect(fetchGetMock).toHaveBeenNthCalledWith(
+      1,
+      '/runs',
+      {
+        project_id: 'project-1',
+        limit: 100,
+      },
+      undefined,
+      { signal: expect.any(AbortSignal) }
+    );
     expect(fetchGetMock).toHaveBeenNthCalledWith(
       3,
       '/runs/run-1/events',

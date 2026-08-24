@@ -169,6 +169,8 @@ def operation_for_tool(
 ) -> str:
     name = tool_name.strip().lower()
     toolkit = (toolkit_name or "").strip().lower()
+    if safety_class is ToolSafetyClass.INTERNAL_CONTROL:
+        return "agent.control"
     if "workspace git" in toolkit or "workspacegit" in toolkit:
         return (
             "git.read"
@@ -255,7 +257,8 @@ def build_tool_action_descriptor(
         safety_class=safety_class,
         normalized_arguments=dict(arguments),
         target_resources=resources,
-        external_side_effect=safety_class is not ToolSafetyClass.SAFE_READ,
+        external_side_effect=safety_class
+        not in {ToolSafetyClass.SAFE_READ, ToolSafetyClass.INTERNAL_CONTROL},
         idempotency_key=idempotency_key,
         run_id=run_id,
         attempt_id=attempt_id,

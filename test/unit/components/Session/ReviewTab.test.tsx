@@ -538,4 +538,71 @@ describe('ReviewTab', () => {
       }),
     ]);
   });
+
+  it('requires explicit rebasing before handing off an unbound old comment', () => {
+    const identity = {
+      baseCommit: 'a'.repeat(40),
+      targetCommit: 'b'.repeat(40),
+    };
+    mockUseReviewChanges.mockReturnValue({
+      loading: false,
+      desktopOnly: false,
+      error: null,
+      totals: { added: 0, removed: 0 },
+      reviewIdentity: identity,
+      stale: false,
+      refresh: vi.fn(),
+      files: [
+        {
+          id: 'first',
+          path: 'src/first.ts',
+          status: 'modified',
+          absPath: '/first.ts',
+          bakPath: '/first.ts.bak',
+        },
+      ],
+    });
+    const pinnedTab: SessionReviewTab = {
+      ...reviewTab,
+      reviewIdentity: identity,
+      reviewComments: [
+        {
+          id: 'legacy-comment',
+          fileId: 'first',
+          path: 'src/first.ts',
+          selection: null,
+          body: 'Confirm this still applies.',
+          createdAt: 1,
+        },
+      ],
+    };
+
+    render(<ReviewTab tab={pinnedTab} />);
+
+    expect(
+      screen.queryByRole('button', { name: 'Add 1 comments to chat' })
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Rebase 1 comments onto this revision',
+      })
+    );
+
+    expect(
+      screen.getByRole('button', { name: 'Add 1 comments to chat' })
+    ).toBeInTheDocument();
+    const storedTab = usePageTabStore
+      .getState()
+      .sessionPreviewByProject['project-1'].tabs.find(
+        (tab) => tab.id === pinnedTab.id
+      );
+    expect(storedTab).toMatchObject({
+      reviewComments: [
+        expect.objectContaining({
+          id: 'legacy-comment',
+          reviewIdentity: identity,
+        }),
+      ],
+    });
+  });
 });

@@ -20,6 +20,7 @@ from unittest.mock import MagicMock
 
 from app import artifacts
 from app.run_journal import SQLiteRunJournal
+from app.run_journal.models import RunEventDraft
 
 
 def test_managed_space_changes_enter_durable_project_output_lane(
@@ -224,6 +225,52 @@ def test_finalize_records_explicit_unavailable_manifest_without_workspace(
             "truncated": False,
             "manifest_digest": manifest.payload["manifest_digest"],
         }
+    finally:
+        journal.close()
+
+
+def test_artifact_manifest_uses_explicit_file_step_correlation(tmp_path):
+    journal = SQLiteRunJournal(tmp_path / "journal.sqlite3")
+    try:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        journal.append_event(
+            "run-1",
+            RunEventDraft(
+                event_id="file-written-1",
+                event_type="file.written",
+                payload={
+                    "relative_path": "reports/final.md",
+                    "step_id": "stp-write-report",
+                },
+            ),
+        )
+
+        manifest = artifacts.record_artifact_manifest(
+            journal,
+            run_id="run-1",
+            project_id="project-1",
+            artifacts=[
+                {
+                    "filename": "final.md",
+                    "path": "/workspace/reports/final.md",
+                    "relativePath": "reports/final.md",
+                    "changeType": "generated",
+                }
+            ],
+        )
+
+        artifact = next(
+            event
+            for event in journal.list_events("run-1")
+            if event.event_type == "artifact.created"
+        )
+        assert artifact.payload["step_id"] == "stp-write-report"
+        assert artifact.payload["semantic"]["correlation"]["step_id"] == (
+            "stp-write-report"
+        )
+        assert manifest.payload["artifacts"][0]["step_id"] == (
+            "stp-write-report"
+        )
     finally:
         journal.close()
 

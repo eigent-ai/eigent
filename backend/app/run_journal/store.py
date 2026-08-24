@@ -9611,6 +9611,37 @@ class SQLiteRunJournal:
                 )
             return event
 
+    def append_events(
+        self,
+        run_id: str,
+        drafts: list[RunEventDraft] | tuple[RunEventDraft, ...],
+        *,
+        expected_project_id: str | None = None,
+    ) -> list[CommittedRunEvent]:
+        """Atomically append a non-terminal typed event batch.
+
+        Step reconciliation often needs to create and start/complete a Step in
+        one plan update.  Keeping the batch in one SQLite transaction prevents
+        replay from observing half of that lifecycle.
+        """
+
+        if not drafts:
+            return []
+        if any(self._terminal_status_for_event(draft) for draft in drafts):
+            raise ValueError(
+                "terminal Run events require their dedicated commit path"
+            )
+        with self._write_transaction() as connection:
+            return [
+                self._append_event_in_transaction(
+                    connection,
+                    run_id,
+                    draft,
+                    expected_project_id=expected_project_id,
+                )
+                for draft in drafts
+            ]
+
     def append_artifact_manifest_events(
         self,
         run_id: str,
@@ -11553,6 +11584,13 @@ class SQLiteRunJournal:
                 timestamp=timestamp,
                 source="recovery",
             )
+            self._repair_restart_interrupted_internal_controls_in_transaction(
+                connection,
+                run_id=run_id,
+                timestamp=timestamp,
+                source="resume_admission",
+                include_dispatched=False,
+            )
             active = connection.execute(
                 """
                 SELECT attempt_id FROM run_attempts
@@ -12378,6 +12416,7 @@ class SQLiteRunJournal:
         toolkit_name: str | None = None,
         agent_name: str | None = None,
         task_id: str | None = None,
+        step_id: str | None = None,
         display_title: str | None = None,
         display_input: str | None = None,
         display_output: str | None = None,
@@ -12540,12 +12579,19 @@ class SQLiteRunJournal:
                 "status": status,
                 "outcome": outcome,
                 "timeout_reason": timeout_reason,
+                "step_id": step_id,
                 "request": request or {},
                 "result": result,
             }
             normalized_tool_name = tool_name.strip().lower().replace("-", "_")
             if normalized_tool_name in {"todo_write", "update_plan"}:
                 semantic_kind = "plan_operation"
+            elif normalized_tool_name in {
+                "agent_run_subagent",
+                "agent_get_task_output",
+                "agent_stop_task",
+            }:
+                semantic_kind = "subtask"
             elif normalized_tool_name.startswith(
                 ("shell", "terminal", "exec", "run_")
             ):
@@ -12590,6 +12636,7 @@ class SQLiteRunJournal:
                     correlation={
                         "attempt_id": attempt_id,
                         "task_id": task_id,
+                        "step_id": step_id,
                     },
                 )
             )
@@ -12597,6 +12644,7 @@ class SQLiteRunJournal:
                 "toolkit_name": toolkit_name,
                 "agent_name": agent_name,
                 "process_task_id": task_id,
+                "step_id": step_id,
                 "display_title": display_title,
                 "display_input": display_input,
                 "display_output": display_output,
@@ -12634,6 +12682,7 @@ class SQLiteRunJournal:
         tool: sqlite3.Row,
         timestamp: float,
         source: str,
+        reason: str = "tool_terminal_before_dispatch",
     ) -> bool:
         """Close a pending approval whose ToolCall can no longer dispatch."""
 
@@ -12652,7 +12701,6 @@ class SQLiteRunJournal:
         if approval is None:
             return False
 
-        reason = "tool_terminal_before_dispatch"
         decision_json = json.dumps(
             {"decision": "rejected", "reason": reason},
             separators=(",", ":"),
@@ -12723,28 +12771,134 @@ class SQLiteRunJournal:
                 """,
                 (timestamp, reason, approval["attempt_id"]),
             )
+        step_id = self._interaction_step_id_in_transaction(
+            connection,
+            run_id=str(tool["run_id"]),
+            interaction_id=approval_id,
+        )
+        cancellation_payload = {
+            "approval_id": approval_id,
+            "interaction_id": approval_id,
+            "attempt_id": approval["attempt_id"],
+            "tool_call_id": tool["tool_call_id"],
+            "decision": "rejected",
+            "reason": reason,
+            "source": source,
+            "continued_attempt": False,
+        }
+        if step_id:
+            cancellation_payload["step_id"] = step_id
         self._append_event_in_transaction(
             connection,
             tool["run_id"],
             RunEventDraft(
                 event_id=f"approval:{approval_id}:cancelled:{reason}",
                 event_type="approval.cancelled",
-                payload={
-                    "approval_id": approval_id,
-                    "interaction_id": approval_id,
-                    "attempt_id": approval["attempt_id"],
-                    "tool_call_id": tool["tool_call_id"],
-                    "decision": "rejected",
-                    "reason": reason,
-                    "source": source,
-                    "continued_attempt": False,
-                },
+                payload=cancellation_payload,
                 created_at=timestamp,
             ),
             run_status="interrupted" if interrupt_run else None,
             clear_active_attempt=interrupt_run,
         )
         return True
+
+    def _backfill_cancelled_approval_events_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        timestamp: float,
+    ) -> tuple[str, ...]:
+        """Restore the missing durable terminal fact for legacy repairs.
+
+        Older startup recovery updated the approval and interaction tables but
+        did not append ``approval.cancelled``. Event-native clients therefore
+        kept presenting an already-terminal approval forever. This repair is
+        append-only and idempotent: a terminal event is added only when the
+        canonical interaction row is cancelled and no cancellation event for
+        that exact interaction exists.
+        """
+
+        terminal_ids: set[tuple[str, str]] = set()
+        event_rows = connection.execute(
+            """
+            SELECT run_id, payload_json FROM run_events
+            WHERE event_type IN ('approval.cancelled', 'approval.canceled')
+            """
+        ).fetchall()
+        for event in event_rows:
+            try:
+                payload = json.loads(event["payload_json"])
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(payload, dict):
+                continue
+            interaction_id = payload.get("interaction_id") or payload.get(
+                "approval_id"
+            )
+            if isinstance(interaction_id, str) and interaction_id:
+                terminal_ids.add((str(event["run_id"]), interaction_id))
+
+        interactions = connection.execute(
+            """
+            SELECT interaction.*, approval.decision_json,
+                   approval.action_digest
+            FROM human_interactions AS interaction
+            JOIN approvals AS approval
+              ON approval.approval_id = interaction.interaction_id
+             AND approval.run_id = interaction.run_id
+            WHERE interaction.interaction_type = 'approval'
+              AND interaction.status = 'cancelled'
+            ORDER BY interaction.created_at, interaction.interaction_id
+            """
+        ).fetchall()
+        repaired: list[str] = []
+        for interaction in interactions:
+            identity = (
+                str(interaction["run_id"]),
+                str(interaction["interaction_id"]),
+            )
+            if identity in terminal_ids:
+                continue
+            try:
+                decision = json.loads(interaction["decision_json"] or "{}")
+            except (TypeError, ValueError):
+                decision = {}
+            if not isinstance(decision, dict):
+                decision = {}
+            reason = str(
+                decision.get("reason") or "historical_terminal_interaction"
+            )
+            interaction_id = str(interaction["interaction_id"])
+            step_id = self._interaction_step_id_in_transaction(
+                connection,
+                run_id=str(interaction["run_id"]),
+                interaction_id=interaction_id,
+            )
+            cancellation_payload = {
+                "approval_id": interaction_id,
+                "interaction_id": interaction_id,
+                "attempt_id": interaction["attempt_id"],
+                "decision": "rejected",
+                "reason": reason,
+                "source": "recovery",
+                "continued_attempt": False,
+                "backfilled": True,
+            }
+            if step_id:
+                cancellation_payload["step_id"] = step_id
+            self._append_event_in_transaction(
+                connection,
+                str(interaction["run_id"]),
+                RunEventDraft(
+                    event_id=f"recovery:{interaction_id}:cancelled",
+                    event_type="approval.cancelled",
+                    payload=cancellation_payload,
+                    created_at=timestamp,
+                ),
+            )
+            terminal_ids.add(identity)
+            repaired.append(interaction_id)
+        return tuple(repaired)
 
     def _cancel_open_human_interactions_in_transaction(
         self,
@@ -12873,6 +13027,13 @@ class SQLiteRunJournal:
                 "reason": reason,
                 "source": "system",
             }
+            step_id = self._interaction_step_id_in_transaction(
+                connection,
+                run_id=run_id,
+                interaction_id=str(interaction["interaction_id"]),
+            )
+            if step_id:
+                payload["step_id"] = step_id
             if is_approval:
                 payload.update(
                     approval_id=interaction["interaction_id"],
@@ -12949,6 +13110,7 @@ class SQLiteRunJournal:
         response_schema: dict[str, Any] | None = None,
         options: list[dict[str, Any]] | None = None,
         requested_by: str = "agent",
+        step_id: str | None = None,
         expires_at: float | None = None,
         now: float | None = None,
     ) -> HumanInteractionRecord:
@@ -13041,6 +13203,17 @@ class SQLiteRunJournal:
                 active_attempt_id=run["active_attempt_id"],
                 interaction_label="human interaction",
             )
+            resolved_step_id = self._append_step_transition_in_transaction(
+                connection,
+                run_id=run_id,
+                step_id=step_id,
+                event="blocked",
+                status="blocked",
+                allowed_previous={"pending", "running"},
+                attempt_id=attempt_id,
+                reason_code=f"interaction_requested:{interaction_type}",
+                provenance_source="human_interaction",
+            )
             connection.execute(
                 """
                 INSERT INTO human_interactions(
@@ -13080,10 +13253,19 @@ class SQLiteRunJournal:
                     """,
                     (attempt_id,),
                 )
-                if updated_attempt.rowcount != 1:
-                    raise InvalidRunTransitionError(
-                        f"interaction attempt {attempt_id!r} is no longer running"
-                    )
+                if updated_attempt.rowcount == 0:
+                    waiting_attempt = connection.execute(
+                        "SELECT status FROM run_attempts WHERE attempt_id = ?",
+                        (attempt_id,),
+                    ).fetchone()
+                    if (
+                        waiting_attempt is None
+                        or waiting_attempt["status"] != "waiting_for_user"
+                    ):
+                        raise InvalidRunTransitionError(
+                            f"interaction attempt {attempt_id!r} is no longer "
+                            "running or waiting"
+                        )
             self._append_event_in_transaction(
                 connection,
                 run_id,
@@ -13099,6 +13281,7 @@ class SQLiteRunJournal:
                         "response_schema": response_schema or {},
                         "options": normalized_options,
                         "requested_by": requested_by,
+                        "step_id": resolved_step_id,
                         "expires_at": expires_at,
                     },
                     created_at=timestamp,
@@ -13184,12 +13367,22 @@ class SQLiteRunJournal:
                     f"interaction {interaction_id!r} expected version "
                     f"{expected_version}"
                 )
-            can_continue = self._resolve_waiting_attempt(
+            (
+                can_continue,
+                remains_waiting,
+                remaining_interaction_count,
+            ) = self._resolve_waiting_attempt(
                 connection,
+                interaction_id=interaction_id,
                 attempt_id=interaction["attempt_id"],
                 continue_active_attempt=continue_active_attempt,
                 timestamp=timestamp,
                 outcome="human_interaction_resolved",
+            )
+            step_id = self._interaction_step_id_in_transaction(
+                connection,
+                run_id=str(interaction["run_id"]),
+                interaction_id=interaction_id,
             )
             connection.execute(
                 """
@@ -13251,6 +13444,22 @@ class SQLiteRunJournal:
                     timestamp,
                 ),
             )
+            if can_continue and not remains_waiting and step_id:
+                self._append_step_transition_in_transaction(
+                    connection,
+                    run_id=str(interaction["run_id"]),
+                    step_id=step_id,
+                    event="resumed",
+                    status="running",
+                    allowed_previous={"blocked", "interrupted"},
+                    attempt_id=(
+                        str(interaction["attempt_id"])
+                        if interaction["attempt_id"]
+                        else None
+                    ),
+                    reason_code="interaction_resolved",
+                    provenance_source="human_interaction",
+                )
             self._append_event_in_transaction(
                 connection,
                 interaction["run_id"],
@@ -13268,15 +13477,27 @@ class SQLiteRunJournal:
                         "actor_type": actor_type,
                         "actor_id": actor_id,
                         "source": source,
+                        "step_id": step_id,
                         "continued_attempt": can_continue,
+                        "remaining_interaction_count": (
+                            remaining_interaction_count
+                        ),
                     },
                     created_at=timestamp,
                 ),
-                run_status="running" if can_continue else "interrupted",
-                active_attempt_id=(
-                    interaction["attempt_id"] if can_continue else None
+                run_status=(
+                    "waiting_for_user"
+                    if remains_waiting
+                    else "running"
+                    if can_continue
+                    else "interrupted"
                 ),
-                clear_active_attempt=not can_continue,
+                active_attempt_id=(
+                    interaction["attempt_id"]
+                    if can_continue or remains_waiting
+                    else None
+                ),
+                clear_active_attempt=not can_continue and not remains_waiting,
             )
             row = connection.execute(
                 "SELECT * FROM human_interactions WHERE interaction_id = ?",
@@ -13717,17 +13938,18 @@ class SQLiteRunJournal:
                 raise IdempotencyConflictError(
                     f"attempt {attempt_id!r} does not belong to run {run_id!r}"
                 )
-            if (
-                not transition_allowed(
+            attempt_status = str(attempt["status"])
+            can_enter_or_share_wait = attempt_status == "waiting_for_user" or (
+                transition_allowed(
                     ATTEMPT_TRANSITIONS,
-                    str(attempt["status"]),
+                    attempt_status,
                     "waiting_for_user",
                 )
-                or active_attempt_id != attempt_id
-            ):
+            )
+            if not can_enter_or_share_wait or active_attempt_id != attempt_id:
                 raise InvalidRunTransitionError(
                     f"{interaction_label} attempt {attempt_id!r} must be the "
-                    "active running attempt"
+                    "active running attempt or already waiting for user"
                 )
         elif active_attempt_id is not None:
             raise InvalidRunTransitionError(
@@ -13739,13 +13961,14 @@ class SQLiteRunJournal:
     def _resolve_waiting_attempt(
         connection: sqlite3.Connection,
         *,
+        interaction_id: str,
         attempt_id: str | None,
         continue_active_attempt: bool,
         timestamp: float,
         outcome: str,
-    ) -> bool:
+    ) -> tuple[bool, bool, int]:
         if attempt_id is None:
-            return False
+            return False, False, 0
         attempt = connection.execute(
             "SELECT status FROM run_attempts WHERE attempt_id = ?",
             (attempt_id,),
@@ -13756,8 +13979,23 @@ class SQLiteRunJournal:
                 f"interaction attempt {attempt_id!r} is in active state "
                 f"{status!r}, not waiting_for_user"
             )
+        remaining_interaction_count = int(
+            connection.execute(
+                """
+                SELECT COUNT(*) FROM human_interactions
+                WHERE attempt_id = ? AND interaction_id != ?
+                  AND status IN ('requested', 'presented')
+                """,
+                (attempt_id, interaction_id),
+            ).fetchone()[0]
+        )
+        remains_waiting = bool(
+            status == "waiting_for_user" and remaining_interaction_count > 0
+        )
         can_continue = bool(
-            continue_active_attempt and status == "waiting_for_user"
+            continue_active_attempt
+            and status == "waiting_for_user"
+            and not remains_waiting
         )
         if can_continue:
             connection.execute(
@@ -13768,7 +14006,7 @@ class SQLiteRunJournal:
                 """,
                 (timestamp, attempt_id),
             )
-        else:
+        elif not remains_waiting:
             connection.execute(
                 """
                 UPDATE run_attempts
@@ -13778,7 +14016,7 @@ class SQLiteRunJournal:
                 """,
                 (timestamp, outcome, attempt_id),
             )
-        return can_continue
+        return can_continue, remains_waiting, remaining_interaction_count
 
     def create_approval(
         self,
@@ -13791,6 +14029,7 @@ class SQLiteRunJournal:
         policy_revision: str = "legacy",
         safety_class: str = "unknown",
         decision_scope: str = "once",
+        step_id: str | None = None,
         expires_at: float | None = None,
         expiry_action: str = "keep_pending",
         now: float | None = None,
@@ -13846,6 +14085,17 @@ class SQLiteRunJournal:
                 active_attempt_id=run["active_attempt_id"],
                 interaction_label="approval",
             )
+            resolved_step_id = self._append_step_transition_in_transaction(
+                connection,
+                run_id=run_id,
+                step_id=step_id,
+                event="blocked",
+                status="blocked",
+                allowed_previous={"pending", "running"},
+                attempt_id=attempt_id,
+                reason_code="approval_requested",
+                provenance_source="human_interaction",
+            )
             connection.execute(
                 """
                 INSERT INTO human_interactions(
@@ -13897,10 +14147,19 @@ class SQLiteRunJournal:
                     """,
                     (attempt_id,),
                 )
-                if updated_attempt.rowcount != 1:
-                    raise InvalidRunTransitionError(
-                        f"approval attempt {attempt_id!r} is no longer running"
-                    )
+                if updated_attempt.rowcount == 0:
+                    waiting_attempt = connection.execute(
+                        "SELECT status FROM run_attempts WHERE attempt_id = ?",
+                        (attempt_id,),
+                    ).fetchone()
+                    if (
+                        waiting_attempt is None
+                        or waiting_attempt["status"] != "waiting_for_user"
+                    ):
+                        raise InvalidRunTransitionError(
+                            f"approval attempt {attempt_id!r} is no longer "
+                            "running or waiting"
+                        )
             self._append_event_in_transaction(
                 connection,
                 run_id,
@@ -13918,6 +14177,7 @@ class SQLiteRunJournal:
                         "policy_revision": policy_revision,
                         "safety_class": safety_class,
                         "decision_scope": decision_scope,
+                        "step_id": resolved_step_id,
                     },
                     created_at=timestamp,
                 ),
@@ -14069,36 +14329,23 @@ class SQLiteRunJournal:
                 raise InvalidRunTransitionError(
                     f"terminal run {approval['run_id']!r} cannot accept an approval decision"
                 )
-            can_continue = False
-            attempt_status: str | None = None
-            if continue_active_attempt and approval["attempt_id"] is not None:
-                attempt = connection.execute(
-                    "SELECT status FROM run_attempts WHERE attempt_id = ?",
-                    (approval["attempt_id"],),
-                ).fetchone()
-                can_continue = (
-                    attempt is not None
-                    and attempt["status"] == "waiting_for_user"
-                )
-                attempt_status = (
-                    attempt["status"] if attempt is not None else None
-                )
-            elif approval["attempt_id"] is not None:
-                attempt = connection.execute(
-                    "SELECT status FROM run_attempts WHERE attempt_id = ?",
-                    (approval["attempt_id"],),
-                ).fetchone()
-                attempt_status = (
-                    attempt["status"] if attempt is not None else None
-                )
-            if (
-                attempt_status in ATTEMPT_ACTIVE_STATES
-                and attempt_status != "waiting_for_user"
-            ):
-                raise InvalidRunTransitionError(
-                    f"approval {approval_id!r} is bound to active attempt state "
-                    f"{attempt_status!r}, not waiting_for_user"
-                )
+            (
+                can_continue,
+                remains_waiting,
+                remaining_interaction_count,
+            ) = self._resolve_waiting_attempt(
+                connection,
+                interaction_id=approval_id,
+                attempt_id=approval["attempt_id"],
+                continue_active_attempt=continue_active_attempt,
+                timestamp=timestamp,
+                outcome="approval_decision_persisted",
+            )
+            step_id = self._interaction_step_id_in_transaction(
+                connection,
+                run_id=str(approval["run_id"]),
+                interaction_id=approval_id,
+            )
             connection.execute(
                 """
                 UPDATE approvals
@@ -14207,24 +14454,21 @@ class SQLiteRunJournal:
                     timestamp,
                 ),
             )
-            if can_continue:
-                connection.execute(
-                    """
-                    UPDATE run_attempts
-                    SET status = 'running', last_consumer_heartbeat_at = ?
-                    WHERE attempt_id = ? AND status = 'waiting_for_user'
-                    """,
-                    (timestamp, approval["attempt_id"]),
-                )
-            elif approval["attempt_id"] is not None:
-                connection.execute(
-                    """
-                    UPDATE run_attempts
-                    SET status = 'interrupted', ended_at = COALESCE(ended_at, ?),
-                        outcome = 'approval_decision_persisted'
-                    WHERE attempt_id = ? AND status = 'waiting_for_user'
-                    """,
-                    (timestamp, approval["attempt_id"]),
+            if can_continue and not remains_waiting and step_id:
+                self._append_step_transition_in_transaction(
+                    connection,
+                    run_id=str(approval["run_id"]),
+                    step_id=step_id,
+                    event="resumed",
+                    status="running",
+                    allowed_previous={"blocked", "interrupted"},
+                    attempt_id=(
+                        str(approval["attempt_id"])
+                        if approval["attempt_id"]
+                        else None
+                    ),
+                    reason_code="approval_decided",
+                    provenance_source="human_interaction",
                 )
             self._append_event_in_transaction(
                 connection,
@@ -14242,16 +14486,28 @@ class SQLiteRunJournal:
                         "actor_type": actor_type,
                         "actor_id": actor_id,
                         "source": source,
+                        "step_id": step_id,
                         "continued_attempt": can_continue,
+                        "remaining_interaction_count": (
+                            remaining_interaction_count
+                        ),
                         **decision_value,
                     },
                     created_at=timestamp,
                 ),
-                run_status="running" if can_continue else "interrupted",
-                active_attempt_id=(
-                    approval["attempt_id"] if can_continue else None
+                run_status=(
+                    "waiting_for_user"
+                    if remains_waiting
+                    else "running"
+                    if can_continue
+                    else "interrupted"
                 ),
-                clear_active_attempt=not can_continue,
+                active_attempt_id=(
+                    approval["attempt_id"]
+                    if can_continue or remains_waiting
+                    else None
+                ),
+                clear_active_attempt=not can_continue and not remains_waiting,
             )
             row = connection.execute(
                 "SELECT * FROM approvals WHERE approval_id = ?", (approval_id,)
@@ -14606,6 +14862,11 @@ class SQLiteRunJournal:
             for tool in prepared_tools:
                 try:
                     with self._savepoint(connection, "startup_prepared_tool"):
+                        tool_step_id = self._tool_step_id_in_transaction(
+                            connection,
+                            run_id=str(tool["run_id"]),
+                            tool_call_id=str(tool["tool_call_id"]),
+                        )
                         updated = connection.execute(
                             """
                             UPDATE tool_calls
@@ -14619,59 +14880,18 @@ class SQLiteRunJournal:
                         )
                         if updated.rowcount != 1:
                             continue
-                        approval_id = f"approval:{tool['tool_call_id']}"
-                        approval = connection.execute(
-                            """SELECT * FROM approvals
-                            WHERE approval_id = ? AND status = 'pending'""",
-                            (approval_id,),
+                        terminal_tool = connection.execute(
+                            "SELECT * FROM tool_calls WHERE tool_call_id = ?",
+                            (tool["tool_call_id"],),
                         ).fetchone()
-                        if approval is not None:
-                            decision_json = json.dumps(
-                                {
-                                    "decision": "rejected",
-                                    "reason": "brain_restart_before_dispatch",
-                                },
-                                separators=(",", ":"),
-                                sort_keys=True,
-                            )
-                            connection.execute(
-                                """
-                                UPDATE approvals
-                                SET status = 'rejected', decision_json = ?,
-                                    resolved_at = ?, version = version + 1
-                                WHERE approval_id = ? AND status = 'pending'
-                                """,
-                                (decision_json, timestamp, approval_id),
-                            )
-                            connection.execute(
-                                """
-                                UPDATE human_interactions
-                                SET status = 'cancelled', resolved_at = ?,
-                                    updated_at = ?, version = version + 1
-                                WHERE interaction_id = ?
-                                  AND status IN ('requested', 'presented')
-                                """,
-                                (timestamp, timestamp, approval_id),
-                            )
-                            connection.execute(
-                                """
-                                INSERT OR IGNORE INTO human_interaction_decisions(
-                                    decision_id, interaction_id,
-                                    decision_request_id, decision_json,
-                                    actor_type, actor_id, source, action_digest,
-                                    created_at
-                                ) VALUES (?, ?, ?, ?, 'system', NULL,
-                                    'recovery', ?, ?)
-                                """,
-                                (
-                                    str(uuid.uuid4()),
-                                    approval_id,
-                                    f"recovery:{approval_id}:before-dispatch",
-                                    decision_json,
-                                    approval["action_digest"],
-                                    timestamp,
-                                ),
-                            )
+                        assert terminal_tool is not None
+                        self._cancel_orphaned_tool_approval_in_transaction(
+                            connection,
+                            tool=terminal_tool,
+                            timestamp=timestamp,
+                            source="recovery",
+                            reason="brain_restart_before_dispatch",
+                        )
                         self._append_event_in_transaction(
                             connection,
                             tool["run_id"],
@@ -14686,10 +14906,39 @@ class SQLiteRunJournal:
                                     "safety_class": tool["safety_class"],
                                     "reason": "brain_restart_before_dispatch",
                                     "outcome_known": True,
+                                    "step_id": tool_step_id,
                                 },
                                 created_at=timestamp,
                             ),
                         )
+                        if (
+                            str(tool["tool_name"])
+                            .strip()
+                            .lower()
+                            .replace("-", "_")
+                            == "agent_run_subagent"
+                            and tool_step_id
+                        ):
+                            self._append_step_transition_in_transaction(
+                                connection,
+                                run_id=str(tool["run_id"]),
+                                step_id=tool_step_id,
+                                event="cancelled",
+                                status="cancelled",
+                                allowed_previous={
+                                    "pending",
+                                    "running",
+                                    "blocked",
+                                    "interrupted",
+                                },
+                                attempt_id=(
+                                    str(tool["attempt_id"])
+                                    if tool["attempt_id"]
+                                    else None
+                                ),
+                                reason_code="brain_restart_before_dispatch",
+                                provenance_source="startup_reconciliation",
+                            )
                 except Exception:
                     logger.exception(
                         "Startup reconciliation skipped one prepared ToolCall",
@@ -14701,6 +14950,17 @@ class SQLiteRunJournal:
                 run_id=None,
                 timestamp=timestamp,
                 source="recovery",
+            )
+            self._backfill_cancelled_approval_events_in_transaction(
+                connection,
+                timestamp=timestamp,
+            )
+            self._repair_restart_interrupted_internal_controls_in_transaction(
+                connection,
+                run_id=None,
+                timestamp=timestamp,
+                source="startup_reconciliation",
+                include_dispatched=True,
             )
             runs = connection.execute(
                 """
@@ -17175,6 +17435,257 @@ class SQLiteRunJournal:
             updated_at=float(run["updated_at"]),
         )
 
+    @staticmethod
+    def _latest_step_snapshots_in_transaction(
+        connection: sqlite3.Connection,
+        *,
+        run_id: str,
+    ) -> list[dict[str, Any]]:
+        """Replay only the latest snapshot for every authored Step."""
+
+        rows = connection.execute(
+            """
+            SELECT sequence, event_type, payload_json
+            FROM run_events
+            WHERE run_id = ? AND event_type LIKE 'step.%'
+            ORDER BY sequence DESC
+            """,
+            (run_id,),
+        ).fetchall()
+        snapshots: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for row in rows:
+            try:
+                payload = json.loads(row["payload_json"])
+            except (TypeError, ValueError):
+                continue
+            step = payload.get("step")
+            if not isinstance(step, dict):
+                continue
+            step_id = str(step.get("step_id") or "").strip()
+            if not step_id or step_id in seen:
+                continue
+            seen.add(step_id)
+            snapshots.append(
+                {
+                    "sequence": int(row["sequence"]),
+                    "event_type": str(row["event_type"]),
+                    "payload": payload,
+                    "step": step,
+                }
+            )
+        return snapshots
+
+    @staticmethod
+    def _interaction_step_id_in_transaction(
+        connection: sqlite3.Connection,
+        *,
+        run_id: str,
+        interaction_id: str,
+    ) -> str | None:
+        rows = connection.execute(
+            """
+            SELECT payload_json
+            FROM run_events
+            WHERE run_id = ?
+              AND event_type IN ('interaction.requested', 'approval.requested')
+            ORDER BY sequence DESC
+            """,
+            (run_id,),
+        ).fetchall()
+        for row in rows:
+            try:
+                payload = json.loads(row["payload_json"])
+            except (TypeError, ValueError):
+                continue
+            candidate_id = payload.get("interaction_id") or payload.get(
+                "approval_id"
+            )
+            if str(candidate_id or "") != interaction_id:
+                continue
+            step_id = str(payload.get("step_id") or "").strip()
+            return step_id or None
+        return None
+
+    @staticmethod
+    def _tool_step_id_in_transaction(
+        connection: sqlite3.Connection,
+        *,
+        run_id: str,
+        tool_call_id: str,
+    ) -> str | None:
+        """Recover ToolCall-to-Step correlation from canonical events."""
+
+        rows = connection.execute(
+            """
+            SELECT payload_json
+            FROM run_events
+            WHERE run_id = ? AND event_type LIKE 'tool.%'
+            ORDER BY sequence DESC
+            """,
+            (run_id,),
+        ).fetchall()
+        for row in rows:
+            try:
+                payload = json.loads(row["payload_json"])
+            except (TypeError, ValueError):
+                continue
+            if str(payload.get("tool_call_id") or "") != tool_call_id:
+                continue
+            step_id = str(payload.get("step_id") or "").strip()
+            if step_id:
+                return step_id
+        return None
+
+    def _append_step_transition_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        run_id: str,
+        event: str,
+        status: str,
+        allowed_previous: set[str],
+        attempt_id: str | None,
+        reason_code: str,
+        provenance_source: str,
+        step_id: str | None = None,
+    ) -> str | None:
+        snapshots = self._latest_step_snapshots_in_transaction(
+            connection,
+            run_id=run_id,
+        )
+        eligible_statuses = set(allowed_previous)
+        if event == "blocked":
+            # More than one approval/interaction may share the same authored
+            # Step. The first request transitions it to blocked; later
+            # requests keep the same explicit correlation without emitting a
+            # duplicate lifecycle transition.
+            eligible_statuses.add("blocked")
+        eligible = [
+            candidate
+            for candidate in snapshots
+            if (step_id is None or candidate["step"].get("step_id") == step_id)
+            and candidate["step"].get("status") in eligible_statuses
+        ]
+        # Without an explicit identity, only one eligible Step is proof. In a
+        # parent/child or multi-agent Run, choosing the newest candidate would
+        # create a false canonical relationship.
+        if len(eligible) != 1:
+            return None
+        snapshot = eligible[0]
+        if event == "blocked" and snapshot["step"].get("status") == "blocked":
+            return str(snapshot["step"]["step_id"])
+        step = snapshot["step"]
+        owner = step.get("owner")
+        owner = owner if isinstance(owner, dict) else {}
+        owner_kind = str(owner.get("kind") or "single_agent")
+        if owner_kind not in {"single_agent", "subagent", "system"}:
+            owner_kind = "single_agent"
+        step_source = str(step.get("source") or "plan")
+        if step_source not in {"plan", "subagent"}:
+            step_source = "plan"
+        from app.run_runtime.step_coordinator import step_event_draft
+
+        draft = step_event_draft(
+            run_id=run_id,
+            attempt_id=attempt_id,
+            step_id=str(step["step_id"]),
+            plan_item_id=str(step.get("plan_item_id") or step["step_id"]),
+            parent_step_id=(
+                str(step["parent_step_id"])
+                if step.get("parent_step_id")
+                else None
+            ),
+            title=str(step.get("title") or "Task step"),
+            summary=(str(step["summary"]) if step.get("summary") else None),
+            ordinal=int(step.get("ordinal") or 0),
+            agent_id=(
+                str(owner["agent_id"]) if owner.get("agent_id") else None
+            ),
+            event=event,
+            status=status,  # type: ignore[arg-type]
+            reason_code=reason_code,
+            provenance_source=provenance_source,
+            authored_by="system",
+            owner_kind=owner_kind,  # type: ignore[arg-type]
+            source=step_source,  # type: ignore[arg-type]
+        )
+        self._append_event_in_transaction(connection, run_id, draft)
+        return str(step["step_id"])
+
+    def _append_step_terminals_for_run_transition_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        run_id: str,
+        run_status: str,
+        attempt_id: str | None,
+        reason_code: str,
+    ) -> None:
+        transition = {
+            "interrupted": (
+                "interrupted",
+                "interrupted",
+                {"running", "blocked"},
+            ),
+            "completed": ("completed", "completed", {"running"}),
+            "failed": ("failed", "failed", {"running", "blocked"}),
+            "cancelled": (
+                "cancelled",
+                "cancelled",
+                {"pending", "running", "blocked", "interrupted"},
+            ),
+        }.get(run_status)
+        if transition is None:
+            return
+        event, status, allowed = transition
+        step_ids = [
+            str(snapshot["step"]["step_id"])
+            for snapshot in self._latest_step_snapshots_in_transaction(
+                connection,
+                run_id=run_id,
+            )
+            if snapshot["step"].get("status") in allowed
+        ]
+        for current_step_id in step_ids:
+            self._append_step_transition_in_transaction(
+                connection,
+                run_id=run_id,
+                step_id=current_step_id,
+                event=event,
+                status=status,
+                allowed_previous=allowed,
+                attempt_id=attempt_id,
+                reason_code=reason_code,
+                provenance_source="run_terminal_reconciliation",
+            )
+        cancel_unstarted = {
+            "completed": {"pending", "blocked", "interrupted"},
+            "failed": {"pending", "interrupted"},
+        }.get(run_status, set())
+        if not cancel_unstarted:
+            return
+        pending_step_ids = [
+            str(snapshot["step"]["step_id"])
+            for snapshot in self._latest_step_snapshots_in_transaction(
+                connection,
+                run_id=run_id,
+            )
+            if snapshot["step"].get("status") in cancel_unstarted
+        ]
+        for pending_step_id in pending_step_ids:
+            self._append_step_transition_in_transaction(
+                connection,
+                run_id=run_id,
+                step_id=pending_step_id,
+                event="cancelled",
+                status="cancelled",
+                allowed_previous=cancel_unstarted,
+                attempt_id=attempt_id,
+                reason_code=f"{reason_code}:not_executed",
+                provenance_source="run_terminal_reconciliation",
+            )
+
     def _append_event_in_transaction(
         self,
         connection: sqlite3.Connection,
@@ -17269,6 +17780,23 @@ class SQLiteRunJournal:
                 f"run_id {run_id!r} expected version {expected_version}, "
                 f"found {current_version}"
             )
+        if run_status in {"interrupted", "completed", "failed", "cancelled"}:
+            self._append_step_terminals_for_run_transition_in_transaction(
+                connection,
+                run_id=run_id,
+                run_status=run_status,
+                attempt_id=(active_attempt_id or run["active_attempt_id"]),
+                reason_code=str(
+                    draft.payload.get("reason")
+                    or draft.payload.get("reason_code")
+                    or f"run_{run_status}"
+                ),
+            )
+            run = connection.execute(
+                "SELECT * FROM runs WHERE run_id = ?", (run_id,)
+            ).fetchone()
+            assert run is not None
+            current_version = int(run["version"])
         if run_status in {"completed", "failed", "cancelled"}:
             self._cancel_open_human_interactions_in_transaction(
                 connection,
@@ -17726,6 +18254,171 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             safety,
             idempotency_key=tool["idempotency_key"],
         )
+
+    def _repair_restart_interrupted_internal_controls_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        run_id: str | None,
+        timestamp: float,
+        source: str,
+        include_dispatched: bool,
+    ) -> tuple[str, ...]:
+        """Terminalize process-local controls that cannot survive a restart.
+
+        ``INTERNAL_CONTROL`` remains fail-closed while the owning Brain is
+        alive: cancelling an await does not prove that a delegated thread has
+        stopped. Once that process has restarted, however, an in-memory CAMEL
+        sub-agent cannot still be running. Its own nested ToolCalls remain the
+        authoritative ledger for any side effects and retain their independent
+        replay safety. Keeping the parent control as ``outcome_unknown`` would
+        therefore strand an otherwise safely resumable Run forever.
+
+        The ``outcome_unknown`` branch repairs rows written by older startup
+        reconciliation releases, so Resume admission heals existing local
+        journals without manual database edits.
+        """
+
+        rows = connection.execute(
+            """
+            SELECT * FROM tool_calls
+            WHERE safety_class = 'internal_control'
+              AND (? IS NULL OR run_id = ?)
+              AND (
+                    (
+                        status = 'outcome_unknown'
+                        AND timeout_reason = 'brain_restart_after_dispatch'
+                    )
+                    OR (
+                        ? = 1
+                        AND status = 'dispatched'
+                        AND outcome IS NULL
+                    )
+              )
+            ORDER BY created_at, tool_call_id
+            """,
+            (run_id, run_id, int(include_dispatched)),
+        ).fetchall()
+        repaired: list[str] = []
+        for tool in rows:
+            tool_call_id = str(tool["tool_call_id"])
+            tool_run_id = str(tool["run_id"])
+            tool_step_id = self._tool_step_id_in_transaction(
+                connection,
+                run_id=tool_run_id,
+                tool_call_id=tool_call_id,
+            )
+            result = {
+                "error": "In-process delegated work stopped when Eigent restarted",
+                "delegated_work_may_still_be_running": False,
+                "safe_to_resume": True,
+            }
+            updated = connection.execute(
+                """
+                UPDATE tool_calls
+                SET status = 'failed',
+                    outcome = 'interrupted_by_restart',
+                    timeout_reason = COALESCE(
+                        timeout_reason,
+                        'brain_restart_after_dispatch'
+                    ),
+                    result_json = COALESCE(?, result_json),
+                    completed_at = COALESCE(completed_at, ?),
+                    updated_at = ?
+                WHERE tool_call_id = ?
+                  AND safety_class = 'internal_control'
+                  AND (? IS NULL OR run_id = ?)
+                  AND (
+                        (
+                            status = 'outcome_unknown'
+                            AND timeout_reason = 'brain_restart_after_dispatch'
+                        )
+                        OR (
+                            ? = 1
+                            AND status = 'dispatched'
+                            AND outcome IS NULL
+                        )
+                  )
+                """,
+                (
+                    canonical_json(result),
+                    timestamp,
+                    timestamp,
+                    tool_call_id,
+                    run_id,
+                    run_id,
+                    int(include_dispatched),
+                ),
+            )
+            if updated.rowcount != 1:
+                continue
+            payload = {
+                "tool_call_id": tool_call_id,
+                "attempt_id": tool["attempt_id"],
+                "tool_name": tool["tool_name"],
+                "safety_class": tool["safety_class"],
+                "status": "failed",
+                "outcome": "interrupted_by_restart",
+                "timeout_reason": "brain_restart_after_dispatch",
+                "reason": "brain_restart_after_dispatch",
+                "outcome_known": True,
+                "request": json.loads(tool["request_json"] or "{}"),
+                "result": result,
+                "step_id": tool_step_id,
+                "display_title": "Sub-agent stopped when Eigent closed",
+                "display_output": (
+                    "The in-process sub-agent cannot survive a Backend restart. "
+                    "Resume can safely continue unfinished work."
+                ),
+                "display_summary": "Interrupted by restart; safe to resume",
+            }
+            payload.update(
+                semantic_event_fields(
+                    kind="subtask",
+                    subject_type="tool_call",
+                    subject_id=tool_call_id,
+                    phase="failed",
+                    status="failed",
+                    source=source,
+                    actor_type="system",
+                    correlation={
+                        "attempt_id": tool["attempt_id"],
+                        "step_id": tool_step_id,
+                    },
+                )
+            )
+            self._append_event_in_transaction(
+                connection,
+                tool_run_id,
+                RunEventDraft(
+                    event_id=f"recovery:internal-control-interrupted:{tool_call_id}",
+                    event_type="tool.failed",
+                    payload=payload,
+                    created_at=timestamp,
+                ),
+            )
+            if tool_step_id:
+                self._append_step_transition_in_transaction(
+                    connection,
+                    run_id=tool_run_id,
+                    step_id=tool_step_id,
+                    event="cancelled",
+                    status="cancelled",
+                    allowed_previous={
+                        "pending",
+                        "running",
+                        "blocked",
+                        "interrupted",
+                        "outcome_unknown",
+                    },
+                    attempt_id=(
+                        str(tool["attempt_id"]) if tool["attempt_id"] else None
+                    ),
+                    reason_code="brain_restart_after_dispatch",
+                    provenance_source=source,
+                )
+            repaired.append(tool_call_id)
+        return tuple(repaired)
 
     @staticmethod
     def _unsafe_resume_blockers(

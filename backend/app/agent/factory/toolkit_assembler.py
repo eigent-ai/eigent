@@ -72,6 +72,15 @@ _SAFE_READ_TOOLKIT_FUNCTIONS: dict[str, frozenset[str] | None] = {
     "webfetchtoolkit": None,
     "screenshottoolkit": frozenset({"read_image"}),
     "workspacegittoolkit": None,
+    # Exact code-owned discovery functions. Loading skill instructions can
+    # influence a later action, but it does not perform that action; every
+    # subsequent tool call still crosses its own permission checkpoint.
+    "skilltoolkit": frozenset({"list_skills", "load_skill"}),
+    # Only inspection methods are trusted here. File mutation methods remain
+    # conservative and continue through the normal policy decision.
+    "filetoolkit": frozenset(
+        {"read_file", "read_files", "search_files", "glob_files", "grep_files"}
+    ),
     # Both functions stay inside Eigent's task UI. Asking creates a durable
     # HumanInteraction; notifying only publishes Run-local progress. Neither
     # mutates the user workspace nor an external service, so prompting for an
@@ -85,7 +94,7 @@ _SAFE_READ_TOOLKIT_FUNCTIONS: dict[str, frozenset[str] | None] = {
     # interrupt normal planning (and every resumed attempt) without adding a
     # meaningful safety boundary. Third-party tools with the same function
     # name remain conservative because declarations are scoped by toolkit.
-    "todotoolkit": frozenset({"todo_write"}),
+    "todotoolkit": frozenset({"todo_write", "step_update"}),
     # This code-owned operation can only stop a TerminalToolkit session that
     # Eigent previously registered under the supplied logical session id. It
     # cannot target an arbitrary process/PID, and repeating it after a restart
@@ -273,7 +282,19 @@ def _tag_tools(
             if hasattr(tool, "get_function_name")
             else getattr(tool, "__name__", "")
         )
-        if safe_functions is None or function_name in safe_functions:
+        if _normalize_toolkit_name(
+            toolkit_name
+        ) == "agenttoolkit" and function_name in {
+            "agent_run_subagent",
+            "agent_get_task_output",
+            "agent_stop_task",
+        }:
+            # Delegation is a code-owned control-plane operation. It is not a
+            # read and is deliberately not replay-safe, so keep it distinct
+            # from SAFE_READ. Child tool calls still receive independent
+            # checkpoints and DepthLimitedAgentToolkit prevents recursion.
+            declare_tool_safety(tool, ToolSafetyClass.INTERNAL_CONTROL)
+        elif safe_functions is None or function_name in safe_functions:
             declare_tool_safety(tool, ToolSafetyClass.SAFE_READ)
 
 

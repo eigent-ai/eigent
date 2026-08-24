@@ -36,6 +36,7 @@ from app.run_journal import (
 )
 from app.run_journal.cloud_projection import cloud_event_payload
 from app.run_policy import TimeoutOutcome, TimeoutScope, ToolSafetyClass
+from app.run_runtime.step_coordinator import PlanStepInput, RunStepCoordinator
 from app.workspace_config import (
     EnvironmentConfigResolver,
     LocalMaterialization,
@@ -1880,6 +1881,43 @@ async def test_event_recorder_requires_admitted_run_and_records_event(
         "provenance": {"source": "legacy.activate_agent"},
     }
     assert journal.list_pending_outbox(now=10.0)[0].event_id == "event-1"
+
+
+@pytest.mark.asyncio
+async def test_event_recorder_correlates_legacy_facts_to_running_step(journal):
+    journal.ensure_run(run_id="run-1", project_id="project-1")
+    journal.create_run_attempt(
+        "run-1",
+        request_id="initial",
+        reason="initial_execution",
+        activate=True,
+    )
+    coordinator = RunStepCoordinator(journal)
+    coordinator.reconcile_plan(
+        project_id="project-1",
+        run_id="run-1",
+        agent_id="agent-1",
+        items=[
+            PlanStepInput(
+                plan_item_id="pli-1",
+                title="Inspect files",
+                active_form="Inspecting files",
+                status="in_progress",
+                ordinal=1,
+            )
+        ],
+    )
+    step_id = coordinator.current_running_step_id("run-1")
+
+    committed = await EventRecorder(journal).record_legacy_step(
+        project_id="project-1",
+        run_id="run-1",
+        step="write_file",
+        data={"relative_path": "report.md"},
+    )
+
+    assert committed.payload["step_id"] == step_id
+    assert committed.payload["semantic"]["correlation"]["step_id"] == step_id
 
 
 @pytest.mark.asyncio

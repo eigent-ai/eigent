@@ -38,6 +38,8 @@ const DEFAULT_MAX_EVENT_PAGES = 200;
 const DEFAULT_MAX_EVENTS = 2_000;
 const DEFAULT_MAX_BYTES = 8 * 1024 * 1024;
 const DEFAULT_MAX_EVENT_BYTES = 256 * 1024;
+/** Prevent one busy RunJournal list read from pinning Session hydration. */
+const DEFAULT_RUN_LIST_TIMEOUT_MS = 5_000;
 
 type RunEventsResponse = {
   run_id?: unknown;
@@ -72,6 +74,7 @@ export type ProjectEventStoreHydrationOptions = {
   maxEvents?: number;
   maxBytes?: number;
   maxEventBytes?: number;
+  runListTimeoutMs?: number;
 };
 
 export type ProjectEventStoreHydrationResult = {
@@ -121,6 +124,35 @@ function abortError(signal: AbortSignal): Error {
 
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw abortError(signal);
+}
+
+async function fetchProjectRunsWithDeadline(
+  projectId: string,
+  maxRuns: number,
+  timeoutMs: number,
+  signal?: AbortSignal
+): Promise<ProjectRunsResponse> {
+  throwIfAborted(signal);
+  const controller = new AbortController();
+  const abortFromCaller = () => controller.abort(signal?.reason);
+  signal?.addEventListener('abort', abortFromCaller, { once: true });
+  if (signal?.aborted) abortFromCaller();
+  const deadline = setTimeout(
+    () =>
+      controller.abort(
+        new DOMException(
+          'Project Run listing exceeded the hydration deadline',
+          'TimeoutError'
+        )
+      ),
+    timeoutMs
+  );
+  try {
+    return await fetchProjectRuns(projectId, maxRuns, controller.signal);
+  } finally {
+    clearTimeout(deadline);
+    signal?.removeEventListener('abort', abortFromCaller);
+  }
 }
 
 function validTimestamp(value: unknown): boolean {
@@ -435,6 +467,7 @@ async function loadProjectSnapshot(
       | 'maxEvents'
       | 'maxBytes'
       | 'maxEventBytes'
+      | 'runListTimeoutMs'
     >
   > & { signal?: AbortSignal }
 ): Promise<{
@@ -443,9 +476,10 @@ async function loadProjectSnapshot(
   runCount: number;
 }> {
   throwIfAborted(options.signal);
-  const response = await fetchProjectRuns(
+  const response = await fetchProjectRunsWithDeadline(
     projectId,
     options.maxRuns,
+    options.runListTimeoutMs,
     options.signal
   );
   throwIfAborted(options.signal);
@@ -549,6 +583,7 @@ export async function hydrateProjectEventStore({
   maxEvents: maxEventsInput,
   maxBytes: maxBytesInput,
   maxEventBytes: maxEventBytesInput,
+  runListTimeoutMs: runListTimeoutMsInput,
 }: ProjectEventStoreHydrationOptions): Promise<ProjectEventStoreHydrationResult> {
   if (!projectId || store.projectId !== projectId) {
     throw new ProjectEventStoreHydrationError(
@@ -574,6 +609,10 @@ export async function hydrateProjectEventStore({
     boundedInteger(maxEventBytesInput, DEFAULT_MAX_EVENT_BYTES),
     maxBytes
   );
+  const runListTimeoutMs = boundedInteger(
+    runListTimeoutMsInput,
+    DEFAULT_RUN_LIST_TIMEOUT_MS
+  );
 
   const replacement = store.beginSnapshotReplacement();
   if (!replacement) {
@@ -594,6 +633,7 @@ export async function hydrateProjectEventStore({
       maxEvents,
       maxBytes,
       maxEventBytes,
+      runListTimeoutMs,
     });
     throwIfAborted(signal);
     if (!store.commitSnapshotReplacement(replacement, loaded.snapshot)) {

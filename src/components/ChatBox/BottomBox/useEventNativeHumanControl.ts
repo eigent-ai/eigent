@@ -532,18 +532,7 @@ export function useEventNativeHumanControl({
       }
 
       let decisionAccepted = false;
-      try {
-        const decisionRequestId = getStableDecisionRequestId(
-          projectId,
-          interaction,
-          decision
-        );
-        await decideHumanInteraction(decisionPayloadFor(interaction), {
-          decisionRequestId,
-          decision,
-          actorId: actorId === undefined ? authenticatedUserId : actorId,
-        });
-        decisionAccepted = true;
+      const reconcileTerminalDecision = async () => {
         setSubmission({ key: controlKey, phase: 'reconciling', error: null });
         await reconcileHumanInteractionEvents({
           projectId,
@@ -567,10 +556,43 @@ export function useEventNativeHumanControl({
             error
           );
         }
+      };
+      try {
+        const decisionRequestId = getStableDecisionRequestId(
+          projectId,
+          interaction,
+          decision
+        );
+        await decideHumanInteraction(decisionPayloadFor(interaction), {
+          decisionRequestId,
+          decision,
+          actorId: actorId === undefined ? authenticatedUserId : actorId,
+        });
+        decisionAccepted = true;
+        await reconcileTerminalDecision();
         // Remain disabled until the durable event is reduced and this pending
         // interaction disappears. There is no optimistic local resolution.
       } catch (error) {
-        console.error('[EventNativeHumanControl] decision failed', error);
+        let failure = error;
+        const status =
+          error && typeof error === 'object'
+            ? ((error as { status?: unknown; response?: { status?: unknown } })
+                .status ??
+              (error as { response?: { status?: unknown } }).response?.status)
+            : null;
+        if (!decisionAccepted && status === 409) {
+          // A stale UI may submit after recovery or another client already
+          // resolved the interaction. A conflict is not automatically a
+          // failure: replay the authoritative terminal event first. If no
+          // such event exists, reconciliation fails closed below.
+          try {
+            await reconcileTerminalDecision();
+            return;
+          } catch (reconciliationError) {
+            failure = reconciliationError;
+          }
+        }
+        console.error('[EventNativeHumanControl] decision failed', failure);
         try {
           onSubmissionFailure?.(interaction);
         } catch (bridgeError) {

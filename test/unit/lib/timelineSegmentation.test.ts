@@ -119,6 +119,35 @@ function notice(content: string, toolCallId?: string): ChatProjectionNode {
   };
 }
 
+function step(
+  stepId: string,
+  status: Extract<ChatProjectionNode, { kind: 'step' }>['status'],
+  overrides: Partial<Extract<ChatProjectionNode, { kind: 'step' }>> = {}
+): ChatProjectionNode {
+  sequence += 1;
+  const id = `step-${sequence}`;
+  return {
+    ...base,
+    kind: 'step',
+    id,
+    eventId: id,
+    eventType: `step.${status === 'running' ? 'started' : status}`,
+    runSequence: sequence,
+    createdAt: `2026-08-19T00:00:${String(sequence).padStart(2, '0')}Z`,
+    stepId,
+    title: 'Inspect the workspace',
+    status,
+    phase:
+      status === 'pending'
+        ? 'requested'
+        : status === 'running'
+          ? 'started'
+          : status,
+    source: 'authored',
+    ...overrides,
+  } as ChatProjectionNode;
+}
+
 function segmentsOf(nodes: ChatProjectionNode[]) {
   const [run] = composeTimelineRuns(nodes);
   return segmentTimelineRows(run!.traceRows);
@@ -196,6 +225,7 @@ describe('timeline segmentation', () => {
     const nodes = [
       tool('Terminal Toolkit', 'cleanup'),
       tool('Screenshot Toolkit', 'register_agent'),
+      tool('Database Toolkit', 'database_cleanup'),
       tool('Terminal Toolkit', 'cleanup', { status: 'failed' }),
       tool('File Toolkit', 'read_file'),
     ];
@@ -204,12 +234,13 @@ describe('timeline segmentation', () => {
       item.kind === 'segment' ? item.calls : []
     );
 
-    expect(run!.traceRows.filter((row) => row.kind === 'tool')).toHaveLength(4);
+    expect(run!.traceRows.filter((row) => row.kind === 'tool')).toHaveLength(5);
     expect(narrativeCalls.map((call) => call.methodName)).toEqual([
+      'database_cleanup',
       'cleanup',
       'read_file',
     ]);
-    expect(narrativeCalls[0]?.status).toBe('failed');
+    expect(narrativeCalls[1]?.status).toBe('failed');
   });
 
   it('uses call identity to show one user notice in Narrative', () => {
@@ -231,11 +262,124 @@ describe('timeline segmentation', () => {
     });
   });
 
+  it('keeps a failed correlated tool visible beside its user notice', () => {
+    const correlatedTool = tool('Human Toolkit', 'send_message_to_user', {
+      toolCallId: 'failed-notice-call',
+      status: 'failed',
+    });
+    const [run] = composeTimelineRuns([
+      correlatedTool,
+      notice('The report could not be delivered.', 'failed-notice-call'),
+    ]);
+    const items = segmentTimelineRun(run!);
+    const calls = items.flatMap((item) =>
+      item.kind === 'segment' ? item.calls : []
+    );
+
+    expect(items.some((item) => item.kind === 'notice')).toBe(true);
+    expect(calls).toEqual([
+      expect.objectContaining({
+        methodName: 'send_message_to_user',
+        status: 'failed',
+      }),
+    ]);
+  });
+
   it('keeps every derived segment marked as derived until steps are authored', () => {
     const segments = onlySegments([tool('File Toolkit', 'read_file')]);
     expect(segments.every((segment) => segment.source === 'derived')).toBe(
       true
     );
+  });
+
+  it('uses authored Step boundaries and explicit tool correlation', () => {
+    const items = narrativeItemsOf([
+      step('stp-1', 'pending'),
+      step('stp-1', 'running', { summary: 'Reading source and tests.' }),
+      tool('File Toolkit', 'read_file', { stepId: 'stp-1' }),
+      tool('File Toolkit', 'read_file', { stepId: 'stp-1' }),
+      step('stp-1', 'completed', {
+        summary: 'Found the projection boundary.',
+      }),
+    ]);
+    const segments = items.filter(
+      (item): item is TimelineSegment => item.kind === 'segment'
+    );
+
+    expect(segments).toHaveLength(1);
+    expect(segments[0]).toMatchObject({
+      source: 'authored',
+      stepId: 'stp-1',
+      status: 'completed',
+      boundaryReason: 'authored_step',
+      narration: 'Inspect the workspace\n\nFound the projection boundary.',
+      label: 'Read · 2 actions',
+    });
+    expect(segments[0]!.calls).toHaveLength(2);
+  });
+
+  it('keeps unscoped activity visible beside authored Steps', () => {
+    const items = narrativeItemsOf([
+      tool('Search Toolkit', 'web_search'),
+      step('stp-1', 'running'),
+      tool('File Toolkit', 'read_file', { stepId: 'stp-1' }),
+      tool('Terminal Toolkit', 'shell_exec'),
+    ]);
+    const segments = items.filter(
+      (item): item is TimelineSegment => item.kind === 'segment'
+    );
+
+    expect(segments.map((segment) => segment.source)).toEqual([
+      'derived',
+      'authored',
+      'derived',
+    ]);
+  });
+
+  it('preserves authored parent-child Step hierarchy for sub-agents', () => {
+    const items = narrativeItemsOf([
+      step('stp-parent', 'running'),
+      step('stp-child', 'running', {
+        title: 'Review visual references',
+        parentStepId: 'stp-parent',
+        agentName: 'Research sub-agent',
+      }),
+      tool('Search Toolkit', 'web_search', { stepId: 'stp-child' }),
+      step('stp-child', 'completed', {
+        title: 'Review visual references',
+        parentStepId: 'stp-parent',
+        summary: 'Selected three authoritative references.',
+      }),
+    ]);
+    const segments = items.filter(
+      (item): item is TimelineSegment => item.kind === 'segment'
+    );
+
+    expect(segments).toHaveLength(2);
+    expect(segments[1]).toMatchObject({
+      stepId: 'stp-child',
+      parentStepId: 'stp-parent',
+      status: 'completed',
+    });
+  });
+
+  it('keeps a Step-correlated human interaction as a standalone interrupt', () => {
+    const items = narrativeItemsOf([
+      step('stp-1', 'running'),
+      interaction('approval', {
+        status: 'requested',
+        stepId: 'stp-1',
+      }),
+      step('stp-1', 'blocked'),
+    ]);
+
+    expect(items.filter((item) => item.kind === 'segment')).toHaveLength(1);
+    expect(items.filter((item) => item.kind === 'interrupt')).toEqual([
+      expect.objectContaining({
+        kind: 'interrupt',
+        call: expect.objectContaining({ stepId: 'stp-1' }),
+      }),
+    ]);
   });
 
   it('starts a new segment when the toolkit changes', () => {

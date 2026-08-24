@@ -50,6 +50,7 @@ export interface TimelineCall {
   agentId?: string;
   agentName?: string;
   taskId?: string;
+  stepId?: string;
   /** Present only for toolkit calls; human calls have no backend call id. */
   toolCallId?: string;
   /** Toolkit/method identity, used for segmentation and label derivation. */
@@ -152,6 +153,7 @@ function toolCall(invocation: TimelineToolInvocation): TimelineCall {
     agentId: invocation.agentId,
     agentName: invocation.agentName,
     taskId: invocation.taskId,
+    stepId: invocation.stepId,
     toolCallId: invocation.toolCallId,
     toolkitName: invocation.toolkitName,
     methodName: invocation.methodName || invocation.toolName,
@@ -177,6 +179,7 @@ function humanCall(id: string, node: ChatInteractionNode): TimelineCall {
       ? 'Waiting for your response.'
       : 'No response was recorded for this request.',
     agentName: node.agentName,
+    stepId: node.stepId,
     interactionId: node.interactionId,
     interactionFamily: family,
   };
@@ -203,6 +206,7 @@ function activityCall(id: string, node: ChatActivityNode): TimelineCall {
     agentId: node.agentId,
     agentName: node.agentName,
     taskId: node.taskId,
+    stepId: node.stepId,
     toolCallId: node.toolCallId,
     toolkitName: node.toolkitName,
     methodName: node.methodName || node.toolName,

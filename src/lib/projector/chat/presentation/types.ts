@@ -73,6 +73,7 @@ export interface TimelineToolInvocation {
   agentId?: string;
   agentName?: string;
   taskId?: string;
+  stepId?: string;
   toolkitName?: string;
   methodName?: string;
   toolName?: string;

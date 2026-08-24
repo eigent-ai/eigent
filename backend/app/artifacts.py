@@ -429,10 +429,27 @@ def record_artifact_manifest(
 ) -> CommittedRunEvent:
     """Commit Artifact lifecycle events followed by one manifest barrier."""
 
-    projected = [
-        _artifact_projection(run_id=run_id, artifact=item)
-        for item in artifacts
-    ]
+    step_by_path: dict[str, str] = {}
+    for event in journal.list_events(run_id):
+        relative_path = str(
+            event.payload.get("relative_path")
+            or event.payload.get("relativePath")
+            or ""
+        ).strip()
+        step_id = str(event.payload.get("step_id") or "").strip()
+        if relative_path and step_id:
+            step_by_path[relative_path.replace("\\", "/")] = step_id
+    projected: list[dict[str, Any]] = []
+    for item in artifacts:
+        relative_path = str(
+            item.get("relativePath") or item.get("relative_path") or ""
+        ).replace("\\", "/")
+        attributed = dict(item)
+        if relative_path in step_by_path:
+            attributed["step_id"] = step_by_path[relative_path]
+        projected.append(
+            _artifact_projection(run_id=run_id, artifact=attributed)
+        )
     drafts: list[RunEventDraft] = []
     for artifact in projected:
         event_type = (
@@ -460,6 +477,7 @@ def record_artifact_manifest(
                 correlation={
                     "run_id": run_id,
                     "task_id": artifact.get("taskId"),
+                    "step_id": artifact.get("step_id"),
                 },
             ),
             **artifact,

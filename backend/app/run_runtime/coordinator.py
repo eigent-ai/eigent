@@ -728,7 +728,7 @@ class RunCoordinator:
                 extra={
                     "run_id": handle.run_id,
                     "reason": exc.reason,
-                    "message": str(exc),
+                    "interruption_message": str(exc),
                 },
             )
         except Exception as exc:

@@ -47,6 +47,7 @@ from app.run_runtime.active_timeout import (
     ActiveExecutionTimeout,
     refresh_active_execution_timeout,
 )
+from app.run_runtime.step_coordinator import step_scope
 from app.run_runtime.timeout_config import (
     normalize_optional_timeout_seconds,
     optional_timeout_seconds_from_env,
@@ -1102,6 +1103,7 @@ class ListenChatAgent(ChatAgent):
             with (
                 set_process_task(self.process_task_id),
                 tool_checkpoint_scope(checkpoint),
+                step_scope(checkpoint.step_id),
             ):
                 raw_result = tool(**args)
             reported_error = _reported_tool_error(raw_result)
@@ -1338,6 +1340,7 @@ class ListenChatAgent(ChatAgent):
             with (
                 set_process_task(self.process_task_id),
                 tool_checkpoint_scope(checkpoint),
+                step_scope(checkpoint.step_id),
             ):
                 # Try different invocation paths in order of preference
                 if hasattr(tool, "func") and hasattr(tool.func, "async_call"):
@@ -1346,14 +1349,14 @@ class ListenChatAgent(ChatAgent):
 
                 elif hasattr(tool, "async_call") and callable(tool.async_call):
                     # Case: tool itself has async_call
-                    # Check if this is a sync tool to avoid run_in_executor
-                    # (which breaks ContextVar)
+                    # Sync tool execution must not block the owner event loop.
+                    # asyncio.to_thread copies the current Context, preserving
+                    # the Run/tool checkpoints needed by child-agent tool
+                    # callbacks while the queue consumer stays responsive.
                     if hasattr(tool, "is_async") and not tool.is_async:
-                        # Sync tool: call directly to preserve ContextVar
-                        # in same thread
-                        result = tool(**args)
+                        result = await asyncio.to_thread(tool, **args)
                         # Handle case where sync call returns a coroutine
-                        if asyncio.iscoroutine(result):
+                        if inspect.isawaitable(result):
                             result = await result
                     else:
                         # Async tool: use async_call
@@ -1370,11 +1373,12 @@ class ListenChatAgent(ChatAgent):
                     result = await tool(**args)
 
                 else:
-                    # Fallback: sync call - call directly in current context
-                    # DO NOT use run_in_executor to preserve ContextVar
-                    result = tool(**args)
+                    # Fallback sync call. to_thread propagates ContextVars and
+                    # prevents a blocking AgentToolkit wait from starving
+                    # approvals, timeline events, and child progress updates.
+                    result = await asyncio.to_thread(tool, **args)
                     # Handle case where synchronous call returns a coroutine
-                    if asyncio.iscoroutine(result):
+                    if inspect.isawaitable(result):
                         result = await result
 
         except asyncio.CancelledError as error:

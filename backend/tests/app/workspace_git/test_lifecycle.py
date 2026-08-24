@@ -391,6 +391,79 @@ def test_terminal_unmaterialized_run_creates_no_archive_ref(tmp_path, journal):
     assert result.archive_ref is None
 
 
+def test_finalized_direct_run_replays_its_persisted_commit_after_head_moves(
+    tmp_path,
+    journal,
+):
+    hooks = tmp_path / "empty-hooks"
+    hooks.mkdir()
+    git = GitBackend(hooks_path=hooks)
+    state_root = tmp_path / "state"
+    content = ContentRepositoryService(
+        journal,
+        state_root=state_root,
+        git_backend=git,
+    )
+    coordinator = WorkspaceGitCoordinator(
+        journal,
+        state_root=state_root,
+        git_backend=git,
+    )
+    lifecycle = WorkspaceGitLifecycle(
+        journal,
+        state_root=state_root,
+        coordinator=coordinator,
+    )
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    target = space / "result.txt"
+    target.write_text("seed\n", encoding="utf-8")
+    git.commit_paths(space, (target,), message="seed")
+    journal.ensure_run(run_id="run-1", project_id="project-1")
+    admission = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-1",
+        run_id="run-1",
+        task_id="run-1",
+        session_mode="single-agent",
+    )
+    assert admission is not None
+    target.write_text("run one\n", encoding="utf-8")
+    first_terminal_head = git.commit_paths(
+        space,
+        (target,),
+        message="run one",
+    )
+    journal.append_event(
+        "run-1",
+        RunEventDraft(
+            event_id="run-1-completed",
+            event_type="run.completed",
+            payload={},
+        ),
+    )
+
+    first = lifecycle.finalize_run("run-1")
+    target.write_text("later work\n", encoding="utf-8")
+    later_head = git.commit_paths(space, (target,), message="later work")
+    replay = lifecycle.finalize_run("run-1")
+
+    assert later_head != first_terminal_head
+    assert first.promoted_commit == first_terminal_head
+    assert replay == first
+    assert replay.promoted_commit != later_head
+    writer = journal.get_workspace_writer_request("workspace-writer:run-1")
+    assert writer is not None and writer.status == "released"
+    assert [event.event_type for event in journal.list_events("run-1")].count(
+        "workspace.writer.released"
+    ) == 1
+
+
 def test_noop_agent_archive_recovers_after_git_before_sqlite_crash(
     tmp_path,
     journal,

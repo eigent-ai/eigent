@@ -16,6 +16,7 @@ import type {
   ChatActivityStatus,
   ChatNoticeNode,
   ChatPlanNode,
+  ChatStepNode,
 } from '../types';
 
 import { toTimelineCall, type TimelineCall } from './timelineCalls';
@@ -37,6 +38,7 @@ export type SegmentBoundaryReason =
   | 'agent_change'
   | 'task_change'
   | 'toolkit_change'
+  | 'authored_step'
   | 'interrupt';
 
 /**
@@ -59,6 +61,8 @@ export interface TimelineSegment {
   agentId?: string;
   agentName?: string;
   taskId?: string;
+  stepId?: string;
+  parentStepId?: string;
   boundaryReason: SegmentBoundaryReason;
 }
 
@@ -113,16 +117,9 @@ function isSuccessfulLifecycleNoise(row: TimelineTraceRow): boolean {
   if (row.kind !== 'tool' || row.invocation.status !== 'completed') {
     return false;
   }
-  const identities = [
-    row.invocation.methodName,
-    row.invocation.toolName,
-    row.invocation.title,
-  ].map(normalizedOperation);
-  return identities.some((identity) =>
-    [...NARRATIVE_LIFECYCLE_NOISE].some(
-      (operation) => identity === operation || identity.endsWith(operation)
-    )
-  );
+  return [row.invocation.methodName, row.invocation.toolName]
+    .map(normalizedOperation)
+    .some((identity) => NARRATIVE_LIFECYCLE_NOISE.has(identity));
 }
 
 /**
@@ -361,9 +358,113 @@ export function segmentTimelineRows(
   return items;
 }
 
+function authoredStepStatusLabel(step: ChatStepNode): string {
+  return {
+    pending: 'Planned',
+    running: 'In progress',
+    blocked: 'Blocked',
+    completed: 'Completed',
+    failed: 'Failed',
+    cancelled: 'Cancelled',
+    interrupted: 'Interrupted',
+  }[step.status];
+}
+
+/**
+ * Prefer code-owned Step boundaries whenever a Run contains Step facts.
+ * Explicitly-correlated calls are folded under their Step; everything else
+ * remains visible through the existing derived fallback and is never grouped
+ * by time or DOM adjacency.
+ */
+function segmentAuthoredTimelineRows(
+  traceRows: readonly TimelineTraceRow[]
+): TimelineNarrativeItem[] {
+  const stepEvents = traceRows.flatMap((row) =>
+    row.kind === 'node' && row.node.kind === 'step' ? [row.node] : []
+  );
+  if (stepEvents.length === 0) return segmentTimelineRows(traceRows);
+
+  const latestByStep = new Map<string, ChatStepNode>();
+  const firstSequenceByStep = new Map<string, number>();
+  for (const step of stepEvents) {
+    latestByStep.set(step.stepId, step);
+    if (!firstSequenceByStep.has(step.stepId)) {
+      firstSequenceByStep.set(step.stepId, step.runSequence);
+    }
+  }
+  const callsByStep = new Map<string, TimelineCall[]>();
+  for (const row of traceRows) {
+    const call = toTimelineCall(row);
+    if (
+      !call?.stepId ||
+      call.executor === 'human' ||
+      !latestByStep.has(call.stepId)
+    ) {
+      continue;
+    }
+    const calls = callsByStep.get(call.stepId);
+    if (calls) calls.push(call);
+    else callsByStep.set(call.stepId, [call]);
+  }
+  const segmentFor = (stepId: string): TimelineSegment => {
+    const step = latestByStep.get(stepId)!;
+    const calls = callsByStep.get(stepId) || [];
+    const summary = step.summary?.trim();
+    return {
+      kind: 'segment',
+      id: `timeline-step:${step.stepId}`,
+      runId: step.runId,
+      source: 'authored',
+      narration: summary ? `${step.title}\n\n${summary}` : step.title,
+      narrationNodeIds: stepEvents
+        .filter((event) => event.stepId === stepId)
+        .map((event) => event.id),
+      label: deriveSegmentLabel(calls) || authoredStepStatusLabel(step),
+      calls,
+      status: step.status,
+      agentId: step.agentId,
+      agentName: step.agentName,
+      stepId,
+      parentStepId: step.parentStepId,
+      boundaryReason: 'authored_step',
+    };
+  };
+
+  const items: TimelineNarrativeItem[] = [];
+  const emitted = new Set<string>();
+  let unscoped: TimelineTraceRow[] = [];
+  const flushUnscoped = () => {
+    if (unscoped.length) items.push(...segmentTimelineRows(unscoped));
+    unscoped = [];
+  };
+  for (const row of traceRows) {
+    if (row.kind === 'node' && row.node.kind === 'step') {
+      const firstSequence = firstSequenceByStep.get(row.node.stepId);
+      if (!emitted.has(row.node.stepId) && row.runSequence === firstSequence) {
+        flushUnscoped();
+        items.push(segmentFor(row.node.stepId));
+        emitted.add(row.node.stepId);
+      }
+      continue;
+    }
+    const call = toTimelineCall(row);
+    if (
+      call?.stepId &&
+      call.executor !== 'human' &&
+      latestByStep.has(call.stepId)
+    ) {
+      continue;
+    }
+    unscoped.push(row);
+  }
+  flushUnscoped();
+  return items;
+}
+
 /** Convenience wrapper for one composed Run view. */
 export function segmentTimelineRun(
-  run: TimelineRunView
+  run: TimelineRunView,
+  preservePlanEventId?: string
 ): TimelineNarrativeItem[] {
   const noticeToolCallIds = new Set(
     run.traceRows.flatMap((row) =>
@@ -381,7 +482,8 @@ export function segmentTimelineRun(
       // both produces a duplicate "Updated plan" action for every change.
       if (
         row.invocation.toolCallId &&
-        noticeToolCallIds.has(row.invocation.toolCallId)
+        noticeToolCallIds.has(row.invocation.toolCallId) &&
+        !FAILED_STATUSES.has(row.invocation.status)
       ) {
         return false;
       }
@@ -393,10 +495,12 @@ export function segmentTimelineRun(
     // The Progress surface owns the live plan. Keeping the complete plan in
     // narrative Chat makes every later message carry a large, stale-looking
     // block; the detailed trajectory still retains every plan snapshot.
-    if (row.node.kind === 'plan') return false;
+    if (row.node.kind === 'plan') {
+      return row.node.eventId === preservePlanEventId;
+    }
     return true;
   });
-  return segmentTimelineRows(narrativeRows);
+  return segmentAuthoredTimelineRows(narrativeRows);
 }
 
 /**

@@ -445,6 +445,7 @@ async def decide_run_interaction(
     body: InteractionDecisionBody,
 ):
     journal = get_default_run_journal()
+    decision_applied = False
     try:
         interaction = await asyncio.to_thread(
             journal.get_human_interaction, interaction_id
@@ -458,7 +459,14 @@ async def decide_run_interaction(
                 f"interaction {interaction_id!r} does not belong to run "
                 f"{run_id!r}"
             )
-        if interaction.interaction_type == "approval":
+        if interaction.status not in {"requested", "presented"}:
+            # Decision delivery is an idempotent convergence endpoint. A
+            # restart, another client, or a lost response may leave a stale UI
+            # holding a terminal interaction. Return its canonical state so
+            # the client can replay the durable terminal event; never inject
+            # the stale decision into a newly resumed live waiter.
+            result = interaction
+        elif interaction.interaction_type == "approval":
             if not body.action_digest:
                 raise ValueError(
                     "action_digest is required for approval decisions"
@@ -542,6 +550,7 @@ async def decide_run_interaction(
                 journal.get_human_interaction, interaction_id
             )
             assert result is not None
+            decision_applied = True
         else:
             result = await asyncio.to_thread(
                 journal.resolve_human_interaction,
@@ -555,6 +564,7 @@ async def decide_run_interaction(
                 source=body.source,
                 continue_active_attempt=body.continue_active_attempt,
             )
+            decision_applied = True
             if interaction.interaction_type == "merge_conflict":
                 from app.workspace_git import (
                     get_default_workforce_git_service,
@@ -568,7 +578,12 @@ async def decide_run_interaction(
         raise _control_error(exc) from exc
     run = await asyncio.to_thread(journal.get_run, run_id)
     agent = interaction.request.get("agent")
-    if run is not None and isinstance(agent, str) and agent:
+    if (
+        decision_applied
+        and run is not None
+        and isinstance(agent, str)
+        and agent
+    ):
         from app.service.task import get_task_lock_if_exists
 
         task_lock = get_task_lock_if_exists(run.project_id)

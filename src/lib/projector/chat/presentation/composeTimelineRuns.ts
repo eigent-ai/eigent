@@ -326,6 +326,7 @@ function composeToolInvocation(
     agentId: firstText(semanticNodes.map((node) => node.agentId)),
     agentName: firstText(semanticNodes.map((node) => node.agentName)),
     taskId: firstText(semanticNodes.map((node) => node.taskId)),
+    stepId: firstText(semanticNodes.map((node) => node.stepId)),
     toolkitName: firstText(semanticNodes.map((node) => node.toolkitName)),
     methodName: firstText(semanticNodes.map((node) => node.methodName)),
     toolName: firstText(semanticNodes.map((node) => node.toolName)),

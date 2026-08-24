@@ -605,9 +605,7 @@ describe('EventNativeProjectTimeline', () => {
       />
     );
     expect(container.querySelector('[data-interactive-plan-card]')).toBeNull();
-    expect(
-      container.querySelector('[data-narrative-plan-id]')
-    ).toBeInTheDocument();
+    expect(container.querySelector('[data-narrative-plan-id]')).toBeNull();
   });
 
   it('renders semantic event nodes through the event timeline', () => {

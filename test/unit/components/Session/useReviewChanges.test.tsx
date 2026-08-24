@@ -453,6 +453,47 @@ describe('useReviewChanges', () => {
     expect(result.current.error).toBeNull();
   });
 
+  it('does not fall back when a pinned Run revision becomes unavailable', async () => {
+    mockFetchRunGitChanges.mockResolvedValue({
+      available: false,
+      reason: 'run_git_not_materialized',
+      run_id: 'run-1',
+      project_id: 'project-1',
+    });
+
+    const { result } = renderHook(() =>
+      useReviewChanges(
+        { scope: 'run', runId: 'run-1', focusRequestId: 0 },
+        { baseCommit: 'a'.repeat(40), targetCommit: 'b'.repeat(40) }
+      )
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.stale).toBe(true);
+    expect(result.current.files).toEqual([]);
+    expect(mockFetchOverlays).not.toHaveBeenCalled();
+    expect(mockReviewListBackups).not.toHaveBeenCalled();
+  });
+
+  it('does not fall back when a pinned Run Git range returns 404', async () => {
+    mockFetchRunGitChanges.mockRejectedValue(
+      Object.assign(new Error('Run Git state not found'), { status: 404 })
+    );
+
+    const { result } = renderHook(() =>
+      useReviewChanges(
+        { scope: 'run', runId: 'run-1', focusRequestId: 0 },
+        { baseCommit: 'a'.repeat(40), targetCommit: 'b'.repeat(40) }
+      )
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.stale).toBe(true);
+    expect(result.current.files).toEqual([]);
+    expect(mockFetchOverlays).not.toHaveBeenCalled();
+    expect(mockReviewListBackups).not.toHaveBeenCalled();
+  });
+
   it('uses authoritative overlays and removes applied entries on refresh', async () => {
     mockFetchOverlays
       .mockResolvedValueOnce({

@@ -627,6 +627,7 @@ def literal_resource_pattern(value: str) -> str:
 
 ACTION_OPERATIONS = frozenset(
     {
+        "agent.control",
         "filesystem.read",
         "filesystem.write",
         "filesystem.delete",

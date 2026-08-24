@@ -502,6 +502,11 @@ interface PageTabState {
     projectId: string,
     handoffIds: readonly string[]
   ) => void;
+  /** Drop edited-away handoffs without marking their review comments sent. */
+  discardWorkspaceReviewHandoffs: (
+    projectId: string,
+    handoffIds: readonly string[]
+  ) => void;
   /** Incremented to open the add-trigger dialog from the sidebar (Home owns dialog state). */
   triggerAddDialogRequestId: number;
   requestOpenTriggerAddDialog: () => void;
@@ -868,6 +873,19 @@ export const usePageTabStore = create<PageTabState>()(
               : {}),
           };
         });
+      },
+      discardWorkspaceReviewHandoffs: (projectId, handoffIds) => {
+        const discarded = new Set(
+          handoffIds.map((handoffId) => handoffId.trim()).filter(Boolean)
+        );
+        if (!projectId || discarded.size === 0) return;
+        set((state) => ({
+          workspaceReviewHandoffs: state.workspaceReviewHandoffs.filter(
+            (handoff) =>
+              handoff.projectId !== projectId ||
+              !discarded.has(handoff.handoffId)
+          ),
+        }));
       },
       triggerAddDialogRequestId: 0,
       requestOpenTriggerAddDialog: () =>

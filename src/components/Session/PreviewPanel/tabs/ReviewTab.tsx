@@ -70,6 +70,18 @@ function normalizedReviewPath(path: string): string {
   return path.trim().replace(/\\/g, '/').replace(/^\.\//, '');
 }
 
+function sameReviewIdentity(
+  left: SessionReviewComment['reviewIdentity'],
+  right: SessionReviewComment['reviewIdentity']
+): boolean {
+  return Boolean(
+    left &&
+    right &&
+    left.baseCommit === right.baseCommit &&
+    left.targetCommit === right.targetCommit
+  );
+}
+
 function reviewLocation(comment: SessionReviewComment): string {
   const target = comment.selection;
   if (!target) return comment.path;
@@ -206,6 +218,18 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
   const pendingComments = useMemo(
     () => comments.filter((comment) => comment.status !== 'sent'),
     [comments]
+  );
+  const activeReviewIdentity =
+    tab.reviewIdentity ?? reviewIdentity ?? undefined;
+  const commentsNeedingRebase = useMemo(
+    () =>
+      activeReviewIdentity
+        ? pendingComments.filter(
+            (comment) =>
+              !sameReviewIdentity(comment.reviewIdentity, activeReviewIdentity)
+          )
+        : [],
+    [activeReviewIdentity, pendingComments]
   );
   const selectedFilePendingCount = useMemo(
     () =>
@@ -405,14 +429,44 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
   }, [comments]);
 
   const addCommentsToChat = useCallback(() => {
-    if (pendingComments.length === 0 || stale) return;
+    if (
+      pendingComments.length === 0 ||
+      commentsNeedingRebase.length > 0 ||
+      stale
+    )
+      return;
     requestWorkspaceChatDraft(buildReviewFeedbackPrompt(pendingComments), {
       reviewTabId: tab.id,
       commentIds: pendingComments.map((comment) => comment.id),
     });
     setCommentsAddedToChat(true);
     window.setTimeout(() => setCommentsAddedToChat(false), 1800);
-  }, [pendingComments, requestWorkspaceChatDraft, stale, tab.id]);
+  }, [
+    commentsNeedingRebase.length,
+    pendingComments,
+    requestWorkspaceChatDraft,
+    stale,
+    tab.id,
+  ]);
+
+  const rebasePendingComments = useCallback(() => {
+    if (!activeReviewIdentity || commentsNeedingRebase.length === 0) return;
+    const rebasedIds = new Set(
+      commentsNeedingRebase.map((comment) => comment.id)
+    );
+    persistReviewComments(
+      comments.map((comment) =>
+        rebasedIds.has(comment.id)
+          ? { ...comment, reviewIdentity: activeReviewIdentity }
+          : comment
+      )
+    );
+  }, [
+    activeReviewIdentity,
+    comments,
+    commentsNeedingRebase,
+    persistReviewComments,
+  ]);
 
   const treeToggleLabel = treeHidden
     ? t('layout.review-show-tree', { defaultValue: 'Show file tree' })
@@ -676,7 +730,26 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
             </Button>
           </TooltipSimple>
         ) : null}
-        {pendingComments.length > 0 ? (
+        {commentsNeedingRebase.length > 0 ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={rebasePendingComments}
+            aria-label={t('layout.review-rebase-comments', {
+              defaultValue: 'Rebase {{count}} comments onto this revision',
+              count: commentsNeedingRebase.length,
+            })}
+          >
+            <RefreshCw aria-hidden />
+            <span className="hidden xl:inline">
+              {t('layout.review-rebase-comments-short', {
+                defaultValue: 'Rebase comments',
+              })}
+            </span>
+            <span className="xl:hidden">{commentsNeedingRebase.length}</span>
+          </Button>
+        ) : pendingComments.length > 0 ? (
           <Button
             type="button"
             variant="outline"

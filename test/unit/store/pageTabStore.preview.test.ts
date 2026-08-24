@@ -307,6 +307,44 @@ describe('pageTabStore session preview', () => {
     expect(usePageTabStore.getState().workspaceReviewHandoffs).toEqual([]);
   });
 
+  it('discards an edited-away review handoff without marking comments sent', () => {
+    const store = usePageTabStore.getState();
+    store.openReviewPreview();
+    const review = slice().tabs.find((tab) => tab.type === 'review');
+    expect(review).toBeDefined();
+    store.updateReviewComments(review!.id, [
+      {
+        id: 'comment-1',
+        fileId: 'src/app.ts',
+        path: 'src/app.ts',
+        selection: null,
+        body: 'Keep this compatible.',
+        createdAt: 1,
+      },
+    ]);
+    store.requestWorkspaceChatDraft('Review feedback', {
+      reviewTabId: review!.id,
+      commentIds: ['comment-1'],
+    });
+    const handoffId =
+      usePageTabStore.getState().workspaceReviewHandoffs[0].handoffId;
+
+    usePageTabStore
+      .getState()
+      .discardWorkspaceReviewHandoffs('project-a', [handoffId]);
+
+    expect(usePageTabStore.getState().workspaceReviewHandoffs).toEqual([]);
+    const pendingReview = slice().tabs.find((tab) => tab.id === review!.id);
+    expect(pendingReview).toMatchObject({
+      reviewComments: [expect.objectContaining({ id: 'comment-1' })],
+    });
+    expect(
+      pendingReview?.type === 'review'
+        ? pendingReview.reviewComments?.[0].status
+        : 'wrong-tab-type'
+    ).toBeUndefined();
+  });
+
   it('reuses the empty file tab and deduplicates files by path', () => {
     const store = usePageTabStore.getState();
     store.toggleSessionPreview();

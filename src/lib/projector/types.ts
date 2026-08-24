@@ -80,10 +80,45 @@ export interface CanonicalSemanticEnvelopeV1 {
   provenance?: { source?: string };
 }
 
+export type CanonicalSemanticStatusV2 =
+  CanonicalSemanticStatus | 'blocked' | 'interrupted';
+
+export type CanonicalSemanticPhaseV2 =
+  CanonicalSemanticPhase | 'blocked' | 'resumed' | 'interrupted';
+
+export type CanonicalSemanticKindV2 = CanonicalSemanticKind | 'step';
+export type CanonicalSemanticSubjectTypeV2 =
+  CanonicalSemanticSubjectType | 'step';
+
+export interface CanonicalSemanticEnvelopeV2 {
+  kind: CanonicalSemanticKindV2;
+  subject: { type: CanonicalSemanticSubjectTypeV2; id: string };
+  actor?: { type?: CanonicalSemanticActorType; id?: string; name?: string };
+  lifecycle: {
+    phase: CanonicalSemanticPhaseV2;
+    status: CanonicalSemanticStatusV2;
+  };
+  correlation?: Record<string, string>;
+  completeness: {
+    state: 'complete' | 'partial';
+    missing_fields: string[];
+  };
+  provenance?: { source?: string };
+}
+
+export type CanonicalSemanticEnvelope =
+  CanonicalSemanticEnvelopeV1 | CanonicalSemanticEnvelopeV2;
+
 export type CanonicalSemanticPayloadV1 = Record<string, unknown> & {
   semantic_schema_version: 1;
   display_schema_version: 1;
   semantic: CanonicalSemanticEnvelopeV1;
+};
+
+export type CanonicalSemanticPayloadV2 = Record<string, unknown> & {
+  semantic_schema_version: 2;
+  display_schema_version: 1;
+  semantic: CanonicalSemanticEnvelopeV2;
 };
 
 export type CanonicalProjectEvent = {

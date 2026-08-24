@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 """Typed timeout and external-side-effect recovery policies."""
 
 from __future__ import annotations
@@ -20,6 +34,7 @@ class TimeoutScope(StrEnum):
 
 class ToolSafetyClass(StrEnum):
     SAFE_READ = "safe_read"
+    INTERNAL_CONTROL = "internal_control"
     IDEMPOTENT_WRITE = "idempotent_write"
     UNSAFE_WRITE = "unsafe_write"
 
@@ -104,6 +119,11 @@ def automatic_tool_replay_allowed(
 ) -> bool:
     if safety_class is ToolSafetyClass.SAFE_READ:
         return True
+    # Internal orchestration can consume model budget or start child work.
+    # It may be allowed without a user prompt, but it must never be replayed
+    # automatically after an ambiguous interruption.
+    if safety_class is ToolSafetyClass.INTERNAL_CONTROL:
+        return False
     if safety_class is ToolSafetyClass.IDEMPOTENT_WRITE:
         return bool(idempotency_key)
     return False

@@ -32,6 +32,10 @@ from urllib.parse import urlsplit
 from app.run_context import get_current_run_context
 from app.run_journal import SQLiteRunJournal, get_default_run_journal
 from app.run_policy import ToolSafetyClass
+from app.run_runtime.step_coordinator import (
+    RunStepCoordinator,
+    get_current_step_id,
+)
 
 # This allowlist is trusted code, unlike model-generated names and arguments.
 # Unknown tools default to UNSAFE_WRITE. Browser actions are deliberately
@@ -83,6 +87,8 @@ class ToolCheckpointContext:
     toolkit_name: str | None = None
     agent_name: str | None = None
     task_id: str | None = None
+    step_id: str | None = None
+    delegated_step_id: str | None = None
     display_title: str | None = None
     display_input: str | None = None
     started_monotonic: float = 0.0
@@ -273,8 +279,21 @@ def _tool_display_title(tool_name: str, request: dict[str, Any]) -> str:
         or "",
         52,
     )
-    if normalized in {"todo_write", "update_plan"}:
+    if normalized == "agent_run_subagent":
+        subagent_type = _sanitize_display_text(
+            _first_mapping_value(request, ("subagent_type",))
+            or "general-purpose",
+            48,
+        )
+        title = f"Started {subagent_type} sub-agent"
+    elif normalized == "agent_get_task_output":
+        title = "Checked sub-agent status"
+    elif normalized == "agent_stop_task":
+        title = "Stopped sub-agent task"
+    elif normalized in {"todo_write", "update_plan"}:
         title = "Updated plan"
+    elif normalized == "step_update":
+        title = "Updated task step"
     elif normalized in {"read_file", "read_files"}:
         title = f"Read {path}" if path else "Read files"
     elif normalized in {
@@ -302,6 +321,21 @@ def _tool_display_title(tool_name: str, request: dict[str, Any]) -> str:
 
 def _tool_display_input(tool_name: str, request: dict[str, Any]) -> str | None:
     normalized = tool_name.strip().lower().replace("-", "_")
+    if normalized == "agent_run_subagent":
+        description = _first_mapping_value(request, ("description",))
+        if description is not None:
+            return "Task: " + _sanitize_display_text(description, 240)
+        return "Task: delegated sub-agent work"
+    if normalized in {"agent_get_task_output", "agent_stop_task"}:
+        task_id = _first_mapping_value(request, ("task_id",))
+        if task_id is not None:
+            return "Sub-agent task: " + _sanitize_display_text(task_id, 120)
+    if normalized == "step_update":
+        summary = _first_mapping_value(request, ("summary",))
+        if summary is not None:
+            return _sanitize_display_text(summary, 240)
+        return None
+
     path = _display_path(
         _first_mapping_value(
             request,
@@ -376,9 +410,19 @@ def _tool_display_output(
 ) -> str | None:
     if not result:
         return None
+    normalized = tool_name.strip().lower().replace("-", "_")
     error = _first_mapping_value(result, ("error", "reason"))
     if error is not None:
         return f"Error: {_sanitize_display_text(error, 420)}"
+    if normalized in {
+        "agent_run_subagent",
+        "agent_get_task_output",
+        "agent_stop_task",
+    }:
+        state = _first_mapping_value(result, ("status",))
+        if state is not None:
+            return "Sub-agent status: " + _sanitize_display_text(state, 80)
+        return "Sub-agent task updated"
     message = _first_mapping_value(result, ("message", "summary"))
     if message is not None:
         if isinstance(message, str):
@@ -553,6 +597,42 @@ def declared_tool_safety(
     return classify_tool_safety(tool_name, arguments)
 
 
+def _subagent_step_id_for_task(
+    store: SQLiteRunJournal,
+    *,
+    run_id: str,
+    task_id: str,
+) -> str | None:
+    """Resolve a delegated task through durable tool facts, never adjacency."""
+
+    target = task_id.strip()
+    if not target:
+        return None
+    for event in reversed(store.list_events(run_id)):
+        if event.event_type != "tool.completed":
+            continue
+        payload = event.payload
+        tool_name = str(payload.get("tool_name") or "")
+        if tool_name.strip().lower().replace("-", "_") != "agent_run_subagent":
+            continue
+        result = payload.get("result")
+        if not isinstance(result, dict):
+            continue
+        candidate = _first_mapping_value(result, ("task_id", "taskId"))
+        if str(candidate or "").strip() != target:
+            continue
+        step_id = str(payload.get("step_id") or "").strip()
+        return step_id or None
+    return None
+
+
+def _delegated_task_state(result: dict[str, Any] | None) -> str | None:
+    if not result:
+        return None
+    value = _first_mapping_value(result, ("status", "state"))
+    return str(value).strip().lower().replace("-", "_") if value else None
+
+
 def prepare_tool_checkpoint(
     *,
     raw_tool_call_id: str,
@@ -592,6 +672,52 @@ def prepare_tool_checkpoint(
         request=request,
         status="prepared",
     )
+    steps = RunStepCoordinator(store)
+    parent_step_id = get_current_step_id() or steps.current_running_step_id(
+        run_context.run_id,
+        agent_id=agent_name,
+    )
+    step_id = parent_step_id
+    delegated_step_id: str | None = None
+    normalized_tool_name = tool_name.strip().lower().replace("-", "_")
+    if normalized_tool_name == "agent_run_subagent":
+        child_agent_id = _first_mapping_value(
+            request,
+            ("subagent_type", "agent_name", "role"),
+        )
+        child_title = _first_mapping_value(
+            request,
+            ("description", "task", "prompt"),
+        )
+        step_id = steps.create_child_step(
+            project_id=run.project_id,
+            run_id=run_context.run_id,
+            parent_step_id=parent_step_id,
+            task_identity=canonical_id,
+            title=_sanitize_display_text(
+                child_title or "Delegated sub-agent task",
+                160,
+            ),
+            agent_id=(
+                _sanitize_display_text(child_agent_id, 120)
+                if child_agent_id is not None
+                else None
+            ),
+            start=False,
+        )
+        delegated_step_id = step_id
+    elif normalized_tool_name in {"agent_get_task_output", "agent_stop_task"}:
+        delegated_task_id = _first_mapping_value(
+            request,
+            ("task_id", "taskId"),
+        )
+        if delegated_task_id is not None:
+            delegated_step_id = _subagent_step_id_for_task(
+                store,
+                run_id=run_context.run_id,
+                task_id=str(delegated_task_id),
+            )
+            step_id = delegated_step_id or step_id
     checkpoint = ToolCheckpointContext(
         tool_call_id=canonical_id,
         run_id=run_context.run_id,
@@ -603,6 +729,8 @@ def prepare_tool_checkpoint(
         toolkit_name=toolkit_name,
         agent_name=agent_name,
         task_id=task_id,
+        step_id=step_id,
+        delegated_step_id=delegated_step_id,
         display_title=display.title,
         display_input=display.input,
         started_monotonic=time.monotonic(),
@@ -618,6 +746,7 @@ def prepare_tool_checkpoint(
         toolkit_name=checkpoint.toolkit_name,
         agent_name=checkpoint.agent_name,
         task_id=checkpoint.task_id,
+        step_id=checkpoint.step_id,
         display_title=checkpoint.display_title,
         display_input=checkpoint.display_input,
     )
@@ -633,6 +762,12 @@ def prepare_tool_checkpoint(
                 display_summary="Running",
                 **values,
             )
+            if delegated_step_id is not None:
+                steps.start_child_step(
+                    project_id=run.project_id,
+                    run_id=run_context.run_id,
+                    step_id=delegated_step_id,
+                )
     except Exception as error:
         raise ToolCheckpointPersistenceError(
             f"failed to persist checkpoint before tool {tool_name!r}"
@@ -664,10 +799,22 @@ def dispatch_tool_checkpoint(
             toolkit_name=checkpoint.toolkit_name,
             agent_name=checkpoint.agent_name,
             task_id=checkpoint.task_id,
+            step_id=checkpoint.step_id,
             display_title=checkpoint.display_title,
             display_input=checkpoint.display_input,
             display_summary="Running",
         )
+        if checkpoint.delegated_step_id is not None:
+            run = store.get_run(checkpoint.run_id)
+            if run is None:
+                raise ToolCheckpointPersistenceError(
+                    f"run {checkpoint.run_id!r} disappeared before dispatch"
+                )
+            RunStepCoordinator(store).start_child_step(
+                project_id=run.project_id,
+                run_id=checkpoint.run_id,
+                step_id=checkpoint.delegated_step_id,
+            )
     except Exception as error:
         raise ToolCheckpointPersistenceError(
             f"failed to persist dispatch for tool {checkpoint.tool_name!r}"
@@ -699,13 +846,25 @@ def finish_tool_checkpoint(
         result_payload = _bounded_record(
             result if result is not None else {"error": str(error)}
         )
-    elif checkpoint.safety_class is ToolSafetyClass.UNSAFE_WRITE:
+    elif checkpoint.safety_class in {
+        ToolSafetyClass.INTERNAL_CONTROL,
+        ToolSafetyClass.UNSAFE_WRITE,
+    }:
+        # Cancelling a synchronous AgentToolkit call only cancels this await;
+        # the delegated thread/child may still be running. Preserve the same
+        # fail-closed ambiguity boundary used for external writes so Resume
+        # cannot silently launch duplicate child work.
         status = "outcome_unknown"
         outcome = "outcome_unknown"
         result_payload = _bounded_record(
             {
                 "error": str(error),
-                "external_effect_may_have_occurred": True,
+                "external_effect_may_have_occurred": (
+                    checkpoint.safety_class is ToolSafetyClass.UNSAFE_WRITE
+                ),
+                "delegated_work_may_still_be_running": (
+                    checkpoint.safety_class is ToolSafetyClass.INTERNAL_CONTROL
+                ),
             }
         )
     else:
@@ -738,12 +897,85 @@ def finish_tool_checkpoint(
             toolkit_name=checkpoint.toolkit_name,
             agent_name=checkpoint.agent_name,
             task_id=checkpoint.task_id,
+            step_id=checkpoint.step_id,
             display_title=checkpoint.display_title or display.title,
             display_input=checkpoint.display_input or display.input,
             display_output=display.output,
             display_summary=display.summary,
             display_duration_ms=duration_ms,
         )
+        normalized_tool_name = (
+            checkpoint.tool_name.strip().lower().replace("-", "_")
+        )
+        if (
+            normalized_tool_name
+            in {
+                "agent_run_subagent",
+                "agent_get_task_output",
+                "agent_stop_task",
+            }
+            and checkpoint.delegated_step_id
+        ):
+            run = store.get_run(checkpoint.run_id)
+            if run is None:
+                raise ToolCheckpointPersistenceError(
+                    f"run {checkpoint.run_id!r} disappeared while finishing "
+                    "its delegated Step"
+                )
+            child_outcome: str | None
+            if outcome == "outcome_unknown":
+                child_outcome = "outcome_unknown"
+            elif outcome == "failed":
+                child_outcome = "failed"
+            elif normalized_tool_name == "agent_stop_task":
+                child_outcome = "cancelled"
+            else:
+                delegated_state = _delegated_task_state(result_payload)
+                if delegated_state in {
+                    "queued",
+                    "pending",
+                    "running",
+                    "in_progress",
+                    "started",
+                }:
+                    child_outcome = None
+                elif delegated_state in {
+                    "failed",
+                    "error",
+                    "timed_out",
+                    "timeout",
+                }:
+                    child_outcome = "failed"
+                elif delegated_state in {
+                    "cancelled",
+                    "canceled",
+                    "stopped",
+                    "interrupted",
+                }:
+                    child_outcome = "cancelled"
+                elif delegated_state in {
+                    "completed",
+                    "complete",
+                    "succeeded",
+                    "success",
+                }:
+                    child_outcome = "completed"
+                elif normalized_tool_name == "agent_run_subagent" and (
+                    _first_mapping_value(result_payload, ("task_id", "taskId"))
+                    is not None
+                ):
+                    # Dispatch acknowledgement without a terminal status.
+                    child_outcome = None
+                else:
+                    child_outcome = "completed"
+            if child_outcome is not None:
+                RunStepCoordinator(store).finish_child_step(
+                    project_id=run.project_id,
+                    run_id=checkpoint.run_id,
+                    step_id=checkpoint.delegated_step_id,
+                    outcome=child_outcome,  # type: ignore[arg-type]
+                    summary=display.output or display.summary,
+                )
     except Exception as persistence_error:
         raise ToolCheckpointPersistenceError(
             f"failed to persist outcome for tool {checkpoint.tool_name!r}"

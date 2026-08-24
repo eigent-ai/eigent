@@ -26,6 +26,10 @@ from app.run_journal import (
     UnsafeResumeError,
 )
 from app.run_policy import TimeoutOutcome, TimeoutScope, ToolSafetyClass
+from app.run_runtime.step_coordinator import (
+    PlanStepInput,
+    RunStepCoordinator,
+)
 
 
 def test_attempt_admission_is_idempotent_and_startup_interrupts_it(tmp_path):
@@ -343,6 +347,165 @@ def test_dispatched_unsafe_tool_is_fail_closed_after_restart(tmp_path):
         assert error.value.tool_call_ids == ("tool-1",)
 
 
+def test_dispatched_internal_control_is_recoverable_after_restart(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        journal.checkpoint_tool_call(
+            tool_call_id="tool-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            tool_name="agent_run_subagent",
+            status="prepared",
+            safety_class=ToolSafetyClass.INTERNAL_CONTROL,
+            request={"description": "Research references", "wait": False},
+            now=2,
+        )
+        journal.checkpoint_tool_call(
+            tool_call_id="tool-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            tool_name="agent_run_subagent",
+            status="dispatched",
+            safety_class=ToolSafetyClass.INTERNAL_CONTROL,
+            request={"description": "Research references", "wait": False},
+            now=3,
+        )
+
+        result = journal.reconcile_startup(now=4)
+
+        assert result.outcome_unknown_tool_call_ids == ()
+        recovered = journal.list_tool_calls("run-1")[0]
+        assert recovered.status == "failed"
+        assert recovered.outcome == "interrupted_by_restart"
+        assert recovered.result == {
+            "error": "In-process delegated work stopped when Eigent restarted",
+            "delegated_work_may_still_be_running": False,
+            "safe_to_resume": True,
+        }
+        assert any(
+            event.event_type == "tool.failed"
+            and event.payload.get("outcome") == "interrupted_by_restart"
+            for event in journal.list_events("run-1")
+        )
+
+        resumed = journal.create_run_attempt(
+            "run-1",
+            request_id="resume-1",
+            reason="explicit_resume",
+            now=5,
+        )
+        assert resumed.status == "pending"
+
+
+def test_resume_admission_repairs_legacy_unknown_internal_control(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        values = dict(
+            tool_call_id="tool-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            tool_name="agent_run_subagent",
+            safety_class=ToolSafetyClass.INTERNAL_CONTROL,
+            request={"description": "Research references", "wait": False},
+        )
+        journal.checkpoint_tool_call(status="prepared", now=2, **values)
+        journal.checkpoint_tool_call(status="dispatched", now=3, **values)
+        journal.checkpoint_tool_call(
+            status="outcome_unknown",
+            outcome="outcome_unknown",
+            timeout_reason="brain_restart_after_dispatch",
+            now=4,
+            **values,
+        )
+        journal.record_timeout_outcome(
+            TimeoutOutcome(
+                scope=TimeoutScope.RUNTIME_LIVENESS,
+                policy_version="v1",
+                reason="consumer_lost",
+                started_at=1,
+                ended_at=5,
+                run_id="run-1",
+                attempt_id=attempt.attempt_id,
+            )
+        )
+
+        resumed = journal.create_run_attempt(
+            "run-1",
+            request_id="resume-legacy",
+            reason="explicit_resume",
+            now=6,
+        )
+
+        assert resumed.status == "pending"
+        recovered = journal.list_tool_calls("run-1")[0]
+        assert recovered.status == "failed"
+        assert recovered.outcome == "interrupted_by_restart"
+        repairs = [
+            event
+            for event in journal.list_events("run-1")
+            if event.event_id == "recovery:internal-control-interrupted:tool-1"
+        ]
+        assert len(repairs) == 1
+
+
+def test_dispatched_internal_control_blocks_resume_before_restart(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        values = dict(
+            tool_call_id="tool-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            tool_name="agent_run_subagent",
+            safety_class=ToolSafetyClass.INTERNAL_CONTROL,
+            request={"description": "Research references", "wait": False},
+        )
+        journal.checkpoint_tool_call(status="prepared", now=2, **values)
+        journal.checkpoint_tool_call(status="dispatched", now=3, **values)
+        journal.record_timeout_outcome(
+            TimeoutOutcome(
+                scope=TimeoutScope.RUNTIME_LIVENESS,
+                policy_version="v1",
+                reason="consumer_lost",
+                started_at=1,
+                ended_at=4,
+                run_id="run-1",
+                attempt_id=attempt.attempt_id,
+            )
+        )
+
+        with pytest.raises(UnsafeResumeError) as error:
+            journal.create_run_attempt(
+                "run-1",
+                request_id="resume-before-restart",
+                reason="explicit_resume",
+                now=5,
+            )
+
+        assert error.value.tool_call_ids == ("tool-1",)
+        assert journal.list_tool_calls("run-1")[0].status == "dispatched"
+
+
 def test_prepared_tool_and_approval_are_closed_before_startup_resume(tmp_path):
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
         journal.ensure_run(run_id="run-1", project_id="project-1")
@@ -381,6 +544,15 @@ def test_prepared_tool_and_approval_are_closed_before_startup_resume(tmp_path):
         assert interaction is not None
         assert interaction.status == "cancelled"
         assert not journal.list_approvals("run-1", pending_only=True)
+        cancellation = next(
+            event
+            for event in journal.list_events("run-1")
+            if event.event_type == "approval.cancelled"
+        )
+        assert cancellation.payload["interaction_id"] == "approval:tool-1"
+        assert cancellation.payload["reason"] == (
+            "brain_restart_before_dispatch"
+        )
 
         resumed = journal.create_run_attempt(
             "run-1",
@@ -389,6 +561,152 @@ def test_prepared_tool_and_approval_are_closed_before_startup_resume(tmp_path):
             now=5,
         )
         assert resumed.status == "pending"
+
+
+def test_startup_cancels_subagent_step_that_never_crossed_dispatch(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        steps = RunStepCoordinator(journal)
+        steps.reconcile_plan(
+            project_id="project-1",
+            run_id="run-1",
+            agent_id="single_agent",
+            items=[
+                PlanStepInput(
+                    plan_item_id="root",
+                    title="Build the report",
+                    active_form="Building the report",
+                    status="in_progress",
+                    ordinal=1,
+                )
+            ],
+        )
+        parent_step_id = steps.current_running_step_id("run-1")
+        child_step_id = steps.create_child_step(
+            project_id="project-1",
+            run_id="run-1",
+            parent_step_id=parent_step_id,
+            task_identity="tool-1",
+            title="Review references",
+            agent_id="research",
+            start=False,
+        )
+        journal.checkpoint_tool_call(
+            tool_call_id="tool-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            tool_name="agent_run_subagent",
+            status="prepared",
+            safety_class=ToolSafetyClass.INTERNAL_CONTROL,
+            request={"description": "Review references"},
+            step_id=child_step_id,
+            now=2,
+        )
+        journal.create_approval(
+            approval_id="approval:tool-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            prompt={"question": "Allow delegation?"},
+            step_id=child_step_id,
+            now=3,
+        )
+
+        journal.reconcile_startup(now=4)
+
+        assert steps.replay("run-1")[child_step_id].status == "cancelled"
+        cancellation = next(
+            event
+            for event in journal.list_events("run-1")
+            if event.event_type == "approval.cancelled"
+        )
+        assert cancellation.payload["step_id"] == child_step_id
+        failed_tool = next(
+            event
+            for event in journal.list_events("run-1")
+            if event.event_type == "tool.failed"
+        )
+        assert failed_tool.payload["step_id"] == child_step_id
+
+
+def test_startup_backfills_missing_cancelled_approval_event(tmp_path):
+    path = tmp_path / "journal.sqlite3"
+    with SQLiteRunJournal(path) as journal:
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            "run-1",
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=1,
+        )
+        values = dict(
+            tool_call_id="tool-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            tool_name="send_email",
+            safety_class=ToolSafetyClass.UNSAFE_WRITE,
+            request={"to": "user@example.com"},
+        )
+        journal.checkpoint_tool_call(status="prepared", now=2, **values)
+        journal.create_approval(
+            approval_id="approval:tool-1",
+            run_id="run-1",
+            attempt_id=attempt.attempt_id,
+            prompt={"question": "Allow send_email?"},
+            now=3,
+        )
+        journal.checkpoint_tool_call(
+            status="failed",
+            outcome="failed_before_dispatch",
+            result={"error": "restart"},
+            now=4,
+            **values,
+        )
+
+    # Reproduce the historical recovery gap: canonical rows are terminal but
+    # the event-native projection has no terminal lifecycle fact to consume.
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "DELETE FROM run_events WHERE event_type = 'approval.cancelled'"
+        )
+
+    with SQLiteRunJournal(path) as reopened:
+        reopened.reconcile_startup(now=5)
+        cancellations = [
+            event
+            for event in reopened.list_events("run-1")
+            if event.event_type == "approval.cancelled"
+        ]
+        assert len(cancellations) == 1
+        assert cancellations[0].payload == {
+            "approval_id": "approval:tool-1",
+            "interaction_id": "approval:tool-1",
+            "attempt_id": attempt.attempt_id,
+            "decision": "rejected",
+            "reason": "tool_terminal_before_dispatch",
+            "source": "recovery",
+            "continued_attempt": False,
+            "backfilled": True,
+        }
+
+        reopened.reconcile_startup(now=6)
+        assert (
+            len(
+                [
+                    event
+                    for event in reopened.list_events("run-1")
+                    if event.event_type == "approval.cancelled"
+                ]
+            )
+            == 1
+        )
 
 
 def test_safe_read_timeout_can_create_a_new_attempt(tmp_path):
