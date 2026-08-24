@@ -630,7 +630,7 @@ describe('BottomBox structure', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel Run' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel task' }));
     expect(onResume).toHaveBeenCalledWith('run-interrupted');
     expect(onCancel).toHaveBeenCalledWith('run-interrupted');
 
@@ -650,7 +650,7 @@ describe('BottomBox structure', () => {
       />
     );
     expect(screen.getByRole('button', { name: 'Resume' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Cancel Run' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel task' })).toBeDisabled();
   });
 
   it('shows locked transition labels and hides actions for read-only Runs', () => {
@@ -667,7 +667,7 @@ describe('BottomBox structure', () => {
       />
     );
     expect(screen.getByRole('button', { name: 'Resuming…' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Cancel Run' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel task' })).toBeDisabled();
 
     rerender(
       <BottomBox
@@ -687,7 +687,7 @@ describe('BottomBox structure', () => {
       />
     );
     expect(screen.getByRole('status')).toHaveTextContent(
-      'This Run has finished, so its controls are no longer available.'
+      'This task has finished, so these controls are no longer available.'
     );
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });

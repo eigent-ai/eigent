@@ -1307,6 +1307,7 @@ const HumanInputReceiptRow = memo(function HumanInputReceiptRow({
   readOnly: boolean;
   onResolved: (item: HumanInputItem, response?: string) => void;
 }) {
+  const { t } = useTranslation();
   if (
     item.interaction &&
     item.interaction.interaction_type !== 'question' &&
@@ -1332,16 +1333,22 @@ const HumanInputReceiptRow = memo(function HumanInputReceiptRow({
       data-human-input-receipt
       className="w-full rounded-md bg-ds-neutral-muted-default p-2 opacity-60"
     >
-      <span className={labelClassName}>Input required</span>
+      <span className={labelClassName}>
+        {t('chat.input-required', { defaultValue: 'Input required' })}
+      </span>
       {item.question ? (
         <div className="mt-2" data-human-input-question>
-          <span className={labelClassName}>Question</span>
+          <span className={labelClassName}>
+            {t('chat.question', { defaultValue: 'Question' })}
+          </span>
           <span className={cn('mt-1', valueClassName)}>{item.question}</span>
         </div>
       ) : null}
       {item.response ? (
         <div className="mt-2" data-human-input-response>
-          <span className={labelClassName}>Answer</span>
+          <span className={labelClassName}>
+            {t('chat.answer', { defaultValue: 'Answer' })}
+          </span>
           <span className={cn('mt-1', valueClassName)}>{item.response}</span>
         </div>
       ) : null}
@@ -1365,6 +1372,7 @@ const AgentBlockRow = memo(function AgentBlockRow({
   humanInputReadOnly: boolean;
   onHumanInputResolved: (item: HumanInputItem, response?: string) => void;
 }) {
+  const { t } = useTranslation();
   const { agentLabel, detail } = getBlockHeaderParts(block);
 
   // While this block is the active, currently-running step, the whole header
@@ -1480,7 +1488,9 @@ const AgentBlockRow = memo(function AgentBlockRow({
                 taskRunning &&
                 block.status === 'running' && (
                   <span className="block !text-ds-text-base font-normal text-ds-ink-subtle-default italic">
-                    Waiting for tool calls…
+                    {t('chat.waiting-for-tool-calls', {
+                      defaultValue: 'Waiting for tool calls…',
+                    })}
                   </span>
                 )}
             </div>
@@ -1554,6 +1564,7 @@ const AgentGroupRow = memo(function AgentGroupRow({
   humanInputReadOnly: boolean;
   onHumanInputResolved: (item: HumanInputItem, response?: string) => void;
 }) {
+  const { t } = useTranslation();
   const { agentLabel, progressLabel, latestToolTitle } =
     getGroupHeaderParts(group);
 
@@ -1753,7 +1764,9 @@ const AgentGroupRow = memo(function AgentGroupRow({
                 taskRunning &&
                 group.status === 'running' && (
                   <span className="block !text-ds-text-base font-normal text-ds-ink-subtle-default italic">
-                    Waiting for tool calls…
+                    {t('chat.waiting-for-tool-calls', {
+                      defaultValue: 'Waiting for tool calls…',
+                    })}
                   </span>
                 )}
             </div>

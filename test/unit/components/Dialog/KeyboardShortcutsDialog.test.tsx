@@ -63,7 +63,7 @@ describe('KeyboardShortcutsDialog', () => {
       'GotoAutomations⌘3',
       'GotoDispatch⌘4',
       'GotoConfiguration⌘5',
-      'NewProject⌘N',
+      'Newsession⌘N',
     ]);
   });
 

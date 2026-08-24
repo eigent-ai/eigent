@@ -61,5 +61,6 @@
   "all-agents": "Tous les agents",
   "replace-skill-title": "Remplacer la compétence « {{name}} » ?",
   "replace-skill-message": "Une compétence portant le même nom existe déjà. L’importation la remplacera et la version existante ne pourra pas être restaurée.",
-  "update-and-replace": "Mettre à jour et remplacer"
+  "update-and-replace": "Mettre à jour et remplacer",
+  "agent": "Agent"
 }

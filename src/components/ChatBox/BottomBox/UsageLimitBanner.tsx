@@ -14,6 +14,7 @@
 
 import { cn } from '@/lib/utils';
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export interface UsageLimitBannerProps {
   message: string;
@@ -30,6 +31,7 @@ export function UsageLimitBanner({
   onAction,
   onDismiss,
 }: UsageLimitBannerProps) {
+  const { t } = useTranslation();
   const isDanger = severity === 'danger';
 
   return (
@@ -59,7 +61,9 @@ export function UsageLimitBanner({
       <button
         type="button"
         onClick={onDismiss}
-        aria-label="Dismiss usage notice"
+        aria-label={t('chat.dismiss-usage-notice', {
+          defaultValue: 'Dismiss usage notice',
+        })}
         className="flex size-7 shrink-0 items-center justify-center rounded-md text-ds-ink-muted-default transition-colors hover:bg-ds-neutral-subtle-hover hover:text-ds-ink-default-default"
       >
         <X className="size-4" />

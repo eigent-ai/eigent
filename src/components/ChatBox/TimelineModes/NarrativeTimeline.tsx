@@ -26,8 +26,10 @@ import {
 import { cn } from '@/lib/utils';
 import { SessionMode, type SessionModeType } from '@/types/constants';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import type { TFunction } from 'i18next';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { CallRow, isCallActiveStatus, isCallErrorStatus } from './CallRow';
 import { RunFilesGroup } from './RunFiles';
@@ -62,17 +64,18 @@ type NarrativeWorkEntry =
   | { kind: 'item'; item: TimelineNarrativeItem };
 
 function narrativeItemAgent(
-  item: TimelineNarrativeItem
+  item: TimelineNarrativeItem,
+  fallbackName: string
 ): { id: string; name: string } | null {
   if (item.kind === 'segment') {
     const id = (item.agentId || item.agentName || '').trim();
     if (!id) return null;
-    return { id, name: item.agentName?.trim() || 'Agent' };
+    return { id, name: item.agentName?.trim() || fallbackName };
   }
   if (item.kind === 'interrupt') {
     const id = (item.call.agentId || item.call.agentName || '').trim();
     if (!id) return null;
-    return { id, name: item.call.agentName?.trim() || 'Agent' };
+    return { id, name: item.call.agentName?.trim() || fallbackName };
   }
   return null;
 }
@@ -110,7 +113,8 @@ function itemIsFailed(item: TimelineNarrativeItem): boolean {
  */
 function groupNarrativeWork(
   items: readonly TimelineNarrativeItem[],
-  workforce: boolean
+  workforce: boolean,
+  fallbackAgentName: string
 ): NarrativeWorkEntry[] {
   if (!workforce) {
     return items.map((item) => ({ kind: 'item', item }));
@@ -118,7 +122,7 @@ function groupNarrativeWork(
 
   const entries: NarrativeWorkEntry[] = [];
   for (const item of items) {
-    const agent = narrativeItemAgent(item);
+    const agent = narrativeItemAgent(item, fallbackAgentName);
     if (!agent) {
       entries.push({ kind: 'item', item });
       continue;
@@ -139,13 +143,24 @@ function groupNarrativeWork(
   return entries;
 }
 
-function workLogSummary(run: TimelineRunView, paused: boolean): string {
-  if (paused && isActiveRunStatus(run.status)) return 'Paused after';
-  if (isActiveRunStatus(run.status)) return 'Working on tasks for';
-  if (run.status === 'failed') return 'Failed after';
-  if (run.status === 'interrupted') return 'Interrupted after';
-  if (run.status === 'cancelled') return 'Stopped after';
-  return 'Worked for';
+function workLogSummary(
+  run: TimelineRunView,
+  paused: boolean,
+  t: TFunction
+): string {
+  if (paused && isActiveRunStatus(run.status))
+    return t('chat.paused-after', { defaultValue: 'Paused after' });
+  if (isActiveRunStatus(run.status))
+    return t('chat.working-on-tasks-for', {
+      defaultValue: 'Working on tasks for',
+    });
+  if (run.status === 'failed')
+    return t('chat.failed-after', { defaultValue: 'Failed after' });
+  if (run.status === 'interrupted')
+    return t('chat.interrupted-after', { defaultValue: 'Interrupted after' });
+  if (run.status === 'cancelled')
+    return t('chat.stopped-after', { defaultValue: 'Stopped after' });
+  return t('chat.worked-for', { defaultValue: 'Worked for' });
 }
 
 /**
@@ -517,9 +532,11 @@ function NarrativeRunWorkLog({
   workforce: boolean;
   interactivePlan?: InteractiveTimelinePlan;
 }) {
+  const { t } = useTranslation();
+  const fallbackAgentName = t('chat.agent', { defaultValue: 'Agent' });
   const entries = useMemo(
-    () => groupNarrativeWork(items, workforce),
-    [items, workforce]
+    () => groupNarrativeWork(items, workforce, fallbackAgentName),
+    [fallbackAgentName, items, workforce]
   );
   const live = isActiveRunStatus(run.status);
   // Pausing stops the shimmer but must not collapse the log: the user is still
@@ -559,7 +576,8 @@ function NarrativeRunWorkLog({
         className="flex w-full min-w-0 items-center justify-start gap-1 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-0 py-2 text-left"
       >
         <span className="text-ds-text-base font-medium text-ds-ink-muted-default">
-          {workLogSummary(run, paused)} <RunElapsed paused={paused} run={run} />
+          {workLogSummary(run, paused, t)}{' '}
+          <RunElapsed paused={paused} run={run} />
         </span>
         {open ? (
           <ChevronDown

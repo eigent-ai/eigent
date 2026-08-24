@@ -56,7 +56,7 @@ describe('ArtifactChangeList', () => {
     fireEvent.click(screen.getByRole('button', { name: 'View changes' }));
     expect(onViewChanges).toHaveBeenCalledOnce();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Show 1 more files' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show 1 more file' }));
     expect(screen.getByTitle('src/four.ts')).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Show fewer files' })

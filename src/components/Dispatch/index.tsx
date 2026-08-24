@@ -424,15 +424,27 @@ export function WorkspaceDispatch() {
   const handleCreateRemoteControl = useCallback(async () => {
     const brainSessionId = getConnectionConfig().sessionId;
     if (!isDesktop()) {
-      toast.error('Remote control must be started from the desktop app.');
+      toast.error(
+        t('layout.remote-control-desktop-required', {
+          defaultValue: 'Remote control must be started from the desktop app.',
+        })
+      );
       return;
     }
     if (!activeSpaceId) {
-      toast.error('Open a Space before starting remote control.');
+      toast.error(
+        t('layout.remote-control-open-space-first', {
+          defaultValue: 'Open a Space before starting remote control.',
+        })
+      );
       return;
     }
     if (!activeSpace || !canUseRemoteControlInSpace(activeSpace)) {
-      toast.error('Legacy Spaces do not support remote control.');
+      toast.error(
+        t('layout.remote-control-legacy-space-unsupported', {
+          defaultValue: 'Legacy Spaces do not support remote control.',
+        })
+      );
       return;
     }
 
@@ -443,14 +455,24 @@ export function WorkspaceDispatch() {
         const bridgeError = getRemoteControlBridgeError();
         toast.error(
           bridgeError?.retryable === false
-            ? 'Remote control needs attention.'
-            : 'Remote control is still connecting.',
+            ? t('layout.remote-control-needs-attention', {
+                defaultValue: 'Remote control needs attention.',
+              })
+            : t('layout.remote-control-still-connecting', {
+                defaultValue: 'Remote control is still connecting.',
+              }),
           {
             description:
               bridgeError?.code === 'device_owner_mismatch'
-                ? 'This Desktop is registered to another Eigent account. Sign in with that account or explicitly reset/transfer the Desktop device registration.'
+                ? t('layout.remote-control-device-owner-mismatch', {
+                    defaultValue:
+                      'This Desktop is registered to another Eigent account. Sign in with that account or explicitly reset/transfer the Desktop device registration.',
+                  })
                 : bridgeError?.message ||
-                  'Keep Eigent Desktop open and try again in a few seconds.',
+                  t('layout.remote-control-keep-desktop-open', {
+                    defaultValue:
+                      'Keep Eigent Desktop open and try again in a few seconds.',
+                  }),
           }
         );
         return;
@@ -478,15 +500,25 @@ export function WorkspaceDispatch() {
 
       try {
         await navigator.clipboard.writeText(res.url);
-        toast.success('Remote control link copied', {
-          description: res.url,
-          duration: 10000,
-        });
+        toast.success(
+          t('layout.remote-control-link-copied', {
+            defaultValue: 'Remote control link copied',
+          }),
+          {
+            description: res.url,
+            duration: 10000,
+          }
+        );
       } catch {
-        toast.success('Remote control link created', {
-          description: res.url,
-          duration: 10000,
-        });
+        toast.success(
+          t('layout.remote-control-link-created', {
+            defaultValue: 'Remote control link created',
+          }),
+          {
+            description: res.url,
+            duration: 10000,
+          }
+        );
       }
     } catch (err: any) {
       const code =
@@ -494,12 +526,24 @@ export function WorkspaceDispatch() {
         err?.response?.data?.code ||
         err?.code;
       if (code === 'BRIDGE_OFFLINE') {
-        toast.error('Remote control bridge is offline.', {
-          description:
-            'Keep Eigent Desktop open and wait for the bridge to reconnect, then try again.',
-        });
+        toast.error(
+          t('layout.remote-control-bridge-offline', {
+            defaultValue: 'Remote control bridge is offline.',
+          }),
+          {
+            description: t('layout.remote-control-bridge-offline-description', {
+              defaultValue:
+                'Keep Eigent Desktop open and wait for the bridge to reconnect, then try again.',
+            }),
+          }
+        );
       } else {
-        toast.error(err?.message || 'Failed to create remote control link.');
+        toast.error(
+          err?.message ||
+            t('layout.remote-control-link-create-failed', {
+              defaultValue: 'Failed to create remote control link.',
+            })
+        );
       }
     } finally {
       setRemoteControlLoading(false);
@@ -510,6 +554,7 @@ export function WorkspaceDispatch() {
     activeSpaceId,
     addRemoteControlSession,
     addRemoteControlLog,
+    t,
   ]);
 
   const handleStopSession = useCallback(
@@ -523,13 +568,21 @@ export function WorkspaceDispatch() {
           session?.linkToken ||
           (session ? parseRemoteControlLinkToken(session.url) : '');
         if (!linkToken) {
-          throw new Error('Remote control link token is missing.');
+          throw new Error(
+            t('layout.remote-control-link-token-missing', {
+              defaultValue: 'Remote control link token is missing.',
+            })
+          );
         }
         await revokeRemoteControlSession(sessionId, linkToken);
         removeRemoteControlSession(sessionId);
         if (session)
           addRemoteControlLog({ name: session.title, status: 'stopped' });
-        toast.success('Remote control link revoked');
+        toast.success(
+          t('layout.remote-control-link-revoked', {
+            defaultValue: 'Remote control link revoked',
+          })
+        );
       } catch (err: any) {
         // The link is already revoked or expired server-side; the goal is
         // achieved, so clean up locally instead of stranding the entry.
@@ -537,15 +590,24 @@ export function WorkspaceDispatch() {
           removeRemoteControlSession(sessionId);
           if (session)
             addRemoteControlLog({ name: session.title, status: 'stopped' });
-          toast.success('Remote control link revoked');
+          toast.success(
+            t('layout.remote-control-link-revoked', {
+              defaultValue: 'Remote control link revoked',
+            })
+          );
         } else {
-          toast.error(err?.message || 'Failed to revoke remote control link.');
+          toast.error(
+            err?.message ||
+              t('layout.remote-control-link-revoke-failed', {
+                defaultValue: 'Failed to revoke remote control link.',
+              })
+          );
         }
       } finally {
         setStoppingSessionId(null);
       }
     },
-    [removeRemoteControlSession, addRemoteControlLog]
+    [removeRemoteControlSession, addRemoteControlLog, t]
   );
 
   const handleCopySession = useCallback(

@@ -293,7 +293,7 @@ describe('SessionActivityPanel project scope', () => {
     });
 
     expect(screen.getByRole('alert')).toHaveTextContent(
-      'This backend does not support session history yet.'
+      "This version of Eigent can't show session history yet."
     );
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(mocks.hydration.retry).toHaveBeenCalledTimes(1);

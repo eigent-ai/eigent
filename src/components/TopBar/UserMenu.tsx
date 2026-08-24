@@ -35,7 +35,7 @@ import { IconPillToggle } from '@/components/ui/icon-pill-toggle';
 import { ShortcutKeycap } from '@/components/ui/shortcut-keycap';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useDesktopShortcutPlatform } from '@/hooks/useDesktopShortcutPlatform';
-import { LocaleEnum, switchLanguage } from '@/i18n';
+import { LocaleEnum, resolveLocale, switchLanguage } from '@/i18n';
 import { SITE_URL } from '@/lib';
 import { cn } from '@/lib/utils';
 import { APP_COMMAND } from '@/shared/appCommands';
@@ -93,10 +93,7 @@ const LANGUAGE_OPTIONS: { key: string; label: string }[] = [
 
 function applyLanguage(key: string) {
   if (key === 'system') {
-    const systemLang = navigator.language.toLowerCase();
-    const available = Object.values(LocaleEnum);
-    const matched = available.find((lang) => systemLang.startsWith(lang));
-    switchLanguage(matched ?? LocaleEnum.English);
+    switchLanguage(resolveLocale(navigator.language));
     useAuthStore.getState().setLanguage('system');
     return;
   }

@@ -15,6 +15,7 @@
 import { PreviewBrowserLayer } from '@/components/Session/PreviewPanel/tabs/browser/PreviewBrowserLayer';
 import { getPreviewWebview } from '@/components/Session/PreviewPanel/tabs/browser/webviewRegistry';
 import { HostProvider } from '@/host';
+import i18n from '@/i18n';
 import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
 import { act, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -166,6 +167,32 @@ describe('PreviewBrowserLayer', () => {
     expect(
       usePageTabStore.getState().sessionPreviewByProject['project-a'].tabs
     ).toContainEqual(updated);
+  });
+
+  it('keeps the current guest mounted when the language changes', async () => {
+    renderLayer();
+    const tab = getBrowserTab();
+    act(() => {
+      usePageTabStore
+        .getState()
+        .updateBrowserPreviewTab(tab.id, { url: 'https://example.com/' });
+    });
+
+    const webview = guestContainer(tab.webviewId)!.querySelector('webview');
+    expect(webview).not.toBeNull();
+
+    await act(async () => {
+      await i18n.changeLanguage('de');
+    });
+
+    expect(guestContainer(tab.webviewId)!.querySelector('webview')).toBe(
+      webview
+    );
+    expect(getBrowserTab().title).toBe('Neuer Tab');
+
+    await act(async () => {
+      await i18n.changeLanguage('en-US');
+    });
   });
 
   it('evicts guests of projects left out of scope beyond the idle window', () => {

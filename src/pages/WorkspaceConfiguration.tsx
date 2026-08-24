@@ -77,6 +77,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 
 const nextId = (prefix: string, existing: string[]): string => {
   for (let index = 1; ; index += 1) {
@@ -153,12 +154,18 @@ function RemoveButton({
 }
 
 function AddSectionButton({
-  label = 'Add',
+  label,
   onClick,
 }: {
   label?: string;
   onClick: () => void;
 }) {
+  const { t } = useTranslation();
+  const resolvedLabel =
+    label ??
+    t('layout.workspace-configuration-add', {
+      defaultValue: 'Add',
+    });
   return (
     <Button
       type="button"
@@ -169,7 +176,7 @@ function AddSectionButton({
       onClick={onClick}
     >
       <Plus className="h-4 w-4" aria-hidden />
-      {label}
+      {resolvedLabel}
     </Button>
   );
 }
@@ -183,6 +190,7 @@ function CollectionActions({
   count: number;
   onDeleteAll: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -192,7 +200,10 @@ function CollectionActions({
           size="sm"
           buttonContent="icon-only"
           buttonRadius="full"
-          aria-label={`${label} actions`}
+          aria-label={t('layout.workspace-configuration-collection-actions', {
+            defaultValue: '{{label}} actions',
+            label,
+          })}
           disabled={count === 0}
         >
           <MoreHorizontal className="h-4 w-4" aria-hidden />
@@ -204,7 +215,9 @@ function CollectionActions({
           onSelect={onDeleteAll}
         >
           <Trash2 className="h-4 w-4" aria-hidden />
-          Delete all
+          {t('layout.workspace-configuration-delete-all', {
+            defaultValue: 'Delete all',
+          })}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -241,15 +254,15 @@ function SettingRow({
 }
 
 const workspaceSettingSections = [
-  { id: 'space-settings-identity', label: 'Identity' },
-  { id: 'space-settings-model', label: 'Model' },
-  { id: 'space-settings-environment', label: 'Environment' },
-  { id: 'space-settings-instructions', label: 'Instructions' },
-  { id: 'space-settings-context', label: 'Context' },
-  { id: 'space-settings-agents', label: 'Agents' },
-  { id: 'space-settings-skills', label: 'Skills' },
-  { id: 'space-settings-connectors', label: 'Connectors' },
-  { id: 'space-settings-mcp-servers', label: 'MCP servers' },
+  { id: 'space-settings-identity' },
+  { id: 'space-settings-model' },
+  { id: 'space-settings-environment' },
+  { id: 'space-settings-instructions' },
+  { id: 'space-settings-context' },
+  { id: 'space-settings-agents' },
+  { id: 'space-settings-skills' },
+  { id: 'space-settings-connectors' },
+  { id: 'space-settings-mcp-servers' },
 ] as const;
 
 type WorkspaceSettingSectionId =
@@ -374,6 +387,99 @@ export function WorkspaceConfigurationEditor({
   presentation = 'page',
   spaceId,
 }: WorkspaceConfigurationEditorProps) {
+  const { t } = useTranslation();
+  const workspaceSettingSectionLabel = (section: WorkspaceSettingSectionId) => {
+    switch (section) {
+      case 'space-settings-identity':
+        return t('layout.workspace-configuration-section-identity', {
+          defaultValue: 'Identity',
+        });
+      case 'space-settings-model':
+        return t('layout.workspace-configuration-section-model', {
+          defaultValue: 'Model',
+        });
+      case 'space-settings-environment':
+        return t('layout.workspace-configuration-section-environment', {
+          defaultValue: 'Environment',
+        });
+      case 'space-settings-instructions':
+        return t('layout.workspace-configuration-section-instructions', {
+          defaultValue: 'Instructions',
+        });
+      case 'space-settings-context':
+        return t('layout.workspace-configuration-section-context', {
+          defaultValue: 'Context',
+        });
+      case 'space-settings-agents':
+        return t('layout.workspace-configuration-section-agents', {
+          defaultValue: 'Agents',
+        });
+      case 'space-settings-skills':
+        return t('layout.workspace-configuration-section-skills', {
+          defaultValue: 'Skills',
+        });
+      case 'space-settings-connectors':
+        return t('layout.workspace-configuration-section-connectors', {
+          defaultValue: 'Connectors',
+        });
+      case 'space-settings-mcp-servers':
+        return t('layout.workspace-configuration-section-mcp-servers', {
+          defaultValue: 'MCP servers',
+        });
+    }
+  };
+  const contextKindLabel = (
+    kind: WorkspaceConfigurationDocument['spec']['context'][number]['kind']
+  ) => {
+    switch (kind) {
+      case 'bundle_asset':
+        return t('layout.workspace-configuration-context-kind-profile-asset', {
+          defaultValue: 'Profile asset',
+        });
+      case 'inline':
+        return t('layout.workspace-configuration-context-kind-inline', {
+          defaultValue: 'Inline',
+        });
+      case 'connection_query':
+        return t('layout.workspace-configuration-context-kind-connection', {
+          defaultValue: 'Connection query',
+        });
+      case 'local_path_slot':
+        return t('layout.workspace-configuration-context-kind-local-path', {
+          defaultValue: 'Local path slot',
+        });
+      case 'artifact_ref':
+        return t('layout.workspace-configuration-context-kind-artifact', {
+          defaultValue: 'Artifact reference',
+        });
+      case 'memory_scope':
+        return t('layout.workspace-configuration-context-kind-memory', {
+          defaultValue: 'Memory scope',
+        });
+    }
+  };
+  const contextSharingLabel = (
+    sharing: NonNullable<
+      WorkspaceConfigurationDocument['spec']['context'][number]['sharing']
+    >
+  ) => {
+    switch (sharing) {
+      case 'bundled':
+        return t('layout.workspace-configuration-context-sharing-profile', {
+          defaultValue: 'Included in profile',
+        });
+      case 'reference_only':
+        return t(
+          'layout.workspace-configuration-context-sharing-reference-only',
+          { defaultValue: 'Reference only' }
+        );
+      case 'authorized_artifact':
+        return t(
+          'layout.workspace-configuration-context-sharing-authorized-artifact',
+          { defaultValue: 'Authorized artifact' }
+        );
+    }
+  };
   const reduceMotion = Boolean(useReducedMotion());
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [resourceEditor, setResourceEditor] =
@@ -533,7 +639,9 @@ export function WorkspaceConfigurationEditor({
   if (!targetSpaceId || !targetSpace) {
     return (
       <main className="flex h-full items-center justify-center p-8 text-ds-ink-muted-default">
-        Select a Space before configuring its workforce.
+        {t('layout.workspace-configuration-select-space', {
+          defaultValue: 'Select a Space before configuring its workforce.',
+        })}
       </main>
     );
   }
@@ -541,7 +649,9 @@ export function WorkspaceConfigurationEditor({
   if (!email) {
     return (
       <main className="flex h-full items-center justify-center p-8 text-ds-ink-muted-default">
-        Sign in to edit this Workspace Configuration.
+        {t('layout.workspace-configuration-sign-in', {
+          defaultValue: 'Sign in to edit these Space settings.',
+        })}
       </main>
     );
   }
@@ -550,7 +660,9 @@ export function WorkspaceConfigurationEditor({
     return (
       <main
         role="status"
-        aria-label="Loading Workspace Configuration"
+        aria-label={t('layout.workspace-configuration-loading', {
+          defaultValue: 'Loading Space settings',
+        })}
         className={cn(
           'h-full overflow-y-auto',
           presentation === 'page' && 'bg-ds-neutral-muted-default',
@@ -856,12 +968,16 @@ export function WorkspaceConfigurationEditor({
               </span>
               {presentation === 'page' ? (
                 <h1 className="mt-1 !text-ds-text-display font-semibold text-ds-ink-default-default">
-                  Workspace Configuration
+                  {t('layout.workspace-configuration-title', {
+                    defaultValue: 'Space settings',
+                  })}
                 </h1>
               ) : null}
               <span className="mt-2 max-w-2xl text-ds-text-base text-ds-ink-muted-default">
-                Configure the context, tools, agents, permissions, and
-                versioning that every Run in this Space inherits.
+                {t('layout.workspace-configuration-description', {
+                  defaultValue:
+                    'Configure the context, tools, agents, permissions, and versioning that every task in this Space inherits.',
+                })}
               </span>
             </div>
           </header>
@@ -869,14 +985,18 @@ export function WorkspaceConfigurationEditor({
 
         <SettingsSectionPage className="md:grid md:grid-cols-[180px_minmax(0,1fr)] md:items-start md:gap-6">
           <aside
-            aria-label="Space settings navigation"
+            aria-label={t('layout.workspace-configuration-navigation', {
+              defaultValue: 'Space settings navigation',
+            })}
             className={cn(
               'w-full min-w-0 md:sticky md:w-[180px]',
               presentation === 'settings' ? 'md:top-16' : 'md:top-4'
             )}
           >
             <nav
-              aria-label="Space settings sections"
+              aria-label={t('layout.workspace-configuration-sections', {
+                defaultValue: 'Space settings sections',
+              })}
               className="w-full min-w-0 rounded-2xl bg-ds-neutral-default-default p-1"
             >
               <ul
@@ -896,7 +1016,7 @@ export function WorkspaceConfigurationEditor({
                         onClick={() => scrollToSection(section.id)}
                       >
                         <span className={SIDEBAR_TAB_LABEL_CLASS}>
-                          {section.label}
+                          {workspaceSettingSectionLabel(section.id)}
                         </span>
                         {itemCount !== undefined ? (
                           <span
@@ -952,7 +1072,9 @@ export function WorkspaceConfigurationEditor({
                   size="sm"
                   onClick={() => void reload()}
                 >
-                  Reload durable copy
+                  {t('layout.workspace-configuration-reload', {
+                    defaultValue: 'Reload saved copy',
+                  })}
                 </Button>
               </div>
             ) : null}
@@ -962,16 +1084,30 @@ export function WorkspaceConfigurationEditor({
                 data-testid="profile-status-settings-group"
                 className="w-full"
               >
-                <SettingRow label={`Draft version ${draft?.version ?? 0}`}>
+                <SettingRow
+                  label={t('layout.workspace-configuration-draft-version', {
+                    defaultValue: 'Draft version {{version}}',
+                    version: draft?.version ?? 0,
+                  })}
+                >
                   <div className="flex min-h-10 items-center justify-end gap-2">
                     <span className="text-ds-text-base text-ds-ink-muted-default">
                       {saveState === 'saving'
-                        ? 'Saving…'
+                        ? t('layout.workspace-configuration-saving', {
+                            defaultValue: 'Saving…',
+                          })
                         : saveState === 'saved'
-                          ? 'Saved'
+                          ? t('layout.workspace-configuration-saved', {
+                              defaultValue: 'Saved',
+                            })
                           : saveState === 'needs_attention'
-                            ? 'Needs attention'
-                            : 'Local draft'}
+                            ? t(
+                                'layout.workspace-configuration-needs-attention',
+                                { defaultValue: 'Needs attention' }
+                              )
+                            : t('layout.workspace-configuration-local-draft', {
+                                defaultValue: 'Local draft',
+                              })}
                     </span>
                     {saveState === 'needs_attention' ? (
                       <Button
@@ -980,12 +1116,18 @@ export function WorkspaceConfigurationEditor({
                         size="sm"
                         onClick={retrySave}
                       >
-                        Retry
+                        {t('layout.workspace-configuration-retry', {
+                          defaultValue: 'Retry',
+                        })}
                       </Button>
                     ) : null}
                   </div>
                 </SettingRow>
-                <SettingRow label="Profile">
+                <SettingRow
+                  label={t('layout.workspace-configuration-profile', {
+                    defaultValue: 'Profile',
+                  })}
+                >
                   <div className="flex min-h-10 items-center justify-end">
                     <Button
                       type="button"
@@ -993,8 +1135,13 @@ export function WorkspaceConfigurationEditor({
                       size="sm"
                       buttonContent="icon-only"
                       buttonRadius="full"
-                      aria-label="Share workspace bundle"
-                      title="Share workspace bundle"
+                      aria-label={t(
+                        'layout.workspace-configuration-share-profile',
+                        { defaultValue: 'Share Space profile' }
+                      )}
+                      title={t('layout.workspace-configuration-share-profile', {
+                        defaultValue: 'Share Space profile',
+                      })}
                       onClick={() => setSaveDialogOpen(true)}
                       disabled={!draft?.persisted || saveState !== 'saved'}
                     >
@@ -1015,13 +1162,24 @@ export function WorkspaceConfigurationEditor({
                 className="w-full"
               >
                 <SettingRow
-                  label="Bundle name"
-                  description="Shown to collaborators and bundle recipients."
+                  label={t('layout.workspace-configuration-profile-name', {
+                    defaultValue: 'Profile name',
+                  })}
+                  description={t(
+                    'layout.workspace-configuration-profile-name-description',
+                    {
+                      defaultValue:
+                        'Shown to collaborators and people who receive this profile.',
+                    }
+                  )}
                 >
                   <Input
                     variant="secondary"
                     value={document.metadata.name}
-                    aria-label="Bundle name"
+                    aria-label={t(
+                      'layout.workspace-configuration-profile-name',
+                      { defaultValue: 'Profile name' }
+                    )}
                     onChange={(event) =>
                       update((next) => {
                         next.metadata.name = event.target.value;
@@ -1030,8 +1188,16 @@ export function WorkspaceConfigurationEditor({
                   />
                 </SettingRow>
                 <SettingRow
-                  label="Permission profile"
-                  description="Controls how actions are reviewed."
+                  label={t('layout.workspace-configuration-approval-mode', {
+                    defaultValue: 'Approval mode',
+                  })}
+                  description={t(
+                    'layout.workspace-configuration-approval-mode-description',
+                    {
+                      defaultValue:
+                        'Controls when Eigent asks you before it acts.',
+                    }
+                  )}
                 >
                   <Select
                     value={document.spec.permissions.profile}
@@ -1047,7 +1213,10 @@ export function WorkspaceConfigurationEditor({
                   >
                     <SelectTrigger
                       variant="secondary"
-                      aria-label="Permission profile"
+                      aria-label={t(
+                        'layout.workspace-configuration-approval-mode',
+                        { defaultValue: 'Approval mode' }
+                      )}
                       wrapperClassName="w-full"
                       className="w-full"
                     >
@@ -1056,26 +1225,51 @@ export function WorkspaceConfigurationEditor({
                     <SelectContent>
                       <SelectGroup>
                         <SelectItem value="request_approval">
-                          Request approval
+                          {t(
+                            'layout.workspace-configuration-approval-ask-first',
+                            { defaultValue: 'Ask me first' }
+                          )}
                         </SelectItem>
                         <SelectItem value="auto_review">
-                          Auto-review safe actions
+                          {t(
+                            'layout.workspace-configuration-approval-automatic',
+                            { defaultValue: 'Approve for me' }
+                          )}
                         </SelectItem>
                         <SelectItem value="workspace_write">
-                          Workspace write
+                          {t(
+                            'layout.workspace-configuration-approval-edit-files',
+                            { defaultValue: 'Edit files without asking' }
+                          )}
                         </SelectItem>
-                        <SelectItem value="full_access">Full access</SelectItem>
+                        <SelectItem value="full_access">
+                          {t(
+                            'layout.workspace-configuration-approval-full-access',
+                            { defaultValue: 'Full access' }
+                          )}
+                        </SelectItem>
                       </SelectGroup>
                     </SelectContent>
                   </Select>
                 </SettingRow>
                 <SettingRow
-                  label="Git workspace environment"
-                  description="Version this Space on its selected branch; multi-agent work stays isolated until integration."
+                  label={t('layout.workspace-configuration-git-enabled', {
+                    defaultValue: 'Track this Space in Git',
+                  })}
+                  description={t(
+                    'layout.workspace-configuration-git-enabled-description',
+                    {
+                      defaultValue:
+                        "Save this Space's files to its selected branch. Each agent works in isolation until its changes are merged.",
+                    }
+                  )}
                 >
                   <div className="flex min-h-10 items-center justify-end">
                     <Switch
-                      aria-label="Git workspace environment"
+                      aria-label={t(
+                        'layout.workspace-configuration-git-enabled',
+                        { defaultValue: 'Track this Space in Git' }
+                      )}
                       checked={document.spec.git.enabled}
                       onCheckedChange={(checked) =>
                         update((next) => {
@@ -1086,8 +1280,16 @@ export function WorkspaceConfigurationEditor({
                   </div>
                 </SettingRow>
                 <SettingRow
-                  label="Remote policy"
-                  description="Choose when remote Git operations are allowed."
+                  label={t('layout.workspace-configuration-remote-policy', {
+                    defaultValue: 'Remote policy',
+                  })}
+                  description={t(
+                    'layout.workspace-configuration-remote-policy-description',
+                    {
+                      defaultValue:
+                        'Choose when Eigent may push to or pull from a remote.',
+                    }
+                  )}
                 >
                   <Select
                     value={document.spec.git.remotePolicy}
@@ -1100,7 +1302,10 @@ export function WorkspaceConfigurationEditor({
                   >
                     <SelectTrigger
                       variant="secondary"
-                      aria-label="Remote policy"
+                      aria-label={t(
+                        'layout.workspace-configuration-remote-policy',
+                        { defaultValue: 'Remote policy' }
+                      )}
                       wrapperClassName="w-full"
                       className="w-full"
                     >
@@ -1108,12 +1313,23 @@ export function WorkspaceConfigurationEditor({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
-                        <SelectItem value="deny">Deny</SelectItem>
+                        <SelectItem value="deny">
+                          {t(
+                            'layout.workspace-configuration-remote-policy-deny',
+                            { defaultValue: 'Deny' }
+                          )}
+                        </SelectItem>
                         <SelectItem value="prompt">
-                          Ask before remote operations
+                          {t(
+                            'layout.workspace-configuration-remote-policy-prompt',
+                            { defaultValue: 'Ask before remote operations' }
+                          )}
                         </SelectItem>
                         <SelectItem value="allow">
-                          Allow according to permission policy
+                          {t(
+                            'layout.workspace-configuration-remote-policy-allow',
+                            { defaultValue: 'Allow according to approval mode' }
+                          )}
                         </SelectItem>
                       </SelectGroup>
                     </SelectContent>
@@ -1124,11 +1340,21 @@ export function WorkspaceConfigurationEditor({
 
             <WorkspaceSettingsSection
               id="space-settings-model"
-              title="Model"
-              description="Define reusable model profiles for the agents in this Space."
+              title={t('layout.workspace-configuration-model-title', {
+                defaultValue: 'Model',
+              })}
+              description={t(
+                'layout.workspace-configuration-model-description',
+                {
+                  defaultValue:
+                    'Define reusable model profiles for the agents in this Space.',
+                }
+              )}
               action={
                 <AddSectionButton
-                  label="Add profile"
+                  label={t('layout.workspace-configuration-add-model-profile', {
+                    defaultValue: 'Add profile',
+                  })}
                   onClick={() =>
                     update((next) => {
                       const profileName = nextId(
@@ -1152,13 +1378,28 @@ export function WorkspaceConfigurationEditor({
                     label={humanizeIdentifier(profileName)}
                     description={
                       profileName === 'default'
-                        ? 'Inherited when an agent has no custom profile.'
-                        : 'Available to assign from the agent editor.'
+                        ? t(
+                            'layout.workspace-configuration-model-profile-inherited',
+                            {
+                              defaultValue:
+                                'Inherited when an agent has no custom profile.',
+                            }
+                          )
+                        : t(
+                            'layout.workspace-configuration-model-profile-assignable',
+                            {
+                              defaultValue:
+                                'Available to assign from the agent editor.',
+                            }
+                          )
                     }
                   >
                     <div className="grid w-full items-end gap-2 xl:grid-cols-[1fr_2fr_1fr_auto]">
                       <Input
-                        title="Profile name"
+                        title={t(
+                          'layout.workspace-configuration-model-profile-name',
+                          { defaultValue: 'Profile name' }
+                        )}
                         value={profileName}
                         disabled={profileName === 'default'}
                         onChange={(event) => {
@@ -1176,9 +1417,18 @@ export function WorkspaceConfigurationEditor({
                         }}
                       />
                       <Input
-                        title="Model reference"
+                        title={t(
+                          'layout.workspace-configuration-model-reference',
+                          { defaultValue: 'Model reference' }
+                        )}
                         value={profile.modelRef}
-                        aria-label={`${profileName} model reference`}
+                        aria-label={t(
+                          'layout.workspace-configuration-model-reference-label',
+                          {
+                            defaultValue: '{{profile}} model reference',
+                            profile: profileName,
+                          }
+                        )}
                         onChange={(event) =>
                           update((next) => {
                             next.spec.models[profileName].modelRef =
@@ -1196,8 +1446,17 @@ export function WorkspaceConfigurationEditor({
                         }
                       >
                         <SelectTrigger
-                          title="Thinking effort"
-                          aria-label={`${profileName} thinking effort`}
+                          title={t(
+                            'layout.workspace-configuration-thinking-effort',
+                            { defaultValue: 'Thinking effort' }
+                          )}
+                          aria-label={t(
+                            'layout.workspace-configuration-thinking-effort-label',
+                            {
+                              defaultValue: '{{profile}} thinking effort',
+                              profile: profileName,
+                            }
+                          )}
                           wrapperClassName="w-full"
                           className="w-full"
                         >
@@ -1205,11 +1464,31 @@ export function WorkspaceConfigurationEditor({
                         </SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
-                            <SelectItem value="low">Low</SelectItem>
-                            <SelectItem value="medium">Medium</SelectItem>
-                            <SelectItem value="high">High</SelectItem>
-                            <SelectItem value="xhigh">Extra high</SelectItem>
-                            <SelectItem value="max">Max</SelectItem>
+                            <SelectItem value="low">
+                              {t('layout.thinking-effort-low', {
+                                defaultValue: 'Low',
+                              })}
+                            </SelectItem>
+                            <SelectItem value="medium">
+                              {t('layout.thinking-effort-medium', {
+                                defaultValue: 'Medium',
+                              })}
+                            </SelectItem>
+                            <SelectItem value="high">
+                              {t('layout.thinking-effort-high', {
+                                defaultValue: 'High',
+                              })}
+                            </SelectItem>
+                            <SelectItem value="xhigh">
+                              {t('layout.thinking-effort-extra-high', {
+                                defaultValue: 'Extra high',
+                              })}
+                            </SelectItem>
+                            <SelectItem value="max">
+                              {t('layout.thinking-effort-max', {
+                                defaultValue: 'Max',
+                              })}
+                            </SelectItem>
                           </SelectGroup>
                         </SelectContent>
                       </Select>
@@ -1217,7 +1496,13 @@ export function WorkspaceConfigurationEditor({
                         <span className="h-9 w-9" aria-hidden />
                       ) : (
                         <RemoveButton
-                          label={`Remove model profile ${profileName}`}
+                          label={t(
+                            'layout.workspace-configuration-remove-model-profile',
+                            {
+                              defaultValue: 'Remove model profile {{profile}}',
+                              profile: profileName,
+                            }
+                          )}
                           onClick={() =>
                             update((next) => {
                               delete next.spec.models[profileName];
@@ -1238,12 +1523,28 @@ export function WorkspaceConfigurationEditor({
 
             <WorkspaceCollectionSection
               id="space-settings-environment"
-              title="Environment"
-              description="Declare portable variable names only; local and secret values are never shared."
-              summaryTitle="Environment variables"
-              addLabel="Add variable"
+              title={t('layout.workspace-configuration-environment-title', {
+                defaultValue: 'Environment',
+              })}
+              description={t(
+                'layout.workspace-configuration-environment-description',
+                {
+                  defaultValue:
+                    'Declare portable variable names only; local and secret values are never shared.',
+                }
+              )}
+              summaryTitle={t(
+                'layout.workspace-configuration-environment-summary',
+                { defaultValue: 'Environment variables' }
+              )}
+              addLabel={t('layout.workspace-configuration-add-variable', {
+                defaultValue: 'Add variable',
+              })}
               count={environmentVariables.length}
-              emptyState="No environment variables are required."
+              emptyState={t(
+                'layout.workspace-configuration-environment-empty',
+                { defaultValue: 'No environment variables are required.' }
+              )}
               onAdd={() => openCreateResource('environment')}
               onDeleteAll={() => {
                 update((next) => {
@@ -1255,11 +1556,44 @@ export function WorkspaceConfigurationEditor({
                 <WorkspaceResourceListItem
                   key={`${variable.name}-${index}`}
                   leading={<KeyRound className="h-4 w-4" aria-hidden />}
-                  title={variable.name || `Variable ${index + 1}`}
-                  subtitle={variable.description || 'No description'}
-                  meta={`${variable.required ? 'Required' : 'Optional'}${variable.sensitive ? ' · Sensitive' : ''}`}
-                  editLabel={`Edit ${variable.name || `variable ${index + 1}`}`}
-                  deleteLabel={`Remove ${variable.name || `variable ${index + 1}`}`}
+                  title={
+                    variable.name ||
+                    t('layout.workspace-configuration-variable-name', {
+                      defaultValue: 'Variable {{number}}',
+                      number: index + 1,
+                    })
+                  }
+                  subtitle={
+                    variable.description ||
+                    t('layout.no-description', {
+                      defaultValue: 'No description',
+                    })
+                  }
+                  meta={`${variable.required ? t('layout.required', { defaultValue: 'Required' }) : t('layout.optional', { defaultValue: 'Optional' })}${variable.sensitive ? ` · ${t('layout.sensitive', { defaultValue: 'Sensitive' })}` : ''}`}
+                  editLabel={t('layout.workspace-configuration-edit-variable', {
+                    defaultValue: 'Edit {{variable}}',
+                    variable:
+                      variable.name ||
+                      t('layout.workspace-configuration-variable-name-lower', {
+                        defaultValue: 'variable {{number}}',
+                        number: index + 1,
+                      }),
+                  })}
+                  deleteLabel={t(
+                    'layout.workspace-configuration-remove-variable',
+                    {
+                      defaultValue: 'Remove {{variable}}',
+                      variable:
+                        variable.name ||
+                        t(
+                          'layout.workspace-configuration-variable-name-lower',
+                          {
+                            defaultValue: 'variable {{number}}',
+                            number: index + 1,
+                          }
+                        ),
+                    }
+                  )}
                   onEdit={() =>
                     setResourceEditor({
                       kind: 'environment',
@@ -1284,12 +1618,31 @@ export function WorkspaceConfigurationEditor({
 
             <WorkspaceCollectionSection
               id="space-settings-instructions"
-              title="Instructions"
-              description="Assign versioned instruction assets to workforce roles."
-              summaryTitle="Instruction assets"
-              addLabel="Add instruction"
+              title={t('layout.workspace-configuration-instructions-title', {
+                defaultValue: 'Instructions',
+              })}
+              description={t(
+                'layout.workspace-configuration-instructions-description',
+                {
+                  defaultValue:
+                    'Assign versioned instruction assets to workforce roles.',
+                }
+              )}
+              summaryTitle={t(
+                'layout.workspace-configuration-instructions-summary',
+                { defaultValue: 'Instruction assets' }
+              )}
+              addLabel={t('layout.workspace-configuration-add-instruction', {
+                defaultValue: 'Add instruction',
+              })}
               count={instructions.length}
-              emptyState="Add an instruction asset for a coordinator or worker role."
+              emptyState={t(
+                'layout.workspace-configuration-instructions-empty',
+                {
+                  defaultValue:
+                    'Add an instruction asset for a coordinator or worker role.',
+                }
+              )}
               onAdd={() => openCreateResource('instruction')}
               onDeleteAll={() =>
                 update((next) => {
@@ -1303,9 +1656,23 @@ export function WorkspaceConfigurationEditor({
                   leading={<FileText className="h-4 w-4" aria-hidden />}
                   title={humanizeIdentifier(role)}
                   subtitle={ref}
-                  meta="Instruction"
-                  editLabel={`Edit ${role} instructions`}
-                  deleteLabel={`Remove ${role} instructions`}
+                  meta={t('layout.instruction', {
+                    defaultValue: 'Instruction',
+                  })}
+                  editLabel={t(
+                    'layout.workspace-configuration-edit-instructions',
+                    {
+                      defaultValue: 'Edit {{role}} instructions',
+                      role,
+                    }
+                  )}
+                  deleteLabel={t(
+                    'layout.workspace-configuration-remove-instructions',
+                    {
+                      defaultValue: 'Remove {{role}} instructions',
+                      role,
+                    }
+                  )}
                   onEdit={() =>
                     setResourceEditor({
                       kind: 'instruction',
@@ -1325,12 +1692,27 @@ export function WorkspaceConfigurationEditor({
 
             <WorkspaceCollectionSection
               id="space-settings-context"
-              title="Context"
-              description="Declare shareable context or named local path slots."
-              summaryTitle="Context items"
-              addLabel="Add context"
+              title={t('layout.workspace-configuration-context-title', {
+                defaultValue: 'Context',
+              })}
+              description={t(
+                'layout.workspace-configuration-context-description',
+                {
+                  defaultValue:
+                    'Declare shareable context or named local path slots.',
+                }
+              )}
+              summaryTitle={t(
+                'layout.workspace-configuration-context-summary',
+                { defaultValue: 'Context items' }
+              )}
+              addLabel={t('layout.workspace-configuration-add-context', {
+                defaultValue: 'Add context',
+              })}
               count={document.spec.context.length}
-              emptyState="No workspace context is configured yet."
+              emptyState={t('layout.workspace-configuration-context-empty', {
+                defaultValue: 'No Space context is configured yet.',
+              })}
               onAdd={() => openCreateResource('context')}
               onDeleteAll={() =>
                 update((next) => {
@@ -1343,10 +1725,28 @@ export function WorkspaceConfigurationEditor({
                   key={`${item.id}-${index}`}
                   leading={<FileText className="h-4 w-4" aria-hidden />}
                   title={humanizeIdentifier(item.id)}
-                  subtitle={`${humanizeIdentifier(item.kind)} · ${humanizeIdentifier(item.sharing || 'reference_only')}`}
-                  meta="Context"
-                  editLabel={`Edit context ${item.id}`}
-                  deleteLabel={`Remove context ${item.id}`}
+                  subtitle={t(
+                    'layout.workspace-configuration-context-item-summary',
+                    {
+                      defaultValue: '{{kind}} · {{sharing}}',
+                      kind: contextKindLabel(item.kind),
+                      sharing: contextSharingLabel(
+                        item.sharing || 'reference_only'
+                      ),
+                    }
+                  )}
+                  meta={t('layout.context', { defaultValue: 'Context' })}
+                  editLabel={t('layout.workspace-configuration-edit-context', {
+                    defaultValue: 'Edit context {{id}}',
+                    id: item.id,
+                  })}
+                  deleteLabel={t(
+                    'layout.workspace-configuration-remove-context',
+                    {
+                      defaultValue: 'Remove context {{id}}',
+                      id: item.id,
+                    }
+                  )}
                   onEdit={() =>
                     setResourceEditor({
                       kind: 'context',
@@ -1368,12 +1768,26 @@ export function WorkspaceConfigurationEditor({
 
             <WorkspaceCollectionSection
               id="space-settings-agents"
-              title="Agents"
-              description="Define the workforce roles available in this Space."
-              summaryTitle="Configured agents"
-              addLabel="Add agent"
+              title={t('layout.workspace-configuration-agents-title', {
+                defaultValue: 'Agents',
+              })}
+              description={t(
+                'layout.workspace-configuration-agents-description',
+                {
+                  defaultValue:
+                    'Define the workforce roles available in this Space.',
+                }
+              )}
+              summaryTitle={t('layout.workspace-configuration-agents-summary', {
+                defaultValue: 'Configured agents',
+              })}
+              addLabel={t('layout.workspace-configuration-add-agent', {
+                defaultValue: 'Add agent',
+              })}
               count={document.spec.agents.length}
-              emptyState="No agents configured."
+              emptyState={t('layout.workspace-configuration-agents-empty', {
+                defaultValue: 'No agents configured.',
+              })}
               onAdd={() => openCreateResource('agent')}
               onDeleteAll={() =>
                 update((next) => {
@@ -1389,10 +1803,36 @@ export function WorkspaceConfigurationEditor({
                   key={`${item.id}-${index}`}
                   leading={<Bot className="h-4 w-4" aria-hidden />}
                   title={humanizeIdentifier(item.id)}
-                  subtitle={`${humanizeIdentifier(item.role)} · ${humanizeIdentifier(item.modelProfile)} model`}
-                  meta={`${document.spec.skills.filter((skill) => skill.assignTo.includes(item.id)).length + document.spec.mcpServers.filter((server) => server.assignTo.includes(item.id)).length} assigned`}
-                  editLabel={`Edit agent ${item.id}`}
-                  deleteLabel={`Remove agent ${item.id}`}
+                  subtitle={t(
+                    'layout.workspace-configuration-agent-model-summary',
+                    {
+                      defaultValue: '{{role}} · {{model}} model',
+                      role: humanizeIdentifier(item.role),
+                      model: humanizeIdentifier(item.modelProfile),
+                    }
+                  )}
+                  meta={t('layout.workspace-configuration-assigned-count', {
+                    defaultValue_one: '{{count}} assigned',
+                    defaultValue_other: '{{count}} assigned',
+                    count:
+                      document.spec.skills.filter((skill) =>
+                        skill.assignTo.includes(item.id)
+                      ).length +
+                      document.spec.mcpServers.filter((server) =>
+                        server.assignTo.includes(item.id)
+                      ).length,
+                  })}
+                  editLabel={t('layout.workspace-configuration-edit-agent', {
+                    defaultValue: 'Edit agent {{id}}',
+                    id: item.id,
+                  })}
+                  deleteLabel={t(
+                    'layout.workspace-configuration-remove-agent',
+                    {
+                      defaultValue: 'Remove agent {{id}}',
+                      id: item.id,
+                    }
+                  )}
                   onEdit={() =>
                     setResourceEditor({
                       kind: 'agent',
@@ -1414,12 +1854,26 @@ export function WorkspaceConfigurationEditor({
 
             <WorkspaceCollectionSection
               id="space-settings-skills"
-              title="Skills"
-              description="Assign portable skill packages to workforce roles."
-              summaryTitle="Assigned skills"
-              addLabel="Add skill"
+              title={t('layout.workspace-configuration-skills-title', {
+                defaultValue: 'Skills',
+              })}
+              description={t(
+                'layout.workspace-configuration-skills-description',
+                {
+                  defaultValue:
+                    'Assign portable skill packages to workforce roles.',
+                }
+              )}
+              summaryTitle={t('layout.workspace-configuration-skills-summary', {
+                defaultValue: 'Assigned skills',
+              })}
+              addLabel={t('layout.workspace-configuration-add-skill', {
+                defaultValue: 'Add skill',
+              })}
               count={document.spec.skills.length}
-              emptyState="No skills assigned."
+              emptyState={t('layout.workspace-configuration-skills-empty', {
+                defaultValue: 'No skills assigned.',
+              })}
               onAdd={() => openCreateResource('skill')}
               onDeleteAll={() =>
                 update((next) => {
@@ -1432,10 +1886,43 @@ export function WorkspaceConfigurationEditor({
                   key={`${item.ref}-${index}`}
                   leading={<Package className="h-4 w-4" aria-hidden />}
                   title={humanizeIdentifier(item.ref)}
-                  subtitle={`${resourceVersion(item.ref) || 'Bundle skill'} · ${item.assignTo.length ? `Assigned to ${item.assignTo.map(humanizeIdentifier).join(', ')}` : 'Not assigned'}`}
-                  meta={`${item.assignTo.length} agents`}
-                  editLabel={`Edit skill ${item.ref}`}
-                  deleteLabel={`Remove skill ${item.ref}`}
+                  subtitle={t(
+                    'layout.workspace-configuration-resource-assignment-summary',
+                    {
+                      defaultValue: '{{resource}} · {{assignment}}',
+                      resource:
+                        resourceVersion(item.ref) ||
+                        t('layout.workspace-configuration-profile-skill', {
+                          defaultValue: 'Profile skill',
+                        }),
+                      assignment: item.assignTo.length
+                        ? t('layout.workspace-configuration-assigned-to', {
+                            defaultValue: 'Assigned to {{agents}}',
+                            agents: item.assignTo
+                              .map(humanizeIdentifier)
+                              .join(', '),
+                          })
+                        : t('layout.workspace-configuration-not-assigned', {
+                            defaultValue: 'Not assigned',
+                          }),
+                    }
+                  )}
+                  meta={t('layout.workspace-configuration-agent-count', {
+                    defaultValue_one: '{{count}} agent',
+                    defaultValue_other: '{{count}} agents',
+                    count: item.assignTo.length,
+                  })}
+                  editLabel={t('layout.workspace-configuration-edit-skill', {
+                    defaultValue: 'Edit skill {{skill}}',
+                    skill: item.ref,
+                  })}
+                  deleteLabel={t(
+                    'layout.workspace-configuration-remove-skill',
+                    {
+                      defaultValue: 'Remove skill {{skill}}',
+                      skill: item.ref,
+                    }
+                  )}
                   onEdit={() =>
                     setResourceEditor({
                       kind: 'skill',
@@ -1456,12 +1943,27 @@ export function WorkspaceConfigurationEditor({
 
             <WorkspaceCollectionSection
               id="space-settings-connectors"
-              title="Connectors"
-              description="Declare connection slots and required grants without storing credentials."
-              summaryTitle="Connector requirements"
-              addLabel="Add connector"
+              title={t('layout.workspace-configuration-connectors-title', {
+                defaultValue: 'Connectors',
+              })}
+              description={t(
+                'layout.workspace-configuration-connectors-description',
+                {
+                  defaultValue:
+                    'Declare connection slots and required grants without storing credentials.',
+                }
+              )}
+              summaryTitle={t(
+                'layout.workspace-configuration-connectors-summary',
+                { defaultValue: 'Connector requirements' }
+              )}
+              addLabel={t('layout.workspace-configuration-add-connector', {
+                defaultValue: 'Add connector',
+              })}
               count={document.spec.connectors.length}
-              emptyState="No connector requirements."
+              emptyState={t('layout.workspace-configuration-connectors-empty', {
+                defaultValue: 'No connector requirements.',
+              })}
               onAdd={() => openCreateResource('connector')}
               onDeleteAll={() =>
                 update((next) => {
@@ -1474,10 +1976,30 @@ export function WorkspaceConfigurationEditor({
                   key={`${item.id}-${index}`}
                   leading={<Cable className="h-4 w-4" aria-hidden />}
                   title={humanizeIdentifier(item.connector)}
-                  subtitle={`${humanizeIdentifier(item.id)} · ${item.requiredGrants.length} required grants`}
+                  subtitle={t(
+                    'layout.workspace-configuration-connector-summary',
+                    {
+                      defaultValue_one: '{{id}} · {{count}} required grant',
+                      defaultValue_other: '{{id}} · {{count}} required grants',
+                      id: humanizeIdentifier(item.id),
+                      count: item.requiredGrants.length,
+                    }
+                  )}
                   meta={humanizeIdentifier(item.connectionSlot)}
-                  editLabel={`Edit connector ${item.id}`}
-                  deleteLabel={`Remove connector ${item.id}`}
+                  editLabel={t(
+                    'layout.workspace-configuration-edit-connector',
+                    {
+                      defaultValue: 'Edit connector {{id}}',
+                      id: item.id,
+                    }
+                  )}
+                  deleteLabel={t(
+                    'layout.workspace-configuration-remove-connector',
+                    {
+                      defaultValue: 'Remove connector {{id}}',
+                      id: item.id,
+                    }
+                  )}
                   onEdit={() =>
                     setResourceEditor({
                       kind: 'connector',
@@ -1498,12 +2020,23 @@ export function WorkspaceConfigurationEditor({
 
             <WorkspaceCollectionSection
               id="space-settings-mcp-servers"
-              title="MCP servers"
-              description="Configure portable MCP definitions and local secret slots."
-              summaryTitle="Configured MCP servers"
-              addLabel="Add MCP server"
+              title={t('layout.workspace-configuration-mcp-title', {
+                defaultValue: 'MCP servers',
+              })}
+              description={t('layout.workspace-configuration-mcp-description', {
+                defaultValue:
+                  'Configure portable MCP definitions and local secret slots.',
+              })}
+              summaryTitle={t('layout.workspace-configuration-mcp-summary', {
+                defaultValue: 'Configured MCP servers',
+              })}
+              addLabel={t('layout.workspace-configuration-add-mcp', {
+                defaultValue: 'Add MCP server',
+              })}
               count={document.spec.mcpServers.length}
-              emptyState="No MCP servers."
+              emptyState={t('layout.workspace-configuration-mcp-empty', {
+                defaultValue: 'No MCP servers.',
+              })}
               onAdd={() => openCreateResource('mcp')}
               onDeleteAll={() =>
                 update((next) => {
@@ -1516,10 +2049,36 @@ export function WorkspaceConfigurationEditor({
                   key={`${item.id}-${index}`}
                   leading={<Server className="h-4 w-4" aria-hidden />}
                   title={humanizeIdentifier(item.id)}
-                  subtitle={`${humanizeIdentifier(item.definition)} · ${item.assignTo.length ? `Assigned to ${item.assignTo.map(humanizeIdentifier).join(', ')}` : 'Not assigned'}`}
-                  meta={`${item.secretSlots.length} secret slots`}
-                  editLabel={`Edit MCP ${item.id}`}
-                  deleteLabel={`Remove MCP ${item.id}`}
+                  subtitle={t(
+                    'layout.workspace-configuration-resource-assignment-summary',
+                    {
+                      defaultValue: '{{resource}} · {{assignment}}',
+                      resource: humanizeIdentifier(item.definition),
+                      assignment: item.assignTo.length
+                        ? t('layout.workspace-configuration-assigned-to', {
+                            defaultValue: 'Assigned to {{agents}}',
+                            agents: item.assignTo
+                              .map(humanizeIdentifier)
+                              .join(', '),
+                          })
+                        : t('layout.workspace-configuration-not-assigned', {
+                            defaultValue: 'Not assigned',
+                          }),
+                    }
+                  )}
+                  meta={t('layout.workspace-configuration-secret-slot-count', {
+                    defaultValue_one: '{{count}} secret slot',
+                    defaultValue_other: '{{count}} secret slots',
+                    count: item.secretSlots.length,
+                  })}
+                  editLabel={t('layout.workspace-configuration-edit-mcp', {
+                    defaultValue: 'Edit MCP {{id}}',
+                    id: item.id,
+                  })}
+                  deleteLabel={t('layout.workspace-configuration-remove-mcp', {
+                    defaultValue: 'Remove MCP {{id}}',
+                    id: item.id,
+                  })}
                   onEdit={() =>
                     setResourceEditor({
                       kind: 'mcp',

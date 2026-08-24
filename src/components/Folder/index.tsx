@@ -649,6 +649,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
   reviewedFileIds,
   reviewCommentCounts,
 }) => {
+  const { t } = useTranslation();
   if (!node.children || node.children.length === 0) return null;
 
   return (
@@ -706,7 +707,17 @@ export const FileTree: React.FC<FileTreeProps> = ({
                 <button
                   type="button"
                   onClick={() => onToggleFolder(child.path)}
-                  aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${child.name}`}
+                  aria-label={
+                    isExpanded
+                      ? t('folder.collapse-folder', {
+                          name: child.name,
+                          defaultValue: 'Collapse {{name}}',
+                        })
+                      : t('folder.expand-folder', {
+                          name: child.name,
+                          defaultValue: 'Expand {{name}}',
+                        })
+                  }
                   className="inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md border-0 border-x-0 border-y-0 bg-transparent text-inherit hover:bg-ds-neutral-default-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:outline-none"
                 >
                   {isExpanded ? (
@@ -769,13 +780,19 @@ export const FileTree: React.FC<FileTreeProps> = ({
                     recipe="main-compact"
                     decorative={false}
                     className="text-ds-icon-success-default-default"
-                    aria-label="Reviewed"
+                    aria-label={t('folder.reviewed', {
+                      defaultValue: 'Reviewed',
+                    })}
                   />
                 ) : null}
                 {variant === 'review' && reviewCommentCount > 0 ? (
                   <span
                     className="min-w-ds-control-2xs inline-flex min-h-ds-control-2xs shrink-0 items-center justify-center gap-ds-2 rounded-full bg-ds-accent-subtle-default px-ds-4 text-ds-text-meta font-semibold text-ds-ink-default-default"
-                    aria-label={`${reviewCommentCount} review comments`}
+                    aria-label={t('folder.review-comment-count', {
+                      count: reviewCommentCount,
+                      defaultValue_one: '{{count}} review comment',
+                      defaultValue_other: '{{count}} review comments',
+                    })}
                   >
                     <DsIcon icon={MessageSquare} recipe="main-compact" />
                     {reviewCommentCount}
@@ -1908,6 +1925,7 @@ function ImageLoader({ selectedFile }: { selectedFile: FileInfo }) {
 }
 
 function AudioLoader({ selectedFile }: { selectedFile: FileInfo }) {
+  const { t } = useTranslation();
   const [src, setSrc] = useState('');
 
   useEffect(() => {
@@ -1933,13 +1951,16 @@ function AudioLoader({ selectedFile }: { selectedFile: FileInfo }) {
         className="w-full"
         onError={(err) => console.error('Audio load error:', err)}
       >
-        Your browser does not support audio playback.
+        {t('folder.audio-playback-unsupported', {
+          defaultValue: 'Your browser does not support audio playback.',
+        })}
       </audio>
     </div>
   );
 }
 
 function VideoLoader({ selectedFile }: { selectedFile: FileInfo }) {
+  const { t } = useTranslation();
   const [src, setSrc] = useState('');
 
   useEffect(() => {
@@ -1961,7 +1982,9 @@ function VideoLoader({ selectedFile }: { selectedFile: FileInfo }) {
       className="max-h-full max-w-full object-contain"
       onError={(err) => console.error('Video load error:', err)}
     >
-      Your browser does not support video playback.
+      {t('folder.video-playback-unsupported', {
+        defaultValue: 'Your browser does not support video playback.',
+      })}
     </video>
   );
 }
@@ -2552,6 +2575,7 @@ function HtmlRenderer({
   selectedFile: FileInfo;
   projectFiles: FileInfo[];
 }) {
+  const { t } = useTranslation();
   const [processedHtml, setProcessedHtml] = useState<string>('');
   const [authorizedRemotePreviewPath, setAuthorizedRemotePreviewPath] =
     useState<string | null>(null);
@@ -2792,11 +2816,15 @@ function HtmlRenderer({
             />
             <div className="min-w-0">
               <h3 className="!text-ds-text-body-large font-bold">
-                This HTML uses external content
+                {t('folder.html-external-content-title', {
+                  defaultValue: 'This HTML uses external content',
+                })}
               </h3>
               <p className="mt-1 text-ds-text-base text-ds-ink-muted-default">
-                Loading it gives remote code access to this report&apos;s
-                rendered content. Access applies only to this preview session.
+                {t('folder.html-external-content-description', {
+                  defaultValue:
+                    "Loading it gives remote code access to this report's rendered content. Access applies only to this preview session.",
+                })}
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {remoteOrigins.map((origin) => (
@@ -2815,7 +2843,9 @@ function HtmlRenderer({
                   setAuthorizedRemotePreviewPath(selectedFile.path)
                 }
               >
-                Load external content
+                {t('folder.load-external-content', {
+                  defaultValue: 'Load external content',
+                })}
               </Button>
             </div>
           </div>
@@ -2914,14 +2944,22 @@ export interface FileViewerPanelProps {
 }
 
 function TruncatedPreviewNotice({ file }: { file: FileInfo }) {
+  const { t } = useTranslation();
   if (file.preview?.kind !== 'truncated-text') return null;
   return (
     <div className="mb-2 rounded-lg bg-ds-neutral-subtle-default px-3 py-2 text-ds-text-meta text-ds-ink-muted-default">
-      Previewing {formatFileSize(file.preview.bytesRead)}
-      {file.preview.totalBytes !== null
-        ? ` of ${formatFileSize(file.preview.totalBytes)}`
-        : ''}
-      . The complete file was not loaded.
+      {t('folder.truncated-preview-summary', {
+        bytesRead: formatFileSize(file.preview.bytesRead),
+        totalBytes:
+          file.preview.totalBytes !== null
+            ? t('folder.preview-total-size', {
+                size: formatFileSize(file.preview.totalBytes),
+                defaultValue: ' of {{size}}',
+              })
+            : '',
+        defaultValue:
+          'Previewing {{bytesRead}}{{totalBytes}}. The complete file was not loaded.',
+      })}
     </div>
   );
 }
@@ -2933,6 +2971,7 @@ function SourceFilePreview({
   file: FileInfo;
   appearance: string;
 }) {
+  const { t } = useTranslation();
   const sourcePath = file.relativePath || file.path || file.name;
   return (
     <div className="flex h-full min-h-0 w-full flex-col p-2">
@@ -2942,7 +2981,10 @@ function SourceFilePreview({
           value={file.content || ''}
           path={sourcePath}
           appearance={appearance}
-          ariaLabel={`Source for ${file.name}`}
+          ariaLabel={t('folder.source-for-file', {
+            name: file.name,
+            defaultValue: 'Source for {{name}}',
+          })}
         />
       </div>
     </div>
@@ -2958,38 +3000,58 @@ function BlockedPreviewPlaceholder({
   onRevealFile: () => void;
   onDownloadFile: () => void;
 }) {
+  const { t } = useTranslation();
   if (file.preview?.kind !== 'blocked') return null;
   const reason =
     file.preview.reason === 'too-large'
-      ? 'This file exceeds the safe in-app preview limit.'
+      ? t('folder.preview-too-large', {
+          defaultValue: 'This file exceeds the safe in-app preview limit.',
+        })
       : file.preview.reason === 'metadata-unavailable'
-        ? 'Eigent could not verify the file size, so automatic preview was blocked.'
-        : 'This file type cannot be safely previewed in this environment.';
+        ? t('folder.preview-metadata-unavailable', {
+            defaultValue:
+              'Eigent could not verify the file size, so automatic preview was blocked.',
+          })
+        : t('folder.preview-type-unsupported', {
+            defaultValue:
+              'This file type cannot be safely previewed in this environment.',
+          });
   return (
     <div className="flex h-full min-h-64 w-full items-center justify-center px-6 py-10">
       <div className="flex max-w-md flex-col items-center gap-3 text-center">
         <AlertTriangle className="size-10 text-ds-ink-muted-default" />
         <div>
           <p className="m-0 text-ds-text-body-large font-semibold text-ds-ink-default-default">
-            Preview not loaded
+            {t('folder.preview-not-loaded', {
+              defaultValue: 'Preview not loaded',
+            })}
           </p>
           <p className="mt-1 text-ds-text-base text-ds-ink-muted-default">
             {reason}
           </p>
         </div>
         <div className="text-ds-text-meta text-ds-ink-muted-default">
-          File size: {formatFileSize(file.preview.size)}
-          {file.preview.limit !== null
-            ? ` · Preview limit: ${formatFileSize(file.preview.limit)}`
-            : ''}
+          {t('folder.preview-file-size', {
+            size: formatFileSize(file.preview.size),
+            limit:
+              file.preview.limit !== null
+                ? t('folder.preview-limit', {
+                    size: formatFileSize(file.preview.limit),
+                    defaultValue: ' · Preview limit: {{size}}',
+                  })
+                : '',
+            defaultValue: 'File size: {{size}}{{limit}}',
+          })}
         </div>
         <div className="flex flex-wrap items-center justify-center gap-2">
           <Button type="button" variant="secondary" onClick={onRevealFile}>
-            Open externally
+            {t('folder.open-externally', {
+              defaultValue: 'Open externally',
+            })}
           </Button>
           {file.isRemote ? (
             <Button type="button" variant="ghost" onClick={onDownloadFile}>
-              Download
+              {t('folder.download', { defaultValue: 'Download' })}
             </Button>
           ) : null}
         </div>
@@ -3262,11 +3324,15 @@ export function FileViewerPanel({
                       {selectedFile.name}
                     </p>
                     <p className="m-0 text-ds-text-base text-ds-ink-muted-default">
-                      {t('folder.folder-selected-description', {
-                        defaultValue: openInActions.length
-                          ? 'Use Open in to open this exact folder in Finder or an editor.'
-                          : 'Select a file inside this folder to preview its contents.',
-                      })}
+                      {openInActions.length
+                        ? t('folder.folder-selected-open-in-description', {
+                            defaultValue:
+                              'Use Open in to open this exact folder in Finder or an editor.',
+                          })
+                        : t('folder.folder-selected-preview-description', {
+                            defaultValue:
+                              'Select a file inside this folder to preview its contents.',
+                          })}
                     </p>
                   </div>
                 </div>

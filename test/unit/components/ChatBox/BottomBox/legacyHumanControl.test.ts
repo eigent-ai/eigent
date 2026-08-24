@@ -72,13 +72,13 @@ describe('legacy BottomBox human control', () => {
       {
         scope: 'once',
         label: 'Approve once',
-        description: 'Allow this action one time only.',
+        description: 'Allow this action one time.',
       },
       {
         scope: 'space',
         label: 'Always allow',
         description:
-          'Allow this action in this Space from now on, including future Runs.',
+          'Allow this action in this Space from now on, including future tasks.',
       },
     ]);
     variant?.onApprove('space');

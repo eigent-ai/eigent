@@ -86,14 +86,38 @@ const KINDS: MemoryKind[] = [
   'lesson',
 ];
 
-const TRUST_LABELS: Record<MemoryEntry['source_trust'], string> = {
-  user_confirmed: 'Confirmed by you',
-  user_asserted: 'From your message',
-  system_verified: 'Eigent system record',
-  tool_observed: 'Observed by a tool',
-  external_untrusted: 'External, untrusted source',
-  model_inferred: 'Agent inference',
-  legacy_unverified: 'Imported, unverified',
+const TRUST_LABELS: Record<
+  MemoryEntry['source_trust'],
+  { key: string; defaultValue: string }
+> = {
+  user_confirmed: {
+    key: 'setting.memory-trust-user-confirmed',
+    defaultValue: 'Confirmed by you',
+  },
+  user_asserted: {
+    key: 'setting.memory-trust-user-asserted',
+    defaultValue: 'From your message',
+  },
+  system_verified: {
+    key: 'setting.memory-trust-system-verified',
+    defaultValue: 'Eigent system record',
+  },
+  tool_observed: {
+    key: 'setting.memory-trust-tool-observed',
+    defaultValue: 'Observed by a tool',
+  },
+  external_untrusted: {
+    key: 'setting.memory-trust-external-untrusted',
+    defaultValue: 'External, untrusted source',
+  },
+  model_inferred: {
+    key: 'setting.memory-trust-model-inferred',
+    defaultValue: 'Agent inference',
+  },
+  legacy_unverified: {
+    key: 'setting.memory-trust-legacy-unverified',
+    defaultValue: 'Imported, unverified',
+  },
 };
 
 interface MemoryProps {
@@ -113,6 +137,17 @@ export default function Memory({
   showScopeSelector = true,
 }: MemoryProps = {}) {
   const { t } = useTranslation();
+  const memoryKindLabel = (kind: MemoryKind) =>
+    t(`setting.memory-kind-${kind}`, {
+      defaultValue: kind[0].toUpperCase() + kind.slice(1),
+    });
+  const trustLabel = useCallback(
+    (trust: MemoryEntry['source_trust']) => {
+      const label = TRUST_LABELS[trust] ?? TRUST_LABELS.legacy_unverified;
+      return t(label.key, { defaultValue: label.defaultValue });
+    },
+    [t]
+  );
   const activeProjectId = useProjectStore((state) => state.activeProjectId);
   const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
   const userId = useAuthStore((state) => state.user_id);
@@ -260,9 +295,7 @@ export default function Memory({
           (entry) =>
             entry.content.toLocaleLowerCase().includes(needle) ||
             entry.kind.includes(needle) ||
-            TRUST_LABELS[entry.source_trust]
-              .toLocaleLowerCase()
-              .includes(needle)
+            trustLabel(entry.source_trust).toLocaleLowerCase().includes(needle)
         )
       : entries;
 
@@ -276,98 +309,199 @@ export default function Memory({
       }
       return right.created_at - left.created_at;
     });
-  }, [entries, search, sortBy]);
+  }, [entries, search, sortBy, trustLabel]);
 
   const syncStatusLabel =
     syncStatus === 'synced'
-      ? 'Synced'
+      ? t('setting.memory-sync-synced', { defaultValue: 'Synced' })
       : syncStatus === 'pending'
-        ? 'Pending'
+        ? t('setting.memory-sync-pending', { defaultValue: 'Pending' })
         : syncStatus === 'blocked'
-          ? 'Needs attention'
-          : 'Unavailable';
+          ? t('setting.memory-sync-needs-attention', {
+              defaultValue: 'Needs attention',
+            })
+          : t('setting.memory-sync-unavailable', {
+              defaultValue: 'Unavailable',
+            });
   const initialLoading = loading && !scopeState;
   const activeEntryCount = entries.filter((entry) => !entry.deleted_at).length;
   const scopePresentation =
     scopeType === 'space'
       ? {
           icon: Share2,
-          capacityLabel: 'shared',
-          eyebrow: 'Shared scope',
-          title: 'Shared across this Space',
-          description:
-            'Eigent can learn stable notes explicitly meant for this Space and reuse them across its Sessions. Session-specific notes remain in their Session.',
-          autoDescription:
-            'Automatically learn explicit Space-wide facts, decisions, and preferences from Sessions in this Space. You can edit or archive them here at any time.',
-          useTitle: 'Use Space Memory',
-          useDescription:
-            'Include these shared notes in future Agent context for Sessions in this Space.',
-          collectionTitle: 'Shared Space Memory',
-          collectionDescription:
-            'Only notes saved here are shared. Session Memory remains inside its Session.',
-          composerPlaceholder:
-            'Add a decision, constraint, preference, or fact to share across this Space',
-          emptyTitle: 'No shared Memory yet',
-          emptyDescription:
-            'Add a stable note above when you want every Session in this Space to remember it.',
+          capacityLabel: t('setting.memory-scope-shared', {
+            defaultValue: 'shared',
+          }),
+          eyebrow: t('setting.memory-space-eyebrow', {
+            defaultValue: 'Shared scope',
+          }),
+          title: t('setting.memory-space-title', {
+            defaultValue: 'Shared across this Space',
+          }),
+          description: t('setting.memory-space-description', {
+            defaultValue:
+              'Eigent can learn stable notes explicitly meant for this Space and reuse them across its Sessions. Session-specific notes remain in their Session.',
+          }),
+          autoDescription: t('setting.memory-space-auto-description', {
+            defaultValue:
+              'Automatically learn explicit Space-wide facts, decisions, and preferences from Sessions in this Space. You can edit or archive them here at any time.',
+          }),
+          useTitle: t('setting.memory-space-use-title', {
+            defaultValue: 'Use Space Memory',
+          }),
+          useDescription: t('setting.memory-space-use-description', {
+            defaultValue:
+              'Include these shared notes in future Agent context for Sessions in this Space.',
+          }),
+          collectionTitle: t('setting.memory-space-collection-title', {
+            defaultValue: 'Shared Space Memory',
+          }),
+          collectionDescription: t(
+            'setting.memory-space-collection-description',
+            {
+              defaultValue:
+                'Only notes saved here are shared. Session Memory remains inside its Session.',
+            }
+          ),
+          composerPlaceholder: t('setting.memory-space-composer-placeholder', {
+            defaultValue:
+              'Add a decision, constraint, preference, or fact to share across this Space',
+          }),
+          emptyTitle: t('setting.memory-space-empty-title', {
+            defaultValue: 'No shared Memory yet',
+          }),
+          emptyDescription: t('setting.memory-space-empty-description', {
+            defaultValue:
+              'Add a stable note above when you want every Session in this Space to remember it.',
+          }),
         }
       : scopeType === 'project'
         ? {
             icon: Sparkles,
-            capacityLabel: 'session',
-            eyebrow: 'Session-specific',
-            title: 'Remembered for this Session',
-            description:
-              'Eigent can learn a small set of stable notes from this Session. These notes stay with the Session and are separate from its full task history.',
-            autoDescription:
-              'Automatically learn explicit stable details as this Session runs. You can edit or archive them here at any time.',
-            useTitle: 'Use Session Memory',
-            useDescription:
-              'Include these notes in future Agent context for this Session.',
+            capacityLabel: t('setting.memory-scope-session', {
+              defaultValue: 'session',
+            }),
+            eyebrow: t('setting.memory-session-eyebrow', {
+              defaultValue: 'Session-specific',
+            }),
+            title: t('setting.memory-session-title', {
+              defaultValue: 'Remembered for this Session',
+            }),
+            description: t('setting.memory-session-description', {
+              defaultValue:
+                'Eigent can learn a small set of stable notes from this Session. These notes stay with the Session and are separate from its full task history.',
+            }),
+            autoDescription: t('setting.memory-session-auto-description', {
+              defaultValue:
+                'Automatically learn explicit stable details as this Session runs. You can edit or archive them here at any time.',
+            }),
+            useTitle: t('setting.memory-session-use-title', {
+              defaultValue: 'Use Session Memory',
+            }),
+            useDescription: t('setting.memory-session-use-description', {
+              defaultValue:
+                'Include these notes in future Agent context for this Session.',
+            }),
             collectionTitle: fixedScopeLabel
-              ? 'Saved Session Memory'
-              : 'Session Memory',
-            collectionDescription:
-              'Review, confirm, and manage the stable notes saved for this Session.',
-            composerPlaceholder:
-              'Add a decision, constraint, preference, or fact for this Session',
-            emptyTitle: 'No Session Memory yet',
-            emptyDescription:
-              'Add a note above, or turn on Auto Memory so Eigent can learn stable details as this Session runs.',
+              ? t('setting.memory-session-saved-title', {
+                  defaultValue: 'Saved Session Memory',
+                })
+              : t('setting.memory-session-collection-title', {
+                  defaultValue: 'Session Memory',
+                }),
+            collectionDescription: t(
+              'setting.memory-session-collection-description',
+              {
+                defaultValue:
+                  'Review, confirm, and manage the stable notes saved for this Session.',
+              }
+            ),
+            composerPlaceholder: t(
+              'setting.memory-session-composer-placeholder',
+              {
+                defaultValue:
+                  'Add a decision, constraint, preference, or fact for this Session',
+              }
+            ),
+            emptyTitle: t('setting.memory-session-empty-title', {
+              defaultValue: 'No Session Memory yet',
+            }),
+            emptyDescription: t('setting.memory-session-empty-description', {
+              defaultValue:
+                'Add a note above, or turn on Auto Memory so Eigent can learn stable details as this Session runs.',
+            }),
           }
         : {
             icon: Brain,
-            capacityLabel: 'personal',
-            eyebrow: 'Personal',
-            title: 'Available across your account',
-            description:
-              'Eigent can learn personal preferences and stable facts you explicitly want reused across your work. Task history remains separate.',
-            autoDescription:
-              'Automatically learn explicit account-wide preferences and facts from your Sessions. You can edit or archive them here at any time.',
-            useTitle: 'Use Personal Memory',
-            useDescription:
-              'Include these personal notes in future Agent context.',
-            collectionTitle: 'Personal Memory',
-            collectionDescription:
-              'Review and manage the stable notes saved for your account.',
-            composerPlaceholder:
-              'Add a preference, constraint, or fact for Eigent to remember',
-            emptyTitle: 'No Personal Memory yet',
-            emptyDescription:
-              'Add a stable preference or fact above when you want Eigent to remember it across your work.',
+            capacityLabel: t('setting.memory-scope-personal', {
+              defaultValue: 'personal',
+            }),
+            eyebrow: t('setting.memory-personal-eyebrow', {
+              defaultValue: 'Personal',
+            }),
+            title: t('setting.memory-personal-title', {
+              defaultValue: 'Available across your account',
+            }),
+            description: t('setting.memory-personal-description', {
+              defaultValue:
+                'Eigent can learn personal preferences and stable facts you explicitly want reused across your work. Task history remains separate.',
+            }),
+            autoDescription: t('setting.memory-personal-auto-description', {
+              defaultValue:
+                'Automatically learn explicit account-wide preferences and facts from your Sessions. You can edit or archive them here at any time.',
+            }),
+            useTitle: t('setting.memory-personal-use-title', {
+              defaultValue: 'Use Personal Memory',
+            }),
+            useDescription: t('setting.memory-personal-use-description', {
+              defaultValue:
+                'Include these personal notes in future Agent context.',
+            }),
+            collectionTitle: t('setting.memory-personal-collection-title', {
+              defaultValue: 'Personal Memory',
+            }),
+            collectionDescription: t(
+              'setting.memory-personal-collection-description',
+              {
+                defaultValue:
+                  'Review and manage the stable notes saved for your account.',
+              }
+            ),
+            composerPlaceholder: t(
+              'setting.memory-personal-composer-placeholder',
+              {
+                defaultValue:
+                  'Add a preference, constraint, or fact for Eigent to remember',
+              }
+            ),
+            emptyTitle: t('setting.memory-personal-empty-title', {
+              defaultValue: 'No Personal Memory yet',
+            }),
+            emptyDescription: t('setting.memory-personal-empty-description', {
+              defaultValue:
+                'Add a stable preference or fact above when you want Eigent to remember it across your work.',
+            }),
           };
   const ScopeIcon = scopePresentation.icon;
   const showEntryControls =
     entries.length > 0 || search.trim().length > 0 || showArchived;
   const emptyStateCopy = search.trim()
     ? {
-        title: 'No matching Memory',
-        description: 'Try a different search or clear the current filters.',
+        title: t('setting.memory-no-matching-title', {
+          defaultValue: 'No matching Memory',
+        }),
+        description: t('setting.memory-no-matching-description', {
+          defaultValue: 'Try a different search or clear the current filters.',
+        }),
       }
     : showArchived
       ? {
-          title: 'No archived Memory',
-          description: 'Archived notes will appear here when you have them.',
+          title: t('setting.memory-no-archived-title', {
+            defaultValue: 'No archived Memory',
+          }),
+          description: t('setting.memory-no-archived-description', {
+            defaultValue: 'Archived notes will appear here when you have them.',
+          }),
         }
       : {
           title: scopePresentation.emptyTitle,
@@ -379,8 +513,13 @@ export default function Memory({
       {showScopeSelector && !fixedScope ? (
         <SettingsRowGroup>
           <SettingsRow
-            title="Memory scope"
-            description="Small, editable notes that Eigent may reuse. Canonical task history is stored separately for replay and reliability; it is not editable or exposed in Memory Center. Agents can always search that history when they need older details."
+            title={t('setting.memory-scope-title', {
+              defaultValue: 'Memory scope',
+            })}
+            description={t('setting.memory-scope-description', {
+              defaultValue:
+                'Small, editable notes that Eigent may reuse. Canonical task history is stored separately for replay and reliability; it is not editable or exposed in Memory Center. Agents can always search that history when they need older details.',
+            })}
             actionClassName="w-[280px]"
             action={
               <Tabs
@@ -392,7 +531,9 @@ export default function Memory({
               >
                 <TabsList
                   appearance="default"
-                  aria-label="Memory scope"
+                  aria-label={t('setting.memory-scope-title', {
+                    defaultValue: 'Memory scope',
+                  })}
                   className="w-full"
                 >
                   {(['user', 'space', 'project'] as MemoryScopeType[]).map(
@@ -403,8 +544,12 @@ export default function Memory({
                         className="flex-1 !text-ds-text-base"
                       >
                         {value === 'project'
-                          ? 'Session'
-                          : value[0].toUpperCase() + value.slice(1)}
+                          ? t('layout.session', { defaultValue: 'Session' })
+                          : value === 'space'
+                            ? t('layout.space', { defaultValue: 'Space' })
+                            : t('setting.memory-personal-scope', {
+                                defaultValue: 'Personal',
+                              })}
                       </TabsTrigger>
                     )
                   )}
@@ -423,8 +568,20 @@ export default function Memory({
       ) : !scopeId ? (
         <SettingsRowGroup>
           <SettingsRow
-            title="Saved Memory"
-            description={`Select a ${scopeType === 'project' ? 'session' : scopeType} to manage its Memory.`}
+            title={t('setting.memory-saved-title', {
+              defaultValue: 'Saved Memory',
+            })}
+            description={t('setting.memory-select-scope-description', {
+              scope:
+                scopeType === 'project'
+                  ? t('layout.session', { defaultValue: 'Session' })
+                  : scopeType === 'space'
+                    ? t('layout.space', { defaultValue: 'Space' })
+                    : t('setting.memory-personal-scope', {
+                        defaultValue: 'Personal',
+                      }),
+              defaultValue: 'Select a {{scope}} to manage its Memory.',
+            })}
           />
         </SettingsRowGroup>
       ) : (
@@ -463,8 +620,13 @@ export default function Memory({
           {reconciliationItems.length > 0 && (
             <SettingsRowGroup>
               <SettingsRow
-                title="Review Memory from another device"
-                description="Eigent did not overwrite either version. Choose which content to keep for each item."
+                title={t('setting.memory-reconciliation-title', {
+                  defaultValue: 'Review Memory from another device',
+                })}
+                description={t('setting.memory-reconciliation-description', {
+                  defaultValue:
+                    'Eigent did not overwrite either version. Choose which content to keep for each item.',
+                })}
               >
                 <div className="flex flex-col gap-3 rounded-2xl bg-ds-bg-warning-subtle-default p-4">
                   {reconciliationItems.map((item) => (
@@ -475,7 +637,9 @@ export default function Memory({
                       <div className="grid gap-3 md:grid-cols-2">
                         <div>
                           <div className="text-xs font-semibold">
-                            This device
+                            {t('setting.memory-this-device', {
+                              defaultValue: 'This device',
+                            })}
                           </div>
                           <p className="mt-1 text-ds-text-base whitespace-pre-wrap">
                             {String(item.local_entry.content ?? 'Archived')}
@@ -483,7 +647,9 @@ export default function Memory({
                         </div>
                         <div>
                           <div className="text-xs font-semibold">
-                            Cloud copy
+                            {t('setting.memory-cloud-copy', {
+                              defaultValue: 'Cloud copy',
+                            })}
                           </div>
                           <p className="mt-1 text-ds-text-base whitespace-pre-wrap">
                             {item.cloud_entry.deleted_at
@@ -505,7 +671,9 @@ export default function Memory({
                             )
                           }
                         >
-                          Keep this device
+                          {t('setting.memory-keep-this-device', {
+                            defaultValue: 'Keep this device',
+                          })}
                         </Button>
                         <Button
                           size="sm"
@@ -520,7 +688,9 @@ export default function Memory({
                             )
                           }
                         >
-                          Use cloud copy
+                          {t('setting.memory-use-cloud-copy', {
+                            defaultValue: 'Use cloud copy',
+                          })}
                         </Button>
                       </div>
                     </article>
@@ -532,17 +702,23 @@ export default function Memory({
 
           <SettingsRowGroup>
             <SettingsRow
-              title="Auto Memory"
+              title={t('setting.memory-auto-title', {
+                defaultValue: 'Auto Memory',
+              })}
               description={scopePresentation.autoDescription}
               action={
                 initialLoading ? (
                   <Skeleton
-                    aria-label="Loading Auto Memory setting"
+                    aria-label={t('setting.memory-auto-loading', {
+                      defaultValue: 'Loading Auto Memory setting',
+                    })}
                     className="h-6 w-11 rounded-full"
                   />
                 ) : (
                   <Switch
-                    aria-label="Auto Memory"
+                    aria-label={t('setting.memory-auto-title', {
+                      defaultValue: 'Auto Memory',
+                    })}
                     checked={scopeState?.capture_enabled ?? false}
                     onCheckedChange={(value) =>
                       updateSettings({ captureEnabled: value })
@@ -557,7 +733,9 @@ export default function Memory({
               action={
                 initialLoading ? (
                   <Skeleton
-                    aria-label="Loading Use Memory setting"
+                    aria-label={t('setting.memory-use-loading', {
+                      defaultValue: 'Loading Use Memory setting',
+                    })}
                     className="h-6 w-11 rounded-full"
                   />
                 ) : (
@@ -572,22 +750,34 @@ export default function Memory({
               }
             />
             <SettingsRow
-              title="Memory Sync"
+              title={t('setting.memory-sync-title', {
+                defaultValue: 'Memory Sync',
+              })}
               description={
                 initialLoading ? (
                   <Skeleton className="h-3 w-52" />
                 ) : syncStatus === 'synced' ? (
                   activeEntryCount === 0 ? (
-                    'Up to date — no saved notes to sync yet'
+                    t('setting.memory-sync-empty', {
+                      defaultValue: 'Up to date — no saved notes to sync yet',
+                    })
                   ) : (
-                    'Up to date on your Eigent account'
+                    t('setting.memory-sync-current', {
+                      defaultValue: 'Up to date on your Eigent account',
+                    })
                   )
                 ) : syncStatus === 'pending' ? (
-                  'Waiting to sync automatically'
+                  t('setting.memory-sync-waiting', {
+                    defaultValue: 'Waiting to sync automatically',
+                  })
                 ) : syncStatus === 'blocked' ? (
-                  'Sync needs attention; local Memory is safe'
+                  t('setting.memory-sync-blocked', {
+                    defaultValue: 'Sync needs attention; local Memory is safe',
+                  })
                 ) : (
-                  'Sync status is not available yet'
+                  t('setting.memory-sync-status-unavailable', {
+                    defaultValue: 'Sync status is not available yet',
+                  })
                 )
               }
               action={
@@ -598,7 +788,10 @@ export default function Memory({
                     role="status"
                     className="inline-flex items-center gap-1 rounded-full border border-x border-y border-solid border-ds-hairline-default-default px-3 py-1 text-ds-text-base font-medium text-ds-ink-muted-default"
                   >
-                    <Check className="h-3.5 w-3.5" aria-hidden /> Synced
+                    <Check className="h-3.5 w-3.5" aria-hidden />{' '}
+                    {t('setting.memory-sync-synced', {
+                      defaultValue: 'Synced',
+                    })}
                   </span>
                 ) : (
                   <Button
@@ -614,8 +807,13 @@ export default function Memory({
               }
             />
             <SettingsRow
-              title="Capacity"
-              description={`Space used by saved ${scopePresentation.capacityLabel} Memory.`}
+              title={t('setting.memory-capacity-title', {
+                defaultValue: 'Capacity',
+              })}
+              description={t('setting.memory-capacity-description', {
+                scope: scopePresentation.capacityLabel,
+                defaultValue: 'Space used by saved {{scope}} Memory.',
+              })}
               actionClassName="w-[280px]"
               action={
                 initialLoading ? (
@@ -630,15 +828,26 @@ export default function Memory({
                   <div className="w-full">
                     <Progress
                       value={capacity}
-                      aria-label="Memory storage used"
+                      aria-label={t('setting.memory-storage-used', {
+                        defaultValue: 'Memory storage used',
+                      })}
                       className="bg-ds-neutral-subtle-default"
                       indicatorClassName="bg-ds-accent-default-default"
                     />
                     <div className="mt-2 flex items-center justify-between gap-3 text-xs text-ds-ink-muted-default">
-                      <span>{capacity}% full</span>
+                      <span>
+                        {t('setting.memory-capacity-percent-full', {
+                          capacity,
+                          defaultValue: '{{capacity}}% full',
+                        })}
+                      </span>
                       <span>
                         {scopeState?.current_token_count ?? 0} /{' '}
-                        {scopeState?.token_limit ?? 0} tokens
+                        {t('setting.memory-capacity-token-count', {
+                          current: scopeState?.current_token_count ?? 0,
+                          count: scopeState?.token_limit ?? 0,
+                          defaultValue: '{{current}} / {{count}} tokens',
+                        })}
                       </span>
                     </div>
                   </div>
@@ -646,11 +855,19 @@ export default function Memory({
               }
             />
             <SettingsRow
-              title="Organise Memory"
+              title={t('setting.memory-organise-title', {
+                defaultValue: 'Organise Memory',
+              })}
               description={
                 activeEntryCount < 2
-                  ? 'Available when there are multiple saved notes to consolidate.'
-                  : 'Consolidate exact machine-created duplicates without changing task history.'
+                  ? t('setting.memory-organise-unavailable-description', {
+                      defaultValue:
+                        'Available when there are multiple saved notes to consolidate.',
+                    })
+                  : t('setting.memory-organise-description', {
+                      defaultValue:
+                        'Consolidate exact machine-created duplicates without changing task history.',
+                    })
               }
               action={
                 initialLoading ? (
@@ -667,7 +884,10 @@ export default function Memory({
                       )
                     }
                   >
-                    <RefreshCw className="h-4 w-4" aria-hidden /> Organise
+                    <RefreshCw className="h-4 w-4" aria-hidden />{' '}
+                    {t('setting.memory-organise-action', {
+                      defaultValue: 'Organise',
+                    })}
                   </Button>
                 )
               }
@@ -693,7 +913,9 @@ export default function Memory({
                 className="overflow-hidden rounded-2xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default"
               >
                 <Textarea
-                  aria-label="New Memory"
+                  aria-label={t('setting.memory-new', {
+                    defaultValue: 'New Memory',
+                  })}
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
                   placeholder={scopePresentation.composerPlaceholder}
@@ -706,14 +928,14 @@ export default function Memory({
                     onValueChange={(value) => setDraftKind(value as MemoryKind)}
                   >
                     <SelectTrigger
-                      aria-label="Memory type"
+                      aria-label={t('setting.memory-type', {
+                        defaultValue: 'Memory type',
+                      })}
                       size="sm"
                       variant="primary"
                       wrapperClassName="w-40"
                     >
-                      <SelectValue>
-                        {draftKind[0].toUpperCase() + draftKind.slice(1)}
-                      </SelectValue>
+                      <SelectValue>{memoryKindLabel(draftKind)}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {KINDS.map((kind) => (
@@ -722,7 +944,7 @@ export default function Memory({
                           value={kind}
                           className="capitalize"
                         >
-                          {kind}
+                          {memoryKindLabel(kind)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -742,7 +964,8 @@ export default function Memory({
                       );
                     }}
                   >
-                    <Plus aria-hidden /> Add
+                    <Plus aria-hidden />{' '}
+                    {t('setting.add', { defaultValue: 'Add' })}
                   </Button>
                 </div>
               </div>
@@ -753,8 +976,12 @@ export default function Memory({
                     size="sm"
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Search Memory"
-                    aria-label="Search Memory"
+                    placeholder={t('setting.memory-search', {
+                      defaultValue: 'Search Memory',
+                    })}
+                    aria-label={t('setting.memory-search', {
+                      defaultValue: 'Search Memory',
+                    })}
                     className="min-w-52 flex-1"
                   />
                   <Select
@@ -764,7 +991,9 @@ export default function Memory({
                     }
                   >
                     <SelectTrigger
-                      aria-label="Order Memory"
+                      aria-label={t('setting.memory-order', {
+                        defaultValue: 'Order Memory',
+                      })}
                       size="sm"
                       variant="secondary"
                       wrapperClassName="w-44"
@@ -772,12 +1001,28 @@ export default function Memory({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="added-time">Added time</SelectItem>
-                      <SelectItem value="type">Type</SelectItem>
+                      <SelectItem value="added-time">
+                        {t('setting.memory-order-added-time', {
+                          defaultValue: 'Added time',
+                        })}
+                      </SelectItem>
+                      <SelectItem value="type">
+                        {t('setting.memory-order-type', {
+                          defaultValue: 'Type',
+                        })}
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                   <TooltipSimple
-                    content={showArchived ? 'Hide archived' : 'Show archived'}
+                    content={
+                      showArchived
+                        ? t('setting.memory-hide-archived', {
+                            defaultValue: 'Hide archived',
+                          })
+                        : t('setting.memory-show-archived', {
+                            defaultValue: 'Show archived',
+                          })
+                    }
                   >
                     <Button
                       type="button"
@@ -787,7 +1032,13 @@ export default function Memory({
                       textWeight="bold"
                       buttonRadius="lg"
                       aria-label={
-                        showArchived ? 'Hide archived' : 'Show archived'
+                        showArchived
+                          ? t('setting.memory-hide-archived', {
+                              defaultValue: 'Hide archived',
+                            })
+                          : t('setting.memory-show-archived', {
+                              defaultValue: 'Show archived',
+                            })
                       }
                       aria-pressed={showArchived}
                       className={
@@ -814,7 +1065,9 @@ export default function Memory({
               {loading && !scopeState ? (
                 <div
                   role="status"
-                  aria-label="Loading saved Memory"
+                  aria-label={t('setting.memory-saved-loading', {
+                    defaultValue: 'Loading saved Memory',
+                  })}
                   className="mt-4 flex flex-col gap-3"
                 >
                   {Array.from({ length: 3 }, (_, index) => (
@@ -835,8 +1088,10 @@ export default function Memory({
                   {!search.trim() && !showArchived ? (
                     <>
                       <p className="mt-3 text-ds-text-meta text-ds-ink-muted-default">
-                        Full task history stays available to the Agent and is
-                        not stored here.
+                        {t('setting.memory-history-not-stored', {
+                          defaultValue:
+                            'Full task history stays available to the Agent and is not stored here.',
+                        })}
                       </p>
                       <Button
                         type="button"
@@ -846,7 +1101,10 @@ export default function Memory({
                         className="mt-2"
                         onClick={() => setShowArchived(true)}
                       >
-                        <Archive aria-hidden /> View archived
+                        <Archive aria-hidden />{' '}
+                        {t('setting.memory-view-archived', {
+                          defaultValue: 'View archived',
+                        })}
                       </Button>
                     </>
                   ) : null}
@@ -861,25 +1119,40 @@ export default function Memory({
                       <div className="flex items-center justify-between gap-3">
                         <div
                           className="flex min-w-0 items-center gap-2 overflow-hidden text-xs whitespace-nowrap text-ds-ink-muted-default"
-                          title={`${TRUST_LABELS[entry.source_trust]} · Created by ${entry.created_by}`}
+                          title={t('setting.memory-entry-source-title', {
+                            trust: trustLabel(entry.source_trust),
+                            creator: entry.created_by,
+                            defaultValue: '{{trust}} · Created by {{creator}}',
+                          })}
                         >
                           <span className="shrink-0 font-semibold text-ds-ink-default-default capitalize">
-                            {entry.kind}
+                            {memoryKindLabel(entry.kind)}
                           </span>
                           <span aria-hidden>·</span>
                           <span className="shrink-0">
                             {entry.confirmed_by_user
-                              ? 'Confirmed by you'
-                              : 'Unconfirmed'}
+                              ? t('setting.memory-confirmed-by-you', {
+                                  defaultValue: 'Confirmed by you',
+                                })
+                              : t('setting.memory-unconfirmed', {
+                                  defaultValue: 'Unconfirmed',
+                                })}
                           </span>
                           <span aria-hidden>·</span>
                           <span className="truncate capitalize">
-                            Source: {entry.created_by}
+                            {t('setting.memory-source', {
+                              source: entry.created_by,
+                              defaultValue: 'Source: {{source}}',
+                            })}
                           </span>
                           {entry.deleted_at ? (
                             <>
                               <span aria-hidden>·</span>
-                              <span className="shrink-0">Archived</span>
+                              <span className="shrink-0">
+                                {t('setting.memory-archived', {
+                                  defaultValue: 'Archived',
+                                })}
+                              </span>
                             </>
                           ) : null}
                         </div>
@@ -903,7 +1176,8 @@ export default function Memory({
                                   )
                                 }
                               >
-                                <Save aria-hidden /> Save
+                                <Save aria-hidden />{' '}
+                                {t('setting.save', { defaultValue: 'Save' })}
                               </Button>
                             ) : (
                               <Button
@@ -917,7 +1191,8 @@ export default function Memory({
                                   setEditingText(entry.content);
                                 }}
                               >
-                                <Pencil aria-hidden /> Edit
+                                <Pencil aria-hidden />{' '}
+                                {t('setting.edit', { defaultValue: 'Edit' })}
                               </Button>
                             )
                           ) : null}
@@ -929,7 +1204,9 @@ export default function Memory({
                             entry.pinned_by_user ? (
                               <span
                                 role="img"
-                                aria-label="Starred Memory"
+                                aria-label={t('setting.memory-starred', {
+                                  defaultValue: 'Starred Memory',
+                                })}
                                 className="box-border flex h-[28px] min-h-[28px] w-[28px] min-w-[28px] shrink-0 items-center justify-center text-ds-ink-default-default"
                               >
                                 <Star
@@ -944,7 +1221,9 @@ export default function Memory({
                                 variant="ghost"
                                 buttonContent="icon-only"
                                 buttonRadius="lg"
-                                aria-label="Star Memory"
+                                aria-label={t('setting.memory-star', {
+                                  defaultValue: 'Star Memory',
+                                })}
                                 onClick={() =>
                                   void runAndReload(() => pinMemoryEntry(entry))
                                 }
@@ -962,7 +1241,9 @@ export default function Memory({
                                 variant="ghost"
                                 buttonContent="icon-only"
                                 buttonRadius="lg"
-                                aria-label="More Memory actions"
+                                aria-label={t('setting.memory-more-actions', {
+                                  defaultValue: 'More Memory actions',
+                                })}
                               >
                                 <Ellipsis aria-hidden />
                               </Button>
@@ -976,7 +1257,10 @@ export default function Memory({
                                     )
                                   }
                                 >
-                                  <Check aria-hidden /> Confirm Memory
+                                  <Check aria-hidden />{' '}
+                                  {t('setting.memory-confirm', {
+                                    defaultValue: 'Confirm Memory',
+                                  })}
                                 </DropdownMenuItem>
                               ) : null}
                               {entry.deleted_at ? (
@@ -987,7 +1271,10 @@ export default function Memory({
                                     )
                                   }
                                 >
-                                  <ArchiveRestore aria-hidden /> Restore Memory
+                                  <ArchiveRestore aria-hidden />{' '}
+                                  {t('setting.memory-restore', {
+                                    defaultValue: 'Restore Memory',
+                                  })}
                                 </DropdownMenuItem>
                               ) : (
                                 <DropdownMenuItem
@@ -997,7 +1284,10 @@ export default function Memory({
                                     )
                                   }
                                 >
-                                  <Archive aria-hidden /> Archive Memory
+                                  <Archive aria-hidden />{' '}
+                                  {t('setting.memory-archive', {
+                                    defaultValue: 'Archive Memory',
+                                  })}
                                 </DropdownMenuItem>
                               )}
                             </DropdownMenuContent>
@@ -1011,7 +1301,9 @@ export default function Memory({
                           onChange={(event) =>
                             setEditingText(event.target.value)
                           }
-                          aria-label="Edit Memory"
+                          aria-label={t('setting.memory-edit', {
+                            defaultValue: 'Edit Memory',
+                          })}
                           className="mt-3 max-h-20 min-h-20 resize-none"
                         />
                       ) : (

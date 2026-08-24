@@ -25,8 +25,10 @@ import {
 import { useAuthStore } from '@/store/authStore';
 import { Pause, Play } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export const CarouselStep: React.FC = () => {
+  const { t } = useTranslation();
   const { setInitState: _setInitState } = useAuthStore();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [_isHovered, setIsHovered] = useState(false);
@@ -102,15 +104,21 @@ export const CarouselStep: React.FC = () => {
 
   const carouselItems = [
     {
-      title: 'Dynamic Workforce break it down, get task done',
+      title: t('layout.onboarding-dynamic-workforce', {
+        defaultValue: 'Dynamic Workforce breaks it down and gets the task done',
+      }),
       video: dynamicWorkforceVideo,
     },
     {
-      title: 'Add worker with pluggable MCP',
+      title: t('layout.onboarding-pluggable-mcp', {
+        defaultValue: 'Add workers with pluggable MCP servers',
+      }),
       video: addWorkerVideo,
     },
     {
-      title: 'Private and secure with local model settings',
+      title: t('layout.onboarding-local-models', {
+        defaultValue: 'Private and secure with local model settings',
+      }),
       video: localModelVideo,
     },
   ];
@@ -232,7 +240,11 @@ export const CarouselStep: React.FC = () => {
           size="xs"
           buttonContent="icon-only"
           className="absolute right-0 bottom-0 rounded-full"
-          aria-label={isPaused ? 'Resume' : 'Pause'}
+          aria-label={
+            isPaused
+              ? t('layout.resume', { defaultValue: 'Resume' })
+              : t('layout.pause', { defaultValue: 'Pause' })
+          }
         >
           {isPaused ? (
             <Play className="h-4 w-4" />

@@ -12,7 +12,7 @@
   "no-recommended": "Нет доступных рекомендованных коннекторов.",
   "gateway-unavailable": "Connectors недоступны.",
   "gateway-unavailable-desc": "Connector Gateway не включён для этого развёртывания.",
-  "gateway-connectors": "Connectors",
+  "gateway-connectors": "Коннекторы",
   "source-open": "Облако",
   "source-built-in": "Встроенный",
   "source-local": "Пользовательский локальный",
@@ -136,5 +136,7 @@
   "google-check-failed": "Не удалось проверить учётные данные Google.",
   "exa-check-failed": "Не удалось проверить ключ API Exa.",
   "optional": "Необязательно",
-  "enter-field": "Введите {{field}}"
+  "enter-field": "Введите {{field}}",
+  "google-calendar-description": "Интеграция с Google Календарём для управления событиями и календарями",
+  "notion-description": "Интеграция с рабочим пространством Notion для чтения страниц Notion и управления ими"
 }

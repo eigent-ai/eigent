@@ -15,6 +15,7 @@
 import type { ChatProjectionNode } from '@/lib/projector/chat';
 import { cn } from '@/lib/utils';
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { groupRepeatedToolCalls } from './activityGrouping';
 import { EventRenderer } from './EventRenderer';
@@ -50,7 +51,7 @@ interface EventTimelineProps {
  * virtualization is required before this replaces the production ChatBox.
  */
 export function EventTimeline({
-  ariaLabel = 'Chat event timeline',
+  ariaLabel,
   className,
   detailLevel = 'trajectory',
   emptyState = null,
@@ -60,6 +61,10 @@ export function EventTimeline({
   presentationPolicies = defaultChatTimelinePresentationPolicyRegistry,
   registry,
 }: EventTimelineProps) {
+  const { t } = useTranslation();
+  const resolvedAriaLabel =
+    ariaLabel ??
+    t('chat.event-timeline-label', { defaultValue: 'Chat event timeline' });
   const presentation = resolveChatTimelinePresentation(
     presentationPolicies,
     detailLevel,
@@ -71,7 +76,7 @@ export function EventTimeline({
 
   return (
     <ol
-      aria-label={ariaLabel}
+      aria-label={resolvedAriaLabel}
       className={cn('m-0 flex w-full list-none flex-col gap-3 p-0', className)}
       data-effective-detail-level={presentation.effectiveDetailLevel}
       data-requested-detail-level={presentation.requestedDetailLevel}

@@ -12,6 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import i18next from 'i18next';
+
 /**
  * Renderer-side registry for interactive shell sessions (main-process PTYs).
  * The PTY outlives the xterm UI — switching preview tabs unmounts the
@@ -137,7 +139,11 @@ export async function ensureShellSession(
         entry.exitCode = null;
         entry.error = null;
       } else {
-        entry.error = result.error ?? 'Failed to start shell';
+        entry.error =
+          result.error ??
+          i18next.t('layout.shell-start-failed', {
+            defaultValue: 'Failed to start shell',
+          });
       }
       notifyState(entry);
       return snapshot(entry);
@@ -145,7 +151,11 @@ export async function ensureShellSession(
     .catch((error: unknown) => {
       if (sessions.get(options.id) === entry) {
         entry.error =
-          error instanceof Error ? error.message : 'Failed to start shell';
+          error instanceof Error
+            ? error.message
+            : i18next.t('layout.shell-start-failed', {
+                defaultValue: 'Failed to start shell',
+              });
         notifyState(entry);
       }
       return snapshot(entry);

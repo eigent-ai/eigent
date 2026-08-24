@@ -52,6 +52,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
 type ConversionContext = {
@@ -66,15 +67,15 @@ type ReplacementReview = {
   version: number;
 };
 
-const errorMessage = (error: unknown): string =>
-  error instanceof Error
-    ? error.message
-    : 'The Agent Plugin could not be read.';
+const errorMessage = (error: unknown, fallback: string): string =>
+  error instanceof Error ? error.message : fallback;
 
-const redactSelectedPath = (message: string, selectedPath?: string): string =>
-  selectedPath
-    ? message.split(selectedPath).join('the selected Agent Plugin')
-    : message;
+const redactSelectedPath = (
+  message: string,
+  selectedLabel: string,
+  selectedPath?: string
+): string =>
+  selectedPath ? message.split(selectedPath).join(selectedLabel) : message;
 
 const isDefinitiveDraftConflict = (error: unknown): boolean => {
   const candidate = error as {
@@ -118,6 +119,7 @@ export function AgentPluginImportWizard({
   onConfigurationOpen?: () => void;
   targetMode?: 'existing' | 'create-space';
 }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const setActiveWorkspaceTab = usePageTabStore(
     (state) => state.setActiveWorkspaceTab
@@ -186,13 +188,21 @@ export function AgentPluginImportWizard({
   const selectAndInspect = async () => {
     setError(null);
     if (!email) {
-      setError('Sign in before importing an Agent Plugin.');
+      setError(
+        t('layout.agent-plugin-import-sign-in-required', {
+          defaultValue: 'Sign in before importing an Agent Plugin.',
+        })
+      );
       return;
     }
     let selectedPath: string | undefined;
     const picker = host?.electronAPI?.selectAgentPluginSource;
     if (!picker) {
-      setError('Agent Plugins import requires Eigent Desktop.');
+      setError(
+        t('layout.agent-plugin-import-desktop-required', {
+          defaultValue: 'Agent Plugins import requires Eigent Desktop.',
+        })
+      );
       return;
     }
     if (busy !== null || pickerInFlight.current) return;
@@ -202,12 +212,20 @@ export function AgentPluginImportWizard({
       const selected = await picker();
       if (selected?.canceled) return;
       if (!selected?.source_path) {
-        throw new Error('No Agent Plugin directory or archive was selected.');
+        throw new Error(
+          t('layout.agent-plugin-import-no-source-selected', {
+            defaultValue: 'No Agent Plugin directory or archive was selected.',
+          })
+        );
       }
       selectedPath = selected.source_path;
       const source: AgentPluginSelectedSource = {
         source_path: selected.source_path,
-        display_name: selected.display_name || 'Selected Agent Plugin',
+        display_name:
+          selected.display_name ||
+          t('layout.agent-plugin-import-selected-source', {
+            defaultValue: 'Selected Agent Plugin',
+          }),
         source_kind: selected.source_kind || 'directory',
       };
       setSelectedSource(source);
@@ -225,10 +243,28 @@ export function AgentPluginImportWizard({
       });
       setInspection(next);
       if (targetMode === 'create-space') {
-        setNewSpaceName(next.metadata.name?.trim() || 'Imported Agent Plugin');
+        setNewSpaceName(
+          next.metadata.name?.trim() ||
+            t('layout.agent-plugin-import-default-space-name', {
+              defaultValue: 'Imported Agent Plugin',
+            })
+        );
       }
     } catch (nextError) {
-      setError(redactSelectedPath(errorMessage(nextError), selectedPath));
+      setError(
+        redactSelectedPath(
+          errorMessage(
+            nextError,
+            t('layout.agent-plugin-import-read-failed', {
+              defaultValue: 'The Agent Plugin could not be read.',
+            })
+          ),
+          t('layout.agent-plugin-import-selected-source-lowercase', {
+            defaultValue: 'the selected Agent Plugin',
+          }),
+          selectedPath
+        )
+      );
     } finally {
       pickerInFlight.current = false;
       setBusy(null);
@@ -285,7 +321,10 @@ export function AgentPluginImportWizard({
           );
           requestedTargetSpaceId = '';
           throw new Error(
-            'Eigent could not create the local Workspace folder.'
+            t('layout.agent-plugin-import-workspace-folder-failed', {
+              defaultValue:
+                'Eigent could not create the local Workspace folder.',
+            })
           );
         }
         setTargetSpaceId(requestedTargetSpaceId);
@@ -314,7 +353,9 @@ export function AgentPluginImportWizard({
               selectableSpaces.find(
                 (space) => space.id === requestedTargetSpaceId
               )?.name ||
-              'the selected Workspace',
+              t('layout.agent-plugin-import-selected-workspace', {
+                defaultValue: 'the selected Workspace',
+              }),
             version: targetDraft.version,
           });
           if (!replacementConfirmed) return;
@@ -346,7 +387,18 @@ export function AgentPluginImportWizard({
         setReplacementConfirmed(false);
       }
       setError(
-        redactSelectedPath(errorMessage(nextError), selectedSource.source_path)
+        redactSelectedPath(
+          errorMessage(
+            nextError,
+            t('layout.agent-plugin-import-read-failed', {
+              defaultValue: 'The Agent Plugin could not be read.',
+            })
+          ),
+          t('layout.agent-plugin-import-selected-source-lowercase', {
+            defaultValue: 'the selected Agent Plugin',
+          }),
+          selectedSource.source_path
+        )
       );
     } finally {
       conversionInFlight.current = false;
@@ -371,14 +423,26 @@ export function AgentPluginImportWizard({
             className="mb-3 h-10 w-10 text-ds-text-success-default-default"
             aria-hidden
           />
-          <CardTitle>Agent Plugin converted</CardTitle>
+          <CardTitle>
+            {t('layout.agent-plugin-import-converted-title', {
+              defaultValue: 'Agent Plugin converted',
+            })}
+          </CardTitle>
           <CardDescription>
-            {conversion.slug} version {conversion.version} is a local Workspace
-            Bundle draft. It has not been published or installed elsewhere.
+            {t('layout.agent-plugin-import-converted-description', {
+              slug: conversion.slug,
+              version: conversion.version,
+              defaultValue:
+                '{{slug}} version {{version}} is a local Workspace Bundle draft. It has not been published or installed elsewhere.',
+            })}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button onClick={openConfiguration}>Review Workspace draft</Button>
+          <Button onClick={openConfiguration}>
+            {t('layout.agent-plugin-import-review-draft', {
+              defaultValue: 'Review Workspace draft',
+            })}
+          </Button>
         </CardContent>
       </Card>
     );
@@ -393,16 +457,21 @@ export function AgentPluginImportWizard({
             className="inline-flex items-center gap-1 text-ds-text-base text-ds-ink-muted-default hover:text-ds-ink-default-default"
             onClick={() => navigate(-1)}
           >
-            <ArrowLeft className="h-4 w-4" aria-hidden /> Back
+            <ArrowLeft className="h-4 w-4" aria-hidden />{' '}
+            {t('layout.back', { defaultValue: 'Back' })}
           </button>
 
           <header>
             <h1 className="!text-ds-text-display font-semibold">
-              Import Agent Plugin
+              {t('layout.agent-plugin-import-title', {
+                defaultValue: 'Import Agent Plugin',
+              })}
             </h1>
             <p className="mt-2 max-w-2xl !text-ds-text-base text-ds-ink-muted-default">
-              Import the Agent Plugins standard. Eigent reviews the package
-              before converting it to a local Workspace Bundle draft.
+              {t('layout.agent-plugin-import-description', {
+                defaultValue:
+                  'Import the Agent Plugins standard. Eigent reviews the package before converting it to a local Workspace Bundle draft.',
+              })}
             </p>
           </header>
         </>
@@ -420,10 +489,16 @@ export function AgentPluginImportWizard({
         }
       >
         <CardHeader className={showHeader ? undefined : '!p-0'}>
-          <CardTitle>Select an Agent Plugin</CardTitle>
+          <CardTitle>
+            {t('layout.agent-plugin-import-select-title', {
+              defaultValue: 'Select an Agent Plugin',
+            })}
+          </CardTitle>
           <CardDescription>
-            Choose a local plugin directory or archive. The selected path is
-            inspected locally and is never included in the converted Bundle.
+            {t('layout.agent-plugin-import-select-description', {
+              defaultValue:
+                'Choose a local plugin directory or archive. The selected path is inspected locally and is never included in the converted Bundle.',
+            })}
           </CardDescription>
         </CardHeader>
         <CardContent
@@ -444,7 +519,9 @@ export function AgentPluginImportWizard({
             ) : (
               <FolderOpen className="h-4 w-4" aria-hidden />
             )}
-            Select directory or archive
+            {t('layout.agent-plugin-import-select-action', {
+              defaultValue: 'Select directory or archive',
+            })}
           </Button>
           {selectedSource ? (
             <span className="text-ds-text-base text-ds-ink-muted-default">
@@ -460,7 +537,9 @@ export function AgentPluginImportWizard({
             <CardHeader>
               <CardTitle>{inspection.metadata.name}</CardTitle>
               <CardDescription>
-                Agent Plugins standard
+                {t('layout.agent-plugin-import-standard', {
+                  defaultValue: 'Agent Plugins standard',
+                })}
                 {` · schema ${inspection.schema_version}`}
                 {inspection.metadata.version
                   ? ` · ${inspection.metadata.version}`
@@ -477,11 +556,19 @@ export function AgentPluginImportWizard({
                 </p>
               ) : null}
               <div className="rounded-xl border p-3 text-ds-text-meta">
-                <strong>Source tree digest</strong>
+                <strong>
+                  {t('layout.agent-plugin-import-source-tree-digest', {
+                    defaultValue: 'Source tree digest',
+                  })}
+                </strong>
                 <code className="mt-1 block break-all text-ds-ink-muted-default">
                   {inspection.source_tree_digest}
                 </code>
-                <strong className="mt-3 block">Converted tree digest</strong>
+                <strong className="mt-3 block">
+                  {t('layout.agent-plugin-import-converted-tree-digest', {
+                    defaultValue: 'Converted tree digest',
+                  })}
+                </strong>
                 <code className="mt-1 block break-all text-ds-ink-muted-default">
                   {inspection.converted_tree_digest}
                 </code>
@@ -490,7 +577,7 @@ export function AgentPluginImportWizard({
                 <div className="rounded-xl bg-ds-neutral-subtle-default p-3">
                   <Puzzle className="h-4 w-4" aria-hidden />
                   <strong className="mt-2 block text-ds-text-base">
-                    Skills
+                    {t('agents.skills', { defaultValue: 'Skills' })}
                   </strong>
                   <span className="text-ds-text-base">
                     {inspection.skills.length}
@@ -499,7 +586,9 @@ export function AgentPluginImportWizard({
                 <div className="rounded-xl bg-ds-neutral-subtle-default p-3">
                   <Server className="h-4 w-4" aria-hidden />
                   <strong className="mt-2 block text-ds-text-base">
-                    MCP servers
+                    {t('setting.mcp-servers-title', {
+                      defaultValue: 'MCP servers',
+                    })}
                   </strong>
                   <span className="text-ds-text-base">
                     {inspection.mcp_servers.length}
@@ -508,7 +597,7 @@ export function AgentPluginImportWizard({
                 <div className="rounded-xl bg-ds-neutral-subtle-default p-3">
                   <PackageSearch className="h-4 w-4" aria-hidden />
                   <strong className="mt-2 block text-ds-text-base">
-                    Files
+                    {t('chat.files', { defaultValue: 'Files' })}
                   </strong>
                   <span className="text-ds-text-base">
                     {inspection.files.length}
@@ -521,7 +610,9 @@ export function AgentPluginImportWizard({
           <div className="grid gap-5 lg:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle>Skills</CardTitle>
+                <CardTitle>
+                  {t('agents.skills', { defaultValue: 'Skills' })}
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 {inspection.skills.length ? (
@@ -539,7 +630,9 @@ export function AgentPluginImportWizard({
                   ))
                 ) : (
                   <p className="text-ds-text-base text-ds-ink-muted-default">
-                    No Skills declared.
+                    {t('layout.agent-plugin-import-no-skills', {
+                      defaultValue: 'No Skills declared.',
+                    })}
                   </p>
                 )}
                 {inspection.skipped_skills.map((skill) => (
@@ -548,7 +641,10 @@ export function AgentPluginImportWizard({
                     className="rounded-xl border border-x border-y border-ds-border-warning-default-default p-3"
                   >
                     <strong className="text-ds-text-base">
-                      Skipped: {skill.name || skill.id || skill.logical_path}
+                      {t('layout.agent-plugin-import-skipped-item', {
+                        name: skill.name || skill.id || skill.logical_path,
+                        defaultValue: 'Skipped: {{name}}',
+                      })}
                     </strong>
                     <p className="mt-1 text-ds-text-meta">
                       {skill.reason_code}: {skill.reason}
@@ -560,7 +656,11 @@ export function AgentPluginImportWizard({
 
             <Card>
               <CardHeader>
-                <CardTitle>MCP servers</CardTitle>
+                <CardTitle>
+                  {t('setting.mcp-servers-title', {
+                    defaultValue: 'MCP servers',
+                  })}
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 {inspection.mcp_servers.length ? (
@@ -570,7 +670,10 @@ export function AgentPluginImportWizard({
                         {server.name || server.id}
                       </strong>
                       <p className="mt-1 text-ds-text-meta text-ds-ink-muted-default">
-                        {server.transport || 'transport not declared'}
+                        {server.transport ||
+                          t('layout.agent-plugin-import-transport-undeclared', {
+                            defaultValue: 'Transport not declared',
+                          })}
                       </p>
                       {server.command ? (
                         <div className="mt-2 space-y-1 text-ds-text-meta">
@@ -603,12 +706,18 @@ export function AgentPluginImportWizard({
                       ) : null}
                       {server.env_names.length ? (
                         <p className="mt-2 text-ds-text-meta">
-                          Environment names: {server.env_names.join(', ')}
+                          {t('layout.agent-plugin-import-environment-names', {
+                            names: server.env_names.join(', '),
+                            defaultValue: 'Environment names: {{names}}',
+                          })}
                         </p>
                       ) : null}
                       {server.header_names.length ? (
                         <p className="mt-1 text-ds-text-meta">
-                          Header names: {server.header_names.join(', ')}
+                          {t('layout.agent-plugin-import-header-names', {
+                            names: server.header_names.join(', '),
+                            defaultValue: 'Header names: {{names}}',
+                          })}
                         </p>
                       ) : null}
                       {(server.public_environment || []).map((item) => (
@@ -648,7 +757,9 @@ export function AgentPluginImportWizard({
                   ))
                 ) : (
                   <p className="text-ds-text-base text-ds-ink-muted-default">
-                    No MCP servers declared.
+                    {t('layout.agent-plugin-import-no-mcp-servers', {
+                      defaultValue: 'No MCP servers declared.',
+                    })}
                   </p>
                 )}
                 {inspection.skipped_mcp_servers.map((server) => (
@@ -657,7 +768,10 @@ export function AgentPluginImportWizard({
                     className="rounded-xl border border-x border-y border-ds-border-warning-default-default p-3"
                   >
                     <strong className="text-ds-text-base">
-                      Skipped: {server.name || server.id || server.logical_path}
+                      {t('layout.agent-plugin-import-skipped-item', {
+                        name: server.name || server.id || server.logical_path,
+                        defaultValue: 'Skipped: {{name}}',
+                      })}
                     </strong>
                     <p className="mt-1 text-ds-text-meta">
                       {server.reason_code}: {server.reason}
@@ -670,10 +784,16 @@ export function AgentPluginImportWizard({
 
           <Card>
             <CardHeader>
-              <CardTitle>Credential requirements</CardTitle>
+              <CardTitle>
+                {t('layout.agent-plugin-import-credential-requirements', {
+                  defaultValue: 'Credential requirements',
+                })}
+              </CardTitle>
               <CardDescription>
-                Only requirement names are shown. Values explicitly mapped to
-                these secret requirements are removed during conversion.
+                {t('layout.agent-plugin-import-credential-description', {
+                  defaultValue:
+                    'Only requirement names are shown. Values explicitly mapped to these secret requirements are removed during conversion.',
+                })}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -690,7 +810,13 @@ export function AgentPluginImportWizard({
                       </strong>
                       <p className="text-ds-text-meta text-ds-ink-muted-default">
                         {requirement.requirement_kind}
-                        {requirement.required ? ' · required' : ' · optional'}
+                        {requirement.required
+                          ? t('layout.agent-plugin-import-required-suffix', {
+                              defaultValue: ' · required',
+                            })
+                          : t('layout.agent-plugin-import-optional-suffix', {
+                              defaultValue: ' · optional',
+                            })}
                       </p>
                       {requirement.description ? (
                         <p className="mt-1 text-ds-text-meta">
@@ -702,7 +828,9 @@ export function AgentPluginImportWizard({
                 ))
               ) : (
                 <p className="text-ds-text-base text-ds-ink-muted-default">
-                  No credential requirements declared.
+                  {t('layout.agent-plugin-import-no-credentials', {
+                    defaultValue: 'No credential requirements declared.',
+                  })}
                 </p>
               )}
             </CardContent>
@@ -711,7 +839,11 @@ export function AgentPluginImportWizard({
           {inspection.warnings.length ? (
             <Card>
               <CardHeader>
-                <CardTitle>Warnings</CardTitle>
+                <CardTitle>
+                  {t('layout.agent-plugin-import-warnings', {
+                    defaultValue: 'Warnings',
+                  })}
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
                 {inspection.warnings.map((warning) => (
@@ -733,9 +865,16 @@ export function AgentPluginImportWizard({
           {inspection.diagnostics.length ? (
             <Card>
               <CardHeader>
-                <CardTitle>Review diagnostics</CardTitle>
+                <CardTitle>
+                  {t('layout.agent-plugin-import-diagnostics-title', {
+                    defaultValue: 'Review diagnostics',
+                  })}
+                </CardTitle>
                 <CardDescription>
-                  Parser and conversion diagnostics found during local review.
+                  {t('layout.agent-plugin-import-diagnostics-description', {
+                    defaultValue:
+                      'Parser and conversion diagnostics found during local review.',
+                  })}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-2">
@@ -764,9 +903,17 @@ export function AgentPluginImportWizard({
 
           <Card>
             <CardHeader>
-              <CardTitle>File and digest inventory</CardTitle>
+              <CardTitle>
+                {t('layout.agent-plugin-import-file-inventory', {
+                  defaultValue: 'File and digest inventory',
+                })}
+              </CardTitle>
               <CardDescription>
-                {inspection.files.length} files · review digest{' '}
+                {t('layout.agent-plugin-import-file-count', {
+                  count: inspection.files.length,
+                  defaultValue_one: '{{count}} file · review digest',
+                  defaultValue_other: '{{count}} files · review digest',
+                })}{' '}
                 <code>{inspection.review_digest}</code>
               </CardDescription>
             </CardHeader>
@@ -792,25 +939,42 @@ export function AgentPluginImportWizard({
 
           <Card>
             <CardHeader>
-              <CardTitle>Convert to Workspace draft</CardTitle>
+              <CardTitle>
+                {t('layout.agent-plugin-import-convert-title', {
+                  defaultValue: 'Convert to Workspace draft',
+                })}
+              </CardTitle>
               <CardDescription>
-                Conversion is local and does not publish or install the Bundle.
+                {t('layout.agent-plugin-import-convert-description', {
+                  defaultValue:
+                    'Conversion is local and does not publish or install the Bundle.',
+                })}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {targetMode === 'create-space' ? (
                 <label className="block space-y-1.5 text-ds-text-meta font-medium">
-                  <span>New Space name</span>
+                  <span>
+                    {t('layout.agent-plugin-import-new-space-name', {
+                      defaultValue: 'New Space name',
+                    })}
+                  </span>
                   <Input
                     value={newSpaceName}
                     disabled={busy !== null || Boolean(targetSpaceId)}
                     onChange={(event) => setNewSpaceName(event.target.value)}
-                    aria-label="New Space name"
+                    aria-label={t('layout.agent-plugin-import-new-space-name', {
+                      defaultValue: 'New Space name',
+                    })}
                   />
                 </label>
               ) : (
                 <label className="block space-y-1.5 text-ds-text-meta font-medium">
-                  <span>Target Workspace</span>
+                  <span>
+                    {t('layout.agent-plugin-import-target-workspace', {
+                      defaultValue: 'Target Workspace',
+                    })}
+                  </span>
                   <select
                     className="h-10 w-full rounded-xl border bg-ds-neutral-default-default px-3"
                     value={targetSpaceId}
@@ -823,7 +987,11 @@ export function AgentPluginImportWizard({
                       setReplacementConfirmed(false);
                     }}
                   >
-                    <option value="">Select a Workspace</option>
+                    <option value="">
+                      {t('layout.agent-plugin-import-select-workspace', {
+                        defaultValue: 'Select a Workspace',
+                      })}
+                    </option>
                     {selectableSpaces.map((space) => (
                       <option key={space.id} value={space.id}>
                         {space.name}
@@ -834,7 +1002,10 @@ export function AgentPluginImportWizard({
               )}
               {targetMode === 'existing' && selectableSpaces.length === 0 ? (
                 <p className="text-ds-text-base text-ds-text-warning-default-default">
-                  Create a Workspace before converting this Agent Plugin.
+                  {t('layout.agent-plugin-import-create-workspace-first', {
+                    defaultValue:
+                      'Create a Workspace before converting this Agent Plugin.',
+                  })}
                 </p>
               ) : null}
               <label className="flex items-start gap-3 text-ds-text-base">
@@ -843,24 +1014,32 @@ export function AgentPluginImportWizard({
                   onCheckedChange={(checked) =>
                     setReviewConfirmed(checked === true)
                   }
-                  aria-label="Confirm Agent Plugin review"
+                  aria-label={t('layout.agent-plugin-import-confirm-review', {
+                    defaultValue: 'Confirm Agent Plugin review',
+                  })}
                 />
                 <span>
-                  I reviewed the Skills, MCP servers, files, credential
-                  requirements, and warnings shown above.
+                  {t('layout.agent-plugin-import-review-confirmation', {
+                    defaultValue:
+                      'I reviewed the Skills, MCP servers, files, credential requirements, and warnings shown above.',
+                  })}
                 </span>
               </label>
               {replacementReview ? (
                 <div className="space-y-3 rounded-xl border border-x border-y border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default p-4 text-ds-text-base">
                   <div>
-                    <strong>Replace the existing Workspace draft?</strong>
+                    <strong>
+                      {t('layout.agent-plugin-import-replace-title', {
+                        defaultValue: 'Replace the existing Workspace draft?',
+                      })}
+                    </strong>
                     <p className="mt-1 text-ds-text-meta">
-                      {replacementReview.targetName} already has saved
-                      configuration (draft version {replacementReview.version}).
-                      Agent Plugin conversion replaces that working draft; it
-                      does not merge configurations. The currently installed
-                      Workspace remains active until you publish and install the
-                      new draft.
+                      {t('layout.agent-plugin-import-replace-description', {
+                        name: replacementReview.targetName,
+                        version: replacementReview.version,
+                        defaultValue:
+                          '{{name}} already has saved configuration (draft version {{version}}). Agent Plugin conversion replaces that working draft; it does not merge configurations. The currently installed Workspace remains active until you publish and install the new draft.',
+                      })}
                     </p>
                   </div>
                   <label className="flex items-start gap-3">
@@ -869,17 +1048,32 @@ export function AgentPluginImportWizard({
                       onCheckedChange={(checked) =>
                         setReplacementConfirmed(checked === true)
                       }
-                      aria-label="Confirm replacing existing Workspace draft"
+                      aria-label={t(
+                        'layout.agent-plugin-import-confirm-replacement',
+                        {
+                          defaultValue:
+                            'Confirm replacing existing Workspace draft',
+                        }
+                      )}
                     />
-                    <span>I understand this replaces the saved draft.</span>
+                    <span>
+                      {t(
+                        'layout.agent-plugin-import-replacement-confirmation',
+                        {
+                          defaultValue:
+                            'I understand this replaces the saved draft.',
+                        }
+                      )}
+                    </span>
                   </label>
                 </div>
               ) : null}
               <div className="flex items-center gap-3 rounded-xl bg-ds-neutral-subtle-default p-3 text-ds-text-meta text-ds-ink-muted-default">
                 <ShieldCheck className="h-4 w-4 shrink-0" aria-hidden />
-                Standard MCP env and header literals are public plugin data and
-                are copied. Values explicitly declared as secret requirements
-                are omitted and configured separately after conversion.
+                {t('layout.agent-plugin-import-secret-handling', {
+                  defaultValue:
+                    'Standard MCP env and header literals are public plugin data and are copied. Values explicitly declared as secret requirements are omitted and configured separately after conversion.',
+                })}
               </div>
               <Button
                 type="button"
@@ -897,7 +1091,9 @@ export function AgentPluginImportWizard({
                 {busy === 'convert' ? (
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                 ) : null}
-                Convert to local draft
+                {t('layout.agent-plugin-import-convert-action', {
+                  defaultValue: 'Convert to local draft',
+                })}
               </Button>
             </CardContent>
           </Card>

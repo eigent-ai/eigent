@@ -18,10 +18,12 @@ import {
   type CsvFilePreview,
 } from '@/shared/filePreviewContract';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 const ROW_PAGE_SIZE = 100;
 
 export function CsvPreviewTable({ preview }: { preview: CsvFilePreview }) {
+  const { t } = useTranslation();
   const [visibleRows, setVisibleRows] = useState(ROW_PAGE_SIZE);
   useEffect(() => setVisibleRows(ROW_PAGE_SIZE), [preview]);
 
@@ -31,18 +33,42 @@ export function CsvPreviewTable({ preview }: { preview: CsvFilePreview }) {
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col gap-2">
       <div className="rounded-lg bg-ds-neutral-subtle-default px-3 py-2 text-ds-text-meta text-ds-ink-muted-default">
-        Previewing {preview.rows.length.toLocaleString()} rows and{' '}
-        {preview.columns.length.toLocaleString()} columns from{' '}
-        {formatFileSize(preview.bytesRead)}
-        {preview.totalBytes !== null
-          ? ` of ${formatFileSize(preview.totalBytes)}`
-          : ''}
-        {preview.truncated ? '. The complete file was not loaded.' : '.'}
+        {t('layout.csv-preview-summary', {
+          rows: t('layout.csv-row-count', {
+            count: preview.rows.length,
+            formattedCount: preview.rows.length.toLocaleString(),
+            defaultValue_one: '{{formattedCount}} row',
+            defaultValue_other: '{{formattedCount}} rows',
+          }),
+          columns: t('layout.csv-column-count', {
+            count: preview.columns.length,
+            formattedCount: preview.columns.length.toLocaleString(),
+            defaultValue_one: '{{formattedCount}} column',
+            defaultValue_other: '{{formattedCount}} columns',
+          }),
+          bytesRead: formatFileSize(preview.bytesRead),
+          totalBytes:
+            preview.totalBytes !== null
+              ? t('layout.csv-total-size', {
+                  size: formatFileSize(preview.totalBytes),
+                  defaultValue: ' of {{size}}',
+                })
+              : '',
+          truncation: preview.truncated
+            ? t('layout.csv-preview-truncated', {
+                defaultValue: ' The complete file was not loaded.',
+              })
+            : '',
+          defaultValue:
+            'Previewing {{rows}} and {{columns}} from {{bytesRead}}{{totalBytes}}.{{truncation}}',
+        })}
       </div>
 
       {preview.columns.length === 0 ? (
         <div className="flex min-h-32 items-center justify-center text-ds-text-base text-ds-ink-muted-default">
-          This CSV does not contain any previewable rows.
+          {t('layout.csv-no-previewable-rows', {
+            defaultValue: 'This CSV does not contain any previewable rows.',
+          })}
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-x border-y border-solid border-ds-hairline-subtle-default">
@@ -93,7 +119,11 @@ export function CsvPreviewTable({ preview }: { preview: CsvFilePreview }) {
             )
           }
         >
-          Show {Math.min(ROW_PAGE_SIZE, remaining)} more rows
+          {t('layout.csv-show-more-rows', {
+            count: Math.min(ROW_PAGE_SIZE, remaining),
+            defaultValue_one: 'Show {{count}} more row',
+            defaultValue_other: 'Show {{count}} more rows',
+          })}
         </Button>
       ) : null}
     </div>

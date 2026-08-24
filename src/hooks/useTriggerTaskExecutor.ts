@@ -227,12 +227,24 @@ export function useTriggerTaskExecutor() {
         );
 
         if (!queuedTaskId) {
-          throw new Error('Failed to add message to project queue');
+          throw new Error(
+            i18n.t('triggers.queue-add-failed', {
+              defaultValue: 'Failed to add the task to the session queue',
+            })
+          );
         }
 
-        toast.success(`Queued: ${task.triggerName}`, {
-          description: 'Task has been added to the project queue',
-        });
+        toast.success(
+          i18n.t('triggers.task-queued', {
+            defaultValue: 'Queued: {{name}}',
+            name: task.triggerName,
+          }),
+          {
+            description: i18n.t('triggers.task-queued-description', {
+              defaultValue: 'Task has been added to the session queue',
+            }),
+          }
+        );
 
         console.log(
           '[TriggerTaskExecutor] Task queued successfully:',
@@ -244,7 +256,13 @@ export function useTriggerTaskExecutor() {
         console.error('[TriggerTaskExecutor] Task queueing failed:', error);
         toast.error(
           i18n.t('triggers.execution-failed-toast', { name: task.triggerName }),
-          { description: error?.message || 'Unknown error' }
+          {
+            description:
+              error?.message ||
+              i18n.t('layout.unknown-error', {
+                defaultValue: 'Unknown error',
+              }),
+          }
         );
       }
     },

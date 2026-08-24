@@ -12,7 +12,7 @@
   "no-recommended": "사용 가능한 추천 커넥터가 없습니다.",
   "gateway-unavailable": "Connectors를 사용할 수 없습니다.",
   "gateway-unavailable-desc": "이 배포에서는 Connector Gateway가 활성화되어 있지 않습니다.",
-  "gateway-connectors": "Connectors",
+  "gateway-connectors": "커넥터",
   "source-open": "클라우드",
   "source-built-in": "기본 제공",
   "source-local": "사용자 지정 로컬",
@@ -136,5 +136,7 @@
   "google-check-failed": "Google 인증 정보를 확인하지 못했습니다.",
   "exa-check-failed": "Exa API 키를 확인하지 못했습니다.",
   "optional": "선택 사항",
-  "enter-field": "{{field}} 입력"
+  "enter-field": "{{field}} 입력",
+  "google-calendar-description": "이벤트와 일정을 관리하는 Google Calendar 연동",
+  "notion-description": "Notion 페이지를 읽고 관리하는 Notion 워크스페이스 연동"
 }

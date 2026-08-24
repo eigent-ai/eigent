@@ -61,5 +61,6 @@
   "all-agents": "Todos los agentes",
   "replace-skill-title": "¿Reemplazar la habilidad «{{name}}»?",
   "replace-skill-message": "Ya existe una habilidad con el mismo nombre. Al subir esta habilidad se reemplazará y no se podrá restaurar la versión existente.",
-  "update-and-replace": "Actualizar y reemplazar"
+  "update-and-replace": "Actualizar y reemplazar",
+  "agent": "Agente"
 }

@@ -25,6 +25,7 @@ import {
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { Fragment, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 /** Same tokens as `UserMessageCard` body (13px / 20px). */
 export const USER_MESSAGE_BODY_STYLE = {
@@ -141,6 +142,7 @@ export function UserMessageRichContent({
   variant = 'card',
   className,
 }: UserMessageRichContentProps) {
+  const { t } = useTranslation();
   const host = useHost();
   const openBrowserPreview = usePageTabStore((s) => s.openBrowserPreview);
   const contentNodes = parseContentWithTags(content);
@@ -181,7 +183,9 @@ export function UserMessageRichContent({
                 e.stopPropagation();
                 handleOpenSkillFolder(node.name);
               }}
-              title="Open skill folder"
+              title={t('chat.open-skill-folder', {
+                defaultValue: 'Open skill folder',
+              })}
               className={cn(
                 'mx-0 cursor-pointer border-0 border-x-0 border-y-0 [font:inherit] hover:opacity-90',
                 RICH_TAG_BASE_STYLE_CLASSES,

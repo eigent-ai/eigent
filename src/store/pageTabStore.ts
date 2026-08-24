@@ -20,6 +20,7 @@ import {
   normalizeChatTimelineDetailLevel,
   type ChatTimelineDetailLevel,
 } from '@/types/chatTimeline';
+import i18next from 'i18next';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -244,7 +245,9 @@ function createBrowserPreviewTab(projectId: string | null): SessionBrowserTab {
   return {
     id,
     type: 'browser',
-    title: 'New tab',
+    title: i18next.t('layout.preview-new-tab', {
+      defaultValue: 'New tab',
+    }),
     url: '',
     // Project-scoped so each session keeps its own native webviews (and their
     // navigation history) alive while the app runs.
@@ -263,7 +266,11 @@ function createFilePreviewTab(file: FileInfo | null = null): SessionFileTab {
   return {
     id: nextSessionPreviewTabId('file'),
     type: 'file',
-    title: file?.name || 'Open file',
+    title:
+      file?.name ||
+      i18next.t('layout.preview-open-file', {
+        defaultValue: 'Open file',
+      }),
     file,
   };
 }
@@ -288,7 +295,9 @@ function createChooserPreviewTab(): SessionChooserTab {
   return {
     id: nextSessionPreviewTabId('chooser'),
     type: 'chooser',
-    title: 'New tab',
+    title: i18next.t('layout.preview-new-tab', {
+      defaultValue: 'New tab',
+    }),
   };
 }
 
@@ -318,7 +327,12 @@ function createReviewPreviewTab(
   return {
     id: nextSessionPreviewTabId('review'),
     type: 'review',
-    title: reviewTarget.scope === 'run' ? 'Run review' : 'Review',
+    title:
+      reviewTarget.scope === 'run'
+        ? i18next.t('layout.preview-task-review', {
+            defaultValue: 'Task review',
+          })
+        : i18next.t('layout.preview-review', { defaultValue: 'Review' }),
     reviewTarget,
     reviewComments: [],
   };
@@ -327,9 +341,12 @@ function createReviewPreviewTab(
 /** Placeholder tab title for a URL until the page reports its real one. */
 function browserTabTitleForUrl(url: string): string {
   try {
-    return new URL(url).hostname || 'New tab';
+    return (
+      new URL(url).hostname ||
+      i18next.t('layout.preview-new-tab', { defaultValue: 'New tab' })
+    );
   } catch {
-    return 'New tab';
+    return i18next.t('layout.preview-new-tab', { defaultValue: 'New tab' });
   }
 }
 
@@ -350,7 +367,9 @@ function createPreviewTabOfKind(
       return {
         id,
         type: 'terminal',
-        title: 'Terminal',
+        title: i18next.t('layout.preview-terminal', {
+          defaultValue: 'Terminal',
+        }),
         // Stable per-tab PTY id: the shell keeps running while the user
         // switches preview tabs, and dies when the tab is closed.
         shellId: `session-shell:${projectId ?? 'global'}:${id}`,
@@ -360,7 +379,9 @@ function createPreviewTabOfKind(
       return {
         id: nextSessionPreviewTabId('canvas'),
         type: 'canvas',
-        title: 'Canvas',
+        title: i18next.t('layout.preview-canvas', {
+          defaultValue: 'Canvas',
+        }),
       };
   }
 }

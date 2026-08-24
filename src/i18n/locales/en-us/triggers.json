@@ -345,5 +345,24 @@
       "label": "Include Request Metadata",
       "notice": "Include request metadata (method, URL, client IP) in execution input"
     }
-  }
+  },
+  "activity-activated": "Automation \"{{name}}\" activated",
+  "activity-created": "Automation \"{{name}}\" created",
+  "activity-deactivated": "Automation \"{{name}}\" deactivated",
+  "activity-deleted": "Automation \"{{name}}\" deleted",
+  "activity-duplicated": "Automation \"{{name}}\" created (duplicated)",
+  "activity-updated": "Automation \"{{name}}\" updated",
+  "background-task-failed": "Background task failed",
+  "execution-completed-toast": "Execution completed: {{name}}",
+  "execution-log-completed": "\"{{name}}\" execution completed",
+  "execution-log-failed": "\"{{name}}\" execution failed",
+  "execution-log-started": "\"{{name}}\" execution started",
+  "listener-connection-lost": "Lost connection to the task listener. Reconnecting…",
+  "listener-error": "Listener error: {{message}}",
+  "listener-sign-in-failed": "Couldn't sign in to the task listener. Try reconnecting.",
+  "queue-add-failed": "Failed to add the task to the session queue",
+  "task-queued": "Queued: {{name}}",
+  "task-queued-description": "Task has been added to the session queue",
+  "select-method": "Select method",
+  "status-cancelled": "Cancelled"
 }

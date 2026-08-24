@@ -25,5 +25,8 @@
   "multi-modal-agent": "Agente Multi Modal",
   "social-media-agent": "Agente de Redes Sociales",
   "no-projects-found": "No se encontraron sesiones.",
-  "no-tasks-found": "No se encontraron tareas."
+  "no-tasks-found": "No se encontraron tareas.",
+  "command-search-placeholder": "Escribe un comando o busca…",
+  "more-integrations": "Más integraciones",
+  "today": "Hoy"
 }

@@ -84,7 +84,11 @@ export default function HomeHubListTable({
             {column.labelKey ? (
               t(column.labelKey)
             ) : (
-              <span className="sr-only">Workspace action</span>
+              <span className="sr-only">
+                {t('layout.workspace-action', {
+                  defaultValue: 'Workspace action',
+                })}
+              </span>
             )}
           </span>
         ))}

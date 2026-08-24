@@ -366,7 +366,7 @@ describe('useTriggerTaskExecutor — hook behavior', () => {
     expect(toast.success).toHaveBeenCalledWith(
       'Queued: Remote Trigger',
       expect.objectContaining({
-        description: 'Task has been added to the project queue',
+        description: 'Task has been added to the session queue',
       })
     );
   });

@@ -74,7 +74,11 @@ export default function KeyboardShortcutsDialog({
                         <span className="min-w-0 truncate">{label}</span>
                         <span
                           className="flex shrink-0 items-center gap-1"
-                          aria-label={`${label}: ${shortcut.keys.join('+')}`}
+                          aria-label={t('layout.keyboard-shortcut-label', {
+                            label,
+                            keys: shortcut.keys.join('+'),
+                            defaultValue: '{{label}}: {{keys}}',
+                          })}
                         >
                           {shortcut.keys.map((key, index) => (
                             <ShortcutKeycap

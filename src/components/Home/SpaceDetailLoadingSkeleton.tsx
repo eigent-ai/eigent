@@ -14,6 +14,7 @@
 
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 import type { HomeHubItemKind } from './components/HomeHubItemShared';
 import { HOME_HUB_LIST_GRID_CLASS } from './components/HomeHubItemShared';
 import HomeHubListTable from './components/HomeHubListTable';
@@ -35,10 +36,20 @@ export function SpaceDetailListSkeleton({
   kind: 'project' | 'task' | 'trigger';
   rows?: number;
 }) {
+  const { t } = useTranslation();
+  const kindLabel =
+    kind === 'project'
+      ? t('layout.sessions', { defaultValue: 'Sessions' })
+      : kind === 'task'
+        ? t('layout.tasks', { defaultValue: 'Tasks' })
+        : t('layout.automations', { defaultValue: 'Automations' });
   return (
     <div
       role="status"
-      aria-label={`Loading ${kind} list`}
+      aria-label={t('layout.loading-list', {
+        value: kindLabel,
+        defaultValue: 'Loading {{value}} list',
+      })}
       data-space-detail-list-skeleton={kind}
       className="mb-12 w-full min-w-0"
     >
@@ -72,7 +83,9 @@ export function SpaceDetailListSkeleton({
           </div>
         ))}
       </HomeHubListTable>
-      <span className="sr-only">Loading content</span>
+      <span className="sr-only">
+        {t('layout.loading-content', { defaultValue: 'Loading content' })}
+      </span>
     </div>
   );
 }
@@ -137,20 +150,25 @@ function SettingsRowsSkeleton({ titles }: { titles: string[] }) {
 }
 
 export function MemorySettingsSkeleton() {
+  const { t } = useTranslation();
   return (
     <div className="space-y-4 py-4" data-memory-settings-skeleton>
       <SettingsRowsSkeleton
         titles={[
-          'Auto Memory',
-          'Use Memory',
-          'Memory Sync',
-          'Memory storage',
-          'Organise Memory',
+          t('setting.memory-auto-title', { defaultValue: 'Auto Memory' }),
+          t('setting.memory-use-title', { defaultValue: 'Use Memory' }),
+          t('setting.memory-sync-title', { defaultValue: 'Memory Sync' }),
+          t('setting.memory-storage', { defaultValue: 'Memory storage' }),
+          t('setting.memory-organise-title', {
+            defaultValue: 'Organise Memory',
+          }),
         ]}
       />
       <div className="rounded-2xl bg-ds-neutral-default-default p-4">
         <span className="text-ds-text-base font-bold text-ds-ink-default-default">
-          Saved Memory
+          {t('setting.memory-saved-title', {
+            defaultValue: 'Saved Memory',
+          })}
         </span>
         <Skeleton className="mt-2 h-2.5 w-64 max-w-full" />
         <Skeleton className="mt-4 h-28 w-full rounded-xl" />
@@ -165,16 +183,17 @@ export function MemorySettingsSkeleton() {
 }
 
 export function WorkspaceSettingsSkeleton() {
+  const { t } = useTranslation();
   const tabs = [
-    'Identity',
-    'Model',
-    'Environment',
-    'Instructions',
-    'Context',
-    'Agents',
-    'Skills',
-    'Connectors',
-    'MCP servers',
+    t('layout.identity', { defaultValue: 'Identity' }),
+    t('setting.model', { defaultValue: 'Model' }),
+    t('layout.environment', { defaultValue: 'Environment' }),
+    t('layout.instructions', { defaultValue: 'Instructions' }),
+    t('layout.context', { defaultValue: 'Context' }),
+    t('layout.agents', { defaultValue: 'Agents' }),
+    t('agents.skills', { defaultValue: 'Skills' }),
+    t('setting.connectors', { defaultValue: 'Connectors' }),
+    t('setting.mcp-servers-title', { defaultValue: 'MCP servers' }),
   ];
   return (
     <div
@@ -197,22 +216,53 @@ export function WorkspaceSettingsSkeleton() {
         ))}
       </div>
       <div className="space-y-4">
-        <SettingsRowsSkeleton titles={['Draft version', 'Profile']} />
         <SettingsRowsSkeleton
           titles={[
-            'Bundle name',
-            'Permission profile',
-            'Git workspace environment',
-            'Remote policy',
+            t('layout.draft-version', { defaultValue: 'Draft version' }),
+            t('layout.profile', { defaultValue: 'Profile' }),
           ]}
         />
-        <SettingsRowsSkeleton titles={['Model', 'Thinking effort']} />
+        <SettingsRowsSkeleton
+          titles={[
+            t('layout.bundle-name', { defaultValue: 'Bundle name' }),
+            t('layout.workspace-bundle-approval-mode', {
+              defaultValue: 'Approval mode',
+            }),
+            t('layout.track-space-in-git', {
+              defaultValue: 'Track this Space in Git',
+            }),
+            t('layout.remote-policy', { defaultValue: 'Remote policy' }),
+          ]}
+        />
+        <SettingsRowsSkeleton
+          titles={[
+            t('setting.model', { defaultValue: 'Model' }),
+            t('setting.thinking-effort', {
+              defaultValue: 'Thinking effort',
+            }),
+          ]}
+        />
       </div>
     </div>
   );
 }
 
 export function SpaceDetailTabSkeleton({ tab }: { tab: SpaceDetailTab }) {
+  const { t } = useTranslation();
+  const tabLabel =
+    tab === 'projects'
+      ? t('layout.sessions', { defaultValue: 'Sessions' })
+      : tab === 'tasks'
+        ? t('layout.tasks', { defaultValue: 'Tasks' })
+        : tab === 'triggers'
+          ? t('layout.automations', { defaultValue: 'Automations' })
+          : tab === 'context'
+            ? t('layout.context', { defaultValue: 'Context' })
+            : tab === 'memory'
+              ? t('setting.memory', { defaultValue: 'Memory' })
+              : t('layout.workspace-settings', {
+                  defaultValue: 'Workspace settings',
+                });
   const content =
     tab === 'projects' ? (
       <SpaceDetailListSkeleton kind="project" />
@@ -231,12 +281,19 @@ export function SpaceDetailTabSkeleton({ tab }: { tab: SpaceDetailTab }) {
   return (
     <div
       role="status"
-      aria-label={`Loading ${tab} content`}
+      aria-label={t('layout.loading-content-for', {
+        value: tabLabel,
+        defaultValue: 'Loading {{value}} content',
+      })}
       data-space-detail-tab-skeleton={tab}
       className="h-full min-h-0"
     >
       {content}
-      <span className="sr-only">Loading Space content</span>
+      <span className="sr-only">
+        {t('layout.loading-space-content', {
+          defaultValue: 'Loading Space content',
+        })}
+      </span>
     </div>
   );
 }

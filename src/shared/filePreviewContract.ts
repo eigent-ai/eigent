@@ -12,6 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import i18next from 'i18next';
+
 export const FILE_PREVIEW_LIMITS = {
   csvScanBytes: 2 * 1024 * 1024,
   csvRows: 500,
@@ -34,9 +36,7 @@ export type FilePreviewMode =
   | 'blocked';
 
 export type FilePreviewBlockedReason =
-  | 'too-large'
-  | 'metadata-unavailable'
-  | 'unsupported';
+  'too-large' | 'metadata-unavailable' | 'unsupported';
 
 export interface FilePreviewMetadata {
   size: number | null;
@@ -239,7 +239,10 @@ export function decideFilePreview(
 }
 
 export function formatFileSize(bytes: number | null): string {
-  if (bytes === null || !Number.isFinite(bytes)) return 'Unknown size';
+  if (bytes === null || !Number.isFinite(bytes))
+    return i18next.t('layout.file-size-unknown', {
+      defaultValue: 'Unknown size',
+    });
   if (bytes < 1024) return `${bytes} B`;
   const units = ['KiB', 'MiB', 'GiB', 'TiB'];
   let value = bytes / 1024;

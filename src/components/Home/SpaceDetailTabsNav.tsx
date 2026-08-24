@@ -173,7 +173,9 @@ export function SpaceDetailTabsNav({
     <div
       ref={navRef}
       role="tablist"
-      aria-label="Space content"
+      aria-label={t('layout.space-content', {
+        defaultValue: 'Space content',
+      })}
       className={cn(
         'relative flex flex-row flex-wrap items-center gap-2 pb-2',
         className

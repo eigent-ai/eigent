@@ -268,9 +268,9 @@ describe('ChatBox timeline modes', () => {
     expect(
       container.querySelector('[data-timeline-mode="trajectory"]')
     ).toBeTruthy();
-    expect(screen.getByText('USER')).toBeInTheDocument();
-    expect(screen.getByText('ASSISTANT')).toBeInTheDocument();
-    expect(screen.getByText('TOOL')).toBeInTheDocument();
+    expect(screen.getByText('User')).toBeInTheDocument();
+    expect(screen.getByText('Assistant')).toBeInTheDocument();
+    expect(screen.getByText('Tool')).toBeInTheDocument();
 
     const rows = container.querySelectorAll('[data-detailed-trace-row]');
     expect(rows.length).toBeGreaterThan(0);

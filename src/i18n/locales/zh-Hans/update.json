@@ -9,7 +9,7 @@
   "download-completed": "下载完成",
   "click-to-install-update": "点击安装更新",
   "install": "安装",
-  "downloading": "Downloading update",
-  "launch-new-version": "Launch new version",
-  "update-failed-retry": "Update failed — click to retry"
+  "downloading": "正在下载更新",
+  "launch-new-version": "启动新版本",
+  "update-failed-retry": "更新失败——点击重试"
 }

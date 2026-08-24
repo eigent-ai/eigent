@@ -44,6 +44,7 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 interface ApprovalOption {
@@ -52,34 +53,6 @@ interface ApprovalOption {
   description: string;
   icon: typeof ShieldCheck;
 }
-
-const APPROVAL_OPTIONS: ApprovalOption[] = [
-  {
-    value: 'read_only',
-    label: 'Read only',
-    description: 'Allow reads and block changes.',
-    icon: Eye,
-  },
-  {
-    value: 'request_approval',
-    label: 'Request approval',
-    description: 'Ask before actions that can change state.',
-    icon: ShieldQuestion,
-  },
-  {
-    value: 'auto_reviewer',
-    label: 'Auto reviewer',
-    description:
-      'Approve routine actions; ask only for sensitive or dangerous actions.',
-    icon: ShieldCheck,
-  },
-  {
-    value: 'full_access',
-    label: 'Full access',
-    description: 'Allow actions without approval.',
-    icon: TriangleAlert,
-  },
-];
 
 const MENU_CONTENT_WIDTH_CLASS = 'w-[280px]';
 
@@ -105,6 +78,49 @@ export function ApprovalModeSelect({
   compact = false,
   className,
 }: ApprovalModeSelectProps) {
+  const { t } = useTranslation();
+  const approvalOptions: ApprovalOption[] = [
+    {
+      value: 'read_only',
+      label: t('chat.approval-mode-read-only', { defaultValue: 'Read only' }),
+      description: t('chat.approval-mode-read-only-description', {
+        defaultValue: 'Eigent can read your files but cannot change anything.',
+      }),
+      icon: Eye,
+    },
+    {
+      value: 'request_approval',
+      label: t('chat.approval-mode-ask-first', {
+        defaultValue: 'Ask me first',
+      }),
+      description: t('chat.approval-mode-ask-first-description', {
+        defaultValue:
+          'Eigent asks for your approval before it changes anything.',
+      }),
+      icon: ShieldQuestion,
+    },
+    {
+      value: 'auto_reviewer',
+      label: t('chat.approval-mode-approve-for-me', {
+        defaultValue: 'Approve for me',
+      }),
+      description: t('chat.approval-mode-approve-for-me-description', {
+        defaultValue:
+          'Eigent approves routine steps and only asks about risky ones.',
+      }),
+      icon: ShieldCheck,
+    },
+    {
+      value: 'full_access',
+      label: t('chat.approval-mode-full-access', {
+        defaultValue: 'Full access',
+      }),
+      description: t('chat.approval-mode-full-access-description', {
+        defaultValue: 'Eigent acts without asking. Use with care.',
+      }),
+      icon: TriangleAlert,
+    },
+  ];
   const userId = useAuthStore((state) => state.user_id);
   const [value, setValue] = useState<PermissionProfileName>('request_approval');
   const [revision, setRevision] = useState(0);
@@ -125,7 +141,13 @@ export function ApprovalModeSelect({
         setRevision(profile.revision);
       })
       .catch(() => {
-        if (!cancelled) toast.error('Could not load the permission profile.');
+        if (!cancelled) {
+          toast.error(
+            t('chat.approval-mode-load-failed', {
+              defaultValue: "Couldn't load the approval mode.",
+            })
+          );
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -133,14 +155,17 @@ export function ApprovalModeSelect({
     return () => {
       cancelled = true;
     };
-  }, [spaceId]);
+  }, [spaceId, t]);
 
   const updateProfile = async (next: PermissionProfileName) => {
     if (!spaceId || next === value) return;
     if (
       next === 'full_access' &&
       !window.confirm(
-        'Full access lets agents act without asking for approval. Continue?'
+        t('chat.approval-mode-full-access-confirmation', {
+          defaultValue:
+            'Full access lets Eigent act without asking you first, including actions that change files or send messages. Continue?',
+        })
       )
     ) {
       return;
@@ -155,9 +180,17 @@ export function ApprovalModeSelect({
       });
       setValue(updated.profile_name);
       setRevision(updated.revision);
-      toast.success('Permission profile updated for new runs.');
+      toast.success(
+        t('chat.approval-mode-updated', {
+          defaultValue: 'Approval mode updated. It applies to new tasks.',
+        })
+      );
     } catch {
-      toast.error('Could not update the permission profile.');
+      toast.error(
+        t('chat.approval-mode-update-failed', {
+          defaultValue: "Couldn't update the approval mode. Try again.",
+        })
+      );
       try {
         const current = await getSpacePermissionProfile(spaceId, {
           refresh: true,
@@ -173,15 +206,20 @@ export function ApprovalModeSelect({
   };
 
   const current =
-    APPROVAL_OPTIONS.find((o) => o.value === value) ?? APPROVAL_OPTIONS[0];
+    approvalOptions.find((o) => o.value === value) ?? approvalOptions[0];
   const CurrentIcon = current.icon;
+  /** Names the control as well as its value, so the label stands alone. */
+  const accessibleLabel = t('chat.approval-mode-current', {
+    value: current.label,
+    defaultValue: 'Approval mode: {{value}}',
+  });
 
   if (readOnly) {
     return (
       <div
         role="status"
         title={current.label}
-        aria-label={current.label}
+        aria-label={accessibleLabel}
         className={cn(
           triggerShellClass,
           'pointer-events-none bg-transparent',
@@ -211,7 +249,7 @@ export function ApprovalModeSelect({
           type="button"
           disabled={disabled || loading || !spaceId}
           title={current.label}
-          aria-label={current.label}
+          aria-label={accessibleLabel}
           aria-haspopup="menu"
           className={cn(
             triggerShellClass,
@@ -249,7 +287,7 @@ export function ApprovalModeSelect({
         avoidCollisions
         className={MENU_CONTENT_WIDTH_CLASS}
       >
-        {APPROVAL_OPTIONS.map((option) => {
+        {approvalOptions.map((option) => {
           const OptionIcon = option.icon;
           return (
             <DropdownMenuItem

@@ -136,5 +136,7 @@
   "google-check-failed": "Les identifiants Google n’ont pas pu être vérifiés.",
   "exa-check-failed": "La clé API Exa n’a pas pu être vérifiée.",
   "optional": "Facultatif",
-  "enter-field": "Saisissez {{field}}"
+  "enter-field": "Saisissez {{field}}",
+  "google-calendar-description": "Intégration à Google Agenda pour gérer les événements et les calendriers",
+  "notion-description": "Intégration à l’espace de travail Notion pour lire et gérer les pages Notion"
 }

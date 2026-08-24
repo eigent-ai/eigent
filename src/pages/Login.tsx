@@ -366,7 +366,9 @@ export default function Login() {
         disabled={isLoading}
       >
         <span className="flex-1">
-          {isLoading ? t('layout.logging-in') : 'Start Eigent'}
+          {isLoading
+            ? t('layout.logging-in')
+            : t('layout.start-eigent', { defaultValue: 'Start Eigent' })}
         </span>
       </Button>
     </div>

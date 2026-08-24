@@ -20,7 +20,7 @@ import {
   RuledLinesBackground,
 } from '@/components/Background';
 import { Button } from '@/components/ui/button';
-import { LocaleEnum, switchLanguage } from '@/i18n';
+import { LocaleEnum, resolveLocale, switchLanguage } from '@/i18n';
 import { recordOnboardingStepCompleted } from '@/lib/events/appEvents';
 import { getOnboardingThemePresets } from '@/lib/themeTokens/catalog';
 import { cn } from '@/lib/utils';
@@ -378,11 +378,7 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
 
   const handleLanguage = (key: string) => {
     if (key === 'system') {
-      const systemLang = navigator.language.toLowerCase();
-      const available = Object.values(LocaleEnum);
-      const matched = available.find((l) => systemLang.startsWith(l));
-      const langToApply = matched ?? LocaleEnum.English;
-      switchLanguage(langToApply);
+      switchLanguage(resolveLocale(navigator.language));
       useAuthStore.getState().setLanguage('system');
     } else {
       switchLanguage(key as LocaleEnum);

@@ -155,7 +155,15 @@ export default function Overview({
         type: isActivating
           ? ActivityType.TriggerActivated
           : ActivityType.TriggerDeactivated,
-        message: `Automation "${trigger.name}" ${isActivating ? 'activated' : 'deactivated'}`,
+        message: isActivating
+          ? t('triggers.activity-activated', {
+              name: trigger.name,
+              defaultValue: 'Automation "{{name}}" activated',
+            })
+          : t('triggers.activity-deactivated', {
+              name: trigger.name,
+              defaultValue: 'Automation "{{name}}" deactivated',
+            }),
         projectId: projectStore.activeProjectId || undefined,
         triggerId: trigger.id,
         triggerName: trigger.name,
@@ -219,7 +227,10 @@ export default function Overview({
       // Add activity log
       addLog({
         type: ActivityType.TriggerDeleted,
-        message: `Automation "${deletingTrigger.name}" deleted`,
+        message: t('triggers.activity-deleted', {
+          name: deletingTrigger.name,
+          defaultValue: 'Automation "{{name}}" deleted',
+        }),
         projectId: projectStore.activeProjectId || undefined,
         triggerId: deletingTrigger.id,
         triggerName: deletingTrigger.name,
@@ -245,7 +256,10 @@ export default function Overview({
       // Add activity log
       addLog({
         type: ActivityType.TriggerCreated,
-        message: `Automation "${duplicated.name}" created (duplicated)`,
+        message: t('triggers.activity-duplicated', {
+          name: duplicated.name,
+          defaultValue: 'Automation "{{name}}" created (duplicated)',
+        }),
         projectId: projectStore.activeProjectId || undefined,
         triggerId: duplicated.id,
         triggerName: duplicated.name,

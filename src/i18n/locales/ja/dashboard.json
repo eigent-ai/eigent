@@ -25,5 +25,8 @@
   "multi-modal-agent": "マルチモーダルエージェント",
   "social-media-agent": "ソーシャルメディアエージェント",
   "no-projects-found": "セッションが見つかりませんでした。",
-  "no-tasks-found": "タスクが見つかりません。"
+  "no-tasks-found": "タスクが見つかりません。",
+  "command-search-placeholder": "コマンドを入力または検索…",
+  "more-integrations": "その他の連携",
+  "today": "今日"
 }

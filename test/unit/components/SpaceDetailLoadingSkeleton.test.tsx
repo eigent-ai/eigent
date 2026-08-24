@@ -39,9 +39,14 @@ describe('SpaceDetail loading skeletons', () => {
     'preserves the %s table layout while rows load',
     (kind) => {
       const { container } = render(<SpaceDetailListSkeleton kind={kind} />);
+      const loadingLabel = {
+        project: 'Loading Sessions list',
+        task: 'Loading Tasks list',
+        trigger: 'Loading Automations list',
+      }[kind];
 
       expect(
-        screen.getByRole('status', { name: `Loading ${kind} list` })
+        screen.getByRole('status', { name: loadingLabel })
       ).toBeInTheDocument();
       expect(
         container.querySelectorAll('[data-space-detail-skeleton-row]')
@@ -57,10 +62,15 @@ describe('SpaceDetail loading skeletons', () => {
     'shows the %s layout before its content resolves',
     (tab, marker) => {
       const { container } = render(<SpaceDetailTabSkeleton tab={tab} />);
+      const loadingLabel = {
+        context: 'Loading Context content',
+        memory: 'Loading Memory content',
+        'workspace-profile': 'Loading Workspace settings content',
+      }[tab];
 
       expect(container.querySelector(marker)).toBeInTheDocument();
       expect(
-        screen.getByRole('status', { name: `Loading ${tab} content` })
+        screen.getByRole('status', { name: loadingLabel })
       ).toBeInTheDocument();
     }
   );
@@ -82,7 +92,7 @@ describe('SpaceDetail loading skeletons', () => {
       </SpaceDetailSuspenseContent>
     );
     expect(
-      screen.getByRole('status', { name: 'Loading memory content' })
+      screen.getByRole('status', { name: 'Loading Memory content' })
     ).toBeInTheDocument();
 
     await act(async () => {

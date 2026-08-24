@@ -24,6 +24,7 @@ import {
 } from '@/lib/projector';
 import {
   mergeLocalRemoteCommandStatus,
+  remoteControlErrorText,
   type LocalRemoteCommandStatus,
 } from '@/lib/remoteCommandStatus';
 import {
@@ -48,6 +49,7 @@ import {
   SkipForward,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -110,6 +112,7 @@ function getRemoteLinkToken(searchParams: URLSearchParams): string {
 }
 
 export default function RemoteControlPage() {
+  const { t, i18n } = useTranslation();
   const { sessionId = '' } = useParams();
   const [searchParams] = useSearchParams();
   const linkToken = getRemoteLinkToken(searchParams);
@@ -134,16 +137,35 @@ export default function RemoteControlPage() {
 
   const lastCommand = useMemo(() => commands.slice().reverse()[0], [commands]);
   const freshnessLabel = useMemo(() => {
-    if (!projectView) return 'Cloud history is loading';
-    if (projectView.needsResync) return 'History resync required';
+    if (!projectView)
+      return t('layout.remote-control-history-loading', {
+        defaultValue: 'Cloud history is loading',
+      });
+    if (projectView.needsResync)
+      return t('layout.remote-control-history-resync-required', {
+        defaultValue: 'History resync required',
+      });
     const syncedAt = projectView.lastSyncedAt
-      ? new Date(projectView.lastSyncedAt).toLocaleTimeString()
-      : 'not synced';
+      ? new Date(projectView.lastSyncedAt).toLocaleTimeString(
+          i18n.resolvedLanguage || i18n.language
+        )
+      : t('layout.remote-control-not-synced', {
+          defaultValue: 'not synced',
+        });
     const coverage = projectView.eventsTruncated
-      ? 'partial history'
-      : 'full history';
-    return `Cursor ${projectView.currentCursor} · ${coverage} · synced ${syncedAt}`;
-  }, [projectView]);
+      ? t('layout.remote-control-partial-history', {
+          defaultValue: 'partial history',
+        })
+      : t('layout.remote-control-full-history', {
+          defaultValue: 'full history',
+        });
+    return t('layout.remote-control-history-status', {
+      defaultValue: 'Cursor {{cursor}} · {{coverage}} · synced {{time}}',
+      cursor: projectView.currentCursor,
+      coverage,
+      time: syncedAt,
+    });
+  }, [i18n.language, i18n.resolvedLanguage, projectView, t]);
   const pendingAsk = useMemo(() => {
     if (!projectView) return null;
     const ask = selectPendingLegacyAsk(projectView, answeredAskStepIds);
@@ -154,7 +176,11 @@ export default function RemoteControlPage() {
     let cancelled = false;
     async function load() {
       if (!sessionId || !linkToken) {
-        setError('Remote control link is missing a token.');
+        setError(
+          i18n.t('layout.remote-control-missing-token', {
+            defaultValue: 'Remote control link is missing a token.',
+          })
+        );
         setLoading(false);
         return;
       }
@@ -220,7 +246,15 @@ export default function RemoteControlPage() {
         setSteps(projectedSteps(syncedProjection));
         nextSinceRef.current = history.next_since || 0;
       } catch (err: any) {
-        setError(err?.message || 'Failed to open remote control session.');
+        setError(
+          remoteControlErrorText(
+            err?.message ||
+              i18n.t('layout.remote-control-open-failed', {
+                defaultValue: 'Failed to open remote control session.',
+              }),
+            i18n.t.bind(i18n)
+          )
+        );
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -231,7 +265,7 @@ export default function RemoteControlPage() {
     return () => {
       cancelled = true;
     };
-  }, [linkToken, sessionId]);
+  }, [i18n, linkToken, sessionId]);
 
   useEffect(() => {
     if (!sessionId || !linkToken) {
@@ -433,7 +467,9 @@ export default function RemoteControlPage() {
             setCommands((current) =>
               mergeLocalRemoteCommandStatus(current, {
                 id: payload.command_id,
-                content: 'Remote command',
+                content: i18n.t('layout.remote-control-command', {
+                  defaultValue: 'Remote command',
+                }),
                 type: 'unknown',
                 status: payload.status,
                 error: payload.error,
@@ -451,7 +487,9 @@ export default function RemoteControlPage() {
             setCommands((current) =>
               mergeLocalRemoteCommandStatus(current, {
                 id: payload.command_id,
-                content: 'Remote command',
+                content: i18n.t('layout.remote-control-command', {
+                  defaultValue: 'Remote command',
+                }),
                 type: 'unknown',
                 status,
                 error: projection.integrity_alert || undefined,
@@ -482,7 +520,7 @@ export default function RemoteControlPage() {
       }
       ws?.close();
     };
-  }, [linkToken, sessionId]);
+  }, [i18n, linkToken, sessionId]);
 
   const submit = async (content: string) => {
     const trimmed = content.trim();
@@ -497,7 +535,11 @@ export default function RemoteControlPage() {
         ? { agent: getAskAgent(ask), reply: trimmed }
         : { content: trimmed, attachments: [] };
       if (ask && !payload.agent) {
-        toast.error('This question is missing an agent name.');
+        toast.error(
+          t('layout.remote-control-question-missing-agent', {
+            defaultValue: 'This question is missing an agent name.',
+          })
+        );
         return;
       }
       const res = await sendRemoteControlCommand(
@@ -520,7 +562,15 @@ export default function RemoteControlPage() {
       }
       setMessage('');
     } catch (err: any) {
-      toast.error(err?.message || 'Failed to send remote command.');
+      toast.error(
+        remoteControlErrorText(
+          err?.message ||
+            t('layout.remote-control-send-failed', {
+              defaultValue: 'Failed to send remote command.',
+            }),
+          t
+        )
+      );
     } finally {
       setSending(false);
     }
@@ -550,9 +600,25 @@ export default function RemoteControlPage() {
         ...current,
         { id: res.command_id, content: label, type, status: res.status },
       ]);
-      toast.success(`${label} command sent`);
+      toast.success(
+        t('layout.remote-control-command-sent', {
+          defaultValue: '{{label}} command sent',
+          label,
+        })
+      );
     } catch (err: any) {
-      toast.error(err?.message || `Failed to send ${label.toLowerCase()}.`);
+      toast.error(
+        remoteControlErrorText(
+          err?.message ||
+            t('layout.remote-control-control-command-failed', {
+              defaultValue: 'Failed to send {{label}}.',
+              label: label.toLocaleLowerCase(
+                i18n.resolvedLanguage || i18n.language
+              ),
+            }),
+          t
+        )
+      );
     } finally {
       setControlLoading(null);
     }
@@ -568,16 +634,35 @@ export default function RemoteControlPage() {
       setSession((current) =>
         current ? { ...current, expires_at: res.expires_at } : current
       );
-      toast.success('Remote control link extended');
+      toast.success(
+        t('layout.remote-control-link-extended', {
+          defaultValue: 'Remote control link extended',
+        })
+      );
     } catch (err: any) {
-      toast.error(err?.message || 'Failed to extend remote control link.');
+      toast.error(
+        remoteControlErrorText(
+          err?.message ||
+            t('layout.remote-control-extend-failed', {
+              defaultValue: 'Failed to extend remote control link.',
+            }),
+          t
+        )
+      );
     } finally {
       setControlLoading(null);
     }
   };
 
   const revokeSession = async () => {
-    if (controlLoading || !window.confirm('Revoke this remote control link?')) {
+    if (
+      controlLoading ||
+      !window.confirm(
+        t('layout.remote-control-revoke-confirm', {
+          defaultValue: 'Revoke this remote control link?',
+        })
+      )
+    ) {
       return;
     }
     setControlLoading('revoke');
@@ -588,9 +673,21 @@ export default function RemoteControlPage() {
           ? { ...current, status: 'revoked', bridge_status: 'offline' }
           : current
       );
-      toast.success('Remote control link revoked');
+      toast.success(
+        t('layout.remote-control-link-revoked', {
+          defaultValue: 'Remote control link revoked',
+        })
+      );
     } catch (err: any) {
-      toast.error(err?.message || 'Failed to revoke remote control link.');
+      toast.error(
+        remoteControlErrorText(
+          err?.message ||
+            t('layout.remote-control-revoke-failed', {
+              defaultValue: 'Failed to revoke remote control link.',
+            }),
+          t
+        )
+      );
     } finally {
       setControlLoading(null);
     }
@@ -609,7 +706,9 @@ export default function RemoteControlPage() {
       <div className="flex min-h-screen items-center justify-center bg-ds-neutral-subtle-default px-4 text-ds-ink-default-default">
         <div className="w-full max-w-md rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default p-5">
           <h1 className="!text-ds-text-title font-semibold text-ds-ink-default-default">
-            Remote control unavailable
+            {t('layout.remote-control-unavailable', {
+              defaultValue: 'Remote control unavailable',
+            })}
           </h1>
           <p className="mt-2 !text-ds-text-base text-ds-ink-muted-default">
             {error}
@@ -626,12 +725,20 @@ export default function RemoteControlPage() {
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <h1 className="truncate !text-ds-text-body-large font-semibold text-ds-ink-default-default">
-                {session.title || 'Remote control'}
+                {session.title ||
+                  t('layout.remote-control-title', {
+                    defaultValue: 'Remote control',
+                  })}
               </h1>
               <p className="mt-1 !text-ds-text-meta text-ds-ink-muted-default">
                 {bridgeOnline
-                  ? 'Desktop is online'
-                  : 'Desktop is offline. Keep Eigent open on the original computer and stay on the chat view.'}
+                  ? t('layout.remote-control-desktop-online', {
+                      defaultValue: 'Desktop is online',
+                    })
+                  : t('layout.remote-control-desktop-offline-description', {
+                      defaultValue:
+                        'Desktop is offline. Keep Eigent open on the original computer and stay on the chat view.',
+                    })}
               </p>
               <p
                 className={`mt-1 !text-ds-text-meta ${
@@ -649,7 +756,11 @@ export default function RemoteControlPage() {
                   ? 'bg-ds-bg-success-default-default'
                   : 'bg-ds-bg-error-default-default'
               }`}
-              aria-label={bridgeOnline ? 'online' : 'offline'}
+              aria-label={
+                bridgeOnline
+                  ? t('layout.online', { defaultValue: 'online' })
+                  : t('layout.offline', { defaultValue: 'offline' })
+              }
             />
           </div>
           <div className="flex flex-wrap gap-2">
@@ -660,13 +771,19 @@ export default function RemoteControlPage() {
               onClick={() =>
                 sendControlCommand(
                   'skip_task',
-                  'Stop task',
-                  'Stop the current desktop task gracefully?'
+                  t('layout.remote-control-stop-task', {
+                    defaultValue: 'Stop task',
+                  }),
+                  t('layout.remote-control-stop-task-confirm', {
+                    defaultValue: 'Stop the current desktop task gracefully?',
+                  })
                 )
               }
             >
               <SkipForward className="h-4 w-4" />
-              Stop task
+              {t('layout.remote-control-stop-task', {
+                defaultValue: 'Stop task',
+              })}
             </Button>
             <Button
               variant="outline"
@@ -675,13 +792,19 @@ export default function RemoteControlPage() {
               onClick={() =>
                 sendControlCommand(
                   'stop',
-                  'Force stop',
-                  'Force stop the current desktop task?'
+                  t('layout.remote-control-force-stop', {
+                    defaultValue: 'Force stop',
+                  }),
+                  t('layout.remote-control-force-stop-confirm', {
+                    defaultValue: 'Force stop the current desktop task?',
+                  })
                 )
               }
             >
               <Ban className="h-4 w-4" />
-              Force stop
+              {t('layout.remote-control-force-stop', {
+                defaultValue: 'Force stop',
+              })}
             </Button>
             <Button
               variant="outline"
@@ -690,7 +813,9 @@ export default function RemoteControlPage() {
               onClick={extendSession}
             >
               <Clock3 className="h-4 w-4" />
-              Extend link
+              {t('layout.remote-control-extend-link', {
+                defaultValue: 'Extend link',
+              })}
             </Button>
             <Button
               variant="outline"
@@ -699,7 +824,9 @@ export default function RemoteControlPage() {
               onClick={revokeSession}
             >
               <ShieldX className="h-4 w-4" />
-              Revoke link
+              {t('layout.remote-control-revoke-link', {
+                defaultValue: 'Revoke link',
+              })}
             </Button>
           </div>
         </header>
@@ -708,7 +835,9 @@ export default function RemoteControlPage() {
           <div className="space-y-3">
             {steps.length === 0 ? (
               <div className="rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default p-4 !text-ds-text-base text-ds-ink-muted-default">
-                No remote events yet.
+                {t('layout.remote-control-events-empty', {
+                  defaultValue: 'No remote events yet.',
+                })}
               </div>
             ) : (
               steps.map((step) => (
@@ -737,7 +866,12 @@ export default function RemoteControlPage() {
           lastCommand.type === 'user_message' && (
             <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-x border-y border-solid border-ds-border-error-default-default bg-ds-bg-error-subtle-default p-3 !text-ds-text-base text-ds-text-error-strong-default">
               <span className="min-w-0 truncate">
-                Send failed: {lastCommand.error || lastCommand.content}
+                {t('layout.remote-control-send-error', {
+                  defaultValue: 'Send failed: {{error}}',
+                  error: lastCommand.error
+                    ? remoteControlErrorText(lastCommand.error, t)
+                    : lastCommand.content,
+                })}
               </span>
               <Button
                 variant="outline"
@@ -745,7 +879,9 @@ export default function RemoteControlPage() {
                 onClick={() => submit(lastCommand.content)}
               >
                 <RefreshCw className="h-4 w-4" />
-                Resend
+                {t('layout.remote-control-resend', {
+                  defaultValue: 'Resend',
+                })}
               </Button>
             </div>
           )}
@@ -764,9 +900,16 @@ export default function RemoteControlPage() {
             placeholder={
               bridgeOnline
                 ? pendingAsk
-                  ? getAskText(pendingAsk) || 'Reply to the desktop question'
-                  : 'Send a follow-up to the desktop task'
-                : 'Desktop is offline'
+                  ? getAskText(pendingAsk) ||
+                    t('layout.remote-control-reply-placeholder', {
+                      defaultValue: 'Reply to the desktop question',
+                    })
+                  : t('layout.remote-control-follow-up-placeholder', {
+                      defaultValue: 'Send a follow-up to the desktop task',
+                    })
+                : t('layout.remote-control-desktop-offline', {
+                    defaultValue: 'Desktop is offline',
+                  })
             }
             disabled={!bridgeOnline || sending}
             rows={2}
@@ -777,7 +920,7 @@ export default function RemoteControlPage() {
             buttonContent="icon-only"
             type="submit"
             disabled={!bridgeOnline || sending || !message.trim()}
-            aria-label="Send"
+            aria-label={t('layout.send', { defaultValue: 'Send' })}
           >
             {sending ? (
               <Loader2 className="h-4 w-4 animate-spin" />

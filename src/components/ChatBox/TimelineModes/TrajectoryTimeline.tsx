@@ -22,6 +22,7 @@ import type {
 } from '@/lib/projector/chat/presentation';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
+import type { TFunction } from 'i18next';
 import { ChevronRight, FileText } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -45,6 +46,25 @@ type TraceCategory =
   | 'TOOL'
   | 'INPUT REQUIRED'
   | 'FILE';
+
+function categoryDisplayLabel(category: TraceCategory, t: TFunction): string {
+  switch (category) {
+    case 'USER':
+      return t('chat.timeline-user', { defaultValue: 'User' });
+    case 'CONTEXT':
+      return t('chat.timeline-context', { defaultValue: 'Context' });
+    case 'ASSISTANT':
+      return t('chat.timeline-assistant', { defaultValue: 'Assistant' });
+    case 'AGENT':
+      return t('chat.timeline-agent', { defaultValue: 'Agent' });
+    case 'TOOL':
+      return t('chat.timeline-tool', { defaultValue: 'Tool' });
+    case 'INPUT REQUIRED':
+      return t('chat.input-required', { defaultValue: 'Input required' });
+    case 'FILE':
+      return t('chat.timeline-file', { defaultValue: 'File' });
+  }
+}
 
 function categoryTone(category: TraceCategory): string {
   switch (category) {
@@ -178,6 +198,7 @@ function TraceRow({
   role?: 'user' | 'assistant';
   rowId: string;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(autoExpanded);
   const wasAutoExpanded = useRef(autoExpanded);
   const detailsId = `trace-details-${rowId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
@@ -220,7 +241,7 @@ function TraceRow({
             data-trace-tag
           >
             <span className="truncate">
-              {category === 'INPUT REQUIRED' ? 'Input required' : category}
+              {categoryDisplayLabel(category, t)}
             </span>
           </span>
         </span>
@@ -266,6 +287,7 @@ function ToolTraceDetails({
 }: {
   invocation: TimelineToolInvocation;
 }) {
+  const { t } = useTranslation();
   const identity = [invocation.toolkitName, invocation.methodName]
     .filter(Boolean)
     .join(' · ');
@@ -292,8 +314,8 @@ function ToolTraceDetails({
       <ToolInputOutputDetails
         input={invocation.input}
         output={invocation.output}
-        inputLabel="Input"
-        outputLabel="Output"
+        inputLabel={t('chat.input', { defaultValue: 'Input' })}
+        outputLabel={t('chat.output', { defaultValue: 'Output' })}
       >
         {!invocation.input && !invocation.output && invocation.detail ? (
           <span className="block rounded-md bg-ds-neutral-muted-default p-2 !text-ds-text-meta !font-normal break-words whitespace-pre-wrap text-ds-ink-default-default opacity-60">
@@ -303,7 +325,9 @@ function ToolTraceDetails({
       </ToolInputOutputDetails>
       {!hasDetails ? (
         <span className="block !text-ds-text-meta !font-normal text-ds-ink-muted-default">
-          No additional details
+          {t('chat.no-additional-details', {
+            defaultValue: 'No additional details',
+          })}
         </span>
       ) : null}
     </div>
@@ -324,20 +348,27 @@ function categoryForNode(row: NodeTraceRow): TraceCategory {
   return 'CONTEXT';
 }
 
-function nodeSummary(row: NodeTraceRow): string {
+function nodeSummary(row: NodeTraceRow, t: TFunction): string {
   const node = row.node;
   if (node.kind === 'message') return node.content;
-  if (node.kind === 'interaction') return node.prompt || 'Human input';
+  if (node.kind === 'interaction')
+    return (
+      node.prompt || t('chat.human-input', { defaultValue: 'Human input' })
+    );
   if (node.kind === 'activity') {
     return node.detail ? `${node.title} · ${node.detail}` : node.title;
   }
   if (node.kind === 'notice') {
     return node.title ? `${node.title} · ${node.content}` : node.content;
   }
-  if (node.kind === 'plan') return node.title || node.summary || 'Plan';
+  if (node.kind === 'plan')
+    return (
+      node.title || node.summary || t('chat.plan', { defaultValue: 'Plan' })
+    );
   if (node.kind === 'artifact') return node.relativePath || node.path;
-  if (node.kind === 'run_status') return 'Run status';
-  return 'Unsupported event';
+  if (node.kind === 'run_status')
+    return t('chat.run-status', { defaultValue: 'Run status' });
+  return t('chat.unsupported-event', { defaultValue: 'Unsupported event' });
 }
 
 function nodeStatus(row: NodeTraceRow, paused: boolean): ReactNode {
@@ -364,12 +395,13 @@ function InteractionTraceDetails({
 }: {
   node: NodeTraceRow['node'] & { kind: 'interaction' };
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex min-w-0 flex-col gap-2">
       {node.prompt ? (
         <div>
           <span className="block !text-ds-text-meta !font-medium tracking-wide text-ds-ink-subtle-default uppercase">
-            Question
+            {t('chat.question', { defaultValue: 'Question' })}
           </span>
           <span className="mt-1 block !text-ds-text-meta !font-normal break-words whitespace-pre-wrap text-ds-ink-default-default">
             {node.prompt}
@@ -379,7 +411,7 @@ function InteractionTraceDetails({
       {node.response ? (
         <div>
           <span className="block !text-ds-text-meta !font-medium tracking-wide text-ds-ink-subtle-default uppercase">
-            Answer
+            {t('chat.answer', { defaultValue: 'Answer' })}
           </span>
           <span className="mt-1 block !text-ds-text-meta !font-normal break-words whitespace-pre-wrap text-ds-ink-default-default">
             {node.response}
@@ -438,7 +470,7 @@ function NodeTraceDetails({
     return (
       <div className="flex min-w-0 flex-col gap-1">
         <span className="block !text-ds-text-meta !font-medium text-ds-ink-default-default">
-          {node.title || 'Plan'}
+          {node.title || t('chat.plan', { defaultValue: 'Plan' })}
         </span>
         {node.summary ? (
           <span className="block !text-ds-text-meta !font-normal whitespace-pre-wrap text-ds-ink-subtle-default">
@@ -462,7 +494,13 @@ function NodeTraceDetails({
       <button
         type="button"
         disabled={!reviewPath}
-        title={reviewPath ? 'Review this change' : undefined}
+        title={
+          reviewPath
+            ? t('chat.review-this-change', {
+                defaultValue: 'Review this change',
+              })
+            : undefined
+        }
         onClick={() =>
           reviewPath && openReviewPreview({ runId, path: reviewPath })
         }
@@ -481,7 +519,7 @@ function NodeTraceDetails({
   if (node.kind === 'run_status') {
     return (
       <span className="block !text-ds-text-meta !font-normal text-ds-ink-default-default">
-        Run status
+        {t('chat.run-status', { defaultValue: 'Run status' })}
       </span>
     );
   }
@@ -577,7 +615,7 @@ function DetailedRun({
                 role={role}
                 rowId={row.id}
                 status={nodeStatus(row, paused)}
-                summary={nodeSummary(row)}
+                summary={nodeSummary(row, t)}
               >
                 <NodeTraceDetails row={row} runId={run.runId} />
               </TraceRow>

@@ -61,5 +61,6 @@
   "all-agents": "All agents",
   "replace-skill-title": "Replace \"{{name}}\" skill?",
   "replace-skill-message": "A skill with the same name already exists. Uploading this skill will replace it, and the existing version cannot be restored.",
-  "update-and-replace": "Update and replace"
+  "update-and-replace": "Update and replace",
+  "agent": "Agent"
 }

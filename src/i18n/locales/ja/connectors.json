@@ -12,7 +12,7 @@
   "no-recommended": "おすすめのコネクタはありません。",
   "gateway-unavailable": "Connectors は利用できません。",
   "gateway-unavailable-desc": "このデプロイでは Connector Gateway が有効になっていません。",
-  "gateway-connectors": "Connectors",
+  "gateway-connectors": "コネクタ",
   "source-open": "クラウド",
   "source-built-in": "組み込み",
   "source-local": "カスタムローカル",
@@ -136,5 +136,7 @@
   "google-check-failed": "Google の認証情報を確認できませんでした。",
   "exa-check-failed": "Exa API キーを確認できませんでした。",
   "optional": "任意",
-  "enter-field": "{{field}}を入力"
+  "enter-field": "{{field}}を入力",
+  "google-calendar-description": "予定やスケジュールを管理する Google カレンダー連携",
+  "notion-description": "Notion ページを読み取り、管理するワークスペース連携"
 }

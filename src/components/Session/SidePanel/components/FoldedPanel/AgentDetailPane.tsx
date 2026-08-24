@@ -42,6 +42,7 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 function getTaskIdDisplay(taskId: string): string {
   const list = taskId.split('.');
@@ -90,6 +91,7 @@ export function AgentDetailPane({
   /** Fires when user clicks task filter tabs (take control from auto-follow in folded workforce). */
   onTakeManualFollowControl?: () => void;
 }) {
+  const { t } = useTranslation();
   const shouldReduceMotion = useReducedMotion();
   const host = useHost();
   const { chatStore } = useChatStoreAdapter();
@@ -484,11 +486,17 @@ export function AgentDetailPane({
                         </div>
                         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
                           <span className="shrink-0 text-xs leading-13 font-bold text-ds-ink-default-default">
-                            No. {getTaskIdDisplay(task.id)}
+                            {t('chat.task-number', {
+                              value: getTaskIdDisplay(task.id),
+                              defaultValue: 'No. {{value}}',
+                            })}
                           </span>
                           {task.reAssignTo ? (
                             <div className="rounded-lg bg-ds-bg-document-subtle-default px-1 py-0.5 text-xs leading-none font-bold text-ds-text-warning-strong-default">
-                              Reassigned to {task.reAssignTo}
+                              {t('chat.reassigned-to', {
+                                name: task.reAssignTo,
+                                defaultValue: 'Reassigned to {{name}}',
+                              })}
                             </div>
                           ) : (
                             (task.failure_count ?? 0) > 0 && (
@@ -502,7 +510,10 @@ export function AgentDetailPane({
                                       : 'bg-ds-neutral-default-hover text-ds-ink-muted-default'
                                 )}
                               >
-                                Attempt {task.failure_count}
+                                {t('chat.attempt-number', {
+                                  count: task.failure_count,
+                                  defaultValue: 'Attempt {{count}}',
+                                })}
                               </div>
                             )
                           )}
@@ -517,7 +528,13 @@ export function AgentDetailPane({
                         className="shrink-0 text-ds-ink-muted-default opacity-50"
                         aria-expanded={isExpanded}
                         aria-label={
-                          isExpanded ? 'Collapse task details' : 'Expand task'
+                          isExpanded
+                            ? t('chat.collapse-task-details', {
+                                defaultValue: 'Collapse task details',
+                              })
+                            : t('chat.expand-task', {
+                                defaultValue: 'Expand task',
+                              })
                         }
                         onClick={(e) => {
                           e.stopPropagation();
@@ -598,13 +615,18 @@ export function AgentDetailPane({
                   buttonContent="icon-only"
                   buttonRadius="lg"
                   className="shrink-0 text-ds-ink-muted-default"
-                  aria-label="Back to agent details"
+                  aria-label={t('chat.back-to-agent-details', {
+                    defaultValue: 'Back to agent details',
+                  })}
                   onClick={() => setDetailTask(null)}
                 >
                   <ChevronLeft className="size-4" aria-hidden />
                 </Button>
                 <span className="min-w-0 truncate text-ds-text-base font-bold text-ds-ink-default-default">
-                  No. {getTaskIdDisplay(detailTask.id)}
+                  {t('chat.task-number', {
+                    value: getTaskIdDisplay(detailTask.id),
+                    defaultValue: 'No. {{value}}',
+                  })}
                 </span>
               </div>
               <div

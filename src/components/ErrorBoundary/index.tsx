@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import i18n from '@/i18n';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { Component, ErrorInfo, ReactNode } from 'react';
 
@@ -67,16 +68,23 @@ export class ErrorBoundary extends Component<Props, State> {
             </div>
             <div className="flex flex-col gap-2">
               <h1 className="!text-ds-text-section font-bold text-ds-ink-default-default">
-                Something went wrong
+                {i18n.t('layout.something-went-wrong', {
+                  defaultValue: 'Something went wrong',
+                })}
               </h1>
               <p className="!text-ds-text-base text-ds-ink-muted-default">
-                An unexpected error occurred. Please try refreshing the page.
+                {i18n.t('layout.unexpected-error-refresh', {
+                  defaultValue:
+                    'An unexpected error occurred. Please try refreshing the page.',
+                })}
               </p>
             </div>
             {this.state.error && (
               <div className="w-full rounded-lg bg-ds-neutral-strong-default p-4 text-left">
                 <p className="mb-2 !text-ds-text-meta font-medium text-ds-ink-muted-default">
-                  Error details:
+                  {i18n.t('layout.error-details', {
+                    defaultValue: 'Error details:',
+                  })}
                 </p>
                 <p className="max-h-32 overflow-y-auto font-mono !text-ds-text-meta text-ds-ink-default-default">
                   {this.state.error.toString()}
@@ -91,7 +99,9 @@ export class ErrorBoundary extends Component<Props, State> {
                 className="gap-2"
               >
                 <RefreshCw className="h-4 w-4" />
-                Refresh Page
+                {i18n.t('layout.refresh-page', {
+                  defaultValue: 'Refresh Page',
+                })}
               </Button>
             </div>
           </div>

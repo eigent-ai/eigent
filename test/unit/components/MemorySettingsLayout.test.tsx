@@ -121,7 +121,7 @@ describe('Memory settings layout', () => {
     expect(screen.getByRole('button', { name: 'View archived' })).toBeVisible();
   });
 
-  it('keeps Auto Memory available for Project scope', async () => {
+  it('keeps Auto Memory available for Session scope', async () => {
     memoryApiMocks.listMemoryEntries.mockResolvedValue({
       scope_state: scopeState('project', true),
       items: [],
@@ -143,11 +143,11 @@ describe('Memory settings layout', () => {
     );
 
     expect(
-      await screen.findByText('Remembered for this Project')
+      await screen.findByText('Remembered for this Session')
     ).toBeVisible();
     expect(screen.getByRole('switch', { name: 'Auto Memory' })).toBeChecked();
     expect(screen.getByText('Launch plan Memory')).toBeVisible();
-    expect(screen.getByText('Saved Project Memory')).toBeVisible();
-    expect(screen.getByText('No Project Memory yet')).toBeVisible();
+    expect(screen.getByText('Saved Session Memory')).toBeVisible();
+    expect(screen.getByText('No Session Memory yet')).toBeVisible();
   });
 });

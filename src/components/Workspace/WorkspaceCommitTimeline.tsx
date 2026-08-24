@@ -179,7 +179,8 @@ export function WorkspaceCommitTimeline({
                   <span className="text-ds-text-meta text-ds-ink-muted-default">
                     {t('layout.workspace-commit-parent-count', {
                       count: commit.parent_oids.length,
-                      defaultValue: `${commit.parent_oids.length} parents`,
+                      defaultValue_one: '{{count}} parent',
+                      defaultValue_other: '{{count}} parents',
                     })}
                   </span>
                 ) : null}
@@ -198,7 +199,7 @@ export function WorkspaceCommitTimeline({
                     {operation?.remote_name
                       ? t('layout.workspace-pushed-to-remote', {
                           remote: operation.remote_name,
-                          defaultValue: `Pushed commits to ${operation.remote_name}`,
+                          defaultValue: 'Pushed commits to {{remote}}',
                         })
                       : t('layout.workspace-pushed-commits', {
                           defaultValue: 'Pushed commits to remote',

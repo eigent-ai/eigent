@@ -260,7 +260,10 @@ export function FoldedAgentCard({
               size="sm"
               buttonContent="icon-only"
               className="shrink-0 text-ds-ink-muted-default"
-              aria-label={`More actions for ${agentLabel}`}
+              aria-label={t('layout.more-actions-for', {
+                name: agentLabel,
+                defaultValue: 'More actions for {{name}}',
+              })}
             >
               <Ellipsis className="h-4 w-4" />
             </Button>

@@ -13,8 +13,18 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 // Global test setup file
+import enUs from '@/i18n/locales/en-us/index';
 import '@testing-library/jest-dom';
+import i18next from 'i18next';
 import { vi } from 'vitest';
+
+void i18next.init({
+  resources: { 'en-US': { translation: enUs } },
+  fallbackLng: 'en-US',
+  lng: 'en-US',
+  initImmediate: false,
+  interpolation: { escapeValue: false },
+});
 
 // Mock react-i18next against the shipped en-US bundle so assertions read the
 // real product copy instead of a table that drifts from it.
@@ -36,11 +46,20 @@ vi.mock('react-i18next', async () => {
 
   return {
     useTranslation: () => ({
-      t: (key: string, options: Record<string, unknown> = {}) =>
-        (resolve(key) ?? String(options.defaultValue ?? key)).replace(
-          /{{(\w+)}}/g,
-          (_match, name: string) => String(options[name] ?? '')
-        ),
+      t: (key: string, options: Record<string, unknown> = {}) => {
+        const count = options.count;
+        const pluralKey =
+          typeof count === 'number'
+            ? `${key}_${count === 1 ? 'one' : 'other'}`
+            : key;
+        return (
+          resolve(pluralKey) ??
+          resolve(key) ??
+          String(options.defaultValue ?? key)
+        ).replace(/{{(\w+)}}/g, (_match, name: string) =>
+          String(options[name] ?? '')
+        );
+      },
       i18n: {
         language: 'en',
         changeLanguage: vi.fn(),

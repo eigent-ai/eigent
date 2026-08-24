@@ -21,7 +21,7 @@ import {
 } from '@/service/workspaceApi';
 import type { ProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { isDisposableBlankSpace, useSpaceStore } from '@/store/spaceStore';
-import type { TFunction } from 'i18next';
+import i18next, { type TFunction } from 'i18next';
 
 export function getFolderSpaceErrorMessage(error: unknown, t: TFunction) {
   const err = error as {
@@ -85,7 +85,11 @@ export async function createSpaceFromFolderPicker({
 
   const capabilities = await fetchWorkspaceCapabilities();
   if (!capabilities.binding_enabled) {
-    throw new Error('Workspace folder binding is not available');
+    throw new Error(
+      i18next.t('layout.workspace-folder-binding-unavailable', {
+        defaultValue: 'Space folder binding is not available',
+      })
+    );
   }
 
   const result = await selectFile({
@@ -97,7 +101,8 @@ export async function createSpaceFromFolderPicker({
   }
 
   const folderName =
-    folderPath.split(/[\\/]/).filter(Boolean).at(-1) || 'Folder Space';
+    folderPath.split(/[\\/]/).filter(Boolean).at(-1) ||
+    i18next.t('layout.folder-space', { defaultValue: 'Folder Space' });
   const previousSpace = previousSpaceId
     ? spaceStore.spaces[previousSpaceId]
     : null;

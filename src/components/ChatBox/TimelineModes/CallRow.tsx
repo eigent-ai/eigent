@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronRight } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { disclosureMotion } from './shared';
 
@@ -56,6 +57,7 @@ export function CallRow({
   latestRunningCallId = null,
   reducedMotion,
 }: CallRowProps) {
+  const { t } = useTranslation();
   const running = runActive && isCallActiveStatus(call.status);
   const highlighted = running && call.id === latestRunningCallId;
   const failed = isCallErrorStatus(call.status);
@@ -65,8 +67,10 @@ export function CallRow({
     call.detail ||
     (!call.input && !call.output && !showWaitingOutput
       ? failed
-        ? 'No failure details were recorded.'
-        : 'Completed.'
+        ? t('chat.no-failure-details', {
+            defaultValue: 'No failure details were recorded.',
+          })
+        : t('chat.completed', { defaultValue: 'Completed.' })
       : undefined);
   // A pending human call is the one thing the user must act on, so it opens
   // itself. Everything else follows the shimmer/auto-collapse rule.
@@ -120,8 +124,12 @@ export function CallRow({
         {failed ? (
           <span className="sr-only">
             {call.executor === 'human'
-              ? 'This request was not completed.'
-              : 'Tool call failed.'}
+              ? t('chat.request-not-completed', {
+                  defaultValue: 'This request was not completed.',
+                })
+              : t('chat.tool-call-failed', {
+                  defaultValue: 'Tool call failed.',
+                })}
           </span>
         ) : null}
         <ChevronRight

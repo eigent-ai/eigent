@@ -38,6 +38,7 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import Folder from '../Folder';
 import { TaskState, TaskStateType } from '../TaskState';
 import Terminal from '../Terminal';
@@ -72,6 +73,7 @@ interface NodeProps {
 }
 
 export function Node({ id, data }: NodeProps) {
+  const { t } = useTranslation();
   const shouldReduceMotion = useReducedMotion();
   const host = useHost();
   const electronAPI = host?.electronAPI;
@@ -778,7 +780,10 @@ export function Node({ id, data }: NodeProps) {
                           </div>
                           {task.reAssignTo ? (
                             <div className="rounded-lg bg-ds-bg-document-subtle-default px-1 py-0.5 text-xs leading-none font-bold text-ds-text-document-default-default hover:bg-ds-bg-document-subtle-hover">
-                              Reassigned to {task.reAssignTo}
+                              {t('chat.reassigned-to', {
+                                name: task.reAssignTo,
+                                defaultValue: 'Reassigned to {{name}}',
+                              })}
                             </div>
                           ) : (
                             (task.failure_count ?? 0) > 0 && (

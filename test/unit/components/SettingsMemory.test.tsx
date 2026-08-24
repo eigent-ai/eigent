@@ -166,8 +166,44 @@ describe('Memory Center', () => {
     api.list.mockResolvedValue({
       scope_state: scopeState,
       items: [
-        { memory_id: 'one', deleted_at: null },
-        { memory_id: 'two', deleted_at: null },
+        {
+          memory_id: 'one',
+          scope_type: 'user',
+          scope_id: 'user-1',
+          kind: 'fact',
+          content: 'First fact',
+          priority: 'normal',
+          version: 1,
+          token_count: 2,
+          pinned_by_user: false,
+          confirmed_by_user: true,
+          created_by: 'user',
+          source_trust: 'user_confirmed',
+          sensitivity: 'normal',
+          source_refs: [],
+          deleted_at: null,
+          created_at: 1,
+          updated_at: 1,
+        },
+        {
+          memory_id: 'two',
+          scope_type: 'user',
+          scope_id: 'user-1',
+          kind: 'fact',
+          content: 'Second fact',
+          priority: 'normal',
+          version: 1,
+          token_count: 2,
+          pinned_by_user: false,
+          confirmed_by_user: true,
+          created_by: 'user',
+          source_trust: 'user_confirmed',
+          sensitivity: 'normal',
+          source_refs: [],
+          deleted_at: null,
+          created_at: 2,
+          updated_at: 2,
+        },
       ],
       sync_status: { state: 'synced' },
     });
@@ -296,11 +332,11 @@ describe('Memory Center', () => {
     ).toBeInTheDocument();
     expect(screen.getAllByRole('tab')).toHaveLength(3);
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
-      'User',
+      'Personal',
       'Space',
       'Session',
     ]);
-    expect(screen.getByRole('tab', { name: 'User' })).toHaveAttribute(
+    expect(screen.getByRole('tab', { name: 'Personal' })).toHaveAttribute(
       'data-state',
       'active'
     );
@@ -359,12 +395,12 @@ describe('Memory Center', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByRole('tab', { name: 'User' })).toHaveAttribute(
+    expect(screen.getByRole('tab', { name: 'Personal' })).toHaveAttribute(
       'data-state',
       'active'
     );
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
-      'User',
+      'Personal',
       'Space',
       'Session',
     ]);

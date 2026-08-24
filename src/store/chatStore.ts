@@ -66,6 +66,7 @@ import {
   type ChatTaskStatusType,
   type SessionModeType,
 } from '@/types/constants';
+import i18next from 'i18next';
 import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { createStore } from 'zustand';
@@ -149,7 +150,10 @@ export const canonicalRunEventToLegacyMessage = (
         message:
           typeof payload?.message === 'string' && payload.message.trim()
             ? payload.message
-            : 'This Run failed before it produced a final response.',
+            : i18next.t('chat.run-no-final-response', {
+                defaultValue:
+                  'This task failed before it produced a final response.',
+              }),
         error_type:
           typeof payload?.error_type === 'string'
             ? payload.error_type
@@ -922,6 +926,19 @@ export function extractAgentMessageContent(data: unknown): string {
   // from `message.interaction`; never smuggle the object into the string-only
   // Message.content field through a TypeScript assertion.
   return '';
+}
+
+export function hasLegacyReplayUnavailableMessage(
+  messages: Array<Pick<Message, 'role' | 'content'>>,
+  localizedMessage: string
+): boolean {
+  return messages.some(
+    (message) =>
+      message.role === 'agent' &&
+      typeof message.content === 'string' &&
+      (message.content === localizedMessage ||
+        message.content.includes('Unable to replay this legacy task'))
+  );
 }
 
 function completedSubtaskReportFallback(task?: Task): string {
@@ -2198,7 +2215,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         ? projectId
         : projectId || projectStore.activeProjectId;
       if (isLiveTask && !project_id) {
-        throw new Error('No active Project selected.');
+        throw new Error(
+          i18next.t('chat.no-active-session', {
+            defaultValue: 'No active session selected.',
+          })
+        );
       }
       const startOptions = options || {};
       const project =
@@ -2206,7 +2227,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           ? projectStore.getProjectById(project_id)
           : null;
       if (isLiveTask && !project) {
-        throw new Error('Selected Project is not available.');
+        throw new Error(
+          i18next.t('chat.selected-session-unavailable', {
+            defaultValue: 'The selected session is not available.',
+          })
+        );
       }
       const sessionModeForRequest =
         sessionMode || project?.mode || SessionMode.SINGLE_AGENT;
@@ -2351,8 +2376,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           targetState.addMessages(newTaskId, {
             id: generateUniqueId(),
             role: 'agent',
-            content:
-              '❌ Backend service is not ready. Please wait a moment and try again, or restart the application if the problem persists.',
+            content: i18next.t('chat.backend-not-ready', {
+              defaultValue:
+                '❌ Backend service is not ready. Wait a moment and try again, or restart the application if the problem continues.',
+            }),
           });
           targetState.setIsPending(newTaskId, false);
           targetState.setStatus(newTaskId, ChatTaskStatus.FINISHED);
@@ -2462,7 +2489,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
           if (!provider) {
             toast.warning(
-              'The model used earlier in this conversation is no longer available. Falling back to the default model.'
+              i18next.t('chat.model-fallback-warning', {
+                defaultValue:
+                  'The model used earlier in this conversation is no longer available. Falling back to the default model.',
+              })
             );
           }
         }
@@ -2477,7 +2507,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         if (!provider) {
           finishStartupFailure();
           throw new Error(
-            'No model provider configured. Please go to Agents > Models and configure at least one model provider as default.'
+            i18next.t('chat.no-model-provider', {
+              defaultValue:
+                'No model provider is configured. Go to Agents > Models and configure at least one default model provider.',
+            })
           );
         }
 
@@ -2510,14 +2543,22 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         if (!resolvedCloudModel) {
           finishStartupFailure();
           throw new Error(
-            'Failed to resolve cloud model. Please try again or choose another model in Agents > Models.'
+            i18next.t('chat.cloud-model-unavailable', {
+              defaultValue:
+                'The cloud model is unavailable. Try again or choose another model in Agents > Models.',
+            })
           );
         }
         if (
           resolvedCloudModel.source === 'default' &&
           resolvedCloudModel.requestedModelId
         ) {
-          const message = `Model ${resolvedCloudModel.requestedModelId} is no longer available; switched to ${resolvedCloudModel.model.display_name}.`;
+          const message = i18next.t('chat.cloud-model-switched', {
+            defaultValue:
+              'Model {{requestedModel}} is no longer available; switched to {{fallbackModel}}.',
+            requestedModel: resolvedCloudModel.requestedModelId,
+            fallbackModel: resolvedCloudModel.model.display_name,
+          });
           console.warn(message);
           toast.warning(message);
         }
@@ -2541,7 +2582,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             throw new Error(
               responseData?.text ||
                 error?.message ||
-                'Free trial usage limit reached. Switch to a local/custom model or use another API key to continue.'
+                i18next.t('chat.free-trial-limit-reached', {
+                  defaultValue:
+                    'Free trial usage limit reached. Switch to a local or custom model, or use another API key to continue.',
+                })
             );
           }
           throw error;
@@ -2550,14 +2594,20 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           finishStartupFailure();
           throw new Error(
             res.text ||
-              'Free trial usage limit reached. Switch to a local/custom model or use another API key to continue.'
+              i18next.t('chat.free-trial-limit-reached', {
+                defaultValue:
+                  'Free trial usage limit reached. Switch to a local or custom model, or use another API key to continue.',
+              })
           );
         }
         if (!res.value) {
           finishStartupFailure();
           throw new Error(
             res.text ||
-              'Failed to get cloud model key. Please check your account or model settings.'
+              i18next.t('chat.cloud-model-key-failed', {
+                defaultValue:
+                  'Could not get the cloud model key. Check your account or model settings.',
+              })
           );
         }
         if (res.warning_code && res.warning_code === '21') {
@@ -2681,7 +2731,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         } catch (error) {
           finishStartupFailure();
           throw new Error(
-            'Failed to load the model provider configured for a worker.',
+            i18next.t('chat.worker-model-provider-load-failed', {
+              defaultValue:
+                'Could not load the model provider configured for a worker.',
+            }),
             { cause: error }
           );
         }
@@ -2700,7 +2753,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         if (missingWorker) {
           finishStartupFailure();
           throw new Error(
-            `The model provider configured for worker "${missingWorker.name}" is no longer available. Please edit the worker and select another model.`
+            i18next.t('chat.worker-model-provider-unavailable', {
+              defaultValue:
+                'The model provider configured for worker "{{worker}}" is no longer available. Edit the worker and select another model.',
+              worker: missingWorker.name,
+            })
           );
         }
       }
@@ -2951,7 +3008,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             workdir_mode: project?.workdirMode || undefined,
             question: startOptions.resumeRequestId
               ? targetChatStore.getState().getLastUserMessage()?.content ||
-                'Resume interrupted Run'
+                i18next.t('chat.resume-interrupted-task', {
+                  defaultValue: 'Resume interrupted task',
+                })
               : messageContent ||
                 targetChatStore.getState().getLastUserMessage()?.content,
             model_platform: apiModel.model_platform,
@@ -3135,7 +3194,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             currentStore.addMessages(newTaskId, {
               id: generateUniqueId(),
               role: 'agent',
-              content: `**System Error**: Failed to parse server message. The connection may be unstable.\n\nPlease try again or contact support if this persists.`,
+              content: i18next.t('chat.server-message-parse-error', {
+                defaultValue:
+                  '**System error**: Failed to parse the server message. The connection may be unstable.\n\nTry again or contact support if this continues.',
+              }),
             });
             return;
           }
@@ -3159,7 +3221,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             const errorText =
               typeof (agentMessages as any).error === 'string'
                 ? (agentMessages as any).error
-                : 'Replay data is unavailable for this task.';
+                : i18next.t('chat.replay-data-unavailable', {
+                    defaultValue: 'Replay data is unavailable for this task.',
+                  });
 
             currentStore.addMessages(currentTaskId, {
               id: generateUniqueId(),
@@ -3216,12 +3280,24 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
           console.log('agentMessages', agentMessages);
           const agentNameMap = {
-            developer_agent: 'Developer Agent',
-            browser_agent: 'Browser Agent',
-            document_agent: 'Document Agent',
-            multi_modal_agent: 'Multi Modal Agent',
-            social_media_agent: 'Social Media Agent',
-            single_agent: 'CAMEL Agent',
+            developer_agent: i18next.t('chat.developer-agent', {
+              defaultValue: 'Developer agent',
+            }),
+            browser_agent: i18next.t('chat.browser-agent', {
+              defaultValue: 'Browser agent',
+            }),
+            document_agent: i18next.t('chat.document-agent', {
+              defaultValue: 'Document agent',
+            }),
+            multi_modal_agent: i18next.t('chat.multimodal-agent', {
+              defaultValue: 'Multimodal agent',
+            }),
+            social_media_agent: i18next.t('chat.social-media-agent', {
+              defaultValue: 'Social media agent',
+            }),
+            single_agent: i18next.t('chat.camel-agent', {
+              defaultValue: 'CAMEL agent',
+            }),
           };
 
           /**
@@ -4693,7 +4769,16 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             // Show toast notification
             toast.dismiss();
             toast.error(
-              `⚠️ Context Limit Exceeded\n\nThe conversation history is too long (${currentLength.toLocaleString()} / ${maxLength.toLocaleString()} characters).\n\nPlease create a new project to continue your work.`,
+              i18next.t('chat.context-limit-exceeded', {
+                defaultValue:
+                  '⚠️ Context limit exceeded\n\nThe conversation history is too long ({{currentLength}} / {{maxLength}} characters).\n\nStart a new session to continue your work.',
+                currentLength: currentLength.toLocaleString(
+                  i18next.resolvedLanguage || i18next.language
+                ),
+                maxLength: maxLength.toLocaleString(
+                  i18next.resolvedLanguage || i18next.language
+                ),
+              }),
               {
                 duration: Infinity,
                 closeButton: true,
@@ -4725,7 +4810,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 (typeof agentMessages.data === 'string'
                   ? agentMessages.data
                   : null) ||
-                'An error occurred while processing your request';
+                i18next.t('chat.request-processing-error', {
+                  defaultValue:
+                    'An error occurred while processing your request',
+                });
               const isProjectBusyError =
                 errorMessage === 'Single Agent is already processing a task.';
               const isRetryableRunError =
@@ -4786,7 +4874,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               addMessages(currentTaskId, {
                 id: generateUniqueId(),
                 role: 'agent',
-                content: `❌ **Error**: ${errorMessage}`,
+                content: i18next.t('chat.error-message', {
+                  defaultValue: '❌ **Error**: {{message}}',
+                  message: errorMessage,
+                }),
               });
               // Record the tokens consumed before the failure so the run's
               // spend is not lost from the history row (a failed run
@@ -4858,7 +4949,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 addMessages(fallbackTaskId, {
                   id: generateUniqueId(),
                   role: 'agent',
-                  content: `**Critical Error**: An unexpected error occurred while handling a model error. Please refresh the application or contact support.`,
+                  content: i18next.t('chat.critical-model-error', {
+                    defaultValue:
+                      '**Critical error**: An unexpected error occurred while handling a model error. Refresh the application or contact support.',
+                  }),
                 });
               } catch (fallbackError) {
                 console.error(
@@ -5506,13 +5600,22 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 ? err.userMessage.trim()
                 : typeof err?.message === 'string' && err.message.trim()
                   ? err.message.trim()
-                  : 'The Run could not be admitted. Please try again.';
+                  : i18next.t('chat.task-admission-failed', {
+                      defaultValue:
+                        'The task could not be started. Please try again.',
+                    });
             const isContinuationClarification =
               typeof err?.code === 'string' &&
               err.code.startsWith('continuation_');
             const content = isContinuationClarification
-              ? `Input required: ${userMessage}`
-              : `❌ **Error**: ${userMessage}`;
+              ? i18next.t('chat.control-input-required-message', {
+                  defaultValue: 'Input required: {{message}}',
+                  message: userMessage,
+                })
+              : i18next.t('chat.error-message', {
+                  defaultValue: '❌ **Error**: {{message}}',
+                  message: userMessage,
+                });
             const alreadyRendered = failureTask?.messages.some(
               (message) =>
                 message.role === 'agent' && message.content === content
@@ -5770,18 +5873,22 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           if (task.status !== ChatTaskStatus.FINISHED) {
             setStatus(taskId, ChatTaskStatus.FINISHED);
           }
-          const hasReplayErrorMessage = task.messages.some(
-            (message) =>
-              message.role === 'agent' &&
-              typeof message.content === 'string' &&
-              message.content.includes('Unable to replay this legacy task')
+          const replayUnavailableMessage = i18next.t(
+            'chat.legacy-task-replay-unavailable',
+            {
+              defaultValue:
+                'Unable to replay this legacy task. The saved playback data could not be loaded.',
+            }
+          );
+          const hasReplayErrorMessage = hasLegacyReplayUnavailableMessage(
+            task.messages,
+            replayUnavailableMessage
           );
           if (!hasReplayErrorMessage) {
             addMessages(taskId, {
               id: generateUniqueId(),
               role: 'agent',
-              content:
-                'Unable to replay this legacy task. The saved playback data could not be loaded.',
+              content: replayUnavailableMessage,
             });
           }
         }
@@ -6151,7 +6258,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           setLatestPlanConfirmed(false);
           setStatus(taskId, ChatTaskStatus.PENDING);
           setTaskTime(taskId, 0);
-          toast.error('Failed to start task. Please try again.');
+          toast.error(
+            i18next.t('layout.failed-to-start-task', {
+              defaultValue: 'Failed to start task. Please try again.',
+            })
+          );
           return;
         }
       }

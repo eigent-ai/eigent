@@ -17,6 +17,7 @@
  * All calls go through Brain HTTP API (getBaseURL). No IPC fallback.
  */
 
+import i18next from 'i18next';
 import {
   fetchDelete,
   fetchGet,
@@ -86,7 +87,12 @@ export async function skillImportZip(
     formData.append('replacements', replacements.join(','));
   }
   const res = await fetchPostForm('/skills/import', formData);
-  return (res ?? { success: false, error: 'Import failed' }) as {
+  return (res ?? {
+    success: false,
+    error: i18next.t('layout.skill-import-failed', {
+      defaultValue: 'Import failed',
+    }),
+  }) as {
     success: boolean;
     error?: string;
     conflicts?: Array<{ folderName: string; skillName: string }>;

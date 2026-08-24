@@ -136,5 +136,7 @@
   "google-check-failed": "无法验证 Google 凭据。",
   "exa-check-failed": "无法验证 Exa API 密钥。",
   "optional": "可选",
-  "enter-field": "输入{{field}}"
+  "enter-field": "输入{{field}}",
+  "google-calendar-description": "用于管理活动和日程的 Google Calendar 集成",
+  "notion-description": "用于读取和管理 Notion 页面的 Notion 工作区集成"
 }

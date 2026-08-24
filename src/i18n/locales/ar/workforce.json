@@ -1,9 +1,9 @@
 {
-  "your-ai-workforce": "قوة العمل الذكية الاصطناعية الخاصة بك",
-  "new-worker": "عامل جديد",
+  "your-ai-workforce": "فريق عملك بالذكاء الاصطناعي",
+  "new-worker": "وكيل جديد",
   "edit": "تعديل",
-  "configure-mcp-server": "تكوين خادم مسيبي",
-  "add-your-agent": "إضافة خادم مسيبي",
+  "configure-mcp-server": "إعداد خادم MCP",
+  "add-your-agent": "إضافة وكيلك",
   "cancel": "إلغاء",
   "save-changes": "حفظ التغييرات",
   "description-optional": "الوصف (اختياري)",

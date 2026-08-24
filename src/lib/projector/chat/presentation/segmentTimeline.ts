@@ -19,6 +19,7 @@ import type {
   ChatStepNode,
 } from '../types';
 
+import i18next from 'i18next';
 import { toTimelineCall, type TimelineCall } from './timelineCalls';
 import type { TimelineRunView, TimelineTraceRow } from './types';
 
@@ -126,19 +127,53 @@ function isSuccessfulLifecycleNoise(row: TimelineTraceRow): boolean {
  * Method-name verb heuristics. Deliberately pattern-based rather than a
  * toolkit lookup table so a new toolkit reads sensibly without registration.
  */
-const METHOD_VERBS: readonly (readonly [RegExp, string])[] = Object.freeze([
-  [/(^|_)search$|_search|^search_/, 'Searched'],
-  [/^read_|_read$/, 'Read'],
-  [/^write_|_write$/, 'Wrote'],
-  [/^browser_|_navigate$|^navigate/, 'Browsed'],
-  [/^list_|_list$/, 'Listed'],
-  [/^fetch_|_fetch$|^download/, 'Fetched'],
-  [/^run_|^exec|^shell|^terminal/, 'Ran'],
-  [/^create_|^new_/, 'Created'],
-  [/^update_|^edit_|^modify_/, 'Edited'],
-  [/^delete_|^remove_/, 'Deleted'],
-  [/^ask_|^request_/, 'Asked'],
-]);
+const METHOD_VERBS: readonly (readonly [RegExp, () => string])[] =
+  Object.freeze([
+    [
+      /(^|_)search$|_search|^search_/,
+      () => i18next.t('chat.timeline-searched', { defaultValue: 'Searched' }),
+    ],
+    [
+      /^read_|_read$/,
+      () => i18next.t('chat.timeline-read', { defaultValue: 'Read' }),
+    ],
+    [
+      /^write_|_write$/,
+      () => i18next.t('chat.timeline-wrote', { defaultValue: 'Wrote' }),
+    ],
+    [
+      /^browser_|_navigate$|^navigate/,
+      () => i18next.t('chat.timeline-browsed', { defaultValue: 'Browsed' }),
+    ],
+    [
+      /^list_|_list$/,
+      () => i18next.t('chat.timeline-listed', { defaultValue: 'Listed' }),
+    ],
+    [
+      /^fetch_|_fetch$|^download/,
+      () => i18next.t('chat.timeline-fetched', { defaultValue: 'Fetched' }),
+    ],
+    [
+      /^run_|^exec|^shell|^terminal/,
+      () => i18next.t('chat.timeline-ran', { defaultValue: 'Ran' }),
+    ],
+    [
+      /^create_|^new_/,
+      () => i18next.t('chat.timeline-created', { defaultValue: 'Created' }),
+    ],
+    [
+      /^update_|^edit_|^modify_/,
+      () => i18next.t('chat.timeline-edited', { defaultValue: 'Edited' }),
+    ],
+    [
+      /^delete_|^remove_/,
+      () => i18next.t('chat.timeline-deleted', { defaultValue: 'Deleted' }),
+    ],
+    [
+      /^ask_|^request_/,
+      () => i18next.t('chat.timeline-asked', { defaultValue: 'Asked' }),
+    ],
+  ]);
 
 function humanizeIdentifier(value: string): string {
   const words = value.trim().replaceAll('_', ' ').trim();
@@ -155,7 +190,11 @@ export function deriveSegmentLabel(calls: readonly TimelineCall[]): string {
   if (count === 0) return '';
   if (count === 1) return calls[0]!.title;
 
-  const suffix = `${count} actions`;
+  const suffix = i18next.t('chat.timeline-action-count', {
+    defaultValue_one: '{{count}} action',
+    defaultValue_other: '{{count}} actions',
+    count,
+  });
 
   const methods = new Set(calls.map((call) => call.methodName?.trim() || ''));
   if (methods.size !== 1) return suffix;
@@ -165,7 +204,7 @@ export function deriveSegmentLabel(calls: readonly TimelineCall[]): string {
 
   const normalized = method.toLowerCase();
   const verb = METHOD_VERBS.find(([pattern]) => pattern.test(normalized))?.[1];
-  const description = verb || humanizeIdentifier(method);
+  const description = verb?.() || humanizeIdentifier(method);
   return `${description} · ${suffix}`;
 }
 
@@ -359,15 +398,30 @@ export function segmentTimelineRows(
 }
 
 function authoredStepStatusLabel(step: ChatStepNode): string {
-  return {
-    pending: 'Planned',
-    running: 'In progress',
-    blocked: 'Blocked',
-    completed: 'Completed',
-    failed: 'Failed',
-    cancelled: 'Cancelled',
-    interrupted: 'Interrupted',
-  }[step.status];
+  switch (step.status) {
+    case 'pending':
+      return i18next.t('chat.timeline-planned', { defaultValue: 'Planned' });
+    case 'running':
+      return i18next.t('chat.timeline-in-progress', {
+        defaultValue: 'In progress',
+      });
+    case 'blocked':
+      return i18next.t('chat.timeline-blocked', { defaultValue: 'Blocked' });
+    case 'completed':
+      return i18next.t('chat.timeline-completed', {
+        defaultValue: 'Completed',
+      });
+    case 'failed':
+      return i18next.t('chat.timeline-failed', { defaultValue: 'Failed' });
+    case 'cancelled':
+      return i18next.t('chat.timeline-cancelled', {
+        defaultValue: 'Cancelled',
+      });
+    case 'interrupted':
+      return i18next.t('chat.timeline-interrupted', {
+        defaultValue: 'Interrupted',
+      });
+  }
 }
 
 /**

@@ -145,7 +145,7 @@ function SpaceItemContent({
         data-layout={layout}
         onClick={handleOpenWorkspace}
       >
-        Open Workspace
+        {t('layout.open-workspace', { defaultValue: 'Open Workspace' })}
       </Button>
     );
 

@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import i18n from '@/i18n';
 import { generateUniqueId } from '@/lib';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import {
@@ -276,9 +277,18 @@ export function useBackgroundTaskProcessor() {
                 e
               )
             );
-            toast.error('Background task failed', {
-              description: err?.message || 'Unknown error',
-            });
+            toast.error(
+              i18n.t('triggers.background-task-failed', {
+                defaultValue: 'Background task failed',
+              }),
+              {
+                description:
+                  err?.message ||
+                  i18n.t('layout.unknown-error', {
+                    defaultValue: 'Unknown error',
+                  }),
+              }
+            );
             activeTasksRef.current.delete(executionId);
           });
 
@@ -314,9 +324,18 @@ export function useBackgroundTaskProcessor() {
             e
           )
         );
-        toast.error('Background task failed', {
-          description: error?.message || 'Unknown error',
-        });
+        toast.error(
+          i18n.t('triggers.background-task-failed', {
+            defaultValue: 'Background task failed',
+          }),
+          {
+            description:
+              error?.message ||
+              i18n.t('layout.unknown-error', {
+                defaultValue: 'Unknown error',
+              }),
+          }
+        );
         activeTasksRef.current.delete(executionId);
       }
     } finally {
