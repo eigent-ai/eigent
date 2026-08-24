@@ -29,6 +29,9 @@ void i18next.init({
 // Mock react-i18next against the shipped en-US bundle so assertions read the
 // real product copy instead of a table that drifts from it.
 vi.mock('react-i18next', async () => {
+  const actual =
+    await vi.importActual<typeof import('react-i18next')>('react-i18next');
+  const { createElement } = await import('react');
   const enUs = (await import('@/i18n/locales/en-us/index')).default;
 
   const resolve = (key: string): string | undefined => {
@@ -45,6 +48,8 @@ vi.mock('react-i18next', async () => {
   };
 
   return {
+    Trans: (props: Parameters<typeof actual.Trans>[0]) =>
+      createElement(actual.Trans, { ...props, i18n: i18next }),
     useTranslation: () => ({
       t: (key: string, options: Record<string, unknown> = {}) => {
         const count = options.count;

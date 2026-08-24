@@ -1508,11 +1508,32 @@ describe('ChatBox timeline modes', () => {
     });
 
     render(<TimelineModeRenderer detailLevel="narrative" runs={[run]} />);
+    const workLogTrigger = screen.getByRole('button', {
+      name: 'Working on tasks for 8s',
+    });
+    expect(workLogTrigger).not.toHaveTextContent('<elapsed>');
+    expect(workLogTrigger).not.toHaveTextContent('{{time}}');
     expect(screen.getByText('8s')).toBeInTheDocument();
 
     act(() => vi.advanceTimersByTime(2_000));
     expect(screen.getByText('10s')).toBeInTheDocument();
   });
+
+  it('renders the completed work-log duration without translation markup', () => {
+    render(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns(nodes('completed'))}
+      />
+    );
+
+    const workLogTrigger = screen.getByRole('button', {
+      name: 'Worked for 5s',
+    });
+    expect(workLogTrigger).not.toHaveTextContent('<elapsed>');
+    expect(workLogTrigger).not.toHaveTextContent('{{time}}');
+  });
+
   it('holds elapsed time and the shimmer while the user has taken control', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-19T00:00:10Z'));

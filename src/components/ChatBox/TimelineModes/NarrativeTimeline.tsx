@@ -14,6 +14,7 @@
 
 import { AgentMessageCard } from '@/components/ChatBox/MessageItem/AgentMessageCard';
 import { PreparingToExecuteTasks } from '@/components/ChatBox/MessageItem/PreparingToExecuteTasks';
+import { formatSplittingElapsed } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { UserMessageCard } from '@/components/ChatBox/MessageItem/UserMessageCard';
 import ShinyText from '@/components/ui/ShinyText/ShinyText';
 import {
@@ -26,10 +27,9 @@ import {
 import { cn } from '@/lib/utils';
 import { SessionMode, type SessionModeType } from '@/types/constants';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import type { TFunction } from 'i18next';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 
 import { CallRow, isCallActiveStatus, isCallErrorStatus } from './CallRow';
 import { RunFilesGroup } from './RunFiles';
@@ -39,8 +39,8 @@ import {
   type InteractiveTimelinePlan,
   isActiveRunStatus,
   isTerminalRunStatus,
-  RunElapsed,
   type TimelineModeProps,
+  useRunElapsedMs,
 } from './shared';
 
 /**
@@ -143,24 +143,45 @@ function groupNarrativeWork(
   return entries;
 }
 
-function workLogSummary(
-  run: TimelineRunView,
-  paused: boolean,
-  t: TFunction
-): string {
-  if (paused && isActiveRunStatus(run.status))
-    return t('chat.paused-after', { defaultValue: 'Paused after' });
-  if (isActiveRunStatus(run.status))
-    return t('chat.working-on-tasks-for', {
-      defaultValue: 'Working on tasks for',
-    });
-  if (run.status === 'failed')
-    return t('chat.failed-after', { defaultValue: 'Failed after' });
-  if (run.status === 'interrupted')
-    return t('chat.interrupted-after', { defaultValue: 'Interrupted after' });
-  if (run.status === 'cancelled')
-    return t('chat.stopped-after', { defaultValue: 'Stopped after' });
-  return t('chat.worked-for', { defaultValue: 'Worked for' });
+function workLogSummaryI18nKey(run: TimelineRunView): string {
+  if (isActiveRunStatus(run.status)) return 'chat.working-on-tasks-for';
+  if (run.status === 'failed') return 'chat.failed-after';
+  if (run.status === 'interrupted') return 'chat.interrupted-after';
+  if (run.status === 'cancelled') return 'chat.stopped-after';
+  return 'chat.worked-for';
+}
+
+function NarrativeWorkLogSummary({
+  run,
+  paused,
+}: {
+  run: TimelineRunView;
+  paused: boolean;
+}) {
+  const { t } = useTranslation();
+  const elapsedMs = useRunElapsedMs(run, paused);
+  const timeLabel = formatSplittingElapsed(elapsedMs);
+  const elapsed = (
+    <span className="text-ds-ink-subtle-default tabular-nums">{timeLabel}</span>
+  );
+
+  if (paused && isActiveRunStatus(run.status)) {
+    return (
+      <>
+        {t('chat.paused-after', { defaultValue: 'Paused after' })} {elapsed}
+      </>
+    );
+  }
+
+  return (
+    <Trans
+      i18nKey={workLogSummaryI18nKey(run)}
+      values={{ time: timeLabel }}
+      components={{
+        elapsed: <span className="text-ds-ink-subtle-default tabular-nums" />,
+      }}
+    />
+  );
 }
 
 /**
@@ -576,8 +597,7 @@ function NarrativeRunWorkLog({
         className="flex w-full min-w-0 items-center justify-start gap-1 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-0 py-2 text-left"
       >
         <span className="text-ds-text-base font-medium text-ds-ink-muted-default">
-          {workLogSummary(run, paused, t)}{' '}
-          <RunElapsed paused={paused} run={run} />
+          <NarrativeWorkLogSummary paused={paused} run={run} />
         </span>
         {open ? (
           <ChevronDown
