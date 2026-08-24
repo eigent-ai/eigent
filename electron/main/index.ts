@@ -386,8 +386,7 @@ type BackendStartOptions = {
 };
 
 type BackendStartResult =
-  | { success: true; port: number }
-  | { success: false; error: string };
+  { success: true; port: number } | { success: false; error: string };
 
 function formatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -3235,9 +3234,15 @@ async function createWindowInternal() {
   }
 
   // ==================== Handle renderer crashes and failed loads ====================
-  win.webContents.on('did-start-loading', () => {
-    appShellReadinessGate.markDocumentLoading();
-    rendererAppCommands.markNotReady('did-start-loading');
+  win.webContents.on('did-start-navigation', (event) => {
+    const didReplaceMainDocument =
+      appShellReadinessGate.markDocumentNavigationStarted(
+        event.isMainFrame,
+        event.isSameDocument
+      );
+    if (didReplaceMainDocument) {
+      rendererAppCommands.markNotReady('main-frame-navigation');
+    }
   });
   win.webContents.on('did-finish-load', () => {
     appShellReadinessGate.markDocumentLoaded();

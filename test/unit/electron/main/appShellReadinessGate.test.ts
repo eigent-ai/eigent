@@ -32,6 +32,38 @@ describe('AppShellReadinessGate', () => {
   });
 
   it.each([
+    { isMainFrame: false, isSameDocument: false, label: 'subframe navigation' },
+    {
+      isMainFrame: true,
+      isSameDocument: true,
+      label: 'same-document navigation',
+    },
+  ])('keeps the current document ready after a $label', (navigation) => {
+    const gate = new AppShellReadinessGate({
+      announceReadyProbe: vi.fn(),
+    });
+    gate.markDocumentLoaded();
+
+    expect(
+      gate.markDocumentNavigationStarted(
+        navigation.isMainFrame,
+        navigation.isSameDocument
+      )
+    ).toBe(false);
+    expect(gate.canAcceptReady()).toBe(true);
+  });
+
+  it('invalidates readiness when the main document is replaced', () => {
+    const gate = new AppShellReadinessGate({
+      announceReadyProbe: vi.fn(),
+    });
+    gate.markDocumentLoaded();
+
+    expect(gate.markDocumentNavigationStarted(true, false)).toBe(true);
+    expect(gate.canAcceptReady()).toBe(false);
+  });
+
+  it.each([
     { errorCode: -3, isMainFrame: true, label: 'cancelled main navigation' },
     { errorCode: -105, isMainFrame: false, label: 'failed subframe' },
   ])('keeps the current document ready after a $label', (failure) => {

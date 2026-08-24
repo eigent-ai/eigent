@@ -34,6 +34,18 @@ export class AppShellReadinessGate {
     this.documentLoaded = false;
   }
 
+  markDocumentNavigationStarted(
+    isMainFrame: boolean,
+    isSameDocument: boolean
+  ): boolean {
+    // Subframe and same-document navigations do not replace the renderer that
+    // owns the app-shell IPC listeners. Invalidating readiness for either one
+    // strands native app commands until another full document load happens.
+    if (!isMainFrame || isSameDocument) return false;
+    this.markDocumentLoading();
+    return true;
+  }
+
   markDocumentLoaded(): void {
     this.documentLoaded = true;
     this.announceReadyProbe();
