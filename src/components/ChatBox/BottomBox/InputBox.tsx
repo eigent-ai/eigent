@@ -336,13 +336,23 @@ export const Inputbox = ({
       if (result.success) {
         console.log('[Drag-Drop] Setting files:', result.files);
         onFilesChange?.(result.files);
-        toast.success(`Added ${result.added} file(s)`);
+        toast.success(
+          t('chat.files-added', {
+            count: result.added,
+            defaultValue_one: 'Added {{count}} file',
+            defaultValue_other: 'Added {{count}} files',
+          })
+        );
       } else {
         toast.error(result.error);
       }
     } catch (error) {
       console.error('[Drag-Drop] Error:', error);
-      toast.error('Failed to process dropped files');
+      toast.error(
+        t('chat.dropped-files-failed', {
+          defaultValue: 'Failed to process dropped files',
+        })
+      );
     }
   };
 
@@ -354,13 +364,23 @@ export const Inputbox = ({
       const result = await processPastedFiles(pasted, files);
       if (result.success) {
         onFilesChange?.(result.files);
-        toast.success(`Added ${result.added} file(s)`);
+        toast.success(
+          t('chat.files-added', {
+            count: result.added,
+            defaultValue_one: 'Added {{count}} file',
+            defaultValue_other: 'Added {{count}} files',
+          })
+        );
       } else {
         toast.error(result.error);
       }
     } catch (error) {
       console.error('[Paste] Error:', error);
-      toast.error('Failed to process pasted files');
+      toast.error(
+        t('chat.pasted-files-failed', {
+          defaultValue: 'Failed to process pasted files',
+        })
+      );
     }
   };
 

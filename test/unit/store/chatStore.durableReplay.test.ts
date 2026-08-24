@@ -21,6 +21,7 @@ import {
   createCanonicalRunEventCursor,
   createChatStoreInstance,
   extractAgentMessageContent,
+  hasLegacyReplayUnavailableMessage,
   hasProjectedHumanInteraction,
   mergeFileInfoLists,
   normalizeTaskArtifactFileList,
@@ -30,6 +31,42 @@ import {
 import { describe, expect, it, vi } from 'vitest';
 
 describe('canonical Run replay projection', () => {
+  it('deduplicates the exact localized legacy replay failure', () => {
+    const localizedMessage =
+      'Diese ältere Aufgabe kann nicht wiedergegeben werden. Die gespeicherten Wiedergabedaten konnten nicht geladen werden.';
+
+    expect(
+      hasLegacyReplayUnavailableMessage(
+        [{ role: 'agent', content: localizedMessage }],
+        localizedMessage
+      )
+    ).toBe(true);
+    expect(
+      hasLegacyReplayUnavailableMessage(
+        [
+          {
+            role: 'agent',
+            content:
+              'Unable to replay this legacy task. The saved playback data could not be loaded.',
+          },
+        ],
+        localizedMessage
+      )
+    ).toBe(true);
+    expect(
+      hasLegacyReplayUnavailableMessage(
+        [
+          {
+            role: 'agent',
+            content:
+              'Diese Aufgabe konnte aus einem anderen Grund nicht starten.',
+          },
+        ],
+        localizedMessage
+      )
+    ).toBe(false);
+  });
+
   it('keeps structured interaction payloads out of Message.content', () => {
     expect(
       extractAgentMessageContent({

@@ -162,7 +162,7 @@ describe('RunFiles capability boundary', () => {
       getSessionPreviewSlice(usePageTabStore.getState()).tabs[0]
     ).toMatchObject({
       type: 'review',
-      title: 'Run review',
+      title: 'Task review',
       reviewTarget: {
         scope: 'run',
         runId: 'run-1',

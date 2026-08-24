@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fetchGet, fetchPost, fetchPut } from '@/api/http';
+import i18next from 'i18next';
 import {
   getPublicWorkspaceBundleRevision,
   type CloudWorkspaceBundle,
@@ -177,7 +178,9 @@ export async function fetchWorkspaceBundleInstallReview(
   const revision = await getPublicWorkspaceBundleRevision(handle);
   if (revision.status !== 'published') {
     throw new Error(
-      'Only published Workspace Bundle versions can be installed.'
+      i18next.t('layout.space-profile-published-only', {
+        defaultValue: 'Only published Space profile versions can be installed.',
+      })
     );
   }
   if (
@@ -186,7 +189,11 @@ export async function fetchWorkspaceBundleInstallReview(
     revision.version !== handle.version ||
     revision.coordinate !== handle.coordinate
   ) {
-    throw new Error('The Workspace Bundle version identity does not match.');
+    throw new Error(
+      i18next.t('layout.space-profile-version-mismatch', {
+        defaultValue: 'The Space profile version identity does not match.',
+      })
+    );
   }
   // Public install remains usable even if mutable owner metadata is not
   // readable by this account. The immutable revision is the authority.

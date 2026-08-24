@@ -25,5 +25,8 @@
   "multi-modal-agent": "وكيل متعدد الوسائط",
   "social-media-agent": "وكيل وسائل التواصل الاجتماعي",
   "no-projects-found": "لا توجد جلسات",
-  "no-tasks-found": "لم يتم العثور على مهام."
+  "no-tasks-found": "لم يتم العثور على مهام.",
+  "command-search-placeholder": "اكتب أمرًا أو ابحث…",
+  "more-integrations": "المزيد من التكاملات",
+  "today": "اليوم"
 }

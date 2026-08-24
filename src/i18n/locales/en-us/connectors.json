@@ -136,5 +136,7 @@
   "google-check-failed": "Google credentials could not be verified.",
   "exa-check-failed": "The Exa API key could not be verified.",
   "optional": "Optional",
-  "enter-field": "Enter {{field}}"
+  "enter-field": "Enter {{field}}",
+  "google-calendar-description": "Google Calendar integration for managing events and schedules",
+  "notion-description": "Notion workspace integration for reading and managing Notion pages"
 }

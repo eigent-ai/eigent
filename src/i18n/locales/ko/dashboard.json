@@ -25,5 +25,8 @@
   "multi-modal-agent": "멀티모달 에이전트",
   "social-media-agent": "소셜미디어 에이전트",
   "no-projects-found": "세션을 찾을 수 없습니다.",
-  "no-tasks-found": "작업을 찾을 수 없습니다."
+  "no-tasks-found": "작업을 찾을 수 없습니다.",
+  "command-search-placeholder": "명령을 입력하거나 검색하세요…",
+  "more-integrations": "더 많은 연동",
+  "today": "오늘"
 }

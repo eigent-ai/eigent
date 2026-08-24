@@ -360,7 +360,9 @@ export default function Workspace({
       data-workspace-cowork-row
       className="mb-3 flex min-h-[46px] w-full min-w-0 items-center justify-start gap-3"
     >
-      <span className={WORKSPACE_COWORK_TEXT_CLASS}>Cowork with</span>
+      <span className={WORKSPACE_COWORK_TEXT_CLASS}>
+        {t('layout.cowork-with', { defaultValue: 'Cowork with' })}
+      </span>
       <div
         data-workspace-agent-list
         className="flex h-[46px] min-h-[46px] min-w-0 flex-1 items-center justify-start gap-3 overflow-visible"
@@ -371,7 +373,9 @@ export default function Workspace({
             data-workspace-single-agent-label
             className={WORKSPACE_COWORK_TEXT_CLASS}
           >
-            Single Agent
+            {t('layout.workspace-session-single-agent', {
+              defaultValue: 'Single Agent',
+            })}
           </span>
         ) : null}
       </div>
@@ -421,7 +425,9 @@ export default function Workspace({
     >
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <section
-          aria-label="Workspace header"
+          aria-label={t('layout.workspace-header', {
+            defaultValue: 'Workspace header',
+          })}
           className="flex min-h-0 w-full flex-1 items-center gap-0"
         >
           <div

@@ -554,7 +554,9 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                 <AgentMessageCard
                   key={message.id}
                   id={message.id}
-                  content="No reply received, task continues..."
+                  content={t('chat.no-reply-task-continues', {
+                    defaultValue: 'No reply received; the task continues…',
+                  })}
                   onTyping={() => {}}
                 />
               </motion.div>

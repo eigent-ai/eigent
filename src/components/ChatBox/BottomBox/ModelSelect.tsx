@@ -323,7 +323,10 @@ export function ModelSelect({
     if (pinnedSelection) {
       if (pinnedSelection.modelType === 'codex_subscription') {
         const pinnedCodexModelType = pinnedSelection.codex_model_type || '';
-        return `Codex Subscription${pinnedCodexModelType ? ` (${pinnedCodexModelType})` : ''}`;
+        return t('chat.codex-subscription-model', {
+          model: pinnedCodexModelType ? ` (${pinnedCodexModelType})` : '',
+          defaultValue: 'Codex Subscription{{model}}',
+        });
       }
       if (pinnedSelection.modelType === 'cloud') {
         return getCloudModelDisplayName(
@@ -361,7 +364,10 @@ export function ModelSelect({
     }
 
     if (modelType === 'codex_subscription') {
-      return `Codex Subscription${codex_model_type ? ` (${codex_model_type})` : ''}`;
+      return t('chat.codex-subscription-model', {
+        model: codex_model_type ? ` (${codex_model_type})` : '',
+        defaultValue: 'Codex Subscription{{model}}',
+      });
     }
 
     if (cloudPrefer) {

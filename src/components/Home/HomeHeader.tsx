@@ -74,7 +74,9 @@ export default function HomeHeader() {
   return (
     <section
       data-home-spaces-toolbar
-      aria-label="Spaces toolbar"
+      aria-label={t('layout.spaces-toolbar', {
+        defaultValue: 'Spaces toolbar',
+      })}
       className="sticky -top-px z-20 flex min-w-0 flex-wrap items-center justify-between gap-4 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default py-4"
     >
       <div className="flex min-w-0 items-center gap-2">

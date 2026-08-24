@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import * as React from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { cn } from '@/lib/utils';
 import { CircleAlert } from 'lucide-react';
@@ -72,6 +73,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
     },
     ref
   ) => {
+    const { t } = useTranslation();
     const [isComposing, setIsComposing] = React.useState(false);
     const { onKeyDown, onCompositionStart, onCompositionEnd, ...inputProps } =
       props;
@@ -92,7 +94,9 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
             {required && <span className="text-ds-ink-default-default">*</span>}
             {optional && (
               <span className="rounded bg-ds-neutral-muted-disabled px-1.5 py-0.5 text-xs font-normal text-ds-ink-muted-default">
-                (optional)
+                {t('layout.optional-parenthetical', {
+                  defaultValue: '(optional)',
+                })}
               </span>
             )}
             {tooltip && (

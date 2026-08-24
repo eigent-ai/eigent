@@ -25,5 +25,8 @@
   "multi-modal-agent": "多模态智能体",
   "social-media-agent": "社交媒体智能体",
   "no-projects-found": "未找到会话",
-  "no-tasks-found": "未找到任务。"
+  "no-tasks-found": "未找到任务。",
+  "command-search-placeholder": "输入命令或搜索…",
+  "more-integrations": "更多集成",
+  "today": "今天"
 }

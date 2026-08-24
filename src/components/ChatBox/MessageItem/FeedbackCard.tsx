@@ -108,10 +108,10 @@ export function FeedbackCard({
           size="xs"
           className="flex-1"
         >
-          Answer Agent
+          {t('chat.answer-agent', { defaultValue: 'Answer Agent' })}
         </Button>
         <Button onClick={onSkip} variant="ghost" size="xs" className="flex-1">
-          Skip
+          {t('chat.skip', { defaultValue: 'Skip' })}
         </Button>
       </div>
     </div>

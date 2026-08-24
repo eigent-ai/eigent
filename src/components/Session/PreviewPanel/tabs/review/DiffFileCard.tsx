@@ -247,7 +247,12 @@ export const DiffFileCard = forwardRef<DiffFileCardHandle, DiffFileCardProps>(
         if (!path) return '';
         const result = await api.readFile(path);
         if (!result?.success) {
-          throw new Error(result?.error || 'Failed to read file');
+          throw new Error(
+            result?.error ||
+              t('layout.review-file-read-failed', {
+                defaultValue: 'Failed to read file',
+              })
+          );
         }
         if (typeof result.size === 'number' && result.size > MAX_DIFF_BYTES) {
           throw new Error('too_large');
@@ -275,7 +280,7 @@ export const DiffFileCard = forwardRef<DiffFileCardHandle, DiffFileCardProps>(
       return () => {
         cancelled = true;
       };
-    }, [file, host, onSelectionChange, semanticKind]);
+    }, [file, host, onSelectionChange, semanticKind, t]);
 
     const language = useMemo(
       () => languageForPath(file.path, monaco.languages.getLanguages()),
@@ -410,7 +415,9 @@ export const DiffFileCard = forwardRef<DiffFileCardHandle, DiffFileCardProps>(
             options: {
               isWholeLine: true,
               linesDecorationsClassName: 'review-comment-add-glyph',
-              linesDecorationsTooltip: 'Add review comment',
+              linesDecorationsTooltip: t('layout.review-add-comment', {
+                defaultValue: 'Add review comment',
+              }),
             },
           },
         ]);

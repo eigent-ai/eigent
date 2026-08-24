@@ -25,5 +25,8 @@
   "multi-modal-agent": "Мультимодальный агент",
   "social-media-agent": "Агент социальных сетей",
   "no-projects-found": "Сессии не найдены.",
-  "no-tasks-found": "Задачи не найдены."
+  "no-tasks-found": "Задачи не найдены.",
+  "command-search-placeholder": "Поиск сеансов, задач и автоматизаций…",
+  "more-integrations": "Другие интеграции",
+  "today": "Сегодня"
 }

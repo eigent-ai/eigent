@@ -47,10 +47,14 @@ export function GlobalSearchDialog({
       commandClassName="bg-ds-neutral-subtle-default"
     >
       <DialogTitle className="sr-only">{t('dashboard.search')}</DialogTitle>
-      <CommandInput placeholder="Type a command or search..." />
+      <CommandInput
+        placeholder={t('dashboard.command-search-placeholder', {
+          defaultValue: 'Type a command or search…',
+        })}
+      />
       <CommandList>
         <CommandEmpty>{t('dashboard.no-results')}</CommandEmpty>
-        <CommandGroup heading="Today">
+        <CommandGroup heading={t('dashboard.today', { defaultValue: 'Today' })}>
           <CommandItem>
             <Calendar />
             <span>{t('dashboard.calendar')}</span>

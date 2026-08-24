@@ -86,7 +86,11 @@ export function AgentMessageCard({
       setCopied(true);
       setTimeout(() => setCopied(false), COPIED_RESET_MS);
     } catch {
-      toast.error('Failed to copy to clipboard');
+      toast.error(
+        t('setting.copy-failed', {
+          defaultValue: 'Failed to copy to clipboard',
+        })
+      );
     }
   }, [content, t]);
 
@@ -98,14 +102,18 @@ export function AgentMessageCard({
   const handleThumbUp = useCallback(() => {
     if (feedback !== null) return;
     setFeedback('up');
-    toast.success('Thanks for your feedback');
-  }, [feedback]);
+    toast.success(
+      t('chat.feedback-thanks', { defaultValue: 'Thanks for your feedback' })
+    );
+  }, [feedback, t]);
 
   const handleThumbDown = useCallback(() => {
     if (feedback !== null) return;
     setFeedback('down');
-    toast.success('Thanks for your feedback');
-  }, [feedback]);
+    toast.success(
+      t('chat.feedback-thanks', { defaultValue: 'Thanks for your feedback' })
+    );
+  }, [feedback, t]);
 
   const showDeferredFileUi =
     markdownAndTypingComplete &&
@@ -173,7 +181,7 @@ export function AgentMessageCard({
             variant="ghost"
             size="sm"
             buttonContent="icon-only"
-            aria-label="Thumb up"
+            aria-label={t('chat.thumbs-up', { defaultValue: 'Thumb up' })}
             aria-pressed={feedback === 'up'}
             disabled={feedback === 'down'}
           >
@@ -186,7 +194,7 @@ export function AgentMessageCard({
             variant="ghost"
             size="sm"
             buttonContent="icon-only"
-            aria-label="Thumb down"
+            aria-label={t('chat.thumbs-down', { defaultValue: 'Thumb down' })}
             aria-pressed={feedback === 'down'}
             disabled={feedback === 'up'}
           >

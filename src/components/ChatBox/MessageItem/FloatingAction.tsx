@@ -15,6 +15,7 @@
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ChatTaskStatus, type ChatTaskStatusType } from '@/types/constants';
+import { useTranslation } from 'react-i18next';
 
 export interface FloatingActionProps {
   /** Current task status */
@@ -42,6 +43,7 @@ export const FloatingAction = ({
   hideStop = false,
   className,
 }: FloatingActionProps) => {
+  const { t } = useTranslation();
   // Only show when task is running (removed pause state)
   if (status !== ChatTaskStatus.RUNNING || hideStop) {
     return null;
@@ -63,7 +65,9 @@ export const FloatingAction = ({
           disabled={loading}
           className="gap-1.5 rounded-full"
         >
-          <span className="!text-ds-text-base font-semibold">Stop Task</span>
+          <span className="!text-ds-text-base font-semibold">
+            {t('chat.stop-task', { defaultValue: 'Stop Task' })}
+          </span>
         </Button>
 
         {/* Commented out pause/resume functionality

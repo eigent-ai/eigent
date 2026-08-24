@@ -912,7 +912,9 @@ export function AddWorker({
                               ))
                             ) : (
                               <SelectItem value="__empty__" disabled>
-                                {t('layout.no-results')}
+                                {t('layout.no-results', {
+                                  defaultValue: 'No results found.',
+                                })}
                               </SelectItem>
                             )}
                           </SelectContent>

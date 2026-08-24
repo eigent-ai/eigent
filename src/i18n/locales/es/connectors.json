@@ -136,5 +136,7 @@
   "google-check-failed": "No se pudieron verificar las credenciales de Google.",
   "exa-check-failed": "No se pudo verificar la clave de API de Exa.",
   "optional": "Opcional",
-  "enter-field": "Introduce {{field}}"
+  "enter-field": "Introduce {{field}}",
+  "google-calendar-description": "Integración con Google Calendar para gestionar eventos y calendarios",
+  "notion-description": "Integración con el espacio de trabajo de Notion para leer y gestionar páginas de Notion"
 }

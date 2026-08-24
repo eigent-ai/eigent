@@ -13,8 +13,12 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 // Licensed under the Apache License, Version 2.0 (the "License");
 
-import { describe, expect, it } from 'vitest';
-import { mergeLocalRemoteCommandStatus } from './remoteCommandStatus';
+import type { TFunction } from 'i18next';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  mergeLocalRemoteCommandStatus,
+  remoteControlErrorText,
+} from './remoteCommandStatus';
 
 const command = {
   id: 'command-1',
@@ -45,5 +49,28 @@ describe('local Remote Control command projection', () => {
 
     expect(accepted[0].status).toBe('accepted');
     expect(completed[0].status).toBe('completed');
+  });
+
+  it('maps stable bridge errors to presentation keys', () => {
+    const t = vi.fn((key: string) => key) as unknown as TFunction;
+
+    expect(
+      remoteControlErrorText('Desktop Project is not loaded in this Space', t)
+    ).toBe('layout.remote-control-error-session-not-loaded');
+    expect(
+      remoteControlErrorText(
+        'Command expired or could not pass its receipt gate',
+        t
+      )
+    ).toBe('layout.remote-control-error-expired');
+  });
+
+  it('preserves dynamic server errors and translates an empty fallback', () => {
+    const t = vi.fn((key: string) => key) as unknown as TFunction;
+
+    expect(remoteControlErrorText('Server detail 42', t)).toBe(
+      'Server detail 42'
+    );
+    expect(remoteControlErrorText(undefined, t)).toBe('layout.unknown-error');
   });
 });

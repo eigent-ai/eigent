@@ -47,7 +47,7 @@
     "test:watch": "vitest",
     "test:e2e": "vitest run --config vitest.config.ts",
     "test:coverage": "vitest run --coverage",
-    "check:i18n": "node scripts/check-i18n-locale-parity.js",
+    "check:i18n": "node scripts/check-i18n-locale-parity.js && node scripts/check-i18n-source-usage.mjs",
     "check:design-token-usage": "node scripts/check-design-token-usage.mjs",
     "check:retired-ds-axes": "node scripts/check-retired-ds-axes.mjs",
     "check:css-writing-standard": "node scripts/check-css-writing-standard.mjs",

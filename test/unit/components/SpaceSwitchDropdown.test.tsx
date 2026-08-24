@@ -70,7 +70,7 @@ describe('SpaceSwitchDropdown', () => {
       name: 'Design Space',
     });
     const createSpaceItem = within(menu).getByRole('menuitem', {
-      name: 'Create new space',
+      name: 'Create new Space',
     });
     const currentSpaceLabel = within(menu).getByText('Current Space');
     const versionHistoryItem = within(menu).getByRole('menuitem', {

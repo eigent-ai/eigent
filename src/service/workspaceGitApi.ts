@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fetchGet, fetchPost } from '@/api/http';
+import i18next from 'i18next';
 
 export interface WorkspaceGitRepoState {
   head_oid: string | null;
@@ -241,7 +242,11 @@ export const createWorkspaceSavePoint = async (
     operation_request_id: input.operationRequestId,
     expected_repo_state_digest: input.expectedRepoStateDigest,
     actor_id: input.actorId,
-    message: input.message || 'Save progress',
+    message:
+      input.message ||
+      i18next.t('layout.workspace-save-progress', {
+        defaultValue: 'Save progress',
+      }),
   });
 
 export const fetchWorkspaceGitHistory = async (

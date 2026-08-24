@@ -18,6 +18,7 @@ import {
   proxyFetchPost,
   uploadFile,
 } from '@/api/http';
+import i18next from 'i18next';
 import type { WorkspaceConfigurationDocument } from './workspaceConfigurationApi';
 
 export type WorkspaceBundleVisibility = 'private' | 'team' | 'public';
@@ -181,7 +182,10 @@ export const ensureWorkspaceBundle = async (input: {
   if (existing) {
     if (existing.workspace_id !== input.workspaceId) {
       throw new Error(
-        'This Workspace Bundle slug already belongs to a different Workspace.'
+        i18next.t('layout.space-profile-slug-in-use', {
+          defaultValue:
+            'This Space profile slug already belongs to a different Space.',
+        })
       );
     }
     if (
@@ -190,7 +194,10 @@ export const ensureWorkspaceBundle = async (input: {
     ) {
       if (existing.visibility === 'team') {
         throw new Error(
-          'Team sharing for this Bundle must be managed by a team administrator.'
+          i18next.t('layout.space-profile-team-sharing-admin', {
+            defaultValue:
+              'Team sharing for this Space profile must be managed by a team administrator.',
+          })
         );
       }
       return proxyFetchPatch(

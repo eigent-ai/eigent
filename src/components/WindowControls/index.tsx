@@ -15,10 +15,12 @@
 import { useHost } from '@/host';
 import { Minus, Square, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import './index.css';
 
 /** Renders when host provides window controls. */
 export default function WindowControls() {
+  const { t } = useTranslation();
   const host = useHost();
   const controlsRef = useRef<HTMLDivElement>(null);
   const [platform, setPlatform] = useState<string>('');
@@ -47,7 +49,7 @@ export default function WindowControls() {
     >
       <button
         type="button"
-        aria-label="Minimize"
+        aria-label={t('layout.minimize', { defaultValue: 'Minimize' })}
         className="control-btn h-full flex-1 border-0 border-x-0 border-y-0 bg-transparent p-0 text-inherit"
         onClick={() => host?.electronAPI?.minimizeWindow()}
       >
@@ -55,7 +57,7 @@ export default function WindowControls() {
       </button>
       <button
         type="button"
-        aria-label="Maximize"
+        aria-label={t('layout.maximize', { defaultValue: 'Maximize' })}
         className="control-btn h-full flex-1 border-0 border-x-0 border-y-0 bg-transparent p-0 text-inherit"
         onClick={() => host?.electronAPI?.toggleMaximizeWindow()}
       >
@@ -63,7 +65,7 @@ export default function WindowControls() {
       </button>
       <button
         type="button"
-        aria-label="Close"
+        aria-label={t('layout.close', { defaultValue: 'Close' })}
         className="control-btn h-full flex-1 border-0 border-x-0 border-y-0 bg-transparent p-0 text-inherit"
         onClick={(e) => {
           e.stopPropagation();

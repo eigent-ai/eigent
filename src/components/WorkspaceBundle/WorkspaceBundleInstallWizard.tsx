@@ -42,6 +42,7 @@ import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { openSettings } from '@/store/settingsStore';
 import { isDisposableBlankSpace, useSpaceStore } from '@/store/spaceStore';
+import type { TFunction } from 'i18next';
 import {
   Check,
   ExternalLink,
@@ -52,6 +53,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
 type RetryMode = 'review' | 'resume' | 'start' | 'materialize' | null;
@@ -67,29 +69,53 @@ interface ActiveInstall {
   handle: string;
 }
 
-const RUNTIME_READINESS_ISSUE_MESSAGES: Readonly<Record<string, string>> = {
-  connector_runtime_adapter_unavailable:
-    'A required connector cannot run in this Desktop version.',
-  mcp_destination_confirmation_required:
-    'One or more MCP servers require explicit destination review.',
-  multi_agent_runtime_adapter_unavailable:
-    'This Bundle requires multi-agent runtime support that is not available.',
-  registry_dependencies_unmaterialized:
-    'A registry dependency has not been downloaded and pinned locally yet.',
-  local_setup_incomplete:
-    'Required local values, folders, connections, or approvals are incomplete.',
-  workspace_bundle_not_materialized:
-    'Workspace files and configuration have not finished installing.',
+const RUNTIME_READINESS_ISSUE_MESSAGES: Readonly<
+  Record<string, { key: string; defaultValue: string }>
+> = {
+  connector_runtime_adapter_unavailable: {
+    key: 'layout.workspace-bundle-runtime-connector-unavailable',
+    defaultValue: 'A required connector cannot run in this Desktop version.',
+  },
+  mcp_destination_confirmation_required: {
+    key: 'layout.workspace-bundle-runtime-mcp-review-required',
+    defaultValue:
+      'One or more MCP servers require explicit destination review.',
+  },
+  multi_agent_runtime_adapter_unavailable: {
+    key: 'layout.workspace-bundle-runtime-multi-agent-unavailable',
+    defaultValue:
+      'This Bundle requires multi-agent runtime support that is not available.',
+  },
+  registry_dependencies_unmaterialized: {
+    key: 'layout.workspace-bundle-runtime-registry-pending',
+    defaultValue:
+      'A registry dependency has not been downloaded and pinned locally yet.',
+  },
+  local_setup_incomplete: {
+    key: 'layout.workspace-bundle-runtime-local-setup-incomplete',
+    defaultValue:
+      'Required local values, folders, connections, or approvals are incomplete.',
+  },
+  workspace_bundle_not_materialized: {
+    key: 'layout.workspace-bundle-runtime-install-incomplete',
+    defaultValue:
+      'Workspace files and configuration have not finished installing.',
+  },
 };
 
-const runtimeReadinessIssueMessage = (issue: string): string => {
+const runtimeReadinessIssueMessage = (issue: string, t: TFunction): string => {
   if (issue.startsWith('mcp_secret_stdio_runtime_adapter_unavailable:')) {
-    return 'This Desktop version cannot yet safely start this approved secret-backed MCP server.';
+    return t('layout.workspace-bundle-runtime-secret-mcp-unavailable', {
+      defaultValue:
+        'This Desktop version cannot yet safely start this approved secret-backed MCP server.',
+    });
   }
-  return (
-    RUNTIME_READINESS_ISSUE_MESSAGES[issue] ||
-    'An additional runtime requirement needs attention.'
-  );
+  const message = RUNTIME_READINESS_ISSUE_MESSAGES[issue];
+  return message
+    ? t(message.key, { defaultValue: message.defaultValue })
+    : t('layout.workspace-bundle-runtime-additional-requirement', {
+        defaultValue: 'An additional runtime requirement needs attention.',
+      });
 };
 
 function RuntimeReadinessStatus({
@@ -99,12 +125,13 @@ function RuntimeReadinessStatus({
   status: WorkspaceBundleInstallSnapshot['runtime_readiness'];
   issues: WorkspaceBundleInstallSnapshot['runtime_readiness_issues'];
 }) {
+  const { t } = useTranslation();
   const visibleIssues = Array.isArray(issues)
     ? Array.from(
         new Set(
           issues
             .filter((issue): issue is string => typeof issue === 'string')
-            .map(runtimeReadinessIssueMessage)
+            .map((issue) => runtimeReadinessIssueMessage(issue, t))
         )
       )
     : [];
@@ -119,10 +146,16 @@ function RuntimeReadinessStatus({
   if (status === 'ready') {
     return (
       <div className="mt-4 rounded-xl bg-ds-bg-success-subtle-default p-3 text-ds-text-base text-ds-text-success-default-default">
-        <p className="font-semibold">Runtime ready</p>
+        <p className="font-semibold">
+          {t('layout.workspace-bundle-runtime-ready', {
+            defaultValue: 'Runtime ready',
+          })}
+        </p>
         <p className="mt-1 text-ds-text-meta">
-          Brain preflight confirmed this installed configuration can start a
-          Run.
+          {t('layout.workspace-bundle-runtime-ready-description', {
+            defaultValue:
+              'Brain preflight confirmed this installed configuration can start a Run.',
+          })}
         </p>
       </div>
     );
@@ -130,11 +163,16 @@ function RuntimeReadinessStatus({
   if (status === 'needs_confirmation') {
     return (
       <div className="mt-4 rounded-xl border border-x border-y border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default p-3 text-ds-text-base">
-        <p className="font-semibold">MCP target review required</p>
+        <p className="font-semibold">
+          {t('layout.workspace-bundle-mcp-review-required', {
+            defaultValue: 'MCP target review required',
+          })}
+        </p>
         <p className="mt-1 text-ds-text-meta text-ds-ink-muted-default">
-          Review and approve each supported MCP destination in Actions and
-          readiness below. Unsupported destination types must be removed or
-          replaced before a Run can start.
+          {t('layout.workspace-bundle-mcp-review-description', {
+            defaultValue:
+              'Review and approve each supported MCP destination in Actions and readiness below. Unsupported destination types must be removed or replaced before a Run can start.',
+          })}
         </p>
         {issueList}
       </div>
@@ -143,9 +181,16 @@ function RuntimeReadinessStatus({
   if (status === 'unavailable') {
     return (
       <div className="mt-4 rounded-xl border border-x border-y border-ds-border-error-default-default bg-ds-bg-error-subtle-default p-3 text-ds-text-base text-ds-text-error-strong-default">
-        <p className="font-semibold">Runtime unavailable</p>
+        <p className="font-semibold">
+          {t('layout.workspace-bundle-runtime-unavailable', {
+            defaultValue: 'Runtime unavailable',
+          })}
+        </p>
         <p className="mt-1 text-ds-text-meta">
-          Resolve these runtime preflight issues before starting a Run.
+          {t('layout.workspace-bundle-runtime-unavailable-description', {
+            defaultValue:
+              'Resolve these runtime preflight issues before starting a Run.',
+          })}
         </p>
         {issueList}
       </div>
@@ -153,10 +198,16 @@ function RuntimeReadinessStatus({
   }
   return (
     <div className="mt-4 rounded-xl bg-ds-neutral-subtle-default p-3 text-ds-text-base">
-      <p className="font-semibold">Runtime check unavailable</p>
+      <p className="font-semibold">
+        {t('layout.workspace-bundle-runtime-check-unavailable', {
+          defaultValue: 'Runtime check unavailable',
+        })}
+      </p>
       <p className="mt-1 text-ds-text-meta text-ds-ink-muted-default">
-        Workspace files and local bindings are installed, but runtime readiness
-        has not been verified.
+        {t('layout.workspace-bundle-runtime-check-description', {
+          defaultValue:
+            'Workspace files and local bindings are installed, but runtime readiness has not been verified.',
+        })}
       </p>
     </div>
   );
@@ -178,6 +229,7 @@ function McpDestinationReview({
   busy: boolean;
   onApprove: () => void;
 }) {
+  const { t } = useTranslation();
   const isStdio = destination.destination_kind.startsWith('stdio');
   const canApprove = Boolean(
     destination.definition_digest &&
@@ -196,12 +248,16 @@ function McpDestinationReview({
             {destination.mcp_id}
           </p>
           <p className="text-ds-text-meta text-ds-ink-muted-default">
-            MCP destination · {destination.destination_kind}
+            {t('layout.workspace-bundle-mcp-destination-kind', {
+              kind: destination.destination_kind,
+              defaultValue: 'MCP destination · {{kind}}',
+            })}
           </p>
         </div>
         {approved ? (
           <div className="flex items-center gap-1 text-ds-text-meta text-ds-text-success-default-default">
-            <Check className="h-4 w-4" aria-hidden /> Approved
+            <Check className="h-4 w-4" aria-hidden />{' '}
+            {t('layout.approved', { defaultValue: 'Approved' })}
           </div>
         ) : canApprove ? (
           <Button
@@ -209,10 +265,13 @@ function McpDestinationReview({
             variant="secondary"
             onClick={onApprove}
             disabled={busy || missingSecretSlots.length > 0}
-            aria-label={`Approve ${destination.mcp_id} MCP destination`}
+            aria-label={t('layout.workspace-bundle-approve-mcp-destination', {
+              name: destination.mcp_id,
+              defaultValue: 'Approve {{name}} MCP destination',
+            })}
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            Approve
+            {t('layout.approve', { defaultValue: 'Approve' })}
           </Button>
         ) : null}
       </div>
@@ -220,9 +279,16 @@ function McpDestinationReview({
       <dl className="mt-3 grid gap-3 text-ds-text-meta">
         {isStdio ? (
           <div>
-            <dt className="font-semibold">Command and arguments</dt>
+            <dt className="font-semibold">
+              {t('layout.workspace-bundle-command-and-arguments', {
+                defaultValue: 'Command and arguments',
+              })}
+            </dt>
             <dd className="mt-1 rounded-lg bg-ds-neutral-subtle-default p-2 font-mono break-all">
-              <span>{destination.executable_command || 'Unavailable'}</span>
+              <span>
+                {destination.executable_command ||
+                  t('layout.unavailable', { defaultValue: 'Unavailable' })}
+              </span>
               {destination.argument_preview.map((argument, index) => (
                 <span key={`${argument}-${index}`} className="ml-2">
                   {argument}
@@ -232,35 +298,62 @@ function McpDestinationReview({
           </div>
         ) : (
           <div>
-            <dt className="font-semibold">Endpoint</dt>
+            <dt className="font-semibold">
+              {t('layout.workspace-bundle-endpoint', {
+                defaultValue: 'Endpoint',
+              })}
+            </dt>
             <dd className="mt-1 font-mono break-all">
-              {destination.endpoint_url || 'Not provided'}
+              {destination.endpoint_url ||
+                t('layout.not-provided', { defaultValue: 'Not provided' })}
             </dd>
           </div>
         )}
         <div>
-          <dt className="font-semibold">Working directory scope</dt>
+          <dt className="font-semibold">
+            {t('layout.workspace-bundle-working-directory-scope', {
+              defaultValue: 'Working directory scope',
+            })}
+          </dt>
           <dd className="mt-1 font-mono break-all">
-            {destination.cwd_scope || 'Workspace default'}
+            {destination.cwd_scope ||
+              t('layout.workspace-bundle-workspace-default', {
+                defaultValue: 'Workspace default',
+              })}
           </dd>
         </div>
         <div>
-          <dt className="font-semibold">Definition</dt>
+          <dt className="font-semibold">
+            {t('layout.workspace-bundle-definition', {
+              defaultValue: 'Definition',
+            })}
+          </dt>
           <dd className="mt-1 font-mono break-all">
             {destination.definition_ref}
           </dd>
           <dd className="mt-1 font-mono break-all text-ds-ink-muted-default">
-            SHA-256: {destination.definition_digest || 'Unavailable'}
+            SHA-256:{' '}
+            {destination.definition_digest ||
+              t('layout.unavailable', { defaultValue: 'Unavailable' })}
           </dd>
         </div>
         <div>
-          <dt className="font-semibold">Destination attestation</dt>
+          <dt className="font-semibold">
+            {t('layout.workspace-bundle-destination-attestation', {
+              defaultValue: 'Destination attestation',
+            })}
+          </dt>
           <dd className="mt-1 font-mono break-all">
-            {destination.attestation_digest || 'Unavailable'}
+            {destination.attestation_digest ||
+              t('layout.unavailable', { defaultValue: 'Unavailable' })}
           </dd>
         </div>
         <div>
-          <dt className="font-semibold">Local secrets sent to this MCP</dt>
+          <dt className="font-semibold">
+            {t('layout.workspace-bundle-local-secrets-sent', {
+              defaultValue: 'Local secrets sent to this MCP',
+            })}
+          </dt>
           <dd className="mt-1">
             {secretBindings.length ? (
               <ul className="space-y-1">
@@ -283,17 +376,27 @@ function McpDestinationReview({
                 ))}
               </ul>
             ) : (
-              'None'
+              t('layout.none', { defaultValue: 'None' })
             )}
           </dd>
         </div>
         <div>
-          <dt className="font-semibold">Public environment sent to this MCP</dt>
+          <dt className="font-semibold">
+            {t('layout.workspace-bundle-public-environment-sent', {
+              defaultValue: 'Public environment sent to this MCP',
+            })}
+          </dt>
           <dd className="mt-1">
             {destination.public_environment.length ? (
               <div
                 role="region"
-                aria-label={`Public environment for ${destination.mcp_id}`}
+                aria-label={t(
+                  'layout.workspace-bundle-public-environment-for',
+                  {
+                    name: destination.mcp_id,
+                    defaultValue: 'Public environment for {{name}}',
+                  }
+                )}
                 className="max-h-32 overflow-y-auto rounded-lg bg-ds-neutral-subtle-default p-2"
               >
                 <ul className="space-y-1">
@@ -307,17 +410,24 @@ function McpDestinationReview({
                 </ul>
               </div>
             ) : (
-              'None'
+              t('layout.none', { defaultValue: 'None' })
             )}
           </dd>
         </div>
         <div>
-          <dt className="font-semibold">Public headers sent to this MCP</dt>
+          <dt className="font-semibold">
+            {t('layout.workspace-bundle-public-headers-sent', {
+              defaultValue: 'Public headers sent to this MCP',
+            })}
+          </dt>
           <dd className="mt-1">
             {destination.public_headers.length ? (
               <div
                 role="region"
-                aria-label={`Public headers for ${destination.mcp_id}`}
+                aria-label={t('layout.workspace-bundle-public-headers-for', {
+                  name: destination.mcp_id,
+                  defaultValue: 'Public headers for {{name}}',
+                })}
                 className="max-h-32 overflow-y-auto rounded-lg bg-ds-neutral-subtle-default p-2"
               >
                 <ul className="space-y-1">
@@ -331,7 +441,7 @@ function McpDestinationReview({
                 </ul>
               </div>
             ) : (
-              'None'
+              t('layout.none', { defaultValue: 'None' })
             )}
           </dd>
         </div>
@@ -339,18 +449,30 @@ function McpDestinationReview({
 
       {!approved && canApprove && missingSecretSlots.length > 0 ? (
         <p className="mt-3 rounded-lg bg-ds-bg-warning-subtle-default p-2 text-ds-text-meta">
-          Add the required local secrets before approving:{' '}
-          {missingSecretSlots.join(', ')}.
+          {t('layout.workspace-bundle-add-required-secrets', {
+            names: missingSecretSlots.join(', '),
+            defaultValue:
+              'Add the required local secrets before approving: {{names}}.',
+          })}
         </p>
       ) : null}
 
       {!approved && !canApprove ? (
         <p className="mt-3 rounded-lg bg-ds-bg-error-subtle-default p-2 text-ds-text-meta text-ds-text-error-strong-default">
           {destination.destination_kind === 'stdio_unstable'
-            ? 'This MCP executable is not pinned to a reviewed Bundle asset and cannot be approved or started.'
+            ? t('layout.workspace-bundle-mcp-executable-unpinned', {
+                defaultValue:
+                  'This MCP executable is not pinned to a reviewed Bundle asset and cannot be approved or started.',
+              })
             : destination.destination_kind === 'http_secret_unavailable'
-              ? 'Secret-backed HTTP or header MCP destinations are not supported in this version. This destination cannot be approved or started.'
-              : 'This MCP definition is unavailable and cannot be approved or started.'}
+              ? t('layout.workspace-bundle-secret-http-unavailable', {
+                  defaultValue:
+                    'Secret-backed HTTP or header MCP destinations are not supported in this version. This destination cannot be approved or started.',
+                })
+              : t('layout.workspace-bundle-mcp-definition-unavailable', {
+                  defaultValue:
+                    'This MCP definition is unavailable and cannot be approved or started.',
+                })}
         </p>
       ) : null}
     </div>
@@ -434,10 +556,8 @@ function clearActiveInstall(actorId: string): void {
   window.localStorage.removeItem(activeInstallKey(actorId));
 }
 
-const errorMessage = (error: unknown): string =>
-  error instanceof Error
-    ? error.message
-    : 'The installation could not continue.';
+const errorMessage = (error: unknown, fallback: string): string =>
+  error instanceof Error ? error.message : fallback;
 
 const newInstallId = (prefix: string): string =>
   `${prefix}_${crypto.randomUUID().replaceAll('-', '')}`;
@@ -462,6 +582,8 @@ function LocalValueRow({
   busy: boolean;
   onSave: (value: string) => Promise<boolean>;
 }) {
+  const { t } = useTranslation();
+  const label = requirementLabel(item);
   return (
     <form
       className="rounded-xl border border-x border-y border-ds-hairline-subtle-default p-3"
@@ -478,26 +600,41 @@ function LocalValueRow({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate font-mono text-ds-text-base font-semibold">
-            {requirementLabel(item)}
+            {label}
           </p>
           <p className="mt-1 text-ds-text-meta text-ds-ink-muted-default">
             {item.requirement_kind === 'mcp_secret'
-              ? `Secret for ${item.mcp_id || 'MCP server'}`
-              : item.description || 'Local environment value'}
+              ? t('layout.workspace-bundle-secret-for', {
+                  name:
+                    item.mcp_id ||
+                    t('setting.mcp-server', { defaultValue: 'MCP server' }),
+                  defaultValue: 'Secret for {{name}}',
+                })
+              : item.description ||
+                t('layout.workspace-bundle-local-environment-value', {
+                  defaultValue: 'Local environment value',
+                })}
             {' · '}
-            {item.required ? 'Required' : 'Optional'}
+            {item.required
+              ? t('layout.required', { defaultValue: 'Required' })
+              : t('layout.optional', { defaultValue: 'Optional' })}
           </p>
         </div>
         {item.configured && item.available ? (
           <span className="inline-flex items-center gap-1 text-ds-text-meta font-semibold text-ds-text-success-default-default">
-            <Check className="h-3.5 w-3.5" aria-hidden /> Stored locally
+            <Check className="h-3.5 w-3.5" aria-hidden />{' '}
+            {t('layout.workspace-bundle-stored-locally', {
+              defaultValue: 'Stored locally',
+            })}
           </span>
         ) : null}
       </div>
       {item.configured && !item.available ? (
         <p className="mt-2 text-ds-text-meta font-semibold text-ds-text-warning-default-default">
-          The previous local value is unavailable. Re-enter it to repair this
-          binding.
+          {t('layout.workspace-bundle-local-value-unavailable', {
+            defaultValue:
+              'The previous local value is unavailable. Re-enter it to repair this binding.',
+          })}
         </p>
       ) : null}
       <div className="mt-3 flex gap-2">
@@ -507,19 +644,27 @@ function LocalValueRow({
           autoComplete="off"
           placeholder={
             item.configured && item.available
-              ? 'Enter a replacement value'
-              : item.example || 'Enter a value stored only on this device'
+              ? t('layout.workspace-bundle-enter-replacement-value', {
+                  defaultValue: 'Enter a replacement value',
+                })
+              : item.example ||
+                t('layout.workspace-bundle-enter-local-value', {
+                  defaultValue: 'Enter a value stored only on this device',
+                })
           }
-          aria-label={`Local value for ${requirementLabel(item)}`}
+          aria-label={t('layout.workspace-bundle-local-value-for', {
+            name: label,
+            defaultValue: 'Local value for {{name}}',
+          })}
           required={item.required}
         />
         <Button type="submit" size="sm" disabled={busy}>
           {busy ? (
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
           ) : item.configured && item.available ? (
-            'Replace'
+            t('layout.replace', { defaultValue: 'Replace' })
           ) : (
-            'Save'
+            t('setting.save', { defaultValue: 'Save' })
           )}
         </Button>
       </div>
@@ -544,6 +689,11 @@ export function WorkspaceBundleInstallWizard({
   onProposalChange,
   onWorkspaceOpen,
 }: WorkspaceBundleInstallWizardProps) {
+  const { t } = useTranslation();
+  const installationErrorFallback = t(
+    'layout.workspace-bundle-installation-could-not-continue',
+    { defaultValue: 'The installation could not continue.' }
+  );
   const navigate = useNavigate();
   const host = useHost();
   const email = useAuthStore((state) => state.email);
@@ -610,34 +760,68 @@ export function WorkspaceBundleInstallWizard({
     const spec = review?.revision.manifest.spec;
     if (!spec) return [];
     return [
-      ...(spec.environment?.variables.map(
-        (item) =>
-          `${item.required ? 'Required' : 'Optional'} value: ${item.name}`
+      ...(spec.environment?.variables.map((item) =>
+        item.required
+          ? t('layout.workspace-bundle-required-value', {
+              name: item.name,
+              defaultValue: 'Required value: {{name}}',
+            })
+          : t('layout.workspace-bundle-optional-value', {
+              name: item.name,
+              defaultValue: 'Optional value: {{name}}',
+            })
       ) ?? []),
       ...spec.mcpServers.flatMap((server) =>
-        server.secretSlots.map((slot) => `Local secret: ${server.id} / ${slot}`)
+        server.secretSlots.map((slot) =>
+          t('layout.workspace-bundle-local-secret-item', {
+            server: server.id,
+            slot,
+            defaultValue: 'Local secret: {{server}} / {{slot}}',
+          })
+        )
       ),
       ...spec.context
         .filter((source) => source.kind === 'local_path_slot' && source.slot)
-        .map((source) => `Local folder: ${source.slot}`),
-      ...spec.connectors.map(
-        (connector) =>
-          `Connection: ${connector.connector} (${connector.connectionSlot})`
+        .map((source) =>
+          t('layout.workspace-bundle-local-folder-item', {
+            name: source.slot,
+            defaultValue: 'Local folder: {{name}}',
+          })
+        ),
+      ...spec.connectors.map((connector) =>
+        t('layout.workspace-bundle-connection-item', {
+          connector: connector.connector,
+          slot: connector.connectionSlot,
+          defaultValue: 'Connection: {{connector}} ({{slot}})',
+        })
       ),
-      ...spec.mcpServers.map(
-        (server) => `Approve local MCP start: ${server.id}`
+      ...spec.mcpServers.map((server) =>
+        t('layout.workspace-bundle-approve-local-mcp-item', {
+          name: server.id,
+          defaultValue: 'Approve local MCP start: {{name}}',
+        })
       ),
       ...spec.skills
         .filter((skill) => skill.ref.startsWith('bundle://'))
-        .map((skill) => `Approve bundled skill code: ${skill.ref}`),
+        .map((skill) =>
+          t('layout.workspace-bundle-approve-skill-code-item', {
+            name: skill.ref,
+            defaultValue: 'Approve bundled skill code: {{name}}',
+          })
+        ),
     ];
-  }, [review]);
+  }, [review, t]);
 
   const loadReview = useCallback(
     async (rawHandle: string) => {
       const parsed = parseWorkspaceBundleHandle(rawHandle);
       if (!parsed) {
-        setError('Use a published handle such as @user-7/my-workspace@1.');
+        setError(
+          t('layout.workspace-bundle-use-published-handle', {
+            defaultValue:
+              'Use a published handle such as @user-7/my-workspace@1.',
+          })
+        );
         setRetryMode(null);
         return;
       }
@@ -656,34 +840,37 @@ export function WorkspaceBundleInstallWizard({
         onProposalChange?.(null, parsed.coordinate);
         setRetryMode(null);
       } catch (nextError) {
-        setError(errorMessage(nextError));
+        setError(errorMessage(nextError, installationErrorFallback));
         setRetryMode('review');
       } finally {
         setBusyKey(null);
       }
     },
-    [actorId, onProposalChange]
+    [actorId, installationErrorFallback, onProposalChange, t]
   );
 
-  const resumeProposal = useCallback(async (proposalId: string) => {
-    setBusyKey('resume');
-    setError(null);
-    try {
-      const next = await fetchWorkspaceBundleInstallProposal(proposalId);
-      setSnapshot(next);
-      setHandle(
-        parseWorkspaceBundleHandle(
-          next.proposal.install_plan.public_coordinate || ''
-        )
-      );
-      setRetryMode(null);
-    } catch (nextError) {
-      setError(errorMessage(nextError));
-      setRetryMode('resume');
-    } finally {
-      setBusyKey(null);
-    }
-  }, []);
+  const resumeProposal = useCallback(
+    async (proposalId: string) => {
+      setBusyKey('resume');
+      setError(null);
+      try {
+        const next = await fetchWorkspaceBundleInstallProposal(proposalId);
+        setSnapshot(next);
+        setHandle(
+          parseWorkspaceBundleHandle(
+            next.proposal.install_plan.public_coordinate || ''
+          )
+        );
+        setRetryMode(null);
+      } catch (nextError) {
+        setError(errorMessage(nextError, installationErrorFallback));
+        setRetryMode('resume');
+      } finally {
+        setBusyKey(null);
+      }
+    },
+    [installationErrorFallback]
+  );
 
   useEffect(() => {
     if (initialProposalId) {
@@ -746,7 +933,9 @@ export function WorkspaceBundleInstallWizard({
         const name =
           review.bundle?.name ||
           review.revision.manifest.metadata.name ||
-          'Imported workspace';
+          t('layout.workspace-bundle-imported-workspace', {
+            defaultValue: 'Imported workspace',
+          });
         const spaceStore = useSpaceStore.getState();
         const targetSpace = targetSpaceId
           ? spaceStore.getSpaceById(targetSpaceId)
@@ -794,7 +983,10 @@ export function WorkspaceBundleInstallWizard({
             await deleteSpaceOnServer(spaceId).catch(() => undefined);
           }
           throw new Error(
-            'Eigent could not save the recoverable installation intent.'
+            t('layout.workspace-bundle-save-intent-failed', {
+              defaultValue:
+                'Eigent could not save the recoverable installation intent.',
+            })
           );
         }
         const space = useSpaceStore.getState().getSpaceById(spaceId);
@@ -820,7 +1012,10 @@ export function WorkspaceBundleInstallWizard({
             await deleteSpaceOnServer(spaceId).catch(() => undefined);
           }
           throw new Error(
-            'Eigent could not create the local Workspace folder.'
+            t('layout.workspace-bundle-create-folder-failed', {
+              defaultValue:
+                'Eigent could not create the local Workspace folder.',
+            })
           );
         }
       }
@@ -844,7 +1039,7 @@ export function WorkspaceBundleInstallWizard({
       setSnapshot(proposed);
       setRetryMode(null);
     } catch (nextError) {
-      setError(errorMessage(nextError));
+      setError(errorMessage(nextError, installationErrorFallback));
       setRetryMode('start');
     } finally {
       setBusyKey(null);
@@ -856,9 +1051,11 @@ export function WorkspaceBundleInstallWizard({
     email,
     handle,
     installSeed,
+    installationErrorFallback,
     onProposalChange,
     review,
     targetSpaceId,
+    t,
     updateSpaceOnServer,
     userId,
   ]);
@@ -866,7 +1063,11 @@ export function WorkspaceBundleInstallWizard({
   const storeLocalValue = useCallback(
     async (item: WorkspaceBundleValueRequirement, value: string) => {
       if (!proposal || !host?.electronAPI?.workspaceSecretPut || !actorId) {
-        setError('Secure local value storage is unavailable.');
+        setError(
+          t('layout.workspace-bundle-secure-storage-unavailable', {
+            defaultValue: 'Secure local value storage is unavailable.',
+          })
+        );
         return false;
       }
       setBusyKey(item.requirement_key);
@@ -912,7 +1113,7 @@ export function WorkspaceBundleInstallWizard({
         );
         return true;
       } catch (nextError) {
-        setError(errorMessage(nextError));
+        setError(errorMessage(nextError, installationErrorFallback));
         let bindingWasCommitted = false;
         try {
           const recovered = await fetchWorkspaceBundleInstallProposal(
@@ -954,7 +1155,7 @@ export function WorkspaceBundleInstallWizard({
         setBusyKey(null);
       }
     },
-    [actorId, host, proposal]
+    [actorId, host, installationErrorFallback, proposal, t]
   );
 
   const bindPath = useCallback(
@@ -978,12 +1179,12 @@ export function WorkspaceBundleInstallWizard({
           })
         );
       } catch (nextError) {
-        setError(errorMessage(nextError));
+        setError(errorMessage(nextError, installationErrorFallback));
       } finally {
         setBusyKey(null);
       }
     },
-    [actorId, host, proposal]
+    [actorId, host, installationErrorFallback, proposal]
   );
 
   const bindConnector = useCallback(
@@ -995,7 +1196,12 @@ export function WorkspaceBundleInstallWizard({
       const connectionId =
         provider?.connection?.id || provider?.connection?.connectionName;
       if (!connectionId) {
-        setError(`Connect ${slot.connector_id} before binding this slot.`);
+        setError(
+          t('layout.workspace-bundle-connect-before-binding', {
+            name: slot.connector_id,
+            defaultValue: 'Connect {{name}} before binding this slot.',
+          })
+        );
         return;
       }
       setBusyKey(slot.slot_id);
@@ -1012,12 +1218,12 @@ export function WorkspaceBundleInstallWizard({
           })
         );
       } catch (nextError) {
-        setError(errorMessage(nextError));
+        setError(errorMessage(nextError, installationErrorFallback));
       } finally {
         setBusyKey(null);
       }
     },
-    [actorId, connectedProviders, proposal]
+    [actorId, connectedProviders, installationErrorFallback, proposal, t]
   );
 
   const approveScript = useCallback(
@@ -1035,12 +1241,12 @@ export function WorkspaceBundleInstallWizard({
           })
         );
       } catch (nextError) {
-        setError(errorMessage(nextError));
+        setError(errorMessage(nextError, installationErrorFallback));
       } finally {
         setBusyKey(null);
       }
     },
-    [actorId, proposal]
+    [actorId, installationErrorFallback, proposal]
   );
 
   const continueApproval = useCallback(async () => {
@@ -1058,12 +1264,12 @@ export function WorkspaceBundleInstallWizard({
       );
       setRetryMode(null);
     } catch (nextError) {
-      setError(errorMessage(nextError));
+      setError(errorMessage(nextError, installationErrorFallback));
       setRetryMode('resume');
     } finally {
       setBusyKey(null);
     }
-  }, [actorId, proposal]);
+  }, [actorId, installationErrorFallback, proposal]);
 
   const materialize = useCallback(async () => {
     if (!proposal || !email || !actorId) return;
@@ -1081,7 +1287,7 @@ export function WorkspaceBundleInstallWizard({
       );
       setRetryMode(null);
     } catch (nextError) {
-      const message = errorMessage(nextError);
+      const message = errorMessage(nextError, installationErrorFallback);
       setError(message);
       setRetryMode('materialize');
       try {
@@ -1094,7 +1300,7 @@ export function WorkspaceBundleInstallWizard({
     } finally {
       setBusyKey(null);
     }
-  }, [actorId, email, proposal, userId]);
+  }, [actorId, email, installationErrorFallback, proposal, userId]);
 
   const openWorkspace = () => {
     if (!proposal) return;
@@ -1130,14 +1336,23 @@ export function WorkspaceBundleInstallWizard({
     return (
       <Card className="mx-auto w-full max-w-2xl">
         <CardHeader>
-          <CardTitle>Installation cancelled</CardTitle>
+          <CardTitle>
+            {t('layout.workspace-bundle-installation-cancelled', {
+              defaultValue: 'Installation cancelled',
+            })}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-ds-text-base text-ds-ink-muted-default">
-            This durable proposal was rejected and cannot be reused.
+            {t('layout.workspace-bundle-proposal-rejected', {
+              defaultValue:
+                'This durable proposal was rejected and cannot be reused.',
+            })}
           </p>
           <Button className="mt-5" variant="secondary" onClick={resetInstall}>
-            Import another Bundle
+            {t('layout.workspace-bundle-import-another', {
+              defaultValue: 'Import another Bundle',
+            })}
           </Button>
         </CardContent>
       </Card>
@@ -1149,11 +1364,15 @@ export function WorkspaceBundleInstallWizard({
       {showHeader ? (
         <header>
           <h1 className="!text-ds-text-display font-semibold">
-            Install Workspace Bundle
+            {t('layout.workspace-bundle-install-title', {
+              defaultValue: 'Install Workspace Bundle',
+            })}
           </h1>
           <p className="mt-2 !text-ds-text-base text-ds-ink-muted-default">
-            Review what the workspace environment can access, then configure
-            required values and connections locally.
+            {t('layout.workspace-bundle-install-description', {
+              defaultValue:
+                'Review what the workspace environment can access, then configure required values and connections locally.',
+            })}
           </p>
         </header>
       ) : null}
@@ -1163,8 +1382,10 @@ export function WorkspaceBundleInstallWizard({
           <p>{error}</p>
           {retryMode === 'start' && installSeed ? (
             <p className="mt-2 text-ds-ink-muted-default">
-              The inactive Workspace draft was kept for recovery. Retry reuses
-              the same draft and does not create another Workspace.
+              {t('layout.workspace-bundle-draft-kept-for-recovery', {
+                defaultValue:
+                  'The inactive Workspace draft was kept for recovery. Retry reuses the same draft and does not create another Workspace.',
+              })}
             </p>
           ) : null}
           {retryMode ? (
@@ -1175,7 +1396,8 @@ export function WorkspaceBundleInstallWizard({
               className="mt-3"
               onClick={retry}
             >
-              <RefreshCw className="h-4 w-4" aria-hidden /> Retry
+              <RefreshCw className="h-4 w-4" aria-hidden />{' '}
+              {t('layout.retry', { defaultValue: 'Retry' })}
             </Button>
           ) : null}
         </div>
@@ -1190,7 +1412,11 @@ export function WorkspaceBundleInstallWizard({
           }
         >
           <CardHeader className={showHeader ? undefined : '!p-0'}>
-            <CardTitle>Import by share handle</CardTitle>
+            <CardTitle>
+              {t('layout.workspace-bundle-import-by-handle', {
+                defaultValue: 'Import by share handle',
+              })}
+            </CardTitle>
           </CardHeader>
           <CardContent className={showHeader ? undefined : '!p-0'}>
             <form
@@ -1204,13 +1430,15 @@ export function WorkspaceBundleInstallWizard({
                 value={handleInput}
                 onChange={(event) => setHandleInput(event.target.value)}
                 placeholder="@verified-publisher/research-workspace@1"
-                aria-label="Workspace Bundle share handle"
+                aria-label={t('layout.workspace-bundle-share-handle', {
+                  defaultValue: 'Workspace Bundle share handle',
+                })}
               />
               <Button type="submit" disabled={busyKey === 'review'}>
                 {busyKey === 'review' ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  'Review'
+                  t('layout.review', { defaultValue: 'Review' })
                 )}
               </Button>
             </form>
@@ -1231,40 +1459,68 @@ export function WorkspaceBundleInstallWizard({
           <CardContent className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl bg-ds-neutral-subtle-default p-3 text-ds-text-base">
-                <strong>Permission profile</strong>
+                <strong>
+                  {t('layout.workspace-bundle-approval-mode', {
+                    defaultValue: 'Approval mode',
+                  })}
+                </strong>
                 <p className="mt-1">
                   {review.revision.manifest.spec.permissions.profile}
                 </p>
               </div>
               <div className="rounded-xl bg-ds-neutral-subtle-default p-3 text-ds-text-base">
-                <strong>Assets</strong>
+                <strong>
+                  {t('layout.workspace-bundle-assets', {
+                    defaultValue: 'Assets',
+                  })}
+                </strong>
                 <p className="mt-1">
-                  {review.revision.assets.length} verified files
+                  {t('layout.workspace-bundle-verified-file-count', {
+                    count: review.revision.assets.length,
+                    defaultValue_one: '{{count}} verified file',
+                    defaultValue_other: '{{count}} verified files',
+                  })}
                 </p>
               </div>
               <div className="rounded-xl bg-ds-neutral-subtle-default p-3 text-ds-text-base">
-                <strong>Connectors</strong>
+                <strong>
+                  {t('setting.connectors', { defaultValue: 'Connectors' })}
+                </strong>
                 <p className="mt-1">
-                  {review.revision.manifest.spec.connectors.length} requested
+                  {t('layout.workspace-bundle-requested-count', {
+                    count: review.revision.manifest.spec.connectors.length,
+                    defaultValue_one: '{{count}} requested',
+                    defaultValue_other: '{{count}} requested',
+                  })}
                 </p>
               </div>
               <div className="rounded-xl bg-ds-neutral-subtle-default p-3 text-ds-text-base">
-                <strong>Local requirements</strong>
+                <strong>
+                  {t('layout.workspace-bundle-local-requirements', {
+                    defaultValue: 'Local requirements',
+                  })}
+                </strong>
                 <p className="mt-1">
-                  {(review.revision.manifest.spec.environment?.variables
-                    .length || 0) +
-                    review.revision.manifest.spec.mcpServers.reduce(
-                      (total, item) => total + item.secretSlots.length,
-                      0
-                    )}{' '}
-                  values
+                  {t('layout.workspace-bundle-value-count', {
+                    count:
+                      (review.revision.manifest.spec.environment?.variables
+                        .length || 0) +
+                      review.revision.manifest.spec.mcpServers.reduce(
+                        (total, item) => total + item.secretSlots.length,
+                        0
+                      ),
+                    defaultValue_one: '{{count}} value',
+                    defaultValue_other: '{{count}} values',
+                  })}
                 </p>
               </div>
             </div>
             {reviewedSetup.length > 0 ? (
               <section className="rounded-xl border border-x border-y border-ds-hairline-subtle-default p-3">
                 <p className="text-ds-text-base font-semibold">
-                  Required local setup and actions
+                  {t('layout.workspace-bundle-required-setup', {
+                    defaultValue: 'Required local setup and actions',
+                  })}
                 </p>
                 <ul className="mt-2 list-inside list-disc space-y-1 text-ds-text-meta text-ds-ink-muted-default">
                   {reviewedSetup.map((item) => (
@@ -1282,15 +1538,22 @@ export function WorkspaceBundleInstallWizard({
                   {connector.connector}
                 </p>
                 <p className="mt-1 text-ds-text-meta text-ds-ink-muted-default">
-                  Grants:{' '}
-                  {connector.requiredGrants.join(', ') ||
-                    'No additional grants declared'}
+                  {t('layout.workspace-bundle-grants', {
+                    names:
+                      connector.requiredGrants.join(', ') ||
+                      t('layout.workspace-bundle-no-additional-grants', {
+                        defaultValue: 'No additional grants declared',
+                      }),
+                    defaultValue: 'Grants: {{names}}',
+                  })}
                 </p>
               </div>
             ))}
             <details className="rounded-xl border border-x border-y border-ds-hairline-subtle-default p-3">
               <summary className="cursor-pointer text-ds-text-base font-semibold">
-                Inspect manifest and verified assets
+                {t('layout.workspace-bundle-inspect-manifest', {
+                  defaultValue: 'Inspect manifest and verified assets',
+                })}
               </summary>
               <div className="mt-3 space-y-3 text-ds-text-meta">
                 <p className="font-mono break-all text-ds-ink-muted-default">
@@ -1312,7 +1575,9 @@ export function WorkspaceBundleInstallWizard({
                   </ul>
                 ) : (
                   <p className="text-ds-ink-muted-default">
-                    No packaged assets.
+                    {t('layout.workspace-bundle-no-packaged-assets', {
+                      defaultValue: 'No packaged assets.',
+                    })}
                   </p>
                 )}
                 <pre className="max-h-72 overflow-auto rounded-lg bg-ds-neutral-subtle-default p-3 font-mono break-words whitespace-pre-wrap">
@@ -1322,12 +1587,16 @@ export function WorkspaceBundleInstallWizard({
             </details>
             <div className="rounded-xl border border-x border-y border-ds-border-success-default-default bg-ds-bg-success-subtle-default p-3 text-ds-text-base">
               <p className="flex items-center gap-2 font-semibold">
-                <ShieldCheck className="h-4 w-4" aria-hidden /> Secrets are not
-                part of this Bundle
+                <ShieldCheck className="h-4 w-4" aria-hidden />{' '}
+                {t('layout.workspace-bundle-secrets-excluded', {
+                  defaultValue: 'Secrets are not part of this Bundle',
+                })}
               </p>
               <p className="mt-1 text-ds-text-meta text-ds-ink-muted-default">
-                Required values are collected only after approval and stored
-                using the operating system encryption service.
+                {t('layout.workspace-bundle-secrets-excluded-description', {
+                  defaultValue:
+                    'Required values are collected only after approval and stored using the operating system encryption service.',
+                })}
               </p>
             </div>
             <Button
@@ -1337,7 +1606,9 @@ export function WorkspaceBundleInstallWizard({
               {busyKey === 'start' ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                'Confirm and create Workspace'
+                t('layout.workspace-bundle-confirm-create', {
+                  defaultValue: 'Confirm and create Workspace',
+                })
               )}
             </Button>
           </CardContent>
@@ -1349,20 +1620,28 @@ export function WorkspaceBundleInstallWizard({
           {proposal.state === 'materialized' ? (
             <Card>
               <CardHeader>
-                <CardTitle>Workspace files installed</CardTitle>
+                <CardTitle>
+                  {t('layout.workspace-bundle-files-installed', {
+                    defaultValue: 'Workspace files installed',
+                  })}
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-ds-text-base text-ds-ink-muted-default">
-                  {proposal.revision_id} is installed. Local bindings are
-                  encrypted on this device and can be repaired or replaced
-                  below. They are not exposed globally to unrelated tools.
+                  {t('layout.workspace-bundle-installed-description', {
+                    name: proposal.revision_id,
+                    defaultValue:
+                      '{{name}} is installed. Local bindings are encrypted on this device and can be repaired or replaced below. They are not exposed globally to unrelated tools.',
+                  })}
                 </p>
                 <RuntimeReadinessStatus
                   status={snapshot.runtime_readiness}
                   issues={snapshot.runtime_readiness_issues}
                 />
                 <Button className="mt-4" onClick={openWorkspace}>
-                  Open Workspace
+                  {t('layout.workspace-bundle-open-workspace', {
+                    defaultValue: 'Open Workspace',
+                  })}
                 </Button>
               </CardContent>
             </Card>
@@ -1370,40 +1649,70 @@ export function WorkspaceBundleInstallWizard({
           {proposal.state === 'proposed' ? (
             <Card>
               <CardHeader>
-                <CardTitle>Review and approve this installation</CardTitle>
+                <CardTitle>
+                  {t('layout.workspace-bundle-review-installation', {
+                    defaultValue: 'Review and approve this installation',
+                  })}
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-ds-text-base text-ds-ink-muted-default">
-                  The proposal is saved, but nothing has been approved or
-                  materialized yet. Review every local capability before
-                  continuing.
+                  {t(
+                    'layout.workspace-bundle-review-installation-description',
+                    {
+                      defaultValue:
+                        'The proposal is saved, but nothing has been approved or materialized yet. Review every local capability before continuing.',
+                    }
+                  )}
                 </p>
                 <div className="rounded-xl border border-x border-y border-ds-hairline-subtle-default p-3 text-ds-text-base">
                   <p>
-                    Permission profile:{' '}
+                    {t('layout.workspace-bundle-approval-mode-label', {
+                      defaultValue: 'Approval mode:',
+                    })}{' '}
                     <span className="font-mono">
                       {proposal.install_plan.permission_profile}
                     </span>
                   </p>
                   <p>
-                    Assets: {proposal.install_plan.asset_count} ·{' '}
-                    {proposal.install_plan.asset_bytes} bytes
+                    {t('layout.workspace-bundle-assets-summary', {
+                      count: proposal.install_plan.asset_count,
+                      bytes: proposal.install_plan.asset_bytes,
+                      defaultValue_one: '{{count}} asset · {{bytes}} bytes',
+                      defaultValue_other: '{{count}} assets · {{bytes}} bytes',
+                    })}
                   </p>
                   {proposal.install_plan.connector_slots.map((slot) => (
                     <p key={slot.slot_id}>
-                      Connector {slot.connector_id}: grants{' '}
-                      {slot.required_grants.join(', ') || 'none'}
+                      {t('layout.workspace-bundle-connector-grants', {
+                        connector: slot.connector_id,
+                        grants:
+                          slot.required_grants.join(', ') ||
+                          t('layout.none-lowercase', {
+                            defaultValue: 'none',
+                          }),
+                        defaultValue:
+                          'Connector {{connector}}: grants {{grants}}',
+                      })}
                     </p>
                   ))}
                   {proposal.install_plan.local_path_slots.map((slotId) => (
-                    <p key={slotId}>Local folder access: {slotId}</p>
+                    <p key={slotId}>
+                      {t('layout.workspace-bundle-local-folder-access-item', {
+                        name: slotId,
+                        defaultValue: 'Local folder access: {{name}}',
+                      })}
+                    </p>
                   ))}
                   {proposal.install_plan.script_actions.map((actionId) => (
                     <p
                       key={actionId}
                       className="text-ds-text-warning-default-default"
                     >
-                      Executable action: {actionId}
+                      {t('layout.workspace-bundle-executable-action-item', {
+                        name: actionId,
+                        defaultValue: 'Executable action: {{name}}',
+                      })}
                     </p>
                   ))}
                   {(proposal.install_plan.mcp_destinations || []).map(
@@ -1413,7 +1722,10 @@ export function WorkspaceBundleInstallWizard({
                         className="mt-2 rounded-lg bg-ds-neutral-subtle-default p-2"
                       >
                         <p className="font-semibold">
-                          MCP: {destination.mcp_id}
+                          {t('layout.workspace-bundle-mcp-item', {
+                            name: destination.mcp_id,
+                            defaultValue: 'MCP: {{name}}',
+                          })}
                         </p>
                         {destination.executable_command ? (
                           <p className="font-mono break-all">
@@ -1437,7 +1749,9 @@ export function WorkspaceBundleInstallWizard({
                   {busyKey === 'approval' ? (
                     <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                   ) : null}
-                  Approve installation
+                  {t('layout.workspace-bundle-approve-installation', {
+                    defaultValue: 'Approve installation',
+                  })}
                 </Button>
               </CardContent>
             </Card>
@@ -1445,12 +1759,18 @@ export function WorkspaceBundleInstallWizard({
           {proposal.state === 'materializing' ? (
             <Card>
               <CardHeader>
-                <CardTitle>Checking installation progress</CardTitle>
+                <CardTitle>
+                  {t('layout.workspace-bundle-checking-progress', {
+                    defaultValue: 'Checking installation progress',
+                  })}
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-ds-text-base text-ds-ink-muted-default">
-                  The previous materialization was interrupted. Refresh the
-                  durable proposal before retrying.
+                  {t('layout.workspace-bundle-materialization-interrupted', {
+                    defaultValue:
+                      'The previous materialization was interrupted. Refresh the durable proposal before retrying.',
+                  })}
                 </p>
                 <Button
                   className="mt-4"
@@ -1458,7 +1778,8 @@ export function WorkspaceBundleInstallWizard({
                   onClick={() => void resumeProposal(proposal.proposal_id)}
                   disabled={busyKey === 'resume'}
                 >
-                  <RefreshCw className="h-4 w-4" aria-hidden /> Refresh
+                  <RefreshCw className="h-4 w-4" aria-hidden />{' '}
+                  {t('layout.refresh', { defaultValue: 'Refresh' })}
                 </Button>
               </CardContent>
             </Card>
@@ -1469,12 +1790,18 @@ export function WorkspaceBundleInstallWizard({
             <>
               <Card>
                 <CardHeader>
-                  <CardTitle>1. Local values</CardTitle>
+                  <CardTitle>
+                    {t('layout.workspace-bundle-step-local-values', {
+                      defaultValue: '1. Local values',
+                    })}
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {snapshot.value_requirements.length === 0 ? (
                     <p className="text-ds-text-base text-ds-ink-muted-default">
-                      No local values required.
+                      {t('layout.workspace-bundle-no-local-values', {
+                        defaultValue: 'No local values required.',
+                      })}
                     </p>
                   ) : (
                     snapshot.value_requirements.map((item) => (
@@ -1491,7 +1818,11 @@ export function WorkspaceBundleInstallWizard({
 
               <Card>
                 <CardHeader>
-                  <CardTitle>2. Local folders and connections</CardTitle>
+                  <CardTitle>
+                    {t('layout.workspace-bundle-step-folders-connections', {
+                      defaultValue: '2. Local folders and connections',
+                    })}
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {proposal.install_plan.local_path_slots.map((slotId) => (
@@ -1502,7 +1833,9 @@ export function WorkspaceBundleInstallWizard({
                       <div>
                         <p className="font-mono text-ds-text-base">{slotId}</p>
                         <p className="text-ds-text-meta text-ds-ink-muted-default">
-                          Local folder access
+                          {t('layout.workspace-bundle-local-folder-access', {
+                            defaultValue: 'Local folder access',
+                          })}
                         </p>
                       </div>
                       <Button
@@ -1513,8 +1846,12 @@ export function WorkspaceBundleInstallWizard({
                       >
                         <FolderOpen className="h-4 w-4" />
                         {configuredSlots.has(slotId)
-                          ? 'Change folder'
-                          : 'Choose folder'}
+                          ? t('layout.workspace-bundle-change-folder', {
+                              defaultValue: 'Change folder',
+                            })
+                          : t('layout.workspace-bundle-choose-folder', {
+                              defaultValue: 'Choose folder',
+                            })}
                       </Button>
                     </div>
                   ))}
@@ -1541,8 +1878,12 @@ export function WorkspaceBundleInstallWizard({
                                 : slot.connector_id}
                             </p>
                             <p className="text-ds-text-meta text-ds-ink-muted-default">
-                              Grants:{' '}
-                              {slot.required_grants.join(', ') || 'None'}
+                              {t('layout.workspace-bundle-grants', {
+                                names:
+                                  slot.required_grants.join(', ') ||
+                                  t('layout.none', { defaultValue: 'None' }),
+                                defaultValue: 'Grants: {{names}}',
+                              })}
                             </p>
                           </div>
                           {connected ? (
@@ -1552,8 +1893,13 @@ export function WorkspaceBundleInstallWizard({
                               disabled={busyKey === slot.slot_id}
                             >
                               {configuredSlots.has(slot.slot_id)
-                                ? 'Rebind connection'
-                                : 'Use connection'}
+                                ? t(
+                                    'layout.workspace-bundle-rebind-connection',
+                                    { defaultValue: 'Rebind connection' }
+                                  )
+                                : t('layout.workspace-bundle-use-connection', {
+                                    defaultValue: 'Use connection',
+                                  })}
                             </Button>
                           ) : (
                             <Button
@@ -1561,7 +1907,10 @@ export function WorkspaceBundleInstallWizard({
                               variant="secondary"
                               onClick={() => openSettings('connectors')}
                             >
-                              <ExternalLink className="h-4 w-4" /> Connect
+                              <ExternalLink className="h-4 w-4" />{' '}
+                              {t('setting.connect', {
+                                defaultValue: 'Connect',
+                              })}
                             </Button>
                           )}
                         </div>
@@ -1571,7 +1920,10 @@ export function WorkspaceBundleInstallWizard({
                   {proposal.install_plan.local_path_slots.length === 0 &&
                   proposal.install_plan.connector_slots.length === 0 ? (
                     <p className="text-ds-text-base text-ds-ink-muted-default">
-                      No folder or connector binding required.
+                      {t('layout.workspace-bundle-no-folder-connector', {
+                        defaultValue:
+                          'No folder or connector binding required.',
+                      })}
                     </p>
                   ) : null}
                 </CardContent>
@@ -1579,7 +1931,11 @@ export function WorkspaceBundleInstallWizard({
 
               <Card>
                 <CardHeader>
-                  <CardTitle>3. Actions and readiness</CardTitle>
+                  <CardTitle>
+                    {t('layout.workspace-bundle-step-actions-readiness', {
+                      defaultValue: '3. Actions and readiness',
+                    })}
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {mcpDestinations.map((destination) => {
@@ -1622,7 +1978,10 @@ export function WorkspaceBundleInstallWizard({
                             {actionId}
                           </p>
                           <p className="text-ds-text-meta text-ds-ink-muted-default">
-                            This action may execute local code.
+                            {t('layout.workspace-bundle-action-may-execute', {
+                              defaultValue:
+                                'This action may execute local code.',
+                            })}
                           </p>
                         </div>
                         {configuredSlots.has(actionId) ? (
@@ -1634,14 +1993,18 @@ export function WorkspaceBundleInstallWizard({
                             onClick={() => void approveScript(actionId)}
                             disabled={busyKey === actionId}
                           >
-                            Approve
+                            {t('layout.approve', { defaultValue: 'Approve' })}
                           </Button>
                         )}
                       </div>
                     ))}
                   {!snapshot.readiness.ready ? (
                     <div className="rounded-xl bg-ds-neutral-subtle-default p-3 text-ds-text-base">
-                      <p className="font-semibold">Still required</p>
+                      <p className="font-semibold">
+                        {t('layout.workspace-bundle-still-required', {
+                          defaultValue: 'Still required',
+                        })}
+                      </p>
                       <ul className="mt-1 list-inside list-disc text-ds-text-meta text-ds-ink-muted-default">
                         {snapshot.readiness.missing_requirements.map((item) => (
                           <li key={item}>{item}</li>
@@ -1650,15 +2013,18 @@ export function WorkspaceBundleInstallWizard({
                     </div>
                   ) : (
                     <div className="rounded-xl bg-ds-bg-success-subtle-default p-3 text-ds-text-base text-ds-text-success-default-default">
-                      All declared local bindings are currently available.
+                      {t('layout.workspace-bundle-bindings-available', {
+                        defaultValue:
+                          'All declared local bindings are currently available.',
+                      })}
                     </div>
                   )}
                   {proposal.state === 'materialized' ? (
                     <p className="text-ds-text-meta text-ds-ink-muted-default">
-                      Changes on this screen are saved immediately. Runtime
-                      access is consumer-specific; this installation step does
-                      not inject values into the global process environment or
-                      unrelated tools.
+                      {t('layout.workspace-bundle-changes-saved-description', {
+                        defaultValue:
+                          'Changes on this screen are saved immediately. Runtime access is consumer-specific; this installation step does not inject values into the global process environment or unrelated tools.',
+                      })}
                     </p>
                   ) : (
                     <Button
@@ -1673,8 +2039,13 @@ export function WorkspaceBundleInstallWizard({
                         <KeyRound className="h-4 w-4" />
                       )}
                       {proposal.error_code === 'bundle_reconfiguration_pending'
-                        ? 'Sync local changes to Cloud'
-                        : 'Install Workspace files and configuration'}
+                        ? t('layout.workspace-bundle-sync-local-changes', {
+                            defaultValue: 'Sync local changes to Cloud',
+                          })
+                        : t('layout.workspace-bundle-install-files-action', {
+                            defaultValue:
+                              'Install Workspace files and configuration',
+                          })}
                     </Button>
                   )}
                 </CardContent>

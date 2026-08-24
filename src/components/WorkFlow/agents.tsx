@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import i18n from '@/i18n';
 import { Bird, Bot, CodeXml, FileText, Globe, Image } from 'lucide-react';
 import type { ReactNode } from 'react';
 
@@ -146,7 +147,11 @@ export const SKILL_SCOPE_AGENT_LIST: {
   {
     id: SINGLE_AGENT_ID,
     // Product label (layout.workspace-session-single-agent). Value stays `single_agent`.
-    name: 'Single Agent',
+    get name() {
+      return i18n.t('layout.workspace-session-single-agent', {
+        defaultValue: 'Single Agent',
+      });
+    },
     icon: <Bot size={16} className="text-ds-ink-default-default" />,
   },
   ...WORKFLOW_AGENT_LIST,
@@ -198,14 +203,21 @@ export function buildSkillScopeAgentOptions(
     seen.add(value);
     const label =
       value === SINGLE_AGENT_ID
-        ? 'Single Agent'
+        ? i18n.t('layout.workspace-session-single-agent', {
+            defaultValue: 'Single Agent',
+          })
         : String(worker.name || value).trim() || value;
     combined.push({ value, label });
   }
 
   // Last-resort: if somehow dropped, prepend Single Agent.
   if (!combined.some((agent) => agent.value === SINGLE_AGENT_ID)) {
-    combined.unshift({ value: SINGLE_AGENT_ID, label: 'Single Agent' });
+    combined.unshift({
+      value: SINGLE_AGENT_ID,
+      label: i18n.t('layout.workspace-session-single-agent', {
+        defaultValue: 'Single Agent',
+      }),
+    });
   } else if (combined[0]?.value !== SINGLE_AGENT_ID) {
     const single = combined.find((agent) => agent.value === SINGLE_AGENT_ID)!;
     combined.splice(combined.indexOf(single), 1);

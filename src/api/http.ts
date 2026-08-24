@@ -25,6 +25,7 @@ import {
   EventSourceMessage,
   fetchEventSource,
 } from '@microsoft/fetch-event-source';
+import i18next from 'i18next';
 
 const defaultHeaders = {
   'Content-Type': 'application/json',
@@ -599,12 +600,19 @@ export async function checkLocalServerStale(): Promise<void> {
 
     if (staleReason) {
       const { toast } = await import('sonner');
-      toast.warning('Server code has been updated', {
-        description:
-          'Server is outdated. Please restart it or rebuild: docker-compose up --build -d',
-        duration: Infinity,
-        closeButton: true,
-      });
+      toast.warning(
+        i18next.t('layout.server-code-updated', {
+          defaultValue: 'Server code has been updated',
+        }),
+        {
+          description: i18next.t('layout.server-outdated-description', {
+            defaultValue:
+              'The server is outdated. Restart it or rebuild it: docker-compose up --build -d',
+          }),
+          duration: Infinity,
+          closeButton: true,
+        }
+      );
       console.warn(`[Server Check] ${staleReason}. Please restart the server.`);
     }
   } catch {

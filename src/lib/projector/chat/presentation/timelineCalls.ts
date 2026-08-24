@@ -18,6 +18,7 @@ import type {
   ChatInteractionNode,
 } from '../types';
 
+import i18next from 'i18next';
 import type { TimelineToolInvocation, TimelineTraceRow } from './types';
 
 /**
@@ -92,13 +93,33 @@ export function interactionFamily(
   return 'ask';
 }
 
-const FAMILY_LABELS: Readonly<
-  Record<TimelineInteractionFamily, { input: string; output: string }>
-> = Object.freeze({
-  ask: { input: 'Question', output: 'Answer' },
-  authorize: { input: 'Requested', output: 'Decision' },
-  choose: { input: 'Options', output: 'Selected' },
-});
+function familyLabels(family: TimelineInteractionFamily): {
+  input: string;
+  output: string;
+} {
+  if (family === 'authorize') {
+    return {
+      input: i18next.t('chat.timeline-requested', {
+        defaultValue: 'Requested',
+      }),
+      output: i18next.t('chat.timeline-decision', {
+        defaultValue: 'Decision',
+      }),
+    };
+  }
+  if (family === 'choose') {
+    return {
+      input: i18next.t('chat.timeline-options', { defaultValue: 'Options' }),
+      output: i18next.t('chat.timeline-selected', {
+        defaultValue: 'Selected',
+      }),
+    };
+  }
+  return {
+    input: i18next.t('chat.timeline-question', { defaultValue: 'Question' }),
+    output: i18next.t('chat.timeline-answer', { defaultValue: 'Answer' }),
+  };
+}
 
 /**
  * Map an interaction lifecycle onto the activity status vocabulary so one row
@@ -123,18 +144,36 @@ function isRejectedDecision(response: string | undefined): boolean {
  * grows with an arbitrary-length backend question.
  */
 export function humanCallTitle(node: ChatInteractionNode): string {
-  if (node.status === 'requested') return 'Input required';
-  if (node.status === 'cancelled') return 'Input cancelled';
-  if (node.status === 'expired') return 'Input expired';
+  if (node.status === 'requested')
+    return i18next.t('chat.timeline-input-required', {
+      defaultValue: 'Input required',
+    });
+  if (node.status === 'cancelled')
+    return i18next.t('chat.timeline-input-cancelled', {
+      defaultValue: 'Input cancelled',
+    });
+  if (node.status === 'expired')
+    return i18next.t('chat.timeline-input-expired', {
+      defaultValue: 'Input expired',
+    });
 
   const family = interactionFamily(node.interactionType);
   if (family === 'authorize') {
     return isRejectedDecision(node.response)
-      ? 'You · Rejected'
-      : 'You · Allowed';
+      ? i18next.t('chat.timeline-you-rejected', {
+          defaultValue: 'You · Rejected',
+        })
+      : i18next.t('chat.timeline-you-allowed', {
+          defaultValue: 'You · Allowed',
+        });
   }
-  if (family === 'choose') return 'You · Selected';
-  return 'You · Answered';
+  if (family === 'choose')
+    return i18next.t('chat.timeline-you-selected', {
+      defaultValue: 'You · Selected',
+    });
+  return i18next.t('chat.timeline-you-answered', {
+    defaultValue: 'You · Answered',
+  });
 }
 
 function toolCall(invocation: TimelineToolInvocation): TimelineCall {
@@ -147,8 +186,12 @@ function toolCall(invocation: TimelineToolInvocation): TimelineCall {
     input: invocation.input,
     output: invocation.output,
     detail: invocation.detail,
-    inputLabel: 'Request',
-    outputLabel: 'Response',
+    inputLabel: i18next.t('chat.timeline-request', {
+      defaultValue: 'Request',
+    }),
+    outputLabel: i18next.t('chat.timeline-response', {
+      defaultValue: 'Response',
+    }),
     durationMs: invocation.durationMs,
     agentId: invocation.agentId,
     agentName: invocation.agentName,
@@ -162,7 +205,7 @@ function toolCall(invocation: TimelineToolInvocation): TimelineCall {
 
 function humanCall(id: string, node: ChatInteractionNode): TimelineCall {
   const family = interactionFamily(node.interactionType);
-  const labels = FAMILY_LABELS[family];
+  const labels = familyLabels(family);
   const pending = node.status === 'requested';
 
   return {
@@ -176,8 +219,12 @@ function humanCall(id: string, node: ChatInteractionNode): TimelineCall {
     inputLabel: labels.input,
     outputLabel: labels.output,
     emptyOutputText: pending
-      ? 'Waiting for your response.'
-      : 'No response was recorded for this request.',
+      ? i18next.t('chat.timeline-waiting-response', {
+          defaultValue: 'Waiting for your response.',
+        })
+      : i18next.t('chat.timeline-no-response', {
+          defaultValue: 'No response was recorded for this request.',
+        }),
     agentName: node.agentName,
     stepId: node.stepId,
     interactionId: node.interactionId,
@@ -200,8 +247,12 @@ function activityCall(id: string, node: ChatActivityNode): TimelineCall {
     input: node.input,
     output: node.output || node.detail,
     detail: node.detail,
-    inputLabel: 'Request',
-    outputLabel: 'Response',
+    inputLabel: i18next.t('chat.timeline-request', {
+      defaultValue: 'Request',
+    }),
+    outputLabel: i18next.t('chat.timeline-response', {
+      defaultValue: 'Response',
+    }),
     durationMs: node.durationMs,
     agentId: node.agentId,
     agentName: node.agentName,

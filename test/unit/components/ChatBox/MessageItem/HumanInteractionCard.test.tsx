@@ -175,7 +175,7 @@ describe('HumanInteractionCard', () => {
     render(<HumanInteractionCard interaction={toolInteraction} />);
 
     expect(
-      screen.queryByRole('button', { name: 'Allow for this Run' })
+      screen.queryByRole('button', { name: 'Allow for this task' })
     ).not.toBeInTheDocument();
     expect(screen.getByText(/mcp\.tool\.write/)).toBeInTheDocument();
     expect(
@@ -226,7 +226,7 @@ describe('HumanInteractionCard', () => {
     render(<HumanInteractionCard interaction={approvalInteraction} />);
 
     expect(
-      screen.queryByRole('button', { name: 'Allow for this Run' })
+      screen.queryByRole('button', { name: 'Allow for this task' })
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Always allow in Space' })

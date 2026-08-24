@@ -332,7 +332,10 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         // Add activity log
         addLog({
           type: ActivityType.TriggerUpdated,
-          message: `Automation "${response.name}" updated`,
+          message: t('triggers.activity-updated', {
+            name: response.name,
+            defaultValue: 'Automation "{{name}}" updated',
+          }),
           projectId: activeProjectId || undefined,
           triggerId: response.id,
           triggerName: response.name,
@@ -381,7 +384,10 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
         // Add activity log
         addLog({
           type: ActivityType.TriggerCreated,
-          message: `Automation "${response.name}" created`,
+          message: t('triggers.activity-created', {
+            name: response.name,
+            defaultValue: 'Automation "{{name}}" created',
+          }),
           projectId: activeProjectId || undefined,
           triggerId: response.id,
           triggerName: response.name,
@@ -566,7 +572,9 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                         variant="secondary"
                         className="absolute top-2 right-2 text-xs"
                       >
-                        Coming Soon
+                        {t('layout.coming-soon-label', {
+                          defaultValue: 'Coming soon',
+                        })}
                       </Badge>
                       <img src={larkIcon} alt="Lark" className="h-8 w-8" />
                       <span className="text-ds-text-body-large font-semibold text-ds-ink-default-default">
@@ -578,7 +586,9 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                         variant="secondary"
                         className="absolute top-2 right-2 text-xs"
                       >
-                        Coming Soon
+                        {t('layout.coming-soon-label', {
+                          defaultValue: 'Coming soon',
+                        })}
                       </Badge>
                       <img
                         src={telegramIcon}
@@ -671,7 +681,9 @@ export const TriggerDialog: React.FC<TriggerDialogProps> = ({
                         >
                           <SelectTrigger>
                             <SelectValue
-                              placeholder={t('triggers.select-method')}
+                              placeholder={t('triggers.select-method', {
+                                defaultValue: 'Select method',
+                              })}
                             />
                           </SelectTrigger>
                           <SelectContent>

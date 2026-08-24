@@ -118,7 +118,7 @@ describe('chat projection presentation contract', () => {
       kind: 'display',
       node: {
         kind: 'notice',
-        title: 'Waiting for workspace',
+        title: 'Waiting for Space',
         content: expect.stringContaining('Queue position: 2.'),
       },
     });
@@ -150,7 +150,7 @@ describe('chat projection presentation contract', () => {
       kind: 'display',
       node: {
         kind: 'notice',
-        title: 'Workspace available',
+        title: 'Space available',
       },
     });
   });

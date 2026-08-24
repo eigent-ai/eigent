@@ -95,7 +95,11 @@ export function BrowserTab({
           await element.loadURL(normalized.url);
         } catch (error) {
           setAddressError(
-            error instanceof Error ? error.message : 'Unable to open this URL'
+            error instanceof Error
+              ? error.message
+              : t('layout.browser-unable-to-open-url', {
+                  defaultValue: 'Unable to open this URL',
+                })
           );
         }
         return;
@@ -103,7 +107,7 @@ export function BrowserTab({
       // No guest yet (blank tab): setting the URL mounts one in the layer.
       updateBrowserPreviewTab(tab.id, { url: normalized.url });
     },
-    [isDesktop, tab.id, tab.webviewId, updateBrowserPreviewTab]
+    [isDesktop, t, tab.id, tab.webviewId, updateBrowserPreviewTab]
   );
 
   const electronAPI = host?.electronAPI;
@@ -119,14 +123,19 @@ export function BrowserTab({
       if (isDesktop && electronAPI?.openExternal) {
         const result = await electronAPI.openExternal(normalized.url);
         if (result && result.success === false) {
-          setAddressError(result.error || 'Unable to open this URL');
+          setAddressError(
+            result.error ||
+              t('layout.browser-unable-to-open-url', {
+                defaultValue: 'Unable to open this URL',
+              })
+          );
         }
         return;
       }
 
       window.open(normalized.url, '_blank', 'noopener,noreferrer');
     },
-    [electronAPI, isDesktop]
+    [electronAPI, isDesktop, t]
   );
 
   // Publish this container's rect so the layer can position the guest over it.

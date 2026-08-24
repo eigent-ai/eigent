@@ -10,7 +10,7 @@
   "delete": "刪除",
   "grid": "網格",
   "table": "表格",
-  "list": "列表",
+  "list": "清單",
   "board": "看板",
   "search-dialog": "搜尋對話框",
   "search-dialog-placeholder": "搜尋或提問",
@@ -25,5 +25,8 @@
   "multi-modal-agent": "多模態智能體",
   "social-media-agent": "社群媒體智能體",
   "no-projects-found": "找不到工作階段",
-  "no-tasks-found": "找不到任務。"
+  "no-tasks-found": "找不到任務。",
+  "command-search-placeholder": "輸入命令或搜尋…",
+  "more-integrations": "更多集成",
+  "today": "今天"
 }

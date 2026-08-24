@@ -143,6 +143,7 @@ describe('Memory scope directory', () => {
 
     expect(await screen.findByText('1 Session with Memory')).toBeVisible();
     expect(screen.getByText('3 saved notes total')).toBeVisible();
+    expect(screen.getByPlaceholderText('Search Sessions')).toBeVisible();
 
     const rows = document.querySelectorAll('article');
     expect(rows).toHaveLength(2);

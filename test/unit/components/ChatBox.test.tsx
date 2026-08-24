@@ -143,7 +143,7 @@ vi.mock('react-i18next', () => ({
     init: () => {},
   },
   useTranslation: () => ({
-    t: (key: string) => {
+    t: (key: string, options: Record<string, unknown> = {}) => {
       const translations: Record<string, string> = {
         'chat.ask-placeholder': 'Type your message...',
         'chat.attachment-only-message': 'Please use the attached file(s).',
@@ -152,7 +152,7 @@ vi.mock('react-i18next', () => ({
         'layout.and': 'and',
         'layout.privacy-policy': 'Privacy Policy',
       };
-      return translations[key] || key;
+      return translations[key] || String(options.defaultValue ?? key);
     },
   }),
 }));

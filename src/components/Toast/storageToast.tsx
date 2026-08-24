@@ -23,7 +23,7 @@ export function showStorageToast() {
       {i18n.t(
         'chat.your-cloud-storage-has-reached-the-limit-of-your-current-plan'
       )}{' '}
-      Please{' '}
+      {i18n.t('chat.please', { defaultValue: 'Please' })}{' '}
       <a
         className="cursor-pointer underline"
         onClick={() => (window.location.href = `${SITE_URL}/pricing`)}

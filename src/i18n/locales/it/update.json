@@ -4,12 +4,12 @@
   "update": "Aggiorna",
   "download": "Scarica",
   "update-error": "Errore aggiornamento",
-  "downloading-update": "Download aggiornamento in corso",
+  "downloading-update": "Scaricare aggiornamento",
   "complete": "Completo",
   "download-completed": "Download completato",
   "click-to-install-update": "Clicca per installare l'aggiornamento",
   "install": "Installa",
-  "downloading": "Downloading update",
-  "launch-new-version": "Launch new version",
-  "update-failed-retry": "Update failed — click to retry"
+  "downloading": "Scaricare aggiornamento",
+  "launch-new-version": "Lanciare nuova versione",
+  "update-failed-retry": "Aggiornamento fallito — seleziona per riprovare"
 }

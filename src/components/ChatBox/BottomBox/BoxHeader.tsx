@@ -60,6 +60,7 @@ export function BoxHeaderDisplay({
   descriptionAsMarkdown?: boolean;
   showQuestionIcon?: boolean;
 }) {
+  const { t } = useTranslation();
   const hasCopy = Boolean(eyebrow || title || description);
   if (!hasCopy && contextItems.length === 0 && details.length === 0)
     return null;
@@ -112,7 +113,9 @@ export function BoxHeaderDisplay({
 
       {contextItems.length > 0 && (
         <ul
-          aria-label="Included context"
+          aria-label={t('chat.included-context', {
+            defaultValue: 'Included context',
+          })}
           className="m-0 flex max-h-24 list-none flex-wrap gap-1 overflow-y-auto p-0"
         >
           {contextItems.map((item) => (
@@ -142,7 +145,10 @@ export function BoxHeaderDisplay({
                   size="xs"
                   buttonContent="icon-only"
                   className="size-5 shrink-0 p-0"
-                  aria-label={`Remove ${item.label}`}
+                  aria-label={t('chat.remove-context-item', {
+                    value: item.label,
+                    defaultValue: 'Remove {{value}}',
+                  })}
                   onClick={() => onRemoveContextItem(item.id)}
                 >
                   <X className="size-3.5" />

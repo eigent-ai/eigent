@@ -61,5 +61,6 @@
   "all-agents": "所有智能体",
   "replace-skill-title": "替换“{{name}}”技能？",
   "replace-skill-message": "已存在同名技能。上传此技能将替换原技能，且无法恢复现有版本。",
-  "update-and-replace": "更新并替换"
+  "update-and-replace": "更新并替换",
+  "agent": "智能体"
 }

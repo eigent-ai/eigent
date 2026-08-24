@@ -938,7 +938,11 @@ export default function ChatBox(): JSX.Element {
           );
           return;
         }
-        toast.error('Please select a model first.');
+        toast.error(
+          t('chat.select-model-first', {
+            defaultValue: 'Please select a model first.',
+          })
+        );
         openSettings('models');
         return;
       }
@@ -1047,14 +1051,22 @@ export default function ChatBox(): JSX.Element {
         );
         return;
       }
-      toast.error('Please select a model first.');
+      toast.error(
+        t('chat.select-model-first', {
+          defaultValue: 'Please select a model first.',
+        })
+      );
       openSettings('models');
       return;
     }
 
     const targetProjectId = projectStore.activeProjectId;
     if (!targetProjectId) {
-      toast.error('No active session selected.');
+      toast.error(
+        t('chat.no-active-session', {
+          defaultValue: 'No active session selected.',
+        })
+      );
       return;
     }
 
@@ -1121,7 +1133,10 @@ export default function ChatBox(): JSX.Element {
     }
     if (requiresHumanReply && reviewHandoffIds.length > 0) {
       toast.error(
-        'Answer the pending question before sending review feedback.'
+        t('chat.answer-pending-before-review', {
+          defaultValue:
+            'Answer the pending question before sending review feedback.',
+        })
       );
       return;
     }
@@ -1177,7 +1192,12 @@ export default function ChatBox(): JSX.Element {
       setMessage('');
       acknowledgeWorkspaceReviewHandoffs(targetProjectId, reviewHandoffIds);
       setPendingReviewHandoffIds([]);
-      toast.success('Message queued. It will run after the current task.');
+      toast.success(
+        t('chat.message-queued', {
+          defaultValue:
+            'Message queued. Eigent will send it when the current task finishes.',
+        })
+      );
       return;
     }
 
@@ -1188,7 +1208,11 @@ export default function ChatBox(): JSX.Element {
         achieved: false,
       }).catch((error) => {
         console.error('[handleSend] Failed to resume achieved Project:', error);
-        toast.error('Failed to persist resumed session state.');
+        toast.error(
+          t('chat.resumed-session-save-failed', {
+            defaultValue: "Couldn't save the resumed session. Try again.",
+          })
+        );
       });
     }
 
@@ -1242,7 +1266,10 @@ export default function ChatBox(): JSX.Element {
       } else if (requiresHumanReply) {
         if (requiresApprovalDecision) {
           toast.error(
-            'Use the approval card to approve or reject this action.'
+            t('chat.use-approval-card', {
+              defaultValue:
+                'Use the approval card to approve or reject this action.',
+            })
           );
           return;
         }
@@ -1547,7 +1574,11 @@ export default function ChatBox(): JSX.Element {
   const handleResumeInterruptedRun = async () => {
     if (!interruptedRun || !activeProjectId || !chatStore) return;
     if (!hasModel) {
-      toast.error('Please select a model before resuming this Run.');
+      toast.error(
+        t('chat.select-model-before-resume', {
+          defaultValue: 'Select a model before resuming this task.',
+        })
+      );
       return;
     }
     const run = interruptedRun;
@@ -1829,7 +1860,12 @@ export default function ChatBox(): JSX.Element {
               } as File);
             } catch (error) {
               console.error('Select File Upload Error:', error);
-              toast.error(`Failed to upload ${selectedFile.name}`);
+              toast.error(
+                t('chat.file-upload-failed', {
+                  name: selectedFile.name,
+                  defaultValue: 'Failed to upload {{name}}',
+                })
+              );
             }
           }
 
@@ -1891,9 +1927,14 @@ export default function ChatBox(): JSX.Element {
       // Only set isPending to false so UI shows task is stopped
       chatStore.setIsPending(taskId, false);
 
-      toast.success('Task stopped successfully', {
-        closeButton: true,
-      });
+      toast.success(
+        t('chat.task-stopped-successfully', {
+          defaultValue: 'Task stopped successfully',
+        }),
+        {
+          closeButton: true,
+        }
+      );
     } catch (error) {
       console.error('[STOP-BUTTON] ❌ Failed to stop task:', error);
 
@@ -1902,7 +1943,10 @@ export default function ChatBox(): JSX.Element {
         chatStore.stopTask(taskId);
         chatStore.setIsPending(taskId, false);
         toast.warning(
-          'Task stopped locally, but backend notification failed. Backend task may continue running.',
+          t('chat.task-stopped-backend-notification-failed', {
+            defaultValue:
+              'Task stopped locally, but backend notification failed. Backend task may continue running.',
+          }),
           {
             closeButton: true,
             duration: 5000,
@@ -1914,7 +1958,10 @@ export default function ChatBox(): JSX.Element {
           localError
         );
         toast.error(
-          'Failed to stop task completely. Please refresh the page.',
+          t('chat.task-stop-failed-refresh', {
+            defaultValue:
+              'Failed to stop task completely. Please refresh the page.',
+          }),
           {
             closeButton: true,
           }
@@ -1961,7 +2008,10 @@ export default function ChatBox(): JSX.Element {
         project_id: projectId,
       });
       toast.success(
-        'Stopping the current task. Your queued message will start next.'
+        t('chat.stopping-current-task-queued-next', {
+          defaultValue:
+            'Stopping the current task. Your queued message will start next.',
+        })
       );
     } catch (error: any) {
       console.error('[FollowUpQueue] Failed to stop active Run', error);
@@ -2103,9 +2153,17 @@ export default function ChatBox(): JSX.Element {
       projectStore.removeQueuedMessage(project_id, task_id);
     } catch (error) {
       console.error(`[ChatBox] Failed to cancel task ${task_id}:`, error);
-      toast.error('Failed to cancel task', {
-        description: error instanceof Error ? error.message : 'Unknown error',
-      });
+      toast.error(
+        t('chat.cancel-task-failed', {
+          defaultValue: 'Failed to cancel task',
+        }),
+        {
+          description:
+            error instanceof Error
+              ? error.message
+              : t('chat.unknown-error', { defaultValue: 'Unknown error' }),
+        }
+      );
     }
   };
 
@@ -2144,10 +2202,17 @@ export default function ChatBox(): JSX.Element {
       );
       clearRunActionRequestId('cancel', runId);
       if (chatStore.tasks[runId]) chatStore.setIsPending(runId, false);
-      toast.success('Run stopped successfully', { closeButton: true });
+      toast.success(t('chat.task-stopped', { defaultValue: 'Task stopped' }), {
+        closeButton: true,
+      });
     } catch (error: any) {
       console.error('[RunControl] Failed to stop Run', error);
-      toast.error(error?.message || 'Failed to stop this Run.');
+      toast.error(
+        error?.message ||
+          t('chat.run-stop-failed', {
+            defaultValue: 'Failed to stop this Run.',
+          })
+      );
     } finally {
       setIsPauseResumeLoading(false);
     }

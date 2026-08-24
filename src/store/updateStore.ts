@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import i18next from 'i18next';
 import { create } from 'zustand';
 
 export type DesktopUpdatePhase =
@@ -74,7 +75,12 @@ export const useDesktopUpdateStore = create<DesktopUpdateState>((set) => ({
     set({ phase: 'downloaded', progress: 100, errorMessage: null }),
   setInstalling: () => set({ phase: 'installing', errorMessage: null }),
   setError: (message) =>
-    set({ phase: 'error', errorMessage: message ?? 'Update failed' }),
+    set({
+      phase: 'error',
+      errorMessage:
+        message ??
+        i18next.t('layout.update-failed', { defaultValue: 'Update failed' }),
+    }),
 }));
 
 export function resetDesktopUpdateStore() {

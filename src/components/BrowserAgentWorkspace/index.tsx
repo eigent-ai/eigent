@@ -29,10 +29,12 @@ import {
   Image,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { TaskState } from '../TaskState';
 import { Button } from '../ui/button';
 
 export default function BrowserAgentWorkspace() {
+  const { t } = useTranslation();
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
   const host = useHost();
@@ -42,7 +44,7 @@ export default function BrowserAgentWorkspace() {
 
   const agentMap = {
     developer_agent: {
-      name: 'Developer Agent',
+      name: t('layout.developer-agent'),
       icon: <CodeXml size={16} className="text-ds-ink-default-default" />,
       textColor: 'text-emerald-700',
       bgColor: 'bg-ds-bg-terminal-default-default',
@@ -51,7 +53,7 @@ export default function BrowserAgentWorkspace() {
       bgColorLight: 'bg-emerald-200',
     },
     browser_agent: {
-      name: 'Browser Agent',
+      name: t('layout.browser-agent'),
       icon: <Globe size={16} className="text-ds-ink-default-default" />,
       textColor: 'text-blue-700',
       bgColor: 'bg-ds-bg-browser-default-default',
@@ -60,7 +62,7 @@ export default function BrowserAgentWorkspace() {
       bgColorLight: 'bg-blue-200',
     },
     document_agent: {
-      name: 'Document Agent',
+      name: t('layout.document-agent'),
       icon: <FileText size={16} className="text-ds-ink-default-default" />,
       textColor: 'text-yellow-700',
       bgColor: 'bg-ds-bg-document-default-default',
@@ -69,7 +71,7 @@ export default function BrowserAgentWorkspace() {
       bgColorLight: 'bg-yellow-200',
     },
     multi_modal_agent: {
-      name: 'Multi Modal Agent',
+      name: t('layout.multi-modal-agent'),
       icon: <Image size={16} className="text-ds-ink-default-default" />,
       textColor: 'text-fuchsia-700',
       bgColor: 'bg-ds-neutral-default-default',
@@ -78,7 +80,7 @@ export default function BrowserAgentWorkspace() {
       bgColorLight: 'bg-fuchsia-200',
     },
     social_media_agent: {
-      name: 'Social Media Agent',
+      name: t('layout.social-media-agent'),
       icon: <Bird size={16} className="text-ds-ink-default-default" />,
       textColor: 'text-purple-700',
       bgColor: 'bg-violet-700',
@@ -179,7 +181,7 @@ export default function BrowserAgentWorkspace() {
             className="rounded-full"
           >
             <ChevronLeft size={16} />
-            <span>Give back to Agent</span>
+            <span>{t('chat.give-back-to-agent')}</span>
           </Button>
         </div>
         {/* <div className="mx-2 bg-border-primary">{url}</div> */}
@@ -285,7 +287,9 @@ export default function BrowserAgentWorkspace() {
                   >
                     <Hand size={24} />
                     <span className="text-base leading-9 font-medium">
-                      Take Control
+                      {t('chat.take-control', {
+                        defaultValue: 'Take Control',
+                      })}
                     </span>
                   </Button>
                 </div>
@@ -334,7 +338,9 @@ export default function BrowserAgentWorkspace() {
                       >
                         <Hand size={24} />
                         <span className="text-base leading-9 font-medium">
-                          Take Control
+                          {t('chat.take-control', {
+                            defaultValue: 'Take Control',
+                          })}
                         </span>
                       </Button>
                     </div>

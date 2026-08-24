@@ -136,5 +136,7 @@
   "google-check-failed": "تعذر التحقق من بيانات اعتماد Google.",
   "exa-check-failed": "تعذر التحقق من مفتاح Exa API.",
   "optional": "اختياري",
-  "enter-field": "أدخل {{field}}"
+  "enter-field": "أدخل {{field}}",
+  "google-calendar-description": "تكامل Google Calendar لإدارة الأحداث والجداول الزمنية",
+  "notion-description": "تكامل مساحة عمل Notion لقراءة صفحات Notion وإدارتها"
 }

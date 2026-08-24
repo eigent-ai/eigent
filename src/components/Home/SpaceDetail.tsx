@@ -236,11 +236,13 @@ export default function SpaceDetail({
             aria-hidden
           />
           <span className="block !text-ds-text-base text-ds-ink-muted-default">
-            This Space is unavailable or has been removed.
+            {t('layout.space-unavailable', {
+              defaultValue: 'This Space is unavailable or has been removed.',
+            })}
           </span>
           <Button type="button" variant="secondary" size="sm" onClick={onBack}>
             <ArrowLeft className="h-4 w-4" aria-hidden />
-            Back to Home
+            {t('layout.back-to-home', { defaultValue: 'Back to Home' })}
           </Button>
         </div>
       </div>
@@ -393,7 +395,9 @@ export default function SpaceDetail({
                   className="h-8 shrink-0 font-bold"
                   onClick={handleOpenWorkspace}
                 >
-                  Open Workspace
+                  {t('layout.open-workspace', {
+                    defaultValue: 'Open Workspace',
+                  })}
                 </Button>
               </div>
             </div>

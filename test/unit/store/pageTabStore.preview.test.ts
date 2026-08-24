@@ -220,7 +220,7 @@ describe('pageTabStore session preview', () => {
     );
     expect(runReview).toMatchObject({
       type: 'review',
-      title: 'Run review',
+      title: 'Task review',
       reviewTarget: {
         scope: 'run',
         runId: 'run-1',

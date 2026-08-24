@@ -49,7 +49,7 @@ vi.mock('react-i18next', () => ({
     t: (key: string, options: Record<string, unknown> = {}) =>
       key === 'chat.repeated-tool-events'
         ? `${options.tool} · ${options.count} events`
-        : key,
+        : String(options.defaultValue ?? key),
     i18n: { language: 'en', changeLanguage: vi.fn() },
   }),
 }));

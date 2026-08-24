@@ -141,30 +141,40 @@ export default function HomeGreeting() {
           />
           {welcomeName ? (
             <span className="history-welcome-headline block !text-ds-text-display font-bold tracking-tight text-ds-accent-default-default italic">
-              {`${welcomeName}!`}
+              {t('layout.welcome-name', {
+                name: welcomeName,
+                defaultValue: '{{name}}!',
+              })}
             </span>
           ) : null}
         </h1>
         <p className="mt-2 !text-ds-text-base text-ds-ink-muted-default">
-          Manage your Spaces and connected workspace resources.
+          {t('layout.home-spaces-description', {
+            defaultValue:
+              'Manage your Spaces and connected workspace resources.',
+          })}
         </p>
       </div>
 
       <div className="grid h-fit min-w-0 grid-cols-2 items-center gap-x-6 gap-y-5 self-center">
         <OverviewStat
           icon={Folder}
-          label="Spaces"
+          label={t('layout.spaces', { defaultValue: 'Spaces' })}
           value={sectionCounts.spaces}
         />
         <OverviewStat
           icon={Cable}
-          label="Connectors"
+          label={t('setting.connectors', { defaultValue: 'Connectors' })}
           value={connectorCount ?? '—'}
         />
-        <OverviewStat icon={WandSparkles} label="Skills" value={skillCount} />
+        <OverviewStat
+          icon={WandSparkles}
+          label={t('agents.skills', { defaultValue: 'Skills' })}
+          value={skillCount}
+        />
         <OverviewStat
           icon={Brain}
-          label="Memory left"
+          label={t('layout.memory-left', { defaultValue: 'Memory left' })}
           value={
             memoryRemaining == null
               ? '—'

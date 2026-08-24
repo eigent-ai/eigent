@@ -495,11 +495,15 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
   if (error) {
     return (
       <CenteredNotice
-        message={t('layout.review-scan-failed', {
-          defaultValue: runScoped
-            ? 'Could not load the changes for this task.'
-            : 'Could not load the changes for this session.',
-        })}
+        message={
+          runScoped
+            ? t('layout.review-task-scan-failed', {
+                defaultValue: 'Could not load the changes for this task.',
+              })
+            : t('layout.review-session-scan-failed', {
+                defaultValue: 'Could not load the changes for this session.',
+              })
+        }
         detail={error}
         action={
           <Button type="button" variant="outline" size="sm" onClick={refresh}>
@@ -518,7 +522,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
         })}
         detail={t('layout.review-revision-changed-detail', {
           defaultValue:
-            'The Git base or target changed after this review opened. Close this tab and open a new Review before adding or sending comments.',
+            'The Git base or target changed after this review opened. Close this tab and open a new review before adding or sending comments.',
         })}
       />
     );
@@ -527,16 +531,26 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
   if (files.length === 0) {
     return (
       <CenteredNotice
-        message={t('layout.review-empty', {
-          defaultValue: runScoped
-            ? 'No file changes in this task.'
-            : 'No file changes in this session yet.',
-        })}
-        detail={t('layout.review-empty-hint', {
-          defaultValue: runScoped
-            ? 'This view contains only the files changed by the selected task.'
-            : 'Files written by agents will appear here as before / after diffs.',
-        })}
+        message={
+          runScoped
+            ? t('layout.review-task-empty', {
+                defaultValue: 'No file changes in this task.',
+              })
+            : t('layout.review-session-empty', {
+                defaultValue: 'No file changes in this session yet.',
+              })
+        }
+        detail={
+          runScoped
+            ? t('layout.review-task-empty-hint', {
+                defaultValue:
+                  'This view contains only the files changed by the selected task.',
+              })
+            : t('layout.review-session-empty-hint', {
+                defaultValue:
+                  'Files written by agents will appear here as before / after diffs.',
+              })
+        }
         action={
           <Button type="button" variant="outline" size="sm" onClick={refresh}>
             {t('layout.review-refresh', { defaultValue: 'Refresh' })}
@@ -686,11 +700,15 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
         </TooltipSimple>
 
         <TooltipSimple
-          content={t('layout.review-add-note', {
-            defaultValue: selection
-              ? 'Comment on the selected lines'
-              : 'Add a file review note',
-          })}
+          content={
+            selection
+              ? t('layout.review-comment-selected-lines', {
+                  defaultValue: 'Comment on the selected lines',
+                })
+              : t('layout.review-add-file-note', {
+                  defaultValue: 'Add a file review note',
+                })
+          }
         >
           <Button
             type="button"
@@ -701,20 +719,30 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
               noteComposerOpen ? closeCommentComposer() : openCommentComposer()
             }
             aria-pressed={noteComposerOpen}
-            aria-label={t('layout.review-add-note', {
-              defaultValue: selection
-                ? 'Comment on the selected lines'
-                : 'Add a file review note',
-            })}
+            aria-label={
+              selection
+                ? t('layout.review-comment-selected-lines', {
+                    defaultValue: 'Comment on the selected lines',
+                  })
+                : t('layout.review-add-file-note', {
+                    defaultValue: 'Add a file review note',
+                  })
+            }
           >
             <MessageSquarePlus aria-hidden />
           </Button>
         </TooltipSimple>
         {comments.length > 0 ? (
           <TooltipSimple
-            content={t('layout.review-copy-notes', {
-              defaultValue: notesCopied ? 'Copied' : 'Copy review comments',
-            })}
+            content={
+              notesCopied
+                ? t('layout.review-comments-copied', {
+                    defaultValue: 'Copied',
+                  })
+                : t('layout.review-copy-comments', {
+                    defaultValue: 'Copy review comments',
+                  })
+            }
           >
             <Button
               type="button"
@@ -722,9 +750,15 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
               size="sm"
               buttonContent="icon-only"
               onClick={copyNotes}
-              aria-label={t('layout.review-copy-notes', {
-                defaultValue: notesCopied ? 'Copied' : 'Copy review comments',
-              })}
+              aria-label={
+                notesCopied
+                  ? t('layout.review-comments-copied', {
+                      defaultValue: 'Copied',
+                    })
+                  : t('layout.review-copy-comments', {
+                      defaultValue: 'Copy review comments',
+                    })
+              }
             >
               <Copy aria-hidden />
             </Button>

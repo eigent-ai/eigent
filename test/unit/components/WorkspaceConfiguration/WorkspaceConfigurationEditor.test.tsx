@@ -296,7 +296,7 @@ describe('WorkspaceConfigurationEditor', () => {
     ).not.toBeInTheDocument();
     expect(
       within(profileRail).queryByRole('button', {
-        name: 'Share workspace bundle',
+        name: 'Share Space profile',
       })
     ).not.toBeInTheDocument();
     expect(within(contents).getAllByRole('button')).toHaveLength(9);
@@ -365,7 +365,7 @@ describe('WorkspaceConfigurationEditor', () => {
     expect(profileRow).not.toHaveTextContent('Research Bundle');
     expect(profileRow).toContainElement(
       within(profileStatusGroup).getByRole('button', {
-        name: 'Share workspace bundle',
+        name: 'Share Space profile',
       })
     );
     expect(
@@ -378,17 +378,17 @@ describe('WorkspaceConfigurationEditor', () => {
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
     expect(
-      within(identityGroup).getByText('Bundle name').parentElement
+      within(identityGroup).getByText('Profile name').parentElement
     ).toHaveClass('flex-col');
     expect(
       within(identityGroup).getByText(
-        'Shown to collaborators and bundle recipients.'
+        'Shown to collaborators and people who receive this profile.'
       )
     ).toBeInTheDocument();
     const bundleNameInput =
-      within(identitySection).getByLabelText('Bundle name');
+      within(identitySection).getByLabelText('Profile name');
     const permissionSelect = within(identitySection).getByRole('combobox', {
-      name: 'Permission profile',
+      name: 'Approval mode',
     });
     const remotePolicySelect = within(identitySection).getByRole('combobox', {
       name: 'Remote policy',
@@ -401,7 +401,7 @@ describe('WorkspaceConfigurationEditor', () => {
     expect(remotePolicySelect).toHaveClass('bg-ds-neutral-subtle-default');
     expect(
       within(identitySection).getByRole('switch', {
-        name: 'Git workspace environment',
+        name: 'Track this Space in Git',
       })
     ).toBeChecked();
     expect(remotePolicySelect).toBeInTheDocument();

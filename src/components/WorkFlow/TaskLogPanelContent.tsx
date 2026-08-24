@@ -23,6 +23,7 @@ import type { ChatStore } from '@/store/chatStore';
 import { AgentStatusValue, ChatTaskStatus } from '@/types/constants';
 import { Copy, LoaderCircle } from 'lucide-react';
 import type { RefObject } from 'react';
+import { useTranslation } from 'react-i18next';
 import { MarkDown } from './MarkDown';
 
 type ToolkitEntry = NonNullable<TaskInfo['toolkits']>[number] & {
@@ -40,6 +41,7 @@ export function TaskLogPanelContent({
   isEditMode?: boolean;
   reportRef?: RefObject<HTMLDivElement>;
 }) {
+  const { t } = useTranslation();
   const activeTaskId = chatStore.activeTaskId as string;
 
   return (
@@ -145,7 +147,9 @@ export function TaskLogPanelContent({
         >
           <div className="sticky top-0 z-10 flex items-center justify-between rounded-lg bg-ds-neutral-subtle-default py-2 pr-2 pl-2">
             <div className="text-ds-text-base font-bold text-ds-ink-default-default">
-              Completion Report
+              {t('chat.completion-report', {
+                defaultValue: 'Completion Report',
+              })}
             </div>
             <Button
               variant="ghost"
@@ -165,7 +169,9 @@ export function TaskLogPanelContent({
               className="text-ds-text-meta"
             >
               <Copy className="text-ds-ink-muted-default" />
-              <span className="text-ds-ink-muted-default">Copy</span>
+              <span className="text-ds-ink-muted-default">
+                {t('setting.copy', { defaultValue: 'Copy' })}
+              </span>
             </Button>
           </div>
           <div className="px-2 py-2">

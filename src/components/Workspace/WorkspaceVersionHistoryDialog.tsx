@@ -137,7 +137,7 @@ export function WorkspaceVersionHistoryDialog({
       console.warn('[WorkspaceVersionHistory] Failed to load history:', error);
       toast.error(
         t('layout.workspace-version-history-load-failed', {
-          defaultValue: 'Failed to load version history.',
+          defaultValue: "Couldn't load version history. Try again.",
         })
       );
     } finally {
@@ -181,7 +181,7 @@ export function WorkspaceVersionHistoryDialog({
       setPreview(null);
       toast.error(
         t('layout.workspace-git-preview-failed', {
-          defaultValue: 'This Git command is not allowed.',
+          defaultValue: 'That Git command is not allowed here.',
         })
       );
     } finally {
@@ -222,7 +222,7 @@ export function WorkspaceVersionHistoryDialog({
       console.warn('[WorkspaceVersionHistory] Git execution failed:', error);
       toast.error(
         t('layout.workspace-git-execute-failed', {
-          defaultValue: 'Git operation failed. Refresh before retrying.',
+          defaultValue: 'The Git command failed. Refresh, then try again.',
         })
       );
     } finally {
@@ -239,7 +239,7 @@ export function WorkspaceVersionHistoryDialog({
           })}
           subtitle={t('layout.workspace-version-history-subtitle', {
             defaultValue:
-              'Browse saved Space and task versions. Technical Git details are available below.',
+              'Browse saved versions of this Space and its tasks. Git details are in the Technical tab.',
           })}
         />
         <DialogContentSection className="flex min-h-0 flex-1 flex-col gap-5 overflow-hidden p-5">
@@ -256,13 +256,13 @@ export function WorkspaceVersionHistoryDialog({
                   <div>
                     <span className="block text-ds-text-base font-bold">
                       {t('layout.workspace-current-version', {
-                        defaultValue: 'Current Space',
+                        defaultValue: 'Current version',
                       })}
                     </span>
                     <span className="block text-ds-text-meta text-ds-ink-muted-default">
                       {t('layout.workspace-current-version-description', {
                         defaultValue:
-                          'The latest save point for files visible in this Space.',
+                          'The most recent save point for the files in this Space.',
                       })}
                     </span>
                   </div>
@@ -308,7 +308,8 @@ export function WorkspaceVersionHistoryDialog({
                 ) : (
                   <div className="rounded-xl border border-x border-y border-dashed border-ds-hairline-default-default p-4 text-ds-text-base text-ds-ink-muted-default">
                     {t('layout.workspace-no-save-point', {
-                      defaultValue: 'No Space save point is available yet.',
+                      defaultValue:
+                        'No save points yet. Save changes from the Space menu to create the first one.',
                     })}
                   </div>
                 )}
@@ -320,7 +321,7 @@ export function WorkspaceVersionHistoryDialog({
                   <span>
                     {t('layout.workspace-large-repository-warning', {
                       defaultValue:
-                        'This is a large repository. Prefer Git LFS for large generated assets; automatic GC is disabled.',
+                        'This Space is large. Consider Git LFS for big generated files. Automatic garbage collection is off.',
                     })}
                   </span>
                 </div>
@@ -367,7 +368,7 @@ export function WorkspaceVersionHistoryDialog({
                     className="flex-1 gap-1.5 !text-ds-text-base"
                   >
                     {t('layout.workspace-recent-commits', {
-                      defaultValue: 'Checkpoints',
+                      defaultValue: 'Timeline',
                     })}
                     <span className="rounded-full bg-ds-neutral-muted-default px-1.5 py-0.5 !text-ds-text-meta">
                       {timelineEvents.length}
@@ -377,7 +378,7 @@ export function WorkspaceVersionHistoryDialog({
                     value="technical"
                     className="flex-1 gap-1.5 !text-ds-text-base"
                   >
-                    {t('layout.workspace-technical-details', {
+                    {t('layout.workspace-technical-tab', {
                       defaultValue: 'Technical',
                     })}
                   </TabsTrigger>
@@ -390,7 +391,7 @@ export function WorkspaceVersionHistoryDialog({
                   <span className="block text-ds-text-meta text-ds-ink-muted-default">
                     {t('layout.workspace-project-versions-description', {
                       defaultValue:
-                        'The latest retained version for each session in this Space.',
+                        'The most recent saved version of each session in this Space.',
                     })}
                   </span>
                   <div className="overflow-hidden rounded-xl border border-x border-y border-ds-hairline-default-default bg-ds-neutral-default-default px-4">
@@ -433,7 +434,7 @@ export function WorkspaceVersionHistoryDialog({
                       <span className="block py-4 text-ds-text-base text-ds-ink-muted-default">
                         {t('layout.workspace-no-project-versions', {
                           defaultValue:
-                            'No session versions are available yet.',
+                            'No session versions yet. They appear once a session saves work.',
                         })}
                       </span>
                     ) : null}
@@ -447,7 +448,7 @@ export function WorkspaceVersionHistoryDialog({
                   <span className="block text-ds-text-meta text-ds-ink-muted-default">
                     {t('layout.workspace-task-versions-description', {
                       defaultValue:
-                        'One saved entry per task. Internal execution branches are grouped automatically.',
+                        'One entry per task. Eigent groups the internal Git branches behind each task automatically.',
                     })}
                   </span>
                   <div className="overflow-hidden rounded-xl border border-x border-y border-ds-hairline-default-default bg-ds-neutral-default-default px-4">
@@ -487,11 +488,14 @@ export function WorkspaceVersionHistoryDialog({
                                   })}{' '}
                               · {formatDate(taskVersion.branch.committed_at)}
                               {taskVersion.agentCount > 0
-                                ? ` · ${taskVersion.agentCount} ${
-                                    taskVersion.agentCount === 1
-                                      ? 'agent'
-                                      : 'agents'
-                                  }`
+                                ? ` · ${t(
+                                    'layout.workspace-task-version-agent-count',
+                                    {
+                                      count: taskVersion.agentCount,
+                                      defaultValue_one: '{{count}} agent',
+                                      defaultValue_other: '{{count}} agents',
+                                    }
+                                  )}`
                                 : ''}
                             </span>
                           </div>
@@ -510,7 +514,8 @@ export function WorkspaceVersionHistoryDialog({
                     {versionView.taskVersions.length === 0 ? (
                       <span className="block py-4 text-ds-text-base text-ds-ink-muted-default">
                         {t('layout.workspace-no-task-versions', {
-                          defaultValue: 'No task versions are available yet.',
+                          defaultValue:
+                            'No task versions yet. They appear once a task saves output.',
                         })}
                       </span>
                     ) : null}
@@ -527,7 +532,9 @@ export function WorkspaceVersionHistoryDialog({
                           })
                         : t('layout.workspace-show-all-task-versions', {
                             count: versionView.taskVersions.length,
-                            defaultValue: `Show all ${versionView.taskVersions.length} task versions`,
+                            defaultValue_one: 'Show all {{count}} task version',
+                            defaultValue_other:
+                              'Show all {{count}} task versions',
                           })}
                     </Button>
                   ) : null}
@@ -540,7 +547,7 @@ export function WorkspaceVersionHistoryDialog({
                   <span className="block text-ds-text-meta text-ds-ink-muted-default">
                     {t('layout.workspace-recent-commits-description', {
                       defaultValue:
-                        'A chronological Git view of save points, task checkpoints, and merges.',
+                        'Every save point, task checkpoint, and merge in this Space, newest first.',
                     })}
                   </span>
                   <WorkspaceCommitTimeline
@@ -562,7 +569,8 @@ export function WorkspaceVersionHistoryDialog({
                           })
                         : t('layout.workspace-show-all-commits', {
                             count: timelineEvents.length,
-                            defaultValue: `Show all ${timelineEvents.length} events`,
+                            defaultValue_one: 'Show all {{count}} event',
+                            defaultValue_other: 'Show all {{count}} events',
                           })}
                     </Button>
                   ) : null}
@@ -584,7 +592,10 @@ export function WorkspaceVersionHistoryDialog({
                         <span className="block text-ds-text-meta font-normal text-ds-ink-muted-default">
                           {t('layout.workspace-technical-details-description', {
                             count: versionView.technicalBranches.length,
-                            defaultValue: `${versionView.technicalBranches.length} internal Git references and retention details`,
+                            defaultValue_one:
+                              '{{count}} internal Git reference and retention details',
+                            defaultValue_other:
+                              '{{count}} internal Git references and retention details',
                           })}
                         </span>
                       </div>
@@ -615,7 +626,9 @@ export function WorkspaceVersionHistoryDialog({
                           </div>
                           {branch.archived ? (
                             <span className="shrink-0 rounded-full bg-ds-neutral-strong-default px-2 py-0.5 text-ds-text-meta">
-                              archived
+                              {t('layout.archived', {
+                                defaultValue: 'Archived',
+                              })}
                             </span>
                           ) : null}
                         </div>
@@ -623,16 +636,16 @@ export function WorkspaceVersionHistoryDialog({
                       {versionView.technicalBranches.length === 0 ? (
                         <span className="block py-4 text-ds-text-base text-ds-ink-muted-default">
                           {t('layout.workspace-no-git-references', {
-                            defaultValue:
-                              'No Git references are available yet.',
+                            defaultValue: 'No Git references yet.',
                           })}
                         </span>
                       ) : null}
                     </div>
                     <span className="block text-ds-text-meta text-ds-ink-muted-default">
-                      Automatic archive deletion and object GC are disabled.
-                      Encrypted Space backup is not configured implicitly and
-                      remains a separate, explicit product setup.
+                      {t('layout.workspace-version-retention-description', {
+                        defaultValue:
+                          'Nothing is deleted automatically, and Git garbage collection is off. Encrypted Space backup is a separate setting — turning on version history does not enable it.',
+                      })}
                     </span>
                   </div>
 
@@ -644,16 +657,24 @@ export function WorkspaceVersionHistoryDialog({
                       />
                       <div className="min-w-0">
                         <span className="block text-ds-text-base font-semibold">
-                          Advanced Git
+                          {t('layout.workspace-advanced-git', {
+                            defaultValue: 'Advanced Git',
+                          })}
                         </span>
                         <span className="block text-ds-text-meta font-normal text-ds-ink-muted-default">
-                          Preview and run policy-gated Git commands.
+                          {t('layout.workspace-advanced-git-description', {
+                            defaultValue:
+                              'Preview a Git command before you run it. Only allowed commands work here.',
+                          })}
                         </span>
                       </div>
                     </div>
                     <span className="block text-ds-text-meta text-ds-ink-muted-default">
-                      Enter argv as a JSON string array. No shell is used. The
-                      exact classified action is reviewed before execution.
+                      {t('layout.workspace-git-command-instructions', {
+                        example: '["status", "--short"]',
+                        defaultValue:
+                          'Enter the command as a JSON array of arguments, for example {{example}}. No shell is involved, and Eigent checks what the command does before running it.',
+                      })}
                     </span>
                     <Textarea
                       value={argvText}
@@ -676,7 +697,10 @@ export function WorkspaceVersionHistoryDialog({
                         </span>
                         {preview.requires_confirmation ? (
                           <span className="mt-1 block text-ds-text-warning-strong-default">
-                            Exact action confirmation required.
+                            {t('layout.workspace-git-command-confirmation', {
+                              defaultValue:
+                                'This command needs confirmation before it runs.',
+                            })}
                           </span>
                         ) : null}
                       </div>
@@ -688,7 +712,7 @@ export function WorkspaceVersionHistoryDialog({
                         onClick={() => void handlePreview()}
                         disabled={commandBusy}
                       >
-                        Preview
+                        {t('layout.preview', { defaultValue: 'Preview' })}
                       </Button>
                       <Button
                         variant="primary"
@@ -703,7 +727,7 @@ export function WorkspaceVersionHistoryDialog({
                         ) : (
                           <Play aria-hidden />
                         )}
-                        Execute
+                        {t('layout.run', { defaultValue: 'Run' })}
                       </Button>
                     </div>
                     {commandOutput ? (

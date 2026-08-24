@@ -263,15 +263,17 @@ export default function SpaceDetailSidebar({
         confirmDisabled={deleting}
       />
 
-      <SidebarShell ariaLabel="Spaces">
+      <SidebarShell ariaLabel={t('layout.spaces', { defaultValue: 'Spaces' })}>
         <SidebarSection>
           <SidebarNavGroup>
             <NavTab
               active={false}
               onClick={onBack}
               leading={<ArrowLeft className="h-4 w-4 shrink-0" aria-hidden />}
-              label="Back to Home"
-              ariaLabel="Back to Home"
+              label={t('layout.back-to-home', { defaultValue: 'Back to Home' })}
+              ariaLabel={t('layout.back-to-home', {
+                defaultValue: 'Back to Home',
+              })}
             />
           </SidebarNavGroup>
         </SidebarSection>
@@ -279,7 +281,9 @@ export default function SpaceDetailSidebar({
         <SidebarSection grow="fill">
           <SidebarScrollArea
             role="navigation"
-            ariaLabel="Select a Space"
+            ariaLabel={t('layout.select-space', {
+              defaultValue: 'Select a Space',
+            })}
             className="gap-4 pt-1"
           >
             <SidebarNavGroup>
@@ -287,13 +291,17 @@ export default function SpaceDetailSidebar({
                 active={false}
                 onClick={() => setNewSpaceDialogOpen(true)}
                 leading={<Plus className="h-4 w-4 shrink-0" aria-hidden />}
-                label="New Space"
-                tooltip="New Space"
+                label={t('layout.new-space', { defaultValue: 'New Space' })}
+                tooltip={t('layout.new-space', { defaultValue: 'New Space' })}
                 tooltipEnabledWhenCollapsed
-                ariaLabel="New Space"
+                ariaLabel={t('layout.new-space', {
+                  defaultValue: 'New Space',
+                })}
               />
             </SidebarNavGroup>
-            <SidebarNavGroup label="Spaces">
+            <SidebarNavGroup
+              label={t('layout.spaces', { defaultValue: 'Spaces' })}
+            >
               {spaces.map((space) => {
                 const selected = space.id === selectedSpaceId;
                 const canManage = !isLegacySpace(space);

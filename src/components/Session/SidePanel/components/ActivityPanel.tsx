@@ -756,13 +756,13 @@ export function SessionActivityPanel({
   };
 
   const addFilesLabel = t('layout.session-panel-attach-files', {
-    defaultValue: 'Attach files to the current run',
+    defaultValue: 'Attach files to your next message',
   });
   const canAddFiles = Boolean(scopedChatStore && composerTaskId);
   const addFilesTooltip = canAddFiles
     ? addFilesLabel
     : t('layout.session-panel-add-files-unavailable', {
-        defaultValue: 'Files can only be attached to the current run input.',
+        defaultValue: 'You can only attach files to your next message.',
       });
 
   return (

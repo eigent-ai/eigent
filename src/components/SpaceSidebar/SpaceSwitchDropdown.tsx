@@ -521,7 +521,9 @@ export function SpaceSwitchDropdown({
             }}
           >
             <Settings className="h-4 w-4" aria-hidden />
-            <span>Space settings</span>
+            <span>
+              {t('layout.space-settings', { defaultValue: 'Space settings' })}
+            </span>
           </DropdownMenuItem>
         ) : null}
 
@@ -535,7 +537,11 @@ export function SpaceSwitchDropdown({
             }}
           >
             <Brain className="h-4 w-4" aria-hidden />
-            <span>Memory settings</span>
+            <span>
+              {t('setting.memory-settings', {
+                defaultValue: 'Memory settings',
+              })}
+            </span>
           </DropdownMenuItem>
         ) : null}
       </DropdownMenuContent>

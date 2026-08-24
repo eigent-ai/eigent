@@ -14,6 +14,7 @@
 
 import { MarkDown } from '@/components/WorkFlow/MarkDown';
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface ToolInputOutputDetailsProps {
   input?: string;
@@ -37,16 +38,31 @@ interface ToolInputOutputDetailsProps {
 export function ToolInputOutputDetails({
   input,
   output,
-  inputLabel = 'Request',
-  outputLabel = 'Response',
+  inputLabel,
+  outputLabel,
   showEmptyFields = false,
   showEmptyInput = false,
   showEmptyOutput = false,
-  emptyInputText = 'No request was recorded for this event.',
-  emptyOutputText = 'No response was recorded for this event.',
+  emptyInputText,
+  emptyOutputText,
   children,
   className,
 }: ToolInputOutputDetailsProps) {
+  const { t } = useTranslation();
+  const resolvedInputLabel =
+    inputLabel ?? t('chat.request', { defaultValue: 'Request' });
+  const resolvedOutputLabel =
+    outputLabel ?? t('chat.response', { defaultValue: 'Response' });
+  const resolvedEmptyInputText =
+    emptyInputText ??
+    t('chat.no-request-recorded', {
+      defaultValue: 'No request was recorded for this event.',
+    });
+  const resolvedEmptyOutputText =
+    emptyOutputText ??
+    t('chat.no-response-recorded', {
+      defaultValue: 'No response was recorded for this event.',
+    });
   const renderEmptyInput = showEmptyFields || showEmptyInput;
   const renderEmptyOutput = showEmptyFields || showEmptyOutput;
   if (
@@ -71,7 +87,7 @@ export function ToolInputOutputDetails({
           data-tool-input
           data-tool-input-empty={input ? undefined : true}
         >
-          <span className={labelClassName}>{inputLabel}</span>
+          <span className={labelClassName}>{resolvedInputLabel}</span>
           {input ? (
             <MarkDown
               content={input}
@@ -80,7 +96,7 @@ export function ToolInputOutputDetails({
             />
           ) : (
             <span className="block !text-ds-text-meta font-normal break-words whitespace-pre-wrap text-ds-ink-subtle-default">
-              {emptyInputText}
+              {resolvedEmptyInputText}
             </span>
           )}
         </div>
@@ -91,7 +107,7 @@ export function ToolInputOutputDetails({
           data-tool-output
           data-tool-output-empty={output ? undefined : true}
         >
-          <span className={labelClassName}>{outputLabel}</span>
+          <span className={labelClassName}>{resolvedOutputLabel}</span>
           {output ? (
             <MarkDown
               content={output}
@@ -100,7 +116,7 @@ export function ToolInputOutputDetails({
             />
           ) : (
             <span className="block !text-ds-text-meta font-normal break-words whitespace-pre-wrap text-ds-ink-subtle-default">
-              {emptyOutputText}
+              {resolvedEmptyOutputText}
             </span>
           )}
         </div>

@@ -34,6 +34,7 @@ import type {
   WorkspaceSkillAssignment,
 } from '@/service/workspaceConfigurationApi';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import type { TFunction } from 'i18next';
 import {
   ArrowLeft,
   Cable,
@@ -46,6 +47,7 @@ import {
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 type EditorMode = 'create' | 'edit';
 type EditorStep = 'picker' | 'editor';
@@ -118,15 +120,37 @@ const csv = (value: string): string[] =>
     .map((part) => part.trim())
     .filter(Boolean);
 
-const editorNames = {
-  environment: 'environment variable',
-  instruction: 'instruction',
-  context: 'context',
-  agent: 'agent',
-  skill: 'skill',
-  connector: 'connector',
-  mcp: 'MCP server',
-} as const;
+const editorName = (
+  kind: WorkspaceResourceEditorState['kind'],
+  t: TFunction
+): string => {
+  switch (kind) {
+    case 'environment':
+      return t('layout.workspace-resource-environment-variable', {
+        defaultValue: 'environment variable',
+      });
+    case 'instruction':
+      return t('layout.workspace-resource-instruction', {
+        defaultValue: 'instruction',
+      });
+    case 'context':
+      return t('layout.workspace-resource-context', {
+        defaultValue: 'context',
+      });
+    case 'agent':
+      return t('layout.workspace-resource-agent', { defaultValue: 'agent' });
+    case 'skill':
+      return t('layout.workspace-resource-skill', { defaultValue: 'skill' });
+    case 'connector':
+      return t('layout.workspace-resource-connector', {
+        defaultValue: 'connector',
+      });
+    case 'mcp':
+      return t('layout.workspace-resource-mcp-server', {
+        defaultValue: 'MCP server',
+      });
+  }
+};
 
 const drawerEase = [0.32, 0.72, 0, 1] as const;
 const uiEaseOut = [0.23, 1, 0.32, 1] as const;
@@ -134,15 +158,37 @@ type ContentDirection = 1 | -1;
 
 const ENVIRONMENT_VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-const contextKindLabel = (kind: WorkspaceContextSource['kind']) =>
-  ({
-    bundle_asset: 'Bundle asset',
-    inline: 'Inline text',
-    connection_query: 'Connection query',
-    local_path_slot: 'Local folder slot',
-    artifact_ref: 'Artifact reference',
-    memory_scope: 'Memory scope',
-  })[kind];
+const contextKindLabel = (
+  kind: WorkspaceContextSource['kind'],
+  t: TFunction
+): string => {
+  switch (kind) {
+    case 'bundle_asset':
+      return t('layout.workspace-resource-context-bundle-asset', {
+        defaultValue: 'Bundle asset',
+      });
+    case 'inline':
+      return t('layout.workspace-resource-context-inline-text', {
+        defaultValue: 'Inline text',
+      });
+    case 'connection_query':
+      return t('layout.workspace-resource-context-connection-query', {
+        defaultValue: 'Connection query',
+      });
+    case 'local_path_slot':
+      return t('layout.workspace-resource-context-local-folder-slot', {
+        defaultValue: 'Local folder slot',
+      });
+    case 'artifact_ref':
+      return t('layout.workspace-resource-context-artifact-reference', {
+        defaultValue: 'Artifact reference',
+      });
+    case 'memory_scope':
+      return t('layout.workspace-resource-context-memory-scope', {
+        defaultValue: 'Memory scope',
+      });
+  }
+};
 
 export const contextDraftForKind = (
   id: string,
@@ -204,6 +250,8 @@ function Picker({
   editor: WorkspaceResourceEditorState;
   onChange: (editor: WorkspaceResourceEditorState) => void;
 }) {
+  const { t } = useTranslation();
+
   if (editor.kind === 'context') {
     const options: Array<{
       kind: WorkspaceContextSource['kind'];
@@ -213,38 +261,68 @@ function Picker({
     }> = [
       {
         kind: 'local_path_slot',
-        title: 'Local folder',
-        description: 'Ask each recipient to connect a local folder.',
+        title: t('layout.workspace-resource-local-folder', {
+          defaultValue: 'Local folder',
+        }),
+        description: t('layout.workspace-resource-local-folder-description', {
+          defaultValue: 'Ask each recipient to connect a local folder.',
+        }),
         icon: <FolderOpen className="h-4 w-4" aria-hidden />,
       },
       {
         kind: 'bundle_asset',
-        title: 'Bundled file',
-        description: 'Reference a file shipped with this bundle.',
+        title: t('layout.workspace-resource-bundled-file', {
+          defaultValue: 'Bundled file',
+        }),
+        description: t('layout.workspace-resource-bundled-file-description', {
+          defaultValue: 'Reference a file shipped with this Bundle.',
+        }),
         icon: <FileText className="h-4 w-4" aria-hidden />,
       },
       {
         kind: 'inline',
-        title: 'Inline text',
-        description: 'Store a short, portable context note.',
+        title: t('layout.workspace-resource-inline-text', {
+          defaultValue: 'Inline text',
+        }),
+        description: t('layout.workspace-resource-inline-text-description', {
+          defaultValue: 'Store a short, portable context note.',
+        }),
         icon: <FileText className="h-4 w-4" aria-hidden />,
       },
       {
         kind: 'connection_query',
-        title: 'Connection query',
-        description: 'Resolve context through a configured connection.',
+        title: t('layout.workspace-resource-connection-query', {
+          defaultValue: 'Connection query',
+        }),
+        description: t(
+          'layout.workspace-resource-connection-query-description',
+          {
+            defaultValue: 'Resolve context through a configured connection.',
+          }
+        ),
         icon: <Database className="h-4 w-4" aria-hidden />,
       },
       {
         kind: 'artifact_ref',
-        title: 'Artifact reference',
-        description: 'Point to an authorized Eigent artifact.',
+        title: t('layout.workspace-resource-artifact-reference', {
+          defaultValue: 'Artifact reference',
+        }),
+        description: t(
+          'layout.workspace-resource-artifact-reference-description',
+          {
+            defaultValue: 'Point to an authorized Eigent artifact.',
+          }
+        ),
         icon: <Package className="h-4 w-4" aria-hidden />,
       },
       {
         kind: 'memory_scope',
-        title: 'Memory scope',
-        description: 'Expose a defined Space memory scope.',
+        title: t('layout.workspace-resource-memory-scope', {
+          defaultValue: 'Memory scope',
+        }),
+        description: t('layout.workspace-resource-memory-scope-description', {
+          defaultValue: 'Expose a defined Space memory scope.',
+        }),
         icon: <Database className="h-4 w-4" aria-hidden />,
       },
     ];
@@ -276,8 +354,16 @@ function Picker({
       <div className="space-y-2" data-workspace-resource-picker="skill">
         <PickerOption
           icon={<Package className="h-4 w-4" aria-hidden />}
-          title="Browse registry"
-          description="Add a versioned skill available from the registry."
+          title={t('layout.workspace-resource-browse-registry', {
+            defaultValue: 'Browse registry',
+          })}
+          description={t(
+            'layout.workspace-resource-browse-registry-description',
+            {
+              defaultValue:
+                'Add a versioned skill available from the registry.',
+            }
+          )}
           onClick={() =>
             onChange({
               ...editor,
@@ -291,8 +377,12 @@ function Picker({
         />
         <PickerOption
           icon={<FileText className="h-4 w-4" aria-hidden />}
-          title="Bundle skill"
-          description="Reference a skill packaged inside this bundle."
+          title={t('layout.workspace-resource-bundle-skill', {
+            defaultValue: 'Bundle skill',
+          })}
+          description={t('layout.workspace-resource-bundle-skill-description', {
+            defaultValue: 'Reference a skill packaged inside this Bundle.',
+          })}
           onClick={() =>
             onChange({
               ...editor,
@@ -310,10 +400,38 @@ function Picker({
 
   if (editor.kind === 'connector') {
     const connectors = [
-      ['github', 'GitHub', 'Connect repositories and issues.'],
-      ['slack', 'Slack', 'Connect channels and messages.'],
-      ['google_drive', 'Google Drive', 'Connect files and folders.'],
-      ['custom', 'Custom connector', 'Configure another connector type.'],
+      [
+        'github',
+        t('layout.workspace-resource-github', { defaultValue: 'GitHub' }),
+        t('layout.workspace-resource-github-description', {
+          defaultValue: 'Connect repositories and issues.',
+        }),
+      ],
+      [
+        'slack',
+        t('layout.workspace-resource-slack', { defaultValue: 'Slack' }),
+        t('layout.workspace-resource-slack-description', {
+          defaultValue: 'Connect channels and messages.',
+        }),
+      ],
+      [
+        'google_drive',
+        t('layout.workspace-resource-google-drive', {
+          defaultValue: 'Google Drive',
+        }),
+        t('layout.workspace-resource-google-drive-description', {
+          defaultValue: 'Connect files and folders.',
+        }),
+      ],
+      [
+        'custom',
+        t('layout.workspace-resource-custom-connector', {
+          defaultValue: 'Custom connector',
+        }),
+        t('layout.workspace-resource-custom-connector-description', {
+          defaultValue: 'Configure another connector type.',
+        }),
+      ],
     ] as const;
     return (
       <div className="space-y-2" data-workspace-resource-picker="connector">
@@ -345,8 +463,12 @@ function Picker({
       <div className="space-y-2" data-workspace-resource-picker="mcp">
         <PickerOption
           icon={<Server className="h-4 w-4" aria-hidden />}
-          title="MCP registry"
-          description="Use a versioned MCP definition from the registry."
+          title={t('layout.workspace-resource-mcp-registry', {
+            defaultValue: 'MCP registry',
+          })}
+          description={t('layout.workspace-resource-mcp-registry-description', {
+            defaultValue: 'Use a versioned MCP definition from the registry.',
+          })}
           onClick={() =>
             onChange({
               ...editor,
@@ -360,8 +482,16 @@ function Picker({
         />
         <PickerOption
           icon={<FileText className="h-4 w-4" aria-hidden />}
-          title="Bundle definition"
-          description="Reference an MCP definition packaged in this bundle."
+          title={t('layout.workspace-resource-bundle-definition', {
+            defaultValue: 'Bundle definition',
+          })}
+          description={t(
+            'layout.workspace-resource-bundle-definition-description',
+            {
+              defaultValue:
+                'Reference an MCP definition packaged in this Bundle.',
+            }
+          )}
           onClick={() =>
             onChange({
               ...editor,
@@ -421,23 +551,36 @@ function EditorFields({
   document: WorkspaceConfigurationDocument;
   onChange: (editor: WorkspaceResourceEditorState) => void;
 }) {
+  const { t } = useTranslation();
+
   if (editor.kind === 'environment') {
     const duplicateName = document.spec.environment?.variables.some(
       (variable, index) =>
         index !== editor.index && variable.name === editor.item.name
     );
     const nameNote = !ENVIRONMENT_VARIABLE_NAME.test(editor.item.name)
-      ? 'Use a portable environment variable name such as API_TOKEN.'
+      ? t('layout.workspace-resource-portable-variable-name', {
+          defaultValue:
+            'Use a portable environment variable name such as API_TOKEN.',
+        })
       : duplicateName
-        ? 'Variable names must be unique.'
+        ? t('layout.workspace-resource-variable-names-unique', {
+            defaultValue: 'Variable names must be unique.',
+          })
         : undefined;
-    const label = editor.item.name || 'environment variable';
+    const label =
+      editor.item.name ||
+      t('layout.workspace-resource-environment-variable', {
+        defaultValue: 'environment variable',
+      });
 
     return (
       <div className="space-y-4">
         <Input
           autoFocus
-          title="Variable name"
+          title={t('layout.workspace-resource-variable-name', {
+            defaultValue: 'Variable name',
+          })}
           value={editor.item.name}
           state={nameNote ? 'error' : 'default'}
           note={nameNote}
@@ -451,10 +594,13 @@ function EditorFields({
           }
         />
         <Input
-          title="Description"
+          title={t('setting.description', { defaultValue: 'Description' })}
           optional
           value={editor.item.description || ''}
-          placeholder="Why this variable is needed"
+          placeholder={t(
+            'layout.workspace-resource-variable-description-placeholder',
+            { defaultValue: 'Why this variable is needed' }
+          )}
           onChange={(event) =>
             onChange({
               ...editor,
@@ -471,7 +617,10 @@ function EditorFields({
           <label className="flex min-h-10 items-center gap-2 rounded-xl bg-ds-neutral-default-default px-3 text-ds-text-meta font-bold">
             <Switch
               size="sm"
-              aria-label={`Required ${label}`}
+              aria-label={t('layout.workspace-resource-required-label', {
+                label,
+                defaultValue: 'Required {{label}}',
+              })}
               checked={editor.item.required}
               onCheckedChange={(required) =>
                 onChange({
@@ -480,12 +629,19 @@ function EditorFields({
                 })
               }
             />
-            <span>Required</span>
+            <span>
+              {t('layout.workspace-resource-required', {
+                defaultValue: 'Required',
+              })}
+            </span>
           </label>
           <label className="flex min-h-10 items-center gap-2 rounded-xl bg-ds-neutral-default-default px-3 text-ds-text-meta font-bold">
             <Switch
               size="sm"
-              aria-label={`Sensitive ${label}`}
+              aria-label={t('layout.workspace-resource-sensitive-label', {
+                label,
+                defaultValue: 'Sensitive {{label}}',
+              })}
               checked={editor.item.sensitive}
               onCheckedChange={(sensitive) => {
                 const item = { ...editor.item, sensitive };
@@ -493,20 +649,37 @@ function EditorFields({
                 onChange({ ...editor, item });
               }}
             />
-            <span>Sensitive</span>
+            <span>
+              {t('layout.workspace-resource-sensitive', {
+                defaultValue: 'Sensitive',
+              })}
+            </span>
           </label>
         </div>
         {editor.item.sensitive ? (
           <span className="block text-ds-text-meta text-ds-ink-muted-default">
-            The recipient will provide this value locally during setup.
+            {t('layout.workspace-resource-sensitive-value-description', {
+              defaultValue:
+                'The recipient will provide this value locally during setup.',
+            })}
           </span>
         ) : (
           <Input
-            title="Safe example"
+            title={t('layout.workspace-resource-safe-example', {
+              defaultValue: 'Safe example',
+            })}
             optional
             value={editor.item.example || ''}
-            placeholder="development"
-            note="Documentation only. Never paste a credential or real local value."
+            placeholder={t(
+              'layout.workspace-resource-safe-example-placeholder',
+              {
+                defaultValue: 'development',
+              }
+            )}
+            note={t('layout.workspace-resource-safe-example-note', {
+              defaultValue:
+                'Documentation only. Never paste a credential or real local value.',
+            })}
             onChange={(event) =>
               onChange({
                 ...editor,
@@ -529,7 +702,7 @@ function EditorFields({
       <div className="space-y-4">
         <Input
           autoFocus
-          title="Role"
+          title={t('layout.workspace-resource-role', { defaultValue: 'Role' })}
           value={editor.item.role}
           onChange={(event) =>
             onChange({
@@ -539,7 +712,9 @@ function EditorFields({
           }
         />
         <Input
-          title="Instruction asset"
+          title={t('layout.workspace-resource-instruction-asset', {
+            defaultValue: 'Instruction asset',
+          })}
           value={editor.item.ref}
           placeholder="bundle://instructions/coordinator.md"
           onChange={(event) =>
@@ -565,7 +740,9 @@ function EditorFields({
       <div className="space-y-4">
         <Input
           autoFocus
-          title="Context id"
+          title={t('layout.workspace-resource-context-id', {
+            defaultValue: 'Context id',
+          })}
           value={editor.item.id}
           onChange={(event) =>
             onChange({
@@ -576,8 +753,12 @@ function EditorFields({
         />
         <Select value={editor.item.kind} onValueChange={changeKind}>
           <SelectTrigger
-            title="Source type"
-            aria-label="Source type"
+            title={t('layout.workspace-resource-source-type', {
+              defaultValue: 'Source type',
+            })}
+            aria-label={t('layout.workspace-resource-source-type', {
+              defaultValue: 'Source type',
+            })}
             wrapperClassName="w-full"
           >
             <SelectValue />
@@ -595,7 +776,7 @@ function EditorFields({
                 ] as const
               ).map((kind) => (
                 <SelectItem key={kind} value={kind}>
-                  {contextKindLabel(kind)}
+                  {contextKindLabel(kind, t)}
                 </SelectItem>
               ))}
             </SelectGroup>
@@ -604,7 +785,9 @@ function EditorFields({
         {editor.item.kind === 'inline' ? (
           <Textarea
             variant="enhanced"
-            title="Content"
+            title={t('layout.workspace-resource-content', {
+              defaultValue: 'Content',
+            })}
             value={editor.item.content || ''}
             onChange={(event) =>
               onChange({
@@ -616,7 +799,9 @@ function EditorFields({
         ) : editor.item.kind === 'connection_query' ? (
           <Textarea
             variant="enhanced"
-            title="Query"
+            title={t('layout.workspace-resource-query', {
+              defaultValue: 'Query',
+            })}
             value={editor.queryText}
             note={editor.queryError}
             onChange={(event) => {
@@ -624,7 +809,11 @@ function EditorFields({
               try {
                 const query = JSON.parse(queryText) as unknown;
                 if (!query || Array.isArray(query) || typeof query !== 'object')
-                  throw new Error('Query must be a JSON object.');
+                  throw new Error(
+                    t('layout.workspace-resource-query-json-object', {
+                      defaultValue: 'Query must be a JSON object.',
+                    })
+                  );
                 onChange({
                   ...editor,
                   queryText,
@@ -639,7 +828,11 @@ function EditorFields({
                   ...editor,
                   queryText,
                   queryError:
-                    cause instanceof Error ? cause.message : 'Invalid JSON',
+                    cause instanceof Error
+                      ? cause.message
+                      : t('layout.workspace-resource-invalid-json', {
+                          defaultValue: 'Invalid JSON',
+                        }),
                 });
               }
             }}
@@ -648,8 +841,12 @@ function EditorFields({
           <Input
             title={
               editor.item.kind === 'local_path_slot'
-                ? 'Slot name'
-                : 'Logical reference'
+                ? t('layout.workspace-resource-slot-name', {
+                    defaultValue: 'Slot name',
+                  })
+                : t('layout.workspace-resource-logical-reference', {
+                    defaultValue: 'Logical reference',
+                  })
             }
             value={
               editor.item.kind === 'local_path_slot'
@@ -680,18 +877,32 @@ function EditorFields({
           }
         >
           <SelectTrigger
-            title="Sharing"
-            aria-label="Sharing"
+            title={t('layout.workspace-resource-sharing', {
+              defaultValue: 'Sharing',
+            })}
+            aria-label={t('layout.workspace-resource-sharing', {
+              defaultValue: 'Sharing',
+            })}
             wrapperClassName="w-full"
           >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              <SelectItem value="reference_only">Reference only</SelectItem>
-              <SelectItem value="bundled">Bundled</SelectItem>
+              <SelectItem value="reference_only">
+                {t('layout.workspace-resource-reference-only', {
+                  defaultValue: 'Reference only',
+                })}
+              </SelectItem>
+              <SelectItem value="bundled">
+                {t('layout.workspace-resource-bundled', {
+                  defaultValue: 'Bundled',
+                })}
+              </SelectItem>
               <SelectItem value="authorized_artifact">
-                Authorized artifact
+                {t('layout.workspace-resource-authorized-artifact', {
+                  defaultValue: 'Authorized artifact',
+                })}
               </SelectItem>
             </SelectGroup>
           </SelectContent>
@@ -712,7 +923,9 @@ function EditorFields({
       <div className="space-y-4">
         <Input
           autoFocus
-          title="Agent id"
+          title={t('layout.workspace-resource-agent-id', {
+            defaultValue: 'Agent id',
+          })}
           value={editor.item.id}
           onChange={(event) =>
             onChange({
@@ -722,7 +935,7 @@ function EditorFields({
           }
         />
         <Input
-          title="Role"
+          title={t('layout.workspace-resource-role', { defaultValue: 'Role' })}
           value={editor.item.role}
           onChange={(event) =>
             onChange({
@@ -738,8 +951,12 @@ function EditorFields({
           }
         >
           <SelectTrigger
-            title="Model profile"
-            aria-label="Model profile"
+            title={t('layout.workspace-resource-model-profile', {
+              defaultValue: 'Model profile',
+            })}
+            aria-label={t('layout.workspace-resource-model-profile', {
+              defaultValue: 'Model profile',
+            })}
             wrapperClassName="w-full"
           >
             <SelectValue />
@@ -757,35 +974,50 @@ function EditorFields({
 
         <div className="border-x-0 border-t border-b-0 border-solid border-ds-hairline-subtle-default pt-4">
           <div className="text-ds-text-base font-bold text-ds-ink-default-default">
-            Assigned resources
+            {t('layout.workspace-resource-assigned-resources', {
+              defaultValue: 'Assigned resources',
+            })}
           </div>
           <div className="mt-2 space-y-2 text-ds-text-meta text-ds-ink-muted-default">
             <div className="rounded-xl bg-ds-neutral-default-default p-3">
               <span className="font-semibold text-ds-ink-default-default">
-                Instruction
+                {t('layout.workspace-resource-instruction-label', {
+                  defaultValue: 'Instruction',
+                })}
               </span>
               <span className="mt-1 block truncate">
-                {instruction || 'No instruction for this role'}
+                {instruction ||
+                  t('layout.workspace-resource-no-instruction-for-role', {
+                    defaultValue: 'No instruction for this role',
+                  })}
               </span>
             </div>
             <div className="rounded-xl bg-ds-neutral-default-default p-3">
               <span className="font-semibold text-ds-ink-default-default">
-                Skills
+                {t('layout.workspace-resource-skills', {
+                  defaultValue: 'Skills',
+                })}
               </span>
               <span className="mt-1 block truncate">
                 {skills.length
                   ? skills.map((item) => item.ref).join(', ')
-                  : 'No assigned skills'}
+                  : t('layout.workspace-resource-no-assigned-skills', {
+                      defaultValue: 'No assigned skills',
+                    })}
               </span>
             </div>
             <div className="rounded-xl bg-ds-neutral-default-default p-3">
               <span className="font-semibold text-ds-ink-default-default">
-                MCP servers
+                {t('layout.workspace-resource-mcp-servers', {
+                  defaultValue: 'MCP servers',
+                })}
               </span>
               <span className="mt-1 block truncate">
                 {mcpServers.length
                   ? mcpServers.map((item) => item.id).join(', ')
-                  : 'No assigned MCP servers'}
+                  : t('layout.workspace-resource-no-assigned-mcp-servers', {
+                      defaultValue: 'No assigned MCP servers',
+                    })}
               </span>
             </div>
           </div>
@@ -799,7 +1031,9 @@ function EditorFields({
       <div className="space-y-4">
         <Input
           autoFocus
-          title="Skill reference"
+          title={t('layout.workspace-resource-skill-reference', {
+            defaultValue: 'Skill reference',
+          })}
           value={editor.item.ref}
           onChange={(event) =>
             onChange({
@@ -809,10 +1043,14 @@ function EditorFields({
           }
         />
         <Input
-          title="Assign to agents"
+          title={t('layout.workspace-resource-assign-to-agents', {
+            defaultValue: 'Assign to agents',
+          })}
           value={editor.item.assignTo.join(', ')}
           placeholder="lead, researcher"
-          note="Use agent ids separated by commas."
+          note={t('layout.workspace-resource-agent-ids-note', {
+            defaultValue: 'Use agent ids separated by commas.',
+          })}
           onChange={(event) =>
             onChange({
               ...editor,
@@ -829,7 +1067,9 @@ function EditorFields({
       <div className="space-y-4">
         <Input
           autoFocus
-          title="Connector id"
+          title={t('layout.workspace-resource-connector-id', {
+            defaultValue: 'Connector id',
+          })}
           value={editor.item.id}
           onChange={(event) =>
             onChange({
@@ -839,7 +1079,9 @@ function EditorFields({
           }
         />
         <Input
-          title="Connector"
+          title={t('layout.workspace-resource-connector-label', {
+            defaultValue: 'Connector',
+          })}
           value={editor.item.connector}
           onChange={(event) =>
             onChange({
@@ -849,7 +1091,9 @@ function EditorFields({
           }
         />
         <Input
-          title="Connection slot"
+          title={t('layout.workspace-resource-connection-slot', {
+            defaultValue: 'Connection slot',
+          })}
           value={editor.item.connectionSlot}
           onChange={(event) =>
             onChange({
@@ -859,7 +1103,9 @@ function EditorFields({
           }
         />
         <Input
-          title="Required grants"
+          title={t('layout.workspace-resource-required-grants', {
+            defaultValue: 'Required grants',
+          })}
           value={editor.item.requiredGrants.join(', ')}
           placeholder="repository.read, issues.read"
           onChange={(event) =>
@@ -881,7 +1127,9 @@ function EditorFields({
       <div className="space-y-4">
         <Input
           autoFocus
-          title="MCP server id"
+          title={t('layout.workspace-resource-mcp-server-id', {
+            defaultValue: 'MCP server id',
+          })}
           value={editor.item.id}
           onChange={(event) =>
             onChange({
@@ -891,7 +1139,9 @@ function EditorFields({
           }
         />
         <Input
-          title="Definition"
+          title={t('layout.workspace-resource-definition', {
+            defaultValue: 'Definition',
+          })}
           value={editor.item.definition}
           onChange={(event) =>
             onChange({
@@ -901,10 +1151,14 @@ function EditorFields({
           }
         />
         <Input
-          title="Secret slots"
+          title={t('layout.workspace-resource-secret-slots', {
+            defaultValue: 'Secret slots',
+          })}
           value={editor.item.secretSlots.join(', ')}
           placeholder="API_TOKEN"
-          note="Store slot names only. Secret values remain local."
+          note={t('layout.workspace-resource-secret-slots-note', {
+            defaultValue: 'Store slot names only. Secret values remain local.',
+          })}
           onChange={(event) =>
             onChange({
               ...editor,
@@ -913,7 +1167,9 @@ function EditorFields({
           }
         />
         <Input
-          title="Assign to agents"
+          title={t('layout.workspace-resource-assign-to-agents', {
+            defaultValue: 'Assign to agents',
+          })}
           value={editor.item.assignTo.join(', ')}
           placeholder="lead, researcher"
           onChange={(event) =>
@@ -939,6 +1195,7 @@ export function WorkspaceResourceEditorPanel({
   onCommit,
   onDelete,
 }: WorkspaceResourceEditorPanelProps) {
+  const { t } = useTranslation();
   const reduceMotion = Boolean(useReducedMotion());
   const [contentDirection, setContentDirection] = useState<ContentDirection>(1);
 
@@ -950,9 +1207,17 @@ export function WorkspaceResourceEditorPanel({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
-  const resourceName = editorNames[editor.kind];
+  const resourceName = editorName(editor.kind, t);
   const title =
-    editor.mode === 'create' ? `Add ${resourceName}` : `Edit ${resourceName}`;
+    editor.mode === 'create'
+      ? t('layout.workspace-resource-add-title', {
+          resourceName,
+          defaultValue: 'Add {{resourceName}}',
+        })
+      : t('layout.workspace-resource-edit-title', {
+          resourceName,
+          defaultValue: 'Edit {{resourceName}}',
+        });
   const canGoBack =
     editor.mode === 'create' &&
     editor.step === 'editor' &&
@@ -982,13 +1247,19 @@ export function WorkspaceResourceEditorPanel({
   const footerStatus =
     editor.mode === 'edit'
       ? saveState === 'saving'
-        ? 'Saving…'
+        ? t('layout.workspace-resource-saving', { defaultValue: 'Saving…' })
         : saveState === 'saved'
-          ? 'Saved'
+          ? t('layout.workspace-resource-saved', { defaultValue: 'Saved' })
           : saveState === 'needs_attention'
-            ? 'Needs attention'
-            : 'Local draft'
-      : 'Not yet added';
+            ? t('layout.workspace-resource-needs-attention', {
+                defaultValue: 'Needs attention',
+              })
+            : t('layout.workspace-resource-local-draft', {
+                defaultValue: 'Local draft',
+              })
+      : t('layout.workspace-resource-not-yet-added', {
+          defaultValue: 'Not yet added',
+        });
   const panelTransform = 'translate3d(0, 0, 0)';
   const panelOffsetTransform = reduceMotion
     ? panelTransform
@@ -1049,7 +1320,7 @@ export function WorkspaceResourceEditorPanel({
               size="sm"
               buttonContent="icon-only"
               className="-ml-2 shrink-0"
-              aria-label="Back"
+              aria-label={t('layout.back', { defaultValue: 'Back' })}
               onClick={goBack}
             >
               <ArrowLeft className="h-4 w-4" aria-hidden />
@@ -1061,10 +1332,24 @@ export function WorkspaceResourceEditorPanel({
             </span>
             <span className="mt-1 block text-ds-text-meta text-ds-ink-muted-default">
               {editor.step === 'picker'
-                ? `Choose the type of ${resourceName} to configure.`
+                ? t('layout.workspace-resource-choose-type-description', {
+                    resourceName,
+                    defaultValue:
+                      'Choose the type of {{resourceName}} to configure.',
+                  })
                 : editor.mode === 'create'
-                  ? `Configure this ${resourceName} before adding it to the bundle.`
-                  : 'Changes autosave to the current Space draft.'}
+                  ? t(
+                      'layout.workspace-resource-configure-before-adding-description',
+                      {
+                        resourceName,
+                        defaultValue:
+                          'Configure this {{resourceName}} before adding it to the Bundle.',
+                      }
+                    )
+                  : t('layout.workspace-resource-autosave-description', {
+                      defaultValue:
+                        'Changes autosave to the current Space draft.',
+                    })}
             </span>
           </div>
         </div>
@@ -1073,7 +1358,9 @@ export function WorkspaceResourceEditorPanel({
           variant="ghost"
           size="sm"
           buttonContent="icon-only"
-          aria-label="Close editor"
+          aria-label={t('layout.workspace-resource-close-editor', {
+            defaultValue: 'Close editor',
+          })}
           onClick={onClose}
         >
           <X className="h-4 w-4" aria-hidden />
@@ -1121,11 +1408,14 @@ export function WorkspaceResourceEditorPanel({
               variant="ghost"
               tone="error"
               size="sm"
-              aria-label={`Delete ${resourceName}`}
+              aria-label={t('layout.workspace-resource-delete-label', {
+                resourceName,
+                defaultValue: 'Delete {{resourceName}}',
+              })}
               onClick={onDelete}
             >
               <Trash2 className="h-4 w-4" aria-hidden />
-              Delete
+              {t('layout.delete', { defaultValue: 'Delete' })}
             </Button>
           ) : null}
           <Button
@@ -1135,7 +1425,7 @@ export function WorkspaceResourceEditorPanel({
             className="ml-auto"
             onClick={onClose}
           >
-            Cancel
+            {t('layout.cancel', { defaultValue: 'Cancel' })}
           </Button>
           <Button
             type="button"
@@ -1144,7 +1434,7 @@ export function WorkspaceResourceEditorPanel({
             disabled={!canCommitResourceEditor(editor, document)}
             onClick={editor.mode === 'create' ? onCommit : onClose}
           >
-            Save
+            {t('layout.save', { defaultValue: 'Save' })}
           </Button>
         </div>
         <span className="relative mt-1 block min-h-5 overflow-hidden text-center text-ds-text-meta text-ds-ink-muted-default">

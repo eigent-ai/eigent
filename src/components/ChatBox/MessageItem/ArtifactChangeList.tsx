@@ -143,7 +143,15 @@ export function ArtifactChangeList({
             onClick={() => setIsExpanded((value) => !value)}
             className="mt-1 flex items-center gap-1 px-4 py-3 text-ds-text-base font-semibold text-ds-ink-default-default transition-colors hover:bg-ds-neutral-default-default"
           >
-            {isExpanded ? 'Show fewer files' : `Show ${hiddenCount} more files`}
+            {isExpanded
+              ? t('chat.show-fewer-files', {
+                  defaultValue: 'Show fewer files',
+                })
+              : t('chat.show-more-files', {
+                  count: hiddenCount,
+                  defaultValue_one: 'Show {{count}} more file',
+                  defaultValue_other: 'Show {{count}} more files',
+                })}
             <ChevronDown
               size={15}
               aria-hidden

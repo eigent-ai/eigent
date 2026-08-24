@@ -125,8 +125,10 @@ function buildIntegrationsFromConfigInfo(
                 id: 0,
                 key: key,
                 name: key,
-                description:
-                  'Notion workspace integration for reading and managing Notion pages',
+                description: t('connectors.notion-description', {
+                  defaultValue:
+                    'Notion workspace integration for reading and managing Notion pages',
+                }),
                 toolkit: 'notion_mcp_toolkit',
                 isLocal: true,
               };
@@ -189,8 +191,10 @@ function buildIntegrationsFromConfigInfo(
                 id: 0,
                 key: key,
                 name: key,
-                description:
-                  'Google Calendar integration for managing events and schedules',
+                description: t('connectors.google-calendar-description', {
+                  defaultValue:
+                    'Google Calendar integration for managing events and schedules',
+                }),
                 toolkit: 'google_calendar_toolkit',
                 isLocal: true,
               };
@@ -514,8 +518,10 @@ const ToolSelect = forwardRef<
               id: activeMcp.id,
               key: activeMcp.key,
               name: activeMcp.name,
-              description:
-                'Google Calendar integration for managing events and schedules',
+              description: t('connectors.google-calendar-description', {
+                defaultValue:
+                  'Google Calendar integration for managing events and schedules',
+              }),
               toolkit: 'google_calendar_toolkit',
               isLocal: true,
             };
@@ -583,8 +589,10 @@ const ToolSelect = forwardRef<
                       id: activeMcp.id,
                       key: activeMcp.key,
                       name: activeMcp.name,
-                      description:
-                        'Google Calendar integration for managing events and schedules',
+                      description: t('connectors.google-calendar-description', {
+                        defaultValue:
+                          'Google Calendar integration for managing events and schedules',
+                      }),
                       toolkit: 'google_calendar_toolkit',
                       isLocal: true,
                     };

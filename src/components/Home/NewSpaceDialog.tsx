@@ -157,19 +157,31 @@ export default function NewSpaceDialog({
         {page === 'options' ? (
           <>
             <DialogHeader
-              title="Create a new Space"
-              subtitle="Choose how you want to set up this Space."
+              title={t('layout.create-new-space', {
+                defaultValue: 'Create a new Space',
+              })}
+              subtitle={t('layout.create-new-space-description', {
+                defaultValue: 'Choose how you want to set up this Space.',
+              })}
             />
             <DialogContentSection>
               <div
                 role="group"
-                aria-label="New Space options"
+                aria-label={t('layout.new-space-options', {
+                  defaultValue: 'New Space options',
+                })}
                 className="grid grid-cols-3 gap-3"
               >
                 <NewSpaceOption
                   icon={Plus}
                   title={t('layout.workspace-start-from-scratch')}
-                  description="Create an empty Space and start with a clean workspace."
+                  description={t(
+                    'layout.workspace-start-from-scratch-description',
+                    {
+                      defaultValue:
+                        'Create an empty Space and start with a clean workspace.',
+                    }
+                  )}
                   busy={pendingOption === 'scratch'}
                   disabled={pendingOption !== null}
                   onClick={() =>
@@ -179,7 +191,13 @@ export default function NewSpaceDialog({
                 <NewSpaceOption
                   icon={FolderOpen}
                   title={t('layout.workspace-use-local-folder')}
-                  description="Connect a folder already stored on this device."
+                  description={t(
+                    'layout.workspace-use-local-folder-description',
+                    {
+                      defaultValue:
+                        'Connect a folder already stored on this device.',
+                    }
+                  )}
                   busy={pendingOption === 'folder'}
                   disabled={pendingOption !== null}
                   onClick={() =>
@@ -188,8 +206,16 @@ export default function NewSpaceDialog({
                 />
                 <NewSpaceOption
                   icon={PackagePlus}
-                  title="Import from Workspace Bundle"
-                  description="Create a Space from a shared Workspace Bundle."
+                  title={t('layout.workspace-import-from-bundle', {
+                    defaultValue: 'Import from Workspace Bundle',
+                  })}
+                  description={t(
+                    'layout.workspace-import-from-bundle-description',
+                    {
+                      defaultValue:
+                        'Create a Space from a shared Workspace Bundle.',
+                    }
+                  )}
                   disabled={pendingOption !== null}
                   onClick={() => setPage('import-options')}
                 />
@@ -199,15 +225,22 @@ export default function NewSpaceDialog({
         ) : page === 'import-options' ? (
           <>
             <DialogHeader
-              title="Import a Bundle"
-              subtitle="Add a Workspace Bundle name or convert an Agent Plugin into a Bundle."
+              title={t('layout.workspace-import-bundle', {
+                defaultValue: 'Import a Bundle',
+              })}
+              subtitle={t('layout.workspace-import-bundle-description', {
+                defaultValue:
+                  'Add a Workspace Bundle name or convert an Agent Plugin into a Bundle.',
+              })}
               showBackButton
               onBackClick={() => setPage('options')}
             />
             <DialogContentSection>
               <div
                 role="group"
-                aria-label="Bundle import options"
+                aria-label={t('layout.workspace-bundle-import-options', {
+                  defaultValue: 'Bundle import options',
+                })}
                 className={cn(
                   'grid gap-3',
                   canImportAgentPlugin ? 'grid-cols-2' : 'grid-cols-1'
@@ -215,15 +248,31 @@ export default function NewSpaceDialog({
               >
                 <NewSpaceOption
                   icon={PackagePlus}
-                  title="Add Workspace Bundle name"
-                  description="Enter a shared Bundle name or handle and create a Space."
+                  title={t('layout.workspace-add-bundle-name', {
+                    defaultValue: 'Add Workspace Bundle name',
+                  })}
+                  description={t(
+                    'layout.workspace-add-bundle-name-description',
+                    {
+                      defaultValue:
+                        'Enter a shared Bundle name or handle and create a Space.',
+                    }
+                  )}
                   onClick={() => setPage('workspace-bundle')}
                 />
                 {canImportAgentPlugin ? (
                   <NewSpaceOption
                     icon={Puzzle}
-                    title="Import Agent Plugin as Bundle"
-                    description="Inspect a local Agent Plugin and convert it into a Workspace Bundle draft."
+                    title={t('layout.agent-plugin-import-as-bundle', {
+                      defaultValue: 'Import Agent Plugin as Bundle',
+                    })}
+                    description={t(
+                      'layout.agent-plugin-import-as-bundle-description',
+                      {
+                        defaultValue:
+                          'Inspect a local Agent Plugin and convert it into a Workspace Bundle draft.',
+                      }
+                    )}
                     onClick={() => setPage('agent-plugin')}
                   />
                 ) : null}
@@ -233,8 +282,16 @@ export default function NewSpaceDialog({
         ) : page === 'workspace-bundle' ? (
           <>
             <DialogHeader
-              title="Import Workspace Bundle"
-              subtitle="Enter a share handle to review the bundle and create a Space."
+              title={t('layout.workspace-import-workspace-bundle', {
+                defaultValue: 'Import Workspace Bundle',
+              })}
+              subtitle={t(
+                'layout.workspace-import-workspace-bundle-description',
+                {
+                  defaultValue:
+                    'Enter a share handle to review the bundle and create a Space.',
+                }
+              )}
               showBackButton
               onBackClick={() => setPage('import-options')}
             />
@@ -250,7 +307,9 @@ export default function NewSpaceDialog({
                       aria-hidden
                     />
                     <span className="sr-only">
-                      Loading Workspace Bundle form
+                      {t('layout.workspace-bundle-form-loading', {
+                        defaultValue: 'Loading Workspace Bundle form',
+                      })}
                     </span>
                   </div>
                 }
@@ -267,8 +326,13 @@ export default function NewSpaceDialog({
         ) : (
           <>
             <DialogHeader
-              title="Import Agent Plugin as Bundle"
-              subtitle="Inspect a local Agent Plugin and convert it into a Workspace Bundle draft."
+              title={t('layout.agent-plugin-import-as-bundle', {
+                defaultValue: 'Import Agent Plugin as Bundle',
+              })}
+              subtitle={t('layout.agent-plugin-import-as-bundle-description', {
+                defaultValue:
+                  'Inspect a local Agent Plugin and convert it into a Workspace Bundle draft.',
+              })}
               showBackButton
               onBackClick={() => setPage('import-options')}
             />
@@ -283,7 +347,11 @@ export default function NewSpaceDialog({
                       className="h-5 w-5 animate-spin"
                       aria-hidden
                     />
-                    <span className="sr-only">Loading Agent Plugin form</span>
+                    <span className="sr-only">
+                      {t('layout.agent-plugin-form-loading', {
+                        defaultValue: 'Loading Agent Plugin form',
+                      })}
+                    </span>
                   </div>
                 }
               >

@@ -61,5 +61,6 @@
   "all-agents": "모든 에이전트",
   "replace-skill-title": "“{{name}}” 스킬을 교체할까요?",
   "replace-skill-message": "같은 이름의 스킬이 이미 있습니다. 이 스킬을 업로드하면 기존 스킬이 교체되며 복원할 수 없습니다.",
-  "update-and-replace": "업데이트 후 교체"
+  "update-and-replace": "업데이트 후 교체",
+  "agent": "에이전트"
 }

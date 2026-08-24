@@ -75,7 +75,9 @@ const getStatusStateText = (activityType: ActivityType, t: any): string => {
     case ActivityType.TaskCompleted:
       return t('triggers.status-execution-completed');
     case ActivityType.ExecutionCancelled:
-      return t('triggers.status-cancelled', 'Cancelled');
+      return t('triggers.status-cancelled', {
+        defaultValue: 'Cancelled',
+      });
     case ActivityType.ExecutionFailed:
       return t('triggers.status-error');
     case ActivityType.WebhookTriggered:

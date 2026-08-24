@@ -53,7 +53,7 @@ export function NoticeCard() {
   if (!chatStore) {
     return (
       <span className="block px-4 py-3 text-ds-text-base font-normal text-ds-ink-muted-default">
-        Loading…
+        {t('chat.loading', { defaultValue: 'Loading…' })}
       </span>
     );
   }

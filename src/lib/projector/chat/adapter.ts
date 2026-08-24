@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import i18next from 'i18next';
 import type {
   CanonicalProjectEvent,
   CanonicalSemanticActorType,
@@ -1148,7 +1149,7 @@ function activityNode(
     toolName
   );
   const title = isHumanInputActivity
-    ? 'Human Toolkit'
+    ? i18next.t('chat.human-toolkit', { defaultValue: 'Human Toolkit' })
     : activityTitle(base, payload, isTypedActivity, activityType, {
         methodName,
         toolName,
@@ -1340,15 +1341,22 @@ function workspaceWriterNotice(
     const position = Number(payload.queue_position);
     const positionText =
       Number.isInteger(position) && position > 0
-        ? ` Queue position: ${position}.`
+        ? i18next.t('chat.workspace-queue-position', {
+            defaultValue: ' Queue position: {{position}}.',
+            position,
+          })
         : '';
     return noticeNode(
       base,
       {
-        title: 'Waiting for workspace',
-        content:
-          'Another task is updating this Space. This task will start ' +
-          `automatically when the workspace is available.${positionText}`,
+        title: i18next.t('chat.workspace-waiting-title', {
+          defaultValue: 'Waiting for Space',
+        }),
+        content: i18next.t('chat.workspace-waiting-description', {
+          defaultValue:
+            'Another task is updating this Space. This task will start automatically when the Space is available.{{position}}',
+          position: positionText,
+        }),
       },
       'info'
     );
@@ -1360,8 +1368,12 @@ function workspaceWriterNotice(
     return noticeNode(
       base,
       {
-        title: 'Workspace available',
-        content: 'This task now has write access and is continuing.',
+        title: i18next.t('chat.workspace-available-title', {
+          defaultValue: 'Space available',
+        }),
+        content: i18next.t('chat.workspace-available-description', {
+          defaultValue: 'This task now has write access and is continuing.',
+        }),
       },
       'info'
     );
@@ -1417,7 +1429,9 @@ function stepNode(
         step.parentStepId,
         semantic?.correlation?.parent_step_id
       ) || undefined,
-    title: firstText(step.title, payload.display_title) || 'Task step',
+    title:
+      firstText(step.title, payload.display_title) ||
+      i18next.t('chat.task-step', { defaultValue: 'Task step' }),
     summary: firstText(step.summary, payload.display_summary) || undefined,
     status: rawStatus as ChatStepStatus,
     phase: activityPhase(

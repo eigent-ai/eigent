@@ -491,7 +491,9 @@ export default function IntegrationList({
                       {selectContent ?? (
                         <>
                           <SelectItem value="more">
-                            More integrations
+                            {t('dashboard.more-integrations', {
+                              defaultValue: 'More integrations',
+                            })}
                           </SelectItem>
                         </>
                       )}
