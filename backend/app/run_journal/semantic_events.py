@@ -165,6 +165,20 @@ def _bounded_text(value: Any, *, limit: int = _MAX_DISPLAY_TEXT) -> str:
     return f"{text[: max(0, limit - 1)].rstrip()}…"
 
 
+def _bounded_text_fragment(
+    value: Any, *, limit: int = _MAX_DISPLAY_TEXT
+) -> str:
+    """Redact a streamed display fragment without changing its boundaries."""
+
+    from app.permission_policy.models import redact_sensitive_text
+    from app.workspace_config.models import redact_device_home_paths
+
+    text = redact_device_home_paths(redact_sensitive_text(str(value or "")))
+    if len(text) <= limit:
+        return text
+    return f"{text[: max(0, limit - 1)]}…"
+
+
 def _identifier(value: Any) -> str:
     return _bounded_text(value, limit=_MAX_ID_LENGTH)
 
@@ -491,8 +505,8 @@ def project_legacy_semantic_event(
         return _subtask_plan_projection(data, run_id)
 
     if step == "decompose_text" and run_id:
-        content = _bounded_text(data.get("content"))
-        if not content:
+        content = _bounded_text_fragment(data.get("content"))
+        if not content.strip():
             return None
         return LegacySemanticProjection(
             "activity.progress",
@@ -509,6 +523,63 @@ def project_legacy_semantic_event(
                 ),
                 "status": "running",
                 "display_title": content,
+                "display_fragment_exact": True,
+            },
+        )
+
+    if step == "notice" and run_id:
+        content = _bounded_text(
+            data.get("content")
+            or data.get("message_description")
+            or data.get("notice")
+        )
+        if not content:
+            return None
+        title = _bounded_text(
+            data.get("title") or data.get("message_title"),
+            limit=_MAX_DISPLAY_TITLE,
+        )
+        notice_id = _identifier(
+            data.get("notice_id")
+            or data.get("tool_call_id")
+            or f"{run_id}:notice"
+        )
+        task_id = _identifier(data.get("process_task_id"))
+        tool_call_id = _identifier(data.get("tool_call_id"))
+        severity = str(data.get("severity") or "info").strip().lower()
+        if severity not in {"info", "success", "warning", "error"}:
+            severity = "info"
+        purpose = str(data.get("purpose") or "progress").strip().lower()
+        if purpose not in {"progress", "result", "decision", "status"}:
+            purpose = "progress"
+        return LegacySemanticProjection(
+            "notice.progress",
+            {
+                **semantic_event_fields(
+                    kind="narration",
+                    subject_type="activity_stream",
+                    subject_id=notice_id,
+                    phase="progress",
+                    status="running",
+                    source="legacy.notice",
+                    actor_type="agent",
+                    correlation={
+                        "run_id": run_id,
+                        "task_id": task_id,
+                        "tool_call_id": tool_call_id,
+                        "notice_id": notice_id,
+                    },
+                ),
+                "notice_id": notice_id,
+                "process_task_id": task_id,
+                "tool_call_id": tool_call_id,
+                "purpose": purpose,
+                "severity": severity,
+                "title": title,
+                "content": content,
+                "notice": content,
+                "display_title": title or content,
+                "display_summary": content if title else "",
             },
         )
 

@@ -87,7 +87,7 @@ def test_plain_folder_inspection_is_read_only_and_requires_consent(
     assert journal.get_space_git_repository(space_id="space-1") is None
 
 
-def test_user_folder_init_requires_consent_and_never_auto_stages_files(
+def test_user_folder_init_creates_empty_baseline_without_staging_files(
     tmp_path,
     journal,
 ):
@@ -113,7 +113,8 @@ def test_user_folder_init_requires_consent_and_never_auto_stages_files(
     assert result.repository.ownership == "adopted"
     assert result.repository.version_coverage == "managed_files_only"
     assert _git(space, "status", "--porcelain") == "?? private.txt"
-    assert _git(space, "rev-parse", "--verify", "HEAD", check=False) == ""
+    head = _git(space, "rev-parse", "--verify", "HEAD")
+    assert _git(space, "diff-tree", "--name-only", "-r", "--root", head) == ""
 
 
 def test_eigent_owned_space_survives_bootstrap_retry_after_git_init(
@@ -133,6 +134,7 @@ def test_eigent_owned_space_survives_bootstrap_retry_after_git_init(
 
     assert result.initialized is False
     assert result.repository.ownership == "eigent_owned"
+    assert backend.current_head(space) is not None
 
 
 def test_adopt_preserves_branch_remote_and_repository_config(

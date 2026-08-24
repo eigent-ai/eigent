@@ -104,6 +104,8 @@ def test_notice_sse_carries_stable_tool_call_identity():
         ActionNoticeData(
             process_task_id="task-1",
             data="The report is ready.",
+            title="Report ready",
+            notice_id="notice:tool-call-1",
             tool_call_id="tool-call-1",
         )
     )
@@ -113,7 +115,14 @@ def test_notice_sse_carries_stable_tool_call_identity():
         "notice",
         {
             "notice": "The report is ready.",
+            "content": "The report is ready.",
+            "message_description": "The report is ready.",
             "process_task_id": "task-1",
+            "purpose": "progress",
+            "severity": "info",
+            "title": "Report ready",
+            "message_title": "Report ready",
+            "notice_id": "notice:tool-call-1",
             "tool_call_id": "tool-call-1",
         },
     )

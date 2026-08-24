@@ -14,6 +14,7 @@
 
 import asyncio
 import time
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -25,6 +26,8 @@ from app.model.enums import DEFAULT_SUMMARY_PROMPT
 from app.run_journal import SQLiteRunJournal
 from app.service.chat_service import (
     _activate_improve_admission,
+    _answer_simple_question,
+    _build_question_context,
     _extract_stream_chunk_content,
     _render_subtask_report,
     _trim_in_process_history,
@@ -1002,6 +1005,82 @@ class TestChatServiceAgentOperations:
         # Should return True for complex tasks
         assert result is True
 
+    def test_question_context_falls_back_to_persisted_project_projection(self):
+        task_lock = SimpleNamespace(
+            conversation_history=[],
+            agent_memory_history=[],
+            memory_summary="",
+        )
+
+        context = _build_question_context(
+            task_lock,
+            "Assistant previously created scene.html for this Project.",
+        )
+
+        assert "previously created scene.html" in context
+
+    def test_question_context_prefers_current_process_history(self):
+        task_lock = SimpleNamespace(
+            conversation_history=[
+                {"role": "assistant", "content": "current response"}
+            ],
+            agent_memory_history=[],
+            memory_summary="",
+        )
+
+        context = _build_question_context(task_lock, "stale projection")
+
+        assert "current response" in context
+        assert "stale projection" not in context
+
+    @pytest.mark.asyncio
+    async def test_question_confirm_uses_persisted_project_context(
+        self, mock_camel_agent
+    ):
+        mock_camel_agent.step.return_value.msgs[0].content = "yes"
+        task_lock = SimpleNamespace(
+            conversation_history=[],
+            agent_memory_history=[],
+            memory_summary="",
+        )
+
+        assert await question_confirm(
+            mock_camel_agent,
+            "Can you improve its lighting?",
+            task_lock,
+            project_context="The previous Run created an ISS HTML scene.",
+        )
+
+        classifier_prompt = mock_camel_agent.step.call_args.args[0]
+        assert "previous Run created an ISS HTML scene" in classifier_prompt
+        assert "optimize, fix, or modify" in classifier_prompt
+
+    @pytest.mark.asyncio
+    async def test_simple_answer_consumes_streaming_model_response(self):
+        agent = MagicMock()
+        streaming_response = object()
+        agent.step.return_value = streaming_response
+        materialized = _AgentStepResponse("")
+
+        with (
+            patch(
+                "app.service.chat_service.is_streaming_response",
+                return_value=True,
+            ),
+            patch(
+                "app.service.chat_service.consume_response_content",
+                return_value=(materialized, "streamed direct answer"),
+            ) as consume,
+        ):
+            answer = await _answer_simple_question(
+                agent,
+                question="What changed?",
+                context="Previous Project context.\n",
+            )
+
+        assert answer == "streamed direct answer"
+        consume.assert_called_once_with(streaming_response)
+
     @pytest.mark.asyncio
     async def test_summary_task(self, mock_camel_agent):
         """Test summary_task creates proper task summary."""
@@ -1457,9 +1536,6 @@ class TestChatServiceIntegration:
         mock_task_lock.memory_service = None
         mock_task_lock.run_context = None
         mock_task_lock.question_agent = MagicMock()
-        mock_task_lock.question_agent.astep = AsyncMock(
-            return_value=_AgentStepResponse("still running")
-        )
 
         mock_workforce = MagicMock()
 
@@ -1469,6 +1545,10 @@ class TestChatServiceIntegration:
                 new=AsyncMock(return_value=False),
             ),
             patch(
+                "app.service.chat_service._answer_simple_question",
+                new=AsyncMock(return_value="still running"),
+            ),
+            patch(
                 "app.service.chat_service.construct_workforce",
                 return_value=(mock_workforce, MagicMock()),
             ),
@@ -1476,6 +1556,12 @@ class TestChatServiceIntegration:
                 "app.service.chat_service.delete_task_lock",
                 new=AsyncMock(),
             ) as mock_delete_task_lock,
+            patch(
+                "app.run_runtime.get_default_run_coordinator",
+                return_value=SimpleNamespace(
+                    complete_turn=AsyncMock(return_value=True)
+                ),
+            ),
         ):
             responses = []
             async for response in step_solve(options, request, mock_task_lock):

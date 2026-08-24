@@ -49,7 +49,7 @@ export interface ChatMessageAttachment {
   fileId?: string;
   source?: 'local' | 'upload';
 }
-export type ChatNoticeSeverity = 'info' | 'warning' | 'error';
+export type ChatNoticeSeverity = 'info' | 'success' | 'warning' | 'error';
 export type ChatInteractionStatus =
   'requested' | 'responded' | 'cancelled' | 'expired';
 export type ChatPlanTaskStatus =
@@ -148,6 +148,8 @@ export interface ChatNoticeNode extends ChatProjectionNodeBase {
   severity: ChatNoticeSeverity;
   content: string;
   title?: string;
+  purpose?: 'progress' | 'result' | 'decision' | 'status';
+  noticeId?: string;
   code?: string;
   /** Stable correlation to the code-owned tool invocation that emitted it. */
   toolCallId?: string;
@@ -256,6 +258,8 @@ export interface ChatActivityNode extends ChatProjectionNodeBase {
   agentModel?: string;
   /** Stable subject identity from the versioned semantic envelope. */
   activityId?: string;
+  /** Whether adjacent activity-stream titles preserve exact chunk boundaries. */
+  streamFragmentMode?: 'exact' | 'normalized';
   /** Domain discriminator such as command_execution or agent_turn. */
   semanticKind?: CanonicalSemanticKindV2;
   /** Whether the producer supplied every required correlation field. */

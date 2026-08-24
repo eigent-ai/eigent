@@ -88,7 +88,77 @@ function tool(
   };
 }
 
+function workLogChunk(
+  id: string,
+  runSequence: number,
+  title: string,
+  streamFragmentMode: ChatActivityNode['streamFragmentMode'] = 'normalized'
+): ChatActivityNode {
+  return {
+    ...base(id, 'run-1', runSequence),
+    eventType: 'activity.progress',
+    semantic: {
+      kind: 'narration',
+      subject: { type: 'activity_stream', id: 'run-1:narration' },
+      lifecycle: { phase: 'progress', status: 'running' },
+      completeness: { state: 'complete', missing_fields: [] },
+    },
+    kind: 'activity',
+    activityType: 'work_log',
+    status: 'running',
+    phase: 'progress',
+    title,
+    activityId: 'run-1:narration',
+    streamFragmentMode,
+  };
+}
+
 describe('event-native Timeline Run presentation', () => {
+  it('folds adjacent transport batches from one narration stream', () => {
+    const first = workLogChunk('chunk-1', 1, 'Build a complete,');
+    const second = workLogChunk('chunk-2', 2, 'responsive experience.');
+
+    const run = composeTimelineRun([first, second], 'run-1');
+
+    expect(run?.nodes).toEqual([first, second]);
+    expect(run?.traceRows).toHaveLength(1);
+    const row = run?.traceRows[0];
+    expect(row?.kind).toBe('node');
+    if (row?.kind !== 'node' || row.node.kind !== 'activity') {
+      throw new Error('expected one composed activity stream row');
+    }
+    expect(row.node.title).toBe('Build a complete, responsive experience.');
+  });
+
+  it('preserves exact boundaries when a streamed word spans two batches', () => {
+    const first = workLogChunk('chunk-1', 1, 'tr', 'exact');
+    const second = workLogChunk('chunk-2', 2, 'uss', 'exact');
+
+    const run = composeTimelineRun([first, second], 'run-1');
+    const row = run?.traceRows[0];
+
+    if (row?.kind !== 'node' || row.node.kind !== 'activity') {
+      throw new Error('expected one composed activity stream row');
+    }
+    expect(row.node.title).toBe('truss');
+  });
+
+  it('does not fold narration batches across a semantic boundary', () => {
+    const first = workLogChunk('chunk-1', 1, 'First thought.');
+    const boundary = message('assistant-note', 'run-1', 2, {
+      content: 'A separate authored update.',
+    });
+    const second = workLogChunk('chunk-2', 3, 'Second thought.');
+
+    const run = composeTimelineRun([first, boundary, second], 'run-1');
+
+    expect(run?.traceRows.map((row) => row.id)).toEqual([
+      'chunk-1',
+      'assistant-note',
+      'chunk-2',
+    ]);
+  });
+
   it('groups Runs and orders their nodes deterministically without mutating input', () => {
     const runTwoFinal = message('run-2-final', 'run-2', 2, {
       purpose: 'final',

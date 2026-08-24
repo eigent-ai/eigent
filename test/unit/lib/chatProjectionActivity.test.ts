@@ -38,6 +38,37 @@ function event(
 }
 
 describe('chat activity projection', () => {
+  it('projects typed Single Agent progress notices with title and correlation', () => {
+    const node = adaptChatProjectionEvent(
+      event(
+        {
+          title: 'Research complete',
+          content: 'Validated three primary sources.',
+          notice_id: 'notice:call-1',
+          tool_call_id: 'call-1',
+          purpose: 'result',
+          severity: 'success',
+          step_id: 'step-1',
+        },
+        'notice.progress'
+      )
+    );
+
+    expect(node).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'notice',
+        title: 'Research complete',
+        content: 'Validated three primary sources.',
+        noticeId: 'notice:call-1',
+        toolCallId: 'call-1',
+        stepId: 'step-1',
+        purpose: 'result',
+        severity: 'success',
+      },
+    });
+  });
+
   it('retains tool identity and backend call correlation for presentation', () => {
     const node = adaptChatProjectionEvent(
       event({
@@ -363,6 +394,51 @@ describe('chat activity projection', () => {
     expect(node).toMatchObject({
       kind: 'display',
       node: { kind: 'activity', stepId: 'stp-1' },
+    });
+  });
+
+  it('unwraps complete task protocol envelopes from display-safe activity text', () => {
+    const task =
+      '<tasks><task>Continue fixing `<device-home>/workspace/index.html`.</task></tasks>';
+    const node = adaptChatProjectionEvent(
+      event(
+        {
+          semantic_schema_version: 1,
+          display_schema_version: 1,
+          semantic: {
+            kind: 'subtask',
+            subject: { type: 'task', id: 'task-1' },
+            lifecycle: { phase: 'started', status: 'running' },
+            completeness: { state: 'complete', missing_fields: [] },
+          },
+          display_title: task,
+          display_input: task,
+        },
+        'subtask.started'
+      )
+    );
+
+    expect(node).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'activity',
+        title: 'Continue fixing `<device-home>/workspace/index.html`.',
+        input: 'Continue fixing `<device-home>/workspace/index.html`.',
+      },
+    });
+    expect(JSON.stringify(node)).not.toContain('<tasks>');
+    expect(JSON.stringify(node)).not.toContain('<task>');
+  });
+
+  it('keeps task tags that are mentioned as ordinary prose', () => {
+    const title = 'Explain why the `<task>` tag is visible.';
+    const node = adaptChatProjectionEvent(
+      event({ display_title: title }, 'subtask.started')
+    );
+
+    expect(node).toMatchObject({
+      kind: 'display',
+      node: { kind: 'activity', title },
     });
   });
 

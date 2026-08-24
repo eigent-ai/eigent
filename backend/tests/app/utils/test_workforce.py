@@ -30,9 +30,11 @@ from camel.tasks.task import TaskState
 
 from app.agent.listen_chat_agent import ListenChatAgent
 from app.exception.exception import UserException
+from app.run_runtime.active_timeout import pause_active_execution_timeout
 from app.service.task import (
     ActionAssignTaskData,
     ActionTaskStateData,
+    TaskLock,
     create_task_lock,
 )
 from app.utils.workforce import (
@@ -95,7 +97,42 @@ async def test_workforce_has_no_cumulative_limit_when_disabled():
         delayed_result
     )
 
+    assert workforce.task_timeout_seconds is None
     assert await workforce._get_returned_task() is expected
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_workforce_excludes_human_wait_from_its_timeout_budgets():
+    workforce = Workforce(
+        api_task_id="approval-run",
+        description="Approval task",
+        task_timeout_seconds=0.01,
+        stall_timeout_seconds=0.01,
+    )
+    task_lock = TaskLock(
+        "approval-run", asyncio.Queue(), {"agent": asyncio.Queue()}
+    )
+    expected = object()
+
+    async def delayed_result(_node_id):
+        async with pause_active_execution_timeout(task_lock):
+            await asyncio.sleep(0.03)
+        return expected
+
+    workforce._channel = MagicMock()
+    workforce._channel.get_returned_task_by_publisher.side_effect = (
+        delayed_result
+    )
+
+    with (
+        patch(
+            "app.utils.workforce.get_task_lock_if_exists",
+            return_value=task_lock,
+        ),
+        patch("app.utils.workforce._WORKFORCE_PROGRESS_POLL_SECONDS", 0.002),
+    ):
+        assert await workforce._get_returned_task() is expected
 
 
 @pytest.mark.unit

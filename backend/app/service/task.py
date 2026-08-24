@@ -14,6 +14,7 @@
 
 import asyncio
 import logging
+import time
 import weakref
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -247,7 +248,32 @@ class ActionNoticeData(BaseModel):
     action: Literal[Action.notice] = Action.notice
     process_task_id: str
     data: str
+    title: str | None = None
+    notice_id: str | None = None
+    purpose: Literal["progress", "result", "decision", "status"] = "progress"
+    severity: Literal["info", "success", "warning", "error"] = "info"
     tool_call_id: str | None = None
+
+
+def notice_event_payload(item: ActionNoticeData) -> dict[str, str]:
+    """Return typed notice data while retaining legacy field names."""
+
+    payload = {
+        "notice": item.data,
+        "content": item.data,
+        "message_description": item.data,
+        "process_task_id": item.process_task_id,
+        "purpose": item.purpose,
+        "severity": item.severity,
+    }
+    if item.title:
+        payload["title"] = item.title
+        payload["message_title"] = item.title
+    if item.notice_id:
+        payload["notice_id"] = item.notice_id
+    if item.tool_call_id:
+        payload["tool_call_id"] = item.tool_call_id
+    return payload
 
 
 class ActionSearchMcpData(BaseModel):
@@ -399,6 +425,9 @@ class TaskLock:
     last_accessed: datetime
     execution_progress_revision: int
     """Monotonic producer-side progress marker for long-running execution."""
+    _active_execution_pause_depth: int
+    _active_execution_pause_started_at: float | None
+    _active_execution_paused_seconds: float
     background_tasks: set[asyncio.Task]
     """Track all background tasks for cleanup"""
     registered_toolkits: list[Any]
@@ -475,6 +504,9 @@ class TaskLock:
         self.created_at = datetime.now()
         self.last_accessed = datetime.now()
         self.execution_progress_revision = 0
+        self._active_execution_pause_depth = 0
+        self._active_execution_pause_started_at = None
+        self._active_execution_paused_seconds = 0.0
         self.background_tasks = set()
         self.registered_toolkits = []
 
@@ -525,6 +557,43 @@ class TaskLock:
             extra={"task_id": self.id, "action": data.action},
         )
         await self.queue.put(data)
+
+    def pause_active_execution_budget(self) -> None:
+        """Start excluding a nested user-owned wait from runtime budgets."""
+
+        self._active_execution_pause_depth += 1
+        if self._active_execution_pause_depth == 1:
+            self._active_execution_pause_started_at = time.monotonic()
+
+    def resume_active_execution_budget(self) -> None:
+        """Finish one nested exclusion without losing earlier pause time."""
+
+        if self._active_execution_pause_depth <= 0:
+            raise RuntimeError("active execution budget is not paused")
+        self._active_execution_pause_depth -= 1
+        if self._active_execution_pause_depth != 0:
+            return
+        if self._active_execution_pause_started_at is not None:
+            self._active_execution_paused_seconds += max(
+                0.0,
+                time.monotonic() - self._active_execution_pause_started_at,
+            )
+        self._active_execution_pause_started_at = None
+
+    @property
+    def active_execution_budget_paused(self) -> bool:
+        return self._active_execution_pause_depth > 0
+
+    def active_execution_paused_seconds(self) -> float:
+        """Return cumulative pause time, including an in-progress wait."""
+
+        total = self._active_execution_paused_seconds
+        if self._active_execution_pause_started_at is not None:
+            total += max(
+                0.0,
+                time.monotonic() - self._active_execution_pause_started_at,
+            )
+        return total
 
     def mark_local_history_degraded(self, error: str) -> None:
         """Record a non-fatal Phase 1 RunJournal persistence failure."""

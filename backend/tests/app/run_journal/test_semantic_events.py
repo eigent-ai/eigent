@@ -126,6 +126,55 @@ def test_projects_batched_narration_as_display_safe_progress():
     assert "very-secret" not in projection.payload["display_title"]
 
 
+def test_batched_narration_preserves_redacted_fragment_boundaries():
+    projection = project_legacy_semantic_event(
+        step="decompose_text",
+        run_id="run-1",
+        data={"content": "first line\n  second line "},
+    )
+
+    assert projection is not None
+    assert projection.payload["display_title"] == (
+        "first line\n  second line "
+    )
+    assert projection.payload["display_fragment_exact"] is True
+
+
+def test_projects_single_agent_notice_with_typed_display_semantics():
+    projection = project_legacy_semantic_event(
+        step="notice",
+        run_id="run-1",
+        data={
+            "notice_id": "notice:call-1",
+            "process_task_id": "task-1",
+            "tool_call_id": "call-1",
+            "title": "Research complete",
+            "content": "Validated three primary sources.",
+            "purpose": "result",
+            "severity": "success",
+        },
+    )
+
+    assert projection is not None
+    assert projection.event_type == "notice.progress"
+    assert projection.payload["display_title"] == "Research complete"
+    assert projection.payload["display_summary"] == (
+        "Validated three primary sources."
+    )
+    assert projection.payload["purpose"] == "result"
+    assert projection.payload["severity"] == "success"
+    assert projection.payload["semantic"]["subject"] == {
+        "type": "activity_stream",
+        "id": "notice:call-1",
+    }
+    assert projection.payload["semantic"]["correlation"] == {
+        "run_id": "run-1",
+        "task_id": "task-1",
+        "tool_call_id": "call-1",
+        "notice_id": "notice:call-1",
+    }
+
+
 def test_agent_turn_lifecycle_uses_explicit_correlation_and_safe_output():
     common = {
         "agent_name": "Developer Agent",

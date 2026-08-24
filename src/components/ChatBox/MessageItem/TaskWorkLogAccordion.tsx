@@ -581,9 +581,18 @@ export function buildAgentBlocks(
     }
 
     if (entry.step === AgentStep.NOTICE) {
-      const text = normalizeToolkitMessage(
-        entry.data?.notice ?? entry.data?.message
+      const title = normalizeToolkitMessage(
+        entry.data?.title ?? entry.data?.message_title
       ).trim();
+      const description = normalizeToolkitMessage(
+        entry.data?.notice ??
+          entry.data?.message_description ??
+          entry.data?.message
+      ).trim();
+      const text =
+        title && description
+          ? `${title} · ${description}`
+          : title || description;
       if (!text) continue;
       ensureBlockForAgent(tag).items.push({
         kind: 'message',

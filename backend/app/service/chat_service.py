@@ -82,6 +82,7 @@ from app.service.task import (
     Agents,
     TaskLock,
     delete_task_lock,
+    notice_event_payload,
     set_current_task_id,
     write_file_event_payload,
 )
@@ -436,6 +437,56 @@ def build_conversation_context(
     return context
 
 
+def _build_question_context(
+    task_lock: TaskLock,
+    project_context: str | None,
+    *,
+    header: str = "=== Previous Conversation ===",
+) -> str:
+    """Return the best available context for routing and direct answers.
+
+    A Project TaskLock is process-local, so its conversation history is empty
+    after an app/backend restart even though the Renderer can rebuild prior
+    Runs. Follow-up routing must therefore fall back to the persisted Project
+    projection sent with the request instead of classifying an anaphoric
+    prompt (for example, "optimize its lighting") in isolation.
+    """
+
+    in_process = build_conversation_context(task_lock, header=header)
+    if getattr(task_lock, "conversation_history", None):
+        return in_process
+
+    durable = (project_context or "").strip()
+    if not durable:
+        return in_process
+    return (
+        f"{header}\n"
+        f"{durable}\n"
+        "=== End Previous Conversation ===\n\n"
+        f"{in_process}"
+    )
+
+
+async def _answer_simple_question(
+    agent: ListenChatAgent,
+    *,
+    question: str,
+    context: str,
+) -> str:
+    """Generate one direct answer and fully consume streaming responses."""
+
+    prompt = (
+        f"{context}"
+        f"User Query: {question}\n\n"
+        "Provide a direct, helpful answer to this simple question."
+    )
+    response = await _run_agent_step(agent, prompt)
+    content = _extract_agent_response_content(response)
+    if not content:
+        raise RuntimeError("simple answer model returned an empty response")
+    return content
+
+
 def build_context_for_workforce(
     task_lock: TaskLock,
     options: Chat,
@@ -656,6 +707,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 if start_event_loop is True:
                     question = options.question
                     attaches_to_use = options.attaches
+                    project_context = options.project_context
                     logger.info(
                         "[NEW-QUESTION] Initial question"
                         " from options.question: "
@@ -665,6 +717,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 else:
                     assert isinstance(item, ActionImproveData)
                     question = item.data.question
+                    project_context = (
+                        item.data.project_context or options.project_context
+                    )
                     attaches_to_use = (
                         item.data.attaches
                         if item.data.attaches
@@ -728,7 +783,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     )
                 else:
                     is_complex_task = await question_confirm(
-                        question_agent, question, task_lock
+                        question_agent,
+                        question,
+                        task_lock,
+                        project_context=project_context,
                     )
                     logger.info(
                         "[NEW-QUESTION] question_confirm"
@@ -742,32 +800,17 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         ", providing direct answer "
                         "without workforce"
                     )
-                    conv_ctx = build_conversation_context(
-                        task_lock, header="=== Previous Conversation ==="
-                    )
-                    simple_answer_prompt = (
-                        f"{conv_ctx}"
-                        f"User Query: {question}\n\n"
-                        "Provide a direct, helpful "
-                        "answer to this simple "
-                        "question."
+                    conv_ctx = _build_question_context(
+                        task_lock,
+                        project_context,
                     )
 
                     try:
-                        simple_resp = await question_agent.astep(
-                            simple_answer_prompt
+                        answer_content = await _answer_simple_question(
+                            question_agent,
+                            question=question,
+                            context=conv_ctx,
                         )
-                        answer_content = _extract_agent_response_content(
-                            simple_resp
-                        )
-                        if not answer_content:
-                            answer_content = (
-                                "I understand your "
-                                "question, but I'm "
-                                "having trouble "
-                                "generating a response "
-                                "right now."
-                            )
 
                         record_agent_memory_snapshot(
                             task_lock,
@@ -778,22 +821,30 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             task_result=answer_content,
                         )
                         task_lock.add_conversation("assistant", answer_content)
+                        task_lock.status = Status.done
+                        finalize_task_lock_run_memory(
+                            task_lock,
+                            state="done",
+                            final_result=answer_content,
+                        )
 
                         yield sse_json(
                             "wait_confirm",
                             {"content": answer_content, "question": question},
                         )
                     except Exception as e:
-                        logger.error(f"Error generating simple answer: {e}")
+                        logger.exception("Error generating simple answer")
                         yield sse_json(
-                            "wait_confirm",
+                            "error",
                             {
-                                "content": "I encountered an error"
-                                " while processing "
-                                "your question.",
-                                "question": question,
+                                "message": "I encountered an error while "
+                                "processing your question.",
+                                "type": "simple_answer_failed",
                             },
                         )
+                        raise RuntimeError(
+                            "simple answer generation failed"
+                        ) from e
 
                     # Clean up empty folder if it was created for this task
                     if (
@@ -1452,7 +1503,14 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             "for new task"
                         )
                         is_multi_turn_complex = await question_confirm(
-                            question_agent, new_task_content, task_lock
+                            question_agent,
+                            new_task_content,
+                            task_lock,
+                            project_context=(
+                                item.data.get("project_context")
+                                if isinstance(item.data, dict)
+                                else None
+                            ),
                         )
                         logger.info(
                             "[LIFECYCLE] Multi-turn: "
@@ -1468,36 +1526,21 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                 " direct answer without "
                                 "workforce"
                             )
-                            conv_ctx = build_conversation_context(
+                            conv_ctx = _build_question_context(
                                 task_lock,
-                                header="=== Previous Conversation ===",
-                            )
-                            simple_answer_prompt = (
-                                f"{conv_ctx}"
-                                "User Query: "
-                                f"{new_task_content}"
-                                "\n\nProvide a direct, "
-                                "helpful answer to this "
-                                "simple question."
+                                (
+                                    item.data.get("project_context")
+                                    if isinstance(item.data, dict)
+                                    else None
+                                ),
                             )
 
                             try:
-                                simple_resp = await question_agent.astep(
-                                    simple_answer_prompt
+                                answer_content = await _answer_simple_question(
+                                    question_agent,
+                                    question=new_task_content,
+                                    context=conv_ctx,
                                 )
-                                answer_content = (
-                                    _extract_agent_response_content(
-                                        simple_resp
-                                    )
-                                )
-                                if not answer_content:
-                                    answer_content = (
-                                        "I understand your "
-                                        "question, but I'm "
-                                        "having trouble "
-                                        "generating a response"
-                                        " right now."
-                                    )
 
                                 record_agent_memory_snapshot(
                                     task_lock,
@@ -1509,6 +1552,12 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                 )
                                 task_lock.add_conversation(
                                     "assistant", answer_content
+                                )
+                                task_lock.status = Status.done
+                                finalize_task_lock_run_memory(
+                                    task_lock,
+                                    state="done",
+                                    final_result=answer_content,
                                 )
 
                                 # Send response to user
@@ -1522,19 +1571,21 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                     },
                                 )
                             except Exception as e:
-                                logger.error(
-                                    "Error generating simple "
-                                    f"answer in multi-turn: {e}"
+                                logger.exception(
+                                    "Error generating simple answer in "
+                                    "multi-turn"
                                 )
                                 yield sse_json(
-                                    "wait_confirm",
+                                    "error",
                                     {
-                                        "content": "I encountered an error "
-                                        "while processing your "
-                                        "question.",
-                                        "question": new_task_content,
+                                        "message": "I encountered an error "
+                                        "while processing your question.",
+                                        "type": "simple_answer_failed",
                                     },
                                 )
+                                raise RuntimeError(
+                                    "simple answer generation failed"
+                                ) from e
 
                             logger.info(
                                 "[LIFECYCLE] Multi-turn: "
@@ -1750,16 +1801,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             elif item.action == Action.ask:
                 yield sse_json("ask", item.data)
             elif item.action == Action.notice:
-                notice_payload = {
-                    "notice": item.data,
-                    "process_task_id": item.process_task_id,
-                }
-                if item.tool_call_id:
-                    notice_payload["tool_call_id"] = item.tool_call_id
-                yield sse_json(
-                    "notice",
-                    notice_payload,
-                )
+                yield sse_json("notice", notice_event_payload(item))
             elif item.action == Action.search_mcp:
                 yield sse_json("search_mcp", item.data)
             elif item.action == Action.install_mcp:
@@ -2222,15 +2264,20 @@ def add_sub_tasks(
 
 
 async def question_confirm(
-    agent: ListenChatAgent, prompt: str, task_lock: TaskLock | None = None
+    agent: ListenChatAgent,
+    prompt: str,
+    task_lock: TaskLock | None = None,
+    *,
+    project_context: str | None = None,
 ) -> bool:
     """Simple question confirmation - returns True
     for complex tasks, False for simple questions."""
 
     context_prompt = ""
     if task_lock:
-        context_prompt = build_conversation_context(
-            task_lock, header="=== Previous Conversation ==="
+        context_prompt = _build_question_context(
+            task_lock,
+            project_context,
         )
 
     full_prompt = f"""{context_prompt}User Query: {prompt}
@@ -2246,6 +2293,11 @@ file operations, multi-step planning, or creating/modifying content
 with knowledge or conversation history, no action needed
 - Examples: greetings ("hello", "hi"), \
 fact queries ("what is X?"), clarifications, status checks
+
+A follow-up that asks you to inspect, review, optimize, fix, or modify an \
+existing Project artifact is a complex task, even when it is phrased as a \
+question. If the intent is ambiguous but may require reading files or using \
+tools, answer "yes".
 
 Answer only "yes" or "no". Do not provide any explanation.
 

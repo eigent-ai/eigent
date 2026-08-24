@@ -204,6 +204,75 @@ async def test_end_finalizes_artifacts_before_assistant_result_and_terminal(
 
 
 @pytest.mark.asyncio
+async def test_direct_answer_terminalizes_before_wait_confirm_is_yielded(
+    monkeypatch,
+):
+    order: list[str] = []
+    from app import run_runtime
+
+    async def complete_turn(_run_id, *, project_id, assistant_data):
+        assert project_id == "project-1"
+        assert assistant_data == {
+            "content": "direct answer",
+            "question": "status?",
+        }
+        order.append("assistant.final+run.completed")
+        return True
+
+    monkeypatch.setattr(
+        run_runtime,
+        "get_default_run_coordinator",
+        lambda: SimpleNamespace(
+            complete_turn=AsyncMock(side_effect=complete_turn)
+        ),
+    )
+    monkeypatch.setattr(sync_step_module, "env", lambda *_args: "")
+
+    @sync_step_module.sync_step
+    async def stream(chat, _request):
+        yield (
+            'data: {"step":"wait_confirm","data":'
+            '{"content":"direct answer","question":"status?"}}'
+        )
+
+    chat = SimpleNamespace(task_id="run-1", project_id="project-1")
+    values = [
+        value async for value in stream(chat, SimpleNamespace(headers={}))
+    ]
+    order.append("yielded")
+
+    assert len(values) == 1
+    assert order == ["assistant.final+run.completed", "yielded"]
+
+
+@pytest.mark.asyncio
+async def test_direct_answer_terminalization_failure_stops_success_frame(
+    monkeypatch,
+):
+    from app import run_runtime
+
+    monkeypatch.setattr(
+        run_runtime,
+        "get_default_run_coordinator",
+        lambda: SimpleNamespace(complete_turn=AsyncMock(return_value=False)),
+    )
+    monkeypatch.setattr(sync_step_module, "env", lambda *_args: "")
+
+    @sync_step_module.sync_step
+    async def stream(chat, _request):
+        yield (
+            'data: {"step":"wait_confirm","data":'
+            '{"content":"direct answer","question":"status?"}}'
+        )
+
+    chat = SimpleNamespace(task_id="run-1", project_id="project-1")
+    iterator = stream(chat, SimpleNamespace(headers={})).__aiter__()
+
+    with pytest.raises(RuntimeError, match="could not terminalize"):
+        await iterator.__anext__()
+
+
+@pytest.mark.asyncio
 async def test_journal_failure_marks_degraded_but_does_not_stop_sse(
     monkeypatch,
 ):

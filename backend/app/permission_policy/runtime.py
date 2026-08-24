@@ -159,7 +159,7 @@ async def authorize_tool_checkpoint(
             # latency must not consume CAMEL's model/tool execution timeout;
             # otherwise every valid 24-hour Approval is cancelled at the
             # default 30-minute Agent step deadline.
-            async with pause_active_execution_timeout():
+            async with pause_active_execution_timeout(task_lock):
                 reply = await asyncio.wait_for(
                     human_input_task,
                     timeout=max(0.0, approval_expires_at - time.time()),

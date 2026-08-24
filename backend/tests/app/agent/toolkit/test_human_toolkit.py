@@ -164,4 +164,8 @@ def test_send_message_notice_uses_current_tool_call_identity():
 
     notice = put_queue.call_args.args[1]
     assert notice.data == "The report is ready."
+    assert notice.title == "Ready"
+    assert notice.notice_id == "notice:tool-call-1"
+    assert notice.purpose == "progress"
+    assert notice.severity == "info"
     assert notice.tool_call_id == "tool-call-1"

@@ -186,6 +186,17 @@ class ContentRepositoryService:
                     )
                 self.git.init_repository(root)
                 initialized = True
+            # A branch without a commit cannot be used as a stable Run diff
+            # boundary.  Publish an empty root commit without staging any
+            # existing user files.  An Eigent-owned scratch Space also heals
+            # the narrow crash window between `git init` and this commit.
+            if initialized or (
+                eigent_owned_space and self.git.current_head(root) is None
+            ):
+                self.git.create_empty_initial_commit(
+                    root,
+                    message="Initialize Eigent Space version history",
+                )
             probe = self.git.probe(root)
             if not probe.is_repository or not probe.owns_requested_root:
                 raise ContentRepositoryError(

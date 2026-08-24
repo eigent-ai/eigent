@@ -133,11 +133,18 @@ def test_legacy_notice_projection_inherits_explicit_running_step(tmp_path):
             EventRecorder(journal).record_legacy_step(
                 project_id="project-1",
                 run_id="run-1",
-                step="decompose_text",
-                data={"content": "Validated the repository structure."},
+                step="notice",
+                data={
+                    "notice_id": "notice:call-1",
+                    "title": "Repository checked",
+                    "content": "Validated the repository structure.",
+                    "tool_call_id": "call-1",
+                },
             )
         )
 
+        assert event.event_type == "notice.progress"
+        assert event.payload["title"] == "Repository checked"
         assert event.payload["step_id"] == step_id
         assert event.payload["semantic"]["correlation"]["step_id"] == step_id
 

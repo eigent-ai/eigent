@@ -43,6 +43,7 @@ from app.service.task import (
     ActionImproveData,
     TaskLock,
     delete_task_lock,
+    notice_event_payload,
     set_current_task_id,
     write_file_event_payload,
 )
@@ -350,16 +351,7 @@ def _action_to_sse(item: ActionData) -> str | None:
     if item.action == Action.ask:
         return sse_json("ask", item.data)
     if item.action == Action.notice:
-        payload = {
-            "notice": item.data,
-            "process_task_id": item.process_task_id,
-        }
-        if item.tool_call_id:
-            payload["tool_call_id"] = item.tool_call_id
-        return sse_json(
-            "notice",
-            payload,
-        )
+        return sse_json("notice", notice_event_payload(item))
     if item.action == Action.terminal:
         return sse_json(
             "terminal",

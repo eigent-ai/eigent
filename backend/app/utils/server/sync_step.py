@@ -197,10 +197,13 @@ async def _record_local_step(args, value) -> None:
     # Preserve event order: a non-text step cannot commit ahead of text that
     # was already shown to the user.
     await _flush_local_text(run_id)
-    if data["step"] == "end":
+    if data["step"] in {"end", "wait_confirm"}:
         # RunCoordinator owns the successful terminal transaction. Artifact
         # discovery happens first, then assistant.final + run.completed commit
-        # atomically before the legacy END frame is yielded to the Renderer.
+        # atomically before the terminal answer frame is yielded to the
+        # Renderer. ``wait_confirm`` is the legacy direct-answer frame; it is
+        # also a complete logical Run even though the warm Project generator
+        # remains alive for later follow-ups.
         from app.run_runtime import get_default_run_coordinator
 
         if not await get_default_run_coordinator().complete_turn(
@@ -225,9 +228,12 @@ async def _record_local_step_fail_open(args, value) -> None:
         await _record_local_step(args, value)
     except Exception as exc:
         parsed = _parse_value(value)
-        if parsed is not None and parsed.get("step") == "end":
-            # A successful END is a product claim that must never outrun the
-            # canonical assistant result and Run terminal transaction.
+        if parsed is not None and parsed.get("step") in {
+            "end",
+            "wait_confirm",
+        }:
+            # A successful terminal answer is a product claim that must never
+            # outrun the canonical assistant result and Run transaction.
             raise
         run_id, project_id = _resolve_run_and_project(args)
         _local_text_buffers.pop(run_id, None)

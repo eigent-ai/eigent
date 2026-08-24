@@ -159,6 +159,12 @@ declare global {
       summary_task?: string;
       content?: string;
       notice?: string;
+      message_title?: string;
+      message_description?: string;
+      notice_id?: string;
+      purpose?: 'progress' | 'result' | 'decision' | 'status';
+      severity?: 'info' | 'success' | 'warning' | 'error';
+      tool_call_id?: string;
       answer?: string;
       agent_name?: string;
       agent_id?: string;

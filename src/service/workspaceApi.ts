@@ -43,6 +43,13 @@ export interface WorkspaceCurrent {
   bound: boolean;
   workspace_root?: string | null;
   binding?: WorkspaceBinding | null;
+  version_history?: {
+    enabled: true;
+    repository_id: string;
+    initialized: boolean;
+    ownership: 'eigent_owned' | 'adopted';
+    state: string;
+  };
 }
 
 export interface WorkspaceBindPayload {

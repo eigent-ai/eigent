@@ -330,6 +330,35 @@ function firstContent(...values: unknown[]): string {
   return '';
 }
 
+/**
+ * CAMEL uses `<tasks><task>…</task></tasks>` as an agent-to-agent protocol
+ * envelope. The canonical event keeps that source text for replay and audit,
+ * but exposing the envelope in Timeline makes implementation syntax look like
+ * user-authored content. Only unwrap a complete outer envelope so ordinary
+ * prose or code that merely mentions `<task>` remains unchanged.
+ */
+function unwrapTaskProtocolEnvelope(value: string): string {
+  let text = value.trim();
+  if (!text) return value;
+
+  const tasksEnvelope = text.match(
+    /^<tasks(?:\s[^>]*)?>\s*([\s\S]*?)\s*<\/tasks>$/i
+  );
+  if (tasksEnvelope) {
+    text = tasksEnvelope[1]!.trim();
+    return text
+      .replace(/<\/task>\s*<task(?:\s[^>]*)?>/gi, '\n\n')
+      .replace(/^<task(?:\s[^>]*)?>\s*/i, '')
+      .replace(/\s*<\/task>$/i, '')
+      .trim();
+  }
+
+  const taskEnvelope = text.match(
+    /^<task(?:\s[^>]*)?>\s*([\s\S]*?)\s*<\/task>$/i
+  );
+  return taskEnvelope ? taskEnvelope[1]!.trim() : value;
+}
+
 function messageContent(
   base: ChatProjectionNodeBase,
   payload: JsonRecord,
@@ -669,21 +698,38 @@ function noticeNode(
   severity: ChatNoticeNode['severity']
 ): ChatNoticeNode {
   const payload = asRecord(data);
+  const payloadSeverity = firstText(payload.severity).toLowerCase();
+  const resolvedSeverity = ['info', 'success', 'warning', 'error'].includes(
+    payloadSeverity
+  )
+    ? (payloadSeverity as ChatNoticeNode['severity'])
+    : severity;
+  const payloadPurpose = firstText(payload.purpose).toLowerCase();
   return {
     ...base,
     kind: 'notice',
-    severity,
+    severity: resolvedSeverity,
     content:
       firstText(
         payload.notice,
         payload.content,
+        payload.message_description,
+        payload.messageDescription,
         payload.message,
         payload.error,
         payload.reason,
         payload.answer,
         data
       ) || humanize(base.legacyStep || base.eventType),
-    title: firstText(payload.title) || undefined,
+    title:
+      firstText(payload.title, payload.message_title, payload.messageTitle) ||
+      undefined,
+    purpose: ['progress', 'result', 'decision', 'status'].includes(
+      payloadPurpose
+    )
+      ? (payloadPurpose as ChatNoticeNode['purpose'])
+      : undefined,
+    noticeId: firstText(payload.notice_id, payload.noticeId) || undefined,
     code: firstText(payload.code) || undefined,
     toolCallId:
       firstText(
@@ -789,19 +835,21 @@ function planTasks(data: JsonRecord, eventId: string): ChatPlanTask[] {
       return [
         {
           id: `${eventId}:task:${index}`,
-          title: candidate,
+          title: unwrapTaskProtocolEnvelope(candidate),
           status: 'pending' as const,
         },
       ];
     }
     if (!isRecord(candidate)) return [];
-    const title = firstText(
-      candidate.title,
-      candidate.content,
-      candidate.description,
-      candidate.active_form,
-      candidate.summary,
-      candidate.name
+    const title = unwrapTaskProtocolEnvelope(
+      firstText(
+        candidate.title,
+        candidate.content,
+        candidate.description,
+        candidate.active_form,
+        candidate.summary,
+        candidate.name
+      )
     );
     if (!title) return [];
     return [
@@ -894,18 +942,17 @@ function normalizeActivityStatus(
  */
 function activityDetail(payload: JsonRecord, isTypedActivity: boolean): string {
   if (isTypedActivity) {
-    return firstText(
-      payload.display_detail,
-      payload.displayDetail,
-      payload.display_summary,
-      payload.displaySummary
+    return unwrapTaskProtocolEnvelope(
+      firstText(
+        payload.display_detail,
+        payload.displayDetail,
+        payload.display_summary,
+        payload.displaySummary
+      )
     );
   }
-  return firstText(
-    payload.detail,
-    payload.output,
-    payload.result,
-    payload.reason
+  return unwrapTaskProtocolEnvelope(
+    firstText(payload.detail, payload.output, payload.result, payload.reason)
   );
 }
 
@@ -923,25 +970,31 @@ function activityInput(
   const display = asRecord(payload.display);
   const toolDisplay = asRecord(tool.display);
   if (isTypedActivity) {
-    return firstText(
-      payload.display_input,
-      payload.displayInput,
-      payload.display_request,
-      payload.displayRequest,
-      display.input,
-      display.request,
-      tool.display_input,
-      tool.displayInput,
-      toolDisplay.input,
-      toolDisplay.request
+    return unwrapTaskProtocolEnvelope(
+      firstText(
+        payload.display_input,
+        payload.displayInput,
+        payload.display_request,
+        payload.displayRequest,
+        display.input,
+        display.request,
+        tool.display_input,
+        tool.displayInput,
+        toolDisplay.input,
+        toolDisplay.request
+      )
     );
   }
   if (base.legacyStep === 'terminal') {
-    return firstText(payload.command, payload.input, payload.request);
+    return unwrapTaskProtocolEnvelope(
+      firstText(payload.command, payload.input, payload.request)
+    );
   }
-  return base.legacyStep === 'activate_toolkit'
-    ? firstText(payload.message, payload.input, payload.request)
-    : firstText(payload.input, payload.request);
+  return unwrapTaskProtocolEnvelope(
+    base.legacyStep === 'activate_toolkit'
+      ? firstText(payload.message, payload.input, payload.request)
+      : firstText(payload.input, payload.request)
+  );
 }
 
 function activityOutput(
@@ -953,30 +1006,36 @@ function activityOutput(
   const display = asRecord(payload.display);
   const toolDisplay = asRecord(tool.display);
   if (isTypedActivity) {
-    return firstText(
-      payload.display_output,
-      payload.displayOutput,
-      payload.display_response,
-      payload.displayResponse,
-      display.output,
-      display.response,
-      tool.display_output,
-      tool.displayOutput,
-      toolDisplay.output,
-      toolDisplay.response
+    return unwrapTaskProtocolEnvelope(
+      firstText(
+        payload.display_output,
+        payload.displayOutput,
+        payload.display_response,
+        payload.displayResponse,
+        display.output,
+        display.response,
+        tool.display_output,
+        tool.displayOutput,
+        toolDisplay.output,
+        toolDisplay.response
+      )
     );
   }
   if (base.legacyStep === 'terminal') {
-    return firstText(payload.output, payload.result, payload.response);
+    return unwrapTaskProtocolEnvelope(
+      firstText(payload.output, payload.result, payload.response)
+    );
   }
-  return base.legacyStep === 'deactivate_toolkit'
-    ? firstText(
-        payload.message,
-        payload.output,
-        payload.result,
-        payload.response
-      )
-    : firstText(payload.output, payload.result, payload.response);
+  return unwrapTaskProtocolEnvelope(
+    base.legacyStep === 'deactivate_toolkit'
+      ? firstText(
+          payload.message,
+          payload.output,
+          payload.result,
+          payload.response
+        )
+      : firstText(payload.output, payload.result, payload.response)
+  );
 }
 
 function activityPhase(
@@ -1043,53 +1102,61 @@ function activityTitle(
       ? `${names.toolkitName}.${names.methodName}`
       : '';
   if (isTypedActivity) {
-    return firstText(
-      payload.display_title,
-      payload.displayTitle,
-      payload.display_label,
-      payload.displayLabel,
-      names.toolName,
-      toolkitMethod,
-      names.toolkitName,
-      payload.agent_name,
-      payload.agentName,
-      payload.task_name,
-      payload.taskName,
-      humanize(base.eventType)
+    return unwrapTaskProtocolEnvelope(
+      firstText(
+        payload.display_title,
+        payload.displayTitle,
+        payload.display_label,
+        payload.displayLabel,
+        names.toolName,
+        toolkitMethod,
+        names.toolkitName,
+        payload.agent_name,
+        payload.agentName,
+        payload.task_name,
+        payload.taskName,
+        humanize(base.eventType)
+      )
     );
   }
   if (activityType === 'tool') {
-    return firstText(
-      payload.title,
-      names.toolName,
-      toolkitMethod,
-      names.toolkitName,
-      payload.message,
-      payload.content,
-      humanize(base.legacyStep || base.eventType)
+    return unwrapTaskProtocolEnvelope(
+      firstText(
+        payload.title,
+        names.toolName,
+        toolkitMethod,
+        names.toolkitName,
+        payload.message,
+        payload.content,
+        humanize(base.legacyStep || base.eventType)
+      )
     );
   }
   if (activityType === 'agent') {
-    return firstText(
-      payload.title,
-      payload.agent_name,
-      payload.agentName,
-      payload.message,
-      humanize(base.legacyStep || base.eventType)
+    return unwrapTaskProtocolEnvelope(
+      firstText(
+        payload.title,
+        payload.agent_name,
+        payload.agentName,
+        payload.message,
+        humanize(base.legacyStep || base.eventType)
+      )
     );
   }
-  return firstText(
-    payload.title,
-    payload.message,
-    payload.content,
-    payload.notice,
-    payload.command,
-    names.toolName,
-    toolkitMethod,
-    names.toolkitName,
-    payload.agent_name,
-    payload.task_name,
-    humanize(base.legacyStep || base.eventType)
+  return unwrapTaskProtocolEnvelope(
+    firstText(
+      payload.title,
+      payload.message,
+      payload.content,
+      payload.notice,
+      payload.command,
+      names.toolName,
+      toolkitMethod,
+      names.toolkitName,
+      payload.agent_name,
+      payload.task_name,
+      humanize(base.legacyStep || base.eventType)
+    )
   );
 }
 
@@ -1284,6 +1351,16 @@ function activityNode(
     agentProvider: agentProvider || undefined,
     agentModel: agentModel || undefined,
     activityId: semantic?.subject.id || undefined,
+    ...(semantic?.subject.type === 'activity_stream' ||
+    base.legacyStep === 'decompose_text'
+      ? {
+          streamFragmentMode:
+            base.legacyStep === 'decompose_text' ||
+            payload.display_fragment_exact === true
+              ? ('exact' as const)
+              : ('normalized' as const),
+        }
+      : {}),
     semanticKind: semantic?.kind,
     semanticCompleteness: semantic?.completeness.state,
   };

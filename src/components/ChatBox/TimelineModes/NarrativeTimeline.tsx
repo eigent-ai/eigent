@@ -317,7 +317,8 @@ function NarrativeNotice({
         DERIVED_TEXT_CLASS,
         node.severity === 'error' &&
           'text-ds-text-status-error-default-default',
-        node.severity === 'warning' && 'text-ds-text-warning-strong-default'
+        node.severity === 'warning' && 'text-ds-text-warning-strong-default',
+        node.severity === 'success' && 'text-ds-text-success-default-default'
       )}
       data-narrative-notice-id={node.id}
     >

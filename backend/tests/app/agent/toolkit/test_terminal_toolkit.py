@@ -163,6 +163,8 @@ class TestTerminalToolkit:
 
         assert environment["PATH"] == "/usr/bin"
         assert environment["NORMAL_API_KEY"] == "allowed-tool-secret"
+        assert environment["CAMEL_WORKDIR"] == str(toolkit.working_dir)
+        assert environment["file_save_path"] == str(toolkit.working_dir)
         assert "EIGENT_LOCAL_CONTROL_CAPABILITY" not in environment
         assert "EIGENT_WORKSPACE_SECRET_BROKER_ENDPOINT" not in environment
         assert "EIGENT_WORKSPACE_SECRET_BROKER_CAPABILITY" not in environment

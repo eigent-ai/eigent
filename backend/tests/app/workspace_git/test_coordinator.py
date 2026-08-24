@@ -497,7 +497,7 @@ def test_unmaterialized_project_tracks_new_user_head_but_run_replay_stays_pinned
     assert second.project.version == first.project.version + 1
 
 
-def test_unborn_repository_admission_does_not_create_anchor_commit(
+def test_initialized_repository_admission_uses_visible_empty_baseline(
     tmp_path,
     journal,
 ):
@@ -522,9 +522,9 @@ def test_unborn_repository_admission_does_not_create_anchor_commit(
     )
 
     assert admission is not None
-    assert admission.run.workspace_base_commit is None
+    assert admission.run.workspace_base_commit is not None
     assert admission.run.workspace_base_ref == "refs/heads/main"
-    assert backend.current_head(space) is None
+    assert backend.current_head(space) == admission.run.workspace_base_commit
 
 
 def test_first_write_lazily_materializes_project_and_run_worktrees(
@@ -592,7 +592,7 @@ def test_first_write_lazily_materializes_project_and_run_worktrees(
     assert seed.read_text(encoding="utf-8") == "user content\n"
 
 
-def test_unborn_repo_materialization_uses_private_empty_anchor(
+def test_empty_repo_materialization_reuses_visible_baseline(
     tmp_path,
     journal,
 ):
@@ -624,11 +624,13 @@ def test_unborn_repo_materialization_uses_private_empty_anchor(
         expected_project_head=None,
     )
 
-    assert workspace.project.integration_head is not None
+    visible_head = backend.current_head(space)
+    assert visible_head is not None
+    assert workspace.project.integration_head == visible_head
     assert workspace.run.workspace_base_commit == (
         workspace.project.integration_head
     )
-    assert backend.current_head(space) is None
+    assert backend.current_head(space) == visible_head
     assert list(space.iterdir()) == [space / ".git"]
 
 

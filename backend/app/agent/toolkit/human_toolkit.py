@@ -126,7 +126,7 @@ class HumanToolkit(BaseToolkit, AbstractToolkit):
         # Agent execution. Keep both the hard step timeout and sliding stall
         # watchdog paused until the UI supplies a reply or cleanup interrupts
         # the wait, matching the durable Approval path.
-        async with pause_active_execution_timeout():
+        async with pause_active_execution_timeout(task_lock):
             reply = await task_lock.get_human_input(self.agent_name)
         if reply == TASK_LOCK_CLEANUP_SENTINEL:
             logger.info(
@@ -199,14 +199,16 @@ class HumanToolkit(BaseToolkit, AbstractToolkit):
 
         from app.utils.listen.toolkit_listen import _safe_put_queue
 
+        checkpoint = get_current_tool_checkpoint()
+        tool_call_id = (
+            checkpoint.tool_call_id if checkpoint is not None else None
+        )
         notice_data = ActionNoticeData(
             process_task_id=current_process_task_id,
             data=f"{message_description}",
-            tool_call_id=(
-                checkpoint.tool_call_id
-                if (checkpoint := get_current_tool_checkpoint()) is not None
-                else None
-            ),
+            title=f"{message_title}",
+            notice_id=f"notice:{tool_call_id or uuid.uuid4()}",
+            tool_call_id=tool_call_id,
         )
         _safe_put_queue(task_lock, notice_data)
 

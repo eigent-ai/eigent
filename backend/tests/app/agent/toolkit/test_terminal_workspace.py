@@ -112,6 +112,131 @@ def test_terminal_materializes_run_workspace_before_process_spawn(
     assert result == "terminal-1:touch generated.txt:True:20.0"
 
 
+def test_terminal_remaps_visible_space_absolute_paths_to_agent_checkout(
+    tmp_path,
+    monkeypatch,
+):
+    user_root = tmp_path / "visible-space"
+    run_root = tmp_path / "agent-checkout"
+    user_root.mkdir()
+    run_root.mkdir()
+    toolkit = TerminalToolkit.__new__(TerminalToolkit)
+    toolkit.api_task_id = "project-1"
+    toolkit.agent_name = "developer_agent"
+    toolkit.working_dir = str(user_root)
+    prepared = SimpleNamespace(
+        mutation_root=run_root,
+        workspace=SimpleNamespace(run_worktree=run_root),
+        agent_workspace=SimpleNamespace(agent_worktree=run_root),
+        context=SimpleNamespace(run_id="run-1"),
+    )
+    spawned_commands: list[str] = []
+
+    class _MutationService:
+        def prepare_broad_write(self, **_kwargs):
+            return prepared
+
+        def complete_broad_write(self, value, **_kwargs):
+            assert value is prepared
+
+    def fake_shell_exec(self, *, id, command, block, timeout):
+        original = _original_isolated_local_command(command) or command
+        spawned_commands.append(original)
+        return "done"
+
+    monkeypatch.setattr(
+        terminal_toolkit,
+        "get_default_workspace_mutation_service",
+        lambda: _MutationService(),
+    )
+    monkeypatch.setattr(BaseTerminalToolkit, "shell_exec", fake_shell_exec)
+    monkeypatch.setattr(
+        toolkit_listen,
+        "get_task_lock",
+        lambda _task_id: object(),
+    )
+    monkeypatch.setattr(
+        toolkit_listen,
+        "_safe_put_queue",
+        lambda _lock, _event: None,
+    )
+
+    visible_target = user_root / "output" / "result.txt"
+    checkout_target = run_root / "output" / "result.txt"
+    with run_context_scope(_context(user_root)):
+        result = toolkit.shell_exec(
+            command=f"mkdir -p '{visible_target.parent}' && touch '{visible_target}'",
+            id="terminal-absolute-path",
+        )
+
+    assert result == "done"
+    assert spawned_commands == [
+        f"mkdir -p '{checkout_target.parent}' && touch '{checkout_target}'"
+    ]
+    assert str(user_root) not in spawned_commands[0]
+
+
+def test_terminal_does_not_remap_a_similarly_prefixed_directory(
+    tmp_path,
+    monkeypatch,
+):
+    user_root = tmp_path / "space"
+    other_root = tmp_path / "space-copy"
+    run_root = tmp_path / "agent-checkout"
+    user_root.mkdir()
+    other_root.mkdir()
+    run_root.mkdir()
+    toolkit = TerminalToolkit.__new__(TerminalToolkit)
+    toolkit.api_task_id = "project-1"
+    toolkit.agent_name = "developer_agent"
+    toolkit.working_dir = str(user_root)
+    prepared = SimpleNamespace(
+        mutation_root=run_root,
+        workspace=SimpleNamespace(run_worktree=run_root),
+        agent_workspace=SimpleNamespace(agent_worktree=run_root),
+        context=SimpleNamespace(run_id="run-1"),
+    )
+    spawned_commands: list[str] = []
+
+    class _MutationService:
+        def prepare_broad_write(self, **_kwargs):
+            return prepared
+
+        def complete_broad_write(self, value, **_kwargs):
+            assert value is prepared
+
+    def fake_shell_exec(self, *, id, command, block, timeout):
+        spawned_commands.append(
+            _original_isolated_local_command(command) or command
+        )
+        return "done"
+
+    monkeypatch.setattr(
+        terminal_toolkit,
+        "get_default_workspace_mutation_service",
+        lambda: _MutationService(),
+    )
+    monkeypatch.setattr(BaseTerminalToolkit, "shell_exec", fake_shell_exec)
+    monkeypatch.setattr(
+        toolkit_listen,
+        "get_task_lock",
+        lambda _task_id: object(),
+    )
+    monkeypatch.setattr(
+        toolkit_listen,
+        "_safe_put_queue",
+        lambda _lock, _event: None,
+    )
+
+    with run_context_scope(_context(user_root)):
+        toolkit.shell_exec(
+            command=f"ls '{other_root}'",
+            id="terminal-similar-prefix",
+        )
+
+    assert spawned_commands == [f"ls '{other_root}'"]
+
+
 def test_background_terminal_checkpoints_after_session_stops(
     tmp_path,
     monkeypatch,

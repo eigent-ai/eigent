@@ -137,6 +137,11 @@ class Workforce(BaseWorkforce):
                 enabled_strategies=["retry", "replan"],
             ),
         )
+        # CAMEL currently treats ``None`` as falsy and replaces it with its
+        # built-in 600-second default. Eigent's explicit non-positive setting
+        # means unlimited, so restore the normalized policy after BaseWorkforce
+        # has finished initializing its other state.
+        self.task_timeout_seconds = task_timeout_seconds
         self.task_agent.stream_accumulate = True
         self.task_agent._stream_accumulate_explicit = True
         logger.info(
@@ -897,19 +902,40 @@ class Workforce(BaseWorkforce):
 
         loop = asyncio.get_running_loop()
         started_at = loop.time()
-        last_progress_at = started_at
+        task_lock = get_task_lock_if_exists(self.api_task_id)
+        paused_at_start = (
+            task_lock.active_execution_paused_seconds()
+            if task_lock is not None
+            else 0.0
+        )
+        last_progress_elapsed = 0.0
         progress_marker = self._progress_marker()
+
+        def active_elapsed(now: float) -> float:
+            paused_seconds = (
+                task_lock.active_execution_paused_seconds() - paused_at_start
+                if task_lock is not None
+                else 0.0
+            )
+            return max(0.0, now - started_at - paused_seconds)
+
         try:
             while True:
                 now = loop.time()
+                elapsed = active_elapsed(now)
                 remaining = [_WORKFORCE_PROGRESS_POLL_SECONDS]
-                if hard_timeout is not None:
+                is_paused = bool(
+                    task_lock is not None
+                    and task_lock.active_execution_budget_paused
+                )
+                if hard_timeout is not None and not is_paused:
+                    remaining.append(max(0.0, hard_timeout - elapsed))
+                if stall_timeout is not None and not is_paused:
                     remaining.append(
-                        max(0.0, hard_timeout - (now - started_at))
-                    )
-                if stall_timeout is not None:
-                    remaining.append(
-                        max(0.0, stall_timeout - (now - last_progress_at))
+                        max(
+                            0.0,
+                            stall_timeout - (elapsed - last_progress_elapsed),
+                        )
                     )
                 done, _ = await asyncio.wait(
                     {returned_task},
@@ -920,15 +946,20 @@ class Workforce(BaseWorkforce):
                     return returned_task.result()
 
                 now = loop.time()
+                elapsed = active_elapsed(now)
                 current_marker = self._progress_marker()
                 if current_marker != progress_marker:
                     progress_marker = current_marker
-                    last_progress_at = now
+                    last_progress_elapsed = elapsed
                     continue
 
-                if hard_timeout is not None and (
-                    now - started_at >= hard_timeout
+                if (
+                    task_lock is not None
+                    and task_lock.active_execution_budget_paused
                 ):
+                    continue
+
+                if hard_timeout is not None and elapsed >= hard_timeout:
                     await self._report_wait_timeout(
                         timeout_scope="workforce_hard_limit",
                         timeout_seconds=hard_timeout,
@@ -942,7 +973,7 @@ class Workforce(BaseWorkforce):
                         f"{hard_timeout}s"
                     )
                 if stall_timeout is not None and (
-                    now - last_progress_at >= stall_timeout
+                    elapsed - last_progress_elapsed >= stall_timeout
                 ):
                     await self._report_wait_timeout(
                         timeout_scope="workforce_stall",

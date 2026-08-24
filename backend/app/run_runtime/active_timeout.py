@@ -27,6 +27,15 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from contextvars import ContextVar, Token
 from types import TracebackType
+from typing import Protocol
+
+
+class ActiveExecutionPauseObserver(Protocol):
+    """Receives pause accounting shared with an outer runtime watchdog."""
+
+    def pause_active_execution_budget(self) -> None: ...
+
+    def resume_active_execution_budget(self) -> None: ...
 
 
 class ActiveExecutionTimeout:
@@ -134,13 +143,14 @@ def refresh_active_execution_timeout() -> None:
 
 
 @asynccontextmanager
-async def pause_active_execution_timeout() -> AsyncIterator[None]:
+async def pause_active_execution_timeout(
+    observer: ActiveExecutionPauseObserver | None = None,
+) -> AsyncIterator[None]:
     """Exclude a durable human wait from the current Agent timeout budget."""
 
     timeouts = _ACTIVE_EXECUTION_TIMEOUTS.get()
-    if not timeouts:
-        yield
-        return
+    if observer is not None:
+        observer.pause_active_execution_budget()
     for timeout in timeouts:
         timeout.pause()
     try:
@@ -148,3 +158,5 @@ async def pause_active_execution_timeout() -> AsyncIterator[None]:
     finally:
         for timeout in reversed(timeouts):
             timeout.resume()
+        if observer is not None:
+            observer.resume_active_execution_budget()

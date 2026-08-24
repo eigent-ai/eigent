@@ -119,6 +119,9 @@ function noticeTone(severity: string): string {
   if (severity === 'warning') {
     return 'border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default text-ds-text-warning-default-default';
   }
+  if (severity === 'success') {
+    return 'border-ds-border-success-default-default bg-ds-bg-success-subtle-default text-ds-text-success-default-default';
+  }
   return 'border-ds-border-information-default-default bg-ds-bg-information-subtle-default text-ds-text-information-default-default';
 }
 
@@ -134,7 +137,10 @@ export function NoticeEventRenderer({
       data-notice-severity={node.severity}
       role={node.severity === 'error' ? 'alert' : 'status'}
     >
-      <span className="block">{node.content}</span>
+      {node.title ? (
+        <strong className="block font-medium">{node.title}</strong>
+      ) : null}
+      <span className={cn('block', node.title && 'mt-1')}>{node.content}</span>
     </aside>
   );
 }

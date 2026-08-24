@@ -373,6 +373,43 @@ class GitBackend:
             raise GitBackendError("Git init did not create the expected repo")
         return after
 
+    def create_empty_initial_commit(
+        self,
+        repository_root: Path,
+        *,
+        message: str,
+    ) -> str:
+        """Give a newly initialized repository a real, empty branch head.
+
+        Existing repositories are never changed by this helper.  In
+        particular, callers must invoke it only for a repository they just
+        initialized (or an Eigent-owned scratch repository being recovered).
+        The empty tree deliberately leaves pre-existing user files untracked.
+        """
+
+        root = repository_root.expanduser().resolve()
+        probe = self.probe(root)
+        if not probe.is_repository or not probe.owns_requested_root:
+            raise GitBackendError("initial commit requires an owned Git root")
+        if probe.head_oid is not None:
+            return probe.head_oid
+        if not probe.branch:
+            raise GitBackendError(
+                "unborn repository has no branch for its initial commit"
+            )
+        commit_oid = self.create_anchor_commit(root, message=message)
+        ref_name = f"refs/heads/{probe.branch}"
+        self._run(
+            root,
+            ("update-ref", ref_name, commit_oid, "0" * 40),
+        )
+        observed = self.probe(root)
+        if observed.head_oid != commit_oid or observed.branch != probe.branch:
+            raise GitBackendError(
+                "Git did not publish the initial branch head"
+            )
+        return commit_oid
+
     def current_head(self, repository_root: Path) -> str | None:
         result = self._run(
             repository_root,

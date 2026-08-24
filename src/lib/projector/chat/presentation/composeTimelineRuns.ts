@@ -191,6 +191,31 @@ function legacyToolIdentity(node: ChatActivityNode): string | null {
   ]);
 }
 
+function appendActivityStreamFragment(
+  left: string,
+  right: string,
+  exact: boolean
+): string {
+  if (exact) return `${left}${right}`;
+  if (!left || !right || /\s$/.test(left) || /^\s/.test(right)) {
+    return `${left}${right}`;
+  }
+  const leftBoundary = left.at(-1)!;
+  const rightBoundary = right[0]!;
+  const cjk = /[\u3400-\u9fff\uf900-\ufaff]/;
+  if (
+    (cjk.test(leftBoundary) && cjk.test(rightBoundary)) ||
+    /^[,.;:!?)}\]]/.test(rightBoundary) ||
+    /[(\[{/]$/.test(leftBoundary)
+  ) {
+    return `${left}${right}`;
+  }
+  // Older canonical narration receipts normalized fragment whitespace.
+  // Restore the most conservative word boundary without coupling the
+  // presenter to a model, tokenizer, language, or content domain.
+  return `${left} ${right}`;
+}
+
 /**
  * Legacy toolkit receipts predate call IDs. Pair their start/terminal frames
  * FIFO within an explicit toolkit/method identity. Canonical events never use
@@ -352,37 +377,92 @@ function composeTraceRows(
   }
 
   const emittedToolInvocations = new Set<string>();
-  return nodes.flatMap<TimelineTraceRow>((node) => {
+  const rows: TimelineTraceRow[] = [];
+  let previousActivityStreamKey: string | null = null;
+
+  for (const node of nodes) {
+    const currentActivity =
+      node.kind === 'activity' && node.activityType === 'work_log'
+        ? node
+        : null;
+    const activityStreamKey =
+      currentActivity &&
+      (node.semantic?.subject.type === 'activity_stream' ||
+        node.legacyStep === 'decompose_text')
+        ? `${node.runId}:${currentActivity.activityId || 'legacy-narration'}`
+        : null;
+
+    if (activityStreamKey && currentActivity) {
+      const previous = rows.at(-1);
+      const previousActivity =
+        previous?.kind === 'node' &&
+        previous.node.kind === 'activity' &&
+        previous.node.activityType === 'work_log'
+          ? previous.node
+          : null;
+      if (
+        previousActivityStreamKey === activityStreamKey &&
+        previous?.kind === 'node' &&
+        previousActivity
+      ) {
+        previous.node = {
+          ...previousActivity,
+          title: appendActivityStreamFragment(
+            previousActivity.title,
+            currentActivity.title,
+            previousActivity.streamFragmentMode === 'exact' &&
+              currentActivity.streamFragmentMode === 'exact'
+          ),
+          status: currentActivity.status,
+          phase: currentActivity.phase,
+          detail: currentActivity.detail || previousActivity.detail,
+          streamFragmentMode:
+            previousActivity.streamFragmentMode === 'exact' &&
+            currentActivity.streamFragmentMode === 'exact'
+              ? 'exact'
+              : 'normalized',
+        };
+        continue;
+      }
+      rows.push({
+        kind: 'node',
+        id: node.id,
+        runSequence: node.runSequence,
+        node,
+      });
+      previousActivityStreamKey = activityStreamKey;
+      continue;
+    }
+
+    previousActivityStreamKey = null;
     if (
       node.kind !== 'activity' ||
       (node.activityType !== 'tool' && node.activityType !== 'terminal')
     ) {
-      return [
-        {
-          kind: 'node',
-          id: node.id,
-          runSequence: node.runSequence,
-          node,
-        },
-      ];
+      rows.push({
+        kind: 'node',
+        id: node.id,
+        runSequence: node.runSequence,
+        node,
+      });
+      continue;
     }
 
     const id = invocationIdByNode.get(node.id)!;
-    if (emittedToolInvocations.has(id)) return [];
+    if (emittedToolInvocations.has(id)) continue;
     emittedToolInvocations.add(id);
     const invocation = {
       ...composeToolInvocation(toolNodesByInvocation.get(id)!),
       id,
     };
-    return [
-      {
-        kind: 'tool',
-        id: invocation.id,
-        runSequence: invocation.runSequence,
-        invocation,
-      },
-    ];
-  });
+    rows.push({
+      kind: 'tool',
+      id: invocation.id,
+      runSequence: invocation.runSequence,
+      invocation,
+    });
+  }
+  return rows;
 }
 
 function latestRunStatus(

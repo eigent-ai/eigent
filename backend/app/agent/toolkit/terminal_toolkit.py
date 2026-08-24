@@ -12,7 +12,6 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import asyncio
 import logging
 import os
 import platform
@@ -26,8 +25,8 @@ import threading
 import time
 import uuid
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import AbstractContextManager
+from pathlib import Path
 
 from camel.toolkits.terminal_toolkit import (
     TerminalToolkit as BaseTerminalToolkit,
@@ -48,7 +47,10 @@ from app.service.task import (
     get_task_lock,
     process_task,
 )
-from app.utils.listen.toolkit_listen import auto_listen_toolkit
+from app.utils.listen.toolkit_listen import (
+    _safe_put_queue,
+    auto_listen_toolkit,
+)
 from app.utils.space_overlay_client import run_context_for_task
 from app.workspace_git import (
     get_default_workspace_git_lifecycle,
@@ -103,6 +105,34 @@ _LOCAL_PROCESS_GROUP_BOOTSTRAP = (
 _LOCAL_PROCESS_GROUP_GRACE_SECONDS = 0.35
 _WORKSPACE_LEASE_RETRY_INTERVAL_SECONDS = 0.1
 _WORKSPACE_LEASE_WAIT_MAX_SECONDS = 5.0
+
+
+def _remap_workspace_command(
+    command: str,
+    *,
+    visible_root: str,
+    mutation_root: str,
+) -> str:
+    """Map canonical Space paths into the admitted writable checkout.
+
+    Agent prompts can contain the user-visible Space path even when a
+    Workforce Agent owns an isolated checkout.  Merely changing cwd does not
+    constrain an absolute shell operand, so remap only complete path-prefix
+    tokens before dispatch.  The trailing boundary prevents `/space` from
+    matching an unrelated `/space-copy` directory.
+    """
+
+    source = str(Path(visible_root).expanduser().resolve())
+    destination = str(Path(mutation_root).expanduser().resolve())
+    if source == destination:
+        return command
+    boundary = r"(?=$|[\\/\s'\"`;&|()<>])"
+    prefix = r"(?<![A-Za-z0-9_./-])"
+    return re.sub(
+        prefix + re.escape(source) + boundary,
+        lambda _match: destination,
+        command,
+    )
 
 
 def is_secret_broker_environment_key(name: str) -> bool:
@@ -196,8 +226,6 @@ def _restore_isolated_commands_for_log(content: str) -> str:
 @auto_listen_toolkit(BaseTerminalToolkit)
 class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
     agent_name: str = Agents.developer_agent
-    _thread_pool: ThreadPoolExecutor | None = None
-    _thread_local = threading.local()
 
     def __init__(
         self,
@@ -240,11 +268,6 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 "agent_venv_dir": self._agent_venv_dir,
             },
         )
-
-        if TerminalToolkit._thread_pool is None:
-            TerminalToolkit._thread_pool = ThreadPoolExecutor(
-                max_workers=1, thread_name_prefix="terminal_toolkit"
-            )
 
         super().__init__(
             timeout=timeout,
@@ -295,6 +318,11 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         for key in tuple(environment):
             if is_control_plane_environment_key(key):
                 environment.pop(key, None)
+        # RunContext is frozen before a lazy Git checkout is materialized.
+        # Process-facing workspace variables must follow the actual cwd so a
+        # script cannot escape isolation through a stale visible-Space path.
+        environment["CAMEL_WORKDIR"] = str(self.working_dir)
+        environment["file_save_path"] = str(self.working_dir)
         return environment
 
     def _sanitize_command(self, command: str) -> tuple[bool, str]:
@@ -686,53 +714,14 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
     def _update_terminal_output(self, output: str):
         task_lock = get_task_lock(self.api_task_id)
         process_task_id = process_task.get("")
-
-        # Create the coroutine
-        coro = task_lock.put_queue(
+        _safe_put_queue(
+            task_lock,
             ActionTerminalData(
                 action=Action.terminal,
                 process_task_id=process_task_id,
                 data=output,
-            )
+            ),
         )
-
-        # Try to get the current event loop, if none exists, create a new one in a thread
-        try:
-            loop = asyncio.get_running_loop()
-            # If we're in an async context, schedule the coroutine
-            task = loop.create_task(coro)
-            if hasattr(task_lock, "add_background_task"):
-                task_lock.add_background_task(task)
-        except RuntimeError:
-            self._thread_pool.submit(self._run_coro_in_thread, coro, task_lock)
-
-    @staticmethod
-    def _run_coro_in_thread(coro, task_lock):
-        """
-        Execute coro in the thread pool, with each thread bound to a long-term event loop
-        """
-        if not hasattr(TerminalToolkit._thread_local, "loop"):
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            TerminalToolkit._thread_local.loop = loop
-        else:
-            loop = TerminalToolkit._thread_local.loop
-
-        if loop.is_closed():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            TerminalToolkit._thread_local.loop = loop
-
-        try:
-            task = loop.create_task(coro)
-            if hasattr(task_lock, "add_background_task"):
-                task_lock.add_background_task(task)
-            loop.run_until_complete(task)
-        except Exception as e:
-            logging.error(
-                f"Failed to execute coroutine in thread pool: {str(e)}",
-                exc_info=True,
-            )
 
     def shell_exec(
         self,
@@ -809,6 +798,11 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                     # still expose only the legacy Agent workspace shape.
                     mutation_root = prepared.agent_workspace.agent_worktree
                 self.working_dir = str(mutation_root)
+                command = _remap_workspace_command(
+                    command,
+                    visible_root=str(run_context.working_directory),
+                    mutation_root=str(mutation_root),
+                )
 
         isolate_local_session = (
             runtime_env_provider is None
@@ -1305,9 +1299,3 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                         "error": str(e),
                     },
                 )
-
-    @classmethod
-    def shutdown(cls):
-        if cls._thread_pool:
-            cls._thread_pool.shutdown(wait=True)
-            cls._thread_pool = None
