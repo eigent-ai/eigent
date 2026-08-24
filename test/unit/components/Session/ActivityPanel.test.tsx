@@ -67,6 +67,8 @@ vi.mock('@/hooks/useProjectEventRuntime', () => ({
 }));
 
 vi.mock('@/hooks/useProjectSessionOverview', () => ({
+  isProjectSessionRunActive: (status: string) =>
+    ['pending', 'running', 'waiting_for_user', 'cancelling'].includes(status),
   useProjectSessionOverview: (projectId: string | null) =>
     (projectId && mocks.overviews[projectId]) || {
       currentRun: null,
@@ -124,15 +126,29 @@ vi.mock('@/components/Session/SidePanel/components/AccordionBox', () => ({
     title,
     headerAction,
     children,
+    open = true,
+    onOpenChange,
   }: {
     title: string;
     headerAction?: ReactNode;
     children: ReactNode | ((state: { open: boolean }) => ReactNode);
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
   }) => (
     <section>
-      <h2>{title}</h2>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => onOpenChange?.(!open)}
+      >
+        <h2>{title}</h2>
+      </button>
       {headerAction}
-      {typeof children === 'function' ? children({ open: true }) : children}
+      {open
+        ? typeof children === 'function'
+          ? children({ open })
+          : children
+        : null}
     </section>
   ),
 }));
@@ -143,20 +159,24 @@ vi.mock('@/components/Session/SidePanel/sections/primitives', () => ({
   ProgressCircle: () => null,
   SidePanelListRow: ({
     children,
+    leading,
     onClick,
     trailing,
   }: {
     children: ReactNode;
+    leading?: ReactNode;
     onClick?: () => void;
     trailing?: ReactNode;
   }) =>
     onClick ? (
       <button onClick={onClick}>
+        {leading}
         {children}
         {trailing}
       </button>
     ) : (
       <div>
+        {leading}
         {children}
         {trailing}
       </div>
@@ -326,6 +346,87 @@ describe('SessionActivityPanel project scope', () => {
     expect(mocks.openFilePreview).toHaveBeenCalledWith(
       expect.objectContaining({ path: '/workspace/outputs/report.md' })
     );
+  });
+
+  it('shows durable subagent tool calls in their own panel category', async () => {
+    mocks.chatStore = chatStore('run-1');
+    const scopedOverview = overview('run-1');
+    scopedOverview.currentRun.nodes = [
+      {
+        id: 'subagent-tool-1',
+        eventId: 'subagent-tool-1',
+        eventType: 'tool.prepared',
+        projectId: 'project-1',
+        runId: 'run-1',
+        runSequence: 1,
+        cloudCursor: 1,
+        createdAt: new Date(1_000).toISOString(),
+        legacyStep: null,
+        kind: 'activity',
+        activityType: 'tool',
+        status: 'running',
+        title: 'Started researcher sub-agent',
+        toolName: 'run_remote_sub_agent',
+        toolCallId: 'remote-subagent-call',
+        subagentType: 'researcher',
+        agentProvider: 'gemini_agents',
+      },
+    ];
+    mocks.overviews['project-1'] = scopedOverview;
+
+    const { container } = render(<SessionActivityPanel scope="latest" />);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    });
+
+    expect(
+      screen.getByRole('heading', { name: 'Subagents' })
+    ).toBeInTheDocument();
+    expect(container.querySelector('[data-agent-avatar="gemini"]')).toHaveClass(
+      'rounded-sm'
+    );
+  });
+
+  it('automates agent accordion state per run while preserving user overrides', async () => {
+    mocks.chatStore = chatStore('run-1');
+    mocks.overviews['project-1'] = overview('run-1', true);
+
+    const { rerender } = render(<SessionActivityPanel scope="latest" />);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    });
+
+    const agentsTrigger = () => screen.getByRole('button', { name: 'Agents' });
+    expect(agentsTrigger()).toHaveAttribute('aria-expanded', 'true');
+
+    const completedRun = overview('run-1', true);
+    completedRun.currentRun.status = 'completed';
+    completedRun.runs[0].status = 'completed';
+    mocks.overviews['project-1'] = completedRun;
+    rerender(<SessionActivityPanel scope="latest" />);
+    await waitFor(() =>
+      expect(agentsTrigger()).toHaveAttribute('aria-expanded', 'false')
+    );
+
+    fireEvent.click(agentsTrigger());
+    expect(agentsTrigger()).toHaveAttribute('aria-expanded', 'true');
+    rerender(<SessionActivityPanel scope="latest" />);
+    expect(agentsTrigger()).toHaveAttribute('aria-expanded', 'true');
+
+    const secondRun = overview('run-2', true);
+    mocks.chatStore = chatStore('run-2');
+    mocks.overviews['project-1'] = secondRun;
+    rerender(<SessionActivityPanel scope="latest" />);
+    await waitFor(() =>
+      expect(agentsTrigger()).toHaveAttribute('aria-expanded', 'true')
+    );
+
+    fireEvent.click(agentsTrigger());
+    expect(agentsTrigger()).toHaveAttribute('aria-expanded', 'false');
+    secondRun.currentRun.status = 'completed';
+    secondRun.runs[0].status = 'completed';
+    rerender(<SessionActivityPanel scope="latest" />);
+    expect(agentsTrigger()).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('does not attach a delayed picker result after switching Projects', async () => {

@@ -62,6 +62,103 @@ describe('chat activity projection', () => {
     });
   });
 
+  it('projects a bounded identity-shaped subagent role', () => {
+    const node = adaptChatProjectionEvent(
+      event(
+        {
+          tool_name: 'agent_run_subagent',
+          tool_call_id: 'subagent-call-1',
+          request: {
+            subagent_type: 'analysis',
+            description: 'Sensitive task detail stays out of identity fields',
+          },
+          display_title: 'Started analysis sub-agent',
+          display_input: 'Task: Analyze the data',
+        },
+        'tool.prepared'
+      )
+    );
+
+    expect(node).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'activity',
+        toolCallId: 'subagent-call-1',
+        subagentType: 'analysis',
+        subagentInvocation: true,
+        input: 'Task: Analyze the data',
+      },
+    });
+  });
+
+  it('does not promote a raw tool request into display identity', () => {
+    const node = adaptChatProjectionEvent(
+      event(
+        {
+          tool_name: 'agent_run_subagent',
+          tool_call_id: 'subagent-call-raw',
+          request: { subagent_type: '/Users/alice/private/raw-role.txt' },
+        },
+        'tool.prepared'
+      )
+    );
+
+    expect(node).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'activity',
+        subagentInvocation: true,
+        subagentType: undefined,
+      },
+    });
+  });
+
+  it('does not attach generic provider metadata to ordinary tools', () => {
+    const node = adaptChatProjectionEvent(
+      event(
+        {
+          tool_name: 'search_web',
+          provider: 'generic-search-provider',
+          model: 'search-model',
+        },
+        'tool.dispatched'
+      )
+    );
+
+    expect(node).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'activity',
+        agentProvider: undefined,
+        agentModel: undefined,
+      },
+    });
+  });
+
+  it('identifies the registered Gemini remote-subagent tool provider', () => {
+    const node = adaptChatProjectionEvent(
+      event(
+        {
+          tool_name: 'run_remote_sub_agent',
+          tool_call_id: 'remote-call-1',
+          request: { remote_agent_name: 'researcher' },
+          display_title: 'Started remote subagent',
+        },
+        'tool.dispatched'
+      )
+    );
+
+    expect(node).toMatchObject({
+      kind: 'display',
+      node: {
+        kind: 'activity',
+        subagentType: 'researcher',
+        subagentInvocation: true,
+        agentProvider: 'gemini_agents',
+      },
+    });
+  });
+
   it('accepts nested camel-case tool identity', () => {
     const node = adaptChatProjectionEvent(
       event({

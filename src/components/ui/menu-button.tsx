@@ -166,8 +166,6 @@ type MenuToggleItemProps = React.ComponentPropsWithoutRef<
   tone?: MenuButtonTone;
   size?: MenuButtonSize;
   icon?: React.ReactNode;
-  subIcon?: React.ReactNode;
-  showSubIcon?: boolean;
   disableIconAnimation?: boolean;
   iconAnimateOnHover?: boolean | string;
   rightElement?: React.ReactNode;
@@ -185,8 +183,6 @@ export const MenuToggleItem = React.forwardRef<
       icon,
       variant: itemVariant,
       tone: itemTone,
-      subIcon,
-      showSubIcon = false,
       disableIconAnimation = false,
       iconAnimateOnHover = true,
       rightElement,
@@ -286,11 +282,6 @@ export const MenuToggleItem = React.forwardRef<
               </span>
             )}
           </span>
-          {showSubIcon && subIcon && (
-            <span className="absolute top-1 right-1 inline-flex items-center justify-center [&_svg]:shrink-0">
-              {subIcon}
-            </span>
-          )}
         </ToggleGroupPrimitive.Item>
       </AnimateIconProvider>
     );

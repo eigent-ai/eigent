@@ -14,8 +14,8 @@
 
 import { SidePanelAccordionBox } from '@/components/Session/SidePanel/components/AccordionBox';
 import { SessionPanelCollapse } from '@/components/Session/SidePanel/sections/primitives';
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
 describe('SessionPanelCollapse', () => {
   it('removes collapsed content from keyboard navigation', () => {
@@ -63,5 +63,30 @@ describe('SidePanelAccordionBox', () => {
     const trigger = screen.getByRole('button', { name: 'Skills' });
     const header = trigger.parentElement?.parentElement;
     expect(header).not.toHaveClass('sticky');
+  });
+
+  it('supports lifecycle-controlled state while reporting user toggles', () => {
+    const onOpenChange = vi.fn();
+    const { rerender } = render(
+      <SidePanelAccordionBox
+        title="Agents"
+        open={false}
+        onOpenChange={onOpenChange}
+      >
+        <div>Agent rows</div>
+      </SidePanelAccordionBox>
+    );
+
+    const trigger = screen.getByRole('button', { name: 'Agents' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(trigger);
+    expect(onOpenChange).toHaveBeenCalledWith(true);
+
+    rerender(
+      <SidePanelAccordionBox title="Agents" open onOpenChange={onOpenChange}>
+        <div>Agent rows</div>
+      </SidePanelAccordionBox>
+    );
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
   });
 });

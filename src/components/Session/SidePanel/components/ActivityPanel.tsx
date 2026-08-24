@@ -50,9 +50,13 @@ import { useProjectOutputFiles } from '@/components/Session/SidePanel/sections/u
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { AgentAvatar } from '@/components/Workspace/AgentAvatar';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
-import { useProjectSessionOverview } from '@/hooks/useProjectSessionOverview';
+import {
+  isProjectSessionRunActive,
+  useProjectSessionOverview,
+} from '@/hooks/useProjectSessionOverview';
 import { useHost } from '@/host';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
@@ -60,8 +64,6 @@ import { useSkillsStore } from '@/store/skillsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import {
   AlertTriangle,
-  Bot,
-  Boxes,
   ExternalLink,
   FileText,
   Globe,
@@ -171,16 +173,25 @@ function AgentCategorySection({
   title,
   items,
   scope,
+  active,
   headerAction,
   onSelect,
 }: {
   title: string;
   items: SessionAgentItem[];
   scope: SessionPanelScope;
+  active: boolean;
   headerAction?: ReactNode;
   onSelect: (item: SessionAgentItem) => void;
 }) {
   const { t } = useTranslation();
+  const [open, setOpen] = useState(active);
+  const userControlledOpenRef = useRef(false);
+
+  useEffect(() => {
+    if (!userControlledOpenRef.current) setOpen(active);
+  }, [active]);
+
   const { primary, earlier } = arrangeSessionPanelItems(items, scope);
   const rows = (agentItems: SessionAgentItem[]) => (
     <SimpleRows
@@ -189,18 +200,22 @@ function AgentCategorySection({
         <SidePanelListRow
           key={item.id}
           leading={
-            item.subagent ? (
-              <Boxes size={16} aria-hidden />
-            ) : (
-              <Bot size={16} aria-hidden />
-            )
+            <AgentAvatar
+              agentType={item.type}
+              agentName={item.name}
+              provider={item.provider}
+              model={item.model}
+              avatarSeed={item.avatarSeed}
+              size="sm"
+              className="rounded-sm"
+            />
           }
           onClick={() => onSelect(item)}
         >
           {item.name ||
             (item.subagent
-              ? t('layout.session-panel-remote-subagent', {
-                  defaultValue: 'Remote subagent',
+              ? t('layout.session-panel-subagent', {
+                  defaultValue: 'Subagent',
                 })
               : t('agents.agent', { defaultValue: 'Agent' }))}
         </SidePanelListRow>
@@ -213,7 +228,11 @@ function AgentCategorySection({
       title={title}
       titleSuffix={<CountPill count={primary.length} />}
       headerAction={headerAction}
-      defaultOpen={false}
+      open={open}
+      onOpenChange={(nextOpen) => {
+        userControlledOpenRef.current = true;
+        setOpen(nextOpen);
+      }}
     >
       {rows(primary)}
       <EarlierItems count={earlier.length}>{rows(earlier)}</EarlierItems>
@@ -624,6 +643,12 @@ export function SessionActivityPanel({
     () => panelData.agents.filter((agent) => agent.subagent),
     [panelData.agents]
   );
+  const agentAccordionRunKey = `${projectId ?? 'no-project'}:${
+    overview.currentRun?.runId ?? 'no-run'
+  }`;
+  const agentAccordionActive = overview.currentRun
+    ? isProjectSessionRunActive(overview.currentRun.status)
+    : false;
   const workspaceRelativePaths = useMemo(
     () =>
       panelData.files.flatMap((item) =>
@@ -821,20 +846,24 @@ export function SessionActivityPanel({
           <SectionList>
             {agents.length > 0 ? (
               <AgentCategorySection
+                key={`agents:${agentAccordionRunKey}`}
                 title={t('layout.agents')}
                 items={agents}
                 scope={scope}
+                active={agentAccordionActive}
                 headerAction={agentHeaderAction}
                 onSelect={setSelectedAgent}
               />
             ) : null}
             {subagents.length > 0 ? (
               <AgentCategorySection
+                key={`subagents:${agentAccordionRunKey}`}
                 title={t('agents.sub-agents', {
-                  defaultValue: 'Sub Agents',
+                  defaultValue: 'Subagents',
                 })}
                 items={subagents}
                 scope={scope}
+                active={agentAccordionActive}
                 onSelect={setSelectedAgent}
               />
             ) : null}
