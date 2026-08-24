@@ -41,6 +41,8 @@ export function SidePanelAccordionBox({
   collapsedPreview,
   children,
   defaultOpen = true,
+  open: controlledOpen,
+  onOpenChange,
 }: {
   title: string;
   /** Small adornment rendered right after the title (e.g. count pill). */
@@ -63,9 +65,18 @@ export function SidePanelAccordionBox({
    */
   children: SidePanelAccordionChildren;
   defaultOpen?: boolean;
+  /** Controlled open state for lifecycle-aware sections. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const shouldReduceMotion = useReducedMotion();
-  const [open, setOpen] = useState(defaultOpen);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const toggleOpen = () => {
+    const nextOpen = !open;
+    if (controlledOpen === undefined) setUncontrolledOpen(nextOpen);
+    onOpenChange?.(nextOpen);
+  };
   const isRenderProp = typeof children === 'function';
   const dynamicBody = isRenderProp
     ? (children as (s: SidePanelAccordionRenderArgs) => ReactNode)({ open })
@@ -94,7 +105,7 @@ export function SidePanelAccordionBox({
             chevron
             open={open}
             ariaExpanded={open}
-            onClick={() => setOpen((value) => !value)}
+            onClick={toggleOpen}
           >
             {title}
           </SessionPanelButton>

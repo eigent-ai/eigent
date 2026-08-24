@@ -12,15 +12,15 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { MarkDown } from '@/components/WorkFlow/MarkDown';
 import {
   Dialog,
   DialogContent,
   DialogContentSection,
   DialogHeader,
 } from '@/components/ui/dialog';
+import { MarkDown } from '@/components/WorkFlow/MarkDown';
+import { AgentAvatar } from '@/components/Workspace/AgentAvatar';
 import { getToolkitIcon } from '@/lib/toolkitIcons';
-import { Bot } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type {
   SessionAgentItem,
@@ -72,11 +72,14 @@ export function AgentInformationDialog({
           {agent ? (
             <div className="flex min-w-0 flex-col gap-4">
               <div className="flex items-start gap-3">
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-ds-neutral-muted-default">
-                  <Bot
-                    size={20}
-                    className="text-ds-ink-default-default"
-                    aria-hidden
+                <span className="flex size-9 shrink-0 overflow-hidden rounded-lg bg-ds-neutral-muted-default">
+                  <AgentAvatar
+                    agentType={agent.type}
+                    agentName={agent.name}
+                    provider={agent.provider}
+                    model={agent.model}
+                    avatarSeed={agent.avatarSeed}
+                    fullBleed
                   />
                 </span>
                 <p className="m-0 text-ds-text-base text-ds-ink-default-default">

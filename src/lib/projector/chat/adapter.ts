@@ -278,6 +278,20 @@ function firstText(...values: unknown[]): string {
   return '';
 }
 
+/**
+ * Delegated-agent role fields are model/provider supplied rather than
+ * presentation text. Accept only short identity-shaped values before they can
+ * become a UI label; paths, URLs, control characters, and free-form payloads
+ * fall back to the localized generic label.
+ */
+function safeDelegatedAgentIdentity(...values: unknown[]): string {
+  const identity = firstText(...values)
+    .trim()
+    .replace(/\s+/g, ' ');
+  if (!identity || identity.length > 48) return '';
+  return /^[A-Za-z0-9]+(?:[ _.-][A-Za-z0-9]+)*$/.test(identity) ? identity : '';
+}
+
 function portableRelativePath(value: unknown): string {
   const normalized = firstText(value).trim().replaceAll('\\', '/');
   if (!normalized) return '';
@@ -1102,6 +1116,8 @@ function activityNode(
 ): ChatActivityNode {
   const payload = asRecord(data);
   const tool = asRecord(payload.tool);
+  const request = asRecord(payload.request);
+  const result = asRecord(payload.result);
   const semantic = base.semantic;
   const semanticActor = semantic?.actor;
   const semanticCorrelation = semantic?.correlation;
@@ -1142,6 +1158,58 @@ function activityNode(
     tool.invocationId,
     semantic?.subject.type === 'tool_call' ? semantic.subject.id : undefined
   );
+  const normalizedToolName = firstText(toolName, methodName)
+    .trim()
+    .toLowerCase()
+    .replace(/-/g, '_');
+  const subagentTool = ['agent_run_subagent', 'run_remote_sub_agent'].includes(
+    normalizedToolName
+  );
+  const agentProvider = subagentTool
+    ? firstText(
+        payload.agent_provider,
+        payload.agentProvider,
+        payload.provider,
+        payload.provider_name,
+        payload.providerName,
+        request.provider,
+        request.provider_name,
+        request.providerName,
+        result.provider,
+        result.provider_name,
+        result.providerName,
+        // The only currently registered remote provider. Explicit producer
+        // metadata above wins as soon as additional providers are introduced.
+        normalizedToolName === 'run_remote_sub_agent'
+          ? 'gemini_agents'
+          : undefined
+      )
+    : '';
+  const agentModel = subagentTool
+    ? firstText(
+        payload.agent_model,
+        payload.agentModel,
+        payload.model,
+        payload.model_name,
+        payload.modelName,
+        request.model,
+        request.model_name,
+        request.modelName,
+        result.model,
+        result.model_name,
+        result.modelName
+      )
+    : '';
+  const subagentType = subagentTool
+    ? safeDelegatedAgentIdentity(
+        payload.subagent_type,
+        payload.subagentType,
+        request.subagent_type,
+        request.subagentType,
+        request.remote_agent_name,
+        request.remoteAgentName
+      )
+    : '';
   const isHumanInputActivity = isHumanInputToolkitActivity(
     toolkitName,
     methodName,
@@ -1211,6 +1279,10 @@ function activityNode(
         semanticCorrelation?.step_id
       ) || undefined,
     toolName: toolName || undefined,
+    subagentType: subagentType || undefined,
+    subagentInvocation: subagentTool || undefined,
+    agentProvider: agentProvider || undefined,
+    agentModel: agentModel || undefined,
     activityId: semantic?.subject.id || undefined,
     semanticKind: semantic?.kind,
     semanticCompleteness: semantic?.completeness.state,

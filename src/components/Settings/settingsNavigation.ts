@@ -55,7 +55,7 @@ export const SETTINGS_NAVIGATION: SettingsNavigationGroup[] = [
       },
       {
         id: 'sub-agents',
-        labelKey: 'agents.sub-agents',
+        labelKey: 'setting.sub-agents',
         defaultLabel: 'Sub-agents',
         icon: Bot,
       },

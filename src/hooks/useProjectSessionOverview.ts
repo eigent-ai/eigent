@@ -25,6 +25,12 @@ const LIVE_RUN_STATUSES = new Set<ProjectedRun['status']>([
   'cancelling',
 ]);
 
+export function isProjectSessionRunActive(
+  status: ProjectedRun['status']
+): boolean {
+  return LIVE_RUN_STATUSES.has(status);
+}
+
 export interface ProjectSessionRun {
   /** Durable Run identity. `taskId` remains as a UI compatibility alias. */
   runId: string;
@@ -111,7 +117,7 @@ export function buildProjectSessionOverview(
   runs.sort(compareRuns);
   const current =
     runs
-      .filter((run) => LIVE_RUN_STATUSES.has(run.status))
+      .filter((run) => isProjectSessionRunActive(run.status))
       .sort(compareRuns)[0] ??
     runs[0] ??
     null;

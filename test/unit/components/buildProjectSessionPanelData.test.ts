@@ -253,6 +253,103 @@ describe('buildProjectSessionPanelData', () => {
     ]);
   });
 
+  it('projects one subagent per durable tool call and preserves provider identity', () => {
+    const subagentNode = (
+      eventId: string,
+      sequence: number,
+      eventType: string,
+      toolCallId: string,
+      subagentType: string,
+      agentProvider?: string,
+      stepId = 'shared-authored-step'
+    ): ChatActivityNode => ({
+      ...baseNode('run-current', eventId, sequence),
+      eventType,
+      kind: 'activity',
+      activityType: 'tool',
+      status: eventType.endsWith('completed') ? 'completed' : 'running',
+      title: `Started ${subagentType} sub-agent`,
+      input: `Task: ${subagentType}`,
+      toolName: 'agent_run_subagent',
+      toolkitName: 'AgentToolkit',
+      toolCallId,
+      stepId,
+      subagentType,
+      subagentInvocation: true,
+      agentProvider,
+    });
+    const run = makeRun('run-current', true, [
+      subagentNode(
+        'local-prepared',
+        1,
+        'tool.prepared',
+        'local-subagent-call',
+        'analysis'
+      ),
+      subagentNode(
+        'local-completed',
+        2,
+        'tool.completed',
+        'local-subagent-call',
+        'analysis'
+      ),
+      subagentNode(
+        'remote-dispatched',
+        3,
+        'tool.dispatched',
+        'remote-subagent-call',
+        'researcher',
+        'gemini_agents'
+      ),
+    ]);
+
+    expect(buildProjectSessionPanelData([run], []).agents).toMatchObject([
+      {
+        id: 'subagent:localsubagentcall',
+        name: 'Analysis',
+        subagent: true,
+        avatarSeed: 'local-subagent-call',
+        tools: ['AgentToolkit'],
+      },
+      {
+        id: 'subagent:remotesubagentcall',
+        name: 'Researcher',
+        subagent: true,
+        provider: 'gemini_agents',
+        avatarSeed: 'remote-subagent-call',
+        tools: ['AgentToolkit'],
+      },
+    ]);
+  });
+
+  it('keeps ordinary remote-named toolkits on their owning agent', () => {
+    const remoteSearch = {
+      ...toolNode(
+        'run-current',
+        'remote-search',
+        1,
+        'completed',
+        'Searched a remote index',
+        'remote-search-call'
+      ),
+      toolkitName: 'RemoteSearchToolkit',
+      methodName: 'search',
+    };
+
+    expect(
+      buildProjectSessionPanelData(
+        [makeRun('run-current', true, [remoteSearch])],
+        []
+      ).agents
+    ).toMatchObject([
+      {
+        name: 'Research Agent',
+        subagent: false,
+        tools: ['RemoteSearchToolkit'],
+      },
+    ]);
+  });
+
   it('collects terminal, browser, and remote execution environments', () => {
     const terminal: ChatActivityNode = {
       ...baseNode('run-current', 'terminal', 1),

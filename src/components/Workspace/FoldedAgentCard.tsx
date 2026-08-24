@@ -28,60 +28,34 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import {
-  agentMap,
-  WORKFLOW_AGENT_SUB_ICON_CLASS,
-  type WorkflowAgentType,
-} from '@/components/WorkFlow/agents';
+import { agentMap, type WorkflowAgentType } from '@/components/WorkFlow/agents';
 import { getAgentToolkitLabels } from '@/components/WorkFlow/agentToolkitLabels';
 import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseWorkers';
+import { AgentAvatar } from '@/components/Workspace/AgentAvatar';
 import { cn } from '@/lib/utils';
-import {
-  Bird,
-  Bot,
-  CodeXml,
-  Copy,
-  Ellipsis,
-  FileText,
-  Globe,
-  Image,
-  Pencil,
-  Trash2,
-} from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { Copy, Ellipsis, Pencil, Trash2 } from 'lucide-react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-/** Sub icons aligned with `WorkforceMenu` / `ui/menu-button` → `MenuToggleItem` (top-right badge, 10px). */
-function getWorkforceMenuStyleSubIcon(agentType: string): ReactNode {
-  const key = agentType as WorkflowAgentType;
-  const iconClass = WORKFLOW_AGENT_SUB_ICON_CLASS[key];
-  if (!iconClass) return null;
-  switch (key) {
-    case 'developer_agent':
-      return <CodeXml className={iconClass} />;
-    case 'browser_agent':
-      return <Globe className={iconClass} />;
-    case 'document_agent':
-      return <FileText className={iconClass} />;
-    case 'multi_modal_agent':
-      return <Image className={iconClass} />;
-    case 'social_media_agent':
-      return <Bird className={iconClass} />;
-    default:
-      return null;
-  }
-}
-
-function FoldedAgentLeadingIcon({ agentType }: { agentType: string }) {
-  const subIcon = getWorkforceMenuStyleSubIcon(agentType);
+function FoldedAgentLeadingIcon({
+  agent,
+  fullBleed = false,
+}: {
+  agent: Agent;
+  fullBleed?: boolean;
+}) {
   return (
-    <div className="relative inline-flex h-6 w-6 shrink-0 items-center justify-center self-center text-ds-ink-muted-default">
-      <Bot className="h-6 w-6" strokeWidth={2} aria-hidden />
-      {subIcon != null && (
-        <span className="absolute -top-1 -right-1 inline-flex items-center justify-center [&_svg]:shrink-0">
-          {subIcon}
-        </span>
+    <div
+      className={cn(
+        'inline-flex shrink-0 items-center justify-center self-center',
+        fullBleed ? 'size-full' : 'size-6'
       )}
+    >
+      <AgentAvatar
+        agentType={agent.type}
+        agentName={agent.name}
+        fullBleed={fullBleed}
+      />
     </div>
   );
 }
@@ -157,7 +131,7 @@ export function FoldedAgentCard({
 
   const expandedRow = (
     <div className="flex w-full max-w-full min-w-0 items-center gap-md px-3 pt-2 pb-2">
-      <FoldedAgentLeadingIcon agentType={agent.type} />
+      <FoldedAgentLeadingIcon agent={agent} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div
           className={cn(
@@ -181,7 +155,7 @@ export function FoldedAgentCard({
 
   const compactIconButtonClass = cn(
     shellClass,
-    'focus-visible:ring-ds-ring-focus p-2 inline-flex items-center justify-center text-left focus-visible:ring-2 focus-visible:outline-none'
+    'focus-visible:ring-ds-ring-focus size-10 inline-flex items-center justify-center text-left focus-visible:ring-2 focus-visible:outline-none'
   );
 
   const button = iconOnly ? (
@@ -195,7 +169,7 @@ export function FoldedAgentCard({
               aria-haspopup="menu"
               className={compactIconButtonClass}
             >
-              <FoldedAgentLeadingIcon agentType={agent.type} />
+              <FoldedAgentLeadingIcon agent={agent} fullBleed />
             </button>
           </DropdownMenuTrigger>
         </TooltipSimple>
@@ -257,7 +231,7 @@ export function FoldedAgentCard({
         aria-label={agentLabel}
         className={compactIconButtonClass}
       >
-        <FoldedAgentLeadingIcon agentType={agent.type} />
+        <FoldedAgentLeadingIcon agent={agent} fullBleed />
       </button>
     )
   ) : showUserAgentOverflow ? (

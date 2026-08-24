@@ -50,6 +50,9 @@ export interface SessionAgentItem {
   createdAt: number;
   updatedAt: number;
   subagent: boolean;
+  provider?: string;
+  model?: string;
+  avatarSeed: string;
 }
 
 export interface SessionToolCall {
@@ -284,13 +287,22 @@ function collectAgents(
   const agents = new Map<string, SessionAgentItem>();
   const isInternalAgent = (name: string) =>
     normalizeContextKey(name) === 'questionconfirmagent';
+  const subagentName = (value?: string) => {
+    if (!value?.trim()) return '';
+    const normalized = value.trim().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+    if (!normalized) return '';
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  };
   const put = (
     run: ProjectSessionRun,
     identity: string,
     name: string,
     description: string,
-    subagent: boolean
-  ) => {
+    subagent: boolean,
+    provider?: string,
+    model?: string,
+    avatarSeed = identity
+  ): SessionAgentItem => {
     const key = `${subagent ? 'subagent' : 'agent'}:${normalizeContextKey(
       identity || name || 'agent'
     )}`;
@@ -306,15 +318,21 @@ function collectAgents(
         createdAt: run.createdAt,
         updatedAt: run.updatedAt,
         subagent,
+        provider,
+        model,
+        avatarSeed,
       });
-      return;
+      return agents.get(key)!;
     }
     if (!existing.name && name) existing.name = name;
     if (!existing.description && description)
       existing.description = description;
+    if (!existing.provider && provider) existing.provider = provider;
+    if (!existing.model && model) existing.model = model;
     if (run.isCurrent) existing.historical = false;
     existing.createdAt = Math.max(existing.createdAt, run.createdAt);
     existing.updatedAt = Math.max(existing.updatedAt, run.updatedAt);
+    return existing;
   };
 
   for (const run of runs) {
@@ -332,9 +350,36 @@ function collectAgents(
           name || node.agentId || 'agent',
           name,
           node.detail || '',
-          subagent
+          subagent,
+          node.agentProvider,
+          node.agentModel,
+          name || node.agentId || 'agent'
         );
-      } else if (node.agentId || node.agentName) {
+      }
+
+      if (node.subagentInvocation || node.subagentType) {
+        const identity =
+          node.toolCallId ||
+          node.stepId ||
+          node.activityId ||
+          `${run.runId}:${node.eventId}`;
+        const agent = put(
+          run,
+          identity,
+          subagentName(node.subagentType),
+          node.input || node.detail || '',
+          true,
+          node.agentProvider,
+          node.agentModel,
+          identity
+        );
+        const toolName = node.toolkitName?.trim() || node.toolName?.trim();
+        if (toolName && !agent.tools.includes(toolName)) {
+          agent.tools.push(toolName);
+        }
+      }
+
+      if (node.activityType !== 'agent' && (node.agentId || node.agentName)) {
         if (isInternalAgent(node.agentName || '')) continue;
         put(
           run,
@@ -350,17 +395,16 @@ function collectAgents(
   for (const call of calls) {
     const run = runs.find((candidate) => candidate.runId === call.taskId);
     if (!run) continue;
-    const callText = `${call.toolkitName} ${call.method}`.toLowerCase();
-    const subagent = /sub.?agent|remote/.test(callText);
-    // Typed tool lifecycle events may not carry agent identity. They are not
-    // independent agents and must not create a phantom "Remote subagent" row.
-    if (!call.agentName && !subagent) continue;
+    const delegatedTool = ['agentrunsubagent', 'runremotesubagent'].includes(
+      normalizeContextKey(call.method)
+    );
+    // Registered delegation tools are attached directly to their projected
+    // subagent row above. Other toolkits must not be classified by name.
+    if (delegatedTool || !call.agentName) continue;
     if (isInternalAgent(call.agentName)) continue;
-    const identity = call.agentName || 'remote-subagent';
-    put(run, identity, call.agentName, '', subagent);
-    const key = `${subagent ? 'subagent' : 'agent'}:${normalizeContextKey(
-      identity
-    )}`;
+    const identity = call.agentName;
+    put(run, identity, call.agentName, '', false);
+    const key = `agent:${normalizeContextKey(identity)}`;
     const agent = agents.get(key);
     if (agent && !agent.tools.includes(call.toolkitName)) {
       agent.tools.push(call.toolkitName);

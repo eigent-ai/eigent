@@ -247,6 +247,13 @@ export interface ChatActivityNode extends ChatProjectionNodeBase {
   stepId?: string;
   /** Typed transports may name a tool without a toolkit/method pair. */
   toolName?: string;
+  /** Safe delegated-agent identity projected from a subagent tool request. */
+  subagentType?: string;
+  /** Exact registered delegation tool, even when no display identity exists. */
+  subagentInvocation?: boolean;
+  /** Provider/model hints used only for delegated-agent presentation. */
+  agentProvider?: string;
+  agentModel?: string;
   /** Stable subject identity from the versioned semantic envelope. */
   activityId?: string;
   /** Domain discriminator such as command_execution or agent_turn. */
