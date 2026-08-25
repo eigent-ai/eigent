@@ -34,16 +34,12 @@ interface ProjectChatContainerProps {
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
   /** Bottom padding so scrolled content clears the fixed BottomBox overlay (px); measured in ChatBox. */
   scrollBottomInsetPx: number;
-  onSkip: () => void;
-  isPauseResumeLoading: boolean;
 }
 
 export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   className = '',
   scrollContainerRef,
   scrollBottomInsetPx,
-  onSkip,
-  isPauseResumeLoading,
 }) => {
   const { projectStore } = useChatStoreAdapter();
   const [activeQueryId, setActiveQueryId] = useState<string | null>(null);
@@ -365,8 +361,6 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
                 taskId={taskId}
                 activeQueryId={activeQueryId}
                 onQueryActive={setActiveQueryId}
-                onSkip={onSkip}
-                isPauseResumeLoading={isPauseResumeLoading}
               />
             );
           })}

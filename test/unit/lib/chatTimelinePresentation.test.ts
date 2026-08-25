@@ -23,6 +23,7 @@ import type {
   ChatArtifactNode,
   ChatInteractionNode,
   ChatMessageNode,
+  ChatNoticeNode,
   ChatPlanNode,
   ChatProjectionNodeBase,
   ChatRunStatusNode,
@@ -202,6 +203,28 @@ describe('event-native Timeline Run presentation', () => {
     expect(input.map((node) => node.id)).toEqual(originalOrder);
   });
 
+  it('uses creation time before transport sequence for Timeline order', () => {
+    const subagentCreated = tool('subagent-created', 'run-1', 50, {
+      createdAt: '2026-08-19T00:00:01.000Z',
+      toolCallId: 'subagent-created',
+      methodName: 'agent_run_subagent',
+      subagentInvocation: true,
+    });
+    const checkedStatus = tool('checked-status', 'run-1', 2, {
+      createdAt: '2026-08-19T00:00:02.000Z',
+      toolCallId: 'checked-status',
+      methodName: 'agent_get_task_output',
+      title: 'Checked sub-agent status',
+    });
+
+    const run = composeTimelineRun([checkedStatus, subagentCreated], 'run-1');
+
+    expect(run?.traceRows.map((row) => row.id)).toEqual([
+      'tool-call:run-1:subagent-created',
+      'tool-call:run-1:checked-status',
+    ]);
+  });
+
   it('exposes plans, interactions, artifacts, terminal status, and Run timestamps', () => {
     const plan: ChatPlanNode = {
       ...base('plan', 'run-1', 3),
@@ -372,11 +395,161 @@ describe('event-native Timeline Run presentation', () => {
     expect(toolRow.invocation.output).toBe('safe response');
     expect(toolRow.invocation.detail).toBeUndefined();
     expect(toolRow.invocation.status).toBe('completed');
+    expect(toolRow.invocation.actionKind).toBe('search');
     expect(toolRow.invocation.durationMs).toBe(5_000);
     expect(first?.summary.toolCallCount).toBe(1);
     expect(second?.traceRows.map((row) => row.id)).toEqual(
       first?.traceRows.map((row) => row.id)
     );
+  });
+
+  it('attaches explicitly correlated notices without removing trace rows', () => {
+    const invocation = tool('message-tool', 'run-1', 1, {
+      toolCallId: 'message-call-1',
+      toolkitName: 'Human Toolkit',
+      methodName: 'send_message_to_user',
+      status: 'completed',
+      phase: 'completed',
+    });
+    const notice: ChatNoticeNode = {
+      ...base('message-notice', 'run-1', 2),
+      kind: 'notice',
+      severity: 'success',
+      title: 'Report delivered',
+      content: 'The report is ready.',
+      toolCallId: 'message-call-1',
+    };
+
+    const run = composeTimelineRun([notice, invocation], 'run-1');
+    const row = run?.traceRows.find((candidate) => candidate.kind === 'tool');
+
+    if (row?.kind !== 'tool') throw new Error('Expected a tool row');
+    expect(row.invocation).toMatchObject({
+      actionKind: 'message',
+      notice: {
+        eventId: 'message-notice',
+        title: 'Report delivered',
+        content: 'The report is ready.',
+        severity: 'success',
+      },
+    });
+    expect(run?.traceRows.some((candidate) => candidate.id === notice.id)).toBe(
+      true
+    );
+  });
+
+  it('classifies common action icons from projected identity, not visible title', () => {
+    const actions = [
+      tool('research', 'run-1', 1, {
+        toolCallId: 'research',
+        title: 'Working',
+        methodName: 'research_sources',
+      }),
+      tool('editing', 'run-1', 2, {
+        toolCallId: 'editing',
+        title: 'Working',
+        methodName: 'edit_file',
+      }),
+      tool('drafting', 'run-1', 3, {
+        toolCallId: 'drafting',
+        title: 'Working',
+        methodName: 'draft_report',
+      }),
+      tool('checking', 'run-1', 4, {
+        toolCallId: 'checking',
+        title: 'Working',
+        methodName: 'check_file',
+      }),
+    ];
+    const run = composeTimelineRun(actions, 'run-1');
+    const kinds = run?.traceRows.flatMap((row) =>
+      row.kind === 'tool' ? [row.invocation.actionKind] : []
+    );
+
+    expect(kinds).toEqual(['search', 'edit', 'write', 'inspect']);
+  });
+
+  it('preserves projection-owned delegated-agent metadata on a folded invocation', () => {
+    const started = tool('subagent-started', 'run-1', 2, {
+      eventType: 'tool.dispatched',
+      toolCallId: 'subagent-call-1',
+      subagentInvocation: true,
+      subagentType: 'researcher',
+      subagentName: 'Research Agent',
+      subagentStatus: 'running',
+      subagentAgentId: 'child-agent-1',
+      subagentTaskId: 'child-task-1',
+      agentProvider: 'gemini_agents',
+      agentModel: 'gemini-2.5-pro',
+    });
+    const completed = tool('subagent-completed', 'run-1', 3, {
+      eventType: 'tool.completed',
+      toolCallId: 'subagent-call-1',
+      status: 'completed',
+      phase: 'completed',
+      subagentInvocation: true,
+      subagentStatus: 'failed',
+    });
+
+    const run = composeTimelineRun([completed, started], 'run-1');
+    const row = run?.traceRows.find((candidate) => candidate.kind === 'tool');
+
+    if (row?.kind !== 'tool') throw new Error('Expected a tool row');
+    expect(row.invocation).toMatchObject({
+      subagentInvocation: true,
+      subagentType: 'researcher',
+      subagentName: 'Research Agent',
+      subagentStatus: 'failed',
+      subagentAgentId: 'child-agent-1',
+      subagentTaskId: 'child-task-1',
+      agentProvider: 'gemini_agents',
+      agentModel: 'gemini-2.5-pro',
+    });
+  });
+
+  it('keeps same-title retries separate when projected call ids differ', () => {
+    const retries = [
+      tool('retry-1', 'run-1', 1, {
+        toolCallId: 'call-retry-1',
+        title: 'Modify Python file',
+        status: 'failed',
+        phase: 'failed',
+      }),
+      tool('retry-2', 'run-1', 2, {
+        toolCallId: 'call-retry-2',
+        title: 'Modify Python file',
+        status: 'failed',
+        phase: 'failed',
+      }),
+      tool('retry-3', 'run-1', 3, {
+        toolCallId: 'call-retry-3',
+        title: 'Modify Python file',
+        status: 'completed',
+        phase: 'completed',
+      }),
+      tool('retry-4', 'run-1', 4, {
+        toolCallId: 'call-retry-4',
+        title: 'Modify Python file',
+        status: 'completed',
+        phase: 'completed',
+      }),
+    ];
+
+    const run = composeTimelineRun(retries, 'run-1');
+    const toolRows = run?.traceRows.filter((row) => row.kind === 'tool') ?? [];
+
+    expect(toolRows.map((row) => row.id)).toEqual([
+      'tool-call:run-1:call-retry-1',
+      'tool-call:run-1:call-retry-2',
+      'tool-call:run-1:call-retry-3',
+      'tool-call:run-1:call-retry-4',
+    ]);
+    expect(
+      toolRows.map((row) =>
+        row.kind === 'tool' ? row.invocation.status : undefined
+      )
+    ).toEqual(['failed', 'failed', 'completed', 'completed']);
+    expect(run?.summary.toolCallCount).toBe(4);
   });
 
   it('merges canonical and legacy receipts by call id without exposing legacy payloads', () => {

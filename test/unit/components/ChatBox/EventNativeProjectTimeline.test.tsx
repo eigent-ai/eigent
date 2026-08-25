@@ -456,7 +456,7 @@ describe('EventNativeProjectTimeline', () => {
     );
   });
 
-  it('attributes narrative work to nested agent accordions only in workforce mode', () => {
+  it('attributes narrative work to nested agent accordions only in workforce mode', async () => {
     const alpha = {
       ...messageNode(1),
       purpose: 'narration' as const,
@@ -507,7 +507,12 @@ describe('EventNativeProjectTimeline', () => {
       ...container.querySelectorAll('[data-narrative-agent-group]'),
     ].map((element) => element.getAttribute('data-narrative-agent-group'));
     expect(groups).toEqual(['Alpha Agent', 'Beta Agent']);
-    expect(screen.queryByText('Message 1')).not.toBeInTheDocument();
+    // Switching modes replaces the flat rows with agent groups, and the rows on
+    // their way out stay mounted for the length of their fade. Only once that
+    // settles does the DOM show what a collapsed group actually withholds.
+    await waitFor(() =>
+      expect(screen.queryByText('Message 1')).not.toBeInTheDocument()
+    );
     expect(screen.getByText('Message 2')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Alpha Agent' }));
@@ -521,6 +526,7 @@ describe('EventNativeProjectTimeline', () => {
       kind: 'plan',
       eventType: 'legacy.to_sub_tasks',
       legacyStep: 'to_sub_tasks',
+      status: 'active',
       title: 'Research plan',
       tasks: [
         { id: 'task-1', title: 'Inspect the components', status: 'pending' },

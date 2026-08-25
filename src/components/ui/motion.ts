@@ -12,11 +12,29 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-export * from './actionKind';
-export * from './chronology';
-export * from './composeTimelineRuns';
-export * from './reconcileProjectedRuns';
-export * from './segmentTimeline';
-export * from './subagentIdentity';
-export * from './timelineCalls';
-export * from './types';
+const UI_EASE_OUT: [number, number, number, number] = [0.23, 1, 0.32, 1];
+
+const ITEM_FADE_TRANSITION = {
+  duration: 0.16,
+  ease: UI_EASE_OUT,
+} as const;
+
+const REDUCED_ITEM_FADE_TRANSITION = {
+  duration: 0.12,
+  ease: UI_EASE_OUT,
+} as const;
+
+/**
+ * Opacity-only lifecycle motion for frequently updated operational lists.
+ * It remains brief and interruptible and keeps reduced motion free of travel.
+ */
+export function itemFadeMotion(reducedMotion: boolean) {
+  return {
+    initial: { opacity: 0 },
+    animate: { opacity: 1 },
+    exit: { opacity: 0 },
+    transition: reducedMotion
+      ? REDUCED_ITEM_FADE_TRANSITION
+      : ITEM_FADE_TRANSITION,
+  } as const;
+}

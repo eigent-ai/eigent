@@ -49,6 +49,7 @@ import {
 import { useProjectOutputFiles } from '@/components/Session/SidePanel/sections/useProjectOutputFiles';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { itemFadeMotion } from '@/components/ui/motion';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { AgentAvatar } from '@/components/Workspace/AgentAvatar';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
@@ -62,6 +63,7 @@ import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSkillsStore } from '@/store/skillsStore';
 import { useSpaceStore } from '@/store/spaceStore';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   AlertTriangle,
   ExternalLink,
@@ -75,7 +77,7 @@ import {
 } from 'lucide-react';
 import {
   Children,
-  Fragment,
+  isValidElement,
   startTransition,
   useEffect,
   useMemo,
@@ -146,25 +148,56 @@ function SimpleRows<T>({
   items: T[];
   render: (item: T) => ReactNode;
 }) {
-  return <div className="flex min-w-0 flex-col">{items.map(render)}</div>;
+  const reducedMotion = Boolean(useReducedMotion());
+  const rows = Children.toArray(items.map(render));
+
+  return (
+    <div className="flex min-w-0 flex-col">
+      <AnimatePresence initial={false}>
+        {rows.map((row, index) => (
+          <motion.div
+            {...itemFadeMotion(reducedMotion)}
+            data-session-panel-item-motion
+            key={
+              isValidElement(row) && row.key !== null ? row.key : `row:${index}`
+            }
+          >
+            {row}
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
 }
 
 function SectionList({ children }: { children: ReactNode }) {
   const sections = Children.toArray(children);
+  const reducedMotion = Boolean(useReducedMotion());
 
   return (
     <div className="flex min-w-0 flex-col gap-1 py-1">
-      {sections.map((section, index) => (
-        <Fragment key={index}>
-          {index > 0 ? (
-            <div
-              role="separator"
-              className="h-px w-full shrink-0 bg-ds-border-neutral-subtle-disabled"
-            />
-          ) : null}
-          {section}
-        </Fragment>
-      ))}
+      <AnimatePresence initial={false}>
+        {sections.map((section, index) => (
+          <motion.div
+            {...itemFadeMotion(reducedMotion)}
+            className="flex min-w-0 flex-col gap-1"
+            data-session-panel-section-motion
+            key={
+              isValidElement(section) && section.key !== null
+                ? section.key
+                : `section:${index}`
+            }
+          >
+            {index > 0 ? (
+              <div
+                role="separator"
+                className="h-px w-full shrink-0 bg-ds-border-neutral-subtle-disabled"
+              />
+            ) : null}
+            {section}
+          </motion.div>
+        ))}
+      </AnimatePresence>
     </div>
   );
 }
@@ -869,6 +902,7 @@ export function SessionActivityPanel({
             ) : null}
             {panelData.progress.length > 0 ? (
               <ProgressSection
+                key="progress"
                 items={panelData.progress}
                 scope={scope}
                 onSelect={(item) => {
@@ -880,6 +914,7 @@ export function SessionActivityPanel({
             ) : null}
             {panelData.contextItems.length > 0 ? (
               <ContextSection
+                key="context"
                 items={panelData.contextItems}
                 scope={scope}
                 onSelect={setSelectedContext}
@@ -887,6 +922,7 @@ export function SessionActivityPanel({
             ) : null}
             {panelData.environments.length > 0 ? (
               <EnvironmentsSection
+                key="environments"
                 items={panelData.environments}
                 scope={scope}
                 onSelect={(item) => {
@@ -900,6 +936,7 @@ export function SessionActivityPanel({
             ) : null}
             {panelData.resources.length > 0 ? (
               <ResourcesSection
+                key="resources"
                 items={panelData.resources}
                 scope={scope}
                 onSelect={(item) => {
@@ -913,6 +950,7 @@ export function SessionActivityPanel({
             ) : null}
             {projectId ? (
               <FilesSection
+                key="files"
                 items={files}
                 scope={scope}
                 onSelect={(item) => openFilePreview(item.file)}

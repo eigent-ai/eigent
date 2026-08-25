@@ -117,7 +117,11 @@ function activityNode(
   };
 }
 
-function noticeNode(id: string, content: string): ChatProjectionNode {
+function noticeNode(
+  id: string,
+  content: string,
+  overrides: Partial<Extract<ChatProjectionNode, { kind: 'notice' }>> = {}
+): ChatProjectionNode {
   return {
     ...commonNode,
     id,
@@ -125,6 +129,7 @@ function noticeNode(id: string, content: string): ChatProjectionNode {
     kind: 'notice',
     severity: 'info',
     content,
+    ...overrides,
   };
 }
 
@@ -277,14 +282,24 @@ describe('EventTimeline', () => {
     render(
       <EventTimeline
         nodes={[
-          activityNode('preparing-agent', 'Preparing agent'),
-          activityNode('human-toolkit', 'Human Toolkit'),
+          activityNode('preparing-agent', 'Preparing agent', {
+            createdAt: '2026-08-11T10:00:01Z',
+          }),
+          activityNode('human-toolkit', 'Human Toolkit', {
+            createdAt: '2026-08-11T10:00:02Z',
+          }),
           interactionNode('input-request', 'requested', 'input-1', {
+            createdAt: '2026-08-11T10:00:03Z',
             prompt: 'Which dataset should I use?',
           }),
-          activityNode('todo-toolkit-one', 'Todo Toolkit: first item'),
-          activityNode('todo-toolkit-two', 'Todo Toolkit: second item'),
+          activityNode('todo-toolkit-one', 'Todo Toolkit: first item', {
+            createdAt: '2026-08-11T10:00:04Z',
+          }),
+          activityNode('todo-toolkit-two', 'Todo Toolkit: second item', {
+            createdAt: '2026-08-11T10:00:05Z',
+          }),
           interactionNode('input-resolution', 'responded', 'input-1', {
+            createdAt: '2026-08-11T10:00:06Z',
             response: 'Quarterly metrics',
           }),
         ]}
@@ -376,11 +391,15 @@ describe('EventTimeline', () => {
       <EventTimeline
         nodes={[
           activityNode('fetch-before', 'Fetch before notice', {
+            createdAt: '2026-08-11T10:00:01Z',
             toolkitName: 'WebFetchToolkit',
             methodName: 'Web_fetch_and_analyze',
           }),
-          noticeNode('fetch-boundary', 'Reviewing fetched sources'),
+          noticeNode('fetch-boundary', 'Reviewing fetched sources', {
+            createdAt: '2026-08-11T10:00:02Z',
+          }),
           activityNode('fetch-after', 'Fetch after notice', {
+            createdAt: '2026-08-11T10:00:03Z',
             toolkitName: 'WebFetchToolkit',
             methodName: 'Web_fetch_and_analyze',
           }),
@@ -397,6 +416,7 @@ describe('EventTimeline', () => {
   it('counts paired lifecycle events as calls rather than event frames', () => {
     const sourceNodes = [
       activityNode('fetch-1-start', 'Fetch first page', {
+        createdAt: '2026-08-11T10:00:01Z',
         eventType: 'tool.started',
         status: 'running',
         toolkitName: 'WebFetchToolkit',
@@ -405,6 +425,7 @@ describe('EventTimeline', () => {
         detail: 'First request',
       }),
       activityNode('fetch-1-end', 'Fetch first page', {
+        createdAt: '2026-08-11T10:00:02Z',
         eventType: 'tool.completed',
         status: 'completed',
         toolkitName: 'WebFetchToolkit',
@@ -413,6 +434,7 @@ describe('EventTimeline', () => {
         detail: 'First response',
       }),
       activityNode('fetch-2-start', 'Fetch second page', {
+        createdAt: '2026-08-11T10:00:03Z',
         eventType: 'tool.started',
         status: 'running',
         toolkitName: 'WebFetchToolkit',
@@ -420,6 +442,7 @@ describe('EventTimeline', () => {
         toolCallId: 'fetch-call-2',
       }),
       activityNode('fetch-2-end', 'Fetch second page', {
+        createdAt: '2026-08-11T10:00:04Z',
         eventType: 'tool.completed',
         status: 'completed',
         toolkitName: 'WebFetchToolkit',
@@ -481,10 +504,12 @@ describe('EventTimeline', () => {
       <EventTimeline
         nodes={[
           interactionNode('request-a', 'requested', 'interaction-a', {
+            createdAt: '2026-08-11T10:00:01Z',
             prompt: 'First question',
             runId: 'run-1',
           }),
           interactionNode('resolution-b', 'responded', 'interaction-b', {
+            createdAt: '2026-08-11T10:00:02Z',
             response: 'Answer for another interaction',
             runId: 'run-1',
           }),
@@ -492,7 +517,11 @@ describe('EventTimeline', () => {
             'resolution-a-other-run',
             'responded',
             'interaction-a',
-            { response: 'Answer from another run', runId: 'run-2' }
+            {
+              createdAt: '2026-08-11T10:00:03Z',
+              response: 'Answer from another run',
+              runId: 'run-2',
+            }
           ),
         ]}
       />
@@ -632,26 +661,137 @@ describe('EventTimeline', () => {
     expect(screen.queryByLabelText('Your message')).not.toBeInTheDocument();
   });
 
-  it('fails closed when a request has multiple legacy ASK mirrors', () => {
+  it('folds duplicate durable and live legacy ASK mirrors into one request', () => {
     render(
       <EventTimeline
         nodes={[
           interactionNode(
             'ambiguous-canonical-request',
             'requested',
-            'ambiguous-request'
+            'ambiguous-request',
+            { prompt: 'Continue the regression test?' }
           ),
           interactionNode(
             'ambiguous-legacy-request-one',
             'requested',
             'ambiguous-request',
-            { eventType: 'legacy.ask', legacyStep: 'ask' }
+            {
+              eventType: 'legacy.ask',
+              legacyStep: 'ask',
+              prompt: 'Continue the regression test?',
+            }
           ),
+          // The live lane frame has no `event_type` of its own, so it reaches
+          // the projection as `legacy.step` rather than the durable
+          // `legacy.ask`. Both are the same shadow lane.
           interactionNode(
             'ambiguous-legacy-request-two',
             'requested',
             'ambiguous-request',
-            { eventType: 'legacy.ask', legacyStep: 'ask' }
+            {
+              eventType: 'legacy.step',
+              legacyStep: 'ask',
+              prompt: 'Continue the regression test?',
+            }
+          ),
+        ]}
+      />
+    );
+
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+    expect(screen.getAllByLabelText('Agent request')).toHaveLength(1);
+    expect(screen.getByRole('listitem')).toHaveAttribute(
+      'data-event-node-id',
+      'ambiguous-canonical-request'
+    );
+  });
+
+  it('folds a live ASK frame that normalizes to the unnamed legacy namespace', () => {
+    // A live `/chat` frame carries no `event_type`, so it normalizes to
+    // `legacy.step` rather than `legacy.ask`, and only the legacy lane puts the
+    // requesting agent at the payload top level. Treating that frame as
+    // canonical made it a second canonical request whose signature disagreed
+    // with the typed one, which suppressed the fold and left one pending row
+    // per lane instead of a single resolved receipt.
+    render(
+      <EventTimeline
+        nodes={[
+          // The live frame arrives first; the durable replay follows it.
+          interactionNode('approval-live-mirror', 'requested', 'approval-1', {
+            eventType: 'legacy.step',
+            legacyStep: 'ask',
+            interactionType: 'approval',
+            prompt: 'The agent wants to run shell_exec (process.spawn).',
+            agentName: 'single_agent',
+          }),
+          // The typed request carries no top-level agent, so it does not match
+          // the mirrors field for field. A mirror must still fold into it.
+          interactionNode('approval-canonical', 'requested', 'approval-1', {
+            eventType: 'approval.requested',
+            interactionType: 'approval',
+            prompt: 'The agent wants to run shell_exec (process.spawn).',
+          }),
+          interactionNode(
+            'approval-durable-mirror',
+            'requested',
+            'approval-1',
+            {
+              eventType: 'legacy.ask',
+              legacyStep: 'ask',
+              interactionType: 'approval',
+              prompt: 'The agent wants to run shell_exec (process.spawn).',
+              agentName: 'single_agent',
+            }
+          ),
+          interactionNode('approval-decided', 'responded', 'approval-1', {
+            eventType: 'approval.decided',
+            interactionType: 'approval',
+            response: 'approved',
+          }),
+        ]}
+      />
+    );
+
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+    expect(screen.getAllByLabelText('Agent request')).toHaveLength(1);
+    expect(screen.getByRole('listitem')).toHaveAttribute(
+      'data-event-node-id',
+      'approval-canonical'
+    );
+    expect(screen.getByRole('listitem')).toHaveAttribute(
+      'data-interaction-resolution-event-id',
+      'event-approval-decided'
+    );
+  });
+
+  it('keeps conflicting duplicate legacy ASK receipts visible', () => {
+    render(
+      <EventTimeline
+        nodes={[
+          interactionNode(
+            'conflicting-canonical-request',
+            'requested',
+            'conflicting-request'
+          ),
+          interactionNode(
+            'conflicting-legacy-request-one',
+            'requested',
+            'conflicting-request',
+            {
+              eventType: 'legacy.ask',
+              legacyStep: 'ask',
+              prompt: 'Continue?',
+            }
+          ),
+          interactionNode(
+            'conflicting-legacy-request-two',
+            'requested',
+            'conflicting-request',
+            {
+              eventType: 'legacy.ask',
+              legacyStep: 'ask',
+              prompt: 'Stop?',
+            }
           ),
         ]}
       />

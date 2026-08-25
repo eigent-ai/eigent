@@ -156,6 +156,14 @@ describe('event-native Run-control arbitration', () => {
         eventNativeActiveRunId: 'legacy-live',
       })
     ).toBe('idle');
+    expect(
+      selectComposerTaskControlState({
+        eventNativeTimelineEnabled: true,
+        legacyControlRunId: 'legacy-live',
+        activeTaskStatus: ChatTaskStatus.RUNNING,
+        eventNativeActiveRunId: null,
+      })
+    ).toBe('running');
   });
 
   it('lets a typed pending control outrank the legacy-owned live Run', () => {

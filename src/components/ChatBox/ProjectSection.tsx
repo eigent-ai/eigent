@@ -16,7 +16,6 @@ import { VanillaChatStore } from '@/store/chatStore';
 import { AgentStep } from '@/types/constants';
 import { motion } from 'framer-motion';
 import React from 'react';
-import { FloatingAction } from './MessageItem/FloatingAction';
 import { type QueryGroup, UserQueryGroup } from './UserQueryGroup';
 
 interface ProjectSectionProps {
@@ -25,119 +24,88 @@ interface ProjectSectionProps {
   taskId?: string;
   activeQueryId: string | null;
   onQueryActive: (queryId: string | null) => void;
-  // onPauseResume: () => void;  // Commented out - temporary not needed
-  onSkip: () => void;
-  isPauseResumeLoading: boolean;
 }
 
 export const ProjectSection = React.forwardRef<
   HTMLDivElement,
   ProjectSectionProps
->(
-  (
-    {
-      chatId,
-      chatStore,
-      taskId,
-      activeQueryId,
-      onQueryActive,
-      // onPauseResume,  // Commented out - temporary not needed
-      onSkip,
-      isPauseResumeLoading,
-    },
-    ref
-  ) => {
-    // Subscribe to store changes with throttling to prevent excessive re-renders
-    const [chatState, setChatState] = React.useState(() =>
-      chatStore.getState()
-    );
+>(({ chatId, chatStore, taskId, activeQueryId, onQueryActive }, ref) => {
+  // Subscribe to store changes with throttling to prevent excessive re-renders
+  const [chatState, setChatState] = React.useState(() => chatStore.getState());
 
-    React.useEffect(() => {
-      let timeoutId: NodeJS.Timeout | null = null;
-      let latestState: any = null;
+  React.useEffect(() => {
+    let timeoutId: NodeJS.Timeout | null = null;
+    let latestState: any = null;
 
-      const unsubscribe = chatStore.subscribe((state) => {
-        latestState = state;
+    const unsubscribe = chatStore.subscribe((state) => {
+      latestState = state;
 
-        // Throttle updates to max once per 100ms
-        if (!timeoutId) {
-          timeoutId = setTimeout(() => {
-            if (latestState) {
-              setChatState(latestState);
-            }
-            timeoutId = null;
-          }, 100);
-        }
-      });
-
-      return () => {
-        unsubscribe();
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          // Apply final state on cleanup
+      // Throttle updates to max once per 100ms
+      if (!timeoutId) {
+        timeoutId = setTimeout(() => {
           if (latestState) {
             setChatState(latestState);
           }
+          timeoutId = null;
+        }, 100);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        // Apply final state on cleanup
+        if (latestState) {
+          setChatState(latestState);
         }
-      };
-    }, [chatStore]);
+      }
+    };
+  }, [chatStore]);
 
-    const activeTaskId = taskId ?? chatState.activeTaskId;
-    const task = activeTaskId ? chatState.tasks[activeTaskId] : null;
+  const activeTaskId = taskId ?? chatState.activeTaskId;
+  const task = activeTaskId ? chatState.tasks[activeTaskId] : null;
 
-    const messages = React.useMemo(() => {
-      return task?.messages || [];
-    }, [task?.messages]);
+  const messages = React.useMemo(() => {
+    return task?.messages || [];
+  }, [task?.messages]);
 
-    // Memoize grouping to prevent re-creating objects on every render
-    const queryGroups = React.useMemo(() => {
-      return groupMessagesByQuery(messages);
-    }, [messages]);
-    if (!activeTaskId || !task) {
-      return null;
-    }
-
-    return (
-      <motion.div
-        ref={ref}
-        data-turn-id={activeTaskId}
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -20 }}
-        transition={{ duration: 0.3 }}
-        className="relative mb-8"
-      >
-        {/* User Query Groups */}
-        <div className="space-y-3">
-          {queryGroups.map((group, index) => (
-            <UserQueryGroup
-              key={`${chatId}-${group.queryId}`}
-              chatId={chatId}
-              chatStore={chatStore}
-              queryGroup={group}
-              isActive={activeQueryId === group.queryId}
-              onQueryActive={onQueryActive}
-              index={index}
-              taskId={activeTaskId}
-            />
-          ))}
-        </div>
-
-        {/* Floating Action Button - positioned at project level */}
-        {activeTaskId && (
-          <FloatingAction
-            status={task.status}
-            // onPause={onPauseResume}  // Commented out - temporary not needed
-            // onResume={onPauseResume}  // Commented out - temporary not needed
-            onSkip={onSkip}
-            loading={isPauseResumeLoading}
-            hideStop={false}
-          />
-        )}
-      </motion.div>
-    );
+  // Memoize grouping to prevent re-creating objects on every render
+  const queryGroups = React.useMemo(() => {
+    return groupMessagesByQuery(messages);
+  }, [messages]);
+  if (!activeTaskId || !task) {
+    return null;
   }
-);
+
+  return (
+    <motion.div
+      ref={ref}
+      data-turn-id={activeTaskId}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      transition={{ duration: 0.3 }}
+      className="relative mb-8"
+    >
+      {/* User Query Groups */}
+      <div className="space-y-3">
+        {queryGroups.map((group, index) => (
+          <UserQueryGroup
+            key={`${chatId}-${group.queryId}`}
+            chatId={chatId}
+            chatStore={chatStore}
+            queryGroup={group}
+            isActive={activeQueryId === group.queryId}
+            onQueryActive={onQueryActive}
+            index={index}
+            taskId={activeTaskId}
+          />
+        ))}
+      </div>
+    </motion.div>
+  );
+});
 
 // Add display name for better debugging
 ProjectSection.displayName = 'ProjectSection';

@@ -12,6 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { beforeEach, describe, expect, it } from 'vitest';
+
 import {
   getRemoteControlBridgeError,
   setRemoteControlBridgeConnected,

@@ -12,11 +12,35 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-export * from './actionKind';
-export * from './chronology';
-export * from './composeTimelineRuns';
-export * from './reconcileProjectedRuns';
-export * from './segmentTimeline';
-export * from './subagentIdentity';
-export * from './timelineCalls';
-export * from './types';
+import type { TimelineActionKind } from '@/lib/projector/chat/presentation';
+import {
+  Bot,
+  FilePenLine,
+  FileSearch,
+  Globe,
+  ListChecks,
+  MessageSquare,
+  PencilLine,
+  Search,
+  SquareTerminal,
+  Wrench,
+  type LucideIcon,
+} from 'lucide-react';
+
+const ACTION_ICONS: Record<TimelineActionKind, LucideIcon> = {
+  search: Search,
+  inspect: FileSearch,
+  edit: PencilLine,
+  write: FilePenLine,
+  command: SquareTerminal,
+  plan: ListChecks,
+  message: MessageSquare,
+  browse: Globe,
+  subagent: Bot,
+  generic: Wrench,
+};
+
+/** React performs only the final projection-category to icon match. */
+export function actionIcon(kind: TimelineActionKind): LucideIcon {
+  return ACTION_ICONS[kind];
+}

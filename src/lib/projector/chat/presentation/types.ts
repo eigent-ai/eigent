@@ -20,11 +20,36 @@ import type {
   ChatArtifactNode,
   ChatInteractionNode,
   ChatMessageNode,
+  ChatNoticeSeverity,
   ChatPlanNode,
   ChatProjectionNode,
   ChatRunStatus,
   ChatRunStatusNode,
 } from '../types';
+
+/**
+ * Stable presentation categories selected by the projection. React maps these
+ * values to components and icons; it must not infer intent from visible copy.
+ */
+export type TimelineActionKind =
+  | 'search'
+  | 'inspect'
+  | 'edit'
+  | 'write'
+  | 'command'
+  | 'plan'
+  | 'message'
+  | 'browse'
+  | 'subagent'
+  | 'generic';
+
+/** A correlated result/progress notice attached to one logical invocation. */
+export interface TimelineToolNotice {
+  eventId: string;
+  title?: string;
+  content: string;
+  severity: ChatNoticeSeverity;
+}
 
 export interface TimelineElapsedAnchor {
   /** Attempt time already measured by the authoritative Run aggregate. */
@@ -61,6 +86,7 @@ export interface TimelineToolInvocation {
   lastNodeId: string;
   runSequence: number;
   title: string;
+  actionKind: TimelineActionKind;
   status: ChatActivityStatus;
   phase: ChatActivityPhase;
   /** Semantic, presentation-safe values. Raw transport payloads are absent. */
@@ -77,6 +103,17 @@ export interface TimelineToolInvocation {
   toolkitName?: string;
   methodName?: string;
   toolName?: string;
+  /** Projection-owned delegated-agent classification; renderers must not infer it. */
+  subagentInvocation?: boolean;
+  subagentType?: string;
+  subagentName?: string;
+  subagentStatus?: ChatActivityStatus;
+  subagentAgentId?: string;
+  subagentTaskId?: string;
+  agentProvider?: string;
+  agentModel?: string;
+  /** Narrative annotation correlated by an explicit backend toolCallId. */
+  notice?: TimelineToolNotice;
 }
 
 export interface TimelineNodeTraceRow {

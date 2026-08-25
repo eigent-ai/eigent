@@ -31,8 +31,8 @@ import {
   FileText,
   Image,
   Paperclip,
+  Pause,
   Play,
-  Square,
   UploadCloud,
   WandSparkles,
   X,
@@ -255,7 +255,7 @@ export const Inputbox = ({
     primaryAction === 'pause'
       ? t('chat.pause')
       : primaryAction === 'resume'
-        ? t('chat.run-resume')
+        ? t('layout.continue', { defaultValue: 'Continue' })
         : t('chat.send-now');
   const primaryActionDisabled =
     primaryAction === 'idle' ||
@@ -704,7 +704,7 @@ export const Inputbox = ({
                       : 'rotate-0 opacity-0'
                   )}
                 />
-                <Square
+                <Pause
                   data-composer-primary-icon="pause"
                   style={PRIMARY_ACTION_ICON_MOTION_STYLE}
                   className={cn(

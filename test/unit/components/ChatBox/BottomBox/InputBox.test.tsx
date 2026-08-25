@@ -99,6 +99,7 @@ describe('Inputbox primary action', () => {
       'data-composer-primary-action',
       'resume'
     );
+    expect(primaryAction(container)).toHaveAttribute('aria-label', 'Continue');
     fireEvent.click(primaryAction(container));
     expect(onResumeTask).toHaveBeenCalledOnce();
   });

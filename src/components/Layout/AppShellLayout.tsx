@@ -27,7 +27,7 @@ export const APP_SHELL_COLUMN_GAP_PX = 2;
 
 /** Content pane surface — the rounded card every page renders its body into. */
 export const APP_SHELL_CONTENT_SURFACE_CLASS =
-  'rounded-l-2xl bg-ds-neutral-subtle-default min-w-0 flex h-full w-full flex-col overflow-hidden';
+  'bg-ds-neutral-subtle-default min-w-0 flex h-full w-full flex-col overflow-hidden';
 /** Inner column inside the surface (header + body). */
 export const APP_SHELL_CONTENT_CLASS =
   'min-h-0 min-w-0 flex h-full w-full flex-col';

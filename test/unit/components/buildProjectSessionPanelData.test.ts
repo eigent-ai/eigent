@@ -261,7 +261,9 @@ describe('buildProjectSessionPanelData', () => {
       toolCallId: string,
       subagentType: string,
       agentProvider?: string,
-      stepId = 'shared-authored-step'
+      stepId = 'shared-authored-step',
+      subagentName?: string,
+      subagentAgentId?: string
     ): ChatActivityNode => ({
       ...baseNode('run-current', eventId, sequence),
       eventType,
@@ -275,6 +277,8 @@ describe('buildProjectSessionPanelData', () => {
       toolCallId,
       stepId,
       subagentType,
+      subagentName,
+      subagentAgentId,
       subagentInvocation: true,
       agentProvider,
     });
@@ -291,7 +295,11 @@ describe('buildProjectSessionPanelData', () => {
         2,
         'tool.completed',
         'local-subagent-call',
-        'analysis'
+        'analysis',
+        undefined,
+        'shared-authored-step',
+        'Analysis Agent',
+        'child-agent-local'
       ),
       subagentNode(
         'remote-dispatched',
@@ -299,21 +307,24 @@ describe('buildProjectSessionPanelData', () => {
         'tool.dispatched',
         'remote-subagent-call',
         'researcher',
-        'gemini_agents'
+        'gemini_agents',
+        'shared-authored-step',
+        'Research Agent',
+        'child-agent-1'
       ),
     ]);
 
     expect(buildProjectSessionPanelData([run], []).agents).toMatchObject([
       {
         id: 'subagent:localsubagentcall',
-        name: 'Analysis',
+        name: 'Analysis Agent',
         subagent: true,
         avatarSeed: 'local-subagent-call',
         tools: ['AgentToolkit'],
       },
       {
         id: 'subagent:remotesubagentcall',
-        name: 'Researcher',
+        name: 'Research Agent',
         subagent: true,
         provider: 'gemini_agents',
         avatarSeed: 'remote-subagent-call',

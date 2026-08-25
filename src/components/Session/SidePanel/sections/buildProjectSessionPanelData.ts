@@ -18,6 +18,7 @@ import type {
   ChatPlanTaskStatus,
   ChatProjectionNode,
 } from '@/lib/projector/chat';
+import { resolveSubagentPresentationIdentity } from '@/lib/projector/chat/presentation';
 import { httpUrlOrNull } from '@/lib/richText';
 import { normalizeWorkspaceRelativePath } from '@/lib/workspaceRelativePath';
 import { TaskStatus, type TaskStatusType } from '@/types/constants';
@@ -287,12 +288,6 @@ function collectAgents(
   const agents = new Map<string, SessionAgentItem>();
   const isInternalAgent = (name: string) =>
     normalizeContextKey(name) === 'questionconfirmagent';
-  const subagentName = (value?: string) => {
-    if (!value?.trim()) return '';
-    const normalized = value.trim().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
-    if (!normalized) return '';
-    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
-  };
   const put = (
     run: ProjectSessionRun,
     identity: string,
@@ -301,7 +296,8 @@ function collectAgents(
     subagent: boolean,
     provider?: string,
     model?: string,
-    avatarSeed = identity
+    avatarSeed = identity,
+    preferName = false
   ): SessionAgentItem => {
     const key = `${subagent ? 'subagent' : 'agent'}:${normalizeContextKey(
       identity || name || 'agent'
@@ -324,7 +320,7 @@ function collectAgents(
       });
       return agents.get(key)!;
     }
-    if (!existing.name && name) existing.name = name;
+    if (name && (!existing.name || preferName)) existing.name = name;
     if (!existing.description && description)
       existing.description = description;
     if (!existing.provider && provider) existing.provider = provider;
@@ -363,15 +359,25 @@ function collectAgents(
           node.stepId ||
           node.activityId ||
           `${run.runId}:${node.eventId}`;
+        const displayIdentity = resolveSubagentPresentationIdentity({
+          subagentName: node.subagentName,
+          subagentType: node.subagentType,
+          toolCallId: node.toolCallId,
+          stepId: node.stepId,
+          subagentAgentId: node.subagentAgentId,
+          subagentTaskId: node.subagentTaskId,
+          fallbackSeed: identity,
+        });
         const agent = put(
           run,
           identity,
-          subagentName(node.subagentType),
+          displayIdentity.name,
           node.input || node.detail || '',
           true,
           node.agentProvider,
           node.agentModel,
-          identity
+          displayIdentity.avatarSeed,
+          Boolean(node.subagentName?.trim())
         );
         const toolName = node.toolkitName?.trim() || node.toolName?.trim();
         if (toolName && !agent.tools.includes(toolName)) {

@@ -251,8 +251,15 @@ export interface ChatActivityNode extends ChatProjectionNodeBase {
   toolName?: string;
   /** Safe delegated-agent identity projected from a subagent tool request. */
   subagentType?: string;
+  /** Safe user-facing name supplied when the delegated agent was created. */
+  subagentName?: string;
   /** Exact registered delegation tool, even when no display identity exists. */
   subagentInvocation?: boolean;
+  /** Child lifecycle returned by the delegation tool, separate from tool receipt status. */
+  subagentStatus?: ChatActivityStatus;
+  /** Opaque child correlations used for future explicitly scoped child events. */
+  subagentAgentId?: string;
+  subagentTaskId?: string;
   /** Provider/model hints used only for delegated-agent presentation. */
   agentProvider?: string;
   agentModel?: string;

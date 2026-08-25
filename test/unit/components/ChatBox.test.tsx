@@ -506,6 +506,7 @@ describe('ChatBox Component', async () => {
             requestId: 1,
             projectId: 'test-project-id',
             content: 'Please address review comment 1.',
+            reviewHandoffIds: [],
           },
         });
       });
@@ -1090,9 +1091,9 @@ describe('ChatBox Component', async () => {
           attaches: [],
         },
       ];
-      defaultProjectStoreState.getProjectById.mockImplementation(() => ({
-        queuedMessages,
-      }));
+      defaultProjectStoreState.getProjectById.mockImplementation(
+        () => ({ queuedMessages }) as any
+      );
       defaultProjectStoreState.removeQueuedMessage.mockImplementation(
         (_projectId: string, taskId: string) => {
           const index = queuedMessages.findIndex(
@@ -1240,6 +1241,57 @@ describe('ChatBox Component', async () => {
       ).toBeInTheDocument();
     });
 
+    it('keeps Stop and Pause available while projected Run ownership hydrates', async () => {
+      const user = userEvent.setup();
+      setRunningEventNativeStore();
+      eventNativeHarness.snapshot.chat.nodes[0].eventType = 'legacy.agent_step';
+
+      renderChatBox();
+
+      const floatingStop = document.querySelector(
+        '[data-floating-stop-control]'
+      );
+      expect(floatingStop).toHaveClass('justify-center');
+      expect(floatingStop).toHaveStyle({ bottom: '128px' });
+      const stopButton = screen.getByRole('button', { name: 'Stop Task' });
+      const pauseButton = screen.getByTestId('send-button');
+      expect(pauseButton).toHaveAttribute(
+        'data-composer-primary-action',
+        'pause'
+      );
+
+      await user.click(pauseButton);
+      await waitFor(() => {
+        expect(_mockFetchPut).toHaveBeenCalledWith(
+          '/task/test-project-id/take-control',
+          { action: 'pause' }
+        );
+      });
+
+      await user.click(stopButton);
+      await waitFor(() => {
+        expect(_mockFetchPost).toHaveBeenCalledWith(
+          '/chat/test-project-id/skip-task',
+          { project_id: 'test-project-id' }
+        );
+      });
+    });
+
+    it('keeps the centered Stop control in the legacy-history fallback', () => {
+      setRunningEventNativeStore();
+      eventNativeHarness.snapshot = null;
+
+      renderChatBox();
+
+      expect(screen.getByTestId('project-chat-container')).toBeInTheDocument();
+      expect(
+        document.querySelector('[data-floating-stop-control]')
+      ).toHaveClass('justify-center');
+      expect(
+        screen.getByRole('button', { name: 'Stop Task' })
+      ).toBeInTheDocument();
+    });
+
     it('fails closed when the rendered Run loses control ownership before click', async () => {
       const user = userEvent.setup();
       setRunningEventNativeStore();
@@ -1333,10 +1385,12 @@ describe('ChatBox Component', async () => {
       };
       const projectAStore = { getState: () => projectAState };
       const projectBStore = { getState: () => projectBState };
-      defaultProjectStoreState.getActiveChatStore.mockImplementation(
-        (projectId?: string) =>
-          projectId === 'test-project-id' ? projectAStore : projectBStore
-      );
+      defaultProjectStoreState.getActiveChatStore.mockImplementation(((
+        projectId?: string
+      ) =>
+        projectId === 'test-project-id'
+          ? projectAStore
+          : projectBStore) as any);
       mockUseChatStoreAdapter.mockReturnValue({
         projectStore: defaultProjectStoreState as any,
         chatStore: projectAState as any,
