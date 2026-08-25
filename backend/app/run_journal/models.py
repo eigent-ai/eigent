@@ -22,6 +22,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.workload import WorkloadProfileRecord
+
 
 @dataclass(frozen=True)
 class RunRecord:
@@ -150,6 +152,7 @@ class ModelInvocationRecord:
     invocation_id: str
     run_id: str
     attempt_id: str | None
+    step_id: str | None
     agent_id: str
     logical_call_id: str
     retry_index: int
@@ -182,6 +185,30 @@ class ModelInvocationEventRecord:
     event_index: int
     event_type: str
     payload: dict[str, Any]
+    created_at: float
+
+
+@dataclass(frozen=True)
+class ModelDocumentRetentionResult:
+    """Outcome of one bounded local model-document retention batch."""
+
+    expired_invocation_ids: tuple[str, ...]
+    skipped_invocation_ids: tuple[str, ...]
+    remaining_candidate_count: int
+
+
+@dataclass(frozen=True)
+class AttemptEvidenceGapRecord:
+    """One explicit reason why an Attempt evidence dimension is incomplete."""
+
+    gap_id: str
+    run_id: str
+    attempt_id: str
+    step_id: str | None
+    dimension: str
+    reason_code: str
+    source: str
+    detail_code: str | None
     created_at: float
 
 
@@ -340,6 +367,8 @@ class RunAttemptRecord:
     thinking_effort_requested: str | None = None
     thinking_effort_effective: str | None = None
     provider_capability_revision: str | None = None
+    workload_profile: WorkloadProfileRecord | None = None
+    workload_profile_digest: str | None = None
 
 
 @dataclass(frozen=True)

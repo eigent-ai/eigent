@@ -27,6 +27,17 @@ from app.run_journal.store import SQLiteRunJournal
 
 logger = logging.getLogger("event_recorder")
 
+_WORKFORCE_SUBTASK_EVENT_TYPES = frozenset(
+    {
+        "subtask.created",
+        "subtask.queued",
+        "subtask.started",
+        "subtask.completed",
+        "subtask.failed",
+        "subtask.cancelled",
+    }
+)
+
 
 class EventRecorder:
     def __init__(
@@ -87,13 +98,33 @@ class EventRecorder:
 
         enriched_data = dict(data)
         step_id = str(enriched_data.get("step_id") or "").strip() or None
+        semantic = project_legacy_semantic_event(
+            step=step,
+            data=enriched_data,
+            run_id=run_id,
+        )
         if step_id is None:
             from app.run_runtime.step_coordinator import (
                 RunStepCoordinator,
                 get_current_step_id,
+                stable_step_id,
             )
 
-            step_id = get_current_step_id()
+            # A Workforce subtask has a deterministic identity. Resolve it
+            # before the generic ContextVar/sole-running-Step fallback so a
+            # queued sibling can never inherit another task's running Step.
+            if (
+                semantic is not None
+                and semantic.event_type in _WORKFORCE_SUBTASK_EVENT_TYPES
+            ):
+                task_id = str(semantic.payload.get("task_id") or "").strip()
+                if task_id:
+                    step_id = stable_step_id(
+                        run_id,
+                        f"subtask:{task_id}",
+                    )
+            if step_id is None:
+                step_id = get_current_step_id()
             if step_id is None:
                 step_id = await asyncio.to_thread(
                     RunStepCoordinator(self._journal).current_running_step_id,
@@ -102,11 +133,6 @@ class EventRecorder:
         if step_id:
             enriched_data["step_id"] = step_id
 
-        semantic = project_legacy_semantic_event(
-            step=step,
-            data=enriched_data,
-            run_id=run_id,
-        )
         projected_payload = (
             dict(semantic.payload) if semantic is not None else enriched_data
         )
@@ -133,12 +159,23 @@ class EventRecorder:
         if created_at is not None:
             values["created_at"] = created_at
         draft = RunEventDraft(**values)
-        event = await asyncio.to_thread(
-            self._journal.append_event,
-            run_id,
-            draft,
-            expected_project_id=project_id,
-        )
+        if (
+            semantic is not None
+            and semantic.event_type in _WORKFORCE_SUBTASK_EVENT_TYPES
+        ):
+            event = await asyncio.to_thread(
+                self._journal.append_event_with_workforce_step_projection,
+                run_id,
+                draft,
+                expected_project_id=project_id,
+            )
+        else:
+            event = await asyncio.to_thread(
+                self._journal.append_event,
+                run_id,
+                draft,
+                expected_project_id=project_id,
+            )
         self._notify_commit()
         return event
 

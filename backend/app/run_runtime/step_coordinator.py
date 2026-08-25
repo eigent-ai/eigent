@@ -42,8 +42,8 @@ StepStatus = Literal[
     "cancelled",
     "interrupted",
 ]
-StepOwnerKind = Literal["single_agent", "subagent", "system"]
-StepSource = Literal["plan", "subagent"]
+StepOwnerKind = Literal["single_agent", "subagent", "workforce", "system"]
+StepSource = Literal["plan", "subagent", "workforce"]
 
 TERMINAL_STEP_STATUSES = frozenset({"completed", "failed", "cancelled"})
 
@@ -224,9 +224,9 @@ class RunStepCoordinator:
 
     def replay(self, run_id: str) -> dict[str, StepSnapshot]:
         snapshots: dict[str, StepSnapshot] = {}
-        for event in self._journal.list_events(run_id):
-            if not event.event_type.startswith("step."):
-                continue
+        for event in self._journal.list_events(
+            run_id, event_type_prefix="step."
+        ):
             payload = event.payload
             raw = payload.get("step")
             if not isinstance(raw, dict):
@@ -238,10 +238,15 @@ class RunStepCoordinator:
             owner = raw.get("owner")
             owner = owner if isinstance(owner, dict) else {}
             owner_kind = str(owner.get("kind") or "single_agent")
-            if owner_kind not in {"single_agent", "subagent", "system"}:
+            if owner_kind not in {
+                "single_agent",
+                "subagent",
+                "workforce",
+                "system",
+            }:
                 owner_kind = "single_agent"
             source = str(raw.get("source") or "plan")
-            if source not in {"plan", "subagent"}:
+            if source not in {"plan", "subagent", "workforce"}:
                 source = "plan"
             snapshots[step_id] = StepSnapshot(
                 step_id=step_id,
@@ -348,6 +353,8 @@ class RunStepCoordinator:
         title: str,
         agent_id: str | None,
         start: bool = True,
+        owner_kind: StepOwnerKind = "subagent",
+        source: StepSource = "subagent",
     ) -> str:
         """Create the Step owned by one delegated subtask."""
 
@@ -393,9 +400,13 @@ class RunStepCoordinator:
                 agent_id=agent_id,
                 event="created",
                 status="pending",
-                provenance_source="subagent_dispatch",
-                owner_kind="subagent",
-                source="subagent",
+                provenance_source=(
+                    "workforce_dispatch"
+                    if owner_kind == "workforce"
+                    else "subagent_dispatch"
+                ),
+                owner_kind=owner_kind,
+                source=source,
             )
         ]
         if start:
@@ -412,9 +423,13 @@ class RunStepCoordinator:
                     agent_id=agent_id,
                     event="started",
                     status="running",
-                    provenance_source="subagent_dispatch",
-                    owner_kind="subagent",
-                    source="subagent",
+                    provenance_source=(
+                        "workforce_dispatch"
+                        if owner_kind == "workforce"
+                        else "subagent_dispatch"
+                    ),
+                    owner_kind=owner_kind,
+                    source=source,
                 )
             )
         self._journal.append_events(
@@ -469,7 +484,11 @@ class RunStepCoordinator:
                 agent_id=snapshot.agent_id,
                 event=event,
                 status=status,  # type: ignore[arg-type]
-                provenance_source="subagent_dispatch",
+                provenance_source=(
+                    "workforce_dispatch"
+                    if snapshot.owner_kind == "workforce"
+                    else "subagent_dispatch"
+                ),
                 owner_kind=snapshot.owner_kind,
                 source=snapshot.source,
             ),
@@ -530,7 +549,11 @@ class RunStepCoordinator:
                 event=event,
                 status=status,  # type: ignore[arg-type]
                 reason_code=reason,
-                provenance_source="subagent_dispatch",
+                provenance_source=(
+                    "workforce_dispatch"
+                    if snapshot.owner_kind == "workforce"
+                    else "subagent_dispatch"
+                ),
                 owner_kind=snapshot.owner_kind,
                 source=snapshot.source,
             )
@@ -559,7 +582,11 @@ class RunStepCoordinator:
                             if outcome == "failed"
                             else "child_step_outcome_unknown"
                         ),
-                        provenance_source="subagent_dispatch",
+                        provenance_source=(
+                            "workforce_dispatch"
+                            if parent.owner_kind == "workforce"
+                            else "subagent_dispatch"
+                        ),
                         authored_by="system",
                         owner_kind=parent.owner_kind,
                         source=parent.source,

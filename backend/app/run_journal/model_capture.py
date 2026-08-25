@@ -30,18 +30,24 @@ import threading
 import uuid
 from types import MethodType
 from typing import Any
+from weakref import WeakKeyDictionary
 
 from app.permission_policy.models import redact_action_arguments
 from app.run_context.context import get_current_run_context
 from app.run_journal.models import ModelInvocationRecord
 from app.run_journal.runtime import get_default_run_journal
 from app.run_journal.store import SQLiteRunJournal
+from app.workload import capture_required
 from app.workspace_config.models import canonical_digest
 
 logger = logging.getLogger("model_invocation_capture")
 
 _CAPTURE_INSTALLED = "_eigent_model_invocation_capture_installed"
 _REDACTION_VERSION = "model-invocation-v1"
+_CAPTURE_POLICY_CACHE: WeakKeyDictionary[SQLiteRunJournal, dict[str, bool]] = (
+    WeakKeyDictionary()
+)
+_CAPTURE_POLICY_CACHE_LOCK = threading.Lock()
 
 
 def _json_value(value: Any) -> Any:
@@ -184,6 +190,20 @@ class _StreamAccumulator:
         self.usage: dict[str, Any] | None = None
         self.tool_calls: dict[int, dict[str, Any]] = {}
 
+    @property
+    def terminal_document_ready(self) -> bool:
+        """Return whether a provider terminal chunk is fully captured.
+
+        CAMEL may stop consuming a stream as soon as it observes the final
+        usage-bearing chunk.  In that case the wrapper never receives the
+        following ``StopIteration``/``StopAsyncIteration`` callback.  A
+        finish reason plus usage is the provider-neutral terminal shape that
+        CAMEL itself uses before breaking, so it is safe to persist the
+        accumulated response immediately without changing stream semantics.
+        """
+
+        return self.finish_reason is not None and self.usage is not None
+
     def add(self, chunk: Any) -> bool:
         payload = _response_document(chunk)
         event_type = payload.get("type")
@@ -269,9 +289,11 @@ class _CaptureSession:
         *,
         journal: SQLiteRunJournal,
         record: ModelInvocationRecord,
+        required: bool,
     ) -> None:
         self.journal = journal
         self.record = record
+        self.required = required
         self._closed = False
         self._first_token = False
         self._lock = threading.Lock()
@@ -290,8 +312,18 @@ class _CaptureSession:
             self.journal.mark_model_invocation_first_token(
                 self.record.invocation_id
             )
-        except Exception:
+        except Exception as exc:
             logger.exception("Failed to persist model first-token marker")
+            _record_capture_gap(
+                self.journal,
+                run_id=self.record.run_id,
+                attempt_id=self.record.attempt_id,
+                step_id=self.record.step_id,
+                gap_id=f"capture-gap:{self.record.invocation_id}:first-token",
+                detail_code=type(exc).__name__,
+            )
+            if self.required:
+                raise
 
     async def afirst_token(self) -> None:
         await asyncio.to_thread(self.first_token)
@@ -310,8 +342,18 @@ class _CaptureSession:
                 finish_reason=_finish_reason(response),
                 **usage,
             )
-        except Exception:
+        except Exception as exc:
             logger.exception("Failed to complete durable model invocation")
+            _record_capture_gap(
+                self.journal,
+                run_id=self.record.run_id,
+                attempt_id=self.record.attempt_id,
+                step_id=self.record.step_id,
+                gap_id=f"capture-gap:{self.record.invocation_id}:terminal",
+                detail_code=type(exc).__name__,
+            )
+            if self.required:
+                raise
 
     async def acomplete(self, response: dict[str, Any]) -> None:
         await asyncio.to_thread(self.complete, response)
@@ -331,8 +373,16 @@ class _CaptureSession:
                 error_code=_error_code(exc),
                 error_message=str(exc),
             )
-        except Exception:
+        except Exception as capture_exc:
             logger.exception("Failed to close durable model invocation")
+            _record_capture_gap(
+                self.journal,
+                run_id=self.record.run_id,
+                attempt_id=self.record.attempt_id,
+                step_id=self.record.step_id,
+                gap_id=f"capture-gap:{self.record.invocation_id}:failure",
+                detail_code=type(capture_exc).__name__,
+            )
 
     async def afail(
         self, exc: BaseException, *, outcome_unknown: bool = False
@@ -363,10 +413,18 @@ class _RecordedSyncStream:
         try:
             if self._accumulator.add(chunk):
                 self._session.first_token()
+            if (
+                self._accumulator.terminal_document_ready
+                and not self._session.closed
+            ):
+                self._session.complete(self._accumulator.document())
         except Exception as exc:
-            # A capture projection failure must not corrupt a provider stream
-            # that CAMEL can otherwise consume.
+            # Best-effort capture must not corrupt a provider stream that
+            # CAMEL can otherwise consume. A required CapturePolicy instead
+            # makes this projection failure terminal for the Attempt.
             self._session.fail(exc, outcome_unknown=True)
+            if self._session.required:
+                raise
         return chunk
 
     def __enter__(self) -> _RecordedSyncStream:
@@ -407,6 +465,8 @@ class _RecordedSyncStream:
             )
         except Exception as exc:
             self._session.fail(exc, outcome_unknown=True)
+            if self._session.required:
+                raise
             return
         self._session.complete(response)
 
@@ -417,6 +477,8 @@ class _RecordedSyncStream:
                 self._session.complete(_response_document(response))
             except Exception as exc:
                 self._session.fail(exc, outcome_unknown=True)
+                if self._session.required:
+                    raise
         return response
 
     def until_done(self) -> Any:
@@ -495,8 +557,15 @@ class _RecordedAsyncStream:
         try:
             if self._accumulator.add(chunk):
                 await self._session.afirst_token()
+            if (
+                self._accumulator.terminal_document_ready
+                and not self._session.closed
+            ):
+                await self._session.acomplete(self._accumulator.document())
         except Exception as exc:
             await self._session.afail(exc, outcome_unknown=True)
+            if self._session.required:
+                raise
         return chunk
 
     async def __aenter__(self) -> _RecordedAsyncStream:
@@ -539,6 +608,8 @@ class _RecordedAsyncStream:
                 document = self._accumulator.document()
         except Exception as exc:
             await self._session.afail(exc, outcome_unknown=True)
+            if self._session.required:
+                raise
             return
         await self._session.acomplete(document)
 
@@ -551,6 +622,8 @@ class _RecordedAsyncStream:
                 await self._session.acomplete(_response_document(response))
             except Exception as exc:
                 await self._session.afail(exc, outcome_unknown=True)
+                if self._session.required:
+                    raise
         return response
 
     async def until_done(self) -> Any:
@@ -624,6 +697,75 @@ def _exception_outcome_unknown(exc: BaseException) -> bool:
     )
 
 
+def _capture_is_required(
+    journal: SQLiteRunJournal,
+    attempt_id: str | None,
+) -> bool:
+    if attempt_id:
+        with _CAPTURE_POLICY_CACHE_LOCK:
+            cached = _CAPTURE_POLICY_CACHE.get(journal, {}).get(attempt_id)
+        if cached is not None:
+            return cached
+        try:
+            attempt = journal.get_run_attempt(attempt_id)
+        except Exception:
+            logger.exception("Failed to resolve Attempt capture policy")
+        else:
+            if attempt is not None:
+                # Attempt admission freezes the environment compatibility
+                # setting into an immutable WorkloadProfile. Never let a
+                # later process-wide env change override that audit fact.
+                required = capture_required(attempt.workload_profile)
+                with _CAPTURE_POLICY_CACHE_LOCK:
+                    journal_cache = _CAPTURE_POLICY_CACHE.setdefault(
+                        journal, {}
+                    )
+                    journal_cache[attempt_id] = required
+                return required
+    # Compatibility entry point. New Test/A-B/Rollout callers should bind a
+    # required CapturePolicy in the immutable WorkloadProfile instead.
+    return os.environ.get("EIGENT_MODEL_CAPTURE_REQUIRED", "").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _record_capture_gap(
+    journal: SQLiteRunJournal,
+    *,
+    run_id: str,
+    attempt_id: str | None,
+    step_id: str | None,
+    gap_id: str,
+    detail_code: str,
+) -> None:
+    if not attempt_id:
+        return
+    for candidate_step_id in (step_id, None) if step_id else (None,):
+        try:
+            journal.record_attempt_evidence_gap(
+                gap_id=gap_id,
+                run_id=run_id,
+                attempt_id=attempt_id,
+                step_id=candidate_step_id,
+                dimension="model_decisions",
+                reason_code="capture_failed",
+                source="model_capture",
+                detail_code=detail_code,
+            )
+            return
+        except Exception:
+            # A stale runtime Step must not make the Attempt-level gap
+            # disappear. Retry once without Step correlation; a secondary
+            # storage failure still must not replace the original failure.
+            logger.exception(
+                "Failed to persist model capture evidence gap%s",
+                " with Step correlation" if candidate_step_id else "",
+            )
+
+
 def _start_capture(
     *,
     journal: SQLiteRunJournal,
@@ -638,12 +780,41 @@ def _start_capture(
     context = get_current_run_context()
     if context is None:
         return None
+    # Import locally to keep the capture adapter independent from runtime
+    # initialization order. The ContextVar value is copied into asyncio worker
+    # threads, so async and sync dispatch observe the same authored Step.
+    from app.run_runtime.step_coordinator import (
+        RunStepCoordinator,
+        get_current_step_id,
+    )
+
+    step_id = get_current_step_id()
+    if step_id is None:
+        # Model dispatch happens between tool scopes, so the ContextVar alone
+        # cannot correlate the ordinary CAMEL think/tool/think loop.  Resolve
+        # the uniquely running authored Step using the same conservative
+        # agent-aware fallback already used by legacy event projection.
+        try:
+            step_id = RunStepCoordinator(journal).current_running_step_id(
+                context.run_id,
+                agent_id=agent_id,
+            )
+        except Exception:
+            # Step attribution is enrichment. A transient replay failure must
+            # not turn best-effort model capture into a dispatch gate.
+            logger.exception(
+                "Failed to resolve running Step for model capture",
+                extra={"run_id": context.run_id, "agent_id": agent_id},
+            )
+            step_id = None
+    required = _capture_is_required(journal, context.attempt_id)
     response_format = call_kwargs.get(
         "response_format", call_args[0] if call_args else None
     )
     tools = call_kwargs.get(
         "tools", call_args[1] if len(call_args) > 1 else None
     )
+    logical_call_id = ""
     try:
         request = _request_document(
             model_backend, messages, response_format, tools
@@ -668,6 +839,7 @@ def _start_capture(
             invocation_id=f"modelinv_{uuid.uuid4().hex}",
             run_id=context.run_id,
             attempt_id=context.attempt_id,
+            step_id=step_id,
             agent_id=agent_id,
             logical_call_id=logical_call_id,
             provider=provider,
@@ -677,17 +849,24 @@ def _start_capture(
             request=request,
             redaction_version=_REDACTION_VERSION,
         )
-    except Exception:
+    except Exception as exc:
         logger.exception("Failed to start durable model invocation")
-        if os.environ.get("EIGENT_MODEL_CAPTURE_REQUIRED", "").lower() in {
-            "1",
-            "true",
-            "yes",
-            "on",
-        }:
+        _record_capture_gap(
+            journal,
+            run_id=context.run_id,
+            attempt_id=context.attempt_id,
+            step_id=step_id,
+            gap_id=(
+                f"capture-gap:{logical_call_id}:dispatch"
+                if logical_call_id
+                else f"capture-gap:{uuid.uuid4().hex}:dispatch"
+            ),
+            detail_code=type(exc).__name__,
+        )
+        if required:
             raise
         return None
-    return _CaptureSession(journal=journal, record=record)
+    return _CaptureSession(journal=journal, record=record, required=required)
 
 
 def instrument_model_backend(
@@ -750,6 +929,8 @@ def instrument_model_backend(
             document = _response_document(response)
         except Exception as exc:
             session.fail(exc, outcome_unknown=True)
+            if session.required:
+                raise
             return response
         session.complete(document)
         return response
@@ -789,6 +970,8 @@ def instrument_model_backend(
             document = _response_document(response)
         except Exception as exc:
             await session.afail(exc, outcome_unknown=True)
+            if session.required:
+                raise
             return response
         await session.acomplete(document)
         return response
