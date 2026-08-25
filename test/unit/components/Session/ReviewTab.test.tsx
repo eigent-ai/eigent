@@ -15,15 +15,23 @@
 import { ReviewTab } from '@/components/Session/PreviewPanel/tabs/ReviewTab';
 import type { ReviewChangesState } from '@/components/Session/PreviewPanel/tabs/review/useReviewChanges';
 import type {
+  SessionReviewIdentity,
   SessionReviewTab,
   SessionReviewTarget,
 } from '@/store/pageTabStore';
-import { usePageTabStore } from '@/store/pageTabStore';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockUseReviewChanges =
-  vi.fn<(target: SessionReviewTarget) => ReviewChangesState>();
+  vi.fn<
+    (
+      target: SessionReviewTarget,
+      pinnedIdentity?: SessionReviewIdentity
+    ) => ReviewChangesState
+  >();
+const mockUseLatestReviewRunId = vi.fn<() => string | undefined>();
 
 const reviewTab: SessionReviewTab = {
   id: 'review-1',
@@ -32,11 +40,42 @@ const reviewTab: SessionReviewTab = {
   reviewTarget: { scope: 'project', focusRequestId: 0 },
 };
 
+/**
+ * The scope selection lives on the tab in the store, so exercising it needs the
+ * same store-connected rendering `PreviewPanel` gives the tab in the app.
+ */
+function ConnectedReviewTab({ tabId = reviewTab.id }: { tabId?: string }) {
+  const tab = usePageTabStore(
+    (state) =>
+      state.sessionPreviewByProject[
+        state.sessionPreviewProjectId ?? ''
+      ]?.tabs.find((candidate) => candidate.id === tabId) as
+        SessionReviewTab | undefined
+  );
+  return tab ? <ReviewTab tab={tab} /> : null;
+}
+
+function openMoreActions(button?: HTMLElement) {
+  fireEvent.keyDown(
+    button ?? screen.getByRole('button', { name: 'More actions' }),
+    { key: 'Enter', code: 'Enter' }
+  );
+}
+
 vi.mock(
   '@/components/Session/PreviewPanel/tabs/review/useReviewChanges',
   () => ({
-    useReviewChanges: (target: SessionReviewTarget) =>
-      mockUseReviewChanges(target),
+    useReviewChanges: (
+      target: SessionReviewTarget,
+      pinnedIdentity?: SessionReviewIdentity
+    ) => mockUseReviewChanges(target, pinnedIdentity),
+  })
+);
+
+vi.mock(
+  '@/components/Session/PreviewPanel/tabs/review/useLatestReviewRunId',
+  () => ({
+    useLatestReviewRunId: () => mockUseLatestReviewRunId(),
   })
 );
 
@@ -55,15 +94,15 @@ vi.mock(
           file,
           viewMode,
           wordWrap,
-          reviewed,
           comments,
+          headerActions,
           onCommentRequest,
         }: {
           file: { id: string };
           viewMode: string;
           wordWrap: boolean;
-          reviewed: boolean;
           comments?: unknown[];
+          headerActions?: ReactNode;
           onCommentRequest?: (selection: {
             side: 'modified';
             startLine: number;
@@ -74,12 +113,12 @@ vi.mock(
         _ref
       ) => (
         <div>
+          <div data-testid="review-file-header-actions">{headerActions}</div>
           <div
             data-testid={`diff:${file.id}`}
             data-review-id={file.id}
             data-view-mode={viewMode}
             data-word-wrap={String(wordWrap)}
-            data-reviewed={String(reviewed)}
             data-comment-count={String(comments?.length ?? 0)}
           />
           <button
@@ -109,6 +148,8 @@ vi.mock('@/components/Session/PreviewPanel/tabs/review/ReviewFileTree', () => ({
 describe('ReviewTab', () => {
   beforeEach(() => {
     mockUseReviewChanges.mockReset();
+    mockUseLatestReviewRunId.mockReset();
+    mockUseLatestReviewRunId.mockReturnValue('run-latest');
     usePageTabStore.setState({
       sessionPreviewProjectId: 'project-1',
       sessionPreviewByProject: {
@@ -157,12 +198,58 @@ describe('ReviewTab', () => {
     render(<ReviewTab tab={reviewTab} />);
 
     expect(
-      screen.getByText('Could not load the changes for this session.')
+      screen.getByText('Could not load the changes for this task.')
     ).toBeInTheDocument();
     expect(screen.getByText('overlay service down')).toBeInTheDocument();
     expect(
       screen.queryByText('No file changes in this session yet.')
     ).not.toBeInTheDocument();
+  });
+
+  it('defaults to the latest task and can switch an empty review to all changes', () => {
+    mockUseReviewChanges.mockReturnValue({
+      loading: false,
+      files: [],
+      desktopOnly: false,
+      error: null,
+      totals: { added: 0, removed: 0 },
+      refresh: vi.fn(),
+    });
+
+    render(<ConnectedReviewTab />);
+
+    const scopeButton = screen.getByRole('button', {
+      name: 'Review change scope: Latest task',
+    });
+    expect(scopeButton).toHaveTextContent('Latest task');
+    expect(scopeButton).toHaveAttribute('data-variant', 'ghost');
+    expect(scopeButton).toHaveClass('!h-[var(--ds-button-sm-height)]');
+    expect(
+      scopeButton.querySelector('.lucide-chevron-down')
+    ).toBeInTheDocument();
+    expect(mockUseReviewChanges).toHaveBeenLastCalledWith(
+      { scope: 'run', runId: 'run-latest', focusRequestId: 0 },
+      undefined
+    );
+
+    fireEvent.keyDown(scopeButton, { key: 'Enter', code: 'Enter' });
+    const allOption = screen.getByRole('menuitemradio', { name: 'All' });
+    expect(allOption).toHaveClass(
+      'cursor-pointer',
+      'hover:bg-ds-neutral-default-hover'
+    );
+    fireEvent.click(allOption);
+
+    expect(scopeButton).toHaveTextContent('All');
+    expect(mockUseReviewChanges).toHaveBeenLastCalledWith(
+      { scope: 'project', focusRequestId: 0 },
+      undefined
+    );
+    // Persisted on the tab, so fronting another preview tab and coming back
+    // does not silently drop back to the latest task.
+    expect(
+      getSessionPreviewSlice(usePageTabStore.getState()).tabs[0]
+    ).toMatchObject({ reviewScope: 'all' });
   });
 
   it('renders review files by their stable identity', () => {
@@ -217,8 +304,37 @@ describe('ReviewTab', () => {
 
     render(<ReviewTab tab={reviewTab} />);
 
-    expect(screen.getByText('+42')).toBeInTheDocument();
-    expect(screen.getByText('−7')).toBeInTheDocument();
+    const previewHeader = screen
+      .getByRole('button', { name: /^Review change scope:/ })
+      .closest('header');
+    expect(previewHeader).not.toBeNull();
+    expect(previewHeader).toHaveClass('gap-2', 'bg-ds-neutral-subtle-default');
+    expect(screen.getByTestId('review-header-metadata')).toHaveClass(
+      'h-full',
+      'items-center',
+      'gap-2'
+    );
+    const header = within(previewHeader as HTMLElement);
+    const fileNumber = header.getByText('1/1');
+    const addedLines = header.getByText('+42');
+    const removedLines = header.getByText('−7');
+    const reviewedNumber = header.getByText('0 of 1 reviewed');
+    const separators = header.getAllByRole('separator');
+
+    expect(removedLines).toBeInTheDocument();
+    expect(separators).toHaveLength(2);
+    expect(fileNumber.compareDocumentPosition(separators[0])).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    expect(separators[0].compareDocumentPosition(addedLines)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    expect(addedLines.compareDocumentPosition(separators[1])).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    expect(separators[1].compareDocumentPosition(reviewedNumber)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
   });
 
   it('omits the totals until they have been computed', () => {
@@ -244,7 +360,7 @@ describe('ReviewTab', () => {
     expect(screen.queryByText(/^\+\d/)).not.toBeInTheDocument();
   });
 
-  it('mounts one active diff and navigates files from the toolbar', () => {
+  it('mounts one active diff and navigates files from the More menu', () => {
     mockUseReviewChanges.mockReturnValue({
       loading: false,
       desktopOnly: false,
@@ -278,7 +394,8 @@ describe('ReviewTab', () => {
       screen.queryByTestId('diff:file:/outside/src/second.ts')
     ).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Next file' }));
+    openMoreActions();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Next file' }));
     expect(
       screen.queryByTestId('diff:file:/outside/src/example.ts')
     ).not.toBeInTheDocument();
@@ -331,6 +448,152 @@ describe('ReviewTab', () => {
     expect(screen.getByTestId('review-tree')).toBeInTheDocument();
   });
 
+  it('keeps tab actions in the Preview header and file actions in the file header', () => {
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockReturnValue({
+        x: 0,
+        y: 0,
+        top: 0,
+        right: 1200,
+        bottom: 800,
+        left: 0,
+        width: 1200,
+        height: 800,
+        toJSON: () => ({}),
+      });
+    mockUseReviewChanges.mockReturnValue({
+      loading: false,
+      desktopOnly: false,
+      error: null,
+      totals: { added: 3, removed: 1 },
+      refresh: vi.fn(),
+      files: [
+        {
+          id: 'first',
+          path: 'src/first.ts',
+          status: 'modified',
+          absPath: '/first.ts',
+          bakPath: '/first.ts.bak',
+        },
+        {
+          id: 'second',
+          path: 'src/second.ts',
+          status: 'added',
+          absPath: '/second.ts',
+          bakPath: null,
+        },
+      ],
+    });
+
+    render(<ReviewTab tab={reviewTab} />);
+
+    const previewHeader = screen
+      .getByRole('button', { name: /^Review change scope:/ })
+      .closest('header');
+    expect(previewHeader).not.toBeNull();
+    const headerActions = screen.getByTestId('review-header-actions');
+    expect(headerActions).toHaveClass('gap-1');
+    const headerButtons = within(headerActions).getAllByRole('button');
+    expect(headerButtons).toHaveLength(4);
+    expect(headerButtons[0]).toHaveAccessibleName('More actions');
+    expect(headerButtons[1]).toHaveAccessibleName('Enable word wrap');
+    expect(headerButtons[2]).toHaveAccessibleName('Refresh');
+    expect(headerButtons[3]).toHaveAccessibleName('Hide file tree');
+    expect(
+      within(previewHeader as HTMLElement).getByRole('button', {
+        name: 'Refresh',
+      })
+    ).toBeInTheDocument();
+    const previewButtons = within(previewHeader as HTMLElement).getAllByRole(
+      'button'
+    );
+    expect(previewButtons.at(-1)).toHaveAccessibleName('Hide file tree');
+    openMoreActions(headerButtons[0]);
+    expect(
+      screen.getByRole('menuitem', { name: 'Previous file' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Next file' })
+    ).toBeInTheDocument();
+    expect(
+      within(previewHeader as HTMLElement).queryByRole('button', {
+        name: 'Mark as reviewed',
+      })
+    ).not.toBeInTheDocument();
+
+    const fileHeader = screen.getByTestId('review-file-header-actions');
+    expect(fileHeader.firstElementChild).toHaveClass('gap-1');
+    const fileHeaderButtons = within(fileHeader).getAllByRole('button');
+    expect(fileHeaderButtons).toHaveLength(5);
+    expect(fileHeaderButtons[0]).toHaveAccessibleName('Mark as reviewed');
+    expect(fileHeaderButtons[1]).toHaveAccessibleName(
+      'Add comment · Add a file review note'
+    );
+    expect(fileHeaderButtons[1]).toHaveTextContent('Add comment');
+    expect(fileHeaderButtons[2]).toHaveAccessibleName('Split diff');
+    expect(fileHeaderButtons[3]).toHaveAccessibleName('Previous change');
+    expect(fileHeaderButtons[4]).toHaveAccessibleName('Next change');
+    expect(within(fileHeader).getAllByRole('separator')).toHaveLength(1);
+    expect(
+      within(fileHeader).queryByRole('button', { name: 'Next file' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(fileHeader).queryByRole('button', { name: 'Enable word wrap' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(headerButtons[1]);
+    expect(headerButtons[1]).toHaveAttribute('aria-pressed', 'true');
+    expect(headerButtons[1]).toHaveClass(
+      'aria-pressed:!bg-ds-neutral-subtle-default'
+    );
+    expect(screen.getByTestId('diff:first')).toHaveAttribute(
+      'data-word-wrap',
+      'true'
+    );
+    fireEvent.click(fileHeaderButtons[2]);
+    expect(screen.getByTestId('diff:first')).toHaveAttribute(
+      'data-view-mode',
+      'split'
+    );
+    expect(fileHeaderButtons[2]).toHaveAccessibleName('Inline diff');
+    rectSpy.mockRestore();
+  });
+
+  it('places the file tree after the active diff in reading order', () => {
+    mockUseReviewChanges.mockReturnValue({
+      loading: false,
+      desktopOnly: false,
+      error: null,
+      totals: { added: 0, removed: 0 },
+      refresh: vi.fn(),
+      files: [
+        {
+          id: 'first',
+          path: 'src/first.ts',
+          status: 'modified',
+          absPath: '/first.ts',
+          bakPath: '/first.ts.bak',
+        },
+        {
+          id: 'second',
+          path: 'src/second.ts',
+          status: 'added',
+          absPath: '/second.ts',
+          bakPath: null,
+        },
+      ],
+    });
+
+    render(<ReviewTab tab={reviewTab} />);
+
+    expect(
+      screen
+        .getByTestId('diff:first')
+        .compareDocumentPosition(screen.getByTestId('review-tree'))
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
   it('loads a Run-scoped review and focuses its requested path', () => {
     mockUseReviewChanges.mockReturnValue({
       loading: false,
@@ -365,10 +628,67 @@ describe('ReviewTab', () => {
       />
     );
 
-    expect(mockUseReviewChanges).toHaveBeenCalledWith(runTarget);
+    expect(mockUseReviewChanges).toHaveBeenCalledWith(runTarget, undefined);
     expect(
       screen.getByTestId('diff:run-git:run-1:src/example.ts')
     ).toBeInTheDocument();
+    // The project has moved on to `run-latest`, but a tab opened for one Run
+    // must keep showing that Run rather than silently retargeting.
+    expect(mockUseLatestReviewRunId).toHaveBeenCalled();
+    expect(
+      screen.getByRole('button', { name: 'Review change scope: Task changes' })
+    ).toBeInTheDocument();
+  });
+
+  it('pins the loaded revision per scope so the out-of-date guard survives a remount', () => {
+    const identity = { baseCommit: 'base-1', targetCommit: 'target-1' };
+    const changesWithIdentity = (
+      reviewIdentity: SessionReviewIdentity
+    ): ReviewChangesState => ({
+      loading: false,
+      desktopOnly: false,
+      error: null,
+      totals: { added: 0, removed: 0 },
+      truncated: false,
+      stale: false,
+      refresh: vi.fn(),
+      reviewIdentity,
+      files: [
+        {
+          id: 'first',
+          path: 'src/first.ts',
+          status: 'modified',
+          absPath: '/first.ts',
+          bakPath: '/first.ts.bak',
+        },
+      ],
+    });
+    mockUseReviewChanges.mockReturnValue(changesWithIdentity(identity));
+
+    const { unmount } = render(<ConnectedReviewTab />);
+
+    const stored = getSessionPreviewSlice(usePageTabStore.getState())
+      .tabs[0] as SessionReviewTab;
+    expect(stored.reviewIdentities).toEqual({ 'run:run-latest': identity });
+
+    // A later fetch reports a newer revision; the pin must not follow it, or
+    // nothing would ever be reported as out of date.
+    unmount();
+    mockUseReviewChanges.mockReturnValue(
+      changesWithIdentity({ baseCommit: 'base-2', targetCommit: 'target-2' })
+    );
+    render(<ConnectedReviewTab />);
+
+    expect(mockUseReviewChanges).toHaveBeenLastCalledWith(
+      { scope: 'run', runId: 'run-latest', focusRequestId: 0 },
+      identity
+    );
+    expect(
+      (
+        getSessionPreviewSlice(usePageTabStore.getState())
+          .tabs[0] as SessionReviewTab
+      ).reviewIdentities
+    ).toEqual({ 'run:run-latest': identity });
   });
 
   it('marks the current file reviewed and advances to the next file', () => {
@@ -401,6 +721,16 @@ describe('ReviewTab', () => {
 
     expect(screen.getByTestId('diff:second')).toBeInTheDocument();
     expect(screen.getByText('1 of 2 reviewed')).toBeInTheDocument();
+
+    openMoreActions();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Previous file' }));
+    const reviewedButton = screen.getByRole('button', {
+      name: 'Mark as unreviewed',
+    });
+    expect(reviewedButton).toHaveAttribute('data-tone', 'success');
+    expect(
+      reviewedButton.querySelector('.lucide-check-check')
+    ).toBeInTheDocument();
   });
 
   it('collects a visible file review comment and exposes handoff actions', () => {
@@ -422,23 +752,45 @@ describe('ReviewTab', () => {
     });
 
     render(<ReviewTab tab={reviewTab} />);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Add a file review note' })
+    const fileHeader = screen.getByTestId('review-file-header-actions');
+    const addCommentButton = within(fileHeader).getByRole('button', {
+      name: 'Add comment · Add a file review note',
+    });
+    fireEvent.click(addCommentButton);
+    expect(addCommentButton).toHaveTextContent('Add comment');
+    expect(addCommentButton).toHaveAttribute('aria-pressed', 'true');
+    expect(addCommentButton).toHaveClass(
+      'aria-pressed:!bg-ds-neutral-subtle-default'
     );
+
+    fireEvent.click(addCommentButton);
+    expect(
+      screen.queryByRole('textbox', { name: 'Describe what should change…' })
+    ).not.toBeInTheDocument();
+    expect(addCommentButton).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(addCommentButton);
     fireEvent.change(
       screen.getByRole('textbox', { name: 'Describe what should change…' }),
       { target: { value: 'Keep this API backward compatible.' } }
     );
     fireEvent.click(screen.getByRole('button', { name: 'Add comment' }));
-
     expect(
-      screen.getByRole('button', { name: 'Copy review comments' })
-    ).toBeInTheDocument();
+      within(fileHeader).getByRole('button', {
+        name: 'Add comment · Add a file review note',
+      })
+    ).toHaveTextContent('Add comment');
+    expect(addCommentButton).toHaveAttribute('aria-pressed', 'false');
+
     expect(
       screen.getByText('Keep this API backward compatible.')
     ).toBeVisible();
+    openMoreActions();
     expect(
-      screen.getByRole('button', { name: 'Add 1 comments to chat' })
+      screen.getByRole('menuitem', { name: 'Copy review comments' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Add 1 comments to chat' })
     ).toBeInTheDocument();
   });
 
@@ -482,8 +834,9 @@ describe('ReviewTab', () => {
 
     expect(screen.getByText('All sent')).toBeVisible();
     expect(screen.getByText('Sent')).toBeVisible();
+    openMoreActions();
     expect(
-      screen.queryByRole('button', { name: 'Add 1 comments to chat' })
+      screen.queryByRole('menuitem', { name: 'Add 1 comments to chat' })
     ).not.toBeInTheDocument();
   });
 
@@ -522,8 +875,9 @@ describe('ReviewTab', () => {
       '1'
     );
 
+    openMoreActions();
     fireEvent.click(
-      screen.getByRole('button', { name: 'Add 1 comments to chat' })
+      screen.getByRole('menuitem', { name: 'Add 1 comments to chat' })
     );
     const request = usePageTabStore.getState().workspaceChatDraftRequest;
     expect(request?.projectId).toBe('project-1');
@@ -579,17 +933,19 @@ describe('ReviewTab', () => {
 
     render(<ReviewTab tab={pinnedTab} />);
 
+    openMoreActions();
     expect(
-      screen.queryByRole('button', { name: 'Add 1 comments to chat' })
+      screen.queryByRole('menuitem', { name: 'Add 1 comments to chat' })
     ).not.toBeInTheDocument();
     fireEvent.click(
-      screen.getByRole('button', {
+      screen.getByRole('menuitem', {
         name: 'Rebase 1 comments onto this revision',
       })
     );
 
+    openMoreActions();
     expect(
-      screen.getByRole('button', { name: 'Add 1 comments to chat' })
+      screen.getByRole('menuitem', { name: 'Add 1 comments to chat' })
     ).toBeInTheDocument();
     const storedTab = usePageTabStore
       .getState()

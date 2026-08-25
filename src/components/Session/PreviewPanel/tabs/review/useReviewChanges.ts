@@ -312,6 +312,17 @@ export function useReviewChanges(
       setLoading(false);
       return;
     }
+    if (reviewScope === 'run' && !runId) {
+      setFiles([]);
+      setGitTotals(null);
+      setTruncated(false);
+      setReviewIdentity(null);
+      setStale(false);
+      setDesktopOnly(false);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setError(null);

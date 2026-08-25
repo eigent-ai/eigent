@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { collectSidePanelOutputFiles } from '@/components/Session/SidePanel/sections/collectSidePanelOutputFiles';
+import { taskIdToCreatedMs } from '@/lib/chatTaskIdTime';
 
 /** The slice of a chat store's state the collector needs. */
 export interface ReviewChatEntry {
@@ -20,6 +21,32 @@ export interface ReviewChatEntry {
     string,
     Parameters<typeof collectSidePanelOutputFiles>[0] | undefined
   >;
+}
+
+function newestTaskId(taskIds: string[]): string | null {
+  let latestId: string | null = null;
+  let latestCreatedAt = Number.NEGATIVE_INFINITY;
+  let latestOrder = -1;
+  for (const [order, id] of taskIds.entries()) {
+    const createdAt = taskIdToCreatedMs(id);
+    if (
+      latestId === null ||
+      createdAt > latestCreatedAt ||
+      (createdAt === latestCreatedAt && order > latestOrder)
+    ) {
+      latestId = id;
+      latestCreatedAt = createdAt;
+      latestOrder = order;
+    }
+  }
+  return latestId;
+}
+
+/** The current/latest task across every chat store owned by this project. */
+export function selectLatestReviewRunId(
+  entries: ReviewChatEntry[]
+): string | null {
+  return newestTaskId(entries.flatMap(({ tasks }) => Object.keys(tasks)));
 }
 
 function isAbsolutePath(value: string): boolean {

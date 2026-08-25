@@ -79,6 +79,13 @@ export interface SessionReviewTarget {
   focusRequestId: number;
 }
 
+/**
+ * Which changes a Review tab is showing: `task` is the tab's own Run when it
+ * was opened for one and otherwise the project's newest Run; `all` aggregates
+ * every change in the session.
+ */
+export type ReviewChangeScope = 'task' | 'all';
+
 export interface SessionReviewIdentity {
   baseCommit: string;
   targetCommit: string;
@@ -119,6 +126,15 @@ export interface SessionReviewTab {
   reviewComments?: SessionReviewComment[];
   /** First successfully loaded base/target pair; immutable for this tab. */
   reviewIdentity?: SessionReviewIdentity;
+  /**
+   * First successfully loaded base/target pair per review scope the tab has
+   * shown, keyed by `reviewTargetIdentityKey`. The tab can render either the
+   * latest Run or the whole Project, and each needs its own pin so the
+   * out-of-date guard survives the tab being unmounted or reloaded.
+   */
+  reviewIdentities?: Record<string, SessionReviewIdentity>;
+  /** Scope chosen in the header; persisted so fronting another tab keeps it. */
+  reviewScope?: ReviewChangeScope;
 }
 
 export interface WorkspaceChatDraftRequest {
@@ -320,6 +336,15 @@ function createReviewTarget(
   };
 }
 
+/**
+ * Cache key for one review scope. A Run target without an id is still pending
+ * (no task has started yet) and must not share the Project pin, so it keys to
+ * its own slot rather than falling back to `project`.
+ */
+export function reviewTargetIdentityKey(target: SessionReviewTarget): string {
+  return target.scope === 'run' ? `run:${target.runId ?? ''}` : 'project';
+}
+
 function createReviewPreviewTab(
   input?: OpenReviewPreviewInput
 ): SessionReviewTab {
@@ -330,7 +355,7 @@ function createReviewPreviewTab(
     title:
       reviewTarget.scope === 'run'
         ? i18next.t('layout.preview-task-review', {
-            defaultValue: 'Task review',
+            defaultValue: 'Review',
           })
         : i18next.t('layout.preview-review', { defaultValue: 'Review' }),
     reviewTarget,
@@ -584,7 +609,13 @@ interface PageTabState {
     tabId: string,
     comments: SessionReviewComment[]
   ) => void;
-  setReviewIdentity: (tabId: string, identity: SessionReviewIdentity) => void;
+  setReviewIdentity: (
+    tabId: string,
+    identity: SessionReviewIdentity,
+    targetKey?: string
+  ) => void;
+  /** Persist the Review tab's change-scope selection. */
+  setReviewScope: (tabId: string, scope: ReviewChangeScope) => void;
   /**
    * Open a URL in this project's preview browser — the default target for
    * links mentioned in chat content, so they stay inside the session instead
@@ -1112,21 +1143,54 @@ export const usePageTabStore = create<PageTabState>()(
           tabs[index] = { ...current, reviewComments: comments };
           return { ...slice, tabs };
         }),
-      setReviewIdentity: (tabId, identity) =>
+      setReviewIdentity: (tabId, identity, targetKey) =>
         setSessionPreviewSlice(set, (slice) => {
           const index = slice.tabs.findIndex(
             (tab) => tab.id === tabId && tab.type === 'review'
           );
           if (index < 0) return null;
           const current = slice.tabs[index] as SessionReviewTab;
-          if (
-            current.reviewIdentity?.baseCommit === identity.baseCommit &&
-            current.reviewIdentity?.targetCommit === identity.targetCommit
-          ) {
-            return null;
-          }
+          const ownKey = reviewTargetIdentityKey(
+            current.reviewTarget ?? createReviewTarget()
+          );
+          const key = targetKey ?? ownKey;
+          // The tab's own scope keeps mirroring into `reviewIdentity` so tabs
+          // persisted before per-scope pins existed still resolve.
+          const mirrors = key === ownKey;
+          // First write wins: the pin is what the out-of-date guard compares
+          // against, so it must not drift onto each newly fetched revision.
+          const pinned =
+            current.reviewIdentities?.[key] ??
+            (mirrors ? current.reviewIdentity : undefined) ??
+            identity;
+          const needsPin = current.reviewIdentities?.[key] !== pinned;
+          const needsMirror = mirrors && current.reviewIdentity !== pinned;
+          if (!needsPin && !needsMirror) return null;
           const tabs = [...slice.tabs];
-          tabs[index] = { ...current, reviewIdentity: identity };
+          tabs[index] = {
+            ...current,
+            ...(needsMirror ? { reviewIdentity: pinned } : {}),
+            ...(needsPin
+              ? {
+                  reviewIdentities: {
+                    ...current.reviewIdentities,
+                    [key]: pinned,
+                  },
+                }
+              : {}),
+          };
+          return { ...slice, tabs };
+        }),
+      setReviewScope: (tabId, scope) =>
+        setSessionPreviewSlice(set, (slice) => {
+          const index = slice.tabs.findIndex(
+            (tab) => tab.id === tabId && tab.type === 'review'
+          );
+          if (index < 0) return null;
+          const current = slice.tabs[index] as SessionReviewTab;
+          if (current.reviewScope === scope) return null;
+          const tabs = [...slice.tabs];
+          tabs[index] = { ...current, reviewScope: scope };
           return { ...slice, tabs };
         }),
       openBrowserPreview: (url) =>

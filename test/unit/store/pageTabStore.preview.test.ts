@@ -220,7 +220,7 @@ describe('pageTabStore session preview', () => {
     );
     expect(runReview).toMatchObject({
       type: 'review',
-      title: 'Task review',
+      title: 'Review',
       reviewTarget: {
         scope: 'run',
         runId: 'run-1',
@@ -242,6 +242,41 @@ describe('pageTabStore session preview', () => {
     });
     expect(slice().tabs).toHaveLength(2);
     expect(slice().activeTabId).toBe(runReview?.id);
+  });
+
+  it('keeps the first review revision per scope and mirrors the tab’s own scope', () => {
+    const store = usePageTabStore.getState();
+    store.toggleSessionPreview();
+    const chooserId = slice().activeTabId!;
+    store.choosePreviewTabType(chooserId, 'review');
+    const tabId = slice().tabs[0].id;
+    const first = { baseCommit: 'base-1', targetCommit: 'target-1' };
+    const second = { baseCommit: 'base-2', targetCommit: 'target-2' };
+
+    store.setReviewIdentity(tabId, first, 'run:run-1');
+    store.setReviewIdentity(tabId, first);
+
+    // A later revision must not move a pin, or nothing is ever out of date.
+    store.setReviewIdentity(tabId, second, 'run:run-1');
+    store.setReviewIdentity(tabId, second);
+
+    expect(slice().tabs[0]).toMatchObject({
+      // The tab's own scope is `project`, so only that one mirrors.
+      reviewIdentity: first,
+      reviewIdentities: { 'run:run-1': first, project: first },
+    });
+  });
+
+  it('persists the review change scope on the tab', () => {
+    const store = usePageTabStore.getState();
+    store.toggleSessionPreview();
+    const chooserId = slice().activeTabId!;
+    store.choosePreviewTabType(chooserId, 'review');
+    const tabId = slice().tabs[0].id;
+
+    expect(slice().tabs[0]).not.toHaveProperty('reviewScope');
+    store.setReviewScope(tabId, 'all');
+    expect(slice().tabs[0]).toMatchObject({ reviewScope: 'all' });
   });
 
   it('persists Review comments and creates a one-shot Project Chat draft', () => {

@@ -222,7 +222,7 @@
   "timeline-style-detailed": "詳細",
   "timeline-style-summarized": "要約",
   "files-changed": "変更されたファイル",
-  "view-changes": "変更を表示",
+  "files-edited_other": "{{count}} 個のファイルを編集しました",
   "agent": "エージェント",
   "answer": "回答",
   "answer-agent": "回答エージェント",

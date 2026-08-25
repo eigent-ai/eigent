@@ -22,6 +22,20 @@
   font-family: var(--code-font-family, monospace);
 }
 
+/* Review diffs use one quiet surface across the content canvas, line-number
+ * column, and glyph rail. Scope this treatment to review so the shared source
+ * viewer retains its standard Monaco theme surfaces. */
+.review-diff-surface,
+.review-diff-surface .monaco-diff-editor,
+.review-diff-surface .monaco-editor,
+.review-diff-surface .monaco-editor-background {
+  background-color: var(--ds-neutral-subtle-default);
+}
+
+.review-diff-surface .monaco-editor .margin {
+  background-color: var(--ds-neutral-subtle-default);
+}
+
 /* Whole-file additions/deletions still need status context, but Monaco's
  * stock solid wash is much louder than a GitHub-style review. Keep the gutter
  * marker and use a restrained content tint. */

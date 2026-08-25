@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { ArtifactChangeList } from '@/components/ChatBox/MessageItem/ArtifactChangeList';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 function file(name: string, artifactChange?: FileInfo['artifactChange']) {
@@ -42,18 +42,25 @@ describe('ArtifactChangeList', () => {
         files={files}
         onOpen={onOpen}
         onViewChanges={onViewChanges}
+        totals={{ added: 15, removed: 1 }}
+        lineChangesForFile={(item) =>
+          item.name === 'one.ts' ? { added: 4, removed: 2 } : null
+        }
       />
     );
 
-    expect(screen.getByText('Files changed')).toBeInTheDocument();
-    expect(screen.getByText('4')).toBeInTheDocument();
-    expect(screen.getByTitle('src/one.ts')).toBeInTheDocument();
+    expect(screen.getByText('Edited 4 files')).toBeInTheDocument();
+    expect(screen.getByText('+15')).toBeInTheDocument();
+    expect(screen.getByText('−1')).toBeInTheDocument();
+    const firstRow = screen.getByTitle('src/one.ts');
+    expect(within(firstRow).getByText('+4')).toBeInTheDocument();
+    expect(within(firstRow).getByText('−2')).toBeInTheDocument();
     expect(screen.queryByTitle('src/four.ts')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByTitle('src/two.ts'));
     expect(onOpen).toHaveBeenCalledWith(files[1]);
 
-    fireEvent.click(screen.getByRole('button', { name: 'View changes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Review' }));
     expect(onViewChanges).toHaveBeenCalledOnce();
 
     fireEvent.click(screen.getByRole('button', { name: 'Show 1 more file' }));
@@ -72,7 +79,7 @@ describe('ArtifactChangeList', () => {
       />
     );
 
-    expect(screen.getByText('Files changed')).toBeInTheDocument();
+    expect(screen.getByText('Edited 0 files')).toBeInTheDocument();
     expect(
       screen.getByText(
         'The original local workspace is unavailable. This durable file manifest may be incomplete.'

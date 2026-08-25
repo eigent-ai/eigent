@@ -14,6 +14,7 @@
 
 import {
   normalizeRunReviewPath,
+  resetRunFileDiffStatsCache,
   resolveRunFilePreview,
   runFileReviewPath,
   RunFilesGroup,
@@ -21,10 +22,49 @@ import {
 } from '@/components/ChatBox/TimelineModes/RunFiles';
 import type { ChatArtifactNode } from '@/lib/projector/chat';
 import type { ProjectedArtifact } from '@/lib/projector/types';
+import { useAuthStore } from '@/store/authStore';
 import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
 import { SPACE_SCHEMA_VERSION, useSpaceStore } from '@/store/spaceStore';
-import { fireEvent, render, renderHook, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import {
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { mockFetchRunGitChanges } = vi.hoisted(() => ({
+  mockFetchRunGitChanges: vi.fn(),
+}));
+
+vi.mock('@/store/authStore', () => {
+  const state = {
+    email: null as string | null,
+    user_id: null as number | null,
+    language: 'en-US',
+  };
+  const useAuthStore = Object.assign(
+    <T,>(selector: (value: typeof state) => T) => selector(state),
+    {
+      getState: () => state,
+      setState: (next: Partial<typeof state>) => Object.assign(state, next),
+      subscribe: vi.fn(() => vi.fn()),
+    }
+  );
+
+  return {
+    authStore: useAuthStore,
+    getAuthStore: () => state,
+    getWorkerList: () => [],
+    useAuthStore,
+    useWorkerList: () => [],
+  };
+});
+
+vi.mock('@/service/workspaceGitApi', () => ({
+  fetchRunGitChanges: mockFetchRunGitChanges,
+}));
 
 const projectedArtifact: ProjectedArtifact = {
   artifactId: 'artifact-1',
@@ -57,6 +97,9 @@ const realtimeArtifact: ChatArtifactNode = {
 
 describe('RunFiles capability boundary', () => {
   beforeEach(() => {
+    mockFetchRunGitChanges.mockReset();
+    resetRunFileDiffStatsCache();
+    useAuthStore.setState({ email: '', user_id: null });
     usePageTabStore.setState({
       sessionPreviewProjectId: 'project-1',
       sessionPreviewByProject: {},
@@ -156,18 +199,115 @@ describe('RunFiles capability boundary', () => {
       <RunFilesGroup projectedArtifacts={[projectedArtifact]} runId="run-1" />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'View changes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Review' }));
 
     expect(
       getSessionPreviewSlice(usePageTabStore.getState()).tabs[0]
     ).toMatchObject({
       type: 'review',
-      title: 'Task review',
+      title: 'Review',
       reviewTarget: {
         scope: 'run',
         runId: 'run-1',
       },
     });
+  });
+
+  it('shows authoritative per-file and total line changes without an undo action', async () => {
+    useAuthStore.setState({ email: 'reviewer@example.com', user_id: 7 });
+    mockFetchRunGitChanges.mockResolvedValue({
+      repository_id: 'repo-1',
+      project_id: 'project-1',
+      run_id: 'run-1',
+      base_commit: 'base',
+      target_commit: 'target',
+      files: [
+        {
+          path: 'reports/report.csv',
+          status: 'added',
+          before_size: 0,
+          after_size: 10,
+          binary: false,
+          added_lines: 12,
+          removed_lines: 3,
+        },
+      ],
+      totals: { added: 12, removed: 3 },
+      truncated: false,
+    });
+
+    render(
+      <RunFilesGroup
+        projectedArtifacts={[projectedArtifact]}
+        projectId="project-1"
+        runId="run-1"
+      />
+    );
+
+    expect(await screen.findAllByText('+12')).toHaveLength(2);
+    expect(screen.getAllByText('−3')).toHaveLength(2);
+    expect(screen.getByText('Edited 1 file')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+    expect(mockFetchRunGitChanges).toHaveBeenCalledWith('run-1', 'space-1', {
+      email: 'reviewer@example.com',
+      userId: 7,
+    });
+
+    // The timeline mounts one group per finished Run with no windowing, so a
+    // long session must not turn into one request per Run.
+    render(
+      <RunFilesGroup
+        projectedArtifacts={[projectedArtifact]}
+        projectId="project-1"
+        runId="run-1"
+      />
+    );
+    await waitFor(() => expect(screen.getAllByText('+12')).toHaveLength(4));
+    expect(mockFetchRunGitChanges).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips the Git request for legacy spaces that have no repository', async () => {
+    useAuthStore.setState({ email: 'reviewer@example.com', user_id: 7 });
+    const state = useSpaceStore.getState();
+    useSpaceStore.setState({
+      spaces: {
+        ...state.spaces,
+        legacy_space: {
+          ...state.spaces['space-1'],
+          id: 'legacy_space',
+          name: 'Legacy Space',
+        },
+      },
+      projectsBySpaceId: {
+        ...state.projectsBySpaceId,
+        legacy_space: {
+          'legacy-project': {
+            ...state.projectsBySpaceId['space-1']['project-1'],
+            id: 'legacy-project',
+            spaceId: 'legacy_space',
+            name: 'Legacy project',
+          },
+        },
+      },
+      projectIdIndex: {
+        ...state.projectIdIndex,
+        'legacy-project': 'legacy_space',
+      },
+    });
+    expect(
+      useSpaceStore.getState().getProjectMeta('legacy-project')
+    ).toMatchObject({ spaceId: 'legacy_space' });
+
+    render(
+      <RunFilesGroup
+        projectedArtifacts={[projectedArtifact]}
+        projectId="legacy-project"
+        runId="run-1"
+      />
+    );
+
+    expect(await screen.findByText('Edited 1 file')).toBeInTheDocument();
+    expect(mockFetchRunGitChanges).not.toHaveBeenCalled();
   });
 
   it('uses the durable relative path for Cloud assets too', () => {

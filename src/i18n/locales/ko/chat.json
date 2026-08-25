@@ -222,7 +222,7 @@
   "timeline-style-detailed": "상세",
   "timeline-style-summarized": "요약",
   "files-changed": "변경된 파일",
-  "view-changes": "변경 사항 보기",
+  "files-edited_other": "파일 {{count}}개를 편집했습니다",
   "agent": "에이전트",
   "answer": "답변",
   "answer-agent": "답변 에이전트",

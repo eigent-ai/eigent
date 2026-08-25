@@ -12,7 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { collectChangedFilePaths } from '@/components/Session/PreviewPanel/tabs/review/reviewSources';
+import {
+  collectChangedFilePaths,
+  selectLatestReviewRunId,
+} from '@/components/Session/PreviewPanel/tabs/review/reviewSources';
 import { useReviewChanges } from '@/components/Session/PreviewPanel/tabs/review/useReviewChanges';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -152,6 +155,33 @@ describe('useReviewChanges', () => {
         'run-1'
       )
     ).toEqual(['/workspace/run-one.txt']);
+  });
+
+  it('selects the newest task across the project chat stores', () => {
+    expect(
+      selectLatestReviewRunId([
+        {
+          tasks: { '100-run': undefined },
+        },
+        {
+          tasks: {
+            '200-run': undefined,
+            '300-run': undefined,
+          },
+        },
+      ])
+    ).toBe('300-run');
+  });
+
+  it('keeps an empty latest-task target from loading all project changes', async () => {
+    const { result } = renderHook(() =>
+      useReviewChanges({ scope: 'run', focusRequestId: 0 })
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.files).toEqual([]);
+    expect(mockFetchGitChanges).not.toHaveBeenCalled();
+    expect(mockFetchRunGitChanges).not.toHaveBeenCalled();
   });
 
   it('uses Git as the primary source and lazily reads visible content', async () => {

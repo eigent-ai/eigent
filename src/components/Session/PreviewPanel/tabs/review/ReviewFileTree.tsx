@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import SearchInput from '@/components/Dashboard/SearchInput';
 import {
   buildFileTree,
   FileTree,
@@ -20,9 +21,13 @@ import {
   type FileTreeStatus,
 } from '@/components/Folder';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { CheckCircle2 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { ListFilter } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ReviewFile } from './useReviewChanges';
@@ -110,57 +115,103 @@ export function ReviewFileTree({
     });
   };
 
+  const toggleStatusFilter = (status: FileTreeStatus, checked: boolean) => {
+    setStatusFilter((current) =>
+      checked
+        ? current.includes(status)
+          ? current
+          : [...current, status]
+        : current.filter((value) => value !== status)
+    );
+  };
+
+  const statusOptions: Array<{
+    value: FileTreeStatus;
+    label: string;
+    className: string;
+  }> = [
+    {
+      value: 'added',
+      label: t('layout.review-filter-added-files', {
+        defaultValue: 'Added files',
+      }),
+      className: '!text-ds-text-success-default-default',
+    },
+    {
+      value: 'modified',
+      label: t('layout.review-filter-modified-files', {
+        defaultValue: 'Modified files',
+      }),
+      className: '!text-ds-text-warning-default-default',
+    },
+    {
+      value: 'deleted',
+      label: t('layout.review-filter-deleted-files', {
+        defaultValue: 'Deleted files',
+      }),
+      className: '!text-ds-text-error-default-default',
+    },
+  ];
+
+  const hasActiveFilters = statusFilter.length > 0 || unreviewedOnly;
+
   return (
-    <aside className="flex h-full min-h-0 w-[264px] shrink-0 flex-col border-0 border-y-0 border-r border-l-0 border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default">
-      <div className="flex flex-col gap-2 border-0 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default p-2.5">
-        <Input
-          size="sm"
+    <aside className="flex h-full min-h-0 w-[264px] shrink-0 flex-col border-0 border-y-0 border-r-0 border-l border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default">
+      <div
+        data-testid="review-file-tree-header"
+        className="flex h-10 shrink-0 items-center gap-2 border-0 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-2"
+      >
+        <SearchInput
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') setFilter('');
-          }}
           placeholder={t('layout.review-filter-files', {
             defaultValue: 'Filter files…',
           })}
-          aria-label={t('layout.review-filter-files', {
+          ariaLabel={t('layout.review-filter-files', {
             defaultValue: 'Filter files…',
           })}
+          clearOnEscape
         />
-        <div className="flex items-center justify-between gap-2">
-          <ToggleGroup
-            type="multiple"
-            value={statusFilter}
-            onValueChange={(value) =>
-              setStatusFilter(value as FileTreeStatus[])
-            }
-            size="sm"
-            aria-label={t('layout.review-filter-status', {
-              defaultValue: 'Filter by change status',
-            })}
-          >
-            {(['added', 'modified', 'deleted'] as const).map((status) => (
-              <ToggleGroupItem
-                key={status}
-                value={status}
-                className="font-code font-semibold"
-                aria-label={status}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant={hasActiveFilters ? 'secondary' : 'ghost'}
+              size="sm"
+              buttonContent="icon-only"
+              className="data-[state=open]:!bg-ds-neutral-muted-default"
+              aria-label={t('layout.review-filter-status', {
+                defaultValue: 'Filter by change status',
+              })}
+              aria-pressed={hasActiveFilters}
+            >
+              <ListFilter aria-hidden />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {statusOptions.map((option) => (
+              <DropdownMenuCheckboxItem
+                key={option.value}
+                className={option.className}
+                checked={statusFilter.includes(option.value)}
+                onCheckedChange={(checked) =>
+                  toggleStatusFilter(option.value, checked === true)
+                }
+                onSelect={(event) => event.preventDefault()}
               >
-                {status[0].toUpperCase()}
-              </ToggleGroupItem>
+                {option.label}
+              </DropdownMenuCheckboxItem>
             ))}
-          </ToggleGroup>
-          <Button
-            type="button"
-            variant={unreviewedOnly ? 'secondary' : 'ghost'}
-            size="sm"
-            onClick={() => setUnreviewedOnly((value) => !value)}
-            aria-pressed={unreviewedOnly}
-          >
-            <CheckCircle2 aria-hidden />
-            {t('layout.review-unreviewed', { defaultValue: 'Unreviewed' })}
-          </Button>
-        </div>
+            <DropdownMenuCheckboxItem
+              className="!text-ds-ink-default-default"
+              checked={unreviewedOnly}
+              onCheckedChange={(checked) => setUnreviewedOnly(checked === true)}
+              onSelect={(event) => event.preventDefault()}
+            >
+              {t('layout.review-unreviewed', { defaultValue: 'Unreviewed' })}
+            </DropdownMenuCheckboxItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto p-2">
         {visibleFiles.length === 0 ? (

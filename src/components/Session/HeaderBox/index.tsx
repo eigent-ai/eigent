@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { useIsCompactWidth } from '@/hooks/useIsCompactWidth';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
@@ -62,6 +63,9 @@ const TIMELINE_MODE_FALLBACK_LABELS: Record<ChatTimelineDetailLevel, string> = {
   trajectory: 'Trajectory',
 };
 
+/** Match the composer control row when the resizable Session pane is narrow. */
+const COMPACT_WIDTH_THRESHOLD = 460;
+
 export interface HeaderBoxProps {
   /** Total token count for the current project */
   totalTokens?: number;
@@ -80,6 +84,9 @@ export function HeaderBox({
   empty = false,
 }: HeaderBoxProps) {
   const { t } = useTranslation();
+  const [headerRef, compact] = useIsCompactWidth<HTMLDivElement>(
+    COMPACT_WIDTH_THRESHOLD
+  );
   const { appearance } = useAuthStore();
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const sessionPreviewOpen = usePageTabStore(
@@ -119,6 +126,7 @@ export function HeaderBox({
   if (empty) {
     return (
       <div
+        ref={headerRef}
         className={cn(CONTENT_HEADER_CLASS, 'justify-between', className)}
         aria-hidden
       />
@@ -126,7 +134,10 @@ export function HeaderBox({
   }
 
   return (
-    <div className={cn(CONTENT_HEADER_CLASS, 'justify-between', className)}>
+    <div
+      ref={headerRef}
+      className={cn(CONTENT_HEADER_CLASS, 'justify-between', className)}
+    >
       {/* Left: return to workspace + display-only Project identity. */}
       <div className="flex min-w-0 items-center gap-2">
         <TooltipSimple content={backTooltip} variant="instant" side="bottom">
@@ -152,15 +163,17 @@ export function HeaderBox({
         ) : null}
       </div>
 
-      {/* Right: project total token count + unified preview toggle */}
-      <div className="flex items-center gap-1 text-ds-ink-muted-default">
-        <div className="flex items-center gap-1">
-          <img src={tokenIcon} alt="" className="h-3.5 w-3.5" />
-          <span className="text-xs font-medium">
-            {t('chat.token-total-label')}{' '}
-            <AnimatedTokenNumber value={totalTokens} />
-          </span>
-        </div>
+      {/* Right: optional token count + timeline pill + preview toggle. */}
+      <div className="flex items-center gap-2 text-ds-ink-muted-default">
+        {!compact ? (
+          <div className="flex items-center gap-1">
+            <img src={tokenIcon} alt="" className="h-3.5 w-3.5" />
+            <span className="text-xs font-medium">
+              {t('chat.token-total-label')}{' '}
+              <AnimatedTokenNumber value={totalTokens} />
+            </span>
+          </div>
+        ) : null}
         {eventNativeTimelineEnabled ? (
           <Tabs
             value={chatTimelineDetailLevel}

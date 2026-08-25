@@ -18,6 +18,9 @@ import * as React from 'react';
 
 import { cn } from '@/lib/utils';
 
+const DROPDOWN_MENU_ITEM_INTERACTION_CLASS =
+  'cursor-pointer transition-colors outline-none select-none hover:bg-ds-neutral-default-hover focus-visible:text-ds-ink-default-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-inset data-[disabled]:pointer-events-none data-[disabled]:opacity-50';
+
 const DropdownMenu = DropdownMenuPrimitive.Root;
 
 const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
@@ -39,7 +42,8 @@ const DropdownMenuSubTrigger = React.forwardRef<
   <DropdownMenuPrimitive.SubTrigger
     ref={ref}
     className={cn(
-      'flex cursor-pointer items-center gap-2 rounded-ds-menu-row px-2 py-1.5 text-ds-text-base outline-none select-none hover:bg-ds-neutral-subtle-hover focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-inset data-[state=open]:bg-ds-neutral-subtle-hover [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
+      'flex items-center gap-2 rounded-ds-menu-row px-2 py-1.5 text-ds-text-base data-[state=open]:bg-ds-neutral-default-hover [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
+      DROPDOWN_MENU_ITEM_INTERACTION_CLASS,
       inset && 'pl-3',
       className
     )}
@@ -97,7 +101,8 @@ const DropdownMenuItem = React.forwardRef<
   <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
-      'relative flex min-h-ds-control-lg cursor-pointer items-center gap-2 rounded-ds-menu-row px-2 py-1.5 text-ds-text-base transition-colors outline-none select-none hover:bg-ds-neutral-default-hover focus-visible:text-ds-ink-default-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-inset data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>svg]:size-4 [&>svg]:shrink-0',
+      'relative flex min-h-ds-control-lg items-center gap-2 rounded-ds-menu-row px-2 py-1.5 text-ds-text-base [&>svg]:size-4 [&>svg]:shrink-0',
+      DROPDOWN_MENU_ITEM_INTERACTION_CLASS,
       inset && 'pl-8',
       className
     )}
@@ -113,13 +118,14 @@ const DropdownMenuCheckboxItem = React.forwardRef<
   <DropdownMenuPrimitive.CheckboxItem
     ref={ref}
     className={cn(
-      'relative flex min-h-ds-control-lg cursor-default items-center rounded-ds-menu-row py-1.5 pr-2 pl-8 text-ds-text-base transition-colors outline-none select-none focus-visible:text-ds-ink-default-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-inset data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'relative flex min-h-ds-control-lg items-center rounded-ds-menu-row py-1.5 pr-2 pl-8 text-ds-text-base',
+      DROPDOWN_MENU_ITEM_INTERACTION_CLASS,
       className
     )}
     checked={checked}
     {...props}
   >
-    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+    <span className="absolute inset-y-0 left-2 my-auto flex size-4 items-center justify-center">
       <DropdownMenuPrimitive.ItemIndicator>
         <Check className="h-4 w-4" />
       </DropdownMenuPrimitive.ItemIndicator>
@@ -137,12 +143,13 @@ const DropdownMenuRadioItem = React.forwardRef<
   <DropdownMenuPrimitive.RadioItem
     ref={ref}
     className={cn(
-      'relative flex min-h-ds-control-lg cursor-default items-center rounded-ds-menu-row py-1.5 pr-2 pl-8 text-ds-text-base transition-colors outline-none select-none focus-visible:text-ds-ink-default-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-inset data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'relative flex min-h-ds-control-lg items-center rounded-ds-menu-row py-1.5 pr-2 pl-8 text-ds-text-base',
+      DROPDOWN_MENU_ITEM_INTERACTION_CLASS,
       className
     )}
     {...props}
   >
-    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+    <span className="absolute inset-y-0 left-2 my-auto flex size-4 items-center justify-center">
       <DropdownMenuPrimitive.ItemIndicator>
         <Circle className="h-2 w-2 fill-current" />
       </DropdownMenuPrimitive.ItemIndicator>

@@ -1240,7 +1240,7 @@ describe('ChatBox timeline modes', () => {
         />
       );
 
-      expect(screen.getByText('Files changed')).toBeInTheDocument();
+      expect(screen.getByText('Edited 1 file')).toBeInTheDocument();
     }
   );
 
