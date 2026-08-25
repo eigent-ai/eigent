@@ -587,6 +587,14 @@ export default function ChatBox(): JSX.Element {
 
   const activeTaskId = chatStore?.activeTaskId;
   const activeAskTask = chatStore?.tasks[activeTaskId as string];
+  const legacyControlTaskId =
+    activeTaskId &&
+    activeAskTask &&
+    activeAskTask.type !== 'replay' &&
+    activeAskTask.type !== 'share' &&
+    activeAskTask.status !== ChatTaskStatus.FINISHED
+      ? activeTaskId
+      : null;
   const projectedLegacyRun = activeTaskId
     ? eventNativeProjectSnapshot?.view.runs[activeTaskId]
     : undefined;
@@ -2307,10 +2315,21 @@ export default function ChatBox(): JSX.Element {
   const hasControlledBottomBoxVariant = bottomBoxControl.isControlled;
   const composerTaskControlState = selectComposerTaskControlState({
     eventNativeTimelineEnabled,
-    legacyControlRunId: eligibleLegacyActiveRunId,
+    legacyControlRunId: legacyControlTaskId,
     activeTaskStatus: activeTask?.status,
     eventNativeActiveRunId,
   });
+  const showFloatingStop =
+    shouldRenderChatTimeline &&
+    composerTaskControlState === 'running' &&
+    eventNativeActiveProjectedRun?.status !== 'cancelling';
+  const handleFloatingStop = () => {
+    if (eventNativeActiveProjectedRun?.status === 'running') {
+      void handleEventNativeStopRun(eventNativeActiveProjectedRun.runId);
+      return;
+    }
+    void handleSkip();
+  };
   const chatColumn = (
     <>
       {/* Main: scroll (scrollbar on panel edge) + BottomBox overlay when chatting */}
@@ -2326,19 +2345,6 @@ export default function ChatBox(): JSX.Element {
               chatStore={projectStore.getActiveChatStore() ?? undefined}
               detailLevel={chatTimelineDetailLevel}
               paused={composerTaskControlState === 'paused'}
-              floatingControl={
-                eventNativeActiveProjectedRun?.status === 'running' ? (
-                  <FloatingAction
-                    status={ChatTaskStatus.RUNNING}
-                    onSkip={() =>
-                      void handleEventNativeStopRun(
-                        eventNativeActiveProjectedRun.runId
-                      )
-                    }
-                    loading={isPauseResumeLoading}
-                  />
-                ) : null
-              }
               projectId={activeProjectId}
               sessionMode={displaySessionMode}
               scrollContainerRef={scrollContainerRef}
@@ -2348,8 +2354,6 @@ export default function ChatBox(): JSX.Element {
             <ProjectChatContainer
               scrollContainerRef={scrollContainerRef}
               scrollBottomInsetPx={scrollBottomInsetPx}
-              onSkip={handleSkip}
-              isPauseResumeLoading={isPauseResumeLoading}
             />
           ) : (
             <div className="mx-auto flex min-h-full w-full max-w-[600px] flex-col">
@@ -2421,6 +2425,21 @@ export default function ChatBox(): JSX.Element {
             </div>
           )}
         </div>
+
+        {showFloatingStop && (
+          <div
+            data-floating-stop-control
+            className="pointer-events-none absolute inset-x-0 z-20 flex justify-center px-2.5"
+            style={{ bottom: scrollBottomInsetPx }}
+          >
+            <FloatingAction
+              className="static mt-0 w-auto"
+              status={ChatTaskStatus.RUNNING}
+              onSkip={handleFloatingStop}
+              loading={isPauseResumeLoading}
+            />
+          </div>
+        )}
 
         {chatStore.activeTaskId && hasAnyMessages ? (
           <div id={PLAN_OVERLAY_SLOT_ID} className="contents" />

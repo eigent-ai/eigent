@@ -12,8 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { formatSplittingElapsed } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
 import ShinyText from '@/components/ui/ShinyText/ShinyText';
+import { DsIcon } from '@/components/ui/ds-icon';
+import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
 import type { TimelineCall } from '@/lib/projector/chat/presentation';
 import { cn } from '@/lib/utils';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -21,9 +24,26 @@ import { ChevronRight } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { actionIcon } from './actionIcon';
 import { disclosureMotion } from './shared';
 
 const ERROR_STATUSES = new Set(['failed', 'timed_out', 'outcome_unknown']);
+
+function formatCallDuration(durationMs: number | undefined): string | null {
+  if (
+    durationMs === undefined ||
+    !Number.isFinite(durationMs) ||
+    durationMs < 0
+  ) {
+    return null;
+  }
+  if (durationMs < 1_000) return `${Math.round(durationMs)} ms`;
+  if (durationMs < 60_000) {
+    const seconds = Number((durationMs / 1_000).toFixed(1));
+    return `${seconds} s`;
+  }
+  return formatSplittingElapsed(durationMs);
+}
 
 export function isCallErrorStatus(status: TimelineCall['status']): boolean {
   return ERROR_STATUSES.has(status);
@@ -63,7 +83,8 @@ export function CallRow({
   const failed = isCallErrorStatus(call.status);
   const pendingHuman = call.executor === 'human' && call.status === 'pending';
   const showWaitingOutput = !call.output && (running || pendingHuman);
-  const detail =
+  const description =
+    call.notice?.content.trim() ||
     call.detail ||
     (!call.input && !call.output && !showWaitingOutput
       ? failed
@@ -72,6 +93,60 @@ export function CallRow({
           })
         : t('chat.completed', { defaultValue: 'Completed.' })
       : undefined);
+  const duration = formatCallDuration(call.durationMs);
+  let statusSummary: string;
+  switch (call.status) {
+    case 'completed':
+      statusSummary = duration
+        ? t('chat.timeline-completed-in', {
+            defaultValue: 'Completed in {{duration}}',
+            duration,
+          })
+        : t('chat.timeline-completed', { defaultValue: 'Completed' });
+      break;
+    case 'failed':
+      statusSummary = t('chat.timeline-failed', { defaultValue: 'Failed' });
+      break;
+    case 'timed_out':
+      statusSummary = t('chat.timeline-timed-out', {
+        defaultValue: 'Timed out',
+      });
+      break;
+    case 'cancelled':
+      statusSummary = t('chat.timeline-cancelled', {
+        defaultValue: 'Cancelled',
+      });
+      break;
+    case 'blocked':
+      statusSummary = t('chat.timeline-blocked', {
+        defaultValue: 'Blocked',
+      });
+      break;
+    case 'interrupted':
+      statusSummary = t('chat.timeline-interrupted', {
+        defaultValue: 'Interrupted',
+      });
+      break;
+    case 'pending':
+    case 'running':
+      statusSummary = t('chat.timeline-in-progress', {
+        defaultValue: 'In progress',
+      });
+      break;
+    case 'outcome_unknown':
+    case 'unknown':
+      statusSummary = t('chat.tool-status-unknown', {
+        defaultValue: 'Unknown',
+      });
+      break;
+  }
+  const metadataParts = [
+    call.notice?.title?.trim() || call.title.trim(),
+    statusSummary?.trim(),
+  ].filter(
+    (part, index, parts): part is string =>
+      Boolean(part) && parts.indexOf(part) === index
+  );
   // A pending human call is the one thing the user must act on, so it opens
   // itself. Everything else follows the shimmer/auto-collapse rule.
   const autoExpanded = highlighted || pendingHuman;
@@ -90,6 +165,7 @@ export function CallRow({
       data-timeline-call-executor={call.executor}
       data-timeline-call-id={call.toolCallId || call.interactionId}
       data-timeline-call-status={call.status}
+      data-timeline-action-kind={call.actionKind}
       data-timeline-call-highlighted={highlighted ? 'true' : undefined}
       data-interaction-id={call.interactionId}
     >
@@ -98,11 +174,22 @@ export function CallRow({
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
         className={cn(
-          'group inline-flex max-w-full min-w-0 items-center gap-1 self-start px-0 py-0.5 text-left transition-opacity hover:opacity-80',
+          'inline-flex max-w-full min-w-0 items-center gap-ds-6 self-start rounded-ds-compact-control px-0 py-ds-2 text-left transition-opacity hover:opacity-80',
+          DS_FOCUS_RING,
           failed && 'text-ds-text-status-error-default-default'
         )}
         data-timeline-call-trigger
       >
+        <DsIcon
+          icon={actionIcon(call.actionKind)}
+          recipe="main"
+          className={cn(
+            failed
+              ? 'text-ds-text-status-error-default-default'
+              : 'text-ds-ink-subtle-default'
+          )}
+          data-timeline-action-icon={call.actionKind}
+        />
         {highlighted ? (
           <ShinyText
             text={call.title}
@@ -132,17 +219,16 @@ export function CallRow({
                 })}
           </span>
         ) : null}
-        <ChevronRight
-          aria-hidden
+        <DsIcon
+          icon={ChevronRight}
           className={cn(
-            'size-4 shrink-0 transition-[opacity,transform] duration-200',
+            'transition-transform duration-200',
             failed
               ? 'text-ds-text-status-error-default-default'
               : 'text-ds-ink-subtle-default',
-            open
-              ? 'rotate-90 opacity-100'
-              : 'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100'
+            open && 'rotate-90'
           )}
+          data-timeline-call-chevron
         />
       </button>
       <AnimatePresence initial={false}>
@@ -150,29 +236,56 @@ export function CallRow({
           <motion.div
             key="timeline-call-detail"
             {...disclosureMotion(reducedMotion)}
-            className="w-full min-w-0 overflow-hidden"
+            className="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-ds-6 overflow-hidden"
           >
-            <ToolInputOutputDetails
-              className="mt-1"
-              input={call.input}
-              inputLabel={call.inputLabel}
-              output={call.output}
-              outputLabel={call.outputLabel}
-              showEmptyOutput={showWaitingOutput}
-              emptyOutputText={
-                call.emptyOutputText ||
-                (running ? 'Waiting for a response.' : 'Waiting for you.')
-              }
+            <span
+              aria-hidden
+              className="w-ds-icon-main"
+              data-timeline-call-indent
+            />
+            <div
+              className="flex w-full min-w-0 flex-col gap-ds-10 pt-ds-4"
+              data-timeline-call-content
             >
-              {detail ? (
-                <p
-                  className="px-0.5 !text-ds-text-meta font-normal break-words whitespace-pre-wrap text-ds-ink-subtle-default"
-                  data-timeline-call-detail
-                >
-                  {detail}
-                </p>
-              ) : null}
-            </ToolInputOutputDetails>
+              <div
+                className={cn(
+                  'flex min-w-0 flex-wrap items-baseline gap-ds-8 !text-ds-text-meta font-normal break-words text-ds-ink-muted-default',
+                  failed && 'text-ds-text-status-error-default-default',
+                  call.notice?.severity === 'warning' &&
+                    'text-ds-text-warning-strong-default'
+                )}
+                data-timeline-call-metadata
+              >
+                {metadataParts.map((part, index) => (
+                  <span
+                    key={`${index}-${part}`}
+                    className={cn(
+                      index > 0 && 'inline-flex items-baseline gap-ds-8'
+                    )}
+                  >
+                    {index > 0 ? (
+                      <span aria-hidden data-timeline-call-separator>
+                        ·
+                      </span>
+                    ) : null}
+                    <span>{part}</span>
+                  </span>
+                ))}
+              </div>
+              <ToolInputOutputDetails
+                appearance="code-scroll"
+                description={description}
+                input={call.input}
+                inputLabel={call.inputLabel}
+                output={call.output}
+                outputLabel={call.outputLabel}
+                showEmptyOutput={showWaitingOutput}
+                emptyOutputText={
+                  call.emptyOutputText ||
+                  (running ? 'Waiting for a response.' : 'Waiting for you.')
+                }
+              />
+            </div>
           </motion.div>
         ) : null}
       </AnimatePresence>

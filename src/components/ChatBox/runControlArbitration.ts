@@ -21,9 +21,9 @@ export type EventNativeProjectedRun =
 export type ComposerTaskControlState = 'idle' | 'running' | 'paused';
 
 /**
- * Pause/resume still targets the Project-scoped legacy TaskLock. It is safe to
- * expose only when the compatibility task owns the same Run selected by the
- * event-native control arbitration.
+ * Pause/resume still targets the Project-scoped legacy TaskLock. Keep the
+ * control available while the durable projection is hydrating, but fail
+ * closed once projection explicitly selects a different Run.
  */
 export function selectComposerTaskControlState({
   eventNativeTimelineEnabled,
@@ -38,7 +38,8 @@ export function selectComposerTaskControlState({
 }): ComposerTaskControlState {
   if (
     eventNativeTimelineEnabled &&
-    (!legacyControlRunId || eventNativeActiveRunId !== legacyControlRunId)
+    (!legacyControlRunId ||
+      (eventNativeActiveRunId && eventNativeActiveRunId !== legacyControlRunId))
   ) {
     return 'idle';
   }

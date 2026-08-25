@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import type { ChatProjectionNode } from '@/lib/projector/chat';
+import { sortTimelineNodes } from '@/lib/projector/chat/presentation';
 import {
   chatTimelineDetailLevels,
   type ChatTimelineDetailLevel,
@@ -187,6 +188,247 @@ function presentAgentActivityLifecycles(
   });
 }
 
+function subagentInvocationGroupKey(node: ActivityNode): string {
+  return JSON.stringify([
+    node.projectId,
+    node.runId,
+    node.toolCallId || node.eventId,
+  ]);
+}
+
+function subagentIdentityKeys(node: ActivityNode): string[] {
+  return [
+    node.subagentTaskId
+      ? JSON.stringify([
+          node.projectId,
+          node.runId,
+          'task',
+          node.subagentTaskId,
+        ])
+      : '',
+    node.subagentAgentId
+      ? JSON.stringify([
+          node.projectId,
+          node.runId,
+          'agent',
+          node.subagentAgentId,
+        ])
+      : '',
+  ].filter(Boolean);
+}
+
+function mergeSubagentLifecycleReceipt(
+  anchor: ActivityNode,
+  receipt: ActivityNode
+): ActivityNode {
+  const anchorTerminal =
+    anchor.subagentStatus !== undefined &&
+    TERMINAL_ACTIVITY_STATUSES.has(anchor.subagentStatus);
+  const receiptActive =
+    receipt.subagentStatus === 'pending' ||
+    receipt.subagentStatus === 'running';
+  const subagentStatus =
+    anchorTerminal && receiptActive
+      ? anchor.subagentStatus
+      : (receipt.subagentStatus ?? anchor.subagentStatus);
+
+  return {
+    ...anchor,
+    subagentStatus,
+    subagentAgentId: receipt.subagentAgentId ?? anchor.subagentAgentId,
+    subagentTaskId: receipt.subagentTaskId ?? anchor.subagentTaskId,
+    detail: receipt.detail ?? anchor.detail,
+    output: receipt.output ?? anchor.output,
+  };
+}
+
+/**
+ * Apply explicitly correlated child-status receipts to the original delegated
+ * agent invocation. The creation event remains the chronological anchor; a
+ * later `agent_get_task_output` call may still render as its own real tool call.
+ * Opaque task/agent IDs are scoped to one Project/Run and never inferred from
+ * titles.
+ */
+function presentSubagentInvocationLifecycles(
+  nodes: readonly ChatProjectionNode[]
+): readonly ChatProjectionNode[] {
+  const invocationNodesByGroup = new Map<string, ActivityNode[]>();
+  for (const node of nodes) {
+    if (node.kind !== 'activity' || node.subagentInvocation !== true) continue;
+    const key = subagentInvocationGroupKey(node);
+    invocationNodesByGroup.set(key, [
+      ...(invocationNodesByGroup.get(key) || []),
+      node,
+    ]);
+  }
+  if (invocationNodesByGroup.size === 0) return nodes;
+
+  const anchorByGroup = new Map<string, ActivityNode>();
+  const groupByIdentity = new Map<string, string | null>();
+  for (const [group, invocationNodes] of invocationNodesByGroup) {
+    const anchor = [...invocationNodes]
+      .reverse()
+      .find((node) => subagentIdentityKeys(node).length > 0);
+    if (!anchor) continue;
+    anchorByGroup.set(group, anchor);
+    const identities = new Set(invocationNodes.flatMap(subagentIdentityKeys));
+    for (const identity of identities) {
+      const existing = groupByIdentity.get(identity);
+      groupByIdentity.set(
+        identity,
+        existing === undefined || existing === group ? group : null
+      );
+    }
+  }
+  if (anchorByGroup.size === 0) return nodes;
+
+  const presentedByAnchorEventId = new Map<string, ActivityNode>();
+  for (const receipt of nodes) {
+    if (
+      receipt.kind !== 'activity' ||
+      receipt.subagentInvocation === true ||
+      receipt.subagentStatus === undefined
+    ) {
+      continue;
+    }
+    const candidateGroups = new Set(
+      subagentIdentityKeys(receipt)
+        .map((identity) => groupByIdentity.get(identity))
+        .filter((group): group is string => Boolean(group))
+    );
+    if (candidateGroups.size !== 1) continue;
+    const group = candidateGroups.values().next().value;
+    if (!group) continue;
+    const anchor = anchorByGroup.get(group);
+    if (!anchor) continue;
+    const current = presentedByAnchorEventId.get(anchor.eventId) ?? anchor;
+    presentedByAnchorEventId.set(
+      anchor.eventId,
+      mergeSubagentLifecycleReceipt(current, receipt)
+    );
+  }
+
+  const terminalRunKeys = new Set(
+    nodes.flatMap((node) =>
+      node.kind === 'run_status' &&
+      ['completed', 'failed', 'cancelled', 'interrupted'].includes(node.status)
+        ? [JSON.stringify([node.projectId, node.runId])]
+        : []
+    )
+  );
+  for (const anchor of anchorByGroup.values()) {
+    const current = presentedByAnchorEventId.get(anchor.eventId) ?? anchor;
+    if (
+      terminalRunKeys.has(JSON.stringify([anchor.projectId, anchor.runId])) &&
+      (current.subagentStatus === 'pending' ||
+        current.subagentStatus === 'running')
+    ) {
+      presentedByAnchorEventId.set(anchor.eventId, {
+        ...current,
+        subagentStatus: 'outcome_unknown',
+      });
+    }
+  }
+
+  if (presentedByAnchorEventId.size === 0) return nodes;
+  return nodes.map(
+    (node) => presentedByAnchorEventId.get(node.eventId) ?? node
+  );
+}
+
+function taskLifecycleKey(node: ActivityNode): string | null {
+  if (node.activityType !== 'task') return null;
+  if (
+    node.semantic &&
+    (node.semantic.kind !== 'subtask' || node.semantic.subject.type !== 'task')
+  ) {
+    return null;
+  }
+  if (node.semanticKind && node.semanticKind !== 'subtask') return null;
+
+  const identities = [
+    node.semantic?.subject.type === 'task' ? node.semantic.subject.id : '',
+    node.activityId || '',
+    node.taskId || '',
+  ].filter((identity) => Boolean(identity.trim()));
+  const uniqueIdentities = new Set(identities);
+  if (uniqueIdentities.size !== 1) return null;
+
+  // Task IDs are opaque producer-owned identities. Preserve their exact value
+  // and scope them to the Project/Run instead of normalizing display text.
+  return JSON.stringify([
+    node.projectId,
+    node.runId,
+    uniqueIdentities.values().next().value,
+  ]);
+}
+
+function mergeTaskLifecycle(
+  anchor: ActivityNode,
+  latest: ActivityNode
+): ActivityNode {
+  return {
+    ...anchor,
+    // The earliest receipt remains the presentation anchor. Only projected
+    // lifecycle/display fields advance as newer compatible receipts arrive.
+    ...(latest.semantic ? { semantic: latest.semantic } : {}),
+    status: latest.status,
+    phase: latest.phase ?? anchor.phase,
+    title: latest.title,
+    detail: latest.detail ?? anchor.detail,
+    input: latest.input ?? anchor.input,
+    output: latest.output ?? anchor.output,
+    durationMs: latest.durationMs ?? anchor.durationMs,
+    agentId: latest.agentId ?? anchor.agentId,
+    agentName: latest.agentName ?? anchor.agentName,
+    taskId: latest.taskId ?? anchor.taskId,
+    stepId: latest.stepId ?? anchor.stepId,
+    activityId: latest.activityId ?? anchor.activityId,
+    semanticKind: latest.semanticKind ?? anchor.semanticKind,
+    semanticCompleteness:
+      latest.semanticCompleteness ?? anchor.semanticCompleteness,
+  };
+}
+
+/**
+ * Fold projected task/subtask lifecycle receipts by one explicit stable task
+ * identity. The immutable source ledger remains unchanged; presentation keeps
+ * the earliest event/order and applies only the latest compatible lifecycle
+ * fields. Missing or contradictory identities remain separate rows.
+ */
+function presentTaskActivityLifecycles(
+  nodes: readonly ChatProjectionNode[]
+): readonly ChatProjectionNode[] {
+  const anchorByIdentity = new Map<string, ActivityNode>();
+  const presentedByAnchorEventId = new Map<string, ActivityNode>();
+  const suppressedEventIds = new Set<string>();
+
+  for (const node of nodes) {
+    if (node.kind !== 'activity' || node.activityType !== 'task') continue;
+    const key = taskLifecycleKey(node);
+    if (!key) continue;
+
+    const anchor = anchorByIdentity.get(key);
+    if (!anchor) {
+      anchorByIdentity.set(key, node);
+      continue;
+    }
+
+    const current = presentedByAnchorEventId.get(anchor.eventId) ?? anchor;
+    presentedByAnchorEventId.set(
+      anchor.eventId,
+      mergeTaskLifecycle(current, node)
+    );
+    suppressedEventIds.add(node.eventId);
+  }
+
+  if (presentedByAnchorEventId.size === 0) return nodes;
+  return nodes.flatMap((node): ChatProjectionNode[] => {
+    if (suppressedEventIds.has(node.eventId)) return [];
+    return [presentedByAnchorEventId.get(node.eventId) ?? node];
+  });
+}
+
 /** Keep only the latest lifecycle receipt for each Run in the detailed log. */
 function presentRunStatusLifecycles(
   nodes: readonly ChatProjectionNode[]
@@ -262,14 +504,46 @@ function safeInteractionResponse(
 
 function isLegacyInteractionRequest(node: InteractionNode): boolean {
   // Canonical migration events may retain `legacyStep: "ask"` as provenance;
-  // the event namespace, not that metadata, identifies the shadow lane.
-  return node.eventType === 'legacy.ask';
+  // the event namespace, not that metadata, identifies the shadow lane. The
+  // whole `legacy.` namespace belongs to that lane, not just `legacy.ask`: a
+  // durable replay names the step (`legacy.ask`), while a live `/chat` frame
+  // carries no `event_type` at all and normalizes to `legacy.step`. Matching
+  // only the named form put the live mirror in the canonical bucket, where it
+  // was signature-compared against the typed request it mirrors and the
+  // mismatch suppressed the whole fold.
+  return node.eventType.startsWith('legacy.');
+}
+
+function interactionRequestSignature(node: InteractionNode): string {
+  return JSON.stringify([
+    node.interactionType,
+    node.prompt || '',
+    node.agentName || '',
+    (node.options || []).map((option) => [
+      option.id,
+      option.label,
+      option.description || '',
+    ]),
+  ]);
+}
+
+function equivalentInteractionRequests(
+  requests: readonly InteractionNode[]
+): InteractionNode | null {
+  const request = requests[0];
+  if (!request) return null;
+  const signature = interactionRequestSignature(request);
+  return requests.every(
+    (candidate) => interactionRequestSignature(candidate) === signature
+  )
+    ? request
+    : null;
 }
 
 /**
- * Prefer the durable canonical request while tolerating one explicitly
- * correlated legacy ASK emitted by the migration dual-write lane. More than
- * one request in either lane is ambiguous and remains fully visible.
+ * Prefer the durable canonical request while folding any number of exact
+ * at-least-once mirrors from the canonical or legacy live lanes. Conflicting
+ * copies remain fully visible instead of being guessed from arrival order.
  */
 function selectPresentableRequest(
   requests: readonly InteractionNode[]
@@ -278,24 +552,60 @@ function selectPresentableRequest(
     (request) => !isLegacyInteractionRequest(request)
   );
   const legacyMirrors = requests.filter(isLegacyInteractionRequest);
-  if (canonical.length > 1 || legacyMirrors.length > 1) return null;
+  const canonicalRequest = equivalentInteractionRequests(canonical);
+  const legacyRequest = equivalentInteractionRequests(legacyMirrors);
+  if (
+    (canonical.length > 0 && !canonicalRequest) ||
+    (legacyMirrors.length > 0 && !legacyRequest)
+  ) {
+    return null;
+  }
 
-  const request = canonical[0] ?? legacyMirrors[0];
+  const request = canonicalRequest ?? legacyRequest;
   if (!request) return null;
   return {
     request,
     suppressedRequestEventIds: new Set(
-      canonical[0] && legacyMirrors[0] ? [legacyMirrors[0].eventId] : []
+      requests
+        .filter((candidate) => candidate.eventId !== request.eventId)
+        .map((candidate) => candidate.eventId)
     ),
   };
 }
 
+function interactionResolutionSignature(
+  request: InteractionNode,
+  resolution: InteractionResolutionNode
+): string {
+  return JSON.stringify([
+    resolution.kind,
+    resolution.kind === 'interaction' ? resolution.status : resolution.role,
+    safeInteractionResponse(request, resolution) || '',
+  ]);
+}
+
+function equivalentInteractionResolutions<
+  Resolution extends InteractionResolutionNode,
+>(
+  request: InteractionNode,
+  resolutions: readonly Resolution[]
+): Resolution | null {
+  const resolution = resolutions[0];
+  if (!resolution) return null;
+  const signature = interactionResolutionSignature(request, resolution);
+  return resolutions.every(
+    (candidate) =>
+      interactionResolutionSignature(request, candidate) === signature
+  )
+    ? resolution
+    : null;
+}
+
 /**
- * Resolve the temporary canonical/legacy dual-write shape without weakening
- * interaction correlation. One canonical terminal receipt is authoritative;
- * one explicitly correlated legacy HUMAN_REPLY may mirror it. Any duplicate
- * lane or disagreement remains unmerged so contradictory history stays
- * visible instead of being silently selected by arrival order.
+ * Resolve canonical/legacy response mirrors without weakening interaction
+ * correlation. One canonical terminal receipt is authoritative; exact
+ * at-least-once copies fold into it. Conflicting copies remain unmerged so
+ * contradictory history stays visible instead of being selected by arrival.
  */
 function selectPresentableResolution(
   request: InteractionNode,
@@ -312,10 +622,17 @@ function selectPresentableResolution(
       resolution.kind === 'message'
   );
 
-  if (canonical.length > 1 || legacyMirrors.length > 1) return null;
-
-  const canonicalResolution = canonical[0];
-  const legacyMirror = legacyMirrors[0];
+  const canonicalResolution = equivalentInteractionResolutions(
+    request,
+    canonical
+  );
+  const legacyMirror = equivalentInteractionResolutions(request, legacyMirrors);
+  if (
+    (canonical.length > 0 && !canonicalResolution) ||
+    (legacyMirrors.length > 0 && !legacyMirror)
+  ) {
+    return null;
+  }
   if (canonicalResolution && legacyMirror) {
     // A user reply cannot safely mirror cancellation or expiration.
     if (canonicalResolution.status !== 'responded') return null;
@@ -333,10 +650,9 @@ function selectPresentableResolution(
     return {
       resolution: canonicalResolution,
       response: canonicalResponse ?? legacyResponse,
-      suppressedResolutionEventIds: new Set([
-        canonicalResolution.eventId,
-        legacyMirror.eventId,
-      ]),
+      suppressedResolutionEventIds: new Set(
+        resolutions.map((resolution) => resolution.eventId)
+      ),
     };
   }
 
@@ -345,7 +661,9 @@ function selectPresentableResolution(
   return {
     resolution,
     response: safeInteractionResponse(request, resolution),
-    suppressedResolutionEventIds: new Set([resolution.eventId]),
+    suppressedResolutionEventIds: new Set(
+      resolutions.map((candidate) => candidate.eventId)
+    ),
   };
 }
 
@@ -536,10 +854,17 @@ function presentTypedMessageLifecycles(
 function presentChatSemanticEntities(
   nodes: readonly ChatProjectionNode[]
 ): readonly ChatProjectionNode[] {
+  const chronologicalNodes = sortTimelineNodes(nodes);
   return presentRunStatusLifecycles(
-    presentAgentActivityLifecycles(
-      presentHumanInteractionReceipts(
-        presentTypedMessageLifecycles(presentLegacyTranscriptFallbacks(nodes))
+    presentTaskActivityLifecycles(
+      presentAgentActivityLifecycles(
+        presentSubagentInvocationLifecycles(
+          presentHumanInteractionReceipts(
+            presentTypedMessageLifecycles(
+              presentLegacyTranscriptFallbacks(chronologicalNodes)
+            )
+          )
+        )
       )
     )
   );
@@ -627,6 +952,8 @@ export {
   presentHumanInteractionReceipts,
   presentLegacyTranscriptFallbacks,
   presentRunStatusLifecycles,
+  presentSubagentInvocationLifecycles,
+  presentTaskActivityLifecycles,
   presentTypedMessageLifecycles,
   resolveChatTimelinePresentation,
 };

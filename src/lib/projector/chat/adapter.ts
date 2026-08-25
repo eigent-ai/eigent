@@ -813,8 +813,17 @@ function interactionNode(
     response: responseText(decision) || undefined,
     responseOptionIds: responseOptionIds(decision),
     agentName:
-      firstText(payload.agent_name, payload.agentName, payload.agent) ||
-      undefined,
+      firstText(
+        payload.agent_name,
+        payload.agentName,
+        payload.agent,
+        // A typed approval keeps the requesting agent inside its prompt, while
+        // the legacy mirror carries it at the top level. Reading both keeps the
+        // canonical node at identity parity with the mirror it replaces.
+        request.agent_name,
+        request.agentName,
+        request.agent
+      ) || undefined,
     options: interactionOptions(payload.options),
   };
 }
@@ -1237,6 +1246,10 @@ function activityNode(
   const subagentTool = ['agent_run_subagent', 'run_remote_sub_agent'].includes(
     normalizedToolName
   );
+  const subagentStatusTool = ['agent_get_task_output'].includes(
+    normalizedToolName
+  );
+  const subagentLifecycleTool = subagentTool || subagentStatusTool;
   const agentProvider = subagentTool
     ? firstText(
         payload.agent_provider,
@@ -1282,6 +1295,17 @@ function activityNode(
         request.remoteAgentName
       )
     : '';
+  const subagentName = subagentTool
+    ? safeDelegatedAgentIdentity(
+        payload.subagent_name,
+        payload.subagentName,
+        payload.description,
+        request.subagent_name,
+        request.subagentName,
+        request.description,
+        result.description
+      )
+    : '';
   const isHumanInputActivity = isHumanInputToolkitActivity(
     toolkitName,
     methodName,
@@ -1301,6 +1325,21 @@ function activityNode(
       (isTypedActivity ? base.eventType.split('.').at(-1) : undefined),
     fallbackStatus
   );
+  const explicitSubagentStatus = firstText(
+    payload.subagent_status,
+    payload.subagentStatus,
+    result.status,
+    result.state
+  );
+  const subagentStatus = subagentLifecycleTool
+    ? firstText(result.error, payload.subagent_error, payload.subagentError)
+      ? 'failed'
+      : explicitSubagentStatus
+        ? normalizeActivityStatus(explicitSubagentStatus, status)
+        : subagentTool
+          ? status
+          : undefined
+    : undefined;
   const input = isHumanInputActivity
     ? ''
     : activityInput(base, payload, tool, isTypedActivity);
@@ -1352,7 +1391,27 @@ function activityNode(
       ) || undefined,
     toolName: toolName || undefined,
     subagentType: subagentType || undefined,
+    subagentName: subagentName || undefined,
     subagentInvocation: subagentTool || undefined,
+    subagentStatus,
+    subagentAgentId: subagentLifecycleTool
+      ? firstText(
+          payload.subagent_agent_id,
+          payload.subagentAgentId,
+          result.agent_id,
+          result.agentId
+        ) || undefined
+      : undefined,
+    subagentTaskId: subagentLifecycleTool
+      ? firstText(
+          payload.subagent_task_id,
+          payload.subagentTaskId,
+          request.task_id,
+          request.taskId,
+          result.task_id,
+          result.taskId
+        ) || undefined
+      : undefined,
     agentProvider: agentProvider || undefined,
     agentModel: agentModel || undefined,
     activityId: semantic?.subject.id || undefined,

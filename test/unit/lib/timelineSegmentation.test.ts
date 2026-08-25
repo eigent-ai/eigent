@@ -21,7 +21,10 @@ import {
   toTimelineCall,
   type TimelineSegment,
 } from '@/lib/projector/chat/presentation';
-import type { ChatProjectionNode } from '@/lib/projector/chat/types';
+import type {
+  ChatMessageNode,
+  ChatProjectionNode,
+} from '@/lib/projector/chat/types';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 const base = {
@@ -33,7 +36,7 @@ const base = {
 
 let sequence = 0;
 
-function narration(content: string, agentName?: string): ChatProjectionNode {
+function narration(content: string, agentName?: string): ChatMessageNode {
   sequence += 1;
   const id = `narration-${sequence}`;
   return {
@@ -194,7 +197,7 @@ describe('timeline segmentation', () => {
       createdAt: '2026-08-19T00:00:01Z',
       status: 'active',
       title: 'Plan',
-      tasks: [{ id: 'one', title: 'Do it', status: 'in_progress' }],
+      tasks: [{ id: 'one', title: 'Do it', status: 'running' }],
     };
     const finalPlan: ChatProjectionNode = {
       ...firstPlan,
@@ -243,9 +246,35 @@ describe('timeline segmentation', () => {
     expect(narrativeCalls[1]?.status).toBe('failed');
   });
 
-  it('uses call identity to show one user notice in Narrative', () => {
+  it('hides ordinary task lifecycle labels but preserves task failures', () => {
+    const completedTask = tool('Task Toolkit', 'task_lifecycle', {
+      activityType: 'task',
+      semanticKind: 'subtask',
+      title: 'Modify Python file with line additions and deletions',
+      status: 'completed',
+    });
+    const failedTask = tool('Task Toolkit', 'task_lifecycle', {
+      activityType: 'task',
+      semanticKind: 'subtask',
+      title: 'Draft report',
+      status: 'failed',
+    });
+    const [run] = composeTimelineRuns([completedTask, failedTask]);
+    const items = segmentTimelineRun(run!);
+    const calls = items.flatMap((item) =>
+      item.kind === 'segment' ? item.calls : []
+    );
+
+    expect(calls).toEqual([
+      expect.objectContaining({ title: 'Draft report', status: 'failed' }),
+    ]);
+  });
+
+  it('uses call identity to annotate the real action without replacing it', () => {
     const correlatedTool = tool('Human Toolkit', 'send_message_to_user', {
       toolCallId: 'notice-call-1',
+      input: 'Deliver the finished report.',
+      output: 'Delivered to the user.',
     });
     const nodes = [
       correlatedTool,
@@ -257,12 +286,20 @@ describe('timeline segmentation', () => {
     expect(run!.traceRows.filter((row) => row.kind === 'tool')).toHaveLength(1);
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
-      kind: 'notice',
-      node: { content: 'The report is ready.', toolCallId: 'notice-call-1' },
+      kind: 'segment',
+      calls: [
+        {
+          actionKind: 'message',
+          input: 'Deliver the finished report.',
+          output: 'Delivered to the user.',
+          notice: { content: 'The report is ready.' },
+          toolCallId: 'notice-call-1',
+        },
+      ],
     });
   });
 
-  it('keeps a failed correlated tool visible beside its user notice', () => {
+  it('keeps a failed correlated notice on the failed action row', () => {
     const correlatedTool = tool('Human Toolkit', 'send_message_to_user', {
       toolCallId: 'failed-notice-call',
       status: 'failed',
@@ -276,11 +313,14 @@ describe('timeline segmentation', () => {
       item.kind === 'segment' ? item.calls : []
     );
 
-    expect(items.some((item) => item.kind === 'notice')).toBe(true);
+    expect(items.some((item) => item.kind === 'notice')).toBe(false);
     expect(calls).toEqual([
       expect.objectContaining({
         methodName: 'send_message_to_user',
         status: 'failed',
+        notice: expect.objectContaining({
+          content: 'The report could not be delivered.',
+        }),
       }),
     ]);
   });
@@ -292,7 +332,7 @@ describe('timeline segmentation', () => {
     );
   });
 
-  it('uses authored Step boundaries and explicit tool correlation', () => {
+  it('updates one authored Step text slot instead of rendering title and summary', () => {
     const items = narrativeItemsOf([
       step('stp-1', 'pending'),
       step('stp-1', 'running', { summary: 'Reading source and tests.' }),
@@ -306,16 +346,21 @@ describe('timeline segmentation', () => {
       (item): item is TimelineSegment => item.kind === 'segment'
     );
 
-    expect(segments).toHaveLength(1);
+    expect(segments).toHaveLength(2);
     expect(segments[0]).toMatchObject({
       source: 'authored',
       stepId: 'stp-1',
       status: 'completed',
       boundaryReason: 'authored_step',
-      narration: 'Inspect the workspace\n\nFound the projection boundary.',
+      narration: 'Found the projection boundary.',
+      calls: [],
+    });
+    expect(segments[0]!.summary).toBeUndefined();
+    expect(segments[1]).toMatchObject({
+      source: 'derived',
       label: 'Read · 2 actions',
     });
-    expect(segments[0]!.calls).toHaveLength(2);
+    expect(segments[1]!.calls).toHaveLength(2);
   });
 
   it('keeps unscoped activity visible beside authored Steps', () => {
@@ -354,9 +399,12 @@ describe('timeline segmentation', () => {
     const segments = items.filter(
       (item): item is TimelineSegment => item.kind === 'segment'
     );
+    const authored = segments.filter(
+      (segment) => segment.source === 'authored'
+    );
 
-    expect(segments).toHaveLength(2);
-    expect(segments[1]).toMatchObject({
+    expect(authored).toHaveLength(2);
+    expect(authored[1]).toMatchObject({
       stepId: 'stp-child',
       parentStepId: 'stp-parent',
       status: 'completed',
@@ -382,16 +430,213 @@ describe('timeline segmentation', () => {
     ]);
   });
 
-  it('starts a new segment when the toolkit changes', () => {
+  it('keeps contiguous calls in one action group when the toolkit changes', () => {
     const segments = onlySegments([
       tool('File Toolkit', 'read_file'),
       tool('Search Toolkit', 'web_search'),
     ]);
 
-    expect(segments).toHaveLength(2);
-    expect(segments[1]!.boundaryReason).toBe('toolkit_change');
-    expect(segments[0]!.label).toBe('File Toolkit · read_file');
-    expect(segments[1]!.label).toBe('Search Toolkit · web_search');
+    expect(segments).toHaveLength(1);
+    expect(segments[0]!.boundaryReason).toBe('run_start');
+    expect(segments[0]!.label).toBe('2 actions');
+    expect(segments[0]!.calls).toHaveLength(2);
+  });
+
+  it('places a planned Step where it becomes active, not at creation time', () => {
+    const items = narrativeItemsOf([
+      step('stp-1', 'pending'),
+      tool('Search Toolkit', 'web_search'),
+      step('stp-1', 'running'),
+      tool('File Toolkit', 'read_file', { stepId: 'stp-1' }),
+    ]);
+
+    expect(items.map((item) => item.kind)).toEqual([
+      'segment',
+      'segment',
+      'segment',
+    ]);
+    expect(items[0]).toMatchObject({
+      kind: 'segment',
+      source: 'derived',
+      calls: [expect.objectContaining({ methodName: 'web_search' })],
+    });
+    expect(items[1]).toMatchObject({
+      kind: 'segment',
+      source: 'authored',
+      stepId: 'stp-1',
+    });
+    expect(items[2]).toMatchObject({
+      kind: 'segment',
+      source: 'derived',
+      calls: [expect.objectContaining({ methodName: 'read_file' })],
+    });
+  });
+
+  it('keeps a planning-only Step out of the narrative timeline', () => {
+    const items = narrativeItemsOf([step('stp-1', 'pending')]);
+
+    expect(items).toEqual([]);
+  });
+
+  it('projects delegated calls as explicit narrative items', () => {
+    const items = narrativeItemsOf([
+      tool('Agent Toolkit', 'agent_run_subagent', {
+        subagentInvocation: true,
+        subagentType: 'Research Agent',
+      }),
+    ]);
+
+    expect(items).toEqual([
+      expect.objectContaining({
+        kind: 'subagent',
+        call: expect.objectContaining({
+          actionKind: 'subagent',
+          subagentType: 'Research Agent',
+        }),
+      }),
+    ]);
+  });
+
+  it('preserves actions around a sub-agent in exact projected order', () => {
+    const items = narrativeItemsOf([
+      step('stp-1', 'running'),
+      tool('File Toolkit', 'edit_file', { stepId: 'stp-1' }),
+      tool('Agent Toolkit', 'agent_run_subagent', {
+        stepId: 'stp-1',
+        subagentInvocation: true,
+        subagentType: 'Research Agent',
+      }),
+      tool('Terminal Toolkit', 'shell_exec', { stepId: 'stp-1' }),
+    ]);
+
+    expect(items).toMatchObject([
+      {
+        kind: 'segment',
+        source: 'derived',
+        calls: [{ methodName: 'edit_file' }],
+      },
+      {
+        kind: 'subagent',
+        authoredStepTitle: 'Inspect the workspace',
+        call: { subagentType: 'Research Agent' },
+      },
+      {
+        kind: 'segment',
+        source: 'derived',
+        calls: [{ methodName: 'shell_exec' }],
+      },
+    ]);
+  });
+
+  it('anchors a Step-correlated subagent at creation and updates it in place', () => {
+    const pendingStep = step('stp-delegation', 'pending', {
+      title: 'Research subagent created',
+    });
+    const ordinaryCall = tool('File Toolkit', 'read_file');
+    const startedSubagent = tool('Agent Toolkit', 'agent_run_subagent', {
+      eventType: 'tool.dispatched',
+      phase: 'started',
+      status: 'running',
+      stepId: 'stp-delegation',
+      toolCallId: 'delegation-call-1',
+      subagentInvocation: true,
+      subagentType: 'Research Agent',
+    });
+    const activeStep = step('stp-delegation', 'running', {
+      title: 'Research subagent created',
+      summary: 'Delegated work started.',
+    });
+    const beforeCompletion = [
+      pendingStep,
+      ordinaryCall,
+      startedSubagent,
+      activeStep,
+    ];
+    const completedSubagent = tool('Agent Toolkit', 'agent_run_subagent', {
+      eventType: 'tool.completed',
+      phase: 'completed',
+      status: 'completed',
+      stepId: 'stp-delegation',
+      toolCallId: 'delegation-call-1',
+      subagentInvocation: true,
+      subagentType: 'Research Agent',
+    });
+
+    const runningItems = narrativeItemsOf(beforeCompletion);
+    const completedItems = narrativeItemsOf([
+      ...beforeCompletion,
+      completedSubagent,
+    ]);
+    const itemIdentity = (item: (typeof runningItems)[number]) =>
+      item.kind === 'segment'
+        ? `${item.source}:${item.stepId || item.calls[0]?.toolCallId}`
+        : item.kind === 'subagent'
+          ? `subagent:${item.call.toolCallId}`
+          : item.kind;
+
+    expect(runningItems.map(itemIdentity)).toEqual([
+      'derived:tool-2',
+      'subagent:delegation-call-1',
+    ]);
+    expect(completedItems.map(itemIdentity)).toEqual(
+      runningItems.map(itemIdentity)
+    );
+    expect(runningItems[1]).toMatchObject({
+      kind: 'subagent',
+      authoredStepTitle: 'Research subagent created',
+      summary: 'Delegated work started.',
+      call: { status: 'running' },
+    });
+    expect(completedItems[1]).toMatchObject({
+      kind: 'subagent',
+      call: { status: 'completed' },
+    });
+  });
+
+  it('nests only contiguous work carrying the explicit child identity', () => {
+    const delegated = tool('Agent Toolkit', 'agent_run_subagent', {
+      status: 'running',
+      phase: 'started',
+      subagentInvocation: true,
+      subagentName: 'Research Agent',
+      subagentAgentId: 'child-agent-1',
+      subagentTaskId: 'child-task-1',
+    });
+    const childReasoning = {
+      ...narration('Inspecting the projection boundary.', 'Research Agent'),
+      agentId: 'child-agent-1',
+    } satisfies ChatProjectionNode;
+    const childTool = tool('Search Toolkit', 'web_search', {
+      agentId: 'child-agent-1',
+      taskId: 'child-task-1',
+    });
+    const parentStatusCheck = tool('Agent Toolkit', 'agent_get_task_output', {
+      title: 'Checked sub-agent status',
+    });
+
+    const items = narrativeItemsOf([
+      delegated,
+      childReasoning,
+      childTool,
+      parentStatusCheck,
+    ]);
+
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({
+      kind: 'subagent',
+      call: { subagentName: 'Research Agent' },
+      children: [
+        {
+          kind: 'segment',
+          narration: 'Inspecting the projection boundary.',
+          calls: [{ methodName: 'web_search' }],
+        },
+      ],
+    });
+    expect(items[1]).toMatchObject({
+      kind: 'segment',
+      calls: [{ methodName: 'agent_get_task_output' }],
+    });
   });
 
   it('keeps differently titled calls from one toolkit in the same segment', () => {

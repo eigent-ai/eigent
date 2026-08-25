@@ -255,7 +255,7 @@ export const Inputbox = ({
     primaryAction === 'pause'
       ? t('chat.pause')
       : primaryAction === 'resume'
-        ? t('chat.run-resume')
+        ? t('layout.continue', { defaultValue: 'Continue' })
         : t('chat.send-now');
   const primaryActionDisabled =
     primaryAction === 'idle' ||

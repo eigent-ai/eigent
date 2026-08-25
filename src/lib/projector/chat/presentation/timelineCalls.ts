@@ -19,7 +19,13 @@ import type {
 } from '../types';
 
 import i18next from 'i18next';
-import type { TimelineToolInvocation, TimelineTraceRow } from './types';
+import { actionKindForActivities } from './actionKind';
+import type {
+  TimelineActionKind,
+  TimelineToolInvocation,
+  TimelineToolNotice,
+  TimelineTraceRow,
+} from './types';
 
 /**
  * Who produced the response half of one call. A toolkit invocation and a
@@ -37,6 +43,8 @@ export interface TimelineCall {
   executor: TimelineCallExecutor;
   /** `Toolkit · method` for a tool, `You · Allowed` for a human decision. */
   title: string;
+  /** Projection-owned category consumed by the action icon matcher. */
+  actionKind: TimelineActionKind;
   status: ChatActivityStatus;
   /** Presentation-safe request text. Never a raw transport payload. */
   input?: string;
@@ -44,6 +52,8 @@ export interface TimelineCall {
   output?: string;
   /** Short lifecycle/outcome summary, separate from request and response. */
   detail?: string;
+  /** Correlated progress/result text; never replaces request/response detail. */
+  notice?: TimelineToolNotice;
   inputLabel: string;
   outputLabel: string;
   emptyOutputText?: string;
@@ -57,6 +67,14 @@ export interface TimelineCall {
   /** Toolkit/method identity, used for segmentation and label derivation. */
   toolkitName?: string;
   methodName?: string;
+  /** Delegated-agent classification supplied by projection, never title inference. */
+  subagentInvocation?: boolean;
+  subagentType?: string;
+  subagentName?: string;
+  subagentAgentId?: string;
+  subagentTaskId?: string;
+  agentProvider?: string;
+  agentModel?: string;
   /** Present only for human calls; used for receipt correlation in tests. */
   interactionId?: string;
   interactionFamily?: TimelineInteractionFamily;
@@ -182,10 +200,15 @@ function toolCall(invocation: TimelineToolInvocation): TimelineCall {
     runId: invocation.runId,
     executor: 'toolkit',
     title: invocation.title,
-    status: invocation.status,
+    actionKind: invocation.actionKind,
+    status:
+      invocation.subagentInvocation && invocation.subagentStatus
+        ? invocation.subagentStatus
+        : invocation.status,
     input: invocation.input,
     output: invocation.output,
     detail: invocation.detail,
+    notice: invocation.notice,
     inputLabel: i18next.t('chat.timeline-request', {
       defaultValue: 'Request',
     }),
@@ -200,6 +223,13 @@ function toolCall(invocation: TimelineToolInvocation): TimelineCall {
     toolCallId: invocation.toolCallId,
     toolkitName: invocation.toolkitName,
     methodName: invocation.methodName || invocation.toolName,
+    subagentInvocation: invocation.subagentInvocation,
+    subagentType: invocation.subagentType,
+    subagentName: invocation.subagentName,
+    subagentAgentId: invocation.subagentAgentId,
+    subagentTaskId: invocation.subagentTaskId,
+    agentProvider: invocation.agentProvider,
+    agentModel: invocation.agentModel,
   };
 }
 
@@ -213,6 +243,7 @@ function humanCall(id: string, node: ChatInteractionNode): TimelineCall {
     runId: node.runId,
     executor: 'human',
     title: humanCallTitle(node),
+    actionKind: 'message',
     status: interactionCallStatus(node),
     input: node.prompt,
     output: node.response,
@@ -243,6 +274,7 @@ function activityCall(id: string, node: ChatActivityNode): TimelineCall {
     runId: node.runId,
     executor: 'toolkit',
     title: node.title,
+    actionKind: actionKindForActivities([node]),
     status: node.status,
     input: node.input,
     output: node.output || node.detail,

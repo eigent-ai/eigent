@@ -24,6 +24,8 @@ import type {
   ChatRunStatus,
   ChatRunStatusNode,
 } from '../types';
+import { actionKindForActivities } from './actionKind';
+import { compareTimelineNodes, sortTimelineNodes } from './chronology';
 import type {
   TimelineRunSummary,
   TimelineRunTimestamps,
@@ -47,56 +49,10 @@ const TERMINAL_RUN_STATUSES = new Set<ChatRunStatus>([
   'interrupted',
 ]);
 
-type IndexedNode = {
-  node: ChatProjectionNode;
-  inputIndex: number;
-};
-
-function finiteNumber(value: number | null | undefined): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
-}
-
 function timestampValue(value: string | null | undefined): number | null {
   if (!value) return null;
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function compareNullableNumbers(
-  left: number | null,
-  right: number | null
-): number {
-  if (left === null && right === null) return 0;
-  if (left === null) return 1;
-  if (right === null) return -1;
-  return left - right;
-}
-
-function compareIndexedNodes(left: IndexedNode, right: IndexedNode): number {
-  const sequenceDifference = compareNullableNumbers(
-    finiteNumber(left.node.runSequence),
-    finiteNumber(right.node.runSequence)
-  );
-  if (sequenceDifference) return sequenceDifference;
-
-  const cursorDifference = compareNullableNumbers(
-    finiteNumber(left.node.cloudCursor),
-    finiteNumber(right.node.cloudCursor)
-  );
-  if (cursorDifference) return cursorDifference;
-
-  const timestampDifference = compareNullableNumbers(
-    timestampValue(left.node.createdAt),
-    timestampValue(right.node.createdAt)
-  );
-  if (timestampDifference) return timestampDifference;
-
-  const eventDifference = left.node.eventId.localeCompare(right.node.eventId);
-  if (eventDifference) return eventDifference;
-
-  const idDifference = left.node.id.localeCompare(right.node.id);
-  if (idDifference) return idDifference;
-  return left.inputIndex - right.inputIndex;
 }
 
 function firstText(
@@ -340,6 +296,7 @@ function composeToolInvocation(
     lastNodeId: semanticLast.id,
     runSequence: semanticFirst.runSequence,
     title: semanticLast.title || semanticFirst.title,
+    actionKind: actionKindForActivities(semanticNodes),
     status: semanticLast.status,
     phase: activityPhase(semanticLast),
     input,
@@ -355,6 +312,21 @@ function composeToolInvocation(
     toolkitName: firstText(semanticNodes.map((node) => node.toolkitName)),
     methodName: firstText(semanticNodes.map((node) => node.methodName)),
     toolName: firstText(semanticNodes.map((node) => node.toolName)),
+    subagentInvocation: semanticNodes.some(
+      (node) => node.subagentInvocation === true
+    ),
+    subagentType: firstText(semanticNodes.map((node) => node.subagentType)),
+    subagentName: firstText(semanticNodes.map((node) => node.subagentName)),
+    subagentStatus: [...semanticNodes]
+      .reverse()
+      .map((node) => node.subagentStatus)
+      .find((status) => status !== undefined),
+    subagentAgentId: firstText(
+      semanticNodes.map((node) => node.subagentAgentId)
+    ),
+    subagentTaskId: firstText(semanticNodes.map((node) => node.subagentTaskId)),
+    agentProvider: firstText(semanticNodes.map((node) => node.agentProvider)),
+    agentModel: firstText(semanticNodes.map((node) => node.agentModel)),
   };
 }
 
@@ -363,7 +335,14 @@ function composeTraceRows(
 ): TimelineTraceRow[] {
   const invocationIdByNode = invocationIdsByNode(nodes);
   const toolNodesByInvocation = new Map<string, ChatActivityNode[]>();
+  const noticeByToolCallId = new Map<
+    string,
+    Extract<ChatProjectionNode, { kind: 'notice' }>
+  >();
   for (const node of nodes) {
+    if (node.kind === 'notice' && node.toolCallId) {
+      noticeByToolCallId.set(node.toolCallId, node);
+    }
     if (
       node.kind !== 'activity' ||
       (node.activityType !== 'tool' && node.activityType !== 'terminal')
@@ -451,10 +430,21 @@ function composeTraceRows(
     const id = invocationIdByNode.get(node.id)!;
     if (emittedToolInvocations.has(id)) continue;
     emittedToolInvocations.add(id);
-    const invocation = {
+    const invocation: TimelineToolInvocation = {
       ...composeToolInvocation(toolNodesByInvocation.get(id)!),
       id,
     };
+    const correlatedNotice = invocation.toolCallId
+      ? noticeByToolCallId.get(invocation.toolCallId)
+      : undefined;
+    if (correlatedNotice) {
+      invocation.notice = {
+        eventId: correlatedNotice.eventId,
+        title: correlatedNotice.title,
+        content: correlatedNotice.content,
+        severity: correlatedNotice.severity,
+      };
+    }
     rows.push({
       kind: 'tool',
       id: invocation.id,
@@ -633,55 +623,30 @@ function composeOneRun(nodes: readonly ChatProjectionNode[]): TimelineRunView {
   };
 }
 
-function runOrder(left: IndexedNode[], right: IndexedNode[]): number {
-  const leftCursor =
-    left
-      .map(({ node }) => finiteNumber(node.cloudCursor))
-      .find((cursor) => cursor !== null) ?? null;
-  const rightCursor =
-    right
-      .map(({ node }) => finiteNumber(node.cloudCursor))
-      .find((cursor) => cursor !== null) ?? null;
-  const cursorDifference = compareNullableNumbers(leftCursor, rightCursor);
-  if (cursorDifference) return cursorDifference;
-
-  const leftCreatedAt =
-    left
-      .map(({ node }) => timestampValue(node.createdAt))
-      .find((timestamp) => timestamp !== null) ?? null;
-  const rightCreatedAt =
-    right
-      .map(({ node }) => timestampValue(node.createdAt))
-      .find((timestamp) => timestamp !== null) ?? null;
-  const timestampDifference = compareNullableNumbers(
-    leftCreatedAt,
-    rightCreatedAt
-  );
-  if (timestampDifference) return timestampDifference;
-
-  const runIdDifference = left[0]!.node.runId.localeCompare(
-    right[0]!.node.runId
-  );
-  if (runIdDifference) return runIdDifference;
-  return left[0]!.inputIndex - right[0]!.inputIndex;
+function runOrder(
+  left: readonly ChatProjectionNode[],
+  right: readonly ChatProjectionNode[]
+): number {
+  const nodeDifference = compareTimelineNodes(left[0]!, right[0]!);
+  if (nodeDifference) return nodeDifference;
+  return left[0]!.runId.localeCompare(right[0]!.runId);
 }
 
 /** Compose all event-native Runs without mutating the immutable node ledger. */
 export function composeTimelineRuns(
   nodes: readonly ChatProjectionNode[]
 ): TimelineRunView[] {
-  const grouped = new Map<string, IndexedNode[]>();
-  nodes.forEach((node, inputIndex) => {
+  const grouped = new Map<string, ChatProjectionNode[]>();
+  nodes.forEach((node) => {
     const runNodes = grouped.get(node.runId);
-    const indexed = { node, inputIndex };
-    if (runNodes) runNodes.push(indexed);
-    else grouped.set(node.runId, [indexed]);
+    if (runNodes) runNodes.push(node);
+    else grouped.set(node.runId, [node]);
   });
 
   return [...grouped.values()]
-    .map((runNodes) => [...runNodes].sort(compareIndexedNodes))
+    .map(sortTimelineNodes)
     .sort(runOrder)
-    .map((runNodes) => composeOneRun(runNodes.map(({ node }) => node)));
+    .map(composeOneRun);
 }
 
 /** Compose one Run while applying the same deterministic ordering contract. */

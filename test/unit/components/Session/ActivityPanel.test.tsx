@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { SessionActivityPanel } from '@/components/Session/SidePanel/components/ActivityPanel';
+import type { ChatProjectionNode } from '@/lib/projector/chat';
 import {
   act,
   fireEvent,
@@ -209,7 +210,7 @@ function overview(runId: string, withAgent = false) {
     createdAt: 1_000,
     updatedAt: 1_000,
     isCurrent: true,
-    nodes: withAgent
+    nodes: (withAgent
       ? [
           {
             id: 'agent-1',
@@ -229,7 +230,7 @@ function overview(runId: string, withAgent = false) {
             agentName: 'Agent One',
           },
         ]
-      : [],
+      : []) as ChatProjectionNode[],
   };
   return { currentRun: run, historicalRuns: [], runs: [run] };
 }
@@ -369,7 +370,30 @@ describe('SessionActivityPanel project scope', () => {
         toolName: 'run_remote_sub_agent',
         toolCallId: 'remote-subagent-call',
         subagentType: 'researcher',
+        subagentName: 'Research Agent',
+        subagentAgentId: 'child-agent-1',
         agentProvider: 'gemini_agents',
+      },
+      {
+        id: 'subagent-tool-2',
+        eventId: 'subagent-tool-2',
+        eventType: 'tool.prepared',
+        projectId: 'project-1',
+        runId: 'run-1',
+        runSequence: 2,
+        cloudCursor: 2,
+        createdAt: new Date(2_000).toISOString(),
+        legacyStep: null,
+        kind: 'activity',
+        activityType: 'tool',
+        status: 'running',
+        title: 'Started fitness researcher sub-agent',
+        toolName: 'agent_run_subagent',
+        toolCallId: 'a',
+        subagentType: 'fitness_researcher',
+        subagentName: 'Fitness UX Researcher',
+        subagentAgentId: 'b',
+        subagentInvocation: true,
       },
     ];
     mocks.overviews['project-1'] = scopedOverview;
@@ -385,6 +409,35 @@ describe('SessionActivityPanel project scope', () => {
     expect(container.querySelector('[data-agent-avatar="gemini"]')).toHaveClass(
       'rounded-sm'
     );
+    expect(
+      screen.getByRole('button', { name: 'Research Agent' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Fitness UX Researcher' })
+    ).toBeInTheDocument();
+    expect(
+      container.querySelector('[data-agent-avatar="subagent-dog"]')
+    ).toHaveClass('rounded-sm');
+    expect(
+      screen
+        .getByRole('button', { name: 'Research Agent' })
+        .closest('[data-session-panel-item-motion]')
+    ).toBeInTheDocument();
+    expect(
+      screen
+        .getByRole('button', { name: 'Fitness UX Researcher' })
+        .closest('[data-session-panel-item-motion]')
+    ).toBeInTheDocument();
+    expect(
+      container.querySelectorAll('[data-session-panel-section-motion]').length
+    ).toBeGreaterThanOrEqual(2);
+    expect(
+      Array.from(
+        container.querySelectorAll<HTMLElement>(
+          '[data-session-panel-item-motion], [data-session-panel-section-motion]'
+        )
+      ).every((element) => element.style.transform === '')
+    ).toBe(true);
   });
 
   it('automates agent accordion state per run while preserving user overrides', async () => {

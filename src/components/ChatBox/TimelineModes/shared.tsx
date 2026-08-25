@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { formatSplittingElapsed } from '@/components/ChatBox/MessageItem/TokenUtils';
+import { itemFadeMotion } from '@/components/ui/motion';
 import type { TimelineRunView } from '@/lib/projector/chat/presentation';
 import type { ProjectedArtifact } from '@/lib/projector/types';
 import { cn } from '@/lib/utils';
@@ -27,7 +28,6 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 export function isActiveRunStatus(status: TimelineRunView['status']): boolean {
   return ['pending', 'running', 'waiting_for_user', 'cancelling'].includes(
@@ -117,32 +117,6 @@ export function StatusInline({
   );
 }
 
-/**
- * Ephemeral tail marker for an actively progressing Run.
- *
- * This is derived from Run state instead of being appended to the durable
- * conversation, so it reassures the user during a quiet tool/model interval
- * without becoming a fake message on replay.
- */
-export function RunActivityIndicator() {
-  const { t } = useTranslation();
-
-  return (
-    <div
-      className="flex min-h-6 w-full items-center gap-2 text-ds-text-meta font-normal text-ds-ink-muted-default"
-      data-run-activity-indicator
-      role="status"
-      aria-live="polite"
-    >
-      <Loader2
-        aria-hidden
-        className="size-3.5 animate-spin text-ds-icon-information-default-default"
-      />
-      <span>{t('chat.run-working-indicator')}</span>
-    </div>
-  );
-}
-
 function safeTimestamp(value: string | null): number | null {
   if (!value) return null;
   const parsed = Date.parse(value);
@@ -228,38 +202,15 @@ const HEIGHT_MOTION = {
   height: { duration: 0.22, ease: CONTENT_EASE },
   opacity: { duration: 0.16, ease: CONTENT_EASE },
 } as const;
-const EVENT_ENTER_TRANSITION = {
-  duration: 0.18,
-  ease: [0.32, 0.72, 0, 1],
-} as const;
 const REDUCED_EVENT_ENTER_TRANSITION = {
   duration: 0.12,
   ease: [0.32, 0.72, 0, 1],
 } as const;
-const EVENT_LAYOUT_TRANSITION = {
-  duration: 0.22,
-  ease: [0.32, 0.72, 0, 1],
-} as const;
 
 export function eventEntryMotion(reducedMotion: boolean) {
-  if (reducedMotion) {
-    return {
-      initial: { opacity: 0 },
-      animate: { opacity: 1 },
-      layout: false,
-      transition: { opacity: REDUCED_EVENT_ENTER_TRANSITION },
-    } as const;
-  }
-
   return {
-    initial: { opacity: 0, transform: 'translateY(6px)' },
-    animate: { opacity: 1, transform: 'translateY(0px)' },
-    layout: 'position',
-    transition: {
-      opacity: EVENT_ENTER_TRANSITION,
-      transform: EVENT_ENTER_TRANSITION,
-      layout: EVENT_LAYOUT_TRANSITION,
-    },
+    ...itemFadeMotion(reducedMotion),
+    layout: false,
   } as const;
 }
 

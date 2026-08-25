@@ -15,11 +15,17 @@
 import { AgentMessageCard } from '@/components/ChatBox/MessageItem/AgentMessageCard';
 import { PreparingToExecuteTasks } from '@/components/ChatBox/MessageItem/PreparingToExecuteTasks';
 import { formatSplittingElapsed } from '@/components/ChatBox/MessageItem/TokenUtils';
+import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
 import { UserMessageCard } from '@/components/ChatBox/MessageItem/UserMessageCard';
+import { DsIcon } from '@/components/ui/ds-icon';
+import { itemFadeMotion } from '@/components/ui/motion';
+import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
 import ShinyText from '@/components/ui/ShinyText/ShinyText';
+import { AgentAvatar } from '@/components/Workspace/AgentAvatar';
 import {
-  segmentDefaultsOpen,
+  resolveSubagentPresentationIdentity,
   segmentTimelineRun,
+  type TimelineCall,
   type TimelineNarrativeItem,
   type TimelineRunView,
   type TimelineSegment,
@@ -31,6 +37,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 
+import { actionIcon } from './actionIcon';
 import { CallRow, isCallActiveStatus, isCallErrorStatus } from './CallRow';
 import { RunFilesGroup } from './RunFiles';
 import {
@@ -39,7 +46,6 @@ import {
   type InteractiveTimelinePlan,
   isActiveRunStatus,
   isTerminalRunStatus,
-  RunActivityIndicator,
   type TimelineModeProps,
   useRunElapsedMs,
 } from './shared';
@@ -52,7 +58,7 @@ import {
 const PRIMARY_TEXT_CLASS =
   '!text-ds-text-base font-normal text-ds-ink-default-default';
 const DERIVED_TEXT_CLASS =
-  '!text-ds-text-base font-normal text-ds-ink-default-default';
+  '!text-ds-text-base font-normal text-ds-ink-muted-default';
 
 type NarrativeWorkEntry =
   | {
@@ -78,6 +84,11 @@ function narrativeItemAgent(
     if (!id) return null;
     return { id, name: item.call.agentName?.trim() || fallbackName };
   }
+  if (item.kind === 'subagent') {
+    const id = (item.call.agentId || item.call.agentName || '').trim();
+    if (!id) return null;
+    return { id, name: item.call.agentName?.trim() || fallbackName };
+  }
   return null;
 }
 
@@ -90,6 +101,12 @@ function itemOwnsCall(
     return item.calls.some((call) => call.id === callId);
   }
   if (item.kind === 'interrupt') return item.call.id === callId;
+  if (item.kind === 'subagent') {
+    return (
+      item.call.id === callId ||
+      Boolean(item.children?.some((child) => itemOwnsCall(child, callId)))
+    );
+  }
   return false;
 }
 
@@ -98,12 +115,24 @@ function itemHasActiveCall(item: TimelineNarrativeItem): boolean {
     return item.calls.some((call) => isCallActiveStatus(call.status));
   }
   if (item.kind === 'interrupt') return isCallActiveStatus(item.call.status);
+  if (item.kind === 'subagent') {
+    return (
+      isCallActiveStatus(item.call.status) ||
+      Boolean(item.children?.some(itemHasActiveCall))
+    );
+  }
   return false;
 }
 
 function itemIsFailed(item: TimelineNarrativeItem): boolean {
   if (item.kind === 'segment') return isCallErrorStatus(item.status);
   if (item.kind === 'interrupt') return isCallErrorStatus(item.call.status);
+  if (item.kind === 'subagent') {
+    return (
+      isCallErrorStatus(item.call.status) ||
+      Boolean(item.children?.some(itemIsFailed))
+    );
+  }
   return false;
 }
 
@@ -185,11 +214,350 @@ function NarrativeWorkLogSummary({
   );
 }
 
-/**
- * One unit of work: the agent's narration, then a folded disclosure holding
- * the calls it made. The disclosure reuses the same rows the trajectory
- * timeline renders, so drilling in never requires switching modes.
- */
+function NarrativeToolGroup({
+  calls,
+  runActive,
+  latestRunningCallId,
+  reducedMotion,
+}: {
+  calls: readonly TimelineCall[];
+  runActive: boolean;
+  latestRunningCallId: string | null;
+  reducedMotion: boolean;
+}) {
+  const { t } = useTranslation();
+  const autoOpen = calls.some((call) => isCallErrorStatus(call.status));
+  const [open, setOpen] = useState(autoOpen);
+  const wasAutoOpen = useRef(autoOpen);
+
+  useEffect(() => {
+    if (autoOpen) setOpen(true);
+    else if (wasAutoOpen.current) setOpen(false);
+    wasAutoOpen.current = autoOpen;
+  }, [autoOpen]);
+
+  const callCount = calls.length;
+  const actionKinds = useMemo(
+    () => [...new Set(calls.map((call) => call.actionKind))],
+    [calls]
+  );
+  // The group owns only structure. Individual CallRows own invocation titles,
+  // so a one-call group never repeats its child's title in the header.
+  const toolGroupLabel = t('chat.timeline-action-count', {
+    defaultValue_one: '{{count}} action',
+    defaultValue_other: '{{count}} actions',
+    count: callCount,
+  });
+  // A closed segment hides the running call, so the shimmer moves up to the
+  // label. Opening it hands the shimmer back to the call that owns it, which
+  // keeps exactly one live indicator on screen either way.
+  const ownsRunningCall = calls.some((call) => call.id === latestRunningCallId);
+  const shimmerOnLabel = !open && ownsRunningCall;
+
+  return (
+    <div className="flex w-full min-w-0 flex-col items-start">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className={cn(
+          'group inline-flex max-w-full min-w-0 items-center gap-ds-6 self-start rounded-ds-compact-control px-0 py-ds-2 text-left text-ds-ink-muted-default transition-colors hover:text-ds-ink-default-default focus-visible:text-ds-ink-default-default',
+          DS_FOCUS_RING
+        )}
+        data-narrative-segment-call-count={callCount}
+        data-narrative-segment-trigger
+      >
+        <span
+          aria-hidden
+          className="inline-flex shrink-0 items-center gap-ds-6"
+          data-narrative-segment-action-icons
+        >
+          {actionKinds.map((kind) => (
+            <DsIcon
+              icon={actionIcon(kind)}
+              key={kind}
+              recipe="main"
+              data-narrative-segment-action-icon={kind}
+            />
+          ))}
+        </span>
+        {shimmerOnLabel ? (
+          <ShinyText
+            speed={2.5}
+            text={toolGroupLabel}
+            className="min-w-0 shrink overflow-hidden !text-ds-text-base !font-normal text-ellipsis whitespace-nowrap group-hover:!bg-none group-hover:!text-ds-ink-default-default group-focus-visible:!bg-none group-focus-visible:!text-ds-ink-default-default"
+          />
+        ) : (
+          <span className="min-w-0 shrink overflow-hidden !text-ds-text-base font-normal text-ellipsis whitespace-nowrap">
+            {toolGroupLabel}
+          </span>
+        )}
+        <DsIcon
+          icon={ChevronRight}
+          className={cn(
+            'opacity-0 transition-[opacity,transform] duration-200 group-hover:opacity-100 group-focus-visible:opacity-100',
+            open && 'rotate-90 opacity-100'
+          )}
+          data-narrative-segment-chevron
+        />
+      </button>
+      <AnimatePresence initial={false}>
+        {open ? (
+          <motion.div
+            key="narrative-segment-detail"
+            {...disclosureMotion(reducedMotion)}
+            className="w-full min-w-0 overflow-hidden"
+          >
+            <div
+              className="flex min-w-0 flex-col gap-ds-4 pt-ds-4"
+              data-narrative-segment-calls
+            >
+              <AnimatePresence initial={false}>
+                {calls.map((call) => (
+                  <motion.div
+                    {...itemFadeMotion(reducedMotion)}
+                    data-narrative-event-motion
+                    data-narrative-event-motion-id={call.id}
+                    key={call.id}
+                  >
+                    <CallRow
+                      call={call}
+                      latestRunningCallId={latestRunningCallId}
+                      reducedMotion={reducedMotion}
+                      runActive={runActive}
+                    />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function NarrativeSubagentRow({
+  item,
+  latestRunningCallId,
+  reducedMotion,
+  runActive,
+}: {
+  item: Extract<TimelineNarrativeItem, { kind: 'subagent' }>;
+  latestRunningCallId: string | null;
+  reducedMotion: boolean;
+  runActive: boolean;
+}) {
+  const { t } = useTranslation();
+  const { call } = item;
+  const subagentIdentity = resolveSubagentPresentationIdentity({
+    subagentName: call.subagentName,
+    subagentType: call.subagentType,
+    toolCallId: call.toolCallId,
+    stepId: call.stepId,
+    subagentAgentId: call.subagentAgentId,
+    subagentTaskId: call.subagentTaskId,
+    fallbackName: t('layout.session-panel-subagent', {
+      defaultValue: 'Subagent',
+    }),
+    fallbackSeed: call.id,
+  });
+  const agentName = subagentIdentity.name;
+  let statusLabel: string;
+  let statusClassName: string;
+
+  switch (call.status) {
+    case 'pending':
+      statusLabel = t('chat.timeline-created', { defaultValue: 'Created' });
+      statusClassName = 'text-ds-text-status-pending-default-default';
+      break;
+    case 'running':
+      statusLabel = t('chat.timeline-subagent-working', {
+        defaultValue: 'Working on it',
+      });
+      statusClassName = 'text-ds-text-status-running-default-default';
+      break;
+    case 'completed':
+      statusLabel = t('chat.timeline-subagent-finished', {
+        defaultValue: 'Finished',
+      });
+      statusClassName = 'text-ds-text-status-completed-default-default';
+      break;
+    case 'failed':
+      statusLabel = t('chat.timeline-failed', { defaultValue: 'Failed' });
+      statusClassName = 'text-ds-text-status-error-default-default';
+      break;
+    case 'cancelled':
+      statusLabel = t('chat.timeline-cancelled', {
+        defaultValue: 'Cancelled',
+      });
+      statusClassName = 'text-ds-text-status-cancelled-default-default';
+      break;
+    case 'timed_out':
+      statusLabel = t('chat.timeline-timed-out', { defaultValue: 'Timed out' });
+      statusClassName = 'text-ds-text-status-error-default-default';
+      break;
+    case 'blocked':
+      statusLabel = t('chat.timeline-blocked', { defaultValue: 'Blocked' });
+      statusClassName = 'text-ds-text-status-pending-default-default';
+      break;
+    case 'interrupted':
+      statusLabel = t('chat.timeline-interrupted', {
+        defaultValue: 'Interrupted',
+      });
+      statusClassName = 'text-ds-text-status-cancelled-default-default';
+      break;
+    case 'outcome_unknown':
+    case 'unknown':
+      statusLabel = t('chat.tool-status-unknown', { defaultValue: 'Unknown' });
+      statusClassName = 'text-ds-ink-muted-default';
+      break;
+  }
+  const active = isCallActiveStatus(call.status);
+  const failed = isCallErrorStatus(call.status);
+  const autoOpen = active || failed;
+  const [open, setOpen] = useState(autoOpen);
+  const wasAutoOpen = useRef(autoOpen);
+
+  useEffect(() => {
+    if (autoOpen) setOpen(true);
+    else if (wasAutoOpen.current) setOpen(false);
+    wasAutoOpen.current = autoOpen;
+  }, [autoOpen]);
+
+  const reasoningText =
+    item.summary?.trim() || item.authoredStepTitle?.trim() || '';
+  const reasoning =
+    reasoningText && reasoningText !== agentName ? reasoningText : undefined;
+  const description =
+    call.notice?.content.trim() ||
+    call.detail ||
+    (failed
+      ? t('chat.no-failure-details', {
+          defaultValue: 'No failure details were recorded.',
+        })
+      : undefined);
+
+  return (
+    <div
+      className="flex w-full min-w-0 flex-col items-start"
+      data-narrative-subagent-row
+      data-narrative-subagent-status={call.status}
+      data-timeline-call-id={call.toolCallId}
+    >
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-label={`${agentName} · ${statusLabel}`}
+        onClick={() => setOpen((value) => !value)}
+        className={cn(
+          'group inline-flex max-w-full min-w-0 items-center justify-start gap-ds-6 self-start rounded-ds-compact-control px-0 py-ds-4 text-left transition-opacity hover:opacity-80',
+          DS_FOCUS_RING
+        )}
+        data-narrative-subagent-trigger
+      >
+        <AgentAvatar
+          agentName={agentName}
+          agentType="subagent"
+          avatarSeed={subagentIdentity.avatarSeed}
+          className="rounded-sm"
+          model={call.agentModel}
+          provider={call.agentProvider}
+          size="md"
+        />
+        <span
+          className="min-w-0 truncate text-ds-text-base font-medium text-ds-ink-default-default"
+          data-narrative-subagent-name
+        >
+          {agentName}
+        </span>
+        <span
+          aria-live="polite"
+          className={cn(
+            'shrink-0 text-ds-text-meta font-normal',
+            statusClassName
+          )}
+          data-narrative-subagent-status-label
+        >
+          {statusLabel}
+        </span>
+        <DsIcon
+          icon={ChevronRight}
+          className={cn(
+            'text-ds-ink-subtle-default transition-transform duration-200',
+            open && 'rotate-90'
+          )}
+          data-narrative-subagent-chevron
+        />
+      </button>
+      <AnimatePresence initial={false}>
+        {open ? (
+          <motion.div
+            key="narrative-subagent-detail"
+            {...disclosureMotion(reducedMotion)}
+            className="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-ds-6 overflow-hidden"
+          >
+            <span aria-hidden className="w-ds-icon-main" />
+            <div
+              className="flex w-full min-w-0 flex-col gap-ds-10 pt-ds-4"
+              data-narrative-subagent-content
+            >
+              {reasoning ? (
+                <span
+                  className={cn(
+                    'break-words whitespace-pre-wrap',
+                    DERIVED_TEXT_CLASS
+                  )}
+                  data-narrative-subagent-reasoning
+                >
+                  {reasoning}
+                </span>
+              ) : null}
+              <ToolInputOutputDetails
+                appearance="code-scroll"
+                description={description}
+                input={call.input}
+                inputLabel={call.inputLabel}
+                output={call.output}
+                outputLabel={call.outputLabel}
+                showEmptyOutput={runActive && active && !call.output}
+                emptyOutputText={t('chat.timeline-waiting-response', {
+                  defaultValue: 'Waiting for a response.',
+                })}
+              />
+              {item.children?.length ? (
+                <div
+                  className="flex min-w-0 flex-col gap-ds-stack-related"
+                  data-narrative-subagent-children
+                >
+                  <AnimatePresence initial={false}>
+                    {item.children.map((child) => (
+                      <motion.div
+                        {...itemFadeMotion(reducedMotion)}
+                        data-narrative-event-motion
+                        data-narrative-event-motion-id={child.id}
+                        key={child.id}
+                      >
+                        <NarrativeItem
+                          item={child}
+                          latestRunningCallId={latestRunningCallId}
+                          reducedMotion={reducedMotion}
+                          runActive={runActive}
+                        />
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </div>
+              ) : null}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/** One unit of reasoning followed by calls in their projected order. */
 function NarrativeSegment({
   segment,
   runActive,
@@ -201,32 +569,10 @@ function NarrativeSegment({
   latestRunningCallId: string | null;
   reducedMotion: boolean;
 }) {
-  const autoOpen = segmentDefaultsOpen(segment);
-  const [open, setOpen] = useState(autoOpen);
-  const wasAutoOpen = useRef(autoOpen);
-
-  useEffect(() => {
-    if (autoOpen) setOpen(true);
-    else if (wasAutoOpen.current) setOpen(false);
-    wasAutoOpen.current = autoOpen;
-  }, [autoOpen]);
-
-  const hasCalls = segment.calls.length > 0;
-  // With no narration the derived label is the only text there is, so it is
-  // promoted to primary rather than leaving the segment visually empty.
-  const labelIsOnlyText = !segment.narration;
-  // A closed segment hides the running call, so the shimmer moves up to the
-  // label. Opening it hands the shimmer back to the call that owns it, which
-  // keeps exactly one live indicator on screen either way.
-  const ownsRunningCall = segment.calls.some(
-    (call) => call.id === latestRunningCallId
-  );
-  const shimmerOnLabel = !open && ownsRunningCall;
-
   return (
     <div
       className={cn(
-        'flex min-w-0 flex-col gap-2',
+        'flex min-w-0 flex-col gap-ds-stack-related',
         segment.parentStepId
           ? 'ml-4 w-[calc(100%-1rem)] border-x-0 border-t-0 border-r-0 border-b-0 border-solid border-ds-border-neutral-subtle-default pl-3'
           : 'w-full'
@@ -236,79 +582,39 @@ function NarrativeSegment({
       data-narrative-segment-status={segment.status}
       data-narrative-parent-step-id={segment.parentStepId}
     >
-      {segment.narration ? (
-        <span
-          className={cn('break-words whitespace-pre-wrap', PRIMARY_TEXT_CLASS)}
-          data-narrative-segment-narration
-        >
-          {segment.narration}
-        </span>
-      ) : null}
-      {hasCalls ? (
-        <div className="flex w-full min-w-0 flex-col items-start">
-          <button
-            type="button"
-            aria-expanded={open}
-            onClick={() => setOpen((value) => !value)}
-            className="group inline-flex max-w-full min-w-0 items-center gap-1 self-start px-0 py-0.5 text-left opacity-60 transition-opacity hover:opacity-100"
-            data-narrative-segment-trigger
-          >
-            {shimmerOnLabel ? (
-              <ShinyText
-                speed={2.5}
-                text={segment.label}
-                className={cn(
-                  'min-w-0 shrink overflow-hidden !font-normal text-ellipsis whitespace-nowrap',
-                  labelIsOnlyText ? PRIMARY_TEXT_CLASS : DERIVED_TEXT_CLASS
-                )}
-              />
-            ) : (
-              <span
-                className={cn(
-                  'min-w-0 shrink overflow-hidden text-ellipsis whitespace-nowrap',
-                  labelIsOnlyText ? PRIMARY_TEXT_CLASS : DERIVED_TEXT_CLASS,
-                  segment.status === 'failed' &&
-                    'text-ds-text-status-error-default-default'
-                )}
-              >
-                {segment.label}
-              </span>
-            )}
-            <ChevronRight
-              aria-hidden
+      {segment.narration || segment.summary ? (
+        <div className="flex min-w-0 flex-col gap-ds-stack-related">
+          {segment.narration ? (
+            <span
               className={cn(
-                'size-4 shrink-0 transition-[opacity,transform] duration-200',
-                segment.status === 'failed'
-                  ? 'text-ds-text-status-error-default-default'
-                  : 'text-ds-ink-subtle-default',
-                open
-                  ? 'rotate-90 opacity-100'
-                  : 'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100'
+                'break-words whitespace-pre-wrap',
+                PRIMARY_TEXT_CLASS
               )}
-            />
-          </button>
-          <AnimatePresence initial={false}>
-            {open ? (
-              <motion.div
-                key="narrative-segment-detail"
-                {...disclosureMotion(reducedMotion)}
-                className="w-full min-w-0 overflow-hidden"
-              >
-                <div className="flex min-w-0 flex-col gap-1 pt-1">
-                  {segment.calls.map((call) => (
-                    <CallRow
-                      call={call}
-                      key={call.id}
-                      latestRunningCallId={latestRunningCallId}
-                      reducedMotion={reducedMotion}
-                      runActive={runActive}
-                    />
-                  ))}
-                </div>
-              </motion.div>
-            ) : null}
-          </AnimatePresence>
+              data-narrative-segment-narration
+            >
+              {segment.narration}
+            </span>
+          ) : null}
+          {segment.summary ? (
+            <span
+              className={cn(
+                'break-words whitespace-pre-wrap',
+                DERIVED_TEXT_CLASS
+              )}
+              data-narrative-segment-summary
+            >
+              {segment.summary}
+            </span>
+          ) : null}
         </div>
+      ) : null}
+      {segment.calls.length > 0 ? (
+        <NarrativeToolGroup
+          calls={segment.calls}
+          latestRunningCallId={latestRunningCallId}
+          reducedMotion={reducedMotion}
+          runActive={runActive}
+        />
       ) : null}
     </div>
   );
@@ -405,6 +711,16 @@ function NarrativeItem({
   if (item.kind === 'notice') {
     return <NarrativeNotice item={item} />;
   }
+  if (item.kind === 'subagent') {
+    return (
+      <NarrativeSubagentRow
+        item={item}
+        latestRunningCallId={latestRunningCallId}
+        reducedMotion={reducedMotion}
+        runActive={runActive}
+      />
+    );
+  }
   return (
     <CallRow
       call={item.call}
@@ -480,17 +796,10 @@ function NarrativeAgentGroup({
             {agentName}
           </span>
         )}
-        {open ? (
-          <ChevronDown
-            aria-hidden
-            className="size-4 shrink-0 text-ds-ink-muted-default"
-          />
-        ) : (
-          <ChevronRight
-            aria-hidden
-            className="size-4 shrink-0 text-ds-ink-muted-default"
-          />
-        )}
+        <DsIcon
+          icon={open ? ChevronDown : ChevronRight}
+          className="text-ds-ink-muted-default"
+        />
       </button>
       <AnimatePresence initial={false}>
         {open ? (
@@ -499,16 +808,24 @@ function NarrativeAgentGroup({
             {...disclosureMotion(reducedMotion)}
             className="overflow-hidden"
           >
-            <div className="flex min-w-0 flex-col gap-2 pt-1">
-              {items.map((item) => (
-                <NarrativeItem
-                  item={item}
-                  key={item.id}
-                  latestRunningCallId={latestRunningCallId}
-                  reducedMotion={reducedMotion}
-                  runActive={animationsActive}
-                />
-              ))}
+            <div className="flex min-w-0 flex-col gap-ds-stack-related pt-ds-4">
+              <AnimatePresence initial={false}>
+                {items.map((item) => (
+                  <motion.div
+                    {...itemFadeMotion(reducedMotion)}
+                    data-narrative-event-motion
+                    data-narrative-event-motion-id={item.id}
+                    key={item.id}
+                  >
+                    <NarrativeItem
+                      item={item}
+                      latestRunningCallId={latestRunningCallId}
+                      reducedMotion={reducedMotion}
+                      runActive={animationsActive}
+                    />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
             </div>
           </motion.div>
         ) : null}
@@ -527,17 +844,26 @@ function latestRunningCallId(
 ): string | null {
   if (!runActive) return null;
   let latest: string | null = null;
-  for (const item of items) {
-    if (item.kind === 'segment') {
-      for (const call of item.calls) {
-        if (isCallActiveStatus(call.status)) latest = call.id;
+  const visit = (entries: readonly TimelineNarrativeItem[]) => {
+    for (const item of entries) {
+      if (item.kind === 'segment') {
+        for (const call of item.calls) {
+          if (isCallActiveStatus(call.status)) latest = call.id;
+        }
+        continue;
       }
-      continue;
+      if (item.kind === 'interrupt' && isCallActiveStatus(item.call.status)) {
+        latest = item.call.id;
+      }
+      if (item.kind === 'subagent' && isCallActiveStatus(item.call.status)) {
+        latest = item.call.id;
+      }
+      if (item.kind === 'subagent' && item.children?.length) {
+        visit(item.children);
+      }
     }
-    if (item.kind === 'interrupt' && isCallActiveStatus(item.call.status)) {
-      latest = item.call.id;
-    }
-  }
+  };
+  visit(items);
   return latest;
 }
 
@@ -600,17 +926,10 @@ function NarrativeRunWorkLog({
         <span className="text-ds-text-base font-medium text-ds-ink-muted-default">
           <NarrativeWorkLogSummary paused={paused} run={run} />
         </span>
-        {open ? (
-          <ChevronDown
-            aria-hidden
-            className="size-4 shrink-0 text-ds-ink-muted-default"
-          />
-        ) : (
-          <ChevronRight
-            aria-hidden
-            className="size-4 shrink-0 text-ds-ink-muted-default"
-          />
-        )}
+        <DsIcon
+          icon={open ? ChevronDown : ChevronRight}
+          className="text-ds-ink-muted-default"
+        />
       </button>
       <AnimatePresence initial={false}>
         {open ? (
@@ -620,35 +939,43 @@ function NarrativeRunWorkLog({
             className="overflow-hidden"
           >
             <div
-              className="flex min-w-0 flex-col gap-3 py-2"
+              className="flex min-w-0 flex-col gap-ds-stack-related py-ds-8"
               data-narrative-timeline
             >
-              {entries.map((entry, index) => {
-                if (entry.kind === 'agent') {
+              <AnimatePresence initial={false}>
+                {entries.map((entry, index) => {
+                  const entryId =
+                    entry.kind === 'agent' ? entry.id : entry.item.id;
                   return (
-                    <NarrativeAgentGroup
-                      agentName={entry.agentName}
-                      animationsActive={animationsActive}
-                      isLatest={index === lastAgentIndex}
-                      items={entry.items}
-                      key={entry.id}
-                      latestRunningCallId={runningCallId}
-                      reducedMotion={reducedMotion}
-                      runLive={live}
-                    />
+                    <motion.div
+                      {...itemFadeMotion(reducedMotion)}
+                      data-narrative-event-motion
+                      data-narrative-event-motion-id={entryId}
+                      key={entryId}
+                    >
+                      {entry.kind === 'agent' ? (
+                        <NarrativeAgentGroup
+                          agentName={entry.agentName}
+                          animationsActive={animationsActive}
+                          isLatest={index === lastAgentIndex}
+                          items={entry.items}
+                          latestRunningCallId={runningCallId}
+                          reducedMotion={reducedMotion}
+                          runLive={live}
+                        />
+                      ) : (
+                        <NarrativeItem
+                          interactivePlan={interactivePlan}
+                          item={entry.item}
+                          latestRunningCallId={runningCallId}
+                          reducedMotion={reducedMotion}
+                          runActive={animationsActive}
+                        />
+                      )}
+                    </motion.div>
                   );
-                }
-                return (
-                  <NarrativeItem
-                    interactivePlan={interactivePlan}
-                    item={entry.item}
-                    key={entry.item.id}
-                    latestRunningCallId={runningCallId}
-                    reducedMotion={reducedMotion}
-                    runActive={animationsActive}
-                  />
-                );
-              })}
+                })}
+              </AnimatePresence>
             </div>
           </motion.div>
         ) : null}
@@ -725,9 +1052,6 @@ export function NarrativeTimeline({
                 projectId={run.projectId}
                 runId={run.runId}
               />
-            ) : null}
-            {run.status === 'running' && !paused && hasWorkBand ? (
-              <RunActivityIndicator />
             ) : null}
           </section>
         );

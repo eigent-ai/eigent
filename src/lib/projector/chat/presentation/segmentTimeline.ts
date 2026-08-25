@@ -38,7 +38,6 @@ export type SegmentBoundaryReason =
   | 'narration'
   | 'agent_change'
   | 'task_change'
-  | 'toolkit_change'
   | 'authored_step'
   | 'interrupt';
 
@@ -54,6 +53,8 @@ export interface TimelineSegment {
   source: TimelineSegmentSource;
   /** The agent's own words. Rendered as primary text. May be empty. */
   narration: string;
+  /** Optional authored outcome, rendered adjacent to rather than inside narration. */
+  summary?: string;
   narrationNodeIds: readonly string[];
   /** Machine-derived description, e.g. `Searched · 14 events`. */
   label: string;
@@ -74,6 +75,18 @@ export interface TimelineInterruptItem {
   call: TimelineCall;
 }
 
+/** One projection-classified delegated agent rendered as a single row. */
+export interface TimelineSubagentItem {
+  kind: 'subagent';
+  id: string;
+  call: TimelineCall;
+  /** Authored Step text folded into the delegated-agent detail, not its identity. */
+  authoredStepTitle?: string;
+  summary?: string;
+  /** Contiguous child-agent work admitted only by explicit opaque identity. */
+  children?: readonly TimelineNarrativeItem[];
+}
+
 export interface TimelinePlanItem {
   kind: 'plan';
   id: string;
@@ -89,6 +102,7 @@ export interface TimelineNoticeItem {
 export type TimelineNarrativeItem =
   | TimelineSegment
   | TimelineInterruptItem
+  | TimelineSubagentItem
   | TimelinePlanItem
   | TimelineNoticeItem;
 
@@ -253,7 +267,7 @@ interface OpenSegment {
 }
 
 function sealSegment(open: OpenSegment): TimelineSegment | null {
-  const narration = open.narration.join('\n\n').trim();
+  const narration = open.narration.join('\n').trim();
   if (!narration && open.calls.length === 0) return null;
 
   return {
@@ -274,21 +288,13 @@ function sealSegment(open: OpenSegment): TimelineSegment | null {
 }
 
 /**
- * Toolkit identity for segmentation. It reads the explicit toolkit field
- * rather than parsing the display title, so two differently-titled calls from
- * the same toolkit stay in one segment.
- */
-function toolkitIdentity(call: TimelineCall): string {
-  return (call.toolkitName || '').trim().toLowerCase();
-}
-
-/**
  * Fold a Run's trace rows into narrative segments.
  *
  * Boundaries come only from data the projection already carries: a new piece
- * of narration, a change of agent or task, a change of toolkit, or an
- * interrupt. Wall-clock gaps are deliberately not a boundary — they split
- * long-running single tools into meaningless fragments.
+ * of narration, a change of agent or task, or an interrupt. Toolkit changes
+ * stay inside one contiguous action group. Wall-clock gaps are deliberately
+ * not a boundary — they split long-running single tools into meaningless
+ * fragments.
  */
 export function segmentTimelineRows(
   traceRows: readonly TimelineTraceRow[]
@@ -353,6 +359,12 @@ export function segmentTimelineRows(
     const call = toTimelineCall(row);
     if (!call) continue;
 
+    if (call.subagentInvocation === true) {
+      close();
+      items.push({ kind: 'subagent', id: row.id, call });
+      continue;
+    }
+
     if (call.executor === 'human') {
       close();
       items.push({ kind: 'interrupt', id: row.id, call });
@@ -369,17 +381,11 @@ export function segmentTimelineRows(
         current.calls.length > 0 && (current.taskId || call.taskId)
           ? current.taskId !== call.taskId
           : false;
-      const toolkitChanged =
-        current.calls.length > 0 &&
-        toolkitIdentity(current.calls[0]!) !== toolkitIdentity(call);
-
-      if (agentChanged || taskChanged || toolkitChanged) {
+      if (agentChanged || taskChanged) {
         close();
         const reason: SegmentBoundaryReason = agentChanged
           ? 'agent_change'
-          : taskChanged
-            ? 'task_change'
-            : 'toolkit_change';
+          : 'task_change';
         start(row, reason, call);
       }
     }
@@ -426,9 +432,9 @@ function authoredStepStatusLabel(step: ChatStepNode): string {
 
 /**
  * Prefer code-owned Step boundaries whenever a Run contains Step facts.
- * Explicitly-correlated calls are folded under their Step; everything else
- * remains visible through the existing derived fallback and is never grouped
- * by time or DOM adjacency.
+ * Step text becomes an authored reasoning item when work actually starts.
+ * Calls remain in receipt order and flow through the derived action grouper,
+ * so a later tool can never jump above an intervening sub-agent or interrupt.
  */
 function segmentAuthoredTimelineRows(
   traceRows: readonly TimelineTraceRow[]
@@ -439,42 +445,32 @@ function segmentAuthoredTimelineRows(
   if (stepEvents.length === 0) return segmentTimelineRows(traceRows);
 
   const latestByStep = new Map<string, ChatStepNode>();
-  const firstSequenceByStep = new Map<string, number>();
+  const activeSequenceByStep = new Map<string, number>();
   for (const step of stepEvents) {
     latestByStep.set(step.stepId, step);
-    if (!firstSequenceByStep.has(step.stepId)) {
-      firstSequenceByStep.set(step.stepId, step.runSequence);
-    }
-  }
-  const callsByStep = new Map<string, TimelineCall[]>();
-  for (const row of traceRows) {
-    const call = toTimelineCall(row);
     if (
-      !call?.stepId ||
-      call.executor === 'human' ||
-      !latestByStep.has(call.stepId)
+      !activeSequenceByStep.has(step.stepId) &&
+      !(step.phase === 'requested' && step.status === 'pending')
     ) {
-      continue;
+      activeSequenceByStep.set(step.stepId, step.runSequence);
     }
-    const calls = callsByStep.get(call.stepId);
-    if (calls) calls.push(call);
-    else callsByStep.set(call.stepId, [call]);
   }
   const segmentFor = (stepId: string): TimelineSegment => {
     const step = latestByStep.get(stepId)!;
-    const calls = callsByStep.get(stepId) || [];
     const summary = step.summary?.trim();
     return {
       kind: 'segment',
       id: `timeline-step:${step.stepId}`,
       runId: step.runId,
       source: 'authored',
-      narration: summary ? `${step.title}\n\n${summary}` : step.title,
+      // A Step lifecycle owns one text slot. Later authored progress replaces
+      // the earlier label instead of rendering as a second Timeline event.
+      narration: summary || step.title,
       narrationNodeIds: stepEvents
         .filter((event) => event.stepId === stepId)
         .map((event) => event.id),
-      label: deriveSegmentLabel(calls) || authoredStepStatusLabel(step),
-      calls,
+      label: authoredStepStatusLabel(step),
+      calls: [],
       status: step.status,
       agentId: step.agentId,
       agentName: step.agentName,
@@ -484,29 +480,46 @@ function segmentAuthoredTimelineRows(
     };
   };
 
+  const subagentStepIds = new Set(
+    traceRows.flatMap((row) =>
+      row.kind === 'tool' &&
+      row.invocation.subagentInvocation === true &&
+      row.invocation.stepId
+        ? [row.invocation.stepId]
+        : []
+    )
+  );
   const items: TimelineNarrativeItem[] = [];
   const emitted = new Set<string>();
   let unscoped: TimelineTraceRow[] = [];
   const flushUnscoped = () => {
-    if (unscoped.length) items.push(...segmentTimelineRows(unscoped));
+    if (unscoped.length) {
+      items.push(
+        ...segmentTimelineRows(unscoped).map((item): TimelineNarrativeItem => {
+          if (item.kind !== 'subagent' || !item.call.stepId) return item;
+          const step = latestByStep.get(item.call.stepId);
+          if (!step) return item;
+          return {
+            ...item,
+            authoredStepTitle: step.title.trim() || undefined,
+            summary: step.summary?.trim() || undefined,
+          };
+        })
+      );
+    }
     unscoped = [];
   };
   for (const row of traceRows) {
     if (row.kind === 'node' && row.node.kind === 'step') {
-      const firstSequence = firstSequenceByStep.get(row.node.stepId);
-      if (!emitted.has(row.node.stepId) && row.runSequence === firstSequence) {
+      // The delegated-agent disclosure owns the correlated authored Step, so
+      // its name/reasoning does not appear as a duplicate sibling event.
+      if (subagentStepIds.has(row.node.stepId)) continue;
+      const anchorSequence = activeSequenceByStep.get(row.node.stepId);
+      if (!emitted.has(row.node.stepId) && row.runSequence === anchorSequence) {
         flushUnscoped();
         items.push(segmentFor(row.node.stepId));
         emitted.add(row.node.stepId);
       }
-      continue;
-    }
-    const call = toTimelineCall(row);
-    if (
-      call?.stepId &&
-      call.executor !== 'human' &&
-      latestByStep.has(call.stepId)
-    ) {
       continue;
     }
     unscoped.push(row);
@@ -515,36 +528,100 @@ function segmentAuthoredTimelineRows(
   return items;
 }
 
+function itemBelongsToSubagent(
+  item: TimelineNarrativeItem,
+  subagent: TimelineSubagentItem
+): boolean {
+  const agentId = subagent.call.subagentAgentId;
+  const taskId = subagent.call.subagentTaskId;
+  if (!agentId && !taskId) return false;
+
+  if (item.kind === 'segment') {
+    return Boolean(
+      (agentId && item.agentId === agentId) ||
+      (taskId && item.taskId === taskId)
+    );
+  }
+  if (item.kind === 'interrupt' || item.kind === 'subagent') {
+    return Boolean(
+      (agentId && item.call.agentId === agentId) ||
+      (taskId && item.call.taskId === taskId)
+    );
+  }
+  return false;
+}
+
+/**
+ * A child process may stream after its creation receipt. Admit only contiguous
+ * items carrying the exact child identity; an unrelated parent action closes
+ * the disclosure scope and stays at its own chronological Timeline position.
+ */
+function nestExplicitSubagentWork(
+  items: readonly TimelineNarrativeItem[]
+): TimelineNarrativeItem[] {
+  const nested: TimelineNarrativeItem[] = [];
+  for (const item of items) {
+    const previous = nested.at(-1);
+    if (
+      previous?.kind === 'subagent' &&
+      itemBelongsToSubagent(item, previous)
+    ) {
+      nested[nested.length - 1] = {
+        ...previous,
+        children: [...(previous.children || []), item],
+      };
+      continue;
+    }
+    nested.push(item);
+  }
+  return nested;
+}
+
 /** Convenience wrapper for one composed Run view. */
 export function segmentTimelineRun(
   run: TimelineRunView,
   preservePlanEventId?: string
 ): TimelineNarrativeItem[] {
-  const noticeToolCallIds = new Set(
-    run.traceRows.flatMap((row) =>
-      row.kind === 'node' && row.node.kind === 'notice'
-        ? [row.node.toolCallId].filter((toolCallId): toolCallId is string =>
-            Boolean(toolCallId)
-          )
-        : []
-    )
+  const narrativeToolCallIds = new Set(
+    run.traceRows.flatMap((row) => {
+      if (
+        row.kind !== 'tool' ||
+        isSuccessfulLifecycleNoise(row) ||
+        row.invocation.nodes.some(
+          (node) => node.semanticKind === 'plan_operation'
+        )
+      ) {
+        return [];
+      }
+      return row.invocation.toolCallId ? [row.invocation.toolCallId] : [];
+    })
   );
   const narrativeRows = run.traceRows.filter((row) => {
     if (row.kind === 'tool') {
-      // todo_write has its own typed lifecycle for the detailed trajectory.
-      // In Chat, the plan snapshot is the useful representation, so showing
-      // both produces a duplicate "Updated plan" action for every change.
-      if (
-        row.invocation.toolCallId &&
-        noticeToolCallIds.has(row.invocation.toolCallId) &&
-        !FAILED_STATUSES.has(row.invocation.status)
-      ) {
-        return false;
-      }
       if (isSuccessfulLifecycleNoise(row)) return false;
       return !row.invocation.nodes.some(
         (node) => node.semanticKind === 'plan_operation'
       );
+    }
+    // A correlated notice annotates its logical tool row. Keeping a second
+    // standalone `Title · content` row would duplicate the same action and
+    // hide the useful request/response disclosure behind it.
+    if (
+      row.node.kind === 'notice' &&
+      row.node.toolCallId &&
+      narrativeToolCallIds.has(row.node.toolCallId)
+    ) {
+      return false;
+    }
+    // Task lifecycle receipts describe the container around the work, not an
+    // action the user can inspect. Failed task receipts remain visible; normal
+    // progress is represented by authored Step text and its real tool calls.
+    if (
+      row.node.kind === 'activity' &&
+      row.node.activityType === 'task' &&
+      !FAILED_STATUSES.has(row.node.status)
+    ) {
+      return false;
     }
     // The Progress surface owns the live plan. Keeping the complete plan in
     // narrative Chat makes every later message carry a large, stale-looking
@@ -554,7 +631,7 @@ export function segmentTimelineRun(
     }
     return true;
   });
-  return segmentAuthoredTimelineRows(narrativeRows);
+  return nestExplicitSubagentWork(segmentAuthoredTimelineRows(narrativeRows));
 }
 
 /**
