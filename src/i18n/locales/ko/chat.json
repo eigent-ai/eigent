@@ -217,6 +217,7 @@
   "timeline-history-reconnecting": "다시 연결하는 중…",
   "timeline-history-retry": "다시 시도",
   "timeline-empty": "아직 메시지가 없습니다. 메시지를 보내 시작하세요.",
+  "run-working-indicator": "Eigent가 작업 중…",
   "timeline-style-tooltip": "채팅 타임라인 스타일",
   "timeline-style-normal": "일반",
   "timeline-style-detailed": "상세",

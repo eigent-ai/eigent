@@ -17,8 +17,8 @@ import {
   semanticDiffKindForPath,
 } from '@/components/Session/PreviewPanel/tabs/review/SemanticDiffView';
 import type { ReviewFile } from '@/components/Session/PreviewPanel/tabs/review/useReviewChanges';
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
 const file: ReviewFile = {
   id: 'json:config.json',
@@ -90,6 +90,41 @@ describe('SemanticDiffView', () => {
         'Image metadata is available, but this Git-backed change has no local preview payload.'
       )
     ).toBeInTheDocument();
+  });
+
+  it('loads a Git-backed image from its pinned commit and revokes the URL', async () => {
+    const createObjectURL = vi.fn(() => 'blob:git-image');
+    const revokeObjectURL = vi.fn();
+    Object.defineProperties(URL, {
+      createObjectURL: { configurable: true, value: createObjectURL },
+      revokeObjectURL: { configurable: true, value: revokeObjectURL },
+    });
+    const loadPreview = vi.fn(() =>
+      Promise.resolve(new Blob(['image'], { type: 'image/png' }))
+    );
+
+    const { container, unmount } = render(
+      <SemanticDiffView
+        file={{
+          ...file,
+          path: 'image.png',
+          status: 'added',
+          binary: true,
+          loadPreview,
+        }}
+        kind="image"
+        sides={null}
+      />
+    );
+
+    await waitFor(() => expect(loadPreview).toHaveBeenCalledWith('after'));
+    expect(loadPreview).not.toHaveBeenCalledWith('before');
+    expect(container.querySelector('img')).toHaveAttribute(
+      'src',
+      'blob:git-image'
+    );
+    unmount();
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:git-image');
   });
 
   it('renders sanitized SVG text from both Git sides', async () => {

@@ -157,6 +157,8 @@ declare global {
       tokens?: number;
       sub_tasks?: TaskInfo[];
       summary_task?: string;
+      project_name?: string;
+      project_summary?: string;
       content?: string;
       notice?: string;
       message_title?: string;

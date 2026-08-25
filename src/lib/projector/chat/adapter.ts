@@ -101,7 +101,11 @@ const RECEIPT_ONLY_EVENT_PREFIXES = [
   'model.invocation.',
 ] as const;
 
-const HIDDEN_LEGACY_STEPS = new Set(['request_usage', 'sync']);
+const HIDDEN_LEGACY_STEPS = new Set([
+  'project_metadata',
+  'request_usage',
+  'sync',
+]);
 
 const SEMANTIC_KINDS = new Set<CanonicalSemanticKind>([
   'agent',

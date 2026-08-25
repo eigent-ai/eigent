@@ -147,6 +147,49 @@ def normalize_summary_task(
     return f"{name or 'Task'}|{summary or name or 'Task'}"
 
 
+async def _summarize_single_agent_task(
+    options: Chat,
+    question: str,
+    task_id: str,
+) -> str:
+    """Generate Single Agent project metadata with Workforce semantics."""
+
+    task = Task(
+        content=question + options.summary_prompt,
+        id=task_id,
+    )
+    try:
+        summary_agent = task_summary_agent(options)
+        return await asyncio.wait_for(
+            summary_task(summary_agent, task),
+            timeout=10,
+        )
+    except TimeoutError:
+        logger.warning(
+            "Single Agent summary_task timeout",
+            extra={
+                "project_id": options.project_id,
+                "task_id": task_id,
+            },
+        )
+    except Exception:
+        logger.exception(
+            "Single Agent task summary failed",
+            extra={
+                "project_id": options.project_id,
+                "task_id": task_id,
+            },
+        )
+    fallback_name = _truncate_summary_part(
+        question,
+        SUMMARY_TASK_NAME_MAX_LENGTH,
+    )
+    return normalize_summary_task(
+        f"{fallback_name or 'Task'}|{question}",
+        question,
+    )
+
+
 def _extract_stream_chunk_content(chunk: Any) -> str:
     """Return user-visible text from a streaming chunk.
 
@@ -631,7 +674,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
     if options.session_mode == "single-agent":
         async for chunk in single_agent_solve(
-            options, request, task_lock, hands=hands
+            options,
+            request,
+            task_lock,
+            hands=hands,
+            summarize_task=partial(_summarize_single_agent_task, options),
         ):
             yield chunk
         return

@@ -655,6 +655,32 @@ describe('chat activity projection', () => {
     });
   });
 
+  it('hides project metadata from the activity timeline', () => {
+    const node = adaptChatProjectionEvent(
+      normalizeLegacyChatStep(
+        {
+          step: 'project_metadata',
+          data: {
+            project_name: 'ISS Digital Twin',
+            project_summary: 'Build and verify an interactive model.',
+          },
+        },
+        {
+          projectId: 'project-1',
+          runId: 'run-1',
+          sequence: 1,
+          sourceId: 'legacy-stream',
+          createdAt: 1_000,
+        }
+      )
+    );
+
+    expect(node).toEqual({
+      kind: 'hidden',
+      reason: 'legacy.project_metadata',
+    });
+  });
+
   it('projects legacy terminal command and result as safe input and output', () => {
     const terminal = adaptChatProjectionEvent(
       normalizeLegacyChatStep(

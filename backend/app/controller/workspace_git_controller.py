@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import mimetypes
 from pathlib import Path, PurePosixPath
 from typing import Annotated, Literal
 
@@ -1105,6 +1106,66 @@ def _git_change_content_payload(
     }
 
 
+def _git_change_blob_response(
+    *,
+    service: ContentRepositoryService,
+    repository,
+    path: str,
+    side: Literal["before", "after"],
+    base_commit: str,
+    target_commit: str,
+) -> Response:
+    """Read one changed image side from the exact pinned Git commit."""
+
+    relative_path = _project_change_path(path)
+    root = Path(repository.root_path)
+    changed_paths = {
+        item.relative_path
+        for item in service.git.changed_paths_between(
+            root,
+            base_commit=base_commit,
+            target_commit=target_commit,
+        )
+    }
+    if relative_path not in changed_paths:
+        raise HTTPException(status_code=404, detail="Change not found")
+
+    commit = base_commit if side == "before" else target_commit
+    oid, size = _git_change_side(service, root, commit, relative_path)
+    if oid is None or size is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"File is not present on the {side} side",
+        )
+    if size > _PROJECT_CHANGE_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Change is too large")
+
+    media_type = mimetypes.guess_type(relative_path)[0]
+    if media_type is None or not media_type.startswith("image/"):
+        raise HTTPException(
+            status_code=415,
+            detail="Only image changes support binary preview",
+        )
+    data = (
+        b""
+        if size == 0
+        else service.git.read_blob_range(
+            root,
+            oid,
+            start_offset=0,
+            max_bytes=size,
+        )
+    )
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 def _snapshot_payload(snapshot) -> dict:
     return {
         "snapshot_id": snapshot.snapshot_id,
@@ -1244,6 +1305,47 @@ async def project_git_change_content(
         raise _git_error(exc) from exc
 
 
+@router.get("/projects/{project_id}/git/changes/blob")
+async def project_git_change_blob(
+    project_id: str,
+    path: str = Query(..., min_length=1, max_length=4096),
+    side: Literal["before", "after"] = Query(...),
+    base_commit: str = Query(..., min_length=1),
+    target_commit: str = Query(..., min_length=1),
+    space_id: str = Query(..., min_length=1),
+    email: str = Query(..., min_length=1),
+    user_id: str | None = Query(None),
+):
+    """Read one changed image side from pinned Project Git commits."""
+
+    service, repository, _project, current_base, current_target = (
+        _project_change_context(
+            project_id=project_id,
+            space_id=space_id,
+            email=email,
+            user_id=user_id,
+        )
+    )
+    if current_base != base_commit or current_target != target_commit:
+        raise HTTPException(
+            status_code=409,
+            detail="Project changed; refresh the change review",
+        )
+    try:
+        return _git_change_blob_response(
+            service=service,
+            repository=repository,
+            path=path,
+            side=side,
+            base_commit=base_commit,
+            target_commit=target_commit,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _git_error(exc) from exc
+
+
 @router.get("/runs/{run_id}/git/changes")
 async def run_git_changes(
     run_id: str,
@@ -1322,6 +1424,47 @@ async def run_git_change_content(
             repository=repository,
             identity={"run_id": run_id, "project_id": run.project_id},
             path=path,
+            base_commit=base_commit,
+            target_commit=target_commit,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise _git_error(exc) from exc
+
+
+@router.get("/runs/{run_id}/git/changes/blob")
+async def run_git_change_blob(
+    run_id: str,
+    path: str = Query(..., min_length=1, max_length=4096),
+    side: Literal["before", "after"] = Query(...),
+    base_commit: str = Query(..., min_length=1),
+    target_commit: str = Query(..., min_length=1),
+    space_id: str = Query(..., min_length=1),
+    email: str = Query(..., min_length=1),
+    user_id: str | None = Query(None),
+):
+    """Read one finalized Run image side from pinned Git commits."""
+
+    service, repository, _run, current_base, current_target = (
+        _run_change_context(
+            run_id=run_id,
+            space_id=space_id,
+            email=email,
+            user_id=user_id,
+        )
+    )
+    if current_base != base_commit or current_target != target_commit:
+        raise HTTPException(
+            status_code=409,
+            detail="Run changed; refresh the change review",
+        )
+    try:
+        return _git_change_blob_response(
+            service=service,
+            repository=repository,
+            path=path,
+            side=side,
             base_commit=base_commit,
             target_commit=target_commit,
         )

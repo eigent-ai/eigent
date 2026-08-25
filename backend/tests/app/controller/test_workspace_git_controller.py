@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -421,8 +435,9 @@ def test_project_git_changes_returns_lazy_authoritative_diff(git_api):
     run_seed.write_text("updated\n", encoding="utf-8")
     note = workspace.run_worktree / "note.md"
     note.write_text("new note\n", encoding="utf-8")
-    binary = workspace.run_worktree / "image.bin"
-    binary.write_bytes(b"\x00\x01\x02")
+    image_bytes = b"\x89PNG\r\n\x1a\n\x00\x01\x02"
+    binary = workspace.run_worktree / "image.png"
+    binary.write_bytes(image_bytes)
     run_head = service.git.commit_paths(
         workspace.run_worktree,
         (run_seed, note, binary),
@@ -462,7 +477,7 @@ def test_project_git_changes_returns_lazy_authoritative_diff(git_api):
     files = {item["path"]: item for item in payload["files"]}
     assert files["seed.txt"]["status"] == "modified"
     assert files["note.md"]["status"] == "added"
-    assert files["image.bin"]["binary"] is True
+    assert files["image.png"]["binary"] is True
     assert str(space) not in response.text
     run_response = client.get(
         "/api/v1/runs/run-review/git/changes",
@@ -512,6 +527,53 @@ def test_project_git_changes_returns_lazy_authoritative_diff(git_api):
     assert run_response.json()["before"]["content"] == "seed\n"
     assert run_response.json()["after"]["content"] == "updated\n"
     assert str(space) not in run_response.text
+
+    image_response = client.get(
+        "/api/v1/projects/project-review/git/changes/blob",
+        params={
+            "space_id": "space-1",
+            "email": "user@example.com",
+            "path": "image.png",
+            "side": "after",
+            "base_commit": payload["base_commit"],
+            "target_commit": payload["target_commit"],
+        },
+        headers=_headers(),
+    )
+    assert image_response.status_code == 200
+    assert image_response.headers["content-type"] == "image/png"
+    assert image_response.headers["cache-control"] == "private, no-store"
+    assert image_response.content == image_bytes
+    assert str(space) not in image_response.text
+
+    missing_before = client.get(
+        "/api/v1/projects/project-review/git/changes/blob",
+        params={
+            "space_id": "space-1",
+            "email": "user@example.com",
+            "path": "image.png",
+            "side": "before",
+            "base_commit": payload["base_commit"],
+            "target_commit": payload["target_commit"],
+        },
+        headers=_headers(),
+    )
+    assert missing_before.status_code == 404
+
+    run_image_response = client.get(
+        "/api/v1/runs/run-review/git/changes/blob",
+        params={
+            "space_id": "space-1",
+            "email": "user@example.com",
+            "path": "image.png",
+            "side": "after",
+            "base_commit": run_payload["base_commit"],
+            "target_commit": run_payload["target_commit"],
+        },
+        headers=_headers(),
+    )
+    assert run_image_response.status_code == 200
+    assert run_image_response.content == image_bytes
 
     response = client.get(
         "/api/v1/projects/project-review/git/changes/content",

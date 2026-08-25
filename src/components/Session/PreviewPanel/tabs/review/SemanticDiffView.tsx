@@ -334,6 +334,9 @@ function ImageDiff({
 
   useEffect(() => {
     let cancelled = false;
+    const objectUrls: string[] = [];
+    setLoading(true);
+    setUrls({ before: null, after: null });
     const svgDataUrl = (content: string): string | null => {
       if (!content.trim()) return null;
       const sanitized = DOMPurify.sanitize(content, {
@@ -349,14 +352,36 @@ function ImageDiff({
         return null;
       }
     };
+    const readGitSide = async (
+      side: 'before' | 'after'
+    ): Promise<string | null> => {
+      if (!file.loadPreview) return null;
+      try {
+        const blob = await file.loadPreview(side);
+        if (cancelled) return null;
+        const url = URL.createObjectURL(blob);
+        objectUrls.push(url);
+        return url;
+      } catch {
+        return null;
+      }
+    };
     const isSvg = file.path.toLowerCase().endsWith('.svg');
     Promise.all([
       isSvg && sides
         ? Promise.resolve(svgDataUrl(sides.original))
-        : read(file.status === 'added' ? null : file.bakPath),
+        : file.status === 'added'
+          ? Promise.resolve(null)
+          : file.loadPreview
+            ? readGitSide('before')
+            : read(file.bakPath),
       isSvg && sides
         ? Promise.resolve(svgDataUrl(sides.modified))
-        : read(file.status === 'deleted' ? null : file.absPath),
+        : file.status === 'deleted'
+          ? Promise.resolve(null)
+          : file.loadPreview
+            ? readGitSide('after')
+            : read(file.absPath),
     ]).then(([before, after]) => {
       if (!cancelled) {
         setUrls({ before, after });
@@ -365,6 +390,7 @@ function ImageDiff({
     });
     return () => {
       cancelled = true;
+      objectUrls.forEach((url) => URL.revokeObjectURL(url));
     };
   }, [file, host, sides]);
 

@@ -16,6 +16,7 @@ import asyncio
 import inspect
 import logging
 import os
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from camel.agents.chat_agent import AsyncStreamingChatAgentResponse
@@ -58,6 +59,8 @@ logger = logging.getLogger("single_agent_service")
 _RETRYABLE_MODEL_STATUS_CODES = frozenset(
     {408, 425, 429, 499, 500, 502, 503, 504}
 )
+
+TaskSummaryCallback = Callable[[str, str], Awaitable[str]]
 
 
 def _is_retryable_turn_error(error: Exception) -> bool:
@@ -374,6 +377,7 @@ async def single_agent_solve(
     request: Request,
     task_lock: TaskLock,
     hands: IHands | None = None,
+    summarize_task: TaskSummaryCallback | None = None,
 ):
     pause_event = asyncio.Event()
     pause_event.set()
@@ -381,7 +385,31 @@ async def single_agent_solve(
     agent_run_id: str | None = None
     agent_runtime_key: tuple[str | None, str, str | None] | None = None
     running_turn: asyncio.Task[tuple[str, int]] | None = None
+    running_summary: asyncio.Task[str] | None = None
+    summary_task_id: str | None = None
+    summary_fallback_content = ""
+    pending_turn_result: tuple[str, int] | None = None
     current_task_id = options.task_id
+
+    def cancel_running_summary() -> None:
+        nonlocal running_summary, summary_task_id, summary_fallback_content
+        if running_summary is not None and not running_summary.done():
+            running_summary.cancel()
+        running_summary = None
+        summary_task_id = None
+        summary_fallback_content = ""
+
+    def project_summary_payload(summary: str, task_id: str) -> dict[str, str]:
+        project_name, separator, project_summary = summary.partition("|")
+        project_name = project_name.strip()
+        project_summary = project_summary.strip() if separator else ""
+        return {
+            "project_id": options.project_id,
+            "task_id": task_id,
+            "summary_task": summary,
+            "project_name": project_name,
+            "project_summary": project_summary,
+        }
 
     async def ensure_agent(task_id: str):
         nonlocal agent, agent_run_id, agent_runtime_key
@@ -467,9 +495,26 @@ async def single_agent_solve(
 
     try:
         while True:
+            if pending_turn_result is not None and running_summary is None:
+                final_result, total_tokens = pending_turn_result
+                pending_turn_result = None
+                task_lock.status = Status.done
+                _finalize_memory_for_turn(
+                    task_lock,
+                    state="done",
+                    final_result=final_result,
+                )
+                yield sse_json(
+                    "end",
+                    {"message": final_result, "tokens": total_tokens},
+                )
+                continue
+
             wait_for = {pending_queue_get}
             if running_turn is not None:
                 wait_for.add(running_turn)
+            if running_summary is not None:
+                wait_for.add(running_summary)
 
             done, _ = await asyncio.wait(
                 wait_for,
@@ -524,6 +569,17 @@ async def single_agent_solve(
                         )
                     )
                     task_lock.add_background_task(running_turn)
+                    if summarize_task is not None:
+                        cancel_running_summary()
+                        summary_task_id = current_task_id
+                        summary_fallback_content = item.data.question
+                        running_summary = asyncio.create_task(
+                            summarize_task(
+                                item.data.question,
+                                current_task_id,
+                            )
+                        )
+                        task_lock.add_background_task(running_summary)
                     continue
 
                 if item.action == Action.pause:
@@ -538,6 +594,8 @@ async def single_agent_solve(
 
                 if item.action == Action.skip_task:
                     pause_event.clear()
+                    cancel_running_summary()
+                    pending_turn_result = None
                     stop_message = (
                         "<summary>Task stopped</summary>Task stopped by user"
                     )
@@ -584,6 +642,8 @@ async def single_agent_solve(
 
                 if item.action == Action.stop:
                     pause_event.clear()
+                    cancel_running_summary()
+                    pending_turn_result = None
                     if agent is not None and getattr(
                         agent, "stop_event", None
                     ):
@@ -604,6 +664,38 @@ async def single_agent_solve(
                         pause_event.clear()
                         task_lock.status = Status.confirming
                     yield payload
+                continue
+
+            if running_summary is not None and running_summary in done:
+                completed_summary = running_summary
+                completed_task_id = summary_task_id or current_task_id
+                try:
+                    summary = completed_summary.result()
+                except asyncio.CancelledError:
+                    running_summary = None
+                    summary_task_id = None
+                    summary_fallback_content = ""
+                    continue
+                except Exception:
+                    logger.exception(
+                        "Single Agent project metadata generation failed",
+                        extra={
+                            "project_id": options.project_id,
+                            "task_id": completed_task_id,
+                        },
+                    )
+                    fallback = " ".join(summary_fallback_content.split())
+                    summary = f"Task|{fallback}"
+
+                task_lock.summary_generated = True
+                task_lock.summary_task_content = summary
+                running_summary = None
+                summary_task_id = None
+                summary_fallback_content = ""
+                yield sse_json(
+                    "project_metadata",
+                    project_summary_payload(summary, completed_task_id),
+                )
                 continue
 
             if running_turn is not None and running_turn in done:
@@ -640,6 +732,8 @@ async def single_agent_solve(
                         },
                     )
                     running_turn = None
+                    cancel_running_summary()
+                    pending_turn_result = None
                     try:
                         await delete_task_lock(task_lock.id)
                     except Exception:
@@ -655,8 +749,12 @@ async def single_agent_solve(
                         ) from e
                     raise
 
-                task_lock.status = Status.done
                 running_turn = None
+                if running_summary is not None:
+                    pending_turn_result = (final_result, total_tokens)
+                    continue
+
+                task_lock.status = Status.done
                 _finalize_memory_for_turn(
                     task_lock,
                     state="done",
@@ -674,6 +772,7 @@ async def single_agent_solve(
             pause_event.clear()
             task_lock.status = Status.confirming
             running_turn.cancel()
+        cancel_running_summary()
         # If the loop exits without a clean done/failed/cancelled end-of-turn,
         # project it as interrupted. Only an explicit cancel may produce the
         # cancelled state; transport/process teardown is resumable. The

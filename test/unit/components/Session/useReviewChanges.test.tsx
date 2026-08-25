@@ -23,8 +23,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const {
   mockFetchOverlays,
   mockFetchGitChanges,
+  mockFetchGitChangeBlob,
   mockFetchGitChangeContent,
   mockFetchRunGitChanges,
+  mockFetchRunGitChangeBlob,
   mockFetchRunGitChangeContent,
   mockReviewListBackups,
   mockHost,
@@ -34,8 +36,10 @@ const {
   return {
     mockFetchOverlays: vi.fn(),
     mockFetchGitChanges: vi.fn(),
+    mockFetchGitChangeBlob: vi.fn(),
     mockFetchGitChangeContent: vi.fn(),
     mockFetchRunGitChanges: vi.fn(),
+    mockFetchRunGitChangeBlob: vi.fn(),
     mockFetchRunGitChangeContent: vi.fn(),
     mockReviewListBackups: reviewListBackups,
     mockHost: {
@@ -66,8 +70,10 @@ vi.mock('@/service/spaceApi', () => ({
 
 vi.mock('@/service/workspaceGitApi', () => ({
   fetchProjectGitChanges: mockFetchGitChanges,
+  fetchProjectGitChangeBlob: mockFetchGitChangeBlob,
   fetchProjectGitChangeContent: mockFetchGitChangeContent,
   fetchRunGitChanges: mockFetchRunGitChanges,
+  fetchRunGitChangeBlob: mockFetchRunGitChangeBlob,
   fetchRunGitChangeContent: mockFetchRunGitChangeContent,
 }));
 
@@ -114,8 +120,10 @@ describe('useReviewChanges', () => {
     localStorage.removeItem('eigent-review-fixture');
     mockFetchOverlays.mockReset();
     mockFetchGitChanges.mockReset();
+    mockFetchGitChangeBlob.mockReset();
     mockFetchGitChangeContent.mockReset();
     mockFetchRunGitChanges.mockReset();
+    mockFetchRunGitChangeBlob.mockReset();
     mockFetchRunGitChangeContent.mockReset();
     const missingGitState = Object.assign(new Error('Git state not found'), {
       status: 404,
@@ -247,6 +255,48 @@ describe('useReviewChanges', () => {
       { email: 'user@example.com', userId: 42 },
       {
         path: 'src/example.ts',
+        baseCommit: 'a'.repeat(40),
+        targetCommit: 'b'.repeat(40),
+      }
+    );
+  });
+
+  it('lazily reads a Git-backed binary image from a pinned side', async () => {
+    const image = new Blob(['png'], { type: 'image/png' });
+    mockFetchGitChanges.mockResolvedValue({
+      repository_id: 'repo-1',
+      project_id: 'project-1',
+      base_commit: 'a'.repeat(40),
+      target_commit: 'b'.repeat(40),
+      files: [
+        {
+          path: 'preview.png',
+          status: 'added',
+          before_size: null,
+          after_size: 3,
+          binary: true,
+          added_lines: null,
+          removed_lines: null,
+        },
+      ],
+      totals: { added: 0, removed: 0 },
+      truncated: false,
+    });
+    mockFetchGitChangeBlob.mockResolvedValue(image);
+
+    const { result } = renderHook(() => useReviewChanges());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await expect(result.current.files[0].loadPreview?.('after')).resolves.toBe(
+      image
+    );
+    expect(mockFetchGitChangeBlob).toHaveBeenCalledWith(
+      'project-1',
+      'space-1',
+      { email: 'user@example.com', userId: 42 },
+      {
+        path: 'preview.png',
+        side: 'after',
         baseCommit: 'a'.repeat(40),
         targetCommit: 'b'.repeat(40),
       }
