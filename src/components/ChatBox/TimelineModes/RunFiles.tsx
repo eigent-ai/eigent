@@ -20,10 +20,15 @@ import {
   normalizeWorkspaceRelativePath,
   resolveWorkspaceFilePath,
 } from '@/lib/workspaceRelativePath';
+import {
+  fetchRunGitChanges,
+  type WorkspaceGitIdentity,
+} from '@/service/workspaceGitApi';
+import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { FileText } from 'lucide-react';
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 function extension(name: string): string {
@@ -130,6 +135,138 @@ export interface RunFileSources {
 
 export interface RunFilesProps extends RunFileSources {
   runId: string;
+  projectId?: string;
+}
+
+interface RunFileDiffStats {
+  totals: { added: number; removed: number };
+  byPath: Map<string, { added: number; removed: number }>;
+}
+
+/**
+ * A finished Run's line counts never change. Resolved stats are memoised and
+ * in-flight requests shared, keyed by the Run and the space that owns it.
+ * `RunFilesGroup` activates the request only when its card approaches view, so
+ * mounting a long, unwindowed narrative does not fetch every Run at once.
+ */
+const runDiffStatsCache = new Map<string, Promise<RunFileDiffStats | null>>();
+
+const RUN_DIFF_STATS_PREFETCH_MARGIN = '240px 0px';
+
+function useRunFileDiffStatsActivation(hasFiles: boolean) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState(
+    () => typeof IntersectionObserver === 'undefined'
+  );
+
+  useEffect(() => {
+    if (active || !hasFiles) return;
+    // The wrapper uses `display: contents` to avoid changing layout, so observe
+    // the ArtifactChangeList section that supplies the actual box instead.
+    const target = rootRef.current?.firstElementChild;
+    if (!target) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        setActive(true);
+        observer.disconnect();
+      },
+      {
+        rootMargin: RUN_DIFF_STATS_PREFETCH_MARGIN,
+        threshold: 0,
+      }
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [active, hasFiles]);
+
+  return { active, rootRef };
+}
+
+function loadRunFileDiffStats(
+  runId: string,
+  spaceId: string,
+  identity: WorkspaceGitIdentity
+): Promise<RunFileDiffStats | null> {
+  const key = `${spaceId}:${runId}`;
+  const cached = runDiffStatsCache.get(key);
+  if (cached) return cached;
+  const request = fetchRunGitChanges(runId, spaceId, identity)
+    .then((response) => {
+      if ('available' in response) return null;
+      const byPath = new Map<string, { added: number; removed: number }>();
+      for (const file of response.files) {
+        const path = normalizeRunReviewPath(file.path);
+        if (!path || file.added_lines === null || file.removed_lines === null) {
+          continue;
+        }
+        byPath.set(path, {
+          added: file.added_lines,
+          removed: file.removed_lines,
+        });
+      }
+      return { totals: response.totals, byPath };
+    })
+    .catch(() => {
+      // Only successes are worth remembering; a transient failure should not
+      // pin this Run to "no stats" for the rest of the session.
+      runDiffStatsCache.delete(key);
+      return null;
+    });
+  runDiffStatsCache.set(key, request);
+  return request;
+}
+
+/** Test seam: the cache outlives a render tree, so suites must reset it. */
+export function resetRunFileDiffStatsCache(): void {
+  runDiffStatsCache.clear();
+}
+
+export function useRunFileDiffStats(
+  runId: string,
+  projectId?: string,
+  active = true
+): RunFileDiffStats | null {
+  const previewProjectId = usePageTabStore(
+    (state) => state.sessionPreviewProjectId
+  );
+  const resolvedProjectId = projectId ?? previewProjectId;
+  const email = useAuthStore((state) => state.email);
+  const userId = useAuthStore((state) => state.user_id);
+  const spaceId = useSpaceStore((state) =>
+    resolvedProjectId
+      ? (state.getProjectMeta(resolvedProjectId)?.spaceId ?? null)
+      : null
+  );
+  const [stats, setStats] = useState<RunFileDiffStats | null>(null);
+
+  useEffect(() => {
+    setStats(null);
+    // Legacy spaces have no Git repository behind them, so the request can only
+    // fail — the same guard `useReviewChanges` applies before going to Git.
+    if (
+      !active ||
+      !runId ||
+      !spaceId ||
+      !email ||
+      spaceId.startsWith('legacy_')
+    )
+      return;
+
+    let cancelled = false;
+    void loadRunFileDiffStats(runId, spaceId, { email, userId }).then(
+      (next) => {
+        if (!cancelled) setStats(next);
+      }
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [active, email, runId, spaceId, userId]);
+
+  return stats;
 }
 
 export function useRunFileInfo({
@@ -151,26 +288,66 @@ export function useRunFileInfo({
 
 export function RunFilesGroup(props: RunFilesProps) {
   const files = useRunFileInfo(props);
-  const projectId = usePageTabStore((state) => state.sessionPreviewProjectId);
+  const { active: loadDiffStats, rootRef } = useRunFileDiffStatsActivation(
+    files.length > 0
+  );
+  const previewProjectId = usePageTabStore(
+    (state) => state.sessionPreviewProjectId
+  );
+  const projectId = props.projectId ?? previewProjectId;
   const workspaceRoot = useSpaceStore((state) => {
     const spaceId = projectId ? state.getProjectMeta(projectId)?.spaceId : null;
     return spaceId ? state.spaces[spaceId]?.rootPath : null;
   });
   const openFilePreview = usePageTabStore((state) => state.openFilePreview);
   const openReviewPreview = usePageTabStore((state) => state.openReviewPreview);
+  const diffStats = useRunFileDiffStats(
+    props.runId,
+    projectId ?? undefined,
+    loadDiffStats
+  );
+  const lineChangesForFile = useCallback(
+    (file: FileInfo) => {
+      const path = runFileReviewPath(file);
+      return path ? (diffStats?.byPath.get(path) ?? null) : null;
+    },
+    [diffStats]
+  );
+  // Sum the rows on screen rather than reusing the Run's Git totals: the list
+  // is built from artifacts, so a Git total would describe a different file
+  // set than the "Edited N files" count sitting beside it.
+  const totals = useMemo(() => {
+    if (!diffStats) return null;
+    let added = 0;
+    let removed = 0;
+    let matched = false;
+    for (const file of files) {
+      const path = runFileReviewPath(file);
+      const stats = path ? diffStats.byPath.get(path) : undefined;
+      if (!stats) continue;
+      matched = true;
+      added += stats.added;
+      removed += stats.removed;
+    }
+    return matched ? { added, removed } : null;
+  }, [diffStats, files]);
 
   return (
-    <ArtifactChangeList
-      files={files}
-      onViewChanges={() => openReviewPreview({ runId: props.runId })}
-      onOpen={(file) => {
-        const preview = resolveRunFilePreview(file, workspaceRoot);
-        if (preview) openFilePreview(preview);
-      }}
-      canOpenFile={(file) =>
-        resolveRunFilePreview(file, workspaceRoot) !== null
-      }
-    />
+    <div ref={rootRef} className="contents" data-run-files-group={props.runId}>
+      <ArtifactChangeList
+        files={files}
+        totals={totals}
+        lineChangesForFile={lineChangesForFile}
+        onViewChanges={() => openReviewPreview({ runId: props.runId })}
+        onOpen={(file) => {
+          const preview = resolveRunFilePreview(file, workspaceRoot);
+          if (preview) openFilePreview(preview);
+        }}
+        canOpenFile={(file) =>
+          resolveRunFilePreview(file, workspaceRoot) !== null
+        }
+      />
+    </div>
   );
 }
 

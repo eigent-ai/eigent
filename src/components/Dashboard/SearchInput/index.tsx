@@ -36,6 +36,10 @@ interface SearchInputProps {
   searchTooltip?: string;
   /** Tooltip for the clear (X) button (icon variant). Defaults to agents.clear-search-tooltip */
   clearTooltip?: string;
+  /** Accessible name for the field. Falls back to the placeholder. */
+  ariaLabel?: string;
+  /** Opt in to Escape clearing the field, for filters rendered inline. */
+  clearOnEscape?: boolean;
 }
 
 const COLLAPSED_WIDTH = 28;
@@ -50,6 +54,8 @@ export default function SearchInput({
   onSearch,
   searchTooltip,
   clearTooltip,
+  ariaLabel,
+  clearOnEscape = false,
 }: SearchInputProps) {
   const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -140,12 +146,16 @@ export default function SearchInput({
                 value={value}
                 onChange={onChange}
                 placeholder={place}
+                aria-label={ariaLabel ?? place}
                 onBlur={() => {
                   if (value.length === 0) setUserExpanded(false);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     onSearch?.();
+                  }
+                  if (e.key === 'Escape' && clearOnEscape) {
+                    collapse();
                   }
                 }}
                 className="h-6 min-w-0 flex-1 bg-transparent pl-2 text-ds-text-base text-ds-ink-default-default outline-none placeholder:text-ds-ink-muted-default"
@@ -191,9 +201,15 @@ export default function SearchInput({
         value={value}
         onChange={onChange}
         placeholder={place}
+        aria-label={ariaLabel ?? place}
         onKeyDown={(event) => {
           if (event.key === 'Enter') {
             onSearch?.();
+          }
+          if (event.key === 'Escape' && clearOnEscape) {
+            onChange({
+              target: { value: '' },
+            } as React.ChangeEvent<HTMLInputElement>);
           }
         }}
         className="h-full min-w-0 flex-1 bg-transparent text-ds-text-base text-ds-ink-default-default outline-none placeholder:text-ds-ink-muted-default"

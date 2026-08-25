@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import ContentHeader from '@/components/Layout/ContentHeader';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useHost } from '@/host';
@@ -35,7 +36,7 @@ import {
   type DiffEditorProps,
   type DiffOnMount,
 } from '@monaco-editor/react';
-import { CheckCheck, CodeXml, Eye, FileWarning } from 'lucide-react';
+import { CodeXml, Eye, FileWarning } from 'lucide-react';
 import * as monaco from 'monaco-editor';
 import {
   forwardRef,
@@ -45,6 +46,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { countLineChanges, type LineCounts } from './diffMetrics';
@@ -71,8 +73,8 @@ export interface DiffFileCardProps {
   appearance: string;
   viewMode: DiffViewMode;
   wordWrap: boolean;
-  reviewed?: boolean;
   comments?: readonly SessionReviewComment[];
+  headerActions?: ReactNode;
   onSelectionChange?: (selection: ReviewSelection | null) => void;
   onCommentRequest?: (selection: ReviewSelection) => void;
 }
@@ -155,8 +157,8 @@ export const DiffFileCard = forwardRef<DiffFileCardHandle, DiffFileCardProps>(
       appearance,
       viewMode,
       wordWrap,
-      reviewed = false,
       comments = [],
+      headerActions,
       onSelectionChange,
       onCommentRequest,
     },
@@ -656,6 +658,38 @@ export const DiffFileCard = forwardRef<DiffFileCardHandle, DiffFileCardProps>(
     const baseName =
       lastSlash >= 0 ? file.path.slice(lastSlash + 1) : file.path;
 
+    const fileHeaderMetadata = (
+      <div
+        data-testid="review-file-metadata"
+        className="flex h-full min-w-0 items-center gap-ds-6"
+      >
+        <span
+          className={`inline-flex w-3 shrink-0 items-center justify-center text-ds-text-meta leading-none font-bold ${status.className}`}
+          aria-label={file.status}
+        >
+          {status.letter}
+        </span>
+        <span className="flex min-w-0 shrink items-center font-code text-ds-code-small font-medium text-ds-ink-default-default">
+          <span className="truncate">
+            <span className="font-code text-ds-ink-muted-default">
+              {dirName}
+            </span>
+            {baseName}
+          </span>
+        </span>
+        {counts ? (
+          <span className="inline-flex shrink-0 items-center gap-1.5 text-ds-text-meta leading-none font-medium">
+            <span className="text-ds-text-success-default-default">
+              +{counts.added}
+            </span>
+            <span className="text-ds-text-error-default-default">
+              −{counts.removed}
+            </span>
+          </span>
+        ) : null}
+      </div>
+    );
+
     const banner =
       file.beforeUnavailable && !loadError
         ? t('layout.review-before-unavailable', {
@@ -689,68 +723,46 @@ export const DiffFileCard = forwardRef<DiffFileCardHandle, DiffFileCardProps>(
         data-review-id={file.id}
         className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-ds-neutral-default-default"
       >
-        <header className="flex h-ds-layout-row-header shrink-0 items-center gap-2 border-0 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-3">
-          <span
-            className={`w-3 shrink-0 text-ds-text-meta font-bold ${status.className}`}
-            aria-label={file.status}
-          >
-            {status.letter}
-          </span>
-          <span className="min-w-0 flex-1 truncate font-code text-ds-code-small font-medium text-ds-ink-default-default">
-            <span className="font-code text-ds-ink-muted-default">
-              {dirName}
-            </span>
-            {baseName}
-          </span>
-          {reviewed ? (
-            <span className="hidden items-center gap-1 text-ds-text-meta text-ds-text-success-default-default sm:flex">
-              <DsIcon icon={CheckCheck} recipe="main-compact" />
-              {t('layout.review-reviewed', { defaultValue: 'Reviewed' })}
-            </span>
-          ) : null}
-          {semanticKind ? (
-            <ToggleGroup
-              type="single"
-              value={displayMode}
-              onValueChange={(value) => {
-                if (value) setDisplayMode(value as 'source' | 'preview');
-              }}
-              size="sm"
-              aria-label={t('layout.review-content-view', {
-                defaultValue: 'Content view',
-              })}
-            >
-              {semanticKind !== 'image' ? (
-                <ToggleGroupItem
-                  value="source"
-                  aria-label={t('layout.review-source-view', {
-                    defaultValue: 'Source diff',
+        <ContentHeader
+          leading={fileHeaderMetadata}
+          actions={
+            <>
+              {semanticKind ? (
+                <ToggleGroup
+                  type="single"
+                  value={displayMode}
+                  onValueChange={(value) => {
+                    if (value) setDisplayMode(value as 'source' | 'preview');
+                  }}
+                  size="sm"
+                  aria-label={t('layout.review-content-view', {
+                    defaultValue: 'Content view',
                   })}
                 >
-                  <CodeXml aria-hidden />
-                </ToggleGroupItem>
+                  {semanticKind !== 'image' ? (
+                    <ToggleGroupItem
+                      value="source"
+                      aria-label={t('layout.review-source-view', {
+                        defaultValue: 'Source diff',
+                      })}
+                    >
+                      <CodeXml aria-hidden />
+                    </ToggleGroupItem>
+                  ) : null}
+                  <ToggleGroupItem
+                    value="preview"
+                    aria-label={t('layout.review-preview-view', {
+                      defaultValue: 'Rendered diff',
+                    })}
+                  >
+                    <Eye aria-hidden />
+                  </ToggleGroupItem>
+                </ToggleGroup>
               ) : null}
-              <ToggleGroupItem
-                value="preview"
-                aria-label={t('layout.review-preview-view', {
-                  defaultValue: 'Rendered diff',
-                })}
-              >
-                <Eye aria-hidden />
-              </ToggleGroupItem>
-            </ToggleGroup>
-          ) : null}
-          {counts && (
-            <span className="flex shrink-0 items-center gap-1.5 text-ds-text-meta font-medium">
-              <span className="text-ds-text-success-default-default">
-                +{counts.added}
-              </span>
-              <span className="text-ds-text-error-default-default">
-                −{counts.removed}
-              </span>
-            </span>
-          )}
-        </header>
+              {headerActions}
+            </>
+          }
+        />
 
         {banner ? (
           <div className="flex shrink-0 items-center gap-2 border-0 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-3 py-2 text-ds-text-meta text-ds-ink-muted-default">
@@ -795,7 +807,7 @@ export const DiffFileCard = forwardRef<DiffFileCardHandle, DiffFileCardProps>(
             </div>
           ) : sides ? (
             <div
-              className="code-editor-surface review-diff-surface h-full w-full"
+              className="code-editor-surface review-diff-surface h-full w-full bg-ds-neutral-subtle-default"
               style={
                 {
                   '--code-font-family': CODE_FONT_FAMILY,

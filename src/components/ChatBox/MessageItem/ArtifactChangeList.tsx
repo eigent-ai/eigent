@@ -12,17 +12,26 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { cn } from '@/lib/utils';
 import { getWorkspaceRelativeFilePath } from '@/lib/workspaceRelativePath';
-import { ChevronDown, FileDiff, FileText } from 'lucide-react';
+import { ChevronDown, FileDiff } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+
+export interface ArtifactLineChanges {
+  added: number;
+  removed: number;
+}
 
 export interface ArtifactChangeListProps {
   files?: FileInfo[];
   onOpen: (file: FileInfo) => void;
   onViewChanges?: () => void;
   canOpenFile?: (file: FileInfo) => boolean;
+  lineChangesForFile?: (file: FileInfo) => ArtifactLineChanges | null;
+  totals?: ArtifactLineChanges | null;
   scanStatus?: string;
   truncated?: boolean;
 }
@@ -33,6 +42,8 @@ export function ArtifactChangeList({
   onOpen,
   onViewChanges,
   canOpenFile = () => true,
+  lineChangesForFile,
+  totals,
   scanStatus = 'complete',
   truncated = false,
 }: ArtifactChangeListProps) {
@@ -57,26 +68,41 @@ export function ArtifactChangeList({
     : fileItems.slice(0, collapsedCount);
 
   return (
-    <section className="my-3 overflow-hidden rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default">
-      <div className="flex items-center gap-2 border-x-0 border-t-0 border-b-[1px] border-solid border-ds-hairline-default-default bg-ds-neutral-default-default px-4 py-3">
-        <span className="flex size-4 shrink-0 items-center justify-center rounded-lg bg-ds-neutral-strong-default text-ds-ink-default-default">
-          <FileText size={18} aria-hidden />
+    <section className="my-3 overflow-hidden rounded-ds-card border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default">
+      <div className="flex items-center gap-3 border-x-0 border-t-0 border-b border-solid border-ds-hairline-default-default bg-ds-neutral-default-default px-4 py-3">
+        <span className="flex size-ds-control-xl shrink-0 items-center justify-center rounded-ds-menu-row bg-ds-neutral-strong-default text-ds-ink-default-default">
+          <DsIcon icon={FileDiff} recipe="detailed" />
         </span>
-        <span className="text-ds-text-base font-semibold text-ds-ink-default-default">
-          {t('chat.files-changed')}
-        </span>
-        <span className="text-ds-text-base font-medium text-ds-text-success-default-default">
-          {fileItems.length}
-        </span>
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="truncate text-ds-text-base font-semibold text-ds-ink-default-default">
+            {t('chat.files-edited', {
+              count: fileItems.length,
+              defaultValue_one: 'Edited {{count}} file',
+              defaultValue_other: 'Edited {{count}} files',
+            })}
+          </span>
+          {totals ? (
+            <span className="inline-flex items-center gap-1.5 text-ds-text-meta font-medium tabular-nums">
+              <span className="text-ds-text-success-default-default">
+                +{totals.added}
+              </span>
+              <span className="text-ds-text-error-default-default">
+                −{totals.removed}
+              </span>
+            </span>
+          ) : null}
+        </div>
         {onViewChanges && fileItems.length > 0 ? (
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
+            buttonContent="text"
             onClick={onViewChanges}
-            className="ml-auto inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default px-2.5 text-ds-text-meta font-medium text-ds-ink-default-default transition-colors hover:bg-ds-neutral-default-hover active:shadow-ds-elevation-control-pressed"
+            className="ml-auto"
           >
-            <FileDiff size={14} aria-hidden />
-            {t('chat.view-changes')}
-          </button>
+            {t('layout.review', { defaultValue: 'Review' })}
+          </Button>
         ) : null}
       </div>
       {scanWarning ? (
@@ -87,7 +113,13 @@ export function ArtifactChangeList({
       <div className="flex flex-col">
         {visibleFiles.map((file, fileIndex) => {
           const detail = getWorkspaceRelativeFilePath(file);
+          const lastSlash = detail.lastIndexOf('/');
+          const directory =
+            lastSlash >= 0 ? detail.slice(0, lastSlash + 1) : '';
+          const baseName =
+            lastSlash >= 0 ? detail.slice(lastSlash + 1) : detail;
           const canOpen = canOpenFile(file);
+          const lineChanges = lineChangesForFile?.(file) ?? null;
           const changeLabel =
             file.artifactChange === 'generated'
               ? 'Generated'
@@ -98,19 +130,31 @@ export function ArtifactChangeList({
             <>
               <span
                 className={cn(
-                  'min-w-0 flex-1 truncate !text-ds-text-base font-medium text-ds-ink-default-default',
+                  'min-w-0 flex-1 truncate !text-ds-text-base font-normal text-ds-ink-default-default',
                   canOpen && 'group-hover:underline'
                 )}
               >
-                {detail}
+                <span className="text-ds-ink-muted-default">{directory}</span>
+                {baseName}
               </span>
-              <span className="shrink-0 text-ds-text-meta font-semibold text-ds-text-success-default-default">
-                {changeLabel}
-              </span>
+              {lineChanges ? (
+                <span className="inline-flex shrink-0 items-center gap-1 text-ds-text-base font-medium tabular-nums">
+                  <span className="text-ds-text-success-default-default">
+                    +{lineChanges.added}
+                  </span>
+                  <span className="text-ds-text-error-default-default">
+                    −{lineChanges.removed}
+                  </span>
+                </span>
+              ) : (
+                <span className="shrink-0 text-ds-text-meta font-medium text-ds-ink-muted-default">
+                  {changeLabel}
+                </span>
+              )}
             </>
           );
           const rowClassName = cn(
-            'flex w-full min-w-0 items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-ds-neutral-default-default',
+            'flex min-h-ds-control-xl w-full min-w-0 items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-ds-neutral-default-hover',
             canOpen && 'group'
           );
           return canOpen ? (

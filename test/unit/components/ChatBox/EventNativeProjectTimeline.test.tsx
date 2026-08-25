@@ -737,7 +737,7 @@ describe('EventNativeProjectTimeline', () => {
     expect(screen.getByText('5s')).toBeInTheDocument();
   });
 
-  it('shows Files changed only after a final markdown response is terminal', async () => {
+  it('shows the edited-files card only after a final markdown response is terminal', async () => {
     const finalResponse = {
       ...messageNode(1),
       purpose: 'final' as const,
@@ -768,7 +768,7 @@ describe('EventNativeProjectTimeline', () => {
       />
     );
 
-    expect(screen.queryByText('Files changed')).not.toBeInTheDocument();
+    expect(screen.queryByText('Edited 1 file')).not.toBeInTheDocument();
 
     mocks.projectedRuns = {
       'run-1': {
@@ -788,7 +788,7 @@ describe('EventNativeProjectTimeline', () => {
       />
     );
 
-    expect(await screen.findByText('Files changed')).toBeInTheDocument();
+    expect(await screen.findByText('Edited 1 file')).toBeInTheDocument();
   });
 
   it('shows a durable request and resolution as one interaction receipt', () => {

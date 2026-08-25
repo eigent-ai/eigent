@@ -223,7 +223,7 @@
   "timeline-style-detailed": "詳細",
   "timeline-style-summarized": "摘要",
   "files-changed": "變更的檔案",
-  "view-changes": "檢視變更",
+  "files-edited_other": "已編輯 {{count}} 個檔案",
   "agent": "智能體",
   "answer": "回答",
   "answer-agent": "回復智能體",

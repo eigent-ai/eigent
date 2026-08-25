@@ -223,7 +223,7 @@
   "timeline-style-detailed": "详细",
   "timeline-style-summarized": "摘要",
   "files-changed": "变更的文件",
-  "view-changes": "查看更改",
+  "files-edited_other": "已编辑 {{count}} 个文件",
   "agent": "智能体",
   "answer": "回答",
   "answer-agent": "回复智能体",

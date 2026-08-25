@@ -80,6 +80,54 @@ describe('ReviewFileTree', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('uses one 40px row for search and the filter menu', async () => {
+    const user = userEvent.setup();
+    render(
+      <ReviewFileTree files={files} selectedId={null} onSelect={vi.fn()} />
+    );
+
+    expect(screen.getByTestId('review-file-tree-header')).toHaveClass(
+      'h-10',
+      'items-center'
+    );
+    const searchInput = screen.getByRole('textbox', { name: 'Filter files…' });
+    expect(searchInput).toBeVisible();
+    await user.type(searchInput, 'added');
+    expect(searchInput).toHaveValue('added');
+    await user.keyboard('{Escape}');
+    expect(searchInput).toHaveValue('');
+    expect(searchInput.parentElement).toHaveClass(
+      'h-ds-control-sm',
+      'min-h-ds-control-sm'
+    );
+
+    await user.click(
+      screen.getByRole('button', { name: 'Filter by change status' })
+    );
+    const addedOption = screen.getByRole('menuitemcheckbox', {
+      name: 'Added files',
+    });
+    expect(addedOption).toHaveClass(
+      '!text-ds-text-success-default-default',
+      'cursor-pointer',
+      'hover:bg-ds-neutral-default-hover'
+    );
+    expect(addedOption.firstElementChild).toHaveClass(
+      'inset-y-0',
+      'my-auto',
+      'size-4'
+    );
+    expect(
+      screen.getByRole('menuitemcheckbox', { name: 'Modified files' })
+    ).toHaveClass('!text-ds-text-warning-default-default');
+    expect(
+      screen.getByRole('menuitemcheckbox', { name: 'Deleted files' })
+    ).toHaveClass('!text-ds-text-error-default-default');
+    expect(
+      screen.getByRole('menuitemcheckbox', { name: 'Unreviewed' })
+    ).toHaveClass('!text-ds-ink-default-default');
+  });
+
   it('filters by review progress and change status', async () => {
     const user = userEvent.setup();
     const { rerender } = render(
@@ -91,7 +139,20 @@ describe('ReviewFileTree', () => {
       />
     );
 
-    await user.click(screen.getByRole('button', { name: 'Unreviewed' }));
+    const filterButton = screen.getByRole('button', {
+      name: 'Filter by change status',
+    });
+    await user.click(filterButton);
+    await user.click(
+      screen.getByRole('menuitemcheckbox', { name: 'Unreviewed' })
+    );
+    expect(filterButton).toHaveAttribute('aria-pressed', 'true');
+    expect(filterButton).toHaveAttribute('data-variant', 'secondary');
+    expect(filterButton).toHaveClass(
+      'bg-ds-neutral-muted-default',
+      'data-[state=open]:!bg-ds-neutral-muted-default'
+    );
+    await user.keyboard('{Escape}');
     expect(
       screen.queryByRole('treeitem', { name: /added\.ts/i })
     ).not.toBeInTheDocument();
@@ -107,7 +168,13 @@ describe('ReviewFileTree', () => {
         onSelect={vi.fn()}
       />
     );
-    await user.click(screen.getByRole('button', { name: 'added' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Filter by change status' })
+    );
+    await user.click(
+      screen.getByRole('menuitemcheckbox', { name: 'Added files' })
+    );
+    await user.keyboard('{Escape}');
     expect(screen.getByRole('treeitem', { name: /added\.ts/i })).toBeVisible();
     expect(
       screen.queryByRole('treeitem', { name: /modified\.ts/i })

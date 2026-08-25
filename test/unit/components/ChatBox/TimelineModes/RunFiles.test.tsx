@@ -14,6 +14,7 @@
 
 import {
   normalizeRunReviewPath,
+  resetRunFileDiffStatsCache,
   resolveRunFilePreview,
   runFileReviewPath,
   RunFilesGroup,
@@ -21,10 +22,50 @@ import {
 } from '@/components/ChatBox/TimelineModes/RunFiles';
 import type { ChatArtifactNode } from '@/lib/projector/chat';
 import type { ProjectedArtifact } from '@/lib/projector/types';
+import { useAuthStore } from '@/store/authStore';
 import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
 import { SPACE_SCHEMA_VERSION, useSpaceStore } from '@/store/spaceStore';
-import { fireEvent, render, renderHook, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import {
+  act,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { mockFetchRunGitChanges } = vi.hoisted(() => ({
+  mockFetchRunGitChanges: vi.fn(),
+}));
+
+vi.mock('@/store/authStore', () => {
+  const state = {
+    email: null as string | null,
+    user_id: null as number | null,
+    language: 'en-US',
+  };
+  const useAuthStore = Object.assign(
+    <T,>(selector: (value: typeof state) => T) => selector(state),
+    {
+      getState: () => state,
+      setState: (next: Partial<typeof state>) => Object.assign(state, next),
+      subscribe: vi.fn(() => vi.fn()),
+    }
+  );
+
+  return {
+    authStore: useAuthStore,
+    getAuthStore: () => state,
+    getWorkerList: () => [],
+    useAuthStore,
+    useWorkerList: () => [],
+  };
+});
+
+vi.mock('@/service/workspaceGitApi', () => ({
+  fetchRunGitChanges: mockFetchRunGitChanges,
+}));
 
 const projectedArtifact: ProjectedArtifact = {
   artifactId: 'artifact-1',
@@ -55,8 +96,55 @@ const realtimeArtifact: ChatArtifactNode = {
   name: 'report.csv',
 };
 
+function mockRunFileVisibility() {
+  const activators = new Map<string, Array<() => void>>();
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class IntersectionObserverMock {
+      private readonly callback: IntersectionObserverCallback;
+
+      constructor(callback: IntersectionObserverCallback) {
+        this.callback = callback;
+      }
+
+      observe = (target: Element) => {
+        const runId = target.parentElement?.dataset.runFilesGroup;
+        if (!runId) return;
+        const activate = () =>
+          this.callback(
+            [
+              {
+                isIntersecting: true,
+                target,
+              } as IntersectionObserverEntry,
+            ],
+            this as unknown as IntersectionObserver
+          );
+        activators.set(runId, [...(activators.get(runId) ?? []), activate]);
+      };
+
+      disconnect = vi.fn();
+      unobserve = vi.fn();
+      takeRecords = vi.fn(() => []);
+      root = null;
+      rootMargin = '240px 0px';
+      thresholds = [0];
+    }
+  );
+
+  return {
+    activators,
+    activate(runId: string) {
+      act(() => activators.get(runId)?.forEach((activate) => activate()));
+    },
+  };
+}
+
 describe('RunFiles capability boundary', () => {
   beforeEach(() => {
+    mockFetchRunGitChanges.mockReset();
+    resetRunFileDiffStatsCache();
+    useAuthStore.setState({ email: '', user_id: null });
     usePageTabStore.setState({
       sessionPreviewProjectId: 'project-1',
       sessionPreviewByProject: {},
@@ -101,6 +189,10 @@ describe('RunFiles capability boundary', () => {
       },
       projectIdIndex: { 'project-1': 'space-1' },
     });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('does not turn portable local or realtime identity into a file path', () => {
@@ -156,7 +248,7 @@ describe('RunFiles capability boundary', () => {
       <RunFilesGroup projectedArtifacts={[projectedArtifact]} runId="run-1" />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'View changes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Review' }));
 
     expect(
       getSessionPreviewSlice(usePageTabStore.getState()).tabs[0]
@@ -168,6 +260,166 @@ describe('RunFiles capability boundary', () => {
         runId: 'run-1',
       },
     });
+  });
+
+  it('shows authoritative per-file and total line changes without an undo action', async () => {
+    useAuthStore.setState({ email: 'reviewer@example.com', user_id: 7 });
+    const visibility = mockRunFileVisibility();
+    mockFetchRunGitChanges.mockResolvedValue({
+      repository_id: 'repo-1',
+      project_id: 'project-1',
+      run_id: 'run-1',
+      base_commit: 'base',
+      target_commit: 'target',
+      files: [
+        {
+          path: 'reports/report.csv',
+          status: 'added',
+          before_size: 0,
+          after_size: 10,
+          binary: false,
+          added_lines: 12,
+          removed_lines: 3,
+        },
+      ],
+      totals: { added: 12, removed: 3 },
+      truncated: false,
+    });
+
+    render(
+      <RunFilesGroup
+        projectedArtifacts={[projectedArtifact]}
+        projectId="project-1"
+        runId="run-1"
+      />
+    );
+
+    await waitFor(() =>
+      expect(visibility.activators.get('run-1')).toHaveLength(1)
+    );
+    visibility.activate('run-1');
+    expect(await screen.findAllByText('+12')).toHaveLength(2);
+    expect(screen.getAllByText('−3')).toHaveLength(2);
+    expect(screen.getByText('Edited 1 file')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+    expect(mockFetchRunGitChanges).toHaveBeenCalledWith('run-1', 'space-1', {
+      email: 'reviewer@example.com',
+      userId: 7,
+    });
+
+    // A duplicate instance of the same Run shares the resolved request.
+    render(
+      <RunFilesGroup
+        projectedArtifacts={[projectedArtifact]}
+        projectId="project-1"
+        runId="run-1"
+      />
+    );
+    await waitFor(() =>
+      expect(visibility.activators.get('run-1')).toHaveLength(2)
+    );
+    visibility.activate('run-1');
+    await waitFor(() => expect(screen.getAllByText('+12')).toHaveLength(4));
+    expect(mockFetchRunGitChanges).toHaveBeenCalledTimes(1);
+  });
+
+  it('loads stats only as distinct Run cards approach view', async () => {
+    useAuthStore.setState({ email: 'reviewer@example.com', user_id: 7 });
+    const visibility = mockRunFileVisibility();
+    mockFetchRunGitChanges.mockImplementation(async (runId: string) => ({
+      repository_id: 'repo-1',
+      project_id: 'project-1',
+      run_id: runId,
+      base_commit: 'base',
+      target_commit: 'target',
+      files: [],
+      totals: { added: 0, removed: 0 },
+      truncated: false,
+    }));
+
+    render(
+      <>
+        <RunFilesGroup
+          projectedArtifacts={[projectedArtifact]}
+          projectId="project-1"
+          runId="run-1"
+        />
+        <RunFilesGroup
+          projectedArtifacts={[
+            { ...projectedArtifact, artifactId: 'artifact-2', runId: 'run-2' },
+          ]}
+          projectId="project-1"
+          runId="run-2"
+        />
+      </>
+    );
+
+    await waitFor(() => expect(visibility.activators.size).toBe(2));
+    expect(mockFetchRunGitChanges).not.toHaveBeenCalled();
+
+    visibility.activate('run-1');
+    await waitFor(() =>
+      expect(mockFetchRunGitChanges).toHaveBeenCalledTimes(1)
+    );
+    expect(mockFetchRunGitChanges).toHaveBeenLastCalledWith(
+      'run-1',
+      'space-1',
+      { email: 'reviewer@example.com', userId: 7 }
+    );
+
+    visibility.activate('run-2');
+    await waitFor(() =>
+      expect(mockFetchRunGitChanges).toHaveBeenCalledTimes(2)
+    );
+    expect(mockFetchRunGitChanges).toHaveBeenLastCalledWith(
+      'run-2',
+      'space-1',
+      { email: 'reviewer@example.com', userId: 7 }
+    );
+  });
+
+  it('skips the Git request for legacy spaces that have no repository', async () => {
+    useAuthStore.setState({ email: 'reviewer@example.com', user_id: 7 });
+    const state = useSpaceStore.getState();
+    useSpaceStore.setState({
+      spaces: {
+        ...state.spaces,
+        legacy_space: {
+          ...state.spaces['space-1'],
+          id: 'legacy_space',
+          name: 'Legacy Space',
+        },
+      },
+      projectsBySpaceId: {
+        ...state.projectsBySpaceId,
+        legacy_space: {
+          'legacy-project': {
+            ...state.projectsBySpaceId['space-1']['project-1'],
+            id: 'legacy-project',
+            spaceId: 'legacy_space',
+            name: 'Legacy project',
+          },
+        },
+      },
+      projectIdIndex: {
+        ...state.projectIdIndex,
+        'legacy-project': 'legacy_space',
+      },
+    });
+    expect(
+      useSpaceStore.getState().getProjectMeta('legacy-project')
+    ).toMatchObject({ spaceId: 'legacy_space' });
+
+    render(
+      <RunFilesGroup
+        projectedArtifacts={[projectedArtifact]}
+        projectId="legacy-project"
+        runId="run-1"
+      />
+    );
+
+    expect(await screen.findByText('Edited 1 file')).toBeInTheDocument();
+    expect(mockFetchRunGitChanges).not.toHaveBeenCalled();
   });
 
   it('uses the durable relative path for Cloud assets too', () => {

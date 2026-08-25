@@ -14,7 +14,7 @@
 
 import { HeaderBox } from '@/components/Session/HeaderBox';
 import { usePageTabStore } from '@/store/pageTabStore';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -24,13 +24,36 @@ vi.mock('@/store/authStore', () => ({
 }));
 
 describe('HeaderBox chat timeline mode', () => {
+  let resizeHeader: ((width: number) => void) | undefined;
+
   beforeEach(() => {
     vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'true');
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      width: 800,
+    } as DOMRect);
+    vi.stubGlobal(
+      'ResizeObserver',
+      class ResizeObserverMock {
+        constructor(callback: ResizeObserverCallback) {
+          resizeHeader = (width) =>
+            callback(
+              [{ contentRect: { width } } as ResizeObserverEntry],
+              this as unknown as ResizeObserver
+            );
+        }
+
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      }
+    );
     usePageTabStore.setState({ chatTimelineDetailLevel: 'narrative' });
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it('places the mode toggle between token usage and preview controls', () => {
@@ -66,6 +89,22 @@ describe('HeaderBox chat timeline mode', () => {
       'aria-selected',
       'true'
     );
+  });
+
+  it('hides token usage when the Session pane shrinks and keeps both right-side controls', () => {
+    render(<HeaderBox totalTokens={42} />);
+
+    expect(screen.getByText(/Total:/)).toBeInTheDocument();
+
+    act(() => resizeHeader?.(400));
+
+    expect(screen.queryByText(/Total:/)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('tablist', { name: 'Chat timeline style' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Open preview' })
+    ).toBeInTheDocument();
   });
 
   it('switches the event timeline presentation from the toggle', async () => {

@@ -211,6 +211,7 @@ describe('pageTabStore session preview', () => {
     const projectReview = slice().tabs[0];
     expect(projectReview).toMatchObject({
       type: 'review',
+      title: 'Task review',
       reviewTarget: { scope: 'project', focusRequestId: 0 },
     });
 
@@ -242,6 +243,75 @@ describe('pageTabStore session preview', () => {
     });
     expect(slice().tabs).toHaveLength(2);
     expect(slice().activeTabId).toBe(runReview?.id);
+  });
+
+  it('migrates saved Review tabs to the task-focused title contract', async () => {
+    const migrate = usePageTabStore.persist.getOptions().migrate;
+    expect(migrate).toBeDefined();
+    if (!migrate) return;
+
+    const migrated = await migrate(
+      {
+        sessionPreviewByProject: {
+          'project-a': {
+            open: true,
+            activeTabId: 'review-legacy',
+            tabs: [
+              {
+                id: 'review-legacy',
+                type: 'review',
+                title: 'Review',
+                reviewTarget: {
+                  scope: 'project',
+                  focusRequestId: 0,
+                },
+                reviewScope: 'all',
+              },
+            ],
+          },
+        },
+      },
+      4
+    );
+    const restoredReview = (
+      migrated as {
+        sessionPreviewByProject: Record<
+          string,
+          { tabs: Array<Record<string, unknown>> }
+        >;
+      }
+    ).sessionPreviewByProject['project-a'].tabs[0];
+
+    expect(usePageTabStore.persist.getOptions().version).toBe(5);
+    expect(restoredReview).toMatchObject({
+      type: 'review',
+      title: 'Task review',
+      reviewTarget: { scope: 'project', focusRequestId: 0 },
+    });
+    expect(restoredReview).not.toHaveProperty('reviewScope');
+  });
+
+  it('keeps the first review revision per target and mirrors the tab’s own target', () => {
+    const store = usePageTabStore.getState();
+    store.toggleSessionPreview();
+    const chooserId = slice().activeTabId!;
+    store.choosePreviewTabType(chooserId, 'review');
+    const tabId = slice().tabs[0].id;
+    const first = { baseCommit: 'base-1', targetCommit: 'target-1' };
+    const second = { baseCommit: 'base-2', targetCommit: 'target-2' };
+
+    store.setReviewIdentity(tabId, first, 'run:run-1');
+    store.setReviewIdentity(tabId, first);
+
+    // A later revision must not move a pin, or nothing is ever out of date.
+    store.setReviewIdentity(tabId, second, 'run:run-1');
+    store.setReviewIdentity(tabId, second);
+
+    expect(slice().tabs[0]).toMatchObject({
+      // The tab's own target is `project`, so only that one mirrors.
+      reviewIdentity: first,
+      reviewIdentities: { 'run:run-1': first, project: first },
+    });
   });
 
   it('persists Review comments and creates a one-shot Project Chat draft', () => {
