@@ -40,10 +40,7 @@ const reviewTab: SessionReviewTab = {
   reviewTarget: { scope: 'project', focusRequestId: 0 },
 };
 
-/**
- * The scope selection lives on the tab in the store, so exercising it needs the
- * same store-connected rendering `PreviewPanel` gives the tab in the app.
- */
+/** Store-connected rendering matches how PreviewPanel keeps tab updates live. */
 function ConnectedReviewTab({ tabId = reviewTab.id }: { tabId?: string }) {
   const tab = usePageTabStore(
     (state) =>
@@ -206,7 +203,7 @@ describe('ReviewTab', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('defaults to the latest task and can switch an empty review to all changes', () => {
+  it('keeps a generic Review tab focused on the latest task without a scope selector', () => {
     mockUseReviewChanges.mockReturnValue({
       loading: false,
       files: [],
@@ -216,40 +213,17 @@ describe('ReviewTab', () => {
       refresh: vi.fn(),
     });
 
-    render(<ConnectedReviewTab />);
+    const { container } = render(<ConnectedReviewTab />);
 
-    const scopeButton = screen.getByRole('button', {
-      name: 'Review change scope: Latest task',
-    });
-    expect(scopeButton).toHaveTextContent('Latest task');
-    expect(scopeButton).toHaveAttribute('data-variant', 'ghost');
-    expect(scopeButton).toHaveClass('!h-[var(--ds-button-sm-height)]');
-    expect(
-      scopeButton.querySelector('.lucide-chevron-down')
-    ).toBeInTheDocument();
     expect(mockUseReviewChanges).toHaveBeenLastCalledWith(
       { scope: 'run', runId: 'run-latest', focusRequestId: 0 },
       undefined
     );
-
-    fireEvent.keyDown(scopeButton, { key: 'Enter', code: 'Enter' });
-    const allOption = screen.getByRole('menuitemradio', { name: 'All' });
-    expect(allOption).toHaveClass(
-      'cursor-pointer',
-      'hover:bg-ds-neutral-default-hover'
-    );
-    fireEvent.click(allOption);
-
-    expect(scopeButton).toHaveTextContent('All');
-    expect(mockUseReviewChanges).toHaveBeenLastCalledWith(
-      { scope: 'project', focusRequestId: 0 },
-      undefined
-    );
-    // Persisted on the tab, so fronting another preview tab and coming back
-    // does not silently drop back to the latest task.
     expect(
-      getSessionPreviewSlice(usePageTabStore.getState()).tabs[0]
-    ).toMatchObject({ reviewScope: 'all' });
+      screen.queryByRole('button', { name: /^Review change scope:/ })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitemradio')).not.toBeInTheDocument();
+    expect(container.querySelector('header')).toBeNull();
   });
 
   it('renders review files by their stable identity', () => {
@@ -284,7 +258,7 @@ describe('ReviewTab', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows the project-wide added and removed line totals', () => {
+  it('shows the task-wide added and removed line totals', () => {
     mockUseReviewChanges.mockReturnValue({
       loading: false,
       desktopOnly: false,
@@ -305,7 +279,7 @@ describe('ReviewTab', () => {
     render(<ReviewTab tab={reviewTab} />);
 
     const previewHeader = screen
-      .getByRole('button', { name: /^Review change scope:/ })
+      .getByTestId('review-header-metadata')
       .closest('header');
     expect(previewHeader).not.toBeNull();
     expect(previewHeader).toHaveClass('gap-2', 'bg-ds-neutral-subtle-default');
@@ -489,7 +463,7 @@ describe('ReviewTab', () => {
     render(<ReviewTab tab={reviewTab} />);
 
     const previewHeader = screen
-      .getByRole('button', { name: /^Review change scope:/ })
+      .getByTestId('review-header-metadata')
       .closest('header');
     expect(previewHeader).not.toBeNull();
     const headerActions = screen.getByTestId('review-header-actions');
@@ -636,11 +610,11 @@ describe('ReviewTab', () => {
     // must keep showing that Run rather than silently retargeting.
     expect(mockUseLatestReviewRunId).toHaveBeenCalled();
     expect(
-      screen.getByRole('button', { name: 'Review change scope: Task changes' })
-    ).toBeInTheDocument();
+      screen.queryByRole('button', { name: /^Review change scope:/ })
+    ).not.toBeInTheDocument();
   });
 
-  it('pins the loaded revision per scope so the out-of-date guard survives a remount', () => {
+  it('pins the loaded revision per task so the out-of-date guard survives a remount', () => {
     const identity = { baseCommit: 'base-1', targetCommit: 'target-1' };
     const changesWithIdentity = (
       reviewIdentity: SessionReviewIdentity
@@ -692,11 +666,11 @@ describe('ReviewTab', () => {
     ).toEqual({ 'run:run-latest': identity });
   });
 
-  it('never pins an old response identity under a newly selected target', () => {
+  it('never pins an old response identity under a newly followed task', () => {
     const runIdentity = { baseCommit: 'run-base', targetCommit: 'run-target' };
-    const projectIdentity = {
-      baseCommit: 'project-base',
-      targetCommit: 'project-target',
+    const nextRunIdentity = {
+      baseCommit: 'next-run-base',
+      targetCommit: 'next-run-target',
     };
     let loadedChanges: ReviewChangesState = {
       loading: false,
@@ -728,23 +702,23 @@ describe('ReviewTab', () => {
       ).reviewIdentities
     ).toEqual({ 'run:run-latest': runIdentity });
 
-    const scopeButton = screen.getByRole('button', {
-      name: 'Review change scope: Latest task',
-    });
-    fireEvent.keyDown(scopeButton, { key: 'Enter', code: 'Enter' });
-    fireEvent.click(screen.getByRole('menuitemradio', { name: 'All' }));
+    mockUseLatestReviewRunId.mockReturnValue('run-next');
+    view.rerender(<ConnectedReviewTab />);
 
-    const awaitingProject = getSessionPreviewSlice(usePageTabStore.getState())
+    const awaitingNextRun = getSessionPreviewSlice(usePageTabStore.getState())
       .tabs[0] as SessionReviewTab;
-    expect(awaitingProject.reviewIdentities).toEqual({
+    expect(awaitingNextRun.reviewIdentities).toEqual({
       'run:run-latest': runIdentity,
     });
-    expect(awaitingProject.reviewIdentity).toBeUndefined();
+    expect(mockUseReviewChanges).toHaveBeenLastCalledWith(
+      { scope: 'run', runId: 'run-next', focusRequestId: 0 },
+      undefined
+    );
 
     loadedChanges = {
       ...loadedChanges,
-      reviewIdentity: projectIdentity,
-      reviewIdentityTargetKey: 'project',
+      reviewIdentity: nextRunIdentity,
+      reviewIdentityTargetKey: 'run:run-next',
     };
     view.rerender(<ConnectedReviewTab />);
 
@@ -755,7 +729,7 @@ describe('ReviewTab', () => {
       ).reviewIdentities
     ).toEqual({
       'run:run-latest': runIdentity,
-      project: projectIdentity,
+      'run:run-next': nextRunIdentity,
     });
   });
 
@@ -862,7 +836,7 @@ describe('ReviewTab', () => {
     ).toBeInTheDocument();
   });
 
-  it('binds a new comment to the active scope instead of the tab origin', () => {
+  it('binds a new comment to the active task instead of the tab origin', () => {
     const projectIdentity = {
       baseCommit: 'project-base',
       targetCommit: 'project-target',
@@ -875,7 +849,6 @@ describe('ReviewTab', () => {
         project: projectIdentity,
         'run:run-latest': runIdentity,
       },
-      reviewScope: 'task',
     };
     usePageTabStore.setState({
       sessionPreviewByProject: {

@@ -79,13 +79,6 @@ export interface SessionReviewTarget {
   focusRequestId: number;
 }
 
-/**
- * Which changes a Review tab is showing: `task` is the tab's own Run when it
- * was opened for one and otherwise the project's newest Run; `all` aggregates
- * every change in the session.
- */
-export type ReviewChangeScope = 'task' | 'all';
-
 export interface SessionReviewIdentity {
   baseCommit: string;
   targetCommit: string;
@@ -127,14 +120,11 @@ export interface SessionReviewTab {
   /** First successfully loaded base/target pair; immutable for this tab. */
   reviewIdentity?: SessionReviewIdentity;
   /**
-   * First successfully loaded base/target pair per review scope the tab has
-   * shown, keyed by `reviewTargetIdentityKey`. The tab can render either the
-   * latest Run or the whole Project, and each needs its own pin so the
-   * out-of-date guard survives the tab being unmounted or reloaded.
+   * First successfully loaded base/target pair per task target the tab has
+   * shown, keyed by `reviewTargetIdentityKey`. A generic Review tab follows
+   * the latest Run, so each Run needs its own pin for the out-of-date guard.
    */
   reviewIdentities?: Record<string, SessionReviewIdentity>;
-  /** Scope chosen in the header; persisted so fronting another tab keeps it. */
-  reviewScope?: ReviewChangeScope;
 }
 
 export interface WorkspaceChatDraftRequest {
@@ -337,7 +327,7 @@ function createReviewTarget(
 }
 
 /**
- * Cache key for one review scope. A Run target without an id is still pending
+ * Cache key for one review target. A Run target without an id is still pending
  * (no task has started yet) and must not share the Project pin, so it keys to
  * its own slot rather than falling back to `project`.
  */
@@ -352,12 +342,9 @@ function createReviewPreviewTab(
   return {
     id: nextSessionPreviewTabId('review'),
     type: 'review',
-    title:
-      reviewTarget.scope === 'run'
-        ? i18next.t('layout.preview-task-review', {
-            defaultValue: 'Task review',
-          })
-        : i18next.t('layout.preview-review', { defaultValue: 'Review' }),
+    title: i18next.t('layout.preview-task-review', {
+      defaultValue: 'Task review',
+    }),
     reviewTarget,
     reviewComments: [],
   };
@@ -420,9 +407,23 @@ function createInitialSessionPreviewTabs(): {
   return { tabs: [chooser], activeTabId: chooser.id };
 }
 
+/** Normalize Review tabs created before the task-focused title contract. */
+function normalizeReviewPreviewTab(tab: SessionPreviewTab): SessionPreviewTab {
+  if (tab.type !== 'review') return tab;
+  const normalized = {
+    ...tab,
+    title: i18next.t('layout.preview-task-review', {
+      defaultValue: 'Task review',
+    }),
+  } as SessionReviewTab & { reviewScope?: unknown };
+  delete normalized.reviewScope;
+  return normalized;
+}
+
 /**
  * Strip runtime-only navigation state before persisting: after an app restart
  * the native webview (and its history) is gone, so only url/title survive.
+ * Review tabs are also normalized so retired scope state cannot return.
  */
 function sanitizeSessionPreviewForPersist(
   slices: Record<string, SessionPreviewSlice>
@@ -431,20 +432,21 @@ function sanitizeSessionPreviewForPersist(
   for (const [projectId, slice] of Object.entries(slices)) {
     result[projectId] = {
       ...slice,
-      tabs: slice.tabs.map((tab) =>
-        tab.type === 'browser'
+      tabs: slice.tabs.map((tab) => {
+        const normalizedTab = normalizeReviewPreviewTab(tab);
+        return normalizedTab.type === 'browser'
           ? {
-              ...tab,
+              ...normalizedTab,
               navigation: {
-                url: tab.url,
-                title: tab.title,
+                url: normalizedTab.url,
+                title: normalizedTab.title,
                 isLoading: false,
                 canGoBack: false,
                 canGoForward: false,
               },
             }
-          : tab
-      ),
+          : normalizedTab;
+      }),
     };
   }
   return result;
@@ -602,7 +604,7 @@ interface PageTabState {
   choosePreviewTabType: (tabId: string, kind: PreviewTabKind) => void;
   /** Open a file in a deduplicated file tab (reuses a blank starter tab). */
   openFilePreview: (file?: FileInfo | null) => void;
-  /** Open Project/Run Git review and optionally focus one changed path. */
+  /** Open a task-focused Git review and optionally focus one changed path. */
   openReviewPreview: (input?: OpenReviewPreviewInput) => void;
   /** Replace the local comment drafts owned by one Review tab. */
   updateReviewComments: (
@@ -614,8 +616,6 @@ interface PageTabState {
     identity: SessionReviewIdentity,
     targetKey?: string
   ) => void;
-  /** Persist the Review tab's change-scope selection. */
-  setReviewScope: (tabId: string, scope: ReviewChangeScope) => void;
   /**
    * Open a URL in this project's preview browser — the default target for
    * links mentioned in chat content, so they stay inside the session instead
@@ -1181,18 +1181,6 @@ export const usePageTabStore = create<PageTabState>()(
           };
           return { ...slice, tabs };
         }),
-      setReviewScope: (tabId, scope) =>
-        setSessionPreviewSlice(set, (slice) => {
-          const index = slice.tabs.findIndex(
-            (tab) => tab.id === tabId && tab.type === 'review'
-          );
-          if (index < 0) return null;
-          const current = slice.tabs[index] as SessionReviewTab;
-          if (current.reviewScope === scope) return null;
-          const tabs = [...slice.tabs];
-          tabs[index] = { ...current, reviewScope: scope };
-          return { ...slice, tabs };
-        }),
       openBrowserPreview: (url) =>
         setSessionPreviewSlice(set, (slice, state) => {
           const normalized = normalizeBrowserUrl(url);
@@ -1369,10 +1357,12 @@ export const usePageTabStore = create<PageTabState>()(
     }),
     {
       name: 'eigent-page-tab',
-      version: 4,
+      version: 5,
       // v1: Project.mode becomes the source of truth. Drop the legacy global
       // sessionSidePanelMode so mode no longer drifts between Projects.
       // v2: Project sidebar fold was removed; drop persisted fold state.
+      // v5: Review tabs are task-focused; normalize their title and remove the
+      // retired change-scope selection.
       migrate: (persistedState, version) => {
         if (persistedState && typeof persistedState === 'object') {
           const next = { ...(persistedState as Record<string, unknown>) };
@@ -1391,6 +1381,18 @@ export const usePageTabStore = create<PageTabState>()(
           }
           if (version < 4) {
             next.workspaceReviewHandoffs = [];
+          }
+          if (
+            version < 5 &&
+            next.sessionPreviewByProject &&
+            typeof next.sessionPreviewByProject === 'object'
+          ) {
+            next.sessionPreviewByProject = sanitizeSessionPreviewForPersist(
+              next.sessionPreviewByProject as Record<
+                string,
+                SessionPreviewSlice
+              >
+            );
           }
           return next as unknown as PageTabState;
         }

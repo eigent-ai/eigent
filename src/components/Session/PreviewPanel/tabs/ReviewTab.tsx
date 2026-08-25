@@ -19,8 +19,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -29,7 +27,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { useAuthStore } from '@/store/authStore';
 import type {
-  ReviewChangeScope,
   SessionReviewComment,
   SessionReviewTab,
   SessionReviewTarget,
@@ -40,7 +37,6 @@ import {
   ArrowUp,
   Check,
   CheckCheck,
-  ChevronDown,
   Columns2,
   Copy,
   FileDiff,
@@ -144,37 +140,20 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
     (state) => state.requestWorkspaceChatDraft
   );
   const reviewTarget = tab.reviewTarget ?? DEFAULT_REVIEW_TARGET;
-  const persistReviewScope = usePageTabStore((state) => state.setReviewScope);
-  const reviewScope = tab.reviewScope ?? 'task';
-  const setReviewScope = useCallback(
-    (scope: ReviewChangeScope) => persistReviewScope(tab.id, scope),
-    [persistReviewScope, tab.id]
-  );
-  // A tab opened for one Run stays on that Run; the session-wide tab follows
-  // whichever Run is newest.
+  // A tab opened for one Run stays on that Run; a generic Review tab follows
+  // whichever Run is newest. Review is intentionally task-focused.
   const pinnedRunId =
     reviewTarget.scope === 'run' ? reviewTarget.runId : undefined;
   const latestRunId = useLatestReviewRunId();
   const scopedRunId = pinnedRunId ?? latestRunId;
   const effectiveReviewTarget = useMemo<SessionReviewTarget>(
-    () =>
-      reviewScope === 'all'
-        ? {
-            scope: 'project',
-            ...(reviewTarget.focusPath
-              ? { focusPath: reviewTarget.focusPath }
-              : {}),
-            focusRequestId: reviewTarget.focusRequestId,
-          }
-        : {
-            scope: 'run',
-            ...(scopedRunId ? { runId: scopedRunId } : {}),
-            ...(reviewTarget.focusPath
-              ? { focusPath: reviewTarget.focusPath }
-              : {}),
-            focusRequestId: reviewTarget.focusRequestId,
-          },
-    [scopedRunId, reviewScope, reviewTarget]
+    () => ({
+      scope: 'run',
+      ...(scopedRunId ? { runId: scopedRunId } : {}),
+      ...(reviewTarget.focusPath ? { focusPath: reviewTarget.focusPath } : {}),
+      focusRequestId: reviewTarget.focusRequestId,
+    }),
+    [scopedRunId, reviewTarget]
   );
   const originalReviewTargetKey = reviewTargetIdentityKey(reviewTarget);
   const effectiveReviewTargetKey = reviewTargetIdentityKey(
@@ -538,64 +517,14 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
   const treeToggleLabel = treeHidden
     ? t('layout.review-show-tree', { defaultValue: 'Show file tree' })
     : t('layout.review-hide-tree', { defaultValue: 'Hide file tree' });
-  const runScoped = reviewScope === 'task';
-  const reviewScopeLabel = t('layout.review-change-scope', {
-    defaultValue: 'Review change scope',
-  });
-  // The session-wide tab tracks the newest task; a tab opened for one task is
-  // fixed to it, so it must not claim to be showing the latest one.
-  const taskScopeLabel = pinnedRunId
-    ? t('layout.review-task-changes', { defaultValue: 'Task changes' })
-    : t('layout.review-latest-task', { defaultValue: 'Latest task' });
-  const allChangesLabel = t('layout.session-summary-all', {
-    defaultValue: 'All',
-  });
-  const activeScopeLabel = runScoped ? taskScopeLabel : allChangesLabel;
   const addCommentLabel = t('layout.review-add-note-action', {
     defaultValue: 'Add comment',
   });
-  const reviewScopeSelector = (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          buttonContent="text"
-          // Naming the control alone would hide which scope is active from a
-          // screen reader, so the value is part of the accessible name.
-          aria-label={`${reviewScopeLabel}: ${activeScopeLabel}`}
-        >
-          {activeScopeLabel}
-          <ChevronDown aria-hidden />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        <DropdownMenuRadioGroup
-          value={reviewScope}
-          onValueChange={(value) => {
-            if (value === 'task' || value === 'all') setReviewScope(value);
-          }}
-        >
-          <DropdownMenuRadioItem value="task">
-            {taskScopeLabel}
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="all">
-            {allChangesLabel}
-          </DropdownMenuRadioItem>
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
   const renderNoticeShell = (content: React.ReactNode) => (
     <div
       ref={panelRef}
       className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-ds-neutral-default-default"
     >
-      <ContentHeader
-        className="gap-2 bg-ds-neutral-subtle-default"
-        leading={reviewScopeSelector}
-      />
       <div className="min-h-0 flex-1">{content}</div>
     </div>
   );
@@ -622,15 +551,9 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
   if (error) {
     return renderNoticeShell(
       <CenteredNotice
-        message={
-          runScoped
-            ? t('layout.review-task-scan-failed', {
-                defaultValue: 'Could not load the changes for this task.',
-              })
-            : t('layout.review-session-scan-failed', {
-                defaultValue: 'Could not load the changes for this session.',
-              })
-        }
+        message={t('layout.review-task-scan-failed', {
+          defaultValue: 'Could not load the changes for this task.',
+        })}
         detail={error}
         action={
           <Button type="button" variant="outline" size="sm" onClick={refresh}>
@@ -658,26 +581,13 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
   if (files.length === 0) {
     return renderNoticeShell(
       <CenteredNotice
-        message={
-          runScoped
-            ? t('layout.review-task-empty', {
-                defaultValue: 'No file changes in this task.',
-              })
-            : t('layout.review-session-empty', {
-                defaultValue: 'No file changes in this session yet.',
-              })
-        }
-        detail={
-          runScoped
-            ? t('layout.review-task-empty-hint', {
-                defaultValue:
-                  'This view contains only the files changed by the selected task.',
-              })
-            : t('layout.review-session-empty-hint', {
-                defaultValue:
-                  'Files written by agents will appear here as before / after diffs.',
-              })
-        }
+        message={t('layout.review-task-empty', {
+          defaultValue: 'No file changes in this task.',
+        })}
+        detail={t('layout.review-task-empty-hint', {
+          defaultValue:
+            'This view contains only the files changed by the selected task.',
+        })}
         action={
           <Button type="button" variant="outline" size="sm" onClick={refresh}>
             {t('layout.review-refresh', { defaultValue: 'Refresh' })}
@@ -692,7 +602,6 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
       data-testid="review-header-metadata"
       className="flex h-full min-w-0 items-center gap-2"
     >
-      {reviewScopeSelector}
       <span className="inline-flex shrink-0 items-center text-ds-text-meta text-ds-ink-muted-default">
         {selectedIndex + 1}/{files.length}
       </span>

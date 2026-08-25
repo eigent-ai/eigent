@@ -211,7 +211,7 @@ describe('pageTabStore session preview', () => {
     const projectReview = slice().tabs[0];
     expect(projectReview).toMatchObject({
       type: 'review',
-      title: 'Review',
+      title: 'Task review',
       reviewTarget: { scope: 'project', focusRequestId: 0 },
     });
 
@@ -245,7 +245,53 @@ describe('pageTabStore session preview', () => {
     expect(slice().activeTabId).toBe(runReview?.id);
   });
 
-  it('keeps the first review revision per scope and mirrors the tab’s own scope', () => {
+  it('migrates saved Review tabs to the task-focused title contract', async () => {
+    const migrate = usePageTabStore.persist.getOptions().migrate;
+    expect(migrate).toBeDefined();
+    if (!migrate) return;
+
+    const migrated = await migrate(
+      {
+        sessionPreviewByProject: {
+          'project-a': {
+            open: true,
+            activeTabId: 'review-legacy',
+            tabs: [
+              {
+                id: 'review-legacy',
+                type: 'review',
+                title: 'Review',
+                reviewTarget: {
+                  scope: 'project',
+                  focusRequestId: 0,
+                },
+                reviewScope: 'all',
+              },
+            ],
+          },
+        },
+      },
+      4
+    );
+    const restoredReview = (
+      migrated as {
+        sessionPreviewByProject: Record<
+          string,
+          { tabs: Array<Record<string, unknown>> }
+        >;
+      }
+    ).sessionPreviewByProject['project-a'].tabs[0];
+
+    expect(usePageTabStore.persist.getOptions().version).toBe(5);
+    expect(restoredReview).toMatchObject({
+      type: 'review',
+      title: 'Task review',
+      reviewTarget: { scope: 'project', focusRequestId: 0 },
+    });
+    expect(restoredReview).not.toHaveProperty('reviewScope');
+  });
+
+  it('keeps the first review revision per target and mirrors the tab’s own target', () => {
     const store = usePageTabStore.getState();
     store.toggleSessionPreview();
     const chooserId = slice().activeTabId!;
@@ -262,22 +308,10 @@ describe('pageTabStore session preview', () => {
     store.setReviewIdentity(tabId, second);
 
     expect(slice().tabs[0]).toMatchObject({
-      // The tab's own scope is `project`, so only that one mirrors.
+      // The tab's own target is `project`, so only that one mirrors.
       reviewIdentity: first,
       reviewIdentities: { 'run:run-1': first, project: first },
     });
-  });
-
-  it('persists the review change scope on the tab', () => {
-    const store = usePageTabStore.getState();
-    store.toggleSessionPreview();
-    const chooserId = slice().activeTabId!;
-    store.choosePreviewTabType(chooserId, 'review');
-    const tabId = slice().tabs[0].id;
-
-    expect(slice().tabs[0]).not.toHaveProperty('reviewScope');
-    store.setReviewScope(tabId, 'all');
-    expect(slice().tabs[0]).toMatchObject({ reviewScope: 'all' });
   });
 
   it('persists Review comments and creates a one-shot Project Chat draft', () => {
