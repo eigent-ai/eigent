@@ -31,8 +31,8 @@ import {
   FileText,
   Image,
   Paperclip,
-  Pause,
   Play,
+  Square,
   UploadCloud,
   WandSparkles,
   X,
@@ -704,7 +704,7 @@ export const Inputbox = ({
                       : 'rotate-0 opacity-0'
                   )}
                 />
-                <Pause
+                <Square
                   data-composer-primary-icon="pause"
                   style={PRIMARY_ACTION_ICON_MOTION_STYLE}
                   className={cn(
