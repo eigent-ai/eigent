@@ -653,6 +653,7 @@ describe('ReviewTab', () => {
       stale: false,
       refresh: vi.fn(),
       reviewIdentity,
+      reviewIdentityTargetKey: 'run:run-latest',
       files: [
         {
           id: 'first',
@@ -689,6 +690,73 @@ describe('ReviewTab', () => {
           .tabs[0] as SessionReviewTab
       ).reviewIdentities
     ).toEqual({ 'run:run-latest': identity });
+  });
+
+  it('never pins an old response identity under a newly selected target', () => {
+    const runIdentity = { baseCommit: 'run-base', targetCommit: 'run-target' };
+    const projectIdentity = {
+      baseCommit: 'project-base',
+      targetCommit: 'project-target',
+    };
+    let loadedChanges: ReviewChangesState = {
+      loading: false,
+      desktopOnly: false,
+      error: null,
+      totals: { added: 0, removed: 0 },
+      truncated: false,
+      stale: false,
+      refresh: vi.fn(),
+      reviewIdentity: runIdentity,
+      reviewIdentityTargetKey: 'run:run-latest',
+      files: [
+        {
+          id: 'first',
+          path: 'src/first.ts',
+          status: 'modified',
+          absPath: '/first.ts',
+          bakPath: '/first.ts.bak',
+        },
+      ],
+    };
+    mockUseReviewChanges.mockImplementation(() => loadedChanges);
+
+    const view = render(<ConnectedReviewTab />);
+    expect(
+      (
+        getSessionPreviewSlice(usePageTabStore.getState())
+          .tabs[0] as SessionReviewTab
+      ).reviewIdentities
+    ).toEqual({ 'run:run-latest': runIdentity });
+
+    const scopeButton = screen.getByRole('button', {
+      name: 'Review change scope: Latest task',
+    });
+    fireEvent.keyDown(scopeButton, { key: 'Enter', code: 'Enter' });
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'All' }));
+
+    const awaitingProject = getSessionPreviewSlice(usePageTabStore.getState())
+      .tabs[0] as SessionReviewTab;
+    expect(awaitingProject.reviewIdentities).toEqual({
+      'run:run-latest': runIdentity,
+    });
+    expect(awaitingProject.reviewIdentity).toBeUndefined();
+
+    loadedChanges = {
+      ...loadedChanges,
+      reviewIdentity: projectIdentity,
+      reviewIdentityTargetKey: 'project',
+    };
+    view.rerender(<ConnectedReviewTab />);
+
+    expect(
+      (
+        getSessionPreviewSlice(usePageTabStore.getState())
+          .tabs[0] as SessionReviewTab
+      ).reviewIdentities
+    ).toEqual({
+      'run:run-latest': runIdentity,
+      project: projectIdentity,
+    });
   });
 
   it('marks the current file reviewed and advances to the next file', () => {
@@ -789,6 +857,76 @@ describe('ReviewTab', () => {
     expect(
       screen.getByRole('menuitem', { name: 'Copy review comments' })
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Add 1 comments to chat' })
+    ).toBeInTheDocument();
+  });
+
+  it('binds a new comment to the active scope instead of the tab origin', () => {
+    const projectIdentity = {
+      baseCommit: 'project-base',
+      targetCommit: 'project-target',
+    };
+    const runIdentity = { baseCommit: 'run-base', targetCommit: 'run-target' };
+    const scopedTab: SessionReviewTab = {
+      ...reviewTab,
+      reviewIdentity: projectIdentity,
+      reviewIdentities: {
+        project: projectIdentity,
+        'run:run-latest': runIdentity,
+      },
+      reviewScope: 'task',
+    };
+    usePageTabStore.setState({
+      sessionPreviewByProject: {
+        'project-1': {
+          open: true,
+          tabs: [scopedTab],
+          activeTabId: scopedTab.id,
+        },
+      },
+    });
+    mockUseReviewChanges.mockReturnValue({
+      loading: false,
+      desktopOnly: false,
+      error: null,
+      totals: { added: 0, removed: 0 },
+      reviewIdentity: runIdentity,
+      reviewIdentityTargetKey: 'run:run-latest',
+      stale: false,
+      refresh: vi.fn(),
+      files: [
+        {
+          id: 'first',
+          path: 'src/first.ts',
+          status: 'modified',
+          absPath: '/first.ts',
+          bakPath: '/first.ts.bak',
+        },
+      ],
+    });
+
+    render(<ConnectedReviewTab />);
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Add comment · Add a file review note',
+      })
+    );
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'Describe what should change…' }),
+      { target: { value: 'Keep the task-scoped behavior.' } }
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Add comment' }));
+
+    const stored = getSessionPreviewSlice(usePageTabStore.getState())
+      .tabs[0] as SessionReviewTab;
+    expect(stored.reviewComments).toEqual([
+      expect.objectContaining({
+        body: 'Keep the task-scoped behavior.',
+        reviewIdentity: runIdentity,
+      }),
+    ]);
+    openMoreActions();
     expect(
       screen.getByRole('menuitem', { name: 'Add 1 comments to chat' })
     ).toBeInTheDocument();
@@ -904,6 +1042,7 @@ describe('ReviewTab', () => {
       error: null,
       totals: { added: 0, removed: 0 },
       reviewIdentity: identity,
+      reviewIdentityTargetKey: 'run:run-latest',
       stale: false,
       refresh: vi.fn(),
       files: [

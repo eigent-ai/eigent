@@ -28,7 +28,7 @@ import { useAuthStore } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { FileText } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 function extension(name: string): string {
@@ -144,12 +144,45 @@ interface RunFileDiffStats {
 }
 
 /**
- * A finished Run's line counts never change, and the narrative timeline mounts
- * one group per Run with no windowing — so opening a long session would fire a
- * request per Run. Resolved stats are memoised and in-flight requests shared,
- * keyed by the Run and the space that owns it.
+ * A finished Run's line counts never change. Resolved stats are memoised and
+ * in-flight requests shared, keyed by the Run and the space that owns it.
+ * `RunFilesGroup` activates the request only when its card approaches view, so
+ * mounting a long, unwindowed narrative does not fetch every Run at once.
  */
 const runDiffStatsCache = new Map<string, Promise<RunFileDiffStats | null>>();
+
+const RUN_DIFF_STATS_PREFETCH_MARGIN = '240px 0px';
+
+function useRunFileDiffStatsActivation(hasFiles: boolean) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState(
+    () => typeof IntersectionObserver === 'undefined'
+  );
+
+  useEffect(() => {
+    if (active || !hasFiles) return;
+    // The wrapper uses `display: contents` to avoid changing layout, so observe
+    // the ArtifactChangeList section that supplies the actual box instead.
+    const target = rootRef.current?.firstElementChild;
+    if (!target) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        setActive(true);
+        observer.disconnect();
+      },
+      {
+        rootMargin: RUN_DIFF_STATS_PREFETCH_MARGIN,
+        threshold: 0,
+      }
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [active, hasFiles]);
+
+  return { active, rootRef };
+}
 
 function loadRunFileDiffStats(
   runId: string,
@@ -192,7 +225,8 @@ export function resetRunFileDiffStatsCache(): void {
 
 export function useRunFileDiffStats(
   runId: string,
-  projectId?: string
+  projectId?: string,
+  active = true
 ): RunFileDiffStats | null {
   const previewProjectId = usePageTabStore(
     (state) => state.sessionPreviewProjectId
@@ -211,7 +245,14 @@ export function useRunFileDiffStats(
     setStats(null);
     // Legacy spaces have no Git repository behind them, so the request can only
     // fail — the same guard `useReviewChanges` applies before going to Git.
-    if (!runId || !spaceId || !email || spaceId.startsWith('legacy_')) return;
+    if (
+      !active ||
+      !runId ||
+      !spaceId ||
+      !email ||
+      spaceId.startsWith('legacy_')
+    )
+      return;
 
     let cancelled = false;
     void loadRunFileDiffStats(runId, spaceId, { email, userId }).then(
@@ -223,7 +264,7 @@ export function useRunFileDiffStats(
     return () => {
       cancelled = true;
     };
-  }, [email, runId, spaceId, userId]);
+  }, [active, email, runId, spaceId, userId]);
 
   return stats;
 }
@@ -247,6 +288,9 @@ export function useRunFileInfo({
 
 export function RunFilesGroup(props: RunFilesProps) {
   const files = useRunFileInfo(props);
+  const { active: loadDiffStats, rootRef } = useRunFileDiffStatsActivation(
+    files.length > 0
+  );
   const previewProjectId = usePageTabStore(
     (state) => state.sessionPreviewProjectId
   );
@@ -257,7 +301,11 @@ export function RunFilesGroup(props: RunFilesProps) {
   });
   const openFilePreview = usePageTabStore((state) => state.openFilePreview);
   const openReviewPreview = usePageTabStore((state) => state.openReviewPreview);
-  const diffStats = useRunFileDiffStats(props.runId, projectId ?? undefined);
+  const diffStats = useRunFileDiffStats(
+    props.runId,
+    projectId ?? undefined,
+    loadDiffStats
+  );
   const lineChangesForFile = useCallback(
     (file: FileInfo) => {
       const path = runFileReviewPath(file);
@@ -285,19 +333,21 @@ export function RunFilesGroup(props: RunFilesProps) {
   }, [diffStats, files]);
 
   return (
-    <ArtifactChangeList
-      files={files}
-      totals={totals}
-      lineChangesForFile={lineChangesForFile}
-      onViewChanges={() => openReviewPreview({ runId: props.runId })}
-      onOpen={(file) => {
-        const preview = resolveRunFilePreview(file, workspaceRoot);
-        if (preview) openFilePreview(preview);
-      }}
-      canOpenFile={(file) =>
-        resolveRunFilePreview(file, workspaceRoot) !== null
-      }
-    />
+    <div ref={rootRef} className="contents" data-run-files-group={props.runId}>
+      <ArtifactChangeList
+        files={files}
+        totals={totals}
+        lineChangesForFile={lineChangesForFile}
+        onViewChanges={() => openReviewPreview({ runId: props.runId })}
+        onOpen={(file) => {
+          const preview = resolveRunFilePreview(file, workspaceRoot);
+          if (preview) openFilePreview(preview);
+        }}
+        canOpenFile={(file) =>
+          resolveRunFilePreview(file, workspaceRoot) !== null
+        }
+      />
+    </div>
   );
 }
 

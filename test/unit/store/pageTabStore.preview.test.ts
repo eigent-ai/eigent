@@ -211,6 +211,7 @@ describe('pageTabStore session preview', () => {
     const projectReview = slice().tabs[0];
     expect(projectReview).toMatchObject({
       type: 'review',
+      title: 'Review',
       reviewTarget: { scope: 'project', focusRequestId: 0 },
     });
 
@@ -220,7 +221,7 @@ describe('pageTabStore session preview', () => {
     );
     expect(runReview).toMatchObject({
       type: 'review',
-      title: 'Review',
+      title: 'Task review',
       reviewTarget: {
         scope: 'run',
         runId: 'run-1',

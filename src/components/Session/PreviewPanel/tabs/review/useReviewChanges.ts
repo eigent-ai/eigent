@@ -110,6 +110,8 @@ export interface ReviewChangesState {
   /** More files changed than the bounded list returned by the backend. */
   truncated?: boolean;
   reviewIdentity: SessionReviewIdentity | null;
+  /** Target key that produced `reviewIdentity`; prevents cross-target reuse. */
+  reviewIdentityTargetKey?: string | null;
   stale: boolean;
   refresh: () => void;
 }
@@ -215,6 +217,8 @@ export function useReviewChanges(
   const reviewScope = reviewTarget.scope;
   const focusRequestId = reviewTarget.focusRequestId;
   const runId = reviewScope === 'run' ? reviewTarget.runId?.trim() : undefined;
+  const reviewTargetKey =
+    reviewScope === 'run' ? `run:${reviewTarget.runId ?? ''}` : 'project';
   const pinnedBaseCommit = pinnedIdentity?.baseCommit;
   const pinnedTargetCommit = pinnedIdentity?.targetCommit;
   const hasPinnedIdentity = Boolean(pinnedBaseCommit && pinnedTargetCommit);
@@ -282,8 +286,10 @@ export function useReviewChanges(
   const [desktopOnly, setDesktopOnly] = useState(false);
   const [gitTotals, setGitTotals] = useState<LineCounts | null>(null);
   const [truncated, setTruncated] = useState(false);
-  const [reviewIdentity, setReviewIdentity] =
-    useState<SessionReviewIdentity | null>(null);
+  const [reviewIdentityResult, setReviewIdentityResult] = useState<{
+    targetKey: string;
+    identity: SessionReviewIdentity | null;
+  } | null>(null);
   const [stale, setStale] = useState(false);
   const [fetchNonce, setFetchNonce] = useState(0);
   const refresh = useCallback(() => {
@@ -305,7 +311,7 @@ export function useReviewChanges(
       setFiles(REVIEW_FIXTURE_FILES);
       setGitTotals(null);
       setTruncated(false);
-      setReviewIdentity(null);
+      setReviewIdentityResult({ targetKey: reviewTargetKey, identity: null });
       setStale(false);
       setDesktopOnly(false);
       setError(null);
@@ -316,7 +322,7 @@ export function useReviewChanges(
       setFiles([]);
       setGitTotals(null);
       setTruncated(false);
-      setReviewIdentity(null);
+      setReviewIdentityResult({ targetKey: reviewTargetKey, identity: null });
       setStale(false);
       setDesktopOnly(false);
       setError(null);
@@ -566,7 +572,13 @@ export function useReviewChanges(
             stale: false,
           };
         } catch (cause: unknown) {
-          if ((cause as { status?: number })?.status !== 404) throw cause;
+          const status = (cause as { status?: number })?.status;
+          // A materialized Run has no authoritative commit range until it is
+          // finalized, so the Run changes endpoint returns 409 while work is
+          // still in progress. An unpinned review can keep showing the live
+          // overlay/backup view; a pinned review must remain fail-closed.
+          const runStillFinalizing = Boolean(runId) && status === 409;
+          if (status !== 404 && !runStillFinalizing) throw cause;
           if (hasPinnedIdentity) {
             return {
               files: [],
@@ -594,7 +606,10 @@ export function useReviewChanges(
         setGitTotals(result.totals);
         setTruncated(result.truncated);
         setDesktopOnly(result.desktopOnly);
-        setReviewIdentity(result.reviewIdentity);
+        setReviewIdentityResult({
+          targetKey: reviewTargetKey,
+          identity: result.reviewIdentity,
+        });
         setStale(result.stale);
         setLoading(false);
       })
@@ -622,6 +637,7 @@ export function useReviewChanges(
     pinnedTargetCommit,
     projectId,
     reviewScope,
+    reviewTargetKey,
     runId,
     spaceId,
     spaceRootPath,
@@ -694,7 +710,8 @@ export function useReviewChanges(
     error,
     totals,
     truncated,
-    reviewIdentity,
+    reviewIdentity: reviewIdentityResult?.identity ?? null,
+    reviewIdentityTargetKey: reviewIdentityResult?.targetKey ?? null,
     stale,
     refresh,
   };

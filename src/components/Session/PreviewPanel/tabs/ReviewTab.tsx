@@ -196,9 +196,14 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
     totals,
     truncated,
     reviewIdentity,
+    reviewIdentityTargetKey,
     stale,
     refresh,
   } = useReviewChanges(effectiveReviewTarget, pinnedReviewIdentity);
+  const fetchedReviewIdentity =
+    reviewIdentityTargetKey === effectiveReviewTargetKey
+      ? reviewIdentity
+      : null;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [treeMode, setTreeMode] = useState<'auto' | 'visible' | 'hidden'>(
     'auto'
@@ -229,11 +234,11 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
   // it would silently disable the out-of-date guard. The store keeps the first
   // pin it is given for a scope, so re-sending the current one is a no-op.
   useEffect(() => {
-    if (!reviewIdentity || stale) return;
-    setReviewIdentity(tab.id, reviewIdentity, effectiveReviewTargetKey);
+    if (!fetchedReviewIdentity || stale) return;
+    setReviewIdentity(tab.id, fetchedReviewIdentity, effectiveReviewTargetKey);
   }, [
     effectiveReviewTargetKey,
-    reviewIdentity,
+    fetchedReviewIdentity,
     setReviewIdentity,
     stale,
     tab.id,
@@ -283,7 +288,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
     [comments]
   );
   const activeReviewIdentity =
-    pinnedReviewIdentity ?? reviewIdentity ?? undefined;
+    pinnedReviewIdentity ?? fetchedReviewIdentity ?? undefined;
   const commentsNeedingRebase = useMemo(
     () =>
       activeReviewIdentity
@@ -444,7 +449,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
             selection: commentTarget,
             body,
             createdAt: Date.now(),
-            reviewIdentity: tab.reviewIdentity ?? reviewIdentity ?? undefined,
+            reviewIdentity: activeReviewIdentity,
           },
         ];
     persistReviewComments(next);
@@ -457,8 +462,7 @@ export function ReviewTab({ tab }: { tab: SessionReviewTab }) {
     noteDraft,
     selectedFile,
     persistReviewComments,
-    reviewIdentity,
-    tab.reviewIdentity,
+    activeReviewIdentity,
   ]);
 
   const editComment = useCallback((comment: SessionReviewComment) => {

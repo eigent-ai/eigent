@@ -355,7 +355,7 @@ function createReviewPreviewTab(
     title:
       reviewTarget.scope === 'run'
         ? i18next.t('layout.preview-task-review', {
-            defaultValue: 'Review',
+            defaultValue: 'Task review',
           })
         : i18next.t('layout.preview-review', { defaultValue: 'Review' }),
     reviewTarget,
