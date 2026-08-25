@@ -39,6 +39,7 @@ import {
   type InteractiveTimelinePlan,
   isActiveRunStatus,
   isTerminalRunStatus,
+  RunActivityIndicator,
   type TimelineModeProps,
   useRunElapsedMs,
 } from './shared';
@@ -722,6 +723,9 @@ export function NarrativeTimeline({
                 projectedArtifacts={projectedArtifacts}
                 runId={run.runId}
               />
+            ) : null}
+            {run.status === 'running' && !paused && hasWorkBand ? (
+              <RunActivityIndicator />
             ) : null}
           </section>
         );

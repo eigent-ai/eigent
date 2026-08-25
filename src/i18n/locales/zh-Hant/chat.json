@@ -217,6 +217,7 @@
   "timeline-history-reconnecting": "正在重新連線…",
   "timeline-history-retry": "重試",
   "timeline-empty": "尚無訊息。傳送一則訊息即可開始。",
+  "run-working-indicator": "Eigent 正在處理…",
   "timeline-style-tooltip": "聊天時間軸樣式",
   "timeline-style-normal": "一般",
   "timeline-style-detailed": "詳細",

@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export function isActiveRunStatus(status: TimelineRunView['status']): boolean {
   return ['pending', 'running', 'waiting_for_user', 'cancelling'].includes(
@@ -113,6 +114,32 @@ export function StatusInline({
       <Icon aria-hidden className={cn('size-3', animated && 'animate-spin')} />
       {hideLabel ? null : <span>{statusLabel(status)}</span>}
     </span>
+  );
+}
+
+/**
+ * Ephemeral tail marker for an actively progressing Run.
+ *
+ * This is derived from Run state instead of being appended to the durable
+ * conversation, so it reassures the user during a quiet tool/model interval
+ * without becoming a fake message on replay.
+ */
+export function RunActivityIndicator() {
+  const { t } = useTranslation();
+
+  return (
+    <div
+      className="flex min-h-6 w-full items-center gap-2 text-ds-text-meta font-normal text-ds-ink-muted-default"
+      data-run-activity-indicator
+      role="status"
+      aria-live="polite"
+    >
+      <Loader2
+        aria-hidden
+        className="size-3.5 animate-spin text-ds-icon-information-default-default"
+      />
+      <span>{t('chat.run-working-indicator')}</span>
+    </div>
   );
 }
 

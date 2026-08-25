@@ -22,6 +22,7 @@ export const AgentStep = {
   WAIT_CONFIRM: 'wait_confirm',
   DECOMPOSE_TEXT: 'decompose_text',
   TO_SUB_TASKS: 'to_sub_tasks',
+  PROJECT_METADATA: 'project_metadata',
   CREATE_AGENT: 'create_agent',
   TASK_STATE: 'task_state',
   ACTIVATE_AGENT: 'activate_agent',

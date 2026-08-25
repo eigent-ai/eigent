@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { fetchGet, fetchPost } from '@/api/http';
+import { fetchGet, fetchGetBlob, fetchPost } from '@/api/http';
 import i18next from 'i18next';
 
 export interface WorkspaceGitRepoState {
@@ -283,6 +283,26 @@ export const fetchProjectGitChangeContent = async (
     target_commit: input.targetCommit,
   });
 
+export const fetchProjectGitChangeBlob = async (
+  projectId: string,
+  spaceId: string,
+  identity: WorkspaceGitIdentity,
+  input: {
+    path: string;
+    side: 'before' | 'after';
+    baseCommit: string;
+    targetCommit: string;
+  }
+): Promise<Blob> =>
+  fetchGetBlob(`/projects/${encodeURIComponent(projectId)}/git/changes/blob`, {
+    ...identityParams(identity),
+    space_id: spaceId,
+    path: input.path,
+    side: input.side,
+    base_commit: input.baseCommit,
+    target_commit: input.targetCommit,
+  });
+
 export const fetchRunGitChanges = async (
   runId: string,
   spaceId: string,
@@ -303,6 +323,26 @@ export const fetchRunGitChangeContent = async (
     ...identityParams(identity),
     space_id: spaceId,
     path: input.path,
+    base_commit: input.baseCommit,
+    target_commit: input.targetCommit,
+  });
+
+export const fetchRunGitChangeBlob = async (
+  runId: string,
+  spaceId: string,
+  identity: WorkspaceGitIdentity,
+  input: {
+    path: string;
+    side: 'before' | 'after';
+    baseCommit: string;
+    targetCommit: string;
+  }
+): Promise<Blob> =>
+  fetchGetBlob(`/runs/${encodeURIComponent(runId)}/git/changes/blob`, {
+    ...identityParams(identity),
+    space_id: spaceId,
+    path: input.path,
+    side: input.side,
     base_commit: input.baseCommit,
     target_commit: input.targetCommit,
   });

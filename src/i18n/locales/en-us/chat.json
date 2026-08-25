@@ -217,6 +217,7 @@
   "timeline-history-reconnecting": "Reconnecting…",
   "timeline-history-retry": "Try again",
   "timeline-empty": "No messages yet. Send a message to get started.",
+  "run-working-indicator": "Eigent is working…",
   "timeline-style-tooltip": "Chat timeline style",
   "timeline-style-normal": "Normal",
   "timeline-style-detailed": "Detailed",

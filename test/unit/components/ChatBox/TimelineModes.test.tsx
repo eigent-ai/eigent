@@ -586,6 +586,47 @@ describe('ChatBox timeline modes', () => {
     ).toBeInTheDocument();
   });
 
+  it('keeps a lightweight activity marker at the tail of a running Run', () => {
+    const runningRuns = composeTimelineRuns(nodes('running'));
+    const { container, rerender } = render(
+      <TimelineModeRenderer detailLevel="narrative" runs={runningRuns} />
+    );
+
+    const indicator = container.querySelector(
+      '[data-run-activity-indicator]'
+    ) as HTMLElement;
+    const run = container.querySelector('[data-run-id="run-1"]');
+    expect(indicator).toHaveTextContent('Eigent is working…');
+    expect(indicator.querySelector('svg')).toHaveClass('animate-spin');
+    expect(run?.lastElementChild).toBe(indicator);
+
+    rerender(
+      <TimelineModeRenderer detailLevel="narrative" paused runs={runningRuns} />
+    );
+    expect(container.querySelector('[data-run-activity-indicator]')).toBeNull();
+
+    rerender(
+      <TimelineModeRenderer
+        detailLevel="trajectory"
+        runs={composeTimelineRuns(nodes('completed'))}
+      />
+    );
+    expect(container.querySelector('[data-run-activity-indicator]')).toBeNull();
+  });
+
+  it('shows the same running tail marker in Detailed mode', () => {
+    const { container } = render(
+      <TimelineModeRenderer
+        detailLevel="trajectory"
+        runs={composeTimelineRuns(nodes('running'))}
+      />
+    );
+
+    expect(
+      container.querySelector('[data-run-activity-indicator]')
+    ).toHaveTextContent('Eigent is working…');
+  });
+
   it('keeps Preparing visible until the narrative work band can render', () => {
     const { container, rerender } = render(
       <TimelineModeRenderer

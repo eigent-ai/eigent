@@ -217,6 +217,7 @@
   "timeline-history-reconnecting": "Reconnexion…",
   "timeline-history-retry": "Réessayer",
   "timeline-empty": "Aucun message pour l’instant. Envoyez un message pour commencer.",
+  "run-working-indicator": "Eigent travaille…",
   "timeline-style-tooltip": "Style de la chronologie du chat",
   "timeline-style-normal": "Normal",
   "timeline-style-detailed": "Détaillé",

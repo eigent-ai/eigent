@@ -3254,7 +3254,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
           const isPostCompletionProjectionEvent =
             agentMessages.step === AgentStep.ARTIFACT_MANIFEST ||
-            agentMessages.step === AgentStep.ARTIFACT_UPLOADED;
+            agentMessages.step === AgentStep.ARTIFACT_UPLOADED ||
+            agentMessages.step === AgentStep.PROJECT_METADATA;
 
           if (!currentTask) {
             console.log(
@@ -3599,6 +3600,34 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 }
                 delete streamingDecomposeTextTimers[currentId];
               }, 16);
+            }
+            return;
+          }
+
+          if (agentMessages.step === AgentStep.PROJECT_METADATA) {
+            const summaryTask = String(
+              agentMessages.data.summary_task || ''
+            ).trim();
+            const [summaryName = '', ...summaryParts] = summaryTask.split('|');
+            const projectName = String(
+              agentMessages.data.project_name || summaryName
+            ).trim();
+            const projectSummary = String(
+              agentMessages.data.project_summary || summaryParts.join('|')
+            ).trim();
+            const metadataTaskId = agentMessages.data.task_id || currentTaskId;
+
+            if (summaryTask && tasks[metadataTaskId]) {
+              setSummaryTask(metadataTaskId, summaryTask);
+            }
+            syncProjectDisplayName(project_id, projectName);
+
+            if (!type && historyId && projectName) {
+              void proxyFetchPut(`/api/v1/chat/history/${historyId}`, {
+                project_name: projectName,
+                summary: clampHistorySummary(projectSummary),
+                tokens: getTokens(metadataTaskId),
+              });
             }
             return;
           }

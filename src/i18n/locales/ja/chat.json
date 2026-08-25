@@ -217,6 +217,7 @@
   "timeline-history-reconnecting": "再接続中…",
   "timeline-history-retry": "再試行",
   "timeline-empty": "まだメッセージがありません。メッセージを送信して始めましょう。",
+  "run-working-indicator": "Eigent が作業中…",
   "timeline-style-tooltip": "チャットタイムラインの表示",
   "timeline-style-normal": "標準",
   "timeline-style-detailed": "詳細",

@@ -129,6 +129,102 @@ def test_notice_sse_carries_stable_tool_call_identity():
 
 
 @pytest.mark.asyncio
+async def test_project_metadata_precedes_single_agent_end():
+    from app.model.chat import Chat
+    from app.service.single_agent_service import single_agent_solve
+    from app.service.task import ActionImproveData, ImprovePayload
+
+    fake_agent = MagicMock()
+    fake_agent.astep = AsyncMock(return_value=object())
+    fake_agent.agent_id = "fake_single_agent"
+    fake_agent._observable_todo_toolkit = None
+
+    queue: asyncio.Queue = asyncio.Queue()
+    await queue.put(
+        ActionImproveData(
+            data=ImprovePayload(
+                question="build an interactive ISS model",
+                attaches=[],
+                project_context=None,
+            ),
+            new_task_id="run-summary",
+        )
+    )
+
+    task_lock = MagicMock()
+    task_lock.id = "project-summary"
+    task_lock.email = "u@example.com"
+    task_lock.status = "OPEN"
+    task_lock.conversation_history = []
+    task_lock.agent_memory_history = []
+    task_lock.memory_summary = ""
+    task_lock.summary_generated = False
+    task_lock.run_context = None
+    task_lock.get_queue = queue.get
+    task_lock.add_background_task = MagicMock()
+    task_lock.add_conversation = MagicMock()
+
+    options = MagicMock(spec=Chat)
+    options.project_id = "project-summary"
+    options.task_id = "run-summary"
+    options.project_context = None
+    summarize = AsyncMock(
+        return_value="Interactive ISS Model|Build and verify the 3D experience."
+    )
+
+    with (
+        patch(
+            "app.service.single_agent_service.single_agent",
+            new=AsyncMock(return_value=fake_agent),
+        ),
+        patch("app.service.single_agent_service.set_current_task_id"),
+        patch("app.service.single_agent_service.record_agent_memory_snapshot"),
+        patch("app.service.single_agent_service._finalize_memory_for_turn"),
+        patch(
+            "app.service.single_agent_service._build_single_agent_prompt",
+            return_value="prompt",
+        ),
+        patch(
+            "app.service.single_agent_service._response_content",
+            new=AsyncMock(return_value=("finished", 3)),
+        ),
+    ):
+        stream = single_agent_solve(
+            options,
+            MagicMock(),
+            task_lock,
+            summarize_task=summarize,
+        )
+        assert _parse_sse(await stream.__anext__())[0] == "confirmed"
+
+        metadata_event, metadata = _parse_sse(await stream.__anext__())
+        assert metadata_event == "project_metadata"
+        assert metadata == {
+            "project_id": "project-summary",
+            "task_id": "run-summary",
+            "summary_task": (
+                "Interactive ISS Model|Build and verify the 3D experience."
+            ),
+            "project_name": "Interactive ISS Model",
+            "project_summary": "Build and verify the 3D experience.",
+        }
+
+        end_event, end_payload = _parse_sse(await stream.__anext__())
+        assert end_event == "end"
+        assert end_payload == {"message": "finished", "tokens": 3}
+        await stream.aclose()
+
+    summarize.assert_awaited_once_with(
+        "build an interactive ISS model",
+        "run-summary",
+    )
+    assert task_lock.summary_generated is True
+    assert task_lock.summary_task_content == (
+        "Interactive ISS Model|Build and verify the 3D experience."
+    )
+
+
+@pytest.mark.asyncio
 async def test_retryable_model_error_emits_resume_metadata_and_interrupts():
     from app.model.chat import Chat
     from app.run_runtime import RunInterruptedError

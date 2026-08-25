@@ -217,6 +217,7 @@
   "timeline-history-reconnecting": "جارٍ إعادة الاتصال…",
   "timeline-history-retry": "إعادة المحاولة",
   "timeline-empty": "لا توجد رسائل بعد. أرسل رسالة للبدء.",
+  "run-working-indicator": "Eigent قيد العمل…",
   "timeline-style-tooltip": "نمط الخط الزمني للمحادثة",
   "timeline-style-normal": "عادي",
   "timeline-style-detailed": "مفصّل",

@@ -301,6 +301,52 @@ export const fetchGet = (
   options?: FetchRequestOptions
 ) => fetchRequest('GET', url, params, headers, options);
 
+/** GET a bounded binary payload from Brain without converting it to a stream. */
+export async function fetchGetBlob(
+  url: string,
+  params?: Record<string, unknown>,
+  options: FetchRequestOptions = {}
+): Promise<Blob> {
+  const baseURL = await getBaseURL();
+  const queryParams = new URLSearchParams();
+  Object.entries(params ?? {}).forEach(([key, value]) => {
+    const values = Array.isArray(value) ? value : [value];
+    values.forEach((item) => {
+      if (item !== undefined && item !== null) {
+        queryParams.append(key, String(item));
+      }
+    });
+  });
+  const query = queryParams.size > 0 ? `?${queryParams.toString()}` : '';
+  const response = await fetch(`${baseURL}${url}${query}`, {
+    method: 'GET',
+    headers: await buildBrainHeaders(url, { Accept: 'image/*' }, false),
+    signal: options.signal,
+  });
+  persistSessionIdFromResponse(response);
+  if (!response.ok) {
+    const contentType = response.headers.get('content-type') || '';
+    let message = `HTTP ${response.status}`;
+    if (contentType.includes('application/json')) {
+      const body = await response.json().catch(() => null);
+      const detail = body?.detail;
+      message =
+        (typeof detail === 'string' && detail) || body?.message || message;
+    } else {
+      const detail = await response.text().catch(() => '');
+      if (detail.trim()) message = detail.trim();
+    }
+    const error = new Error(message) as Error & {
+      status?: number;
+      response?: Response;
+    };
+    error.status = response.status;
+    error.response = response;
+    throw error;
+  }
+  return response.blob();
+}
+
 export const fetchPost = (url: string, data?: any, headers?: any) =>
   fetchRequest('POST', url, data, headers);
 

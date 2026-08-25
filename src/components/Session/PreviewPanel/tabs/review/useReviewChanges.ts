@@ -19,8 +19,10 @@ import {
   type SpaceOverlay,
 } from '@/service/spaceApi';
 import {
+  fetchProjectGitChangeBlob,
   fetchProjectGitChangeContent,
   fetchProjectGitChanges,
+  fetchRunGitChangeBlob,
   fetchRunGitChangeContent,
   fetchRunGitChanges,
   type ProjectGitChanges,
@@ -88,6 +90,8 @@ export interface ReviewFile {
   inline?: { original: string; modified: string };
   /** Lazily loads authoritative Git content for this one visible card. */
   loadContent?: () => Promise<{ original: string; modified: string }>;
+  /** Lazily loads one binary image side from its exact pinned Git commit. */
+  loadPreview?: (side: 'before' | 'after') => Promise<Blob>;
 }
 
 export interface ReviewChangesState {
@@ -542,6 +546,25 @@ export function useReviewChanges(
                         original: content.before.content ?? '',
                         modified: content.after.content ?? '',
                       };
+                    }
+                  : undefined,
+              loadPreview:
+                file.binary && baseCommit && targetCommit
+                  ? async (side) => {
+                      const input = {
+                        path: file.path,
+                        side,
+                        baseCommit,
+                        targetCommit,
+                      };
+                      return runId
+                        ? fetchRunGitChangeBlob(runId, spaceId, identity, input)
+                        : fetchProjectGitChangeBlob(
+                            projectId,
+                            spaceId,
+                            identity,
+                            input
+                          );
                     }
                   : undefined,
             };

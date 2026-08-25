@@ -217,6 +217,7 @@
   "timeline-history-reconnecting": "Reconectando…",
   "timeline-history-retry": "Reintentar",
   "timeline-empty": "Aún no hay mensajes. Envía uno para empezar.",
+  "run-working-indicator": "Eigent está trabajando…",
   "timeline-style-tooltip": "Estilo de cronología del chat",
   "timeline-style-normal": "Normal",
   "timeline-style-detailed": "Detallado",

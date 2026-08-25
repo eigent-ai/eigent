@@ -29,19 +29,26 @@ import type {
   SessionReviewComment,
 } from '@/store/pageTabStore';
 import loader from '@monaco-editor/loader';
-import { DiffEditor, Editor } from '@monaco-editor/react';
+import {
+  DiffEditor,
+  Editor,
+  type DiffEditorProps,
+  type DiffOnMount,
+} from '@monaco-editor/react';
 import { CheckCheck, CodeXml, Eye, FileWarning } from 'lucide-react';
 import * as monaco from 'monaco-editor';
 import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { countLineChanges, type LineCounts } from './diffMetrics';
+import { releaseDiffEditorModels } from './monacoModelLifecycle';
 import { decodeFileText, diffSidePaths } from './reviewContent';
 import { SemanticDiffView, semanticDiffKindForPath } from './SemanticDiffView';
 import { MAX_DIFF_BYTES, type ReviewFile } from './useReviewChanges';
@@ -95,6 +102,49 @@ function reviewModelPath(side: 'original' | 'modified', file: ReviewFile) {
     .map((segment) => encodeURIComponent(segment))
     .join('/');
   return `review://${side}/${encodeURIComponent(file.id)}/${encodedPath}`;
+}
+
+interface ReviewDiffEditorProps extends DiffEditorProps {
+  onDispose?: (editor: monaco.editor.IStandaloneDiffEditor) => void;
+}
+
+/** Owns model cleanup until @monaco-editor/react fixes its disposal order. */
+function ReviewDiffEditor({
+  onMount,
+  onDispose,
+  ...props
+}: ReviewDiffEditorProps) {
+  const editorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
+  const onDisposeRef = useRef(onDispose);
+
+  useLayoutEffect(() => {
+    onDisposeRef.current = onDispose;
+  }, [onDispose]);
+
+  useLayoutEffect(
+    () => () => {
+      const editor = editorRef.current;
+      editorRef.current = null;
+      if (!editor) return;
+      releaseDiffEditorModels(editor);
+      onDisposeRef.current?.(editor);
+    },
+    []
+  );
+
+  const handleMount: DiffOnMount = (editor, monacoApi) => {
+    editorRef.current = editor;
+    onMount?.(editor, monacoApi);
+  };
+
+  return (
+    <DiffEditor
+      {...props}
+      keepCurrentOriginalModel
+      keepCurrentModifiedModel
+      onMount={handleMount}
+    />
+  );
 }
 
 /** One active changed file rendered as a full-height review workbench. */
@@ -475,6 +525,13 @@ export const DiffFileCard = forwardRef<DiffFileCardHandle, DiffFileCardProps>(
       applyMetrics();
     };
 
+    const handleDiffEditorDispose = (
+      editor: monaco.editor.IStandaloneDiffEditor
+    ) => {
+      if (diffEditorRef.current === editor) diffEditorRef.current = null;
+      diffCommentDecorationsRef.current = null;
+    };
+
     const handleWholeFileMount = (
       editor: monaco.editor.IStandaloneCodeEditor
     ) => {
@@ -762,7 +819,7 @@ export const DiffFileCard = forwardRef<DiffFileCardHandle, DiffFileCardProps>(
                   }
                 />
               ) : (
-                <DiffEditor
+                <ReviewDiffEditor
                   original={sides.original}
                   modified={sides.modified}
                   language={language}
@@ -771,6 +828,7 @@ export const DiffFileCard = forwardRef<DiffFileCardHandle, DiffFileCardProps>(
                   theme={codeTheme}
                   options={diffOptions}
                   onMount={handleMount}
+                  onDispose={handleDiffEditorDispose}
                   loading={
                     <div className="h-full w-full animate-pulse bg-ds-neutral-subtle-default" />
                   }
