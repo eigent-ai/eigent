@@ -16,7 +16,10 @@ import {
   collectChangedFilePaths,
   selectLatestReviewRunId,
 } from '@/components/Session/PreviewPanel/tabs/review/reviewSources';
-import { useReviewChanges } from '@/components/Session/PreviewPanel/tabs/review/useReviewChanges';
+import {
+  MAX_IMAGE_PREVIEW_BYTES,
+  useReviewChanges,
+} from '@/components/Session/PreviewPanel/tabs/review/useReviewChanges';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -273,7 +276,7 @@ describe('useReviewChanges', () => {
           path: 'preview.png',
           status: 'added',
           before_size: null,
-          after_size: 3,
+          after_size: 2_456_112,
           binary: true,
           added_lines: null,
           removed_lines: null,
@@ -287,6 +290,10 @@ describe('useReviewChanges', () => {
     const { result } = renderHook(() => useReviewChanges());
 
     await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.files[0]).toMatchObject({
+      tooLarge: false,
+      previewTooLarge: false,
+    });
     await expect(result.current.files[0].loadPreview?.('after')).resolves.toBe(
       image
     );
@@ -301,6 +308,36 @@ describe('useReviewChanges', () => {
         targetCommit: 'b'.repeat(40),
       }
     );
+  });
+
+  it('blocks only images above the dedicated preview budget', async () => {
+    mockFetchGitChanges.mockResolvedValue({
+      repository_id: 'repo-1',
+      project_id: 'project-1',
+      base_commit: 'a'.repeat(40),
+      target_commit: 'b'.repeat(40),
+      files: [
+        {
+          path: 'preview.png',
+          status: 'added',
+          before_size: null,
+          after_size: MAX_IMAGE_PREVIEW_BYTES + 1,
+          binary: true,
+          added_lines: null,
+          removed_lines: null,
+        },
+      ],
+      totals: { added: 0, removed: 0 },
+      truncated: false,
+    });
+
+    const { result } = renderHook(() => useReviewChanges());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.files[0]).toMatchObject({
+      tooLarge: false,
+      previewTooLarge: true,
+    });
   });
 
   it('marks an open review stale when its pinned Git revision moves', async () => {

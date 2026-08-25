@@ -127,6 +127,37 @@ describe('SemanticDiffView', () => {
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:git-image');
   });
 
+  it('shows the actual Git image load failure instead of a missing-payload message', async () => {
+    const loadPreview = vi.fn(() =>
+      Promise.reject(new Error('Image preview is too large'))
+    );
+
+    render(
+      <SemanticDiffView
+        file={{
+          ...file,
+          path: 'image.png',
+          status: 'added',
+          binary: true,
+          loadPreview,
+        }}
+        kind="image"
+        sides={null}
+      />
+    );
+
+    expect(
+      await screen.findByText(
+        'Could not load this file: Image preview is too large'
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        'Image metadata is available, but this Git-backed change has no local preview payload.'
+      )
+    ).not.toBeInTheDocument();
+  });
+
   it('renders sanitized SVG text from both Git sides', async () => {
     const { container } = render(
       <SemanticDiffView

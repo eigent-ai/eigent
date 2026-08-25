@@ -14,6 +14,23 @@
 
 import type { ReviewFile } from './useReviewChanges';
 
+const RASTER_IMAGE_EXTENSIONS = new Set([
+  'avif',
+  'bmp',
+  'gif',
+  'ico',
+  'jpeg',
+  'jpg',
+  'png',
+  'webp',
+]);
+
+/** Raster images use the binary preview endpoint instead of the text diff. */
+export function isRasterImagePreviewPath(path: string): boolean {
+  const extension = path.split('.').at(-1)?.toLowerCase() ?? '';
+  return RASTER_IMAGE_EXTENSIONS.has(extension);
+}
+
 /**
  * Text of a file the `read-file` IPC returned, or null when the bytes are
  * binary. Only the head is probed: a NUL byte anywhere in it means no text

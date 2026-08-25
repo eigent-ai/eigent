@@ -51,7 +51,11 @@ import {
 import { useTranslation } from 'react-i18next';
 import { countLineChanges, type LineCounts } from './diffMetrics';
 import { releaseDiffEditorModels } from './monacoModelLifecycle';
-import { decodeFileText, diffSidePaths } from './reviewContent';
+import {
+  decodeFileText,
+  diffSidePaths,
+  isRasterImagePreviewPath,
+} from './reviewContent';
 import { SemanticDiffView, semanticDiffKindForPath } from './SemanticDiffView';
 import { MAX_DIFF_BYTES, type ReviewFile } from './useReviewChanges';
 
@@ -267,10 +271,17 @@ export const DiffFileCard = forwardRef<DiffFileCardHandle, DiffFileCardProps>(
         setSides(file.inline);
         return;
       }
+      if (file.previewTooLarge) {
+        setLoadError('preview_too_large');
+        return;
+      }
       if (file.tooLarge) {
         setLoadError('too_large');
         return;
       }
+      // Raster images are loaded by ImageDiff as object URLs. Avoid reading
+      // them through the text-diff path (and its intentionally smaller cap).
+      if (isRasterImagePreviewPath(file.path)) return;
       if (file.binary) {
         if (semanticKind !== 'image') setLoadError('binary');
         return;
@@ -706,17 +717,22 @@ export const DiffFileCard = forwardRef<DiffFileCardHandle, DiffFileCardProps>(
           ? t('layout.review-file-too-large', {
               defaultValue: 'File is too large to diff.',
             })
-          : loadError === 'no_before_content'
-            ? t('layout.review-no-before-content', {
+          : loadError === 'preview_too_large'
+            ? t('folder.preview-too-large', {
                 defaultValue:
-                  'This file was deleted and no backup of its content exists.',
+                  'This file exceeds the safe in-app preview limit.',
               })
-            : loadError
-              ? t('layout.review-file-load-failed', {
-                  defaultValue: 'Could not load this file: {{message}}',
-                  message: loadError,
+            : loadError === 'no_before_content'
+              ? t('layout.review-no-before-content', {
+                  defaultValue:
+                    'This file was deleted and no backup of its content exists.',
                 })
-              : null;
+              : loadError
+                ? t('layout.review-file-load-failed', {
+                    defaultValue: 'Could not load this file: {{message}}',
+                    message: loadError,
+                  })
+                : null;
 
     return (
       <section
@@ -772,15 +788,15 @@ export const DiffFileCard = forwardRef<DiffFileCardHandle, DiffFileCardProps>(
         ) : null}
 
         <div className="min-h-0 flex-1">
-          {displayMode === 'preview' && semanticKind ? (
-            <SemanticDiffView file={file} kind={semanticKind} sides={sides} />
-          ) : notice ? (
+          {notice ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-ds-text-meta text-ds-ink-muted-default">
               <div className="flex items-center gap-2">
                 <DsIcon icon={FileWarning} />
                 {notice}
               </div>
-              {(loadError === 'binary' || loadError === 'too_large') &&
+              {(loadError === 'binary' ||
+                loadError === 'too_large' ||
+                loadError === 'preview_too_large') &&
               (file.beforeSize != null || file.afterSize != null) ? (
                 <div className="flex items-center gap-3 font-code text-ds-code-small">
                   <span>
@@ -805,6 +821,8 @@ export const DiffFileCard = forwardRef<DiffFileCardHandle, DiffFileCardProps>(
                 </div>
               ) : null}
             </div>
+          ) : displayMode === 'preview' && semanticKind ? (
+            <SemanticDiffView file={file} kind={semanticKind} sides={sides} />
           ) : sides ? (
             <div
               className="code-editor-surface review-diff-surface h-full w-full bg-ds-neutral-subtle-default"

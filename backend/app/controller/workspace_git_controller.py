@@ -56,6 +56,7 @@ router = APIRouter(dependencies=[Depends(require_local_control_principal)])
 
 _PROJECT_CHANGE_MAX_FILES = 500
 _PROJECT_CHANGE_MAX_BYTES = 2_000_000
+_PROJECT_IMAGE_PREVIEW_MAX_BYTES = 20_000_000
 
 
 class GitBootstrapBody(BaseModel):
@@ -1137,14 +1138,16 @@ def _git_change_blob_response(
             status_code=404,
             detail=f"File is not present on the {side} side",
         )
-    if size > _PROJECT_CHANGE_MAX_BYTES:
-        raise HTTPException(status_code=413, detail="Change is too large")
-
     media_type = mimetypes.guess_type(relative_path)[0]
     if media_type is None or not media_type.startswith("image/"):
         raise HTTPException(
             status_code=415,
             detail="Only image changes support binary preview",
+        )
+    if size > _PROJECT_IMAGE_PREVIEW_MAX_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="Image preview is too large",
         )
     data = (
         b""

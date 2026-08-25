@@ -37,7 +37,14 @@ import {
   type SessionModeType,
 } from '@/types/constants';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { SessionSidePanel } from './SidePanel';
 
 /** Maximum width the resizable chat column can reclaim while display is open. */
@@ -263,10 +270,11 @@ export default function Session({ isNewProject = false }: SessionProps) {
     ((commitWidth?: boolean) => void) | null
   >(null);
 
-  // Point the preview store at this project. Its saved tabs (and, within this
-  // app run, the live webviews behind them) are restored on switch-back —
-  // webviews are intentionally NOT destroyed here so history survives.
-  useEffect(() => {
+  // Scope the preview store before the first interactive paint. Review/file
+  // buttons already exist in the chat at that point; doing this in a passive
+  // effect leaves a window where their mutations are silently dropped because
+  // setSessionPreviewSlice has no project to own them yet.
+  useLayoutEffect(() => {
     setSessionPreviewProject(activeProjectId ?? null);
   }, [activeProjectId, setSessionPreviewProject]);
 

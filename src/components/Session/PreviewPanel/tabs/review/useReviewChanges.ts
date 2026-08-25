@@ -38,7 +38,11 @@ import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { countLineDiff, type LineCounts } from './diffMetrics';
-import { decodeFileText, diffSidePaths } from './reviewContent';
+import {
+  decodeFileText,
+  diffSidePaths,
+  isRasterImagePreviewPath,
+} from './reviewContent';
 import { REVIEW_FIXTURE_FILES, reviewFixtureEnabled } from './reviewFixture';
 import { collectChangedFilePaths } from './reviewSources';
 
@@ -49,6 +53,9 @@ export type ReviewFileStatus = 'added' | 'modified' | 'deleted';
  * shipping a huge buffer over IPC just to reject it in the renderer).
  */
 export const MAX_DIFF_BYTES = 2_000_000;
+
+/** Images are rendered, not diffed as text, so they have a separate budget. */
+export const MAX_IMAGE_PREVIEW_BYTES = 20_000_000;
 
 const isRunGitChangesUnavailable = (
   value: ProjectGitChanges | RunGitChangesUnavailable
@@ -81,8 +88,10 @@ export interface ReviewFile {
   /** Side sizes power binary/large-file summaries without reading content. */
   beforeSize?: number | null;
   afterSize?: number | null;
-  /** Either side exceeds `MAX_DIFF_BYTES`; the card skips reading it. */
+  /** A text side exceeds `MAX_DIFF_BYTES`; the card skips reading it. */
   tooLarge?: boolean;
+  /** A raster image side exceeds `MAX_IMAGE_PREVIEW_BYTES`. */
+  previewTooLarge?: boolean;
   /**
    * Inline diff sides (dev fixture only). When set, the card diffs these
    * strings instead of reading files from disk.
@@ -190,15 +199,20 @@ function isReviewStatus(value: string): value is ReviewFileStatus {
  * content is missing outright, and whether either side is too big to diff.
  */
 function reviewFileFlags(
+  path: string,
   status: ReviewFileStatus,
   bakPath: string | null,
   beforeSize: number | null,
   afterSize: number | null
-): Pick<ReviewFile, 'beforeUnavailable' | 'tooLarge'> {
+): Pick<ReviewFile, 'beforeUnavailable' | 'tooLarge' | 'previewTooLarge'> {
+  const largestSide = Math.max(beforeSize ?? 0, afterSize ?? 0);
+  const usesImagePreview = isRasterImagePreviewPath(path);
   return {
     beforeUnavailable: status === 'modified' && !bakPath,
-    tooLarge:
-      (beforeSize ?? 0) > MAX_DIFF_BYTES || (afterSize ?? 0) > MAX_DIFF_BYTES,
+    tooLarge: !usesImagePreview && largestSide > MAX_DIFF_BYTES,
+    ...(usesImagePreview
+      ? { previewTooLarge: largestSide > MAX_IMAGE_PREVIEW_BYTES }
+      : {}),
   };
 }
 
@@ -408,6 +422,7 @@ export function useReviewChanges(
             beforeSize: before?.size ?? null,
             afterSize,
             ...reviewFileFlags(
+              overlay.path,
               status,
               before?.path ?? null,
               before?.size ?? null,
@@ -456,6 +471,7 @@ export function useReviewChanges(
           beforeSize: backup?.size ?? null,
           afterSize: entry.exists ? entry.size : null,
           ...reviewFileFlags(
+            displayPath(entry.path, spaceRootPath),
             status,
             backup?.path ?? null,
             backup?.size ?? null,
@@ -520,6 +536,11 @@ export function useReviewChanges(
           const files = response.files.map((file): ReviewFile => {
             const baseCommit = response.base_commit;
             const targetCommit = response.target_commit;
+            const largestSide = Math.max(
+              file.before_size ?? 0,
+              file.after_size ?? 0
+            );
+            const usesImagePreview = isRasterImagePreviewPath(file.path);
             return {
               id: `${runId ? `run-git:${runId}` : 'git'}:${file.path}`,
               path: file.path,
@@ -529,9 +550,12 @@ export function useReviewChanges(
               binary: file.binary,
               beforeSize: file.before_size,
               afterSize: file.after_size,
-              tooLarge:
-                (file.before_size ?? 0) > MAX_DIFF_BYTES ||
-                (file.after_size ?? 0) > MAX_DIFF_BYTES,
+              tooLarge: !usesImagePreview && largestSide > MAX_DIFF_BYTES,
+              ...(usesImagePreview
+                ? {
+                    previewTooLarge: largestSide > MAX_IMAGE_PREVIEW_BYTES,
+                  }
+                : {}),
               loadContent:
                 baseCommit && targetCommit
                   ? async () => {

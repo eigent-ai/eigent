@@ -314,6 +314,10 @@ function JsonValueCell({
   );
 }
 
+type ImageSideState = { url: string | null; error: string | null };
+
+const EMPTY_IMAGE_SIDE: ImageSideState = { url: null, error: null };
+
 function ImageDiff({
   file,
   sides,
@@ -323,20 +327,25 @@ function ImageDiff({
 }) {
   const { t } = useTranslation();
   const host = useHost();
-  const [urls, setUrls] = useState<{
-    before: string | null;
-    after: string | null;
-  }>({
-    before: null,
-    after: null,
-  });
+  const [images, setImages] = useState<{
+    before: ImageSideState;
+    after: ImageSideState;
+  }>({ before: EMPTY_IMAGE_SIDE, after: EMPTY_IMAGE_SIDE });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     const objectUrls: string[] = [];
     setLoading(true);
-    setUrls({ before: null, after: null });
+    setImages({ before: EMPTY_IMAGE_SIDE, after: EMPTY_IMAGE_SIDE });
+    const failure = (error: unknown): ImageSideState => ({
+      url: null,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    const loaded = (url: string | null): ImageSideState => ({
+      url,
+      error: null,
+    });
     const svgDataUrl = (content: string): string | null => {
       if (!content.trim()) return null;
       const sanitized = DOMPurify.sanitize(content, {
@@ -344,47 +353,48 @@ function ImageDiff({
       });
       return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(sanitized)}`;
     };
-    const read = async (path: string | null): Promise<string | null> => {
-      if (!path || !host?.electronAPI?.readFileAsDataUrl) return null;
+    const read = async (path: string | null): Promise<ImageSideState> => {
+      if (!path || !host?.electronAPI?.readFileAsDataUrl)
+        return EMPTY_IMAGE_SIDE;
       try {
-        return await host.electronAPI.readFileAsDataUrl(path);
-      } catch {
-        return null;
+        return loaded(await host.electronAPI.readFileAsDataUrl(path));
+      } catch (error: unknown) {
+        return failure(error);
       }
     };
     const readGitSide = async (
       side: 'before' | 'after'
-    ): Promise<string | null> => {
-      if (!file.loadPreview) return null;
+    ): Promise<ImageSideState> => {
+      if (!file.loadPreview) return EMPTY_IMAGE_SIDE;
       try {
         const blob = await file.loadPreview(side);
-        if (cancelled) return null;
+        if (cancelled) return EMPTY_IMAGE_SIDE;
         const url = URL.createObjectURL(blob);
         objectUrls.push(url);
-        return url;
-      } catch {
-        return null;
+        return loaded(url);
+      } catch (error: unknown) {
+        return failure(error);
       }
     };
     const isSvg = file.path.toLowerCase().endsWith('.svg');
     Promise.all([
       isSvg && sides
-        ? Promise.resolve(svgDataUrl(sides.original))
+        ? Promise.resolve(loaded(svgDataUrl(sides.original)))
         : file.status === 'added'
-          ? Promise.resolve(null)
+          ? Promise.resolve(EMPTY_IMAGE_SIDE)
           : file.loadPreview
             ? readGitSide('before')
             : read(file.bakPath),
       isSvg && sides
-        ? Promise.resolve(svgDataUrl(sides.modified))
+        ? Promise.resolve(loaded(svgDataUrl(sides.modified)))
         : file.status === 'deleted'
-          ? Promise.resolve(null)
+          ? Promise.resolve(EMPTY_IMAGE_SIDE)
           : file.loadPreview
             ? readGitSide('after')
             : read(file.absPath),
     ]).then(([before, after]) => {
       if (!cancelled) {
-        setUrls({ before, after });
+        setImages({ before, after });
         setLoading(false);
       }
     });
@@ -395,7 +405,12 @@ function ImageDiff({
   }, [file, host, sides]);
 
   if (loading) return <SemanticLoading />;
-  if (!urls.before && !urls.after) {
+  if (
+    !images.before.url &&
+    !images.after.url &&
+    !images.before.error &&
+    !images.after.error
+  ) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-ds-text-meta text-ds-ink-muted-default">
         <DsIcon icon={FileImage} recipe="detailed" />
@@ -408,13 +423,31 @@ function ImageDiff({
   }
   return (
     <TwoPaneSemanticDiff
-      before={<ImageSide url={urls.before} />}
-      after={<ImageSide url={urls.after} />}
+      before={<ImageSide url={images.before.url} error={images.before.error} />}
+      after={<ImageSide url={images.after.url} error={images.after.error} />}
     />
   );
 }
 
-function ImageSide({ url }: { url: string | null }) {
+function ImageSide({
+  url,
+  error,
+}: {
+  url: string | null;
+  error: string | null;
+}) {
+  const { t } = useTranslation();
+  if (error) {
+    return (
+      <div className="flex h-full min-h-[320px] flex-col items-center justify-center gap-2 px-6 text-center text-ds-text-meta text-ds-ink-muted-default">
+        <DsIcon icon={AlertTriangle} recipe="detailed" />
+        {t('layout.review-file-load-failed', {
+          defaultValue: 'Could not load this file: {{message}}',
+          message: error,
+        })}
+      </div>
+    );
+  }
   if (!url) return <EmptySide />;
   return (
     <div className="flex h-full min-h-[320px] items-center justify-center bg-ds-neutral-subtle-default p-6">

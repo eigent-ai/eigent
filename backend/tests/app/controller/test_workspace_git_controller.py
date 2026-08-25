@@ -397,7 +397,10 @@ def test_workspace_git_rejects_escaping_checkpoint_path(git_api):
     assert response.status_code == 422
 
 
-def test_project_git_changes_returns_lazy_authoritative_diff(git_api):
+def test_project_git_changes_returns_lazy_authoritative_diff(
+    git_api,
+    monkeypatch,
+):
     client, service, _, space = git_api
     response = client.post(
         "/api/v1/spaces/space-1/git/bootstrap",
@@ -435,7 +438,9 @@ def test_project_git_changes_returns_lazy_authoritative_diff(git_api):
     run_seed.write_text("updated\n", encoding="utf-8")
     note = workspace.run_worktree / "note.md"
     note.write_text("new note\n", encoding="utf-8")
-    image_bytes = b"\x89PNG\r\n\x1a\n\x00\x01\x02"
+    # Image previews have a larger budget than text diffs. This mirrors the
+    # real regression: a valid 2.45 MB PNG was rejected by the 2 MB text cap.
+    image_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * (2_456_112 - 8)
     binary = workspace.run_worktree / "image.png"
     binary.write_bytes(image_bytes)
     run_head = service.git.commit_paths(
@@ -545,6 +550,29 @@ def test_project_git_changes_returns_lazy_authoritative_diff(git_api):
     assert image_response.headers["cache-control"] == "private, no-store"
     assert image_response.content == image_bytes
     assert str(space) not in image_response.text
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            workspace_git_controller,
+            "_PROJECT_IMAGE_PREVIEW_MAX_BYTES",
+            len(image_bytes) - 1,
+        )
+        oversized_image_response = client.get(
+            "/api/v1/projects/project-review/git/changes/blob",
+            params={
+                "space_id": "space-1",
+                "email": "user@example.com",
+                "path": "image.png",
+                "side": "after",
+                "base_commit": payload["base_commit"],
+                "target_commit": payload["target_commit"],
+            },
+            headers=_headers(),
+        )
+    assert oversized_image_response.status_code == 413
+    assert oversized_image_response.json()["detail"] == (
+        "Image preview is too large"
+    )
 
     missing_before = client.get(
         "/api/v1/projects/project-review/git/changes/blob",
