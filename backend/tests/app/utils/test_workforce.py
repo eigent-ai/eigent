@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -30,7 +31,9 @@ from camel.tasks.task import TaskState
 
 from app.agent.listen_chat_agent import ListenChatAgent
 from app.exception.exception import UserException
+from app.run_journal.store import SQLiteRunJournal
 from app.run_runtime.active_timeout import pause_active_execution_timeout
+from app.run_runtime.step_coordinator import RunStepCoordinator, stable_step_id
 from app.service.task import (
     ActionAssignTaskData,
     ActionTaskStateData,
@@ -40,9 +43,87 @@ from app.service.task import (
 from app.utils.workforce import (
     _ANALYZE_TASK_MAX_RETRIES,
     Workforce,
+    _persist_workforce_subtask_step,
     default_workforce_stall_timeout,
     default_workforce_task_timeout,
 )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_workforce_persists_running_step_before_dispatch(tmp_path):
+    journal = SQLiteRunJournal(tmp_path / "journal.sqlite3")
+    journal.ensure_run(
+        run_id="run-1", project_id="project-1", status="pending"
+    )
+    journal.create_run_attempt(
+        "run-1",
+        request_id="initial",
+        reason="initial_execution",
+        activate=True,
+    )
+    task_lock = MagicMock()
+    task_lock.run_context = SimpleNamespace(
+        run_id="run-1",
+        project_id="project-1",
+    )
+
+    with patch(
+        "app.utils.workforce.get_default_run_journal",
+        return_value=journal,
+    ):
+        step_id = await _persist_workforce_subtask_step(
+            task_lock,
+            task_id="task-1",
+            title="Build report",
+            agent_id="agent-1",
+            phase="running",
+        )
+
+    assert step_id == stable_step_id("run-1", "subtask:task-1")
+    snapshot = RunStepCoordinator(journal).replay("run-1")[step_id]
+    assert snapshot.status == "running"
+    assert snapshot.owner_kind == "workforce"
+    assert snapshot.source == "workforce"
+    task_lock.mark_local_history_degraded.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_workforce_post_orders_step_before_queue_and_dispatch():
+    workforce = Workforce(api_task_id="project-1", description="Workforce")
+    workforce._task = Task(content="Main task", id="main-task")
+    subtask = Task(content="Build report", id="task-1")
+    order: list[str] = []
+    task_lock = MagicMock()
+
+    async def persist(*_args, **_kwargs):
+        order.append("persist")
+        return "step-1"
+
+    async def put_queue(_data):
+        order.append("queue")
+
+    async def dispatch(_self, _task, _assignee_id):
+        order.append("dispatch")
+
+    task_lock.put_queue.side_effect = put_queue
+    with (
+        patch("app.utils.workforce.get_task_lock", return_value=task_lock),
+        patch.object(
+            workforce,
+            "_get_agent_id_from_node_id",
+            return_value="agent-1",
+        ),
+        patch(
+            "app.utils.workforce._persist_workforce_subtask_step",
+            side_effect=persist,
+        ),
+        patch.object(BaseWorkforce, "_post_task", new=dispatch),
+    ):
+        await workforce._post_task(subtask, "worker-node-1")
+
+    assert order == ["persist", "queue", "dispatch"]
 
 
 @pytest.fixture(autouse=True)

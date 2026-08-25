@@ -29,7 +29,7 @@ import sqlite3
 import threading
 import time
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -42,6 +42,7 @@ from app.run_journal.models import (
     ApprovalRuleRecord,
     ArtifactUploadSyncItem,
     AttemptEnvironmentBinding,
+    AttemptEvidenceGapRecord,
     CloudRunEventReplica,
     CloudRunReplica,
     CommandResultEvent,
@@ -68,6 +69,7 @@ from app.run_journal.models import (
     MemoryMutationSyncItem,
     MemoryReconciliationRecord,
     MemoryScopeStateRecord,
+    ModelDocumentRetentionResult,
     ModelInvocationEventRecord,
     ModelInvocationRecord,
     ProjectExecutionStateRecord,
@@ -119,6 +121,16 @@ from app.run_policy import (
     ToolSafetyClass,
     automatic_tool_replay_allowed,
 )
+from app.workload import (
+    DEFAULT_PRODUCTION_WORKLOAD_PROFILE,
+    PRODUCT_MODEL_DOCUMENT_RETENTION_SECONDS,
+    RETENTION_POLICY_PRODUCT_DEFAULT,
+    WorkloadProfileRecord,
+    default_workload_profile,
+    workload_profile_digest,
+    workload_profile_from_payload,
+    workload_profile_payload,
+)
 from app.workspace_config.models import (
     EffectiveEnvironmentSpec,
     ThinkingEffort,
@@ -126,7 +138,7 @@ from app.workspace_config.models import (
     canonical_json,
 )
 
-SCHEMA_VERSION = 33
+SCHEMA_VERSION = 34
 logger = logging.getLogger("run_journal")
 # Per redacted request or response. Oversized documents retain a bounded JSON
 # prefix plus the byte count and digest of the full redacted projection.
@@ -208,6 +220,50 @@ _MEMORY_SOURCE_TRUST = {
     "legacy_unverified",
 }
 _MEMORY_DEFAULT_TOKEN_LIMITS = {"project": 1024, "space": 640, "user": 384}
+
+_EVIDENCE_DIMENSIONS = {
+    "intent",
+    "harness",
+    "model_decisions",
+    "tool_actions",
+    "external_observations",
+    "initial_environment",
+    "checkpoints",
+    "terminal_environment",
+    "workspace_delta",
+    "artifacts",
+    "user_outcome",
+    "verifier_result",
+}
+_EVIDENCE_GAP_REASON_CODES = {
+    "capture_disabled",
+    "capture_failed",
+    "provider_capability_missing",
+    "content_not_enabled",
+    "redacted",
+    "truncated_budget",
+    "process_crashed",
+    "outcome_unknown",
+    "consent_missing",
+    "reference_unresolvable",
+    "retention_expired",
+    "not_yet_implemented",
+}
+_DEFAULT_WORKLOAD_PROFILE_JSON = canonical_json(
+    workload_profile_payload(DEFAULT_PRODUCTION_WORKLOAD_PROFILE)
+)
+_DEFAULT_WORKLOAD_PROFILE_DIGEST = workload_profile_digest(
+    DEFAULT_PRODUCTION_WORKLOAD_PROFILE
+)
+_MODEL_DOCUMENT_RETENTION_MARKER = canonical_json(
+    {
+        "_eigent_retention": {
+            "expired": True,
+            "policy_ref": RETENTION_POLICY_PRODUCT_DEFAULT,
+            "version": 1,
+        }
+    }
+)
 
 _MIGRATION_V1 = """
 BEGIN IMMEDIATE;
@@ -2167,6 +2223,72 @@ INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
 VALUES (33, CAST(strftime('%s', 'now') AS REAL));
 
 PRAGMA user_version = 33;
+COMMIT;
+"""
+
+_MIGRATION_V34 = """
+BEGIN IMMEDIATE;
+
+-- Workload purpose and SLA policy are immutable Attempt bindings. They are
+-- deliberately separate from Workspace Bundle and EnvironmentSpec identity.
+ALTER TABLE run_attempts
+ADD COLUMN workload_kind TEXT NOT NULL DEFAULT 'production'
+    CHECK(workload_kind IN ('production', 'test', 'ab', 'rollout'));
+ALTER TABLE run_attempts
+ADD COLUMN workload_profile_json TEXT NOT NULL
+    DEFAULT '{"budget_policy_ref":"budget.product-default.v1","capture_policy_ref":"capture.best-effort.v1","isolation_policy_ref":"isolation.product-default.v1","network_policy_ref":"network.product-default.v1","profile_version":"1","retention_policy_ref":"retention.product-default.v1","schema_version":1,"verifier_policy_ref":"verifier.noop.v1","workload_kind":"production"}';
+ALTER TABLE run_attempts
+ADD COLUMN workload_profile_digest TEXT NOT NULL
+    DEFAULT '4786bb51388abddfbbe18decc88ada3e3e896b4aa9967970c2b99865d4999302'
+    CHECK(length(workload_profile_digest) = 64);
+CREATE INDEX IF NOT EXISTS run_attempts_workload_kind_idx
+ON run_attempts(workload_kind, started_at, attempt_id);
+
+-- Model calls bind to the authored Step that was current at dispatch. Steps
+-- remain canonical Run events; this nullable correlation is not a second Step
+-- state store.
+ALTER TABLE model_invocations ADD COLUMN step_id TEXT;
+CREATE INDEX IF NOT EXISTS model_invocations_step_idx
+ON model_invocations(run_id, step_id, started_at, invocation_id)
+WHERE step_id IS NOT NULL;
+
+-- A capture failure is a durable, queryable fact instead of a log line.
+-- AttemptEvidenceManifest can aggregate these rows without rewriting canonical
+-- ModelInvocation or ToolCall records.
+CREATE TABLE IF NOT EXISTS attempt_evidence_gaps(
+    gap_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+    attempt_id TEXT NOT NULL REFERENCES run_attempts(attempt_id)
+        ON DELETE CASCADE,
+    step_id TEXT,
+    dimension TEXT NOT NULL CHECK(
+        dimension IN (
+            'intent', 'harness', 'model_decisions', 'tool_actions',
+            'external_observations', 'initial_environment', 'checkpoints',
+            'terminal_environment', 'workspace_delta', 'artifacts',
+            'user_outcome', 'verifier_result'
+        )
+    ),
+    reason_code TEXT NOT NULL CHECK(
+        reason_code IN (
+            'capture_disabled', 'capture_failed',
+            'provider_capability_missing', 'content_not_enabled', 'redacted',
+            'truncated_budget', 'process_crashed', 'outcome_unknown',
+            'consent_missing', 'reference_unresolvable',
+            'retention_expired', 'not_yet_implemented'
+        )
+    ),
+    source TEXT NOT NULL,
+    detail_code TEXT,
+    created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS attempt_evidence_gaps_attempt_idx
+ON attempt_evidence_gaps(attempt_id, step_id, created_at, gap_id);
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (34, CAST(strftime('%s', 'now') AS REAL));
+
+PRAGMA user_version = 34;
 COMMIT;
 """
 
@@ -7650,6 +7772,7 @@ class SQLiteRunJournal:
         invocation_id: str,
         run_id: str,
         attempt_id: str | None,
+        step_id: str | None = None,
         agent_id: str,
         logical_call_id: str,
         provider: str,
@@ -7671,6 +7794,10 @@ class SQLiteRunJournal:
             raise ValueError("model invocation ids are required")
         if not agent_id.strip() or not provider.strip() or not model.strip():
             raise ValueError("model invocation identity is incomplete")
+        if step_id is not None:
+            step_id = step_id.strip()
+            if not step_id:
+                raise ValueError("model invocation step id cannot be blank")
         timestamp = now if now is not None else time.time()
         safe_request, request_json = _project_model_document(
             "request", request
@@ -7687,6 +7814,8 @@ class SQLiteRunJournal:
             if duplicate is not None:
                 if (
                     duplicate["run_id"] != run_id
+                    or duplicate["attempt_id"] != attempt_id
+                    or duplicate["step_id"] != step_id
                     or duplicate["logical_call_id"] != logical_call_id
                     or duplicate["request_digest"] != request_digest
                 ):
@@ -7709,6 +7838,17 @@ class SQLiteRunJournal:
                     raise IdempotencyConflictError(
                         "model invocation attempt does not belong to the Run"
                     )
+            if step_id is not None:
+                step_exists = self._step_belongs_to_attempt_in_transaction(
+                    connection,
+                    run_id=run_id,
+                    step_id=step_id,
+                    attempt_id=attempt_id,
+                )
+                if not step_exists:
+                    raise IdempotencyConflictError(
+                        "model invocation step does not belong to the Run"
+                    )
             retry_index = int(
                 connection.execute(
                     """
@@ -7721,7 +7861,7 @@ class SQLiteRunJournal:
             connection.execute(
                 """
                 INSERT INTO model_invocations(
-                    invocation_id, run_id, attempt_id, agent_id,
+                    invocation_id, run_id, attempt_id, step_id, agent_id,
                     logical_call_id, retry_index, status, provider, model,
                     transport, thinking_effort, request_json, response_json,
                     request_digest, response_digest, prompt_tokens,
@@ -7729,7 +7869,7 @@ class SQLiteRunJournal:
                     finish_reason, error_code, error_message,
                     redaction_version, started_at, first_token_at, completed_at
                 ) VALUES (
-                    ?, ?, ?, ?, ?, ?, 'dispatched', ?, ?, ?, ?, ?, NULL,
+                    ?, ?, ?, ?, ?, ?, ?, 'dispatched', ?, ?, ?, ?, ?, NULL,
                     ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
                     ?, ?, NULL, NULL
                 )
@@ -7738,6 +7878,7 @@ class SQLiteRunJournal:
                     invocation_id,
                     run_id,
                     attempt_id,
+                    step_id,
                     agent_id,
                     logical_call_id,
                     retry_index,
@@ -7754,6 +7895,7 @@ class SQLiteRunJournal:
             event_payload = {
                 "invocation_id": invocation_id,
                 "attempt_id": attempt_id,
+                "step_id": step_id,
                 "agent_id": agent_id,
                 "logical_call_id": logical_call_id,
                 "retry_index": retry_index,
@@ -7925,6 +8067,7 @@ class SQLiteRunJournal:
             event_payload: dict[str, Any] = {
                 "invocation_id": invocation_id,
                 "attempt_id": row["attempt_id"],
+                "step_id": row["step_id"],
                 "agent_id": row["agent_id"],
                 "status": status,
                 "request_digest": row["request_digest"],
@@ -7962,6 +8105,151 @@ class SQLiteRunJournal:
             assert updated is not None
             return self._model_invocation_from_row(updated)
 
+    def _record_model_capture_outcome_gap_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        invocation: sqlite3.Row,
+        detail_code: str,
+        suffix: str,
+        timestamp: float,
+    ) -> None:
+        attempt_id = invocation["attempt_id"]
+        if attempt_id is None:
+            return
+        invocation_id = str(invocation["invocation_id"])
+        run_id = str(invocation["run_id"])
+        gap_id = f"capture-gap:{invocation_id}:{suffix}"
+        inserted = connection.execute(
+            """
+            INSERT OR IGNORE INTO attempt_evidence_gaps(
+                gap_id, run_id, attempt_id, step_id, dimension,
+                reason_code, source, detail_code, created_at
+            ) VALUES (?, ?, ?, ?, 'model_decisions',
+                      'outcome_unknown', 'model_capture', ?, ?)
+            """,
+            (
+                gap_id,
+                run_id,
+                attempt_id,
+                invocation["step_id"],
+                detail_code,
+                timestamp,
+            ),
+        )
+        if inserted.rowcount != 1:
+            return
+        self._append_event_in_transaction(
+            connection,
+            run_id,
+            RunEventDraft(
+                event_id=f"attempt-evidence-gap:{gap_id}",
+                event_type="attempt.evidence_gap_recorded",
+                payload={
+                    "gap_id": gap_id,
+                    "attempt_id": attempt_id,
+                    "step_id": invocation["step_id"],
+                    "dimension": "model_decisions",
+                    "reason_code": "outcome_unknown",
+                    "source": "model_capture",
+                    "detail_code": detail_code,
+                },
+                created_at=timestamp,
+            ),
+        )
+
+    def _close_dispatched_model_invocations_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        run_id: str,
+        terminal_event_type: str,
+        timestamp: float,
+    ) -> tuple[str, ...]:
+        """Close provider calls that outlived their owning Run Attempt.
+
+        Normal streaming capture commits the terminal provider chunk before a
+        Run can finish.  This barrier covers consumer/provider edge cases and
+        process integrations that return without exhausting or explicitly
+        closing a stream.  Best-effort capture must remain non-blocking, but
+        it must never leave a silently dispatched row in a terminal Run.
+        """
+
+        pending = connection.execute(
+            """
+            SELECT * FROM model_invocations
+            WHERE run_id = ? AND status = 'dispatched'
+            ORDER BY started_at, invocation_id
+            """,
+            (run_id,),
+        ).fetchall()
+        closed: list[str] = []
+        for invocation in pending:
+            invocation_id = str(invocation["invocation_id"])
+            error_code = "run_terminal_before_model_capture_completed"
+            error_message = (
+                f"Run reached {terminal_event_type} before the model "
+                "response was durably finalized"
+            )
+            updated = connection.execute(
+                """
+                UPDATE model_invocations
+                SET status = 'outcome_unknown', error_code = ?,
+                    error_message = ?, completed_at = ?
+                WHERE invocation_id = ? AND status = 'dispatched'
+                """,
+                (error_code, error_message, timestamp, invocation_id),
+            )
+            if updated.rowcount != 1:
+                continue
+            payload = {
+                "invocation_id": invocation_id,
+                "attempt_id": invocation["attempt_id"],
+                "step_id": invocation["step_id"],
+                "agent_id": invocation["agent_id"],
+                "status": "outcome_unknown",
+                "request_digest": invocation["request_digest"],
+                "response_digest": None,
+                "finish_reason": None,
+                "usage": {
+                    "prompt_tokens": None,
+                    "completion_tokens": None,
+                    "cache_read_tokens": None,
+                    "cache_write_tokens": None,
+                },
+                "error_code": error_code,
+            }
+            self._insert_model_invocation_event(
+                connection,
+                invocation_id=invocation_id,
+                event_type="outcome_unknown",
+                payload=payload,
+                created_at=timestamp,
+            )
+            self._append_event_in_transaction(
+                connection,
+                run_id,
+                RunEventDraft(
+                    event_id=(
+                        "run-terminal:model-invocation-outcome-unknown:"
+                        f"{invocation_id}"
+                    ),
+                    event_type="model.invocation.outcome_unknown",
+                    payload=payload,
+                    created_at=timestamp,
+                ),
+            )
+
+            self._record_model_capture_outcome_gap_in_transaction(
+                connection,
+                invocation=invocation,
+                detail_code=error_code,
+                suffix="run-terminal",
+                timestamp=timestamp,
+            )
+            closed.append(invocation_id)
+        return tuple(closed)
+
     def get_model_invocation(
         self, invocation_id: str
     ) -> ModelInvocationRecord | None:
@@ -7985,6 +8273,204 @@ class SQLiteRunJournal:
             ).fetchall()
         return tuple(self._model_invocation_from_row(row) for row in rows)
 
+    def list_model_invocation_retention_candidates(
+        self,
+        *,
+        now: float | None = None,
+        limit: int = 100,
+    ) -> tuple[str, ...]:
+        """Return a bounded, policy-aware plan without mutating evidence.
+
+        The immutable Attempt profile is the authority. Evidence-required
+        workloads are therefore excluded even when their documents are old.
+        Applying the plan is intentionally a separate, explicitly authorized
+        data-lifecycle operation.
+        """
+
+        if limit < 1:
+            raise ValueError("retention candidate limit must be positive")
+        timestamp = now if now is not None else time.time()
+        cutoff = timestamp - PRODUCT_MODEL_DOCUMENT_RETENTION_SECONDS
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT model_invocations.invocation_id
+                FROM model_invocations
+                JOIN run_attempts
+                  ON run_attempts.attempt_id = model_invocations.attempt_id
+                WHERE model_invocations.status != 'dispatched'
+                  AND model_invocations.completed_at IS NOT NULL
+                  AND model_invocations.completed_at <= ?
+                  AND run_attempts.workload_kind = 'production'
+                  AND json_extract(
+                        run_attempts.workload_profile_json,
+                        '$.retention_policy_ref'
+                      ) = ?
+                  AND CASE
+                        WHEN json_valid(model_invocations.request_json)
+                        THEN json_extract(
+                            model_invocations.request_json,
+                            '$._eigent_retention.expired'
+                        ) IS NULL
+                        ELSE 1
+                      END
+                ORDER BY model_invocations.completed_at,
+                         model_invocations.invocation_id
+                LIMIT ?
+                """,
+                (cutoff, RETENTION_POLICY_PRODUCT_DEFAULT, limit),
+            ).fetchall()
+        return tuple(str(row["invocation_id"]) for row in rows)
+
+    def expire_model_invocation_documents(
+        self,
+        *,
+        now: float | None = None,
+        limit: int = 100,
+    ) -> ModelDocumentRetentionResult:
+        """Expire one bounded batch of product-default model documents.
+
+        The original request/response digests, usage, outcome, timing and
+        identity remain canonical. Only the large redacted documents become
+        a policy tombstone, with one durable evidence gap per invocation.
+        """
+
+        if limit < 1 or limit > 100:
+            raise ValueError("retention batch limit must be between 1 and 100")
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            candidates = connection.execute(
+                """
+                SELECT model_invocations.*
+                FROM model_invocations
+                JOIN run_attempts
+                  ON run_attempts.attempt_id = model_invocations.attempt_id
+                WHERE model_invocations.status != 'dispatched'
+                  AND model_invocations.completed_at IS NOT NULL
+                  AND model_invocations.completed_at <= ?
+                  AND run_attempts.workload_kind = 'production'
+                  AND json_extract(
+                        run_attempts.workload_profile_json,
+                        '$.retention_policy_ref'
+                      ) = ?
+                  AND CASE
+                        WHEN json_valid(model_invocations.request_json)
+                        THEN json_extract(
+                            model_invocations.request_json,
+                            '$._eigent_retention.expired'
+                        ) IS NULL
+                        ELSE 1
+                      END
+                ORDER BY model_invocations.completed_at,
+                         model_invocations.invocation_id
+                LIMIT ?
+                """,
+                (
+                    timestamp - PRODUCT_MODEL_DOCUMENT_RETENTION_SECONDS,
+                    RETENTION_POLICY_PRODUCT_DEFAULT,
+                    limit,
+                ),
+            ).fetchall()
+            expired: list[str] = []
+            skipped: list[str] = []
+            for invocation in candidates:
+                invocation_id = str(invocation["invocation_id"])
+                try:
+                    with self._savepoint(
+                        connection, "model_document_retention"
+                    ):
+                        self._expire_model_invocation_document_in_transaction(
+                            connection,
+                            invocation=invocation,
+                            timestamp=timestamp,
+                        )
+                except Exception:
+                    skipped.append(invocation_id)
+                    logger.exception(
+                        "Skipping model-document retention candidate",
+                        extra={"invocation_id": invocation_id},
+                    )
+                    continue
+                expired.append(invocation_id)
+            remaining = int(
+                connection.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM model_invocations
+                    JOIN run_attempts
+                      ON run_attempts.attempt_id = model_invocations.attempt_id
+                    WHERE model_invocations.status != 'dispatched'
+                      AND model_invocations.completed_at IS NOT NULL
+                      AND model_invocations.completed_at <= ?
+                      AND run_attempts.workload_kind = 'production'
+                      AND json_extract(
+                            run_attempts.workload_profile_json,
+                            '$.retention_policy_ref'
+                          ) = ?
+                      AND CASE
+                            WHEN json_valid(model_invocations.request_json)
+                            THEN json_extract(
+                                model_invocations.request_json,
+                                '$._eigent_retention.expired'
+                            ) IS NULL
+                            ELSE 1
+                          END
+                    """,
+                    (
+                        timestamp - PRODUCT_MODEL_DOCUMENT_RETENTION_SECONDS,
+                        RETENTION_POLICY_PRODUCT_DEFAULT,
+                    ),
+                ).fetchone()[0]
+            )
+            return ModelDocumentRetentionResult(
+                expired_invocation_ids=tuple(expired),
+                skipped_invocation_ids=tuple(skipped),
+                remaining_candidate_count=remaining,
+            )
+
+    def _expire_model_invocation_document_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        invocation: sqlite3.Row,
+        timestamp: float,
+    ) -> None:
+        """Replace one retained document without mutating its Run timeline."""
+
+        invocation_id = str(invocation["invocation_id"])
+        connection.execute(
+            """
+            UPDATE model_invocations
+            SET request_json = ?,
+                response_json = CASE
+                    WHEN response_json IS NULL THEN NULL ELSE ? END,
+                redaction_version = redaction_version || '+retention-v1'
+            WHERE invocation_id = ?
+            """,
+            (
+                _MODEL_DOCUMENT_RETENTION_MARKER,
+                _MODEL_DOCUMENT_RETENTION_MARKER,
+                invocation_id,
+            ),
+        )
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO attempt_evidence_gaps(
+                gap_id, run_id, attempt_id, step_id, dimension,
+                reason_code, source, detail_code, created_at
+            ) VALUES (?, ?, ?, ?, 'model_decisions',
+                      'retention_expired', 'model_capture_retention',
+                      'model_invocation_document_expired', ?)
+            """,
+            (
+                f"retention-gap:{invocation_id}",
+                invocation["run_id"],
+                invocation["attempt_id"],
+                invocation["step_id"],
+                timestamp,
+            ),
+        )
+
     def list_model_invocation_events(
         self, invocation_id: str
     ) -> tuple[ModelInvocationEventRecord, ...]:
@@ -7999,6 +8485,132 @@ class SQLiteRunJournal:
         return tuple(
             self._model_invocation_event_from_row(row) for row in rows
         )
+
+    def record_attempt_evidence_gap(
+        self,
+        *,
+        gap_id: str,
+        run_id: str,
+        attempt_id: str,
+        step_id: str | None = None,
+        dimension: str,
+        reason_code: str,
+        source: str,
+        detail_code: str | None = None,
+        now: float | None = None,
+    ) -> AttemptEvidenceGapRecord:
+        """Persist one idempotent completeness gap and its lightweight event."""
+
+        if not gap_id.strip() or not source.strip():
+            raise ValueError("evidence gap id and source are required")
+        if dimension not in _EVIDENCE_DIMENSIONS:
+            raise ValueError(f"unsupported evidence dimension {dimension!r}")
+        if reason_code not in _EVIDENCE_GAP_REASON_CODES:
+            raise ValueError(
+                f"unsupported evidence gap reason {reason_code!r}"
+            )
+        safe_detail = detail_code.strip()[:160] if detail_code else None
+        if step_id is not None:
+            step_id = step_id.strip()
+            if not step_id:
+                raise ValueError("evidence gap step id cannot be blank")
+        timestamp = now if now is not None else time.time()
+        with self._write_transaction() as connection:
+            duplicate = connection.execute(
+                "SELECT * FROM attempt_evidence_gaps WHERE gap_id = ?",
+                (gap_id,),
+            ).fetchone()
+            expected = (
+                run_id,
+                attempt_id,
+                step_id,
+                dimension,
+                reason_code,
+                source,
+                safe_detail,
+            )
+            if duplicate is not None:
+                persisted = (
+                    duplicate["run_id"],
+                    duplicate["attempt_id"],
+                    duplicate["step_id"],
+                    duplicate["dimension"],
+                    duplicate["reason_code"],
+                    duplicate["source"],
+                    duplicate["detail_code"],
+                )
+                if persisted != expected:
+                    raise IdempotencyConflictError(
+                        "evidence gap id was reused with different input"
+                    )
+                return self._attempt_evidence_gap_from_row(duplicate)
+
+            attempt = connection.execute(
+                "SELECT run_id FROM run_attempts WHERE attempt_id = ?",
+                (attempt_id,),
+            ).fetchone()
+            if attempt is None or attempt["run_id"] != run_id:
+                raise IdempotencyConflictError(
+                    "evidence gap Attempt does not belong to the Run"
+                )
+            if step_id is not None:
+                step_exists = self._step_belongs_to_attempt_in_transaction(
+                    connection,
+                    run_id=run_id,
+                    step_id=step_id,
+                    attempt_id=attempt_id,
+                )
+                if not step_exists:
+                    raise IdempotencyConflictError(
+                        "evidence gap Step does not belong to the Run"
+                    )
+            connection.execute(
+                """
+                INSERT INTO attempt_evidence_gaps(
+                    gap_id, run_id, attempt_id, step_id, dimension,
+                    reason_code, source, detail_code, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (gap_id, *expected, timestamp),
+            )
+            payload = {
+                "gap_id": gap_id,
+                "attempt_id": attempt_id,
+                "step_id": step_id,
+                "dimension": dimension,
+                "reason_code": reason_code,
+                "source": source,
+                "detail_code": safe_detail,
+            }
+            self._append_event_in_transaction(
+                connection,
+                run_id,
+                RunEventDraft(
+                    event_id=f"attempt-evidence-gap:{gap_id}",
+                    event_type="attempt.evidence_gap_recorded",
+                    payload=payload,
+                    created_at=timestamp,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM attempt_evidence_gaps WHERE gap_id = ?",
+                (gap_id,),
+            ).fetchone()
+            assert row is not None
+            return self._attempt_evidence_gap_from_row(row)
+
+    def list_attempt_evidence_gaps(
+        self, attempt_id: str
+    ) -> tuple[AttemptEvidenceGapRecord, ...]:
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM attempt_evidence_gaps
+                WHERE attempt_id = ? ORDER BY created_at, gap_id
+                """,
+                (attempt_id,),
+            ).fetchall()
+        return tuple(self._attempt_evidence_gap_from_row(row) for row in rows)
 
     def list_runs(
         self,
@@ -9642,6 +10254,72 @@ class SQLiteRunJournal:
                 for draft in drafts
             ]
 
+    def append_event_with_workforce_step_projection(
+        self,
+        run_id: str,
+        draft: RunEventDraft,
+        *,
+        expected_project_id: str,
+    ) -> CommittedRunEvent:
+        """Append a subtask fact plus its Step projection or a durable gap.
+
+        Producer-side Workforce code authors the Step before dispatch. This
+        transaction is the compatibility path for older or restored streams
+        that contain only legacy subtask events. A savepoint prevents a failed
+        projection from leaking a partial Step lifecycle; the legacy fact and
+        a bounded projection-gap event still commit so UI narration is not
+        misreported as a canonical write failure.
+        """
+
+        with self._write_transaction() as connection:
+            event = self._append_event_in_transaction(
+                connection,
+                run_id,
+                draft,
+                expected_project_id=expected_project_id,
+            )
+            try:
+                with self._savepoint(connection, "workforce_step_projection"):
+                    self._project_workforce_subtask_step_in_transaction(
+                        connection,
+                        run_id=run_id,
+                        event=event,
+                    )
+            except Exception as exc:
+                logger.exception(
+                    "Workforce Step compatibility projection failed",
+                    extra={
+                        "run_id": run_id,
+                        "source_event_id": event.event_id,
+                        "source_event_type": event.event_type,
+                    },
+                )
+                gap_digest = hashlib.sha256(
+                    event.event_id.encode("utf-8")
+                ).hexdigest()[:24]
+                self._append_event_in_transaction(
+                    connection,
+                    run_id,
+                    RunEventDraft(
+                        event_id=(
+                            f"projection-gap:workforce-step:{gap_digest}"
+                        ),
+                        event_type="projection.workforce_step_failed",
+                        payload={
+                            "projection": "workforce_step.v1",
+                            "source_event_id": event.event_id,
+                            "source_event_type": event.event_type,
+                            "task_id": str(event.payload.get("task_id") or "")[
+                                :160
+                            ],
+                            "error_type": type(exc).__name__[:160],
+                            "retryable": True,
+                        },
+                        created_at=event.created_at,
+                    ),
+                )
+            return event
+
     def append_artifact_manifest_events(
         self,
         run_id: str,
@@ -9857,6 +10535,13 @@ class SQLiteRunJournal:
                     f"({blocking_tool['tool_call_id']})"
                 )
 
+            self._close_dispatched_model_invocations_in_transaction(
+                connection,
+                run_id=run_id,
+                terminal_event_type=terminal.event_type,
+                timestamp=terminal.created_at,
+            )
+
             # Artifact discovery happens outside this short transaction and
             # two terminal paths may race. Pin the newest committed manifest
             # under the same writer lock as run.completed; never trust the
@@ -9926,6 +10611,12 @@ class SQLiteRunJournal:
             latest_manifest = self._latest_artifact_manifest_in_transaction(
                 connection,
                 run_id,
+            )
+            self._close_dispatched_model_invocations_in_transaction(
+                connection,
+                run_id=run_id,
+                terminal_event_type=draft.event_type,
+                timestamp=draft.created_at,
             )
             enriched = RunEventDraft(
                 event_id=draft.event_id,
@@ -9999,6 +10690,7 @@ class SQLiteRunJournal:
         *,
         after_sequence: int = 0,
         limit: int | None = None,
+        event_type_prefix: str | None = None,
     ) -> list[CommittedRunEvent]:
         if limit is not None and limit < 1:
             raise ValueError("event query limit must be positive")
@@ -10007,9 +10699,15 @@ class SQLiteRunJournal:
                    payload_json, legacy_step, created_at
             FROM run_events
             WHERE run_id = ? AND sequence > ?
-            ORDER BY sequence
         """
         parameters: list[Any] = [run_id, after_sequence]
+        if event_type_prefix is not None:
+            normalized_prefix = event_type_prefix.strip()
+            if not normalized_prefix:
+                raise ValueError("event type prefix cannot be blank")
+            query += " AND event_type LIKE ?"
+            parameters.append(f"{normalized_prefix}%")
+        query += " ORDER BY sequence"
         if limit is not None:
             query += " LIMIT ?"
             parameters.append(limit)
@@ -11521,6 +12219,7 @@ class SQLiteRunJournal:
         activate: bool = False,
         attempt_id: str | None = None,
         environment: AttemptEnvironmentBinding | None = None,
+        workload_profile: WorkloadProfileRecord | None = None,
         now: float | None = None,
     ) -> RunAttemptRecord:
         if not request_id.strip() or not reason.strip():
@@ -11528,6 +12227,8 @@ class SQLiteRunJournal:
         timestamp = now if now is not None else time.time()
         identifier = attempt_id or str(uuid.uuid4())
         environment_values = self._attempt_environment_values(environment)
+        workload = workload_profile or default_workload_profile()
+        workload_values = self._attempt_workload_values(workload)
         with self._write_transaction() as connection:
             run = connection.execute(
                 "SELECT * FROM runs WHERE run_id = ?", (run_id,)
@@ -11559,6 +12260,16 @@ class SQLiteRunJournal:
                     raise IdempotencyConflictError(
                         f"attempt request_id {request_id!r} was reused with "
                         "a different environment"
+                    )
+                persisted_workload = (
+                    duplicate["workload_kind"],
+                    duplicate["workload_profile_json"],
+                    duplicate["workload_profile_digest"],
+                )
+                if persisted_workload != workload_values:
+                    raise IdempotencyConflictError(
+                        f"attempt request_id {request_id!r} was reused with "
+                        "a different workload profile"
                     )
                 # An idempotent row loaded from SQLite is audit/recovery data,
                 # not a fresh control-plane attestation. The original process
@@ -11733,10 +12444,12 @@ class SQLiteRunJournal:
                     last_consumer_heartbeat_at, environment_spec_id,
                     environment_spec_digest, bundle_revision_id,
                     permission_profile_revision, thinking_effort_requested,
-                    thinking_effort_effective, provider_capability_revision
+                    thinking_effort_effective, provider_capability_revision,
+                    workload_kind, workload_profile_json,
+                    workload_profile_digest
                 ) VALUES (
                     ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, 0, ?,
-                    ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
                 """,
                 (
@@ -11750,6 +12463,7 @@ class SQLiteRunJournal:
                     run["timeout_policy_version"],
                     timestamp if activate else None,
                     *environment_values,
+                    *workload_values,
                 ),
             )
             try:
@@ -11807,6 +12521,8 @@ class SQLiteRunJournal:
                         "reason": reason,
                         "status": status,
                         "policy_version": run["timeout_policy_version"],
+                        "workload_profile": workload_profile_payload(workload),
+                        "workload_profile_digest": workload_values[2],
                         **environment_payload,
                     },
                     created_at=timestamp,
@@ -14807,6 +15523,7 @@ class SQLiteRunJournal:
                         payload = {
                             "invocation_id": invocation["invocation_id"],
                             "attempt_id": invocation["attempt_id"],
+                            "step_id": invocation["step_id"],
                             "agent_id": invocation["agent_id"],
                             "status": "outcome_unknown",
                             "request_digest": invocation["request_digest"],
@@ -14839,6 +15556,13 @@ class SQLiteRunJournal:
                                 payload=payload,
                                 created_at=timestamp,
                             ),
+                        )
+                        self._record_model_capture_outcome_gap_in_transaction(
+                            connection,
+                            invocation=invocation,
+                            detail_code="brain_restart_after_dispatch",
+                            suffix="startup-reconciliation",
+                            timestamp=timestamp,
                         )
                 except Exception:
                     logger.exception(
@@ -15364,6 +16088,38 @@ class SQLiteRunJournal:
                 """,
                 (timestamp,),
             )
+        try:
+            retention = self.expire_model_invocation_documents(
+                now=timestamp,
+                limit=100,
+            )
+        except Exception:
+            # Retention maintenance cannot make the Desktop unavailable. The
+            # immutable policy query is level-triggered and will retry on the
+            # next startup.
+            logger.exception(
+                "Startup model-document retention maintenance failed"
+            )
+        else:
+            if retention.remaining_candidate_count:
+                logger.warning(
+                    "Model-document retention batch left %s candidate(s); "
+                    "expired=%s skipped=%s",
+                    retention.remaining_candidate_count,
+                    len(retention.expired_invocation_ids),
+                    len(retention.skipped_invocation_ids),
+                )
+            elif (
+                retention.expired_invocation_ids
+                or retention.skipped_invocation_ids
+            ):
+                logger.info(
+                    "Model-document retention batch completed; "
+                    "expired=%s skipped=%s remaining=0",
+                    len(retention.expired_invocation_ids),
+                    len(retention.skipped_invocation_ids),
+                )
+
         return StartupReconciliationResult(
             interrupted_run_ids=tuple(interrupted_runs),
             completed_cancel_run_ids=tuple(completed_cancels),
@@ -17476,6 +18232,316 @@ class SQLiteRunJournal:
             )
         return snapshots
 
+    def _project_workforce_subtask_step_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        run_id: str,
+        event: CommittedRunEvent,
+    ) -> None:
+        """Project one legacy Workforce event without leaving the txn."""
+
+        self._apply_workforce_subtask_step_in_transaction(
+            connection,
+            run_id=run_id,
+            event_type=event.event_type,
+            payload=event.payload,
+            provenance_source="legacy_workforce_projection",
+        )
+
+    def persist_workforce_subtask_step(
+        self,
+        *,
+        run_id: str,
+        expected_project_id: str,
+        task_id: str,
+        title: str,
+        agent_id: str | None,
+        phase: str,
+        summary: str | None = None,
+    ) -> str:
+        """Author one Workforce Step transition in a single transaction.
+
+        The producer calls this before publishing queue/dispatch UI facts.
+        State lookup and transition commit share one SQLite writer lock, so a
+        concurrent legacy projection cannot race the producer's decision.
+        """
+
+        event_type = {
+            "queued": "subtask.queued",
+            "running": "subtask.started",
+            "completed": "subtask.completed",
+            "failed": "subtask.failed",
+            "cancelled": "subtask.cancelled",
+        }.get(phase)
+        if event_type is None:
+            raise ValueError(f"unsupported Workforce Step phase {phase!r}")
+        normalized_task_id = task_id.strip()
+        if not normalized_task_id:
+            raise ValueError("Workforce task id is required")
+
+        from app.run_runtime.step_coordinator import stable_step_id
+
+        with self._write_transaction() as connection:
+            run = connection.execute(
+                "SELECT project_id FROM runs WHERE run_id = ?", (run_id,)
+            ).fetchone()
+            if run is None:
+                raise RunNotFoundError(f"run_id {run_id!r} does not exist")
+            if run["project_id"] != expected_project_id:
+                raise IdempotencyConflictError(
+                    f"run_id {run_id!r} belongs to another project"
+                )
+            self._apply_workforce_subtask_step_in_transaction(
+                connection,
+                run_id=run_id,
+                event_type=event_type,
+                payload={
+                    "task_id": normalized_task_id,
+                    "display_title": title,
+                    "display_summary": summary,
+                    "assignee_id": agent_id,
+                },
+                provenance_source="workforce_dispatch",
+            )
+        return stable_step_id(run_id, f"subtask:{normalized_task_id}")
+
+    def _apply_workforce_subtask_step_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        run_id: str,
+        event_type: str,
+        payload: Mapping[str, Any],
+        provenance_source: str,
+    ) -> None:
+        """Apply one Workforce lifecycle fact to authored Step history."""
+
+        if event_type not in {
+            "subtask.created",
+            "subtask.queued",
+            "subtask.started",
+            "subtask.completed",
+            "subtask.failed",
+            "subtask.cancelled",
+        }:
+            return
+        task_id = str(payload.get("task_id") or "").strip()
+        if not task_id:
+            return
+
+        from app.run_runtime.step_coordinator import (
+            stable_step_id,
+            step_event_draft,
+        )
+
+        run = connection.execute(
+            "SELECT active_attempt_id FROM runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        if run is None:
+            raise RunNotFoundError(f"run_id {run_id!r} does not exist")
+
+        plan_item_id = f"subtask:{task_id}"
+        step_id = stable_step_id(run_id, plan_item_id)
+        snapshots = self._latest_step_snapshots_in_transaction(
+            connection,
+            run_id=run_id,
+        )
+        snapshot = next(
+            (
+                candidate
+                for candidate in snapshots
+                if candidate["step"].get("step_id") == step_id
+            ),
+            None,
+        )
+        semantic = payload.get("semantic")
+        actor = semantic.get("actor") if isinstance(semantic, dict) else None
+        actor_id = (
+            str(actor.get("id") or "").strip()
+            if isinstance(actor, dict)
+            else ""
+        )
+        agent_id = (
+            str(payload.get("assignee_id") or "").strip() or actor_id or None
+        )
+        title = str(payload.get("display_title") or "Subtask")
+        summary = str(payload.get("display_summary") or "").strip() or None
+
+        def append_step(
+            *,
+            step: dict[str, Any],
+            transition: str,
+            status: str,
+            transition_summary: str | None,
+            reason_code: str | None = None,
+        ) -> None:
+            owner = step.get("owner")
+            owner = owner if isinstance(owner, dict) else {}
+            persisted_owner_kind = str(owner.get("kind") or "workforce")
+            if persisted_owner_kind not in {
+                "single_agent",
+                "subagent",
+                "workforce",
+                "system",
+            }:
+                persisted_owner_kind = "workforce"
+            persisted_source = str(step.get("source") or "workforce")
+            if persisted_source not in {"plan", "subagent", "workforce"}:
+                persisted_source = "workforce"
+            self._append_event_in_transaction(
+                connection,
+                run_id,
+                step_event_draft(
+                    run_id=run_id,
+                    attempt_id=(
+                        str(run["active_attempt_id"])
+                        if run["active_attempt_id"]
+                        else None
+                    ),
+                    step_id=step_id,
+                    plan_item_id=str(step.get("plan_item_id") or plan_item_id),
+                    parent_step_id=(
+                        str(step["parent_step_id"])
+                        if step.get("parent_step_id")
+                        else None
+                    ),
+                    title=str(step.get("title") or title),
+                    summary=transition_summary,
+                    ordinal=int(step.get("ordinal") or 0),
+                    agent_id=(
+                        str(owner["agent_id"])
+                        if owner.get("agent_id")
+                        else agent_id
+                    ),
+                    event=transition,
+                    status=status,  # type: ignore[arg-type]
+                    reason_code=reason_code,
+                    provenance_source=provenance_source,
+                    authored_by="system",
+                    owner_kind=persisted_owner_kind,  # type: ignore[arg-type]
+                    source=persisted_source,  # type: ignore[arg-type]
+                ),
+            )
+
+        if snapshot is None:
+            if event_type not in {
+                "subtask.created",
+                "subtask.queued",
+                "subtask.started",
+            }:
+                # Parent completion facts and incomplete historical streams do
+                # not prove that a delegated child Step ever existed.
+                return
+            step = {
+                "step_id": step_id,
+                "plan_item_id": plan_item_id,
+                "parent_step_id": None,
+                "title": title,
+                "ordinal": max(
+                    (
+                        int(candidate["step"].get("ordinal") or 0)
+                        for candidate in snapshots
+                    ),
+                    default=0,
+                )
+                + 1,
+                "owner": {"kind": "workforce", "agent_id": agent_id},
+                "source": "workforce",
+            }
+            append_step(
+                step=step,
+                transition="created",
+                status="pending",
+                transition_summary=None,
+            )
+            if event_type == "subtask.started":
+                append_step(
+                    step=step,
+                    transition="started",
+                    status="running",
+                    transition_summary=summary or "Delegated work started.",
+                )
+            return
+
+        step = snapshot["step"]
+        current_status = str(step.get("status") or "pending")
+        if event_type in {"subtask.created", "subtask.queued"}:
+            return
+        if event_type == "subtask.started":
+            transition = {
+                "pending": "started",
+                "blocked": "resumed",
+                "interrupted": "resumed",
+            }.get(current_status)
+            if transition is not None:
+                append_step(
+                    step=step,
+                    transition=transition,
+                    status="running",
+                    transition_summary=summary or "Delegated work started.",
+                )
+            return
+
+        outcome = {
+            "subtask.completed": "completed",
+            "subtask.failed": "failed",
+            "subtask.cancelled": "cancelled",
+        }[event_type]
+        allowed = {"pending", "running", "blocked"}
+        if outcome == "cancelled":
+            allowed.add("interrupted")
+        if current_status not in allowed:
+            return
+        append_step(
+            step=step,
+            transition=outcome,
+            status=outcome,
+            transition_summary=summary,
+            reason_code=(
+                "workforce_failed"
+                if outcome == "failed"
+                else "workforce_cancelled"
+                if outcome == "cancelled"
+                else None
+            ),
+        )
+
+    @staticmethod
+    def _step_belongs_to_attempt_in_transaction(
+        connection: sqlite3.Connection,
+        *,
+        run_id: str,
+        step_id: str,
+        attempt_id: str | None,
+    ) -> bool:
+        """Return whether canonical Step history contains this binding.
+
+        A stable Step identity may receive events across multiple Attempts.
+        Correlation validation therefore scans historical Step facts instead
+        of consulting only the newest replay snapshot.
+        """
+
+        rows = connection.execute(
+            """
+            SELECT payload_json FROM run_events
+            WHERE run_id = ? AND event_type LIKE 'step.%'
+            ORDER BY sequence DESC
+            """,
+            (run_id,),
+        ).fetchall()
+        for row in rows:
+            try:
+                payload = json.loads(row["payload_json"])
+            except (TypeError, ValueError):
+                continue
+            step = payload.get("step")
+            if not isinstance(step, dict) or step.get("step_id") != step_id:
+                continue
+            if attempt_id is None or payload.get("attempt_id") == attempt_id:
+                return True
+        return False
+
     @staticmethod
     def _interaction_step_id_in_transaction(
         connection: sqlite3.Connection,
@@ -17579,10 +18645,15 @@ class SQLiteRunJournal:
         owner = step.get("owner")
         owner = owner if isinstance(owner, dict) else {}
         owner_kind = str(owner.get("kind") or "single_agent")
-        if owner_kind not in {"single_agent", "subagent", "system"}:
+        if owner_kind not in {
+            "single_agent",
+            "subagent",
+            "workforce",
+            "system",
+        }:
             owner_kind = "single_agent"
         step_source = str(step.get("source") or "plan")
-        if step_source not in {"plan", "subagent"}:
+        if step_source not in {"plan", "subagent", "workforce"}:
             step_source = "plan"
         from app.run_runtime.step_coordinator import step_event_draft
 
@@ -17781,6 +18852,12 @@ class SQLiteRunJournal:
                 f"found {current_version}"
             )
         if run_status in {"interrupted", "completed", "failed", "cancelled"}:
+            self._close_dispatched_model_invocations_in_transaction(
+                connection,
+                run_id=run_id,
+                terminal_event_type=draft.event_type,
+                timestamp=draft.created_at,
+            )
             self._append_step_terminals_for_run_transition_in_transaction(
                 connection,
                 run_id=run_id,
@@ -18141,6 +19218,51 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
                     "ALTER TABLE follow_up_requests\n"
                     "ADD COLUMN review_handoff_ids_json TEXT NOT NULL "
                     "DEFAULT '[]';\n",
+                    "",
+                )
+            self._connection.executescript(migration)
+        if version < 34:
+            attempt_columns = {
+                row["name"]
+                for row in self._connection.execute(
+                    "PRAGMA table_info(run_attempts)"
+                ).fetchall()
+            }
+            migration = _MIGRATION_V34
+            for column, statement in (
+                (
+                    "workload_kind",
+                    "ALTER TABLE run_attempts\n"
+                    "ADD COLUMN workload_kind TEXT NOT NULL DEFAULT "
+                    "'production'\n"
+                    "    CHECK(workload_kind IN "
+                    "('production', 'test', 'ab', 'rollout'));\n",
+                ),
+                (
+                    "workload_profile_json",
+                    "ALTER TABLE run_attempts\n"
+                    "ADD COLUMN workload_profile_json TEXT NOT NULL\n"
+                    '    DEFAULT \'{"budget_policy_ref":"budget.product-default.v1","capture_policy_ref":"capture.best-effort.v1","isolation_policy_ref":"isolation.product-default.v1","network_policy_ref":"network.product-default.v1","profile_version":"1","retention_policy_ref":"retention.product-default.v1","schema_version":1,"verifier_policy_ref":"verifier.noop.v1","workload_kind":"production"}\';\n',
+                ),
+                (
+                    "workload_profile_digest",
+                    "ALTER TABLE run_attempts\n"
+                    "ADD COLUMN workload_profile_digest TEXT NOT NULL\n"
+                    "    DEFAULT '4786bb51388abddfbbe18decc88ada3e3e896b4aa9967970c2b99865d4999302'\n"
+                    "    CHECK(length(workload_profile_digest) = 64);\n",
+                ),
+            ):
+                if column in attempt_columns:
+                    migration = migration.replace(statement, "")
+            model_invocation_columns = {
+                row["name"]
+                for row in self._connection.execute(
+                    "PRAGMA table_info(model_invocations)"
+                ).fetchall()
+            }
+            if "step_id" in model_invocation_columns:
+                migration = migration.replace(
+                    "ALTER TABLE model_invocations ADD COLUMN step_id TEXT;\n",
                     "",
                 )
             self._connection.executescript(migration)
@@ -18506,6 +19628,17 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
 
     @staticmethod
     def _attempt_from_row(row: sqlite3.Row) -> RunAttemptRecord:
+        workload_profile = workload_profile_from_payload(
+            json.loads(row["workload_profile_json"])
+        )
+        if workload_profile.workload_kind != row["workload_kind"]:
+            raise RunJournalError("persisted WorkloadProfile kind mismatch")
+        persisted_workload_digest = row["workload_profile_digest"]
+        if (
+            workload_profile_digest(workload_profile)
+            != persisted_workload_digest
+        ):
+            raise RunJournalError("persisted WorkloadProfile digest mismatch")
         return RunAttemptRecord(
             attempt_id=row["attempt_id"],
             run_id=row["run_id"],
@@ -18533,6 +19666,8 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             thinking_effort_requested=row["thinking_effort_requested"],
             thinking_effort_effective=row["thinking_effort_effective"],
             provider_capability_revision=row["provider_capability_revision"],
+            workload_profile=workload_profile,
+            workload_profile_digest=persisted_workload_digest,
         )
 
     @staticmethod
@@ -18568,6 +19703,17 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             environment.thinking_effort_requested,
             environment.thinking_effort_effective,
             environment.provider_capability_revision,
+        )
+
+    @staticmethod
+    def _attempt_workload_values(
+        profile: WorkloadProfileRecord,
+    ) -> tuple[str, str, str]:
+        payload = workload_profile_payload(profile)
+        return (
+            profile.workload_kind,
+            canonical_json(payload),
+            workload_profile_digest(profile),
         )
 
     @staticmethod
@@ -19423,6 +20569,7 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             invocation_id=row["invocation_id"],
             run_id=row["run_id"],
             attempt_id=row["attempt_id"],
+            step_id=row["step_id"],
             agent_id=row["agent_id"],
             logical_call_id=row["logical_call_id"],
             retry_index=int(row["retry_index"]),
@@ -19486,6 +20633,22 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
             event_index=int(row["event_index"]),
             event_type=row["event_type"],
             payload=json.loads(row["payload_json"]),
+            created_at=float(row["created_at"]),
+        )
+
+    @staticmethod
+    def _attempt_evidence_gap_from_row(
+        row: sqlite3.Row,
+    ) -> AttemptEvidenceGapRecord:
+        return AttemptEvidenceGapRecord(
+            gap_id=row["gap_id"],
+            run_id=row["run_id"],
+            attempt_id=row["attempt_id"],
+            step_id=row["step_id"],
+            dimension=row["dimension"],
+            reason_code=row["reason_code"],
+            source=row["source"],
+            detail_code=row["detail_code"],
             created_at=float(row["created_at"]),
         )
 

@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+from unittest.mock import patch
 
 import pytest
 
@@ -36,7 +37,11 @@ from app.run_journal import (
 )
 from app.run_journal.cloud_projection import cloud_event_payload
 from app.run_policy import TimeoutOutcome, TimeoutScope, ToolSafetyClass
-from app.run_runtime.step_coordinator import PlanStepInput, RunStepCoordinator
+from app.run_runtime.step_coordinator import (
+    PlanStepInput,
+    RunStepCoordinator,
+    stable_step_id,
+)
 from app.workspace_config import (
     EnvironmentConfigResolver,
     LocalMaterialization,
@@ -75,6 +80,7 @@ def test_initializes_schema_and_durability_pragmas(journal):
         "run_event_sync_outbox",
         "model_invocations",
         "model_invocation_events",
+        "attempt_evidence_gaps",
         "tool_calls",
         "approvals",
         "workspace_config_revisions",
@@ -1921,6 +1927,260 @@ async def test_event_recorder_correlates_legacy_facts_to_running_step(journal):
 
 
 @pytest.mark.asyncio
+async def test_event_recorder_projects_workforce_subtask_lifecycle_to_step(
+    journal,
+):
+    journal.ensure_run(
+        run_id="run-1", project_id="project-1", status="pending"
+    )
+    journal.create_run_attempt(
+        "run-1",
+        request_id="initial",
+        reason="initial_execution",
+        activate=True,
+    )
+    recorder = EventRecorder(journal)
+
+    await recorder.record_legacy_step(
+        project_id="project-1",
+        run_id="run-1",
+        step="assign_task",
+        data={
+            "task_id": "run-1.1",
+            "assignee_id": "worker-1",
+            "content": "Inspect the generated report",
+            "state": "RUNNING",
+        },
+    )
+
+    coordinator = RunStepCoordinator(journal)
+    steps = list(coordinator.replay("run-1").values())
+    assert len(steps) == 1
+    assert steps[0].status == "running"
+    assert steps[0].agent_id == "worker-1"
+    assert steps[0].owner_kind == "workforce"
+    assert steps[0].source == "workforce"
+    assert (
+        coordinator.current_running_step_id("run-1", agent_id="worker-1")
+        == steps[0].step_id
+    )
+
+    # Workforce can emit a stale queued projection after started; it must not
+    # move the durable Step backwards.
+    await recorder.record_legacy_step(
+        project_id="project-1",
+        run_id="run-1",
+        step="assign_task",
+        data={
+            "task_id": "run-1.1",
+            "assignee_id": "worker-1",
+            "content": "Inspect the generated report",
+            "state": "OPEN",
+        },
+    )
+    assert coordinator.replay("run-1")[steps[0].step_id].status == "running"
+
+    await recorder.record_legacy_step(
+        project_id="project-1",
+        run_id="run-1",
+        step="task_state",
+        data={
+            "task_id": "run-1.1",
+            "content": "Inspect the generated report",
+            "state": "DONE",
+        },
+    )
+    assert coordinator.replay("run-1")[steps[0].step_id].status == (
+        "completed"
+    )
+
+
+@pytest.mark.asyncio
+async def test_workforce_subtask_never_inherits_running_sibling_step(journal):
+    journal.ensure_run(
+        run_id="run-1", project_id="project-1", status="pending"
+    )
+    journal.create_run_attempt(
+        "run-1",
+        request_id="initial",
+        reason="initial_execution",
+        activate=True,
+    )
+    coordinator = RunStepCoordinator(journal)
+    first_step_id = coordinator.create_child_step(
+        project_id="project-1",
+        run_id="run-1",
+        parent_step_id=None,
+        task_identity="task-one",
+        title="First task",
+        agent_id="worker-1",
+        start=True,
+    )
+
+    committed = await EventRecorder(journal).record_legacy_step(
+        project_id="project-1",
+        run_id="run-1",
+        step="assign_task",
+        data={
+            "task_id": "task-two",
+            "assignee_id": "worker-2",
+            "content": "Second task",
+            "state": "OPEN",
+        },
+    )
+
+    second_step_id = stable_step_id("run-1", "subtask:task-two")
+    assert committed.payload["step_id"] == second_step_id
+    assert committed.payload["step_id"] != first_step_id
+    steps = coordinator.replay("run-1")
+    assert steps[first_step_id].status == "running"
+    assert steps[second_step_id].status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_workforce_projection_failure_commits_fact_and_durable_gap(
+    journal,
+):
+    journal.ensure_run(
+        run_id="run-1", project_id="project-1", status="pending"
+    )
+    journal.create_run_attempt(
+        "run-1",
+        request_id="initial",
+        reason="initial_execution",
+        activate=True,
+    )
+    original = journal._append_event_in_transaction
+
+    def fail_step_projection(connection, run_id, draft, **kwargs):
+        if draft.event_type.startswith("step."):
+            raise RuntimeError("step projection failed")
+        return original(connection, run_id, draft, **kwargs)
+
+    with patch.object(
+        journal,
+        "_append_event_in_transaction",
+        side_effect=fail_step_projection,
+    ):
+        committed = await EventRecorder(journal).record_legacy_step(
+            project_id="project-1",
+            run_id="run-1",
+            step="assign_task",
+            data={
+                "task_id": "task-one",
+                "assignee_id": "worker-1",
+                "content": "First task",
+                "state": "OPEN",
+            },
+        )
+
+    events = journal.list_events("run-1")
+    assert committed.event_type == "subtask.queued"
+    assert events[-2].event_id == committed.event_id
+    assert events[-1].event_type == "projection.workforce_step_failed"
+    assert events[-1].payload["source_event_id"] == committed.event_id
+    assert events[-1].payload["error_type"] == "RuntimeError"
+    assert RunStepCoordinator(journal).replay("run-1") == {}
+
+
+def test_workforce_producer_transition_is_idempotent_and_single_transaction(
+    journal,
+):
+    journal.ensure_run(
+        run_id="run-1", project_id="project-1", status="pending"
+    )
+    journal.create_run_attempt(
+        "run-1",
+        request_id="initial",
+        reason="initial_execution",
+        activate=True,
+    )
+
+    first = journal.persist_workforce_subtask_step(
+        run_id="run-1",
+        expected_project_id="project-1",
+        task_id="task-one",
+        title="First task",
+        agent_id="worker-1",
+        phase="running",
+    )
+    replay = journal.persist_workforce_subtask_step(
+        run_id="run-1",
+        expected_project_id="project-1",
+        task_id="task-one",
+        title="First task",
+        agent_id="worker-1",
+        phase="running",
+    )
+
+    assert replay == first
+    step_events = journal.list_events("run-1", event_type_prefix="step.")
+    assert [event.event_type for event in step_events] == [
+        "step.created",
+        "step.started",
+    ]
+
+
+def test_workforce_terminal_without_precursor_does_not_invent_step(journal):
+    journal.ensure_run(
+        run_id="run-1", project_id="project-1", status="pending"
+    )
+    journal.create_run_attempt(
+        "run-1",
+        request_id="initial",
+        reason="initial_execution",
+        activate=True,
+    )
+
+    step_id = journal.persist_workforce_subtask_step(
+        run_id="run-1",
+        expected_project_id="project-1",
+        task_id="task-one",
+        title="First task",
+        agent_id="worker-1",
+        phase="completed",
+    )
+
+    assert step_id == stable_step_id("run-1", "subtask:task-one")
+    assert journal.list_events("run-1", event_type_prefix="step.") == []
+
+
+def test_run_terminal_preserves_workforce_step_ownership(journal):
+    journal.ensure_run(
+        run_id="run-1", project_id="project-1", status="pending"
+    )
+    journal.create_run_attempt(
+        "run-1",
+        request_id="initial",
+        reason="initial_execution",
+        activate=True,
+    )
+    step_id = journal.persist_workforce_subtask_step(
+        run_id="run-1",
+        expected_project_id="project-1",
+        task_id="task-one",
+        title="First task",
+        agent_id="worker-1",
+        phase="running",
+    )
+
+    journal.append_event(
+        "run-1",
+        RunEventDraft(
+            event_id="run-failed:run-1",
+            event_type="run.failed",
+            payload={"reason": "test_failure"},
+        ),
+        expected_project_id="project-1",
+    )
+
+    step = RunStepCoordinator(journal).replay("run-1")[step_id]
+    assert step.status == "failed"
+    assert step.owner_kind == "workforce"
+    assert step.source == "workforce"
+
+
+@pytest.mark.asyncio
 async def test_event_recorder_rejects_cross_project_attribution(journal):
     journal.ensure_run(run_id="run-1", project_id="project-1")
     recorder = EventRecorder(journal)
@@ -2154,6 +2414,63 @@ def test_successful_completion_allows_legacy_safe_read_outcome_unknown(
 
     assert terminal.event_type == "run.completed"
     assert journal.get_run("run-1").status == "completed"
+
+
+def test_successful_completion_closes_unfinalized_model_capture_with_gap(
+    journal,
+):
+    journal.ensure_run(
+        run_id="run-1", project_id="project-1", status="pending"
+    )
+    attempt = journal.create_run_attempt(
+        "run-1",
+        request_id="initial",
+        reason="initial_execution",
+    )
+    journal.start_model_invocation(
+        invocation_id="model-1",
+        run_id="run-1",
+        attempt_id=attempt.attempt_id,
+        agent_id="agent-1",
+        logical_call_id="logical-1",
+        provider="openai",
+        model="gpt-test",
+        transport="responses",
+        thinking_effort=None,
+        request={"messages": []},
+        now=1,
+    )
+    manifest = _test_artifact_manifest(journal, "run-1")
+
+    journal.complete_successful_run(
+        "run-1",
+        assistant_final=RunEventDraft(
+            event_id="assistant-final:run-1",
+            event_type="assistant.final",
+            payload={"message": "Done"},
+            created_at=3,
+        ),
+        terminal=RunEventDraft(
+            event_id="run-completed:run-1",
+            event_type="run.completed",
+            payload={"reason": "success"},
+            created_at=3,
+        ),
+        artifact_manifest=manifest,
+        expected_project_id="project-1",
+    )
+
+    invocation = journal.get_model_invocation("model-1")
+    assert invocation is not None
+    assert invocation.status == "outcome_unknown"
+    assert invocation.completed_at == 3
+    gaps = journal.list_attempt_evidence_gaps(attempt.attempt_id)
+    assert len(gaps) == 1
+    assert gaps[0].dimension == "model_decisions"
+    assert gaps[0].reason_code == "outcome_unknown"
+    event_types = [event.event_type for event in journal.list_events("run-1")]
+    assert "model.invocation.outcome_unknown" in event_types
+    assert "attempt.evidence_gap_recorded" in event_types
 
 
 def test_cancel_marks_dispatched_tool_outcome_unknown_before_terminal(journal):

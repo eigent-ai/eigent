@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import asyncio
+from unittest.mock import patch
 
 import pytest
 
@@ -53,6 +54,27 @@ def _item(
         status=status,  # type: ignore[arg-type]
         ordinal=ordinal,
     )
+
+
+@pytest.mark.unit
+def test_step_replay_filters_at_sql_boundary(tmp_path):
+    with _journal(tmp_path) as journal:
+        journal.append_event(
+            "run-1",
+            RunEventDraft(
+                event_id="unrelated",
+                event_type="tool.completed",
+                payload={"tool_call_id": "tool-1"},
+            ),
+        )
+        coordinator = RunStepCoordinator(journal)
+
+        with patch.object(
+            journal, "list_events", wraps=journal.list_events
+        ) as list_events:
+            assert coordinator.replay("run-1") == {}
+
+        list_events.assert_called_once_with("run-1", event_type_prefix="step.")
 
 
 @pytest.mark.unit

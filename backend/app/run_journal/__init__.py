@@ -17,6 +17,7 @@ from app.run_journal.models import (
     ApprovalRuleRecord,
     ArtifactUploadSyncItem,
     AttemptEnvironmentBinding,
+    AttemptEvidenceGapRecord,
     CloudRunEventReplica,
     CloudRunReplica,
     CommandResultEvent,
@@ -96,12 +97,14 @@ from app.run_journal.store import (
     UnsafeResumeError,
     UnsupportedSchemaVersionError,
 )
+from app.workload import WorkloadProfileRecord
 
 __all__ = [
     "SCHEMA_VERSION",
     "ApprovalRecord",
     "ApprovalRuleRecord",
     "ArtifactUploadSyncItem",
+    "AttemptEvidenceGapRecord",
     "AttemptEnvironmentBinding",
     "CloudRunEventReplica",
     "CloudRunReplica",
@@ -169,6 +172,7 @@ __all__ = [
     "WorkspaceWriterLeaseRecord",
     "WorkspaceWriterReleaseResult",
     "WorkspaceWriterRequestRecord",
+    "WorkloadProfileRecord",
     "UnsafeResumeError",
     "UnsupportedSchemaVersionError",
     "close_default_run_journal",
