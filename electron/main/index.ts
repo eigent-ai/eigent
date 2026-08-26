@@ -2183,7 +2183,7 @@ function registerIpcHandlers() {
   // ==================== read file handler ====================
   ipcMain.handle('read-file', async (_event, filePath: string) => {
     try {
-      log.info('Reading file:', filePath);
+      log.debug('Reading file:', filePath);
 
       // Check if file exists
       if (!fs.existsSync(filePath)) {
