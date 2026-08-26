@@ -35,6 +35,9 @@ from app.run_sync.cloud_sync import (
     CloudSyncConfiguration,
     RunEventSyncHttpError,
     RunEventSyncProtocolError,
+    _is_authentication_sync_error,
+    _raise_for_application_error,
+    _sync_error_code,
 )
 
 logger = logging.getLogger("command_sync")
@@ -48,14 +51,6 @@ class CommandSyncInfrastructureError(RuntimeError):
     def __init__(self, message: str, *, code: str | None = None) -> None:
         super().__init__(message)
         self.code = code
-
-
-def _sync_error_code(detail: Any) -> str | None:
-    body = detail.get("detail", detail) if isinstance(detail, dict) else None
-    if not isinstance(body, dict):
-        return None
-    code = body.get("code")
-    return str(code) if isinstance(code, str) and code else None
 
 
 def _timestamp(value: str | float | int) -> float:
@@ -124,6 +119,7 @@ class HttpCommandSyncTransport:
             raise RunEventSyncProtocolError(
                 "Command sync response must be a JSON object"
             )
+        _raise_for_application_error(result, status_code=response.status_code)
         return result
 
     async def ensure_registered(
@@ -157,7 +153,7 @@ class HttpCommandSyncTransport:
                 )
             except RunEventSyncHttpError as exc:
                 raise CommandSyncInfrastructureError(
-                    str(exc), code=_sync_error_code(exc.detail)
+                    str(exc), code=exc.application_code
                 ) from exc
             self._registered.add(key)
 
@@ -251,8 +247,17 @@ class CommandControlWorker:
         self._closed = False
         self._inbound_retry_attempt = 0
         self._next_inbound_attempt_at = 0.0
+        self._auth_paused_configuration: CloudSyncConfiguration | None = None
+        self._auth_pause_code: str | None = None
+        self._auth_retry_at = 0.0
 
     def configure(self, configuration: CloudSyncConfiguration) -> None:
+        if configuration != self._configuration:
+            self._inbound_retry_attempt = 0
+            self._next_inbound_attempt_at = 0.0
+            self._auth_paused_configuration = None
+            self._auth_pause_code = None
+            self._auth_retry_at = 0.0
         self._configuration = configuration
         self.notify()
 
@@ -352,7 +357,8 @@ class CommandControlWorker:
             httpx.HTTPError,
             RunEventSyncHttpError,
             RunEventSyncProtocolError,
-        ):
+        ) as exc:
+            self._pause_for_authentication_failure(configuration, exc)
             logger.exception(
                 "Command receipt confirmation failed",
                 extra={"command_id": command_id},
@@ -363,6 +369,7 @@ class CommandControlWorker:
                 and time.time() <= command.expires_at + 5
             )
             return command, may_execute
+        self._resume_after_authentication_success(configuration)
         result = response.get("result")
         status = "expired_late" if result == "expired_late" else "confirmed"
         updated = await asyncio.to_thread(
@@ -378,9 +385,61 @@ class CommandControlWorker:
         configuration = self._configuration
         if configuration is None:
             return 0
+        if (
+            configuration == self._auth_paused_configuration
+            and time.monotonic() < self._auth_retry_at
+        ):
+            return 0
         synced = await self._drain_outbound(configuration)
+        if (
+            configuration == self._auth_paused_configuration
+            and time.monotonic() < self._auth_retry_at
+        ):
+            return synced
         pulled_count = await self._pull_and_reconcile(configuration)
         return synced + pulled_count
+
+    def _pause_for_authentication_failure(
+        self,
+        configuration: CloudSyncConfiguration,
+        exc: BaseException,
+    ) -> bool:
+        """Pause command pull and result sync until credentials change."""
+
+        if not _is_authentication_sync_error(exc):
+            return False
+        if configuration != self._configuration:
+            return True
+        if self._auth_paused_configuration != configuration:
+            code = getattr(exc, "code", None) or getattr(
+                exc, "application_code", None
+            )
+            if code is None and isinstance(exc, RunEventSyncHttpError):
+                code = _sync_error_code(exc.detail)
+            self._auth_paused_configuration = configuration
+            self._auth_pause_code = str(code or "") or None
+            logger.warning(
+                "Remote command sync paused because authentication was "
+                "rejected; durable inbox and result outboxes remain local "
+                "and sync will resume after credentials refresh",
+                extra={"error_code": self._auth_pause_code},
+            )
+        self._auth_retry_at = time.monotonic() + max(
+            60.0, min(self._max_retry_seconds, 300.0)
+        )
+        return True
+
+    def _resume_after_authentication_success(
+        self, configuration: CloudSyncConfiguration
+    ) -> None:
+        if configuration != self._auth_paused_configuration:
+            return
+        self._auth_paused_configuration = None
+        self._auth_pause_code = None
+        self._auth_retry_at = 0.0
+        logger.info(
+            "Remote command sync resumed after authentication recovered"
+        )
 
     async def _drain_outbound(
         self, configuration: CloudSyncConfiguration
@@ -409,6 +468,8 @@ class CommandControlWorker:
                 configuration, limit=self._max_commands
             )
         except Exception as exc:
+            if self._pause_for_authentication_failure(configuration, exc):
+                return 0
             self._inbound_retry_attempt += 1
             delay = min(
                 2 ** min(self._inbound_retry_attempt, 8),
@@ -442,6 +503,7 @@ class CommandControlWorker:
                 )
             self._next_inbound_attempt_at = time.monotonic() + delay
             return 0
+        self._resume_after_authentication_success(configuration)
         self._inbound_retry_attempt = 0
         self._next_inbound_attempt_at = 0.0
         for item in pulled:
@@ -499,6 +561,7 @@ class CommandControlWorker:
             response = await self._transport.ingest_events(
                 configuration, batch
             )
+            self._resume_after_authentication_success(configuration)
             expected = response.get("expected_next_desktop_event_sequence")
             if not isinstance(expected, int):
                 raise RunEventSyncProtocolError(
@@ -509,6 +572,9 @@ class CommandControlWorker:
             )
             return len(batch.events)
         except RunEventSyncHttpError as exc:
+            if self._pause_for_authentication_failure(configuration, exc):
+                await self._retry(batch, str(exc))
+                return 0
             if exc.status_code in {400, 409, 413, 422}:
                 failed = self._failed_event_id(exc.detail, batch)
                 await asyncio.to_thread(
@@ -525,6 +591,7 @@ class CommandControlWorker:
                 extra={"command_id": batch.command_id},
             )
         except Exception as exc:
+            self._pause_for_authentication_failure(configuration, exc)
             await self._retry(batch, f"{type(exc).__name__}: {exc}")
         return 0
 

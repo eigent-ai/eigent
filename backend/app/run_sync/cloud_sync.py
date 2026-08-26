@@ -90,11 +90,20 @@ class CloudSyncConfiguration:
 
 class RunEventSyncHttpError(RuntimeError):
     def __init__(self, status_code: int, detail: Any) -> None:
-        super().__init__(
-            f"Run event ingest returned HTTP {status_code}: {detail}"
-        )
         self.status_code = status_code
         self.detail = detail
+        self.application_code = _sync_error_code(detail)
+        if 200 <= status_code < 300 and self.application_code is not None:
+            message = _sync_error_message(detail)
+            super().__init__(
+                "Run sync endpoint returned application error "
+                f"{self.application_code} over HTTP {status_code}"
+                + (f": {message}" if message else "")
+            )
+        else:
+            super().__init__(
+                f"Run sync request returned HTTP {status_code}: {detail}"
+            )
 
 
 class RunEventSyncProtocolError(RuntimeError):
@@ -103,6 +112,69 @@ class RunEventSyncProtocolError(RuntimeError):
 
 class RunSyncInfrastructureError(RuntimeError):
     """A device/route control-plane failure, never a poison Run event."""
+
+    def __init__(self, message: str, *, code: str | None = None) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+_AUTHENTICATION_ERROR_CODES = frozenset({"11", "12", "13", "14"})
+
+
+def _sync_error_code(detail: Any) -> str | None:
+    """Return an Eigent application error code from either error envelope."""
+
+    body = detail.get("detail", detail) if isinstance(detail, dict) else None
+    if not isinstance(body, dict):
+        return None
+    code = body.get("code")
+    if isinstance(code, bool) or code is None:
+        return None
+    if isinstance(code, (int, str)):
+        normalized = str(code).strip()
+        return normalized or None
+    return None
+
+
+def _sync_error_message(detail: Any) -> str:
+    body = detail.get("detail", detail) if isinstance(detail, dict) else detail
+    if isinstance(body, str):
+        return body[:500]
+    if not isinstance(body, dict):
+        return ""
+    for key in ("text", "message", "description"):
+        value = body.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()[:500]
+    return ""
+
+
+def _raise_for_application_error(
+    payload: dict[str, Any], *, status_code: int
+) -> None:
+    """Reject the legacy HTTP-200 error envelope used by Eigent APIs."""
+
+    code = _sync_error_code(payload)
+    if code is not None and code != "0":
+        raise RunEventSyncHttpError(status_code, payload)
+
+
+def _is_authentication_sync_error(exc: BaseException) -> bool:
+    """Recognize auth failures even after a control-plane wrapper is added."""
+
+    current: BaseException | None = exc
+    visited: set[int] = set()
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        code = getattr(current, "code", None)
+        if code is None:
+            code = getattr(current, "application_code", None)
+        if code is None and isinstance(current, RunEventSyncHttpError):
+            code = _sync_error_code(current.detail)
+        if str(code or "") in _AUTHENTICATION_ERROR_CODES:
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 class RunEventSyncTransport(Protocol):
@@ -202,8 +274,8 @@ class HttpRunEventSyncTransport:
             ),
             transport=transport,
         )
-        self._registered_devices: dict[tuple[str, str], str] = {}
-        self._claimed_routes: set[tuple[str, str, str]] = set()
+        self._registered_devices: dict[tuple[str, str, str], str] = {}
+        self._claimed_routes: set[tuple[str, str, str, str]] = set()
         self._registration_lock = asyncio.Lock()
 
     @staticmethod
@@ -218,6 +290,19 @@ class HttpRunEventSyncTransport:
     @staticmethod
     def _sync_base(configuration: CloudSyncConfiguration) -> str:
         return configuration.endpoint_url.rsplit("/", 1)[0]
+
+    @classmethod
+    def _device_key(
+        cls, configuration: CloudSyncConfiguration
+    ) -> tuple[str, str, str]:
+        authorization_digest = hashlib.sha256(
+            configuration.authorization.encode("utf-8")
+        ).hexdigest()
+        return (
+            cls._sync_base(configuration),
+            configuration.desktop_instance_id,
+            authorization_digest,
+        )
 
     async def _json_request(
         self,
@@ -248,6 +333,7 @@ class HttpRunEventSyncTransport:
             raise RunEventSyncProtocolError(
                 "Run sync response must be a JSON object"
             )
+        _raise_for_application_error(result, status_code=response.status_code)
         return result
 
     async def _ensure_device(
@@ -255,7 +341,7 @@ class HttpRunEventSyncTransport:
         configuration: CloudSyncConfiguration,
     ) -> None:
         base = self._sync_base(configuration)
-        device_key = (base, configuration.desktop_instance_id)
+        device_key = self._device_key(configuration)
         if device_key in self._registered_devices:
             return
         async with self._registration_lock:
@@ -275,7 +361,9 @@ class HttpRunEventSyncTransport:
                     },
                 )
             except RunEventSyncHttpError as exc:
-                raise RunSyncInfrastructureError(str(exc)) from exc
+                raise RunSyncInfrastructureError(
+                    str(exc), code=exc.application_code
+                ) from exc
             account_owner_id = str(
                 response.get("account_owner_id") or ""
             ).strip()
@@ -290,10 +378,7 @@ class HttpRunEventSyncTransport:
         configuration: CloudSyncConfiguration,
     ) -> str:
         await self._ensure_device(configuration)
-        key = (
-            self._sync_base(configuration),
-            configuration.desktop_instance_id,
-        )
+        key = self._device_key(configuration)
         owner = self._registered_devices.get(key)
         if not owner:
             raise RunEventSyncProtocolError(
@@ -325,7 +410,7 @@ class HttpRunEventSyncTransport:
         project_id: str,
     ) -> None:
         base = self._sync_base(configuration)
-        device_key = (base, configuration.desktop_instance_id)
+        device_key = self._device_key(configuration)
         route_key = (*device_key, project_id)
         if route_key in self._claimed_routes:
             return
@@ -340,7 +425,9 @@ class HttpRunEventSyncTransport:
                         {},
                     )
                 except RunEventSyncHttpError as exc:
-                    raise RunSyncInfrastructureError(str(exc)) from exc
+                    raise RunSyncInfrastructureError(
+                        str(exc), code=exc.application_code
+                    ) from exc
                 self._claimed_routes.add(route_key)
 
     async def ingest(
@@ -548,6 +635,7 @@ class HttpRunEventSyncTransport:
             raise RunEventSyncProtocolError(
                 "Artifact upload returned an invalid payload"
             )
+        _raise_for_application_error(payload, status_code=response.status_code)
         return payload
 
     async def close(self) -> None:
@@ -585,6 +673,9 @@ class CloudSyncWorker:
         self._bootstrap_lock = asyncio.Lock()
         self._bootstrap_attempt_count = 0
         self._bootstrap_next_attempt_at = 0.0
+        self._auth_paused_configuration: CloudSyncConfiguration | None = None
+        self._auth_pause_code: str | None = None
+        self._auth_retry_at = 0.0
         self._memory_snapshot_revisions: dict[tuple[str, str], int] = {}
         self._memory_snapshot_verified_at: dict[tuple[str, str], float] = {}
         self._memory_snapshot_failure_counts: dict[tuple[str, str], int] = {}
@@ -608,6 +699,9 @@ class CloudSyncWorker:
             self._bootstrap_pending = True
             self._bootstrap_attempt_count = 0
             self._bootstrap_next_attempt_at = 0.0
+            self._auth_paused_configuration = None
+            self._auth_pause_code = None
+            self._auth_retry_at = 0.0
             self._memory_snapshot_revisions.clear()
             self._memory_snapshot_verified_at.clear()
             self._memory_snapshot_failure_counts.clear()
@@ -639,6 +733,14 @@ class CloudSyncWorker:
         """Return the owner proven by the active device-auth session."""
 
         configuration = self._configuration
+        if (
+            configuration == self._auth_paused_configuration
+            and time.monotonic() < self._auth_retry_at
+        ):
+            raise RunSyncInfrastructureError(
+                "Cloud sync authentication is paused until credentials refresh",
+                code=self._auth_pause_code,
+            )
         resolver = getattr(self._transport, "account_owner_id", None)
         if configuration is None or not callable(resolver):
             raise RunSyncInfrastructureError(
@@ -649,11 +751,17 @@ class CloudSyncWorker:
             raise RunEventSyncProtocolError(
                 "Cloud Memory account authentication omitted its owner"
             )
+        self._resume_after_authentication_success(configuration)
         return owner
 
     async def drain_once(self) -> int:
         configuration = self._configuration
         if configuration is None:
+            return 0
+        if (
+            configuration == self._auth_paused_configuration
+            and time.monotonic() < self._auth_retry_at
+        ):
             return 0
         if (
             self._bootstrap_pending
@@ -663,16 +771,25 @@ class CloudSyncWorker:
                 await self.bootstrap_once()
             except asyncio.CancelledError:
                 raise
-            except Exception:
+            except Exception as exc:
                 # Restore freshness must not block the durable outbound lane.
                 # Keep the flag set so the normal poll loop retries.
+                if self._pause_for_authentication_failure(configuration, exc):
+                    return 0
                 logger.exception("Cloud Run history bootstrap failed")
         memory_count = 0
         memory_snapshot_ready: set[tuple[str, str]] = set()
         if not self._bootstrap_pending:
-            memory_snapshot_ready = (
-                await self._sync_memory_snapshots_if_changed(configuration)
-            )
+            try:
+                memory_snapshot_ready = (
+                    await self._sync_memory_snapshots_if_changed(configuration)
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                if self._pause_for_authentication_failure(configuration, exc):
+                    return 0
+                raise
         if memory_snapshot_ready:
             memory_batches = await asyncio.to_thread(
                 self._journal.claim_ready_memory_mutation_batches,
@@ -723,6 +840,48 @@ class CloudSyncWorker:
         self.notify()
         return memory_count + sum(results)
 
+    def _pause_for_authentication_failure(
+        self,
+        configuration: CloudSyncConfiguration,
+        exc: BaseException,
+    ) -> bool:
+        """Pause every Cloud lane until middleware supplies new credentials."""
+
+        if not _is_authentication_sync_error(exc):
+            return False
+        if configuration != self._configuration:
+            # An in-flight request from an obsolete credential set must not
+            # pause a newer configuration.
+            return True
+        if self._auth_paused_configuration != configuration:
+            code = getattr(exc, "code", None) or getattr(
+                exc, "application_code", None
+            )
+            if code is None and isinstance(exc, RunEventSyncHttpError):
+                code = _sync_error_code(exc.detail)
+            self._auth_paused_configuration = configuration
+            self._auth_pause_code = str(code or "") or None
+            logger.warning(
+                "Cloud sync paused because authentication was rejected; "
+                "local history and pending outboxes remain available and "
+                "sync will resume after credentials refresh",
+                extra={"error_code": self._auth_pause_code},
+            )
+        self._auth_retry_at = time.monotonic() + max(
+            60.0, min(self._max_retry_seconds, 300.0)
+        )
+        return True
+
+    def _resume_after_authentication_success(
+        self, configuration: CloudSyncConfiguration
+    ) -> None:
+        if configuration != self._auth_paused_configuration:
+            return
+        self._auth_paused_configuration = None
+        self._auth_pause_code = None
+        self._auth_retry_at = 0.0
+        logger.info("Cloud sync resumed after authentication recovered")
+
     def _artifact_upload_finished(self, task: asyncio.Task[int]) -> None:
         self._artifact_tasks.discard(task)
         if task.cancelled():
@@ -749,6 +908,7 @@ class CloudSyncWorker:
             return 0
         try:
             response = await upload(configuration, item)
+            self._resume_after_authentication_success(configuration)
             required = {
                 "id",
                 "filename",
@@ -783,6 +943,9 @@ class CloudSyncWorker:
             )
             return 0
         except RunEventSyncHttpError as exc:
+            if self._pause_for_authentication_failure(configuration, exc):
+                await self._retry_artifact_upload(item, str(exc))
+                return 0
             if exc.status_code in {400, 409, 413, 422}:
                 await asyncio.to_thread(
                     self._journal.retry_artifact_upload,
@@ -795,6 +958,7 @@ class CloudSyncWorker:
                 await self._retry_artifact_upload(item, str(exc))
             return 0
         except Exception as exc:
+            self._pause_for_authentication_failure(configuration, exc)
             await self._retry_artifact_upload(item, str(exc))
             return 0
         self.notify()
@@ -960,6 +1124,7 @@ class CloudSyncWorker:
             self._bootstrap_pending = False
             self._bootstrap_attempt_count = 0
             self._bootstrap_next_attempt_at = 0.0
+            self._resume_after_authentication_success(configuration)
 
     async def _sync_memory_snapshots_if_changed(
         self,
@@ -980,6 +1145,7 @@ class CloudSyncWorker:
             raise RunEventSyncProtocolError(
                 "Memory sync requires an authenticated account owner"
             )
+        self._resume_after_authentication_success(configuration)
         candidates = await asyncio.to_thread(
             self._journal.list_memory_scope_owner_candidates,
             account_owner_id,
@@ -1059,6 +1225,8 @@ class CloudSyncWorker:
             try:
                 response = await put_snapshot(configuration, payload)
             except RunEventSyncHttpError as exc:
+                if self._pause_for_authentication_failure(configuration, exc):
+                    return set()
                 detail = (
                     exc.detail.get("detail", exc.detail)
                     if isinstance(exc.detail, dict)
@@ -1195,6 +1363,10 @@ class CloudSyncWorker:
                             }
                         response = await put_snapshot(configuration, payload)
                     except Exception as transfer_error:
+                        if self._pause_for_authentication_failure(
+                            configuration, transfer_error
+                        ):
+                            return set()
                         delay = self._defer_memory_snapshot_retry(
                             key, revision
                         )
@@ -1218,6 +1390,10 @@ class CloudSyncWorker:
             except asyncio.CancelledError:
                 raise
             except Exception as snapshot_error:
+                if self._pause_for_authentication_failure(
+                    configuration, snapshot_error
+                ):
+                    return set()
                 delay = self._defer_memory_snapshot_retry(key, revision)
                 self._log_memory_snapshot_failure(
                     key,
@@ -1321,6 +1497,7 @@ class CloudSyncWorker:
         }
         try:
             response = await heartbeat(configuration, {"items": items})
+            self._resume_after_authentication_success(configuration)
             raw_acknowledged = response.get("items")
             if not isinstance(raw_acknowledged, list):
                 raise RunEventSyncProtocolError(
@@ -1345,6 +1522,8 @@ class CloudSyncWorker:
                     )
                 acknowledged.add(key)
         except RunEventSyncHttpError as exc:
+            if self._pause_for_authentication_failure(configuration, exc):
+                return
             if exc.status_code in {404, 405}:
                 self._memory_heartbeat_disabled = True
                 logger.warning(
@@ -1358,6 +1537,8 @@ class CloudSyncWorker:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            if self._pause_for_authentication_failure(configuration, exc):
+                return
             delay = self._defer_memory_heartbeat_retry(configuration, now)
             self._log_memory_heartbeat_failure(exc, delay)
             return
@@ -1578,6 +1759,7 @@ class CloudSyncWorker:
         }
         try:
             response = await ingest_memory(configuration, payload)
+            self._resume_after_authentication_success(configuration)
             if (
                 response.get("scope_type") != batch.scope_type
                 or response.get("scope_id") != batch.scope_id
@@ -1606,6 +1788,9 @@ class CloudSyncWorker:
             )
             return len(batch.items)
         except RunEventSyncHttpError as exc:
+            if self._pause_for_authentication_failure(configuration, exc):
+                await self._retry_memory_batch(batch, str(exc))
+                return 0
             if self._is_permanent_event_error(exc.status_code):
                 await self._block_memory_batch(
                     batch,
@@ -1622,9 +1807,15 @@ class CloudSyncWorker:
                     "scope_id": batch.scope_id,
                 },
             )
-        except (httpx.HTTPError, RunEventSyncProtocolError) as exc:
+        except (
+            httpx.HTTPError,
+            RunEventSyncProtocolError,
+            RunSyncInfrastructureError,
+        ) as exc:
+            self._pause_for_authentication_failure(configuration, exc)
             await self._retry_memory_batch(batch, str(exc))
         except Exception as exc:
+            self._pause_for_authentication_failure(configuration, exc)
             await self._retry_memory_batch(
                 batch, f"{type(exc).__name__}: {exc}"
             )
@@ -1731,6 +1922,7 @@ class CloudSyncWorker:
         }
         try:
             response = await self._transport.ingest(configuration, payload)
+            self._resume_after_authentication_success(configuration)
             self._validate_response(batch, response)
             await asyncio.to_thread(
                 self._journal.mark_outbox_batch_sent,
@@ -1738,6 +1930,9 @@ class CloudSyncWorker:
             )
             return len(batch.events)
         except RunEventSyncHttpError as exc:
+            if self._pause_for_authentication_failure(configuration, exc):
+                await self._mark_retry(batch, str(exc))
+                return 0
             if self._is_permanent_event_error(exc.status_code):
                 failed_event_id = self._failed_event_id(exc.detail, batch)
                 await self._mark_blocked(batch, failed_event_id, str(exc))
@@ -1748,12 +1943,18 @@ class CloudSyncWorker:
                 "Ignoring stale Run sync result after lease handoff",
                 extra={"run_id": batch.run_id},
             )
-        except (httpx.HTTPError, RunEventSyncProtocolError) as exc:
+        except (
+            httpx.HTTPError,
+            RunEventSyncProtocolError,
+            RunSyncInfrastructureError,
+        ) as exc:
+            self._pause_for_authentication_failure(configuration, exc)
             await self._mark_retry(batch, str(exc))
         except Exception as exc:
             # Transport implementations may expose library-specific network
             # exceptions. Unknown failures remain retryable; only explicit HTTP
             # domain validation can poison a Run lane.
+            self._pause_for_authentication_failure(configuration, exc)
             await self._mark_retry(batch, f"{type(exc).__name__}: {exc}")
         return 0
 

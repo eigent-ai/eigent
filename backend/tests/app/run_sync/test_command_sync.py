@@ -250,6 +250,89 @@ async def test_transport_reregisters_when_authenticated_credential_changes():
     await transport.close()
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("code", [11, 12, 13, 14])
+async def test_transport_rejects_http_200_auth_error_envelope(code):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/devices/register"):
+            return httpx.Response(200, json={})
+        assert request.url.path.endswith("/commands/pending")
+        return httpx.Response(
+            200,
+            json={"code": code, "text": "Authentication rejected"},
+        )
+
+    transport = HttpCommandSyncTransport(
+        transport=httpx.MockTransport(handler)
+    )
+
+    with pytest.raises(RunEventSyncHttpError) as exc_info:
+        await transport.pull_pending(_configuration(), limit=1)
+
+    assert exc_info.value.status_code == 200
+    assert exc_info.value.application_code == str(code)
+    assert f"application error {code}" in str(exc_info.value)
+    await transport.close()
+
+
+@pytest.mark.asyncio
+async def test_worker_pauses_all_command_lanes_until_credentials_change(
+    tmp_path,
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        transport = FakeCommandTransport()
+        transport.pull_error = RunEventSyncHttpError(
+            200,
+            {"code": 13, "text": "Could not validate credentials"},
+        )
+        worker = CommandControlWorker(journal, transport)
+        expired = _configuration()
+        refreshed = CloudSyncConfiguration(
+            endpoint_url=expired.endpoint_url,
+            authorization="Bearer refreshed",
+            desktop_instance_id=expired.desktop_instance_id,
+        )
+        worker.configure(expired)
+
+        assert await worker.drain_once() == 0
+        await worker.persist_command(_command())
+        assert await worker.drain_once() == 0
+        assert transport.pull_count == 1
+        assert transport.ingested == []
+
+        transport.pull_error = None
+        worker.configure(refreshed)
+        assert await worker.drain_once() == 1
+        assert transport.pull_count == 2
+        assert len(transport.ingested) == 1
+        await worker.close()
+
+
+@pytest.mark.asyncio
+async def test_worker_slowly_reprobes_same_credentials_after_auth_failure(
+    tmp_path,
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        transport = FakeCommandTransport()
+        transport.pull_error = RunEventSyncHttpError(
+            200,
+            {"code": 11, "text": "Token required"},
+        )
+        worker = CommandControlWorker(journal, transport)
+        worker.configure(_configuration())
+
+        assert await worker.drain_once() == 0
+        assert await worker.drain_once() == 0
+        assert transport.pull_count == 1
+
+        transport.pull_error = None
+        worker._auth_retry_at = 0.0
+        assert await worker.drain_once() == 0
+        assert transport.pull_count == 2
+        assert worker._auth_paused_configuration is None
+        await worker.close()
+
+
 def test_command_inbox_terminal_state_cannot_move_backwards(tmp_path):
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
         record = journal.persist_remote_command(

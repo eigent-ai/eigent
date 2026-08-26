@@ -32,6 +32,7 @@ from app.run_sync import (
     HttpRunEventSyncTransport,
     RunEventSyncHttpError,
 )
+from app.run_sync.cloud_sync import RunSyncInfrastructureError
 
 
 class FakeTransport:
@@ -1167,6 +1168,156 @@ async def test_http_transport_uses_device_auth_for_history_bootstrap():
         for request in requests
     )
     await transport.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("code", [11, 12, 13, 14])
+async def test_http_transport_rejects_http_200_auth_error_envelope(code):
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/devices/register")
+        return httpx.Response(
+            200,
+            json={"code": code, "text": "Authentication rejected"},
+        )
+
+    transport = HttpRunEventSyncTransport(
+        transport=httpx.MockTransport(handler)
+    )
+    configuration = CloudSyncConfiguration(
+        endpoint_url="https://example.test/api/v1/sync/events:ingest",
+        authorization="Bearer expired",
+        desktop_instance_id="desk-1",
+    )
+
+    with pytest.raises(RunSyncInfrastructureError) as exc_info:
+        await transport.list_projects(configuration)
+
+    assert exc_info.value.code == str(code)
+    assert f"application error {code}" in str(exc_info.value)
+    assert "omitted authenticated account owner" not in str(exc_info.value)
+    await transport.close()
+
+
+@pytest.mark.asyncio
+async def test_http_transport_reregisters_when_cloud_credential_changes():
+    registrations: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/devices/register"):
+            authorization = request.headers["authorization"]
+            registrations.append(authorization)
+            return httpx.Response(
+                200,
+                json={
+                    "device_id": "desk-1",
+                    "account_owner_id": authorization,
+                    "credential_version": 1,
+                    "registered_at": "2026-08-26T00:00:00+00:00",
+                },
+            )
+        assert request.url.path.endswith("/sync/projects")
+        return httpx.Response(200, json={"items": []})
+
+    transport = HttpRunEventSyncTransport(
+        transport=httpx.MockTransport(handler)
+    )
+    first = CloudSyncConfiguration(
+        endpoint_url="https://example.test/api/v1/sync/events:ingest",
+        authorization="Bearer first",
+        desktop_instance_id="desk-1",
+    )
+    second = CloudSyncConfiguration(
+        endpoint_url=first.endpoint_url,
+        authorization="Bearer refreshed",
+        desktop_instance_id=first.desktop_instance_id,
+    )
+
+    assert await transport.list_projects(first) == {"items": []}
+    assert await transport.list_projects(first) == {"items": []}
+    assert await transport.list_projects(second) == {"items": []}
+
+    assert registrations == ["Bearer first", "Bearer refreshed"]
+    await transport.close()
+
+
+@pytest.mark.asyncio
+async def test_worker_pauses_cloud_lanes_until_credentials_change(journal):
+    class AuthenticationTransport(FakeTransport):
+        def __init__(self) -> None:
+            super().__init__()
+            self.bootstrap_calls: list[str] = []
+
+        async def list_projects(self, configuration):
+            self.bootstrap_calls.append(configuration.authorization)
+            if configuration.authorization == "Bearer expired":
+                raise RunSyncInfrastructureError(
+                    "Authentication rejected", code="13"
+                )
+            return {"items": []}
+
+    transport = AuthenticationTransport()
+    worker = CloudSyncWorker(journal, transport)
+    expired = CloudSyncConfiguration(
+        endpoint_url="https://example.test/api/v1/sync/events:ingest",
+        authorization="Bearer expired",
+        desktop_instance_id="desk-1",
+    )
+    refreshed = CloudSyncConfiguration(
+        endpoint_url=expired.endpoint_url,
+        authorization="Bearer refreshed",
+        desktop_instance_id=expired.desktop_instance_id,
+    )
+    worker.configure(expired)
+    _append(journal, "run-local")
+
+    assert await worker.drain_once() == 0
+    assert await worker.drain_once() == 0
+    assert transport.bootstrap_calls == ["Bearer expired"]
+    assert worker.bootstrap_pending is True
+    pending = journal.list_pending_outbox(now=float("inf"))
+    assert len(pending) == 1
+    assert pending[0].attempt_count == 0
+
+    worker.configure(refreshed)
+    assert await worker.drain_once() == 1
+    assert transport.bootstrap_calls == ["Bearer expired", "Bearer refreshed"]
+    assert worker.bootstrap_pending is False
+    assert journal.list_pending_outbox(now=float("inf")) == []
+    await worker.close()
+
+
+@pytest.mark.asyncio
+async def test_worker_slowly_reprobes_same_credentials_after_auth_failure(
+    journal,
+):
+    class RecoveringTransport(FakeTransport):
+        def __init__(self) -> None:
+            super().__init__()
+            self.auth_available = False
+            self.bootstrap_count = 0
+
+        async def list_projects(self, configuration):
+            self.bootstrap_count += 1
+            if not self.auth_available:
+                raise RunSyncInfrastructureError(
+                    "Authentication temporarily unavailable", code="11"
+                )
+            return {"items": []}
+
+    transport = RecoveringTransport()
+    worker = _worker(journal, transport)
+
+    assert await worker.drain_once() == 0
+    assert await worker.drain_once() == 0
+    assert transport.bootstrap_count == 1
+
+    transport.auth_available = True
+    worker._auth_retry_at = 0.0
+    worker._bootstrap_next_attempt_at = 0.0
+    assert await worker.drain_once() == 0
+    assert transport.bootstrap_count == 2
+    assert worker._auth_paused_configuration is None
+    await worker.close()
 
 
 @pytest.mark.asyncio
