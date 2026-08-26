@@ -203,15 +203,17 @@ describe('event-native Timeline Run presentation', () => {
     expect(input.map((node) => node.id)).toEqual(originalOrder);
   });
 
-  it('uses creation time before transport sequence for Timeline order', () => {
+  it('uses Run sequence before creation time within a Run', () => {
     const subagentCreated = tool('subagent-created', 'run-1', 50, {
-      createdAt: '2026-08-19T00:00:01.000Z',
+      createdAt: '2026-08-19T00:00:02.000Z',
+      runSequence: 2,
       toolCallId: 'subagent-created',
       methodName: 'agent_run_subagent',
       subagentInvocation: true,
     });
     const checkedStatus = tool('checked-status', 'run-1', 2, {
-      createdAt: '2026-08-19T00:00:02.000Z',
+      createdAt: '2026-08-19T00:00:01.000Z',
+      runSequence: 50,
       toolCallId: 'checked-status',
       methodName: 'agent_get_task_output',
       title: 'Checked sub-agent status',

@@ -82,6 +82,7 @@ import {
 import { FloatingAction } from './MessageItem/FloatingAction';
 import { ProjectChatContainer } from './ProjectChatContainer';
 import {
+  canUseLegacyControlWhileEventNativeHydrates,
   isEventNativeRunActionable,
   selectActionableInterruptedRun,
   selectComposerTaskControlState,
@@ -346,7 +347,11 @@ export default function ChatBox(): JSX.Element {
   );
   const activeProjectId = projectStore.activeProjectId;
   const eventNativeTimelineEnabled = isChatEventTimelineEnabled();
-  const { snapshot: sharedProjectEventSnapshot } = useProjectEventRuntime();
+  const {
+    hydration: projectEventHydration,
+    projectId: projectEventRuntimeProjectId,
+    snapshot: sharedProjectEventSnapshot,
+  } = useProjectEventRuntime();
   const eventNativeProjectSnapshot =
     eventNativeTimelineEnabled &&
     sharedProjectEventSnapshot?.view.projectId === activeProjectId
@@ -620,6 +625,13 @@ export default function ChatBox(): JSX.Element {
   const eventNativeActiveProjectedRun = eventNativeActiveRunId
     ? eventNativeProjectSnapshot?.view.runs[eventNativeActiveRunId]
     : undefined;
+  const allowLegacyHydrationControl =
+    eventNativeTimelineEnabled &&
+    projectEventRuntimeProjectId === activeProjectId &&
+    canUseLegacyControlWhileEventNativeHydrates(
+      eventNativeProjectSnapshot,
+      projectEventHydration.status
+    );
   const eventNativeInterruptedRun = selectActionableInterruptedRun(
     eventNativeProjectSnapshot,
     interruptedRun?.run_id
@@ -2318,6 +2330,7 @@ export default function ChatBox(): JSX.Element {
     legacyControlRunId: legacyControlTaskId,
     activeTaskStatus: activeTask?.status,
     eventNativeActiveRunId,
+    allowLegacyHydrationControl,
   });
   const showFloatingStop =
     shouldRenderChatTimeline &&

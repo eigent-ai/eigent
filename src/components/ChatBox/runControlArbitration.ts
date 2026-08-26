@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import type { ProjectEventStoreHydrationState } from '@/hooks/useProjectEventStoreHydration';
 import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
 import { ChatTaskStatus, type ChatTaskStatusType } from '@/types/constants';
 
@@ -22,24 +23,29 @@ export type ComposerTaskControlState = 'idle' | 'running' | 'paused';
 
 /**
  * Pause/resume still targets the Project-scoped legacy TaskLock. Keep the
- * control available while the durable projection is hydrating, but fail
- * closed once projection explicitly selects a different Run.
+ * control available only while the durable projection is explicitly
+ * hydrating. Once hydrated (including resync/overflow safety states), require
+ * canonical Run ownership and fail closed.
  */
 export function selectComposerTaskControlState({
   eventNativeTimelineEnabled,
   legacyControlRunId,
   activeTaskStatus,
   eventNativeActiveRunId,
+  allowLegacyHydrationControl = false,
 }: {
   eventNativeTimelineEnabled: boolean;
   legacyControlRunId: string | null | undefined;
   activeTaskStatus: ChatTaskStatusType | null | undefined;
   eventNativeActiveRunId: string | null | undefined;
+  allowLegacyHydrationControl?: boolean;
 }): ComposerTaskControlState {
   if (
     eventNativeTimelineEnabled &&
     (!legacyControlRunId ||
-      (eventNativeActiveRunId && eventNativeActiveRunId !== legacyControlRunId))
+      (eventNativeActiveRunId
+        ? eventNativeActiveRunId !== legacyControlRunId
+        : !allowLegacyHydrationControl))
   ) {
     return 'idle';
   }
@@ -79,6 +85,18 @@ function snapshotCanIssueControls(
     !snapshot.overflowed &&
     !snapshot.view.needsResync &&
     !snapshot.view.eventsTruncated
+  );
+}
+
+/** Legacy control is a hydration bridge, never a resync safety fallback. */
+export function canUseLegacyControlWhileEventNativeHydrates(
+  snapshot: ProjectEventStoreSnapshot | null,
+  hydrationStatus: ProjectEventStoreHydrationState['status']
+): boolean {
+  if (!['idle', 'loading', 'retrying'].includes(hydrationStatus)) return false;
+  return (
+    !snapshot ||
+    (!snapshot.hasHydratedSnapshot && snapshotCanIssueControls(snapshot))
   );
 }
 

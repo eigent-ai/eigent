@@ -439,7 +439,7 @@ describe('chat projection presentation contract', () => {
     expect(presentChatSemanticEntities(presented)).toEqual(presented);
   });
 
-  it('anchors lifecycle folding by created time when transport sequence conflicts', () => {
+  it('anchors lifecycle folding by Run sequence when creation time conflicts', () => {
     const state = projectChatEvents('project-1', [
       event(
         'subtask.created',
@@ -448,9 +448,9 @@ describe('chat projection presentation contract', () => {
         }),
         20,
         {
-          runSequence: 20,
-          cloudCursor: 20,
-          createdAt: '2026-08-18T00:00:01Z',
+          runSequence: 2,
+          cloudCursor: 2,
+          createdAt: '2026-08-18T00:00:03Z',
         }
       ),
       event(
@@ -460,9 +460,9 @@ describe('chat projection presentation contract', () => {
         }),
         2,
         {
-          runSequence: 2,
-          cloudCursor: 2,
-          createdAt: '2026-08-18T00:00:03Z',
+          runSequence: 20,
+          cloudCursor: 20,
+          createdAt: '2026-08-18T00:00:01Z',
         }
       ),
     ]);
@@ -472,7 +472,7 @@ describe('chat projection presentation contract', () => {
     ).toEqual([
       expect.objectContaining({
         eventId: 'event-20',
-        createdAt: '2026-08-18T00:00:01Z',
+        createdAt: '2026-08-18T00:00:03Z',
         status: 'completed',
         title: 'Inspecting workspace',
       }),

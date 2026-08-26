@@ -35,37 +35,37 @@ function compareNullableNumbers(
 }
 
 /**
- * Canonical Timeline order. Creation time is the user-visible contract;
- * transport sequence and cursor values only break ties or order receipts that
- * do not carry a valid timestamp.
+ * Canonical Timeline order. A Run's monotonic sequence is authoritative for
+ * replay; wall-clock time only positions different Runs and breaks gaps in
+ * legacy receipts that do not carry a sequence.
  */
 export function compareTimelineNodes(
   left: ChatProjectionNode,
   right: ChatProjectionNode
 ): number {
+  if (left.runId === right.runId) {
+    const sequenceDifference = compareNullableNumbers(
+      finiteNumber(left.runSequence),
+      finiteNumber(right.runSequence)
+    );
+    if (sequenceDifference) return sequenceDifference;
+
+    const cursorDifference = compareNullableNumbers(
+      finiteNumber(left.cloudCursor),
+      finiteNumber(right.cloudCursor)
+    );
+    if (cursorDifference) return cursorDifference;
+  }
+
   const timestampDifference = compareNullableNumbers(
     timestampValue(left.createdAt),
     timestampValue(right.createdAt)
   );
   if (timestampDifference) return timestampDifference;
 
-  // Sequence and cursor are per-Run counters, so comparing them across Runs
-  // sorts by an unrelated axis: an optimistic first frame (sequence 0) would
-  // overtake the durable history of an earlier Run. Untimestamped nodes from
-  // different Runs keep their arrival order through the stable sort below.
+  // Sequence and cursor are scoped to a Run, so never compare them across
+  // Runs. Untimestamped nodes from different Runs keep stable arrival order.
   if (left.runId !== right.runId) return 0;
-
-  const sequenceDifference = compareNullableNumbers(
-    finiteNumber(left.runSequence),
-    finiteNumber(right.runSequence)
-  );
-  if (sequenceDifference) return sequenceDifference;
-
-  const cursorDifference = compareNullableNumbers(
-    finiteNumber(left.cloudCursor),
-    finiteNumber(right.cloudCursor)
-  );
-  if (cursorDifference) return cursorDifference;
 
   const eventDifference = left.eventId.localeCompare(right.eventId);
   if (eventDifference) return eventDifference;

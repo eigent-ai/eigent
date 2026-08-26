@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
+  canUseLegacyControlWhileEventNativeHydrates,
   selectActionableInterruptedRun,
   selectComposerTaskControlState,
   selectEventNativeActiveRunId,
@@ -85,6 +86,7 @@ function snapshot({
   needsResync = false,
   eventsTruncated = false,
   overflowed = false,
+  hasHydratedSnapshot = true,
 }: {
   runs: ProjectedRun[];
   nodes?: ChatProjectionNode[];
@@ -92,6 +94,7 @@ function snapshot({
   needsResync?: boolean;
   eventsTruncated?: boolean;
   overflowed?: boolean;
+  hasHydratedSnapshot?: boolean;
 }): ProjectEventStoreSnapshot {
   const view = createProjectViewState('project-1', 'live');
   const chat = createChatProjectionState('project-1');
@@ -116,13 +119,67 @@ function snapshot({
       ),
     },
     revision: 1,
-    hasHydratedSnapshot: true,
+    hasHydratedSnapshot,
     overflowed,
     lastEffects: [],
   };
 }
 
 describe('event-native Run-control arbitration', () => {
+  it('uses legacy control only during a trusted hydration window', () => {
+    expect(canUseLegacyControlWhileEventNativeHydrates(null, 'loading')).toBe(
+      true
+    );
+    expect(
+      canUseLegacyControlWhileEventNativeHydrates(
+        snapshot({ runs: [], hasHydratedSnapshot: false }),
+        'retrying'
+      )
+    ).toBe(true);
+    expect(
+      canUseLegacyControlWhileEventNativeHydrates(
+        snapshot({ runs: [] }),
+        'ready'
+      )
+    ).toBe(false);
+    expect(canUseLegacyControlWhileEventNativeHydrates(null, 'error')).toBe(
+      false
+    );
+    expect(canUseLegacyControlWhileEventNativeHydrates(null, 'ready')).toBe(
+      false
+    );
+    expect(
+      canUseLegacyControlWhileEventNativeHydrates(
+        snapshot({
+          runs: [],
+          hasHydratedSnapshot: false,
+          eventsTruncated: true,
+        }),
+        'loading'
+      )
+    ).toBe(false);
+    expect(
+      canUseLegacyControlWhileEventNativeHydrates(
+        snapshot({
+          runs: [],
+          hasHydratedSnapshot: false,
+          needsResync: true,
+        }),
+        'loading'
+      )
+    ).toBe(false);
+    expect(
+      canUseLegacyControlWhileEventNativeHydrates(
+        snapshot({
+          runs: [],
+          hasHydratedSnapshot: false,
+          overflowed: true,
+        }),
+        'loading'
+      )
+    ).toBe(false);
+  });
+
   it('exposes Project-scoped pause only when the legacy task owns the selected Run', () => {
     expect(
       selectComposerTaskControlState({
@@ -162,6 +219,15 @@ describe('event-native Run-control arbitration', () => {
         legacyControlRunId: 'legacy-live',
         activeTaskStatus: ChatTaskStatus.RUNNING,
         eventNativeActiveRunId: null,
+      })
+    ).toBe('idle');
+    expect(
+      selectComposerTaskControlState({
+        eventNativeTimelineEnabled: true,
+        legacyControlRunId: 'legacy-live',
+        activeTaskStatus: ChatTaskStatus.RUNNING,
+        eventNativeActiveRunId: null,
+        allowLegacyHydrationControl: true,
       })
     ).toBe('running');
   });

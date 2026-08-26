@@ -1161,18 +1161,22 @@ describe('ChatBox timeline modes', () => {
     ).toBeInTheDocument();
   });
 
-  it('does not append a redundant activity marker after running timeline content', () => {
+  it('keeps one transient activity marker after running timeline content', () => {
     const runningRuns = composeTimelineRuns(nodes('running'));
     const { container, rerender } = render(
       <TimelineModeRenderer detailLevel="narrative" runs={runningRuns} />
     );
 
-    expect(container.querySelector('[data-run-activity-indicator]')).toBeNull();
+    expect(
+      container.querySelector('[data-run-activity-indicator]')
+    ).toHaveTextContent('Eigent is working…');
 
     rerender(
       <TimelineModeRenderer detailLevel="trajectory" runs={runningRuns} />
     );
-    expect(container.querySelector('[data-run-activity-indicator]')).toBeNull();
+    expect(
+      container.querySelector('[data-run-activity-indicator]')
+    ).toHaveTextContent('Eigent is working…');
   });
 
   it('keeps Preparing visible until the narrative work band can render', () => {
