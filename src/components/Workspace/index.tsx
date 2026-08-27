@@ -17,6 +17,7 @@ import BottomBox, { type FileAttachment } from '@/components/ChatBox/BottomBox';
 import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseWorkers';
 import { isBaseWorkflowAgent } from '@/components/Workspace/FoldedAgentCard';
 import { SingleAgentList } from '@/components/Workspace/SingleAgentList';
+import { SpaceWorkspacePanel } from '@/components/Workspace/SpaceWorkspacePanel';
 import { WorkforceAgentList } from '@/components/Workspace/WorkforceAgentList';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
@@ -104,6 +105,48 @@ export default function Workspace({
   );
 
   const textareaRef = useRef<HTMLDivElement>(null);
+
+  const handleUsePrompt = useCallback((prompt: string) => {
+    setMessage(prompt);
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  }, []);
+
+  const handleExploreUseCases = useCallback(() => {
+    const url = 'https://www.eigent.ai/use-cases';
+    const openExternal = host?.electronAPI?.openExternal;
+    if (openExternal) {
+      void openExternal(url).then(
+        (result: { success: boolean; error?: string }) => {
+          if (result?.success === false) {
+            toast.error(
+              result.error ||
+                t('layout.browser-unable-to-open-url', {
+                  defaultValue: 'Unable to open this URL',
+                })
+            );
+          }
+        }
+      );
+      return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }, [host, t]);
+
+  const handleOpenSpaceFolder = useCallback(async () => {
+    if (!activeSpace?.rootPath || !host?.ipcRenderer) return;
+    try {
+      const result = await host.ipcRenderer.invoke(
+        'reveal-in-folder',
+        activeSpace.rootPath
+      );
+      if (!result?.success) {
+        toast.error(result?.error || t('chat.failed-to-open-folder'));
+      }
+    } catch (error) {
+      console.error('Failed to open Space folder:', error);
+      toast.error(t('chat.failed-to-open-folder'));
+    }
+  }, [activeSpace?.rootPath, host, t]);
 
   useEffect(() => {
     if (workspaceChatFocusRequestId === 0) return;
@@ -375,7 +418,7 @@ export default function Workspace({
         {effectiveSessionMode === SessionMode.SINGLE_AGENT ? (
           <span
             data-workspace-single-agent-label
-            className={WORKSPACE_COWORK_TEXT_CLASS}
+            className={`${WORKSPACE_COWORK_TEXT_CLASS} @max-[599px]/workspace-composer:hidden`}
           >
             {t('layout.workspace-session-single-agent', {
               defaultValue: 'Single Agent',
@@ -438,13 +481,26 @@ export default function Workspace({
             data-workspace-input-section
             className="flex min-w-0 flex-1 items-center justify-center p-4"
           >
-            <div className="flex w-full max-w-[600px] min-w-0 flex-col pb-[58px]">
+            <div
+              data-workspace-composer
+              className="@container/workspace-composer flex w-full max-w-[600px] min-w-0 flex-col pb-[58px]"
+            >
               {workspaceComposerTop}
               {composerInput}
             </div>
           </div>
         </section>
       </div>
+      {!embedded && variant === 'workspace' && activeSpace ? (
+        <SpaceWorkspacePanel
+          space={activeSpace}
+          onUsePrompt={handleUsePrompt}
+          onConnectApp={() => openSettings('connectors')}
+          onExploreUseCases={handleExploreUseCases}
+          canOpenFolder={Boolean(activeSpace.rootPath && host?.ipcRenderer)}
+          onOpenFolder={() => void handleOpenSpaceFolder()}
+        />
+      ) : null}
     </div>
   );
 }

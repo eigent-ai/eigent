@@ -15,7 +15,6 @@
 
 import { resolveSpaceDetailMemoryTarget } from '@/components/Home/memoryRoute';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import { AUTOMATION_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
@@ -47,6 +46,7 @@ import { useSpaceDetailData } from './hooks/useSpaceDetailData';
 import Projects from './Projects';
 import { SpaceDetailTabSkeleton } from './SpaceDetailLoadingSkeleton';
 import { SpaceDetailTabsNav, type SpaceDetailTab } from './SpaceDetailTabsNav';
+import { SpaceSnapshotStat } from './SpaceSnapshotStat';
 import Tasks from './Tasks';
 import Triggers from './Triggers';
 import { formatHubDate } from './utils';
@@ -136,47 +136,6 @@ export function SpaceDetailSuspenseContent({
         {children}
       </motion.div>
     </Suspense>
-  );
-}
-
-function Stat({
-  icon,
-  label,
-  value,
-  loading = false,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: ReactNode;
-  loading?: boolean;
-}) {
-  return (
-    <div data-space-stat={label} className="flex min-w-0 items-center gap-3">
-      <div
-        aria-hidden
-        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-default-default text-ds-ink-default-default"
-      >
-        {icon}
-      </div>
-      <div className="min-w-0">
-        <span className="block truncate !text-ds-text-meta font-semibold tracking-wide text-ds-ink-muted-default uppercase">
-          {label}
-        </span>
-        {loading ? (
-          <Skeleton
-            data-space-stat-skeleton={label}
-            className="mt-1 h-4 w-10"
-          />
-        ) : (
-          <span
-            className="mt-1 block truncate !text-ds-text-body-large font-semibold text-ds-ink-default-default"
-            title={typeof value === 'string' ? value : undefined}
-          >
-            {value}
-          </span>
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -328,32 +287,32 @@ export default function SpaceDetail({
                 </span>
               </div>
               <div className="grid min-w-0 grid-cols-3 gap-x-6 gap-y-5">
-                <Stat
+                <SpaceSnapshotStat
                   icon={<MessageCircle className={statIconClassName} />}
                   label="Sessions"
                   value={data.projectCount}
                   loading={data.projectsLoading}
                 />
-                <Stat
+                <SpaceSnapshotStat
                   icon={<ListChecks className={statIconClassName} />}
                   label="Tasks"
                   value={data.taskCount}
                   loading={data.projectsLoading}
                 />
-                <Stat
+                <SpaceSnapshotStat
                   icon={<AUTOMATION_ICON className={statIconClassName} />}
                   label={t('layout.triggers')}
                   value={data.triggerCount}
                   loading={data.triggersLoading}
                 />
-                <Stat
+                <SpaceSnapshotStat
                   icon={<Activity className={statIconClassName} />}
                   label="Status"
                   value={
                     space.status.charAt(0).toUpperCase() + space.status.slice(1)
                   }
                 />
-                <Stat
+                <SpaceSnapshotStat
                   icon={
                     isLocalWorkspaceSpace(space) ? (
                       <HardDrive className={statIconClassName} />
@@ -364,7 +323,7 @@ export default function SpaceDetail({
                   label="Location"
                   value={location}
                 />
-                <Stat
+                <SpaceSnapshotStat
                   icon={<CalendarDays className={statIconClassName} />}
                   label="Added"
                   value={formatHubDate(space.createdAt) || '—'}

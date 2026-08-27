@@ -31,7 +31,7 @@ import { mergeAliasStyles, tagTokenAliases } from './tokenAliases';
 /** User-friendly tone aliases map to {@link UiTone}. */
 export type TagToneInput = UiToneInput | 'info' | 'caution';
 
-export type TagVariant = UiVariant;
+export type TagVariant = UiVariant | 'text';
 export type TagTone = UiTone;
 export type TagEmphasis = UiEmphasisLegacy;
 
@@ -54,7 +54,7 @@ function resolveTagAxes(
   tone: TagToneInput | undefined,
   emphasis: TagEmphasis | undefined
 ): {
-  variant: UiVariant;
+  variant: TagVariant;
   tone: UiTone;
   emphasis: UiEmphasis;
 } {
@@ -63,7 +63,8 @@ function resolveTagAxes(
     variant: base,
     tone: normalizeTagTone(tone),
     emphasis:
-      normalizeUiEmphasis(emphasis) ?? DEFAULT_EMPHASIS_BY_VARIANT[base],
+      normalizeUiEmphasis(emphasis) ??
+      (base === 'text' ? 'muted' : DEFAULT_EMPHASIS_BY_VARIANT[base]),
   };
 }
 
@@ -280,47 +281,61 @@ const TAG_GHOST: Record<TagStyleTone, Record<TagEmphasisMatrix, string>> = {
   },
 };
 
+/** Unpadded inline legend. Chrome matches ghost; geometry strips padding. */
+const TAG_TEXT = TAG_GHOST;
+
 const TAG_BY_VARIANT: Record<
-  UiVariant,
+  TagVariant,
   Record<TagStyleTone, Record<TagEmphasisMatrix, string>>
 > = {
   primary: TAG_PRIMARY,
   secondary: TAG_SECONDARY,
   outline: TAG_OUTLINE,
   ghost: TAG_GHOST,
+  text: TAG_TEXT,
 };
 
 function tagChromeClasses(
-  variant: UiVariant,
+  variant: TagVariant,
   styleTone: TagStyleTone,
   emphasis: UiEmphasis
 ): string {
   return TAG_BY_VARIANT[variant][styleTone][emphasis];
 }
 
-const tagVariants = cva(
-  'inline-flex justify-start items-center border border-solid border-x border-y leading-relaxed transition-colors duration-150',
-  {
-    variants: {
-      size: {
-        xxs: 'gap-0.5 rounded-full !px-1.5 !py-px !text-ds-text-meta font-medium [&_svg]:size-[12px]',
-        xs: 'gap-1 rounded-full !px-2 !py-0.5 !text-ds-text-meta font-medium [&_svg]:size-[12px]',
-        sm: 'gap-1 rounded-full !px-2 !py-1 !text-ds-text-meta font-medium [&_svg]:size-[16px]',
-        md: 'gap-1.5 rounded-full !px-2.5 !py-1 !text-ds-text-meta font-medium [&_svg]:size-[16px]',
-        lg: 'gap-2 rounded-full !px-3 !py-1.5 !text-ds-text-meta font-semibold [&_svg]:size-[16px]',
-      },
-    },
-    defaultVariants: {
-      size: 'sm',
-    },
-  }
-);
+const TAG_PILL_SIZE = {
+  xxs: 'gap-0.5 rounded-full !px-1.5 !py-px !text-ds-text-meta font-medium [&_svg]:size-[12px]',
+  xs: 'gap-1 rounded-full !px-2 !py-0.5 !text-ds-text-meta font-medium [&_svg]:size-[12px]',
+  sm: 'gap-1 rounded-full !px-2 !py-1 !text-ds-text-meta font-medium [&_svg]:size-[16px]',
+  md: 'gap-1.5 rounded-full !px-2.5 !py-1 !text-ds-text-meta font-medium [&_svg]:size-[16px]',
+  lg: 'gap-2 rounded-full !px-3 !py-1.5 !text-ds-text-meta font-semibold [&_svg]:size-[16px]',
+} as const;
+
+const TAG_TEXT_SIZE = {
+  xxs: 'gap-1 rounded-none !border-0 !border-x-0 !border-y-0 !p-0 !text-ds-text-meta font-medium [&_svg]:size-[12px]',
+  xs: 'gap-1 rounded-none !border-0 !border-x-0 !border-y-0 !p-0 !text-ds-text-meta font-medium [&_svg]:size-[12px]',
+  sm: 'gap-1 rounded-none !border-0 !border-x-0 !border-y-0 !p-0 !text-ds-text-meta font-medium [&_svg]:size-[16px]',
+  md: 'gap-1 rounded-none !border-0 !border-x-0 !border-y-0 !p-0 !text-ds-text-meta font-medium [&_svg]:size-[16px]',
+  lg: 'gap-1 rounded-none !border-0 !border-x-0 !border-y-0 !p-0 !text-ds-text-meta font-semibold [&_svg]:size-[16px]',
+} as const;
+
+const tagBase =
+  'inline-flex justify-start items-center border border-solid border-x border-y leading-relaxed transition-colors duration-150';
+
+const tagVariants = cva(tagBase, {
+  variants: {
+    size: TAG_PILL_SIZE,
+  },
+  defaultVariants: {
+    size: 'sm',
+  },
+});
 
 type TagSize = NonNullable<VariantProps<typeof tagVariants>['size']>;
 
 interface TagProps extends React.ComponentProps<'div'> {
   asChild?: boolean;
-  /** Chrome pattern: filled, softer fill, outline, or text-only. */
+  /** Chrome pattern: filled, softer fill, outline, ghost, or unpadded text. */
   variant?: TagVariant;
   /** Visual weight within the chosen `variant`. */
   emphasis?: TagEmphasis;
@@ -359,6 +374,10 @@ const Tag = React.forwardRef<HTMLDivElement, TagProps>(
     );
     const styleTone = toStyleTone(tone);
     const chrome = tagChromeClasses(variant, styleTone, emphasis);
+    const geometry =
+      variant === 'text'
+        ? cn(tagBase, TAG_TEXT_SIZE[size ?? 'sm'])
+        : tagVariants({ size });
 
     if (asChild) {
       return (
@@ -367,7 +386,7 @@ const Tag = React.forwardRef<HTMLDivElement, TagProps>(
           data-variant={variant}
           data-tone={tone}
           data-emphasis={emphasis}
-          className={cn(tagVariants({ size }), chrome, className)}
+          className={cn(geometry, chrome, className)}
           style={mergeAliasStyles(tagTokenAliases, style)}
           {...props}
         >
@@ -382,7 +401,7 @@ const Tag = React.forwardRef<HTMLDivElement, TagProps>(
         data-variant={variant}
         data-tone={tone}
         data-emphasis={emphasis}
-        className={cn(tagVariants({ size }), chrome, className)}
+        className={cn(geometry, chrome, className)}
         style={mergeAliasStyles(tagTokenAliases, style)}
         {...props}
       >
