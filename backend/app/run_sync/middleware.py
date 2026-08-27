@@ -28,5 +28,7 @@ async def cloud_sync_configuration_middleware(
         except Exception:
             # Replication freshness is never allowed to break a local Brain API
             # request. The durable outbox will be retried on later traffic.
-            logger.exception("Failed to refresh Run sync configuration")
+            logger.exception(
+                "Failed to refresh background service configuration"
+            )
     return await call_next(request)

@@ -32,6 +32,35 @@ def clear_step_buffers():
     sync_step_module._local_text_buffers.clear()
 
 
+@pytest.mark.parametrize(
+    "server_url",
+    [
+        "http://localhost:3001",
+        "http://127.0.0.1:3001/api/v1",
+        "https://self-host.example.test",
+    ],
+)
+def test_self_hosted_server_does_not_enable_cloud_step_projection(
+    monkeypatch, server_url
+):
+    monkeypatch.setattr(sync_step_module, "env", lambda *_args: "")
+
+    chat = SimpleNamespace(server_url=server_url)
+
+    assert sync_step_module._get_config((chat,)) is None
+
+
+def test_eigent_hosted_server_enables_cloud_step_projection(monkeypatch):
+    monkeypatch.setattr(sync_step_module, "env", lambda *_args: "")
+
+    chat = SimpleNamespace(server_url="https://dev.eigent.ai")
+
+    assert (
+        sync_step_module._get_config((chat,))
+        == "https://dev.eigent.ai/api/v1/chat/steps"
+    )
+
+
 @pytest.mark.asyncio
 async def test_sse_step_is_committed_before_it_is_yielded(monkeypatch):
     order: list[str] = []
@@ -333,6 +362,31 @@ async def test_explicit_step_is_persisted_without_cloud_configuration(
     assert kwargs["run_id"] == "run-1"
     assert kwargs["step"] == "human_reply"
     assert kwargs["data"] == {"reply": "yes"}
+
+
+@pytest.mark.asyncio
+async def test_explicit_step_does_not_project_to_self_hosted_server(
+    monkeypatch,
+):
+    recorder = SimpleNamespace(record_legacy_step=AsyncMock())
+    send = AsyncMock()
+    monkeypatch.setattr(
+        sync_step_module, "get_default_event_recorder", lambda: recorder
+    )
+    monkeypatch.setattr(sync_step_module, "_send", send)
+
+    await sync_step_module.sync_step_event(
+        project_id="project-1",
+        task_id="run-1",
+        run_id="run-1",
+        step="human_reply",
+        data={"reply": "yes"},
+        authorization="Bearer local-token",
+        server_url="http://localhost:3001",
+    )
+
+    recorder.record_legacy_step.assert_awaited_once()
+    send.assert_not_awaited()
 
 
 @pytest.mark.asyncio

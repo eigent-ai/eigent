@@ -32,6 +32,7 @@ import httpx
 from app.component.environment import env
 from app.run_context import get_current_run_context
 from app.run_journal.runtime import get_default_event_recorder
+from app.run_sync.runtime import _uses_eigent_hosted_control_plane
 from app.service.task import get_task_lock_if_exists
 
 logger = logging.getLogger("sync_step")
@@ -70,7 +71,7 @@ def _normalize_server_url(server_url: str | None) -> str:
     return f"{trimmed}/api/v1"
 
 
-def _get_config(args):
+def _get_server_url(args) -> str:
     server_url = (
         getattr(args[0], "server_url", None)
         if args and hasattr(args[0], "server_url")
@@ -80,21 +81,27 @@ def _get_config(args):
     if not server_url:
         server_url = env("SERVER_URL", "")
 
-    server_url = _normalize_server_url(server_url)
+    return str(server_url or "").strip()
 
-    if not server_url:
+
+def _get_config(args):
+    server_url = _get_server_url(args)
+
+    # Local/self-hosted servers already own the full Run history in SQLite.
+    # The legacy step projection exists only for Eigent-operated Cloud APIs.
+    if not _uses_eigent_hosted_control_plane(server_url):
         return None
 
-    return f"{server_url}/chat/steps"
+    return f"{_normalize_server_url(server_url)}/chat/steps"
 
 
 def sync_step(func):
     async def wrapper(*args, **kwargs):
         config = _get_config(args)
 
-        if not config:
+        if not config and not _get_server_url(args):
             _warn_missing_server_url(args)
-        elif config not in _logged_sync_targets:
+        elif config and config not in _logged_sync_targets:
             _logged_sync_targets.add(config)
             logger.info("Cloud step sync enabled: %s", config)
 
@@ -142,9 +149,13 @@ async def sync_step_event(
             error=exc,
         )
 
-    sync_base = _normalize_server_url(server_url or env("SERVER_URL", ""))
-    if not sync_base or not authorization:
+    raw_server_url = str(server_url or env("SERVER_URL", "")).strip()
+    if (
+        not _uses_eigent_hosted_control_plane(raw_server_url)
+        or not authorization
+    ):
         return
+    sync_base = _normalize_server_url(raw_server_url)
 
     payload = {
         "task_id": task_id,
