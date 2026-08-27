@@ -69,7 +69,6 @@ const BRIDGE_CAPABILITIES = {
     'human_reply',
     'stop',
     'skip_task',
-    'add_task',
     'remove_task',
     'supplement',
     'switch_project_view',
@@ -585,22 +584,6 @@ async function executeRemoteCommand(
     }
     case 'stop': {
       await requestBrain(command, token, 'DELETE', `/chat/${projectId}`);
-      break;
-    }
-    case 'add_task': {
-      await requestBrain(
-        command,
-        token,
-        'POST',
-        `/chat/${projectId}/add-task`,
-        {
-          content: command.payload.content || '',
-          project_id: projectId,
-          task_id: command.payload.task_id,
-          additional_info: command.payload.additional_info,
-          insert_position: command.payload.insert_position,
-        }
-      );
       break;
     }
     case 'remove_task': {

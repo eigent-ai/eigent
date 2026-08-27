@@ -261,15 +261,6 @@ class NewAgent(BaseModel):
     custom_model_config: AgentModelConfig | None = None
 
 
-class AddTaskRequest(BaseModel):
-    content: str
-    project_id: str | None = None
-    task_id: str | None = None
-    additional_info: dict | None = None
-    insert_position: int = -1
-    is_independent: bool = False
-
-
 class RemoveTaskRequest(BaseModel):
     task_id: str
 

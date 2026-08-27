@@ -1226,44 +1226,6 @@ class TestChatServiceIntegration:
         assert "Script created successfully" in context
 
     @pytest.mark.asyncio
-    async def test_step_solve_new_task_state_context_collection(
-        self, sample_chat_data, mock_request, temp_dir
-    ):
-        """Test step_solve correctly collects context in new_task_state action."""
-        Chat(**sample_chat_data)
-        working_dir = temp_dir / "project"
-        working_dir.mkdir()
-
-        # Create files that should be included in context
-        (working_dir / "main.py").write_text("print('main')")
-        (working_dir / "config.json").write_text('{"version": "1.0"}')
-
-        # Mock file_save_path to return our temp directory
-        with patch.object(
-            Chat, "file_save_path", return_value=str(working_dir)
-        ):
-            # Test collect_previous_task_context directly with the scenario
-            result = collect_previous_task_context(
-                working_directory=str(working_dir),
-                previous_task_content="Create project structure",
-                previous_task_result="Project files created successfully",
-                previous_summary="Project Setup Task",
-            )
-
-            # Verify all expected elements are present
-            assert "=== CONTEXT FROM PREVIOUS TASK ===" in result
-            assert "Previous Task:" in result
-            assert "Create project structure" in result
-            assert "Previous Task Summary:" in result
-            assert "Project Setup Task" in result
-            assert "Previous Task Result:" in result
-            assert "Project files created successfully" in result
-            assert "Generated Files from Previous Task:" in result
-            assert "main.py" in result
-            assert "config.json" in result
-            assert "=== END OF PREVIOUS TASK CONTEXT ===" in result
-
-    @pytest.mark.asyncio
     async def test_step_solve_end_action_context_collection(
         self, sample_chat_data, mock_request, temp_dir
     ):
