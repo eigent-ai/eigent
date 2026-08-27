@@ -14,6 +14,7 @@
 
 import { proxyFetchGet } from '@/api/http';
 import { createHost } from '@/host/createHost';
+import { resolveCloudModelAuth } from '@/lib/cloudModelAuth';
 import { getAuthStore, useAuthStore } from '@/store/authStore';
 import { getCloudModelStore } from '@/store/cloudModelStore';
 import { useCallback, useEffect, useState } from 'react';
@@ -67,8 +68,8 @@ export function useModelConfigCheck(): {
         setHasModelConfigured(Boolean(resolvedCloudModel));
 
         try {
-          const res = await proxyFetchGet('/api/v1/user/key');
-          setCloudUsageLimitReached(hasApiCode(res, API_CODE_TRIAL_LIMIT));
+          await resolveCloudModelAuth(token);
+          setCloudUsageLimitReached(false);
         } catch (err: any) {
           if (
             hasApiCode(err?.response?.data, API_CODE_TRIAL_LIMIT) ||
