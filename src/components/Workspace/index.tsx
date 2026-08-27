@@ -164,6 +164,7 @@ export default function Workspace({
       }
 
       const projectStore = useProjectRuntimeStore.getState();
+      const composerThinkingEffort = projectStore.getComposerThinkingEffort();
       const syncedProject = await createSyncedProjectInSpace({
         projectStore,
         spaceId: activeSpaceId,
@@ -174,6 +175,9 @@ export default function Workspace({
           : 'artifact-only',
         metadata: {
           createdFrom: 'workspace_direct_chat',
+          ...(composerThinkingEffort !== undefined
+            ? { thinkingEffort: composerThinkingEffort }
+            : {}),
         },
       });
       useSpaceStore.getState().setActiveSpace(syncedProject.spaceId);
