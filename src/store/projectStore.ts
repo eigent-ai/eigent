@@ -248,8 +248,8 @@ interface ProjectMetadata {
   historyDisplayName?: string;
   /** Per-Project model pin; reused by startTask for follow-up runs. */
   modelSelection?: ProjectModelSelection;
-  /** Requested effort for new Runs; an active Attempt remains immutable. */
-  thinkingEffort?: ThinkingEffortType;
+  /** Requested effort for new Runs; null clears a persisted override. */
+  thinkingEffort?: ThinkingEffortType | null;
   serverSynced?: boolean;
   autoCreatedPlaceholder?: boolean;
   remoteHistoryHydrationPending?: boolean;
@@ -363,6 +363,22 @@ const upsertSpaceProjectMetaFromProject = (project: Project) => {
   }
 };
 
+interface ThinkingEffortPersistenceState {
+  confirmedEffort: ThinkingEffortType | null;
+  confirmedServerUpdatedAt?: number;
+  optimisticEffort: ThinkingEffortType | null;
+  latestRevision: number;
+  pendingCount: number;
+  removed: boolean;
+  tail: Promise<void>;
+}
+
+/** Serializes per-Project effort writes so older PATCHes cannot win a race. */
+const thinkingEffortPersistenceByProject = new Map<
+  string,
+  ThinkingEffortPersistenceState
+>();
+
 interface CreateProjectOptions {
   spaceId?: string;
   mode?: ProjectMode | null;
@@ -396,6 +412,12 @@ interface ProjectStore {
    * but must never be mistaken for loaded history.
    */
   historyLoadIncompleteProjectIds: Record<string, true>;
+  /**
+   * Optional thinking-effort override selected on Workspace / New session
+   * before a Project exists. Undefined preserves the configured Bundle
+   * default when the first task starts.
+   */
+  composerThinkingEffort: ThinkingEffortType | undefined;
   /**
    * Projects whose IDB cache was just detected stale during this session.
    * The in-memory hydrated state keeps rendering (so the current view is
@@ -567,12 +589,14 @@ interface ProjectStore {
   getProjectModel: (projectId: string | null) => ProjectModelSelection | null;
   setProjectThinkingEffort: (
     projectId: string,
-    effort: ThinkingEffortType
+    effort: ThinkingEffortType | undefined
   ) => void;
   getProjectThinkingEffort: (projectId: string | null) => ThinkingEffortType;
   getProjectThinkingEffortOverride: (
     projectId: string | null
   ) => ThinkingEffortType | undefined;
+  setComposerThinkingEffort: (effort: ThinkingEffortType | undefined) => void;
+  getComposerThinkingEffort: () => ThinkingEffortType | undefined;
 }
 
 // Helper function to check if a project is empty/unused
@@ -644,6 +668,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
   historyLoadingProjectIds: {},
   historyLoadIncompleteProjectIds: {},
   staleProjectIds: new Set<string>(),
+  composerThinkingEffort: undefined,
 
   setProjectNavLead: (projectId, lead) =>
     set((state) => ({
@@ -765,6 +790,19 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       },
     };
 
+    const effortPersistence =
+      thinkingEffortPersistenceByProject.get(targetProjectId);
+    if (effortPersistence?.removed) {
+      // History reloads remove and recreate the runtime with the same id. Keep
+      // the existing write queue alive, including its last server-confirmed
+      // rollback value, and seed the new shell with the pending local choice.
+      effortPersistence.removed = false;
+      newProject.metadata = {
+        ...newProject.metadata,
+        thinkingEffort: effortPersistence.optimisticEffort,
+      };
+    }
+
     console.log('[store] Creating a new project');
     // Evict stale runtime state of the outgoing active project before we
     // overwrite activeProjectId — `setActiveProject` is bypassed here so
@@ -885,14 +923,64 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 
   upsertProjectsFromServer: (serverProjects) => {
     if (serverProjects.length === 0) return;
+    const protectedEffortProjectIds = new Set<string>();
+    const reconciledServerProjects = serverProjects.map((serverProject) => {
+      const persistence = thinkingEffortPersistenceByProject.get(
+        serverProject.id
+      );
+      if (!persistence) return serverProject;
+
+      // A server refresh can restore a runtime removed during history
+      // transitions. Resume its existing queue without replacing the last
+      // confirmed rollback value with optimistic shell metadata.
+      persistence.removed = false;
+
+      const rawServerEffort = serverProject.metadata?.thinkingEffort;
+      const serverEffort =
+        rawServerEffort == null
+          ? null
+          : normalizeThinkingEffort(rawServerEffort);
+      const parsedServerUpdatedAt = serverProject.updated_at
+        ? timestampFromServer(serverProject.updated_at, Number.NaN)
+        : undefined;
+      const serverUpdatedAt = Number.isFinite(parsedServerUpdatedAt)
+        ? parsedServerUpdatedAt
+        : undefined;
+      const hydrationIsStale =
+        persistence.confirmedServerUpdatedAt !== undefined &&
+        (serverUpdatedAt === undefined ||
+          serverUpdatedAt < persistence.confirmedServerUpdatedAt);
+
+      if (!hydrationIsStale) {
+        persistence.confirmedEffort = serverEffort;
+        if (serverUpdatedAt !== undefined) {
+          persistence.confirmedServerUpdatedAt = serverUpdatedAt;
+        }
+      }
+
+      if (persistence.pendingCount === 0 && !hydrationIsStale) {
+        persistence.optimisticEffort = serverEffort;
+        thinkingEffortPersistenceByProject.delete(serverProject.id);
+        return serverProject;
+      }
+
+      // Preserve the latest local choice while its PATCH is pending, and
+      // reject hydration snapshots older than an acknowledged PATCH.
+      protectedEffortProjectIds.add(serverProject.id);
+      const metadata = {
+        ...(serverProject.metadata ?? {}),
+        thinkingEffort: persistence.optimisticEffort,
+      };
+      return { ...serverProject, metadata };
+    });
     useSpaceStore
       .getState()
-      .upsertProjectMetas(serverProjects.map(projectMetaFromServer));
+      .upsertProjectMetas(reconciledServerProjects.map(projectMetaFromServer));
 
     set((state) => {
       const nextProjects = { ...state.projects };
 
-      for (const serverProject of serverProjects) {
+      for (const serverProject of reconciledServerProjects) {
         const existing = nextProjects[serverProject.id];
         const createdAt = timestampFromServer(serverProject.created_at);
         const updatedAt = timestampFromServer(
@@ -952,6 +1040,13 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         projects: nextProjects,
       };
     });
+
+    for (const projectId of protectedEffortProjectIds) {
+      const project = get().projects[projectId];
+      if (project) {
+        upsertSpaceProjectMetaFromProject(project);
+      }
+    }
   },
 
   cleanupAutoCreatedEmptyProjects: () => {
@@ -1299,6 +1394,13 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     }
     usePageTabStore.getState().removeSessionPreviewProject(projectId);
     useSpaceStore.getState().removeProjectMeta(projectId);
+    const effortPersistence = thinkingEffortPersistenceByProject.get(projectId);
+    if (effortPersistence) {
+      effortPersistence.removed = true;
+      if (effortPersistence.pendingCount === 0) {
+        thinkingEffortPersistenceByProject.delete(projectId);
+      }
+    }
   },
 
   updateProject: (
@@ -2681,7 +2783,10 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     );
   },
 
-  setProjectThinkingEffort: (projectId: string, effort: ThinkingEffortType) => {
+  setProjectThinkingEffort: (
+    projectId: string,
+    effort: ThinkingEffortType | undefined
+  ) => {
     const project = get().projects[projectId];
     if (!project) {
       console.warn(
@@ -2689,58 +2794,176 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       );
       return;
     }
-    if (project.metadata?.thinkingEffort === effort) return;
-
-    set((state) => ({
-      projects: {
-        ...state.projects,
-        [projectId]: {
-          ...state.projects[projectId],
-          metadata: {
-            ...state.projects[projectId].metadata,
-            thinkingEffort: effort,
-          },
-          updatedAt: Date.now(),
-        },
-      },
-    }));
-    const updatedProject = get().projects[projectId];
-    if (updatedProject) {
-      upsertSpaceProjectMetaFromProject(updatedProject);
+    const previousEffort = get().getProjectThinkingEffortOverride(projectId);
+    const nextEffort =
+      effort === undefined ? null : normalizeThinkingEffort(effort);
+    if (previousEffort === (nextEffort ?? undefined)) {
+      return;
     }
-    const spaceId =
-      updatedProject?.spaceId ??
+
+    const capturedSpaceId =
+      project.spaceId ??
       useSpaceStore.getState().getProjectMeta(projectId)?.spaceId;
-    if (spaceId) {
-      void proxyUpdateSpaceProject(spaceId, projectId, {
-        metadata: { thinkingEffort: effort },
-      }).catch((error) => {
+    const applyLocalEffort = (localEffort: ThinkingEffortType | null) => {
+      const currentPersistence =
+        thinkingEffortPersistenceByProject.get(projectId);
+      const currentProject = get().projects[projectId];
+      const canReconcile = !currentPersistence?.removed;
+      if (
+        currentProject &&
+        canReconcile &&
+        (!capturedSpaceId || currentProject.spaceId === capturedSpaceId)
+      ) {
+        set((state) => ({
+          projects: {
+            ...state.projects,
+            [projectId]: {
+              ...state.projects[projectId],
+              metadata: {
+                ...state.projects[projectId].metadata,
+                thinkingEffort: localEffort,
+              },
+              updatedAt: Date.now(),
+            },
+          },
+        }));
+        const localProject = get().projects[projectId];
+        if (localProject) {
+          upsertSpaceProjectMetaFromProject(localProject);
+        }
+        return localProject ?? null;
+      }
+
+      const spaceStore = useSpaceStore.getState();
+      const spaceProject = spaceStore.getProjectMeta(projectId);
+      if (
+        canReconcile &&
+        capturedSpaceId &&
+        spaceProject?.spaceId === capturedSpaceId
+      ) {
+        spaceStore.updateProjectMeta(projectId, {
+          metadata: { thinkingEffort: localEffort },
+        });
+      }
+      return null;
+    };
+
+    const observedEffort = previousEffort ?? null;
+    let persistence = thinkingEffortPersistenceByProject.get(projectId);
+    if (persistence?.removed) {
+      // A runtime can also be restored outside createProject. Resume its
+      // existing queue without promoting optimistic shell metadata to the
+      // server-confirmed rollback baseline.
+      persistence.removed = false;
+    } else if (persistence && observedEffort !== persistence.optimisticEffort) {
+      // A server hydration replaced the optimistic value while writes were
+      // pending. Use that hydrated value as the rollback baseline.
+      persistence.confirmedEffort = observedEffort;
+    }
+
+    const updatedProject = applyLocalEffort(nextEffort);
+    const spaceId = updatedProject?.spaceId ?? capturedSpaceId;
+    if (!spaceId) return;
+
+    if (!persistence) {
+      persistence = {
+        confirmedEffort: observedEffort,
+        optimisticEffort: observedEffort,
+        latestRevision: 0,
+        pendingCount: 0,
+        removed: false,
+        tail: Promise.resolve(),
+      };
+      thinkingEffortPersistenceByProject.set(projectId, persistence);
+    }
+    persistence.optimisticEffort = nextEffort;
+    const revision = ++persistence.latestRevision;
+    persistence.pendingCount += 1;
+    const persistSelection = async () => {
+      try {
+        const persistedProject = await proxyUpdateSpaceProject(
+          spaceId,
+          projectId,
+          {
+            metadata: { thinkingEffort: nextEffort },
+          }
+        );
+        if (persistedProject.updated_at) {
+          const confirmedAt = timestampFromServer(
+            persistedProject.updated_at,
+            Number.NaN
+          );
+          if (Number.isFinite(confirmedAt)) {
+            persistence.confirmedServerUpdatedAt = confirmedAt;
+          }
+        }
+        persistence.confirmedEffort = nextEffort;
+        if (revision === persistence.latestRevision) {
+          persistence.optimisticEffort = nextEffort;
+          applyLocalEffort(nextEffort);
+        }
+      } catch (error) {
         console.warn(
           `Failed to persist thinking effort for project ${projectId}:`,
           error
         );
-      });
-    }
+        if (revision === persistence.latestRevision) {
+          const currentEffort =
+            get().getProjectThinkingEffortOverride(projectId) ?? null;
+          if (currentEffort === nextEffort) {
+            persistence.optimisticEffort = persistence.confirmedEffort;
+            applyLocalEffort(persistence.confirmedEffort);
+          } else {
+            persistence.confirmedEffort = currentEffort;
+            persistence.optimisticEffort = currentEffort;
+          }
+        }
+      } finally {
+        persistence.pendingCount -= 1;
+        if (
+          persistence.pendingCount === 0 &&
+          (persistence.removed ||
+            persistence.confirmedServerUpdatedAt === undefined) &&
+          thinkingEffortPersistenceByProject.get(projectId) === persistence
+        ) {
+          thinkingEffortPersistenceByProject.delete(projectId);
+        }
+      }
+    };
+    persistence.tail = persistence.tail.then(
+      persistSelection,
+      persistSelection
+    );
   },
 
   getProjectThinkingEffort: (projectId: string | null) => {
     if (!projectId) return ThinkingEffort.MEDIUM;
     return normalizeThinkingEffort(
-      get().projects[projectId]?.metadata?.thinkingEffort ??
-        useSpaceStore.getState().getProjectMeta(projectId)?.metadata
-          ?.thinkingEffort
+      get().getProjectThinkingEffortOverride(projectId)
     );
   },
 
   getProjectThinkingEffortOverride: (projectId: string | null) => {
     if (!projectId) return undefined;
+    const runtimeEffort = get().projects[projectId]?.metadata?.thinkingEffort;
     const persisted =
-      get().projects[projectId]?.metadata?.thinkingEffort ??
-      useSpaceStore.getState().getProjectMeta(projectId)?.metadata
-        ?.thinkingEffort;
-    return persisted === undefined
-      ? undefined
-      : normalizeThinkingEffort(persisted);
+      runtimeEffort !== undefined
+        ? runtimeEffort
+        : useSpaceStore.getState().getProjectMeta(projectId)?.metadata
+            ?.thinkingEffort;
+    return persisted == null ? undefined : normalizeThinkingEffort(persisted);
+  },
+
+  setComposerThinkingEffort: (effort: ThinkingEffortType | undefined) => {
+    const next =
+      effort === undefined ? undefined : normalizeThinkingEffort(effort);
+    if (get().composerThinkingEffort === next) return;
+    set({ composerThinkingEffort: next });
+  },
+
+  getComposerThinkingEffort: () => {
+    const effort = get().composerThinkingEffort;
+    return effort === undefined ? undefined : normalizeThinkingEffort(effort);
   },
 
   isEmptyProject: (project: Project) => {

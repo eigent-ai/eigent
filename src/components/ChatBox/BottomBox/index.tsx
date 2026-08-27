@@ -67,12 +67,12 @@ interface BottomBoxCommonProps {
 
   usageLimitBanner?: UsageLimitBannerProps | null;
 
-  // BoxFooter (project-setup controls: mode + model); omit sessionMode to hide the row.
+  // BoxFooter (mode, approval, thinking effort, model); omit sessionMode to hide the row.
   sessionMode?: SessionModeType;
   onSessionModeChange?: (mode: SessionModeType) => void;
-  /** Interactive during project setup (workspace); once the project starts the row is read-only. */
+  /** When true, session mode can be switched (Workspace / New session). */
   sessionModeSelectInteractive?: boolean;
-  /** Project whose pinned model the footer model selector reads and writes. */
+  /** Project whose pinned model and thinking effort the footer selectors read and write. */
   modelSelectProjectId?: string | null;
 
   // Loading states

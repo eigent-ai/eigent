@@ -19,6 +19,7 @@ import {
   proxyFetchPost,
   proxyFetchPut,
 } from '@/api/http';
+import { DefaultModelMenuItem } from '@/components/ModelSelection/DefaultModelMenuItem';
 import {
   Accordion,
   AccordionContent,
@@ -36,7 +37,6 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -65,7 +65,6 @@ import { useAuthStore } from '@/store/authStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
 import { Provider } from '@/types';
 import {
-  Check,
   ChevronDown,
   ChevronUp,
   Cloud,
@@ -2652,20 +2651,21 @@ export default function SettingModels() {
                     {t('setting.eigent-cloud')}
                   </span>
                 </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent className="max-h-[300px] w-[200px] overflow-y-auto">
+                <DropdownMenuSubContent className="scrollbar-always-visible max-h-[300px] w-[200px] overflow-y-auto">
                   {cloudModelOptions.map((model) => (
-                    <DropdownMenuItem
+                    <DefaultModelMenuItem
                       key={model.id}
-                      onClick={() =>
+                      configured
+                      selected={
+                        cloudPrefer && effectiveCloudModelId === model.id
+                      }
+                      statusLabel={t('setting.configured')}
+                      onSelect={() =>
                         handleDefaultModelSelect('cloud', model.id)
                       }
-                      className="flex items-center justify-between"
                     >
-                      <span className="text-ds-text-base">{model.name}</span>
-                      {cloudPrefer && effectiveCloudModelId === model.id && (
-                        <Check className="h-4 w-4 text-ds-text-status-completed-strong-default" />
-                      )}
-                    </DropdownMenuItem>
+                      {model.name}
+                    </DefaultModelMenuItem>
                   ))}
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
@@ -2679,7 +2679,7 @@ export default function SettingModels() {
                   {t('setting.custom-model')}
                 </span>
               </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="max-h-[440px] w-[220px] overflow-y-auto">
+              <DropdownMenuSubContent className="scrollbar-always-visible max-h-[440px] w-[220px] overflow-y-auto">
                 {items.map((item, idx) => {
                   const isSubscriptionAuth =
                     item.authMode === 'oauth_subscription';
@@ -2689,12 +2689,18 @@ export default function SettingModels() {
                   const isPreferred = isSubscriptionAuth
                     ? modelType === 'codex_subscription'
                     : form[idx]?.prefer;
-                  const modelImage = getModelImage(item.id);
 
                   return (
-                    <DropdownMenuItem
+                    <DefaultModelMenuItem
                       key={item.id}
-                      onClick={() => {
+                      configured={isConfigured}
+                      selected={isPreferred}
+                      statusLabel={t(
+                        isConfigured
+                          ? 'setting.configured'
+                          : 'setting.not-configured'
+                      )}
+                      onSelect={() => {
                         if (isSubscriptionAuth) {
                           if (isConfigured) {
                             handleCodexSetDefault();
@@ -2705,41 +2711,9 @@ export default function SettingModels() {
                         }
                         handleDefaultModelSelect('custom', item.id);
                       }}
-                      className="flex items-center justify-between"
                     >
-                      <div className="flex items-center gap-2">
-                        {modelImage ? (
-                          <img
-                            src={modelImage}
-                            alt={item.name}
-                            className="h-4 w-4"
-                            style={
-                              needsInvert(item.id)
-                                ? { filter: 'invert(1)' }
-                                : undefined
-                            }
-                          />
-                        ) : (
-                          <Key className="h-4 w-4 text-ds-ink-muted-default" />
-                        )}
-                        <span
-                          className={`text-ds-text-base ${isConfigured ? 'text-ds-ink-default-default' : 'text-ds-ink-muted-default'}`}
-                        >
-                          {item.name}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {!isConfigured && (
-                          <div className="h-2 w-2 rounded-full bg-ds-ink-muted-default opacity-10" />
-                        )}
-                        {isPreferred && (
-                          <Check className="h-4 w-4 text-ds-text-status-completed-strong-default" />
-                        )}
-                        {isConfigured && !isPreferred && (
-                          <div className="h-2 w-2 rounded-full bg-ds-bg-success-strong-default" />
-                        )}
-                      </div>
-                    </DropdownMenuItem>
+                      {item.name}
+                    </DefaultModelMenuItem>
                   );
                 })}
               </DropdownMenuSubContent>
@@ -2753,53 +2727,27 @@ export default function SettingModels() {
                   {t('setting.local-model')}
                 </span>
               </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="w-[200px]">
+              <DropdownMenuSubContent className="scrollbar-always-visible max-h-[300px] w-[200px] overflow-y-auto">
                 {LOCAL_MODEL_OPTIONS.map((model) => {
                   const isConfigured = !!localProviderIds[model.id];
                   const isPreferred = localPrefer && localPlatform === model.id;
-                  const modelImage = getModelImage(`local-${model.id}`);
 
                   return (
-                    <DropdownMenuItem
+                    <DefaultModelMenuItem
                       key={model.id}
-                      onClick={() =>
+                      configured={isConfigured}
+                      selected={isPreferred}
+                      statusLabel={t(
+                        isConfigured
+                          ? 'setting.configured'
+                          : 'setting.not-configured'
+                      )}
+                      onSelect={() =>
                         handleDefaultModelSelect('local', model.id)
                       }
-                      className="flex items-center justify-between"
                     >
-                      <div className="flex items-center gap-2">
-                        {modelImage ? (
-                          <img
-                            src={modelImage}
-                            alt={model.name}
-                            className="h-4 w-4"
-                            style={
-                              needsInvert(`local-${model.id}`)
-                                ? { filter: 'invert(1)' }
-                                : undefined
-                            }
-                          />
-                        ) : (
-                          <Server className="h-4 w-4 text-ds-ink-muted-default" />
-                        )}
-                        <span
-                          className={`text-ds-text-base ${isConfigured ? 'text-ds-ink-default-default' : 'text-ds-ink-muted-default'}`}
-                        >
-                          {model.name}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {!isConfigured && (
-                          <div className="h-2 w-2 rounded-full bg-ds-ink-muted-default opacity-10" />
-                        )}
-                        {isPreferred && (
-                          <Check className="h-4 w-4 text-ds-text-status-completed-strong-default" />
-                        )}
-                        {isConfigured && !isPreferred && (
-                          <div className="h-2 w-2 rounded-full bg-ds-bg-success-strong-default" />
-                        )}
-                      </div>
-                    </DropdownMenuItem>
+                      {model.name}
+                    </DefaultModelMenuItem>
                   );
                 })}
               </DropdownMenuSubContent>

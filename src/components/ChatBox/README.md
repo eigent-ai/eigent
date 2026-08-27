@@ -47,8 +47,7 @@ ChatBox
         └── BoxFooter
             ├── project mode
             ├── approval mode
-            ├── thinking effort
-            └── model selector
+            └── thinking effort + model selector
 ```
 
 ## Event-native components to keep
@@ -79,8 +78,7 @@ ChatBox/
     ├── PickerPanel.tsx
     ├── UsageLimitBanner.tsx
     ├── ApprovalModeSelect.tsx
-    ├── ThinkingEffortSelect.tsx
-    └── ModelSelect.tsx
+    └── ModelAndThinkingEffortSelect.tsx
 ```
 
 ### Event-native data flow

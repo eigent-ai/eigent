@@ -30,6 +30,7 @@ const {
   hasActiveSSEConnectionMock,
   putCachedProjectMock,
   proxyFetchGetMock,
+  proxyUpdateSpaceProjectMock,
   replayMock,
 } = vi.hoisted(() => ({
   deleteCachedProjectMock: vi.fn(),
@@ -38,6 +39,7 @@ const {
   hasActiveSSEConnectionMock: vi.fn(),
   putCachedProjectMock: vi.fn(),
   proxyFetchGetMock: vi.fn(),
+  proxyUpdateSpaceProjectMock: vi.fn().mockResolvedValue({}),
   replayMock: vi.fn(),
 }));
 
@@ -64,7 +66,7 @@ vi.mock('@/service/spaceApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/service/spaceApi')>();
   return {
     ...actual,
-    proxyUpdateSpaceProject: vi.fn().mockResolvedValue({}),
+    proxyUpdateSpaceProject: proxyUpdateSpaceProjectMock,
   };
 });
 
@@ -82,6 +84,16 @@ vi.mock('@/store/chatStore', async (importOriginal) => {
     hasActiveSSEConnection: hasActiveSSEConnectionMock,
   };
 });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
 
 describe('projectStore runtime shape', () => {
   it('uses the cache schema that rejects incomplete message projections', () => {
@@ -105,6 +117,7 @@ describe('projectStore runtime shape', () => {
       historyLoadingProjectIds: {},
       historyLoadIncompleteProjectIds: {},
       staleProjectIds: new Set(),
+      composerThinkingEffort: undefined,
     });
     globalThis.electronAPI = {
       ...globalThis.electronAPI,
@@ -318,7 +331,7 @@ describe('projectStore runtime shape', () => {
     });
   });
 
-  it('persists the requested thinking effort per project', () => {
+  it('persists the requested thinking effort per project', async () => {
     const projectId = useProjectStore
       .getState()
       .createProject('Effort Project', undefined, 'project_effort_test');
@@ -344,6 +357,485 @@ describe('projectStore runtime shape', () => {
       useSpaceStore.getState().getProjectMeta(projectId)?.metadata
         ?.thinkingEffort
     ).toBe(ThinkingEffort.MAX);
+
+    useProjectStore.getState().setProjectThinkingEffort(projectId, undefined);
+
+    expect(
+      useProjectStore.getState().getProjectThinkingEffortOverride(projectId)
+    ).toBeUndefined();
+    expect(
+      useSpaceStore.getState().getProjectMeta(projectId)?.metadata
+        ?.thinkingEffort
+    ).toBeNull();
+    await vi.waitFor(() => {
+      expect(proxyUpdateSpaceProjectMock).toHaveBeenLastCalledWith(
+        'space_test',
+        projectId,
+        { metadata: { thinkingEffort: null } }
+      );
+    });
+
+    // Runtime state is ephemeral; the persisted null sentinel must continue
+    // to mean "inherit the Bundle" after a restart.
+    useProjectStore.setState({ activeProjectId: null, projects: {} });
+    expect(
+      useProjectStore.getState().getProjectThinkingEffortOverride(projectId)
+    ).toBeUndefined();
+  });
+
+  it('serializes effort writes and rolls the latest failure back to the confirmed value', async () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject(
+        'Retry Effort',
+        undefined,
+        'project_effort_retry',
+        undefined,
+        undefined,
+        true,
+        { metadata: { thinkingEffort: ThinkingEffort.HIGH } }
+      );
+    const firstRequest = deferred<never>();
+    const secondRequest = deferred<never>();
+    const thirdRequest = deferred<never>();
+    proxyUpdateSpaceProjectMock
+      .mockImplementationOnce(() => firstRequest.promise)
+      .mockImplementationOnce(() => secondRequest.promise)
+      .mockImplementationOnce(() => thirdRequest.promise);
+
+    useProjectStore.getState().setProjectThinkingEffort(projectId, undefined);
+    useProjectStore
+      .getState()
+      .setProjectThinkingEffort(projectId, ThinkingEffort.MAX);
+    useProjectStore.getState().setProjectThinkingEffort(projectId, undefined);
+
+    await vi.waitFor(() => {
+      expect(proxyUpdateSpaceProjectMock).toHaveBeenCalledTimes(1);
+    });
+    firstRequest.reject(new Error('first offline'));
+    await vi.waitFor(() => {
+      expect(proxyUpdateSpaceProjectMock).toHaveBeenCalledTimes(2);
+    });
+    secondRequest.reject(new Error('second offline'));
+    await vi.waitFor(() => {
+      expect(proxyUpdateSpaceProjectMock).toHaveBeenCalledTimes(3);
+    });
+    thirdRequest.reject(new Error('third offline'));
+
+    await vi.waitFor(() => {
+      expect(
+        useProjectStore.getState().getProjectThinkingEffortOverride(projectId)
+      ).toBe(ThinkingEffort.HIGH);
+    });
+    expect(
+      useSpaceStore.getState().getProjectMeta(projectId)?.metadata
+        ?.thinkingEffort
+    ).toBe(ThinkingEffort.HIGH);
+    expect(
+      proxyUpdateSpaceProjectMock.mock.calls.map((call) => call[2])
+    ).toEqual([
+      { metadata: { thinkingEffort: null } },
+      { metadata: { thinkingEffort: ThinkingEffort.MAX } },
+      { metadata: { thinkingEffort: null } },
+    ]);
+
+    useProjectStore.getState().setProjectThinkingEffort(projectId, undefined);
+
+    await vi.waitFor(() => {
+      expect(proxyUpdateSpaceProjectMock).toHaveBeenCalledTimes(4);
+      expect(
+        useProjectStore.getState().getProjectThinkingEffortOverride(projectId)
+      ).toBeUndefined();
+    });
+  });
+
+  it('preserves the latest effort through server hydration and PATCH success', async () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject(
+        'Hydrated Effort',
+        undefined,
+        'project_effort_hydration_success',
+        undefined,
+        undefined,
+        true,
+        { metadata: { thinkingEffort: ThinkingEffort.HIGH } }
+      );
+    const request = deferred<Record<string, never>>();
+    proxyUpdateSpaceProjectMock.mockImplementationOnce(() => request.promise);
+
+    useProjectStore.getState().setProjectThinkingEffort(projectId, undefined);
+    await vi.waitFor(() => {
+      expect(proxyUpdateSpaceProjectMock).toHaveBeenCalledTimes(1);
+    });
+
+    useProjectStore.getState().upsertProjectsFromServer([
+      {
+        id: projectId,
+        user_id: 'user_test',
+        space_id: 'space_test',
+        name: 'Hydrated Effort',
+        status: 'active',
+        metadata: { thinkingEffort: ThinkingEffort.HIGH },
+      },
+    ]);
+    expect(
+      useProjectStore.getState().getProjectThinkingEffortOverride(projectId)
+    ).toBeUndefined();
+
+    request.resolve({});
+
+    await vi.waitFor(() => {
+      expect(
+        useProjectStore.getState().getProjectThinkingEffortOverride(projectId)
+      ).toBeUndefined();
+      expect(
+        useSpaceStore.getState().getProjectMeta(projectId)?.metadata
+          ?.thinkingEffort
+      ).toBeNull();
+    });
+  });
+
+  it('rejects a hydration snapshot older than an acknowledged effort write', async () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject(
+        'Acknowledged Effort',
+        undefined,
+        'project_effort_acknowledged',
+        undefined,
+        undefined,
+        true,
+        { metadata: { thinkingEffort: ThinkingEffort.HIGH } }
+      );
+    const request = deferred<{ updated_at: string }>();
+    proxyUpdateSpaceProjectMock.mockImplementationOnce(() => request.promise);
+
+    useProjectStore.getState().setProjectThinkingEffort(projectId, undefined);
+    await vi.waitFor(() => {
+      expect(proxyUpdateSpaceProjectMock).toHaveBeenCalledTimes(1);
+    });
+    request.resolve({ updated_at: '2026-08-27T14:00:02.000Z' });
+    await vi.waitFor(() => {
+      expect(
+        useProjectStore.getState().getProjectThinkingEffortOverride(projectId)
+      ).toBeUndefined();
+    });
+
+    useProjectStore.getState().upsertProjectsFromServer([
+      {
+        id: projectId,
+        user_id: 'user_test',
+        space_id: 'space_test',
+        name: 'Acknowledged Effort',
+        status: 'active',
+        metadata: { thinkingEffort: ThinkingEffort.HIGH },
+        updated_at: '2026-08-27T14:00:01.000Z',
+      },
+    ]);
+
+    expect(
+      useProjectStore.getState().getProjectThinkingEffortOverride(projectId)
+    ).toBeUndefined();
+    expect(
+      useSpaceStore.getState().getProjectMeta(projectId)?.metadata
+        ?.thinkingEffort
+    ).toBeNull();
+
+    useProjectStore.getState().upsertProjectsFromServer([
+      {
+        id: projectId,
+        user_id: 'user_test',
+        space_id: 'space_test',
+        name: 'Acknowledged Effort',
+        status: 'active',
+        metadata: { thinkingEffort: null },
+        updated_at: '2026-08-27T14:00:02.000Z',
+      },
+    ]);
+
+    expect(
+      useProjectStore.getState().getProjectThinkingEffortOverride(projectId)
+    ).toBeUndefined();
+  });
+
+  it('uses hydrated effort as the rollback baseline for queued failures', async () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject(
+        'Hydrated Rollback',
+        undefined,
+        'project_effort_hydration_failure',
+        undefined,
+        undefined,
+        true,
+        { metadata: { thinkingEffort: ThinkingEffort.HIGH } }
+      );
+    const firstRequest = deferred<never>();
+    const secondRequest = deferred<never>();
+    proxyUpdateSpaceProjectMock
+      .mockImplementationOnce(() => firstRequest.promise)
+      .mockImplementationOnce(() => secondRequest.promise);
+
+    useProjectStore.getState().setProjectThinkingEffort(projectId, undefined);
+    await vi.waitFor(() => {
+      expect(proxyUpdateSpaceProjectMock).toHaveBeenCalledTimes(1);
+    });
+    useProjectStore.getState().upsertProjectsFromServer([
+      {
+        id: projectId,
+        user_id: 'user_test',
+        space_id: 'space_test',
+        name: 'Hydrated Rollback',
+        status: 'active',
+        metadata: { thinkingEffort: ThinkingEffort.MEDIUM },
+      },
+    ]);
+    useProjectStore
+      .getState()
+      .setProjectThinkingEffort(projectId, ThinkingEffort.MAX);
+
+    firstRequest.reject(new Error('first offline'));
+    await vi.waitFor(() => {
+      expect(proxyUpdateSpaceProjectMock).toHaveBeenCalledTimes(2);
+    });
+    secondRequest.reject(new Error('second offline'));
+
+    await vi.waitFor(() => {
+      expect(
+        useProjectStore.getState().getProjectThinkingEffortOverride(projectId)
+      ).toBe(ThinkingEffort.MEDIUM);
+      expect(
+        useSpaceStore.getState().getProjectMeta(projectId)?.metadata
+          ?.thinkingEffort
+      ).toBe(ThinkingEffort.MEDIUM);
+    });
+  });
+
+  it('rolls a failed effort write back through Space after runtime eviction', async () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject(
+        'Evicted Effort',
+        undefined,
+        'project_effort_evicted',
+        undefined,
+        undefined,
+        true,
+        { metadata: { thinkingEffort: ThinkingEffort.HIGH } }
+      );
+    const request = deferred<never>();
+    proxyUpdateSpaceProjectMock.mockImplementationOnce(() => request.promise);
+
+    useProjectStore.getState().setProjectThinkingEffort(projectId, undefined);
+    await vi.waitFor(() => {
+      expect(proxyUpdateSpaceProjectMock).toHaveBeenCalledTimes(1);
+    });
+    useProjectStore.getState()._evictProjectRuntime(projectId);
+    expect(useProjectStore.getState().projects[projectId]).toBeUndefined();
+    expect(
+      useSpaceStore.getState().getProjectMeta(projectId)?.metadata
+        ?.thinkingEffort
+    ).toBeNull();
+
+    request.reject(new Error('offline'));
+
+    await vi.waitFor(() => {
+      expect(
+        useSpaceStore.getState().getProjectMeta(projectId)?.metadata
+          ?.thinkingEffort
+      ).toBe(ThinkingEffort.HIGH);
+    });
+    useProjectStore.getState().setActiveProject(projectId);
+    expect(
+      useProjectStore.getState().getProjectThinkingEffortOverride(projectId)
+    ).toBe(ThinkingEffort.HIGH);
+  });
+
+  it('reconciles a failed effort write after same-id runtime recreation', async () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject(
+        'Original Effort',
+        undefined,
+        'project_effort_recreated_failure',
+        undefined,
+        undefined,
+        true,
+        { metadata: { thinkingEffort: ThinkingEffort.HIGH } }
+      );
+    const request = deferred<never>();
+    proxyUpdateSpaceProjectMock.mockImplementationOnce(() => request.promise);
+
+    useProjectStore.getState().setProjectThinkingEffort(projectId, undefined);
+    await vi.waitFor(() => {
+      expect(proxyUpdateSpaceProjectMock).toHaveBeenCalledTimes(1);
+    });
+    useProjectStore
+      .getState()
+      .removeProject(projectId, { preserveEventStore: true });
+    useProjectStore
+      .getState()
+      .createProject(
+        'Recreated Effort',
+        undefined,
+        projectId,
+        undefined,
+        undefined,
+        true,
+        { metadata: { thinkingEffort: null } }
+      );
+
+    expect(
+      useProjectStore.getState().getProjectThinkingEffortOverride(projectId)
+    ).toBeUndefined();
+
+    request.reject(new Error('offline'));
+
+    await vi.waitFor(() => {
+      expect(
+        useProjectStore.getState().getProjectThinkingEffortOverride(projectId)
+      ).toBe(ThinkingEffort.HIGH);
+      expect(
+        useSpaceStore.getState().getProjectMeta(projectId)?.metadata
+          ?.thinkingEffort
+      ).toBe(ThinkingEffort.HIGH);
+    });
+  });
+
+  it('reconciles a failed effort write after server hydration restores the runtime', async () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject(
+        'Hydrated Recreation',
+        undefined,
+        'project_effort_hydrated_recreation',
+        undefined,
+        undefined,
+        true,
+        { metadata: { thinkingEffort: ThinkingEffort.HIGH } }
+      );
+    const request = deferred<never>();
+    proxyUpdateSpaceProjectMock.mockImplementationOnce(() => request.promise);
+
+    useProjectStore.getState().setProjectThinkingEffort(projectId, undefined);
+    await vi.waitFor(() => {
+      expect(proxyUpdateSpaceProjectMock).toHaveBeenCalledTimes(1);
+    });
+    useProjectStore
+      .getState()
+      .removeProject(projectId, { preserveEventStore: true });
+    useProjectStore.getState().upsertProjectsFromServer([
+      {
+        id: projectId,
+        user_id: 'user_test',
+        space_id: 'space_test',
+        name: 'Hydrated Recreation',
+        status: 'active',
+        metadata: { thinkingEffort: ThinkingEffort.HIGH },
+      },
+    ]);
+
+    expect(
+      useProjectStore.getState().getProjectThinkingEffortOverride(projectId)
+    ).toBeUndefined();
+
+    request.reject(new Error('offline'));
+
+    await vi.waitFor(() => {
+      expect(
+        useProjectStore.getState().getProjectThinkingEffortOverride(projectId)
+      ).toBe(ThinkingEffort.HIGH);
+      expect(
+        useSpaceStore.getState().getProjectMeta(projectId)?.metadata
+          ?.thinkingEffort
+      ).toBe(ThinkingEffort.HIGH);
+    });
+  });
+
+  it('keeps remove-and-recreate effort writes on one serialized queue', async () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject(
+        'Original Effort',
+        undefined,
+        'project_effort_recreated',
+        undefined,
+        undefined,
+        true,
+        { metadata: { thinkingEffort: ThinkingEffort.HIGH } }
+      );
+    const firstRequest = deferred<Record<string, never>>();
+    const secondRequest = deferred<Record<string, never>>();
+    proxyUpdateSpaceProjectMock
+      .mockImplementationOnce(() => firstRequest.promise)
+      .mockImplementationOnce(() => secondRequest.promise);
+
+    useProjectStore.getState().setProjectThinkingEffort(projectId, undefined);
+    await vi.waitFor(() => {
+      expect(proxyUpdateSpaceProjectMock).toHaveBeenCalledTimes(1);
+    });
+    useProjectStore
+      .getState()
+      .removeProject(projectId, { preserveEventStore: true });
+    useProjectStore
+      .getState()
+      .createProject(
+        'Recreated Effort',
+        undefined,
+        projectId,
+        undefined,
+        undefined,
+        true,
+        { metadata: { thinkingEffort: null } }
+      );
+    useProjectStore
+      .getState()
+      .setProjectThinkingEffort(projectId, ThinkingEffort.MAX);
+    expect(proxyUpdateSpaceProjectMock).toHaveBeenCalledTimes(1);
+
+    firstRequest.reject(new Error('default offline'));
+    await vi.waitFor(() => {
+      expect(proxyUpdateSpaceProjectMock).toHaveBeenCalledTimes(2);
+    });
+    secondRequest.reject(new Error('max offline'));
+
+    await vi.waitFor(() => {
+      expect(
+        useProjectStore.getState().getProjectThinkingEffortOverride(projectId)
+      ).toBe(ThinkingEffort.HIGH);
+      expect(
+        useSpaceStore.getState().getProjectMeta(projectId)?.metadata
+          ?.thinkingEffort
+      ).toBe(ThinkingEffort.HIGH);
+    });
+  });
+
+  it('keeps a composer thinking-effort draft for Workspace and New session', () => {
+    expect(
+      useProjectStore.getState().getComposerThinkingEffort()
+    ).toBeUndefined();
+
+    useProjectStore.getState().setComposerThinkingEffort(ThinkingEffort.MEDIUM);
+
+    expect(useProjectStore.getState().getComposerThinkingEffort()).toBe(
+      ThinkingEffort.MEDIUM
+    );
+
+    useProjectStore.getState().setComposerThinkingEffort(ThinkingEffort.HIGH);
+
+    expect(useProjectStore.getState().getComposerThinkingEffort()).toBe(
+      ThinkingEffort.HIGH
+    );
+    expect(useProjectStore.getState().composerThinkingEffort).toBe(
+      ThinkingEffort.HIGH
+    );
+
+    useProjectStore.getState().setComposerThinkingEffort(undefined);
+
+    expect(
+      useProjectStore.getState().getComposerThinkingEffort()
+    ).toBeUndefined();
   });
 
   it('normalizes persisted legacy thinking effort aliases', () => {
