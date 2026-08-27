@@ -145,7 +145,7 @@ class HttpCommandSyncTransport:
                     configuration,
                     payload={
                         "capabilities": {
-                            "run_event_sync": 1,
+                            "durable_command_control": 1,
                             "command_inbox": 1,
                             "command_result_sync": 1,
                         }

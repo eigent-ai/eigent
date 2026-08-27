@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import httpx
@@ -224,10 +225,12 @@ async def test_device_registration_error_retries_command_lane(tmp_path):
 @pytest.mark.asyncio
 async def test_transport_reregisters_when_authenticated_credential_changes():
     registrations: list[str] = []
+    capabilities: list[dict[str, int]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/devices/register"):
             registrations.append(request.headers["authorization"])
+            capabilities.append(json.loads(request.content)["capabilities"])
             return httpx.Response(200, json={})
         assert request.url.path.endswith("/commands/pending")
         return httpx.Response(200, json={"items": []})
@@ -247,6 +250,18 @@ async def test_transport_reregisters_when_authenticated_credential_changes():
     assert await transport.pull_pending(second, limit=1) == []
 
     assert registrations == ["Bearer token", "Bearer another-account-token"]
+    assert capabilities == [
+        {
+            "durable_command_control": 1,
+            "command_inbox": 1,
+            "command_result_sync": 1,
+        },
+        {
+            "durable_command_control": 1,
+            "command_inbox": 1,
+            "command_result_sync": 1,
+        },
+    ]
     await transport.close()
 
 

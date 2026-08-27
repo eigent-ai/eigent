@@ -73,5 +73,8 @@ nul
 
 backend/benchmark/jobs/
 
+# Local Celery beat scheduler state
+server/celerybeat-schedule*
+
 # TypeScript incremental build info
 *.tsbuildinfo

@@ -44,7 +44,7 @@ def _sync_endpoint(server_url: str | None) -> str:
         return ""
     parsed = urlparse(value)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        logger.warning("Ignoring invalid Run sync SERVER_URL: %s", value)
+        logger.warning("Ignoring invalid SERVER_URL: %s", value)
         return ""
     if value.endswith("/api/v1"):
         base = value
@@ -53,6 +53,14 @@ def _sync_endpoint(server_url: str | None) -> str:
     else:
         base = f"{value}/api/v1"
     return f"{base}/sync/events:ingest"
+
+
+def _uses_eigent_hosted_control_plane(server_url: str | None) -> bool:
+    """Identify Eigent-operated services without exposing a product switch."""
+
+    value = str(server_url or env("SERVER_URL", "")).strip()
+    hostname = (urlparse(value).hostname or "").lower()
+    return hostname == "eigent.ai" or hostname.endswith(".eigent.ai")
 
 
 def configure_default_cloud_sync_worker(
@@ -72,9 +80,27 @@ def configure_default_cloud_sync_worker(
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
-        logger.warning("Run sync configuration requires a running event loop")
+        logger.warning(
+            "Background service configuration requires a running event loop"
+        )
         return False
-    if _default_worker is None:
+    uses_hosted_control_plane = _uses_eigent_hosted_control_plane(server_url)
+    if (
+        _default_worker is not None or _default_command_worker is not None
+    ) and _worker_loop is not loop:
+        logger.error("Refusing to move background workers across event loops")
+        return False
+    if _default_command_worker is None:
+        from app.run_journal.runtime import get_default_run_journal
+
+        journal = get_default_run_journal()
+        _worker_loop = loop
+        _default_command_worker = CommandControlWorker(
+            journal,
+            HttpCommandSyncTransport(),
+        )
+        _default_command_worker.start()
+    if uses_hosted_control_plane and _default_worker is None:
         from app.run_journal.runtime import get_default_run_journal
 
         _default_worker = CloudSyncWorker(
@@ -83,20 +109,13 @@ def configure_default_cloud_sync_worker(
         )
         _worker_loop = loop
         _default_worker.start()
-        _default_command_worker = CommandControlWorker(
-            get_default_run_journal(),
-            HttpCommandSyncTransport(),
-        )
-        _default_command_worker.start()
-    elif _worker_loop is not loop:
-        logger.error("Refusing to move CloudSyncWorker across event loops")
-        return False
     configuration = CloudSyncConfiguration(
         endpoint_url=endpoint,
         authorization=auth,
         desktop_instance_id=instance_id,
     )
-    _default_worker.configure(configuration)
+    if uses_hosted_control_plane and _default_worker is not None:
+        _default_worker.configure(configuration)
     if _default_command_worker is not None:
         _default_command_worker.configure(configuration)
     return True
@@ -105,9 +124,10 @@ def configure_default_cloud_sync_worker(
 def notify_default_cloud_sync_worker() -> None:
     worker = _default_worker
     loop = _worker_loop
-    if worker is None or loop is None or loop.is_closed():
+    if loop is None or loop.is_closed():
         return
-    loop.call_soon_threadsafe(worker.notify)
+    if worker is not None:
+        loop.call_soon_threadsafe(worker.notify)
     if _default_command_worker is not None:
         loop.call_soon_threadsafe(_default_command_worker.notify)
 
