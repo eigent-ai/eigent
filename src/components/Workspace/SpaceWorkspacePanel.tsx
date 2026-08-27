@@ -21,6 +21,7 @@ import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tag } from '@/components/ui/tag';
 import { filterVisibleAgentFiles } from '@/lib/agentFileFilters';
+import { getFilesTabBindingLabel } from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
 import { fetchGroupedHistoryProjects } from '@/service/historyApi';
 import { proxyFetchTriggers } from '@/service/triggerApi';
@@ -43,6 +44,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import {
   buildSevenDayActivity,
   buildThirtyDayActivity,
@@ -50,6 +52,9 @@ import {
   getSpaceAgeInDays,
   getSpaceSummaryVariantIndex,
   hasUserBoundLocalFolder,
+  resolveSpaceFileTargets,
+  SPACE_CONTENT_CATEGORY_ORDER,
+  SPACE_FILE_LISTING_LIMIT,
   type SpaceContentCategory,
 } from './spaceWorkspacePanelData';
 
@@ -63,6 +68,33 @@ type RemoteFileRecord = {
   relative_path?: string;
   isFolder?: boolean;
 };
+
+const TRIGGER_PAGE_SIZE = 100;
+const TRIGGER_PAGE_LIMIT = 10;
+
+/**
+ * The trigger endpoint has no Space filter, so the whole account list is
+ * paged in and filtered here. A single page would silently undercount any
+ * account past `TRIGGER_PAGE_SIZE` automations.
+ */
+async function fetchAllTriggers(): Promise<Trigger[]> {
+  const collected: Trigger[] = [];
+  for (let page = 1; page <= TRIGGER_PAGE_LIMIT; page += 1) {
+    const response = await proxyFetchTriggers(
+      undefined,
+      undefined,
+      page,
+      TRIGGER_PAGE_SIZE
+    );
+    const items = (response?.items ?? response ?? []) as Trigger[];
+    if (!Array.isArray(items) || items.length === 0) break;
+    collected.push(...items);
+    const total = Number(response?.total);
+    if (Number.isFinite(total) && collected.length >= total) break;
+    if (items.length < TRIGGER_PAGE_SIZE) break;
+  }
+  return collected;
+}
 
 interface SpaceWorkspacePanelProps {
   space: Space;
@@ -245,15 +277,28 @@ function ActivityLineGraph({
     activePointIndex == null ? null : coordinates[activePointIndex];
   const activeDay =
     activePointIndex == null ? null : activity[activePointIndex];
+  const totalCount = activity.reduce((total, day) => total + day.count, 0);
+  // One labelled region instead of one tab stop per point: a 30-day range
+  // would otherwise put 30 stops in the rail for a decorative sparkline.
+  const chartLabel = t('layout.workspace-overview-activity-chart', {
+    defaultValue: '{{count}} Tasks over {{dayCount}} days',
+    count: totalCount,
+    dayCount: activity.length,
+  });
 
   return (
     <div className="min-w-0">
-      <div className="relative h-[104px]">
+      <div
+        className="relative h-[104px]"
+        role="img"
+        aria-label={chartLabel}
+        onPointerLeave={() => setActivePointIndex(null)}
+      >
         <svg
           viewBox={`0 0 ${width} ${height}`}
           preserveAspectRatio="none"
+          aria-hidden
           className="h-full w-full overflow-visible text-ds-accent-default-default"
-          onPointerLeave={() => setActivePointIndex(null)}
         >
           <line
             x1={inset}
@@ -262,6 +307,7 @@ function ActivityLineGraph({
             y2={height - inset}
             className="stroke-ds-border-neutral-default-default"
             strokeWidth="1"
+            vectorEffect="non-scaling-stroke"
           />
           <path d={areaPath} fill="currentColor" opacity="0.08" />
           <path
@@ -273,32 +319,31 @@ function ActivityLineGraph({
             strokeLinejoin="round"
             vectorEffect="non-scaling-stroke"
           />
-          {activity.map((day, index) => {
-            const point = coordinates[index];
-            const active = activePointIndex === index;
-            return (
-              <circle
-                key={day.key}
-                tabIndex={0}
-                role="img"
-                aria-label={t('layout.workspace-overview-activity-point', {
-                  defaultValue: '{{count}} Tasks',
-                  count: day.count,
-                })}
-                cx={point.x}
-                cy={point.y}
-                r={active ? 4 : 2.5}
-                fill="currentColor"
-                className="cursor-default outline-none focus-visible:stroke-ds-ring-focus"
-                strokeWidth="2"
-                vectorEffect="non-scaling-stroke"
-                onPointerEnter={() => setActivePointIndex(index)}
-                onFocus={() => setActivePointIndex(index)}
-                onBlur={() => setActivePointIndex(null)}
-              />
-            );
-          })}
         </svg>
+        {/*
+         * Points live in the DOM rather than the SVG: `preserveAspectRatio`
+         * is `none`, so viewBox circles stretch into ellipses at any rail
+         * width other than 300px.
+         */}
+        {activity.map((day, index) => {
+          const point = coordinates[index];
+          const active = activePointIndex === index;
+          return (
+            <span
+              key={day.key}
+              aria-hidden
+              className={cn(
+                'pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 rounded-full bg-ds-accent-default-default transition-[width,height] duration-[120ms]',
+                active ? 'size-2' : 'size-[5px]'
+              )}
+              style={{
+                left: `${(point.x / width) * 100}%`,
+                top: `${(point.y / height) * 100}%`,
+              }}
+              onPointerEnter={() => setActivePointIndex(index)}
+            />
+          );
+        })}
         {activePoint && activeDay ? (
           <div
             role="tooltip"
@@ -324,6 +369,17 @@ function ActivityLineGraph({
           ) : null
         )}
       </div>
+      <ul className="sr-only">
+        {activity.map((day) => (
+          <li key={day.key}>
+            {t('layout.workspace-overview-activity-point', {
+              defaultValue: '{{count}} Tasks',
+              count: day.count,
+            })}
+            {` — ${day.shortLabel}`}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -347,6 +403,9 @@ export function SpaceWorkspacePanel({
   );
   const dismissWorkspaceGuideTab = useAuthStore(
     (state) => state.dismissWorkspaceGuideTab
+  );
+  const restoreWorkspaceGuideTabs = useAuthStore(
+    (state) => state.restoreWorkspaceGuideTabs
   );
   const projectsBySpaceId = useSpaceStore((state) => state.projectsBySpaceId);
   const sessionMetas = useMemo(
@@ -375,7 +434,22 @@ export function SpaceWorkspacePanel({
   const [spaceTriggers, setSpaceTriggers] = useState<Trigger[]>([]);
   const [triggerState, setTriggerState] = useState<LoadState>('idle');
   const [spaceFiles, setSpaceFiles] = useState<RemoteFileRecord[]>([]);
+  const [filesTruncated, setFilesTruncated] = useState(false);
   const [activityRange, setActivityRange] = useState<7 | 30>(7);
+
+  // Space-identifying primitives, so a new Space object from a server sync
+  // does not re-issue every `/files` request on its own.
+  const spaceId = space.id;
+  const spaceRootPath = space.rootPath ?? null;
+  const spaceSourceType = space.sourceType;
+  const spaceBindingSource = space.metadata?.bindingSource;
+  const spaceLocalWorkspaceSource = space.metadata?.localWorkspaceSource;
+
+  // A 30-day range carried into a Space with two days of history reads as a
+  // flat line; every Space starts on its own default.
+  useEffect(() => {
+    setActivityRange(7);
+  }, [spaceId]);
 
   useEffect(() => {
     if (!hasOverviewSource) return;
@@ -413,10 +487,7 @@ export function SpaceWorkspacePanel({
     };
   }, [hasOverviewSource, space.id]);
 
-  const sessionIds = useMemo(
-    () => new Set(sessionMetas.map((session) => session.id)),
-    [sessionMetas]
-  );
+  const projectIdsKey = sessionMetas.map((session) => session.id).join(',');
 
   useEffect(() => {
     if (!hasOverviewSource) {
@@ -426,10 +497,13 @@ export function SpaceWorkspacePanel({
     }
     let cancelled = false;
     setTriggerState('loading');
-    void proxyFetchTriggers(undefined, undefined, 1, 100)
-      .then((response) => {
+    // `projectIdsKey` rather than a Set: `projectsBySpaceId` gets a fresh
+    // identity on every project-meta write, and depending on a derived Set
+    // would refetch the account-wide trigger list on each of them.
+    const sessionIds = new Set(projectIdsKey.split(',').filter(Boolean));
+    void fetchAllTriggers()
+      .then((triggers) => {
         if (cancelled) return;
-        const triggers = (response?.items ?? response ?? []) as Trigger[];
         setSpaceTriggers(
           triggers.filter(
             (trigger) =>
@@ -451,62 +525,104 @@ export function SpaceWorkspacePanel({
     return () => {
       cancelled = true;
     };
-  }, [hasOverviewSource, sessionIds, space.id]);
+  }, [hasOverviewSource, projectIdsKey, space.id]);
 
-  const projectIdsKey = sessionMetas.map((session) => session.id).join(',');
   useEffect(() => {
     if (!hasOverviewSource || !email) {
       setSpaceFiles([]);
+      setFilesTruncated(false);
+      return;
+    }
+    const attempts = resolveSpaceFileTargets(
+      {
+        id: spaceId,
+        rootPath: spaceRootPath,
+        sourceType: spaceSourceType,
+        metadata: {
+          bindingSource: spaceBindingSource,
+          localWorkspaceSource: spaceLocalWorkspaceSource,
+        },
+      },
+      projectIdsKey.split(',').filter(Boolean)
+    );
+    if (attempts.length === 0) {
+      setSpaceFiles([]);
+      setFilesTruncated(false);
       return;
     }
     const controller = new AbortController();
     let cancelled = false;
-    const targetIds = space.rootPath
-      ? [space.id]
-      : projectIdsKey.split(',').filter(Boolean);
-    if (targetIds.length === 0) {
-      setSpaceFiles([]);
-      return;
-    }
 
-    void Promise.all(
-      targetIds.map(async (projectId) => {
-        const response = await fetchGet(
-          '/files',
-          {
-            project_id: projectId,
-            email,
-            space_id: space.id,
-            ...(userId != null ? { user_id: String(userId) } : {}),
-          },
-          undefined,
-          { signal: controller.signal }
+    const listFiles = async (projectId: string) => {
+      const response = await fetchGet(
+        '/files',
+        {
+          project_id: projectId,
+          email,
+          space_id: spaceId,
+          ...(userId != null ? { user_id: String(userId) } : {}),
+        },
+        undefined,
+        { signal: controller.signal }
+      );
+      if (!Array.isArray(response)) return [];
+      return response.map((item: RemoteFileRecord) => ({
+        ...item,
+        filename: item.filename || item.name || '',
+        // `filterVisibleAgentFiles` reads `name`; Brain only returns
+        // `filename`, so mirror it or runtime entries slip through.
+        name: item.filename || item.name || '',
+        projectId,
+      }));
+    };
+
+    const run = async () => {
+      for (const attempt of attempts) {
+        // Partial results beat none: one unreachable Project should not blank
+        // out the file breakdown for every other Project in the Space.
+        const settled = await Promise.allSettled(attempt.ids.map(listFiles));
+        if (cancelled || controller.signal.aborted) return;
+        const lists: RemoteFileRecord[][] = [];
+        settled.forEach((result) => {
+          if (result.status === 'fulfilled') {
+            lists.push(result.value);
+            return;
+          }
+          console.warn(
+            '[SpaceWorkspacePanel] Failed to load files:',
+            result.reason
+          );
+        });
+        const truncated = lists.some(
+          (list) => list.length >= SPACE_FILE_LISTING_LIMIT
         );
-        if (!Array.isArray(response)) return [];
-        return response.map((item: RemoteFileRecord) => ({
-          ...item,
-          filename: item.filename || item.name || '',
-          projectId,
-        }));
-      })
-    )
-      .then((lists) => {
-        if (cancelled) return;
         const uniqueFiles = new Map<string, RemoteFileRecord>();
         filterVisibleAgentFiles(lists.flat()).forEach((file) => {
           const name = file.filename || file.name || '';
-          const key = `${file.projectId ?? ''}:${
-            file.relativePath || file.relative_path || name
-          }`;
+          const relativePath = file.relativePath || file.relative_path || name;
+          // A Space-scoped listing resolves to a single workspace root, so the
+          // path alone identifies a file. Only the per-Project fan-out reads
+          // from distinct roots that may repeat a relative path.
+          const key =
+            attempt.scope === 'space-root'
+              ? relativePath
+              : `${file.projectId ?? ''}:${relativePath}`;
           if (name && key) uniqueFiles.set(key, file);
         });
+        if (uniqueFiles.size === 0 && attempt !== attempts.at(-1)) {
+          // A Space carrying a rootPath synced from another machine can be
+          // unbound in this Brain; fall through to the per-Project roots.
+          continue;
+        }
         setSpaceFiles([...uniqueFiles.values()]);
-      })
-      .catch((error) => {
-        if (cancelled || controller.signal.aborted) return;
-        console.warn('[SpaceWorkspacePanel] Failed to load files:', error);
-        setSpaceFiles([]);
-      });
+        setFilesTruncated(truncated);
+        return;
+      }
+      setSpaceFiles([]);
+      setFilesTruncated(false);
+    };
+
+    void run();
     return () => {
       cancelled = true;
       controller.abort();
@@ -515,8 +631,11 @@ export function SpaceWorkspacePanel({
     email,
     hasOverviewSource,
     projectIdsKey,
-    space.id,
-    space.rootPath,
+    spaceBindingSource,
+    spaceId,
+    spaceLocalWorkspaceSource,
+    spaceRootPath,
+    spaceSourceType,
     userId,
   ]);
 
@@ -547,13 +666,19 @@ export function SpaceWorkspacePanel({
       const category = categorizeSpaceFile(name);
       counts.set(category, (counts.get(category) ?? 0) + 1);
     });
-    return [...counts.entries()].filter(([, count]) => count > 0);
+    // Fixed order, not Map insertion order: the latter follows whichever file
+    // type the listing happened to return first, so segments would reshuffle
+    // between refetches of the same Space.
+    return SPACE_CONTENT_CATEGORY_ORDER.map(
+      (category) => [category, counts.get(category) ?? 0] as const
+    ).filter(([, count]) => count > 0);
   }, [spaceFiles]);
   const contentFileCount = contentCounts.reduce(
     (total, [, count]) => total + count,
     0
   );
   const showContents = contentCounts.length > 0;
+  const bindingLabel = getFilesTabBindingLabel(space, t);
   const showActivity = historyState === 'ready' && thirtyDayActivityCount > 0;
   const summaryReady =
     (historyState === 'ready' || historyState === 'error') &&
@@ -618,6 +743,28 @@ export function SpaceWorkspacePanel({
       onClick: onExploreUseCases,
     },
   ];
+  // Dismissal is permanent and applies to every Space, so a stray click on the
+  // hover-revealed close button needs a way back.
+  const handleDismissGuideTab = (tabId: WorkspaceGuideTabId) => {
+    dismissWorkspaceGuideTab(tabId);
+    const toastId = toast(
+      t('layout.workspace-onboarding-dismissed', {
+        defaultValue: 'Shortcut hidden',
+      }),
+      {
+        action: {
+          label: t('layout.workspace-onboarding-dismiss-undo', {
+            defaultValue: 'Undo',
+          }),
+          onClick: () => {
+            restoreWorkspaceGuideTabs([tabId]);
+            toast.dismiss(toastId);
+          },
+        },
+      }
+    );
+  };
+
   const dismissedGuideTabs = new Set(dismissedWorkspaceGuideTabs);
   const visibleGuideTabs = guideTabs
     .filter((tab) => !dismissedGuideTabs.has(tab.id))
@@ -643,7 +790,7 @@ export function SpaceWorkspacePanel({
       {visibleGuideTabs.length > 0 ? (
         <WorkspaceGuideTabs
           tabs={visibleGuideTabs}
-          onDismiss={dismissWorkspaceGuideTab}
+          onDismiss={handleDismissGuideTab}
         />
       ) : null}
 
@@ -718,17 +865,34 @@ export function SpaceWorkspacePanel({
           defaultValue: 'Files',
         })}
         end={
-          <Button
-            type="button"
-            size="xs"
-            variant="secondary"
-            disabled={!canOpenFolder}
-            onClick={onOpenFolder}
-          >
-            {t('layout.workspace-overview-open-folder', {
-              defaultValue: 'Open folder',
-            })}
-          </Button>
+          <div className="flex shrink-0 items-center gap-ds-8">
+            {/*
+             * Brain resolves a bound Space to one workspace root and an
+             * unbound one to per-Project roots, so say which the counts below
+             * came from.
+             */}
+            {bindingLabel ? (
+              <Tag
+                size="xs"
+                variant="secondary"
+                tone="neutral"
+                title={bindingLabel.tooltip}
+              >
+                {bindingLabel.label}
+              </Tag>
+            ) : null}
+            <Button
+              type="button"
+              size="xs"
+              variant="secondary"
+              disabled={!canOpenFolder}
+              onClick={onOpenFolder}
+            >
+              {t('layout.workspace-overview-open-folder', {
+                defaultValue: 'Open folder',
+              })}
+            </Button>
+          </div>
         }
       >
         {showContents ? (
@@ -746,10 +910,15 @@ export function SpaceWorkspacePanel({
                 role="meta"
                 className="shrink-0 text-ds-ink-muted-default"
               >
-                {t('layout.workspace-overview-file-count', {
-                  defaultValue: '{{count}} files',
-                  count: contentFileCount,
-                })}
+                {filesTruncated
+                  ? t('layout.workspace-overview-file-count-capped', {
+                      defaultValue: '{{count}}+ files',
+                      count: contentFileCount,
+                    })
+                  : t('layout.workspace-overview-file-count', {
+                      defaultValue: '{{count}} files',
+                      count: contentFileCount,
+                    })}
               </DsText>
             </div>
             <div

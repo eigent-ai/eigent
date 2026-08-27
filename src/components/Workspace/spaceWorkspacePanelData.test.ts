@@ -21,6 +21,7 @@ import {
   getSpaceAgeInDays,
   getSpaceSummaryVariantIndex,
   hasUserBoundLocalFolder,
+  resolveSpaceFileTargets,
 } from './spaceWorkspacePanelData';
 
 const makeSpace = (overrides: Partial<Space> = {}): Space => ({
@@ -103,5 +104,69 @@ describe('Space Workspace panel summaries', () => {
 
     expect(activity).toHaveLength(30);
     expect(activity.reduce((total, day) => total + day.count, 0)).toBe(2);
+  });
+});
+
+describe('Space file listing targets', () => {
+  it('lists a folder-bound Space once by Space id', () => {
+    const space = makeSpace({
+      sourceType: 'folder',
+      rootPath: '/Users/me/project',
+      metadata: { bindingSource: 'space_local_brain' },
+    });
+
+    expect(resolveSpaceFileTargets(space, ['p1', 'p2'])).toEqual([
+      { scope: 'space-root', ids: ['space-1'] },
+      { scope: 'per-project', ids: ['p1', 'p2'] },
+    ]);
+  });
+
+  it('scopes a Brain-bound Space by Space id even without a local rootPath', () => {
+    // Brain resolves `space_id` to the same bound folder for every
+    // `project_id`, so a per-Project fan-out would count each file twice.
+    const space = makeSpace({
+      sourceType: 'blank',
+      rootPath: null,
+      metadata: { bindingSource: 'space_local_brain' },
+    });
+
+    expect(resolveSpaceFileTargets(space, ['p1', 'p2'])[0]).toEqual({
+      scope: 'space-root',
+      ids: ['space-1'],
+    });
+  });
+
+  it('scopes the generated scratch workspace by Space id', () => {
+    const space = makeSpace({
+      rootPath: '/tmp/eigent/space-1',
+      metadata: { localWorkspaceSource: 'scratch_space' },
+    });
+
+    expect(resolveSpaceFileTargets(space, ['p1'])[0]).toEqual({
+      scope: 'space-root',
+      ids: ['space-1'],
+    });
+  });
+
+  it('fans out per Project for an unbound remote Space', () => {
+    const space = makeSpace({ sourceType: 'blank', rootPath: null });
+
+    expect(resolveSpaceFileTargets(space, ['p1', 'p2'])).toEqual([
+      { scope: 'per-project', ids: ['p1', 'p2'] },
+    ]);
+  });
+
+  it('has nothing to list for an unbound Space with no Projects', () => {
+    const space = makeSpace({ sourceType: 'blank', rootPath: null });
+
+    expect(resolveSpaceFileTargets(space, [])).toEqual([]);
+  });
+
+  it('still offers the Space root when a bound Space has no Projects', () => {
+    const space = makeSpace({ sourceType: 'folder', rootPath: '/tmp/x' });
+
+    expect(resolveSpaceFileTargets(space, [])).toEqual([
+      { scope: 'space-root', ids: ['space-1'] },
+    ]);
   });
 });

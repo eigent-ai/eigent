@@ -15,11 +15,15 @@
 export type WorkspaceGuideAudience = 'new' | 'existing';
 export type WorkspaceGuideTabId = 'primary' | 'connect-tools' | 'use-cases';
 
-const WORKSPACE_GUIDE_TAB_IDS = new Set<WorkspaceGuideTabId>([
+export const WORKSPACE_GUIDE_TAB_ORDER: WorkspaceGuideTabId[] = [
   'primary',
   'connect-tools',
   'use-cases',
-]);
+];
+
+const WORKSPACE_GUIDE_TAB_IDS = new Set<WorkspaceGuideTabId>(
+  WORKSPACE_GUIDE_TAB_ORDER
+);
 
 export function resolveWorkspaceGuideAudience(state: {
   workspaceGuideAudience?: unknown;

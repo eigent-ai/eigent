@@ -18,13 +18,84 @@ import type { HistoryTask } from '@/types/history';
 export type SpaceContentCategory =
   'Documents' | 'Code' | 'Data' | 'Media' | 'Other';
 
-export function hasUserBoundLocalFolder(space: Space | null | undefined) {
+/** Stable render order so the stacked bar and its legend never reshuffle. */
+export const SPACE_CONTENT_CATEGORY_ORDER: SpaceContentCategory[] = [
+  'Documents',
+  'Code',
+  'Data',
+  'Media',
+  'Other',
+];
+
+/**
+ * Brain caps a single `/files` listing at 500 entries
+ * (`list_files(max_entries=500)`), so a response at the cap means "at least
+ * this many" rather than an exact total.
+ */
+export const SPACE_FILE_LISTING_LIMIT = 500;
+
+/**
+ * Minimal Space shape the file-root helpers read, so callers can pass the
+ * individual fields they already track without holding the whole object.
+ */
+export type SpaceFileRootSource = Pick<Space, 'id'> &
+  Partial<Pick<Space, 'rootPath' | 'sourceType' | 'metadata'>>;
+
+export function hasUserBoundLocalFolder(
+  space: SpaceFileRootSource | null | undefined
+) {
   if (!space) return false;
   if (space.sourceType === 'folder') return true;
   return (
     space.metadata?.bindingSource === 'space_local_brain' &&
     space.metadata?.localWorkspaceSource !== 'scratch_space'
   );
+}
+
+/**
+ * Whether Brain resolves this Space's files from one workspace root.
+ *
+ * `GET /files` resolves `space_id` through the workspace resolver: a bound
+ * Space (user-picked folder or scratch workspace) returns the same root for
+ * every `project_id`, so it must be listed once by Space id. Fanning out per
+ * Project against a bound Space would list the same folder N times and count
+ * every file N times.
+ */
+export function hasSpaceScopedFileRoot(
+  space: SpaceFileRootSource | null | undefined
+) {
+  if (!space) return false;
+  return Boolean(space.rootPath) || hasUserBoundLocalFolder(space);
+}
+
+export type SpaceFileScope = 'space-root' | 'per-project';
+
+export interface SpaceFileTargets {
+  scope: SpaceFileScope;
+  ids: string[];
+}
+
+/**
+ * Ordered `/files` attempts for a Space, most authoritative first.
+ *
+ * A bound Space is listed once by Space id. The per-Project fan-out is kept as
+ * a fallback because the binding lives in Brain's local store: a Space carrying
+ * a `rootPath` synced from another machine can be unbound here, in which case
+ * the Space-scoped listing resolves to nothing and each Project still has its
+ * own `project_<id>` root.
+ */
+export function resolveSpaceFileTargets(
+  space: SpaceFileRootSource | null | undefined,
+  projectIds: string[]
+): SpaceFileTargets[] {
+  if (!space) return [];
+  const perProject: SpaceFileTargets[] = projectIds.length
+    ? [{ scope: 'per-project', ids: projectIds }]
+    : [];
+  if (hasSpaceScopedFileRoot(space)) {
+    return [{ scope: 'space-root', ids: [space.id] }, ...perProject];
+  }
+  return perProject;
 }
 
 const DOCUMENT_EXTENSIONS = new Set([

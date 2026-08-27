@@ -103,6 +103,8 @@ const mocks = vi.hoisted(() => {
     workspaceGuideAudience: 'new' as 'new' | 'existing',
     dismissedWorkspaceGuideTabs: [] as WorkspaceGuideTabId[],
     dismissWorkspaceGuideTab: vi.fn<(tabId: WorkspaceGuideTabId) => void>(),
+    restoreWorkspaceGuideTabs:
+      vi.fn<(tabIds?: WorkspaceGuideTabId[]) => void>(),
     setWorkerList: vi.fn(),
   };
   authState.dismissWorkspaceGuideTab.mockImplementation((tabId) => {
@@ -113,9 +115,19 @@ const mocks = vi.hoisted(() => {
       ];
     }
   });
+  authState.restoreWorkspaceGuideTabs.mockImplementation((tabIds) => {
+    authState.dismissedWorkspaceGuideTabs = tabIds
+      ? authState.dismissedWorkspaceGuideTabs.filter(
+          (tabId) => !tabIds.includes(tabId)
+        )
+      : [];
+  });
+
+  const toastCalls: Array<{ action?: { onClick: () => void } }> = [];
 
   return {
     authState,
+    toastCalls,
     newChatState,
     newStartTask,
     newSetAttaches,
@@ -125,6 +137,21 @@ const mocks = vi.hoisted(() => {
     projectState,
     spaceState,
   };
+});
+
+vi.mock('sonner', () => {
+  const toast = Object.assign(
+    (_message: string, options?: { action?: { onClick: () => void } }) => {
+      mocks.toastCalls.push({ action: options?.action });
+      return 'toast-id';
+    },
+    {
+      error: vi.fn(),
+      success: vi.fn(),
+      dismiss: vi.fn(),
+    }
+  );
+  return { toast };
 });
 
 vi.mock('@/hooks/useChatStoreAdapter', () => ({
@@ -252,6 +279,7 @@ describe('Workspace', () => {
     mocks.spaceState.projectsBySpaceId = {};
     mocks.authState.workspaceGuideAudience = 'new';
     mocks.authState.dismissedWorkspaceGuideTabs = [];
+    mocks.toastCalls.length = 0;
     mocks.authState.dismissWorkspaceGuideTab.mockImplementation((tabId) => {
       if (!mocks.authState.dismissedWorkspaceGuideTabs.includes(tabId)) {
         mocks.authState.dismissedWorkspaceGuideTabs = [
@@ -259,6 +287,13 @@ describe('Workspace', () => {
           tabId,
         ];
       }
+    });
+    mocks.authState.restoreWorkspaceGuideTabs.mockImplementation((tabIds) => {
+      mocks.authState.dismissedWorkspaceGuideTabs = tabIds
+        ? mocks.authState.dismissedWorkspaceGuideTabs.filter(
+            (tabId) => !tabIds.includes(tabId)
+          )
+        : [];
     });
     vi.mocked(createSyncedProjectInSpace).mockResolvedValue({
       projectId: 'new-project',
@@ -413,6 +448,9 @@ describe('Workspace', () => {
     expect(activityHeading).toAppearBefore(filesHeading);
     expect(activityHeading.closest('section')).not.toHaveClass('border-t');
     expect(filesHeading.closest('section')).toHaveClass('border-t');
+    // Brain resolves a bound Space and an unbound one to different roots, so
+    // the Files card says which binding the counts came from.
+    expect(onboarding.getByText('Unbound')).toBeInTheDocument();
 
     const closeButton = onboarding.getByRole('button', {
       name: 'Hide Show me how to use Eigent',
@@ -454,6 +492,24 @@ describe('Workspace', () => {
     expect(screen.getByLabelText('workspace-message')).toHaveValue(
       'Search for the latest Eigent release blog and summarise it in a short introduction.'
     );
+  });
+
+  it('offers an undo that brings a dismissed guide tab back', () => {
+    renderWorkspace();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Hide Show me how to use Eigent' })
+    );
+    expect(mocks.authState.dismissedWorkspaceGuideTabs).toEqual(['primary']);
+
+    const undo = mocks.toastCalls.at(-1)?.action;
+    expect(undo).toBeDefined();
+    undo?.onClick();
+
+    expect(mocks.authState.restoreWorkspaceGuideTabs).toHaveBeenCalledWith([
+      'primary',
+    ]);
+    expect(mocks.authState.dismissedWorkspaceGuideTabs).toEqual([]);
   });
 
   it('keeps a dismissed guide tab hidden when another Space opens', () => {

@@ -131,6 +131,7 @@ interface AuthState {
   setIsFirstLaunch: (isFirstLaunch: boolean) => void;
   setOnboardingCompleted: (completed: boolean) => void;
   dismissWorkspaceGuideTab: (tabId: WorkspaceGuideTabId) => void;
+  restoreWorkspaceGuideTabs: (tabIds?: WorkspaceGuideTabId[]) => void;
   setPreferredIDE: (ide: PreferredIDE) => void;
   setWorkspaceMainBackground: (value: WorkspaceMainBackground) => void;
 
@@ -392,6 +393,19 @@ const authStore = create<AuthState>()(
               ? state.dismissedWorkspaceGuideTabs
               : [...state.dismissedWorkspaceGuideTabs, tabId],
         })),
+
+      /** Undo a dismissal; with no argument, brings every guide tab back. */
+      restoreWorkspaceGuideTabs: (tabIds) =>
+        set((state) => {
+          if (!tabIds) return { dismissedWorkspaceGuideTabs: [] };
+          const restoring = new Set(tabIds);
+          return {
+            dismissedWorkspaceGuideTabs:
+              state.dismissedWorkspaceGuideTabs.filter(
+                (tabId) => !restoring.has(tabId)
+              ),
+          };
+        }),
 
       setPreferredIDE: (preferredIDE) => set({ preferredIDE }),
 
