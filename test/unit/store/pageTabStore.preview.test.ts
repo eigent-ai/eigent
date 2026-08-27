@@ -24,7 +24,12 @@ describe('pageTabStore session preview', () => {
   beforeEach(() => {
     window.electronAPI = {
       ...window.electronAPI,
+      terminalCreate: vi.fn().mockResolvedValue({ success: true }),
+      terminalInput: vi.fn(),
+      terminalResize: vi.fn(),
       terminalDispose: vi.fn().mockResolvedValue({ success: true }),
+      onTerminalData: vi.fn(() => () => {}),
+      onTerminalExit: vi.fn(() => () => {}),
     };
     usePageTabStore.setState({
       sessionPreviewProjectId: null,
@@ -96,6 +101,23 @@ describe('pageTabStore session preview', () => {
       'session-shell:project-a:'
     );
     expect(terminal.type === 'terminal' && terminal.agentSourceId).toBeFalsy();
+    expect(terminal.type === 'terminal' && terminal.surface).toBe('project');
+  });
+
+  it('creates an explicitly local shell as a distinct chooser destination', () => {
+    const store = usePageTabStore.getState();
+    store.toggleSessionPreview();
+    store.choosePreviewTabType(slice().activeTabId!, 'local-terminal');
+
+    expect(slice().tabs[0]).toMatchObject({
+      type: 'terminal',
+      title: 'Local shell',
+      surface: 'local',
+    });
+    const tab = slice().tabs[0];
+    expect(tab.type === 'terminal' && tab.shellId).toContain(
+      'local-shell:project-a:'
+    );
   });
 
   it('opens agent streams in terminal tabs, converting the chooser in place', () => {
@@ -295,5 +317,33 @@ describe('pageTabStore session preview', () => {
       'project-b'
     );
     expect(slice().open).toBe(true);
+  });
+
+  it("retains only the next user's project previews at an auth boundary", () => {
+    const store = usePageTabStore.getState();
+    store.toggleSessionPreview();
+    store.choosePreviewTabType(slice().activeTabId!, 'terminal');
+    const removedTerminal = slice().tabs[0];
+    const removedShellId =
+      removedTerminal.type === 'terminal' ? removedTerminal.shellId : undefined;
+
+    store.setSessionPreviewProject('project-b');
+    store.toggleSessionPreview();
+    store.choosePreviewTabType(slice().activeTabId!, 'terminal');
+
+    store.retainSessionPreviewProjects(['project-b']);
+
+    expect(window.electronAPI.terminalDispose).toHaveBeenCalledWith(
+      removedShellId
+    );
+    expect(
+      usePageTabStore.getState().sessionPreviewByProject['project-a']
+    ).toBeUndefined();
+    expect(
+      usePageTabStore.getState().sessionPreviewByProject['project-b']
+    ).toBeDefined();
+    expect(usePageTabStore.getState().sessionPreviewProjectId).toBe(
+      'project-b'
+    );
   });
 });

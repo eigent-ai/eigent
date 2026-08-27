@@ -520,7 +520,8 @@ export const useSpaceStore = create<SpaceStore>()(
       projectIdIndex: {},
       projectsSyncedAt: {},
 
-      resetForUser: (userId) =>
+      resetForUser: (userId) => {
+        let retainedProjectIds: string[] = [];
         set((state) => {
           const nextSpaces: Record<string, Space> = {};
           for (const [spaceId, space] of Object.entries(state.spaces)) {
@@ -561,6 +562,7 @@ export const useSpaceStore = create<SpaceStore>()(
           }
 
           const localLegacyId = legacySpaceIdForUser(DEFAULT_LOCAL_USER_ID);
+          retainedProjectIds = Object.keys(nextProjectIdIndex);
           return {
             storageEnvironmentKey: getAuthEnvironmentKey(),
             spaces: nextSpaces,
@@ -574,7 +576,11 @@ export const useSpaceStore = create<SpaceStore>()(
             projectIdIndex: nextProjectIdIndex,
             projectsSyncedAt: nextProjectsSyncedAt,
           };
-        }),
+        });
+        usePageTabStore
+          .getState()
+          .retainSessionPreviewProjects(retainedProjectIds);
+      },
 
       hydrateFromServer: async (userId) => {
         try {
