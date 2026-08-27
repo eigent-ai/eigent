@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import type { LucideIcon } from 'lucide-react';
 import {
+  AlertTriangle,
   ChevronDown,
   ChevronRight,
   CodeXml,
@@ -51,25 +52,37 @@ import {
   useRef,
   useState,
 } from 'react';
+import { CsvPreviewTable } from './CsvPreviewTable';
 import FolderComponent from './FolderComponent';
 
 import { fetchGet, getBaseURL } from '@/api/http';
 import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
+import { getSidePanelOutputFilesRevision } from '@/components/Session/SidePanelSections/collectSidePanelOutputFiles';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useSelectedProjectTurn } from '@/hooks/useSelectedProjectTurn';
 import { useHost } from '@/host';
 import { filterVisibleAgentFiles } from '@/lib/agentFileFilters';
+import { loadFilePreview } from '@/lib/filePreviewLoader';
 import {
   deferInlineScriptsUntilLoad,
   injectFontStyles,
 } from '@/lib/htmlFontStyles';
 import {
+  createInlineAssetBudget,
   inlineLocalHtmlImgElements,
   inlineLocalProjectImagePaths,
   toLocalFileUrl,
 } from '@/lib/htmlLocalAssets';
-import { containsDangerousContent } from '@/lib/htmlSanitization';
+import {
+  containsDangerousContent,
+  injectPreviewContentSecurityPolicy,
+} from '@/lib/htmlSanitization';
 import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
+import {
+  FILE_PREVIEW_LIMITS,
+  formatFileSize,
+  type FilePreviewPayload,
+} from '@/shared/filePreviewContract';
 import { useAuthStore } from '@/store/authStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { useTranslation } from 'react-i18next';
@@ -377,6 +390,11 @@ interface FileInfo {
   content?: string;
   relativePath?: string;
   isRemote?: boolean;
+  size?: number;
+  modifiedAt?: number;
+  supportsRanges?: boolean;
+  mimeType?: string;
+  preview?: FilePreviewPayload;
 }
 
 type ProjectFetchTarget = {
@@ -832,6 +850,16 @@ export async function downloadFromUrl(
 export async function downloadOpenedFile(file: FileInfo): Promise<void> {
   if (file.isFolder || (!file.path && file.content === undefined)) return;
 
+  // A blocked preview must never fall back to fetch(...).blob(), because that
+  // would reintroduce an unbounded renderer allocation for the exact files the
+  // preview policy rejected. Let the browser/OS own the transfer instead.
+  if (file.preview?.kind === 'blocked') {
+    if (file.isRemote && file.path) {
+      window.open(file.path, '_blank', 'noopener,noreferrer');
+    }
+    return;
+  }
+
   const filename = file.name || 'download';
   const content = file.content;
 
@@ -892,6 +920,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   const { t } = useTranslation();
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
   const [loading, setLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [isShowSourceCode, setIsShowSourceCode] = useState(false);
   const [fileSearchQuery, setFileSearchQuery] = useState('');
   const [workingFolderPath, setWorkingFolderPath] = useState<string | null>(
@@ -921,6 +950,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   const hasFetchedRemote = useRef(false);
   const lastFetchKey = useRef<string>('');
   const priorFilePathsSnapshotRef = useRef<Set<string>>(new Set());
+  const previewRequestRef = useRef<AbortController | null>(null);
   const [fileTreeScope, setFileTreeScope] = useState<'all' | 'new'>('all');
   const [newFilePathsAccumulated, setNewFilePathsAccumulated] = useState<
     Set<string>
@@ -964,8 +994,6 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   }, [filteredFileTree, fileTreeScope, newFilePathsAccumulated]);
 
   const selectedFileChange = (file: FileInfo, isShowSourceCode?: boolean) => {
-    const isWebMode = !ipcRenderer?.invoke;
-
     if (file.type === 'zip') {
       // if file is remote, don't call reveal-in-folder
       if (file.isRemote) {
@@ -979,125 +1007,43 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     if (file.isFolder) {
       return;
     }
+    previewRequestRef.current?.abort();
+    const controller = new AbortController();
+    previewRequestRef.current = controller;
     setSelectedFile(file);
+    setPreviewError(null);
     setLoading(true);
-    console.log('file', JSON.parse(JSON.stringify(file)));
-
-    if (file.isRemote && file.path?.startsWith('http')) {
-      if (isImageFile(file)) {
-        const loadRemoteImage = async () => {
-          try {
-            const content = await fetchRemoteFileAsDataUrl(file.path);
-            setSelectedFile({ ...file, content });
-            rememberSelectedFile(file);
-          } catch (error) {
-            console.error('Failed to load remote image:', error);
-            setSelectedFile({ ...file });
-            rememberSelectedFile(file);
-          } finally {
-            setLoading(false);
-          }
-        };
-        void loadRemoteImage();
-        return;
-      }
-
-      if (isAudioFile(file) || isVideoFile(file)) {
-        setSelectedFile({ ...file });
+    void loadFilePreview(file, {
+      ipcRenderer,
+      showSource: isShowSourceCode,
+      signal: controller.signal,
+    })
+      .then((loadedFile) => {
+        if (controller.signal.aborted) return;
+        setSelectedFile(loadedFile);
         rememberSelectedFile(file);
-        setLoading(false);
-        return;
-      }
-
-      if (!isWebMode && ipcRenderer) {
-        ipcRenderer
-          .invoke('open-file', file.type, file.path, isShowSourceCode)
-          .then((res: string) => {
-            setSelectedFile({ ...file, content: res });
-            rememberSelectedFile(file);
-            setLoading(false);
-          })
-          .catch((error: unknown) => {
-            console.error('open-file error:', error);
-            setLoading(false);
-          });
-        return;
-      }
-
-      const loadRemoteContent = async () => {
-        try {
-          const resp = await fetch(file.path);
-          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-          const contentType = resp.headers.get('content-type') || '';
-          let content: string;
-          if (file.type === 'pdf' || contentType.includes('application/pdf')) {
-            const blob = await resp.blob();
-            content = await new Promise<string>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onload = () => resolve(reader.result as string);
-              reader.onerror = reject;
-              reader.readAsDataURL(blob);
-            });
-          } else {
-            content = await resp.text();
-          }
-          setSelectedFile({ ...file, content });
-          rememberSelectedFile(file);
-        } catch (error) {
-          console.error('Failed to load remote file:', error);
-        } finally {
-          setLoading(false);
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          console.error('Failed to load file preview:', error);
+          setPreviewError(
+            error instanceof Error && error.message
+              ? error.message
+              : 'The file could not be read. Check that it still exists and try again.'
+          );
         }
-      };
-      void loadRemoteContent();
-      return;
-    }
-
-    // For PDF files, use data URL instead of custom protocol
-    if (file.type === 'pdf') {
-      if (ipcRenderer) {
-        ipcRenderer
-          .invoke('read-file-dataurl', file.path)
-          .then((dataUrl: string) => {
-            setSelectedFile({ ...file, content: dataUrl });
-            rememberSelectedFile(file);
-            setLoading(false);
-          })
-          .catch((error: unknown) => {
-            console.error('read-file-dataurl error:', error);
-            setLoading(false);
-          });
-      } else {
-        setLoading(false);
-      }
-      return;
-    }
-
-    // For audio/video files, skip open-file — loaders handle reading themselves
-    if (isAudioFile(file) || isVideoFile(file)) {
-      setSelectedFile({ ...file });
-      rememberSelectedFile(file);
-      setLoading(false);
-      return;
-    }
-
-    // all other files call open-file interface, the backend handles download and parsing
-    if (ipcRenderer) {
-      ipcRenderer
-        .invoke('open-file', file.type, file.path, isShowSourceCode)
-        .then((res: string) => {
-          setSelectedFile({ ...file, content: res });
-          rememberSelectedFile(file);
-          setLoading(false);
-        })
-        .catch((error: unknown) => {
-          console.error('open-file error:', error);
-          setLoading(false);
-        });
-    } else {
-      setLoading(false);
-    }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
   };
+
+  useEffect(
+    () => () => {
+      previewRequestRef.current?.abort();
+    },
+    []
+  );
 
   const isShowSourceCodeChange = () => {
     // all files can reload content
@@ -1118,7 +1064,10 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   };
 
   const activeTaskId = selectedTurn.taskId ?? undefined;
-  const taskAssigning = selectedTurn.task?.taskAssigning;
+  const projectedFileRevision = useMemo(
+    () => getSidePanelOutputFilesRevision(selectedTurn.task),
+    [selectedTurn.task]
+  );
   const projectId = (activeProjectId as string) || activeTaskId || '';
   const fileSpaceId = resolvedSpaceId;
   const useBrainWorkspaceFiles = Boolean(fileSpaceId && activeSpace?.rootPath);
@@ -1160,17 +1109,11 @@ export default function Folder({ data: _data }: { data?: Agent }) {
     .join(',');
   const projectFetchTargetsRef =
     useRef<ProjectFetchTarget[]>(projectFetchTargets);
-  const fetchKey = `${fileSpaceId || ''}|${useSpaceScopedRemoteFiles ? 'space' : 'project'}|${projectFetchKey}|${activeTaskId || ''}`;
+  const fetchKey = `${fileSpaceId || ''}|${useSpaceScopedRemoteFiles ? 'space' : 'project'}|${projectFetchKey}|${activeTaskId || ''}|${projectedFileRevision}`;
   const fileContextResetKey =
     useSpaceScopedRemoteFiles || useBrainWorkspaceFiles
       ? fileSpaceId
       : activeTaskId;
-  const taskRunning =
-    !!taskAssigning?.length &&
-    taskAssigning.some(
-      (agent) => agent.status === 'running' || agent.status === 'pending'
-    );
-
   // Reset state when the file context changes.
   useEffect(() => {
     hasFetchedRemote.current = false;
@@ -1221,6 +1164,7 @@ export default function Folder({ data: _data }: { data?: Agent }) {
   }, [
     activeSpace?.rootPath,
     authStore.email,
+    authStore.user_id,
     projectStore.activeProjectId,
     electronAPI,
   ]);
@@ -1296,7 +1240,6 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       if (
         !res.length ||
         !ipcRenderer ||
-        import.meta.env.VITE_USE_LOCAL_PROXY === 'true' ||
         useSpaceScopedRemoteFiles ||
         useBrainWorkspaceFiles
       ) {
@@ -1342,6 +1285,15 @@ export default function Folder({ data: _data }: { data?: Agent }) {
                     ? `${target.name}/${relativePath}`
                     : relativePath,
                   isRemote: true,
+                  size:
+                    typeof item.size === 'number' && item.size >= 0
+                      ? item.size
+                      : undefined,
+                  modifiedAt:
+                    typeof item.modifiedAt === 'number'
+                      ? item.modifiedAt
+                      : undefined,
+                  supportsRanges: item.supportsRanges === true,
                 };
               });
             });
@@ -1430,17 +1382,9 @@ export default function Folder({ data: _data }: { data?: Agent }) {
 
     const shouldFetch =
       lastFetchKey.current !== fetchKey || !hasFetchedRemote.current;
-    let pollTimer: ReturnType<typeof setInterval> | null = null;
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     let inFlightController: AbortController | null = null;
     let inFlightMode: 'full' | 'merge' | null = null;
-
-    const activeProjectFetchTargets = () => {
-      const targets = projectFetchTargetsRef.current;
-      if (!taskRunning) return targets;
-      const activeTargets = targets.filter((target) => target.id === projectId);
-      return activeTargets.length ? activeTargets : targets.slice(0, 1);
-    };
 
     const runFileList = (
       targets = projectFetchTargetsRef.current,
@@ -1477,28 +1421,19 @@ export default function Folder({ data: _data }: { data?: Agent }) {
       }, 120);
     }
 
-    if (taskRunning && isFileSidebarOpen) {
-      pollTimer = setInterval(() => {
-        runFileList(activeProjectFetchTargets(), { merge: true });
-      }, 5000);
-    }
-
     return () => {
       cancelled = true;
       if (debounceTimer) clearTimeout(debounceTimer);
-      if (pollTimer) clearInterval(pollTimer);
       inFlightController?.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     fetchKey,
-    taskRunning,
     projectId,
     fileSpaceId,
     activeTaskId,
     authStore.email,
     authStore.user_id,
-    isFileSidebarOpen,
     projectFetchKey,
     useBrainWorkspaceFiles,
     useSpaceScopedRemoteFiles,
@@ -1787,17 +1722,39 @@ export default function Folder({ data: _data }: { data?: Agent }) {
           breadcrumbSegments={fileBreadcrumbSegments}
           projectFiles={fileGroups[0]?.files || []}
           surfaceClassName="bg-ds-bg-neutral-subtle-default"
+          previewError={previewError}
+          onRetryPreview={() => {
+            if (selectedFile) selectedFileChange(selectedFile, isShowSourceCode);
+          }}
           onRevealFile={() => {
             if (!selectedFile) return;
             // if file is remote, don't call reveal-in-folder
             if (selectedFile.isRemote) {
+              if (selectedFile.preview?.kind === 'blocked') {
+                window.open(selectedFile.path, '_blank', 'noopener,noreferrer');
+                return;
+              }
               void downloadFromUrl(selectedFile.path, selectedFile.name);
               return;
             }
             ipcRenderer?.invoke('reveal-in-folder', selectedFile.path);
           }}
+          onOpenExternalFile={() => {
+            if (!selectedFile) return;
+            if (selectedFile.isRemote) {
+              window.open(selectedFile.path, '_blank', 'noopener,noreferrer');
+              return;
+            }
+            void ipcRenderer?.invoke('open-local-file', selectedFile.path);
+          }}
           onDownloadFile={() => {
             if (!selectedFile || selectedFile.isFolder) return;
+            if (selectedFile.preview?.kind === 'blocked') {
+              if (selectedFile.isRemote) {
+                window.open(selectedFile.path, '_blank', 'noopener,noreferrer');
+              }
+              return;
+            }
             void downloadOpenedFile(selectedFile);
           }}
           onToggleSourceCode={() => isShowSourceCodeChange()}
@@ -2621,12 +2578,19 @@ function HtmlRenderer({
   projectFiles: FileInfo[];
 }) {
   const [processedHtml, setProcessedHtml] = useState<string>('');
+  // Notice shown when a sibling asset (image/JS/CSS) could not be fully inlined
+  // — either an individual asset exceeded its limit or the aggregate srcDoc
+  // budget was reached. Rendered above the iframe instead of failing silently.
+  const [assetNotice, setAssetNotice] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const host = useHost();
   const ipcRenderer = host?.ipcRenderer;
   const electronAPI = host?.electronAPI;
 
   useEffect(() => {
+    setAssetNotice(null);
+    const truncatedAssets: string[] = [];
+    const budget = createInlineAssetBudget();
     const processHtml = async () => {
       if (!selectedFile.content) {
         setProcessedHtml('');
@@ -2682,7 +2646,9 @@ function HtmlRenderer({
         const htmlWithStorageShim =
           injectSandboxStorageShim(htmlWithInlineImages);
         setProcessedHtml(
-          injectFontStyles(deferInlineScriptsUntilLoad(htmlWithStorageShim))
+          injectPreviewContentSecurityPolicy(
+            injectFontStyles(deferInlineScriptsUntilLoad(htmlWithStorageShim))
+          )
         );
         return;
       }
@@ -2692,16 +2658,33 @@ function HtmlRenderer({
         processedHtmlContent = await inlineLocalHtmlImgElements(
           processedHtmlContent,
           htmlDir,
-          electronAPI.readFileAsDataUrl
+          electronAPI.readFileAsDataUrl,
+          budget
         );
       }
 
       // Load and inject CSS files, replacing external link tags
       for (const cssFile of cssFiles) {
         try {
-          const cssContent = ipcRenderer
-            ? await ipcRenderer.invoke('open-file', 'css', cssFile.path, false)
+          const cssResult = ipcRenderer
+            ? ((await ipcRenderer.invoke(
+                'preview-text-file',
+                cssFile.path,
+                FILE_PREVIEW_LIMITS.htmlInlineAssetBytes
+              )) as {
+                content: string;
+                bytesRead: number;
+                totalBytes: number | null;
+              })
             : null;
+          const cssContent = cssResult?.content || null;
+          if (
+            cssResult &&
+            cssResult.totalBytes !== null &&
+            cssResult.bytesRead < cssResult.totalBytes
+          ) {
+            truncatedAssets.push(cssFile.name);
+          }
           if (cssContent) {
             const styleTag = `<style data-source="${cssFile.name}">${cssContent}</style>`;
 
@@ -2736,9 +2719,25 @@ function HtmlRenderer({
       // Load JS files content and replace external script tags
       for (const jsFile of jsFiles) {
         try {
-          const jsContent = ipcRenderer
-            ? await ipcRenderer.invoke('open-file', 'js', jsFile.path, false)
+          const jsResult = ipcRenderer
+            ? ((await ipcRenderer.invoke(
+                'preview-text-file',
+                jsFile.path,
+                FILE_PREVIEW_LIMITS.htmlInlineAssetBytes
+              )) as {
+                content: string;
+                bytesRead: number;
+                totalBytes: number | null;
+              })
             : null;
+          const jsContent = jsResult?.content || null;
+          if (
+            jsResult &&
+            jsResult.totalBytes !== null &&
+            jsResult.bytesRead < jsResult.totalBytes
+          ) {
+            truncatedAssets.push(jsFile.name);
+          }
           if (jsContent) {
             processedHtmlContent = inlineExternalScriptByName(
               processedHtmlContent,
@@ -2756,7 +2755,8 @@ function HtmlRenderer({
           processedHtmlContent,
           htmlDir,
           projectFiles,
-          electronAPI.readFileAsDataUrl
+          electronAPI.readFileAsDataUrl,
+          budget
         );
       }
 
@@ -2777,13 +2777,33 @@ function HtmlRenderer({
       );
 
       // Set the processed HTML with font styles - iframe sandbox provides security
-      setProcessedHtml(injectFontStyles(htmlWithDeferredScripts));
+      setProcessedHtml(
+        injectPreviewContentSecurityPolicy(
+          injectFontStyles(htmlWithDeferredScripts)
+        )
+      );
     };
 
-    processHtml().catch((error) => {
-      console.error('[HtmlRenderer] Failed to process HTML:', error);
-      setProcessedHtml(injectFontStyles(selectedFile.content || ''));
-    });
+    processHtml()
+      .then(() => {
+        if (truncatedAssets.length > 0) {
+          setAssetNotice(
+            `Some assets were too large to embed and were skipped: ${truncatedAssets.join(', ')}. The preview may render incompletely.`
+          );
+        } else if (budget.truncated) {
+          setAssetNotice(
+            'Some embedded images were skipped to keep the preview within its size budget. The preview may render incompletely.'
+          );
+        }
+      })
+      .catch((error) => {
+        console.error('[HtmlRenderer] Failed to process HTML:', error);
+        setProcessedHtml(
+          injectPreviewContentSecurityPolicy(
+            injectFontStyles(selectedFile.content || '')
+          )
+        );
+      });
   }, [selectedFile, projectFiles, ipcRenderer, electronAPI]);
 
   // Zoom state and controls
@@ -2812,6 +2832,11 @@ function HtmlRenderer({
 
   return (
     <div className="relative flex h-full w-full flex-col">
+      {assetNotice ? (
+        <div className="mx-2 mb-1 mt-2 rounded-lg bg-ds-bg-neutral-subtle-default px-3 py-2 text-body-xs text-ds-text-neutral-muted-default">
+          {assetNotice}
+        </div>
+      ) : null}
       {/* Floating notch-style zoom controls */}
       <ZoomControls
         zoom={zoom}
@@ -2873,12 +2898,114 @@ export interface FileViewerPanelProps {
   onBreadcrumbSegmentClick?: (index: number) => void;
   /** Download button. */
   onDownloadFile: () => void;
+  /** Open an oversized or unsupported file with the host system. */
+  onOpenExternalFile?: () => void;
   /** Toggle the source-code view. */
   onToggleSourceCode: () => void;
   /** Extra controls rendered at the end of the header row (e.g. a close button). */
   headerActionsExtra?: React.ReactNode;
   /** Replaces the default placeholder shown when no file is selected. */
   emptyState?: React.ReactNode;
+  /** Human-readable reason the preview failed to load, or null when it did not. */
+  previewError?: string | null;
+  /** Re-run the preview load for the current file (wired to the error card). */
+  onRetryPreview?: () => void;
+}
+
+function TruncatedPreviewNotice({ file }: { file: FileInfo }) {
+  if (file.preview?.kind !== 'truncated-text') return null;
+  return (
+    <div className="mb-2 rounded-lg bg-ds-bg-neutral-subtle-default px-3 py-2 text-body-xs text-ds-text-neutral-muted-default">
+      Previewing {formatFileSize(file.preview.bytesRead)}
+      {file.preview.totalBytes !== null
+        ? ` of ${formatFileSize(file.preview.totalBytes)}`
+        : ''}
+      . The complete file was not loaded.
+    </div>
+  );
+}
+
+function BlockedPreviewPlaceholder({
+  file,
+  onRevealFile,
+  onDownloadFile,
+}: {
+  file: FileInfo;
+  onRevealFile: () => void;
+  onDownloadFile: () => void;
+}) {
+  if (file.preview?.kind !== 'blocked') return null;
+  const reason =
+    file.preview.reason === 'too-large'
+      ? 'This file exceeds the safe in-app preview limit.'
+      : file.preview.reason === 'metadata-unavailable'
+        ? 'Eigent could not verify the file size, so automatic preview was blocked.'
+        : file.preview.reason === 'binary'
+          ? 'This looks like a binary file and cannot be previewed as text.'
+          : 'This file type cannot be safely previewed in this environment.';
+  return (
+    <div className="flex h-full min-h-64 w-full items-center justify-center px-6 py-10">
+      <div className="flex max-w-md flex-col items-center gap-3 text-center">
+        <AlertTriangle className="size-10 text-ds-icon-neutral-muted-default" />
+        <div>
+          <p className="m-0 text-body-md font-semibold text-ds-text-neutral-default-default">
+            Preview not loaded
+          </p>
+          <p className="mt-1 text-body-sm text-ds-text-neutral-muted-default">
+            {reason}
+          </p>
+        </div>
+        <div className="text-body-xs text-ds-text-neutral-muted-default">
+          File size: {formatFileSize(file.preview.size)}
+          {file.preview.limit !== null
+            ? ` · Preview limit: ${formatFileSize(file.preview.limit)}`
+            : ''}
+        </div>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <Button type="button" variant="secondary" onClick={onRevealFile}>
+            Open externally
+          </Button>
+          {file.isRemote ? (
+            <Button type="button" variant="ghost" onClick={onDownloadFile}>
+              Download
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Shown when the loader threw (read failure, IPC error) rather than returning a
+// file. Without this the pane stayed empty and the failure only reached the
+// console. Reuses BlockedPreviewPlaceholder's layout/styling and adds a retry.
+function PreviewErrorCard({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry?: () => void;
+}) {
+  return (
+    <div className="flex h-full min-h-64 w-full items-center justify-center px-6 py-10">
+      <div className="flex max-w-md flex-col items-center gap-3 text-center">
+        <AlertTriangle className="size-10 text-ds-icon-neutral-muted-default" />
+        <div>
+          <p className="m-0 text-body-md font-semibold text-ds-text-neutral-default-default">
+            Preview failed to load
+          </p>
+          <p className="mt-1 text-body-sm text-ds-text-neutral-muted-default">
+            {message}
+          </p>
+        </div>
+        {onRetry ? (
+          <Button type="button" variant="secondary" onClick={onRetry}>
+            Retry
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -2898,9 +3025,12 @@ export function FileViewerPanel({
   onRevealFile,
   onBreadcrumbSegmentClick,
   onDownloadFile,
+  onOpenExternalFile,
   onToggleSourceCode,
   headerActionsExtra,
   emptyState,
+  previewError,
+  onRetryPreview,
 }: FileViewerPanelProps) {
   const { t } = useTranslation();
   const segmentsClickable = Boolean(onBreadcrumbSegmentClick);
@@ -2962,17 +3092,21 @@ export function FileViewerPanel({
             </nav>
           </div>
           <div className="flex flex-shrink-0 items-center gap-0.5">
-            <Button
-              size="icon"
-              variant="ghost"
-              type="button"
-              aria-label={t('folder.download-file', {
-                defaultValue: 'Download file',
-              })}
-              onClick={onDownloadFile}
-            >
-              <Download className="h-4 w-4 text-ds-icon-neutral-muted-default" />
-            </Button>
+            {!(
+              selectedFile.preview?.kind === 'blocked' && !selectedFile.isRemote
+            ) ? (
+              <Button
+                size="icon"
+                variant="ghost"
+                type="button"
+                aria-label={t('folder.download-file', {
+                  defaultValue: 'Download file',
+                })}
+                onClick={onDownloadFile}
+              >
+                <Download className="h-4 w-4 text-ds-icon-neutral-muted-default" />
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="ghost"
@@ -3003,17 +3137,33 @@ export function FileViewerPanel({
         >
           {selectedFile ? (
             !loading ? (
-              selectedFile.type === 'md' && !isShowSourceCode ? (
-                <div className="prose prose-sm max-w-none">
-                  <MarkDown
-                    content={selectedFile.content || ''}
-                    enableTypewriter={false}
-                    contentBasePath={
-                      selectedFile.isRemote
-                        ? null
-                        : getDirPath(selectedFile.path)
-                    }
-                  />
+              previewError ? (
+                <PreviewErrorCard
+                  message={previewError}
+                  onRetry={onRetryPreview}
+                />
+              ) : selectedFile.preview?.kind === 'blocked' ? (
+                <BlockedPreviewPlaceholder
+                  file={selectedFile}
+                  onRevealFile={onOpenExternalFile || onRevealFile}
+                  onDownloadFile={onDownloadFile}
+                />
+              ) : selectedFile.preview?.kind === 'csv' ? (
+                <CsvPreviewTable preview={selectedFile.preview} />
+              ) : selectedFile.type === 'md' && !isShowSourceCode ? (
+                <div className="max-w-none">
+                  <TruncatedPreviewNotice file={selectedFile} />
+                  <div className="prose prose-sm max-w-none">
+                    <MarkDown
+                      content={selectedFile.content || ''}
+                      enableTypewriter={false}
+                      contentBasePath={
+                        selectedFile.isRemote
+                          ? null
+                          : getDirPath(selectedFile.path)
+                      }
+                    />
+                  </div>
                 </div>
               ) : selectedFile.type === 'pdf' ? (
                 <iframe
@@ -3021,13 +3171,19 @@ export function FileViewerPanel({
                   className="h-full w-full border-0"
                   title={selectedFile.name}
                 />
-              ) : ['csv', 'doc', 'docx', 'pptx', 'xlsx'].includes(
+              ) : ['doc', 'docx', 'pptx', 'xlsx'].includes(
                   selectedFile.type
                 ) ? (
                 <FolderComponent selectedFile={selectedFile} />
               ) : selectedFile.type === 'html' ? (
-                isShowSourceCode ? (
-                  <>{selectedFile.content}</>
+                isShowSourceCode ||
+                selectedFile.preview?.kind === 'truncated-text' ? (
+                  <div>
+                    <TruncatedPreviewNotice file={selectedFile} />
+                    <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-sm text-ds-text-neutral-default-default">
+                      {selectedFile.content}
+                    </pre>
+                  </div>
                 ) : (
                   <HtmlRenderer
                     selectedFile={selectedFile}
@@ -3056,9 +3212,12 @@ export function FileViewerPanel({
                   <ImageLoader selectedFile={selectedFile} />
                 </div>
               ) : (
-                <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-sm text-ds-text-neutral-default-default">
-                  {selectedFile.content}
-                </pre>
+                <div>
+                  <TruncatedPreviewNotice file={selectedFile} />
+                  <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-sm text-ds-text-neutral-default-default">
+                    {selectedFile.content}
+                  </pre>
+                </div>
               )
             ) : (
               <div className="flex h-full w-full items-center justify-center">

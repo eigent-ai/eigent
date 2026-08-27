@@ -21,6 +21,31 @@
  */
 import { isVisibleAgentFile } from '@/lib/agentFileFilters';
 
+type SidePanelOutputTask = {
+  taskAssigning?: Agent[];
+  taskInfo?: TaskInfo[];
+  taskRunning?: TaskInfo[];
+  fileList?: FileInfo[];
+  messages?: Pick<Message, 'fileList'>[];
+};
+
+function outputFileSources(
+  task: SidePanelOutputTask | null | undefined
+): FileInfo[][] {
+  if (!task) return [];
+  return [
+    task.fileList ?? [],
+    ...(task.taskAssigning ?? []).flatMap((agent) =>
+      (agent.tasks ?? []).map((assignedTask) => assignedTask.fileList ?? [])
+    ),
+    ...(task.taskInfo ?? []).map((plannedTask) => plannedTask.fileList ?? []),
+    ...(task.taskRunning ?? []).map(
+      (runningTask) => runningTask.fileList ?? []
+    ),
+    ...(task.messages ?? []).map((message) => message.fileList ?? []),
+  ];
+}
+
 function fileInfoDedupKey(f: FileInfo): string {
   const rel = (f.relativePath ?? '').trim();
   if (rel) return rel;
@@ -45,24 +70,29 @@ export function mergeSidePanelOutputFiles(
 }
 
 export function collectSidePanelOutputFiles(
-  task:
-    | {
-        taskAssigning?: Agent[];
-        taskInfo?: TaskInfo[];
-        taskRunning?: TaskInfo[];
-        fileList?: FileInfo[];
-        messages?: Pick<Message, 'fileList'>[];
-      }
-    | null
-    | undefined
+  task: SidePanelOutputTask | null | undefined
 ): FileInfo[] {
-  if (!task) return [];
-  const assigned = (task.taskAssigning ?? []).flatMap((agent) =>
-    (agent.tasks ?? []).flatMap((t) => t.fileList ?? [])
+  return mergeSidePanelOutputFiles(...outputFileSources(task));
+}
+
+/**
+ * A stable signal for filesystem refreshes. Unlike the displayed list, this
+ * intentionally keeps duplicate references: writing the same path twice is a
+ * meaningful change even though the UI still shows a single file row.
+ */
+export function getSidePanelOutputFilesRevision(
+  task: SidePanelOutputTask | null | undefined
+): string {
+  return JSON.stringify(
+    outputFileSources(task).map((files) =>
+      files.map((file) => [
+        file.relativePath ?? '',
+        file.path ?? '',
+        file.name ?? '',
+        file.size ?? null,
+        file.modifiedAt ?? null,
+        file.artifactChange ?? '',
+      ])
+    )
   );
-  const planned = (task.taskInfo ?? []).flatMap((t) => t.fileList ?? []);
-  const running = (task.taskRunning ?? []).flatMap((t) => t.fileList ?? []);
-  const messages = (task.messages ?? []).flatMap((m) => m.fileList ?? []);
-  const top = task.fileList ?? [];
-  return mergeSidePanelOutputFiles(top, assigned, planned, running, messages);
 }

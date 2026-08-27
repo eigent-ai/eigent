@@ -64,6 +64,10 @@
   "splitting-tasks": "Suddivisione dei compiti",
   "working-on-tasks-for": "Lavoro alle attività da <elapsed>{{time}}</elapsed>",
   "worked-for": "Ha lavorato per <elapsed>{{time}}</elapsed>",
+  "failed-after": "Non riuscito dopo <elapsed>{{time}}</elapsed>",
+  "interrupted-after": "Interrotto dopo <elapsed>{{time}}</elapsed>",
+  "stopped-after": "Arrestato dopo <elapsed>{{time}}</elapsed>",
+  "run-no-final-response": "Questo Run è terminato prima che venisse registrata una risposta finale.",
   "start-task": "Esegui ora",
   "auto-start-in": "Avvio automatico tra {{seconds}}s",
   "message-cannot-be-empty": "Il messaggio non può essere vuoto",
@@ -112,5 +116,15 @@
   "expand-plan": "Espandi piano",
   "minimize-plan": "Riduci piano",
   "expand-subtasks": "Espandi sottoattività",
-  "add-subtask-placeholder": "Aggiungi una nuova sottoattività e premi Invio per aggiungerne altre"
+  "add-subtask-placeholder": "Aggiungi una nuova sottoattività e premi Invio per aggiungerne altre",
+  "run-cloud-restored-title": "Cronologia ripristinata dal cloud",
+  "run-cloud-restored-description": "Questa esecuzione è disponibile come cronologia di sola lettura. Lo spazio di lavoro locale e il contesto di esecuzione originali non sono presenti su questo dispositivo; invia un follow-up per avviare una nuova esecuzione.",
+  "run-interrupted-title": "Esecuzione interrotta",
+  "run-interrupted-description": "Eigent si è arrestato prima del completamento. Il lavoro completato è stato salvato. La ripresa crea un nuovo tentativo e non ripete automaticamente le azioni esterne già completate.",
+  "run-resume": "Riprendi",
+  "run-resuming": "Ripresa in corso…",
+  "run-cancel": "Annulla esecuzione",
+  "run-cancelling": "Annullamento…",
+  "run-resume-failed": "Impossibile riprendere questa esecuzione.",
+  "run-cancel-failed": "Impossibile annullare questa esecuzione."
 }

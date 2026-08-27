@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import type { FilePreviewPayload } from '../shared/filePreviewContract';
 import type {
   AgentMessageStatusType,
   AgentStatusType,
@@ -34,6 +35,12 @@ declare global {
     isFolder?: boolean;
     isRemote?: boolean;
     relativePath?: string;
+    artifactChange?: 'generated' | 'changed';
+    size?: number;
+    modifiedAt?: number;
+    mimeType?: string;
+    supportsRanges?: boolean;
+    preview?: FilePreviewPayload;
   }
 
   interface ProjectInfo {
@@ -141,6 +148,8 @@ declare global {
       method_name?: string;
       state?: string;
       message?: string;
+      retryable?: boolean;
+      reason?: string | null;
       question?: string;
       reply?: string;
       agent?: string;

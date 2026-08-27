@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { proxyFetchGet } from '@/api/http';
+import { fetchGet, proxyFetchGet } from '@/api/http';
 import { generateUniqueId } from '@/lib';
 import {
   deleteCachedProject,
@@ -23,6 +23,7 @@ import {
 import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { getSessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { isPlaceholderProjectName } from '@/lib/spaceLabel';
+import { resolveHistoricalRunElapsedMs } from '@/lib/taskDuration';
 import type { ServerProject } from '@/service/spaceApi';
 import { proxyUpdateSpaceProject } from '@/service/spaceApi';
 import {
@@ -36,6 +37,7 @@ import {
   createChatStoreInstance,
   hasActiveSSEConnection,
   VanillaChatStore,
+  type DurableRunDisplayStatus,
 } from './chatStore';
 import { usePageTabStore } from './pageTabStore';
 import {
@@ -65,6 +67,14 @@ import {
  */
 const HISTORY_STATUS_DONE = 2;
 const STOPPED_BY_USER_SUMMARY_PREFIX = '<summary>Task stopped</summary>';
+const DURABLE_RUN_DISPLAY_STATUSES = new Set<DurableRunDisplayStatus>([
+  'running',
+  'completed',
+  'failed',
+  'cancelled',
+  'interrupted',
+  'stopped',
+]);
 const TERMINAL_SUBTASK_STATUSES = new Set<TaskStatusType>([
   TaskStatus.COMPLETED,
   TaskStatus.FAILED,
@@ -83,6 +93,14 @@ const timestampFromServer = (value?: string | null, fallback = Date.now()) => {
   const timestamp = new Date(value).getTime();
   return Number.isFinite(timestamp) ? timestamp : fallback;
 };
+
+const durableRunDisplayStatus = (
+  value: unknown
+): DurableRunDisplayStatus | undefined =>
+  typeof value === 'string' &&
+  DURABLE_RUN_DISPLAY_STATUSES.has(value as DurableRunDisplayStatus)
+    ? (value as DurableRunDisplayStatus)
+    : undefined;
 
 const polishCompletedHistoryTask = (
   chatStore: VanillaChatStore,
@@ -371,8 +389,9 @@ interface ProjectStore {
    * Load project from history. Tries an IDB-backed cache first (skip-replay
    * fast path); falls back to SSE replay on miss. Resolves when loading
    * completes. `serverUpdatedAt` is the project's last-activity timestamp
-   * (ms) from the history API — used to invalidate stale cache entries in
-   * the background after rehydration.
+   * (ms) from the history API. Local RunJournal projects additionally compare
+   * SQLite's max Run.updated_at before hydration, so IDB can accelerate UI
+   * reconstruction without becoming a source of truth.
    */
   loadProjectFromHistory: (
     taskIds: string[],
@@ -1342,10 +1361,78 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         : null;
 
     try {
-      // SWR fast path: if we have a cached snapshot, rehydrate every task
-      // synchronously and skip the SSE replay entirely. Server freshness is
-      // checked after rehydration; a stale entry is invalidated so the next
-      // open replays from scratch (we never block the current open on it).
+      // A local RunJournal entry is newer and stronger than both the legacy
+      // cloud playback projection and an IndexedDB snapshot derived from it.
+      // Query once per Project, then replay matching tasks through Brain's
+      // canonical SQLite stream. Projects created on another device have no
+      // local Run and intentionally retain the cloud fallback.
+      const localRunsById = new Map<
+        string,
+        {
+          status?: DurableRunDisplayStatus;
+          totalAttemptElapsedMs?: number;
+          createdAt?: number;
+          updatedAt?: number;
+        }
+      >();
+      let localCanonicalUpdatedAt: number | null = null;
+      // Distinct from `null` (which means "the local RunJournal exists and has
+      // no runs yet"): this marks the /runs fetch itself as having failed, so
+      // we have no canonical anchor to compare against. In that state we must
+      // trust the cache instead of treating a missing anchor as a mismatch and
+      // deleting a valid snapshot into needless cloud-replay churn.
+      let localCanonicalUnavailable = false;
+      try {
+        const localRuns = await fetchGet('/runs', {
+          project_id: loadProjectId,
+          limit: 100,
+        });
+        for (const run of localRuns?.runs ?? []) {
+          if (run?.run_id) {
+            if (
+              typeof run.updated_at === 'number' &&
+              Number.isFinite(run.updated_at)
+            ) {
+              localCanonicalUpdatedAt = Math.max(
+                localCanonicalUpdatedAt ?? run.updated_at,
+                run.updated_at
+              );
+            }
+            localRunsById.set(String(run.run_id), {
+              status: durableRunDisplayStatus(run.status),
+              totalAttemptElapsedMs:
+                typeof run.total_attempt_elapsed_ms === 'number' &&
+                Number.isFinite(run.total_attempt_elapsed_ms) &&
+                run.total_attempt_elapsed_ms >= 0
+                  ? run.total_attempt_elapsed_ms
+                  : undefined,
+              createdAt:
+                typeof run.created_at === 'number' &&
+                Number.isFinite(run.created_at)
+                  ? run.created_at
+                  : undefined,
+              updatedAt:
+                typeof run.updated_at === 'number' &&
+                Number.isFinite(run.updated_at)
+                  ? run.updated_at
+                  : undefined,
+            });
+          }
+        }
+      } catch (localRunError) {
+        localCanonicalUnavailable = true;
+        console.info(
+          `[ProjectStore] Local RunJournal unavailable for ${loadProjectId}; using cloud history`,
+          localRunError
+        );
+      }
+
+      // Fast path: rehydrate only a cache snapshot proven current by the
+      // server freshness anchor. If the server moved on while the renderer
+      // was detached, discard the snapshot and replay during this same open.
+      // Showing stale progress until a second navigation contradicts the
+      // RunJournal's canonical terminal state and can leave a completed Run
+      // looking permanently active.
       //
       // Concurrency: the `await getCachedProject` yields control. The user
       // might switch to a different project before it resolves. We bail
@@ -1356,8 +1443,26 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           if (get().activeProjectId !== loadProjectId) {
             return loadProjectId;
           }
-          if (cached && cached.taskIds.length > 0) {
+          const cacheIsStale = Boolean(
+            cached &&
+            (cached.serverUpdatedAt == null ||
+              (serverUpdatedAt as number) > cached.serverUpdatedAt ||
+              // Only compare the local canonical anchor when we actually have
+              // one. A failed /runs fetch leaves no anchor, so skip this leg
+              // and trust the cached snapshot rather than discarding it.
+              (!localCanonicalUnavailable &&
+                (cached.localCanonicalUpdatedAt ?? null) !==
+                  localCanonicalUpdatedAt))
+          );
+          if (cacheIsStale) {
+            await deleteCachedProject(cacheScope);
+            console.info(
+              `[ProjectStore] Discarded stale cache for ${loadProjectId}; replaying latest history`
+            );
+          }
+          if (!cacheIsStale && cached && cached.taskIds.length > 0) {
             const rehydratedStores = new Map<string, VanillaChatStore>();
+            let repairedCachedTasks: Record<string, CachedTask> | null = null;
             for (const cachedTaskId of cached.taskIds) {
               const cachedTask = cached.tasks[cachedTaskId];
               if (!cachedTask) continue;
@@ -1372,6 +1477,55 @@ const projectStore = create<ProjectStore>()((set, get) => ({
               chatStore
                 .getState()
                 .hydrateTask(cachedTaskId, cachedTask.taskState as any);
+
+              // A matching freshness anchor proves that this snapshot was
+              // built from the current Run rows, but it does not prove that
+              // every derived UI field was projected correctly. Older
+              // renderer code could persist elapsed=0 even though SQLite
+              // already held the terminal attempt duration. Always overlay
+              // canonical Run status/duration on the disposable IDB view so
+              // a bad projection cannot remain trusted forever.
+              const localRun = localRunsById.get(cachedTaskId);
+              if (localRun) {
+                const canonicalElapsed =
+                  localRun.status !== 'running'
+                    ? resolveHistoricalRunElapsedMs({
+                        totalAttemptElapsedMs: localRun.totalAttemptElapsedMs,
+                        createdAt: localRun.createdAt,
+                        updatedAt: localRun.updatedAt,
+                      })
+                    : undefined;
+                const chatState = chatStore.getState();
+                chatState.setDurableRunStatus(cachedTaskId, localRun.status);
+                if (canonicalElapsed !== undefined) {
+                  chatState.setTaskTime(cachedTaskId, 0);
+                  chatState.setElapsed(cachedTaskId, canonicalElapsed);
+                }
+
+                const cachedTaskState =
+                  cachedTask.taskState &&
+                  typeof cachedTask.taskState === 'object' &&
+                  !Array.isArray(cachedTask.taskState)
+                    ? (cachedTask.taskState as Record<string, unknown>)
+                    : {};
+                const needsRepair =
+                  cachedTaskState.durableRunStatus !== localRun.status ||
+                  (canonicalElapsed !== undefined &&
+                    (cachedTaskState.elapsed !== canonicalElapsed ||
+                      cachedTaskState.taskTime !== 0));
+                if (needsRepair) {
+                  repairedCachedTasks ??= { ...cached.tasks };
+                  repairedCachedTasks[cachedTaskId] = {
+                    taskState: {
+                      ...cachedTaskState,
+                      durableRunStatus: localRun.status,
+                      ...(canonicalElapsed !== undefined
+                        ? { elapsed: canonicalElapsed, taskTime: 0 }
+                        : {}),
+                    },
+                  };
+                }
+              }
               rehydratedStores.set(cachedTaskId, chatStore);
             }
 
@@ -1394,33 +1548,26 @@ const projectStore = create<ProjectStore>()((set, get) => ({
                 `[ProjectStore] Hydrated ${loadProjectId} from cache (${rehydratedStores.size} tasks)`
               );
 
-              // Background freshness check: if the server has newer activity
-              // than what we cached — OR the cached entry has no anchor at
-              // all (legacy/unknown) — drop it so the *next* open re-runs
-              // the replay. We deliberately do not block or interrupt the
-              // current open; the user already sees the cached final state.
-              // `serverUpdatedAt` is guaranteed non-null here because
-              // `cacheScope` is null otherwise.
-              //
-              // We also mark the in-memory hydrated project as stale so
-              // `setActiveProject` evicts it on transition-away. Without
-              // this, intra-session re-selection of the same project would
-              // short-circuit on the in-memory entry (peekActiveChatStore
-              // / getProjectById) and never replay from the server until
-              // the page reloads.
-              const liveAnchor = serverUpdatedAt as number;
-              const cacheIsStale =
-                cached.serverUpdatedAt == null ||
-                liveAnchor > cached.serverUpdatedAt;
-              if (cacheIsStale) {
-                void deleteCachedProject(cacheScope).catch(() => undefined);
-                set((state) => {
-                  if (state.staleProjectIds.has(loadProjectId)) return state;
-                  const next = new Set(state.staleProjectIds);
-                  next.add(loadProjectId);
-                  return { staleProjectIds: next };
-                });
+              if (
+                repairedCachedTasks &&
+                getAuthStore().user_id === cacheScope.userId
+              ) {
+                // Best-effort self-heal. SQLite remains authoritative; this
+                // only prevents the same stale derived value from needing to
+                // be corrected again on every project open.
+                void putCachedProject(cacheScope, {
+                  serverUpdatedAt: cached.serverUpdatedAt,
+                  // With no fresh anchor (failed /runs fetch), keep the one the
+                  // cache already trusts instead of overwriting it with null.
+                  localCanonicalUpdatedAt: localCanonicalUnavailable
+                    ? cached.localCanonicalUpdatedAt
+                    : localCanonicalUpdatedAt,
+                  taskIds: cached.taskIds,
+                  tasks: repairedCachedTasks,
+                  projectName: cached.projectName,
+                }).catch(() => undefined);
               }
+
               return loadProjectId;
             }
           }
@@ -1452,14 +1599,44 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           const chatStore = project.chatStores[chatId];
           if (chatStore) {
             try {
-              await chatStore
-                .getState()
-                .replay(
+              const replay = chatStore.getState().replay;
+              if (localRunsById.has(taskId)) {
+                await replay(
+                  taskId,
+                  taskQuestionsById?.[taskId] || question,
+                  0,
+                  loadProjectId,
+                  'local_durable'
+                );
+                const localRun = localRunsById.get(taskId);
+                const canonicalElapsed =
+                  localRun?.status !== 'running'
+                    ? resolveHistoricalRunElapsedMs({
+                        totalAttemptElapsedMs: localRun?.totalAttemptElapsedMs,
+                        createdAt: localRun?.createdAt,
+                        updatedAt: localRun?.updatedAt,
+                      })
+                    : undefined;
+                chatStore
+                  .getState()
+                  .setDurableRunStatus(taskId, localRun?.status);
+                if (
+                  canonicalElapsed !== undefined &&
+                  chatStore.getState().tasks[taskId]
+                ) {
+                  // The reducer also derives a timestamp-based fallback from
+                  // the replayed events. Prefer SQLite's attempt aggregate:
+                  // it excludes the offline gap before an explicit Resume.
+                  chatStore.getState().setElapsed(taskId, canonicalElapsed);
+                }
+              } else {
+                await replay(
                   taskId,
                   taskQuestionsById?.[taskId] || question,
                   0,
                   loadProjectId
                 );
+              }
               loadedChatStoresByTaskId.set(taskId, chatStore);
               console.log(`[ProjectStore] Loaded task ${taskId}`);
             } catch (error) {
@@ -1481,6 +1658,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
             { include_tasks: true }
           );
           const doneTaskIds = new Set<string>();
+          const stoppedTaskIds = new Set<string>();
           for (const t of grouped?.tasks ?? []) {
             if (!t?.task_id || t?.status !== HISTORY_STATUS_DONE) continue;
             // Skip the polish for tasks the user explicitly stopped — the
@@ -1491,11 +1669,15 @@ const projectStore = create<ProjectStore>()((set, get) => ({
               typeof t?.summary === 'string' &&
               t.summary.startsWith(STOPPED_BY_USER_SUMMARY_PREFIX)
             ) {
+              stoppedTaskIds.add(t.task_id);
               continue;
             }
             doneTaskIds.add(t.task_id);
           }
           for (const [taskId, chatStore] of loadedChatStoresByTaskId) {
+            if (stoppedTaskIds.has(taskId)) {
+              chatStore.getState().setDurableRunStatus(taskId, 'stopped');
+            }
             if (doneTaskIds.has(taskId)) {
               polishCompletedHistoryTask(chatStore, taskId);
             }
@@ -1537,7 +1719,9 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         // Skip the write when:
         // 1. `cacheScope` is null — caller had no userId, no serverUpdatedAt,
         //    or both. We cannot anchor a freshness check, so writing would
-        //    create un-evictable entries.
+        //    create un-evictable entries. Local canonical Projects additionally
+        //    carry SQLite's max Run.updated_at, so IDB remains only a verified,
+        //    disposable UI projection rather than a competing source of truth.
         // 2. The user logged out (or switched accounts) during the replay.
         //    cacheScope.userId was captured at function start; if it no
         //    longer matches the live session, writing would leak this
@@ -1589,6 +1773,11 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           if (snapshotComplete && cachedTaskIds.length === taskIds.length) {
             void putCachedProject(cacheScope, {
               serverUpdatedAt: serverUpdatedAt as number,
+              // A failed /runs fetch yields no canonical anchor; persist null
+              // rather than a fabricated fresh timestamp.
+              localCanonicalUpdatedAt: localCanonicalUnavailable
+                ? null
+                : localCanonicalUpdatedAt,
               taskIds: cachedTaskIds,
               tasks: tasksSnapshot,
               projectName: displayName,

@@ -16,9 +16,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/api/http', () => ({
   fetchDelete: vi.fn(),
+  fetchGet: vi.fn(() => Promise.resolve({ items: [] })),
   fetchPost: vi.fn(),
   fetchPut: vi.fn(),
   getBaseURL: vi.fn(() => Promise.resolve('')),
+  getLocalControlCapability: vi.fn(() =>
+    Promise.resolve('renderer-capability')
+  ),
   proxyFetchGet: vi.fn(() => Promise.resolve({ items: [] })),
   proxyFetchPost: vi.fn(() => Promise.resolve({ id: 'history-id' })),
   proxyFetchPut: vi.fn(),
@@ -27,6 +31,7 @@ vi.mock('@/api/http', () => ({
   waitForBackendReady: vi.fn(() => Promise.resolve(true)),
 }));
 
+import { fetchPost } from '@/api/http';
 import { __remoteControlBridgeTestHooks } from '@/hooks/useRemoteControlBridge';
 import { useProjectStore } from '@/store/projectStore';
 import { SPACE_SCHEMA_VERSION, useSpaceStore } from '@/store/spaceStore';
@@ -120,6 +125,13 @@ describe('useRemoteControlBridge internals', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     expect(fetchSpy.mock.calls[0]?.[0]).toBe('/chat/project-target/status');
     expect(fetchSpy.mock.calls[1]?.[0]).toBe('/chat/project-target');
+    expect(fetchSpy.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'X-Eigent-Local-Capability': 'renderer-capability',
+        }),
+      })
+    );
   });
 
   it('starts local user_message tasks against the target Project without switching foreground Project', async () => {
@@ -183,6 +195,65 @@ describe('useRemoteControlBridge internals', () => {
     });
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(fetchSpy.mock.calls[0]?.[0]).toBe('/chat/project-target/status');
+  });
+
+  it('drops 404/409 pending results on flush but keeps retrying transient failures', async () => {
+    window.localStorage.clear();
+    const fetchPostMock = fetchPost as unknown as ReturnType<typeof vi.fn>;
+
+    const makeItem = (id: string) => ({
+      command: {
+        id,
+        session_id: 'session-1',
+        user_id: 1,
+        source_channel: 'remote_control',
+        type: 'user_message',
+        payload: {},
+      } as any,
+      body: {
+        status: 'completed' as const,
+        event_id: `${id}:execution-result`,
+        result: {},
+      },
+    });
+
+    for (const id of ['cmd_gone', 'cmd_conflict', 'cmd_transient', 'cmd_ok']) {
+      __remoteControlBridgeTestHooks.queuePendingCommandResult(makeItem(id));
+    }
+
+    fetchPostMock.mockImplementation((url: string) => {
+      if (url.includes('cmd_gone')) {
+        return Promise.reject(Object.assign(new Error('gone'), { status: 404 }));
+      }
+      if (url.includes('cmd_conflict')) {
+        return Promise.reject(
+          Object.assign(new Error('conflict'), { status: 409 })
+        );
+      }
+      if (url.includes('cmd_transient')) {
+        return Promise.reject(Object.assign(new Error('boom'), { status: 503 }));
+      }
+      return Promise.resolve({});
+    });
+
+    await __remoteControlBridgeTestHooks.flushPendingCommandResults();
+
+    // 404 (inbox row gone) and 409 (durable conflict) are never deliverable,
+    // so they are dropped once instead of retried until the 7-day TTL.
+    expect(
+      __remoteControlBridgeTestHooks.pendingCommandResult('cmd_gone')
+    ).toBeNull();
+    expect(
+      __remoteControlBridgeTestHooks.pendingCommandResult('cmd_conflict')
+    ).toBeNull();
+    // A transient 5xx stays queued for the next reconnect.
+    expect(
+      __remoteControlBridgeTestHooks.pendingCommandResult('cmd_transient')
+    ).not.toBeNull();
+    // A delivered result is removed on success.
+    expect(
+      __remoteControlBridgeTestHooks.pendingCommandResult('cmd_ok')
+    ).toBeNull();
   });
 
   it('keeps remote history metadata on inactive background Projects', () => {

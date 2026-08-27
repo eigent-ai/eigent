@@ -16,7 +16,10 @@ import ShinyText from '@/components/ui/ShinyText/ShinyText';
 import { agentMap, type WorkflowAgentType } from '@/components/WorkFlow/agents';
 import { MarkDown } from '@/components/WorkFlow/MarkDown';
 import { cn } from '@/lib/utils';
-import type { VanillaChatStore } from '@/store/chatStore';
+import type {
+  DurableRunDisplayStatus,
+  VanillaChatStore,
+} from '@/store/chatStore';
 import {
   AgentStep,
   ChatTaskStatus,
@@ -65,6 +68,32 @@ function getTaskElapsedMs(task: {
     return Math.max(0, Date.now() - task.taskTime + task.elapsed);
   }
   return Math.max(0, task.elapsed);
+}
+
+export function getTaskRunDisplayStatus(task: {
+  durableRunStatus?: DurableRunDisplayStatus;
+  messages?: Array<{ step?: string; content?: string }>;
+}): DurableRunDisplayStatus | undefined {
+  // Old cloud replicas can still say "interrupted" even though their legacy
+  // event stream contains a concrete error. The visible event is stronger
+  // evidence for presentation than that compatibility status projection.
+  const hasRecordedError = task.messages?.some(
+    (message) =>
+      message.step === AgentStep.ERROR ||
+      message.content?.trimStart().startsWith('❌ **Error**')
+  );
+  return hasRecordedError ? 'failed' : task.durableRunStatus;
+}
+
+export function terminalWorkLogI18nKey(
+  status: DurableRunDisplayStatus | undefined
+): string {
+  if (status === 'failed') return 'chat.failed-after';
+  if (status === 'interrupted') return 'chat.interrupted-after';
+  if (status === 'cancelled' || status === 'stopped') {
+    return 'chat.stopped-after';
+  }
+  return 'chat.worked-for';
 }
 
 type TaggedLog = {
@@ -642,7 +671,7 @@ function useTaskWorkStoreSnapshot(
       // (carried on each task's `content`). Fold the running/last-completed
       // step into the digest so the header re-renders as todos advance.
       const activeFormDigest = getSingleAgentActiveForm(t);
-      return `${t.status}|${t.taskTime}|${t.elapsed}|${logDigest}|${activeFormDigest}`;
+      return `${t.status}|${t.durableRunStatus ?? ''}|${t.taskTime}|${t.elapsed}|${logDigest}|${activeFormDigest}`;
     },
     () => ''
   );
@@ -1270,6 +1299,7 @@ export function TaskWorkLogAccordion({
   const snapshot = useTaskWorkStoreSnapshot(chatStore, taskId);
   const { task, groups } = useTaskWorkLogData(chatStore, taskId, snapshot);
   const status = task?.status;
+  const runDisplayStatus = task ? getTaskRunDisplayStatus(task) : undefined;
   const elapsedMs = useWorkLogElapsedMs(chatStore, taskId, snapshot);
   const taskRunning = status === ChatTaskStatus.RUNNING;
   const isSingleAgent = task?.sessionMode === SessionMode.SINGLE_AGENT;
@@ -1350,7 +1380,7 @@ export function TaskWorkLogAccordion({
             />
           ) : (
             <Trans
-              i18nKey="chat.worked-for"
+              i18nKey={terminalWorkLogI18nKey(runDisplayStatus)}
               values={{ time: timeLabel }}
               components={{
                 elapsed: (

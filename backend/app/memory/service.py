@@ -168,7 +168,7 @@ def build_durable_context_for_task_lock(
 def finalize_task_lock_run_memory(
     task_lock: Any,
     *,
-    state: Literal["done", "failed", "cancelled"],
+    state: Literal["done", "failed", "cancelled", "interrupted"],
     final_result: str | None = None,
     summary: str | None = None,
     error: str | None = None,
@@ -248,6 +248,7 @@ class MemoryService:
         prompt_source: Literal[
             "chat", "trigger", "improve", "imported"
         ] = "chat",
+        conversation_event_id: str | None = None,
     ) -> str | None:
         """Initialise Space/Project/Run records and append the user prompt.
 
@@ -297,6 +298,7 @@ class MemoryService:
                 content=user_prompt,
                 source=prompt_source,
                 now=now,
+                event_id=conversation_event_id,
             )
             return event_id
         except Exception:  # noqa: BLE001 — service is best-effort
@@ -384,7 +386,7 @@ class MemoryService:
         self,
         *,
         run_context: RunContext,
-        state: Literal["done", "failed", "cancelled"],
+        state: Literal["done", "failed", "cancelled", "interrupted"],
         final_result: str | None = None,
         summary: str | None = None,
         error: str | None = None,
@@ -438,6 +440,89 @@ class MemoryService:
                 },
                 exc_info=True,
             )
+
+    def on_run_resume(self, *, run_context: RunContext) -> None:
+        """Refresh the legacy projection without inventing a new user turn."""
+
+        user_key = _resolve_user_key(run_context)
+        if user_key is None:
+            return
+        try:
+            self._set_run_status(
+                user_key=user_key,
+                run_context=run_context,
+                state="running",
+                started_at=None,
+                ended_at=None,
+                error=None,
+            )
+            self._touch_project(
+                user_key=user_key,
+                run_context=run_context,
+                now=_utc_now(),
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "memory.service.on_run_resume: projection failed",
+                extra={"run_id": run_context.run_id},
+                exc_info=True,
+            )
+
+    def project_canonical_run_status(
+        self,
+        run_id: str,
+        *,
+        state: Literal["failed", "cancelled", "interrupted"],
+        error: str | None = None,
+    ) -> int:
+        """Best-effort RunJournal -> LocalMemory compatibility projection."""
+
+        try:
+            return self._store.project_canonical_run_status(
+                run_id,
+                state=state,
+                ended_at=_utc_now(),
+                last_error=error,
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "memory canonical status projection failed",
+                extra={"run_id": run_id, "state": state},
+                exc_info=True,
+            )
+            return 0
+
+    def project_canonical_run_statuses(
+        self,
+        statuses: dict[
+            str,
+            tuple[
+                Literal[
+                    "running", "done", "failed", "cancelled", "interrupted"
+                ],
+                str | None,
+            ],
+        ],
+    ) -> int:
+        """Batch RunJournal -> LocalMemory projection in one tree scan."""
+
+        now = _utc_now()
+        payload = {
+            run_id: (
+                state,
+                None if state == "running" else now,
+                error,
+            )
+            for run_id, (state, error) in statuses.items()
+        }
+        try:
+            return self._store.project_canonical_run_statuses(payload)
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "memory canonical status batch projection failed",
+                exc_info=True,
+            )
+            return 0
 
     def register_runtime_log_artifact(
         self,
@@ -632,7 +717,9 @@ class MemoryService:
         *,
         user_key: str,
         run_context: RunContext,
-        state: Literal["running", "done", "failed", "cancelled"],
+        state: Literal[
+            "running", "done", "failed", "cancelled", "interrupted"
+        ],
         started_at: str | None,
         ended_at: str | None,
         error: str | None,
@@ -670,14 +757,15 @@ class MemoryService:
         content: str,
         source: Literal["chat", "trigger", "improve", "imported"],
         now: str,
+        event_id: str | None = None,
     ) -> str:
-        event_id = _new_event_id()
+        resolved_event_id = event_id or _new_event_id()
         self._store.append_conversation(
             user_key,
             run_context.space_id,
             run_context.project_id,
             ConversationEvent(
-                event_id=event_id,
+                event_id=resolved_event_id,
                 run_id=run_context.run_id,
                 timestamp=now,
                 role=role,
@@ -686,8 +774,9 @@ class MemoryService:
                 visibility="context",
                 hash=_sha256(content),
             ),
+            if_absent=event_id is not None,
         )
-        return event_id
+        return resolved_event_id
 
 
 # Module-level singleton for callers that don't need to inject a custom store.

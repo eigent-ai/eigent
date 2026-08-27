@@ -12,16 +12,24 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { BrowserWindow, app } from 'electron';
+import csvParser from 'csv-parser';
+import { app, BrowserWindow } from 'electron';
 import mammoth from 'mammoth';
+import mime from 'mime';
 import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
 import path from 'node:path';
 import { URL } from 'node:url';
-import Papa from 'papaparse';
 import * as unzipper from 'unzipper';
 import { parseStringPromise } from 'xml2js';
+import {
+  decideFilePreview,
+  FILE_PREVIEW_LIMITS,
+  normalizePreviewFileType,
+  type CsvFilePreview,
+  type FilePreviewMetadata,
+} from '../../src/shared/filePreviewContract';
 import { normalizeLegacySandboxPath } from './utils/filePath';
 import { findDirectoriesByName } from './utils/log';
 import { resolveProjectStoragePath } from './utils/projectStoragePath';
@@ -35,6 +43,9 @@ interface FileInfo {
   task_id?: string;
   project_id?: string;
   source?: 'project_output' | 'camel_log';
+  size?: number;
+  modifiedAt?: number;
+  mimeType?: string;
 }
 
 export class FileReader {
@@ -364,50 +375,12 @@ export class FileReader {
     }
   }
 
-  private async parseCsv(filePath: string): Promise<string> {
-    try {
-      const fileContent = fs.readFileSync(filePath, 'utf-8');
-      const result = Papa.parse(fileContent, {
-        header: true,
-        skipEmptyLines: true,
-        delimiter: ',',
-      });
-
-      // Convert to HTML table
-      if (result.data && result.data.length > 0) {
-        const headers = Object.keys(result.data[0] as string[]);
-        let html =
-          '<table style="border-collapse: collapse; width: 100%; font-family: monospace;">';
-
-        // Header row
-        html += '<thead><tr style="background-color: #f5f5f5;">';
-        headers.forEach((header) => {
-          html += `<th style="border: 1px solid #ddd; padding: 8px; text-align: left;">${header}</th>`;
-        });
-        html += '</tr></thead>';
-
-        // Data rows
-        html += '<tbody>';
-        result.data.forEach((row: any) => {
-          html += '<tr>';
-          headers.forEach((header) => {
-            html += `<td style="border: 1px solid #ddd; padding: 8px;">${row[header] || ''}</td>`;
-          });
-          html += '</tr>';
-        });
-        html += '</tbody></table>';
-
-        return html;
-      }
-      return '<p>Empty CSV file</p>';
-    } catch (error) {
-      console.error('CSV parsing error:', error);
-      throw error;
-    }
-  }
-
   // add download file method
-  private async downloadFile(url: string, localPath: string): Promise<void> {
+  private async downloadFile(
+    url: string,
+    localPath: string,
+    maxBytes: number
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
       const urlObj = new URL(url);
       const protocol = urlObj.protocol === 'https:' ? https : http;
@@ -420,7 +393,26 @@ export class FileReader {
           return;
         }
 
+        const contentLength = Number(response.headers['content-length']);
+        if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+          response.resume();
+          reject(
+            new Error(`FILE_PREVIEW_TOO_LARGE:${contentLength}:${maxBytes}`)
+          );
+          return;
+        }
+
         const fileStream = fs.createWriteStream(localPath);
+        let receivedBytes = 0;
+        response.on('data', (chunk: Buffer) => {
+          receivedBytes += chunk.length;
+          if (receivedBytes > maxBytes) {
+            request.destroy(
+              new Error(`FILE_PREVIEW_TOO_LARGE:${receivedBytes}:${maxBytes}`)
+            );
+            fileStream.destroy();
+          }
+        });
         response.pipe(fileStream);
 
         fileStream.on('finish', () => {
@@ -474,6 +466,159 @@ export class FileReader {
     return path.join(tempDir, fileName);
   }
 
+  private previewDownloadLimit(type: string): number {
+    const normalized = normalizePreviewFileType(type);
+    if (normalized === 'pdf') return FILE_PREVIEW_LIMITS.pdfBytes;
+    if (normalized === 'csv' || normalized === 'tsv') {
+      return FILE_PREVIEW_LIMITS.csvScanBytes;
+    }
+    if (normalized === 'html') return FILE_PREVIEW_LIMITS.richHtmlBytes;
+    if (['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx'].includes(normalized)) {
+      return FILE_PREVIEW_LIMITS.officeBytes;
+    }
+    return FILE_PREVIEW_LIMITS.defaultBytes;
+  }
+
+  private normalizeLocalPreviewPath(filePath: string): string {
+    const normalized = normalizeLegacySandboxPath(filePath);
+    if (!this.isLocalFile(normalized)) {
+      throw new Error('Preview metadata requires a local file');
+    }
+    return normalized.replace(/^localfile:\/\//, '').replace(/^file:\/\//, '');
+  }
+
+  public async getPreviewMetadata(
+    filePath: string
+  ): Promise<FilePreviewMetadata> {
+    const localPath = this.normalizeLocalPreviewPath(filePath);
+    const stats = await fs.promises.stat(localPath);
+    if (!stats.isFile()) throw new Error('Preview target is not a file');
+    return {
+      size: stats.size,
+      modifiedAt: stats.mtimeMs,
+      mimeType: mime.getType(localPath) || 'application/octet-stream',
+      supportsRanges: true,
+    };
+  }
+
+  // Cheap binary sniff over a prefix: any NUL byte, or more than 30% control
+  // characters (excluding tab/newline/carriage-return), means the bytes are not
+  // safe to decode and dump as text. Bytes >= 0x80 are treated as printable so
+  // legitimate UTF-8 (e.g. CJK) text is not misclassified.
+  private isProbablyBinary(buffer: Buffer, length: number): boolean {
+    if (length === 0) return false;
+    let suspicious = 0;
+    for (let index = 0; index < length; index += 1) {
+      const byte = buffer[index];
+      if (byte === 0) return true;
+      const printable =
+        byte === 9 || byte === 10 || byte === 13 || (byte >= 32 && byte !== 127);
+      if (!printable) suspicious += 1;
+    }
+    return suspicious / length > 0.3;
+  }
+
+  public async previewTextFile(filePath: string, requestedLimit?: number) {
+    const localPath = this.normalizeLocalPreviewPath(filePath);
+    const stats = await fs.promises.stat(localPath);
+    if (!stats.isFile()) throw new Error('Preview target is not a file');
+    // Clamp to the caller's requested limit, capped by the largest bounded-text
+    // class the contract allows. Previously this hard-clamped to textBytes,
+    // making the richer HTML / inline-asset budgets unreachable.
+    const ceiling = Math.max(
+      FILE_PREVIEW_LIMITS.textBytes,
+      FILE_PREVIEW_LIMITS.richHtmlBytes,
+      FILE_PREVIEW_LIMITS.htmlInlineAssetBytes
+    );
+    const limit = Math.max(
+      1,
+      Math.min(Number(requestedLimit) || FILE_PREVIEW_LIMITS.textBytes, ceiling)
+    );
+    const bytesRead = Math.min(stats.size, limit);
+    const handle = await fs.promises.open(localPath, 'r');
+    try {
+      const buffer = Buffer.alloc(bytesRead);
+      const result = await handle.read(buffer, 0, bytesRead, 0);
+      const binary = this.isProbablyBinary(
+        buffer,
+        Math.min(result.bytesRead, 8192)
+      );
+      return {
+        // A binary file has no useful text preview; skip the wasted utf-8
+        // transfer and let the renderer show a download / open-in-folder card.
+        content: binary
+          ? ''
+          : buffer.subarray(0, result.bytesRead).toString('utf-8'),
+        bytesRead: result.bytesRead,
+        totalBytes: stats.size,
+        binary,
+      };
+    } finally {
+      await handle.close();
+    }
+  }
+
+  public async previewCsvFile(filePath: string): Promise<CsvFilePreview> {
+    const localPath = this.normalizeLocalPreviewPath(filePath);
+    const stats = await fs.promises.stat(localPath);
+    if (!stats.isFile()) throw new Error('Preview target is not a file');
+    if (stats.size === 0) {
+      return {
+        kind: 'csv',
+        columns: [],
+        rows: [],
+        truncated: false,
+        rowLimit: FILE_PREVIEW_LIMITS.csvRows,
+        columnLimit: FILE_PREVIEW_LIMITS.csvColumns,
+        bytesRead: 0,
+        totalBytes: 0,
+      };
+    }
+
+    const source = fs.createReadStream(localPath, {
+      start: 0,
+      end: Math.min(stats.size, FILE_PREVIEW_LIMITS.csvScanBytes) - 1,
+    });
+    const parser = source.pipe(
+      csvParser({ maxRowBytes: FILE_PREVIEW_LIMITS.csvScanBytes })
+    );
+    let allColumns: string[] = [];
+    parser.once('headers', (headers: string[]) => {
+      allColumns = headers;
+    });
+    const rawRows: Record<string, unknown>[] = [];
+    for await (const row of parser) {
+      rawRows.push(row as Record<string, unknown>);
+      if (rawRows.length > FILE_PREVIEW_LIMITS.csvRows) break;
+    }
+    const columns = allColumns.slice(0, FILE_PREVIEW_LIMITS.csvColumns);
+    const rows = rawRows.slice(0, FILE_PREVIEW_LIMITS.csvRows).map((row) =>
+      columns.map((column) => {
+        const value = row[column] == null ? '' : String(row[column]);
+        return value.length > FILE_PREVIEW_LIMITS.csvCellCharacters
+          ? `${value.slice(0, FILE_PREVIEW_LIMITS.csvCellCharacters)}…`
+          : value;
+      })
+    );
+
+    return {
+      kind: 'csv',
+      columns,
+      rows,
+      truncated:
+        stats.size > FILE_PREVIEW_LIMITS.csvScanBytes ||
+        rawRows.length > FILE_PREVIEW_LIMITS.csvRows ||
+        allColumns.length > FILE_PREVIEW_LIMITS.csvColumns,
+      rowLimit: FILE_PREVIEW_LIMITS.csvRows,
+      columnLimit: FILE_PREVIEW_LIMITS.csvColumns,
+      bytesRead: Math.min(
+        stats.size,
+        source.bytesRead || FILE_PREVIEW_LIMITS.csvScanBytes
+      ),
+      totalBytes: stats.size,
+    };
+  }
+
   public openFile(type: string, filePath: string, _isShowSourceCode: boolean) {
     return new Promise(async (resolve, reject) => {
       try {
@@ -486,7 +631,11 @@ export class FileReader {
           // download file to temporary directory
           const tempPath = this.getTempFilePath(filePath, type);
           try {
-            await this.downloadFile(filePath, tempPath);
+            await this.downloadFile(
+              filePath,
+              tempPath,
+              this.previewDownloadLimit(type)
+            );
             console.log('file download completed:', tempPath);
 
             // use temporary file path to continue processing
@@ -496,6 +645,22 @@ export class FileReader {
             reject(downloadError);
             return;
           }
+        }
+
+        const stats = await fs.promises.stat(filePath);
+        const decision = decideFilePreview(type, { size: stats.size });
+        if (decision.mode === 'blocked') {
+          throw new Error(
+            `FILE_PREVIEW_BLOCKED:${decision.reason}:${stats.size}:${decision.limit}`
+          );
+        }
+        if (
+          decision.mode === 'bounded-csv' ||
+          decision.mode === 'bounded-text'
+        ) {
+          throw new Error(
+            `FILE_PREVIEW_REQUIRES_BOUNDED_READER:${decision.mode}`
+          );
         }
 
         // original file processing logic
@@ -508,14 +673,7 @@ export class FileReader {
         } else if (['pdf'].includes(type)) {
           resolve(filePath);
         } else if (type === 'csv') {
-          try {
-            const htmlContent = await this.parseCsv(filePath);
-            resolve(htmlContent);
-          } catch (error) {
-            console.warn('CSV parsing failed, reading as text:', error);
-            const content = fs.readFileSync(filePath, 'utf-8');
-            resolve(content);
-          }
+          throw new Error('FILE_PREVIEW_REQUIRES_BOUNDED_READER:bounded-csv');
         } else if (type === 'docx') {
           try {
             const htmlContent = await this.parseDocx(filePath);
@@ -613,6 +771,11 @@ export class FileReader {
               : file.split('.').pop()?.toLowerCase() || '',
             isFolder: isFolder,
             relativePath: relativePath === '' ? '' : relativePath,
+            size: isFolder ? undefined : stats.size,
+            modifiedAt: stats.mtimeMs,
+            mimeType: isFolder
+              ? undefined
+              : mime.getType(filePath) || 'application/octet-stream',
           };
 
           result.push(fileInfo);
@@ -865,6 +1028,31 @@ export class FileReader {
       return [...projectFiles, ...camelLogFiles];
     } catch (err) {
       console.error('Load file failed:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Return diagnostic logs only. This intentionally does not traverse the
+   * selected project folder: collecting logs must never discover or imply
+   * upload consent for files that already existed in a user's workspace.
+   */
+  public getCamelLogFileList(
+    email: string,
+    taskId: string,
+    projectId?: string,
+    userId?: string | number | null
+  ): FileInfo[] {
+    const { logPath } = this.resolveTaskPaths(email, taskId, projectId, userId);
+    const camelLogPath = path.join(logPath, 'camel_logs');
+    if (!fs.existsSync(camelLogPath)) return [];
+    try {
+      return this.getFilesRecursive(camelLogPath, camelLogPath).map((file) => ({
+        ...file,
+        source: 'camel_log' as const,
+      }));
+    } catch (err) {
+      console.error('Load camel logs failed:', err);
       return [];
     }
   }

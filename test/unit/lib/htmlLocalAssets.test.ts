@@ -15,6 +15,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  createInlineAssetBudget,
   getRelativePathFromDir,
   inlineLocalHtmlImgElements,
   inlineLocalProjectImagePaths,
@@ -24,19 +25,27 @@ import {
 describe('toLocalFileUrl', () => {
   it('converts absolute unix paths to localfile base hrefs', () => {
     expect(toLocalFileUrl('/Users/test/canvas_map')).toBe(
-      'localfile:///Users/test/canvas_map/'
+      'localfile://preview/Users/test/canvas_map/'
     );
   });
 
-  it('preserves existing localfile urls and trailing slash', () => {
+  it('upgrades existing localfile urls to the navigable fixed-host format', () => {
     expect(toLocalFileUrl('localfile:///Users/test/canvas_map/')).toBe(
-      'localfile:///Users/test/canvas_map/'
+      'localfile://preview/Users/test/canvas_map/'
     );
+  });
+
+  it('converts query-based preview urls to the navigable fixed-host format', () => {
+    expect(
+      toLocalFileUrl(
+        'localfile://preview/?path=%2FUsers%2FExample%20User%2Fcanvas_map'
+      )
+    ).toBe('localfile://preview/Users/Example%20User/canvas_map/');
   });
 
   it('emits standard localfile urls for Windows drive paths', () => {
     expect(toLocalFileUrl('C:\\Users\\test\\canvas_map')).toBe(
-      'localfile:///C:/Users/test/canvas_map/'
+      'localfile://preview/C:/Users/test/canvas_map/'
     );
   });
 });
@@ -145,5 +154,62 @@ describe('inlineLocalProjectImagePaths', () => {
     expect(readFileAsDataUrl).toHaveBeenCalledWith(
       '/Users/test/canvas_map/assets/home.png'
     );
+  });
+});
+
+describe('inline asset aggregate budget', () => {
+  const dataUrl = `data:image/png;base64,${'A'.repeat(100)}`;
+
+  it('stops inlining html <img> elements once the budget is exhausted', async () => {
+    const html = '<img src="a.png"><img src="b.png"><img src="c.png">';
+    const readFileAsDataUrl = vi.fn().mockResolvedValue(dataUrl);
+    // Enough for the first asset (~123 chars) but not the second.
+    const budget = createInlineAssetBudget(150);
+
+    const result = await inlineLocalHtmlImgElements(
+      html,
+      '/dir',
+      readFileAsDataUrl,
+      budget
+    );
+
+    expect(budget.truncated).toBe(true);
+    expect(result).toContain(`src="${dataUrl}"`);
+    expect(result).toContain('src="b.png"');
+    expect(result).toContain('src="c.png"');
+  });
+
+  it('leaves the budget untruncated when every asset fits', async () => {
+    const html = '<img src="a.png">';
+    const readFileAsDataUrl = vi.fn().mockResolvedValue(dataUrl);
+    const budget = createInlineAssetBudget();
+
+    const result = await inlineLocalHtmlImgElements(
+      html,
+      '/dir',
+      readFileAsDataUrl,
+      budget
+    );
+
+    expect(budget.truncated).toBe(false);
+    expect(result).toContain(`src="${dataUrl}"`);
+  });
+
+  it('shares one budget across project-path inlining and skips over-budget assets', async () => {
+    const html = '{ "x": "a.png", "y": "b.png" }';
+    const readFileAsDataUrl = vi.fn().mockResolvedValue(dataUrl);
+    const budget = createInlineAssetBudget(150);
+
+    const result = await inlineLocalProjectImagePaths(
+      html,
+      '/dir',
+      [{ path: '/dir/a.png' }, { path: '/dir/b.png' }],
+      readFileAsDataUrl,
+      budget
+    );
+
+    expect(budget.truncated).toBe(true);
+    expect(result).toContain(dataUrl);
+    expect(result).toContain('"b.png"');
   });
 });

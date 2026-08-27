@@ -64,6 +64,10 @@
   "splitting-tasks": "Division des tâches",
   "working-on-tasks-for": "Travaille sur les tâches depuis <elapsed>{{time}}</elapsed>",
   "worked-for": "A travaillé pendant <elapsed>{{time}}</elapsed>",
+  "failed-after": "Échec après <elapsed>{{time}}</elapsed>",
+  "interrupted-after": "Interrompu après <elapsed>{{time}}</elapsed>",
+  "stopped-after": "Arrêté après <elapsed>{{time}}</elapsed>",
+  "run-no-final-response": "Ce Run s'est terminé avant l'enregistrement d'une réponse finale.",
   "start-task": "Exécuter maintenant",
   "auto-start-in": "Démarrage auto dans {{seconds}}s",
   "message-cannot-be-empty": "Le message ne peut pas être vide",
@@ -112,5 +116,15 @@
   "expand-plan": "Développer le plan",
   "minimize-plan": "Réduire le plan",
   "expand-subtasks": "Développer les sous-tâches",
-  "add-subtask-placeholder": "Ajoutez une nouvelle sous-tâche et appuyez sur Entrée pour en ajouter d’autres"
+  "add-subtask-placeholder": "Ajoutez une nouvelle sous-tâche et appuyez sur Entrée pour en ajouter d’autres",
+  "run-cloud-restored-title": "Historique restauré depuis le cloud",
+  "run-cloud-restored-description": "Cette exécution est disponible en lecture seule. Son espace de travail local et son contexte d’exécution d’origine ne sont pas présents sur cet appareil ; envoyez un suivi pour démarrer une nouvelle exécution.",
+  "run-interrupted-title": "Exécution interrompue",
+  "run-interrupted-description": "Eigent s’est arrêté avant la fin de cette exécution. Le travail terminé est enregistré. Reprendre crée une nouvelle tentative sans répéter automatiquement les actions externes déjà effectuées.",
+  "run-resume": "Reprendre",
+  "run-resuming": "Reprise…",
+  "run-cancel": "Annuler l’exécution",
+  "run-cancelling": "Annulation…",
+  "run-resume-failed": "Impossible de reprendre cette exécution.",
+  "run-cancel-failed": "Impossible d’annuler cette exécution."
 }

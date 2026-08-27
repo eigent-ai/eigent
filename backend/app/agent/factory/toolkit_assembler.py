@@ -44,10 +44,42 @@ from app.agent.toolkit.web_deploy_toolkit import WebDeployToolkit
 from app.component.environment import env
 from app.hands.interface import IHands
 from app.model.chat import Chat
+from app.run_policy import ToolSafetyClass
+from app.run_runtime.tool_checkpoint import declare_tool_safety
 from app.service.task import Agents
 from app.utils.browser_launcher import normalize_cdp_url
 
 logger = logging.getLogger("toolkit_assembler")
+
+
+def _normalize_toolkit_name(value: str) -> str:
+    return "".join(
+        character for character in value.casefold() if character.isalnum()
+    )
+
+
+_SAFE_READ_TOOLKIT_FUNCTIONS: dict[str, frozenset[str] | None] = {
+    # None means every exposed function in this code-owned toolkit is read-only.
+    "searchtoolkit": None,
+    "webfetchtoolkit": None,
+    "screenshottoolkit": frozenset({"read_image"}),
+    "humantoolkit": frozenset({"ask_human_via_gui"}),
+    # HybridBrowserToolkit intentionally publishes itself as "Browser Toolkit".
+    "browsertoolkit": frozenset(
+        {
+            "browser_console_view",
+            "browser_get_page_snapshot",
+            "browser_sheet_read",
+        }
+    ),
+    "hybridbrowsertoolkit": frozenset(
+        {
+            "browser_console_view",
+            "browser_get_page_snapshot",
+            "browser_sheet_read",
+        }
+    ),
+}
 
 DEFAULT_SINGLE_AGENT_TOOLKIT_CONFIG: dict[str, Any] = {
     "human": {"enabled": True},
@@ -124,11 +156,21 @@ def _options(config: dict[str, Any], name: str) -> dict[str, Any]:
 def _tag_tools(
     tools: list[FunctionTool | Callable], toolkit_name: str
 ) -> None:
+    safe_functions = _SAFE_READ_TOOLKIT_FUNCTIONS.get(
+        _normalize_toolkit_name(toolkit_name), frozenset()
+    )
     for tool in tools:
         try:
             tool._toolkit_name = toolkit_name
         except Exception:
             pass
+        function_name = (
+            tool.get_function_name()
+            if hasattr(tool, "get_function_name")
+            else getattr(tool, "__name__", "")
+        )
+        if safe_functions is None or function_name in safe_functions:
+            declare_tool_safety(tool, ToolSafetyClass.SAFE_READ)
 
 
 def _get_browser_port(browser: dict) -> int:

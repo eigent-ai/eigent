@@ -16,7 +16,9 @@ import {
   buildAgentBlocks,
   getBlockHeaderParts,
   getSingleAgentActiveForm,
+  getTaskRunDisplayStatus,
   groupBlocksByAgent,
+  terminalWorkLogI18nKey,
   type AgentBlock,
   type AgentGroup,
   type TimelineItem,
@@ -51,6 +53,30 @@ function findMessage(items: TimelineItem[], idx: number) {
   const messages = items.filter((i) => i.kind === 'message');
   return messages[idx];
 }
+
+describe('terminal Run presentation', () => {
+  it('lets a recorded error override a compatibility interrupted status', () => {
+    expect(
+      getTaskRunDisplayStatus({
+        durableRunStatus: 'interrupted',
+        messages: [
+          {
+            step: AgentStep.ERROR,
+            content: '❌ **Error**: Client Closed Request',
+          },
+        ],
+      })
+    ).toBe('failed');
+    expect(terminalWorkLogI18nKey('failed')).toBe('chat.failed-after');
+  });
+
+  it('uses explicit labels for interrupted and stopped Runs', () => {
+    expect(terminalWorkLogI18nKey('interrupted')).toBe(
+      'chat.interrupted-after'
+    );
+    expect(terminalWorkLogI18nKey('stopped')).toBe('chat.stopped-after');
+  });
+});
 
 describe('getSingleAgentActiveForm', () => {
   function taskWithAgents(

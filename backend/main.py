@@ -60,6 +60,7 @@ _enable_system_trust_store()
 from app import api
 from app.component.environment import env
 from app.router import register_routers
+from app.run_sync.middleware import cloud_sync_configuration_middleware
 from app.utils.event_loop_utils import set_main_event_loop
 
 os.environ["PYTHONIOENCODING"] = "utf-8"
@@ -70,6 +71,8 @@ _fallback_camel_log_dir.mkdir(parents=True, exist_ok=True)
 os.environ.setdefault("CAMEL_LOG_DIR", str(_fallback_camel_log_dir))
 
 app_logger = logging.getLogger("main")
+
+api.middleware("http")(cloud_sync_configuration_middleware)
 
 # Log application startup
 app_logger.info("Starting Eigent Multi-Agent System API")
@@ -131,6 +134,65 @@ async def startup_event():
     pid_task = asyncio.create_task(write_pid_file())
     app_logger.info("PID write task created")
 
+    # Reconcile durable execution facts before accepting new Run admission.
+    # No Python coroutine or external Tool call is restarted implicitly.
+    from app.run_journal.runtime import get_default_run_journal
+
+    reconciliation = await asyncio.to_thread(
+        get_default_run_journal().reconcile_startup
+    )
+    # LocalMemory is a compatibility/context projection, never an execution
+    # status authority. Repair its status files from the canonical journal so
+    # a hard process exit cannot leave UI/context consumers seeing "running"
+    # or "cancelled" for an interrupted Run.
+    from app.memory import get_memory_service
+
+    journal = get_default_run_journal()
+    canonical_runs = await asyncio.to_thread(journal.list_all_runs)
+    memory_states = {
+        run.run_id: (
+            {
+                "pending": "running",
+                "running": "running",
+                "waiting_for_user": "running",
+                "completed": "done",
+                "failed": "failed",
+                "cancelled": "cancelled",
+                "interrupted": "interrupted",
+            }[run.status],
+            (
+                "brain_restart"
+                if run.status == "interrupted"
+                else (
+                    "run_deadline_reached"
+                    if run.run_id in reconciliation.deadline_run_ids
+                    else None
+                )
+            ),
+        )
+        for run in canonical_runs
+    }
+    await asyncio.to_thread(
+        get_memory_service().project_canonical_run_statuses,
+        memory_states,
+    )
+    app_logger.info(
+        "RunJournal startup reconciliation complete",
+        extra={
+            "interrupted_runs": len(reconciliation.interrupted_run_ids),
+            "completed_cancels": len(reconciliation.completed_cancel_run_ids),
+            "deadline_runs": len(reconciliation.deadline_run_ids),
+            "detached_attempts": len(reconciliation.detached_attempt_ids),
+            "outcome_unknown_tools": len(
+                reconciliation.outcome_unknown_tool_call_ids
+            ),
+            "pending_approvals": len(reconciliation.pending_approval_ids),
+            "reconcilable_commands": len(
+                reconciliation.reconcilable_command_ids
+            ),
+        },
+    )
+
     # Initialize EnvironmentHands from Brain deployment (full on local/cloud_vm, sandbox in Docker)
     from app.router_layer.hands_resolver import init_environment_hands
 
@@ -156,6 +218,23 @@ async def cleanup_resources():
     r"""Cleanup all resources on shutdown"""
     app_logger.info("Starting graceful shutdown process")
 
+    # Stop detached execution consumers before cleaning their compatibility
+    # TaskLocks. RunJournal remains open until all producers have stopped.
+    try:
+        from app.run_runtime import close_default_run_coordinator
+
+        await close_default_run_coordinator()
+    except Exception as e:
+        app_logger.warning(f"RunCoordinator shutdown failed: {e}")
+
+    # Stop cloud outbox drain before closing its shared SQLite journal.
+    try:
+        from app.run_sync.runtime import close_default_cloud_sync_worker
+
+        await close_default_cloud_sync_worker()
+    except Exception as e:
+        app_logger.warning(f"CloudSyncWorker shutdown failed: {e}")
+
     from app.service.task import _cleanup_task, task_locks
 
     if _cleanup_task and not _cleanup_task.done():
@@ -172,6 +251,14 @@ async def cleanup_resources():
             await task_lock.cleanup()
         except Exception as e:
             app_logger.error(f"Error cleaning up task {task_id}: {e}")
+
+    # Close the process-owned SQLite RunJournal after producers have stopped.
+    try:
+        from app.run_journal.runtime import close_default_run_journal
+
+        close_default_run_journal()
+    except Exception as e:
+        app_logger.warning(f"RunJournal shutdown failed: {e}")
 
     # Remove PID file
     pid_file = dir / "run.pid"
@@ -235,13 +322,17 @@ atexit.register(sync_cleanup)
 # Log successful initialization
 app_logger.info("Application initialization completed successfully")
 
+DEFAULT_BRAIN_HOST = "127.0.0.1"
+
 
 def run_standalone():
     """Run Brain in standalone mode (no Electron dependency)."""
     import uvicorn
 
     port = int(env("EIGENT_BRAIN_PORT", "5001"))
-    host = env("EIGENT_BRAIN_HOST", "0.0.0.0")  # nosec B104 - bind all for Docker/dev
+    # Exposing Brain is an explicit deployment choice. Desktop and local dev
+    # default to loopback so LAN peers cannot reach mutable Chat/Run APIs.
+    host = env("EIGENT_BRAIN_HOST", DEFAULT_BRAIN_HOST)
     reload = os.environ.get("EIGENT_DEBUG", "").lower() in ("1", "true", "yes")
 
     app_logger.info(
