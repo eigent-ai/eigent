@@ -137,12 +137,12 @@ describe('ModelAndThinkingEffortSelect', () => {
     );
 
     const trigger = screen.getByRole('button', {
-      name: 'Model: GPT-5.5; Thinking effort: Medium',
+      name: 'Model: GPT-5.5; Thinking effort: Default',
     });
     expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
-    expect(trigger).toHaveTextContent(/GPT-5\.5\s*Medium/);
+    expect(trigger).toHaveTextContent(/GPT-5\.5\s*Default/);
     expect(trigger).not.toHaveTextContent('|');
-    expect(within(trigger).getByText('Medium')).toHaveClass(
+    expect(within(trigger).getByText('Default')).toHaveClass(
       'text-ds-ink-muted-default'
     );
     expect(trigger).not.toHaveClass('min-w-56');
@@ -161,32 +161,32 @@ describe('ModelAndThinkingEffortSelect', () => {
     );
 
     const effortItems = within(menu).getAllByRole('menuitemradio');
-    expect(effortItems).toHaveLength(5);
+    expect(effortItems).toHaveLength(6);
+    const inheritedEffort = within(menu).getByRole('menuitemradio', {
+      name: 'Default',
+    });
+    expect(inheritedEffort).toHaveAttribute('aria-checked', 'true');
+    expect(inheritedEffort).toHaveClass(
+      'h-ds-control-md',
+      'min-h-ds-control-md',
+      'py-0'
+    );
+    expect(inheritedEffort.lastElementChild).toHaveClass('ml-auto');
     expect(
       within(menu).getByRole('menuitemradio', { name: 'Low' })
     ).toBeVisible();
     expect(
       within(menu).getByRole('menuitemradio', { name: 'High' })
     ).toBeVisible();
-    const selectedEffort = within(menu).getByRole('menuitemradio', {
-      name: 'Medium Default',
+    const mediumEffort = within(menu).getByRole('menuitemradio', {
+      name: 'Medium',
     });
-    expect(selectedEffort).toHaveAttribute('aria-checked', 'true');
-    expect(selectedEffort).toHaveClass(
+    expect(mediumEffort).toHaveAttribute('aria-checked', 'false');
+    expect(mediumEffort).toHaveClass(
       'h-ds-control-md',
       'min-h-ds-control-md',
       'py-0'
     );
-    const defaultTag = within(selectedEffort).getByText('Default');
-    expect(defaultTag).toHaveAttribute('data-variant', 'secondary');
-    expect(defaultTag).toHaveAttribute('data-emphasis', 'default');
-    expect(defaultTag).toHaveClass(
-      'border-ds-hairline-default-default',
-      'bg-ds-neutral-subtle-default',
-      '!px-ds-4',
-      '!py-0'
-    );
-    expect(selectedEffort.lastElementChild).toHaveClass('ml-auto');
     expect(
       within(menu).getByRole('menuitemradio', { name: 'Extra High' })
     ).toBeVisible();
@@ -232,12 +232,41 @@ describe('ModelAndThinkingEffortSelect', () => {
       'overflow-y-auto'
     );
 
-    await user.click(
-      within(menu).getByRole('menuitemradio', { name: 'Medium Default' })
-    );
+    await user.click(mediumEffort);
 
     expect(onThinkingEffortChange).toHaveBeenCalledWith(ThinkingEffort.MEDIUM);
     expect(mocks.setProjectModel).not.toHaveBeenCalled();
+  });
+
+  it('keeps explicit Medium distinct from Bundle inheritance', async () => {
+    const user = userEvent.setup();
+    const onThinkingEffortChange = vi.fn();
+    render(
+      <ModelAndThinkingEffortSelect
+        projectId="project-1"
+        thinkingEffort={ThinkingEffort.MEDIUM}
+        onThinkingEffortChange={onThinkingEffortChange}
+      />
+    );
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Model: GPT-5.5; Thinking effort: Medium',
+      })
+    );
+
+    const menu = await screen.findByRole('menu');
+    expect(
+      within(menu).getByRole('menuitemradio', { name: 'Medium' })
+    ).toHaveAttribute('aria-checked', 'true');
+    const inheritedEffort = within(menu).getByRole('menuitemradio', {
+      name: 'Default',
+    });
+    expect(inheritedEffort).toHaveAttribute('aria-checked', 'false');
+
+    await user.click(inheritedEffort);
+
+    expect(onThinkingEffortChange).toHaveBeenCalledWith(undefined);
   });
 
   it('keeps the combined contextual name in read-only presentation', () => {

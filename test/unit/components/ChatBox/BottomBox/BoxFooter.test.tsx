@@ -40,21 +40,29 @@ vi.mock('@/components/ChatBox/BottomBox/ModelAndThinkingEffortSelect', () => ({
     projectId,
   }: {
     thinkingEffort?: string;
-    onThinkingEffortChange?: (effort: string) => void;
+    onThinkingEffortChange?: (effort: string | undefined) => void;
     disabled?: boolean;
     readOnly?: boolean;
     projectId?: string | null;
   }) => (
-    <button
-      type="button"
-      data-testid="model-thinking-select"
-      data-effort={thinkingEffort ?? 'medium'}
-      data-inherited={String(thinkingEffort === undefined)}
-      data-readonly={String(Boolean(readOnly))}
-      data-project-id={projectId ?? ''}
-      disabled={disabled}
-      onClick={() => onThinkingEffortChange?.('high')}
-    />
+    <>
+      <button
+        type="button"
+        data-testid="model-thinking-select"
+        data-effort={thinkingEffort ?? 'default'}
+        data-inherited={String(thinkingEffort === undefined)}
+        data-readonly={String(Boolean(readOnly))}
+        data-project-id={projectId ?? ''}
+        disabled={disabled}
+        onClick={() => onThinkingEffortChange?.('high')}
+      />
+      <button
+        type="button"
+        data-testid="inherit-thinking-effort"
+        disabled={disabled}
+        onClick={() => onThinkingEffortChange?.(undefined)}
+      />
+    </>
   ),
 }));
 
@@ -81,7 +89,7 @@ describe('BoxFooter', () => {
     );
     expect(screen.getAllByTestId('model-thinking-select')).toHaveLength(1);
     expect(selector).toHaveAttribute('data-readonly', 'false');
-    expect(selector).toHaveAttribute('data-effort', 'medium');
+    expect(selector).toHaveAttribute('data-effort', 'default');
     expect(selector).toHaveAttribute('data-inherited', 'true');
     expect(selector).toHaveAttribute('data-project-id', '');
     expect(selector).not.toBeDisabled();
@@ -94,6 +102,12 @@ describe('BoxFooter', () => {
     expect(useProjectStore.getState().getComposerThinkingEffort()).toBe(
       ThinkingEffort.HIGH
     );
+
+    fireEvent.click(screen.getByTestId('inherit-thinking-effort'));
+
+    expect(
+      useProjectStore.getState().getComposerThinkingEffort()
+    ).toBeUndefined();
   });
 
   it('locks session mode on a running Session while thinking effort stays selectable', () => {
@@ -112,7 +126,7 @@ describe('BoxFooter', () => {
     );
     expect(screen.getAllByTestId('model-thinking-select')).toHaveLength(1);
     expect(selector).toHaveAttribute('data-readonly', 'false');
-    expect(selector).toHaveAttribute('data-effort', 'medium');
+    expect(selector).toHaveAttribute('data-effort', 'default');
     expect(selector).toHaveAttribute('data-inherited', 'true');
     expect(selector).toHaveAttribute('data-project-id', projectId);
     expect(selector).not.toBeDisabled();
@@ -124,6 +138,12 @@ describe('BoxFooter', () => {
     );
     expect(
       useProjectStore.getState().getComposerThinkingEffort()
+    ).toBeUndefined();
+
+    fireEvent.click(screen.getByTestId('inherit-thinking-effort'));
+
+    expect(
+      useProjectStore.getState().getProjectThinkingEffortOverride(projectId)
     ).toBeUndefined();
   });
 

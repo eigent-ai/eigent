@@ -37,7 +37,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
-import { Tag } from '@/components/ui/tag';
 import { createHost } from '@/host/createHost';
 import {
   applyDefaultModelSelection,
@@ -69,7 +68,7 @@ import { useTranslation } from 'react-i18next';
 
 export interface ModelAndThinkingEffortSelectProps {
   thinkingEffort: ThinkingEffortType | undefined;
-  onThinkingEffortChange?: (effort: ThinkingEffortType) => void;
+  onThinkingEffortChange?: (effort: ThinkingEffortType | undefined) => void;
   disabled?: boolean;
   /**
    * Project whose pinned model this dropdown reads and writes. When set,
@@ -94,13 +93,6 @@ const THINKING_EFFORT_OPTIONS: ThinkingEffortType[] = [
   ThinkingEffort.XHIGH,
   ThinkingEffort.MAX,
 ];
-
-/**
- * Shown when a Project (or the composer draft) carries no effort override.
- * Must stay in sync with the server-side fallback — the run request omits
- * `thinking_effort` in that case and the backend applies its own default.
- */
-const DEFAULT_THINKING_EFFORT = ThinkingEffort.MEDIUM;
 
 const combinedTriggerShellClass = cn(
   'rounded-xl px-2 py-1 inline-flex max-w-[min(100%,320px)] shrink-0 items-center gap-1.5',
@@ -429,10 +421,10 @@ export function ModelAndThinkingEffortSelect({
     t,
   ]);
 
-  const displayedThinkingEffort = thinkingEffort ?? DEFAULT_THINKING_EFFORT;
-  const triggerThinkingEffortName = t(
-    `layout.thinking-effort-${displayedThinkingEffort}`
-  );
+  const triggerThinkingEffortName =
+    thinkingEffort === undefined
+      ? t('layout.default')
+      : t(`layout.thinking-effort-${thinkingEffort}`);
   const selectedCloudModelId =
     (pinnedSelection?.modelType === 'cloud'
       ? pinnedSelection.cloud_model_type || effectiveCloudModelId
@@ -655,8 +647,24 @@ export function ModelAndThinkingEffortSelect({
           {t('layout.thinking-effort-label')}
         </DropdownMenuLabel>
         <DropdownMenuGroup aria-labelledby={thinkingEffortLabelId}>
+          <DropdownMenuItem
+            role="menuitemradio"
+            aria-checked={thinkingEffort === undefined}
+            onSelect={() => onThinkingEffortChange?.(undefined)}
+            className="h-ds-control-md min-h-ds-control-md py-0"
+          >
+            <span className="min-w-0 flex-1 truncate">
+              {t('layout.default')}
+            </span>
+            {thinkingEffort === undefined ? (
+              <Check
+                className="ml-auto size-4 shrink-0 text-ds-ink-default-default"
+                aria-hidden
+              />
+            ) : null}
+          </DropdownMenuItem>
           {THINKING_EFFORT_OPTIONS.map((effort) => {
-            const selected = effort === displayedThinkingEffort;
+            const selected = effort === thinkingEffort;
             return (
               <DropdownMenuItem
                 key={effort}
@@ -665,21 +673,8 @@ export function ModelAndThinkingEffortSelect({
                 onSelect={() => onThinkingEffortChange?.(effort)}
                 className="h-ds-control-md min-h-ds-control-md py-0"
               >
-                <span className="flex min-w-0 flex-1 items-center gap-2">
-                  <span className="min-w-0 truncate">
-                    {t(`layout.thinking-effort-${effort}`)}
-                  </span>
-                  {effort === DEFAULT_THINKING_EFFORT ? (
-                    <Tag
-                      variant="secondary"
-                      tone="neutral"
-                      emphasis="default"
-                      size="xxs"
-                      className="shrink-0 !px-ds-4 !py-0"
-                    >
-                      {t('layout.default')}
-                    </Tag>
-                  ) : null}
+                <span className="min-w-0 flex-1 truncate">
+                  {t(`layout.thinking-effort-${effort}`)}
                 </span>
                 {selected ? (
                   <Check
