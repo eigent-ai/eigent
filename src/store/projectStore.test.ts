@@ -12,14 +12,48 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { normalizeThinkingEffort, ThinkingEffort } from '@/types/constants';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getSessionPreviewSlice, usePageTabStore } from './pageTabStore';
 import { useProjectStore } from './projectStore';
 import { SPACE_SCHEMA_VERSION, useSpaceStore } from './spaceStore';
 
-const { hasActiveSSEConnectionMock } = vi.hoisted(() => ({
+const {
+  deleteCachedProjectMock,
+  fetchGetMock,
+  getCachedProjectMock,
+  hasActiveSSEConnectionMock,
+  putCachedProjectMock,
+  proxyFetchGetMock,
+  replayMock,
+} = vi.hoisted(() => ({
+  deleteCachedProjectMock: vi.fn(),
+  fetchGetMock: vi.fn(),
+  getCachedProjectMock: vi.fn(),
   hasActiveSSEConnectionMock: vi.fn(),
+  putCachedProjectMock: vi.fn(),
+  proxyFetchGetMock: vi.fn(),
+  replayMock: vi.fn(),
 }));
+
+vi.mock('@/api/http', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/http')>();
+  return {
+    ...actual,
+    fetchGet: fetchGetMock,
+    proxyFetchGet: proxyFetchGetMock,
+  };
+});
+
+vi.mock('@/lib/projectCache', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/projectCache')>();
+  return {
+    ...actual,
+    deleteCachedProject: deleteCachedProjectMock,
+    getCachedProject: getCachedProjectMock,
+    putCachedProject: putCachedProjectMock,
+  };
+});
 
 vi.mock('@/service/spaceApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/service/spaceApi')>();
@@ -33,6 +67,13 @@ vi.mock('./chatStore', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./chatStore')>();
   return {
     ...actual,
+    createChatStoreInstance: (
+      ...args: Parameters<typeof actual.createChatStoreInstance>
+    ) => {
+      const store = actual.createChatStoreInstance(...args);
+      store.setState({ replay: replayMock } as any);
+      return store;
+    },
     hasActiveSSEConnection: hasActiveSSEConnectionMock,
   };
 });
@@ -40,7 +81,13 @@ vi.mock('./chatStore', async (importOriginal) => {
 describe('projectStore runtime shape', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    deleteCachedProjectMock.mockResolvedValue(undefined);
+    getCachedProjectMock.mockResolvedValue(null);
+    putCachedProjectMock.mockResolvedValue(undefined);
     hasActiveSSEConnectionMock.mockReturnValue(false);
+    fetchGetMock.mockResolvedValue({ runs: [] });
+    proxyFetchGetMock.mockResolvedValue({ tasks: [] });
+    replayMock.mockResolvedValue(undefined);
     useProjectStore.setState({
       activeProjectId: null,
       projects: {},
@@ -177,6 +224,41 @@ describe('projectStore runtime shape', () => {
     });
   });
 
+  it('persists the requested thinking effort per project', () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject('Effort Project', undefined, 'project_effort_test');
+
+    expect(useProjectStore.getState().getProjectThinkingEffort(projectId)).toBe(
+      ThinkingEffort.MEDIUM
+    );
+    expect(
+      useProjectStore.getState().getProjectThinkingEffortOverride(projectId)
+    ).toBeUndefined();
+
+    useProjectStore
+      .getState()
+      .setProjectThinkingEffort(projectId, ThinkingEffort.MAX);
+
+    expect(useProjectStore.getState().getProjectThinkingEffort(projectId)).toBe(
+      ThinkingEffort.MAX
+    );
+    expect(
+      useProjectStore.getState().getProjectThinkingEffortOverride(projectId)
+    ).toBe(ThinkingEffort.MAX);
+    expect(
+      useSpaceStore.getState().getProjectMeta(projectId)?.metadata
+        ?.thinkingEffort
+    ).toBe(ThinkingEffort.MAX);
+  });
+
+  it('normalizes persisted legacy thinking effort aliases', () => {
+    expect(normalizeThinkingEffort('light')).toBe(ThinkingEffort.LOW);
+    expect(normalizeThinkingEffort('extra_high')).toBe(ThinkingEffort.XHIGH);
+    expect(normalizeThinkingEffort('ultra')).toBe(ThinkingEffort.MAX);
+    expect(normalizeThinkingEffort('unsupported')).toBe(ThinkingEffort.MEDIUM);
+  });
+
   it('keeps stale project runtime while one of its tasks has an active SSE stream', () => {
     const projectId = useProjectStore
       .getState()
@@ -222,6 +304,337 @@ describe('projectStore runtime shape', () => {
     expect(hasActiveSSEConnectionMock).toHaveBeenCalledWith(
       expect.arrayContaining(['task_finished'])
     );
+  });
+
+  it('replays stale cached history during the same project open', async () => {
+    const { useAuthStore } = await import('./authStore');
+    const previousUserId = useAuthStore.getState().user_id;
+    useAuthStore.setState({ user_id: 10 });
+    try {
+      getCachedProjectMock.mockResolvedValue({
+        schemaVersion: 1,
+        cachedAt: 100,
+        serverUpdatedAt: 100,
+        taskIds: ['task_stale'],
+        tasks: {
+          task_stale: {
+            taskState: {
+              status: 'running',
+              messages: [],
+              taskInfo: [],
+              taskRunning: [],
+              taskAssigning: [],
+            },
+          },
+        },
+      });
+
+      await useProjectStore
+        .getState()
+        .loadProjectFromHistory(
+          ['task_stale'],
+          'long-running prompt',
+          'project_stale_cache',
+          'history_stale',
+          'Stale cache project',
+          'space_test',
+          { task_stale: 'long-running prompt' },
+          200
+        );
+
+      expect(deleteCachedProjectMock).toHaveBeenCalledWith({
+        userId: 10,
+        projectId: 'project_stale_cache',
+      });
+      expect(replayMock).toHaveBeenCalledWith(
+        'task_stale',
+        'long-running prompt',
+        0,
+        'project_stale_cache'
+      );
+      expect(
+        useProjectStore.getState().staleProjectIds.has('project_stale_cache')
+      ).toBe(false);
+    } finally {
+      useAuthStore.setState({ user_id: previousUserId });
+    }
+  });
+
+  it('replays canonical local Run history when its cache anchor is stale', async () => {
+    const { useAuthStore } = await import('./authStore');
+    const previousUserId = useAuthStore.getState().user_id;
+    useAuthStore.setState({ user_id: 10 });
+    try {
+      fetchGetMock.mockResolvedValue({
+        runs: [
+          {
+            run_id: 'task_local',
+            status: 'completed',
+            created_at: 100,
+            updated_at: 300,
+            total_attempt_elapsed_ms: 613_328,
+          },
+        ],
+      });
+      replayMock.mockImplementationOnce(async (taskId: string) => {
+        const project = useProjectStore.getState().projects.project_local;
+        const chatStore = project.chatStores[project.activeChatId];
+        chatStore.getState().create(taskId, 'replay');
+      });
+      getCachedProjectMock.mockResolvedValue({
+        schemaVersion: 2,
+        cachedAt: 200,
+        serverUpdatedAt: 200,
+        localCanonicalUpdatedAt: 250,
+        taskIds: ['task_local'],
+        tasks: {
+          task_local: {
+            taskState: {
+              status: 'running',
+              messages: [],
+              taskInfo: [],
+              taskRunning: [],
+              taskAssigning: [],
+            },
+          },
+        },
+      });
+
+      await useProjectStore
+        .getState()
+        .loadProjectFromHistory(
+          ['task_local'],
+          'long-running prompt',
+          'project_local',
+          'history_local',
+          'Local canonical project',
+          'space_test',
+          { task_local: 'long-running prompt' },
+          200
+        );
+
+      expect(fetchGetMock).toHaveBeenCalledWith('/runs', {
+        project_id: 'project_local',
+        limit: 100,
+      });
+      expect(getCachedProjectMock).toHaveBeenCalledWith({
+        userId: 10,
+        projectId: 'project_local',
+      });
+      expect(deleteCachedProjectMock).toHaveBeenCalledWith({
+        userId: 10,
+        projectId: 'project_local',
+      });
+      expect(replayMock).toHaveBeenCalledWith(
+        'task_local',
+        'long-running prompt',
+        0,
+        'project_local',
+        'local_durable'
+      );
+      const project = useProjectStore.getState().projects.project_local;
+      const task =
+        project.chatStores[project.activeChatId].getState().tasks.task_local;
+      expect(task.elapsed).toBe(613_328);
+      expect(task.durableRunStatus).toBe('completed');
+      expect(putCachedProjectMock).toHaveBeenCalledWith(
+        { userId: 10, projectId: 'project_local' },
+        expect.objectContaining({
+          serverUpdatedAt: 200,
+          localCanonicalUpdatedAt: 300,
+          taskIds: ['task_local'],
+        })
+      );
+    } finally {
+      useAuthStore.setState({ user_id: previousUserId });
+    }
+  });
+
+  it('projects cloud-restored duration and interrupted status without attempt rows', async () => {
+    fetchGetMock.mockResolvedValue({
+      runs: [
+        {
+          run_id: 'task_cloud_interrupted',
+          status: 'interrupted',
+          origin: 'cloud_restore',
+          created_at: 1_786_101_992.187,
+          updated_at: 1_786_102_022.109,
+          total_attempt_elapsed_ms: null,
+        },
+      ],
+    });
+    replayMock.mockImplementationOnce(async (taskId: string) => {
+      const project = useProjectStore.getState().projects.project_cloud;
+      const chatStore = project.chatStores[project.activeChatId];
+      chatStore.getState().create(taskId, 'replay');
+      chatStore.getState().setStatus(taskId, 'finished');
+    });
+
+    await useProjectStore
+      .getState()
+      .loadProjectFromHistory(
+        ['task_cloud_interrupted'],
+        'cloud prompt',
+        'project_cloud',
+        'history_cloud',
+        'Cloud history',
+        'space_test',
+        { task_cloud_interrupted: 'cloud prompt' },
+        200
+      );
+
+    const project = useProjectStore.getState().projects.project_cloud;
+    const task =
+      project.chatStores[project.activeChatId].getState().tasks
+        .task_cloud_interrupted;
+    expect(task.elapsed).toBeCloseTo(29_922, 0);
+    expect(task.durableRunStatus).toBe('interrupted');
+  });
+
+  it('hydrates a canonical local snapshot when its SQLite anchor matches', async () => {
+    const { useAuthStore } = await import('./authStore');
+    const previousUserId = useAuthStore.getState().user_id;
+    useAuthStore.setState({ user_id: 10 });
+    try {
+      fetchGetMock.mockResolvedValue({
+        runs: [
+          {
+            run_id: 'task_cached_local',
+            status: 'completed',
+            updated_at: 300,
+            total_attempt_elapsed_ms: 613_328,
+          },
+        ],
+      });
+      getCachedProjectMock.mockResolvedValue({
+        schemaVersion: 2,
+        cachedAt: 400,
+        serverUpdatedAt: 200,
+        localCanonicalUpdatedAt: 300,
+        taskIds: ['task_cached_local'],
+        tasks: {
+          task_cached_local: {
+            taskState: {
+              status: 'finished',
+              elapsed: 613_328,
+              taskTime: 0,
+              hasMessages: true,
+              messages: [
+                { id: 'user-1', role: 'user', content: 'cached prompt' },
+              ],
+              taskInfo: [],
+              taskRunning: [],
+              taskAssigning: [],
+            },
+          },
+        },
+      });
+
+      await useProjectStore
+        .getState()
+        .loadProjectFromHistory(
+          ['task_cached_local'],
+          'cached prompt',
+          'project_cached_local',
+          'history_cached_local',
+          'Cached local project',
+          'space_test',
+          { task_cached_local: 'cached prompt' },
+          200
+        );
+
+      expect(deleteCachedProjectMock).not.toHaveBeenCalled();
+      expect(replayMock).not.toHaveBeenCalled();
+      const project = useProjectStore.getState().projects.project_cached_local;
+      const task =
+        project.chatStores[project.activeChatId].getState().tasks
+          .task_cached_local;
+      expect(task.elapsed).toBe(613_328);
+      expect(task.messages).toHaveLength(1);
+    } finally {
+      useAuthStore.setState({ user_id: previousUserId });
+    }
+  });
+
+  it('repairs zero duration in a current cache from the canonical local Run', async () => {
+    const { useAuthStore } = await import('./authStore');
+    const previousUserId = useAuthStore.getState().user_id;
+    useAuthStore.setState({ user_id: 10 });
+    try {
+      fetchGetMock.mockResolvedValue({
+        runs: [
+          {
+            run_id: 'task_cached_zero_duration',
+            status: 'completed',
+            created_at: 100,
+            updated_at: 300,
+            total_attempt_elapsed_ms: 570_577,
+          },
+        ],
+      });
+      getCachedProjectMock.mockResolvedValue({
+        schemaVersion: 5,
+        cachedAt: 400,
+        serverUpdatedAt: 200,
+        localCanonicalUpdatedAt: 300,
+        taskIds: ['task_cached_zero_duration'],
+        tasks: {
+          task_cached_zero_duration: {
+            taskState: {
+              status: 'finished',
+              elapsed: 0,
+              taskTime: 123,
+              messages: [],
+              taskInfo: [],
+              taskRunning: [],
+              taskAssigning: [],
+            },
+          },
+        },
+      });
+
+      await useProjectStore
+        .getState()
+        .loadProjectFromHistory(
+          ['task_cached_zero_duration'],
+          'cached prompt',
+          'project_cached_zero_duration',
+          'history_cached_zero_duration',
+          'Cached zero-duration project',
+          'space_test',
+          { task_cached_zero_duration: 'cached prompt' },
+          200
+        );
+
+      expect(deleteCachedProjectMock).not.toHaveBeenCalled();
+      expect(replayMock).not.toHaveBeenCalled();
+      const project =
+        useProjectStore.getState().projects.project_cached_zero_duration;
+      const task =
+        project.chatStores[project.activeChatId].getState().tasks
+          .task_cached_zero_duration;
+      expect(task.elapsed).toBe(570_577);
+      expect(task.taskTime).toBe(0);
+      expect(task.durableRunStatus).toBe('completed');
+      expect(putCachedProjectMock).toHaveBeenCalledWith(
+        { userId: 10, projectId: 'project_cached_zero_duration' },
+        expect.objectContaining({
+          serverUpdatedAt: 200,
+          localCanonicalUpdatedAt: 300,
+          tasks: expect.objectContaining({
+            task_cached_zero_duration: {
+              taskState: expect.objectContaining({
+                elapsed: 570_577,
+                taskTime: 0,
+                durableRunStatus: 'completed',
+              }),
+            },
+          }),
+        })
+      );
+    } finally {
+      useAuthStore.setState({ user_id: previousUserId });
+    }
   });
 
   it('merges missing history into a background remote Project without stealing focus', async () => {

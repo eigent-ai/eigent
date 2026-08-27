@@ -22,11 +22,21 @@ from pathlib import Path
 from typing import Annotated
 from urllib.parse import quote
 
-from fastapi import APIRouter, File, Header, HTTPException, Query, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Header,
+    HTTPException,
+    Query,
+    UploadFile,
+)
 from fastapi.responses import FileResponse
 from starlette.concurrency import run_in_threadpool
 
+from app.auth import require_local_control_principal
 from app.component.environment import env
+from app.run_journal import get_default_run_journal
 from app.utils.file_utils import list_files, resolve_under_base
 from app.utils.workspace_paths import runtime_owner_key, task_dir_name
 from app.utils.workspace_resolver import get_workspace_resolver
@@ -206,6 +216,181 @@ def _resolve_file_root(
     return _resolve_project_root(email, project_id, user_id)
 
 
+def _task_change_roots(snapshot) -> list[tuple[Path, bool]]:
+    """Return task roots as ``(path, include_all)`` tuples.
+
+    The output root is Run-owned, so every file there is an artifact even when
+    a copy operation preserves an old mtime. A distinct working directory may
+    contain user files; only files modified after Run admission are surfaced.
+    """
+    output_root = Path(snapshot.task_output_root).expanduser().resolve()
+    working_root = Path(snapshot.working_directory).expanduser().resolve()
+    roots: list[tuple[Path, bool]] = []
+    if output_root.is_dir():
+        roots.append((output_root, True))
+    if working_root != output_root and working_root.is_dir():
+        roots.append((working_root, False))
+    return roots
+
+
+def _list_task_changed_files(
+    snapshot,
+    max_entries: int = 500,
+    modification_windows: tuple[tuple[float, float | None], ...] | None = None,
+) -> list[dict]:
+    """List files generated or modified by one Run without uploading them."""
+    result: list[dict] = []
+    seen_paths: set[str] = set()
+    remaining = max_entries
+    # Account for filesystems whose mtimes have one-second resolution. Run
+    # attempt windows prevent a historical direct-write Run from absorbing
+    # files created by every later Run in the same selected Space folder.
+    windows = modification_windows or (
+        (snapshot.task_start_time - 1.0, None),
+    )
+
+    for root, include_all in _task_change_roots(snapshot):
+        if remaining <= 0:
+            break
+        if include_all:
+            paths = list_files(
+                str(root),
+                base=str(root),
+                max_entries=remaining,
+            )
+        else:
+            paths = []
+            window_seen: set[str] = set()
+            for modified_after, modified_before in windows:
+                if len(paths) >= remaining:
+                    break
+                window_paths = list_files(
+                    str(root),
+                    base=str(root),
+                    max_entries=remaining - len(paths),
+                    modified_after=modified_after,
+                    modified_before=modified_before,
+                )
+                for window_path in window_paths:
+                    if window_path in window_seen:
+                        continue
+                    window_seen.add(window_path)
+                    paths.append(window_path)
+        for abs_path in paths:
+            try:
+                path = Path(abs_path).resolve()
+                if not path.is_file():
+                    continue
+                identity = str(path)
+                if identity in seen_paths:
+                    continue
+                relative_path = path.relative_to(root).as_posix()
+            except (OSError, ValueError):
+                continue
+
+            try:
+                stat_result = path.stat()
+            except OSError:
+                # The artifact list races with tools that atomically replace or
+                # remove generated files. One vanished file must not fail the
+                # whole Files changed panel.
+                continue
+
+            seen_paths.add(identity)
+            remaining -= 1
+            result.append(
+                {
+                    "filename": path.name,
+                    "path": identity,
+                    "relativePath": relative_path,
+                    "changeType": "generated" if include_all else "changed",
+                    "size": stat_result.st_size,
+                    "modifiedAt": stat_result.st_mtime * 1000,
+                    "supportsRanges": True,
+                }
+            )
+            if remaining <= 0:
+                break
+
+    return sorted(result, key=lambda item: item["relativePath"])
+
+
+def _task_modification_windows(
+    task_id: str,
+    project_id: str,
+) -> tuple[tuple[tuple[float, float | None], ...] | None, bool]:
+    """Return filesystem-mtime windows owned by this Run's attempts.
+
+    ``None`` means the RunJournal has no matching canonical Run and callers
+    should retain the legacy start-time-only behavior.
+    """
+    journal = get_default_run_journal()
+    run = journal.get_run(task_id)
+    if run is None or run.project_id != project_id:
+        return None, False
+
+    attempts = journal.list_run_attempts(task_id)
+    windows: list[tuple[float, float | None]] = []
+    for attempt in attempts:
+        end = attempt.ended_at
+        if end is None and run.status not in {
+            "pending",
+            "running",
+            "waiting_for_user",
+        }:
+            end = run.updated_at
+        windows.append((attempt.started_at - 1.0, end))
+
+    if not windows:
+        end = (
+            run.updated_at
+            if run.status not in {"pending", "running", "waiting_for_user"}
+            else None
+        )
+        windows.append((run.created_at - 1.0, end))
+
+    return tuple(windows), run.status in {"completed", "failed", "cancelled"}
+
+
+@router.get(
+    "/files/changes",
+    dependencies=[Depends(require_local_control_principal)],
+)
+async def list_task_changed_files(
+    task_id: str = Query(..., description="Run/task ID"),
+    project_id: str = Query(..., description="Project ID"),
+    email: str = Query(..., description="User email"),
+    user_id: str | None = Query(None, description="Optional canonical user ID"),
+) -> list[dict]:
+    """Return the Desktop-local preview index for one Run's changed files."""
+    snapshot = get_workspace_resolver().store.get_snapshot(
+        email, task_id, user_id
+    )
+    if snapshot is None or snapshot.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Task workspace not found")
+    artifact_manifest = getattr(snapshot, "artifact_manifest", None)
+    if artifact_manifest is not None:
+        return [dict(item) for item in artifact_manifest]
+
+    windows, permanently_terminal = await run_in_threadpool(
+        _task_modification_windows, task_id, project_id
+    )
+    artifacts = await run_in_threadpool(
+        _list_task_changed_files,
+        snapshot,
+        500,
+        windows,
+    )
+    if permanently_terminal:
+        await run_in_threadpool(
+            get_workspace_resolver().store.freeze_artifact_manifest,
+            email,
+            snapshot,
+            artifacts,
+        )
+    return artifacts
+
+
 @router.get("/files")
 async def list_project_files(
     project_id: str = Query(..., description="Project ID"),
@@ -282,6 +467,7 @@ async def list_project_files(
             )
             # URL-encode the relative path for stream endpoint
             path_param = quote(rel, safe="")
+            stat_result = Path(abs_path).stat()
             result.append(
                 {
                     "filename": Path(abs_path).name,
@@ -293,6 +479,9 @@ async def list_project_files(
                         + (f"&user_id={quote(user_id)}" if user_id else "")
                     ),
                     "relativePath": rel,
+                    "size": stat_result.st_size,
+                    "modifiedAt": stat_result.st_mtime * 1000,
+                    "supportsRanges": True,
                 }
             )
         except (ValueError, OSError):

@@ -13,10 +13,12 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { SpaceSwitchDropdown } from '@/components/ProjectPageSidebar/SpaceSwitchDropdown';
+import { WorkspaceVersionHistoryDialog } from '@/components/Workspace/WorkspaceVersionHistoryDialog';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useWorkspaceSavePoint } from '@/hooks/useWorkspaceSavePoint';
 import { useHost } from '@/host';
 import {
   createSpaceFromFolderPicker,
@@ -102,6 +104,7 @@ export function WorkspaceProjectPicker({
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [renamingSpace, setRenamingSpace] = useState(false);
+  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
 
   const activeProjectId = projectStore.activeProjectId;
   const activeProject = activeProjectId
@@ -150,6 +153,14 @@ export function WorkspaceProjectPicker({
     activeSpace.sourceType !== 'legacy' &&
     activeSpace.metadata?.legacy !== true
   );
+  const versionHistory = useWorkspaceSavePoint({
+    spaceId: activeSpaceId,
+    space: activeSpace,
+    email,
+    userId,
+  });
+  const versionHistorySupported = versionHistory.supported;
+  const loadVersionHistoryStatus = versionHistory.loadStatus;
   const activeSpaces = useMemo(
     () =>
       Object.values(spacesById)
@@ -217,6 +228,12 @@ export function WorkspaceProjectPicker({
       void loadPendingOverlays();
     }
   }, [loadPendingOverlays, menuOpen]);
+
+  useEffect(() => {
+    if (menuOpen && versionHistorySupported) {
+      void loadVersionHistoryStatus();
+    }
+  }, [loadVersionHistoryStatus, menuOpen, versionHistorySupported]);
 
   const activeSpaceTitle = useMemo(
     () =>
@@ -547,6 +564,27 @@ export function WorkspaceProjectPicker({
   return (
     <>
       <AlertDialog
+        isOpen={versionHistory.enableConfirmOpen}
+        onClose={() => versionHistory.setEnableConfirmOpen(false)}
+        onConfirm={() => {
+          versionHistory.setEnableConfirmOpen(false);
+          void versionHistory.enable(true);
+        }}
+        title={t('layout.workspace-version-enable-title')}
+        message={t('layout.workspace-version-enable-message')}
+        confirmText={t('layout.workspace-enable-version-history')}
+        cancelText={t('layout.cancel')}
+        confirmVariant="primary"
+      />
+      <WorkspaceVersionHistoryDialog
+        open={versionHistoryOpen}
+        onOpenChange={setVersionHistoryOpen}
+        spaceId={activeSpaceId}
+        email={email}
+        userId={userId}
+        actorId={userId == null ? email || 'local-user' : String(userId)}
+      />
+      <AlertDialog
         isOpen={discardConfirmOpen}
         onClose={() => setDiscardConfirmOpen(false)}
         onConfirm={() => void executeDiscardPending()}
@@ -651,6 +689,28 @@ export function WorkspaceProjectPicker({
                 onApply: handleApplyPending,
                 onDiscard: handleDiscardPending,
                 onRefresh: handleRefreshWorkdir,
+              }
+            : undefined
+        }
+        savePointMenu={
+          versionHistory.supported
+            ? {
+                loading:
+                  versionHistory.loading || versionHistory.status === null,
+                saving: versionHistory.saving,
+                enabled: versionHistory.status?.enabled === true,
+                needsAttention:
+                  versionHistory.status?.enabled === true &&
+                  (versionHistory.status.state !== 'ready' ||
+                    versionHistory.status.diagnostics?.healthy === false),
+                pendingCount:
+                  versionHistory.status?.pending_managed_paths?.length || 0,
+                pendingTruncated:
+                  versionHistory.status?.pending_managed_paths_truncated ===
+                  true,
+                onEnable: versionHistory.requestEnable,
+                onSave: versionHistory.save,
+                onOpenHistory: () => setVersionHistoryOpen(true),
               }
             : undefined
         }

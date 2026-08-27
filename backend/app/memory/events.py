@@ -95,7 +95,7 @@ class MemoryArtifact:
 @dataclass(frozen=True)
 class RunStatus:
     run_id: str
-    state: Literal["running", "done", "failed", "cancelled"]
+    state: Literal["running", "done", "failed", "cancelled", "interrupted"]
     started_at: str
     ended_at: str | None
     last_error: str | None

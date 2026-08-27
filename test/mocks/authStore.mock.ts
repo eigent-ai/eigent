@@ -43,5 +43,6 @@ vi.mock('../../src/store/authStore', () => ({
     share_token: null,
     workerListData: {},
   })),
+  getWorkerList: vi.fn(() => []),
   useWorkerList: vi.fn(() => []),
 }));

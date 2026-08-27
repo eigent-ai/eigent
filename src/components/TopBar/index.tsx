@@ -26,6 +26,8 @@ import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import { WorkspaceVersionHistoryDialog } from '@/components/Workspace/WorkspaceVersionHistoryDialog';
+import { useWorkspaceSavePoint } from '@/hooks/useWorkspaceSavePoint';
 import { useHost } from '@/host';
 import {
   createSpaceFromFolderPicker,
@@ -149,6 +151,7 @@ function HeaderWin() {
   const [renameSpaceDialogOpen, setRenameSpaceDialogOpen] = useState(false);
   const [renameSpaceValue, setRenameSpaceValue] = useState('');
   const [renamingSpace, setRenamingSpace] = useState(false);
+  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const [switchingSpaceId, setSwitchingSpaceId] = useState<string | null>(null);
   const projectStore = useProjectRuntimeStore();
   const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
@@ -209,6 +212,13 @@ function HeaderWin() {
   );
 
   const activeSpace = activeSpaceId ? spacesById[activeSpaceId] : null;
+  const versionHistory = useWorkspaceSavePoint({
+    spaceId: activeSpaceId,
+    space: activeSpace,
+    email,
+    userId,
+    shortcut: true,
+  });
   const canRenameActiveSpace = Boolean(
     activeSpace &&
     activeSpace.status === 'active' &&
@@ -480,6 +490,27 @@ function HeaderWin() {
       ref={titlebarRef}
     >
       <AlertDialog
+        isOpen={versionHistory.enableConfirmOpen}
+        onClose={() => versionHistory.setEnableConfirmOpen(false)}
+        onConfirm={() => {
+          versionHistory.setEnableConfirmOpen(false);
+          void versionHistory.enable(true);
+        }}
+        title={t('layout.workspace-version-enable-title')}
+        message={t('layout.workspace-version-enable-message')}
+        confirmText={t('layout.workspace-enable-version-history')}
+        cancelText={t('layout.cancel')}
+        confirmVariant="primary"
+      />
+      <WorkspaceVersionHistoryDialog
+        open={versionHistoryOpen}
+        onOpenChange={setVersionHistoryOpen}
+        spaceId={activeSpaceId}
+        email={email}
+        userId={userId}
+        actorId={userId == null ? email || 'local-user' : String(userId)}
+      />
+      <AlertDialog
         isOpen={renameSpaceDialogOpen}
         onClose={() => setRenameSpaceDialogOpen(false)}
         onConfirm={() => void handleRenameSpace()}
@@ -586,6 +617,11 @@ function HeaderWin() {
             {/* Workspace dropdown: the whole button opens the space switcher */}
             <SpaceSwitchDropdown
               contentSideOffset={6}
+              onOpenChange={(open) => {
+                if (open && versionHistory.supported) {
+                  void versionHistory.loadStatus();
+                }
+              }}
               trigger={
                 <button
                   id="active-space-title-btn"
@@ -615,6 +651,30 @@ function HeaderWin() {
               onRenameSpace={openRenameSpaceDialog}
               onSpaceSelect={handleTopBarSpaceSelect}
               contentAlign="start"
+              savePointMenu={
+                versionHistory.supported
+                  ? {
+                      loading:
+                        versionHistory.loading ||
+                        versionHistory.status === null,
+                      saving: versionHistory.saving,
+                      enabled: versionHistory.status?.enabled === true,
+                      needsAttention:
+                        versionHistory.status?.enabled === true &&
+                        (versionHistory.status.state !== 'ready' ||
+                          versionHistory.status.diagnostics?.healthy === false),
+                      pendingCount:
+                        versionHistory.status?.pending_managed_paths?.length ||
+                        0,
+                      pendingTruncated:
+                        versionHistory.status
+                          ?.pending_managed_paths_truncated === true,
+                      onEnable: versionHistory.requestEnable,
+                      onSave: versionHistory.save,
+                      onOpenHistory: () => setVersionHistoryOpen(true),
+                    }
+                  : undefined
+              }
             />
           </>
         )}

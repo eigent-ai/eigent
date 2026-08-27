@@ -31,6 +31,7 @@ vi.mock('@/api/http', async () => {
   const getBaseURL = vi.fn(() => Promise.resolve('http://localhost:8000'));
 
   return {
+    fetchGet: vi.fn(),
     fetchPost: vi.fn(),
     fetchPut: vi.fn(),
     getBaseURL,
@@ -135,6 +136,8 @@ import {
   extractFinalOutputFileList,
   getCloudModelPlatform,
   mergeFileInfoLists,
+  normalizeTaskArtifactFileList,
+  resolveRunOutputFileList,
   resolveConfirmedUserMessageContent,
   resolveEndMessageText,
   useChatStore,
@@ -255,6 +258,86 @@ describe('ChatStore - Core Functionality', () => {
   });
 
   describe('Final output file extraction', () => {
+    it('normalizes the local artifact change index into previewable files', () => {
+      const files = normalizeTaskArtifactFileList([
+        {
+          filename: 'final_report.md',
+          path: '/Users/test/project/reports/final_report.md',
+          relativePath: 'reports/final_report.md',
+          changeType: 'changed',
+          size: 1234,
+          modifiedAt: 4567,
+        },
+        {
+          filename: 'chart.png',
+          path: '/Users/test/outputs/chart.png',
+          relativePath: 'chart.png',
+          changeType: 'generated',
+        },
+      ]);
+
+      expect(files).toMatchObject([
+        {
+          name: 'final_report.md',
+          type: 'md',
+          relativePath: 'reports/final_report.md',
+          artifactChange: 'changed',
+          size: 1234,
+          modifiedAt: 4567,
+          isRemote: false,
+        },
+        {
+          name: 'chart.png',
+          type: 'png',
+          artifactChange: 'generated',
+          isRemote: false,
+        },
+      ]);
+    });
+
+    it('drops malformed and duplicate artifact index rows', () => {
+      expect(
+        normalizeTaskArtifactFileList([
+          { filename: 'a.csv', path: '/tmp/a.csv', relativePath: 'a.csv' },
+          { filename: 'a.csv', path: '/tmp/other.csv', relativePath: 'a.csv' },
+          { filename: 'missing.txt' },
+        ])
+      ).toHaveLength(1);
+    });
+
+    it('keeps an existing preview path while adding artifact change metadata', () => {
+      const [file] = mergeFileInfoLists(
+        [
+          {
+            name: 'report.md',
+            path: 'http://localhost/files/stream?path=report.md',
+            type: 'md',
+            isRemote: true,
+          },
+        ],
+        [
+          {
+            name: 'report.md',
+            path: '/Users/test/project/report.md',
+            type: 'md',
+            relativePath: 'report.md',
+            artifactChange: 'changed',
+            size: 2048,
+            modifiedAt: 123456,
+          },
+        ]
+      );
+
+      expect(file).toMatchObject({
+        path: 'http://localhost/files/stream?path=report.md',
+        relativePath: 'report.md',
+        artifactChange: 'changed',
+        size: 2048,
+        modifiedAt: 123456,
+        isRemote: true,
+      });
+    });
+
     it('extracts sandbox paths without treating the scheme suffix as a drive', () => {
       const files = extractFinalOutputFileList(
         'Created [CSV](sandbox:/Users/test/eigent/space_123/report.csv).'
@@ -357,17 +440,49 @@ describe('ChatStore - Core Functionality', () => {
 
       expect(mergedFiles[0].path).toBe('X:/exports/report.csv');
     });
+
+    it('trusts an empty canonical artifact list over paths merely mentioned in the answer', () => {
+      const files = resolveRunOutputFileList({
+        writeEventFiles: [],
+        artifactFiles: [],
+        canonicalArtifactsAvailable: true,
+        finalAnswerFiles: [
+          {
+            name: 'old-report.csv',
+            path: '/Users/test/workspace/old-report.csv',
+            type: 'csv',
+          },
+        ],
+      });
+
+      expect(files).toEqual([]);
+    });
+
+    it('keeps final-answer path extraction as a fallback without a canonical artifact index', () => {
+      const finalAnswerFiles = [
+        {
+          name: 'remote-report.csv',
+          path: 'https://example.test/remote-report.csv',
+          type: 'csv',
+          isRemote: true,
+        },
+      ];
+
+      expect(
+        resolveRunOutputFileList({
+          writeEventFiles: [],
+          artifactFiles: [],
+          canonicalArtifactsAvailable: false,
+          finalAnswerFiles,
+        })
+      ).toEqual(finalAnswerFiles);
+    });
   });
 
   describe('Task Upload Files', () => {
-    it('collects project outputs, camel logs, and unique user attachments', () => {
+    it('collects camel logs and unique explicit user attachments', () => {
       const uploadFiles = collectTaskUploadFiles(
         [
-          {
-            path: '/tmp/project/report.md',
-            name: 'report.md',
-            source: 'project_output',
-          },
           {
             path: '/tmp/logs/ba4462e1/agent.log',
             name: 'agent.log',
@@ -403,17 +518,10 @@ describe('ChatStore - Core Functionality', () => {
             fileName: 'followup.csv',
             filePath: '/Users/test/Documents/followup.csv',
           },
-        ],
-        'task-123'
+        ]
       );
 
       expect(uploadFiles).toEqual([
-        {
-          path: '/tmp/project/report.md',
-          name: 'report.md',
-          uploadName: 'project_output/report.md',
-          source: 'project_output',
-        },
         {
           path: '/tmp/logs/ba4462e1/agent.log',
           name: 'agent.log',
@@ -424,6 +532,12 @@ describe('ChatStore - Core Functionality', () => {
           path: '/Users/test/Documents/brief.pdf',
           name: 'brief.pdf',
           uploadName: 'user_attachment/brief.pdf',
+          source: 'user_attachment',
+        },
+        {
+          path: '/tmp/project/report.md',
+          name: 'report.md',
+          uploadName: 'user_attachment/report.md',
           source: 'user_attachment',
         },
         {
@@ -455,8 +569,7 @@ describe('ChatStore - Core Functionality', () => {
             ],
           },
         ] as any,
-        [],
-        'task-456'
+        []
       );
 
       expect(uploadFiles).toEqual([
@@ -470,7 +583,7 @@ describe('ChatStore - Core Functionality', () => {
     });
 
     it('collects generated files from task output file lists', () => {
-      const uploadFiles = collectTaskUploadFiles([], [], [], 'task-789', [
+      const uploadFiles = collectTaskUploadFiles([], [], [], [
         {
           path: '/Users/test/.eigent/user_1/space_x/index.html',
           name: 'index.html',
@@ -504,8 +617,7 @@ describe('ChatStore - Core Functionality', () => {
           },
         ],
         [],
-        [],
-        'task-123'
+        []
       );
 
       expect(uploadFiles).toEqual([
@@ -516,6 +628,30 @@ describe('ChatStore - Core Functionality', () => {
           source: 'camel_log',
         },
       ]);
+    });
+
+    it('never uploads files merely discovered in a selected folder or final answer', () => {
+      const uploadFiles = collectTaskUploadFiles(
+        [],
+        [
+          {
+            id: 'agent-result',
+            role: 'agent',
+            content: 'I read the existing files.',
+            fileList: [
+              {
+                path: '/Users/test/selected-folder/private.xlsx',
+                name: 'private.xlsx',
+                type: 'xlsx',
+              },
+            ],
+          },
+        ] as any,
+        [],
+        []
+      );
+
+      expect(uploadFiles).toEqual([]);
     });
   });
 

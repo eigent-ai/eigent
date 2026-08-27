@@ -29,6 +29,32 @@ import {
 const defaultHeaders = {
   'Content-Type': 'application/json',
 };
+const LOCAL_CONTROL_CAPABILITY_HEADER = 'X-Eigent-Local-Capability';
+let localControlCapabilityPromise: Promise<string> | null = null;
+
+export async function getLocalControlCapability(): Promise<string> {
+  const api = createHost().electronAPI;
+  if (!api?.getLocalControlCapability) {
+    return '';
+  }
+  if (!localControlCapabilityPromise) {
+    localControlCapabilityPromise = Promise.resolve(
+      api.getLocalControlCapability()
+    ).then(
+      (token) => {
+        if (!token) {
+          localControlCapabilityPromise = null;
+        }
+        return token || '';
+      },
+      () => {
+        localControlCapabilityPromise = null;
+        return '';
+      }
+    );
+  }
+  return localControlCapabilityPromise;
+}
 
 export function getDefaultBrainEndpoint(): string {
   const envEndpoint = import.meta.env.VITE_BRAIN_ENDPOINT;
@@ -59,11 +85,11 @@ function shouldAttachAuthHeader(url: string): boolean {
   return !url.includes('http://') && !url.includes('https://');
 }
 
-function buildBrainHeaders(
+async function buildBrainHeaders(
   url: string,
   customHeaders: Record<string, string> = {},
   includeContentType = true
-): Record<string, string> {
+): Promise<Record<string, string>> {
   const { token, user_id } = getAuthStore();
   const conn = getConnectionConfig();
   const headers: Record<string, string> = {
@@ -76,6 +102,12 @@ function buildBrainHeaders(
   }
   if (token && shouldAttachAuthHeader(url)) {
     headers['Authorization'] = `Bearer ${token}`;
+  }
+  if (shouldAttachAuthHeader(url)) {
+    const localControlCapability = await getLocalControlCapability();
+    if (localControlCapability) {
+      headers[LOCAL_CONTROL_CAPABILITY_HEADER] = localControlCapability;
+    }
   }
   if (user_id != null) {
     headers['X-User-ID'] = String(user_id);
@@ -123,7 +155,7 @@ async function fetchRequest(
 ): Promise<any> {
   const baseURL = await getBaseURL();
   const fullUrl = `${baseURL}${url}`;
-  const headers = buildBrainHeaders(url, customHeaders);
+  const headers = await buildBrainHeaders(url, customHeaders);
 
   const options: RequestInit = {
     method,
@@ -287,7 +319,7 @@ export async function fetchPostForm(
 ): Promise<any> {
   const baseURL = await getBaseURL();
   const fullUrl = `${baseURL}${url}`;
-  const headers = buildBrainHeaders(url, customHeaders, false);
+  const headers = await buildBrainHeaders(url, customHeaders, false);
   return handleResponse(
     fetch(fullUrl, { method: 'POST', headers, body: formData })
   );
@@ -325,7 +357,7 @@ export async function sseTransport(
       ? options.url
       : `${baseURL}${options.url}`;
 
-  const headers = buildBrainHeaders(options.url, options.extraHeaders);
+  const headers = await buildBrainHeaders(options.url, options.extraHeaders);
   const body =
     typeof options.body === 'string'
       ? options.body

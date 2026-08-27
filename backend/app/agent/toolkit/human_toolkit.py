@@ -14,11 +14,14 @@
 
 import asyncio
 import logging
+import uuid
 
 from camel.toolkits.base import BaseToolkit
 from camel.toolkits.function_tool import FunctionTool
 
 from app.agent.toolkit.abstract_toolkit import AbstractToolkit
+from app.run_context import RunContext
+from app.run_journal import get_default_run_journal
 from app.service.task import (
     TASK_LOCK_CLEANUP_SENTINEL,
     Action,
@@ -70,13 +73,50 @@ class HumanToolkit(BaseToolkit, AbstractToolkit):
         """
         logger.info(f"Question: {question}")
         task_lock = get_task_lock(self.api_task_id)
+        run_context = getattr(task_lock, "run_context", None)
+        interaction_id: str | None = None
+        if isinstance(run_context, RunContext):
+            run = await asyncio.to_thread(
+                get_default_run_journal().get_run, run_context.run_id
+            )
+            if run is None or run.active_attempt_id is None:
+                raise RuntimeError(
+                    "human interaction has no active durable RunAttempt"
+                )
+            interaction_id = str(uuid.uuid4())
+            await asyncio.to_thread(
+                get_default_run_journal().create_human_interaction,
+                interaction_id=interaction_id,
+                run_id=run_context.run_id,
+                attempt_id=run.active_attempt_id,
+                interaction_type="question",
+                request={"question": question, "agent": self.agent_name},
+                response_schema={"type": "string", "minLength": 1},
+                requested_by=f"agent:{self.agent_name}",
+            )
+            try:
+                from app.run_sync.runtime import (
+                    notify_default_cloud_sync_worker,
+                )
+
+                notify_default_cloud_sync_worker()
+            except Exception:
+                logger.exception(
+                    "Failed to wake cloud sync for HumanInteraction"
+                )
+        ask_payload = {
+            "question": question,
+            "agent": self.agent_name,
+        }
+        if interaction_id is not None:
+            ask_payload["interaction_id"] = interaction_id
+            ask_payload["interaction_type"] = "question"
+            ask_payload["run_id"] = run_context.run_id
+            ask_payload["version"] = 0
         await task_lock.put_queue(
             ActionAskData(
                 action=Action.ask,
-                data={
-                    "question": question,
-                    "agent": self.agent_name,
-                },
+                data=ask_payload,
             )
         )
 

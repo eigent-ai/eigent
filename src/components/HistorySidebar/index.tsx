@@ -17,7 +17,6 @@ import tokenDarkIcon from '@/assets/custom/token-dark.svg';
 import tokenLightIcon from '@/assets/custom/token-light.svg';
 import { formatTokenCount } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { Button } from '@/components/ui/button';
-import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
 import {
   buildTaskQuestionsById,
@@ -27,6 +26,7 @@ import {
 import { share } from '@/lib/share';
 import { fetchGroupedHistoryTasks } from '@/service/historyApi';
 import { getAuthStore, useAuthStore } from '@/store/authStore';
+import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { ChatTaskStatus } from '@/types/constants';
@@ -42,7 +42,15 @@ import {
   Trash2,
   Zap,
 } from 'lucide-react';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import AlertDialog from '../ui/alertDialog';
@@ -99,8 +107,27 @@ export default function HistorySidebar() {
   const tokenIcon = appearance === 'dark' ? tokenDarkIcon : tokenLightIcon;
   const { isOpen, close } = useSidebarStore();
   const navigate = useNavigate();
-  //Get Chatstore for the active project's task
-  const { chatStore, projectStore } = useChatStoreAdapter();
+  const projectStore = useProjectRuntimeStore();
+  const activeChatStore = projectStore.getActiveChatStore();
+  // History needs a refresh only when a turn reaches its END boundary. The
+  // old useChatStoreAdapter subscription rebuilt the full chat snapshot for
+  // every SSE event, which re-ran the grouped-history request continuously
+  // even while this sidebar was closed.
+  const subscribeToHistoryRevision = useCallback(
+    (listener: () => void) =>
+      activeChatStore?.subscribe(listener) ?? (() => undefined),
+    [activeChatStore]
+  );
+  const getHistoryRevision = useCallback(
+    () => activeChatStore?.getState().updateCount ?? 0,
+    [activeChatStore]
+  );
+  const historyRevision = useSyncExternalStore(
+    subscribeToHistoryRevision,
+    getHistoryRevision,
+    getHistoryRevision
+  );
+  const chatStore = activeChatStore?.getState() ?? null;
   const [searchValue, setSearchValue] = useState('');
   const [_historyOpen, setHistoryOpen] = useState(true);
   const [historyTasks, setHistoryTasks] = useState<ProjectGroup[]>([]);
@@ -114,9 +141,11 @@ export default function HistorySidebar() {
   const activeSpaceId = useSpaceStore((s) => s.activeSpaceId);
 
   useEffect(() => {
-    if (!chatStore) return;
-    fetchGroupedHistoryTasks(setHistoryTasks, { spaceId: activeSpaceId });
-  }, [chatStore, chatStore?.updateCount, activeSpaceId]);
+    if (!isOpen || !activeChatStore) return;
+    void fetchGroupedHistoryTasks(setHistoryTasks, {
+      spaceId: activeSpaceId,
+    });
+  }, [activeChatStore, activeSpaceId, historyRevision, isOpen]);
 
   // Group ongoing tasks by project
   const ongoingProjects = useMemo(() => {

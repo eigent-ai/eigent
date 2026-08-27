@@ -1,0 +1,685 @@
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from app.run_journal import OptimisticConcurrencyError, SQLiteRunJournal
+from app.workspace_git import (
+    ContentRepositoryError,
+    ContentRepositoryService,
+    GitBackend,
+    GitBackendError,
+    WorkspaceGitCoordinator,
+)
+from app.workspace_git.content import RepositoryStateChangedError
+
+
+@pytest.fixture
+def journal(tmp_path):
+    with SQLiteRunJournal(tmp_path / "run-journal.sqlite3") as value:
+        yield value
+
+
+def _services(tmp_path: Path, journal: SQLiteRunJournal):
+    hooks = tmp_path / "empty-hooks"
+    hooks.mkdir(exist_ok=True)
+    backend = GitBackend(hooks_path=hooks)
+    state_root = tmp_path / "state"
+    content = ContentRepositoryService(
+        journal,
+        state_root=state_root,
+        git_backend=backend,
+    )
+    coordinator = WorkspaceGitCoordinator(
+        journal,
+        state_root=state_root,
+        git_backend=backend,
+    )
+    return content, coordinator, backend
+
+
+def _git(repository: Path, *args: str) -> str:
+    return subprocess.run(
+        ("git", "-C", str(repository), *args),
+        check=True,
+        capture_output=True,
+        text=True,
+        env={
+            "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_TERMINAL_PROMPT": "0",
+        },
+    ).stdout.strip()
+
+
+def test_admission_without_content_repository_is_a_noop(tmp_path, journal):
+    _, coordinator, _ = _services(tmp_path, journal)
+    journal.ensure_run(
+        run_id="run-1",
+        project_id="project-1",
+        status="pending",
+    )
+
+    admission = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-1",
+        run_id="run-1",
+    )
+
+    assert admission is None
+    assert journal.get_project_git_state("project-1") is None
+    assert journal.get_run_git_materialization("run-1") is None
+
+
+def test_run_admission_pins_base_without_creating_ref_or_worktree(
+    tmp_path,
+    journal,
+):
+    content, coordinator, backend = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    repository = content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    ).repository
+    seed = space / "seed.txt"
+    seed.write_text("v1\n", encoding="utf-8")
+    base = backend.commit_paths(space, (seed,), message="seed")
+    journal.ensure_run(
+        run_id="run-1",
+        project_id="project-1",
+        status="pending",
+    )
+
+    admission = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-1",
+        run_id="run-1",
+    )
+
+    assert admission is not None
+    assert admission.project.repository_id == repository.repository_id
+    assert admission.project.integration_ref is None
+    assert admission.project.integration_head is None
+    assert admission.project.last_synced_user_head == base
+    assert admission.run.workspace_base_ref == "refs/heads/main"
+    assert admission.run.workspace_base_commit == base
+    assert admission.run.materialization_state == "unmaterialized"
+    assert admission.run.run_ref is None
+    assert admission.run.worktree_path is None
+    assert (
+        _git(
+            space,
+            "for-each-ref",
+            "--format=%(refname)",
+            "refs/heads/eigent",
+        )
+        == ""
+    )
+    assert not (tmp_path / "state" / "worktrees").exists()
+
+
+def test_unmaterialized_project_tracks_new_user_head_but_run_replay_stays_pinned(
+    tmp_path,
+    journal,
+):
+    content, coordinator, backend = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    target = space / "report.md"
+    target.write_text("v1\n", encoding="utf-8")
+    first_head = backend.commit_paths(space, (target,), message="first")
+    journal.ensure_run(
+        run_id="run-1",
+        project_id="project-1",
+        status="pending",
+    )
+    first = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-1",
+        run_id="run-1",
+    )
+    assert first is not None
+
+    target.write_text("v2\n", encoding="utf-8")
+    second_head = backend.commit_paths(space, (target,), message="second")
+    journal.ensure_run(
+        run_id="run-2",
+        project_id="project-1",
+        status="pending",
+    )
+    second = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-1",
+        run_id="run-2",
+    )
+    replay = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-1",
+        run_id="run-1",
+    )
+
+    assert second is not None
+    assert replay is not None
+    assert first_head != second_head
+    assert first.run.workspace_base_commit == first_head
+    assert second.run.workspace_base_commit == second_head
+    assert replay.run.workspace_base_commit == first_head
+    assert second.project.integration_head is None
+    assert second.project.last_synced_user_head == second_head
+    assert second.project.version == first.project.version + 1
+
+
+def test_unborn_repository_admission_does_not_create_anchor_commit(
+    tmp_path,
+    journal,
+):
+    content, coordinator, backend = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    journal.ensure_run(
+        run_id="run-1",
+        project_id="project-1",
+        status="pending",
+    )
+
+    admission = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-1",
+        run_id="run-1",
+    )
+
+    assert admission is not None
+    assert admission.run.workspace_base_commit is None
+    assert admission.run.workspace_base_ref == "refs/heads/main"
+    assert backend.current_head(space) is None
+
+
+def test_first_write_lazily_materializes_project_and_run_worktrees(
+    tmp_path,
+    journal,
+):
+    content, coordinator, backend = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    seed = space / "seed.txt"
+    seed.write_text("user content\n", encoding="utf-8")
+    user_head = backend.commit_paths(space, (seed,), message="seed")
+    journal.ensure_run(
+        run_id="run-1",
+        project_id="project-1",
+        status="pending",
+    )
+    admission = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-1",
+        run_id="run-1",
+    )
+    assert admission is not None
+    expected_repo = backend.repo_state_token(space)
+
+    workspace = coordinator.ensure_run_materialized(
+        run_id="run-1",
+        operation_request_id="materialize-run-1",
+        expected_repo_state_digest=expected_repo.digest,
+        expected_project_version=admission.project.version,
+        expected_project_head=admission.project.integration_head,
+    )
+    replay = coordinator.ensure_run_materialized(
+        run_id="run-1",
+        operation_request_id="materialize-run-1",
+        expected_repo_state_digest=expected_repo.digest,
+        expected_project_version=admission.project.version,
+        expected_project_head=admission.project.integration_head,
+    )
+
+    assert replay == workspace
+    assert workspace.project.state == "ready"
+    assert workspace.project.integration_head == user_head
+    assert workspace.project.projected_head == user_head
+    assert workspace.project.worktree_path == str(workspace.project_worktree)
+    assert workspace.run.materialization_state == "materialized"
+    assert workspace.run.workspace_base_commit == user_head
+    assert workspace.run.worktree_path == str(workspace.run_worktree)
+    assert workspace.project_worktree.is_dir()
+    assert workspace.run_worktree.is_dir()
+    assert space not in workspace.project_worktree.parents
+    assert space not in workspace.run_worktree.parents
+    assert (workspace.project_worktree / "seed.txt").read_text() == (
+        "user content\n"
+    )
+    assert (workspace.run_worktree / "seed.txt").read_text() == (
+        "user content\n"
+    )
+    assert backend.current_head(space) == user_head
+    assert seed.read_text(encoding="utf-8") == "user content\n"
+
+
+def test_unborn_repo_materialization_uses_private_empty_anchor(
+    tmp_path,
+    journal,
+):
+    content, coordinator, backend = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    journal.ensure_run(
+        run_id="run-1",
+        project_id="project-1",
+        status="pending",
+    )
+    admission = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-1",
+        run_id="run-1",
+    )
+    assert admission is not None
+
+    workspace = coordinator.ensure_run_materialized(
+        run_id="run-1",
+        operation_request_id="materialize-unborn",
+        expected_repo_state_digest=backend.repo_state_token(space).digest,
+        expected_project_version=admission.project.version,
+        expected_project_head=None,
+    )
+
+    assert workspace.project.integration_head is not None
+    assert workspace.run.workspace_base_commit == (
+        workspace.project.integration_head
+    )
+    assert backend.current_head(space) is None
+    assert list(space.iterdir()) == [space / ".git"]
+
+
+def test_materialization_replay_closes_git_before_sqlite_window(
+    tmp_path,
+    journal,
+    monkeypatch,
+):
+    content, coordinator, backend = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    seed = space / "seed.txt"
+    seed.write_text("seed\n", encoding="utf-8")
+    backend.commit_paths(space, (seed,), message="seed")
+    journal.ensure_run(
+        run_id="run-1",
+        project_id="project-1",
+        status="pending",
+    )
+    admission = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-1",
+        run_id="run-1",
+    )
+    assert admission is not None
+    expected = backend.repo_state_token(space).digest
+    original = journal.complete_git_run_materialization
+
+    def crash_before_sqlite(*_args, **_kwargs):
+        raise RuntimeError("simulated materialization crash")
+
+    monkeypatch.setattr(
+        journal,
+        "complete_git_run_materialization",
+        crash_before_sqlite,
+    )
+    with pytest.raises(RuntimeError, match="simulated materialization crash"):
+        coordinator.ensure_run_materialized(
+            run_id="run-1",
+            operation_request_id="materialize-crash",
+            expected_repo_state_digest=expected,
+            expected_project_version=admission.project.version,
+            expected_project_head=None,
+        )
+    monkeypatch.setattr(
+        journal,
+        "complete_git_run_materialization",
+        original,
+    )
+
+    recovered = coordinator.ensure_run_materialized(
+        run_id="run-1",
+        operation_request_id="materialize-crash",
+        expected_repo_state_digest=expected,
+        expected_project_version=admission.project.version,
+        expected_project_head=None,
+    )
+
+    assert recovered.run.materialization_state == "materialized"
+    assert recovered.project_worktree.is_dir()
+    assert recovered.run_worktree.is_dir()
+    assert len(backend.list_worktrees(space)) == 3
+
+
+def test_materialization_rejects_user_worktree_change_before_side_effect(
+    tmp_path,
+    journal,
+):
+    content, coordinator, backend = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    seed = space / "seed.txt"
+    seed.write_text("seed\n", encoding="utf-8")
+    backend.commit_paths(space, (seed,), message="seed")
+    journal.ensure_run(
+        run_id="run-1",
+        project_id="project-1",
+        status="pending",
+    )
+    admission = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-1",
+        run_id="run-1",
+    )
+    assert admission is not None
+    expected = backend.repo_state_token(space)
+    seed.write_text("changed before dispatch\n", encoding="utf-8")
+
+    with pytest.raises(RepositoryStateChangedError):
+        coordinator.ensure_run_materialized(
+            run_id="run-1",
+            operation_request_id="materialize-stale",
+            expected_repo_state_digest=expected.digest,
+            expected_project_version=admission.project.version,
+            expected_project_head=None,
+        )
+
+    assert (
+        journal.get_run_git_materialization("run-1").materialization_state
+        == "unmaterialized"
+    )
+    assert len(backend.list_worktrees(space)) == 1
+
+
+def test_checkpointed_run_promotes_by_cas_without_touching_user_worktree(
+    tmp_path,
+    journal,
+):
+    content, coordinator, backend = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    repository = content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    ).repository
+    report = space / "report.md"
+    report.write_text("user version\n", encoding="utf-8")
+    user_head = backend.commit_paths(space, (report,), message="seed")
+    journal.ensure_run(
+        run_id="run-1",
+        project_id="project-1",
+        status="pending",
+    )
+    admission = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-1",
+        run_id="run-1",
+    )
+    assert admission is not None
+    workspace = coordinator.ensure_run_materialized(
+        run_id="run-1",
+        operation_request_id="materialize-run-1",
+        expected_repo_state_digest=backend.repo_state_token(space).digest,
+        expected_project_version=admission.project.version,
+        expected_project_head=None,
+    )
+    run_report = workspace.run_worktree / "report.md"
+    run_report.write_text("agent version\n", encoding="utf-8")
+    checkpoint = content.checkpoint(
+        repository.repository_id,
+        operation_request_id="checkpoint-run-1",
+        expected_repo_state_digest=backend.repo_state_token(
+            workspace.run_worktree
+        ).digest,
+        paths=(run_report,),
+        path_sources={"report.md": "agent_modified"},
+        target_role="run",
+        target_id="run-1",
+        actor_id="agent-1",
+        trigger="run_terminal",
+        message="Checkpoint Run output",
+        worktree_root=workspace.run_worktree,
+    )
+    project_before = journal.get_project_git_state("project-1")
+    assert project_before is not None
+
+    promoted = coordinator.promote_run(
+        run_id="run-1",
+        operation_request_id="promote-run-1",
+        expected_run_state_digest=backend.repo_state_token(
+            workspace.run_worktree
+        ).digest,
+        expected_project_version=project_before.version,
+        expected_project_head=str(project_before.integration_head),
+        expected_run_head=checkpoint.commit_oid,
+    )
+
+    assert promoted.run.materialization_state == "promoted"
+    assert promoted.run.promoted_commit == checkpoint.commit_oid
+    assert promoted.project.integration_head == checkpoint.commit_oid
+    assert promoted.project.projected_head == user_head
+    assert promoted.project.pending_apply is True
+    assert backend.ref_oid(space, str(promoted.project.integration_ref)) == (
+        checkpoint.commit_oid
+    )
+    assert backend.current_head(space) == user_head
+    assert report.read_text(encoding="utf-8") == "user version\n"
+
+    project_copy = workspace.project_worktree / "report.md"
+    project_copy.write_text("external project edit\n", encoding="utf-8")
+    with pytest.raises(GitBackendError, match="external"):
+        coordinator.refresh_project_projection(
+            project_id="project-1",
+            operation_request_id="refresh-with-external-edit",
+            expected_projection_state_digest=backend.repo_state_token(
+                workspace.project_worktree
+            ).digest,
+            expected_project_version=promoted.project.version,
+            expected_integration_head=str(promoted.project.integration_head),
+            expected_projected_head=str(promoted.project.projected_head),
+        )
+    assert project_copy.read_text(encoding="utf-8") == (
+        "external project edit\n"
+    )
+    attention = journal.get_project_git_state("project-1")
+    assert attention is not None
+    assert attention.projected_head == user_head
+    assert attention.state == "needs_attention"
+
+    journal.ensure_run(
+        run_id="run-2",
+        project_id="project-1",
+        status="pending",
+    )
+    follow_up = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-1",
+        run_id="run-2",
+    )
+    assert follow_up is not None
+    assert follow_up.run.workspace_base_commit == checkpoint.commit_oid
+
+
+def test_promotion_refuses_uncheckpointed_run_changes(tmp_path, journal):
+    content, coordinator, backend = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    seed = space / "seed.txt"
+    seed.write_text("seed\n", encoding="utf-8")
+    backend.commit_paths(space, (seed,), message="seed")
+    journal.ensure_run(
+        run_id="run-1",
+        project_id="project-1",
+        status="pending",
+    )
+    admission = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-1",
+        run_id="run-1",
+    )
+    assert admission is not None
+    workspace = coordinator.ensure_run_materialized(
+        run_id="run-1",
+        operation_request_id="materialize-run-1",
+        expected_repo_state_digest=backend.repo_state_token(space).digest,
+        expected_project_version=admission.project.version,
+        expected_project_head=None,
+    )
+    (workspace.run_worktree / "uncommitted.txt").write_text(
+        "not checkpointed\n",
+        encoding="utf-8",
+    )
+    project = journal.get_project_git_state("project-1")
+    assert project is not None
+
+    with pytest.raises(ContentRepositoryError, match="uncheckpointed"):
+        coordinator.promote_run(
+            run_id="run-1",
+            operation_request_id="promote-dirty",
+            expected_run_state_digest=backend.repo_state_token(
+                workspace.run_worktree
+            ).digest,
+            expected_project_version=project.version,
+            expected_project_head=str(project.integration_head),
+            expected_run_head=str(
+                backend.current_head(workspace.run_worktree)
+            ),
+        )
+
+    assert backend.ref_oid(space, str(project.integration_ref)) == (
+        project.integration_head
+    )
+
+
+def test_stale_concurrent_run_cannot_overwrite_new_project_head(
+    tmp_path,
+    journal,
+):
+    content, coordinator, backend = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    repository = content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    ).repository
+    seed = space / "seed.txt"
+    seed.write_text("seed\n", encoding="utf-8")
+    backend.commit_paths(space, (seed,), message="seed")
+    workspaces = []
+    for number in (1, 2):
+        run_id = f"run-{number}"
+        journal.ensure_run(
+            run_id=run_id,
+            project_id="project-1",
+            status="pending",
+        )
+        admission = coordinator.admit_run(
+            space_id="space-1",
+            project_id="project-1",
+            run_id=run_id,
+        )
+        assert admission is not None
+        current_project = journal.get_project_git_state("project-1")
+        assert current_project is not None
+        workspace = coordinator.ensure_run_materialized(
+            run_id=run_id,
+            operation_request_id=f"materialize-{run_id}",
+            expected_repo_state_digest=backend.repo_state_token(space).digest,
+            expected_project_version=current_project.version,
+            expected_project_head=current_project.integration_head,
+        )
+        workspaces.append(workspace)
+
+    checkpoints = []
+    for number, workspace in enumerate(workspaces, start=1):
+        target = workspace.run_worktree / f"run-{number}.txt"
+        target.write_text(f"run {number}\n", encoding="utf-8")
+        checkpoints.append(
+            content.checkpoint(
+                repository.repository_id,
+                operation_request_id=f"checkpoint-run-{number}",
+                expected_repo_state_digest=backend.repo_state_token(
+                    workspace.run_worktree
+                ).digest,
+                paths=(target,),
+                path_sources={f"run-{number}.txt": "agent_created"},
+                target_role="run",
+                target_id=f"run-{number}",
+                actor_id=f"agent-{number}",
+                trigger="run_terminal",
+                message=f"Checkpoint Run {number}",
+                worktree_root=workspace.run_worktree,
+            )
+        )
+    shared_project = journal.get_project_git_state("project-1")
+    assert shared_project is not None
+    coordinator.promote_run(
+        run_id="run-1",
+        operation_request_id="promote-run-1",
+        expected_run_state_digest=backend.repo_state_token(
+            workspaces[0].run_worktree
+        ).digest,
+        expected_project_version=shared_project.version,
+        expected_project_head=str(shared_project.integration_head),
+        expected_run_head=checkpoints[0].commit_oid,
+    )
+
+    with pytest.raises(OptimisticConcurrencyError):
+        coordinator.promote_run(
+            run_id="run-2",
+            operation_request_id="promote-run-2",
+            expected_run_state_digest=backend.repo_state_token(
+                workspaces[1].run_worktree
+            ).digest,
+            expected_project_version=shared_project.version,
+            expected_project_head=str(shared_project.integration_head),
+            expected_run_head=checkpoints[1].commit_oid,
+        )
+
+    latest = journal.get_project_git_state("project-1")
+    assert latest is not None
+    assert latest.integration_head == checkpoints[0].commit_oid
+    assert backend.ref_oid(space, str(latest.integration_ref)) == (
+        checkpoints[0].commit_oid
+    )

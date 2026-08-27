@@ -13,17 +13,22 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import asyncio
+import hashlib
 import inspect
+import json
 import logging
 import os
-import time
-from dataclasses import replace
+from collections.abc import Mapping
+from contextlib import suppress
+from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import StreamingResponse
 
+from app.auth import require_local_control_principal
 from app.component import code
 from app.component.environment import env, sanitize_env_path, set_user_env_path
 from app.exception.exception import UserException
@@ -42,6 +47,14 @@ from app.run_context import (
     apply_run_env_for_third_party,
     stream_with_run_context,
 )
+from app.run_journal import (
+    AttemptEnvironmentBinding,
+    RunAttemptRecord,
+    RunEventDraft,
+    SQLiteRunJournal,
+    get_default_run_journal,
+)
+from app.run_runtime import get_default_run_coordinator
 from app.service.chat_service import step_solve
 from app.service.task import (
     Action,
@@ -53,12 +66,11 @@ from app.service.task import (
     ActionStopData,
     ActionSupplementData,
     ImprovePayload,
-    delete_task_lock,
+    TaskLock,
     get_or_create_task_lock,
     get_task_lock,
     get_task_lock_if_exists,
     set_current_task_id,
-    task_locks,
 )
 from app.utils.browser_launcher import (
     ensure_cdp_browser_endpoint,
@@ -73,8 +85,16 @@ from app.utils.event_loop_utils import schedule_async_task_from_worker
 from app.utils.server.sync_step import sync_step_event
 from app.utils.workspace_paths import camel_log_root
 from app.utils.workspace_resolver import get_workspace_resolver
+from app.workspace_config import EffectiveEnvironmentSpec, canonical_digest
+from app.workspace_config.admission import (
+    EnvironmentAdmissionService,
+    EnvironmentAdmissionTemplate,
+    LegacyEnvironmentImporter,
+)
+from app.workspace_git import get_default_workspace_git_coordinator
 
 router = APIRouter()
+_CHAT_CONTROL_DEPENDENCIES = [Depends(require_local_control_principal)]
 
 # Logger for chat controller
 chat_logger = logging.getLogger("chat_controller")
@@ -84,6 +104,195 @@ SSE_TIMEOUT_SECONDS = 60 * 60
 
 # CAMEL reads this as a process-level logging toggle, not as per-run state.
 os.environ.setdefault("CAMEL_MODEL_LOG_ENABLED", "true")
+
+
+@dataclass(frozen=True)
+class _PreparedChatRun:
+    task_lock: TaskLock
+    run_context: RunContext
+    attempt_id: str
+    initial_action: ActionImproveData
+
+
+_EXPLICIT_RESUME_INSTRUCTION = """
+Resume the interrupted Run from its persisted Project context and durable
+tool ledger. Continue only unfinished work. Treat completed tool calls and
+external side effects as already performed; do not repeat them unless the
+persisted result proves that repetition is both necessary and safe. If the
+durable context is insufficient, ask the user instead of guessing.
+""".strip()
+_RESUME_TOOL_LEDGER_MAX_CALLS = 50
+_RESUME_TOOL_RESULT_MAX_CHARS = 1000
+
+
+def _legacy_environment_template(data: Chat) -> EnvironmentAdmissionTemplate:
+    skill_config: dict[str, Any] = {}
+    skill_owner = data.skill_config_user_id()
+    if skill_owner:
+        try:
+            from app.service.skill_config_service import skill_config_load
+
+            skill_config = skill_config_load(skill_owner)
+        except Exception:
+            chat_logger.warning(
+                "Failed to import legacy skills into Personal Default Bundle",
+                exc_info=True,
+            )
+    mcp_configs = data.installed_mcp.get("mcpServers") or {}
+    return LegacyEnvironmentImporter().build_template(
+        model_platform=data.model_platform,
+        model_type=data.model_type,
+        auth_source=data.auth_source,
+        requested_effort=data.thinking_effort,
+        allow_local_system=data.allow_local_system,
+        mcp_server_names=tuple(mcp_configs.keys()),
+        mcp_server_configs=mcp_configs,
+        skill_config=skill_config,
+        session_mode=data.session_mode,
+    )
+
+
+def _attempt_environment_binding(
+    attempt: RunAttemptRecord | None,
+) -> AttemptEnvironmentBinding | None:
+    if attempt is None or attempt.environment_spec_id is None:
+        return None
+    values = {
+        "environment_spec_digest": attempt.environment_spec_digest,
+        "bundle_revision_id": attempt.bundle_revision_id,
+        "permission_profile_revision": attempt.permission_profile_revision,
+        "thinking_effort_requested": attempt.thinking_effort_requested,
+        "thinking_effort_effective": attempt.thinking_effort_effective,
+        "provider_capability_revision": (attempt.provider_capability_revision),
+    }
+    if any(value is None for value in values.values()):
+        raise UserException(
+            code.error,
+            "The Run has an incomplete persisted EnvironmentSpec binding.",
+        )
+    return AttemptEnvironmentBinding(
+        environment_spec_id=attempt.environment_spec_id,
+        **values,
+    )
+
+
+def _apply_environment_to_task_lock(
+    task_lock: TaskLock,
+    spec: EffectiveEnvironmentSpec,
+    *,
+    template: EnvironmentAdmissionTemplate | None,
+) -> None:
+    task_lock.environment_admission_template = template
+    task_lock.environment_spec_id = spec.spec_id
+    task_lock.thinking_effort_requested = spec.thinking_effort_requested.value
+    task_lock.thinking_effort_effective = spec.thinking_effort_effective.value
+    task_lock.provider_effort_parameter_name = spec.provider_parameter_name
+    task_lock.provider_effort_parameter_value = spec.provider_value
+    task_lock.provider_capability_revision = spec.provider_capability_revision
+
+
+def _load_attempt_environment_spec(
+    journal: SQLiteRunJournal,
+    attempt: RunAttemptRecord,
+) -> EffectiveEnvironmentSpec | None:
+    if attempt.environment_spec_id is None:
+        return None
+    record = journal.get_effective_environment_spec(
+        attempt.environment_spec_id
+    )
+    if record is None:
+        raise UserException(
+            code.error,
+            "The Run's persisted EnvironmentSpec is unavailable.",
+        )
+    return EffectiveEnvironmentSpec.model_validate(record.spec)
+
+
+def _validate_resume_model_capability(
+    data: Chat,
+    spec: EffectiveEnvironmentSpec,
+) -> EnvironmentAdmissionTemplate:
+    template = _legacy_environment_template(data)
+    current = template.provider_capability
+    if current.capability_revision != spec.provider_capability_revision:
+        raise UserException(
+            code.error,
+            "The model capability changed since this Attempt. Start a new "
+            "Attempt with an explicit environment upgrade.",
+        )
+    persisted_model = spec.semantic_spec.get(
+        "runtime_capability_manifest", {}
+    ).get("model", {})
+    if (
+        persisted_model.get("platform") != data.model_platform.lower()
+        or persisted_model.get("type") != data.model_type
+    ):
+        raise UserException(
+            code.error,
+            "Resume requires the original model, or an explicit environment "
+            "upgrade into a new Attempt.",
+        )
+    return template
+
+
+def _admission_request_id(
+    run_id: str,
+    *,
+    question: str,
+    attaches: list[str],
+    project_context: str | None,
+) -> str:
+    canonical = json.dumps(
+        {
+            "question": question,
+            "attaches": attaches,
+            "project_context": project_context,
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:24]
+    return f"initial:{run_id}:{digest}"
+
+
+async def _classify_persisted_admission(
+    journal,
+    *,
+    run_id: str,
+    request_id: str,
+) -> tuple[str, object | None]:
+    """Classify an existing Run as retryable, duplicate, or conflicting."""
+
+    run = await asyncio.to_thread(journal.get_run, run_id)
+    if run is None:
+        return "new", None
+    attempts = await asyncio.to_thread(journal.list_run_attempts, run_id)
+    matching = next(
+        (
+            attempt
+            for attempt in attempts
+            if attempt.resume_request_id == request_id
+        ),
+        None,
+    )
+    if matching is None:
+        # Legacy attempts predate payload fingerprints. Their input cannot be
+        # proven equal to this request, so replay them but never re-execute.
+        if any(
+            attempt.resume_request_id == f"initial:{run_id}"
+            for attempt in attempts
+        ):
+            return "duplicate", None
+        if not attempts and run.status in {"pending", "running"}:
+            return "retry", None
+        return "conflict", None
+    if run.status in {"pending", "running"} and matching.status in {
+        "pending",
+        "running",
+    }:
+        return "retry", matching
+    return "duplicate", matching
 
 
 def _is_remote_browser_hands(request: Request | None) -> bool:
@@ -210,7 +419,35 @@ def _build_run_context(
         getattr(request.state, "browser_port", data.browser_port)
     )
     cdp_url = getattr(request.state, "cdp_url", None)
-    auth_header = request.headers.get("authorization")
+    request_headers = request.headers
+    headers = request_headers if isinstance(request_headers, Mapping) else {}
+    auth_header = headers.get("authorization")
+    try:
+        from app.run_sync.runtime import configure_default_cloud_sync_worker
+
+        configure_default_cloud_sync_worker(
+            server_url=data.server_url,
+            authorization=auth_header,
+            desktop_instance_id=headers.get("x-desktop-instance-id"),
+        )
+    except Exception:
+        # Cloud sync is a freshness projection. Local Run admission and history
+        # remain available when its configuration cannot be refreshed.
+        chat_logger.exception("Failed to configure Run cloud sync")
+    permissions = {"workspace.read", "workspace.write"}
+    if data.allow_local_system:
+        permissions.update({"terminal", "local_system"})
+    if cdp_url or data.cdp_browsers:
+        permissions.add("browser")
+    permissions.update(
+        f"mcp:{name}" for name in (data.installed_mcp.get("mcpServers") or {})
+    )
+    credential_sources = {
+        "model": data.auth_source
+        or ("request_api_key" if data.api_key else "none"),
+        "cloud": "request_api_key" if data.is_cloud() else "none",
+        "search": "request_search_config" if data.search_config else "none",
+    }
     return RunContext(
         space_id=data.space_id or data.project_id,
         project_id=data.project_id,
@@ -234,6 +471,11 @@ def _build_run_context(
         extra_env={
             "baseSnapshotId": frozen_dirs.base_snapshot_id or "",
         },
+        model_platform=data.model_platform,
+        model_type=data.model_type,
+        model_parameters=dict(data.model_config_dict or {}),
+        permissions=frozenset(permissions),
+        credential_sources=credential_sources,
     )
 
 
@@ -254,138 +496,100 @@ def _camel_log_dir(
     return camel_log_root(email, project_id, task_id, user_id)
 
 
-async def _cleanup_task_lock_safe(task_lock, reason: str) -> bool:
-    """Safely cleanup task lock with existence check.
-
-    Args:
-        task_lock: The task lock to cleanup
-        reason: Reason for cleanup (for logging)
-
-    Returns:
-        True if cleanup was performed, False otherwise
-    """
-    if not task_lock:
-        return False
-
-    # Check if task_lock still exists before attempting cleanup
-    if task_lock.id not in task_locks:
-        chat_logger.debug(
-            f"[{reason}] Task lock already removed, skipping cleanup",
-            extra={"task_id": task_lock.id},
-        )
-        return False
-
-    try:
-        task_lock.status = Status.done
-        await delete_task_lock(task_lock.id)
-        chat_logger.info(
-            f"[{reason}] Task lock cleanup completed",
-            extra={"task_id": task_lock.id},
-        )
-        return True
-    except Exception as e:
-        chat_logger.error(
-            f"[{reason}] Failed to cleanup task lock",
-            extra={"task_id": task_lock.id, "error": str(e)},
-            exc_info=True,
-        )
-        return False
-
-
-def _should_preserve_task_lock_on_cancel(task_lock) -> bool:
-    """Keep completed Project state alive for follow-up turns.
-
-    The frontend closes the SSE stream after a run reaches `end`. That close is
-    reported to FastAPI as a cancellation, but for multi-turn Project semantics
-    it is not a user stop. The TaskLock carries the short-term conversation
-    context used by follow-up `/chat/{project_id}` requests, especially for the
-    single-agent harness, so completed locks with history must survive it.
-    """
-    if not task_lock:
-        return False
-    if getattr(task_lock, "status", None) not in {
-        Status.done,
-        Status.confirming,
-    }:
-        return False
-    return bool(getattr(task_lock, "conversation_history", None))
-
-
 async def timeout_stream_wrapper(
     stream_generator,
-    timeout_seconds: int = SSE_TIMEOUT_SECONDS,
-    task_lock=None,
+    timeout_seconds: float = SSE_TIMEOUT_SECONDS,
+    run_id: str | None = None,
 ):
-    """Wraps a stream generator with timeout handling.
+    """Keep one transport subscriber alive without owning Run lifecycle."""
 
-    Closes the SSE connection if no data is received within the timeout period.
-    Triggers cleanup if timeout occurs to prevent resource leaks.
-    """
-    last_data_time = time.time()
     generator = stream_generator.__aiter__()
-    cleanup_triggered = False
+    pending_next: asyncio.Task | None = None
+
+    def current_run_id() -> str | None:
+        handle = getattr(stream_generator, "handle", None)
+        return getattr(handle, "run_id", run_id)
 
     try:
         while True:
-            elapsed = time.time() - last_data_time
-            remaining_timeout = timeout_seconds - elapsed
-
-            try:
-                data = await asyncio.wait_for(
-                    generator.__anext__(), timeout=remaining_timeout
-                )
-                last_data_time = time.time()
-                yield data
-            except TimeoutError:
-                chat_logger.warning(
-                    "SSE timeout: No data received, closing connection",
-                    extra={"timeout_seconds": timeout_seconds},
-                )
-                timeout_min = timeout_seconds // 60
+            if pending_next is None:
+                pending_next = asyncio.create_task(generator.__anext__())
+            done, _ = await asyncio.wait(
+                {pending_next},
+                timeout=timeout_seconds,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if not done:
                 yield sse_json(
-                    "error",
+                    "heartbeat",
                     {
-                        "message": "Connection timeout: No data"
-                        f" received for {timeout_min}"
-                        " minutes"
+                        "scope": "transport",
+                        "run_id": current_run_id(),
                     },
                 )
-                cleanup_triggered = await _cleanup_task_lock_safe(
-                    task_lock, "TIMEOUT"
-                )
-                break
+                continue
+            try:
+                data = pending_next.result()
             except StopAsyncIteration:
                 break
+            pending_next = None
+            yield data
 
     except asyncio.CancelledError:
         chat_logger.info(
-            "[STREAM-CANCELLED] Stream cancelled, triggering cleanup"
+            "SSE subscriber detached; Run execution continues",
+            extra={"run_id": current_run_id()},
         )
-        if _should_preserve_task_lock_on_cancel(task_lock):
-            chat_logger.info(
-                "[STREAM-CANCELLED] Preserving completed task lock for follow-up context",
-                extra={"task_id": getattr(task_lock, "id", None)},
-            )
-            raise
-        if not cleanup_triggered:
-            await _cleanup_task_lock_safe(task_lock, "CANCELLED")
         raise
     except Exception as e:
         chat_logger.error(
-            "[STREAM-ERROR] Unexpected error in stream wrapper",
-            extra={"error": str(e)},
+            "SSE subscriber failed; Run lifecycle is unchanged",
+            extra={"run_id": current_run_id(), "error": str(e)},
             exc_info=True,
         )
-        if not cleanup_triggered:
-            await _cleanup_task_lock_safe(task_lock, "ERROR")
         raise
+    finally:
+        if pending_next is not None and not pending_next.done():
+            pending_next.cancel()
+            with suppress(asyncio.CancelledError):
+                await pending_next
+        close = getattr(generator, "aclose", None)
+        if close is not None:
+            await close()
 
 
-async def start_chat_stream(data: Chat, request: Request):
-    """
-    Setup and start chat stream. Used by POST /chat and Message Router.
-    Returns async generator of SSE chunks.
-    """
+async def _replay_persisted_run(run_id: str):
+    """Replay durable history without implicitly restarting execution."""
+
+    events = await asyncio.to_thread(
+        get_default_run_journal().list_events,
+        run_id,
+    )
+    if not events:
+        yield sse_json(
+            "run_interrupted",
+            {
+                "run_id": run_id,
+                "message": "Run has durable state but no live consumer; "
+                "explicit resume is required.",
+            },
+        )
+        return
+
+    for event in events:
+        yield sse_json(
+            event.legacy_step or event.event_type,
+            event.payload,
+        )
+
+
+async def _prepare_chat_run(
+    data: Chat,
+    request: Request,
+    *,
+    resume_attempt: RunAttemptRecord | None = None,
+) -> _PreparedChatRun:
+    """Bind fresh runtime inputs for a new Run or explicit Resume Attempt."""
     # TODO(brain-auth): Phase B should derive canonical user_id from
     # request.state.brain_auth, then verify/replace Chat.email before any
     # workspace snapshot, artifact path, or task lock is resolved.
@@ -441,6 +645,84 @@ async def start_chat_stream(data: Chat, request: Request):
     )
     camel_log.mkdir(parents=True, exist_ok=True)
     run_context = _build_run_context(data, frozen_dirs, request, camel_log)
+    journal = get_default_run_journal()
+    is_resume = resume_attempt is not None
+    if is_resume:
+        request_id = str(data.resume_request_id)
+        attempt = resume_attempt
+        if isinstance(journal, SQLiteRunJournal):
+            persisted_spec = await asyncio.to_thread(
+                _load_attempt_environment_spec,
+                journal,
+                attempt,
+            )
+            if persisted_spec is not None:
+                template = _validate_resume_model_capability(
+                    data,
+                    persisted_spec,
+                )
+                _apply_environment_to_task_lock(
+                    task_lock,
+                    persisted_spec,
+                    template=template,
+                )
+    else:
+        await asyncio.to_thread(
+            journal.ensure_run,
+            run_id=run_context.run_id,
+            project_id=run_context.project_id,
+            status="pending",
+        )
+        request_id = _admission_request_id(
+            run_context.run_id,
+            question=data.question,
+            attaches=data.attaches or [],
+            project_context=data.project_context,
+        )
+        environment = None
+        if isinstance(journal, SQLiteRunJournal):
+            template = _legacy_environment_template(data)
+            environment = await asyncio.to_thread(
+                EnvironmentAdmissionService(journal).persist_for_run,
+                run_id=run_context.run_id,
+                space_id=run_context.space_id,
+                working_directory=run_context.working_directory,
+                created_by=(run_context.user_id or "local-user"),
+                template=template,
+            )
+            _apply_environment_to_task_lock(
+                task_lock,
+                environment.spec,
+                template=template,
+            )
+            try:
+                await asyncio.to_thread(
+                    get_default_workspace_git_coordinator().admit_run,
+                    space_id=run_context.space_id,
+                    project_id=run_context.project_id,
+                    run_id=run_context.run_id,
+                )
+            except Exception:
+                # Git is optional at Run admission. A broken repository blocks
+                # later Git/file mutation, while pure conversation remains
+                # available for recovery and user guidance.
+                chat_logger.warning(
+                    "Failed to pin optional Run Git workspace",
+                    extra={
+                        "space_id": run_context.space_id,
+                        "project_id": run_context.project_id,
+                        "run_id": run_context.run_id,
+                    },
+                    exc_info=True,
+                )
+        attempt = await asyncio.to_thread(
+            journal.create_run_attempt,
+            run_context.run_id,
+            request_id=request_id,
+            reason="initial_execution",
+            activate=False,
+            environment=(environment.binding if environment else None),
+        )
     apply_run_env_for_third_party(run_context)
     task_lock.run_context = run_context
 
@@ -455,30 +737,75 @@ async def start_chat_stream(data: Chat, request: Request):
         if data.space_id and data.space_id.startswith("legacy_")
         else ("folder" if data.space_root_path else "blank")
     )
-    memory_service.on_run_start(
-        run_context=run_context,
-        space_name=None,
-        project_name=None,
-        space_source_type=memory_space_source,
-        mode=memory_mode,
-        user_prompt=data.question,
-        prompt_source="chat",
-    )
+    if is_resume:
+        memory_service.on_run_resume(run_context=run_context)
+        # A prior consumer may have finalized the projection as interrupted in
+        # this process. The new Attempt owns its own future finalization.
+        finalized = getattr(task_lock, "_memory_finalized_runs", None)
+        if finalized is not None:
+            finalized.discard(run_context.run_id)
+    else:
+        memory_service.on_run_start(
+            run_context=run_context,
+            space_name=None,
+            project_name=None,
+            space_source_type=memory_space_source,
+            mode=memory_mode,
+            user_prompt=data.question,
+            prompt_source="chat",
+            conversation_event_id=f"memory:{request_id}",
+        )
     task_lock.memory_service = memory_service
 
     # Set the initial current_task_id in task_lock
     set_current_task_id(data.project_id, data.task_id)
 
-    # Put initial action in queue to start processing
-    await task_lock.put_queue(
-        ActionImproveData(
-            data=ImprovePayload(
-                question=data.question,
-                attaches=data.attaches or [],
-                project_context=data.project_context,
-            ),
-            new_task_id=data.task_id,
+    resume_checkpoint = data.project_context
+    if is_resume:
+        tool_calls = await asyncio.to_thread(
+            get_default_run_journal().list_tool_calls,
+            run_context.run_id,
         )
+        ledger_lines = ["=== Durable Tool Ledger (canonical) ==="]
+        for tool in tool_calls[-_RESUME_TOOL_LEDGER_MAX_CALLS:]:
+            ledger_lines.append(
+                f"- {tool.tool_call_id}: {tool.tool_name}; "
+                f"status={tool.status}; safety={tool.safety_class}; "
+                f"outcome={tool.outcome or 'none'}"
+            )
+            if tool.result is not None:
+                encoded_result = json.dumps(
+                    tool.result,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                )
+                ledger_lines.append(
+                    "  persisted_result="
+                    + encoded_result[:_RESUME_TOOL_RESULT_MAX_CHARS]
+                )
+        ledger_lines.append("=== End Durable Tool Ledger ===")
+        resume_checkpoint = "\n\n".join(
+            part
+            for part in (
+                data.project_context,
+                "\n".join(ledger_lines),
+            )
+            if part
+        )
+
+    initial_action = ActionImproveData(
+        data=ImprovePayload(
+            question=(
+                _EXPLICIT_RESUME_INSTRUCTION if is_resume else data.question
+            ),
+            attaches=data.attaches or [],
+            project_context=resume_checkpoint,
+        ),
+        new_task_id=data.task_id,
+        request_id=request_id,
+        run_id=run_context.run_id,
+        attempt_id=attempt.attempt_id,
     )
 
     chat_logger.info(
@@ -491,16 +818,178 @@ async def start_chat_stream(data: Chat, request: Request):
             "binding_source": frozen_dirs.binding_source,
         },
     )
-    return timeout_stream_wrapper(
-        stream_with_run_context(
-            step_solve(data, request, task_lock),
-            lambda: getattr(task_lock, "run_context", run_context),
-        ),
+    return _PreparedChatRun(
         task_lock=task_lock,
+        run_context=run_context,
+        attempt_id=attempt.attempt_id,
+        initial_action=initial_action,
     )
 
 
-@router.post("/chat", name="start chat")
+async def start_chat_stream(data: Chat, request: Request):
+    """Admit one detached execution or attach this SSE to an existing one."""
+
+    run_id = data.run_id or data.task_id
+    coordinator = get_default_run_coordinator()
+    journal = get_default_run_journal()
+    if isinstance(journal, SQLiteRunJournal):
+        coordinator.bind_journal(journal)
+    async with coordinator.admission_scope(run_id):
+        subscription = await coordinator.attach_if_running(run_id)
+        if subscription is not None:
+            chat_logger.info(
+                "Attached retry to existing Run consumer",
+                extra={"run_id": run_id, "project_id": data.project_id},
+            )
+            return timeout_stream_wrapper(subscription, run_id=run_id)
+
+        if data.resume_request_id:
+            run = await asyncio.to_thread(journal.get_run, run_id)
+            if run is None:
+                raise UserException(code.error, "The Run no longer exists.")
+            if run.project_id != data.project_id:
+                raise UserException(
+                    code.error, "The Run belongs to a different Project."
+                )
+            attempts = await asyncio.to_thread(
+                journal.list_run_attempts, run_id
+            )
+            existing_attempt = next(
+                (
+                    attempt
+                    for attempt in attempts
+                    if attempt.resume_request_id == data.resume_request_id
+                ),
+                None,
+            )
+            if existing_attempt is None and run.status != "interrupted":
+                raise UserException(
+                    code.error,
+                    f"Run cannot be resumed from state {run.status!r}.",
+                )
+            binding_source = existing_attempt or next(
+                (
+                    previous
+                    for previous in reversed(attempts)
+                    if previous.environment_spec_id is not None
+                ),
+                None,
+            )
+            resume_environment = _attempt_environment_binding(binding_source)
+            attempt = await asyncio.to_thread(
+                journal.create_run_attempt,
+                run_id,
+                request_id=data.resume_request_id,
+                reason="explicit_resume",
+                activate=False,
+                environment=resume_environment,
+            )
+            if attempt.status not in {"pending", "running"}:
+                raise UserException(
+                    code.error,
+                    "This Resume request already ended; start a new Resume action.",
+                )
+            try:
+                prepared = await _prepare_chat_run(
+                    data,
+                    request,
+                    resume_attempt=attempt,
+                )
+                await prepared.task_lock.put_queue(prepared.initial_action)
+                execution_stream = step_solve(
+                    data, request, prepared.task_lock
+                )
+                subscription = await coordinator.start_with_subscription(
+                    run_id=prepared.run_context.run_id,
+                    stream_factory=lambda: stream_with_run_context(
+                        execution_stream,
+                        lambda: getattr(
+                            prepared.task_lock,
+                            "run_context",
+                            prepared.run_context,
+                        ),
+                    ),
+                    command_queue=prepared.task_lock.queue,
+                )
+            except Exception:
+                # Do not leave a durable pending Attempt with no consumer. A
+                # fresh explicit Resume action can safely create Attempt N+1.
+                try:
+                    await asyncio.to_thread(
+                        journal.append_event,
+                        run_id,
+                        RunEventDraft(
+                            event_id=(
+                                f"resume-admission-failed:{attempt.attempt_id}"
+                            ),
+                            event_type="runtime.interrupted",
+                            payload={
+                                "reason": "resume_admission_failed",
+                                "attempt_id": attempt.attempt_id,
+                            },
+                        ),
+                    )
+                    from app.run_sync.runtime import (
+                        notify_default_cloud_sync_worker,
+                    )
+
+                    notify_default_cloud_sync_worker()
+                    get_memory_service().project_canonical_run_status(
+                        run_id,
+                        state="interrupted",
+                        error="resume_admission_failed",
+                    )
+                except Exception:
+                    chat_logger.exception(
+                        "Failed to close a partial Resume admission",
+                        extra={"run_id": run_id},
+                    )
+                raise
+            return timeout_stream_wrapper(subscription, run_id=run_id)
+
+        request_id = _admission_request_id(
+            run_id,
+            question=data.question,
+            attaches=data.attaches or [],
+            project_context=data.project_context,
+        )
+        admission, _attempt = await _classify_persisted_admission(
+            journal,
+            run_id=run_id,
+            request_id=request_id,
+        )
+        if admission == "conflict":
+            raise UserException(
+                code.error,
+                "This Run id is already bound to a different request.",
+            )
+        if admission == "duplicate":
+            chat_logger.info(
+                "Replaying persisted Run without implicit restart",
+                extra={"run_id": run_id, "project_id": data.project_id},
+            )
+            return _replay_persisted_run(run_id)
+
+        prepared = await _prepare_chat_run(data, request)
+        await prepared.task_lock.put_queue(prepared.initial_action)
+        execution_stream = step_solve(data, request, prepared.task_lock)
+        subscription = await coordinator.start_with_subscription(
+            run_id=prepared.run_context.run_id,
+            stream_factory=lambda: stream_with_run_context(
+                execution_stream,
+                lambda: getattr(
+                    prepared.task_lock, "run_context", prepared.run_context
+                ),
+            ),
+            command_queue=prepared.task_lock.queue,
+        )
+
+    return timeout_stream_wrapper(subscription, run_id=run_id)
+
+
+@router.post(
+    "/chat", name="start chat", dependencies=_CHAT_CONTROL_DEPENDENCIES
+)
 async def post(data: Chat, request: Request):
     stream = await start_chat_stream(data, request)
     return StreamingResponse(
@@ -518,17 +1007,73 @@ async def status(project_id: str):
             "has_lock": False,
             "status": "offline",
             "current_task_id": None,
+            "run_id": None,
+            "consumer_alive": False,
+            "subscriber_count": 0,
         }
+    run_context = getattr(task_lock, "run_context", None)
+    run_id = getattr(run_context, "run_id", None)
+    handle = (
+        await get_default_run_coordinator().get_handle(run_id)
+        if run_id is not None
+        else None
+    )
     return {
         "project_id": project_id,
         "has_lock": True,
         "status": task_lock.status.value,
         "current_task_id": task_lock.current_task_id,
+        "run_id": run_id,
+        "consumer_alive": bool(handle and handle.consumer_alive),
+        "subscriber_count": handle.subscriber_count if handle else 0,
     }
 
 
-@router.post("/chat/{id}", name="improve chat")
+@router.post(
+    "/chat/{id}",
+    name="improve chat",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
 async def improve(id: str, data: SupplementChat, request: Request):
+    if data.task_id:
+        coordinator = get_default_run_coordinator()
+        async with coordinator.admission_scope(data.task_id):
+            request_id = _admission_request_id(
+                data.task_id,
+                question=data.question,
+                attaches=data.attaches or [],
+                project_context=data.project_context,
+            )
+            admission, attempt = await _classify_persisted_admission(
+                get_default_run_journal(),
+                run_id=data.task_id,
+                request_id=request_id,
+            )
+            if admission == "conflict":
+                return Response(status_code=409)
+            if admission == "duplicate" or (
+                admission == "retry"
+                and getattr(attempt, "status", None) == "running"
+                and await coordinator.get_handle(data.task_id) is not None
+            ):
+                chat_logger.info(
+                    "Ignored duplicate follow-up Run admission",
+                    extra={"project_id": id, "run_id": data.task_id},
+                )
+                return Response(status_code=201)
+            return await _improve_chat(
+                id, data, request, admission_request_id=request_id
+            )
+    return await _improve_chat(id, data, request)
+
+
+async def _improve_chat(
+    id: str,
+    data: SupplementChat,
+    request: Request,
+    *,
+    admission_request_id: str | None = None,
+):
     chat_logger.info(
         "Chat improvement requested",
         extra={"task_id": id, "question_length": len(data.question)},
@@ -538,6 +1083,8 @@ async def improve(id: str, data: SupplementChat, request: Request):
     # Reuse an existing endpoint when possible to avoid tearing down
     # a browser that was manually connected through the Browser page.
     current_context = getattr(task_lock, "run_context", None)
+    previous_run_id = getattr(current_context, "run_id", None)
+    previous_status = task_lock.status
     port = (
         current_context.browser_port
         if isinstance(current_context, RunContext)
@@ -680,6 +1227,70 @@ async def improve(id: str, data: SupplementChat, request: Request):
         and refreshed_context.run_id == data.task_id
     )
     if rotation_succeeded:
+        if previous_run_id is not None:
+            rebound = await get_default_run_coordinator().rebind_run(
+                previous_run_id,
+                refreshed_context.run_id,
+            )
+            if not rebound:
+                # Runtime ownership is a prerequisite for admission. Restore
+                # the compatibility context before any canonical Run row,
+                # Attempt, or Memory event is written so the same request can
+                # be retried without leaving a replay-only orphan.
+                if isinstance(current_context, RunContext):
+                    task_lock.run_context = current_context
+                    await asyncio.to_thread(
+                        apply_run_env_for_third_party, current_context
+                    )
+                task_lock.status = previous_status
+                raise UserException(
+                    code.error,
+                    "The previous Run has no live consumer for this follow-up.",
+                )
+        resolved_request_id = admission_request_id or _admission_request_id(
+            refreshed_context.run_id,
+            question=data.question,
+            attaches=data.attaches or [],
+            project_context=data.project_context,
+        )
+        journal = get_default_run_journal()
+        await asyncio.to_thread(
+            journal.ensure_run,
+            run_id=refreshed_context.run_id,
+            project_id=refreshed_context.project_id,
+            status="pending",
+        )
+        environment = None
+        template = getattr(
+            task_lock,
+            "environment_admission_template",
+            None,
+        )
+        if isinstance(journal, SQLiteRunJournal) and isinstance(
+            template,
+            EnvironmentAdmissionTemplate,
+        ):
+            environment = await asyncio.to_thread(
+                EnvironmentAdmissionService(journal).persist_for_run,
+                run_id=refreshed_context.run_id,
+                space_id=refreshed_context.space_id,
+                working_directory=refreshed_context.working_directory,
+                created_by=(refreshed_context.user_id or "local-user"),
+                template=template,
+            )
+            _apply_environment_to_task_lock(
+                task_lock,
+                environment.spec,
+                template=template,
+            )
+        attempt = await asyncio.to_thread(
+            journal.create_run_attempt,
+            refreshed_context.run_id,
+            request_id=resolved_request_id,
+            reason="follow_up_execution",
+            activate=False,
+            environment=(environment.binding if environment else None),
+        )
         await asyncio.to_thread(
             get_memory_service().on_run_start,
             run_context=refreshed_context,
@@ -693,23 +1304,15 @@ async def improve(id: str, data: SupplementChat, request: Request):
             mode=None,  # mode unchanged; preserve existing project.json value
             user_prompt=data.question,
             prompt_source="improve",
+            conversation_event_id=f"memory:{resolved_request_id}",
         )
     elif data.task_id:
         # The client wanted a fresh run but rotation failed upstream. Don't
         # touch durable memory; the in-process turn still proceeds so the
         # user gets a response, but we leave a breadcrumb for diagnosis.
-        chat_logger.warning(
-            "Skipped durable on_run_start: run_context did not rotate to"
-            " requested task_id",
-            extra={
-                "project_id": id,
-                "requested_task_id": data.task_id,
-                "current_run_id": (
-                    refreshed_context.run_id
-                    if isinstance(refreshed_context, RunContext)
-                    else None
-                ),
-            },
+        raise UserException(
+            code.error,
+            "Could not durably prepare the requested follow-up Run.",
         )
 
     await task_lock.put_queue(
@@ -720,6 +1323,9 @@ async def improve(id: str, data: SupplementChat, request: Request):
                 project_context=data.project_context,
             ),
             new_task_id=data.task_id,
+            request_id=(resolved_request_id if rotation_succeeded else None),
+            run_id=(refreshed_context.run_id if rotation_succeeded else None),
+            attempt_id=(attempt.attempt_id if rotation_succeeded else None),
         )
     )
     chat_logger.info(
@@ -729,7 +1335,11 @@ async def improve(id: str, data: SupplementChat, request: Request):
     return Response(status_code=201)
 
 
-@router.put("/chat/{id}", name="supplement task")
+@router.put(
+    "/chat/{id}",
+    name="supplement task",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
 def supplement(id: str, data: SupplementChat):
     chat_logger.info("Chat supplement requested", extra={"task_id": id})
     task_lock = get_task_lock(id)
@@ -744,7 +1354,11 @@ def supplement(id: str, data: SupplementChat):
     return Response(status_code=201)
 
 
-@router.delete("/chat/{id}", name="stop chat")
+@router.delete(
+    "/chat/{id}",
+    name="stop chat",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
 async def stop(id: str):
     """stop the task"""
     chat_logger.info("=" * 80)
@@ -785,7 +1399,7 @@ async def stop(id: str):
     return Response(status_code=204)
 
 
-@router.post("/chat/{id}/human-reply")
+@router.post("/chat/{id}/human-reply", dependencies=_CHAT_CONTROL_DEPENDENCIES)
 async def human_reply(id: str, data: HumanReply, request: Request):
     chat_logger.info(
         "Human reply received",
@@ -801,6 +1415,94 @@ async def human_reply(id: str, data: HumanReply, request: Request):
             code.error,
             "This task is no longer waiting for a human reply. Please send a new message.",
         )
+    run_context = getattr(task_lock, "run_context", None)
+    if isinstance(run_context, RunContext):
+        journal = get_default_run_journal()
+        pending_interactions = await asyncio.to_thread(
+            journal.list_human_interactions,
+            run_context.run_id,
+            pending_only=True,
+        )
+        current_run = await asyncio.to_thread(
+            journal.get_run, run_context.run_id
+        )
+        active_attempt_id = (
+            current_run.active_attempt_id if current_run is not None else None
+        )
+
+        def belongs_to_current_attempt(item: object) -> bool:
+            attempt_id = getattr(item, "attempt_id", None)
+            return attempt_id is None or attempt_id == active_attempt_id
+
+        interaction = next(
+            (
+                item
+                for item in reversed(pending_interactions)
+                if item.interaction_type != "approval"
+                and belongs_to_current_attempt(item)
+                and item.request.get("agent") == data.agent
+                and (
+                    data.interaction_id is None
+                    or item.interaction_id == data.interaction_id
+                )
+            ),
+            None,
+        )
+        pending_approval = next(
+            (
+                item
+                for item in reversed(pending_interactions)
+                if item.interaction_type == "approval"
+                and belongs_to_current_attempt(item)
+                and item.request.get("agent") == data.agent
+                and (
+                    data.interaction_id is None
+                    or item.interaction_id == data.interaction_id
+                )
+            ),
+            None,
+        )
+        if pending_approval is not None:
+            raise UserException(
+                code.error,
+                "This task is waiting for an approval decision. Use the "
+                "approval controls instead of sending a human reply.",
+            )
+        if data.interaction_id is not None and interaction is None:
+            raise UserException(
+                code.error,
+                "The requested human interaction is no longer pending.",
+            )
+        if interaction is not None:
+            reply_decision = {"agent": data.agent, "reply": data.reply}
+            request_id = data.decision_request_id or (
+                "legacy-human-reply:"
+                + canonical_digest(
+                    {
+                        "interaction_id": interaction.interaction_id,
+                        "decision": reply_decision,
+                    }
+                )
+            )
+            await asyncio.to_thread(
+                journal.resolve_human_interaction,
+                interaction.interaction_id,
+                decision_request_id=request_id,
+                decision=reply_decision,
+                expected_version=interaction.version,
+                expected_run_id=run_context.run_id,
+                continue_active_attempt=True,
+            )
+            try:
+                from app.run_sync.runtime import (
+                    notify_default_cloud_sync_worker,
+                )
+
+                notify_default_cloud_sync_worker()
+            except Exception:
+                chat_logger.exception(
+                    "Failed to wake cloud sync after HumanInteraction decision"
+                )
     try:
         await task_lock.put_human_input(data.agent, data.reply)
     except KeyError as exc:
@@ -818,16 +1520,21 @@ async def human_reply(id: str, data: HumanReply, request: Request):
         {"agent": data.agent, "reply": data.reply},
     )
     memory_service = getattr(task_lock, "memory_service", None)
-    run_context = getattr(task_lock, "run_context", None)
     if memory_service is not None and run_context is not None:
         memory_service.on_human_reply(
             run_context=run_context,
             content=data.reply,
         )
 
-    cloud_task_id = getattr(task_lock, "current_task_id", None) or id
-    sync_step_event(
+    current_context = getattr(task_lock, "run_context", None)
+    cloud_task_id = (
+        current_context.run_id
+        if isinstance(current_context, RunContext)
+        else (getattr(task_lock, "current_task_id", None) or id)
+    )
+    await sync_step_event(
         task_id=cloud_task_id,
+        project_id=id,
         run_id=cloud_task_id,
         step="human_reply",
         data={"agent": data.agent, "reply": data.reply},
@@ -837,7 +1544,7 @@ async def human_reply(id: str, data: HumanReply, request: Request):
     return Response(status_code=201)
 
 
-@router.post("/chat/{id}/install-mcp")
+@router.post("/chat/{id}/install-mcp", dependencies=_CHAT_CONTROL_DEPENDENCIES)
 def install_mcp(id: str, data: McpServers):
     chat_logger.info(
         "Installing MCP servers",
@@ -856,7 +1563,11 @@ def install_mcp(id: str, data: McpServers):
     return Response(status_code=201)
 
 
-@router.post("/chat/{id}/add-task", name="add task to workforce")
+@router.post(
+    "/chat/{id}/add-task",
+    name="add task to workforce",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
 def add_task(id: str, data: AddTaskRequest):
     """Add a new task to the workforce"""
     chat_logger.info(
@@ -890,6 +1601,7 @@ def add_task(id: str, data: AddTaskRequest):
 @router.delete(
     "/chat/{project_id}/remove-task/{task_id}",
     name="remove task from workforce",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
 )
 def remove_task(project_id: str, task_id: str):
     """Remove a task from the workforce"""
@@ -923,7 +1635,11 @@ def remove_task(project_id: str, task_id: str):
         raise UserException(code.error, f"Failed to remove task: {str(e)}")
 
 
-@router.post("/chat/{project_id}/skip-task", name="skip task in workforce")
+@router.post(
+    "/chat/{project_id}/skip-task",
+    name="skip task in workforce",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
 def skip_task(project_id: str):
     """
     Skip/Stop current task execution while preserving context.

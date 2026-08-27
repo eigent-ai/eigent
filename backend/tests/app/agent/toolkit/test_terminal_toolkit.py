@@ -18,7 +18,10 @@ import time
 
 import pytest
 
-from app.agent.toolkit.terminal_toolkit import TerminalToolkit
+from app.agent.toolkit.terminal_toolkit import (
+    BaseTerminalToolkit,
+    TerminalToolkit,
+)
 from app.service.task import TaskLock, task_locks
 
 
@@ -125,3 +128,27 @@ class TestTerminalToolkit:
                 )
             else:
                 raise
+
+    def test_agent_process_environment_excludes_control_credentials(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(
+            BaseTerminalToolkit,
+            "_get_env_vars",
+            lambda _self: {
+                "PATH": "/usr/bin",
+                "EIGENT_LOCAL_CONTROL_CAPABILITY": "desktop-secret",
+                "AUTHORIZATION": "Bearer secret",
+                "SERVICE_AUTHORIZATION": "Bearer service-secret",
+                "NORMAL_API_KEY": "allowed-tool-secret",
+            },
+        )
+        toolkit = TerminalToolkit("test_api_task_123")
+
+        environment = toolkit._get_env_vars()
+
+        assert environment["PATH"] == "/usr/bin"
+        assert environment["NORMAL_API_KEY"] == "allowed-tool-secret"
+        assert "EIGENT_LOCAL_CONTROL_CAPABILITY" not in environment
+        assert "AUTHORIZATION" not in environment
+        assert "SERVICE_AUTHORIZATION" not in environment

@@ -65,6 +65,7 @@ from app.memory import (
 )
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
 from app.model.subscription_runtime import is_subscription_auth
+from app.run_runtime.admission import activate_improve_admission
 from app.service.single_agent_service import single_agent_solve
 from app.service.task import (
     Action,
@@ -94,6 +95,20 @@ logger = logging.getLogger("chat_service")
 
 SUMMARY_TASK_NAME_MAX_LENGTH = 80
 SUMMARY_TASK_SUMMARY_MAX_LENGTH = 240
+
+
+async def _activate_improve_admission(
+    task_lock: TaskLock,
+    item: ActionImproveData,
+    *,
+    project_id: str,
+) -> bool:
+    return await activate_improve_admission(
+        task_lock,
+        item,
+        project_id=project_id,
+        logger=logger,
+    )
 
 
 def _truncate_summary_part(value: str, max_length: int) -> str:
@@ -533,47 +548,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             },
         )
 
-        if await request.is_disconnected():
-            logger.warning("=" * 80)
-            logger.warning(
-                "[LIFECYCLE] CLIENT DISCONNECTED "
-                f"for project {options.project_id}"
-            )
-            logger.warning("=" * 80)
-            if workforce is not None:
-                logger.info(
-                    "[LIFECYCLE] Stopping workforce "
-                    "due to client disconnect, "
-                    "workforce._running="
-                    f"{workforce._running}"
-                )
-                if workforce._running:
-                    workforce.stop()
-                workforce.stop_gracefully()
-                logger.info(
-                    "[LIFECYCLE] Workforce stopped after client disconnect"
-                )
-            else:
-                logger.info("[LIFECYCLE] Workforce is None, no need to stop")
-            task_lock.status = Status.done
-            finalize_task_lock_run_memory(
-                task_lock,
-                state="cancelled",
-                final_result="<summary>Client disconnected</summary>Client disconnected",
-            )
-            try:
-                await delete_task_lock(task_lock.id)
-                logger.info(
-                    "[LIFECYCLE] Task lock deleted after client disconnect"
-                )
-            except Exception as e:
-                logger.error(f"Error deleting task lock on disconnect: {e}")
-            logger.info(
-                "[LIFECYCLE] Breaking out of "
-                "step_solve loop due to "
-                "client disconnect"
-            )
-            break
         try:
             item = await task_lock.get_queue()
         except Exception as e:
@@ -588,6 +562,14 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             )
             # Continue waiting instead of breaking on queue error
             continue
+
+        if isinstance(item, ActionImproveData):
+            if not await _activate_improve_admission(
+                task_lock,
+                item,
+                project_id=options.project_id,
+            ):
+                continue
 
         try:
             if item.action == Action.improve or start_event_loop:

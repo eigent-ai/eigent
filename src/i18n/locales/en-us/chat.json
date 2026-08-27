@@ -64,6 +64,10 @@
   "splitting-tasks": "Splitting Tasks",
   "working-on-tasks-for": "Working on tasks for <elapsed>{{time}}</elapsed>",
   "worked-for": "Worked for <elapsed>{{time}}</elapsed>",
+  "failed-after": "Failed after <elapsed>{{time}}</elapsed>",
+  "interrupted-after": "Interrupted after <elapsed>{{time}}</elapsed>",
+  "stopped-after": "Stopped after <elapsed>{{time}}</elapsed>",
+  "run-no-final-response": "This Run ended before a final response was recorded.",
   "start-task": "Execute Now",
   "auto-start-in": "Auto-start in {{seconds}}s",
   "message-cannot-be-empty": "Message cannot be empty",
@@ -112,5 +116,15 @@
   "expand-plan": "Expand plan",
   "minimize-plan": "Minimize plan",
   "expand-subtasks": "Expand subtasks",
-  "add-subtask-placeholder": "Add a new subtask and press Enter to add more"
+  "add-subtask-placeholder": "Add a new subtask and press Enter to add more",
+  "run-cloud-restored-title": "History restored from cloud",
+  "run-cloud-restored-description": "This Run is available as read-only history. Its original local workspace and execution context are not on this device, so it cannot be resumed here. Send a follow-up to start a new Run.",
+  "run-interrupted-title": "Run interrupted",
+  "run-interrupted-description": "Eigent stopped before this Run finished. Completed work is saved. Resume continues in a new attempt and will not automatically replay completed external actions.",
+  "run-resume": "Resume",
+  "run-resuming": "Resuming…",
+  "run-cancel": "Cancel Run",
+  "run-cancelling": "Cancelling…",
+  "run-resume-failed": "Failed to resume this Run.",
+  "run-cancel-failed": "Failed to cancel this Run."
 }

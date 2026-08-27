@@ -17,8 +17,8 @@
  * `ThinkingEffortSelect` / `ModelSelect` / `ProjectModeToggle` so the
  * controls read as one family in the `BoxFooter` row.
  *
- * UI only for now: it holds its own local state and is not wired to the
- * human-toolkit / approval backend.
+ * A Space-level permission-profile picker. Changes apply to future Runs;
+ * active RunAttempts keep their immutable admission-time profile revision.
  */
 
 import {
@@ -27,25 +27,60 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { generateUniqueId } from '@/lib';
 import { cn } from '@/lib/utils';
-import { Check, ChevronDown, ShieldCheck, TriangleAlert } from 'lucide-react';
-import { useState } from 'react';
-
-export type ApprovalMode = 'manual' | 'skip';
+import {
+  getSpacePermissionProfile,
+  PermissionProfileName,
+  putSpacePermissionProfile,
+} from '@/service/permissionProfileApi';
+import { useAuthStore } from '@/store/authStore';
+import {
+  Check,
+  ChevronDown,
+  Eye,
+  ShieldCheck,
+  ShieldQuestion,
+  TriangleAlert,
+} from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 
 interface ApprovalOption {
-  value: ApprovalMode;
+  value: PermissionProfileName;
   label: string;
+  description: string;
   icon: typeof ShieldCheck;
 }
 
 const APPROVAL_OPTIONS: ApprovalOption[] = [
-  { value: 'manual', label: 'Manual Approval', icon: ShieldCheck },
-  { value: 'skip', label: 'Skip all approval', icon: TriangleAlert },
+  {
+    value: 'read_only',
+    label: 'Read only',
+    description: 'Allow reads and block changes.',
+    icon: Eye,
+  },
+  {
+    value: 'request_approval',
+    label: 'Request approval',
+    description: 'Ask before actions that can change state.',
+    icon: ShieldQuestion,
+  },
+  {
+    value: 'auto_reviewer',
+    label: 'Auto reviewer',
+    description: 'Auto-review eligible changes; sensitive actions still ask.',
+    icon: ShieldCheck,
+  },
+  {
+    value: 'full_access',
+    label: 'Full access',
+    description: 'Allow actions without approval.',
+    icon: TriangleAlert,
+  },
 ];
 
-// Keep in sync with `DropdownMenuContent`'s `w-[180px]` below.
-const MENU_CONTENT_WIDTH_CLASS = 'w-[180px]';
+const MENU_CONTENT_WIDTH_CLASS = 'w-[280px]';
 
 const triggerShellClass = cn(
   'rounded-xl px-2 py-1 inline-flex max-w-[min(100%,320px)] shrink-0 items-center gap-1.5',
@@ -53,6 +88,7 @@ const triggerShellClass = cn(
 );
 
 export interface ApprovalModeSelectProps {
+  spaceId?: string | null;
   disabled?: boolean;
   /** Shows the current mode in the same read-only shell as the model/mode controls. */
   readOnly?: boolean;
@@ -62,12 +98,78 @@ export interface ApprovalModeSelectProps {
 }
 
 export function ApprovalModeSelect({
+  spaceId,
   disabled,
   readOnly = false,
   compact = false,
   className,
 }: ApprovalModeSelectProps) {
-  const [value, setValue] = useState<ApprovalMode>('manual');
+  const userId = useAuthStore((state) => state.user_id);
+  const [value, setValue] = useState<PermissionProfileName>('request_approval');
+  const [revision, setRevision] = useState(0);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!spaceId) {
+      setValue('request_approval');
+      setRevision(0);
+      return;
+    }
+    setLoading(true);
+    void getSpacePermissionProfile(spaceId)
+      .then((profile) => {
+        if (cancelled) return;
+        setValue(profile.profile_name);
+        setRevision(profile.revision);
+      })
+      .catch(() => {
+        if (!cancelled) toast.error('Could not load the permission profile.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [spaceId]);
+
+  const updateProfile = async (next: PermissionProfileName) => {
+    if (!spaceId || next === value) return;
+    if (
+      next === 'full_access' &&
+      !window.confirm(
+        'Full access lets agents act without asking for approval. Continue?'
+      )
+    ) {
+      return;
+    }
+    setLoading(true);
+    try {
+      const updated = await putSpacePermissionProfile(spaceId, {
+        profileName: next,
+        requestId: generateUniqueId(),
+        updatedBy: String(userId ?? 'local-user'),
+        expectedRevision: revision,
+      });
+      setValue(updated.profile_name);
+      setRevision(updated.revision);
+      toast.success('Permission profile updated for new runs.');
+    } catch {
+      toast.error('Could not update the permission profile.');
+      try {
+        const current = await getSpacePermissionProfile(spaceId, {
+          refresh: true,
+        });
+        setValue(current.profile_name);
+        setRevision(current.revision);
+      } catch {
+        // Keep the last known profile; the next Space change retries loading.
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const current =
     APPROVAL_OPTIONS.find((o) => o.value === value) ?? APPROVAL_OPTIONS[0];
@@ -82,7 +184,7 @@ export function ApprovalModeSelect({
         className={cn(
           triggerShellClass,
           'pointer-events-none bg-transparent',
-          { 'opacity-50': disabled },
+          { 'opacity-50': disabled || loading },
           className
         )}
       >
@@ -106,7 +208,7 @@ export function ApprovalModeSelect({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          disabled={disabled}
+          disabled={disabled || loading || !spaceId}
           title={current.label}
           aria-label={current.label}
           aria-haspopup="menu"
@@ -151,15 +253,20 @@ export function ApprovalModeSelect({
           return (
             <DropdownMenuItem
               key={option.value}
-              onSelect={() => setValue(option.value)}
+              onSelect={() => void updateProfile(option.value)}
               className="flex items-center justify-between gap-2"
             >
-              <span className="flex items-center gap-2">
+              <span className="flex min-w-0 items-start gap-2">
                 <OptionIcon
-                  className="h-4 w-4 shrink-0 opacity-80"
+                  className="mt-0.5 h-4 w-4 shrink-0 opacity-80"
                   aria-hidden
                 />
-                <span className="text-body-sm">{option.label}</span>
+                <span className="min-w-0">
+                  <span className="block text-body-sm">{option.label}</span>
+                  <span className="block text-xs text-ds-text-neutral-subtle-default">
+                    {option.description}
+                  </span>
+                </span>
               </span>
               {value === option.value && (
                 <Check className="h-4 w-4 text-ds-text-success-default-default" />

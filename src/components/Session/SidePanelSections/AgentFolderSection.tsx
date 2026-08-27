@@ -16,8 +16,14 @@ import { SidePanelAccordionBox } from '@/components/Session/SidePanelAccordionBo
 import { SidePanelListRow } from '@/components/Session/SidePanelSections/primitives';
 import { isVisibleAgentFile } from '@/lib/agentFileFilters';
 import { cn } from '@/lib/utils';
+import {
+  buildWorkspaceFileTree,
+  type WorkspaceFileTreeNode,
+} from '@/lib/workspaceFileTree';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
+  ChevronDown,
+  ChevronRight,
   File,
   FileArchive,
   FileAudio,
@@ -26,9 +32,11 @@ import {
   FileSpreadsheet,
   FileText,
   FileVideo,
+  Folder as FolderIcon,
+  FolderOpen,
   type LucideIcon,
 } from 'lucide-react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
 const EXT_MAP: Record<string, LucideIcon> = {
   // images
@@ -84,6 +92,98 @@ interface AgentFolderSectionProps {
   onOpenFile: (file: FileInfo) => void;
 }
 
+interface AgentFolderTreeProps {
+  nodes: WorkspaceFileTreeNode[];
+  expandedFolders: Set<string>;
+  onToggleFolder: (path: string) => void;
+  onOpenFile: (file: FileInfo) => void;
+}
+
+function AgentFolderTree({
+  nodes,
+  expandedFolders,
+  onToggleFolder,
+  onOpenFile,
+}: AgentFolderTreeProps) {
+  return (
+    <AnimatePresence initial={false}>
+      {nodes.map((node) => {
+        const isExpanded =
+          node.isFolder && expandedFolders.has(node.relativePath);
+        const Icon = node.file ? iconFor(node.file) : File;
+
+        return (
+          <motion.li
+            key={`${node.isFolder ? 'folder' : 'file'}:${node.relativePath}`}
+            layout
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            className="m-0 list-none"
+          >
+            <SidePanelListRow
+              leading={
+                node.isFolder ? (
+                  <span className="flex items-center gap-1">
+                    {isExpanded ? (
+                      <ChevronDown
+                        size={14}
+                        className="text-ds-icon-neutral-muted-default"
+                      />
+                    ) : (
+                      <ChevronRight
+                        size={14}
+                        className="text-ds-icon-neutral-muted-default"
+                      />
+                    )}
+                    {isExpanded ? (
+                      <FolderOpen
+                        size={16}
+                        className="text-ds-icon-neutral-default-default"
+                      />
+                    ) : (
+                      <FolderIcon
+                        size={16}
+                        className="text-ds-icon-neutral-default-default"
+                      />
+                    )}
+                  </span>
+                ) : (
+                  <Icon
+                    size={16}
+                    className={cn('text-ds-icon-neutral-default-default')}
+                  />
+                )
+              }
+              onClick={() => {
+                if (node.isFolder) {
+                  onToggleFolder(node.relativePath);
+                } else if (node.file) {
+                  onOpenFile(node.file);
+                }
+              }}
+            >
+              <span title={node.relativePath}>{node.name}</span>
+            </SidePanelListRow>
+
+            {isExpanded && node.children.length > 0 ? (
+              <ul className="m-0 ml-4 list-none border-y-0 border-l border-r-0 border-solid border-ds-border-neutral-subtle-default p-0 pl-1">
+                <AgentFolderTree
+                  nodes={node.children}
+                  expandedFolders={expandedFolders}
+                  onToggleFolder={onToggleFolder}
+                  onOpenFile={onOpenFile}
+                />
+              </ul>
+            ) : null}
+          </motion.li>
+        );
+      })}
+    </AnimatePresence>
+  );
+}
+
 export function AgentFolderSection({
   title,
   files,
@@ -101,6 +201,19 @@ export function AgentFolderSection({
     }
     return out;
   }, [files]);
+  const fileTree = useMemo(() => buildWorkspaceFileTree(unique), [unique]);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
+    () => new Set()
+  );
+
+  const toggleFolder = (path: string) => {
+    setExpandedFolders((current) => {
+      const next = new Set(current);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  };
 
   return (
     <SidePanelAccordionBox title={title}>
@@ -110,34 +223,16 @@ export function AgentFolderSection({
           can open them.
         </div>
       ) : (
-        <motion.ul layout className="m-0 list-none space-y-0.5 p-0">
-          <AnimatePresence initial={false}>
-            {unique.map((file) => {
-              const Icon = iconFor(file);
-              return (
-                <motion.li
-                  key={file.path || file.name}
-                  layout
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  transition={{ duration: 0.2, ease: 'easeOut' }}
-                >
-                  <SidePanelListRow
-                    leading={
-                      <Icon
-                        size={16}
-                        className={cn('text-ds-icon-neutral-default-default')}
-                      />
-                    }
-                    onClick={() => onOpenFile(file)}
-                  >
-                    {file.name || file.path}
-                  </SidePanelListRow>
-                </motion.li>
-              );
-            })}
-          </AnimatePresence>
+        <motion.ul
+          layout
+          className="m-0 max-h-96 list-none overflow-y-auto overscroll-contain p-0 pr-1"
+        >
+          <AgentFolderTree
+            nodes={fileTree}
+            expandedFolders={expandedFolders}
+            onToggleFolder={toggleFolder}
+            onOpenFile={onOpenFile}
+          />
         </motion.ul>
       )}
     </SidePanelAccordionBox>

@@ -1,0 +1,682 @@
+from __future__ import annotations
+
+import hashlib
+import subprocess
+
+import pytest
+
+from app.run_journal import InvalidRunTransitionError, SQLiteRunJournal
+from app.workspace_bundle import (
+    WorkspaceBundleBindingsIncomplete,
+    WorkspaceBundleInstaller,
+    WorkspaceBundleInstallError,
+)
+from app.workspace_config import (
+    ConfigPlacement,
+    WorkforceBundleManifest,
+    canonical_digest,
+)
+from app.workspace_git import ConfigurationRepositoryService, GitBackend
+
+
+def _manifest(revision: int = 1) -> dict:
+    return {
+        "apiVersion": "eigent.ai/v1alpha1",
+        "kind": "WorkforceBundle",
+        "metadata": {
+            "id": "bundle-research",
+            "name": "Research Workforce",
+            "revision": revision,
+        },
+        "spec": {
+            "instructions": {
+                "coordinator": "bundle://instructions/coordinator.md"
+            },
+            "context": [
+                {
+                    "id": "docs",
+                    "kind": "local_path_slot",
+                    "slot": "docs_folder",
+                }
+            ],
+            "skills": [
+                {
+                    "ref": "bundle://skills/research.py",
+                    "assignTo": ["lead"],
+                }
+            ],
+            "connectors": [
+                {
+                    "id": "source",
+                    "connector": "github",
+                    "connectionSlot": "github_readonly",
+                    "requiredGrants": ["repository.read"],
+                }
+            ],
+            "mcpServers": [],
+            "agents": [
+                {
+                    "id": "lead",
+                    "role": "coordinator",
+                    "modelProfile": "default",
+                }
+            ],
+            "models": {
+                "default": {
+                    "modelRef": "provider://default",
+                    "thinkingEffort": "high",
+                }
+            },
+            "permissions": {"profile": "request_approval", "rules": []},
+            "git": {
+                "enabled": True,
+                "checkpointPolicy": "user_and_run_terminal",
+                "agentIsolation": "worktree",
+                "remotePolicy": "prompt",
+            },
+        },
+    }
+
+
+class FakeCloud:
+    def __init__(self, *, lose_projection_response_once: bool = False):
+        self.contents = {
+            "asset-instruction": b"Coordinate the research.\n",
+            "asset-skill": b"def run():\n    return 'ok'\n",
+            "asset-instruction-v2": b"Coordinate the upgraded research.\n",
+            "asset-skill-v2": b"def run():\n    return 'v2'\n",
+        }
+        self.installation_version = 0
+        self.installed_bundle_id: str | None = None
+        self.installed_revision_id: str | None = None
+        self.binding: tuple[str, str] | None = None
+        self.binding_payloads: list[dict] = []
+        self.confirm_payloads: list[dict] = []
+        self.projection: dict | None = None
+        self.projections: dict[str, dict] = {}
+        self.lose_projection_response_once = lose_projection_response_once
+        self.protocol_capabilities = [
+            "bundle.asset.integrity.v1",
+            "bundle.install.review.v1",
+        ]
+
+    async def get_revision(self, bundle_id, revision_id):
+        revision_number = int(str(revision_id).rsplit("@", 1)[1])
+        manifest = WorkforceBundleManifest.model_validate(
+            _manifest(revision_number)
+        ).canonical_payload()
+        suffix = "" if revision_number == 1 else f"-v{revision_number}"
+        return {
+            "id": revision_id,
+            "bundle_id": bundle_id,
+            "status": "published",
+            "manifest": manifest,
+            "manifest_digest": canonical_digest(manifest),
+            "assets": [
+                self._asset(
+                    f"asset-instruction{suffix}",
+                    "instructions/coordinator.md",
+                ),
+                self._asset(f"asset-skill{suffix}", "skills/research.py"),
+            ],
+        }
+
+    def _asset(self, asset_id: str, logical_path: str):
+        content = self.contents[asset_id]
+        return {
+            "id": asset_id,
+            "logical_path": logical_path,
+            "content_digest": hashlib.sha256(content).hexdigest(),
+            "media_type": "text/plain",
+            "size_bytes": len(content),
+            "provenance": "bundle_author",
+        }
+
+    async def install(self, space_id, bundle_id, revision_id):
+        self.installed_bundle_id = bundle_id
+        self.installed_revision_id = revision_id
+        return {
+            "space_id": space_id,
+            "bundle_id": bundle_id,
+            "installed_revision_id": revision_id,
+            "state": "proposed",
+            "version": self.installation_version,
+        }
+
+    async def confirm_install(self, space_id, payload):
+        self.confirm_payloads.append(dict(payload))
+        assert payload["bundle_id"] == self.installed_bundle_id
+        assert payload["revision_id"] == self.installed_revision_id
+        assert payload["expected_version"] == self.installation_version
+        self.installation_version += 1
+        return {
+            "space_id": space_id,
+            "bundle_id": self.installed_bundle_id,
+            "installed_revision_id": self.installed_revision_id,
+            "state": (
+                "ready_to_materialize" if self.binding else "pending_bindings"
+            ),
+            "version": self.installation_version,
+        }
+
+    async def get_environment(self, space_id):
+        if self.installed_revision_id is None:
+            return {
+                "installation": None,
+                "bindings": {},
+                "protocol_capabilities": self.protocol_capabilities,
+            }
+        return {
+            "installation": {
+                "space_id": space_id,
+                "bundle_id": self.installed_bundle_id,
+                "installed_revision_id": self.installed_revision_id,
+                "state": "materialized"
+                if self.projection
+                else "pending_bindings",
+                "version": self.installation_version,
+            },
+            "bindings": {},
+            "protocol_capabilities": self.protocol_capabilities,
+        }
+
+    async def upgrade(
+        self,
+        space_id,
+        *,
+        revision_id,
+        expected_installed_revision_id,
+        expected_version,
+    ):
+        assert self.installed_revision_id == expected_installed_revision_id
+        assert self.installation_version == expected_version
+        self.installed_revision_id = revision_id
+        self.installation_version += 1
+        return {
+            "space_id": space_id,
+            "bundle_id": self.installed_bundle_id,
+            "installed_revision_id": revision_id,
+            "state": "proposed",
+            "version": self.installation_version,
+        }
+
+    async def bind_connection(self, space_id, payload):
+        self.binding_payloads.append(dict(payload))
+        requested = (payload["slot_id"], payload["connection_id"])
+        if self.binding != requested:
+            self.binding = requested
+            self.installation_version += 1
+        return {
+            "space_id": space_id,
+            "state": "ready_to_materialize",
+            "version": self.installation_version,
+        }
+
+    async def download_asset(self, bundle_id, revision_id, asset_id):
+        return self.contents[asset_id]
+
+    async def put_environment_projection(self, payload):
+        projection_id = payload["projection_id"]
+        if projection_id not in self.projections:
+            self.projections[projection_id] = payload
+            self.projection = payload
+            self.installation_version += 1
+            if self.lose_projection_response_once:
+                self.lose_projection_response_once = False
+                raise RuntimeError("response lost after Cloud commit")
+        assert {
+            key: value
+            for key, value in self.projections[projection_id].items()
+            if key != "installation_version"
+        } == {
+            key: value
+            for key, value in payload.items()
+            if key != "installation_version"
+        }
+        return self.projections[projection_id]
+
+    async def close(self):
+        return None
+
+
+@pytest.fixture
+def installer(tmp_path):
+    journal = SQLiteRunJournal(tmp_path / "journal.sqlite3")
+    hooks = tmp_path / "empty-hooks"
+    hooks.mkdir()
+    config = ConfigurationRepositoryService(
+        journal,
+        state_root=tmp_path / "state",
+        git_backend=GitBackend(hooks_path=hooks),
+    )
+    cloud = FakeCloud()
+    value = WorkspaceBundleInstaller(journal, config, cloud)
+    try:
+        yield value, journal, cloud, tmp_path
+    finally:
+        journal.close()
+
+
+def test_local_review_decision_does_not_require_cloud(tmp_path):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        manifest = WorkforceBundleManifest.model_validate(
+            _manifest()
+        ).canonical_payload()
+        proposal = journal.put_workspace_bundle_install_proposal(
+            proposal_id="offline-proposal",
+            request_id="offline-request",
+            space_id="space-1",
+            bundle_id="bundle-research",
+            revision_id="bundle-research@1",
+            config_placement="sidecar",
+            manifest=manifest,
+            assets=[],
+            install_plan={
+                "connector_slots": [],
+                "local_path_slots": [],
+                "script_actions": [],
+                "permission_profile": "request_approval",
+                "git_policy": {},
+                "automatic_grants": [],
+            },
+        )
+        service = WorkspaceBundleInstaller(
+            journal,
+            ConfigurationRepositoryService(
+                journal,
+                state_root=tmp_path / "state",
+                git_backend=GitBackend(hooks_path=tmp_path / "hooks"),
+            ),
+            cloud=None,
+        )
+
+        decided = service.decide(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            approved=True,
+            decided_by="user-1",
+        )
+
+        assert decided.state == "approved"
+
+
+async def _approved_and_bound(installer, journal, tmp_path):
+    proposal = await installer.propose(
+        proposal_id="proposal-1",
+        request_id="request-1",
+        space_id="space-1",
+        bundle_id="bundle-research",
+        revision_id="bundle-research@1",
+        config_placement=ConfigPlacement.SIDECAR,
+    )
+    assert proposal.state == "proposed"
+    assert proposal.install_plan["automatic_grants"] == []
+    with pytest.raises(InvalidRunTransitionError):
+        installer.bind_connector(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            slot_id="github_readonly",
+            connector_id="github",
+            opaque_connection_id="connection-1",
+            authorized_by="user-1",
+        )
+    proposal = installer.decide(
+        proposal.proposal_id,
+        expected_version=proposal.version,
+        approved=True,
+        decided_by="user-1",
+    )
+    decision_replay = installer.decide(
+        proposal.proposal_id,
+        expected_version=0,
+        approved=True,
+        decided_by="user-1",
+    )
+    assert decision_replay == proposal
+    with pytest.raises(WorkspaceBundleBindingsIncomplete) as missing:
+        await installer.materialize(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            space_root=tmp_path,
+            actor_id="user-1",
+        )
+    assert set(missing.value.missing_slots) == {
+        "docs_folder",
+        "github_readonly",
+        "skill.script.execute:bundle://skills/research.py",
+    }
+    connector_expected_version = proposal.version
+    connector_binding, proposal = installer.bind_connector(
+        proposal.proposal_id,
+        expected_version=proposal.version,
+        slot_id="github_readonly",
+        connector_id="github",
+        opaque_connection_id="connection-1",
+        authorized_by="user-1",
+    )
+    replay_binding, replay_proposal = installer.bind_connector(
+        proposal.proposal_id,
+        expected_version=connector_expected_version,
+        slot_id="github_readonly",
+        connector_id="github",
+        opaque_connection_id="connection-1",
+        authorized_by="user-1",
+    )
+    assert replay_binding == connector_binding
+    assert replay_proposal == proposal
+    docs = tmp_path / "user-selected-docs"
+    docs.mkdir()
+    _, proposal = installer.bind_local_path(
+        proposal.proposal_id,
+        expected_version=proposal.version,
+        slot_id="docs_folder",
+        local_path=docs,
+        authorized_by="user-1",
+    )
+    _, proposal = installer.approve_script_action(
+        proposal.proposal_id,
+        expected_version=proposal.version,
+        action_id="skill.script.execute:bundle://skills/research.py",
+        authorized_by="user-1",
+    )
+    assert len(journal.list_workspace_bundle_local_bindings("proposal-1")) == 3
+    return proposal
+
+
+@pytest.mark.asyncio
+async def test_install_is_review_first_and_materializes_verified_assets(
+    installer,
+):
+    service, journal, cloud, tmp_path = installer
+    proposal = await _approved_and_bound(service, journal, tmp_path)
+
+    result = await service.materialize(
+        proposal.proposal_id,
+        expected_version=proposal.version,
+        space_root=tmp_path,
+        actor_id="user-1",
+    )
+    replay = await service.materialize(
+        proposal.proposal_id,
+        expected_version=proposal.version,
+        space_root=tmp_path,
+        actor_id="user-1",
+    )
+
+    assert result.state == "materialized"
+    assert replay == result
+    assert cloud.binding == ("github_readonly", "connection-1")
+    assert cloud.confirm_payloads[0]["reviewed_slots"] == [
+        {
+            "slot_id": "github_readonly",
+            "connector_id": "github",
+            "required_grants": ["repository.read"],
+        }
+    ]
+    assert cloud.binding_payloads[0]["acknowledged_grants"] == [
+        "repository.read"
+    ]
+    assert cloud.projection is not None
+    assert cloud.projection["projection_id"] == (
+        WorkspaceBundleInstaller._environment_projection_id(
+            space_id="space-1",
+            owner_type="space",
+            owner_id="space-1",
+            semantic_spec_digest=cloud.projection["semantic_spec_digest"],
+            projection_digest=cloud.projection["projection_digest"],
+            redaction_schema_version=1,
+        )
+    )
+    serialized_projection = str(cloud.projection)
+    assert "connection-1" not in serialized_projection
+    assert str(tmp_path) not in serialized_projection
+    config_root = tmp_path / "state/spaces/space-1/configuration"
+    assert (config_root / "instructions/coordinator.md").is_file()
+    assert (config_root / "skills/research.py").is_file()
+    paths = subprocess.run(
+        ("git", "-C", str(config_root), "show", "--name-only", "--format="),
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    assert set(paths) == {
+        "instructions/coordinator.md",
+        "skills/research.py",
+        "workspace.lock",
+        "workspace.yaml",
+    }
+
+
+@pytest.mark.asyncio
+async def test_materialize_requires_cloud_protocol_before_mutation(installer):
+    service, journal, cloud, tmp_path = installer
+    proposal = await _approved_and_bound(service, journal, tmp_path)
+    cloud.protocol_capabilities = []
+
+    with pytest.raises(
+        WorkspaceBundleInstallError,
+        match="Cloud must be upgraded",
+    ):
+        await service.materialize(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            space_root=tmp_path,
+            actor_id="user-1",
+        )
+
+    assert cloud.installed_bundle_id is None
+    assert cloud.projection is None
+
+
+@pytest.mark.asyncio
+async def test_materialize_treats_missing_protocol_field_as_legacy_cloud(
+    installer,
+):
+    service, journal, cloud, tmp_path = installer
+    proposal = await _approved_and_bound(service, journal, tmp_path)
+    get_environment = cloud.get_environment
+
+    async def legacy_environment(space_id):
+        environment = await get_environment(space_id)
+        environment.pop("protocol_capabilities", None)
+        return environment
+
+    cloud.get_environment = legacy_environment
+    materialized = await service.materialize(
+        proposal.proposal_id,
+        expected_version=proposal.version,
+        space_root=tmp_path,
+        actor_id="user-1",
+    )
+
+    assert materialized.state == "materialized"
+    assert cloud.projection is not None
+
+
+@pytest.mark.asyncio
+async def test_materialize_rejects_secret_bearing_downloaded_script(installer):
+    service, journal, cloud, tmp_path = installer
+    cloud.contents["asset-skill"] = (
+        b"API_KEY = '"
+        + b"sk-"
+        + b"abcdefghijklmnopqrstuvwxyzABCDEF12345678'\n"
+    )
+    proposal = await _approved_and_bound(service, journal, tmp_path)
+
+    with pytest.raises(
+        WorkspaceBundleInstallError,
+        match="failed the local safety scan",
+    ):
+        await service.materialize(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            space_root=tmp_path,
+            actor_id="user-1",
+        )
+
+    config_root = tmp_path / "state/spaces/space-1/configuration"
+    assert not (config_root / "skills/research.py").exists()
+
+
+@pytest.mark.asyncio
+async def test_projection_response_loss_retries_without_duplicate_grants(
+    tmp_path,
+):
+    journal = SQLiteRunJournal(tmp_path / "journal.sqlite3")
+    hooks = tmp_path / "empty-hooks"
+    hooks.mkdir()
+    cloud = FakeCloud(lose_projection_response_once=True)
+    service = WorkspaceBundleInstaller(
+        journal,
+        ConfigurationRepositoryService(
+            journal,
+            state_root=tmp_path / "state",
+            git_backend=GitBackend(hooks_path=hooks),
+        ),
+        cloud,
+    )
+    try:
+        proposal = await _approved_and_bound(service, journal, tmp_path)
+        with pytest.raises(RuntimeError, match="response lost"):
+            await service.materialize(
+                proposal.proposal_id,
+                expected_version=proposal.version,
+                space_root=tmp_path,
+                actor_id="user-1",
+            )
+        failed = journal.get_workspace_bundle_install_proposal("proposal-1")
+        assert failed is not None and failed.state == "needs_attention"
+        installed = await service.materialize(
+            proposal.proposal_id,
+            expected_version=failed.version,
+            space_root=tmp_path,
+            actor_id="user-1",
+        )
+        assert installed.state == "materialized"
+        assert cloud.installation_version == 3
+    finally:
+        journal.close()
+
+
+@pytest.mark.asyncio
+async def test_upgrade_reviews_again_and_commits_new_configuration(installer):
+    service, journal, cloud, tmp_path = installer
+    first = await _approved_and_bound(service, journal, tmp_path)
+    first = await service.materialize(
+        first.proposal_id,
+        expected_version=first.version,
+        space_root=tmp_path,
+        actor_id="user-1",
+    )
+    assert first.state == "materialized"
+
+    second = await service.propose(
+        proposal_id="proposal-2",
+        request_id="request-2",
+        space_id="space-1",
+        bundle_id="bundle-research",
+        revision_id="bundle-research@2",
+        config_placement=ConfigPlacement.SIDECAR,
+    )
+    assert second.state == "proposed"
+    second = service.decide(
+        second.proposal_id,
+        expected_version=second.version,
+        approved=True,
+        decided_by="user-1",
+    )
+    _, second = service.bind_connector(
+        second.proposal_id,
+        expected_version=second.version,
+        slot_id="github_readonly",
+        connector_id="github",
+        opaque_connection_id="connection-1",
+        authorized_by="user-1",
+    )
+    docs = tmp_path / "user-selected-docs"
+    _, second = service.bind_local_path(
+        second.proposal_id,
+        expected_version=second.version,
+        slot_id="docs_folder",
+        local_path=docs,
+        authorized_by="user-1",
+    )
+    _, second = service.approve_script_action(
+        second.proposal_id,
+        expected_version=second.version,
+        action_id="skill.script.execute:bundle://skills/research.py",
+        authorized_by="user-1",
+    )
+    second = await service.materialize(
+        second.proposal_id,
+        expected_version=second.version,
+        space_root=tmp_path,
+        actor_id="user-1",
+    )
+
+    assert second.state == "materialized"
+    assert cloud.installed_revision_id == "bundle-research@2"
+    assert len(cloud.projections) == 2
+    config_root = tmp_path / "state/spaces/space-1/configuration"
+    assert (config_root / "instructions/coordinator.md").read_bytes() == (
+        b"Coordinate the upgraded research.\n"
+    )
+    assert (
+        int(
+            subprocess.run(
+                ("git", "-C", str(config_root), "rev-list", "--count", "HEAD"),
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+        )
+        == 2
+    )
+
+
+def test_startup_reconciliation_exposes_interrupted_materialization(tmp_path):
+    path = tmp_path / "journal.sqlite3"
+    with SQLiteRunJournal(path) as journal:
+        proposal = journal.put_workspace_bundle_install_proposal(
+            proposal_id="proposal-crash",
+            request_id="request-crash",
+            space_id="space-1",
+            bundle_id="bundle-research",
+            revision_id="bundle-research@1",
+            config_placement="sidecar",
+            manifest=WorkforceBundleManifest.model_validate(
+                _manifest()
+            ).canonical_payload(),
+            assets=[],
+            install_plan={
+                "connector_slots": [],
+                "local_path_slots": [],
+                "script_actions": [],
+                "permission_profile": "request_approval",
+                "git_policy": {},
+                "automatic_grants": [],
+            },
+        )
+        proposal = journal.transition_workspace_bundle_install_proposal(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            state="approved",
+            decided_by="user-1",
+        )
+        journal.transition_workspace_bundle_install_proposal(
+            proposal.proposal_id,
+            expected_version=proposal.version,
+            state="materializing",
+        )
+
+    with SQLiteRunJournal(path) as reopened:
+        result = reopened.reconcile_startup(now=10)
+        proposal = reopened.get_workspace_bundle_install_proposal(
+            "proposal-crash"
+        )
+
+        assert result.reconcilable_bundle_install_ids == ("proposal-crash",)
+        assert proposal is not None and proposal.state == "needs_attention"
+        assert proposal.error_code == (
+            "desktop_restarted_during_materialization"
+        )

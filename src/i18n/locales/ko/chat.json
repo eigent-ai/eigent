@@ -64,6 +64,10 @@
   "splitting-tasks": "작업 분할",
   "working-on-tasks-for": "작업 진행 중 · <elapsed>{{time}}</elapsed>",
   "worked-for": "작업 시간 <elapsed>{{time}}</elapsed>",
+  "failed-after": "<elapsed>{{time}}</elapsed> 후 실패",
+  "interrupted-after": "<elapsed>{{time}}</elapsed> 후 중단",
+  "stopped-after": "<elapsed>{{time}}</elapsed> 후 정지",
+  "run-no-final-response": "최종 응답이 기록되기 전에 이 Run이 종료되었습니다.",
   "start-task": "지금 실행",
   "auto-start-in": "{{seconds}}초 후 자동 시작",
   "message-cannot-be-empty": "메시지는 비워둘 수 없습니다",
@@ -112,5 +116,15 @@
   "expand-plan": "계획 펼치기",
   "minimize-plan": "계획 최소화",
   "expand-subtasks": "하위 작업 펼치기",
-  "add-subtask-placeholder": "새 하위 작업을 추가하고 Enter를 눌러 더 추가하세요"
+  "add-subtask-placeholder": "새 하위 작업을 추가하고 Enter를 눌러 더 추가하세요",
+  "run-cloud-restored-title": "클라우드에서 기록 복원됨",
+  "run-cloud-restored-description": "이 실행은 읽기 전용 기록으로 제공됩니다. 이 기기에 원래 로컬 작업 공간과 실행 컨텍스트가 없어 재개할 수 없습니다. 후속 메시지를 보내 새 실행을 시작하세요.",
+  "run-interrupted-title": "실행이 중단됨",
+  "run-interrupted-description": "이 실행이 완료되기 전에 Eigent가 종료되었습니다. 완료된 작업은 저장되어 있습니다. 재개하면 새 시도가 생성되며 완료된 외부 작업은 자동으로 반복되지 않습니다.",
+  "run-resume": "재개",
+  "run-resuming": "재개 중…",
+  "run-cancel": "실행 종료",
+  "run-cancelling": "종료 중…",
+  "run-resume-failed": "이 실행을 재개하지 못했습니다.",
+  "run-cancel-failed": "이 실행을 종료하지 못했습니다."
 }

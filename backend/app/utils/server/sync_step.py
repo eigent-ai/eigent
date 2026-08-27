@@ -25,10 +25,13 @@ import asyncio
 import json
 import logging
 import time
+from dataclasses import dataclass
 
 import httpx
 
 from app.component.environment import env
+from app.run_context import get_current_run_context
+from app.run_journal.runtime import get_default_event_recorder
 from app.service.task import get_task_lock_if_exists
 
 logger = logging.getLogger("sync_step")
@@ -38,6 +41,19 @@ BATCH_WORD_THRESHOLD = 5
 
 # Buffer storage: task_id -> accumulated text
 _text_buffers: dict[str, str] = {}
+
+
+@dataclass
+class _LocalTextBuffer:
+    project_id: str
+    content: str
+    created_at: float
+
+
+# Raw decompose_text chunks are the only Phase 1 exception to strict
+# commit-before-yield. They are non-critical display deltas and are committed
+# in small batches so synchronous=FULL does not fsync once per token chunk.
+_local_text_buffers: dict[str, _LocalTextBuffer] = {}
 _warned_missing_auth_projects: set[str] = set()
 _warned_missing_server_url_projects: set[str] = set()
 _logged_sync_targets: set[str] = set()
@@ -78,41 +94,64 @@ def sync_step(func):
 
         if not config:
             _warn_missing_server_url(args)
-            async for value in func(*args, **kwargs):
-                yield value
-            return
-
-        if config not in _logged_sync_targets:
+        elif config not in _logged_sync_targets:
             _logged_sync_targets.add(config)
             logger.info("Cloud step sync enabled: %s", config)
 
-        async for value in func(*args, **kwargs):
-            _try_sync(args, value, config)
-            yield value
+        try:
+            async for value in func(*args, **kwargs):
+                await _record_local_step_fail_open(args, value)
+                if config:
+                    _try_sync(args, value, config)
+                yield value
+        finally:
+            # A stream normally emits a non-text terminal step, but flush the
+            # tail here as well so cancellation/end-of-stream cannot strand a
+            # sub-threshold text batch in process memory.
+            await _flush_local_text_for_args_fail_open(args)
 
     return wrapper
 
 
-def sync_step_event(
+async def sync_step_event(
     *,
     task_id: str,
     step: str,
     data: dict,
     authorization: str | None,
+    project_id: str | None = None,
     run_id: str | None = None,
     server_url: str | None = None,
 ) -> None:
-    """Schedule one non-SSE event for cloud playback history."""
+    """Persist one non-SSE event, then schedule legacy cloud projection."""
+    resolved_run_id = run_id or task_id
+    timestamp = time.time_ns() / 1_000_000_000
+    resolved_project_id = project_id or task_id
+    try:
+        await get_default_event_recorder().record_legacy_step(
+            project_id=resolved_project_id,
+            run_id=resolved_run_id,
+            step=step,
+            data=data,
+            created_at=timestamp,
+        )
+    except Exception as exc:
+        _mark_local_history_degraded(
+            project_id=resolved_project_id,
+            run_id=resolved_run_id,
+            error=exc,
+        )
+
     sync_base = _normalize_server_url(server_url or env("SERVER_URL", ""))
     if not sync_base or not authorization:
         return
 
     payload = {
         "task_id": task_id,
-        "run_id": run_id or task_id,
+        "run_id": resolved_run_id,
         "step": step,
         "data": data,
-        "timestamp": time.time_ns() / 1_000_000_000,
+        "timestamp": timestamp,
     }
     asyncio.create_task(
         _send(
@@ -120,6 +159,115 @@ def sync_step_event(
             payload,
             {"Authorization": authorization},
         )
+    )
+
+
+async def _record_local_step(args, value) -> None:
+    data = _parse_value(value)
+    if not data:
+        return
+
+    run_id = _get_task_id(args)
+    if not run_id:
+        logger.warning("Skipping local step persistence: run_id is missing")
+        return
+
+    chat = args[0] if args else None
+    project_id = getattr(chat, "project_id", None) or run_id
+    if data["step"] == "decompose_text":
+        content = data["data"].get("content", "")
+        if not content:
+            return
+        existing = _local_text_buffers.get(run_id)
+        if existing is not None and existing.project_id != project_id:
+            await _flush_local_text(run_id)
+            existing = None
+        if existing is None:
+            existing = _LocalTextBuffer(
+                project_id=project_id,
+                content="",
+                created_at=time.time_ns() / 1_000_000_000,
+            )
+            _local_text_buffers[run_id] = existing
+        existing.content += content
+        if len(existing.content.split()) >= BATCH_WORD_THRESHOLD:
+            await _flush_local_text(run_id)
+        return
+
+    # Preserve event order: a non-text step cannot commit ahead of text that
+    # was already shown to the user.
+    await _flush_local_text(run_id)
+    await get_default_event_recorder().record_legacy_step(
+        project_id=project_id,
+        run_id=run_id,
+        step=data["step"],
+        data=data["data"],
+        allow_terminal=data["step"] == "end",
+    )
+
+
+async def _record_local_step_fail_open(args, value) -> None:
+    try:
+        await _record_local_step(args, value)
+    except Exception as exc:
+        run_id, project_id = _resolve_run_and_project(args)
+        _local_text_buffers.pop(run_id, None)
+        _mark_local_history_degraded(
+            project_id=project_id,
+            run_id=run_id,
+            error=exc,
+        )
+
+
+async def _flush_local_text(run_id: str) -> None:
+    buffered = _local_text_buffers.pop(run_id, None)
+    if buffered is None or not buffered.content:
+        return
+    await get_default_event_recorder().record_legacy_step(
+        project_id=buffered.project_id,
+        run_id=run_id,
+        step="decompose_text",
+        data={"content": buffered.content},
+        created_at=buffered.created_at,
+    )
+
+
+async def _flush_local_text_for_args_fail_open(args) -> None:
+    run_id, project_id = _resolve_run_and_project(args)
+    if not run_id:
+        return
+    try:
+        await _flush_local_text(run_id)
+    except Exception as exc:
+        _mark_local_history_degraded(
+            project_id=project_id,
+            run_id=run_id,
+            error=exc,
+        )
+
+
+def _resolve_run_and_project(args) -> tuple[str, str]:
+    run_id = _get_task_id(args) or "unknown"
+    chat = args[0] if args else None
+    project_id = getattr(chat, "project_id", None) or run_id
+    return run_id, project_id
+
+
+def _mark_local_history_degraded(
+    *, project_id: str, run_id: str, error: Exception
+) -> None:
+    error_summary = f"{type(error).__name__}: {error}"
+    task_lock = get_task_lock_if_exists(project_id)
+    marker = getattr(task_lock, "mark_local_history_degraded", None)
+    if callable(marker):
+        marker(error_summary)
+    logger.exception(
+        "RunJournal write failed; continuing Run with degraded local history",
+        extra={
+            "project_id": project_id,
+            "run_id": run_id,
+            "journal_error": error_summary,
+        },
     )
 
 
@@ -218,6 +366,10 @@ def _parse_value(value):
 
 
 def _get_task_id(args):
+    run_context = get_current_run_context()
+    if run_context is not None:
+        return run_context.run_id
+
     if not args or not hasattr(args[0], "task_id"):
         return None
 

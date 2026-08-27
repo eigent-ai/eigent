@@ -19,6 +19,7 @@ import platform
 import shutil
 import subprocess
 import threading
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 from camel.toolkits.terminal_toolkit import (
@@ -28,6 +29,7 @@ from camel.toolkits.terminal_toolkit.terminal_toolkit import _to_plain
 
 from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.component.environment import env
+from app.run_runtime.tool_checkpoint import get_current_tool_checkpoint
 from app.service.task import (
     Action,
     ActionTerminalData,
@@ -36,12 +38,27 @@ from app.service.task import (
     process_task,
 )
 from app.utils.listen.toolkit_listen import auto_listen_toolkit
+from app.utils.space_overlay_client import run_context_for_task
+from app.workspace_git import (
+    get_default_workspace_git_lifecycle,
+    get_default_workspace_mutation_service,
+)
 
 logger = logging.getLogger("terminal_toolkit")
 
 # App version - should match electron app version
 # TODO: Consider getting this from a shared config
 APP_VERSION = "1.0.2"
+
+
+def _is_control_plane_environment_key(name: str) -> bool:
+    normalized = name.strip().upper()
+    return (
+        normalized == "EIGENT_LOCAL_CONTROL_CAPABILITY"
+        or normalized == "AUTHORIZATION"
+        or normalized.endswith("_AUTHORIZATION")
+        or normalized == "PROXY_AUTHORIZATION"
+    )
 
 
 def get_terminal_base_venv_path() -> str:
@@ -125,6 +142,15 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                     "working_directory": working_directory,
                 },
             )
+
+    def _get_env_vars(self) -> dict[str, str]:
+        """Build an agent environment without Desktop control credentials."""
+
+        environment = super()._get_env_vars()
+        for key in tuple(environment):
+            if _is_control_plane_environment_key(key):
+                environment.pop(key, None)
+        return environment
 
     def _setup_cloned_environment(self):
         """Override to clone from terminal_base venv instead of current process venv.
@@ -374,9 +400,63 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
 
             id = f"auto_{int(time.time() * 1000)}"
 
+        run_context = run_context_for_task(self.api_task_id)
+        mutation_service = None
+        prepared = None
+        request_id = None
+        if run_context is not None:
+            checkpoint = get_current_tool_checkpoint()
+            request_id = (
+                checkpoint.tool_call_id
+                if checkpoint is not None
+                else f"local-terminal:{uuid.uuid4().hex}"
+            )
+            mutation_service = get_default_workspace_mutation_service()
+            prepared = mutation_service.prepare_broad_write(
+                context=run_context,
+                operation_request_id=request_id,
+                actor_id=self.agent_name,
+                trigger="terminal.execute",
+            )
+            if prepared is not None:
+                # CAMEL reads this field immediately before process spawn.
+                # Existing sessions keep their original cwd; a new command is
+                # never started in the User Worktree once Git is enabled.
+                self.working_dir = str(prepared.agent_workspace.agent_worktree)
+
         result = super().shell_exec(
             id=id, command=command, block=block, timeout=timeout
         )
+
+        process_continues = (
+            isinstance(result, str)
+            and "Process continues in background" in result
+        )
+        if (
+            prepared is not None
+            and mutation_service is not None
+            and request_id is not None
+            and block
+            and not process_continues
+        ):
+            mutation_service.complete_broad_write(
+                prepared,
+                operation_request_id=request_id,
+                actor_id=self.agent_name,
+                trigger="terminal.execute",
+            )
+        elif (
+            prepared is not None
+            and mutation_service is not None
+            and request_id is not None
+            and process_continues
+        ):
+            self._watch_background_workspace_mutation(
+                session_id=id,
+                mutation_service=mutation_service,
+                prepared=prepared,
+                operation_request_id=request_id,
+            )
 
         # If the command executed successfully but returned empty output,
         # provide a clear success message to help the AI agent understand
@@ -385,6 +465,67 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             return "Command executed successfully (no output)."
 
         return result
+
+    def _watch_background_workspace_mutation(
+        self,
+        *,
+        session_id: str,
+        mutation_service,
+        prepared,
+        operation_request_id: str,
+    ) -> None:
+        """Checkpoint a background process only after its session exits."""
+
+        lock = getattr(self, "_workspace_checkpoint_watchers_lock", None)
+        if lock is None:
+            lock = threading.Lock()
+            self._workspace_checkpoint_watchers_lock = lock
+            self._workspace_checkpoint_watchers = set()
+        with lock:
+            if session_id in self._workspace_checkpoint_watchers:
+                return
+            self._workspace_checkpoint_watchers.add(session_id)
+
+        def wait_and_checkpoint() -> None:
+            try:
+                while self._workspace_session_running(session_id):
+                    threading.Event().wait(0.25)
+                mutation_service.complete_broad_write(
+                    prepared,
+                    operation_request_id=operation_request_id,
+                    actor_id=self.agent_name,
+                    trigger="terminal.execute",
+                )
+                get_default_workspace_git_lifecycle().finalize_run(
+                    prepared.context.run_id
+                )
+            except Exception:
+                logger.exception(
+                    "Background terminal workspace checkpoint failed",
+                    extra={"session_id": session_id},
+                )
+            finally:
+                with lock:
+                    self._workspace_checkpoint_watchers.discard(session_id)
+
+        threading.Thread(
+            target=wait_and_checkpoint,
+            name=f"workspace-checkpoint-{session_id}",
+            daemon=True,
+        ).start()
+
+    def _workspace_session_running(self, session_id: str) -> bool:
+        session_lock = getattr(self, "_session_lock", None)
+        if session_lock is None:
+            return bool(
+                getattr(self, "shell_sessions", {})
+                .get(session_id, {})
+                .get("running", False)
+            )
+        with session_lock:
+            return bool(
+                self.shell_sessions.get(session_id, {}).get("running", False)
+            )
 
     def cleanup(self, remove_venv: bool = True):
         """Clean up all active sessions and optionally remove the virtual environment.

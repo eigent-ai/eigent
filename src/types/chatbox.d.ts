@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import type { FilePreviewPayload } from '../shared/filePreviewContract';
 import type {
   AgentMessageStatusType,
   AgentStatusType,
@@ -34,6 +35,12 @@ declare global {
     isFolder?: boolean;
     isRemote?: boolean;
     relativePath?: string;
+    artifactChange?: 'generated' | 'changed';
+    size?: number;
+    modifiedAt?: number;
+    mimeType?: string;
+    supportsRanges?: boolean;
+    preview?: FilePreviewPayload;
   }
 
   interface ProjectInfo {
@@ -118,6 +125,7 @@ declare global {
     summary?: string;
     agent_name?: string;
     attaches?: File[];
+    interaction?: import('@/service/humanInteractionApi').HumanInteractionPayload;
   }
 
   interface AgentMessage {
@@ -141,6 +149,8 @@ declare global {
       method_name?: string;
       state?: string;
       message?: string;
+      retryable?: boolean;
+      reason?: string | null;
       question?: string;
       reply?: string;
       agent?: string;
@@ -162,6 +172,19 @@ declare global {
       current_length?: number;
       max_length?: number;
       text?: string;
+      interaction_id?: string;
+      interaction_type?: import('@/service/humanInteractionApi').HumanInteractionPayload['interaction_type'];
+      run_id?: string;
+      version?: number;
+      approval_id?: string;
+      action_digest?: string;
+      title?: string;
+      operation?: string;
+      safety_class?: string;
+      target_resources?: string[];
+      allowed_scopes?: import('@/service/humanInteractionApi').InteractionDecisionScope[];
+      options?: import('@/service/humanInteractionApi').HumanInteractionPayload['options'];
+      fields?: import('@/service/humanInteractionApi').HumanInteractionPayload['fields'];
     };
     status?: AgentMessageStatusType;
   }
