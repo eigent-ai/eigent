@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { useTheme } from 'next-themes';
+import { useAuthStore } from '@/store/authStore';
 import { createPortal } from 'react-dom';
 import { Toaster as Sonner } from 'sonner';
 
@@ -48,13 +48,13 @@ const FOLD_AT_THREE_CSS = `
 `;
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = 'system' } = useTheme();
+  const appearance = useAuthStore((state) => state.appearance);
 
   const toaster = (
     <>
       <style>{FOLD_AT_THREE_CSS}</style>
       <Sonner
-        theme={theme as ToasterProps['theme']}
+        theme={appearance}
         className="toaster group"
         toastOptions={{
           classNames: {
