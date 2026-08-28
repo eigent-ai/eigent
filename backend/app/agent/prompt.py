@@ -807,7 +807,7 @@ The current date is {now_str}(Accurate to the hour). For any date-related tasks,
 - **CRITICAL URL POLICY**: You are STRICTLY FORBIDDEN from inventing,
     guessing, or constructing URLs yourself. You MUST only use URLs from
     trusted sources:
-    1. URLs returned by search tools (`search_google`)
+    1. URLs returned by search tools (`search_querit` or `search_google`)
     2. URLs found on webpages you have visited through browser tools
     3. URLs provided by the user in their request
     Fabricating or guessing URLs is considered a critical error and must
@@ -869,11 +869,12 @@ Your capabilities include:
 <web_search_workflow>
 {external_browser_notice}Your approach depends on available search tools:
 
-**If Google Search is Available:**
-- Initial Search: Start with `search_google` to get a list of relevant URLs
+**If a Search Tool is Available:**
+- Initial Search: Start with the available `search_querit` or `search_google`
+  tool to get a list of relevant URLs
 - Browser-Based Exploration: Use the browser tools to investigate the URLs
 
-**If Google Search is NOT Available:**
+**If No Search Tool is Available:**
 - **MUST start with direct website search**: Use `browser_visit_page` to go
   directly to popular search engines and informational websites such as:
   * General search: google.com, bing.com, duckduckgo.com

@@ -1000,4 +1000,31 @@ describe('buildProjectSessionPanelData', () => {
       )
     ).toEqual(['https://example.com/a', 'https://docs.example.com/page']);
   });
+
+  it('collects search URLs from presentation-safe activity output', () => {
+    const search = {
+      ...toolNode(
+        'run-current',
+        'search-completed',
+        1,
+        'completed',
+        'Completed search',
+        'search-call'
+      ),
+      title: 'Search',
+      toolName: 'search_querit',
+      output:
+        'Sources: https://example.com/news https://docs.example.com/releases',
+    };
+
+    expect(
+      buildProjectSessionPanelData(
+        [makeRun('run-current', true, [search])],
+        []
+      ).resources
+    ).toMatchObject([
+      { url: 'https://example.com/news', historical: false },
+      { url: 'https://docs.example.com/releases', historical: false },
+    ]);
+  });
 });

@@ -61,6 +61,7 @@ import {
   splitProviderConfig,
 } from '@/lib/modelConfig';
 import { getProviderValid, toProviderValidStatus } from '@/lib/providerStatus';
+import { isSearchConfigured } from '@/lib/searchConfig';
 import { useAuthStore } from '@/store/authStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
 import { Provider } from '@/types';
@@ -1295,14 +1296,7 @@ export default function SettingModels() {
   const checkHasSearchKey = async () => {
     const configsRes = await proxyFetchGet('/api/v1/configs');
     const configs = Array.isArray(configsRes) ? configsRes : [];
-    console.log(configsRes, configs);
-    const _hasApiKey = configs.find(
-      (item) => item.config_name === 'GOOGLE_API_KEY'
-    );
-    const _hasApiId = configs.find(
-      (item) => item.config_name === 'SEARCH_ENGINE_ID'
-    );
-    return _hasApiKey && _hasApiId;
+    return isSearchConfigured(configs);
   };
 
   const [subscription, setSubscription] = useState<any>(null);

@@ -45,6 +45,13 @@ import {
 } from '@/hooks/useIntegrationManagement';
 import { capitalizeFirstLetter, getProxyBaseURL } from '@/lib';
 import { integrationLeadingIconUrl } from '@/lib/connectorIcons';
+import {
+  GOOGLE_API_KEY,
+  isSearchConfigured,
+  QUERIT_API_KEY,
+  QUERIT_ENABLED,
+  SEARCH_ENGINE_ID,
+} from '@/lib/searchConfig';
 import { useAuthStore } from '@/store/authStore';
 import { useServerCapabilityStore } from '@/store/serverCapabilityStore';
 import type { TFunction } from 'i18next';
@@ -87,9 +94,9 @@ import ConnectorBrowserPage, {
   providerLabel,
   type AddConnectorTarget,
 } from './components/ConnectorBrowserPage';
-import { GoogleSearchPanel } from './components/GoogleSearchPanel';
 import MCPConfigDialog from './components/MCPConfigDialog';
 import MCPDeleteDialog from './components/MCPDeleteDialog';
+import { SearchSettingsPanel } from './components/SearchSettingsPanel';
 import type {
   ConnectorInstallHint,
   MCPConfigForm,
@@ -242,26 +249,32 @@ function buildBuiltInItems(response: unknown, t: TFunction): IntegrationItem[] {
       onInstall: createBuiltInInstallAction(key, t),
     }));
 
-  if (!items.some((item) => item.key === 'Search')) {
+  const searchItem = items.find((item) => item.key === 'Search');
+  if (searchItem) {
+    searchItem.name = t('connectors.web-search');
+    searchItem.env_vars = [
+      QUERIT_ENABLED,
+      QUERIT_API_KEY,
+      GOOGLE_API_KEY,
+      SEARCH_ENGINE_ID,
+    ];
+    searchItem.desc = t('connectors.web-search-desc');
+  } else {
     items.unshift({
       key: 'Search',
-      name: t('connectors.google-search'),
-      env_vars: ['GOOGLE_API_KEY', 'SEARCH_ENGINE_ID'],
+      name: t('connectors.web-search'),
+      env_vars: [
+        QUERIT_ENABLED,
+        QUERIT_API_KEY,
+        GOOGLE_API_KEY,
+        SEARCH_ENGINE_ID,
+      ],
       toolkit: undefined,
-      desc: t('connectors.google-search-desc'),
+      desc: t('connectors.web-search-desc'),
       onInstall: createBuiltInInstallAction('Search', t),
     });
   }
   return items;
-}
-
-function configuredSearch(configs: any[]): boolean {
-  const names = new Set(
-    configs
-      .filter((config) => String(config.config_value || '').trim())
-      .map((config) => config.config_name)
-  );
-  return names.has('GOOGLE_API_KEY') && names.has('SEARCH_ENGINE_ID');
 }
 
 function sourceLabel(item: ConnectorListItem, t: TFunction): string {
@@ -390,12 +403,12 @@ export default function ConnectorGateway() {
     handleUninstall,
   } = useIntegrationManagement(builtInItems);
 
-  // Google Search is enabled by default on managed models; custom-model users
-  // must provide their own Google Custom Search credentials.
+  // Managed models retain the existing cloud Google fallback. Custom models
+  // are connected when Querit is enabled or both Google values are present.
   const searchRequiresApiKey = modelType === 'custom';
   const builtInInstalled = useMemo(() => {
     const next = { ...rawBuiltInInstalled };
-    next.Search = searchRequiresApiKey ? configuredSearch(configs) : true;
+    next.Search = searchRequiresApiKey ? isSearchConfigured(configs) : true;
     return next;
   }, [configs, rawBuiltInInstalled, searchRequiresApiKey]);
 
@@ -1120,7 +1133,7 @@ export default function ConnectorGateway() {
     if (item.item.key === 'Search') {
       return (
         <div className="rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default">
-          <GoogleSearchPanel onConfigured={() => void refreshBuiltIns()} />
+          <SearchSettingsPanel onConfigured={() => void refreshBuiltIns()} />
         </div>
       );
     }

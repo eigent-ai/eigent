@@ -51,6 +51,7 @@ import {
   toRemoteSubAgentRuntimeConfig,
 } from '@/lib/remoteSubAgent';
 import { runEventIngressRegistry } from '@/lib/runEvents';
+import { buildSearchRuntimeConfig } from '@/lib/searchConfig';
 import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import { settleTaskElapsedMs } from '@/lib/taskDuration';
 import { cancelFollowUpRequest } from '@/service/followUpQueueApi';
@@ -2659,33 +2660,21 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         });
       }
 
-      // Get search engine configuration for custom mode
+      // Resolve the user-selected search path for this Run. Querit may use
+      // anonymous access or a user key; custom models retain Google BYOK as a
+      // fallback when both Google values are present.
       let searchConfig: Record<string, string> = {};
-      if (!type && effectiveModelType === 'custom') {
+      if (!type) {
         try {
           const configsRes = await proxyFetchGet('/api/v1/configs');
-          const configs = Array.isArray(configsRes) ? configsRes : [];
-
-          // Extract Google Search API keys
-          const googleApiKey = configs.find(
-            (c: any) =>
-              c.config_group?.toLowerCase() === 'search' &&
-              c.config_name === 'GOOGLE_API_KEY'
-          )?.config_value;
-
-          const searchEngineId = configs.find(
-            (c: any) =>
-              c.config_group?.toLowerCase() === 'search' &&
-              c.config_name === 'SEARCH_ENGINE_ID'
-          )?.config_value;
-
-          if (googleApiKey && searchEngineId) {
-            searchConfig = {
-              GOOGLE_API_KEY: googleApiKey,
-              SEARCH_ENGINE_ID: searchEngineId,
-            };
-            console.log('Loaded custom search configuration');
-          }
+          const configs = Array.isArray(configsRes)
+            ? configsRes.filter(
+                (config: any) => config.config_group?.toLowerCase() === 'search'
+              )
+            : [];
+          searchConfig = buildSearchRuntimeConfig(configs, {
+            includeGoogle: effectiveModelType === 'custom',
+          });
         } catch (error) {
           console.error('Failed to load search configuration:', error);
         }
@@ -6901,9 +6890,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 const filterMessage = (message: AgentMessage) => {
   if (message.data.toolkit_name?.includes('Search ')) {
     message.data.toolkit_name = 'Search Toolkit';
-  }
-  if (message.data.method_name?.includes('search')) {
-    message.data.method_name = 'search';
   }
 
   message.data.message = normalizeToolkitMessage(message.data.message);

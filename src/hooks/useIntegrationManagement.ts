@@ -21,6 +21,7 @@ import {
   proxyFetchPut,
 } from '@/api/http';
 import { useHost } from '@/host';
+import { isSearchConfigured } from '@/lib/searchConfig';
 import { useAuthStore } from '@/store/authStore';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -155,17 +156,7 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
         if (modelType !== 'custom') {
           map[item.key] = true;
         } else {
-          const hasApiKey = configs.some(
-            (c: any) =>
-              c.config_name === 'GOOGLE_API_KEY' &&
-              String(c.config_value ?? '').trim().length > 0
-          );
-          const hasEngineId = configs.some(
-            (c: any) =>
-              c.config_name === 'SEARCH_ENGINE_ID' &&
-              String(c.config_value ?? '').trim().length > 0
-          );
-          map[item.key] = hasApiKey && hasEngineId;
+          map[item.key] = isSearchConfigured(configs);
         }
       } else {
         // For other integrations, use config_group presence

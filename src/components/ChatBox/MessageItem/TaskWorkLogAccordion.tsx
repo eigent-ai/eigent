@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import ShinyText from '@/components/ui/ShinyText/ShinyText';
+import { Badge } from '@/components/ui/badge';
 import { agentMap, type WorkflowAgentType } from '@/components/WorkFlow/agents';
 import { cn } from '@/lib/utils';
 import type {
@@ -190,7 +191,25 @@ function truncateText(text: string, max: number): string {
 }
 
 function toolRowTitle(toolkitName: string, method: string): string {
-  return `${toolkitName} · ${titleCaseMethod(method)}`;
+  const normalizedToolkit = normalizedToolIdentity(toolkitName);
+  const normalizedMethod = normalizedToolIdentity(method);
+  const visibleMethod =
+    normalizedToolkit === 'searchtoolkit' &&
+    normalizedMethod.startsWith('search')
+      ? 'Search'
+      : titleCaseMethod(method);
+  return `${toolkitName} · ${visibleMethod}`;
+}
+
+function searchProviderLabel(
+  toolkitName: string,
+  method: string
+): string | null {
+  if (normalizedToolIdentity(toolkitName) !== 'searchtoolkit') return null;
+  const normalizedMethod = normalizedToolIdentity(method);
+  if (normalizedMethod.includes('querit')) return 'Querit';
+  if (normalizedMethod.includes('google')) return 'Google';
+  return null;
 }
 
 /**
@@ -288,7 +307,11 @@ function repeatedToolKey(item: ToolItem): string | null {
   // individual accordion so that question/answer history stays attached.
   if (item.humanInput) return null;
   const toolkit = normalizedToolIdentity(item.toolkitName);
-  const method = normalizedToolIdentity(item.method);
+  const rawMethod = normalizedToolIdentity(item.method);
+  const method =
+    toolkit === 'searchtoolkit' && rawMethod.startsWith('search')
+      ? 'search'
+      : rawMethod;
   return toolkit && method ? JSON.stringify([toolkit, method]) : null;
 }
 
@@ -1088,6 +1111,7 @@ function useWorkLogElapsedMs(
 
 const ToolDetailRow = memo(function ToolDetailRow({
   rowTitle,
+  providerLabel,
   input,
   output,
   status,
@@ -1095,6 +1119,7 @@ const ToolDetailRow = memo(function ToolDetailRow({
   humanInputReceipt,
 }: {
   rowTitle: string;
+  providerLabel?: string | null;
   input: string;
   output: string;
   status: 'running' | 'done';
@@ -1153,6 +1178,17 @@ const ToolDetailRow = memo(function ToolDetailRow({
             transition={HEIGHT_MOTION}
             className="w-full min-w-0 overflow-hidden"
           >
+            {providerLabel ? (
+              <Badge
+                className="mt-ds-4"
+                size="xs"
+                variant="secondary"
+                tone="neutral"
+                data-search-provider={providerLabel.toLowerCase()}
+              >
+                {providerLabel}
+              </Badge>
+            ) : null}
             <ToolInputOutputDetails
               className="mt-1"
               input={input}
@@ -1235,6 +1271,10 @@ const RepeatedToolDetailRow = memo(function RepeatedToolDetailRow({
                 <ToolDetailRow
                   key={call.id}
                   rowTitle={call.rowTitle}
+                  providerLabel={searchProviderLabel(
+                    call.toolkitName,
+                    call.method
+                  )}
                   input={call.input}
                   output={call.output}
                   status={
@@ -1460,6 +1500,10 @@ const AgentBlockRow = memo(function AgentBlockRow({
                   <ToolDetailRow
                     key={item.id}
                     rowTitle={item.rowTitle}
+                    providerLabel={searchProviderLabel(
+                      item.toolkitName,
+                      item.method
+                    )}
                     input={item.input}
                     output={item.output}
                     status={
@@ -1736,6 +1780,10 @@ const AgentGroupRow = memo(function AgentGroupRow({
                   <ToolDetailRow
                     key={item.id}
                     rowTitle={item.rowTitle}
+                    providerLabel={searchProviderLabel(
+                      item.toolkitName,
+                      item.method
+                    )}
                     input={item.input}
                     output={item.output}
                     status={
