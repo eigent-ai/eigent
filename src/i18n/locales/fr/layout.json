@@ -1336,6 +1336,7 @@
   "workspace-onboarding-dismiss": "Masquer {{label}}",
   "workspace-onboarding-dismissed": "Raccourci masqué",
   "workspace-onboarding-dismiss-undo": "Annuler",
+  "workspace-onboarding-prompt-replaced": "Brouillon remplacé",
   "workspace-overview-activity": "Activité",
   "workspace-overview-activity-empty": "L’activité apparaîtra après votre première Task.",
   "workspace-overview-summary-one": "Vous avez réuni <highlight>{{sessionCountLabel}}</highlight> et <highlight>{{taskCountLabel}}</highlight>, avec <highlight>{{automationCountLabel}}</highlight> en <highlight>{{dayCountLabel}}</highlight>.",

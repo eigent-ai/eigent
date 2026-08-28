@@ -1445,6 +1445,7 @@
   "workspace-onboarding-dismiss": "إخفاء {{label}}",
   "workspace-onboarding-dismissed": "تم إخفاء الاختصار",
   "workspace-onboarding-dismiss-undo": "تراجع",
+  "workspace-onboarding-prompt-replaced": "تم استبدال المسودة",
   "workspace-overview-activity": "النشاط",
   "workspace-overview-activity-empty": "سيظهر النشاط بعد أول Task.",
   "workspace-overview-summary-one": "ملخص المدة (<highlight>{{dayCountLabel}}</highlight>): جمعت <highlight>{{sessionCountLabel}}</highlight> و<highlight>{{taskCountLabel}}</highlight> و<highlight>{{automationCountLabel}}</highlight>.",

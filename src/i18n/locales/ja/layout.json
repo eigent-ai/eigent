@@ -1319,6 +1319,7 @@
   "workspace-onboarding-dismiss": "{{label}}を非表示",
   "workspace-onboarding-dismissed": "ショートカットを非表示にしました",
   "workspace-onboarding-dismiss-undo": "元に戻す",
+  "workspace-onboarding-prompt-replaced": "下書きを置き換えました",
   "workspace-overview-activity": "アクティビティ",
   "workspace-overview-activity-empty": "最初のTaskを実行すると、アクティビティがここに表示されます。",
   "workspace-overview-summary-one": "<highlight>{{dayCountLabel}}</highlight>で、<highlight>{{sessionCountLabel}}</highlight>と<highlight>{{taskCountLabel}}</highlight>、<highlight>{{automationCountLabel}}</highlight>をまとめました。",

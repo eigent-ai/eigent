@@ -85,6 +85,44 @@ export function isLocalWorkspaceSpace(
   return space.sourceType === 'folder' || Boolean(space.rootPath);
 }
 
+/**
+ * Minimal Space shape the file-root helpers read, so callers can pass the
+ * individual fields they already track without holding the whole object.
+ */
+export type SpaceFileRootSource = Pick<Space, 'id'> &
+  Partial<Pick<Space, 'rootPath' | 'sourceType' | 'metadata'>>;
+
+/** A folder the user chose, as opposed to a workspace Eigent generated. */
+export function hasUserBoundLocalFolder(
+  space: SpaceFileRootSource | null | undefined
+) {
+  if (!space) return false;
+  if (space.sourceType === 'folder') return true;
+  return (
+    space.metadata?.bindingSource === 'space_local_brain' &&
+    space.metadata?.localWorkspaceSource !== 'scratch_space'
+  );
+}
+
+/**
+ * Whether Brain resolves this Space's files from one workspace root.
+ *
+ * `GET /files` resolves `space_id` through the workspace resolver: a bound
+ * Space (user-picked folder or scratch workspace) returns the same root for
+ * every `project_id`, so it must be listed once by Space id. Fanning out per
+ * Project against a bound Space would list the same folder N times and count
+ * every file N times.
+ *
+ * This is the single definition shared by the Space rail's aggregate and the
+ * Files tab's tree; they listed different ids while each carried its own rule.
+ */
+export function hasSpaceScopedFileRoot(
+  space: SpaceFileRootSource | null | undefined
+) {
+  if (!space) return false;
+  return Boolean(space.rootPath) || hasUserBoundLocalFolder(space);
+}
+
 export function isPlaceholderSpaceName(
   name: string | undefined | null,
   t: TFunction

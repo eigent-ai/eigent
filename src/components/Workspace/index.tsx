@@ -22,7 +22,11 @@ import { WorkforceAgentList } from '@/components/Workspace/WorkforceAgentList';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useHost } from '@/host';
-import { isLegacySpace, isLocalWorkspaceSpace } from '@/lib/spaceLabel';
+import {
+  hasUserBoundLocalFolder,
+  isLegacySpace,
+  isLocalWorkspaceSpace,
+} from '@/lib/spaceLabel';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -35,6 +39,33 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 const EMPTY_TASK_ASSIGNING: Agent[] = [];
+/**
+ * Viewport width at which the Space rail appears — kept in step with the `lg`
+ * breakpoint that used to hide it in CSS alone. Mounting is gated on this
+ * rather than `hidden lg:contents` because `display: none` still runs the
+ * rail's grouped-history, trigger-paging, and `/files` requests.
+ */
+const SPACE_RAIL_MIN_VIEWPORT_WIDTH = 1024;
+
+function useHasSpaceRailRoom() {
+  const [hasRoom, setHasRoom] = useState(
+    () =>
+      typeof window === 'undefined' ||
+      window.innerWidth >= SPACE_RAIL_MIN_VIEWPORT_WIDTH
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const update = () =>
+      setHasRoom(window.innerWidth >= SPACE_RAIL_MIN_VIEWPORT_WIDTH);
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
+  return hasRoom;
+}
+
 const WORKSPACE_COWORK_TEXT_CLASS =
   'inline-flex shrink-0 items-center font-display text-ds-text-display font-semibold text-ds-ink-default-default';
 
@@ -105,11 +136,36 @@ export default function Workspace({
   );
 
   const textareaRef = useRef<HTMLDivElement>(null);
+  const hasSpaceRailRoom = useHasSpaceRailRoom();
 
-  const handleUsePrompt = useCallback((prompt: string) => {
-    setMessage(prompt);
-    window.requestAnimationFrame(() => textareaRef.current?.focus());
-  }, []);
+  const handleUsePrompt = useCallback(
+    (prompt: string) => {
+      const replacedDraft = message;
+      setMessage(prompt);
+      window.requestAnimationFrame(() => textareaRef.current?.focus());
+      if (!replacedDraft.trim()) return;
+      // The guide tiles sit beside the composer, so a draft can already be in
+      // flight when one is clicked. Honour the click, but back it with the
+      // same Undo affordance the guide dismissal uses.
+      const toastId = toast(
+        t('layout.workspace-onboarding-prompt-replaced', {
+          defaultValue: 'Draft replaced',
+        }),
+        {
+          action: {
+            label: t('layout.workspace-onboarding-dismiss-undo', {
+              defaultValue: 'Undo',
+            }),
+            onClick: () => {
+              setMessage(replacedDraft);
+              toast.dismiss(toastId);
+            },
+          },
+        }
+      );
+    },
+    [message, t]
+  );
 
   const handleExploreUseCases = useCallback(() => {
     const url = 'https://www.eigent.ai/use-cases';
@@ -498,11 +554,11 @@ export default function Workspace({
           </div>
         </section>
       </div>
-      {!embedded && variant === 'workspace' && activeSpace ? (
-        <div
-          data-space-workspace-panel-container
-          className="hidden lg:contents"
-        >
+      {!embedded &&
+      variant === 'workspace' &&
+      activeSpace &&
+      hasSpaceRailRoom ? (
+        <div data-space-workspace-panel-container className="contents">
           <SpaceWorkspacePanel
             key={activeSpace.id}
             space={activeSpace}
@@ -511,7 +567,14 @@ export default function Workspace({
             onConnectApp={() => openSettings('connectors')}
             onExploreUseCases={handleExploreUseCases}
             onOpenFiles={() => setActiveWorkspaceTab('files')}
-            canOpenFolder={Boolean(activeSpace.rootPath && host?.ipcRenderer)}
+            canOpenFolder={Boolean(
+              activeSpace.rootPath &&
+              host?.ipcRenderer &&
+              // The rail already refuses to treat a generated scratch
+              // workspace as a user folder; revealing one in Finder would
+              // contradict that.
+              hasUserBoundLocalFolder(activeSpace)
+            )}
             onOpenFolder={() => void handleOpenSpaceFolder()}
           />
         </div>

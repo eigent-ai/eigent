@@ -21,7 +21,10 @@ import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tag } from '@/components/ui/tag';
 import { filterVisibleAgentFiles } from '@/lib/agentFileFilters';
-import { getFilesTabBindingLabel } from '@/lib/spaceLabel';
+import {
+  getFilesTabBindingLabel,
+  hasUserBoundLocalFolder,
+} from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
 import { fetchGroupedHistoryProjects } from '@/service/historyApi';
 import { proxyFetchTriggers } from '@/service/triggerApi';
@@ -56,7 +59,6 @@ import {
   categorizeSpaceFile,
   getSpaceAgeInDays,
   getSpaceSummaryVariantIndex,
-  hasUserBoundLocalFolder,
   resolveSpaceFileTargets,
   SPACE_CONTENT_CATEGORY_ORDER,
   SPACE_FILE_LISTING_LIMIT,
@@ -87,7 +89,10 @@ const COARSE_POINTER_HIT_AREA_SM =
  * account past `TRIGGER_PAGE_SIZE` automations.
  */
 async function fetchAllTriggers(): Promise<Trigger[]> {
-  const collected: Trigger[] = [];
+  // Keyed by trigger id rather than appended: a bare-array response carries no
+  // `total`, so an endpoint that ignores `page` and replays the same full page
+  // would otherwise multiply every automation count by the pages requested.
+  const collected = new Map<number, Trigger>();
   for (let page = 1; page <= TRIGGER_PAGE_LIMIT; page += 1) {
     const response = await proxyFetchTriggers(
       undefined,
@@ -97,12 +102,15 @@ async function fetchAllTriggers(): Promise<Trigger[]> {
     );
     const items = (response?.items ?? response ?? []) as Trigger[];
     if (!Array.isArray(items) || items.length === 0) break;
-    collected.push(...items);
+    const countBeforePage = collected.size;
+    items.forEach((trigger) => collected.set(trigger.id, trigger));
+    // A page that adds nothing new means the endpoint is not paging.
+    if (collected.size === countBeforePage) break;
     const total = Number(response?.total);
-    if (Number.isFinite(total) && collected.length >= total) break;
+    if (Number.isFinite(total) && collected.size >= total) break;
     if (items.length < TRIGGER_PAGE_SIZE) break;
   }
-  return collected;
+  return [...collected.values()];
 }
 
 interface SpaceWorkspacePanelProps {
@@ -304,6 +312,9 @@ export function SpaceWorkspacePanel({
   const restoreWorkspaceGuideTabs = useAuthStore(
     (state) => state.restoreWorkspaceGuideTabs
   );
+  const setWorkspaceGuideAudience = useAuthStore(
+    (state) => state.setWorkspaceGuideAudience
+  );
   const projectsBySpaceId = useSpaceStore((state) => state.projectsBySpaceId);
   const sessionMetas = useMemo(
     () => getVisibleProjectMetasForSpace(projectsBySpaceId, space.id),
@@ -338,13 +349,24 @@ export function SpaceWorkspacePanel({
   const spaceBindingSource = space.metadata?.bindingSource;
   const spaceLocalWorkspaceSource = space.metadata?.localWorkspaceSource;
 
+  // Deliberately not gated on `hasOverviewSource`: that flag is derived from
+  // the project list this sync populates, so gating on it would leave a Space
+  // whose Sessions live only on the server permanently showing the empty
+  // state. `shouldSyncProjects` already carries the TTL that stops repeat work.
   useEffect(() => {
-    if (!hasOverviewSource) return;
     const store = useSpaceStore.getState();
     if (store.shouldSyncProjects(space.id)) {
       void store.syncProjectsFromServer(space.id);
     }
-  }, [hasOverviewSource, space.id]);
+  }, [space.id]);
+
+  // Having done work is a one-way door out of the first-run guide. Without
+  // this the audience stays 'new' for the life of the install, so archiving
+  // every Session would put a seasoned user back on the onboarding tile.
+  useEffect(() => {
+    if (workspaceGuideAudience !== 'new' || totalSessionCount === 0) return;
+    setWorkspaceGuideAudience('existing');
+  }, [setWorkspaceGuideAudience, totalSessionCount, workspaceGuideAudience]);
 
   useEffect(() => {
     if (!hasOverviewSource) {
@@ -360,7 +382,16 @@ export function SpaceWorkspacePanel({
     })
       .then((projects) => {
         if (cancelled) return;
-        setHistoryProjects(projects ?? []);
+        if (!projects) {
+          // `null` means the response carried no `projects` field — the shape
+          // `fetchGroupedHistoryTasks` falls back to legacy grouping for.
+          // Reading it as an empty list would render a confident "0 Sessions,
+          // 0 Tasks" over a Space that is not empty.
+          setHistoryProjects([]);
+          setHistoryState('error');
+          return;
+        }
+        setHistoryProjects(projects);
         setHistoryState('ready');
       })
       .catch((error) => {
@@ -454,14 +485,20 @@ export function SpaceWorkspacePanel({
         { signal: controller.signal }
       );
       if (!Array.isArray(response)) return [];
-      return response.map((item: RemoteFileRecord) => ({
-        ...item,
-        filename: item.filename || item.name || '',
-        // `filterVisibleAgentFiles` reads `name`; Brain only returns
-        // `filename`, so mirror it or runtime entries slip through.
-        name: item.filename || item.name || '',
-        projectId,
-      }));
+      return response.map((item: RemoteFileRecord) => {
+        const filename = item.filename || item.name || '';
+        return {
+          ...item,
+          filename,
+          // `filterVisibleAgentFiles` reads `name` for the entry and
+          // `relativePath` for the directory it sits in; Brain returns
+          // `filename` and `relative_path`, so mirror both or `camel_logs`
+          // entries and task-root folders slip through.
+          name: filename,
+          relativePath: item.relativePath || item.relative_path || filename,
+          projectId,
+        };
+      });
     };
 
     const run = async () => {

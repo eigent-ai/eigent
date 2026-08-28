@@ -1335,6 +1335,7 @@
   "workspace-onboarding-dismiss": "Ocultar {{label}}",
   "workspace-onboarding-dismissed": "Acceso directo oculto",
   "workspace-onboarding-dismiss-undo": "Deshacer",
+  "workspace-onboarding-prompt-replaced": "Borrador reemplazado",
   "workspace-overview-activity": "Actividad",
   "workspace-overview-activity-empty": "La actividad aparecerá después de tu primera Task.",
   "workspace-overview-summary-one": "Has reunido <highlight>{{sessionCountLabel}}</highlight> y <highlight>{{taskCountLabel}}</highlight>, con <highlight>{{automationCountLabel}}</highlight> durante <highlight>{{dayCountLabel}}</highlight>.",

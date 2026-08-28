@@ -111,6 +111,7 @@ const mocks = vi.hoisted(() => {
     restoreWorkspaceGuideTabs:
       vi.fn<(tabIds?: WorkspaceGuideTabId[]) => void>(),
     setWorkerList: vi.fn(),
+    setWorkspaceGuideAudience: vi.fn(),
   };
   authState.dismissWorkspaceGuideTab.mockImplementation((tabId) => {
     if (!authState.dismissedWorkspaceGuideTabs.includes(tabId)) {
@@ -429,7 +430,8 @@ describe('Workspace', () => {
     expect(panel.parentElement).toHaveAttribute(
       'data-space-workspace-panel-container'
     );
-    expect(panel.parentElement).toHaveClass('hidden', 'lg:contents');
+    expect(panel.parentElement).toHaveClass('contents');
+    expect(panel.parentElement).not.toHaveClass('hidden');
     const onboarding = within(panel);
 
     const guideTabs = [

@@ -130,6 +130,7 @@ interface AuthState {
   setHasModelConfigured: (hasModelConfigured: boolean) => void;
   setIsFirstLaunch: (isFirstLaunch: boolean) => void;
   setOnboardingCompleted: (completed: boolean) => void;
+  setWorkspaceGuideAudience: (audience: WorkspaceGuideAudience) => void;
   dismissWorkspaceGuideTab: (tabId: WorkspaceGuideTabId) => void;
   restoreWorkspaceGuideTabs: (tabIds?: WorkspaceGuideTabId[]) => void;
   setPreferredIDE: (ide: PreferredIDE) => void;
@@ -384,7 +385,18 @@ const authStore = create<AuthState>()(
       setIsFirstLaunch: (isFirstLaunch) => set({ isFirstLaunch }),
 
       setOnboardingCompleted: (onboardingCompleted) =>
-        set({ onboardingCompleted }),
+        set((state) => ({
+          onboardingCompleted,
+          // Finishing onboarding is the moment a first-time user becomes a
+          // returning one; nothing else ever moved the audience off its
+          // 'new' default.
+          workspaceGuideAudience: onboardingCompleted
+            ? 'existing'
+            : state.workspaceGuideAudience,
+        })),
+
+      setWorkspaceGuideAudience: (workspaceGuideAudience) =>
+        set({ workspaceGuideAudience }),
 
       dismissWorkspaceGuideTab: (tabId) =>
         set((state) => ({

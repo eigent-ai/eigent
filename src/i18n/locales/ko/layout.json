@@ -1319,6 +1319,7 @@
   "workspace-onboarding-dismiss": "{{label}} 숨기기",
   "workspace-onboarding-dismissed": "바로가기를 숨겼습니다",
   "workspace-onboarding-dismiss-undo": "실행 취소",
+  "workspace-onboarding-prompt-replaced": "초안을 대체했습니다",
   "workspace-overview-activity": "활동",
   "workspace-overview-activity-empty": "첫 번째 Task를 실행하면 활동이 여기에 표시됩니다.",
   "workspace-overview-summary-one": "<highlight>{{dayCountLabel}}</highlight> 동안 <highlight>{{sessionCountLabel}}</highlight>과 <highlight>{{taskCountLabel}}</highlight>, <highlight>{{automationCountLabel}}</highlight>를 모았습니다.",

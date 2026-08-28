@@ -35,6 +35,7 @@ const mocks = vi.hoisted(() => {
     dismissedWorkspaceGuideTabs: [] as WorkspaceGuideTabId[],
     dismissWorkspaceGuideTab: vi.fn(),
     restoreWorkspaceGuideTabs: vi.fn(),
+    setWorkspaceGuideAudience: vi.fn(),
   };
   const spaceState = {
     projectsBySpaceId: {} as Record<string, Record<string, unknown>>,
@@ -175,6 +176,7 @@ describe('SpaceWorkspacePanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.authState.workspaceGuideAudience = 'new';
+    mocks.authState.setWorkspaceGuideAudience.mockClear();
     mocks.authState.dismissedWorkspaceGuideTabs = [];
     mocks.spaceState.projectsBySpaceId = {};
     mocks.spaceState.shouldSyncProjects.mockReturnValue(false);
@@ -383,6 +385,22 @@ describe('SpaceWorkspacePanel', () => {
     }
   );
 
+  it('reads a legacy-shaped history response as unavailable, not empty', async () => {
+    // `fetchGroupedHistoryProjects` resolves `null` when the response carried
+    // no `projects` field — the shape the legacy grouping path handles. Taken
+    // as an empty list it would claim a working Space has no Sessions at all.
+    const space = makeSpace('legacy-history');
+    setSingleSession(space.id);
+    mocks.fetchHistory.mockResolvedValue(null);
+
+    renderPanel(space);
+
+    expect(
+      await screen.findByText('Activity summary is temporarily unavailable.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText('0 Sessions')).not.toBeInTheDocument();
+  });
+
   it('clears file aggregates before a replacement source finishes loading', async () => {
     const firstSpace = makeSpace('bound-space', {
       sourceType: 'folder',
@@ -420,5 +438,26 @@ describe('SpaceWorkspacePanel', () => {
     await waitFor(() => {
       expect(screen.queryByText('1 file')).not.toBeInTheDocument();
     });
+  });
+
+  it('keeps runtime log entries out of the file breakdown', async () => {
+    // Brain returns `relative_path`, so the directory-based half of
+    // `filterVisibleAgentFiles` only works if the listing mirrors it onto
+    // `relativePath`. Without that, `camel_logs` entries are counted as files.
+    const space = makeSpace('runtime-files', {
+      sourceType: 'folder',
+      rootPath: '/tmp/runtime-files',
+    });
+    mocks.fetchGet.mockResolvedValue([
+      { filename: 'brief.pdf', relative_path: 'brief.pdf' },
+      { filename: 'run.log', relative_path: 'camel_logs/run.log' },
+    ]);
+
+    renderPanel(space);
+
+    expect(await screen.findByText('1 file')).toBeInTheDocument();
+    expect(screen.getByText('Documents')).toBeInTheDocument();
+    expect(screen.queryByText('Other')).not.toBeInTheDocument();
+    expect(screen.queryByText('2 files')).not.toBeInTheDocument();
   });
 });

@@ -12,7 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import type { Space } from '@/store/spaceStore';
+import {
+  hasSpaceScopedFileRoot,
+  type SpaceFileRootSource,
+} from '@/lib/spaceLabel';
 
 export type SpaceContentCategory =
   'Documents' | 'Code' | 'Data' | 'Media' | 'Other';
@@ -32,40 +35,6 @@ export const SPACE_CONTENT_CATEGORY_ORDER: SpaceContentCategory[] = [
  * this many" rather than an exact total.
  */
 export const SPACE_FILE_LISTING_LIMIT = 500;
-
-/**
- * Minimal Space shape the file-root helpers read, so callers can pass the
- * individual fields they already track without holding the whole object.
- */
-export type SpaceFileRootSource = Pick<Space, 'id'> &
-  Partial<Pick<Space, 'rootPath' | 'sourceType' | 'metadata'>>;
-
-export function hasUserBoundLocalFolder(
-  space: SpaceFileRootSource | null | undefined
-) {
-  if (!space) return false;
-  if (space.sourceType === 'folder') return true;
-  return (
-    space.metadata?.bindingSource === 'space_local_brain' &&
-    space.metadata?.localWorkspaceSource !== 'scratch_space'
-  );
-}
-
-/**
- * Whether Brain resolves this Space's files from one workspace root.
- *
- * `GET /files` resolves `space_id` through the workspace resolver: a bound
- * Space (user-picked folder or scratch workspace) returns the same root for
- * every `project_id`, so it must be listed once by Space id. Fanning out per
- * Project against a bound Space would list the same folder N times and count
- * every file N times.
- */
-export function hasSpaceScopedFileRoot(
-  space: SpaceFileRootSource | null | undefined
-) {
-  if (!space) return false;
-  return Boolean(space.rootPath) || hasUserBoundLocalFolder(space);
-}
 
 export type SpaceFileScope = 'space-root' | 'per-project';
 

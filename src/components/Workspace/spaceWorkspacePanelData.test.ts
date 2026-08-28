@@ -12,13 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { hasUserBoundLocalFolder } from '@/lib/spaceLabel';
 import type { Space } from '@/store/spaceStore';
 import { describe, expect, it } from 'vitest';
 import {
   categorizeSpaceFile,
   getSpaceAgeInDays,
   getSpaceSummaryVariantIndex,
-  hasUserBoundLocalFolder,
   resolveSpaceFileTargets,
 } from './spaceWorkspacePanelData';
 

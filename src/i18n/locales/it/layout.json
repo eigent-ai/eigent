@@ -1353,6 +1353,7 @@
   "workspace-onboarding-dismiss": "Nascondi {{label}}",
   "workspace-onboarding-dismissed": "Scorciatoia nascosta",
   "workspace-onboarding-dismiss-undo": "Annulla",
+  "workspace-onboarding-prompt-replaced": "Bozza sostituita",
   "workspace-overview-activity": "Attività",
   "workspace-overview-activity-empty": "L’attività verrà visualizzata dopo la prima Task.",
   "workspace-overview-summary-one": "Hai riunito <highlight>{{sessionCountLabel}}</highlight> e <highlight>{{taskCountLabel}}</highlight>, con <highlight>{{automationCountLabel}}</highlight> in <highlight>{{dayCountLabel}}</highlight>.",

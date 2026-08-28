@@ -1319,6 +1319,7 @@
   "workspace-onboarding-dismiss": "隱藏{{label}}",
   "workspace-onboarding-dismissed": "已隱藏快捷入口",
   "workspace-onboarding-dismiss-undo": "復原",
+  "workspace-onboarding-prompt-replaced": "草稿已取代",
   "workspace-overview-activity": "活動",
   "workspace-overview-activity-empty": "完成第一個 Task 後，活動將顯示在這裡。",
   "workspace-overview-summary-one": "在 <highlight>{{dayCountLabel}}</highlight>裡，你匯集了 <highlight>{{sessionCountLabel}}</highlight>、<highlight>{{taskCountLabel}}</highlight>和<highlight>{{automationCountLabel}}</highlight>。",

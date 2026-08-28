@@ -1336,6 +1336,7 @@
   "workspace-onboarding-dismiss": "{{label}} ausblenden",
   "workspace-onboarding-dismissed": "Verknüpfung ausgeblendet",
   "workspace-onboarding-dismiss-undo": "Rückgängig",
+  "workspace-onboarding-prompt-replaced": "Entwurf ersetzt",
   "workspace-overview-activity": "Aktivität",
   "workspace-overview-activity-empty": "Aktivität wird nach deinem ersten Task angezeigt.",
   "workspace-overview-summary-one": "In <highlight>{{dayCountLabel}}</highlight> hast du <highlight>{{sessionCountLabel}}</highlight>, <highlight>{{taskCountLabel}}</highlight> und <highlight>{{automationCountLabel}}</highlight> zusammengebracht.",

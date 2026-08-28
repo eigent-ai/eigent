@@ -1336,6 +1336,7 @@
   "workspace-onboarding-dismiss": "Hide {{label}}",
   "workspace-onboarding-dismissed": "Shortcut hidden",
   "workspace-onboarding-dismiss-undo": "Undo",
+  "workspace-onboarding-prompt-replaced": "Draft replaced",
   "workspace-overview-activity": "Activity",
   "workspace-overview-activity-empty": "Activity will appear after your first Task.",
   "workspace-overview-summary-one": "You've brought together <highlight>{{sessionCountLabel}}</highlight> and <highlight>{{taskCountLabel}}</highlight>, with <highlight>{{automationCountLabel}}</highlight> over <highlight>{{dayCountLabel}}</highlight>.",

@@ -1370,6 +1370,7 @@
   "workspace-onboarding-dismiss": "Скрыть {{label}}",
   "workspace-onboarding-dismissed": "Ярлык скрыт",
   "workspace-onboarding-dismiss-undo": "Отменить",
+  "workspace-onboarding-prompt-replaced": "Черновик заменён",
   "workspace-overview-activity": "Активность",
   "workspace-overview-activity-empty": "Активность появится после первой Task.",
   "workspace-overview-summary-one": "Итог за <highlight>{{dayCountLabel}}</highlight>: <highlight>{{sessionCountLabel}}</highlight>, <highlight>{{taskCountLabel}}</highlight> и <highlight>{{automationCountLabel}}</highlight>.",
