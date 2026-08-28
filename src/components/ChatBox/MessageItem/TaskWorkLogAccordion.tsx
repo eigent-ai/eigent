@@ -12,8 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import ShinyText from '@/components/ui/ShinyText/ShinyText';
 import { Badge } from '@/components/ui/badge';
+import ShinyText from '@/components/ui/ShinyText/ShinyText';
 import { agentMap, type WorkflowAgentType } from '@/components/WorkFlow/agents';
 import { cn } from '@/lib/utils';
 import type {

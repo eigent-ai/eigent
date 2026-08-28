@@ -94,9 +94,7 @@ export function SearchSettingsPanel({
     setConfigs(list);
     setFormData(nextFormData);
     setQueritEnabled((current) =>
-      queritSelectionTouched.current
-        ? current
-        : isQueritSearchEnabled(list)
+      queritSelectionTouched.current ? current : isQueritSearchEnabled(list)
     );
   }, []);
 
@@ -231,12 +229,7 @@ export function SearchSettingsPanel({
               }))
             }
           />
-          <Button
-            asChild
-            variant="text"
-            size="xs"
-            className="mt-ds-2 px-0"
-          >
+          <Button asChild variant="text" size="xs" className="mt-ds-2 px-0">
             <a
               href={QUERIT_PARTNER_URL}
               target="_blank"

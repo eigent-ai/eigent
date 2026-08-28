@@ -1018,10 +1018,8 @@ describe('buildProjectSessionPanelData', () => {
     };
 
     expect(
-      buildProjectSessionPanelData(
-        [makeRun('run-current', true, [search])],
-        []
-      ).resources
+      buildProjectSessionPanelData([makeRun('run-current', true, [search])], [])
+        .resources
     ).toMatchObject([
       { url: 'https://example.com/news', historical: false },
       { url: 'https://docs.example.com/releases', historical: false },
