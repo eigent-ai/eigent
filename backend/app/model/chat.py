@@ -211,6 +211,16 @@ class SupplementChat(BaseModel):
     task_id: str | None = None
     attaches: list[str] = []
     project_context: str | None = None
+    # Optional model override for follow-up turns. When the user switches the
+    # model mid-conversation, the client sends the new selection here so the
+    # backend can rebuild the agent instead of reusing the original one.
+    model_platform: NormalizedOptionalModelPlatform = None
+    model_type: str | None = None
+    api_key: str | None = None
+    api_url: str | None = None
+    auth_source: Literal["codex_subscription"] | None = None
+    model_config_dict: dict[str, Any] | None = None
+    extra_params: dict | None = None
 
 
 class HumanReply(BaseModel):

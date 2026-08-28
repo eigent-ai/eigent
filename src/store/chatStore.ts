@@ -1246,6 +1246,128 @@ const updateTriggerExecutionStatus = async (
   }
 };
 
+/**
+ * Resolve the currently selected model for a Project so it can be sent with a
+ * follow-up (improve) request. This honors a model pinned on the Project (from
+ * the last conversation) and falls back to the user's global defaults, matching
+ * the resolution that `startTask` uses when starting a new conversation.
+ *
+ * Returns the model request fields the backend needs to rebuild the agent, or
+ * `null` when the model cannot be determined.
+ */
+export async function resolveChatModelForProject(
+  projectId: string | null
+): Promise<null | {
+  model_platform: string;
+  model_type: string;
+  api_key: string;
+  api_url?: string;
+  auth_source?: 'codex_subscription';
+  model_config_dict?: Record<string, unknown>;
+  extra_params?: Record<string, unknown>;
+}> {
+  const projectStore = useProjectStore.getState();
+  const authStore = getAuthStore();
+
+  const pinnedModelSelection = projectId
+    ? projectStore.getProjectModel(projectId)
+    : null;
+  const effectiveModelType =
+    pinnedModelSelection?.modelType ?? authStore.modelType;
+
+  if (effectiveModelType === 'custom' || effectiveModelType === 'local') {
+    let provider: any = null;
+    if (pinnedModelSelection?.provider_id !== undefined) {
+      try {
+        const res = await proxyFetchGet('/api/v1/providers');
+        const providerList = Array.isArray(res) ? res : res.items || [];
+        provider =
+          providerList.find(
+            (p: { id: number }) => p.id === pinnedModelSelection.provider_id
+          ) || null;
+      } catch (error) {
+        console.error('Failed to load pinned model provider:', error);
+      }
+    }
+    if (!provider) {
+      const res = await proxyFetchGet('/api/v1/providers', {
+        prefer: true,
+      });
+      const providerList = res.items || [];
+      provider = providerList[0];
+    }
+    if (!provider) {
+      return null;
+    }
+    const { modelConfigDict, extraParams } = splitProviderConfig(
+      provider.encrypted_config
+    );
+    return {
+      api_key: provider.api_key,
+      model_type: provider.model_type,
+      model_platform: provider.provider_name,
+      api_url: provider.endpoint_url || provider.api_url,
+      model_config_dict: modelConfigDict,
+      extra_params: extraParams,
+      auth_source: undefined,
+    };
+  }
+
+  if (effectiveModelType === 'cloud') {
+    const requestedCloudModelId =
+      pinnedModelSelection?.cloud_model_type || authStore.cloud_model_type;
+    const cloudModelStore = getCloudModelStore();
+    let resolvedCloudModel = cloudModelStore.resolveCloudModel(
+      requestedCloudModelId
+    );
+    if (!resolvedCloudModel || resolvedCloudModel.source !== 'selected') {
+      await cloudModelStore.fetchCloudModels(true);
+      resolvedCloudModel = getCloudModelStore().resolveCloudModel(
+        requestedCloudModelId
+      );
+    }
+    if (!resolvedCloudModel) {
+      return null;
+    }
+    let res: any;
+    try {
+      res = await proxyFetchGet('/api/v1/user/key');
+    } catch (error) {
+      return null;
+    }
+    if (!res?.value) {
+      return null;
+    }
+    return {
+      api_key: res.value,
+      model_type: resolvedCloudModel.model.model_type,
+      model_platform: resolvedCloudModel.model.model_platform,
+      api_url: res.api_url,
+      model_config_dict: {},
+      extra_params: {},
+      auth_source: undefined,
+    };
+  }
+
+  if (effectiveModelType === 'codex_subscription') {
+    const codexModelId =
+      pinnedModelSelection?.codex_model_type ||
+      authStore.codex_model_type ||
+      'gpt-5.5';
+    return {
+      api_key: '',
+      model_type: codexModelId,
+      model_platform: 'openai',
+      api_url: '',
+      model_config_dict: {},
+      extra_params: {},
+      auth_source: 'codex_subscription',
+    };
+  }
+
+  return null;
+}
+
 const chatStore = (initial?: Partial<ChatStore>) =>
   createStore<ChatStore>()((set, get) => ({
     activeTaskId: null,
