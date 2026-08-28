@@ -344,6 +344,8 @@ and inset behavior. Validation tone is independent from interaction state.
 ### Tags, badges, rows, menus, and overlays
 
 - Tags and badges are pills using `text.meta`; tone conveys meaning.
+- Tag `variant="text"` is the unpadded inline form: no fill, border, or
+  padding, with `gap-1` between the leading mark, label, and value.
 - Default menu and product rows are at least 36px; compact rows are 28px.
 - Cards use `radius-card` and either a boundary or elevation according to
   hierarchy, not both by habit.

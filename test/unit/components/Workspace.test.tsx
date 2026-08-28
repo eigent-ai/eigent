@@ -14,12 +14,20 @@
 
 import Workspace from '@/components/Workspace';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
+  type WorkspaceGuideTabId = 'primary' | 'connect-tools' | 'use-cases';
+
   const oldSetAttaches = vi.fn();
   const newSetAttaches = vi.fn();
   const newStartTask = vi.fn().mockResolvedValue(undefined);
@@ -65,15 +73,24 @@ const mocks = vi.hoisted(() => {
       getState: () => newChatState,
     })),
   };
+  const spaces: Record<
+    string,
+    {
+      id: string;
+      sourceType: 'blank';
+      status: 'active';
+      metadata?: { legacy?: boolean };
+    }
+  > = {
+    'space-1': {
+      id: 'space-1',
+      sourceType: 'blank',
+      status: 'active',
+    },
+  };
   const spaceState = {
     activeSpaceId: 'space-1',
-    spaces: {
-      'space-1': {
-        id: 'space-1',
-        sourceType: 'blank',
-        status: 'active',
-      },
-    },
+    spaces,
     projectsBySpaceId: {},
     getProjectMeta: vi.fn(() => null),
     setActiveSpace: vi.fn(),
@@ -84,8 +101,43 @@ const mocks = vi.hoisted(() => {
     customAgentFolderPathByProjectId: {},
     setActiveWorkspaceTab: vi.fn(),
   };
+  const authState = {
+    email: 'user@example.com',
+    user_id: 1,
+    modelType: 'local',
+    workspaceGuideAudience: 'new' as 'new' | 'existing',
+    dismissedWorkspaceGuideTabs: [] as WorkspaceGuideTabId[],
+    dismissWorkspaceGuideTab: vi.fn<(tabId: WorkspaceGuideTabId) => void>(),
+    restoreWorkspaceGuideTabs:
+      vi.fn<(tabIds?: WorkspaceGuideTabId[]) => void>(),
+    setWorkerList: vi.fn(),
+    setWorkspaceGuideAudience: vi.fn(),
+  };
+  authState.dismissWorkspaceGuideTab.mockImplementation((tabId) => {
+    if (!authState.dismissedWorkspaceGuideTabs.includes(tabId)) {
+      authState.dismissedWorkspaceGuideTabs = [
+        ...authState.dismissedWorkspaceGuideTabs,
+        tabId,
+      ];
+    }
+  });
+  authState.restoreWorkspaceGuideTabs.mockImplementation((tabIds) => {
+    authState.dismissedWorkspaceGuideTabs = tabIds
+      ? authState.dismissedWorkspaceGuideTabs.filter(
+          (tabId) => !tabIds.includes(tabId)
+        )
+      : [];
+  });
+
+  const toastCalls: Array<{ action?: { onClick: () => void } }> = [];
+  const toastError = vi.fn();
+  const openExternal = vi.fn();
 
   return {
+    authState,
+    openExternal,
+    toastCalls,
+    toastError,
     newChatState,
     newStartTask,
     newSetAttaches,
@@ -95,6 +147,21 @@ const mocks = vi.hoisted(() => {
     projectState,
     spaceState,
   };
+});
+
+vi.mock('sonner', () => {
+  const toast = Object.assign(
+    (_message: string, options?: { action?: { onClick: () => void } }) => {
+      mocks.toastCalls.push({ action: options?.action });
+      return 'toast-id';
+    },
+    {
+      error: mocks.toastError,
+      success: vi.fn(),
+      dismiss: vi.fn(),
+    }
+  );
+  return { toast };
 });
 
 vi.mock('@/hooks/useChatStoreAdapter', () => ({
@@ -109,7 +176,9 @@ vi.mock('@/hooks/useModelConfigCheck', () => ({
 }));
 
 vi.mock('@/host', () => ({
-  useHost: () => ({ electronAPI: {} }),
+  useHost: () => ({
+    electronAPI: { openExternal: mocks.openExternal },
+  }),
 }));
 
 vi.mock('@/store/authStore', () => ({
@@ -117,10 +186,8 @@ vi.mock('@/store/authStore', () => ({
     language: 'en',
     setLanguage: vi.fn(),
   }),
-  useAuthStore: () => ({
-    modelType: 'local',
-    setWorkerList: vi.fn(),
-  }),
+  useAuthStore: (selector?: (state: typeof mocks.authState) => unknown) =>
+    selector ? selector(mocks.authState) : mocks.authState,
   useWorkerList: () => [],
 }));
 
@@ -219,7 +286,29 @@ const renderWorkspace = (props: ComponentProps<typeof Workspace> = {}) =>
 describe('Workspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.spaceState.activeSpaceId = 'space-1';
+    delete mocks.spaceState.spaces['space-1'].metadata;
+    delete mocks.spaceState.spaces['space-2'];
     mocks.spaceState.projectsBySpaceId = {};
+    mocks.authState.workspaceGuideAudience = 'new';
+    mocks.authState.dismissedWorkspaceGuideTabs = [];
+    mocks.toastCalls.length = 0;
+    mocks.openExternal.mockResolvedValue({ success: true });
+    mocks.authState.dismissWorkspaceGuideTab.mockImplementation((tabId) => {
+      if (!mocks.authState.dismissedWorkspaceGuideTabs.includes(tabId)) {
+        mocks.authState.dismissedWorkspaceGuideTabs = [
+          ...mocks.authState.dismissedWorkspaceGuideTabs,
+          tabId,
+        ];
+      }
+    });
+    mocks.authState.restoreWorkspaceGuideTabs.mockImplementation((tabIds) => {
+      mocks.authState.dismissedWorkspaceGuideTabs = tabIds
+        ? mocks.authState.dismissedWorkspaceGuideTabs.filter(
+            (tabId) => !tabIds.includes(tabId)
+          )
+        : [];
+    });
     vi.mocked(createSyncedProjectInSpace).mockResolvedValue({
       projectId: 'new-project',
       spaceId: 'space-1',
@@ -332,6 +421,208 @@ describe('Workspace', () => {
     );
   });
 
+  it('shows three onboarding actions and fills the personalised guide prompt', () => {
+    renderWorkspace();
+
+    const panel = screen.getByRole('complementary', {
+      name: 'Space workspace information',
+    });
+    expect(panel.parentElement).toHaveAttribute(
+      'data-space-workspace-panel-container'
+    );
+    expect(panel.parentElement).toHaveClass('contents');
+    expect(panel.parentElement).not.toHaveClass('hidden');
+    const onboarding = within(panel);
+
+    const guideTabs = [
+      ...panel.querySelectorAll<HTMLElement>('[data-workspace-guide-tab]'),
+    ];
+    expect(
+      guideTabs.map((tab) => tab.getAttribute('data-workspace-guide-tab'))
+    ).toEqual(['primary', 'connect-tools', 'use-cases']);
+    expect(
+      onboarding.getByRole('button', { name: 'Show me how to use Eigent' })
+    ).toBeInTheDocument();
+    expect(
+      onboarding.getByRole('button', { name: 'Connect tools' })
+    ).toBeInTheDocument();
+    expect(
+      onboarding.getByRole('button', { name: 'Explore use cases' })
+    ).toBeInTheDocument();
+    expect(
+      onboarding.queryByRole('button', {
+        name: 'Add local folder as context',
+      })
+    ).not.toBeInTheDocument();
+    expect(
+      onboarding.queryByRole('heading', { name: 'Get started' })
+    ).not.toBeInTheDocument();
+    const activityHeading = onboarding.getByRole('heading', {
+      name: 'Activity',
+    });
+    const filesHeading = onboarding.getByRole('heading', {
+      name: 'Files',
+    });
+    expect(guideTabs[0]).toAppearBefore(activityHeading);
+    expect(activityHeading).toAppearBefore(filesHeading);
+    expect(activityHeading.closest('section')).toHaveClass(
+      'border-t',
+      'py-ds-16'
+    );
+    expect(filesHeading.closest('section')).toHaveClass('border-t');
+    // Brain resolves a bound Space and an unbound one to different roots, so
+    // the Files card says which binding the counts came from.
+    expect(onboarding.getByText('Unbound')).toBeInTheDocument();
+
+    const closeButton = onboarding.getByRole('button', {
+      name: 'Hide Show me how to use Eigent',
+    });
+    expect(closeButton).toHaveClass(
+      'top-1/2',
+      'right-ds-8',
+      '-translate-y-1/2',
+      '!size-[var(--ds-button-sm-height)]',
+      'opacity-0',
+      'group-hover:opacity-100',
+      'group-focus-within:opacity-100'
+    );
+
+    fireEvent.click(
+      onboarding.getByRole('button', { name: 'Show me how to use Eigent' })
+    );
+
+    expect(screen.getByLabelText('workspace-message')).toHaveValue(
+      'Ask me 1–2 questions about who I am and what I do, then suggest how Eigent can help with one of my tasks and create a personalised interactive HTML guide with a ready-to-use prompt.'
+    );
+  });
+
+  it('uses the release-report prompt for existing users', () => {
+    mocks.authState.workspaceGuideAudience = 'existing';
+    renderWorkspace();
+
+    expect(
+      screen.queryByRole('button', { name: 'Show me how to use Eigent' })
+    ).not.toBeInTheDocument();
+    const whatsNewButton = screen.getByRole('button', {
+      name: "What's new about Eigent",
+    });
+    expect(
+      whatsNewButton.querySelector('.lucide-megaphone')
+    ).toBeInTheDocument();
+    fireEvent.click(whatsNewButton);
+
+    expect(screen.getByLabelText('workspace-message')).toHaveValue(
+      'Search for the latest Eigent release blog and summarise it in a short introduction.'
+    );
+  });
+
+  it('shows an error toast when Explore use cases IPC rejects', async () => {
+    const error = new Error('IPC unavailable');
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    mocks.openExternal.mockRejectedValueOnce(error);
+    renderWorkspace();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Explore use cases' }));
+
+    await waitFor(() => {
+      expect(mocks.toastError).toHaveBeenCalledWith('Unable to open this URL');
+    });
+    expect(mocks.openExternal).toHaveBeenCalledWith(
+      'https://www.eigent.ai/use-cases'
+    );
+    expect(consoleError).toHaveBeenCalledWith(
+      'Failed to open external URL:',
+      error
+    );
+    consoleError.mockRestore();
+  });
+
+  it('opens the Files workspace tab from the Files title', () => {
+    renderWorkspace();
+
+    fireEvent.click(screen.getByRole('link', { name: 'Files' }));
+
+    expect(mocks.pageState.setActiveWorkspaceTab).toHaveBeenCalledWith('files');
+  });
+
+  it('keeps overview actions but hides the prompt shortcut for legacy Spaces', () => {
+    mocks.spaceState.spaces['space-1'].metadata = { legacy: true };
+    renderWorkspace();
+
+    const panel = screen.getByRole('complementary', {
+      name: 'Space workspace information',
+    });
+    const overview = within(panel);
+
+    expect(
+      overview.queryByRole('button', { name: 'Show me how to use Eigent' })
+    ).not.toBeInTheDocument();
+    expect(
+      overview.getByRole('button', { name: 'Connect tools' })
+    ).toBeInTheDocument();
+    expect(
+      overview.getByRole('button', { name: 'Explore use cases' })
+    ).toBeInTheDocument();
+    expect(
+      overview.getByRole('heading', { name: 'Activity' })
+    ).toBeInTheDocument();
+    expect(
+      overview.getByRole('heading', { name: 'Files' })
+    ).toBeInTheDocument();
+  });
+
+  it('offers an undo that brings a dismissed guide tab back', () => {
+    renderWorkspace();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Hide Show me how to use Eigent' })
+    );
+    expect(mocks.authState.dismissedWorkspaceGuideTabs).toEqual(['primary']);
+
+    const undo = mocks.toastCalls.at(-1)?.action;
+    expect(undo).toBeDefined();
+    undo?.onClick();
+
+    expect(mocks.authState.restoreWorkspaceGuideTabs).toHaveBeenCalledWith([
+      'primary',
+    ]);
+    expect(mocks.authState.dismissedWorkspaceGuideTabs).toEqual([]);
+  });
+
+  it('keeps a dismissed guide tab hidden when another Space opens', () => {
+    const firstSpace = renderWorkspace();
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Hide Show me how to use Eigent',
+      })
+    );
+    expect(mocks.authState.dismissWorkspaceGuideTab).toHaveBeenCalledWith(
+      'primary'
+    );
+
+    firstSpace.unmount();
+    mocks.spaceState.spaces['space-2'] = {
+      id: 'space-2',
+      sourceType: 'blank',
+      status: 'active',
+    };
+    mocks.spaceState.activeSpaceId = 'space-2';
+    renderWorkspace();
+
+    expect(
+      screen.queryByRole('button', { name: 'Show me how to use Eigent' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Connect tools' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Explore use cases' })
+    ).toBeInTheDocument();
+  });
+
   it('uses one left-aligned Cowork row without the Space switch above BottomBox', () => {
     const { container } = renderWorkspace();
 
@@ -349,7 +640,12 @@ describe('Workspace', () => {
     expect(coworkLabel).toHaveClass('text-ds-text-display', 'font-display');
     expect(singleAgentLabel).toHaveClass(
       'text-ds-text-display',
-      'font-display'
+      'font-display',
+      '@max-[599px]/workspace-composer:hidden'
+    );
+    expect(container.querySelector('[data-workspace-composer]')).toHaveClass(
+      '@container/workspace-composer',
+      'max-w-[600px]'
     );
     expect(workspaceHeader).toHaveClass('flex-1', 'items-center', 'gap-0');
     expect(inputSection).toHaveClass('items-center', 'p-4');
@@ -411,6 +707,21 @@ describe('Workspace', () => {
     renderWorkspace({ sessionMode: 'workforce' });
 
     expect(screen.queryByText('Single Agent')).not.toBeInTheDocument();
+  });
+
+  it('hides the Single Agent label when the composer is below its max width', () => {
+    renderWorkspace({ sessionMode: 'single-agent' });
+
+    const composer = document.querySelector('[data-workspace-composer]');
+    const singleAgentLabel = screen.getByText('Single Agent');
+
+    expect(composer).toHaveClass(
+      '@container/workspace-composer',
+      'max-w-[600px]'
+    );
+    expect(singleAgentLabel).toHaveClass(
+      '@max-[599px]/workspace-composer:hidden'
+    );
   });
 
   it('guards against duplicate submissions while project creation is pending', async () => {

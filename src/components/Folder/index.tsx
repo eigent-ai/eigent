@@ -87,7 +87,10 @@ import {
   injectPreviewContentSecurityPolicy,
   repairGeneratedReportBraces,
 } from '@/lib/htmlSanitization';
-import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
+import {
+  hasSpaceScopedFileRoot,
+  isLocalWorkspaceSpace,
+} from '@/lib/spaceLabel';
 import { cn } from '@/lib/utils';
 import {
   normalizeWorkspaceRelativePath,
@@ -1186,8 +1189,13 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
   );
   const projectId = (activeProjectId as string) || activeTaskId || '';
   const fileSpaceId = resolvedSpaceId;
-  const useBrainWorkspaceFiles = Boolean(fileSpaceId && activeSpace?.rootPath);
-  const useSpaceScopedRemoteFiles = !isLocalWorkspaceSpace(activeSpace);
+  // `hasSpaceScopedFileRoot` rather than a local rule: the Space rail counts
+  // files with the same predicate, and the two surfaces listed different ids
+  // for a Brain-bound Space that carries no local `rootPath`.
+  const useBrainWorkspaceFiles = Boolean(
+    fileSpaceId && hasSpaceScopedFileRoot(activeSpace)
+  );
+  const useSpaceScopedRemoteFiles = !hasSpaceScopedFileRoot(activeSpace);
   const projectFetchTargets: ProjectFetchTarget[] = useMemo(() => {
     if (useSpaceScopedRemoteFiles && fileSpaceId) {
       const targets = spaceProjects.length

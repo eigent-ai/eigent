@@ -17,11 +17,16 @@ import BottomBox, { type FileAttachment } from '@/components/ChatBox/BottomBox';
 import { BASE_WORKFLOW_AGENTS } from '@/components/WorkFlow/baseWorkers';
 import { isBaseWorkflowAgent } from '@/components/Workspace/FoldedAgentCard';
 import { SingleAgentList } from '@/components/Workspace/SingleAgentList';
+import { SpaceWorkspacePanel } from '@/components/Workspace/SpaceWorkspacePanel';
 import { WorkforceAgentList } from '@/components/Workspace/WorkforceAgentList';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useHost } from '@/host';
-import { isLegacySpace, isLocalWorkspaceSpace } from '@/lib/spaceLabel';
+import {
+  hasUserBoundLocalFolder,
+  isLegacySpace,
+  isLocalWorkspaceSpace,
+} from '@/lib/spaceLabel';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -34,6 +39,33 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 const EMPTY_TASK_ASSIGNING: Agent[] = [];
+/**
+ * Viewport width at which the Space rail appears — kept in step with the `lg`
+ * breakpoint that used to hide it in CSS alone. Mounting is gated on this
+ * rather than `hidden lg:contents` because `display: none` still runs the
+ * rail's grouped-history, trigger-paging, and `/files` requests.
+ */
+const SPACE_RAIL_MIN_VIEWPORT_WIDTH = 1024;
+
+function useHasSpaceRailRoom() {
+  const [hasRoom, setHasRoom] = useState(
+    () =>
+      typeof window === 'undefined' ||
+      window.innerWidth >= SPACE_RAIL_MIN_VIEWPORT_WIDTH
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const update = () =>
+      setHasRoom(window.innerWidth >= SPACE_RAIL_MIN_VIEWPORT_WIDTH);
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
+  return hasRoom;
+}
+
 const WORKSPACE_COWORK_TEXT_CLASS =
   'inline-flex shrink-0 items-center font-display text-ds-text-display font-semibold text-ds-ink-default-default';
 
@@ -104,6 +136,80 @@ export default function Workspace({
   );
 
   const textareaRef = useRef<HTMLDivElement>(null);
+  const hasSpaceRailRoom = useHasSpaceRailRoom();
+
+  const handleUsePrompt = useCallback(
+    (prompt: string) => {
+      const replacedDraft = message;
+      setMessage(prompt);
+      window.requestAnimationFrame(() => textareaRef.current?.focus());
+      if (!replacedDraft.trim()) return;
+      // The guide tiles sit beside the composer, so a draft can already be in
+      // flight when one is clicked. Honour the click, but back it with the
+      // same Undo affordance the guide dismissal uses.
+      const toastId = toast(
+        t('layout.workspace-onboarding-prompt-replaced', {
+          defaultValue: 'Draft replaced',
+        }),
+        {
+          action: {
+            label: t('layout.workspace-onboarding-dismiss-undo', {
+              defaultValue: 'Undo',
+            }),
+            onClick: () => {
+              setMessage(replacedDraft);
+              toast.dismiss(toastId);
+            },
+          },
+        }
+      );
+    },
+    [message, t]
+  );
+
+  const handleExploreUseCases = useCallback(() => {
+    const url = 'https://www.eigent.ai/use-cases';
+    const openExternal = host?.electronAPI?.openExternal;
+    if (openExternal) {
+      void openExternal(url)
+        .then((result: { success: boolean; error?: string }) => {
+          if (result?.success === false) {
+            toast.error(
+              result.error ||
+                t('layout.browser-unable-to-open-url', {
+                  defaultValue: 'Unable to open this URL',
+                })
+            );
+          }
+        })
+        .catch((error: unknown) => {
+          console.error('Failed to open external URL:', error);
+          toast.error(
+            t('layout.browser-unable-to-open-url', {
+              defaultValue: 'Unable to open this URL',
+            })
+          );
+        });
+      return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }, [host, t]);
+
+  const handleOpenSpaceFolder = useCallback(async () => {
+    if (!activeSpace?.rootPath || !host?.ipcRenderer) return;
+    try {
+      const result = await host.ipcRenderer.invoke(
+        'reveal-in-folder',
+        activeSpace.rootPath
+      );
+      if (!result?.success) {
+        toast.error(result?.error || t('chat.failed-to-open-folder'));
+      }
+    } catch (error) {
+      console.error('Failed to open Space folder:', error);
+      toast.error(t('chat.failed-to-open-folder'));
+    }
+  }, [activeSpace?.rootPath, host, t]);
 
   useEffect(() => {
     if (workspaceChatFocusRequestId === 0) return;
@@ -375,7 +481,7 @@ export default function Workspace({
         {effectiveSessionMode === SessionMode.SINGLE_AGENT ? (
           <span
             data-workspace-single-agent-label
-            className={WORKSPACE_COWORK_TEXT_CLASS}
+            className={`${WORKSPACE_COWORK_TEXT_CLASS} @max-[599px]/workspace-composer:hidden`}
           >
             {t('layout.workspace-session-single-agent', {
               defaultValue: 'Single Agent',
@@ -438,13 +544,41 @@ export default function Workspace({
             data-workspace-input-section
             className="flex min-w-0 flex-1 items-center justify-center p-4"
           >
-            <div className="flex w-full max-w-[600px] min-w-0 flex-col pb-[58px]">
+            <div
+              data-workspace-composer
+              className="@container/workspace-composer flex w-full max-w-[600px] min-w-0 flex-col pb-[58px]"
+            >
               {workspaceComposerTop}
               {composerInput}
             </div>
           </div>
         </section>
       </div>
+      {!embedded &&
+      variant === 'workspace' &&
+      activeSpace &&
+      hasSpaceRailRoom ? (
+        <div data-space-workspace-panel-container className="contents">
+          <SpaceWorkspacePanel
+            key={activeSpace.id}
+            space={activeSpace}
+            canUsePrompt={!isLegacyActiveSpace}
+            onUsePrompt={handleUsePrompt}
+            onConnectApp={() => openSettings('connectors')}
+            onExploreUseCases={handleExploreUseCases}
+            onOpenFiles={() => setActiveWorkspaceTab('files')}
+            canOpenFolder={Boolean(
+              activeSpace.rootPath &&
+              host?.ipcRenderer &&
+              // The rail already refuses to treat a generated scratch
+              // workspace as a user folder; revealing one in Finder would
+              // contradict that.
+              hasUserBoundLocalFolder(activeSpace)
+            )}
+            onOpenFolder={() => void handleOpenSpaceFolder()}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

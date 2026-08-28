@@ -28,6 +28,12 @@ import type { Mode, ThemeCatalog, ThemeSeed } from '@/lib/themeTokens/types';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useSpaceStore } from './spaceStore';
+import {
+  resolveWorkspaceGuideAudience,
+  sanitizeDismissedWorkspaceGuideTabs,
+  type WorkspaceGuideAudience,
+  type WorkspaceGuideTabId,
+} from './workspaceGuidePreferences';
 
 // type definition
 type InitState = 'carousel' | 'done';
@@ -38,12 +44,7 @@ const LEGACY_DEFAULT_CLOUD_MODEL_ID = 'gpt-5.5';
 
 /** Main workspace panel background (Workforce + Session tabs only). */
 export type WorkspaceMainBackground =
-  | 'empty'
-  | 'dots'
-  | 'blocks'
-  | 'ruled'
-  | 'dotted'
-  | 'dashed';
+  'empty' | 'dots' | 'blocks' | 'ruled' | 'dotted' | 'dashed';
 export type CloudModelType = string;
 export type CodexSubscriptionModelType = string;
 
@@ -73,6 +74,8 @@ interface AuthState {
   language: string;
   isFirstLaunch: boolean;
   onboardingCompleted: boolean;
+  workspaceGuideAudience: WorkspaceGuideAudience;
+  dismissedWorkspaceGuideTabs: WorkspaceGuideTabId[];
   modelType: ModelType;
   cloud_model_type: CloudModelType;
   codex_model_type: CodexSubscriptionModelType;
@@ -127,6 +130,9 @@ interface AuthState {
   setHasModelConfigured: (hasModelConfigured: boolean) => void;
   setIsFirstLaunch: (isFirstLaunch: boolean) => void;
   setOnboardingCompleted: (completed: boolean) => void;
+  setWorkspaceGuideAudience: (audience: WorkspaceGuideAudience) => void;
+  dismissWorkspaceGuideTab: (tabId: WorkspaceGuideTabId) => void;
+  restoreWorkspaceGuideTabs: (tabIds?: WorkspaceGuideTabId[]) => void;
   setPreferredIDE: (ide: PreferredIDE) => void;
   setWorkspaceMainBackground: (value: WorkspaceMainBackground) => void;
 
@@ -222,6 +228,8 @@ const authStore = create<AuthState>()(
       language: 'system',
       isFirstLaunch: true,
       onboardingCompleted: false,
+      workspaceGuideAudience: 'new',
+      dismissedWorkspaceGuideTabs: [],
       modelType: 'cloud',
       cloud_model_type: getRandomDefaultModel(),
       codex_model_type: 'gpt-5.5',
@@ -377,7 +385,39 @@ const authStore = create<AuthState>()(
       setIsFirstLaunch: (isFirstLaunch) => set({ isFirstLaunch }),
 
       setOnboardingCompleted: (onboardingCompleted) =>
-        set({ onboardingCompleted }),
+        set((state) => ({
+          onboardingCompleted,
+          // Finishing onboarding is the moment a first-time user becomes a
+          // returning one; nothing else ever moved the audience off its
+          // 'new' default.
+          workspaceGuideAudience: onboardingCompleted
+            ? 'existing'
+            : state.workspaceGuideAudience,
+        })),
+
+      setWorkspaceGuideAudience: (workspaceGuideAudience) =>
+        set({ workspaceGuideAudience }),
+
+      dismissWorkspaceGuideTab: (tabId) =>
+        set((state) => ({
+          dismissedWorkspaceGuideTabs:
+            state.dismissedWorkspaceGuideTabs.includes(tabId)
+              ? state.dismissedWorkspaceGuideTabs
+              : [...state.dismissedWorkspaceGuideTabs, tabId],
+        })),
+
+      /** Undo a dismissal; with no argument, brings every guide tab back. */
+      restoreWorkspaceGuideTabs: (tabIds) =>
+        set((state) => {
+          if (!tabIds) return { dismissedWorkspaceGuideTabs: [] };
+          const restoring = new Set(tabIds);
+          return {
+            dismissedWorkspaceGuideTabs:
+              state.dismissedWorkspaceGuideTabs.filter(
+                (tabId) => !restoring.has(tabId)
+              ),
+          };
+        }),
 
       setPreferredIDE: (preferredIDE) => set({ preferredIDE }),
 
@@ -429,9 +469,9 @@ const authStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
-      // Bump so migrate re-runs for existing sessions that still need the
-      // user-id repair; a matching version skips migrate and stays unrepaired.
-      version: 11,
+      // Matching versions skip migration, so bump when persisted defaults or
+      // compatibility repairs change.
+      version: 12,
       migrate: (persistedState, _version) => {
         const s = persistedState as
           | {
@@ -448,6 +488,10 @@ const authStore = create<AuthState>()(
               workspaceMainBackground?: string;
               cloud_model_type?: unknown;
               codex_model_type?: unknown;
+              isFirstLaunch?: unknown;
+              onboardingCompleted?: unknown;
+              workspaceGuideAudience?: unknown;
+              dismissedWorkspaceGuideTabs?: unknown;
             }
           | undefined;
         if (!s) return persistedState as typeof persistedState;
@@ -507,6 +551,10 @@ const authStore = create<AuthState>()(
           light: s.customThemeCatalog?.light ?? {},
           dark: s.customThemeCatalog?.dark ?? {},
         };
+        const workspaceGuideAudience = resolveWorkspaceGuideAudience(s);
+        const dismissedWorkspaceGuideTabs = sanitizeDismissedWorkspaceGuideTabs(
+          s.dismissedWorkspaceGuideTabs
+        );
 
         if (s.appearance === 'transparent') {
           return {
@@ -518,6 +566,8 @@ const authStore = create<AuthState>()(
             workspaceMainBackground,
             cloud_model_type: sanitizedCloudModelType,
             codex_model_type: sanitizedCodexModelType,
+            workspaceGuideAudience,
+            dismissedWorkspaceGuideTabs,
             authEnvironmentKey: currentEnvironmentKey,
           };
         }
@@ -530,6 +580,8 @@ const authStore = create<AuthState>()(
           workspaceMainBackground,
           cloud_model_type: sanitizedCloudModelType,
           codex_model_type: sanitizedCodexModelType,
+          workspaceGuideAudience,
+          dismissedWorkspaceGuideTabs,
           authEnvironmentKey: currentEnvironmentKey,
         } as typeof persistedState;
       },
@@ -551,6 +603,8 @@ const authStore = create<AuthState>()(
         initState: state.initState,
         isFirstLaunch: state.isFirstLaunch,
         onboardingCompleted: state.onboardingCompleted,
+        workspaceGuideAudience: state.workspaceGuideAudience,
+        dismissedWorkspaceGuideTabs: state.dismissedWorkspaceGuideTabs,
         preferredIDE: state.preferredIDE,
         workspaceMainBackground: state.workspaceMainBackground,
         localProxyValue: state.localProxyValue,

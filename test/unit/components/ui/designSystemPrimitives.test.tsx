@@ -68,6 +68,23 @@ describe('design-system primitive foregrounds', () => {
     expect(screen.getByText('Badge label')).toHaveClass('!text-ds-text-meta');
   });
 
+  it('renders the text tag variant without pill padding', () => {
+    render(<Tag size="xs" variant="text" text="Legend label" />);
+
+    const tag = screen
+      .getByText('Legend label')
+      .closest('[data-variant="text"]');
+
+    expect(tag).toHaveClass(
+      'gap-1',
+      '!p-0',
+      '!border-0',
+      '!border-x-0',
+      '!border-y-0'
+    );
+    expect(tag).not.toHaveClass('!px-2');
+  });
+
   it('keeps the default tab ring on a flex outer wrapper', () => {
     render(
       <Tabs defaultValue="summary">
