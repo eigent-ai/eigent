@@ -21,6 +21,7 @@ import {
   Menu,
   nativeTheme,
   protocol,
+  screen,
   session,
   shell,
 } from 'electron';
@@ -34,9 +35,43 @@ import fs, { existsSync } from 'node:fs';
 import http from 'node:http';
 import os, { homedir } from 'node:os';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import kill from 'tree-kill';
+import {
+  APP_COMMAND_CHANNEL,
+  APP_COMMAND_HANDLED_CHANNEL,
+  APP_SHELL_NOT_READY_CHANNEL,
+  APP_SHELL_READY_CHANNEL,
+  APP_SHELL_READY_PROBE_CHANNEL,
+  isAppCommandHandled,
+  isAppShellLifecycleMessage,
+  type AppCommandId,
+} from '../../src/shared/appCommands';
+import { FILE_PREVIEW_LIMITS } from '../../src/shared/filePreviewContract';
+import {
+  NATIVE_MENU_LOCALE_CHANNEL,
+  type NativeMenuLocale,
+} from '../../src/shared/nativeMenu';
+import {
+  isWindowCloseResponse,
+  WINDOW_CLOSE_RESPONSE_CHANNEL,
+} from '../../src/shared/windowClose';
+import { AppShellReadinessGate } from './appShellReadinessGate';
+import { CloseCoordinator } from './closeCoordinator';
+import { installApplicationMenu } from './commands/applicationMenu';
+import {
+  installContextMenu,
+  type ContextMenuSurfaceKind,
+} from './commands/contextMenu';
+import {
+  applyNativeMenuLocaleChange,
+  getNativeMenuMessages,
+  resolveNativeMenuLocale,
+} from './commands/nativeMenuMessages';
 import { copyBrowserData } from './copy';
+import { getOrCreateDesktopInstanceId } from './desktopIdentity';
+import { resolveFileByteRange } from './fileRange';
 import { FileReader } from './fileReader';
 import {
   checkToolInstalled,
@@ -49,7 +84,23 @@ import {
   getInstallationStatus,
   PromiseReturnType,
 } from './install-deps';
+import {
+  authorizeLocalFilePath,
+  authorizeLocalPreviewPath,
+  isMainRendererSender,
+} from './localFileSecurity';
+import { filePathFromLocalFileUrl } from './localFileUrl';
+import {
+  authorizeWorkspaceLocalNode,
+  openWorkspaceLocalFile,
+  rememberBoundedPathGrant,
+  revealAuthorizedLocalNode,
+  revealUserVisibleLocalNode,
+  revealWorkspaceLocalNode,
+} from './localPathActions';
 import { setRoundedCorners } from './native/macos-window';
+import { RendererAppCommandCoordinator } from './rendererAppCommandCoordinator';
+import { registerReviewChangesIpcHandlers } from './reviewChanges';
 import {
   completeCodexOAuthCallback,
   getCodexResolverEnv,
@@ -73,6 +124,13 @@ import {
   isBinaryExists,
 } from './utils/process';
 import { WebViewManager } from './webview';
+import { loadWindowStartupState, persistWindowState } from './windowState';
+import {
+  closeWorkspaceSecretBroker,
+  ensureWorkspaceSecretBroker,
+  getDefaultWorkspaceSecretVault,
+  registerWorkspaceSecretIpcHandlers,
+} from './workspaceSecrets';
 
 const userData = app.getPath('userData');
 
@@ -93,9 +151,175 @@ let fileReader: FileReader | null = null;
 let python_process: ChildProcessWithoutNullStreams | null = null;
 let backendPort: number = 5001;
 let backendStartPromise: Promise<BackendStartResult> | null = null;
+const localControlCapability = crypto.randomBytes(32).toString('base64url');
+let desktopInstanceId: string | null = null;
 let browser_port = 9222;
 let use_external_cdp = false;
 let proxyUrl: string | null = null;
+const LEGACY_DESKTOP_INSTANCE_STORAGE_KEY = 'eigent_desktop_instance_id';
+const activeLocalFileRoots = new Set<string>();
+let protocolUrlQueue: string[] = [];
+let isWindowReady = false;
+let nativeMenuLocale: NativeMenuLocale | null = null;
+const appShellReadinessGate = new AppShellReadinessGate({
+  announceReadyProbe: () => {
+    const target = win;
+    if (!target || target.isDestroyed() || target.webContents.isDestroyed()) {
+      return;
+    }
+    target.webContents.send(APP_SHELL_READY_PROBE_CHANNEL);
+  },
+});
+const rendererAppCommands = new RendererAppCommandCoordinator({
+  send: (request) => {
+    const target = win;
+    if (!target || target.isDestroyed() || target.webContents.isDestroyed()) {
+      throw new Error('main renderer is unavailable');
+    }
+    target.webContents.send(APP_COMMAND_CHANNEL, request);
+  },
+  diagnostic: (message) => log.warn(message),
+});
+const closeCoordinator = new CloseCoordinator({
+  defaultIntent: process.platform === 'darwin' ? 'close-window' : 'quit-app',
+  quit: () => app.quit(),
+  shouldGuard: () => rendererAppCommands.isReady(),
+  diagnostic: (message) => log.info(message),
+});
+let isQuitCleanupInProgress = false;
+let windowStateSaveTimer: NodeJS.Timeout | null = null;
+const allowDeveloperTools =
+  !app.isPackaged || app.commandLine.hasSwitch('enable-devtools');
+
+function getCurrentNativeMenuMessages() {
+  nativeMenuLocale ??= resolveNativeMenuLocale(app.getLocale());
+  return getNativeMenuMessages(nativeMenuLocale);
+}
+
+function installSurfaceContextMenu(
+  contents: Electron.WebContents,
+  ownerWindow: BrowserWindow,
+  surfaceKind: ContextMenuSurfaceKind
+): () => void {
+  return installContextMenu({
+    contents,
+    getMessages: getCurrentNativeMenuMessages,
+    isDevelopment: allowDeveloperTools,
+    menuApi: Menu,
+    ownerWindow,
+    surfaceKind,
+  });
+}
+
+async function dispatchRendererAppCommand(
+  commandId: AppCommandId
+): Promise<void> {
+  try {
+    if (!win || win.isDestroyed()) {
+      await createWindow();
+    } else if (createWindowPromise) {
+      await createWindowPromise;
+    }
+
+    const target = win;
+    if (!target || target.isDestroyed()) return;
+    if (!target.isVisible()) target.show();
+    target.focus();
+    rendererAppCommands.dispatch(commandId);
+  } catch (error) {
+    log.error(`[APP COMMAND] Failed to dispatch ${commandId}:`, error);
+  }
+}
+
+function installNativeApplicationMenu(): void {
+  const platform =
+    process.platform === 'darwin' || process.platform === 'win32'
+      ? process.platform
+      : 'linux';
+
+  installApplicationMenu(Menu, {
+    appName: app.getName(),
+    dispatchRendererCommand: (commandId) => {
+      void dispatchRendererAppCommand(commandId);
+    },
+    isDevelopment: allowDeveloperTools,
+    messages: getCurrentNativeMenuMessages(),
+    onOpenExternalError: (error) => {
+      log.error('[APPLICATION MENU] Failed to open external URL:', error);
+    },
+    openExternal: (url) => shell.openExternal(url),
+    platform,
+    requestClose: () => closeCoordinator.request('close-window'),
+    requestQuit: () => closeCoordinator.request('quit-app'),
+  });
+}
+
+function persistBrowserWindowState(target: BrowserWindow | null = win): void {
+  if (windowStateSaveTimer) {
+    clearTimeout(windowStateSaveTimer);
+    windowStateSaveTimer = null;
+  }
+  if (!target || target.isDestroyed()) return;
+
+  try {
+    persistWindowState(userData, target);
+  } catch (error) {
+    log.warn('[WINDOW STATE] Failed to persist window state:', error);
+  }
+}
+
+function scheduleWindowStateSave(target: BrowserWindow): void {
+  if (windowStateSaveTimer) clearTimeout(windowStateSaveTimer);
+  windowStateSaveTimer = setTimeout(() => {
+    windowStateSaveTimer = null;
+    persistBrowserWindowState(target);
+  }, 250);
+}
+
+/**
+ * Real paths the user picked in a native file dialog this session.
+ *
+ * Chat attachments are chosen from anywhere on disk, so they are legitimately
+ * outside every Space root. The dialog itself is the user's authorization, and
+ * recording the exact picked path lets those attachments stay revealable
+ * without granting the renderer free rein over the file system.
+ */
+const userSelectedLocalPaths = new Set<string>();
+const USER_SELECTED_PATH_LIMIT = 512;
+
+function rememberUserSelectedLocalPath(realPath: string): void {
+  rememberBoundedPathGrant(
+    userSelectedLocalPaths,
+    realPath,
+    USER_SELECTED_PATH_LIMIT
+  );
+}
+
+function resolveDesktopInstanceId(legacyRendererId?: string | null): string {
+  if (!desktopInstanceId) {
+    desktopInstanceId = getOrCreateDesktopInstanceId(
+      userData,
+      legacyRendererId
+    );
+  }
+  return desktopInstanceId;
+}
+
+async function primeDesktopInstanceIdFromRenderer(): Promise<void> {
+  if (desktopInstanceId || !win || win.isDestroyed()) return;
+  let legacyRendererId: string | null = null;
+  try {
+    legacyRendererId = await win.webContents.executeJavaScript(
+      `window.localStorage.getItem(${JSON.stringify(
+        LEGACY_DESKTOP_INSTANCE_STORAGE_KEY
+      )})`,
+      true
+    );
+  } catch (error) {
+    log.warn('Unable to read legacy renderer device identity', error);
+  }
+  resolveDesktopInstanceId(legacyRendererId);
+}
 
 const PREVIEW_WEBVIEW_PARTITION = 'persist:session-preview';
 
@@ -108,6 +332,40 @@ const isHttpOrHttpsUrl = (url: unknown): url is string => {
     return false;
   }
 };
+
+function assertMainRendererSender(event: Electron.IpcMainInvokeEvent): void {
+  if (
+    !win ||
+    win.isDestroyed() ||
+    !isMainRendererSender(event.sender.id, win.webContents.id) ||
+    event.senderFrame !== event.sender.mainFrame
+  ) {
+    throw new Error('This operation is restricted to the main renderer');
+  }
+}
+
+function localFileAllowedRoots(): string[] {
+  // Only active Space roots plus the renderer's static application assets are
+  // readable through localfile://. In particular, HOME, userData and the OS
+  // temp directory are not trust boundaries for agent-authored HTML.
+  return [...activeLocalFileRoots, RENDERER_DIST, VITE_PUBLIC];
+}
+
+async function requireAuthorizedPreviewFile(
+  event: Electron.IpcMainInvokeEvent,
+  filePath: string
+): Promise<string> {
+  assertMainRendererSender(event);
+  const authorization = await authorizeLocalPreviewPath(
+    filePath,
+    activeLocalFileRoots,
+    [RENDERER_DIST, VITE_PUBLIC]
+  );
+  if (!authorization.allowed) {
+    throw new Error('Preview file is outside the active workspace');
+  }
+  return authorization.filePath;
+}
 
 // CDP Browser Pool
 interface CdpBrowser {
@@ -128,8 +386,7 @@ type BackendStartOptions = {
 };
 
 type BackendStartResult =
-  | { success: true; port: number }
-  | { success: false; error: string };
+  { success: true; port: number } | { success: false; error: string };
 
 function formatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -417,10 +674,6 @@ async function closeBrowserViaCdp(port: number): Promise<void> {
     log.warn(`[CDP CLOSE] Best-effort close failed for port ${port}: ${err}`);
   }
 }
-
-// Protocol URL queue for handling URLs before window is ready
-let protocolUrlQueue: string[] = [];
-let isWindowReady = false;
 
 // ==================== path config ====================
 const preload = path.join(__dirname, '../preload/index.mjs');
@@ -787,6 +1040,12 @@ const checkManagerInstance = (manager: any, name: string) => {
 function registerIpcHandlers() {
   registerCodexSubscriptionAuthIpcHandlers(ipcMain);
   registerTerminalIpcHandlers();
+  registerReviewChangesIpcHandlers();
+  registerWorkspaceSecretIpcHandlers(
+    ipcMain,
+    getDefaultWorkspaceSecretVault(),
+    assertMainRendererSender
+  );
 
   // ==================== auth callback ====================
   ipcMain.handle('get-auth-callback-url', async () => {
@@ -798,6 +1057,19 @@ function registerIpcHandlers() {
   ipcMain.handle('get-browser-port', () => {
     log.info('Getting browser port');
     return browser_port;
+  });
+
+  ipcMain.handle('get-embedded-browser-runtime', () => {
+    const targets = webViewManager?.listAvailableBrowserToolkitTargets() ?? [];
+    const targetAvailable = targets.length > 0;
+    log.info(
+      `[PROJECT BROWSER] Embedded runtime requested: port=${browser_port}, available_targets=${targets.length}`
+    );
+    return {
+      port: browser_port,
+      targetAvailable,
+      targets,
+    };
   });
 
   // Set browser port
@@ -1059,6 +1331,54 @@ function registerIpcHandlers() {
 
   ipcMain.handle('get-app-version', () => app.getVersion());
   ipcMain.handle('get-backend-port', () => backendPort);
+  ipcMain.handle('get-local-control-capability', (event) => {
+    if (!win || event.sender.id !== win.webContents.id) {
+      throw new Error(
+        'Local control capability is restricted to the main renderer'
+      );
+    }
+    return localControlCapability;
+  });
+  ipcMain.handle('get-desktop-instance-id', (event, legacyRendererId) => {
+    if (!win || event.sender.id !== win.webContents.id) {
+      throw new Error('Desktop identity is restricted to the main renderer');
+    }
+    return resolveDesktopInstanceId(
+      typeof legacyRendererId === 'string' ? legacyRendererId : null
+    );
+  });
+  ipcMain.handle(
+    'set-local-file-preview-roots',
+    async (event, roots: unknown) => {
+      assertMainRendererSender(event);
+      // TODO(security): replace this renderer-declared, process-global root set
+      // with main-authoritative, per-surface capabilities. A compromised main
+      // renderer can currently register a broad existing directory (including
+      // a filesystem root), and the replace semantics let concurrent preview
+      // surfaces clear one another's grants. This check is bug containment,
+      // not a renderer-compromise boundary.
+      if (!Array.isArray(roots) || roots.length > 4) {
+        throw new Error('Invalid local file preview roots');
+      }
+
+      const nextRoots = new Set<string>();
+      for (const root of roots) {
+        if (typeof root !== 'string' || !path.isAbsolute(root)) {
+          throw new Error('Local file preview roots must be absolute paths');
+        }
+        const realRoot = await fsp.realpath(root);
+        const stats = await fsp.stat(realRoot);
+        if (!stats.isDirectory()) {
+          throw new Error('Local file preview roots must be directories');
+        }
+        nextRoots.add(realRoot);
+      }
+
+      activeLocalFileRoots.clear();
+      nextRoots.forEach((root) => activeLocalFileRoots.add(root));
+      return { success: true, roots: activeLocalFileRoots.size };
+    }
+  );
 
   // ==================== restart app handler ====================
   ipcMain.handle('restart-app', async () => {
@@ -1069,6 +1389,7 @@ function registerIpcHandlers() {
 
     // Schedule relaunch after a short delay
     setTimeout(() => {
+      closeCoordinator.markAppQuitInProgress();
       app.relaunch();
       app.quit();
     }, 100);
@@ -1179,9 +1500,20 @@ function registerIpcHandlers() {
 
   ipcMain.handle('read-file-dataurl', async (event, filePath) => {
     try {
-      const file = fs.readFileSync(filePath);
+      const authorizedPath = await requireAuthorizedPreviewFile(
+        event,
+        filePath
+      );
+      const stats = await fsp.stat(authorizedPath);
+      if (stats.size > FILE_PREVIEW_LIMITS.imageBytes) {
+        throw new Error(
+          `FILE_PREVIEW_TOO_LARGE:${stats.size}:${FILE_PREVIEW_LIMITS.imageBytes}`
+        );
+      }
+      const file = fs.readFileSync(authorizedPath);
       const mimeType =
-        mime.getType(path.extname(filePath)) || 'application/octet-stream';
+        mime.getType(path.extname(authorizedPath)) ||
+        'application/octet-stream';
       return `data:${mimeType};base64,${file.toString('base64')}`;
     } catch (error: any) {
       log.error('Failed to read file as data URL:', filePath, error);
@@ -1587,11 +1919,59 @@ function registerIpcHandlers() {
   });
 
   // ==================== window control handler ====================
-  ipcMain.on('window-close', (_, data) => {
-    if (data.isForceQuit) {
-      return app?.quit();
+  ipcMain.on('window-close', (event, data: unknown) => {
+    if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
+    const isForceQuit =
+      Boolean(data) &&
+      typeof data === 'object' &&
+      (data as { isForceQuit?: unknown }).isForceQuit === true;
+    if (isForceQuit) {
+      return closeCoordinator.request('quit-app');
     }
-    return win?.close();
+    return closeCoordinator.request(
+      process.platform === 'darwin' ? 'close-window' : 'quit-app'
+    );
+  });
+  ipcMain.on(WINDOW_CLOSE_RESPONSE_CHANNEL, (event, response: unknown) => {
+    if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
+    if (!isWindowCloseResponse(response)) return;
+    closeCoordinator.respond(response);
+  });
+  ipcMain.on(NATIVE_MENU_LOCALE_CHANNEL, (event, locale: unknown) => {
+    if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
+    applyNativeMenuLocaleChange(nativeMenuLocale, locale, (nextLocale) => {
+      nativeMenuLocale = nextLocale;
+      installNativeApplicationMenu();
+    });
+  });
+  ipcMain.on(APP_SHELL_READY_CHANNEL, (event, message: unknown) => {
+    if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
+    if (
+      !appShellReadinessGate.canAcceptReady() ||
+      !isAppShellLifecycleMessage(message)
+    ) {
+      return;
+    }
+    rendererAppCommands.markReady(message.epoch);
+    closeCoordinator.markRendererReady();
+    log.info(`[APP SHELL] Renderer ready epoch=${message.epoch}`);
+  });
+  ipcMain.on(APP_SHELL_NOT_READY_CHANNEL, (event, message: unknown) => {
+    if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
+    if (!isAppShellLifecycleMessage(message)) return;
+    if (rendererAppCommands.markNotReady('listener-unmounted', message.epoch)) {
+      closeCoordinator.markRendererUnavailable('listener-unmounted');
+      log.info(`[APP SHELL] Renderer listeners removed epoch=${message.epoch}`);
+    }
+  });
+  ipcMain.on(APP_COMMAND_HANDLED_CHANNEL, (event, receipt: unknown) => {
+    if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
+    if (!isAppCommandHandled(receipt)) return;
+    if (!rendererAppCommands.handleReceipt(receipt)) {
+      log.warn(
+        `[APP COMMAND] Ignored stale handled receipt request=${receipt.requestId} epoch=${receipt.epoch}`
+      );
+    }
   });
   ipcMain.on('window-minimize', () => win?.minimize());
   ipcMain.on('window-toggle-maximize', () => {
@@ -1604,6 +1984,7 @@ function registerIpcHandlers() {
 
   // ==================== file operation handler ====================
   ipcMain.handle('select-file', async (event, options = {}) => {
+    assertMainRendererSender(event);
     const result = await dialog.showOpenDialog(win!, {
       properties: ['openFile', 'multiSelections'],
       ...options,
@@ -1614,6 +1995,15 @@ function registerIpcHandlers() {
         filePath,
         fileName: filePath.split(/[/\\]/).pop() || '',
       }));
+
+      // Picking a file here is the user's own grant to reveal it later, even
+      // though attachments routinely live outside every Space root.
+      await Promise.all(
+        result.filePaths.map(async (filePath) => {
+          const realPath = await fsp.realpath(filePath).catch(() => null);
+          if (realPath) rememberUserSelectedLocalPath(realPath);
+        })
+      );
 
       return {
         success: true,
@@ -1628,19 +2018,81 @@ function registerIpcHandlers() {
     };
   });
 
+  ipcMain.handle('select-agent-plugin-source', async (event) => {
+    assertMainRendererSender(event);
+
+    const sourceChoice = await dialog.showMessageBox(win!, {
+      type: 'question',
+      title: 'Import Agent Plugin',
+      message: 'Choose the Agent Plugin source',
+      detail:
+        'A plugin directory is the standard package format. Archives are supported only as an Eigent import transport.',
+      buttons: ['Plugin directory', 'Archive', 'Cancel'],
+      defaultId: 0,
+      cancelId: 2,
+      noLink: true,
+    });
+    if (sourceChoice.response === 2) {
+      return { canceled: true };
+    }
+
+    const sourceKind = sourceChoice.response === 0 ? 'directory' : 'archive';
+    const result = await dialog.showOpenDialog(win!, {
+      title:
+        sourceKind === 'directory'
+          ? 'Select Agent Plugin directory'
+          : 'Select Agent Plugin archive',
+      properties: sourceKind === 'directory' ? ['openDirectory'] : ['openFile'],
+      filters:
+        sourceKind === 'archive'
+          ? [
+              {
+                name: 'Agent Plugin archives',
+                extensions: ['zip'],
+              },
+            ]
+          : undefined,
+    });
+    if (result.canceled || result.filePaths.length !== 1) {
+      return { canceled: true };
+    }
+
+    const selectedPath = await fsp.realpath(result.filePaths[0]);
+    const selectedStat = await fsp.stat(selectedPath);
+    if (
+      (sourceKind === 'directory' && !selectedStat.isDirectory()) ||
+      (sourceKind === 'archive' &&
+        (!selectedStat.isFile() ||
+          path.extname(selectedPath).toLowerCase() !== '.zip'))
+    ) {
+      throw new Error('Selected Agent Plugin source has an invalid type');
+    }
+
+    return {
+      canceled: false,
+      source_path: selectedPath,
+      display_name: path.basename(selectedPath),
+      source_kind: sourceKind,
+    };
+  });
+
   // Handle drag-and-drop files - convert File objects to file paths
   ipcMain.handle(
     'process-dropped-files',
     async (event, fileData: Array<{ name: string; path?: string }>) => {
+      assertMainRendererSender(event);
       try {
         // In Electron with contextIsolation, we need to get file paths differently
         // The renderer will send us file metadata, and we'll use webUtils if needed
         const files = fileData
           .filter((f) => f.path) // Only process files with valid paths
-          .map((f) => ({
-            filePath: fs.realpathSync(f.path!),
-            fileName: f.name,
-          }));
+          .map((f) => {
+            const filePath = fs.realpathSync(f.path!);
+            // Drag-and-drop is an explicit user gesture equivalent to picking
+            // the exact path in the native file dialog.
+            rememberUserSelectedLocalPath(filePath);
+            return { filePath, fileName: f.name };
+          });
 
         if (files.length === 0) {
           return {
@@ -1667,7 +2119,8 @@ function registerIpcHandlers() {
   // path-based attachment flow; pasted File objects carry no filesystem path.
   ipcMain.handle(
     'save-pasted-file',
-    async (_event, fileName: string, data: ArrayBuffer) => {
+    async (event, fileName: string, data: ArrayBuffer) => {
+      assertMainRendererSender(event);
       try {
         const pastedDir = path.join(app.getPath('temp'), 'eigent-pasted');
         await fsp.mkdir(pastedDir, { recursive: true });
@@ -1680,7 +2133,10 @@ function registerIpcHandlers() {
         const unique = crypto.randomUUID();
         const filePath = path.join(pastedDir, `${stamp}-${unique}-${safeName}`);
         await fsp.writeFile(filePath, Buffer.from(new Uint8Array(data)));
-        return { success: true, filePath, fileName: safeName };
+        const realPath = await fsp.realpath(filePath);
+        // The paste gesture created this exact attachment on the user's behalf.
+        rememberUserSelectedLocalPath(realPath);
+        return { success: true, filePath: realPath, fileName: safeName };
       } catch (error: any) {
         log.error('Failed to save pasted file:', error);
         return { success: false, error: error.message };
@@ -1688,19 +2144,38 @@ function registerIpcHandlers() {
     }
   );
 
-  ipcMain.handle('reveal-in-folder', async (event, filePath: string) => {
+  ipcMain.handle('reveal-in-folder', async (event, targetPath: string) => {
+    assertMainRendererSender(event);
     try {
-      const stats = await fs.promises
-        .stat(filePath.replace(/\/$/, ''))
-        .catch(() => null);
-      if (stats && stats.isDirectory()) {
-        shell.openPath(filePath);
-      } else {
-        shell.showItemInFolder(filePath);
-      }
-    } catch (e) {
-      log.error('reveal in folder failed', e);
+      // Same containment rules as 'reveal-local-path'; this channel additionally
+      // serves chat attachments, which the user picked outside the workspace.
+      return await revealUserVisibleLocalNode(
+        targetPath,
+        [...activeLocalFileRoots],
+        userSelectedLocalPaths,
+        shell
+      );
+    } catch (error) {
+      log.error('Reveal in folder failed', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to reveal path',
+      };
     }
+  });
+
+  ipcMain.handle('reveal-local-path', async (event, targetPath: string) => {
+    assertMainRendererSender(event);
+    return revealWorkspaceLocalNode(
+      targetPath,
+      [...activeLocalFileRoots],
+      shell
+    );
+  });
+
+  ipcMain.handle('open-local-file', async (event, targetPath: string) => {
+    assertMainRendererSender(event);
+    return openWorkspaceLocalFile(targetPath, [...activeLocalFileRoots], shell);
   });
 
   // Skills: all operations via Brain REST API (backend). No IPC.
@@ -1708,7 +2183,7 @@ function registerIpcHandlers() {
   // ==================== read file handler ====================
   ipcMain.handle('read-file', async (_event, filePath: string) => {
     try {
-      log.info('Reading file:', filePath);
+      log.debug('Reading file:', filePath);
 
       // Check if file exists
       if (!fs.existsSync(filePath)) {
@@ -1810,7 +2285,20 @@ function registerIpcHandlers() {
 
   ipcMain.handle(
     'open-in-ide',
-    async (_event, folderPath: string, ide: string) => {
+    async (event, targetPath: string, ide: string) => {
+      assertMainRendererSender(event);
+      if (ide !== 'vscode' && ide !== 'cursor' && ide !== 'system') {
+        return { success: false, error: 'Unsupported editor' };
+      }
+
+      const node = await authorizeWorkspaceLocalNode(targetPath, [
+        ...activeLocalFileRoots,
+      ]);
+      if (!node.success) return node;
+      if (ide === 'system') {
+        return revealAuthorizedLocalNode(node, shell);
+      }
+
       const getIDECommand = (): string => {
         const platform = process.platform;
         const homeDir = homedir();
@@ -1825,9 +2313,7 @@ function registerIpcHandlers() {
             for (const p of vscodePaths) {
               if (existsSync(p)) return p;
             }
-            log.warn(
-              '[IDE] VS Code not found on macOS, using system file manager'
-            );
+            log.warn('[IDE] VS Code not found on macOS');
             return '';
           } else if (platform === 'win32') {
             // Windows: Check common VS Code paths
@@ -1838,26 +2324,14 @@ function registerIpcHandlers() {
                 'Local',
                 'Programs',
                 'Microsoft VS Code',
-                'bin',
-                'code.cmd'
-              ),
-              path.join(
-                homeDir,
-                'AppData',
-                'Local',
-                'Programs',
-                'Microsoft VS Code',
                 'Code.exe'
               ),
-              'C:\\Program Files\\Microsoft VS Code\\bin\\code.cmd',
               'C:\\Program Files\\Microsoft VS Code\\Code.exe',
             ];
             for (const p of vscodePaths) {
               if (existsSync(p)) return p;
             }
-            log.warn(
-              '[IDE] VS Code not found on Windows, using system file manager'
-            );
+            log.warn('[IDE] VS Code not found on Windows');
             return '';
           }
           return 'code'; // Linux
@@ -1871,24 +2345,11 @@ function registerIpcHandlers() {
             for (const p of cursorPaths) {
               if (existsSync(p)) return p;
             }
-            log.warn(
-              '[IDE] Cursor not found on macOS, using system file manager'
-            );
+            log.warn('[IDE] Cursor not found on macOS');
             return '';
           } else if (platform === 'win32') {
             // Windows: Check common Cursor paths
             const cursorPaths = [
-              path.join(
-                homeDir,
-                'AppData',
-                'Local',
-                'Programs',
-                'Cursor',
-                'resources',
-                'app',
-                'bin',
-                'cursor.cmd'
-              ),
               path.join(
                 homeDir,
                 'AppData',
@@ -1902,9 +2363,7 @@ function registerIpcHandlers() {
             for (const p of cursorPaths) {
               if (existsSync(p)) return p;
             }
-            log.warn(
-              '[IDE] Cursor not found on Windows, using system file manager'
-            );
+            log.warn('[IDE] Cursor not found on Windows');
             return '';
           }
           return 'cursor'; // Linux
@@ -1914,37 +2373,24 @@ function registerIpcHandlers() {
 
       const cmd = getIDECommand();
       if (!cmd) {
-        // IDE not found or 'system' selected - open with system file manager
-        const errorMsg = await shell.openPath(folderPath);
-        if (errorMsg) {
-          log.error('[IDE] shell.openPath error:', errorMsg);
-          return { success: false, error: errorMsg };
-        }
-        return { success: true };
+        const editorName = ide === 'vscode' ? 'Visual Studio Code' : 'Cursor';
+        return { success: false, error: `${editorName} is not installed` };
       }
 
       return new Promise<{ success: boolean; error?: string }>((resolve) => {
-        // Use shell: true so .cmd/.bat wrappers work on Windows
-        const child = spawn(cmd, [folderPath], {
-          shell: true,
+        const child = spawn(cmd, [node.path], {
+          shell: false,
           stdio: 'ignore',
           detached: true,
         });
         child.unref();
 
-        child.on('error', (error) => {
-          log.warn(
-            `[IDE] ${cmd} not found, falling back to system file manager:`,
-            error.message
-          );
-          shell.openPath(folderPath).then((errorMsg) => {
-            resolve(
-              errorMsg ? { success: false, error: errorMsg } : { success: true }
-            );
-          });
+        child.once('error', (error) => {
+          log.warn(`[IDE] Failed to open ${node.path} with ${cmd}:`, error);
+          resolve({ success: false, error: error.message });
         });
 
-        child.on('spawn', () => {
+        child.once('spawn', () => {
           resolve({ success: true });
         });
       });
@@ -2072,9 +2518,48 @@ function registerIpcHandlers() {
   // ==================== FileReader handler ====================
   ipcMain.handle(
     'open-file',
-    async (_, type: string, filePath: string, isShowSourceCode: boolean) => {
+    async (
+      event,
+      type: string,
+      filePath: string,
+      isShowSourceCode: boolean
+    ) => {
       const manager = checkManagerInstance(fileReader, 'FileReader');
-      return manager.openFile(type, filePath, isShowSourceCode);
+      const authorizedPath = await requireAuthorizedPreviewFile(
+        event,
+        filePath
+      );
+      return manager.openFile(type, authorizedPath, isShowSourceCode);
+    }
+  );
+
+  ipcMain.handle(
+    'get-file-preview-metadata',
+    async (event, filePath: string) => {
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      const authorizedPath = await requireAuthorizedPreviewFile(
+        event,
+        filePath
+      );
+      return manager.getPreviewMetadata(authorizedPath);
+    }
+  );
+
+  ipcMain.handle('preview-csv-file', async (event, filePath: string) => {
+    const manager = checkManagerInstance(fileReader, 'FileReader');
+    const authorizedPath = await requireAuthorizedPreviewFile(event, filePath);
+    return manager.previewCsvFile(authorizedPath);
+  });
+
+  ipcMain.handle(
+    'preview-text-file',
+    async (event, filePath: string, limit?: number) => {
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      const authorizedPath = await requireAuthorizedPreviewFile(
+        event,
+        filePath
+      );
+      return manager.previewTextFile(authorizedPath, limit);
     }
   );
 
@@ -2141,6 +2626,20 @@ function registerIpcHandlers() {
   );
 
   ipcMain.handle(
+    'get-camel-log-file-list',
+    async (
+      _,
+      email: string,
+      taskId: string,
+      projectId?: string,
+      userId?: string | number | null
+    ) => {
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      return manager.getCamelLogFileList(email, taskId, projectId, userId);
+    }
+  );
+
+  ipcMain.handle(
     'delete-task-files',
     async (_, email: string, taskId: string, projectId?: string) => {
       const manager = checkManagerInstance(fileReader, 'FileReader');
@@ -2180,6 +2679,29 @@ function registerIpcHandlers() {
     async (_, email: string, taskId: string, projectId: string) => {
       const manager = checkManagerInstance(fileReader, 'FileReader');
       return manager.moveTaskToProject(email, taskId, projectId);
+    }
+  );
+
+  ipcMain.handle(
+    'get-workspace-file-list',
+    async (event, workspaceRoot: string, requestedRelativePaths: unknown) => {
+      if (
+        typeof workspaceRoot !== 'string' ||
+        !Array.isArray(requestedRelativePaths) ||
+        requestedRelativePaths.length > 500 ||
+        requestedRelativePaths.some((value) => typeof value !== 'string')
+      ) {
+        throw new Error('Invalid workspace file resolver request');
+      }
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      const authorizedRoot = await requireAuthorizedPreviewFile(
+        event,
+        workspaceRoot
+      );
+      return manager.getWorkspaceFileList(
+        authorizedRoot,
+        requestedRelativePaths
+      );
     }
   );
 
@@ -2303,7 +2825,7 @@ function registerIpcHandlers() {
   });
 
   // ==================== register update related handler ====================
-  registerUpdateIpcHandlers();
+  registerUpdateIpcHandlers(() => closeCoordinator.markAppQuitInProgress());
 }
 
 // ==================== ensure eigent directories ====================
@@ -2501,6 +3023,10 @@ const startBackendAfterInstall = async () => {
   // Add a small delay to ensure any previous processes are fully cleaned up
   await new Promise((resolve) => setTimeout(resolve, 500));
 
+  // Existing installations originally stored the device id in renderer
+  // localStorage. Migrate it before the Brain environment first resolves the
+  // new main-process-owned identity file.
+  await primeDesktopInstanceIdFromRenderer();
   await checkAndStartBackend();
 };
 
@@ -2561,14 +3087,26 @@ async function createWindowInternal() {
     )}`
   );
 
+  const startupWindowState = loadWindowStartupState({
+    userDataPath: userData,
+    displays: screen.getAllDisplays(),
+    primaryDisplay: screen.getPrimaryDisplay(),
+  });
+  log.info(
+    `[WINDOW STATE] Restoring ${startupWindowState.source}: ${JSON.stringify(
+      startupWindowState.bounds
+    )}`
+  );
+
   // Platform-specific window configuration
   // Windows: native frame and solid background. macOS/Linux: frameless; macOS corner radius via native hook.
+  appShellReadinessGate.markDocumentLoading();
+  rendererAppCommands.markNotReady('window-created');
   win = new BrowserWindow({
     title: 'Eigent',
-    width: 1280,
-    height: 960,
-    minWidth: 1100,
-    minHeight: 700,
+    ...startupWindowState.bounds,
+    minWidth: startupWindowState.minimumSize.width,
+    minHeight: startupWindowState.minimumSize.height,
     // Use native frame on Windows for better native integration
     frame: isWindows ? true : false,
     show: false, // Don't show until content is ready to avoid white screen
@@ -2590,21 +3128,41 @@ async function createWindowInternal() {
     icon: path.join(VITE_PUBLIC, 'favicon.ico'),
     // Rounded corners on macOS and Linux (as original)
     roundedCorners: !isWindows,
-    // Windows-specific options
-    ...(isWindows && {
-      autoHideMenuBar: true, // Hide menu bar on Windows for cleaner look
+    // Keep the Windows/Linux menu discoverable through Alt without changing
+    // the existing clean shell chrome.
+    ...(!isMac && {
+      autoHideMenuBar: true,
     }),
     webPreferences: {
       // Use a dedicated partition for main window to isolate from webviews
       // This ensures main window's auth data (localStorage) is stored separately and persists across restarts
       partition: 'persist:main_window',
-      webSecurity: false,
+      webSecurity: true,
       preload,
       nodeIntegration: true,
       contextIsolation: true,
       webviewTag: true,
       spellcheck: false,
     },
+  });
+
+  const createdWindow = win;
+  const disposeMainContextMenu = installSurfaceContextMenu(
+    createdWindow.webContents,
+    createdWindow,
+    'main-renderer'
+  );
+  createdWindow.on('move', () => scheduleWindowStateSave(createdWindow));
+  createdWindow.on('resize', () => scheduleWindowStateSave(createdWindow));
+  createdWindow.on('maximize', () => scheduleWindowStateSave(createdWindow));
+  createdWindow.on('unmaximize', () => scheduleWindowStateSave(createdWindow));
+  createdWindow.on('close', () => persistBrowserWindowState(createdWindow));
+  createdWindow.on('closed', () => {
+    disposeMainContextMenu();
+    if (windowStateSaveTimer) {
+      clearTimeout(windowStateSaveTimer);
+      windowStateSaveTimer = null;
+    }
   });
 
   // Renderer <webview> guests (session preview browser) host arbitrary web
@@ -2630,6 +3188,13 @@ async function createWindowInternal() {
   // popup windows, and only allow web URLs. Together with the attach guard
   // above, this is the only main-process involvement the guests need.
   win.webContents.on('did-attach-webview', (_event, contents) => {
+    const disposeGuestContextMenu = installSurfaceContextMenu(
+      contents,
+      createdWindow,
+      'preview-guest'
+    );
+    contents.once('destroyed', disposeGuestContextMenu);
+
     const preventUnsafeNavigation = (
       event: Electron.Event,
       navigationUrl: string
@@ -2669,8 +3234,23 @@ async function createWindowInternal() {
   }
 
   // ==================== Handle renderer crashes and failed loads ====================
+  win.webContents.on('did-start-navigation', (event) => {
+    const didReplaceMainDocument =
+      appShellReadinessGate.markDocumentNavigationStarted(
+        event.isMainFrame,
+        event.isSameDocument
+      );
+    if (didReplaceMainDocument) {
+      rendererAppCommands.markNotReady('main-frame-navigation');
+    }
+  });
+  win.webContents.on('did-finish-load', () => {
+    appShellReadinessGate.markDocumentLoaded();
+  });
   win.webContents.on('render-process-gone', (event, details) => {
     log.error('[RENDERER] Process gone:', details.reason, details.exitCode);
+    appShellReadinessGate.markDocumentLoading();
+    rendererAppCommands.markNotReady('render-process-gone');
     if (win && !win.isDestroyed()) {
       // Reload the window after a brief delay
       setTimeout(() => {
@@ -2688,13 +3268,17 @@ async function createWindowInternal() {
 
   win.webContents.on(
     'did-fail-load',
-    (event, errorCode, errorDescription, validatedURL) => {
+    (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      const shouldRetry = appShellReadinessGate.markDocumentLoadFailed(
+        isMainFrame,
+        errorCode
+      );
+      if (shouldRetry) rendererAppCommands.markNotReady('did-fail-load');
       log.error(
         `[RENDERER] Failed to load: ${errorCode} - ${errorDescription} - ${validatedURL}`
       );
       // Retry loading after a delay
-      if (errorCode !== -3) {
-        // -3 is USER_CANCELLED, don't retry
+      if (shouldRetry) {
         setTimeout(() => {
           if (win && !win.isDestroyed()) {
             log.info('[RENDERER] Retrying load after failure...');
@@ -2772,7 +3356,10 @@ async function createWindowInternal() {
 
   // ==================== initialize manager ====================
   fileReader = new FileReader(win);
-  webViewManager = new WebViewManager(win);
+  webViewManager = new WebViewManager(win, {
+    installContextMenu: (contents, ownerWindow) =>
+      installSurfaceContextMenu(contents, ownerWindow, 'automation-view'),
+  });
 
   // create multiple webviews
   log.info(
@@ -2784,8 +3371,6 @@ async function createWindowInternal() {
   log.info('[PROJECT BROWSER] WebViewManager initialized with webviews');
 
   // ==================== set event listeners ====================
-  setupWindowEventListeners();
-  setupDevToolsShortcuts();
   setupExternalLinkHandling();
   handleBeforeClose();
 
@@ -2973,7 +3558,8 @@ async function createWindowInternal() {
 
   // Show window now that content is loaded (or timeout reached)
   if (win && !win.isDestroyed()) {
-    win.show();
+    if (startupWindowState.shouldMaximize) win.maximize();
+    else win.show();
     log.info('Window shown after content loaded');
   }
 
@@ -2981,9 +3567,6 @@ async function createWindowInternal() {
   isWindowReady = true;
   log.info('Window is ready, processing queued protocol URLs...');
   processQueuedProtocolUrls();
-
-  // Wait for React components to mount and register event listeners
-  await new Promise((resolve) => setTimeout(resolve, 500));
 
   // Now check and install dependencies
   let res: PromiseReturnType = await checkAndInstallDepsOnUpdate({ win });
@@ -3015,49 +3598,6 @@ async function createWindowInternal() {
   // Start backend after dependencies are ready
   await startBackendAfterInstall();
 }
-
-// ==================== window event listeners ====================
-const setupWindowEventListeners = () => {
-  if (!win) return;
-
-  // close default menu
-  Menu.setApplicationMenu(null);
-};
-
-// ==================== devtools shortcuts ====================
-const setupDevToolsShortcuts = () => {
-  if (!win) return;
-  if (app.isPackaged) return;
-
-  const toggleDevTools = () => win?.webContents.toggleDevTools();
-
-  win.webContents.on('before-input-event', (event, input) => {
-    // F12 key
-    if (input.key === 'F12' && input.type === 'keyDown') {
-      toggleDevTools();
-    }
-
-    // Ctrl+Shift+I (Windows/Linux) or Cmd+Shift+I (Mac)
-    if (
-      input.control &&
-      input.shift &&
-      input.key.toLowerCase() === 'i' &&
-      input.type === 'keyDown'
-    ) {
-      toggleDevTools();
-    }
-
-    // Mac Cmd+Shift+I
-    if (
-      input.meta &&
-      input.shift &&
-      input.key.toLowerCase() === 'i' &&
-      input.type === 'keyDown'
-    ) {
-      toggleDevTools();
-    }
-  });
-};
 
 // ==================== external link handle ====================
 const setupExternalLinkHandling = () => {
@@ -3100,6 +3640,16 @@ const setupExternalLinkHandling = () => {
       shell.openExternal(url);
     }
     // For internal URLs (localhost, hash navigation), allow navigation to proceed
+  });
+
+  // srcDoc report previews are sandboxed child frames. Never turn a scripted
+  // child-frame navigation into an outbound request: it could encode local
+  // workspace contents in the URL even when connect-src is disabled.
+  win.webContents.on('will-frame-navigate', (details) => {
+    if (!details.isMainFrame && isExternalUrl(details.url)) {
+      details.preventDefault();
+      log.warn('[HTML PREVIEW] Blocked external frame navigation');
+    }
   });
 };
 
@@ -3158,6 +3708,7 @@ const checkAndStartBackend = async (
       if (isToolInstalled.success) {
         log.info('Tool installed, starting backend service...');
         const codexResolverEnv = await getCodexResolverEnv();
+        const workspaceSecretBroker = await ensureWorkspaceSecretBroker();
         const exampleSkillsDir = getExampleSkillsSourceDir();
 
         // Start backend and wait for health check to pass
@@ -3169,6 +3720,13 @@ const checkAndStartBackend = async (
           {
             ...codexResolverEnv,
             EIGENT_EXAMPLE_SKILLS_DIR: exampleSkillsDir,
+            EIGENT_LOCAL_CONTROL_CAPABILITY: localControlCapability,
+            EIGENT_DESKTOP_INSTANCE_ID: resolveDesktopInstanceId(),
+            EIGENT_ELECTRON_CDP_PORT: String(browser_port),
+            EIGENT_WORKSPACE_SECRET_BROKER_ENDPOINT:
+              workspaceSecretBroker.endpoint,
+            EIGENT_WORKSPACE_SECRET_BROKER_CAPABILITY:
+              workspaceSecretBroker.capability,
           }
         );
 
@@ -3285,18 +3843,7 @@ const cleanupPythonProcess = async () => {
 
 // before close
 const handleBeforeClose = () => {
-  let isQuitting = false;
-
-  app.on('before-quit', () => {
-    isQuitting = true;
-  });
-
-  win?.on('close', (event) => {
-    if (!isQuitting) {
-      event.preventDefault();
-      win?.webContents.send('before-close');
-    }
-  });
+  if (win) closeCoordinator.bindWindow(win);
 };
 
 // ==================== app event handle ====================
@@ -3351,95 +3898,73 @@ app.whenReady().then(async () => {
   // ==================== download handle ====================
   session.defaultSession.on('will-download', (event, item, _webContents) => {
     item.once('done', (_event, _state) => {
-      shell.showItemInFolder(item.getURL().replace('localfile://', ''));
+      const itemUrl = item.getURL();
+      if (itemUrl.startsWith('localfile:')) {
+        shell.showItemInFolder(filePathFromLocalFileUrl(itemUrl));
+      }
     });
   });
 
   // ==================== protocol handle ====================
   // Register protocol handler for both default session and main window session
   const protocolHandler = async (request: Request) => {
-    const url = decodeURIComponent(request.url.replace('localfile://', ''));
+    const url = filePathFromLocalFileUrl(request.url);
     const normalizedUrl = url.replace(/^\/([A-Za-z]:[\\/])/, '$1');
     const filePath = path.resolve(path.normalize(normalizedUrl));
 
     log.info(`[PROTOCOL] Handling localfile request: ${request.url}`);
     log.info(`[PROTOCOL] Resolved path: ${filePath}`);
 
-    // Security: Restrict file access to allowed directories only.
-    // Without this check, path traversal (e.g. /../../../etc/passwd)
-    // would allow reading arbitrary files on the filesystem.
-    const allowedBases = [
-      os.homedir(),
-      app.getPath('userData'),
-      app.getPath('temp'),
-    ];
-
-    const isPathAllowed = allowedBases.some((base) => {
-      const resolvedBase = path.resolve(base);
-      return (
-        filePath === resolvedBase ||
-        filePath.startsWith(resolvedBase + path.sep)
-      );
-    });
-
-    if (!isPathAllowed) {
+    const authorization = await authorizeLocalFilePath(
+      filePath,
+      localFileAllowedRoots()
+    );
+    if (!authorization.allowed) {
       log.error(
-        `[PROTOCOL] Security: Blocked access to path outside allowed directories: ${filePath}`
+        `[PROTOCOL] Security: Blocked local file (${authorization.reason}): ${filePath}`
       );
-      return new Response('Forbidden', { status: 403 });
+      return new Response(
+        authorization.reason === 'missing' ? 'File Not Found' : 'Forbidden',
+        { status: authorization.reason === 'missing' ? 404 : 403 }
+      );
     }
+    const authorizedFilePath = authorization.filePath;
 
     try {
       // Check if file exists
-      const fileExists = await fsp
-        .access(filePath)
-        .then(() => true)
-        .catch(() => false);
-      if (!fileExists) {
-        log.error(`[PROTOCOL] File not found: ${filePath}`);
-        return new Response('File Not Found', { status: 404 });
+      const stats = await fsp.stat(authorizedFilePath);
+      if (!stats.isFile()) return new Response('Not Found', { status: 404 });
+      const contentType =
+        mime.getType(authorizedFilePath) || 'application/octet-stream';
+      const resolvedRange = resolveFileByteRange(
+        request.headers.get('range'),
+        stats.size
+      );
+      if (resolvedRange.status === 416) {
+        return new Response('Range Not Satisfiable', {
+          status: 416,
+          headers: { 'Content-Range': `bytes */${stats.size}` },
+        });
+      }
+      const { start, end, status } = resolvedRange;
+
+      const contentLength = stats.size === 0 ? 0 : end - start + 1;
+      const headers: Record<string, string> = {
+        'Accept-Ranges': 'bytes',
+        'Content-Type': contentType,
+        'Content-Length': contentLength.toString(),
+      };
+      if (status === 206) {
+        headers['Content-Range'] = `bytes ${start}-${end}/${stats.size}`;
+      }
+      if (request.method === 'HEAD' || stats.size === 0) {
+        return new Response(null, { status, headers });
       }
 
-      const data = await fsp.readFile(filePath);
-      log.info(`[PROTOCOL] Successfully read file, size: ${data.length} bytes`);
-
-      // set correct Content-Type according to file extension
-      const ext = path.extname(filePath).toLowerCase();
-      let contentType = 'application/octet-stream';
-
-      switch (ext) {
-        case '.pdf':
-          contentType = 'application/pdf';
-          break;
-        case '.html':
-        case '.htm':
-          contentType = 'text/html';
-          break;
-        case '.png':
-          contentType = 'image/png';
-          break;
-        case '.jpg':
-        case '.jpeg':
-          contentType = 'image/jpeg';
-          break;
-        case '.gif':
-          contentType = 'image/gif';
-          break;
-        case '.svg':
-          contentType = 'image/svg+xml';
-          break;
-        case '.webp':
-          contentType = 'image/webp';
-          break;
-      }
-
-      log.info(`[PROTOCOL] Returning file with Content-Type: ${contentType}`);
-
-      return new Response(new Uint8Array(data), {
-        headers: {
-          'Content-Type': contentType,
-          'Content-Length': data.length.toString(),
-        },
+      const stream = fs.createReadStream(authorizedFilePath, { start, end });
+      return new Response(Readable.toWeb(stream) as BodyInit, {
+        status,
+        headers,
       });
     } catch (err) {
       log.error(`[PROTOCOL] Error reading file: ${err}`);
@@ -3461,6 +3986,7 @@ app.whenReady().then(async () => {
   // ==================== initialize app ====================
   initializeApp();
   registerIpcHandlers();
+  installNativeApplicationMenu();
   createWindow();
 });
 
@@ -3478,8 +4004,11 @@ app.on('window-all-closed', () => {
   }
 
   // Reset window state
+  closeCoordinator.unbindWindow();
+  rendererAppCommands.markNotReady('window-all-closed');
   win = null;
   isWindowReady = false;
+  appShellReadinessGate.markDocumentLoading();
   protocolUrlQueue = [];
 
   if (process.platform !== 'darwin') {
@@ -3511,11 +4040,27 @@ app.on('before-quit', async (event) => {
   log.info('before-quit');
   log.info('quit python_process.pid: ' + python_process?.pid);
 
+  if (
+    !closeCoordinator.isAppQuitInProgress() &&
+    rendererAppCommands.isReady() &&
+    win &&
+    !win.isDestroyed()
+  ) {
+    event.preventDefault();
+    closeCoordinator.request('quit-app');
+    return;
+  }
+
+  closeCoordinator.markAppQuitInProgress();
+
   // Stop CDP health-check polling
   stopCdpHealthCheck();
 
   // Prevent default quit to ensure cleanup completes
   event.preventDefault();
+
+  if (isQuitCleanupInProgress) return;
+  isQuitCleanupInProgress = true;
 
   try {
     // NOTE: Profile sync removed - we now use app userData directly for all partitions
@@ -3530,12 +4075,14 @@ app.on('before-quit', async (event) => {
     }
 
     if (win && !win.isDestroyed()) {
+      persistBrowserWindowState(win);
       win.destroy();
       win = null;
     }
 
     // Wait for Python process cleanup
     await cleanupPythonProcess();
+    await closeWorkspaceSecretBroker();
 
     // Clean up file reader if exists
     if (fileReader) {
@@ -3549,6 +4096,8 @@ app.on('before-quit', async (event) => {
 
     // Reset protocol handling state
     isWindowReady = false;
+    appShellReadinessGate.markDocumentLoading();
+    rendererAppCommands.markNotReady('app-exit');
     protocolUrlQueue = [];
 
     log.info('All cleanup completed, exiting...');

@@ -18,6 +18,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 THIRD_PARTY_OS_ENV_KEYS = ("CAMEL_LOG_DIR", "CAMEL_WORKDIR")
 
@@ -38,6 +39,7 @@ class RunContext:
     binding_source: str
     workdir_mode: str | None
     browser_port: int
+    session_mode: str = "workforce"
     cdp_url: str | None = None
     api_key: str | None = None
     api_base_url: str | None = None
@@ -46,6 +48,14 @@ class RunContext:
     auth_header: str | None = None
     search_config: dict[str, str] = field(default_factory=dict)
     extra_env: dict[str, str] = field(default_factory=dict)
+    model_platform: str | None = None
+    model_type: str | None = None
+    model_parameters: dict[str, Any] = field(default_factory=dict)
+    permissions: frozenset[str] = field(default_factory=frozenset)
+    credential_sources: dict[str, str] = field(default_factory=dict)
+    # Bound after durable Attempt admission and then inherited by child tasks.
+    # Preparation code may temporarily carry ``None`` before an Attempt exists.
+    attempt_id: str | None = None
 
     def env_overrides(self) -> dict[str, str]:
         values: dict[str, str] = {
@@ -79,10 +89,17 @@ class RunContext:
 current_run_context: ContextVar[RunContext | None] = ContextVar(
     "current_run_context", default=None
 )
+current_run_context_getter: ContextVar[
+    Callable[[], RunContext | None] | None
+] = ContextVar("current_run_context_getter", default=None)
 
 
 def get_current_run_context() -> RunContext | None:
-    return current_run_context.get()
+    context = current_run_context.get()
+    if context is not None:
+        return context
+    getter = current_run_context_getter.get()
+    return getter() if getter is not None else None
 
 
 def get_run_env_override(key: str) -> str | None:
@@ -123,19 +140,19 @@ async def stream_with_run_context(
 ) -> AsyncIterator[str]:
     iterator = stream.__aiter__()
     while True:
+        # Resolve one immutable snapshot for this generator turn. Child tasks
+        # created by the turn inherit that value, so a late tool completion
+        # cannot be attributed to a subsequently rebound Run. The next
+        # __anext__ resolves the getter again and therefore still observes an
+        # intentional follow-up rebind.
         context = context_getter()
-        if context is None:
-            try:
-                yield await iterator.__anext__()
-            except StopAsyncIteration:
-                return
-            continue
-
-        token = current_run_context.set(context)
+        getter_token = current_run_context_getter.set(None)
+        context_token = current_run_context.set(context)
         try:
             item = await iterator.__anext__()
         except StopAsyncIteration:
             return
         finally:
-            current_run_context.reset(token)
+            current_run_context.reset(context_token)
+            current_run_context_getter.reset(getter_token)
         yield item

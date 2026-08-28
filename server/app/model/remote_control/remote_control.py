@@ -15,7 +15,7 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Column, String
+from sqlalchemy import Column, Index, String, UniqueConstraint
 from sqlmodel import JSON, Field
 
 from app.model.abstract.model import AbstractModel, DefaultTimes
@@ -59,6 +59,19 @@ class RemoteControlLink(AbstractModel, DefaultTimes, table=True):
 
 
 class RemoteControlCommand(AbstractModel, DefaultTimes, table=True):
+    __table_args__ = (
+        UniqueConstraint(
+            "session_id",
+            "client_request_id",
+            name="uq_remote_control_command_session_request",
+        ),
+        Index(
+            "uq_remote_control_command_interaction_decision_key",
+            "interaction_decision_key",
+            unique=True,
+        ),
+    )
+
     id: str = Field(sa_column=Column(String(64), primary_key=True))
     session_id: str = Field(sa_column=Column(String(64), index=True))
     user_id: int = Field(index=True)
@@ -75,6 +88,18 @@ class RemoteControlCommand(AbstractModel, DefaultTimes, table=True):
     error_code: str | None = Field(default=None, sa_column=Column(String(128), nullable=True))
     delivered_at: datetime | None = None
     acknowledged_at: datetime | None = None
+    client_request_id: str | None = Field(
+        default=None,
+        sa_column=Column(String(128), nullable=True),
+    )
+    request_fingerprint: str | None = Field(
+        default=None,
+        sa_column=Column(String(64), nullable=True),
+    )
+    interaction_decision_key: str | None = Field(
+        default=None,
+        sa_column=Column(String(64), nullable=True),
+    )
 
 
 class RemoteControlEvent(AbstractModel, DefaultTimes, table=True):

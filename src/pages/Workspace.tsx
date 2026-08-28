@@ -22,12 +22,11 @@ import {
 } from '@/components/Background';
 import { WorkspaceDispatch } from '@/components/Dispatch';
 import Folder from '@/components/Folder';
-import ProjectPageSidebar from '@/components/ProjectPageSidebar';
-import {
-  PROJECT_SIDEBAR_FOLD_SPRING,
-  PROJECT_SIDEBAR_RAIL_WIDTH_PX,
-} from '@/components/ProjectPageSidebar/constants';
-import SessionGroup from '@/components/Session/SessionGroup';
+import AppShellLayout, {
+  APP_SHELL_CONTENT_CLASS,
+} from '@/components/Layout/AppShellLayout';
+import SessionGroup from '@/components/Session/SidePanel/components/SessionGroup';
+import SpaceSidebar from '@/components/SpaceSidebar';
 import TriggerPanel from '@/components/Trigger';
 import Workspace from '@/components/Workspace';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
@@ -36,13 +35,11 @@ import { filterVisibleAgentFiles } from '@/lib/agentFileFilters';
 import { cn } from '@/lib/utils';
 import { ChatTaskStatus } from '@/types/constants';
 import { ReactFlowProvider } from '@xyflow/react';
-import { motion } from 'framer-motion';
 import {
   useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -57,42 +54,6 @@ import {
 
 import Session from '@/components/Session';
 import { PreviewBrowserLayer } from '@/components/Session/PreviewPanel/tabs/browser/PreviewBrowserLayer';
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from '@/components/ui/resizable';
-import type {
-  ImperativePanelGroupHandle,
-  ImperativePanelHandle,
-} from 'react-resizable-panels';
-
-/** Same spring as project sidebar fold animation. */
-const HOME_MAIN_LAYOUT_SPRING = PROJECT_SIDEBAR_FOLD_SPRING;
-
-/** Sidebar width bounds (react-resizable-panels uses %; derived from shell width). */
-const SIDEBAR_MIN_PX = 230;
-const SIDEBAR_MAX_PX = 320;
-/** Default expanded sidebar width when nothing is stored (px). */
-const DEFAULT_SIDEBAR_WIDTH_PX = 230;
-const SIDEBAR_WIDTH_STORAGE_KEY = 'eigent-home-sidebar-width-px';
-
-function clampPct(n: number): number {
-  return Math.min(100, Math.max(1, n));
-}
-
-function readStoredSidebarWidthPx(): number {
-  if (typeof window === 'undefined') return DEFAULT_SIDEBAR_WIDTH_PX;
-  try {
-    const raw = window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
-    if (raw == null) return DEFAULT_SIDEBAR_WIDTH_PX;
-    const n = Number.parseFloat(raw);
-    if (!Number.isFinite(n)) return DEFAULT_SIDEBAR_WIDTH_PX;
-    return Math.min(SIDEBAR_MAX_PX, Math.max(SIDEBAR_MIN_PX, n));
-  } catch {
-    return DEFAULT_SIDEBAR_WIDTH_PX;
-  }
-}
 
 export default function WorkspacePage() {
   const { t } = useTranslation();
@@ -109,6 +70,9 @@ export default function WorkspacePage() {
 
   const { activeWorkspaceTab, setHasAgentFiles, setActiveWorkspaceTab } =
     usePageTabStore();
+  const workspaceSidebarHidden = usePageTabStore(
+    (s) => s.workspaceSidebarHidden
+  );
   const triggerAddDialogRequestId = usePageTabStore(
     (s) => s.triggerAddDialogRequestId
   );
@@ -117,10 +81,6 @@ export default function WorkspacePage() {
   );
   const pendingTriggerSelectId = usePageTabStore(
     (s) => s.pendingTriggerSelectId
-  );
-  const projectSidebarFolded = usePageTabStore((s) => s.projectSidebarFolded);
-  const setProjectSidebarFolded = usePageTabStore(
-    (s) => s.setProjectSidebarFolded
   );
 
   const email = useAuthStore((s) => s.email);
@@ -144,240 +104,6 @@ export default function WorkspacePage() {
       );
     }
   );
-
-  const shellPanelGroupRef = useRef<HTMLDivElement>(null);
-  const shellWidthRef = useRef(0);
-  const shellPanelGroupImperativeRef = useRef<ImperativePanelGroupHandle>(null);
-  const projectSidebarPanelRef = useRef<ImperativePanelHandle>(null);
-  const applyingSidebarLayoutRef = useRef(false);
-  const sidebarLayoutAnimationFrameRef = useRef<number | null>(null);
-  const hasInitializedSidebarLayoutRef = useRef(false);
-  /** Expanded sidebar width in px; only user drag (or stored value) changes this — window resize adjusts % to keep this width. */
-  const sidebarWidthPxRef = useRef(readStoredSidebarWidthPx());
-  const persistSidebarWidthTimeoutRef = useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null);
-  /** Percent constraints for the sidebar panel (1–100). `rail` = folded rail width. */
-  const [sidebarPct, setSidebarPct] = useState({
-    min: 18,
-    max: 35,
-    rail: 4,
-  });
-
-  const mainPanelPct = useMemo(() => {
-    const min = Math.max(1, 100 - sidebarPct.max);
-    const max = Math.max(min, Math.min(99, 100 - sidebarPct.min));
-    return { min, max };
-  }, [sidebarPct.min, sidebarPct.max]);
-
-  /** When folded, main must be allowed to reach `100 - rail` (~98%); else max ~82% blocks the rail-width sidebar. */
-  const mainPanelMaxSize = useMemo(() => {
-    if (projectSidebarFolded) {
-      return Math.min(99, 100 - sidebarPct.rail);
-    }
-    return mainPanelPct.max;
-  }, [projectSidebarFolded, sidebarPct.rail, mainPanelPct.max]);
-
-  const schedulePersistSidebarWidth = useCallback((px: number) => {
-    if (persistSidebarWidthTimeoutRef.current) {
-      clearTimeout(persistSidebarWidthTimeoutRef.current);
-    }
-    persistSidebarWidthTimeoutRef.current = setTimeout(() => {
-      persistSidebarWidthTimeoutRef.current = null;
-      try {
-        window.localStorage.setItem(
-          SIDEBAR_WIDTH_STORAGE_KEY,
-          String(Math.round(px))
-        );
-      } catch {
-        /* ignore */
-      }
-    }, 250);
-  }, []);
-
-  const setShellPanelLayout = useCallback(
-    (layout: number[], animate: boolean) => {
-      const group = shellPanelGroupImperativeRef.current;
-      if (!group) return;
-
-      const target = layout.map(clampPct);
-
-      if (sidebarLayoutAnimationFrameRef.current != null) {
-        cancelAnimationFrame(sidebarLayoutAnimationFrameRef.current);
-        sidebarLayoutAnimationFrameRef.current = null;
-      }
-
-      const applyFinalLayout = () => {
-        group.setLayout(target);
-        requestAnimationFrame(() => {
-          applyingSidebarLayoutRef.current = false;
-        });
-      };
-
-      const current = group.getLayout();
-      const shouldAnimate =
-        animate &&
-        current.length === target.length &&
-        current.some((value, index) => Math.abs(value - target[index]) > 0.1);
-
-      applyingSidebarLayoutRef.current = true;
-
-      if (!shouldAnimate) {
-        applyFinalLayout();
-        return;
-      }
-
-      const from = [...current];
-      const durationMs = 260;
-      const start = performance.now();
-
-      const tick = (now: number) => {
-        const progress = Math.min(1, (now - start) / durationMs);
-        const eased = 1 - Math.pow(1 - progress, 3);
-        group.setLayout(
-          from.map((value, index) => value + (target[index] - value) * eased)
-        );
-
-        if (progress < 1) {
-          sidebarLayoutAnimationFrameRef.current = requestAnimationFrame(tick);
-          return;
-        }
-
-        sidebarLayoutAnimationFrameRef.current = null;
-        applyFinalLayout();
-      };
-
-      sidebarLayoutAnimationFrameRef.current = requestAnimationFrame(tick);
-    },
-    []
-  );
-
-  /** Recompute sidebar % from fixed px so the rail does not grow/shrink when the window resizes. */
-  const applyExpandedSidebarLayout = useCallback(
-    (animate: boolean = false) => {
-      const shell = shellPanelGroupRef.current;
-      if (!shell) return;
-      if (usePageTabStore.getState().projectSidebarFolded) return;
-      const w = shell.getBoundingClientRect().width;
-      if (w <= 0) return;
-      const minPct = clampPct((SIDEBAR_MIN_PX / w) * 100);
-      const maxPct = clampPct((SIDEBAR_MAX_PX / w) * 100);
-      const px = Math.min(
-        SIDEBAR_MAX_PX,
-        Math.max(SIDEBAR_MIN_PX, sidebarWidthPxRef.current)
-      );
-      let pct = (px / w) * 100;
-      pct = Math.min(maxPct, Math.max(minPct, pct));
-      setShellPanelLayout([pct, 100 - pct], animate);
-    },
-    [setShellPanelLayout]
-  );
-
-  const handleShellPanelLayout = useCallback(
-    (sizes: number[]) => {
-      if (applyingSidebarLayoutRef.current) return;
-      const shell = shellPanelGroupRef.current;
-      if (!shell) return;
-      const shellW = shell.getBoundingClientRect().width;
-      if (shellW <= 0) return;
-
-      const sidebarPx = (sizes[0] / 100) * shellW;
-      const folded = usePageTabStore.getState().projectSidebarFolded;
-
-      if (!folded && sidebarPx < SIDEBAR_MIN_PX - 0.5) {
-        applyingSidebarLayoutRef.current = true;
-        setProjectSidebarFolded(true);
-        const rail = clampPct((PROJECT_SIDEBAR_RAIL_WIDTH_PX / shellW) * 100);
-        const main = Math.min(99, Math.max(0, 100 - rail));
-        shellPanelGroupImperativeRef.current?.setLayout([rail, main]);
-        requestAnimationFrame(() => {
-          applyingSidebarLayoutRef.current = false;
-        });
-        return;
-      }
-
-      if (folded && sidebarPx > PROJECT_SIDEBAR_RAIL_WIDTH_PX + 1.5) {
-        applyingSidebarLayoutRef.current = true;
-        setProjectSidebarFolded(false);
-        requestAnimationFrame(() => {
-          applyingSidebarLayoutRef.current = false;
-        });
-        return;
-      }
-
-      if (!folded) {
-        sidebarWidthPxRef.current = Math.min(
-          SIDEBAR_MAX_PX,
-          Math.max(SIDEBAR_MIN_PX, sidebarPx)
-        );
-        schedulePersistSidebarWidth(sidebarWidthPxRef.current);
-      }
-    },
-    [schedulePersistSidebarWidth, setProjectSidebarFolded]
-  );
-
-  /** Expanded: apply stored px width when leaving folded or on first paint. */
-  useLayoutEffect(() => {
-    if (projectSidebarFolded) return;
-    applyExpandedSidebarLayout(hasInitializedSidebarLayoutRef.current);
-    hasInitializedSidebarLayoutRef.current = true;
-  }, [projectSidebarFolded, applyExpandedSidebarLayout]);
-
-  /** Folded: exact rail + main split (`setLayout`); update when shell width changes rail %. */
-  useLayoutEffect(() => {
-    if (!projectSidebarFolded) return;
-    const rail = sidebarPct.rail;
-    const main = Math.min(99, Math.max(0, 100 - rail));
-    setShellPanelLayout(
-      [rail, main],
-      hasInitializedSidebarLayoutRef.current && sidebarWidthPxRef.current > 0
-    );
-    hasInitializedSidebarLayoutRef.current = true;
-  }, [projectSidebarFolded, sidebarPct.rail, setShellPanelLayout]);
-
-  useEffect(() => {
-    const el = shellPanelGroupRef.current;
-    if (!el) return;
-
-    const update = () => {
-      const w = el.getBoundingClientRect().width;
-      if (w <= 0) return;
-      const prevW = shellWidthRef.current;
-      shellWidthRef.current = w;
-      const minPct = clampPct((SIDEBAR_MIN_PX / w) * 100);
-      const maxPct = clampPct((SIDEBAR_MAX_PX / w) * 100);
-      const railPct = clampPct((PROJECT_SIDEBAR_RAIL_WIDTH_PX / w) * 100);
-      setSidebarPct({
-        min: minPct,
-        max: Math.max(minPct, maxPct),
-        rail: railPct,
-      });
-
-      if (
-        !usePageTabStore.getState().projectSidebarFolded &&
-        prevW > 0 &&
-        Math.abs(w - prevW) > 0.5
-      ) {
-        applyExpandedSidebarLayout();
-      }
-    };
-
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [applyExpandedSidebarLayout]);
-
-  useEffect(() => {
-    return () => {
-      if (sidebarLayoutAnimationFrameRef.current != null) {
-        cancelAnimationFrame(sidebarLayoutAnimationFrameRef.current);
-      }
-      if (persistSidebarWidthTimeoutRef.current) {
-        clearTimeout(persistSidebarWidthTimeoutRef.current);
-      }
-    };
-  }, []);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -407,13 +133,13 @@ export default function WorkspacePage() {
   }, []);
 
   // Project-scoped tabs (except new-project shell) require an active project.
-  // When opening inbox/runs/project from the workspace tab without a selection,
+  // When opening files/runs/project from the workspace tab without a selection,
   // fall back to the last visited (or first) project in the space instead of
   // bouncing back to workforce.
   useLayoutEffect(() => {
     const isProjectScopedTab =
       activeWorkspaceTab === 'project' ||
-      activeWorkspaceTab === 'inbox' ||
+      activeWorkspaceTab === 'files' ||
       activeWorkspaceTab === 'runs';
 
     if (!isProjectScopedTab || activeProjectId) return;
@@ -626,10 +352,7 @@ export default function WorkspacePage() {
     }
   }, [chatStore, getSize]);
 
-  const mainPanelSurfaceClass =
-    'rounded-2xl bg-ds-bg-neutral-subtle-default min-w-0 flex h-full w-full flex-col overflow-hidden';
-  const mainPanelContentClass = 'min-h-0 min-w-0 flex h-full w-full flex-col';
-  const mainPanelShellClass = cn(mainPanelSurfaceClass);
+  const mainPanelContentClass = APP_SHELL_CONTENT_CLASS;
 
   const useWorkspacePatternBg =
     activeWorkspaceTab === 'workforce' ||
@@ -713,7 +436,7 @@ export default function WorkspacePage() {
             <WorkspaceDispatch />
           </div>
         );
-      case 'inbox':
+      case 'files':
         return (
           <div className={mainPanelContentClass}>
             <Folder />
@@ -754,57 +477,16 @@ export default function WorkspacePage() {
 
   return (
     <ReactFlowProvider>
-      <div className="flex h-full min-h-0 flex-row overflow-hidden px-1 pb-1 pt-10">
-        <div
-          ref={shellPanelGroupRef}
-          className="h-full min-h-0 w-full min-w-0 flex-1 rounded-2xl bg-ds-bg-neutral-subtle-default"
-        >
-          <ResizablePanelGroup
-            ref={shellPanelGroupImperativeRef}
-            id="home-shell-panel-group"
-            direction="horizontal"
-            className="h-full min-h-0 w-full gap-0"
-            onLayout={handleShellPanelLayout}
-          >
-            <ResizablePanel
-              ref={projectSidebarPanelRef}
-              defaultSize={24}
-              minSize={sidebarPct.rail}
-              maxSize={sidebarPct.max}
-              className="min-h-0 min-w-0 py-1 pl-1"
-            >
-              <ProjectPageSidebar chatStore={chatStore} />
-            </ResizablePanel>
-            <ResizableHandle
-              className={cn(
-                'w-[2px] shrink-0 bg-transparent after:bg-ds-bg-neutral-default-default after:transition-colors',
-                'transition-colors hover:bg-ds-bg-brand-subtle-default',
-                'data-[resize-handle-state=drag]:after:bg-ds-bg-brand-default-focus'
-              )}
-            />
-            <ResizablePanel
-              defaultSize={76}
-              minSize={mainPanelPct.min}
-              maxSize={mainPanelMaxSize}
-              className="min-h-0 min-w-[300px]"
-            >
-              <motion.div
-                layout
-                transition={{ layout: HOME_MAIN_LAYOUT_SPRING }}
-                className="relative flex h-full min-h-0 w-full min-w-0 flex-col gap-4 overflow-hidden"
-              >
-                <div className={mainPanelShellClass}>
-                  {renderActiveWorkspaceTab()}
-                </div>
-              </motion.div>
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        </div>
-        {/* Always mounted: hosts preview <webview> guests so their pages and
-            history survive panel close, workspace-tab hops, and project
-            switches. Renders nothing on the web host. */}
-        <PreviewBrowserLayer />
-      </div>
+      <AppShellLayout
+        sidebar={<SpaceSidebar chatStore={chatStore} />}
+        sidebarHidden={workspaceSidebarHidden}
+        /* Always mounted: hosts preview <webview> guests so their pages and
+           history survive panel close, workspace-tab hops, and project
+           switches. Renders nothing on the web host. */
+        overlay={<PreviewBrowserLayer />}
+      >
+        {renderActiveWorkspaceTab()}
+      </AppShellLayout>
     </ReactFlowProvider>
   );
 }

@@ -294,20 +294,18 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
 
     return (
       <div
-        className={cn('relative w-full', stateCls.wrapper, className)}
+        className={cn('relative w-full min-w-0', stateCls.wrapper, className)}
         style={formControlTokenAliases}
       >
         {title && (
-          <div className="mb-1.5 flex items-center gap-1 text-body-sm font-bold text-ds-text-neutral-default-default">
+          <div className="mb-1.5 flex items-center gap-1 text-ds-text-meta font-bold text-ds-ink-default-default">
             <span>{title}</span>
-            {required && (
-              <span className="text-ds-text-neutral-default-default">*</span>
-            )}
+            {required && <span className="text-ds-ink-default-default">*</span>}
             {tooltip && (
               <TooltipSimple content={tooltip}>
                 <CircleAlert
                   size={16}
-                  className="text-ds-icon-neutral-default-default"
+                  className="text-ds-ink-default-default"
                 />
               </TooltipSimple>
             )}
@@ -319,20 +317,20 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
           ref={containerRef}
           onClick={handleContainerClick}
           className={cn(
-            'relative flex w-full cursor-text items-center gap-2 rounded-lg border border-solid px-3 text-ds-text-neutral-default-default shadow-sm outline-none transition-[background-color,border-color,box-shadow,opacity]',
+            'relative flex w-full min-w-0 cursor-text items-center gap-2 rounded-lg border border-x border-y border-solid px-3 text-ds-ink-default-default shadow-sm transition-[background-color,border-color,box-shadow,opacity] outline-none',
             formFieldInputSelectSizeClasses[size],
             stateCls.container,
             !disabled &&
               state !== 'error' &&
               state !== 'success' && [
-                'hover:bg-ds-bg-neutral-default-hover hover:ring-1 hover:ring-ds-ring-neutral-strong-default hover:ring-offset-0',
+                'hover:bg-ds-neutral-default-hover hover:ring-1 hover:ring-ds-hairline-strong-default hover:ring-offset-0',
                 isOpen &&
-                  'bg-ds-bg-neutral-strong-default ring-1 ring-ds-ring-brand-default-focus ring-offset-0',
+                  'bg-ds-neutral-strong-default ring-1 ring-ds-ring-focus ring-offset-0',
               ]
           )}
         >
           {leadingIcon && (
-            <span className="h-4 w-4 flex-shrink-0 text-ds-icon-neutral-default-default">
+            <span className="h-4 w-4 shrink-0 text-ds-ink-default-default">
               {leadingIcon}
             </span>
           )}
@@ -346,11 +344,11 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
             onKeyDown={handleInputKeyDown}
             placeholder={placeholder}
             disabled={disabled}
-            className="placeholder:text-ds-text-neutral-muted-default/20 min-w-0 flex-1 bg-transparent outline-none"
+            className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-ds-ink-muted-default"
           />
           <ChevronDown
             className={cn(
-              'h-4 w-4 flex-shrink-0 text-ds-icon-neutral-default-default transition-transform',
+              'h-4 w-4 shrink-0 text-ds-ink-default-default transition-transform',
               isOpen && 'rotate-180'
             )}
           />
@@ -360,10 +358,10 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
         {isOpen && (
           <div
             ref={dropdownRef}
-            className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-lg border border-solid border-transparent bg-ds-bg-neutral-default-default shadow-md"
+            className="absolute top-full right-0 left-0 z-50 mt-1 overflow-hidden rounded-lg border border-x border-y border-solid border-transparent bg-ds-neutral-default-default shadow-md"
           >
             <div
-              className="overflow-y-auto overflow-x-hidden overscroll-contain p-1"
+              className="overflow-x-hidden overflow-y-auto overscroll-contain p-1"
               style={{ maxHeight: maxDropdownHeight }}
               onWheel={handleDropdownWheel}
             >
@@ -372,9 +370,9 @@ const InputSelect = React.forwardRef<HTMLInputElement, InputSelectProps>(
                   key={option.value}
                   onClick={() => handleOptionClick(option)}
                   className={cn(
-                    'relative flex w-full cursor-pointer select-none items-center rounded-lg py-1.5 pl-2 pr-8 text-sm outline-none transition-colors hover:bg-ds-bg-neutral-default-hover',
+                    'relative flex w-full cursor-pointer items-center rounded-lg py-1.5 pr-8 pl-2 text-sm transition-colors outline-none select-none hover:bg-ds-neutral-default-hover',
                     selectedOption?.value === option.value &&
-                      'bg-ds-bg-neutral-default-hover'
+                      'bg-ds-neutral-default-hover'
                   )}
                 >
                   {option.label}

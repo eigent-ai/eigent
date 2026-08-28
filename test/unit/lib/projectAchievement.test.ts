@@ -18,7 +18,7 @@ import {
 } from '@/lib/projectAchievement';
 import {
   getSessionNavLeadFromHistoryTask,
-  resolveProjectNavLeadPresentation,
+  resolveSessionNavLeadPresentation,
 } from '@/lib/sessionNavLead';
 import { proxyUpdateSpaceProject } from '@/service/spaceApi';
 import { useProjectStore } from '@/store/projectStore';
@@ -223,7 +223,7 @@ describe('project achievement', () => {
 
     expect(finishedLead.kind).toBe('finished');
     expect(
-      resolveProjectNavLeadPresentation({
+      resolveSessionNavLeadPresentation({
         cachedLead: finishedLead,
         isAchieved: true,
       }).kind

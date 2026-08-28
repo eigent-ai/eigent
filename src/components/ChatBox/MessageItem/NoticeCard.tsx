@@ -16,8 +16,10 @@ import { Button } from '@/components/ui/button';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { ChevronDown } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export function NoticeCard() {
+  const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -49,61 +51,66 @@ export function NoticeCard() {
   }, [cotListLength, isExpanded]);
 
   if (!chatStore) {
-    return <div>Loading...</div>;
+    return (
+      <span className="block px-4 py-3 text-ds-text-base font-normal text-ds-ink-muted-default">
+        {t('chat.loading', { defaultValue: 'Loading…' })}
+      </span>
+    );
   }
 
   return (
-    <div>
-      <div className="flex h-auto w-full flex-col gap-2 py-sm">
-        <div className="relative h-auto w-full overflow-hidden rounded-xl py-3 pr-5 backdrop-blur-[5px]">
-          <div className="relative">
-            <Button
-              size="xs"
-              buttonContent="icon-only"
-              variant="ghost"
-              className="absolute right-[-15px] top-0"
-              onClick={() => setIsExpanded(!isExpanded)}
-            >
-              <ChevronDown
-                size={16}
-                className={`duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] transition-transform motion-reduce:transition-none ${
-                  isExpanded ? 'rotate-180' : ''
-                }`}
-              />
-            </Button>
+    <section className="relative w-full overflow-hidden rounded-xl px-4 py-3 backdrop-blur-[5px]">
+      <Button
+        size="xs"
+        buttonContent="icon-only"
+        variant="ghost"
+        className="absolute top-2 right-2 z-10"
+        aria-label={
+          isExpanded
+            ? t('chat.agent-outcome-collapse')
+            : t('chat.agent-outcome-expand')
+        }
+        aria-expanded={isExpanded}
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <ChevronDown
+          size={16}
+          className={`transition-transform duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none ${
+            isExpanded ? 'rotate-180' : ''
+          }`}
+        />
+      </Button>
+      <div
+        ref={contentRef}
+        className={`${
+          isExpanded ? 'overflow-y-auto' : 'max-h-[200px] overflow-y-auto'
+        } scrollbar-hide relative pr-7`}
+        style={{
+          maskImage: isExpanded
+            ? 'none'
+            : 'linear-gradient(to top, black 0%, black 40%, transparent 100%)',
+          WebkitMaskImage: isExpanded
+            ? 'none'
+            : 'linear-gradient(to top, black 0%, black 40%, transparent 100%)',
+        }}
+      >
+        <div className="flex flex-col gap-2">
+          {cotList.map((cot: string, index: number) => (
             <div
-              ref={contentRef}
-              className={`${
-                isExpanded ? 'overflow-y-auto' : 'max-h-[200px] overflow-y-auto'
-              } scrollbar-hide relative`}
-              style={{
-                maskImage: isExpanded
-                  ? 'none'
-                  : 'linear-gradient(to top, black 0%, black 40%, transparent 100%)',
-                WebkitMaskImage: isExpanded
-                  ? 'none'
-                  : 'linear-gradient(to top, black 0%, black 40%, transparent 100%)',
-              }}
+              key={`taskList-${index}`}
+              className="flex items-start gap-2 rounded-lg border border-x border-y border-solid border-transparent duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] animate-in fade-in-0 slide-in-from-left-2"
             >
-              <div className="mt-sm flex flex-col gap-2 px-2">
-                {cotList.map((cot: string, index: number) => {
-                  return (
-                    <div
-                      key={`taskList-${index}`}
-                      className="ease-[cubic-bezier(0.23,1,0.32,1)] flex cursor-pointer gap-2 rounded-lg border border-solid border-transparent duration-200 animate-in fade-in-0 slide-in-from-left-2"
-                    >
-                      <div className="m-1.5 mt-2 h-1 w-1 rounded-full bg-ds-icon-neutral-default-default"></div>
-                      <div className="flex flex-1 flex-col items-start justify-center text-sm font-normal leading-normal">
-                        {cot}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <span
+                aria-hidden
+                className="mt-2 h-1 w-1 shrink-0 rounded-full bg-ds-ink-muted-default"
+              />
+              <span className="min-w-0 flex-1 text-ds-text-base font-normal text-ds-ink-subtle-default">
+                {cot}
+              </span>
             </div>
-          </div>
+          ))}
         </div>
       </div>
-    </div>
+    </section>
   );
 }

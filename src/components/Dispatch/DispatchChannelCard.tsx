@@ -56,10 +56,10 @@ export function DispatchChannelCard({
   return (
     <div
       className={[
-        'gap-3 rounded-2xl border border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default p-4',
+        'gap-3 rounded-2xl border border-x border-y border-ds-hairline-subtle-default bg-ds-neutral-default-default p-4',
         'flex min-h-40 flex-col justify-between',
         disabled
-          ? 'pointer-events-none cursor-not-allowed select-none opacity-50'
+          ? 'pointer-events-none cursor-not-allowed opacity-50 select-none'
           : '',
       ].join(' ')}
     >
@@ -74,7 +74,7 @@ export function DispatchChannelCard({
               aria-hidden
             />
           )}
-          <span className="truncate text-body-sm font-semibold text-ds-text-neutral-default-default">
+          <span className="truncate text-ds-text-base font-semibold text-ds-ink-default-default">
             {name}
           </span>
         </div>

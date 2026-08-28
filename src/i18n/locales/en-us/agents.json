@@ -1,7 +1,7 @@
 {
   "skills": "Skills",
   "memory": "Memory",
-  "sub-agents": "Sub Agents",
+  "sub-agents": "Subagents",
   "preview": "Preview",
   "skills-description": "Add custom skills to extend your agent's capabilities.",
   "memory-description": "Manage your agent's memory and knowledge base.",
@@ -55,5 +55,12 @@
   "create-skill-default-name": "New skill",
   "create-skill-default-description": "Describe what this skill does.",
   "save-skill": "Save skill",
-  "compose-skill-hint": "Edit SKILL.md (YAML frontmatter with name and description is required), then save."
+  "compose-skill-hint": "Edit SKILL.md (YAML frontmatter with name and description is required), then save.",
+  "try-skill-prompt": "I just added the {{name}} skill for Eigent. Can you make something amazing with this skill?",
+  "select-agent-access": "Select agent access",
+  "all-agents": "All agents",
+  "replace-skill-title": "Replace \"{{name}}\" skill?",
+  "replace-skill-message": "A skill with the same name already exists. Uploading this skill will replace it, and the existing version cannot be restored.",
+  "update-and-replace": "Update and replace",
+  "agent": "Agent"
 }

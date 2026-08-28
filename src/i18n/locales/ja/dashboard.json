@@ -1,9 +1,9 @@
 {
   "task-hub": "タスクハブ",
-  "new-project": "新規プロジェクト",
+  "new-project": "無題のセッション",
   "search": "検索",
-  "project-archives": "プロジェクトアーカイブ",
-  "ongoing-projects": "進行中のプロジェクト",
+  "project-archives": "セッションアーカイブ",
+  "ongoing-projects": "進行中のセッション",
   "ongoing-tasks": "進行中のタスク",
   "completed-tasks": "完了したタスク",
   "share": "共有",
@@ -24,6 +24,9 @@
   "document-agent": "ドキュメントエージェント",
   "multi-modal-agent": "マルチモーダルエージェント",
   "social-media-agent": "ソーシャルメディアエージェント",
-  "no-projects-found": "プロジェクトが見つかりませんでした。",
-  "no-tasks-found": "タスクが見つかりません。"
+  "no-projects-found": "セッションが見つかりませんでした。",
+  "no-tasks-found": "タスクが見つかりません。",
+  "command-search-placeholder": "コマンドを入力または検索…",
+  "more-integrations": "その他の連携",
+  "today": "今日"
 }

@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import i18n from '@/i18n';
 import { queryClient, queryKeys } from '@/lib/queryClient';
 import { proxyFetchTriggerConfig } from '@/service/triggerApi';
 import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
@@ -275,7 +276,10 @@ export function useExecutionSubscription(enabled: boolean = true) {
                 (t) => t.id === message.trigger_id
               );
               const triggerName =
-                trigger?.name || `Trigger #${message.trigger_id}`;
+                trigger?.name ||
+                i18n.t('triggers.automation-fallback-name', {
+                  id: message.trigger_id,
+                });
               // Use task_prompt from server message (primary), fallback to local trigger data
               const taskPrompt =
                 message.task_prompt || trigger?.task_prompt || '';
@@ -296,7 +300,10 @@ export function useExecutionSubscription(enabled: boolean = true) {
 
               addLogRef.current({
                 type: ActivityType.TriggerExecuted,
-                message: `"${triggerName}" execution started`,
+                message: i18n.t('triggers.execution-log-started', {
+                  defaultValue: '"{{name}}" execution started',
+                  name: triggerName,
+                }),
                 triggerId: message.trigger_id,
                 triggerName: triggerName,
                 executionId: message.execution_id,
@@ -330,7 +337,10 @@ export function useExecutionSubscription(enabled: boolean = true) {
                 (t) => t.id === message.trigger_id
               );
               const triggerName =
-                trigger?.name || `Trigger #${message.trigger_id}`;
+                trigger?.name ||
+                i18n.t('triggers.automation-fallback-name', {
+                  id: message.trigger_id,
+                });
 
               console.log(
                 `[ExecutionSubscription] Execution updated: ${message.execution_id} - ${message.status}`
@@ -339,21 +349,37 @@ export function useExecutionSubscription(enabled: boolean = true) {
               if (message.status === 'completed') {
                 addLogRef.current({
                   type: ActivityType.ExecutionSuccess,
-                  message: `"${triggerName}" execution completed`,
+                  message: i18n.t('triggers.execution-log-completed', {
+                    defaultValue: '"{{name}}" execution completed',
+                    name: triggerName,
+                  }),
                   triggerId: message.trigger_id,
                   triggerName: triggerName,
                   executionId: message.execution_id,
                 });
-                toast.success(`Execution completed: ${triggerName}`);
+                toast.success(
+                  i18n.t('triggers.execution-completed-toast', {
+                    defaultValue: 'Execution completed: {{name}}',
+                    name: triggerName,
+                  })
+                );
               } else if (message.status === 'failed') {
                 addLogRef.current({
                   type: ActivityType.ExecutionFailed,
-                  message: `"${triggerName}" execution failed`,
+                  message: i18n.t('triggers.execution-log-failed', {
+                    defaultValue: '"{{name}}" execution failed',
+                    name: triggerName,
+                  }),
                   triggerId: message.trigger_id,
                   triggerName: triggerName,
                   executionId: message.execution_id,
                 });
-                toast.error(`Execution failed: ${triggerName}`);
+                toast.error(
+                  i18n.t('triggers.execution-failed-toast', {
+                    defaultValue: 'Execution failed: {{name}}',
+                    name: triggerName,
+                  })
+                );
               }
               break;
             }
@@ -388,7 +414,11 @@ export function useExecutionSubscription(enabled: boolean = true) {
                 staleTime: 1000 * 60 * 10, // 10 minutes
               });
 
-              toast.success(`Trigger verified: #${message.trigger_id}`);
+              toast.success(
+                i18n.t('triggers.automation-verified', {
+                  id: message.trigger_id,
+                })
+              );
               break;
             }
 
@@ -416,7 +446,12 @@ export function useExecutionSubscription(enabled: boolean = true) {
                 '[ExecutionSubscription] Server error:',
                 message.message
               );
-              toast.error(`Listener error: ${message.message}`);
+              toast.error(
+                i18n.t('triggers.listener-error', {
+                  defaultValue: 'Listener error: {{message}}',
+                  message: message.message,
+                })
+              );
               // Mark auth failure and close connection
               if (message.message?.toLowerCase().includes('authentication')) {
                 authFailedRef.current = true;
@@ -456,7 +491,12 @@ export function useExecutionSubscription(enabled: boolean = true) {
           console.error(
             '[ExecutionSubscription] Authentication failed - not reconnecting'
           );
-          toast.error('Authentication failed for execution listener');
+          toast.error(
+            i18n.t('triggers.listener-sign-in-failed', {
+              defaultValue:
+                "Couldn't sign in to the task listener. Try reconnecting.",
+            })
+          );
           authFailedRef.current = false; // Reset flag
           return;
         }
@@ -499,7 +539,12 @@ export function useExecutionSubscription(enabled: boolean = true) {
               console.error(
                 '[ExecutionSubscription] Max reconnection attempts reached'
               );
-              toast.error('Lost connection to execution listener');
+              toast.error(
+                i18n.t('triggers.listener-connection-lost', {
+                  defaultValue:
+                    'Lost connection to the task listener. Reconnecting…',
+                })
+              );
             }
           }
         }, debounceDelay);

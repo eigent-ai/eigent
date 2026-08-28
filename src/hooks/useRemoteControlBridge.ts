@@ -12,13 +12,29 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { getBaseURL, proxyFetchGet } from '@/api/http';
+import {
+  fetchGet,
+  fetchPost,
+  getBaseURL,
+  getLocalControlCapability,
+  proxyFetchGet,
+} from '@/api/http';
 import { isDesktop } from '@/client/platform';
 import {
   getRemoteControlDesktopInstanceId,
   getRemoteControlWebSocketUrl,
   setRemoteControlBridgeConnected,
+  type RemoteControlBridgeError,
 } from '@/lib/remoteControl';
+import {
+  createFollowUpRequest,
+  getRemoteFollowUpByCommandId,
+  listPendingFollowUpRequests,
+  listPendingRemoteFollowUpRequests,
+  terminalContinuationAdmissionRejection,
+  type DurableFollowUpRequest,
+} from '@/service/followUpQueueApi';
+import { humanInteractionDecisionPath } from '@/service/humanInteractionApi';
 import { toLocalSpace, type ServerProject } from '@/service/spaceApi';
 import { getAuthStore } from '@/store/authStore';
 import { useProjectStore } from '@/store/projectStore';
@@ -36,6 +52,23 @@ type BridgeAck = {
   replayed_from_cache?: boolean;
 };
 
+type CommandResultBody = {
+  status: 'completed' | 'failed';
+  event_id: string;
+  result: Record<string, any>;
+  error_code?: string;
+  error?: string;
+};
+
+type DurableCommandEvent = {
+  event_type?: string;
+  payload?: {
+    result?: Record<string, any>;
+    error_code?: string;
+    error?: string;
+  };
+};
+
 type RemoteCommand = {
   id: string;
   session_id: string;
@@ -51,6 +84,10 @@ type RemoteCommand = {
   type: string;
   payload: Record<string, any>;
   next_task_id?: string | null;
+  route_version?: number;
+  expires_at?: string;
+  receipt_grace_until?: string;
+  requires_online_receipt_confirmation?: boolean;
 };
 
 type CacheEntry =
@@ -61,12 +98,16 @@ const CACHE_LIMIT = 200;
 const COMMAND_TIMEOUT_MS = 10000;
 const RATE_LIMIT_WINDOW_MS = 1000;
 const RATE_LIMIT_MAX_COMMANDS = 5;
+const PENDING_COMMAND_RESULTS_KEY = 'eigent:remote-command-results:v1';
+const PENDING_COMMAND_RESULT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const PENDING_COMMAND_RESULT_LIMIT = 200;
 const remoteHistoryHydrationInFlight = new Set<string>();
 const BRIDGE_CAPABILITIES = {
   bridge_version: 1,
   commands: [
     'user_message',
     'human_reply',
+    'interaction_decision',
     'stop',
     'skip_task',
     'add_task',
@@ -80,6 +121,166 @@ const BRIDGE_CAPABILITIES = {
     'space_discard_project_overlays',
   ],
 };
+
+type PendingCommandResult = {
+  command: RemoteCommand;
+  body: CommandResultBody;
+  createdAt: number;
+};
+
+function readPendingCommandResults(): PendingCommandResult[] {
+  try {
+    const value = JSON.parse(
+      window.localStorage.getItem(PENDING_COMMAND_RESULTS_KEY) || '[]'
+    );
+    const now = Date.now();
+    return Array.isArray(value)
+      ? value
+          .filter(
+            (item) =>
+              item?.command?.id &&
+              item?.body?.event_id &&
+              now - Number(item.createdAt || now) <=
+                PENDING_COMMAND_RESULT_TTL_MS
+          )
+          .map((item) => ({
+            ...item,
+            createdAt: Number(item.createdAt || now),
+          }))
+          .slice(-PENDING_COMMAND_RESULT_LIMIT)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function writePendingCommandResults(items: PendingCommandResult[]) {
+  try {
+    window.localStorage.setItem(
+      PENDING_COMMAND_RESULTS_KEY,
+      JSON.stringify(items.slice(-PENDING_COMMAND_RESULT_LIMIT))
+    );
+  } catch (error) {
+    console.warn(
+      '[RemoteControlBridge] Could not persist pending command result',
+      error
+    );
+  }
+}
+
+function queuePendingCommandResult(
+  item: Omit<PendingCommandResult, 'createdAt'>
+): PendingCommandResult {
+  const items = readPendingCommandResults();
+  const existing = items.find(
+    (candidate) => candidate.command.id === item.command.id
+  );
+  if (existing) {
+    if (JSON.stringify(existing.body) !== JSON.stringify(item.body)) {
+      console.warn(
+        '[RemoteControlBridge] Preserving first durable command outcome',
+        {
+          command_id: item.command.id,
+          existing_event_id: existing.body.event_id,
+          ignored_event_id: item.body.event_id,
+        }
+      );
+    }
+    return existing;
+  }
+  const queued = { ...item, createdAt: Date.now() };
+  items.push(queued);
+  writePendingCommandResults(items);
+  return queued;
+}
+
+function pendingCommandResult(commandId: string): PendingCommandResult | null {
+  return (
+    readPendingCommandResults().find(
+      (candidate) => candidate.command.id === commandId
+    ) || null
+  );
+}
+
+function removePendingCommandResult(commandId: string) {
+  writePendingCommandResults(
+    readPendingCommandResults().filter(
+      (candidate) => candidate.command.id !== commandId
+    )
+  );
+}
+
+export function ackFromDurableExecution(
+  commandId: string,
+  event?: DurableCommandEvent | null
+): BridgeAck | null {
+  if (!event?.event_type) {
+    return null;
+  }
+  const payload = event.payload || {};
+  if (event.event_type === 'execution.completed') {
+    return {
+      type: 'command_ack',
+      command_id: commandId,
+      status: 'acknowledged',
+      result: payload.result || {},
+      replayed_from_cache: true,
+    };
+  }
+  if (event.event_type === 'execution.failed') {
+    return {
+      type: 'command_ack',
+      command_id: commandId,
+      status: 'failed',
+      error_code: payload.error_code || 'COMMAND_FAILED',
+      error: payload.error || 'Remote command failed',
+      replayed_from_cache: true,
+    };
+  }
+  return null;
+}
+
+export function ackFromPendingCommandResult(
+  commandId: string,
+  body: CommandResultBody
+): BridgeAck {
+  if (body.status === 'completed') {
+    return {
+      type: 'command_ack',
+      command_id: commandId,
+      status: 'acknowledged',
+      result: body.result,
+      replayed_from_cache: true,
+    };
+  }
+  return {
+    type: 'command_ack',
+    command_id: commandId,
+    status: 'failed',
+    error_code: body.error_code || 'COMMAND_FAILED',
+    error: body.error || 'Remote command failed',
+    replayed_from_cache: true,
+  };
+}
+
+export function ackFromDurableFollowUp(
+  commandId: string,
+  followUp: DurableFollowUpRequest
+): BridgeAck {
+  return {
+    type: 'command_ack',
+    command_id: commandId,
+    status: 'acknowledged',
+    result: {
+      follow_up_request_id: followUp.request_id,
+      queued: followUp.status === 'pending',
+      follow_up_status: followUp.status,
+      admitted_run_id: followUp.admitted_run_id || undefined,
+      admission_error: followUp.last_error || undefined,
+    },
+    replayed_from_cache: true,
+  };
+}
 
 function trimCache(cache: Map<string, CacheEntry>) {
   if (cache.size <= CACHE_LIMIT) {
@@ -192,12 +393,16 @@ async function requestBrain(
   );
   try {
     const baseURL = await getBaseURL();
+    const localControlCapability = await getLocalControlCapability();
     const response = await fetch(`${baseURL}${path}`, {
       method,
       signal: controller.signal,
       headers: {
         ...brainHeaders(command),
         Authorization: `Bearer ${token}`,
+        ...(localControlCapability
+          ? { 'X-Eigent-Local-Capability': localControlCapability }
+          : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
     });
@@ -407,6 +612,16 @@ async function startLocalRemoteTask(command: RemoteCommand): Promise<void> {
   const project = useProjectStore.getState().getProjectById(projectId);
   const sessionMode = (project?.mode || 'single-agent') as SessionModeType;
   const content = String(payload.content || payload.question || '');
+  const messageAttaches = (Array.isArray(payload.attachments)
+    ? payload.attachments.map((value: unknown) => {
+        const filePath = String(value);
+        return {
+          fileName: filePath.split(/[\\/]/).pop() || filePath,
+          filePath,
+          source: 'local' as const,
+        };
+      })
+    : []) as unknown as File[];
   const historyId = getCommandHistoryId(command);
 
   const projectStore = useProjectStore.getState();
@@ -436,7 +651,7 @@ async function startLocalRemoteTask(command: RemoteCommand): Promise<void> {
         undefined,
         undefined,
         content,
-        [],
+        messageAttaches,
         undefined,
         projectId,
         sessionMode,
@@ -444,6 +659,7 @@ async function startLocalRemoteTask(command: RemoteCommand): Promise<void> {
           preserveTaskId: true,
           skipHistoryCreate: historyId != null,
           historyId,
+          awaitAdmission: true,
         }
       );
     scheduleRemoteProjectHistoryHydration(command);
@@ -473,36 +689,100 @@ function seedRemoteFollowUpPrompt(command: RemoteCommand): void {
   ensureRemoteProjectLoaded(command);
 
   const projectStore = useProjectStore.getState();
-  const chatStore = projectStore.getChatStore(projectId);
-  const chatState = chatStore?.getState();
-  const activeTaskId = chatState?.activeTaskId;
-  if (
-    !chatStore ||
-    !chatState ||
-    !activeTaskId ||
-    !chatState.tasks[activeTaskId]
-  ) {
-    return;
-  }
+  const prepared = projectStore.appendInitChatStore(projectId, nextTaskId);
+  if (!prepared) return;
+
+  const chatState = prepared.chatStore.getState();
+  const project = projectStore.getProjectById(projectId);
 
   const messageId = `remote-command:${command.id}`;
-  const alreadySeeded = chatState.tasks[activeTaskId].messages.some(
+  const alreadySeeded = chatState.tasks[nextTaskId].messages.some(
     (message) => message.id === messageId
   );
-  if (alreadySeeded) {
-    return;
-  }
-
   chatState.setNextTaskId(nextTaskId);
-  chatState.setIsPending(activeTaskId, true);
-  chatState.addMessages(activeTaskId, {
-    id: messageId,
-    role: 'user',
-    content,
-    attaches: [],
-  });
-  chatState.setHasMessages(activeTaskId, true);
+  chatState.setTaskSessionMode(
+    nextTaskId,
+    (project?.mode || 'single-agent') as SessionModeType
+  );
+  chatState.setTaskSource(nextTaskId, 'user');
+  chatState.setIsPending(nextTaskId, true);
+  chatState.setHasMessages(nextTaskId, true);
+  if (!alreadySeeded) {
+    chatState.addMessages(nextTaskId, {
+      id: messageId,
+      role: 'user',
+      content,
+      attaches: [],
+    });
+  }
   scheduleRemoteProjectHistoryHydration(command);
+}
+
+function reflectRemoteFollowUpInProject(
+  command: RemoteCommand,
+  request: DurableFollowUpRequest
+): void {
+  const projectId = getCommandProjectId(command);
+  if (!projectId) return;
+  ensureRemoteProjectLoaded(command);
+  useProjectStore.getState().restoreQueuedMessage(projectId, {
+    task_id: request.request_id,
+    run_id: request.request_id,
+    content: request.content,
+    timestamp: request.created_at * 1000,
+    attaches: request.attachment_paths.map((filePath) => ({
+      fileName: filePath.split(/[\\/]/).pop() || filePath,
+      filePath,
+      source: 'local',
+    })) as unknown as File[],
+    sendNow: request.delivery_mode === 'send_now',
+  });
+}
+
+async function dispatchPersistedRemoteFollowUp(
+  command: RemoteCommand
+): Promise<boolean> {
+  const projectId = getCommandProjectId(command);
+  const requestId = command.next_task_id || command.id;
+  if (!projectId || !requestId) {
+    throw new Error('Remote follow-up requires Project and request ids');
+  }
+  const pending = await listPendingFollowUpRequests(projectId);
+  const next = pending[0];
+  if (!next || next.request_id !== requestId) {
+    return !pending.some((item) => item.request_id === requestId);
+  }
+  const status = await fetchGet(
+    `/chat/${encodeURIComponent(projectId)}/status`
+  );
+  if (status?.has_lock && status?.status !== 'done') {
+    return false;
+  }
+  try {
+    if (status?.has_lock) {
+      seedRemoteFollowUpPrompt(command);
+      await fetchPost(`/chat/${encodeURIComponent(projectId)}`, {
+        question: next.content,
+        task_id: requestId,
+        attaches: next.attachment_paths,
+        target: command.payload?.target,
+      });
+    } else {
+      await startLocalRemoteTask(command);
+    }
+  } catch (error) {
+    if (terminalContinuationAdmissionRejection(error)) {
+      // Brain atomically closed this request with its typed clarification.
+      // Remove only the rebuildable renderer row and never retry it.
+      useProjectStore.getState().removeQueuedMessage(projectId, requestId);
+    }
+    throw error;
+  }
+  // Brain admits the queue row atomically with the Run Attempt.  A separate
+  // renderer acknowledgement could race an exceptionally fast terminal Run
+  // and is no longer part of the correctness boundary.
+  useProjectStore.getState().removeQueuedMessage(projectId, requestId);
+  return true;
 }
 
 function commandErrorAck(commandId: string, error: any): BridgeAck {
@@ -517,48 +797,52 @@ function commandErrorAck(commandId: string, error: any): BridgeAck {
 
 async function executeRemoteCommand(
   command: RemoteCommand,
-  token: string
+  token: string,
+  scheduleFollowUp?: (command: RemoteCommand) => void
 ): Promise<BridgeAck> {
-  if (command.type !== 'user_message') {
+  if (
+    command.type !== 'user_message' &&
+    command.type !== 'interaction_decision'
+  ) {
     await assertLocalTaskOnline(command, token);
   }
   const projectId = getCommandProjectId(command);
 
   switch (command.type) {
     case 'user_message': {
-      const status = await requestBrain(
-        command,
-        token,
-        'GET',
-        `/chat/${projectId}/status`
-      );
-      console.info(
-        '[RemoteControlBridge][RC-TRACE] user_message brain status',
-        {
-          command_id: command.id,
-          project_id: projectId,
-          has_lock: status?.has_lock,
-          lock_status: status?.status,
-          current_task_id: status?.current_task_id,
-          branch: status?.has_lock ? 'improve_queue' : 'start_local_task',
-        }
-      );
-      if (status?.has_lock) {
-        seedRemoteFollowUpPrompt(command);
-        await requestBrain(command, token, 'POST', `/chat/${projectId}`, {
-          question: command.payload.content || command.payload.question || '',
-          task_id: command.next_task_id,
-          attaches: command.payload.attachments || [],
-          target: command.payload.target,
-        });
-        console.info(
-          '[RemoteControlBridge][RC-TRACE] improve request queued on brain',
-          { command_id: command.id, next_task_id: command.next_task_id }
-        );
-      } else {
-        await startLocalRemoteTask(command);
+      const requestId = command.next_task_id || command.id;
+      // getCommandProjectId falls back to '', which would otherwise be sent as
+      // a request to /projects//follow-ups.
+      if (!projectId) {
+        throw new Error('Remote user_message requires a target Project');
       }
-      break;
+      const content = String(
+        command.payload.content || command.payload.question || ''
+      );
+      const queued = await createFollowUpRequest({
+        projectId,
+        requestId,
+        content,
+        attachmentPaths: Array.isArray(command.payload.attachments)
+          ? command.payload.attachments.map(String)
+          : [],
+        source: 'remote_control',
+        sourceCommandId: command.id,
+      });
+      reflectRemoteFollowUpInProject(command, queued);
+      const dispatched = await dispatchPersistedRemoteFollowUp(command);
+      if (!dispatched) {
+        scheduleFollowUp?.({ ...command, next_task_id: requestId });
+      }
+      return {
+        type: 'command_ack',
+        command_id: command.id,
+        status: 'acknowledged',
+        result: {
+          follow_up_request_id: requestId,
+          queued: !dispatched,
+        },
+      };
     }
     case 'human_reply': {
       await requestBrain(
@@ -569,6 +853,33 @@ async function executeRemoteCommand(
         {
           agent: command.payload.agent,
           reply: command.payload.reply || command.payload.content || '',
+        }
+      );
+      break;
+    }
+    case 'interaction_decision': {
+      const runId = String(command.payload.run_id || '');
+      const interactionId = String(command.payload.interaction_id || '');
+      if (!runId || !interactionId) {
+        throw new Error(
+          'interaction_decision requires run_id and interaction_id'
+        );
+      }
+      await requestBrain(
+        command,
+        token,
+        'POST',
+        humanInteractionDecisionPath(runId, interactionId),
+        {
+          decision_request_id:
+            command.payload.decision_request_id || command.id,
+          decision: command.payload.decision || {},
+          expected_version: Number(command.payload.expected_version || 0),
+          action_digest: command.payload.action_digest || null,
+          actor_type: 'user',
+          actor_id: String(command.user_id),
+          source: 'remote_control',
+          continue_active_attempt: true,
         }
       );
       break;
@@ -804,11 +1115,39 @@ async function executeSpaceCommand(
 }
 
 export const __remoteControlBridgeTestHooks = {
+  ackFromDurableFollowUp,
+  ackFromPendingCommandResult,
   ensureRemoteProjectLoaded,
   executeRemoteCommand,
+  pendingCommandResult,
+  queuePendingCommandResult,
+  removePendingCommandResult,
+  serverBridgeError,
 };
 
-export function useRemoteControlBridge(token: string | null | undefined) {
+function serverBridgeError(message: any): RemoteControlBridgeError | null {
+  if (message?.type !== 'error') {
+    return null;
+  }
+  const code =
+    typeof message.code === 'string' && message.code
+      ? message.code
+      : 'bridge_error';
+  const text =
+    typeof message.message === 'string' && message.message
+      ? message.message
+      : 'Remote control bridge registration failed.';
+  const retryable =
+    typeof message.retryable === 'boolean'
+      ? message.retryable
+      : code !== 'device_owner_mismatch';
+  return { code, message: text, retryable };
+}
+
+export function useRemoteControlBridge(
+  token: string | null | undefined,
+  backendReady: boolean
+) {
   const cacheRef = useRef<Map<string, CacheEntry>>(new Map());
   const rateLimitRef = useRef<number[]>([]);
   const tokenRef = useRef<string | null | undefined>(token);
@@ -818,17 +1157,21 @@ export function useRemoteControlBridge(token: string | null | undefined) {
   }, [token]);
 
   useEffect(() => {
-    if (!token || !isDesktop()) {
-      setRemoteControlBridgeConnected(false);
+    if (!backendReady || !token || !isDesktop()) {
+      setRemoteControlBridgeConnected(false, null);
       return;
     }
+
+    setRemoteControlBridgeConnected(false, null);
 
     let stopped = false;
     let ws: WebSocket | null = null;
     let reconnectTimer: number | null = null;
     let pingTimer: number | null = null;
     let reconnectAttempt = 0;
-    const desktopInstanceId = getRemoteControlDesktopInstanceId();
+    let desktopInstanceId = '';
+    const followUpTimers = new Map<string, number>();
+    const followUpAttempts = new Map<string, number>();
 
     const send = (payload: Record<string, unknown>) => {
       if (ws?.readyState === WebSocket.OPEN) {
@@ -865,6 +1208,49 @@ export function useRemoteControlBridge(token: string | null | undefined) {
       return true;
     };
 
+    const scheduleRemoteFollowUp = (command: RemoteCommand) => {
+      const requestId = command.next_task_id || command.id;
+      if (stopped || followUpTimers.has(requestId)) return;
+      const attempt = followUpAttempts.get(requestId) || 0;
+      const delay = Math.min(15_000, 500 * 2 ** Math.min(attempt, 5));
+      const timer = window.setTimeout(() => {
+        followUpTimers.delete(requestId);
+        void dispatchPersistedRemoteFollowUp(command)
+          .then((dispatched) => {
+            if (dispatched) {
+              followUpAttempts.delete(requestId);
+              return;
+            }
+            followUpAttempts.set(requestId, attempt + 1);
+            scheduleRemoteFollowUp(command);
+          })
+          .catch((error) => {
+            const rejection = terminalContinuationAdmissionRejection(error);
+            if (rejection) {
+              followUpAttempts.delete(requestId);
+              const projectId = getCommandProjectId(command);
+              if (projectId) {
+                useProjectStore
+                  .getState()
+                  .removeQueuedMessage(projectId, requestId);
+              }
+              console.warn(
+                '[RemoteControlBridge] Durable follow-up requires new user intent',
+                { request_id: requestId, code: rejection.code }
+              );
+              return;
+            }
+            console.warn(
+              '[RemoteControlBridge] Durable follow-up dispatch deferred',
+              { request_id: requestId, error }
+            );
+            followUpAttempts.set(requestId, attempt + 1);
+            scheduleRemoteFollowUp(command);
+          });
+      }, delay);
+      followUpTimers.set(requestId, timer);
+    };
+
     const executeCommand = (command: RemoteCommand): Promise<BridgeAck> => {
       if (
         command.type === 'switch_project_view' ||
@@ -888,7 +1274,185 @@ export function useRemoteControlBridge(token: string | null | undefined) {
         });
       }
 
-      return executeRemoteCommand(command, token);
+      return executeRemoteCommand(command, token, scheduleRemoteFollowUp);
+    };
+
+    const persistCommandResult = async (
+      command: RemoteCommand,
+      body: CommandResultBody
+    ) => {
+      const queued = queuePendingCommandResult({ command, body });
+      await fetchPost(
+        `/remote-control/commands/${encodeURIComponent(command.id)}/result`,
+        queued.body,
+        brainHeaders(queued.command)
+      );
+      removePendingCommandResult(command.id);
+    };
+
+    const flushPendingCommandResults = async () => {
+      for (const item of readPendingCommandResults()) {
+        try {
+          await persistCommandResult(item.command, item.body);
+        } catch (error) {
+          console.warn(
+            '[RemoteControlBridge] Pending command result remains queued',
+            { command_id: item.command.id, error }
+          );
+        }
+      }
+    };
+
+    const persistCommandAndExecute = async (
+      command: RemoteCommand
+    ): Promise<BridgeAck> => {
+      const persisted = await fetchPost(
+        '/remote-control/commands/inbox',
+        command,
+        brainHeaders(command)
+      );
+      send({
+        type: 'command_delivered',
+        command_id: command.id,
+      });
+      const durableAck = ackFromDurableExecution(
+        command.id,
+        persisted?.execution_event
+      );
+      if (durableAck) {
+        return durableAck;
+      }
+      const inboxState = persisted?.command?.state;
+      if (inboxState === 'accepted') {
+        const pendingResult = pendingCommandResult(command.id);
+        if (pendingResult) {
+          try {
+            await persistCommandResult(
+              pendingResult.command,
+              pendingResult.body
+            );
+          } catch (error) {
+            console.warn(
+              '[RemoteControlBridge] Existing execution result remains queued',
+              { command_id: command.id, error }
+            );
+          }
+          return ackFromPendingCommandResult(command.id, pendingResult.body);
+        }
+        if (command.type === 'user_message') {
+          try {
+            const followUp = await getRemoteFollowUpByCommandId(command.id);
+            const recoveredAck = ackFromDurableFollowUp(command.id, followUp);
+            await persistCommandResult(command, {
+              status: 'completed',
+              event_id: `${command.id}:result`,
+              result: recoveredAck.result || {},
+            });
+            return recoveredAck;
+          } catch (error: any) {
+            if (error?.response?.status !== 404) {
+              throw error;
+            }
+          }
+        }
+        // A previous renderer durably admitted this command. Re-executing after
+        // restart could duplicate an external side effect, so close the unknown
+        // outcome explicitly. This event identity is intentionally disjoint
+        // from the real execution result lane.
+        const unknownAck: BridgeAck = {
+          type: 'command_ack',
+          command_id: command.id,
+          status: 'failed',
+          error_code: 'COMMAND_OUTCOME_UNKNOWN_AFTER_RESTART',
+          error:
+            'The command was admitted before Desktop restarted; it was not replayed.',
+        };
+        try {
+          await persistCommandResult(command, {
+            status: 'failed',
+            event_id: `${command.id}:recovery-outcome-unknown`,
+            result: {},
+            error_code: unknownAck.error_code,
+            error: unknownAck.error,
+          });
+        } catch (error) {
+          console.warn(
+            '[RemoteControlBridge] Outcome-unknown result queued for retry',
+            error
+          );
+        }
+        return unknownAck;
+      }
+      if (inboxState === 'rejected') {
+        return {
+          type: 'command_ack',
+          command_id: command.id,
+          status: 'failed',
+          error_code: 'COMMAND_REJECTED',
+          error: persisted?.command?.last_error || 'Command was rejected',
+          replayed_from_cache: true,
+        };
+      }
+      if (inboxState === 'completed' || inboxState === 'failed') {
+        return {
+          type: 'command_ack',
+          command_id: command.id,
+          status: 'failed',
+          error_code: 'COMMAND_RESULT_INTEGRITY_ERROR',
+          error: 'Durable command state has no replayable execution result',
+        };
+      }
+      if (!persisted?.may_execute) {
+        await fetchPost(
+          `/remote-control/commands/${encodeURIComponent(command.id)}/admission`,
+          {
+            status: 'rejected',
+            event_id: `${command.id}:admission`,
+            reason: 'expired_or_receipt_not_confirmed',
+          },
+          brainHeaders(command)
+        );
+        return {
+          type: 'command_ack',
+          command_id: command.id,
+          status: 'failed',
+          error_code: 'COMMAND_RECEIPT_NOT_CONFIRMED',
+          error: 'Command expired or could not pass its receipt gate',
+        };
+      }
+
+      await fetchPost(
+        `/remote-control/commands/${encodeURIComponent(command.id)}/admission`,
+        {
+          status: 'accepted',
+          event_id: `${command.id}:admission`,
+        },
+        brainHeaders(command)
+      );
+      let ack: BridgeAck;
+      try {
+        ack = await executeCommand(command);
+      } catch (error) {
+        ack = commandErrorAck(command.id, error);
+      }
+      try {
+        await persistCommandResult(command, {
+          status: ack.status === 'acknowledged' ? 'completed' : 'failed',
+          event_id: `${command.id}:execution-result`,
+          result: ack.result || {},
+          error_code: ack.error_code,
+          error: ack.error,
+        });
+      } catch (error) {
+        // The execution outcome is authoritative. Keep its exact payload in a
+        // durable renderer queue and retry it; never replace it with a fake
+        // execution.failed ACK caused by an upload/notification failure.
+        console.warn('[RemoteControlBridge] Command result queued for retry', {
+          command_id: command.id,
+          error,
+        });
+      }
+      return ack;
     };
 
     const handleCommand = (command: RemoteCommand) => {
@@ -924,12 +1488,7 @@ export function useRemoteControlBridge(token: string | null | undefined) {
       cache.set(command.id, { state: 'in_progress', promise });
       trimCache(cache);
 
-      send({
-        type: 'command_delivered',
-        command_id: command.id,
-      });
-
-      executeCommand(command)
+      persistCommandAndExecute(command)
         .then(resolveAck!)
         .catch((error) => resolveAck!(commandErrorAck(command.id, error)));
 
@@ -950,21 +1509,86 @@ export function useRemoteControlBridge(token: string | null | undefined) {
       });
     };
 
+    const replayDurableInbox = async () => {
+      try {
+        const response = await fetchGet(
+          '/remote-control/commands/inbox/pending',
+          { limit: 100 }
+        );
+        const items = Array.isArray(response?.items) ? response.items : [];
+        for (const item of items) {
+          if (item?.payload?.id) {
+            handleCommand(item.payload as RemoteCommand);
+          }
+        }
+      } catch (error) {
+        console.warn(
+          '[RemoteControlBridge] Durable Inbox reconciliation failed',
+          error
+        );
+      }
+    };
+
+    const reconcileRemoteFollowUps = async () => {
+      try {
+        const items = await listPendingRemoteFollowUpRequests();
+        for (const item of items) {
+          if (!item.source_command_id) continue;
+          scheduleRemoteFollowUp({
+            id: item.source_command_id,
+            session_id: 'durable-follow-up-recovery',
+            user_id: 0,
+            project_id: item.project_id,
+            target_project_id: item.project_id,
+            source_channel: 'remote_control',
+            type: 'user_message',
+            payload: {
+              content: item.content,
+              attachments: item.attachment_paths,
+            },
+            next_task_id: item.request_id,
+          });
+        }
+      } catch (error) {
+        console.warn(
+          '[RemoteControlBridge] Durable follow-up reconciliation failed',
+          error
+        );
+      }
+    };
+
     const connect = async () => {
-      const url = await getRemoteControlWebSocketUrl(
-        '/api/v1/remote-control/bridge/subscribe'
-      );
-      if (stopped) {
+      let url = '';
+      try {
+        if (!desktopInstanceId) {
+          desktopInstanceId = await getRemoteControlDesktopInstanceId();
+        }
+        url = await getRemoteControlWebSocketUrl(
+          '/api/v1/remote-control/bridge/subscribe'
+        );
+        if (stopped) {
+          return;
+        }
+        ws = new WebSocket(url);
+      } catch (error) {
+        console.warn(
+          '[RemoteControlBridge] Bridge identity or URL resolution failed',
+          error
+        );
+        if (!stopped) {
+          const base = Math.min(30_000, 3_000 * 2 ** reconnectAttempt);
+          const delay = base + Math.floor(Math.random() * 1_000);
+          reconnectAttempt += 1;
+          reconnectTimer = window.setTimeout(() => void connect(), delay);
+        }
         return;
       }
-      ws = new WebSocket(url);
       console.info('[RemoteControlBridge][RC-TRACE] connecting bridge ws', {
         url,
         desktop_instance_id: desktopInstanceId,
         attempt: reconnectAttempt,
       });
       ws.onopen = () => {
-        reconnectAttempt = 0;
         send({
           type: 'subscribe',
           desktop_instance_id: desktopInstanceId,
@@ -983,11 +1607,30 @@ export function useRemoteControlBridge(token: string | null | undefined) {
         try {
           const message = JSON.parse(event.data);
           if (message?.type === 'connected') {
+            // Reset backoff only after application-level registration. A raw
+            // WebSocket open followed by a policy rejection is not success.
+            reconnectAttempt = 0;
             console.info(
               '[RemoteControlBridge][RC-TRACE] bridge registered on server',
               { desktop_instance_id: desktopInstanceId }
             );
             setRemoteControlBridgeConnected(true);
+            void flushPendingCommandResults()
+              .then(replayDurableInbox)
+              .then(reconcileRemoteFollowUps);
+            return;
+          }
+          const bridgeError = serverBridgeError(message);
+          if (bridgeError) {
+            console.error(
+              '[RemoteControlBridge] Bridge registration rejected',
+              bridgeError
+            );
+            setRemoteControlBridgeConnected(false, bridgeError);
+            if (!bridgeError.retryable) {
+              stopped = true;
+              ws?.close(1000, bridgeError.code.slice(0, 120));
+            }
             return;
           }
           if (message?.type === 'auth_expired') {
@@ -1024,7 +1667,18 @@ export function useRemoteControlBridge(token: string | null | undefined) {
           stopped,
           attempt: reconnectAttempt,
         });
-        setRemoteControlBridgeConnected(false);
+        if (!stopped && event?.code === 1008) {
+          stopped = true;
+          setRemoteControlBridgeConnected(false, {
+            code: 'bridge_policy_rejected',
+            message:
+              event?.reason ||
+              'Remote control bridge registration was rejected by policy.',
+            retryable: false,
+          });
+        } else {
+          setRemoteControlBridgeConnected(false);
+        }
         if (pingTimer) {
           window.clearInterval(pingTimer);
           pingTimer = null;
@@ -1035,7 +1689,7 @@ export function useRemoteControlBridge(token: string | null | undefined) {
           const base = Math.min(30_000, 3_000 * 2 ** reconnectAttempt);
           const delay = base + Math.floor(Math.random() * 1_000);
           reconnectAttempt += 1;
-          reconnectTimer = window.setTimeout(connect, delay);
+          reconnectTimer = window.setTimeout(() => void connect(), delay);
         }
       };
       ws.onerror = () => {
@@ -1053,8 +1707,13 @@ export function useRemoteControlBridge(token: string | null | undefined) {
       if (reconnectTimer) {
         window.clearTimeout(reconnectTimer);
       }
+      for (const timer of followUpTimers.values()) {
+        window.clearTimeout(timer);
+      }
+      followUpTimers.clear();
+      followUpAttempts.clear();
       setRemoteControlBridgeConnected(false);
       ws?.close();
     };
-  }, [token]);
+  }, [backendReady, token]);
 }

@@ -21,40 +21,30 @@ export type FormFieldSize = 'default' | 'sm';
 
 /** Same union as `Input` `state` (field wrapper, not `UiTone`). */
 export type FormFieldInputState =
-  | 'default'
-  | 'hover'
-  | 'input'
-  | 'error'
-  | 'success'
-  | 'disabled';
+  'default' | 'hover' | 'input' | 'error' | 'success' | 'disabled';
 
 export const formFieldSizeClasses: Record<FormFieldSize, string> = {
-  default: 'h-10 text-body-sm md:text-sm',
-  sm: 'h-8 text-body-sm',
+  default: 'h-ds-control-xl !text-ds-text-base rounded-ds-field !px-ds-12',
+  sm: 'h-ds-control-md !text-ds-text-base rounded-ds-field !px-ds-12',
 };
 
 /** Select trigger: same vertical rhythm, no `md:` breakpoint on body text. */
 export const formFieldSelectSizeClasses: Record<FormFieldSize, string> = {
-  default: 'h-10 text-body-sm',
-  sm: 'h-8 text-body-sm',
+  default: 'h-ds-control-xl !text-ds-text-base rounded-ds-field !px-ds-12',
+  sm: 'h-ds-control-md !text-ds-text-base rounded-ds-field !px-ds-12',
 };
 
 export const formFieldInputSelectSizeClasses: Record<FormFieldSize, string> = {
-  default: 'h-10 text-body-sm',
-  sm: 'h-8 text-body-sm',
+  default: 'h-ds-control-xl !text-ds-text-base rounded-ds-field !px-ds-12',
+  sm: 'h-ds-control-md !text-ds-text-base rounded-ds-field !px-ds-12',
 };
 
 export type TextareaFormFieldState =
-  | 'default'
-  | 'hover'
-  | 'input'
-  | 'error'
-  | 'success'
-  | 'disabled';
+  'default' | 'hover' | 'input' | 'error' | 'success' | 'disabled';
 
 export const formFieldTextareaSizeClasses: Record<FormFieldSize, string> = {
-  default: 'min-h-[60px] text-body-sm md:text-sm',
-  sm: 'min-h-[40px] text-body-sm',
+  default: 'min-h-[5rem] !text-ds-text-base rounded-ds-field !px-ds-12',
+  sm: 'min-h-[4rem] !text-ds-text-base rounded-ds-field !px-ds-12',
 };
 
 export function formFieldInputStateClasses(
@@ -68,37 +58,34 @@ export function formFieldInputStateClasses(
   if (state === 'disabled') {
     return {
       container: 'opacity-50 cursor-not-allowed',
-      field:
-        'border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default',
-      input: 'text-ds-text-neutral-default-default',
-      placeholder: 'placeholder-input-label-default',
+      field: 'border-ds-hairline-default-default bg-ds-neutral-default-default',
+      input: 'text-ds-ink-default-default',
+      placeholder: 'placeholder:text-ds-ink-muted-default',
     };
   }
   if (state === 'hover') {
     return {
       container: '',
-      field:
-        'border-ds-border-neutral-strong-default bg-ds-bg-neutral-subtle-default',
-      input: 'text-ds-text-neutral-default-default',
-      placeholder: 'placeholder-input-label-default',
+      field: 'border-ds-hairline-strong-default bg-ds-neutral-subtle-default',
+      input: 'text-ds-ink-default-default',
+      placeholder: 'placeholder:text-ds-ink-muted-default',
     };
   }
   if (state === 'input') {
     return {
       container: '',
-      field:
-        'border-ds-border-brand-default-focus bg-ds-bg-neutral-subtle-default',
-      input: 'text-ds-text-neutral-default-default',
-      placeholder: 'placeholder-input-label-default',
+      field: 'border-ds-ring-focus bg-ds-neutral-subtle-default',
+      input: 'text-ds-ink-default-default',
+      placeholder: 'placeholder:text-ds-ink-muted-default',
     };
   }
   if (state === 'error') {
     return {
       container: '',
       field:
-        'border-ds-border-status-error-default-default bg-ds-bg-neutral-default-default',
-      input: 'text-ds-text-neutral-default-default',
-      placeholder: 'placeholder-input-label-default',
+        'border-ds-border-status-error-default-default bg-ds-neutral-default-default',
+      input: 'text-ds-ink-default-default',
+      placeholder: 'placeholder:text-ds-ink-muted-default',
     };
   }
   if (state === 'success') {
@@ -106,16 +93,15 @@ export function formFieldInputStateClasses(
       container: '',
       field:
         'border-ds-border-status-completed-default-default bg-ds-bg-status-completed-subtle-default',
-      input: 'text-ds-text-neutral-default-default',
-      placeholder: 'placeholder-input-label-default',
+      input: 'text-ds-ink-default-default',
+      placeholder: 'placeholder:text-ds-ink-muted-default',
     };
   }
   return {
     container: '',
-    field:
-      'border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default',
-    input: 'text-ds-text-neutral-default-default',
-    placeholder: 'placeholder-input-label-default/10',
+    field: 'border-ds-hairline-default-default bg-ds-neutral-default-default',
+    input: 'text-ds-ink-default-default',
+    placeholder: 'placeholder:text-ds-ink-muted-default',
   };
 }
 
@@ -130,47 +116,47 @@ export function formFieldTextareaStateClasses(
     return {
       container: 'opacity-50 cursor-not-allowed',
       field:
-        'border-transparent bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default',
-      placeholder: 'text-ds-text-neutral-muted-default',
+        'border-transparent bg-ds-neutral-default-default text-ds-ink-default-default',
+      placeholder: 'placeholder:text-ds-ink-muted-default',
     };
   }
   if (state === 'hover') {
     return {
       container: '',
       field:
-        'border-transparent bg-ds-bg-neutral-subtle-default text-ds-text-neutral-default-default',
-      placeholder: 'text-ds-text-neutral-muted-default',
+        'border-transparent bg-ds-neutral-subtle-default text-ds-ink-default-default',
+      placeholder: 'placeholder:text-ds-ink-muted-default',
     };
   }
   if (state === 'input') {
     return {
       container: '',
       field:
-        'border-transparent bg-ds-bg-neutral-subtle-default text-ds-text-neutral-default-default',
-      placeholder: 'text-ds-text-neutral-muted-default',
+        'border-transparent bg-ds-neutral-subtle-default text-ds-ink-default-default',
+      placeholder: 'placeholder:text-ds-ink-muted-default',
     };
   }
   if (state === 'error') {
     return {
       container: '',
       field:
-        'border-ds-border-status-error-default-default bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default',
-      placeholder: 'text-ds-text-neutral-muted-default',
+        'border-ds-border-status-error-default-default bg-ds-neutral-default-default text-ds-ink-default-default',
+      placeholder: 'placeholder:text-ds-ink-muted-default',
     };
   }
   if (state === 'success') {
     return {
       container: '',
       field:
-        'border-ds-border-status-completed-default-default bg-ds-bg-status-completed-subtle-default text-ds-text-neutral-default-default',
-      placeholder: 'text-ds-text-neutral-muted-default',
+        'border-ds-border-status-completed-default-default bg-ds-bg-status-completed-subtle-default text-ds-ink-default-default',
+      placeholder: 'placeholder:text-ds-ink-muted-default',
     };
   }
   return {
     container: '',
     field:
-      'border-transparent bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default',
-    placeholder: 'text-ds-text-neutral-muted-default/10',
+      'border-transparent bg-ds-neutral-default-default text-ds-ink-default-default',
+    placeholder: 'placeholder:text-ds-ink-muted-default',
   };
 }
 
@@ -188,7 +174,7 @@ export function formFieldSelectTriggerState(
     return {
       wrapper: 'opacity-50 cursor-not-allowed',
       trigger: 'border-transparent',
-      note: 'text-ds-text-neutral-muted-default',
+      note: 'text-ds-ink-muted-default',
     };
   }
   if (state === 'error') {
@@ -210,7 +196,7 @@ export function formFieldSelectTriggerState(
   return {
     wrapper: '',
     trigger: 'border-transparent',
-    note: 'text-ds-text-neutral-muted-default',
+    note: 'text-ds-ink-muted-default',
   };
 }
 
@@ -225,15 +211,15 @@ export function formFieldInputSelectState(
   if (disabled) {
     return {
       wrapper: 'opacity-50 cursor-not-allowed',
-      container: 'border-transparent bg-ds-bg-neutral-default-default',
-      note: 'text-ds-text-neutral-muted-default',
+      container: 'border-transparent bg-ds-neutral-default-default',
+      note: 'text-ds-ink-muted-default',
     };
   }
   if (state === 'error') {
     return {
       wrapper: '',
       container:
-        'border-ds-border-status-error-default-default bg-ds-bg-neutral-default-default',
+        'border-ds-border-status-error-default-default bg-ds-neutral-default-default',
       note: 'text-ds-text-status-error-strong-default',
     };
   }
@@ -247,8 +233,8 @@ export function formFieldInputSelectState(
   }
   return {
     wrapper: '',
-    container: 'border-transparent bg-ds-bg-neutral-default-default',
-    note: 'text-ds-text-neutral-muted-default',
+    container: 'border-transparent bg-ds-neutral-default-default',
+    note: 'text-ds-ink-muted-default',
   };
 }
 
@@ -264,5 +250,5 @@ export function formFieldNoteTextClassName(
   if (validation === 'success') {
     return 'text-ds-text-status-completed-strong-default';
   }
-  return 'text-ds-text-neutral-muted-default';
+  return 'text-ds-ink-muted-default';
 }

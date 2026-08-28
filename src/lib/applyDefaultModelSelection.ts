@@ -18,6 +18,7 @@
  */
 
 import { proxyFetchGet, proxyFetchPost } from '@/api/http';
+import { isSearchConfigured } from '@/lib/searchConfig';
 import type { Provider } from '@/types';
 import type { TFunction } from 'i18next';
 import type { Dispatch, SetStateAction } from 'react';
@@ -55,13 +56,7 @@ export function isDefaultModelConfigured(
 async function checkHasSearchKey(): Promise<boolean> {
   const configsRes = await proxyFetchGet('/api/v1/configs');
   const configs = Array.isArray(configsRes) ? configsRes : [];
-  const hasApiKey = configs.find(
-    (item: { config_name: string }) => item.config_name === 'GOOGLE_API_KEY'
-  );
-  const hasApiId = configs.find(
-    (item: { config_name: string }) => item.config_name === 'SEARCH_ENGINE_ID'
-  );
-  return Boolean(hasApiKey && hasApiId);
+  return isSearchConfigured(configs);
 }
 
 export interface ApplyDefaultModelSelectionParams {
@@ -176,7 +171,3 @@ export async function applyDefaultModelSelection(
 
   return false;
 }
-
-/** Settings route when the user must finish configuring a provider first. */
-export const DEFAULT_MODEL_CONFIGURE_PATH =
-  '/history?tab=agents&section=models';

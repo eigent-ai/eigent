@@ -42,7 +42,7 @@
   "file-read-error": "Impossibile leggere il file. Riprova.",
   "reupload-file": "Carica di nuovo un file",
   "upload-error-invalid-format": "Il file deve essere un .zip o un pacchetto skill (.skill o .md).",
-  "upload-error-invalid-yaml": "SKILL.md deve definire name e description in formato YAML.",
+  "upload-error-invalid-yaml": "SKILL.md deve definire il nome e la descrizione usando il formato YAML.",
   "skill-added-success": "Competenza aggiunta con successo!",
   "skill-add-error": "Impossibile aggiungere la competenza. Riprova.",
   "custom-skill": "Competenza personalizzata",
@@ -55,5 +55,12 @@
   "create-skill-default-name": "Nuova abilità",
   "create-skill-default-description": "Descrivi cosa fa questa abilità.",
   "save-skill": "Salva abilità",
-  "compose-skill-hint": "Modifica SKILL.md (è richiesto il frontmatter YAML con nome e descrizione), poi salva."
+  "compose-skill-hint": "Modifica SKILL.md (è richiesto il frontmatter YAML con nome e descrizione), poi salva.",
+  "try-skill-prompt": "Ho appena aggiunto l’abilità {{name}} a Eigent. Puoi creare qualcosa di straordinario con questa abilità?",
+  "select-agent-access": "Seleziona accesso degli agenti",
+  "all-agents": "Tutti gli agenti",
+  "replace-skill-title": "Sostituire l’abilità “{{name}}”?",
+  "replace-skill-message": "Esiste già un’abilità con lo stesso nome. Il caricamento la sostituirà e la versione esistente non potrà essere ripristinata.",
+  "update-and-replace": "Aggiorna e sostituisci",
+  "agent": "Agente"
 }

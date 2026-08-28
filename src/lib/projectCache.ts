@@ -16,10 +16,10 @@
  * IndexedDB-backed cache for reconstructed project chat state.
  *
  * Goal: avoid re-running the SSE playback for projects the user has already
- * opened in a previous session. On project open, hydrate from this cache
- * synchronously, then trigger a silent background refresh that compares the
- * server's `updated_at` against the cached value and invalidates the entry
- * if the project has moved on.
+ * opened in a previous session. On project open, compare both the server's
+ * history timestamp and the local SQLite Run freshness anchor. A current
+ * snapshot can hydrate immediately; a stale snapshot must be discarded so
+ * the same open replays the latest canonical history.
  *
  * Bump `PROJECT_CACHE_SCHEMA_VERSION` whenever the persisted shape changes
  * in a backward-incompatible way — all existing entries are then ignored
@@ -30,8 +30,13 @@ const DB_NAME = 'eigent';
 const STORE_NAME = 'projectCache';
 const DB_VERSION = 1;
 
-/** Bump when CachedProject shape or chatStore Task interface changes. */
-export const PROJECT_CACHE_SCHEMA_VERSION = 1;
+/**
+ * Bump when CachedProject shape or projection semantics change. Version 9
+ * rejects incomplete task projections (for example hasMessages=true with an
+ * empty messages array) so a disposable cache can never suppress canonical
+ * SQLite replay and leave a Project permanently blank.
+ */
+export const PROJECT_CACHE_SCHEMA_VERSION = 9;
 
 export interface CachedTask {
   /** Anything stored on `chatStore.tasks[taskId]` that's safe to serialize. */
@@ -42,6 +47,8 @@ export interface CachedProject {
   schemaVersion: number;
   /** Server-reported last-activity timestamp for the project (ms). */
   serverUpdatedAt: number | null;
+  /** Max local SQLite Run.updated_at value (epoch seconds), or null. */
+  localCanonicalUpdatedAt: number | null;
   /** Wall-clock time (ms) when we wrote this entry. */
   cachedAt: number;
   /** Ordered list of task IDs that make up this project's history. */

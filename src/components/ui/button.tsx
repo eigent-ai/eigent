@@ -19,8 +19,10 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 import {
   DEFAULT_EMPHASIS_BY_VARIANT,
+  DS_FOCUS_RING,
+  normalizeUiEmphasis,
   normalizeUiTone,
-  type UiEmphasis,
+  type UiEmphasisLegacy,
   type UiTone,
   type UiToneInput,
   type UiVariant,
@@ -35,26 +37,21 @@ export type ButtonRadius = 'lg' | 'full';
 /** Semantic tone; use `neutral` (preferred) instead of the legacy `default`. */
 export type ButtonTone = UiTone;
 export type ButtonToneInput = UiToneInput;
-export type ButtonEmphasis = UiEmphasis;
+export type ButtonEmphasis = UiEmphasisLegacy;
 
 /** Visual chrome style axis. */
-export type ButtonVariant = UiVariant;
-type ButtonStyleVariant = UiVariant | 'inverse';
+export type ButtonVariant = UiVariant | 'text';
+type ButtonStyleVariant = ButtonVariant;
 
 /**
  * @deprecated Map to `variant` + `tone` (+ optional `emphasis`) instead:
  * - success → variant="primary" tone="success"
  * - warning → variant="primary" tone="warning"
- * - caution → variant="primary" tone="error"
  * - information → variant="primary" tone="information"
- * - inverse → variant="primary" emphasis="inverse"
+ * - caution → variant="primary" tone="error" (legacy destructive name)
  */
 export type ButtonLegacyVariant =
-  | 'inverse'
-  | 'success'
-  | 'warning'
-  | 'caution'
-  | 'information';
+  'inverse' | 'success' | 'warning' | 'caution' | 'information';
 
 const LEGACY_VARIANT_TO_TONE: Record<
   Exclude<ButtonLegacyVariant, 'inverse'>,
@@ -81,7 +78,7 @@ function resolveVariantToneAndEmphasis(
   styleVariant: ButtonStyleVariant;
   tone: ButtonTone;
   styleTone: ButtonToneForStyles;
-  emphasis: ButtonEmphasis;
+  emphasis: Exclude<ButtonEmphasis, 'inverse'>;
 } {
   const v = variant ?? 'primary';
 
@@ -90,10 +87,10 @@ function resolveVariantToneAndEmphasis(
     const normalizedTone = normalizeUiTone(tone);
     return {
       variant: 'primary',
-      styleVariant: 'inverse',
+      styleVariant: 'primary',
       tone: normalizedTone,
       styleTone: toStyleTone(normalizedTone),
-      emphasis: 'inverse',
+      emphasis: 'strong',
     };
   }
 
@@ -105,15 +102,14 @@ function resolveVariantToneAndEmphasis(
   ) {
     const mapped = LEGACY_VARIANT_TO_TONE[v];
     const normalizedTone = normalizeUiTone(tone ?? mapped.tone);
-    const resolvedEmphasis = emphasis ?? DEFAULT_EMPHASIS_BY_VARIANT.primary;
+    const resolvedEmphasis =
+      normalizeUiEmphasis(emphasis) ?? DEFAULT_EMPHASIS_BY_VARIANT.primary;
     return {
       variant: mapped.variant,
       styleVariant:
-        resolvedEmphasis === 'inverse'
-          ? 'inverse'
-          : resolvedEmphasis === 'subtle' || resolvedEmphasis === 'muted'
-            ? 'secondary'
-            : 'primary',
+        resolvedEmphasis === 'subtle' || resolvedEmphasis === 'muted'
+          ? 'secondary'
+          : 'primary',
       tone: normalizedTone,
       styleTone: toStyleTone(normalizedTone),
       emphasis: resolvedEmphasis,
@@ -122,17 +118,11 @@ function resolveVariantToneAndEmphasis(
 
   const baseVariant = v as ButtonVariant;
   const normalizedTone = normalizeUiTone(tone);
-  const resolvedEmphasis = emphasis ?? DEFAULT_EMPHASIS_BY_VARIANT[baseVariant];
-
-  if (resolvedEmphasis === 'inverse') {
-    return {
-      variant: baseVariant,
-      styleVariant: 'inverse',
-      tone: normalizedTone,
-      styleTone: toStyleTone(normalizedTone),
-      emphasis: resolvedEmphasis,
-    };
-  }
+  const resolvedEmphasis =
+    normalizeUiEmphasis(emphasis) ??
+    (baseVariant === 'text'
+      ? 'default'
+      : DEFAULT_EMPHASIS_BY_VARIANT[baseVariant]);
 
   if (baseVariant === 'primary') {
     return {
@@ -166,12 +156,12 @@ function resolveVariantToneAndEmphasis(
   };
 }
 
-/** Icon box (width/height) paired with text weight when `textWeight` is set */
+/** Icon box is owned by the size recipe; weight never changes icon size. */
 const TEXT_WEIGHT_CLASSES: Record<ButtonTextWeight, string> = {
-  normal: '!font-normal [&_svg:not([class*="size-"])]:!size-[14px]',
-  medium: '!font-medium [&_svg:not([class*="size-"])]:!size-[15px]',
-  semibold: '!font-semibold [&_svg:not([class*="size-"])]:!size-[16px]',
-  bold: '!font-bold [&_svg:not([class*="size-"])]:!size-[18px]',
+  normal: '!font-normal',
+  medium: '!font-medium',
+  semibold: '!font-semibold',
+  bold: '!font-bold',
 };
 
 const RADIUS_CLASSES: Record<ButtonRadius, string> = {
@@ -179,171 +169,192 @@ const RADIUS_CLASSES: Record<ButtonRadius, string> = {
   full: '!rounded-full',
 };
 
-type ButtonSize = 'xxs' | 'xs' | 'sm' | 'md' | 'lg';
+type ButtonSize = 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
-const FOCUS_RING =
-  'focus-visible:ring-2 focus-visible:ring-gray-4 focus-visible:ring-offset-2';
-
-/** Filled styles: full background; border matches background. */
+/** Filled styles: Accent/Feedback strong fill with paired foreground. */
 const TONE_PRIMARY: Record<ButtonToneForStyles, string> = {
   default: [
-    'bg-ds-bg-brand-default-default border-ds-bg-brand-default-default !text-ds-text-brand-inverse-default',
-    'shadow-button-shadow',
-    'hover:bg-ds-bg-brand-default-hover hover:border-ds-bg-brand-default-hover',
-    'active:bg-ds-bg-brand-default-active active:border-ds-bg-brand-default-active',
-    `focus:bg-ds-bg-brand-default-hover focus:border-ds-bg-brand-default-hover ${FOCUS_RING}`,
+    'bg-ds-accent-strong-default border-transparent !text-ds-ink-inverse',
+    'shadow-ds-elevation-control',
+    'hover:bg-ds-accent-strong-hover hover:shadow-ds-elevation-control-hover',
+    'active:shadow-ds-elevation-control-pressed',
+    `disabled:bg-ds-accent-strong-disabled ${DS_FOCUS_RING}`,
   ].join(' '),
   success: [
-    'bg-ds-bg-success-default-default border-ds-bg-success-default-default !text-ds-text-success-inverse-default',
-    'shadow-button-shadow',
-    'hover:bg-ds-bg-success-default-hover hover:border-ds-bg-success-default-hover',
-    'active:bg-ds-bg-success-default-active active:border-ds-bg-success-default-active',
-    `focus:bg-ds-bg-success-default-hover focus:border-ds-bg-success-default-hover ${FOCUS_RING}`,
+    'bg-ds-bg-success-strong-default border-transparent !text-ds-success-on-strong',
+    'shadow-ds-elevation-control',
+    'hover:bg-ds-bg-success-strong-hover hover:shadow-ds-elevation-control-hover',
+    'active:shadow-ds-elevation-control-pressed',
+    `disabled:bg-ds-bg-success-strong-disabled ${DS_FOCUS_RING}`,
   ].join(' '),
   error: [
-    'bg-ds-bg-error-default-default border-ds-bg-error-default-default !text-ds-text-error-inverse-default',
-    'shadow-button-shadow',
-    'hover:bg-ds-bg-error-default-hover hover:border-ds-bg-error-default-hover',
-    'active:bg-ds-bg-error-default-active active:border-ds-bg-error-default-active',
-    `focus:bg-ds-bg-error-default-hover focus:border-ds-bg-error-default-hover ${FOCUS_RING}`,
+    'bg-ds-bg-error-strong-default border-transparent !text-ds-error-on-strong',
+    'shadow-ds-elevation-control',
+    'hover:bg-ds-bg-error-strong-hover hover:shadow-ds-elevation-control-hover',
+    'active:shadow-ds-elevation-control-pressed',
+    `disabled:bg-ds-bg-error-strong-disabled ${DS_FOCUS_RING}`,
   ].join(' '),
   information: [
-    'bg-ds-bg-information-default-default border-ds-bg-information-default-default !text-ds-text-information-inverse-default',
-    'shadow-button-shadow',
-    'hover:bg-ds-bg-information-default-hover hover:border-ds-bg-information-default-hover',
-    'active:bg-ds-bg-information-default-active active:border-ds-bg-information-default-active',
-    `focus:bg-ds-bg-information-default-hover focus:border-ds-bg-information-default-hover ${FOCUS_RING}`,
+    'bg-ds-bg-information-strong-default border-transparent !text-ds-information-on-strong',
+    'shadow-ds-elevation-control',
+    'hover:bg-ds-bg-information-strong-hover hover:shadow-ds-elevation-control-hover',
+    'active:shadow-ds-elevation-control-pressed',
+    `disabled:bg-ds-bg-information-strong-disabled ${DS_FOCUS_RING}`,
   ].join(' '),
   warning: [
-    'bg-ds-bg-warning-default-default border-ds-bg-warning-default-default !text-ds-text-warning-inverse-default',
-    'shadow-button-shadow',
-    'hover:bg-ds-bg-warning-default-hover hover:border-ds-bg-warning-default-hover',
-    'active:bg-ds-bg-warning-default-active active:border-ds-bg-warning-default-active',
-    `focus:bg-ds-bg-warning-default-hover focus:border-ds-bg-warning-default-hover ${FOCUS_RING}`,
+    'bg-ds-bg-warning-strong-default border-transparent !text-ds-warning-on-strong',
+    'shadow-ds-elevation-control',
+    'hover:bg-ds-bg-warning-strong-hover hover:shadow-ds-elevation-control-hover',
+    'active:shadow-ds-elevation-control-pressed',
+    `disabled:bg-ds-bg-warning-strong-disabled ${DS_FOCUS_RING}`,
   ].join(' '),
 };
 
-/** Lighter fill than primary; border matches background. */
+/** Borderless Neutral fill; a transparent border preserves box sizing. */
 const TONE_SECONDARY: Record<ButtonToneForStyles, string> = {
   default: [
-    'bg-ds-bg-neutral-subtle-default border-ds-bg-neutral-subtle-default !text-ds-text-neutral-default-default',
-    'shadow-button-shadow',
-    'hover:bg-ds-bg-neutral-subtle-hover hover:border-ds-bg-neutral-subtle-hover',
-    'active:bg-ds-bg-neutral-subtle-active active:border-ds-bg-neutral-subtle-active',
-    `focus:bg-ds-bg-neutral-subtle-hover focus:border-ds-bg-neutral-subtle-hover ${FOCUS_RING}`,
+    'bg-ds-neutral-muted-default border-transparent !text-ds-ink-default-default',
+    'hover:bg-ds-neutral-muted-hover',
+    'active:shadow-ds-elevation-control-pressed',
+    `disabled:bg-ds-neutral-muted-disabled ${DS_FOCUS_RING}`,
   ].join(' '),
   success: [
-    'bg-ds-bg-success-subtle-default border-ds-bg-success-subtle-default !text-ds-text-neutral-inverse-default',
-    'shadow-button-shadow',
-    'hover:bg-ds-bg-status-completed-subtle-hover hover:border-ds-bg-status-completed-subtle-hover',
-    'active:bg-ds-bg-status-completed-subtle-active active:border-ds-bg-status-completed-subtle-active',
-    `focus:bg-ds-bg-status-completed-subtle-hover focus:border-ds-bg-status-completed-subtle-hover ${FOCUS_RING}`,
+    'bg-ds-bg-success-subtle-default border-transparent !text-ds-text-success-strong-default',
+    'hover:bg-ds-bg-success-subtle-hover',
+    `disabled:bg-ds-bg-success-subtle-disabled ${DS_FOCUS_RING}`,
   ].join(' '),
   error: [
-    'bg-ds-bg-status-error-subtle-default border-ds-bg-status-error-subtle-default !text-ds-text-status-error-strong-default',
-    'shadow-button-shadow',
-    'hover:bg-ds-bg-status-error-subtle-hover hover:border-ds-bg-status-error-subtle-hover',
-    'active:bg-ds-bg-status-error-subtle-active active:border-ds-bg-status-error-subtle-active',
-    `focus:bg-ds-bg-status-error-subtle-hover focus:border-ds-bg-status-error-subtle-hover ${FOCUS_RING}`,
+    'bg-ds-bg-error-subtle-default border-transparent !text-ds-text-error-strong-default',
+    'hover:bg-ds-bg-error-subtle-hover',
+    `disabled:bg-ds-bg-error-subtle-disabled ${DS_FOCUS_RING}`,
   ].join(' '),
   information: [
-    'bg-ds-bg-status-splitting-subtle-default border-ds-bg-status-splitting-subtle-default !text-ds-text-status-splitting-strong-default',
-    'shadow-button-shadow',
-    'hover:bg-ds-bg-status-splitting-subtle-hover hover:border-ds-bg-status-splitting-subtle-hover',
-    'active:bg-ds-bg-status-splitting-subtle-active active:border-ds-bg-status-splitting-subtle-active',
-    `focus:bg-ds-bg-status-splitting-subtle-hover focus:border-ds-bg-status-splitting-subtle-hover ${FOCUS_RING}`,
+    'bg-ds-bg-information-subtle-default border-transparent !text-ds-text-information-strong-default',
+    'hover:bg-ds-bg-information-subtle-hover',
+    `disabled:bg-ds-bg-information-subtle-disabled ${DS_FOCUS_RING}`,
   ].join(' '),
   warning: [
-    'bg-ds-bg-status-pending-subtle-default border-ds-bg-status-pending-subtle-default !text-ds-text-status-pending-strong-default',
-    'shadow-button-shadow',
-    'hover:bg-ds-bg-status-pending-subtle-hover hover:border-ds-bg-status-pending-subtle-hover',
-    'active:bg-ds-bg-status-pending-subtle-active active:border-ds-bg-status-pending-subtle-active',
-    `focus:bg-ds-bg-status-pending-subtle-hover focus:border-ds-bg-status-pending-subtle-hover ${FOCUS_RING}`,
+    'bg-ds-bg-warning-subtle-default border-transparent !text-ds-text-warning-strong-default',
+    'hover:bg-ds-bg-warning-subtle-hover',
+    `disabled:bg-ds-bg-warning-subtle-disabled ${DS_FOCUS_RING}`,
   ].join(' '),
 };
 
-/** Border-only chrome; transparent fill. */
+/** Transparent pill with Hairline; hover adds Neutral subtle fill. */
 const TONE_OUTLINE: Record<ButtonToneForStyles, string> = {
   default: [
-    'bg-transparent border-ds-border-neutral-strong-default !text-ds-text-neutral-default-default',
-    'shadow-button-shadow',
-    'hover:bg-ds-bg-neutral-subtle-hover hover:border-ds-border-neutral-strong-hover',
-    'active:bg-ds-bg-neutral-default-active active:border-ds-border-neutral-strong-default',
-    `focus:bg-ds-bg-neutral-subtle-hover ${FOCUS_RING}`,
+    'bg-transparent border-ds-hairline-default-default !text-ds-ink-default-default',
+    'hover:bg-ds-neutral-subtle-hover hover:border-ds-hairline-default-hover',
+    `disabled:border-ds-hairline-default-disabled ${DS_FOCUS_RING}`,
   ].join(' '),
   success: [
-    'bg-transparent border-ds-border-status-completed-default-default !text-ds-text-status-completed-strong-default',
-    'shadow-button-shadow',
-    'hover:bg-ds-bg-status-completed-subtle-hover hover:border-ds-border-status-completed-default-hover',
-    'active:bg-ds-bg-status-completed-subtle-active',
-    `focus:bg-ds-bg-status-completed-subtle-hover ${FOCUS_RING}`,
+    'bg-transparent border-ds-border-success-default-default !text-ds-text-success-strong-default',
+    'hover:bg-ds-bg-success-subtle-hover',
+    DS_FOCUS_RING,
   ].join(' '),
   error: [
-    'bg-transparent border-ds-border-status-error-default-default !text-ds-text-status-error-strong-default',
-    'shadow-button-shadow',
-    'hover:bg-ds-bg-status-error-subtle-hover hover:border-ds-border-status-error-default-hover',
-    'active:bg-ds-bg-status-error-subtle-active',
-    `focus:bg-ds-bg-status-error-subtle-hover ${FOCUS_RING}`,
+    'bg-transparent border-ds-border-error-default-default !text-ds-text-error-strong-default',
+    'hover:bg-ds-bg-error-subtle-hover',
+    DS_FOCUS_RING,
   ].join(' '),
   information: [
-    'bg-transparent border-ds-border-status-splitting-default-default !text-ds-text-status-splitting-strong-default',
-    'shadow-button-shadow',
-    'hover:bg-ds-bg-status-splitting-subtle-hover hover:border-ds-border-status-splitting-default-hover',
-    'active:bg-ds-bg-status-splitting-subtle-active',
-    `focus:bg-ds-bg-status-splitting-subtle-hover ${FOCUS_RING}`,
+    'bg-transparent border-ds-border-information-default-default !text-ds-text-information-strong-default',
+    'hover:bg-ds-bg-information-subtle-hover',
+    DS_FOCUS_RING,
   ].join(' '),
   warning: [
-    'bg-transparent border-ds-border-status-pending-default-default !text-ds-text-status-pending-strong-default',
-    'shadow-button-shadow',
-    'hover:bg-ds-bg-status-pending-subtle-hover hover:border-ds-border-status-pending-default-hover',
-    'active:bg-ds-bg-status-pending-subtle-active',
-    `focus:bg-ds-bg-status-pending-subtle-hover ${FOCUS_RING}`,
+    'bg-transparent border-ds-border-warning-default-default !text-ds-text-warning-strong-default',
+    'hover:bg-ds-bg-warning-subtle-hover',
+    DS_FOCUS_RING,
   ].join(' '),
 };
 
-/** No fill; border transparent but still occupies layout as a border. */
+/** Transparent pill; Neutral subtle fill on hover. */
 const TONE_GHOST: Record<ButtonToneForStyles, string> = {
   default: [
-    'bg-transparent border-transparent !text-ds-text-neutral-default-default',
-    'hover:bg-ds-bg-neutral-default-hover active:bg-ds-bg-neutral-default-active',
-    `focus:bg-ds-bg-neutral-default-hover ${FOCUS_RING}`,
+    'bg-transparent border-transparent !text-ds-ink-default-default',
+    'hover:bg-ds-neutral-subtle-hover',
+    'disabled:opacity-50 disabled:!text-ds-ink-muted-disabled',
+    DS_FOCUS_RING,
   ].join(' '),
   success: [
-    'bg-transparent border-transparent !text-ds-text-status-completed-strong-default',
-    'hover:bg-ds-bg-status-completed-subtle-hover active:bg-ds-bg-status-completed-subtle-active',
-    `focus:bg-ds-bg-status-completed-subtle-hover ${FOCUS_RING}`,
+    'bg-transparent border-transparent !text-ds-text-success-strong-default',
+    'hover:bg-ds-bg-success-subtle-hover',
+    'disabled:opacity-50',
+    DS_FOCUS_RING,
   ].join(' '),
   error: [
-    'bg-transparent border-transparent !text-ds-text-status-error-strong-default',
-    'hover:bg-ds-bg-status-error-subtle-hover active:bg-ds-bg-status-error-subtle-active',
-    `focus:bg-ds-bg-status-error-subtle-hover ${FOCUS_RING}`,
+    'bg-transparent border-transparent !text-ds-text-error-strong-default',
+    'hover:bg-ds-bg-error-subtle-hover',
+    'disabled:opacity-50',
+    DS_FOCUS_RING,
   ].join(' '),
   information: [
-    'bg-transparent border-transparent !text-ds-text-status-splitting-strong-default',
-    'hover:bg-ds-bg-status-splitting-subtle-hover active:bg-ds-bg-status-splitting-subtle-active',
-    `focus:bg-ds-bg-status-splitting-subtle-hover ${FOCUS_RING}`,
+    'bg-transparent border-transparent !text-ds-text-information-strong-default',
+    'hover:bg-ds-bg-information-subtle-hover',
+    'disabled:opacity-50',
+    DS_FOCUS_RING,
   ].join(' '),
   warning: [
-    'bg-transparent border-transparent !text-ds-text-status-pending-strong-default',
-    'hover:bg-ds-bg-status-pending-subtle-hover active:bg-ds-bg-status-pending-subtle-active',
-    `focus:bg-ds-bg-status-pending-subtle-hover ${FOCUS_RING}`,
+    'bg-transparent border-transparent !text-ds-text-warning-strong-default',
+    'hover:bg-ds-bg-warning-subtle-hover',
+    'disabled:opacity-50',
+    DS_FOCUS_RING,
   ].join(' '),
 };
 
-/**
- * Canvas-colored control: `bg.neutral.subtle` tracks the theme background seed;
- * text uses ink (`text.neutral.default`). Border matches the fill. Same for every `tone`.
- */
-const INVERSE = [
-  'bg-ds-bg-neutral-subtle-default border-ds-bg-neutral-subtle-default !text-ds-text-neutral-default-default',
-  'shadow-button-shadow',
-  'hover:bg-ds-bg-neutral-subtle-selected hover:border-ds-bg-neutral-subtle-selected',
-  'active:bg-ds-bg-neutral-default-active active:border-ds-bg-neutral-default-active',
-  `focus:bg-ds-bg-neutral-subtle-selected focus:border-ds-bg-neutral-subtle-selected ${FOCUS_RING}`,
-].join(' ');
+/** No container at rest; Ink + underline on hover. */
+const TONE_TEXT: Record<ButtonToneForStyles, string> = {
+  default: [
+    'bg-transparent border-transparent !text-ds-ink-default-default shadow-none rounded-none',
+    'hover:underline hover:!text-ds-ink-default-hover',
+    'disabled:opacity-50 disabled:!text-ds-ink-muted-disabled',
+    DS_FOCUS_RING,
+  ].join(' '),
+  success: [
+    'bg-transparent border-transparent !text-ds-text-success-strong-default shadow-none rounded-none',
+    'hover:underline',
+    'disabled:opacity-50',
+    DS_FOCUS_RING,
+  ].join(' '),
+  error: [
+    'bg-transparent border-transparent !text-ds-text-error-strong-default shadow-none rounded-none',
+    'hover:underline',
+    'disabled:opacity-50',
+    DS_FOCUS_RING,
+  ].join(' '),
+  information: [
+    'bg-transparent border-transparent !text-ds-text-information-strong-default shadow-none rounded-none',
+    'hover:underline',
+    'disabled:opacity-50',
+    DS_FOCUS_RING,
+  ].join(' '),
+  warning: [
+    'bg-transparent border-transparent !text-ds-text-warning-strong-default shadow-none rounded-none',
+    'hover:underline',
+    'disabled:opacity-50',
+    DS_FOCUS_RING,
+  ].join(' '),
+};
+
+const SIZE_TEXT: Record<Exclude<ButtonSize, 'xxs'>, string> = {
+  xs: 'box-border !h-[var(--ds-button-xs-height)] !min-h-[var(--ds-button-xs-height)] !px-[var(--ds-button-xs-padding-inline)] !py-0 !gap-[var(--ds-button-xs-gap)] rounded-[var(--ds-button-xs-radius)] font-[number:var(--ds-button-xs-weight)] !text-ds-text-meta leading-[var(--ds-button-xs-line-height)] [&_svg:not([class*="size-"])]:size-[length:var(--ds-button-xs-icon)]',
+  sm: 'box-border !h-[var(--ds-button-sm-height)] !min-h-[var(--ds-button-sm-height)] !px-[var(--ds-button-sm-padding-inline)] !py-0 !gap-[var(--ds-button-sm-gap)] rounded-[var(--ds-button-sm-radius)] font-[number:var(--ds-button-sm-weight)] !text-ds-text-base leading-[var(--ds-button-sm-line-height)] [&_svg:not([class*="size-"])]:size-[length:var(--ds-button-sm-icon)]',
+  md: 'box-border !h-[var(--ds-button-md-height)] !min-h-[var(--ds-button-md-height)] !px-[var(--ds-button-md-padding-inline)] !py-0 !gap-[var(--ds-button-md-gap)] rounded-[var(--ds-button-md-radius)] font-[number:var(--ds-button-md-weight)] !text-ds-text-base leading-[var(--ds-button-md-line-height)] [&_svg:not([class*="size-"])]:size-[length:var(--ds-button-md-icon)]',
+  lg: 'box-border !h-[var(--ds-button-lg-height)] !min-h-[var(--ds-button-lg-height)] !px-[var(--ds-button-lg-padding-inline)] !py-0 !gap-[var(--ds-button-lg-gap)] rounded-[var(--ds-button-lg-radius)] font-[number:var(--ds-button-lg-weight)] !text-ds-text-base leading-[var(--ds-button-lg-line-height)] [&_svg:not([class*="size-"])]:size-[length:var(--ds-button-lg-icon)]',
+  xl: 'box-border !h-[var(--ds-button-xl-height)] !min-h-[var(--ds-button-xl-height)] !px-[var(--ds-button-xl-padding-inline)] !py-0 !gap-[var(--ds-button-xl-gap)] rounded-[var(--ds-button-xl-radius)] font-[number:var(--ds-button-xl-weight)] !text-ds-text-body-large leading-[var(--ds-button-xl-line-height)] [&_svg:not([class*="size-"])]:size-[length:var(--ds-button-xl-icon)]',
+};
+
+const SIZE_ICON: Record<Exclude<ButtonSize, 'xxs'>, string> = {
+  xs: 'box-border !size-[var(--ds-button-xs-height)] !min-h-[var(--ds-button-xs-height)] !min-w-[var(--ds-button-xs-height)] shrink-0 !p-0 rounded-full [&_svg:not([class*="size-"])]:size-[length:var(--ds-button-xs-icon)]',
+  sm: 'box-border !size-[var(--ds-button-sm-height)] !min-h-[var(--ds-button-sm-height)] !min-w-[var(--ds-button-sm-height)] shrink-0 !p-0 rounded-full [&_svg:not([class*="size-"])]:size-[length:var(--ds-button-sm-icon)]',
+  md: 'box-border !size-[var(--ds-button-md-height)] !min-h-[var(--ds-button-md-height)] !min-w-[var(--ds-button-md-height)] shrink-0 !p-0 rounded-full [&_svg:not([class*="size-"])]:size-[length:var(--ds-button-md-icon)]',
+  lg: 'box-border !size-[var(--ds-button-lg-height)] !min-h-[var(--ds-button-lg-height)] !min-w-[var(--ds-button-lg-height)] shrink-0 !p-0 rounded-full [&_svg:not([class*="size-"])]:size-[length:var(--ds-button-lg-icon)]',
+  xl: 'box-border !size-[var(--ds-button-xl-height)] !min-h-[var(--ds-button-xl-height)] !min-w-[var(--ds-button-xl-height)] shrink-0 !p-0 rounded-full [&_svg:not([class*="size-"])]:size-[length:var(--ds-button-xl-icon)]',
+};
 
 const buttonVariants = cva(
-  'inline-flex items-center whitespace-nowrap border border-solid transition-[background-color,border-color,color,box-shadow,opacity,transform] duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:!text-inherit outline-none focus-visible:border-ds-border-brand-default-focus focus-visible:ring-ds-ring-brand-default-focus/50 focus-visible:ring-[3px] aria-invalid:ring-ds-ring-error-default-default/20 aria-invalid:border-ds-border-status-error-default-default shrink-0 cursor-pointer',
+  'inline-flex items-center whitespace-nowrap !border !border-solid !border-x !border-y transition-[background-color,border-color,color,box-shadow,opacity,transform] duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97] disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:!text-inherit outline-none aria-invalid:ring-ds-ring-error-default-default/20 aria-invalid:border-ds-border-status-error-default-default shrink-0 cursor-pointer',
   {
     variants: {
       variant: {
@@ -351,7 +362,7 @@ const buttonVariants = cva(
         secondary: '',
         outline: '',
         ghost: '',
-        inverse: '',
+        text: '',
       },
       tone: {
         default: '',
@@ -361,18 +372,15 @@ const buttonVariants = cva(
         warning: '',
       },
       size: {
-        xxs: 'rounded-md text-label-xs',
-        xs: 'rounded-md text-label-xs',
-        sm: 'rounded-md text-label-sm',
-        md: 'rounded-md text-label-md',
-        lg: 'rounded-md text-label-lg',
+        xxs: '',
+        xs: '',
+        sm: '',
+        md: '',
+        lg: '',
+        xl: '',
       },
-      /**
-       * `text`: label + optional icon; shares fixed min-height with `icon-only` per size.
-       * `icon-only`: fixed square (equal width/height) with centered icon.
-       */
       layout: {
-        text: 'justify-start gap-1',
+        text: 'justify-start',
         'icon-only': 'justify-center gap-0',
       },
     },
@@ -413,71 +421,24 @@ const buttonVariants = cva(
       { variant: 'ghost', tone: 'information', class: TONE_GHOST.information },
       { variant: 'ghost', tone: 'warning', class: TONE_GHOST.warning },
 
-      { variant: 'inverse', tone: 'default', class: INVERSE },
-      { variant: 'inverse', tone: 'success', class: INVERSE },
-      { variant: 'inverse', tone: 'error', class: INVERSE },
-      { variant: 'inverse', tone: 'information', class: INVERSE },
-      { variant: 'inverse', tone: 'warning', class: INVERSE },
-      {
-        size: 'xxs',
-        layout: 'text',
-        class:
-          'box-border min-h-5 px-1 py-0 font-bold [&_svg:not([class*="size-"])]:size-[14px]',
-      },
-      {
-        size: 'xs',
-        layout: 'text',
-        class:
-          'box-border min-h-6 px-1.5 py-0 font-bold [&_svg:not([class*="size-"])]:size-[14px]',
-      },
-      {
-        size: 'sm',
-        layout: 'text',
-        class:
-          'box-border min-h-[28px] px-2 py-0 font-medium [&_svg:not([class*="size-"])]:size-[16px]',
-      },
-      {
-        size: 'md',
-        layout: 'text',
-        class:
-          'box-border min-h-[32px] gap-2 px-4 py-0 font-medium [&_svg:not([class*="size-"])]:size-[24px]',
-      },
-      {
-        size: 'lg',
-        layout: 'text',
-        class:
-          'box-border min-h-[36px] gap-sm px-4 py-0 font-bold [&_svg:not([class*="size-"])]:size-[24px]',
-      },
-      {
-        size: 'xxs',
-        layout: 'icon-only',
-        class:
-          'box-border h-5 w-5 min-h-5 min-w-5 shrink-0 p-1 font-bold [&_svg:not([class*="size-"])]:size-[12px]',
-      },
-      {
-        size: 'xs',
-        layout: 'icon-only',
-        class:
-          'box-border h-6 w-6 min-h-6 min-w-6 shrink-0 p-[5px] font-bold [&_svg:not([class*="size-"])]:size-[14px]',
-      },
-      {
-        size: 'sm',
-        layout: 'icon-only',
-        class:
-          'box-border h-[28px] w-[28px] min-h-[28px] min-w-[28px] shrink-0 p-1.5 font-bold [&_svg:not([class*="size-"])]:size-[16px]',
-      },
-      {
-        size: 'md',
-        layout: 'icon-only',
-        class:
-          'box-border h-[32px] w-[32px] min-h-[32px] min-w-[32px] shrink-0 p-1.5 font-bold [&_svg:not([class*="size-"])]:size-[20px]',
-      },
-      {
-        size: 'lg',
-        layout: 'icon-only',
-        class:
-          'box-border h-[36px] w-[36px] min-h-[36px] min-w-[36px] shrink-0 p-1.5 font-bold [&_svg:not([class*="size-"])]:size-[24px]',
-      },
+      { variant: 'text', tone: 'default', class: TONE_TEXT.default },
+      { variant: 'text', tone: 'success', class: TONE_TEXT.success },
+      { variant: 'text', tone: 'error', class: TONE_TEXT.error },
+      { variant: 'text', tone: 'information', class: TONE_TEXT.information },
+      { variant: 'text', tone: 'warning', class: TONE_TEXT.warning },
+
+      { size: 'xxs', layout: 'text', class: SIZE_TEXT.xs },
+      { size: 'xs', layout: 'text', class: SIZE_TEXT.xs },
+      { size: 'sm', layout: 'text', class: SIZE_TEXT.sm },
+      { size: 'md', layout: 'text', class: SIZE_TEXT.md },
+      { size: 'lg', layout: 'text', class: SIZE_TEXT.lg },
+      { size: 'xl', layout: 'text', class: SIZE_TEXT.xl },
+      { size: 'xxs', layout: 'icon-only', class: SIZE_ICON.xs },
+      { size: 'xs', layout: 'icon-only', class: SIZE_ICON.xs },
+      { size: 'sm', layout: 'icon-only', class: SIZE_ICON.sm },
+      { size: 'md', layout: 'icon-only', class: SIZE_ICON.md },
+      { size: 'lg', layout: 'icon-only', class: SIZE_ICON.lg },
+      { size: 'xl', layout: 'icon-only', class: SIZE_ICON.xl },
     ],
     defaultVariants: {
       variant: 'primary',
@@ -496,7 +457,7 @@ export type ButtonProps = React.ComponentProps<'button'> &
     asChild?: boolean;
     /** Component chrome pattern. */
     variant?: ButtonVariant | ButtonLegacyVariant;
-    /** Visual intensity axis. `inverse` is the replacement for legacy `variant="inverse"`. */
+    /** Visual intensity. Legacy `inverse` maps to `strong` and `--ds-ink-inverse`. */
     emphasis?: ButtonEmphasis;
     /** Semantic palette. Prefer `neutral` over legacy `default`. */
     tone?: ButtonToneInput;
@@ -533,9 +494,8 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     const Comp = asChild ? Slot : 'button';
 
     const legacyIcon = sizeProp === 'icon';
-    const resolvedSize: ButtonSize = legacyIcon
-      ? 'xs'
-      : (sizeProp as ButtonSize);
+    const resolvedSize: ButtonSize =
+      legacyIcon || sizeProp === 'xxs' ? 'xs' : (sizeProp as ButtonSize);
     const resolvedLayout =
       buttonContent === 'icon-only'
         ? 'icon-only'

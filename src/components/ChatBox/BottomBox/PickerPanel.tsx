@@ -24,17 +24,18 @@ import { integrationLeadingIconUrl } from '@/lib/connectorIcons';
 import {
   RICH_CONNECTOR_STYLE_CLASSES,
   RICH_SKILL_STYLE_CLASSES,
+  RICH_TAG_BASE_STYLE_CLASSES,
   connectorNameToToken,
   hashSkillLabel,
 } from '@/lib/richText';
 import { skillNameToDirName } from '@/lib/skillToolkit';
 import { cn } from '@/lib/utils';
 import { useServerCapabilityStore } from '@/store/serverCapabilityStore';
+import { openSettings } from '@/store/settingsStore';
 import { useSkillsStore } from '@/store/skillsStore';
 import { Check, Plus, Wrench } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 
 /**
  * An item shown in a picker panel. `token` is the exact string inserted inline
@@ -93,14 +94,14 @@ export function PickerPanel({
   const totalItems = nonEmptyGroups.reduce((n, g) => n + g.items.length, 0);
 
   return (
-    <div className="flex w-full flex-col overflow-hidden rounded-2xl border border-solid border-ds-border-neutral-default-default bg-ds-bg-neutral-subtle-default">
+    <div className="flex w-full flex-col overflow-hidden rounded-2xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default">
       {/* Header */}
-      <div className="flex items-center gap-1 px-3 pb-1 pt-2">
-        <span className="text-xs font-bold text-ds-text-neutral-muted-default">
+      <div className="flex items-center gap-1 px-3 pt-2 pb-1">
+        <span className="text-ds-text-meta font-bold text-ds-ink-muted-default">
           {title}
         </span>
         {totalItems > 0 && (
-          <span className="text-xs font-bold text-ds-text-neutral-muted-default">
+          <span className="text-ds-text-meta font-bold text-ds-ink-muted-default">
             {totalItems}
           </span>
         )}
@@ -113,13 +114,13 @@ export function PickerPanel({
             {[0, 1, 2].map((i) => (
               <div
                 key={i}
-                className="h-8 w-full animate-pulse rounded-lg bg-ds-bg-neutral-strong-default"
+                className="h-8 w-full animate-pulse rounded-lg bg-ds-neutral-strong-default"
               />
             ))}
           </>
         ) : totalItems === 0 ? (
           <div className="flex w-full items-center justify-between gap-2 px-2 py-2">
-            <span className="text-xs font-normal text-ds-text-neutral-muted-default">
+            <span className="text-ds-text-meta font-normal text-ds-ink-muted-default">
               {emptyLabel}
             </span>
             <Button
@@ -135,9 +136,9 @@ export function PickerPanel({
           nonEmptyGroups.map((group) => (
             <Fragment key={group.id}>
               {group.label && (
-                <div className="px-2 pb-0.5 pt-1.5 text-xs font-bold text-ds-text-neutral-muted-default">
+                <span className="block px-2 pt-1.5 pb-0.5 text-ds-text-meta font-bold text-ds-ink-muted-default">
                   {group.label}
-                </div>
+                </span>
               )}
               {group.items.map((item) => (
                 <PickerPanelItem
@@ -176,7 +177,7 @@ function PickerPanelItem({
     <button
       type="button"
       aria-pressed={added}
-      className="group flex w-full items-center gap-2 rounded-xl border-0 bg-ds-bg-neutral-subtle-default px-2 py-1.5 text-left transition-colors hover:bg-ds-bg-neutral-default-default"
+      className="group flex w-full items-center gap-2 rounded-xl border-0 border-x-0 border-y-0 bg-ds-neutral-subtle-default px-2 py-1.5 text-left transition-colors hover:bg-ds-neutral-default-default"
       onClick={onToggle}
     >
       {logo && (
@@ -184,7 +185,7 @@ function PickerPanelItem({
           {logo}
         </span>
       )}
-      <span className="min-w-0 flex-1 overflow-hidden overflow-ellipsis whitespace-nowrap text-sm font-medium text-ds-text-neutral-default-default">
+      <span className="min-w-0 flex-1 overflow-hidden text-ds-text-base font-medium text-ellipsis whitespace-nowrap text-ds-ink-default-default">
         {item.name}
       </span>
       <span className="max-w-[45%] shrink-0 overflow-hidden whitespace-nowrap">
@@ -196,7 +197,7 @@ function PickerPanelItem({
         ) : (
           <Plus
             size={16}
-            className="text-ds-icon-neutral-muted-default opacity-0 transition-opacity group-hover:opacity-100"
+            className="text-ds-ink-muted-default opacity-0 transition-opacity group-hover:opacity-100"
           />
         )}
       </span>
@@ -223,7 +224,6 @@ export function ConnectorPickerPanel({
   onToggleItem,
 }: WiredPickerPanelProps) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const [builtInItems, setBuiltInItems] = useState<IntegrationItem[]>([]);
   const [openItems, setOpenItems] = useState<PickerItem[]>([]);
   const [yourMcps, setYourMcps] = useState<PickerItem[]>([]);
@@ -350,7 +350,7 @@ export function ConnectorPickerPanel({
       renderTag={(item) => (
         <span
           className={cn(
-            'rounded px-1 py-px text-xs font-medium',
+            RICH_TAG_BASE_STYLE_CLASSES,
             RICH_CONNECTOR_STYLE_CLASSES
           )}
         >
@@ -366,9 +366,7 @@ export function ConnectorPickerPanel({
           );
         }
         if (!item.id.startsWith('builtin-')) {
-          return (
-            <Wrench size={16} className="text-ds-icon-neutral-muted-default" />
-          );
+          return <Wrench size={16} className="text-ds-ink-muted-default" />;
         }
         const iconUrl = integrationLeadingIconUrl(item.name);
         return iconUrl ? (
@@ -380,7 +378,7 @@ export function ConnectorPickerPanel({
       loading={loading}
       emptyLabel={t('chat.no-connectors-added')}
       emptyActionLabel={t('chat.input-attach-manage-connectors')}
-      onEmptyAction={() => navigate('/history?tab=connectors')}
+      onEmptyAction={() => openSettings('connectors')}
     />
   );
 }
@@ -391,7 +389,6 @@ export function SkillPickerPanel({
   onToggleItem,
 }: WiredPickerPanelProps) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const skills = useSkillsStore((s) => s.skills);
 
   const items = useMemo(
@@ -418,7 +415,7 @@ export function SkillPickerPanel({
         return (
           <span
             className={cn(
-              'rounded px-1 py-px text-xs font-medium',
+              RICH_TAG_BASE_STYLE_CLASSES,
               RICH_SKILL_STYLE_CLASSES[clsIdx]
             )}
           >
@@ -428,7 +425,7 @@ export function SkillPickerPanel({
       }}
       emptyLabel={t('chat.no-skills-added')}
       emptyActionLabel={t('chat.input-attach-manage-skills')}
-      onEmptyAction={() => navigate('/history?tab=agents')}
+      onEmptyAction={() => openSettings('skills')}
     />
   );
 }

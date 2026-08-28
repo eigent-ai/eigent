@@ -304,7 +304,7 @@ export default function SignUp() {
     <div className="relative flex h-full flex-col overflow-hidden">
       {/* Titlebar with drag region and window controls */}
       <div
-        className="absolute left-0 right-0 top-0 z-50 flex !h-9 items-center justify-between py-1 pl-2"
+        className="absolute top-0 right-0 left-0 z-50 flex !h-9 items-center justify-between py-1 pl-2"
         id="signup-titlebar"
         ref={titlebarRef}
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
@@ -334,10 +334,10 @@ export default function SignUp() {
 
       {/* Main content - image extends to top, form has padding */}
       <div
-        className={`flex h-full items-center justify-center gap-2 px-1 pb-1 pt-10`}
+        className={`flex h-full items-center justify-center gap-2 px-1 pt-10 pb-1`}
       >
         <div
-          className="flex h-full min-h-0 w-full flex-col items-center justify-center overflow-hidden rounded-2xl bg-ds-bg-neutral-subtle-default px-2 pb-2"
+          className="flex h-full min-h-0 w-full flex-col items-center justify-center overflow-hidden rounded-2xl bg-ds-neutral-subtle-default px-2 pb-2"
           style={{
             backgroundImage: `url(${background})`,
             backgroundSize: 'cover',
@@ -347,10 +347,10 @@ export default function SignUp() {
           <div className="relative flex w-80 flex-1 flex-col items-center justify-center pt-8">
             <img
               src={eigentLogo}
-              className="absolute left-1/2 top-10 h-16 w-16 -translate-x-1/2"
+              className="absolute top-10 left-1/2 h-16 w-16 -translate-x-1/2"
             />
             <div className="mb-4 flex items-end justify-between self-stretch">
-              <div className="text-heading-lg font-bold text-ds-text-neutral-default-default">
+              <div className="text-ds-text-display font-bold text-ds-ink-default-default">
                 {t('layout.sign-up')}
               </div>
               <Button
@@ -367,7 +367,7 @@ export default function SignUp() {
                   variant="primary"
                   size="lg"
                   onClick={() => handleReloadBtn('google')}
-                  className="mb-4 w-full justify-center rounded-2xl text-center font-inter text-body-md font-bold text-ds-text-brand-inverse-default"
+                  className="mb-4 w-full justify-center rounded-2xl text-center font-inter text-ds-text-body-large font-bold text-ds-accent-on-strong"
                   disabled={isLoading}
                 >
                   <img src={google} className="h-5 w-5" />
@@ -379,7 +379,7 @@ export default function SignUp() {
                   variant="primary"
                   size="lg"
                   onClick={() => handleReloadBtn('github')}
-                  className="mb-4 w-full justify-center rounded-2xl text-center font-inter text-body-md font-bold text-ds-text-brand-inverse-default"
+                  className="mb-4 w-full justify-center rounded-2xl text-center font-inter text-ds-text-body-large font-bold text-ds-accent-on-strong"
                   disabled={isLoading}
                 >
                   <img src={github2} className="h-5 w-5" />
@@ -390,13 +390,13 @@ export default function SignUp() {
               </div>
             )}
             {HAS_STACK_KEYS && (
-              <div className="mb-6 mt-2 w-full text-center font-inter text-body-md font-medium text-ds-text-neutral-default-default">
+              <div className="mt-2 mb-6 w-full text-center font-inter text-ds-text-body-large font-medium text-ds-ink-default-default">
                 {t('layout.or')}
               </div>
             )}
             <div className="flex w-full flex-col gap-4">
               {generalError && (
-                <p className="mb-4 mt-1 text-label-md text-ds-text-status-error-strong-default">
+                <p className="mt-1 mb-4 text-ds-text-body-large text-ds-text-status-error-strong-default">
                   {generalError}
                 </p>
               )}

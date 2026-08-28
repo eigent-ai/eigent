@@ -15,15 +15,21 @@
 import { proxyFetchPost } from '@/api/http';
 import { isDesktop } from '@/client/platform';
 import { useAuthStore } from '@/store/authStore';
+import {
+  SETTINGS_SECTIONS,
+  type SettingsSectionId,
+} from '@/store/settingsStore';
 import { lazy, useEffect, useReducer } from 'react';
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 
 import Layout from '@/components/Layout';
+import { LegacyRouteRedirect } from './LegacyRouteCompatibility';
+import WorkspaceSettingsRouteLayout from './WorkspaceSettingsRouteLayout';
 // Lazy load page components
 const Login = lazy(() => import('@/pages/Login'));
 const Signup = lazy(() => import('@/pages/SignUp'));
 const Workspace = lazy(() => import('@/pages/Workspace'));
-const History = lazy(() => import('@/pages/History'));
+const Settings = lazy(() => import('@/pages/Settings'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 const RemoteControl = lazy(() => import('@/pages/RemoteControl'));
 
@@ -138,7 +144,7 @@ const ProtectedRoute = () => {
   if (state.loading || !state.initialized) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600"></div>
+        <div className="h-8 w-8 animate-spin rounded-full border-x-0 border-t-0 border-b-2 border-blue-600"></div>
       </div>
     );
   }
@@ -152,6 +158,35 @@ const ProtectedRoute = () => {
   );
 };
 
+/** Keep legacy Settings links working while Home is the canonical surface. */
+function SettingsRouteRedirect() {
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const sectionFromUrl = searchParams.get('section');
+  const isLegacySettingsSection = SETTINGS_SECTIONS.includes(
+    sectionFromUrl as SettingsSectionId
+  );
+
+  if (sectionFromUrl !== 'spaces') {
+    searchParams.set('section', 'settings');
+    if (
+      sectionFromUrl &&
+      isLegacySettingsSection &&
+      sectionFromUrl !== 'settings'
+    ) {
+      searchParams.set('tab', sectionFromUrl);
+    }
+  }
+
+  return (
+    <Navigate
+      to={`/home?${searchParams.toString()}`}
+      replace
+      state={location.state}
+    />
+  );
+}
+
 // Main route configuration
 const AppRoutes = () => (
   <Routes>
@@ -162,15 +197,36 @@ const AppRoutes = () => (
     ) : null}
     <Route element={<ProtectedRoute />}>
       <Route element={<Layout />}>
-        <Route path="/" element={<Workspace />} />
-        <Route path="/history" element={<History />} />
+        <Route
+          element={<WorkspaceSettingsRouteLayout workspace={<Workspace />} />}
+        >
+          <Route index element={null} />
+          <Route path="/home" element={<Settings />} />
+        </Route>
+        <Route path="/settings" element={<SettingsRouteRedirect />} />
+        <Route
+          path="/history"
+          element={<LegacyRouteRedirect kind="history" />}
+        />
+        <Route
+          path="/workspace-configuration"
+          element={<LegacyRouteRedirect kind="workspace-configuration" />}
+        />
+        <Route
+          path="/workspace-bundles/install"
+          element={<LegacyRouteRedirect kind="workspace-bundle-install" />}
+        />
+        <Route
+          path="/agent-plugins/import"
+          element={<LegacyRouteRedirect kind="agent-plugin-import" />}
+        />
         <Route
           path="/setting"
-          element={<Navigate to="/history?tab=settings" replace />}
+          element={<Navigate to="/home?section=settings" replace />}
         />
         <Route
           path="/setting/*"
-          element={<Navigate to="/history?tab=settings" replace />}
+          element={<Navigate to="/home?section=settings" replace />}
         />
       </Route>
     </Route>

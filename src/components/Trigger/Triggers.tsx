@@ -23,10 +23,7 @@ import {
   DialogFooter,
   DialogHeader,
 } from '@/components/ui/dialog';
-import {
-  useTriggerCacheInvalidation,
-  useUserTriggerCountQuery,
-} from '@/hooks/queries/useTriggerQueries';
+import { useTriggerCacheInvalidation } from '@/hooks/queries/useTriggerQueries';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import {
   proxyActivateTrigger,
@@ -99,7 +96,6 @@ export default function Overview({
     deleteTrigger,
     duplicateTrigger,
     updateTrigger,
-    addTrigger,
     setTriggers,
   } = useTriggerStore();
 
@@ -108,8 +104,6 @@ export default function Overview({
 
   const { addLog } = useActivityLogStore();
 
-  // User trigger count query (cached, across all projects)
-  const { data: userTriggerCount = 0 } = useUserTriggerCountQuery();
   const { invalidateUserTriggerCount } = useTriggerCacheInvalidation();
 
   // Fetch triggers from API on mount
@@ -128,7 +122,7 @@ export default function Overview({
     };
 
     fetchTriggers();
-  }, [projectStore.activeProjectId]);
+  }, [projectStore, projectStore.activeProjectId, setTriggers, t]);
 
   // Update hasTriggers based on the trigger list
   useEffect(() => {
@@ -161,7 +155,15 @@ export default function Overview({
         type: isActivating
           ? ActivityType.TriggerActivated
           : ActivityType.TriggerDeactivated,
-        message: `Trigger "${trigger.name}" ${isActivating ? 'activated' : 'deactivated'}`,
+        message: isActivating
+          ? t('triggers.activity-activated', {
+              name: trigger.name,
+              defaultValue: 'Automation "{{name}}" activated',
+            })
+          : t('triggers.activity-deactivated', {
+              name: trigger.name,
+              defaultValue: 'Automation "{{name}}" deactivated',
+            }),
         projectId: projectStore.activeProjectId || undefined,
         triggerId: trigger.id,
         triggerName: trigger.name,
@@ -225,7 +227,10 @@ export default function Overview({
       // Add activity log
       addLog({
         type: ActivityType.TriggerDeleted,
-        message: `Trigger "${deletingTrigger.name}" deleted`,
+        message: t('triggers.activity-deleted', {
+          name: deletingTrigger.name,
+          defaultValue: 'Automation "{{name}}" deleted',
+        }),
         projectId: projectStore.activeProjectId || undefined,
         triggerId: deletingTrigger.id,
         triggerName: deletingTrigger.name,
@@ -251,7 +256,10 @@ export default function Overview({
       // Add activity log
       addLog({
         type: ActivityType.TriggerCreated,
-        message: `Trigger "${duplicated.name}" created (duplicated)`,
+        message: t('triggers.activity-duplicated', {
+          name: duplicated.name,
+          defaultValue: 'Automation "{{name}}" created (duplicated)',
+        }),
         projectId: projectStore.activeProjectId || undefined,
         triggerId: duplicated.id,
         triggerName: duplicated.name,
@@ -273,7 +281,7 @@ export default function Overview({
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex h-full flex-row pl-2">
-        {/* Left Side: Trigger List */}
+        {/* Left side: automation list */}
         <div className="flex min-w-0 flex-1 flex-col">
           {/* List View Section */}
           <div className="scrollbar-always-visible mx-auto flex h-full w-full max-w-[800px] flex-col overflow-auto pt-2">
@@ -284,16 +292,16 @@ export default function Overview({
                     setEditingTrigger(null);
                     setEditDialogOpen(true);
                   }}
-                  className="group flex cursor-pointer items-center justify-center gap-3 rounded-xl bg-ds-bg-neutral-default-default p-3 transition-opacity duration-200 hover:opacity-60"
+                  className="group flex cursor-pointer items-center justify-center gap-3 rounded-xl bg-ds-neutral-default-default p-3 transition-opacity duration-200 hover:opacity-60"
                 >
-                  {/* Zap Icon */}
-                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-ds-bg-neutral-subtle-default">
-                    <Plus className="h-5 w-5 text-ds-icon-neutral-default-default" />
+                  {/* Add icon */}
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-ds-neutral-subtle-default">
+                    <Plus className="h-5 w-5 text-ds-ink-default-default" />
                   </div>
 
-                  {/* Create Trigger Text */}
+                  {/* Create automation text */}
                   <div className="w-full flex-1">
-                    <div className="truncate text-sm font-semibold text-ds-text-neutral-muted-default transition-colors group-hover:text-ds-text-brand-default-hover">
+                    <div className="truncate text-sm font-semibold text-ds-ink-muted-default transition-colors group-hover:text-ds-accent-default-hover">
                       {t('triggers.create-hint')}
                     </div>
                   </div>
@@ -344,7 +352,7 @@ export default function Overview({
             damping: 34,
             mass: 0.9,
           }}
-          className={`border-l-1 mb-2 flex h-full flex-col overflow-hidden border border-y-0 border-r-0 border-solid border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default ${
+          className={`mb-2 flex h-full flex-col overflow-hidden border border-y-0 border-r-0 border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default ${
             selectedTriggerId && isExecutionLogsOpen
               ? ''
               : 'pointer-events-none'
@@ -352,7 +360,7 @@ export default function Overview({
         >
           <div className="flex h-full min-h-0 flex-col">
             <div className="relative flex flex-row items-center justify-start px-3 py-3">
-              <span className="text-label-sm font-bold text-ds-text-neutral-default-default">
+              <span className="text-ds-text-base font-bold text-ds-ink-default-default">
                 {t('triggers.execution-logs')}
               </span>
             </div>
@@ -384,7 +392,7 @@ export default function Overview({
         >
           <DialogHeader title={t('triggers.delete-trigger')} />
           <DialogContentSection className="space-y-4">
-            <p className="text-sm text-ds-text-neutral-default-default">
+            <p className="text-sm text-ds-ink-default-default">
               {t('triggers.confirm-delete-message', {
                 name: deletingTrigger?.name,
               })}
@@ -402,7 +410,8 @@ export default function Overview({
             <Button
               size="md"
               onClick={handleConfirmDelete}
-              variant="caution"
+              variant="primary"
+              tone="error"
               disabled={isDeleting}
             >
               {isDeleting

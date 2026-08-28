@@ -70,12 +70,12 @@ export function FeedbackCard({
   return (
     <div
       key={id}
-      className={`group gap-4 rounded-xl px-4 py-3 bg-ds-bg-neutral-default-default relative flex w-full flex-col items-center justify-center overflow-hidden border ${className || ''}`}
+      className={`group relative flex w-full flex-col items-center justify-center gap-4 overflow-hidden rounded-xl border bg-ds-neutral-default-default px-4 py-3 ${className || ''}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
       {/* Copy button - appears on hover */}
-      <div className="bottom-1 right-1 absolute opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+      <div className="absolute right-1 bottom-1 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
         <Button
           onClick={handleCopy}
           variant="ghost"
@@ -91,27 +91,27 @@ export function FeedbackCard({
       </div>
 
       {/* Title */}
-      <p className="font-inter text-sm font-bold leading-normal w-full text-ds-text-neutral-default-default">
+      <p className="w-full font-inter text-sm leading-normal font-bold text-ds-ink-default-default">
         {title}
       </p>
 
       {/* Content */}
-      <p className="font-inter text-sm font-medium leading-normal w-full text-ds-text-neutral-default-default">
+      <p className="w-full font-inter text-sm leading-normal font-medium text-ds-ink-default-default">
         {content}
       </p>
 
       {/* Action buttons */}
-      <div className="gap-1 flex w-full items-center">
+      <div className="flex w-full items-center gap-1">
         <Button
           onClick={onConfirm}
           variant="primary"
           size="xs"
           className="flex-1"
         >
-          Answer Agent
+          {t('chat.answer-agent', { defaultValue: 'Answer Agent' })}
         </Button>
         <Button onClick={onSkip} variant="ghost" size="xs" className="flex-1">
-          Skip
+          {t('chat.skip', { defaultValue: 'Skip' })}
         </Button>
       </div>
     </div>

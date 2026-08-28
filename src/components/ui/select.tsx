@@ -32,18 +32,18 @@ export type SelectVariant = 'primary' | 'secondary';
 export type SelectState = 'error' | 'success';
 
 const variantTriggerBase: Record<SelectVariant, string> = {
-  primary: 'bg-ds-bg-neutral-default-default',
-  secondary: 'bg-ds-bg-neutral-subtle-default',
+  primary: 'bg-ds-neutral-default-default',
+  secondary: 'bg-ds-neutral-subtle-default',
 };
 
 const variantTriggerInteractive: Record<SelectVariant, [string, string]> = {
   primary: [
-    'hover:bg-ds-bg-neutral-default-hover hover:ring-ds-ring-neutral-strong-default hover:ring-1 hover:ring-offset-0',
-    'focus-visible:ring-ds-ring-brand-default-focus data-[state=open]:bg-ds-bg-neutral-strong-default data-[state=open]:ring-ds-ring-brand-default-focus focus-visible:ring-1 focus-visible:ring-offset-0 data-[state=open]:ring-1 data-[state=open]:ring-offset-0',
+    'hover:bg-ds-neutral-default-hover hover:ring-ds-hairline-strong-default hover:ring-1 hover:ring-offset-0',
+    'focus-visible:ring-ds-ring-focus data-[state=open]:bg-ds-neutral-strong-default data-[state=open]:ring-ds-ring-focus focus-visible:ring-1 focus-visible:ring-offset-0 data-[state=open]:ring-1 data-[state=open]:ring-offset-0',
   ],
   secondary: [
-    'hover:bg-ds-bg-neutral-subtle-hover hover:ring-ds-ring-neutral-strong-default hover:ring-1 hover:ring-offset-0',
-    'focus-visible:ring-ds-ring-brand-default-focus data-[state=open]:bg-ds-bg-neutral-default-default data-[state=open]:ring-ds-ring-brand-default-focus focus-visible:ring-1 focus-visible:ring-offset-0 data-[state=open]:ring-1 data-[state=open]:ring-offset-0',
+    'hover:bg-ds-neutral-subtle-hover hover:ring-ds-hairline-strong-default hover:ring-1 hover:ring-offset-0',
+    'focus-visible:ring-ds-ring-focus data-[state=open]:bg-ds-neutral-default-default data-[state=open]:ring-ds-ring-focus focus-visible:ring-1 focus-visible:ring-offset-0 data-[state=open]:ring-1 data-[state=open]:ring-offset-0',
   ],
 };
 
@@ -92,16 +92,14 @@ const SelectTrigger = React.forwardRef<
     return (
       <div className={cn(wrapperClassName ?? 'w-fit', stateCls.wrapper)}>
         {title ? (
-          <div className="mb-1.5 flex items-center gap-1 text-body-sm font-bold text-ds-text-neutral-default-default">
+          <div className="mb-1.5 flex items-center gap-1 text-ds-text-meta font-bold text-ds-ink-default-default">
             <span>{title}</span>
-            {required && (
-              <span className="text-ds-text-neutral-default-default">*</span>
-            )}
+            {required && <span className="text-ds-ink-default-default">*</span>}
             {tooltip && (
               <TooltipSimple content={tooltip}>
                 <CircleAlert
                   size={16}
-                  className="text-ds-icon-neutral-default-default"
+                  className="text-ds-ink-default-default"
                 />
               </TooltipSimple>
             )}
@@ -112,7 +110,7 @@ const SelectTrigger = React.forwardRef<
           disabled={disabled}
           className={cn(
             // Base styles
-            'relative flex w-full items-center justify-between gap-2 rounded-xl border border-solid px-3 text-ds-text-neutral-default-default outline-none transition-[background-color,border-color,box-shadow,opacity]',
+            'relative flex w-full items-center justify-between gap-2 rounded-xl border border-x border-y border-solid px-3 text-ds-ink-default-default transition-[background-color,border-color,box-shadow,opacity] outline-none',
             formFieldSelectSizeClasses[size],
             'whitespace-nowrap [&>span]:line-clamp-1',
             // Default surface (when no error/success)
@@ -127,7 +125,7 @@ const SelectTrigger = React.forwardRef<
             // Validation states (override defaults)
             stateCls.trigger,
             // Placeholder styling
-            'data-[placeholder]:text-ds-text-neutral-muted-default/50',
+            'data-[placeholder]:text-ds-ink-muted-default/50',
             className
           )}
           style={mergeAliasStyles(formControlTokenAliases, style)}
@@ -135,7 +133,7 @@ const SelectTrigger = React.forwardRef<
         >
           {children}
           <SelectPrimitive.Icon asChild>
-            <ChevronDown className="h-4 w-4 text-ds-icon-neutral-default-default" />
+            <ChevronDown className="h-4 w-4 text-ds-ink-default-default" />
           </SelectPrimitive.Icon>
         </SelectPrimitive.Trigger>
         {note ? (
@@ -190,7 +188,7 @@ const SelectContent = React.forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        'relative z-50 max-h-[--radix-select-content-available-height] min-w-[8rem] origin-[--radix-select-content-transform-origin] overflow-y-auto overflow-x-hidden rounded-xl border border-solid border-transparent bg-ds-bg-neutral-subtle-default text-ds-text-neutral-default-default shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2',
+        'relative z-50 max-h-(--radix-select-content-available-height) min-w-[8rem] origin-(--radix-select-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-ds-popover border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default text-ds-ink-default-default shadow-ds-elevation-popover data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0',
         position === 'popper' &&
           'data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1',
         className
@@ -234,12 +232,12 @@ const SelectItem = React.forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      'relative flex w-full cursor-pointer select-none items-center rounded-xl py-1.5 pl-2 pr-8 text-sm outline-none hover:bg-ds-bg-neutral-default-hover focus:bg-ds-bg-neutral-default-hover focus:text-ds-text-neutral-default-default data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'relative flex min-h-ds-control-lg w-full cursor-pointer items-center rounded-ds-menu-row py-1.5 pr-8 pl-2 text-ds-text-base outline-none select-none hover:bg-ds-neutral-default-hover focus-visible:text-ds-ink-default-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-inset data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       className
     )}
     {...props}
   >
-    <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
+    <span className="absolute inset-y-0 right-2 my-auto flex size-4 items-center justify-center">
       <SelectPrimitive.ItemIndicator>
         <Check className="h-4 w-4" />
       </SelectPrimitive.ItemIndicator>
@@ -255,7 +253,7 @@ const SelectSeparator = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SelectPrimitive.Separator
     ref={ref}
-    className={cn('-mx-1 my-1 h-px bg-ds-bg-neutral-muted-default', className)}
+    className={cn('-mx-1 my-1 h-px bg-ds-hairline-default-default', className)}
     {...props}
   />
 ));
@@ -291,7 +289,7 @@ const SelectItemWithButton = React.forwardRef<
       value={value}
       disabled={!enabled}
       className={cn(
-        'group relative flex w-full cursor-pointer select-none items-center rounded-lg py-1.5 pl-2 pr-8 text-sm outline-none hover:bg-ds-bg-neutral-default-hover focus:bg-ds-bg-neutral-default-hover focus:text-ds-text-neutral-default-default data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+        'group relative flex min-h-ds-control-lg w-full cursor-pointer items-center rounded-ds-menu-row py-1.5 pr-8 pl-2 text-ds-text-base outline-none select-none hover:bg-ds-neutral-default-hover focus-visible:text-ds-ink-default-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-inset data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
         className
       )}
       {...props}

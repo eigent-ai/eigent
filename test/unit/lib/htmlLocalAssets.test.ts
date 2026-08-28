@@ -17,6 +17,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   getRelativePathFromDir,
   inlineLocalHtmlImgElements,
+  inlineLocalHtmlScriptElements,
   inlineLocalProjectImagePaths,
   toLocalFileUrl,
 } from '@/lib/htmlLocalAssets';
@@ -24,19 +25,27 @@ import {
 describe('toLocalFileUrl', () => {
   it('converts absolute unix paths to localfile base hrefs', () => {
     expect(toLocalFileUrl('/Users/test/canvas_map')).toBe(
-      'localfile:///Users/test/canvas_map/'
+      'localfile://preview/Users/test/canvas_map/'
     );
   });
 
-  it('preserves existing localfile urls and trailing slash', () => {
+  it('upgrades existing localfile urls to the navigable fixed-host format', () => {
     expect(toLocalFileUrl('localfile:///Users/test/canvas_map/')).toBe(
-      'localfile:///Users/test/canvas_map/'
+      'localfile://preview/Users/test/canvas_map/'
     );
+  });
+
+  it('converts query-based preview urls to the navigable fixed-host format', () => {
+    expect(
+      toLocalFileUrl(
+        'localfile://preview/?path=%2FUsers%2FExample%20User%2Fcanvas_map'
+      )
+    ).toBe('localfile://preview/Users/Example%20User/canvas_map/');
   });
 
   it('emits standard localfile urls for Windows drive paths', () => {
     expect(toLocalFileUrl('C:\\Users\\test\\canvas_map')).toBe(
-      'localfile:///C:/Users/test/canvas_map/'
+      'localfile://preview/C:/Users/test/canvas_map/'
     );
   });
 });
@@ -145,5 +154,57 @@ describe('inlineLocalProjectImagePaths', () => {
     expect(readFileAsDataUrl).toHaveBeenCalledWith(
       '/Users/test/canvas_map/assets/home.png'
     );
+  });
+});
+
+describe('inlineLocalHtmlScriptElements', () => {
+  it('inlines relative scripts without changing authorized remote scripts', async () => {
+    const html = `<!doctype html><html><head>
+      <script src="https://cdnjs.cloudflare.com/p5.min.js"></script>
+    </head><body><script src="sketch.js?v=1"></script></body></html>`;
+    const readTextFile = vi
+      .fn()
+      .mockResolvedValue('function setup() { createCanvas(100, 100); }');
+
+    const result = await inlineLocalHtmlScriptElements(
+      html,
+      '/Users/test/P5-new',
+      readTextFile
+    );
+
+    expect(readTextFile).toHaveBeenCalledOnce();
+    expect(readTextFile).toHaveBeenCalledWith('/Users/test/P5-new/sketch.js');
+    expect(result).toContain('src="https://cdnjs.cloudflare.com/p5.min.js"');
+    expect(result).toContain('data-source="sketch.js?v=1"');
+    expect(result).toContain('function setup() { createCanvas(100, 100); }');
+    expect(result).not.toContain('src="sketch.js?v=1"');
+  });
+
+  it('leaves a local script reference in place when the file cannot be read', async () => {
+    const html = '<html><body><script src="missing.js"></script></body></html>';
+    const readTextFile = vi.fn().mockRejectedValue(new Error('missing'));
+
+    const result = await inlineLocalHtmlScriptElements(
+      html,
+      '/Users/test/P5-new',
+      readTextFile
+    );
+
+    expect(result).toContain('src="missing.js"');
+  });
+
+  it('does not treat explicit URL schemes as local script paths', async () => {
+    const html =
+      '<html><body><script src="vbscript:alert(1)"></script></body></html>';
+    const readTextFile = vi.fn();
+
+    const result = await inlineLocalHtmlScriptElements(
+      html,
+      '/Users/test/P5-new',
+      readTextFile
+    );
+
+    expect(readTextFile).not.toHaveBeenCalled();
+    expect(result).toContain('src="vbscript:alert(1)"');
   });
 });

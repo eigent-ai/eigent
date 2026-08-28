@@ -12,11 +12,14 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { SpaceSwitchDropdown } from '@/components/ProjectPageSidebar/SpaceSwitchDropdown';
+import NewSpaceDialog from '@/components/Home/NewSpaceDialog';
+import { SpaceSwitchDropdown } from '@/components/SpaceSidebar/SpaceSwitchDropdown';
+import { WorkspaceVersionHistoryDialog } from '@/components/Workspace/WorkspaceVersionHistoryDialog';
 import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { useWorkspaceSavePoint } from '@/hooks/useWorkspaceSavePoint';
 import { useHost } from '@/host';
 import {
   createSpaceFromFolderPicker,
@@ -52,7 +55,7 @@ import { toast } from 'sonner';
 
 /** Shared chrome so read-only and dropdown trigger stay the same height (Button md = 32px). */
 const PROJECT_PICKER_SHELL_CLASS =
-  'bg-ds-bg-neutral-subtle-default shadow-workspace-project-picker box-border inline-flex h-8 min-h-8 w-fit min-w-[180px] max-w-[300px] items-center gap-2 rounded-full px-3 py-0 font-semibold';
+  'bg-ds-neutral-subtle-default shadow-workspace-project-picker box-border inline-flex h-8 min-h-8 w-fit min-w-[180px] max-w-[300px] items-center gap-2 rounded-full px-3 py-0 font-semibold';
 
 export interface WorkspaceProjectPickerProps {
   /** Display-only: render the current project name without the dropdown. */
@@ -81,8 +84,12 @@ export function WorkspaceProjectPicker({
   const refreshProjectOnServer = useSpaceStore((s) => s.refreshProjectOnServer);
   const { projectStore } = useChatStoreAdapter();
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
+  const requestWorkspaceChatFocus = usePageTabStore(
+    (s) => s.requestWorkspaceChatFocus
+  );
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [newSpaceDialogOpen, setNewSpaceDialogOpen] = useState(false);
   const [switchingSpaceId, setSwitchingSpaceId] = useState<string | null>(null);
   const [pendingOverlays, setPendingOverlays] = useState<SpaceOverlay[]>([]);
   const [pendingLoading, setPendingLoading] = useState(false);
@@ -102,6 +109,7 @@ export function WorkspaceProjectPicker({
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [renamingSpace, setRenamingSpace] = useState(false);
+  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
 
   const activeProjectId = projectStore.activeProjectId;
   const activeProject = activeProjectId
@@ -150,6 +158,14 @@ export function WorkspaceProjectPicker({
     activeSpace.sourceType !== 'legacy' &&
     activeSpace.metadata?.legacy !== true
   );
+  const versionHistory = useWorkspaceSavePoint({
+    spaceId: activeSpaceId,
+    space: activeSpace,
+    email,
+    userId,
+  });
+  const versionHistorySupported = versionHistory.supported;
+  const loadVersionHistoryStatus = versionHistory.loadStatus;
   const activeSpaces = useMemo(
     () =>
       Object.values(spacesById)
@@ -218,6 +234,12 @@ export function WorkspaceProjectPicker({
     }
   }, [loadPendingOverlays, menuOpen]);
 
+  useEffect(() => {
+    if (menuOpen && versionHistorySupported) {
+      void loadVersionHistoryStatus();
+    }
+  }, [loadVersionHistoryStatus, menuOpen, versionHistorySupported]);
+
   const activeSpaceTitle = useMemo(
     () =>
       getActiveSpaceTriggerLabel(activeSpace?.name, t, {
@@ -284,18 +306,24 @@ export function WorkspaceProjectPicker({
       });
       setActiveSpace(spaceId);
       projectStore.setActiveProject(null);
+      setActiveWorkspaceTab('workforce');
+      requestWorkspaceChatFocus();
       navigate('/');
       setMenuOpen(false);
+      return true;
     } catch (error) {
       console.error('Failed to create Space:', error);
       toast.error(t('layout.spaces-create-failed'));
+      return false;
     }
   }, [
     createSpaceOnServer,
     email,
     navigate,
     projectStore,
+    requestWorkspaceChatFocus,
     setActiveSpace,
+    setActiveWorkspaceTab,
     t,
     userId,
   ]);
@@ -508,24 +536,28 @@ export function WorkspaceProjectPicker({
         activeSpaceId,
         projectStore,
         createdFrom: 'workspace_folder_space_picker',
-        onUnavailable: openAgentFolderTab,
+        onUnavailable: openFilesTab,
       });
-      if (!spaceId) return;
+      if (!spaceId) return false;
+      setActiveWorkspaceTab('workforce');
+      requestWorkspaceChatFocus();
       navigate('/');
       setMenuOpen(false);
+      return true;
     } catch (error) {
       console.warn(
         '[WorkspaceProjectPicker] Failed to create folder Space:',
         error
       );
       toast.error(getFolderSpaceErrorMessage(error, t));
+      return false;
     }
   };
 
-  const openAgentFolderTab = () => {
+  const openFilesTab = () => {
     const pid = projectStore.activeProjectId;
-    setActiveWorkspaceTab('inbox', {
-      clearInboxForProjectId: pid ?? undefined,
+    setActiveWorkspaceTab('files', {
+      clearFilesForProjectId: pid ?? undefined,
     });
     setMenuOpen(false);
   };
@@ -537,7 +569,7 @@ export function WorkspaceProjectPicker({
         aria-label={activeSpaceTitle}
       >
         <FolderIcon className="size-4 shrink-0" aria-hidden />
-        <span className="min-w-0 truncate text-label-sm text-ds-text-neutral-default-default">
+        <span className="min-w-0 truncate text-ds-text-base text-ds-ink-default-default">
           {activeSpaceTitle}
         </span>
       </div>
@@ -546,6 +578,33 @@ export function WorkspaceProjectPicker({
 
   return (
     <>
+      <AlertDialog
+        isOpen={versionHistory.enableConfirmOpen}
+        onClose={() => versionHistory.setEnableConfirmOpen(false)}
+        onConfirm={() => {
+          versionHistory.setEnableConfirmOpen(false);
+          void versionHistory.enable(true);
+        }}
+        title={t('layout.workspace-version-enable-title')}
+        message={t('layout.workspace-version-enable-message')}
+        confirmText={t('layout.workspace-enable-version-history')}
+        cancelText={t('layout.cancel')}
+        confirmVariant="primary"
+      />
+      <WorkspaceVersionHistoryDialog
+        open={versionHistoryOpen}
+        onOpenChange={setVersionHistoryOpen}
+        spaceId={activeSpaceId}
+        email={email}
+        userId={userId}
+        actorId={userId == null ? email || 'local-user' : String(userId)}
+      />
+      <NewSpaceDialog
+        open={newSpaceDialogOpen}
+        onOpenChange={setNewSpaceDialogOpen}
+        onStartFromScratch={handleNewSpace}
+        onUseLocalFolder={handleCreateSpaceFromFolder}
+      />
       <AlertDialog
         isOpen={discardConfirmOpen}
         onClose={() => setDiscardConfirmOpen(false)}
@@ -607,13 +666,13 @@ export function WorkspaceProjectPicker({
             buttonRadius="full"
             className={cn(
               PROJECT_PICKER_SHELL_CLASS,
-              'no-drag justify-between hover:bg-ds-bg-neutral-default-hover'
+              'no-drag justify-between hover:bg-ds-neutral-default-hover'
             )}
             aria-expanded={menuOpen}
             aria-haspopup="menu"
           >
             <FolderIcon className="size-4 shrink-0" aria-hidden />
-            <span className="min-w-0 truncate text-label-sm text-ds-text-neutral-default-default">
+            <span className="min-w-0 truncate text-ds-text-base text-ds-ink-default-default">
               {activeSpaceTitle}
             </span>
             <ChevronsUpDown
@@ -626,10 +685,7 @@ export function WorkspaceProjectPicker({
         activeSpaceId={activeSpaceId}
         switchingSpaceId={switchingSpaceId}
         canRenameActiveSpace={canRenameActiveSpace}
-        createSpaceMenu={{
-          onStartFromScratch: handleNewSpace,
-          onSelectFolder: handleCreateSpaceFromFolder,
-        }}
+        onOpenCreateSpace={() => setNewSpaceDialogOpen(true)}
         onRenameSpace={openRenameDialog}
         onSpaceSelect={activateSpace}
         pendingChangesMenu={
@@ -651,6 +707,28 @@ export function WorkspaceProjectPicker({
                 onApply: handleApplyPending,
                 onDiscard: handleDiscardPending,
                 onRefresh: handleRefreshWorkdir,
+              }
+            : undefined
+        }
+        savePointMenu={
+          versionHistory.supported
+            ? {
+                loading:
+                  versionHistory.loading || versionHistory.status === null,
+                saving: versionHistory.saving,
+                enabled: versionHistory.status?.enabled === true,
+                needsAttention:
+                  versionHistory.status?.enabled === true &&
+                  (versionHistory.status.state !== 'ready' ||
+                    versionHistory.status.diagnostics?.healthy === false),
+                pendingCount:
+                  versionHistory.status?.pending_managed_paths?.length || 0,
+                pendingTruncated:
+                  versionHistory.status?.pending_managed_paths_truncated ===
+                  true,
+                onEnable: versionHistory.requestEnable,
+                onSave: versionHistory.save,
+                onOpenHistory: () => setVersionHistoryOpen(true),
               }
             : undefined
         }

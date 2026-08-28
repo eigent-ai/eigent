@@ -26,6 +26,7 @@
  * 3. IF triggered new task while on a different page → show toast, add to project queue / run in background
  */
 
+import { fetchPost } from '@/api/http';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -39,7 +40,19 @@ vi.mock('@/api/http', () => ({
     })
   ),
   proxyFetchPost: vi.fn(() => Promise.resolve({ id: 'mock-id' })),
-  fetchPost: vi.fn(),
+  fetchPost: vi.fn((url: string, body: Record<string, unknown> = {}) =>
+    Promise.resolve({
+      request_id: body.request_id,
+      project_id: url.split('/')[2],
+      content: body.content,
+      attachment_paths: body.attachment_paths ?? [],
+      delivery_mode: body.delivery_mode ?? 'wait',
+      status: 'pending',
+      source: body.source ?? 'scheduled',
+      created_at: 0,
+      updated_at: 0,
+    })
+  ),
 }));
 
 vi.mock('@/service/triggerApi', () => ({
@@ -265,6 +278,14 @@ describe('useTriggerTaskExecutor — hook behavior', () => {
     expect(project!.queuedMessages).toHaveLength(1);
     expect(project!.queuedMessages[0].executionId).toBe('exec-001');
     expect(project!.queuedMessages[0].content).toContain('Process webhook');
+    expect(fetchPost).toHaveBeenCalledWith('/projects/proj-A/follow-ups', {
+      request_id: 'scheduled:exec-001',
+      content: 'Process webhook',
+      attachment_paths: [],
+      delivery_mode: 'wait',
+      source: 'scheduled',
+      source_command_id: undefined,
+    });
   });
 
   it('should queue multiple tasks for the same project (serialization)', async () => {
@@ -339,13 +360,13 @@ describe('useTriggerTaskExecutor — hook behavior', () => {
     // Toast info should have been called on start
     expect(toast.info).toHaveBeenCalledWith(
       'Execution started: Remote Trigger',
-      expect.objectContaining({ description: 'Processing trigger task...' })
+      expect.objectContaining({ description: 'Running the automation...' })
     );
     // Toast success should have been called after queueing
     expect(toast.success).toHaveBeenCalledWith(
       'Queued: Remote Trigger',
       expect.objectContaining({
-        description: 'Task has been added to the project queue',
+        description: 'Task has been added to the session queue',
       })
     );
   });

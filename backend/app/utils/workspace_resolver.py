@@ -18,7 +18,7 @@ import os
 import shutil
 import time
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -34,6 +34,7 @@ from app.utils.workspace_paths import (
     project_task_root,
     project_workdir_root,
     run_output_root,
+    runtime_owner_key,
     workspace_state_root,
 )
 
@@ -212,7 +213,9 @@ class TaskSnapshot:
     created_at: str
     workdir_mode: str | None = None
     base_snapshot_id: str | None = None
-    version: int = 2
+    artifact_manifest: tuple[dict[str, Any], ...] | None = None
+    artifacts_frozen_at: float | None = None
+    version: int = 3
 
 
 class WorkspaceStore:
@@ -364,22 +367,103 @@ class WorkspaceStore:
                     )
         return list(bindings_by_space.values())
 
+    @staticmethod
+    def _read_snapshot(path: Path) -> TaskSnapshot | None:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if "space_id" not in data:
+                data["space_id"] = data.get("project_id", "")
+            data.setdefault("user_id", None)
+            data.setdefault("workdir_mode", None)
+            data.setdefault("base_snapshot_id", None)
+            manifest = data.setdefault("artifact_manifest", None)
+            if manifest is not None:
+                data["artifact_manifest"] = tuple(manifest)
+            data.setdefault("artifacts_frozen_at", None)
+            return TaskSnapshot(**data)
+        except Exception:
+            logger.warning("Failed to read task snapshot: %s", path)
+        return None
+
     def get_snapshot(
         self, email: str, task_id: str, user_id: str | int | None = None
     ) -> TaskSnapshot | None:
         for path in self._task_paths(email, task_id, user_id):
             if not path.exists():
                 continue
-            try:
-                data = json.loads(path.read_text(encoding="utf-8"))
-                if "space_id" not in data:
-                    data["space_id"] = data.get("project_id", "")
-                data.setdefault("user_id", None)
-                data.setdefault("workdir_mode", None)
-                data.setdefault("base_snapshot_id", None)
-                return TaskSnapshot(**data)
-            except Exception:
-                logger.warning("Failed to read task snapshot: %s", path)
+            snapshot = self._read_snapshot(path)
+            if snapshot is not None:
+                return snapshot
+        return None
+
+    def find_snapshot(self, task_id: str) -> tuple[str, TaskSnapshot] | None:
+        """Resolve an immutable Run snapshot without mutable TaskLock state.
+
+        Startup reconciliation has no active RunContext and must still be able
+        to finalize the Run that owned a workspace. Task ids are generated
+        identifiers, so reject path-shaped input before performing the bounded
+        one-level owner lookup under ``~/.eigent/workspaces``.
+        """
+
+        if (
+            not task_id
+            or Path(task_id).name != task_id
+            or task_id in {".", ".."}
+        ):
+            return None
+        workspaces_root = workspace_state_root("_snapshot_lookup_").parent
+        if not workspaces_root.exists():
+            return None
+
+        matches: list[tuple[str, TaskSnapshot]] = []
+        try:
+            owner_roots = list(workspaces_root.iterdir())
+        except OSError:
+            logger.warning("Failed to enumerate workspace snapshot owners")
+            return None
+        for owner_root in owner_roots:
+            if not owner_root.is_dir():
+                continue
+            path = owner_root / "tasks" / f"{task_id}.json"
+            if not path.is_file():
+                continue
+            snapshot = self._read_snapshot(path)
+            if snapshot is not None and snapshot.task_id == task_id:
+                matches.append((owner_root.name, snapshot))
+
+        if not matches:
+            return None
+        if len(matches) == 1:
+            return matches[0]
+
+        # A user-id snapshot can coexist briefly with its legacy email-keyed
+        # copy during migration. Prefer the canonical user owner only when all
+        # copies describe the same immutable workspace; conflicting copies are
+        # never guessed between.
+        identity = {
+            (
+                item.project_id,
+                item.space_id,
+                item.user_id,
+                item.working_directory,
+                item.task_output_root,
+            )
+            for _, item in matches
+        }
+        if len(identity) == 1:
+            snapshot = matches[0][1]
+            if snapshot.user_id is not None:
+                canonical_owner = runtime_owner_key("", snapshot.user_id)
+                for owner, item in matches:
+                    if owner == canonical_owner:
+                        return owner, item
+            return matches[0]
+
+        logger.error(
+            "Ambiguous workspace snapshots for Run %s across owners %s",
+            task_id,
+            [owner for owner, _ in matches],
+        )
         return None
 
     def save_snapshot(self, email: str, snapshot: TaskSnapshot) -> None:
@@ -387,6 +471,22 @@ class WorkspaceStore:
             self._task_path(email, snapshot.task_id, snapshot.user_id),
             asdict(snapshot),
         )
+
+    def freeze_artifact_manifest(
+        self,
+        email: str,
+        snapshot: TaskSnapshot,
+        artifacts: list[dict[str, Any]],
+    ) -> TaskSnapshot:
+        """Persist artifacts so later Runs cannot alter a terminal Run's index."""
+        frozen = replace(
+            snapshot,
+            artifact_manifest=tuple(dict(item) for item in artifacts),
+            artifacts_frozen_at=time.time(),
+            version=max(snapshot.version, 3),
+        )
+        self.save_snapshot(email, frozen)
+        return frozen
 
     def _atomic_write(self, path: Path, data: dict) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)

@@ -18,10 +18,37 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.agent.factory import browser_agent
+from app.agent.factory.browser import CdpBrowserPoolManager
 from app.model.chat import Chat
 from app.service.task import Agents
 
 pytestmark = pytest.mark.unit
+
+
+def test_electron_browser_pool_allocates_by_target_not_shared_port():
+    pool = CdpBrowserPoolManager()
+    browsers = [
+        {
+            "port": 9222,
+            "managedBy": "electron",
+            "targetUrl": "about:blank#eigent-browser-toolkit=1",
+        },
+        {
+            "port": 9222,
+            "managedBy": "electron",
+            "targetUrl": "about:blank#eigent-browser-toolkit=2",
+        },
+    ]
+
+    first = pool.acquire_browser(browsers, "session-1", "task-1")
+    second = pool.acquire_browser(browsers, "session-2", "task-1")
+
+    assert first == browsers[0]
+    assert second == browsers[1]
+    assert pool.acquire_browser(browsers, "session-3", "task-1") is None
+
+    pool.release_browser(9222, "session-1")
+    assert pool.acquire_browser(browsers, "session-3", "task-1") == browsers[0]
 
 
 def test_browser_agent_creation(sample_chat_data):
@@ -121,7 +148,7 @@ def test_browser_agent_prefers_preconnected_cdp_url(sample_chat_data):
         patch.dict(
             os.environ,
             {"EIGENT_CDP_URL": "http://worker-17:9222"},
-            clear=True,
+            clear=False,
         ),
     ):
         mock_human_toolkit.get_can_use_tools.return_value = []
@@ -202,6 +229,64 @@ def test_browser_agent_uses_cdp_browser_endpoint(sample_chat_data):
 
             assert mock_browser_toolkit.call_args.kwargs["cdp_url"] == (
                 "http://worker-17:9222"
+            )
+    finally:
+        browser_factory._cdp_pool_manager.release_by_task(options.task_id)
+        task_locks.pop(options.task_id, None)
+
+
+def test_electron_browser_agent_propagates_exact_owned_target(
+    sample_chat_data,
+):
+    target_url = "about:blank#eigent-browser-toolkit=17"
+    sample_chat_data["cdp_browsers"] = [
+        {
+            "id": "electron-webview-17",
+            "port": 9222,
+            "endpoint": "http://127.0.0.1:9222",
+            "managedBy": "electron",
+            "targetUrl": target_url,
+        }
+    ]
+    options = Chat(**sample_chat_data)
+
+    from app.agent.factory import browser as browser_factory
+    from app.service.task import task_locks
+
+    task_locks[options.task_id] = MagicMock()
+    module = "app.agent.factory.browser"
+    try:
+        with (
+            patch.dict(os.environ, {"EIGENT_RUNTIME": "electron"}),
+            patch(f"{module}.agent_model", return_value=MagicMock()),
+            patch(
+                f"{module}.get_working_directory",
+                return_value="/tmp/test_workdir",
+            ),
+            patch("asyncio.create_task"),
+            patch(f"{module}.HumanToolkit") as human,
+            patch(f"{module}.HybridBrowserToolkit") as browser_toolkit,
+            patch(f"{module}.TerminalToolkit") as terminal,
+            patch(f"{module}.NoteTakingToolkit") as notes,
+            patch(f"{module}.ScreenshotToolkit") as screenshots,
+            patch(f"{module}.SearchToolkit") as search,
+            patch(f"{module}.ToolkitMessageIntegration"),
+        ):
+            human.get_can_use_tools.return_value = []
+            browser_toolkit.return_value.get_tools.return_value = []
+            terminal.return_value.shell_exec = MagicMock()
+            notes.return_value.get_tools.return_value = []
+            screenshots.return_value.get_tools.return_value = []
+            search.return_value = MagicMock()
+
+            browser_agent(options)
+
+            assert browser_toolkit.call_args.kwargs["owned_target_url"] == (
+                target_url
+            )
+            assert (
+                browser_toolkit.call_args.kwargs["cdp_keep_current_page"]
+                is True
             )
     finally:
         browser_factory._cdp_pool_manager.release_by_task(options.task_id)

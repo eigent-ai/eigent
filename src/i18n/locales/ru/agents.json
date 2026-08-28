@@ -55,5 +55,12 @@
   "create-skill-default-name": "Новый навык",
   "create-skill-default-description": "Опишите, что делает этот навык.",
   "save-skill": "Сохранить навык",
-  "compose-skill-hint": "Отредактируйте SKILL.md (нужен YAML frontmatter с именем и описанием), затем сохраните."
+  "compose-skill-hint": "Отредактируйте SKILL.md (нужен YAML frontmatter с именем и описанием), затем сохраните.",
+  "try-skill-prompt": "Я только что добавил навык {{name}} в Eigent. Можешь создать с его помощью что-нибудь потрясающее?",
+  "select-agent-access": "Выбрать доступ агентов",
+  "all-agents": "Все агенты",
+  "replace-skill-title": "Заменить навык «{{name}}»?",
+  "replace-skill-message": "Навык с таким именем уже существует. Загрузка заменит его, и существующую версию нельзя будет восстановить.",
+  "update-and-replace": "Обновить и заменить",
+  "agent": "Агент"
 }

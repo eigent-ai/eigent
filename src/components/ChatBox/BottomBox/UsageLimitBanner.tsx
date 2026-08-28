@@ -14,6 +14,7 @@
 
 import { cn } from '@/lib/utils';
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export interface UsageLimitBannerProps {
   message: string;
@@ -30,35 +31,40 @@ export function UsageLimitBanner({
   onAction,
   onDismiss,
 }: UsageLimitBannerProps) {
+  const { t } = useTranslation();
   const isDanger = severity === 'danger';
 
   return (
     <div
       className={cn(
-        'flex min-h-12 w-full items-center justify-between gap-3 rounded-xl border px-4 py-2 shadow-sm',
+        'flex min-h-12 w-full items-center justify-between gap-3 rounded-xl border border-x border-y border-solid px-4 py-2 shadow-ds-elevation-control',
         isDanger
-          ? 'border-text-error/30 bg-surface-error-subtle text-text-error'
-          : 'border-border-warning bg-surface-warning text-text-warning'
+          ? 'border-ds-border-error-default-default bg-ds-bg-error-subtle-default !text-ds-text-error-strong-default'
+          : 'border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default !text-ds-text-warning-strong-default'
       )}
     >
-      <div className="min-w-0 flex-1 truncate text-body-sm font-medium">
+      <span className="min-w-0 flex-1 truncate text-ds-text-base font-medium">
         {message}
-      </div>
+      </span>
       <button
         type="button"
         onClick={onAction}
         className={cn(
-          'shrink-0 whitespace-nowrap text-body-sm font-semibold underline underline-offset-4',
-          isDanger ? 'text-text-error' : 'text-text-heading'
+          'shrink-0 text-ds-text-base font-semibold whitespace-nowrap underline underline-offset-4',
+          isDanger
+            ? '!text-ds-text-error-strong-default'
+            : '!text-ds-ink-default-default'
         )}
       >
-        {actionLabel}
+        <span className="text-ds-text-base font-semibold">{actionLabel}</span>
       </button>
       <button
         type="button"
         onClick={onDismiss}
-        aria-label="Dismiss usage notice"
-        className="flex size-7 shrink-0 items-center justify-center rounded-md text-icon-secondary transition-colors hover:bg-fill-fill-transparent-hover hover:text-icon-primary"
+        aria-label={t('chat.dismiss-usage-notice', {
+          defaultValue: 'Dismiss usage notice',
+        })}
+        className="flex size-7 shrink-0 items-center justify-center rounded-md text-ds-ink-muted-default transition-colors hover:bg-ds-neutral-subtle-hover hover:text-ds-ink-default-default"
       >
         <X className="size-4" />
       </button>

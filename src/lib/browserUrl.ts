@@ -12,9 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import i18next from 'i18next';
+
 export type BrowserUrlValidationResult =
-  | { ok: true; url: string }
-  | { ok: false; error: string };
+  { ok: true; url: string } | { ok: false; error: string };
 
 /**
  * Hosts that default to plain HTTP when no scheme is typed: loopback and
@@ -52,7 +53,12 @@ function looksNavigable(input: string): boolean {
 export function normalizeBrowserUrl(input: string): BrowserUrlValidationResult {
   const trimmed = input.trim();
   if (!trimmed) {
-    return { ok: false, error: 'URL is required' };
+    return {
+      ok: false,
+      error: i18next.t('layout.browser-url-required', {
+        defaultValue: 'URL is required',
+      }),
+    };
   }
 
   const colonIndex = trimmed.indexOf(':');
@@ -60,10 +66,20 @@ export function normalizeBrowserUrl(input: string): BrowserUrlValidationResult {
     const afterColon = trimmed.slice(colonIndex + 1);
     if (afterColon.startsWith('//')) {
       if (!/^https?:\/\//i.test(trimmed)) {
-        return { ok: false, error: 'Only HTTP and HTTPS URLs are supported' };
+        return {
+          ok: false,
+          error: i18next.t('layout.browser-url-scheme-unsupported', {
+            defaultValue: 'Only HTTP and HTTPS URLs are supported',
+          }),
+        };
       }
     } else if (/^[a-z]/i.test(afterColon) && !/\s/.test(trimmed)) {
-      return { ok: false, error: 'Only HTTP and HTTPS URLs are supported' };
+      return {
+        ok: false,
+        error: i18next.t('layout.browser-url-scheme-unsupported', {
+          defaultValue: 'Only HTTP and HTTPS URLs are supported',
+        }),
+      };
     }
   }
 
@@ -82,11 +98,21 @@ export function normalizeBrowserUrl(input: string): BrowserUrlValidationResult {
   try {
     parsed = new URL(candidate);
   } catch {
-    return { ok: false, error: 'Invalid URL' };
+    return {
+      ok: false,
+      error: i18next.t('layout.browser-url-invalid', {
+        defaultValue: 'Invalid URL',
+      }),
+    };
   }
 
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    return { ok: false, error: 'Only HTTP and HTTPS URLs are supported' };
+    return {
+      ok: false,
+      error: i18next.t('layout.browser-url-scheme-unsupported', {
+        defaultValue: 'Only HTTP and HTTPS URLs are supported',
+      }),
+    };
   }
 
   return { ok: true, url: parsed.href };

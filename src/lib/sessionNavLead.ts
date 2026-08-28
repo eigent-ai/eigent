@@ -22,6 +22,7 @@
  *   (e.g. splitting is a decomposition phase, not a raw `ChatTaskStatus` value).
  */
 
+import { getAnsweredAskInteractionIds } from '@/lib/humanInteractionMessages';
 import {
   getBottomBoxStateForTask,
   getTaskListShelfTone,
@@ -29,8 +30,8 @@ import {
 } from '@/lib/taskLifecycleUi';
 import type { ChatStore } from '@/store/chatStore';
 import {
+  AgentStep,
   ChatTaskStatus,
-  SessionMode,
   TaskStatus,
   type TaskStatusType,
 } from '@/types/constants';
@@ -41,10 +42,8 @@ import {
   CircleCheckBig,
   CircleSlash,
   ClipboardList,
-  Hand,
   LoaderCircle,
   MessageCircle,
-  TriangleAlert,
 } from 'lucide-react';
 
 export type SessionNavLeadKind =
@@ -94,18 +93,18 @@ const SESSION_NAV_LEAD_BY_KIND: Record<
 > = {
   error: {
     Icon: CircleSlash,
-    iconClassName: '!text-ds-icon-caution-default-default',
+    iconClassName: '!text-ds-icon-error-default-default',
   },
   warning: {
     Icon: AlertTriangle,
     iconClassName: '!text-ds-icon-warning-default-default',
   },
   hitl: {
-    Icon: Hand,
-    iconClassName: '!text-ds-icon-status-splitting-default-default',
+    Icon: AlertTriangle,
+    iconClassName: '!text-ds-icon-warning-default-default',
   },
   blocked: {
-    Icon: TriangleAlert,
+    Icon: AlertTriangle,
     iconClassName: '!text-ds-icon-warning-default-default',
   },
   splitting: {
@@ -123,7 +122,7 @@ const SESSION_NAV_LEAD_BY_KIND: Record<
   },
   idle: {
     Icon: MessageCircle,
-    iconClassName: '!text-ds-icon-neutral-default-default',
+    iconClassName: '!text-ds-ink-default-default',
   },
 };
 
@@ -182,9 +181,9 @@ export function getSessionNavLeadFromHistoryProject(
 }
 
 /**
- * Sidebar project rows: prefer cached/history lead while hydrating; otherwise live task state.
+ * Sidebar session rows: prefer cached/history lead while hydrating; otherwise live task state.
  */
-export function resolveProjectNavLeadPresentation(options: {
+export function resolveSessionNavLeadPresentation(options: {
   activeTask?: TaskRow;
   cachedLead?: SessionNavLeadPresentation;
   isHistoryLoading?: boolean;
@@ -206,6 +205,42 @@ export function resolveProjectNavLeadPresentation(options: {
   return SESSION_NAV_IDLE_LEAD;
 }
 
+function isShareOrFinishedWithoutLiveWait(task: TaskRow): boolean {
+  if (task.type === 'share') return true;
+  if (task.durableRunStatus === 'waiting_for_user') return false;
+  return task.type === 'replay' || task.status === ChatTaskStatus.FINISHED;
+}
+
+function hasUnresolvedAskMessage(task: TaskRow): boolean {
+  const messages = Array.isArray(task.messages) ? task.messages : [];
+  const resolved = new Set(task.resolvedInteractionIds ?? []);
+  const answered = getAnsweredAskInteractionIds(messages);
+  return messages.some((message) => {
+    if (message.step !== AgentStep.ASK) return false;
+    const interactionId = message.interaction?.interaction_id;
+    if (!interactionId) return false;
+    return !resolved.has(interactionId) && !answered.has(interactionId);
+  });
+}
+
+/**
+ * Any composer/timeline pause that needs a person: Human Toolkit, approval,
+ * question, form, plan confirm, or a durable `waiting_for_user` Run.
+ */
+function isAwaitingHumanInput(task: TaskRow): boolean {
+  if (isShareOrFinishedWithoutLiveWait(task)) return false;
+  // The answer was submitted and the Run has already resumed locally. Legacy
+  // ASK fields are cleared only after durable reconciliation, so they must not
+  // hold the sidebar Alert icon during that network interval.
+  if (task.isPending && task.durableRunStatus === 'running') return false;
+  if (task.activeAsk) return true;
+  if (task.durableRunStatus === 'waiting_for_user') return true;
+  if (task.hasWaitComfirm) return true;
+  if (getBottomBoxStateForTask(task) === 'confirm') return true;
+  if ((task.askList?.length ?? 0) > 0) return true;
+  return hasUnresolvedAskMessage(task);
+}
+
 /**
  * Priority: error → warning → hitl → blocked → splitting → running → finished → idle.
  */
@@ -216,17 +251,10 @@ export function getSessionNavLeadPresentation(
   const errorSignal =
     isTaskListRowHardFailure(task) || wf.some((s) => s === TaskStatus.FAILED);
   const warningSignal = Boolean(task.isContextExceeded) && !errorSignal;
-  // Single agent runs directly — no splitting/confirm step. Its sidebar icon
-  // tracks the task status only: chat bubble while preparing, running spinner
-  // while executing, check when finished — matching the chat container.
-  const isSingleAgent = task.sessionMode === SessionMode.SINGLE_AGENT;
-  const bottom = getBottomBoxStateForTask(task);
-  // Human-in-the-loop = an unconfirmed plan or an explicit `ask` / `wait_confirm`.
+  // Human-in-the-loop covers every input-required pause in the chat timeline.
   // A workforce subtask in WAITING means "assigned, not yet started" — a normal
-  // running-phase state — so it must NOT surface the Hand icon while running.
-  // Single agent has no plan/confirm step, so it never shows the HITL icon.
-  const hitlSignal =
-    !isSingleAgent && (bottom === 'confirm' || Boolean(task.hasWaitComfirm));
+  // running-phase state — so it must NOT replace the spinner with an Alert.
+  const hitlSignal = isAwaitingHumanInput(task);
   const blockedSignal = wf.some((s) => s === TaskStatus.BLOCKED);
   const shelf = getTaskListShelfTone(task);
 

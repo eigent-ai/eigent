@@ -1,0 +1,99 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import { cn } from '@/lib/utils';
+import { type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { HomeHubItemKind } from './HomeHubItemShared';
+import { HOME_HUB_LIST_GRID_CLASS } from './HomeHubItemShared';
+
+type HomeHubListColumn = {
+  id: string;
+  labelKey?: string;
+  align?: 'left' | 'right';
+};
+
+const LIST_COLUMNS: Record<HomeHubItemKind, HomeHubListColumn[]> = {
+  space: [
+    { id: 'name', labelKey: 'layout.home-list-name' },
+    { id: 'type', labelKey: 'layout.home-list-type' },
+    { id: 'projects', labelKey: 'layout.projects', align: 'right' },
+    { id: 'tasks', labelKey: 'layout.tasks-heading', align: 'right' },
+    { id: 'triggers', labelKey: 'layout.triggers', align: 'right' },
+    { id: 'created', labelKey: 'layout.home-list-created', align: 'right' },
+    { id: 'action', align: 'right' },
+  ],
+  project: [
+    { id: 'name', labelKey: 'layout.home-list-name' },
+    { id: 'space', labelKey: 'layout.home-list-space' },
+    { id: 'tasks', labelKey: 'layout.tasks-heading', align: 'right' },
+    { id: 'triggers', labelKey: 'layout.triggers', align: 'right' },
+    { id: 'updated', labelKey: 'layout.home-list-updated', align: 'right' },
+  ],
+  task: [
+    { id: 'name', labelKey: 'layout.home-list-name' },
+    { id: 'space', labelKey: 'layout.home-list-space' },
+    { id: 'created', labelKey: 'layout.home-list-created', align: 'right' },
+  ],
+  trigger: [
+    { id: 'name', labelKey: 'layout.home-list-name' },
+    { id: 'space', labelKey: 'layout.home-list-space' },
+    { id: 'type', labelKey: 'layout.home-list-type' },
+    { id: 'status', labelKey: 'layout.home-list-status' },
+    { id: 'created', labelKey: 'layout.home-list-created', align: 'right' },
+  ],
+};
+
+type HomeHubListTableProps = {
+  kind: HomeHubItemKind;
+  children: ReactNode;
+  className?: string;
+};
+
+export default function HomeHubListTable({
+  kind,
+  children,
+  className,
+}: HomeHubListTableProps) {
+  const { t } = useTranslation();
+  const columns = LIST_COLUMNS[kind];
+  const gridClass = HOME_HUB_LIST_GRID_CLASS[kind];
+
+  return (
+    <div className={cn('w-full min-w-0', className)}>
+      <div className={cn('grid items-center gap-x-4 px-3 py-2.5', gridClass)}>
+        {columns.map((column) => (
+          <span
+            key={column.id}
+            className={cn(
+              'truncate !text-ds-text-base leading-none font-normal text-ds-ink-muted-default',
+              column.align === 'right' ? 'text-right' : 'text-left'
+            )}
+          >
+            {column.labelKey ? (
+              t(column.labelKey)
+            ) : (
+              <span className="sr-only">
+                {t('layout.workspace-action', {
+                  defaultValue: 'Workspace action',
+                })}
+              </span>
+            )}
+          </span>
+        ))}
+      </div>
+      <div className="flex flex-col gap-1">{children}</div>
+    </div>
+  );
+}

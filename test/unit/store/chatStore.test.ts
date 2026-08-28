@@ -31,6 +31,7 @@ vi.mock('@/api/http', async () => {
   const getBaseURL = vi.fn(() => Promise.resolve('http://localhost:8000'));
 
   return {
+    fetchGet: vi.fn(),
     fetchPost: vi.fn(),
     fetchPut: vi.fn(),
     getBaseURL,
@@ -117,6 +118,10 @@ vi.mock('../../../src/store/projectStore', () => ({
     getState: vi.fn(() => ({
       activeProjectId: null,
       getHistoryId: () => null,
+      getProjectById: (projectId: string) => ({
+        id: projectId,
+        mode: 'single-agent',
+      }),
     })),
   },
 }));
@@ -133,10 +138,11 @@ import {
   collectTaskUploadFiles,
   extractEndPayloadText,
   extractFinalOutputFileList,
-  getCloudModelPlatform,
   mergeFileInfoLists,
+  normalizeTaskArtifactFileList,
   resolveConfirmedUserMessageContent,
   resolveEndMessageText,
+  resolveRunOutputFileList,
   useChatStore,
 } from '../../../src/store/chatStore';
 import { useProjectStore } from '../../../src/store/projectStore';
@@ -255,6 +261,86 @@ describe('ChatStore - Core Functionality', () => {
   });
 
   describe('Final output file extraction', () => {
+    it('normalizes the local artifact change index into previewable files', () => {
+      const files = normalizeTaskArtifactFileList([
+        {
+          filename: 'final_report.md',
+          path: '/Users/test/project/reports/final_report.md',
+          relativePath: 'reports/final_report.md',
+          changeType: 'changed',
+          size: 1234,
+          modifiedAt: 4567,
+        },
+        {
+          filename: 'chart.png',
+          path: '/Users/test/outputs/chart.png',
+          relativePath: 'chart.png',
+          changeType: 'generated',
+        },
+      ]);
+
+      expect(files).toMatchObject([
+        {
+          name: 'final_report.md',
+          type: 'md',
+          relativePath: 'reports/final_report.md',
+          artifactChange: 'changed',
+          size: 1234,
+          modifiedAt: 4567,
+          isRemote: false,
+        },
+        {
+          name: 'chart.png',
+          type: 'png',
+          artifactChange: 'generated',
+          isRemote: false,
+        },
+      ]);
+    });
+
+    it('drops malformed and duplicate artifact index rows', () => {
+      expect(
+        normalizeTaskArtifactFileList([
+          { filename: 'a.csv', path: '/tmp/a.csv', relativePath: 'a.csv' },
+          { filename: 'a.csv', path: '/tmp/other.csv', relativePath: 'a.csv' },
+          { filename: 'missing.txt' },
+        ])
+      ).toHaveLength(1);
+    });
+
+    it('keeps an existing preview path while adding artifact change metadata', () => {
+      const [file] = mergeFileInfoLists(
+        [
+          {
+            name: 'report.md',
+            path: 'http://localhost/files/stream?path=report.md',
+            type: 'md',
+            isRemote: true,
+          },
+        ],
+        [
+          {
+            name: 'report.md',
+            path: '/Users/test/project/report.md',
+            type: 'md',
+            relativePath: 'report.md',
+            artifactChange: 'changed',
+            size: 2048,
+            modifiedAt: 123456,
+          },
+        ]
+      );
+
+      expect(file).toMatchObject({
+        path: 'http://localhost/files/stream?path=report.md',
+        relativePath: 'report.md',
+        artifactChange: 'changed',
+        size: 2048,
+        modifiedAt: 123456,
+        isRemote: true,
+      });
+    });
+
     it('extracts sandbox paths without treating the scheme suffix as a drive', () => {
       const files = extractFinalOutputFileList(
         'Created [CSV](sandbox:/Users/test/eigent/space_123/report.csv).'
@@ -357,17 +443,49 @@ describe('ChatStore - Core Functionality', () => {
 
       expect(mergedFiles[0].path).toBe('X:/exports/report.csv');
     });
+
+    it('trusts an empty canonical artifact list over paths merely mentioned in the answer', () => {
+      const files = resolveRunOutputFileList({
+        writeEventFiles: [],
+        artifactFiles: [],
+        canonicalArtifactsAvailable: true,
+        finalAnswerFiles: [
+          {
+            name: 'old-report.csv',
+            path: '/Users/test/workspace/old-report.csv',
+            type: 'csv',
+          },
+        ],
+      });
+
+      expect(files).toEqual([]);
+    });
+
+    it('keeps final-answer path extraction as a fallback without a canonical artifact index', () => {
+      const finalAnswerFiles = [
+        {
+          name: 'remote-report.csv',
+          path: 'https://example.test/remote-report.csv',
+          type: 'csv',
+          isRemote: true,
+        },
+      ];
+
+      expect(
+        resolveRunOutputFileList({
+          writeEventFiles: [],
+          artifactFiles: [],
+          canonicalArtifactsAvailable: false,
+          finalAnswerFiles,
+        })
+      ).toEqual(finalAnswerFiles);
+    });
   });
 
   describe('Task Upload Files', () => {
-    it('collects project outputs, camel logs, and unique user attachments', () => {
+    it('collects camel logs and unique explicit user attachments', () => {
       const uploadFiles = collectTaskUploadFiles(
         [
-          {
-            path: '/tmp/project/report.md',
-            name: 'report.md',
-            source: 'project_output',
-          },
           {
             path: '/tmp/logs/ba4462e1/agent.log',
             name: 'agent.log',
@@ -403,34 +521,37 @@ describe('ChatStore - Core Functionality', () => {
             fileName: 'followup.csv',
             filePath: '/Users/test/Documents/followup.csv',
           },
-        ],
-        'task-123'
+        ]
       );
 
       expect(uploadFiles).toEqual([
         {
-          path: '/tmp/project/report.md',
-          name: 'report.md',
-          uploadName: 'project_output/report.md',
-          source: 'project_output',
-        },
-        {
           path: '/tmp/logs/ba4462e1/agent.log',
           name: 'agent.log',
-          uploadName: 'camel_log/ba4462e1/agent.log',
+          uploadName: 'agent.log',
+          logicalPath: 'ba4462e1/agent.log',
           source: 'camel_log',
         },
         {
           path: '/Users/test/Documents/brief.pdf',
           name: 'brief.pdf',
-          uploadName: 'user_attachment/brief.pdf',
-          source: 'user_attachment',
+          uploadName: 'brief.pdf',
+          logicalPath: 'brief.pdf',
+          source: 'user_upload',
+        },
+        {
+          path: '/tmp/project/report.md',
+          name: 'report.md',
+          uploadName: 'report.md',
+          logicalPath: 'report.md',
+          source: 'user_upload',
         },
         {
           path: '/Users/test/Documents/followup.csv',
           name: 'followup.csv',
-          uploadName: 'user_attachment/followup.csv',
-          source: 'user_attachment',
+          uploadName: 'followup.csv',
+          logicalPath: 'followup.csv',
+          source: 'user_upload',
         },
       ]);
     });
@@ -455,22 +576,22 @@ describe('ChatStore - Core Functionality', () => {
             ],
           },
         ] as any,
-        [],
-        'task-456'
+        []
       );
 
       expect(uploadFiles).toEqual([
         {
           path: 'C:\\Users\\test\\Desktop\\notes.txt',
           name: 'notes.txt',
-          uploadName: 'user_attachment/notes.txt',
-          source: 'user_attachment',
+          uploadName: 'notes.txt',
+          logicalPath: 'notes.txt',
+          source: 'user_upload',
         },
       ]);
     });
 
-    it('collects generated files from task output file lists', () => {
-      const uploadFiles = collectTaskUploadFiles([], [], [], 'task-789', [
+    it('leaves generated Artifact uploads to the durable Brain outbox', () => {
+      const uploadFiles = collectTaskUploadFiles([], [], [], [
         {
           path: '/Users/test/.eigent/user_1/space_x/index.html',
           name: 'index.html',
@@ -483,17 +604,10 @@ describe('ChatStore - Core Functionality', () => {
         },
       ] as any);
 
-      expect(uploadFiles).toEqual([
-        {
-          path: '/Users/test/.eigent/user_1/space_x/index.html',
-          name: 'index.html',
-          uploadName: 'project_output/index.html',
-          source: 'project_output',
-        },
-      ]);
+      expect(uploadFiles).toEqual([]);
     });
 
-    it('keeps camel log upload names nested under camel_log', () => {
+    it('keeps camel log logical paths nested while uploading a basename', () => {
       const uploadFiles = collectTaskUploadFiles(
         [
           {
@@ -504,29 +618,42 @@ describe('ChatStore - Core Functionality', () => {
           },
         ],
         [],
-        [],
-        'task-123'
+        []
       );
 
       expect(uploadFiles).toEqual([
         {
           path: '/Users/test/.eigent/user_1/project_p/task_t/camel_logs/agent/conv.json',
           name: 'conv.json',
-          uploadName: 'camel_log/agent/conv.json',
+          uploadName: 'conv.json',
+          logicalPath: 'agent/conv.json',
           source: 'camel_log',
         },
       ]);
     });
-  });
 
-  describe('Cloud Model Platform Mapping', () => {
-    it('maps cloud model ids to backend platforms', () => {
-      expect(getCloudModelPlatform('gpt-5.5')).toBe('azure');
-      expect(getCloudModelPlatform('claude-opus-4-7')).toBe(
-        'aws-bedrock-converse'
+    it('never uploads files merely discovered in a selected folder or final answer', () => {
+      const uploadFiles = collectTaskUploadFiles(
+        [],
+        [
+          {
+            id: 'agent-result',
+            role: 'agent',
+            content: 'I read the existing files.',
+            fileList: [
+              {
+                path: '/Users/test/selected-folder/private.xlsx',
+                name: 'private.xlsx',
+                type: 'xlsx',
+              },
+            ],
+          },
+        ] as any,
+        [],
+        []
       );
-      expect(getCloudModelPlatform('deepseek-v4-pro')).toBe('deepseek');
-      expect(getCloudModelPlatform('minimax_m2_7')).toBe('minimax');
+
+      expect(uploadFiles).toEqual([]);
     });
   });
 
@@ -925,6 +1052,28 @@ describe('ChatStore - Core Functionality', () => {
         expect(result.current.getState().tasks[taskId].progressValue).toBe(50);
       });
     });
+
+    it('writes computed progress to the requested run instead of the active run', () => {
+      const { result } = renderHook(() => useChatStore());
+
+      act(() => {
+        const historicalTaskId = result.current.getState().create('historical');
+        const activeTaskId = result.current.getState().create('active');
+
+        result.current.getState().setTaskRunning(historicalTaskId, [
+          { id: '1', content: 'Done', status: 'completed' },
+          { id: '2', content: 'Waiting', status: 'waiting' },
+        ] as any);
+        result.current.getState().computedProgressValue(historicalTaskId);
+
+        expect(
+          result.current.getState().tasks[historicalTaskId].progressValue
+        ).toBe(50);
+        expect(
+          result.current.getState().tasks[activeTaskId].progressValue
+        ).toBe(0);
+      });
+    });
   });
 
   describe('Update Counter', () => {
@@ -957,6 +1106,9 @@ describe('ChatStore - Core Functionality', () => {
       );
 
       const { result } = renderHook(() => useChatStore());
+      const getProjectStoreState = vi.mocked(useProjectStore.getState);
+      const previousProjectStoreImplementation =
+        getProjectStoreState.getMockImplementation();
       const appendInitChatStore = vi.fn(() => {
         const optimisticTaskId = result.current
           .getState()
@@ -967,9 +1119,6 @@ describe('ChatStore - Core Functionality', () => {
           chatStore: result.current,
         };
       });
-      const getProjectStoreState = vi.mocked(useProjectStore.getState);
-      const previousProjectStoreImplementation =
-        getProjectStoreState.getMockImplementation();
       getProjectStoreState.mockReturnValue({
         activeProjectId: 'project-1',
         appendInitChatStore,
@@ -1019,6 +1168,102 @@ describe('ChatStore - Core Functionality', () => {
       expect(result.current.getState().tasks['optimistic-task']).toMatchObject({
         isPending: false,
         status: ChatTaskStatus.FINISHED,
+      });
+      if (previousProjectStoreImplementation) {
+        getProjectStoreState.mockImplementation(
+          previousProjectStoreImplementation
+        );
+      }
+    });
+
+    it('clears optimistic pending state after a typed admission rejection', async () => {
+      vi.mocked(proxyFetchGet).mockResolvedValue({
+        value: 'test-cloud-key',
+        api_url: 'https://models.example.test',
+        items: [],
+        warning_code: null,
+      });
+      vi.mocked(fetchEventSource).mockImplementation(async (_url, options) => {
+        const response = new Response(
+          JSON.stringify({
+            detail: {
+              code: 'continuation_clarification_required',
+              message:
+                'The saved Project frontier has no unfinished next action.',
+              project_state_version: 1,
+            },
+          }),
+          {
+            status: 409,
+            headers: { 'content-type': 'application/json' },
+          }
+        );
+        try {
+          await options.onopen?.(response);
+        } catch (error) {
+          options.onerror?.(error);
+        }
+      });
+
+      const { result } = renderHook(() => useChatStore());
+      const getProjectStoreState = vi.mocked(useProjectStore.getState);
+      const previousProjectStoreImplementation =
+        getProjectStoreState.getMockImplementation();
+      const appendInitChatStore = vi.fn(() => {
+        const optimisticTaskId = result.current
+          .getState()
+          .create('rejected-task');
+        result.current.getState().setActiveTaskId(optimisticTaskId);
+        return {
+          taskId: optimisticTaskId,
+          chatStore: result.current,
+        };
+      });
+      getProjectStoreState.mockReturnValue({
+        activeProjectId: 'project-1',
+        appendInitChatStore,
+        getProjectById: () => ({
+          id: 'project-1',
+          mode: 'single',
+          spaceId: 'space-1',
+        }),
+        getHistoryId: () => null,
+        getAllChatStores: () => [],
+        getProjectModel: () => null,
+        setProjectModel: vi.fn(),
+        setProjectSpace: vi.fn(),
+        setHistoryId: vi.fn(),
+        getProjectThinkingEffortOverride: () => undefined,
+      } as any);
+
+      await act(async () => {
+        const initialTaskId = result.current.getState().create('initial-task');
+        await result.current
+          .getState()
+          .startTask(
+            initialTaskId,
+            undefined,
+            undefined,
+            undefined,
+            'continue',
+            [],
+            undefined,
+            'project-1',
+            'single' as any
+          );
+        await Promise.resolve();
+      });
+
+      expect(result.current.getState().tasks['rejected-task']).toMatchObject({
+        isPending: false,
+        status: ChatTaskStatus.FINISHED,
+        messages: expect.arrayContaining([
+          expect.objectContaining({
+            role: 'agent',
+            content:
+              'Input required: The saved Project frontier has no unfinished next action.',
+          }),
+        ]),
       });
       if (previousProjectStoreImplementation) {
         getProjectStoreState.mockImplementation(
@@ -1095,6 +1340,7 @@ describe('ChatStore - Core Functionality', () => {
   describe('SSE onerror - no retry when task already finished (issue #1212)', () => {
     it('should stop retry when task is already FINISHED (avoids duplicate execution)', async () => {
       const mockFetchEventSource = vi.mocked(fetchEventSource);
+      vi.mocked(proxyFetchGet).mockResolvedValueOnce([]);
       mockFetchEventSource.mockImplementation((_url, opts) => {
         // Simulate connection error; when onerror runs, store checks task status
         // and throws to stop retry (issue #1212 fix)
@@ -1124,7 +1370,9 @@ describe('ChatStore - Core Functionality', () => {
       });
 
       await act(async () => {
-        await result.current.getState().startTask(taskId!);
+        await result.current
+          .getState()
+          .startTask(taskId!, 'replay', undefined, 0);
       });
 
       expect(mockFetchEventSource).toHaveBeenCalledTimes(1);
@@ -1231,6 +1479,84 @@ describe('ChatStore - Core Functionality', () => {
       expect(result.current.getState().tasks['replay-1']).toBeDefined();
       expect(result.current.getState().activeTaskId).toBe('replay-1');
       expect(fetchEventSource).toHaveBeenCalled();
+    });
+
+    it('returns after a durable replay catches up while its live stream stays attached', async () => {
+      let emitMessage:
+        | ((message: { event?: string; id?: string; data: string }) => unknown)
+        | undefined;
+      let closeStream: (() => void) | undefined;
+      let streamSettled = false;
+      vi.mocked(fetchEventSource).mockImplementation((_url, opts) => {
+        emitMessage = opts.onmessage as typeof emitMessage;
+        return new Promise<void>((resolve) => {
+          closeStream = () => {
+            streamSettled = true;
+            resolve();
+          };
+        });
+      });
+      const { result } = renderHook(() => useChatStore());
+      const taskId = result.current.getState().create();
+
+      const replayPromise = result.current
+        .getState()
+        .startTask(
+          taskId,
+          'replay',
+          undefined,
+          0,
+          undefined,
+          undefined,
+          undefined,
+          'proj-replay',
+          undefined,
+          {
+            replaySource: 'local_durable',
+            detachReplayAfterCatchUp: true,
+          }
+        );
+      await vi.waitFor(() => expect(emitMessage).toBeDefined());
+
+      await emitMessage?.({
+        event: 'run_event',
+        id: '1',
+        data: JSON.stringify({
+          event_id: 'event-1',
+          event_type: 'chat.step',
+          legacy_step: 'todo_state',
+          payload: { agent_id: 'single-agent', todos: [] },
+          project_id: 'proj-replay',
+          run_id: taskId,
+          sequence: 1,
+          run_version: 1,
+          created_at: 100,
+        }),
+      });
+      await emitMessage?.({
+        event: 'replay_caught_up',
+        data: JSON.stringify({ run_id: taskId, after_sequence: 1 }),
+      });
+
+      await expect(replayPromise).resolves.toBeUndefined();
+      expect(streamSettled).toBe(false);
+      expect(result.current.getState().tasks[taskId].status).toBe(
+        ChatTaskStatus.RUNNING
+      );
+
+      closeStream?.();
+    });
+
+    it('does not restart a replay clock during synthetic confirmation', async () => {
+      const { result } = renderHook(() => useChatStore());
+      const taskId = result.current.getState().create();
+      result.current.getState().setTaskTime(taskId, 123_456);
+
+      await result.current
+        .getState()
+        .handleConfirmTask('proj-replay', taskId, 'replay');
+
+      expect(result.current.getState().tasks[taskId].taskTime).toBe(123_456);
     });
 
     it('replays a recorded human reply without leaving an active wait', async () => {

@@ -26,22 +26,22 @@ export type MenuButtonVariant = 'default' | 'clear' | 'info';
 export type MenuButtonTone = 'default' | 'information';
 
 const menuButtonVariants = cva(
-  'relative inline-flex items-center justify-center select-none transition-colors duration-200 ease-in-out outline-none disabled:opacity-30 disabled:pointer-events-none bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-default-hover hover:text-ds-text-neutral-default-default focus:text-ds-text-neutral-default-default data-[state=on]:bg-ds-bg-neutral-default-default data-[state=on]:text-ds-text-neutral-default-default text-ds-text-neutral-muted-default disabled:text-ds-text-neutral-muted-disabled cursor-pointer data-[state=on]:shadow-button-shadow rounded-lg',
+  'relative inline-flex items-center justify-center select-none transition-colors duration-200 ease-in-out outline-none disabled:opacity-30 disabled:pointer-events-none bg-ds-neutral-subtle-default hover:bg-ds-neutral-default-hover hover:text-ds-ink-default-default focus-visible:text-ds-ink-default-default data-[state=on]:bg-ds-neutral-default-default data-[state=on]:text-ds-ink-default-default text-ds-ink-muted-default disabled:text-ds-ink-muted-disabled cursor-pointer data-[state=on]:shadow-button-shadow rounded-lg',
   {
     variants: {
       look: {
         default:
-          'border border-solid text-ds-text-neutral-default-default border-ds-border-neutral-default-default hover:border-ds-border-neutral-strong-default focus:bg-ds-bg-neutral-default-default focus:border-ds-border-brand-default-focus data-[state=on]:border-ds-border-brand-default-focus data-[state=on]:shadow-button-shadow',
+          'border-x border-y border border-solid text-ds-ink-default-default border-ds-hairline-default-default hover:border-ds-hairline-strong-default focus-visible:border-ds-ring-focus data-[state=on]:border-ds-accent-default-selected data-[state=on]:shadow-button-shadow',
         clear:
-          'border border-solid text-ds-text-neutral-default-default border-ds-border-neutral-default-default hover:border-ds-border-neutral-strong-default focus:bg-ds-bg-neutral-default-default focus:border-ds-border-neutral-default-default data-[state=on]:shadow-button-shadow',
-        info: 'text-ds-text-neutral-default-default !font-medium hover:bg-ds-bg-neutral-default-default focus:bg-ds-bg-neutral-default-default data-[state=on]:text-ds-text-neutral-default-default data-[state=on]:!font-bold',
+          'border-x border-y border border-solid text-ds-ink-default-default border-ds-hairline-default-default hover:border-ds-hairline-strong-default focus-visible:border-ds-hairline-default-default data-[state=on]:shadow-button-shadow',
+        info: 'text-ds-ink-default-default !font-medium hover:bg-ds-neutral-default-default data-[state=on]:text-ds-ink-default-default data-[state=on]:!font-bold',
         clearInfo:
-          'border border-solid text-ds-text-neutral-default-default border-ds-border-neutral-default-default hover:border-ds-border-neutral-strong-default focus:bg-ds-bg-neutral-default-default focus:border-ds-border-neutral-default-default data-[state=on]:shadow-button-shadow !font-medium data-[state=on]:!font-bold',
+          'border-x border-y border border-solid text-ds-ink-default-default border-ds-hairline-default-default hover:border-ds-hairline-strong-default focus-visible:border-ds-hairline-default-default data-[state=on]:shadow-button-shadow !font-medium data-[state=on]:!font-bold',
       },
       size: {
-        xs: 'px-2 py-1 text-label-sm font-bold [&_svg]:size-[16px] rounded-lg',
-        sm: 'p-2 gap-1 text-label-sm font-bold [&_svg]:size-[20px] rounded-lg',
-        md: 'w-10 h-10 text-label-md font-bold [&_svg]:size-[24px] rounded-xl',
+        xs: 'px-2 py-1 text-ds-text-base font-bold [&_svg]:size-[16px] rounded-lg',
+        sm: 'p-2 gap-1 text-ds-text-base font-bold [&_svg]:size-[20px] rounded-lg',
+        md: 'w-10 h-10 text-ds-text-body-large font-bold [&_svg]:size-[24px] rounded-xl',
         iconxs: 'w-8 h-8 gap-1 font-bold [&_svg]:size-[16px] rounded-lg',
       },
     },
@@ -166,8 +166,6 @@ type MenuToggleItemProps = React.ComponentPropsWithoutRef<
   tone?: MenuButtonTone;
   size?: MenuButtonSize;
   icon?: React.ReactNode;
-  subIcon?: React.ReactNode;
-  showSubIcon?: boolean;
   disableIconAnimation?: boolean;
   iconAnimateOnHover?: boolean | string;
   rightElement?: React.ReactNode;
@@ -185,8 +183,6 @@ export const MenuToggleItem = React.forwardRef<
       icon,
       variant: itemVariant,
       tone: itemTone,
-      subIcon,
-      showSubIcon = false,
       disableIconAnimation = false,
       iconAnimateOnHover = true,
       rightElement,
@@ -273,7 +269,7 @@ export const MenuToggleItem = React.forwardRef<
               rightElement ? 'justify-between' : 'justify-center'
             )}
           >
-            <span className="gap-1 inline-flex items-center">
+            <span className="inline-flex items-center gap-1">
               {iconNode}
               {children}
             </span>
@@ -286,11 +282,6 @@ export const MenuToggleItem = React.forwardRef<
               </span>
             )}
           </span>
-          {showSubIcon && subIcon && (
-            <span className="right-1 top-1 absolute inline-flex items-center justify-center [&_svg]:shrink-0">
-              {subIcon}
-            </span>
-          )}
         </ToggleGroupPrimitive.Item>
       </AnimateIconProvider>
     );

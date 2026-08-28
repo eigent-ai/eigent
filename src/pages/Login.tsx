@@ -318,21 +318,6 @@ export default function Login() {
     }
   }, [host]);
 
-  // Handle before-close event for login page
-  useEffect(() => {
-    if (!host?.ipcRenderer || !host?.electronAPI) return;
-
-    const handleBeforeClose = () => {
-      host.electronAPI.closeWindow(true);
-    };
-
-    host.ipcRenderer.on('before-close', handleBeforeClose);
-
-    return () => {
-      host.ipcRenderer?.off('before-close', handleBeforeClose);
-    };
-  }, [host]);
-
   // Hybrid/app mode: prepare auth callback URL on mount (don't auto-open browser)
   useEffect(() => {
     if (IS_LOCAL_MODE) return;
@@ -363,13 +348,13 @@ export default function Login() {
     <div className="relative flex w-80 flex-1 flex-col items-center justify-center pt-8">
       <img
         src={eigentLogo}
-        className="absolute left-1/2 top-10 h-16 w-16 -translate-x-1/2"
+        className="absolute top-10 left-1/2 h-16 w-16 -translate-x-1/2"
       />
-      <div className="mb-8 text-heading-lg font-bold text-ds-text-neutral-default-default">
+      <div className="mb-8 text-ds-text-display font-bold text-ds-ink-default-default">
         Eigent
       </div>
       {generalError && (
-        <p className="mb-4 mt-1 text-label-md text-ds-text-status-error-strong-default">
+        <p className="mt-1 mb-4 text-ds-text-body-large text-ds-text-status-error-strong-default">
           {generalError}
         </p>
       )}
@@ -381,7 +366,9 @@ export default function Login() {
         disabled={isLoading}
       >
         <span className="flex-1">
-          {isLoading ? t('layout.logging-in') : 'Start Eigent'}
+          {isLoading
+            ? t('layout.logging-in')
+            : t('layout.start-eigent', { defaultValue: 'Start Eigent' })}
         </span>
       </Button>
     </div>
@@ -392,13 +379,13 @@ export default function Login() {
     <div className="relative flex w-80 flex-1 flex-col items-center justify-center pt-8">
       <img
         src={eigentLogo}
-        className="absolute left-1/2 top-10 h-16 w-16 -translate-x-1/2"
+        className="absolute top-10 left-1/2 h-16 w-16 -translate-x-1/2"
       />
-      <div className="mb-4 text-heading-lg font-bold text-ds-text-neutral-default-default">
+      <div className="mb-4 text-ds-text-display font-bold text-ds-ink-default-default">
         {t('layout.login')}
       </div>
       {isLoading && (
-        <p className="mb-6 text-center text-label-md text-ds-text-neutral-muted-default">
+        <p className="mb-6 text-center text-ds-text-body-large text-ds-ink-muted-default">
           {t('layout.logging-in')}...
         </p>
       )}
@@ -432,7 +419,7 @@ export default function Login() {
     <div className="relative flex h-full flex-col overflow-hidden">
       {/* Titlebar with drag region and window controls */}
       <div
-        className="absolute left-0 right-0 top-0 z-50 flex !h-9 items-center justify-between py-1 pl-2"
+        className="absolute top-0 right-0 left-0 z-50 flex !h-9 items-center justify-between py-1 pl-2"
         id="login-titlebar"
         ref={titlebarRef}
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
@@ -462,10 +449,10 @@ export default function Login() {
 
       {/* Main content - image extends to top, form has padding */}
       <div
-        className={`flex h-full items-center justify-center gap-2 px-1 pb-1 pt-10`}
+        className={`flex h-full items-center justify-center gap-2 px-1 pt-10 pb-1`}
       >
         <div
-          className="flex h-full min-h-0 w-full flex-col items-center justify-center overflow-hidden rounded-2xl bg-ds-bg-neutral-subtle-default px-2 pb-2"
+          className="flex h-full min-h-0 w-full flex-col items-center justify-center overflow-hidden rounded-2xl bg-ds-neutral-subtle-default px-2 pb-2"
           style={{
             backgroundImage: `url(${background})`,
             backgroundSize: 'cover',

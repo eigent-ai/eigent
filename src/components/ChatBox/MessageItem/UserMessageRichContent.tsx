@@ -16,6 +16,7 @@ import { useHost } from '@/host';
 import {
   RICH_CONNECTOR_STYLE_CLASSES,
   RICH_SKILL_STYLE_CLASSES,
+  RICH_TAG_BASE_STYLE_CLASSES,
   hashSkillLabel,
   httpUrlOrNull,
   isSafeSkillFolderName,
@@ -24,6 +25,7 @@ import {
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { Fragment, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 /** Same tokens as `UserMessageCard` body (13px / 20px). */
 export const USER_MESSAGE_BODY_STYLE = {
@@ -34,8 +36,7 @@ export const USER_MESSAGE_BODY_STYLE = {
 const SKILL_TAG_REGEX = /\{\{([^}]+)\}\}/g;
 
 type ContentNode =
-  | { type: 'text'; value: string }
-  | { type: 'skill'; name: string };
+  { type: 'text'; value: string } | { type: 'skill'; name: string };
 
 function parseContentWithTags(content: string): ContentNode[] {
   const nodes: ContentNode[] = [];
@@ -101,7 +102,7 @@ function renderMessageRichSegments(
         <span
           key={key}
           className={cn(
-            'inline rounded px-0.5 align-baseline font-normal',
+            RICH_TAG_BASE_STYLE_CLASSES,
             RICH_CONNECTOR_STYLE_CLASSES
           )}
         >
@@ -114,7 +115,7 @@ function renderMessageRichSegments(
       <span
         key={key}
         className={cn(
-          'inline rounded px-0.5 align-baseline font-normal',
+          RICH_TAG_BASE_STYLE_CLASSES,
           RICH_SKILL_STYLE_CLASSES[clsIdx]
         )}
       >
@@ -141,6 +142,7 @@ export function UserMessageRichContent({
   variant = 'card',
   className,
 }: UserMessageRichContentProps) {
+  const { t } = useTranslation();
   const host = useHost();
   const openBrowserPreview = usePageTabStore((s) => s.openBrowserPreview);
   const contentNodes = parseContentWithTags(content);
@@ -156,12 +158,12 @@ export function UserMessageRichContent({
 
   const bodyClass =
     variant === 'card'
-      ? 'text-ds-text-neutral-default-default font-sans relative z-0 break-words whitespace-pre-wrap'
-      : 'text-ds-text-neutral-muted-default font-sans relative z-0 min-w-0 break-words font-normal line-clamp-1';
+      ? 'text-ds-ink-default-default font-sans relative z-0 break-words whitespace-pre-wrap'
+      : 'text-ds-ink-muted-default font-sans relative z-0 min-w-0 break-words font-normal line-clamp-1';
 
   return (
     <div className={cn('min-w-0', className)}>
-      <div style={USER_MESSAGE_BODY_STYLE} className={bodyClass}>
+      <span style={USER_MESSAGE_BODY_STYLE} className={cn('block', bodyClass)}>
         {contentNodes.map((node, i) => {
           if (node.type === 'text') {
             return (
@@ -181,17 +183,22 @@ export function UserMessageRichContent({
                 e.stopPropagation();
                 handleOpenSkillFolder(node.name);
               }}
-              title="Open skill folder"
+              title={t('chat.open-skill-folder', {
+                defaultValue: 'Open skill folder',
+              })}
               className={cn(
-                'mx-0 inline cursor-pointer rounded-lg px-1 align-baseline font-normal [font:inherit] hover:opacity-90',
+                'mx-0 cursor-pointer border-0 border-x-0 border-y-0 [font:inherit] hover:opacity-90',
+                RICH_TAG_BASE_STYLE_CLASSES,
                 RICH_SKILL_STYLE_CLASSES[clsIdx]
               )}
             >
-              {skillToken}
+              <span className="!text-ds-text-base !font-normal">
+                {skillToken}
+              </span>
             </button>
           );
         })}
-      </div>
+      </span>
     </div>
   );
 }

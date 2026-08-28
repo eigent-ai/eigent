@@ -25,10 +25,37 @@ import {
   EventSourceMessage,
   fetchEventSource,
 } from '@microsoft/fetch-event-source';
+import i18next from 'i18next';
 
 const defaultHeaders = {
   'Content-Type': 'application/json',
 };
+const LOCAL_CONTROL_CAPABILITY_HEADER = 'X-Eigent-Local-Capability';
+let localControlCapabilityPromise: Promise<string> | null = null;
+
+export async function getLocalControlCapability(): Promise<string> {
+  const api = createHost().electronAPI;
+  if (!api?.getLocalControlCapability) {
+    return '';
+  }
+  if (!localControlCapabilityPromise) {
+    localControlCapabilityPromise = Promise.resolve(
+      api.getLocalControlCapability()
+    ).then(
+      (token) => {
+        if (!token) {
+          localControlCapabilityPromise = null;
+        }
+        return token || '';
+      },
+      () => {
+        localControlCapabilityPromise = null;
+        return '';
+      }
+    );
+  }
+  return localControlCapabilityPromise;
+}
 
 export function getDefaultBrainEndpoint(): string {
   const envEndpoint = import.meta.env.VITE_BRAIN_ENDPOINT;
@@ -59,11 +86,11 @@ function shouldAttachAuthHeader(url: string): boolean {
   return !url.includes('http://') && !url.includes('https://');
 }
 
-function buildBrainHeaders(
+async function buildBrainHeaders(
   url: string,
   customHeaders: Record<string, string> = {},
   includeContentType = true
-): Record<string, string> {
+): Promise<Record<string, string>> {
   const { token, user_id } = getAuthStore();
   const conn = getConnectionConfig();
   const headers: Record<string, string> = {
@@ -76,6 +103,12 @@ function buildBrainHeaders(
   }
   if (token && shouldAttachAuthHeader(url)) {
     headers['Authorization'] = `Bearer ${token}`;
+  }
+  if (shouldAttachAuthHeader(url)) {
+    const localControlCapability = await getLocalControlCapability();
+    if (localControlCapability) {
+      headers[LOCAL_CONTROL_CAPABILITY_HEADER] = localControlCapability;
+    }
   }
   if (user_id != null) {
     headers['X-User-ID'] = String(user_id);
@@ -123,7 +156,7 @@ async function fetchRequest(
 ): Promise<any> {
   const baseURL = await getBaseURL();
   const fullUrl = `${baseURL}${url}`;
-  const headers = buildBrainHeaders(url, customHeaders);
+  const headers = await buildBrainHeaders(url, customHeaders);
 
   const options: RequestInit = {
     method,
@@ -132,15 +165,16 @@ async function fetchRequest(
   };
 
   if (method === 'GET') {
-    const query = data
-      ? '?' +
-        Object.entries(data)
-          .map(
-            ([key, val]) =>
-              `${encodeURIComponent(key)}=${encodeURIComponent(val)}`
-          )
-          .join('&')
-      : '';
+    const queryParams = new URLSearchParams();
+    Object.entries(data ?? {}).forEach(([key, value]) => {
+      const values = Array.isArray(value) ? value : [value];
+      values.forEach((item) => {
+        if (item !== undefined && item !== null) {
+          queryParams.append(key, String(item));
+        }
+      });
+    });
+    const query = queryParams.size > 0 ? `?${queryParams.toString()}` : '';
     return handleResponse(fetch(fullUrl + query, options), data);
   }
 
@@ -267,6 +301,52 @@ export const fetchGet = (
   options?: FetchRequestOptions
 ) => fetchRequest('GET', url, params, headers, options);
 
+/** GET a bounded binary payload from Brain without converting it to a stream. */
+export async function fetchGetBlob(
+  url: string,
+  params?: Record<string, unknown>,
+  options: FetchRequestOptions = {}
+): Promise<Blob> {
+  const baseURL = await getBaseURL();
+  const queryParams = new URLSearchParams();
+  Object.entries(params ?? {}).forEach(([key, value]) => {
+    const values = Array.isArray(value) ? value : [value];
+    values.forEach((item) => {
+      if (item !== undefined && item !== null) {
+        queryParams.append(key, String(item));
+      }
+    });
+  });
+  const query = queryParams.size > 0 ? `?${queryParams.toString()}` : '';
+  const response = await fetch(`${baseURL}${url}${query}`, {
+    method: 'GET',
+    headers: await buildBrainHeaders(url, { Accept: 'image/*' }, false),
+    signal: options.signal,
+  });
+  persistSessionIdFromResponse(response);
+  if (!response.ok) {
+    const contentType = response.headers.get('content-type') || '';
+    let message = `HTTP ${response.status}`;
+    if (contentType.includes('application/json')) {
+      const body = await response.json().catch(() => null);
+      const detail = body?.detail;
+      message =
+        (typeof detail === 'string' && detail) || body?.message || message;
+    } else {
+      const detail = await response.text().catch(() => '');
+      if (detail.trim()) message = detail.trim();
+    }
+    const error = new Error(message) as Error & {
+      status?: number;
+      response?: Response;
+    };
+    error.status = response.status;
+    error.response = response;
+    throw error;
+  }
+  return response.blob();
+}
+
 export const fetchPost = (url: string, data?: any, headers?: any) =>
   fetchRequest('POST', url, data, headers);
 
@@ -287,7 +367,7 @@ export async function fetchPostForm(
 ): Promise<any> {
   const baseURL = await getBaseURL();
   const fullUrl = `${baseURL}${url}`;
-  const headers = buildBrainHeaders(url, customHeaders, false);
+  const headers = await buildBrainHeaders(url, customHeaders, false);
   return handleResponse(
     fetch(fullUrl, { method: 'POST', headers, body: formData })
   );
@@ -325,7 +405,7 @@ export async function sseTransport(
       ? options.url
       : `${baseURL}${options.url}`;
 
-  const headers = buildBrainHeaders(options.url, options.extraHeaders);
+  const headers = await buildBrainHeaders(options.url, options.extraHeaders);
   const body =
     typeof options.body === 'string'
       ? options.body
@@ -566,12 +646,19 @@ export async function checkLocalServerStale(): Promise<void> {
 
     if (staleReason) {
       const { toast } = await import('sonner');
-      toast.warning('Server code has been updated', {
-        description:
-          'Server is outdated. Please restart it or rebuild: docker-compose up --build -d',
-        duration: Infinity,
-        closeButton: true,
-      });
+      toast.warning(
+        i18next.t('layout.server-code-updated', {
+          defaultValue: 'Server code has been updated',
+        }),
+        {
+          description: i18next.t('layout.server-outdated-description', {
+            defaultValue:
+              'The server is outdated. Restart it or rebuild it: docker-compose up --build -d',
+          }),
+          duration: Infinity,
+          closeButton: true,
+        }
+      );
       console.warn(`[Server Check] ${staleReason}. Please restart the server.`);
     }
   } catch {

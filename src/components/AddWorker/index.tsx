@@ -15,6 +15,10 @@
 import { mcpList as fetchMcpConfig } from '@/api/brain';
 import { fetchPost, proxyFetchGet } from '@/api/http';
 import githubIcon from '@/assets/icon/github.svg';
+import {
+  getLocalPlatformName,
+  LOCAL_MODEL_OPTIONS,
+} from '@/components/Settings/Models/localModels';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -41,10 +45,6 @@ import {
   buildAgentModelConfig,
   buildAgentModelConfigFromProvider,
 } from '@/lib/modelConfig';
-import {
-  getLocalPlatformName,
-  LOCAL_MODEL_OPTIONS,
-} from '@/pages/Agents/localModels';
 import { useAuthStore, useWorkerList } from '@/store/authStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
 import { Bot, Edit, Eye, EyeOff } from 'lucide-react';
@@ -480,8 +480,8 @@ export function AddWorker({
   // tool function
   const getCategoryIcon = (categoryName?: string) => {
     if (!categoryName)
-      return <Bot className="h-10 w-10 text-ds-icon-neutral-default-default" />;
-    return <Bot className="h-10 w-10 text-ds-icon-neutral-default-default" />;
+      return <Bot className="h-10 w-10 text-ds-ink-default-default" />;
+    return <Bot className="h-10 w-10 text-ds-ink-default-default" />;
   };
 
   const getGithubRepoName = (homePage?: string) => {
@@ -692,10 +692,10 @@ export function AddWorker({
                 <div className="flex items-center gap-md">
                   {getCategoryIcon(activeMcp?.category?.name)}
                   <div>
-                    <div className="text-base font-bold leading-9 text-ds-text-neutral-default-default">
+                    <div className="text-base leading-9 font-bold text-ds-ink-default-default">
                       {activeMcp?.name}
                     </div>
-                    <div className="text-sm font-bold leading-normal text-ds-text-neutral-default-default">
+                    <div className="text-sm leading-normal font-bold text-ds-ink-default-default">
                       {getGithubRepoName(activeMcp?.home_page) && (
                         <div className="flex items-center">
                           <img
@@ -709,7 +709,7 @@ export function AddWorker({
                               verticalAlign: 'middle',
                             }}
                           />
-                          <span className="line-clamp-1 items-center justify-center self-stretch overflow-hidden text-ellipsis break-words text-xs font-medium leading-normal">
+                          <span className="line-clamp-1 items-center justify-center self-stretch overflow-hidden text-xs leading-normal font-medium break-words text-ellipsis">
                             {getGithubRepoName(activeMcp?.home_page)}
                           </span>
                         </div>
@@ -740,12 +740,12 @@ export function AddWorker({
                               secretVisible[key] ? (
                                 <EyeOff
                                   size={16}
-                                  className="text-ds-text-neutral-muted-disabled"
+                                  className="text-ds-ink-muted-disabled"
                                 />
                               ) : (
                                 <Eye
                                   size={16}
-                                  className="text-ds-text-neutral-muted-disabled"
+                                  className="text-ds-ink-muted-disabled"
                                 />
                               )
                             ) : undefined
@@ -791,10 +791,7 @@ export function AddWorker({
                 <div className="flex flex-col gap-4">
                   <div className="flex items-center gap-sm">
                     <div className="flex h-16 w-16 items-center justify-center">
-                      <Bot
-                        size={32}
-                        className="text-ds-icon-neutral-default-default"
-                      />
+                      <Bot size={32} className="text-ds-ink-default-default" />
                     </div>
                     <Input
                       size="sm"
@@ -832,7 +829,7 @@ export function AddWorker({
                 {/* Model Configuration Section */}
                 <div className="mt-2 flex flex-col gap-2">
                   <div className="flex items-center justify-start gap-3">
-                    <span className="text-body-sm font-bold text-ds-text-neutral-default-default">
+                    <span className="text-ds-text-base font-bold text-ds-ink-default-default">
                       {t('workforce.use-custom-model')}
                     </span>
                     <Switch
@@ -845,14 +842,14 @@ export function AddWorker({
                         }
                       }}
                       aria-label={t('workforce.use-custom-model')}
-                      className="border-[0.5px] border-solid border-ds-border-neutral-default-default"
+                      className="border-[0.5px] border-x-[0.5px] border-y-[0.5px] border-solid border-ds-hairline-default-default"
                     />
                   </div>
 
                   {showModelConfig && (
-                    <div className="flex flex-row gap-3 rounded-lg bg-ds-bg-neutral-muted-default px-3 py-2">
+                    <div className="flex flex-row gap-3 rounded-lg bg-ds-neutral-muted-default px-3 py-2">
                       <div className="flex w-full flex-1 flex-col gap-1">
-                        <label className="text-body-sm font-bold text-ds-text-neutral-default-default">
+                        <label className="text-ds-text-meta font-bold text-ds-ink-default-default">
                           {t('workforce.model-platform')}
                         </label>
                         <Select
@@ -885,7 +882,7 @@ export function AddWorker({
                       </div>
 
                       <div className="flex w-full flex-1 flex-col gap-1">
-                        <label className="text-body-sm font-bold text-ds-text-neutral-default-default">
+                        <label className="text-ds-text-meta font-bold text-ds-ink-default-default">
                           {t('workforce.model-type')}
                         </label>
                         <Select
@@ -915,7 +912,9 @@ export function AddWorker({
                               ))
                             ) : (
                               <SelectItem value="__empty__" disabled>
-                                {t('layout.no-results')}
+                                {t('layout.no-results', {
+                                  defaultValue: 'No results found.',
+                                })}
                               </SelectItem>
                             )}
                           </SelectContent>
@@ -926,7 +925,7 @@ export function AddWorker({
                 </div>
               </DialogContentSection>
               <DialogFooter
-                className="!rounded-b-xl bg-ds-bg-neutral-subtle-default p-md"
+                className="!rounded-b-xl bg-ds-neutral-subtle-default p-md"
                 showCancelButton={true}
                 showConfirmButton={true}
                 cancelButtonText={t('workforce.cancel')}

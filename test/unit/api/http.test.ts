@@ -18,23 +18,37 @@ vi.mock('@/store/authStore', () => ({
   getAuthStore: () => ({ token: null }),
 }));
 
-const showCreditsToast = vi.fn();
-const showStorageToast = vi.fn();
-const showTrafficToast = vi.fn();
+const mocked = vi.hoisted(() => ({
+  getLocalControlCapability: vi.fn(() =>
+    Promise.resolve('renderer-capability')
+  ),
+  showCreditsToast: vi.fn(),
+  showStorageToast: vi.fn(),
+  showTrafficToast: vi.fn(),
+}));
+
+vi.mock('@/host/createHost', () => ({
+  createHost: () => ({
+    electronAPI: {
+      getLocalControlCapability: mocked.getLocalControlCapability,
+    },
+    ipcRenderer: null,
+  }),
+}));
 
 vi.mock('@/components/Toast/creditsToast', () => ({
-  showCreditsToast,
+  showCreditsToast: mocked.showCreditsToast,
 }));
 
 vi.mock('@/components/Toast/storageToast', () => ({
-  showStorageToast,
+  showStorageToast: mocked.showStorageToast,
 }));
 
 vi.mock('@/components/Toast/trafficToast', () => ({
-  showTrafficToast,
+  showTrafficToast: mocked.showTrafficToast,
 }));
 
-import { fetchPost, getBaseURL } from '@/api/http';
+import { fetchGet, fetchPost, getBaseURL } from '@/api/http';
 import {
   resetConnectionConfig,
   setConnectionConfig,
@@ -47,9 +61,9 @@ describe('api/http handleResponse', () => {
       brainEndpoint: 'http://brain.local',
       channel: 'web',
     });
-    showCreditsToast.mockClear();
-    showStorageToast.mockClear();
-    showTrafficToast.mockClear();
+    mocked.showCreditsToast.mockClear();
+    mocked.showStorageToast.mockClear();
+    mocked.showTrafficToast.mockClear();
     vi.restoreAllMocks();
   });
 
@@ -74,7 +88,50 @@ describe('api/http handleResponse', () => {
 
     const res = await fetchPost('/chat', { question: 'x' });
     expect(res.code).toBe(20);
-    expect(showCreditsToast).toHaveBeenCalledTimes(1);
+    expect(mocked.showCreditsToast).toHaveBeenCalledTimes(1);
+  });
+
+  it('attaches the ephemeral renderer capability to Brain requests', async () => {
+    const request = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    await fetchPost(
+      '/runs/run-1/cancel',
+      { request_id: 'cancel-1' },
+      { 'X-Eigent-Local-Capability': 'forged-capability' }
+    );
+
+    expect(request).toHaveBeenCalledWith(
+      'http://brain.local/runs/run-1/cancel',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'X-Eigent-Local-Capability': 'renderer-capability',
+        }),
+      })
+    );
+    const headers = request.mock.calls[0]?.[1]?.headers as Record<
+      string,
+      string
+    >;
+    expect(headers['X-Desktop-Instance-ID']).toBeUndefined();
+  });
+
+  it('encodes array query values as repeated parameters', async () => {
+    const request = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    await fetchGet('/runs', {
+      project_id: 'project 1',
+      status: ['pending', 'running', 'waiting_for_user'],
+      limit: 1,
+    });
+
+    expect(request).toHaveBeenCalledWith(
+      'http://brain.local/runs?project_id=project+1&status=pending&status=running&status=waiting_for_user&limit=1',
+      expect.objectContaining({ method: 'GET' })
+    );
   });
 });
 

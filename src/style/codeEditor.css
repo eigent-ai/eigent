@@ -1,0 +1,125 @@
+/* ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. ========= */
+
+/* index.css assigns Inter directly to every element. Pin Monaco's painted text
+ * to the same code stack it uses for glyph measurement; otherwise cursor and
+ * selection geometry drift. Codicons retain Monaco's icon font. */
+.code-editor-surface .monaco-editor .view-lines,
+.code-editor-surface .monaco-editor .view-line,
+.code-editor-surface .monaco-editor .view-line span:not(.codicon),
+.code-editor-surface .monaco-editor .margin-view-overlays .line-numbers {
+  font-family: var(--code-font-family, monospace);
+}
+
+/* Review diffs use one quiet surface across the content canvas, line-number
+ * column, and glyph rail. Scope this treatment to review so the shared source
+ * viewer retains its standard Monaco theme surfaces. */
+.review-diff-surface,
+.review-diff-surface .monaco-diff-editor,
+.review-diff-surface .monaco-editor,
+.review-diff-surface .monaco-editor-background {
+  background-color: var(--ds-neutral-subtle-default);
+}
+
+.review-diff-surface .monaco-editor .margin {
+  background-color: var(--ds-neutral-subtle-default);
+}
+
+/* Whole-file additions/deletions still need status context, but Monaco's
+ * stock solid wash is much louder than a GitHub-style review. Keep the gutter
+ * marker and use a restrained content tint. */
+.review-diff-surface .monaco-editor .line-insert {
+  background: rgba(46, 160, 67, 0.08);
+}
+
+.review-diff-surface .monaco-editor .line-delete {
+  background: rgba(248, 81, 73, 0.08);
+}
+
+/* Keep the status rail in Monaco's decorations gutter instead of painting it
+ * directly against the first source glyph. The 8px gutter leaves 6px of
+ * breathing room between this 2px rail and the code without shifting Monaco's
+ * measured text, cursor, or selection geometry. */
+.review-diff-surface .monaco-editor .line-insert-marker {
+  background: linear-gradient(
+    to right,
+    rgba(46, 160, 67, 0.55) 0 2px,
+    transparent 2px
+  );
+}
+
+.review-diff-surface .monaco-editor .line-delete-marker {
+  background: linear-gradient(
+    to right,
+    rgba(248, 81, 73, 0.55) 0 2px,
+    transparent 2px
+  );
+}
+
+/* Put the hover control in the line-decorations gutter immediately after the
+ * line number. Submitted drafts keep a compact thread marker in the glyph
+ * gutter and a quiet line accent without competing with add/delete colors. */
+.review-diff-surface .monaco-editor .review-comment-add-glyph,
+.review-diff-surface .monaco-editor .review-comment-thread-glyph {
+  position: relative;
+  cursor: pointer;
+}
+
+.review-diff-surface .monaco-editor .review-comment-add-glyph::before,
+.review-diff-surface .monaco-editor .review-comment-thread-glyph::before {
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  display: flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(-50%);
+  border-radius: 5px;
+  background: #0969da;
+  color: #fff;
+  font-family: var(--font-sans, sans-serif);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 16px;
+  box-shadow: 0 1px 2px rgba(31, 35, 40, 0.18);
+  content: '+';
+}
+
+.review-diff-surface .monaco-editor .review-comment-thread-glyph::before {
+  background: #8250df;
+  font-size: 10px;
+  content: '\2022\2022\2022';
+}
+
+.review-diff-surface .monaco-editor .review-comment-line {
+  background: rgba(130, 80, 223, 0.06);
+}
+
+.review-diff-surface .monaco-editor .review-comment-line-marker {
+  border-left: 2px solid rgba(130, 80, 223, 0.7);
+}
+
+[data-theme='dark'] .review-diff-surface .monaco-editor .line-insert {
+  background: rgba(63, 185, 80, 0.1);
+}
+
+[data-theme='dark'] .review-diff-surface .monaco-editor .line-delete {
+  background: rgba(248, 81, 73, 0.1);
+}
+
+[data-theme='dark'] .review-diff-surface .monaco-editor .review-comment-line {
+  background: rgba(188, 140, 255, 0.1);
+}

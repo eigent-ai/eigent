@@ -12,11 +12,169 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { ChevronLeft } from 'lucide-react';
+import {
+  ChevronLeft,
+  FileText,
+  MessageCircleQuestionMark,
+  X,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { BottomBoxContextItem, BottomBoxHeaderContent } from './types';
+
+const contextKindLabel: Record<
+  NonNullable<BottomBoxContextItem['kind']>,
+  string
+> = {
+  file: 'File',
+  'external-context': 'Context',
+  agent: 'Agent',
+  operation: 'Operation',
+  other: 'Context',
+};
+
+/**
+ * Display-only context/question region shared by all event-driven input
+ * variants. The owner supplies content and callbacks; this component does not
+ * know about events, APIs or stores.
+ */
+export function BoxHeaderDisplay({
+  eyebrow,
+  title,
+  description,
+  contextItems = [],
+  details = [],
+  onRemoveContextItem,
+  className,
+  descriptionAsTitle = false,
+  descriptionAsMarkdown = false,
+  showQuestionIcon = false,
+}: BottomBoxHeaderContent & {
+  className?: string;
+  /** Questions use one typographic voice for the label and prompt. */
+  descriptionAsTitle?: boolean;
+  /** Agent question copy may contain display-safe Markdown. */
+  descriptionAsMarkdown?: boolean;
+  showQuestionIcon?: boolean;
+}) {
+  const { t } = useTranslation();
+  const hasCopy = Boolean(eyebrow || title || description);
+  if (!hasCopy && contextItems.length === 0 && details.length === 0)
+    return null;
+
+  return (
+    <section
+      data-bottom-box-header
+      aria-label={title || eyebrow || 'Input context'}
+      className={cn('flex w-full flex-col gap-2 px-4 py-2', className)}
+    >
+      {hasCopy && (
+        <div className="flex min-w-0 flex-col gap-1">
+          {eyebrow && (
+            <span className="text-ds-text-meta font-medium text-ds-ink-muted-default">
+              {eyebrow}
+            </span>
+          )}
+          {title && (
+            <span className="flex items-center gap-1.5 text-ds-text-base font-bold text-ds-ink-default-default">
+              {showQuestionIcon ? (
+                <MessageCircleQuestionMark
+                  aria-hidden
+                  className="size-4 shrink-0 text-ds-ink-default-default"
+                  data-bottom-box-question-icon
+                />
+              ) : null}
+              <span>{title}</span>
+            </span>
+          )}
+          {description && descriptionAsMarkdown ? (
+            <div
+              className="bottom-box-question-markdown min-w-0 text-ds-text-base text-ds-ink-default-default"
+              data-bottom-box-question-markdown
+            >
+              <MarkDown content={description} enableTypewriter={false} />
+            </div>
+          ) : description ? (
+            <span
+              className={
+                descriptionAsTitle
+                  ? 'block text-ds-text-base font-bold text-ds-ink-default-default'
+                  : 'block text-ds-text-meta font-normal text-ds-ink-muted-default'
+              }
+            >
+              {description}
+            </span>
+          ) : null}
+        </div>
+      )}
+
+      {contextItems.length > 0 && (
+        <ul
+          aria-label={t('chat.included-context', {
+            defaultValue: 'Included context',
+          })}
+          className="m-0 flex max-h-24 list-none flex-wrap gap-1 overflow-y-auto p-0"
+        >
+          {contextItems.map((item) => (
+            <li
+              key={item.id}
+              className="flex max-w-full min-w-0 items-center gap-1 rounded-lg bg-ds-neutral-strong-default px-2 py-1"
+            >
+              {item.kind === 'file' && (
+                <FileText
+                  aria-hidden
+                  className="size-3.5 shrink-0 text-ds-ink-muted-default"
+                />
+              )}
+              <span className="sr-only">
+                {contextKindLabel[item.kind ?? 'other']}:{' '}
+              </span>
+              <span
+                className="truncate text-ds-text-meta font-medium text-ds-ink-default-default"
+                title={item.description || item.label}
+              >
+                {item.label}
+              </span>
+              {onRemoveContextItem && item.removable && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  buttonContent="icon-only"
+                  className="size-5 shrink-0 p-0"
+                  aria-label={t('chat.remove-context-item', {
+                    value: item.label,
+                    defaultValue: 'Remove {{value}}',
+                  })}
+                  onClick={() => onRemoveContextItem(item.id)}
+                >
+                  <X className="size-3.5" />
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {details.map((detail) => (
+        <details
+          key={detail.id}
+          className="rounded-xl bg-ds-neutral-strong-default px-3 py-2 text-ds-text-base text-ds-ink-subtle-default"
+        >
+          <summary className="cursor-pointer font-medium">
+            {detail.label}
+          </summary>
+          <pre className="m-0 mt-2 max-h-40 overflow-auto font-mono text-ds-text-meta break-all whitespace-pre-wrap">
+            {detail.content}
+          </pre>
+        </details>
+      ))}
+    </section>
+  );
+}
 
 /**
  * Variant: Confirm
@@ -61,11 +219,11 @@ export const BoxHeaderConfirm = ({
   return (
     <div
       className={cn(
-        'mb-2 gap-1 flex w-full flex-col items-start justify-between',
+        'mb-2 flex w-full flex-col items-start justify-between gap-1',
         className
       )}
     >
-      <div className="gap-1 px-2.5 pt-2 relative box-border flex w-full items-center justify-between">
+      <div className="relative box-border flex w-full items-center justify-between gap-1 px-2.5 pt-2">
         <Button
           variant="ghost"
           size="sm"
@@ -78,10 +236,10 @@ export const BoxHeaderConfirm = ({
           <ChevronLeft />
         </Button>
 
-        <div className="gap-2 flex items-center">
+        <div className="flex items-center gap-2">
           {remainingSeconds !== null && (
             <span
-              className="text-body-xs font-medium text-ds-text-success-default-default whitespace-nowrap tabular-nums"
+              className="text-ds-text-meta font-medium whitespace-nowrap text-ds-text-success-default-default tabular-nums"
               aria-label={t('chat.auto-start-in', {
                 seconds: remainingSeconds,
               })}
@@ -90,9 +248,10 @@ export const BoxHeaderConfirm = ({
             </span>
           )}
           <Button
-            variant="success"
+            variant="primary"
+            tone="success"
             size="sm"
-            className="rounded-full"
+            buttonRadius="full"
             onClick={onStartTask}
             disabled={loading}
           >
@@ -129,11 +288,11 @@ export const BoxHeaderSave = ({
   return (
     <div
       className={cn(
-        'mb-2 gap-1 flex w-full flex-col items-start justify-between',
+        'mb-2 flex w-full flex-col items-start justify-between gap-1',
         className
       )}
     >
-      <div className="gap-1 px-2.5 pt-2 relative box-border flex w-full items-center justify-between">
+      <div className="relative box-border flex w-full items-center justify-between gap-1 px-2.5 pt-2">
         <Button
           variant="ghost"
           size="sm"
@@ -147,9 +306,10 @@ export const BoxHeaderSave = ({
         </Button>
 
         <Button
-          variant="success"
+          variant="primary"
+          tone="success"
           size="sm"
-          className="rounded-full"
+          buttonRadius="full"
           onClick={onSave}
           disabled={loading}
         >

@@ -51,8 +51,8 @@ export const InstallDependencies: React.FC = () => {
   };
 
   return (
-    <div className="absolute inset-0 flex min-h-0 flex-row overflow-hidden px-1 pb-1 pt-10">
-      <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-row gap-2 rounded-2xl bg-ds-bg-neutral-default-default p-1">
+    <div className="absolute inset-0 flex min-h-0 flex-row overflow-hidden px-1 pt-10 pb-1">
+      <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-row gap-2 rounded-2xl bg-ds-neutral-default-default p-1">
         {/* ── Left: installation progress ───────────────────── */}
         <div
           className={cn(
@@ -64,7 +64,7 @@ export const InstallDependencies: React.FC = () => {
             <ProgressInstall value={displayProgress} className="w-full" />
 
             <div className="flex w-full flex-row items-start justify-between">
-              <div className="text-body-sm font-medium text-ds-text-neutral-default-default">
+              <div className="text-ds-text-base font-medium text-ds-ink-default-default">
                 {isInstalling
                   ? t('layout.install-system-installing')
                   : installationState === 'waiting-backend'
@@ -73,14 +73,14 @@ export const InstallDependencies: React.FC = () => {
                       ? t('layout.install-ready')
                       : ''}
               </div>
-              <div className="text-body-sm font-medium text-ds-text-neutral-default-default">
+              <div className="text-ds-text-base font-medium text-ds-ink-default-default">
                 {Math.round(displayProgress ?? 0)}%
               </div>
             </div>
 
             {/* Latest log line */}
             {latestLog?.data && (
-              <div className="text-body-sm font-normal leading-normal text-ds-text-neutral-muted-default">
+              <div className="text-ds-text-base leading-normal font-normal text-ds-ink-muted-default">
                 {latestLog.data}
               </div>
             )}
@@ -113,7 +113,7 @@ export const InstallDependencies: React.FC = () => {
                     ease: [0.23, 1, 0.32, 1],
                   }}
                   style={{ transformOrigin: 'left center' }}
-                  className="flex items-center gap-2 text-body-sm font-medium text-ds-text-neutral-muted-default"
+                  className="flex items-center gap-2 text-ds-text-base font-medium text-ds-ink-muted-default"
                 >
                   <CheckCircle2 size={15} className="text-green-500" />
                   {t('layout.install-complete')}

@@ -16,10 +16,12 @@ import larkIcon from '@/assets/icon/lark.png';
 import telegramIcon from '@/assets/icon/telegram.svg';
 import whatsappIcon from '@/assets/icon/whatsapp.svg';
 import { isDesktop } from '@/client/platform';
-import { SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS } from '@/components/Session/sessionSidePanelLayout';
+import ContentHeader from '@/components/Layout/ContentHeader';
+import { RIGHT_RAIL_CONTENT_WIDTH_CLASS } from '@/components/Layout/rightRail';
 import { Button } from '@/components/ui/button';
 import {
   createRemoteControlSession,
+  getRemoteControlBridgeError,
   getRemoteControlDesktopInstanceId,
   isRemoteControlAlreadyGoneError,
   parseRemoteControlLinkToken,
@@ -124,14 +126,14 @@ function BentoCard({
   const { t } = useTranslation();
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2 rounded-2xl border border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default p-3">
+    <div className="flex h-full min-h-0 flex-col gap-2 rounded-2xl border border-x border-y border-ds-hairline-subtle-default bg-ds-neutral-default-default p-3">
       {/* Header */}
       <div className="flex min-w-0 items-center gap-2">
         <MonitorSmartphone
-          className="h-4 w-4 shrink-0 text-ds-text-neutral-muted-default"
+          className="h-4 w-4 shrink-0 text-ds-ink-muted-default"
           aria-hidden
         />
-        <span className="min-w-0 flex-1 truncate text-body-sm font-semibold text-ds-text-neutral-default-default">
+        <span className="min-w-0 flex-1 truncate text-ds-text-base font-semibold text-ds-ink-default-default">
           {session.title}
         </span>
         <Button
@@ -165,7 +167,7 @@ function BentoCard({
       </div>
 
       {/* Log */}
-      <div className="min-h-0 flex-1 border-t border-ds-border-neutral-subtle-default pt-2">
+      <div className="min-h-0 flex-1 border-x-0 border-t border-b-0 border-ds-hairline-subtle-default pt-2">
         <LogPanel logs={logs} />
       </div>
     </div>
@@ -201,11 +203,11 @@ function ChannelRow({
   return (
     <div
       className={cn(
-        'group/row flex h-[44px] w-full cursor-default select-none items-center gap-3 rounded-xl',
-        'border border-transparent bg-ds-bg-neutral-default-default px-3',
+        'group/row flex h-ds-control-xl w-full cursor-default items-center gap-3 rounded-xl select-none',
+        'border border-x border-y border-transparent bg-ds-neutral-default-default px-3',
         'transition-colors duration-150',
-        !isDisabled && 'hover:border-ds-border-neutral-subtle-default',
-        hasActiveSessions && 'border-ds-border-neutral-subtle-default',
+        !isDisabled && 'hover:border-ds-hairline-subtle-default',
+        hasActiveSessions && 'border-ds-hairline-subtle-default',
         isDisabled && 'cursor-not-allowed opacity-50'
       )}
     >
@@ -220,26 +222,26 @@ function ChannelRow({
           />
         )}
       </div>
-      <span className="flex-1 truncate text-body-sm font-medium text-ds-text-neutral-default-default">
+      <span className="flex-1 truncate text-ds-text-base font-medium text-ds-ink-default-default">
         {name}
       </span>
 
       {/* Right slot — always the same reserved width so all rows stay the same height */}
       <div className="flex h-6 w-[72px] shrink-0 items-center justify-end">
         {comingSoon && (
-          <span className="shrink-0 rounded-full bg-ds-bg-neutral-muted-default px-2 py-0.5 text-label-xs text-ds-text-neutral-muted-default">
+          <span className="shrink-0 rounded-full bg-ds-neutral-muted-default px-2 py-0.5 text-ds-text-meta text-ds-ink-muted-default">
             {t('layout.dispatch-coming-soon', { defaultValue: 'Coming soon' })}
           </span>
         )}
 
         {isDisabled && !comingSoon && disabledLabel && (
-          <span className="shrink-0 rounded-full bg-ds-bg-neutral-muted-default px-2 py-0.5 text-label-xs text-ds-text-neutral-muted-default">
+          <span className="shrink-0 rounded-full bg-ds-neutral-muted-default px-2 py-0.5 text-ds-text-meta text-ds-ink-muted-default">
             {disabledLabel}
           </span>
         )}
 
         {!isDisabled && !comingSoon && hasActiveSessions && (
-          <span className="shrink-0 rounded-full bg-ds-bg-success-subtle-default px-2 py-0.5 text-label-xs text-ds-text-success-strong-default">
+          <span className="shrink-0 rounded-full bg-ds-bg-success-subtle-default px-2 py-0.5 text-ds-text-meta text-ds-text-success-strong-default">
             {t('layout.dispatch-connected', { defaultValue: 'Connected' })}
           </span>
         )}
@@ -286,7 +288,7 @@ function LogPanel({ logs }: { logs: RemoteControlLogEntry[] }) {
   if (logs.length === 0) {
     return (
       <div className="flex h-full items-center justify-center">
-        <span className="text-label-xs text-ds-text-neutral-muted-default">
+        <span className="text-ds-text-meta text-ds-ink-muted-default">
           {t('layout.dispatch-no-logs', { defaultValue: 'No activity yet' })}
         </span>
       </div>
@@ -298,12 +300,12 @@ function LogPanel({ logs }: { logs: RemoteControlLogEntry[] }) {
       {[...logs].reverse().map((entry) => (
         <div
           key={entry.id}
-          className="flex min-w-0 items-center gap-3 px-1 py-1.5 text-label-xs"
+          className="flex min-w-0 items-center gap-3 px-1 py-1.5 text-ds-text-meta"
         >
-          <span className="w-[72px] shrink-0 tabular-nums text-ds-text-neutral-muted-default">
+          <span className="w-[72px] shrink-0 text-ds-ink-muted-default tabular-nums">
             {formatLogTime(entry.time)}
           </span>
-          <span className="min-w-0 flex-1 truncate text-ds-text-neutral-default-default">
+          <span className="min-w-0 flex-1 truncate text-ds-ink-default-default">
             {entry.name}
           </span>
           <span
@@ -406,9 +408,10 @@ export function WorkspaceDispatch() {
 
   // Cleanup all timers on unmount
   useEffect(() => {
+    const timers = expiryTimersRef.current;
     return () => {
-      expiryTimersRef.current.forEach((t) => clearTimeout(t));
-      expiryTimersRef.current.clear();
+      timers.forEach((timer) => clearTimeout(timer));
+      timers.clear();
     };
   }, []);
   const [stoppingSessionId, setStoppingSessionId] = useState<string | null>(
@@ -421,15 +424,27 @@ export function WorkspaceDispatch() {
   const handleCreateRemoteControl = useCallback(async () => {
     const brainSessionId = getConnectionConfig().sessionId;
     if (!isDesktop()) {
-      toast.error('Remote control must be started from the desktop app.');
+      toast.error(
+        t('layout.remote-control-desktop-required', {
+          defaultValue: 'Remote control must be started from the desktop app.',
+        })
+      );
       return;
     }
     if (!activeSpaceId) {
-      toast.error('Open a Space before starting remote control.');
+      toast.error(
+        t('layout.remote-control-open-space-first', {
+          defaultValue: 'Open a Space before starting remote control.',
+        })
+      );
       return;
     }
     if (!activeSpace || !canUseRemoteControlInSpace(activeSpace)) {
-      toast.error('Legacy Spaces do not support remote control.');
+      toast.error(
+        t('layout.remote-control-legacy-space-unsupported', {
+          defaultValue: 'Legacy Spaces do not support remote control.',
+        })
+      );
       return;
     }
 
@@ -437,16 +452,35 @@ export function WorkspaceDispatch() {
     try {
       const bridgeReady = await waitForRemoteControlBridgeConnected();
       if (!bridgeReady) {
-        toast.error('Remote control is still connecting.', {
-          description:
-            'Keep Eigent Desktop open and try again in a few seconds.',
-        });
+        const bridgeError = getRemoteControlBridgeError();
+        toast.error(
+          bridgeError?.retryable === false
+            ? t('layout.remote-control-needs-attention', {
+                defaultValue: 'Remote control needs attention.',
+              })
+            : t('layout.remote-control-still-connecting', {
+                defaultValue: 'Remote control is still connecting.',
+              }),
+          {
+            description:
+              bridgeError?.code === 'device_owner_mismatch'
+                ? t('layout.remote-control-device-owner-mismatch', {
+                    defaultValue:
+                      'This Desktop is registered to another Eigent account. Sign in with that account or explicitly reset/transfer the Desktop device registration.',
+                  })
+                : bridgeError?.message ||
+                  t('layout.remote-control-keep-desktop-open', {
+                    defaultValue:
+                      'Keep Eigent Desktop open and try again in a few seconds.',
+                  }),
+          }
+        );
         return;
       }
 
       const title = buildRemoteControlTitle(activeSpace?.name);
       const res = await createRemoteControlSession({
-        desktop_instance_id: getRemoteControlDesktopInstanceId(),
+        desktop_instance_id: await getRemoteControlDesktopInstanceId(),
         space_id: activeSpaceId,
         ...(activeProjectId ? { project_id: activeProjectId } : {}),
         ...(activeProjectId && brainSessionId
@@ -466,15 +500,25 @@ export function WorkspaceDispatch() {
 
       try {
         await navigator.clipboard.writeText(res.url);
-        toast.success('Remote control link copied', {
-          description: res.url,
-          duration: 10000,
-        });
+        toast.success(
+          t('layout.remote-control-link-copied', {
+            defaultValue: 'Remote control link copied',
+          }),
+          {
+            description: res.url,
+            duration: 10000,
+          }
+        );
       } catch {
-        toast.success('Remote control link created', {
-          description: res.url,
-          duration: 10000,
-        });
+        toast.success(
+          t('layout.remote-control-link-created', {
+            defaultValue: 'Remote control link created',
+          }),
+          {
+            description: res.url,
+            duration: 10000,
+          }
+        );
       }
     } catch (err: any) {
       const code =
@@ -482,12 +526,24 @@ export function WorkspaceDispatch() {
         err?.response?.data?.code ||
         err?.code;
       if (code === 'BRIDGE_OFFLINE') {
-        toast.error('Remote control bridge is offline.', {
-          description:
-            'Keep Eigent Desktop open and wait for the bridge to reconnect, then try again.',
-        });
+        toast.error(
+          t('layout.remote-control-bridge-offline', {
+            defaultValue: 'Remote control bridge is offline.',
+          }),
+          {
+            description: t('layout.remote-control-bridge-offline-description', {
+              defaultValue:
+                'Keep Eigent Desktop open and wait for the bridge to reconnect, then try again.',
+            }),
+          }
+        );
       } else {
-        toast.error(err?.message || 'Failed to create remote control link.');
+        toast.error(
+          err?.message ||
+            t('layout.remote-control-link-create-failed', {
+              defaultValue: 'Failed to create remote control link.',
+            })
+        );
       }
     } finally {
       setRemoteControlLoading(false);
@@ -495,10 +551,10 @@ export function WorkspaceDispatch() {
   }, [
     activeProjectId,
     activeSpace,
-    activeSpace?.name,
     activeSpaceId,
     addRemoteControlSession,
     addRemoteControlLog,
+    t,
   ]);
 
   const handleStopSession = useCallback(
@@ -512,13 +568,21 @@ export function WorkspaceDispatch() {
           session?.linkToken ||
           (session ? parseRemoteControlLinkToken(session.url) : '');
         if (!linkToken) {
-          throw new Error('Remote control link token is missing.');
+          throw new Error(
+            t('layout.remote-control-link-token-missing', {
+              defaultValue: 'Remote control link token is missing.',
+            })
+          );
         }
         await revokeRemoteControlSession(sessionId, linkToken);
         removeRemoteControlSession(sessionId);
         if (session)
           addRemoteControlLog({ name: session.title, status: 'stopped' });
-        toast.success('Remote control link revoked');
+        toast.success(
+          t('layout.remote-control-link-revoked', {
+            defaultValue: 'Remote control link revoked',
+          })
+        );
       } catch (err: any) {
         // The link is already revoked or expired server-side; the goal is
         // achieved, so clean up locally instead of stranding the entry.
@@ -526,66 +590,25 @@ export function WorkspaceDispatch() {
           removeRemoteControlSession(sessionId);
           if (session)
             addRemoteControlLog({ name: session.title, status: 'stopped' });
-          toast.success('Remote control link revoked');
+          toast.success(
+            t('layout.remote-control-link-revoked', {
+              defaultValue: 'Remote control link revoked',
+            })
+          );
         } else {
-          toast.error(err?.message || 'Failed to revoke remote control link.');
+          toast.error(
+            err?.message ||
+              t('layout.remote-control-link-revoke-failed', {
+                defaultValue: 'Failed to revoke remote control link.',
+              })
+          );
         }
       } finally {
         setStoppingSessionId(null);
       }
     },
-    [removeRemoteControlSession, addRemoteControlLog]
+    [removeRemoteControlSession, addRemoteControlLog, t]
   );
-
-  const handleStopAllRemoteControl = useCallback(async () => {
-    const toStop = activeSessions;
-    if (toStop.length === 0) return;
-    setStoppingSessionId(toStop[0].sessionId);
-    const results = await Promise.allSettled(
-      toStop.map(async (session) => {
-        const linkToken =
-          session.linkToken || parseRemoteControlLinkToken(session.url);
-        if (!linkToken) {
-          throw new Error('Remote control link token is missing.');
-        }
-        try {
-          await revokeRemoteControlSession(session.sessionId, linkToken);
-        } catch (err: any) {
-          // Already revoked or expired server-side; treat it as stopped so the
-          // entry is cleaned up locally.
-          if (!isRemoteControlAlreadyGoneError(err)) {
-            throw err;
-          }
-        }
-        return session;
-      })
-    );
-    let stoppedCount = 0;
-    results.forEach((result) => {
-      if (result.status !== 'fulfilled') {
-        return;
-      }
-      stoppedCount += 1;
-      removeRemoteControlSession(result.value.sessionId);
-      addRemoteControlLog({ name: result.value.title, status: 'stopped' });
-    });
-    const failedCount = results.length - stoppedCount;
-    if (stoppedCount > 0) {
-      toast.success(
-        stoppedCount === 1
-          ? 'Remote control link revoked'
-          : `${stoppedCount} remote control links revoked`
-      );
-    }
-    if (failedCount > 0) {
-      toast.error(
-        failedCount === 1
-          ? 'Failed to revoke 1 remote control link.'
-          : `Failed to revoke ${failedCount} remote control links.`
-      );
-    }
-    setStoppingSessionId(null);
-  }, [activeSessions, removeRemoteControlSession, addRemoteControlLog]);
 
   const handleCopySession = useCallback(
     (url: string) => {
@@ -611,7 +634,7 @@ export function WorkspaceDispatch() {
         })}
         icon={
           <MonitorSmartphone
-            className="h-4 w-4 shrink-0 text-ds-text-neutral-muted-default"
+            className="h-4 w-4 shrink-0 text-ds-ink-muted-default"
             aria-hidden
           />
         }
@@ -624,7 +647,7 @@ export function WorkspaceDispatch() {
         onStart={() => void handleCreateRemoteControl()}
       />
 
-      <div className="mx-1 border-t border-ds-border-neutral-subtle-default" />
+      <div className="mx-1 border-x-0 border-t border-b-0 border-ds-hairline-subtle-default" />
 
       <ChannelRow
         name={t('layout.channels-telegram', { defaultValue: 'Telegram' })}
@@ -650,11 +673,11 @@ export function WorkspaceDispatch() {
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="border-b-1 box-border flex h-[45.5px] w-full shrink-0 items-center gap-2 border-x-0 border-t-0 border-solid border-ds-border-neutral-subtle-default px-3">
-        <span className="text-body-md font-bold text-ds-text-neutral-muted-default">
-          {t('layout.workspace-work-with-title', { defaultValue: 'Work with' })}
-        </span>
-      </div>
+      <ContentHeader
+        title={t('layout.workspace-work-with-title', {
+          defaultValue: 'Work with',
+        })}
+      />
 
       {/* Body */}
       <div className="relative flex min-h-0 w-full flex-1 overflow-hidden">
@@ -669,7 +692,7 @@ export function WorkspaceDispatch() {
               exit={{ opacity: 0, transition: { duration: 0.15 } }}
               transition={{ duration: 0.2 }}
             >
-              <div className="w-full max-w-xl">{channelList}</div>
+              <div className="w-full max-w-2xl">{channelList}</div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -699,8 +722,8 @@ export function WorkspaceDispatch() {
               {/* Right panel — same width as session side panel */}
               <motion.div
                 className={cn(
-                  'flex shrink-0 flex-col gap-1 overflow-y-auto border-l border-ds-border-neutral-subtle-default p-3',
-                  SESSION_SIDE_PANEL_CONTENT_WIDTH_CLASS
+                  'flex shrink-0 flex-col gap-1 overflow-y-auto border-y-0 border-r-0 border-l border-ds-hairline-subtle-default p-3',
+                  RIGHT_RAIL_CONTENT_WIDTH_CLASS
                 )}
                 initial={{ x: 40, opacity: 0 }}
                 animate={{ x: 0, opacity: 1 }}

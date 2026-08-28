@@ -28,6 +28,7 @@ from app.model.model_platform import (
 )
 from app.remote_sub_agent.config import RemoteSubAgentConfig
 from app.utils.workspace_paths import task_dir_name
+from app.workspace_config import ThinkingEffort, normalize_thinking_effort
 
 logger = logging.getLogger("chat_model")
 
@@ -51,6 +52,19 @@ class QuestionAnalysisResult(BaseModel):
 McpServers = dict[Literal["mcpServers"], dict[str, dict]]
 
 
+def _normalize_review_handoff_ids(values: list[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        handoff_id = value.strip()
+        if not handoff_id or len(handoff_id) > 128:
+            raise ValueError("review handoff ids must be 1-128 characters")
+        if handoff_id not in seen:
+            seen.add(handoff_id)
+            normalized.append(handoff_id)
+    return normalized
+
+
 class Chat(BaseModel):
     task_id: str
     project_id: str
@@ -63,9 +77,16 @@ class Chat(BaseModel):
     question: str
     email: str
     attaches: list[str] = []
+    review_handoff_ids: list[str] = Field(default_factory=list, max_length=64)
     model_platform: NormalizedModelPlatform
     model_type: str
     api_key: str
+
+    @field_validator("review_handoff_ids")
+    @classmethod
+    def validate_review_handoff_ids(cls, values: list[str]) -> list[str]:
+        return _normalize_review_handoff_ids(values)
+
     # for cloud version, user don't need to set api_url
     api_url: str | None = None
     # Marker for subscription-auth providers (e.g. Codex). When set, the token
@@ -88,6 +109,7 @@ class Chat(BaseModel):
     # top_p, or max_tokens. Constructor-only provider settings remain in
     # extra_params for backward compatibility.
     model_config_dict: dict[str, Any] | None = None
+    thinking_effort: ThinkingEffort | None = None
     # For provider-specific parameters like Azure
     extra_params: dict | None = None
     # User-specific search engine configurations
@@ -104,6 +126,18 @@ class Chat(BaseModel):
     # Durable Project context reconstructed from persisted runs after restart.
     # In-process follow-ups still prefer TaskLock.conversation_history.
     project_context: str | None = None
+    # Explicitly resumes an interrupted durable Run. This is never inferred
+    # from question text (for example, a user typing "continue"). The request
+    # id makes a lost HTTP/SSE response safe to retry without creating another
+    # Attempt.
+    resume_request_id: str | None = Field(default=None, min_length=1)
+
+    @field_validator("thinking_effort", mode="before")
+    @classmethod
+    def normalize_requested_thinking_effort(cls, value):
+        if value is None:
+            return None
+        return normalize_thinking_effort(value)
 
     @field_validator("model_type")
     @classmethod
@@ -211,11 +245,40 @@ class SupplementChat(BaseModel):
     task_id: str | None = None
     attaches: list[str] = []
     project_context: str | None = None
+    review_handoff_ids: list[str] = Field(default_factory=list, max_length=64)
+
+    @field_validator("review_handoff_ids")
+    @classmethod
+    def validate_review_handoff_ids(cls, values: list[str]) -> list[str]:
+        return _normalize_review_handoff_ids(values)
+
+
+class FollowUpRequestCreate(BaseModel):
+    request_id: str = Field(min_length=1, max_length=128)
+    content: str = Field(min_length=1, max_length=200_000)
+    attachment_paths: list[str] = Field(default_factory=list, max_length=32)
+    review_handoff_ids: list[str] = Field(default_factory=list, max_length=64)
+    delivery_mode: Literal["wait", "send_now"] = "wait"
+    source: Literal["local", "remote_control", "scheduled"] = "local"
+    source_command_id: str | None = Field(
+        default=None, min_length=1, max_length=128
+    )
+
+    @field_validator("review_handoff_ids")
+    @classmethod
+    def validate_review_handoff_ids(cls, values: list[str]) -> list[str]:
+        return _normalize_review_handoff_ids(values)
+
+
+class FollowUpRequestAdmitted(BaseModel):
+    run_id: str = Field(min_length=1, max_length=128)
 
 
 class HumanReply(BaseModel):
     agent: str
     reply: str
+    interaction_id: str | None = None
+    decision_request_id: str | None = None
 
 
 class TaskContent(BaseModel):

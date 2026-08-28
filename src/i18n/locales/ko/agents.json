@@ -55,5 +55,12 @@
   "create-skill-default-name": "새 스킬",
   "create-skill-default-description": "이 스킬이 하는 일을 설명하세요.",
   "save-skill": "스킬 저장",
-  "compose-skill-hint": "SKILL.md를 편집(YAML 프론트매터에 이름과 설명 필요)한 뒤 저장하세요."
+  "compose-skill-hint": "SKILL.md를 편집(YAML 프론트매터에 이름과 설명 필요)한 뒤 저장하세요.",
+  "try-skill-prompt": "Eigent에 {{name}} 스킬을 추가했습니다. 이 스킬로 멋진 것을 만들어 줄 수 있나요?",
+  "select-agent-access": "에이전트 접근 선택",
+  "all-agents": "모든 에이전트",
+  "replace-skill-title": "“{{name}}” 스킬을 교체할까요?",
+  "replace-skill-message": "같은 이름의 스킬이 이미 있습니다. 이 스킬을 업로드하면 기존 스킬이 교체되며 복원할 수 없습니다.",
+  "update-and-replace": "업데이트 후 교체",
+  "agent": "에이전트"
 }

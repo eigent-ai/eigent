@@ -6,6 +6,7 @@ Theme Tokens V2 is a full cutover to a DTCG-driven, OKLCH-based token engine.
 
 1. **Canonical token sources** in `/tokens`:
    - `base.color.json` (theme seeds + fixed role anchors)
+   - `category.color.json` (16 non-semantic OKLCH differentiation palettes)
    - `semantic.color.json` (axes + transforms + contrast policy)
    - `component.color.json` (component/global alias vars)
    - `contracts/*.json` (contract presets with `$extends`)
@@ -18,13 +19,19 @@ Theme Tokens V2 is a full cutover to a DTCG-driven, OKLCH-based token engine.
    - CSS variable emission (`--ds-*` + component aliases)
 3. **Runtime application** in `ThemeProvider` via `applyThemeContractV2`.
 
+Categorical tokens intentionally carry no product meaning. Their naming is
+`--ds-category-{color}-{style}-{state}` (for example,
+`--ds-category-purple-background-default` and
+`--ds-category-purple-text-strong`) and they are intended for tags, labels,
+and code highlighting where differentiation—not status—is the goal.
+
 ## Contract
 
 ```ts
 type Adjustment = { dL?: number; dC?: number; dH?: number; alpha?: number };
 type ThemeContractV2 = {
   version: 2;
-  mode: "light" | "dark";
+  mode: 'light' | 'dark';
   themeId: string;
   contrast: number; // 0..100
   overrides?: {
@@ -50,7 +57,7 @@ In development, `ThemeProvider` exposes:
 
 ```js
 window.__eigentThemeV2.listThemes(); // { light: [...], dark: [...] }
-window.__eigentThemeV2.setTheme("light", "starfish");
+window.__eigentThemeV2.setTheme('light', 'starfish');
 window.__eigentThemeV2.setContrast(65);
 window.__eigentThemeV2.getState();
 ```

@@ -86,7 +86,11 @@ export function AgentMessageCard({
       setCopied(true);
       setTimeout(() => setCopied(false), COPIED_RESET_MS);
     } catch {
-      toast.error('Failed to copy to clipboard');
+      toast.error(
+        t('setting.copy-failed', {
+          defaultValue: 'Failed to copy to clipboard',
+        })
+      );
     }
   }, [content, t]);
 
@@ -98,14 +102,18 @@ export function AgentMessageCard({
   const handleThumbUp = useCallback(() => {
     if (feedback !== null) return;
     setFeedback('up');
-    toast.success('Thanks for your feedback');
-  }, [feedback]);
+    toast.success(
+      t('chat.feedback-thanks', { defaultValue: 'Thanks for your feedback' })
+    );
+  }, [feedback, t]);
 
   const handleThumbDown = useCallback(() => {
     if (feedback !== null) return;
     setFeedback('down');
-    toast.success('Thanks for your feedback');
-  }, [feedback]);
+    toast.success(
+      t('chat.feedback-thanks', { defaultValue: 'Thanks for your feedback' })
+    );
+  }, [feedback, t]);
 
   const showDeferredFileUi =
     markdownAndTypingComplete &&
@@ -114,7 +122,7 @@ export function AgentMessageCard({
   return (
     <div
       key={id}
-      className={`rounded-xl px-6 py-3 flex w-full flex-col bg-transparent ${className || ''} overflow-hidden`}
+      className={`flex w-full flex-col rounded-xl bg-transparent py-3 ${className || ''} overflow-hidden`}
     >
       <MarkDown
         content={content}
@@ -123,7 +131,7 @@ export function AgentMessageCard({
         enableTypewriter={enableTypewriter && typewriter}
       />
       {showDeferredFileUi && attaches && attaches.length > 0 && (
-        <div className="gap-2 mt-[10px] flex flex-wrap">
+        <div className="mt-2.5 flex flex-wrap gap-2">
           {attaches?.map((file) => {
             return (
               <div
@@ -134,16 +142,16 @@ export function AgentMessageCard({
                   );
                 }}
                 key={'attache-' + file.fileName}
-                className="gap-2 rounded-2xl border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default py-1 pl-2 flex w-full cursor-pointer items-center border border-solid"
+                className="flex w-full cursor-pointer items-center gap-2 rounded-2xl border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-default-default py-1 pl-2"
               >
-                <FileText size={24} className="flex-shrink-0" />
+                <FileText size={24} className="shrink-0" />
                 <div className="flex flex-col">
-                  <div className="text-body max-w-48 text-sm font-bold text-ds-text-neutral-default-default overflow-hidden text-ellipsis whitespace-nowrap">
+                  <span className="block max-w-48 overflow-hidden text-ds-text-base font-bold text-ellipsis whitespace-nowrap text-ds-ink-default-default">
                     {file?.fileName?.split('.')[0]}
-                  </div>
-                  <div className="text-xs font-medium leading-29 text-ds-text-neutral-default-default">
+                  </span>
+                  <span className="block text-ds-text-meta font-medium text-ds-ink-muted-default">
                     {file?.fileName?.split('.')[1]}
-                  </div>
+                  </span>
                 </div>
               </div>
             );
@@ -151,14 +159,14 @@ export function AgentMessageCard({
         </div>
       )}
       {showDeferredFileUi && deferredFooter != null && (
-        <div className="mt-[10px] w-full">{deferredFooter}</div>
+        <div className="mt-2.5 w-full">{deferredFooter}</div>
       )}
       {markdownAndTypingComplete && (
-        <div className="mt-3 gap-1 flex shrink-0 justify-start">
+        <div className="mt-3 flex shrink-0 justify-start gap-1">
           <Button
             onClick={handleCopy}
             variant="ghost"
-            size="xs"
+            size="sm"
             buttonContent="icon-only"
             aria-label={t('setting.copy')}
           >
@@ -171,27 +179,27 @@ export function AgentMessageCard({
           <Button
             onClick={handleThumbUp}
             variant="ghost"
-            size="xs"
+            size="sm"
             buttonContent="icon-only"
-            aria-label="Thumb up"
+            aria-label={t('chat.thumbs-up', { defaultValue: 'Thumb up' })}
             aria-pressed={feedback === 'up'}
             disabled={feedback === 'down'}
           >
             <ThumbsUp
-              className={`h-4 w-4 ${feedback === 'up' ? 'text-ds-text-brand-default-default' : ''}`}
+              className={`h-4 w-4 ${feedback === 'up' ? 'text-ds-accent-default-default' : ''}`}
             />
           </Button>
           <Button
             onClick={handleThumbDown}
             variant="ghost"
-            size="xs"
+            size="sm"
             buttonContent="icon-only"
-            aria-label="Thumb down"
+            aria-label={t('chat.thumbs-down', { defaultValue: 'Thumb down' })}
             aria-pressed={feedback === 'down'}
             disabled={feedback === 'up'}
           >
             <ThumbsDown
-              className={`h-4 w-4 ${feedback === 'down' ? 'text-ds-text-brand-default-default' : ''}`}
+              className={`h-4 w-4 ${feedback === 'down' ? 'text-ds-accent-default-default' : ''}`}
             />
           </Button>
         </div>

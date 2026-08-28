@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '../ui/button';
 
 // Zoom Controls Component
@@ -29,20 +30,21 @@ export const ZoomControls = ({
   onZoomOut,
   onZoomReset,
 }: ZoomControlsProps) => {
+  const { t } = useTranslation();
   return (
-    <div className="group absolute left-1/2 top-0 z-10 -translate-x-1/2">
-      <div className="zoom-controls-reveal flex items-center gap-1 rounded-full border border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default px-3 py-1.5 shadow-lg backdrop-blur-xl">
+    <div className="group absolute top-0 left-1/2 z-10 -translate-x-1/2">
+      <div className="zoom-controls-reveal flex items-center gap-1 rounded-full border border-x border-y border-ds-hairline-subtle-default bg-ds-neutral-default-default px-3 py-1.5 shadow-lg backdrop-blur-xl">
         <Button
           size="xs"
           buttonContent="icon-only"
           variant="ghost"
           onClick={onZoomOut}
-          title="Zoom Out"
-          className="h-7 w-7 text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-subtle-hover hover:text-ds-text-neutral-default-default"
+          title={t('layout.zoom-out', { defaultValue: 'Zoom out' })}
+          className="h-7 w-7 text-ds-ink-muted-default hover:bg-ds-neutral-subtle-hover hover:text-ds-ink-default-default"
         >
           <ZoomOut className="h-3.5 w-3.5" />
         </Button>
-        <span className="min-w-[2.5rem] text-center text-xs font-medium tabular-nums text-ds-text-neutral-default-default">
+        <span className="min-w-[2.5rem] text-center text-xs font-medium text-ds-ink-default-default tabular-nums">
           {zoom}%
         </span>
         <Button
@@ -50,8 +52,8 @@ export const ZoomControls = ({
           buttonContent="icon-only"
           variant="ghost"
           onClick={onZoomIn}
-          title="Zoom In"
-          className="h-7 w-7 text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-subtle-hover hover:text-ds-text-neutral-default-default"
+          title={t('layout.zoom-in', { defaultValue: 'Zoom in' })}
+          className="h-7 w-7 text-ds-ink-muted-default hover:bg-ds-neutral-subtle-hover hover:text-ds-ink-default-default"
         >
           <ZoomIn className="h-3.5 w-3.5" />
         </Button>
@@ -61,8 +63,8 @@ export const ZoomControls = ({
           buttonContent="icon-only"
           variant="ghost"
           onClick={onZoomReset}
-          title="Reset Zoom"
-          className="h-7 w-7 text-ds-text-neutral-muted-default hover:bg-ds-bg-neutral-subtle-hover hover:text-ds-text-neutral-default-default"
+          title={t('layout.reset-zoom', { defaultValue: 'Reset zoom' })}
+          className="h-7 w-7 text-ds-ink-muted-default hover:bg-ds-neutral-subtle-hover hover:text-ds-ink-default-default"
         >
           <RotateCcw className="h-3.5 w-3.5" />
         </Button>

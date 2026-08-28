@@ -21,6 +21,7 @@ import {
   proxyFetchPut,
 } from '@/api/http';
 import { useHost } from '@/host';
+import { isSearchConfigured } from '@/lib/searchConfig';
 import { useAuthStore } from '@/store/authStore';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -52,6 +53,10 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
   const [installed, setInstalled] = useState<{ [key: string]: boolean }>({});
   // Configs cache
   const [configs, setConfigs] = useState<any[]>([]);
+  const [configsLoading, setConfigsLoading] = useState(() => {
+    const snapshot = integrationConfigsSnapshot;
+    return !snapshot || snapshot.email !== (email ?? null);
+  });
   // Lock to prevent concurrent OAuth processing
   const isLockedRef = useRef(false);
   // Cache OAuth event when items are not ready
@@ -63,6 +68,7 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
 
   // Fetch installed configs
   const fetchInstalled = useCallback(async (ignore: boolean = false) => {
+    if (!ignore) setConfigsLoading(true);
     try {
       const configsRes = await proxyFetchGet('/api/v1/configs');
       if (!ignore) {
@@ -81,6 +87,8 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
           configs: [],
         };
       }
+    } finally {
+      if (!ignore) setConfigsLoading(false);
     }
   }, []);
 
@@ -90,9 +98,11 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
     const snap = integrationConfigsSnapshot;
     if (snap && snap.email === u) {
       setConfigs(snap.configs);
+      setConfigsLoading(false);
       return;
     }
     let cancelled = false;
+    setConfigsLoading(true);
     void (async () => {
       try {
         const configsRes = await proxyFetchGet('/api/v1/configs');
@@ -108,6 +118,8 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
           setConfigs([]);
           integrationConfigsSnapshot = { email: u, configs: [] };
         }
+      } finally {
+        if (!cancelled) setConfigsLoading(false);
       }
     })();
     return () => {
@@ -144,17 +156,7 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
         if (modelType !== 'custom') {
           map[item.key] = true;
         } else {
-          const hasApiKey = configs.some(
-            (c: any) =>
-              c.config_name === 'GOOGLE_API_KEY' &&
-              String(c.config_value ?? '').trim().length > 0
-          );
-          const hasEngineId = configs.some(
-            (c: any) =>
-              c.config_name === 'SEARCH_ENGINE_ID' &&
-              String(c.config_value ?? '').trim().length > 0
-          );
-          map[item.key] = hasApiKey && hasEngineId;
+          map[item.key] = isSearchConfigured(configs);
         }
       } else {
         // For other integrations, use config_group presence
@@ -437,6 +439,7 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
   return {
     installed,
     configs,
+    configsLoading,
     callBackUrl,
     fetchInstalled,
     saveEnvAndConfig,

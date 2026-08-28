@@ -48,6 +48,7 @@ from app.memory.paths import (
 from app.memory.service import (
     MemoryService,
     build_durable_context_for_task_lock,
+    build_durable_context_projection_for_task_lock,
     finalize_task_lock_run_memory,
     get_memory_service,
 )
@@ -69,6 +70,7 @@ __all__ = [
     "SyncSettings",
     "ToolEvent",
     "build_durable_context_for_task_lock",
+    "build_durable_context_projection_for_task_lock",
     "canonical_user_id",
     "finalize_task_lock_run_memory",
     "get_memory_service",

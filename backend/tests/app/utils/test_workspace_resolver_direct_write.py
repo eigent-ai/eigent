@@ -31,10 +31,35 @@ from unittest.mock import patch
 import pytest
 
 from app.utils.workspace_resolver import (
+    TaskSnapshot,
     WorkspaceBinding,
     WorkspaceResolver,
     WorkspaceStore,
 )
+
+
+def test_find_snapshot_resolves_run_owner_without_mutable_task_lock(
+    monkeypatch, tmp_path: Path
+):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    store = WorkspaceStore()
+    snapshot = TaskSnapshot(
+        task_id="run-1",
+        project_id="project-1",
+        space_id="space-1",
+        user_id="42",
+        working_directory=str(tmp_path / "workspace"),
+        task_output_root=str(tmp_path / "output"),
+        task_start_time=1.0,
+        binding_source="default",
+        created_at="2026-08-14T00:00:00Z",
+    )
+    store.save_snapshot("user@example.com", snapshot)
+
+    located = store.find_snapshot("run-1")
+
+    assert located == ("user_42", snapshot)
+    assert store.find_snapshot("../run-1") is None
 
 
 @pytest.fixture

@@ -63,22 +63,32 @@ function encodePathSegments(filePath: string): string {
 
 export function toLocalFileUrl(filePath: string): string {
   if (
-    filePath.startsWith('localfile://') ||
-    filePath.startsWith('file://') ||
     filePath.startsWith('http://') ||
     filePath.startsWith('https://') ||
     filePath.startsWith('blob:') ||
     filePath.startsWith('data:')
   ) {
-    const normalized =
-      filePath.startsWith('file://') && !filePath.startsWith('localfile://')
-        ? filePath.replace(/^file:\/\//, 'localfile://')
-        : filePath;
-    return normalized.endsWith('/') ? normalized : `${normalized}/`;
+    return filePath.endsWith('/') ? filePath : `${filePath}/`;
   }
 
-  const encodedPath = encodePathSegments(filePath);
-  const localFileUrl = `localfile://${encodedPath}`;
+  let localPath = filePath;
+  if (filePath.startsWith('localfile:') || filePath.startsWith('file:')) {
+    const parsed = new URL(filePath);
+    const queryPath = parsed.searchParams.get('path');
+    if (parsed.hostname === 'preview' && queryPath) {
+      localPath = queryPath;
+    } else if (!parsed.hostname || parsed.hostname === 'preview') {
+      localPath = decodeURIComponent(parsed.pathname);
+    } else {
+      localPath = `/${parsed.hostname}${decodeURIComponent(parsed.pathname)}`;
+    }
+  }
+
+  const encodedPath = encodePathSegments(localPath);
+  const rootedPath = encodedPath.startsWith('/')
+    ? encodedPath
+    : `/${encodedPath}`;
+  const localFileUrl = `localfile://preview${rootedPath}`;
   return localFileUrl.endsWith('/') ? localFileUrl : `${localFileUrl}/`;
 }
 
@@ -96,6 +106,35 @@ function isSpecialImageSrc(src: string): boolean {
     normalizedSrc.startsWith('data:') ||
     normalizedSrc.startsWith('blob:') ||
     normalizedSrc.startsWith('localfile:')
+  );
+}
+
+function isLocalScriptSrc(src: string): boolean {
+  const normalizedSrc = src.trim().toLowerCase();
+  const colonIndex = normalizedSrc.indexOf(':');
+  const hasExplicitScheme =
+    colonIndex > 0 &&
+    Array.from(normalizedSrc.slice(0, colonIndex)).every((character, index) =>
+      index === 0
+        ? character >= 'a' && character <= 'z'
+        : (character >= 'a' && character <= 'z') ||
+          (character >= '0' && character <= '9') ||
+          character === '+' ||
+          character === '.' ||
+          character === '-'
+    );
+  return (
+    Boolean(normalizedSrc) &&
+    !hasExplicitScheme &&
+    !(
+      normalizedSrc.startsWith('http://') ||
+      normalizedSrc.startsWith('https://') ||
+      normalizedSrc.startsWith('//') ||
+      normalizedSrc.startsWith('data:') ||
+      normalizedSrc.startsWith('blob:') ||
+      normalizedSrc.startsWith('localfile:') ||
+      normalizedSrc.startsWith('#')
+    )
   );
 }
 
@@ -197,6 +236,58 @@ export async function inlineLocalHtmlImgElements(
       } catch (error) {
         console.error(
           `[HtmlRenderer] Failed to load image: ${joinPath(htmlDir, src)}`,
+          error
+        );
+      }
+    })
+  );
+
+  const serialized = doc.documentElement?.outerHTML || html;
+  return `${doctype}${serialized}`;
+}
+
+/**
+ * Inline relative JavaScript referenced by a local HTML preview.
+ *
+ * A srcDoc iframe inherits the renderer's top-level CSP. Chromium may expose a
+ * custom-protocol JavaScript response as a data: URL, which the application
+ * deliberately does not allow as a script source. Reading the file through
+ * the already-authorized preview IPC keeps execution inside the iframe's
+ * `unsafe-inline` boundary without broadening the whole application's CSP.
+ */
+export async function inlineLocalHtmlScriptElements(
+  html: string,
+  htmlDir: string,
+  readTextFile: (filePath: string) => Promise<string>
+): Promise<string> {
+  if (typeof DOMParser === 'undefined') {
+    return html;
+  }
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  const doctype = html.match(/<!doctype[^>]*>/i)?.[0] || '';
+
+  await Promise.all(
+    Array.from(doc.querySelectorAll('script[src]')).map(async (script) => {
+      const src = script.getAttribute('src');
+      if (!src || !isLocalScriptSrc(src)) {
+        return;
+      }
+
+      const pathWithoutQuery = src.split(/[?#]/, 1)[0];
+      const resolvedPath = joinPath(htmlDir, pathWithoutQuery);
+      try {
+        const content = await readTextFile(resolvedPath);
+        script.removeAttribute('src');
+        script.setAttribute('data-source', src);
+        // Prevent a source string from terminating its containing script tag
+        // when the parsed document is serialized back to srcDoc HTML.
+        script.textContent = content.replace(/<\/script/gi, '<\\/script');
+      } catch (error) {
+        console.warn(
+          '[HtmlRenderer] Failed to inline local script:',
+          resolvedPath,
           error
         );
       }

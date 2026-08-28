@@ -17,7 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 import secrets
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 from urllib.parse import quote
@@ -25,7 +25,8 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 from loguru import logger
-from sqlalchemy import desc
+from sqlalchemy import and_, desc, or_
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.core.environment import env
@@ -48,6 +49,10 @@ from app.domains.remote_control.schema import (
     RemoteControlStepOut,
     RemoteControlStepsOut,
 )
+from app.domains.remote_control.service.command_control_service import (
+    HIGH_RISK_COMMAND_TYPES,
+    CommandControlService,
+)
 from app.domains.space.service.overlay_service import SpaceOverlayService
 from app.domains.space.service.space_service import SpaceService
 from app.model.chat.chat_history import ChatHistory, ChatStatus
@@ -55,6 +60,7 @@ from app.model.chat.chat_step import ChatStep
 from app.model.project.project import Project, ProjectIn, ProjectMode, ProjectOut
 from app.model.provider.provider import Provider
 from app.model.remote_control import (
+    RemoteCommandState,
     RemoteControlCommand,
     RemoteControlEvent,
     RemoteControlLink,
@@ -81,6 +87,7 @@ DEFAULT_CAPABILITIES = {
     "commands": [
         "user_message",
         "human_reply",
+        "interaction_decision",
         "stop",
         "skip_task",
         "add_task",
@@ -115,12 +122,155 @@ def _now() -> datetime:
     return datetime.utcnow()
 
 
+def _utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
 def _id(prefix: str) -> str:
     return f"{prefix}_{uuid4().hex}"
 
 
 def _token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _command_request_fingerprint(data: RemoteControlCommandIn) -> str:
+    canonical = data.model_dump(
+        mode="json",
+        exclude={"client_request_id"},
+        exclude_none=False,
+    )
+    encoded = json.dumps(
+        canonical,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _effective_client_request_id(
+    data: RemoteControlCommandIn,
+    *,
+    supersede_chain_depth: int = 0,
+) -> str:
+    if data.type != "interaction_decision":
+        return data.client_request_id
+    encoded = json.dumps(
+        {
+            "run_id": data.payload["run_id"],
+            "interaction_id": data.payload["interaction_id"],
+            "supersede_chain_depth": supersede_chain_depth,
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()[:48]
+    return f"interaction_decision_{digest}"
+
+
+def _interaction_decision_key(
+    data: RemoteControlCommandIn,
+    *,
+    user_id: int,
+    supersede_chain_depth: int,
+) -> str | None:
+    if data.type != "interaction_decision":
+        return None
+    encoded = json.dumps(
+        {
+            "user_id": user_id,
+            "run_id": data.payload["run_id"],
+            "interaction_id": data.payload["interaction_id"],
+            "generation": supersede_chain_depth,
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _command_replay_statement(
+    *,
+    session_id: str,
+    submitted_client_request_id: str,
+    effective_client_request_id: str,
+    decision_key: str | None,
+):
+    request_ids = tuple(dict.fromkeys((submitted_client_request_id, effective_client_request_id)))
+    legacy_identity = and_(
+        RemoteControlCommand.session_id == session_id,
+        RemoteControlCommand.client_request_id.in_(request_ids),
+    )
+    if decision_key is None:
+        return select(RemoteControlCommand).where(legacy_identity)
+    legacy_decision_identity = and_(
+        legacy_identity,
+        RemoteControlCommand.type == "interaction_decision",
+        RemoteControlCommand.interaction_decision_key.is_(None),
+    )
+    return select(RemoteControlCommand).where(
+        or_(
+            RemoteControlCommand.interaction_decision_key == decision_key,
+            legacy_decision_identity,
+        )
+    )
+
+
+def _interaction_supersede_chain(
+    data: RemoteControlCommandIn,
+    *,
+    user_id: int,
+    db: Session,
+) -> tuple[int, RemoteControlCommand | None, RemoteCommandState | None]:
+    if data.type != "interaction_decision":
+        return 0, None, None
+    command_id = data.payload.get("supersedes_command_id")
+    if not command_id:
+        return 0, None, None
+
+    run_id = data.payload.get("run_id")
+    interaction_id = data.payload.get("interaction_id")
+    seen: set[str] = set()
+    depth = 0
+    immediate: RemoteControlCommand | None = None
+    immediate_state: RemoteCommandState | None = None
+    while command_id:
+        if command_id in seen:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "REMOTE_COMMAND_SUPERSEDE_CYCLE"},
+            )
+        seen.add(command_id)
+        command = db.get(RemoteControlCommand, command_id)
+        state = db.get(RemoteCommandState, command_id)
+        same_interaction = bool(
+            command
+            and command.user_id == user_id
+            and command.type == "interaction_decision"
+            and command.payload.get("run_id") == run_id
+            and command.payload.get("interaction_id") == interaction_id
+        )
+        if not same_interaction:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "REMOTE_COMMAND_NOT_SUPERSEDABLE",
+                    "message": ("The superseded command is outside this interaction chain"),
+                    "supersedes_command_id": command_id,
+                },
+            )
+        assert command is not None
+        if immediate is None:
+            immediate = command
+            immediate_state = state
+        depth += 1
+        command_id = command.payload.get("supersedes_command_id")
+    return depth, immediate, immediate_state
 
 
 def _utc_iso(value: datetime | None) -> str | None:
@@ -401,10 +551,7 @@ class RemoteControlService:
         return (
             normalized["target_project_id"] == session.project_id
             and normalized["target_brain_session_id"] == session.brain_session_id
-            and (
-                normalized["target_task_id"] is None
-                or normalized["target_task_id"] == session.active_task_id
-            )
+            and (normalized["target_task_id"] is None or normalized["target_task_id"] == session.active_task_id)
         )
 
     @staticmethod
@@ -481,8 +628,7 @@ class RemoteControlService:
         else:
             session = RemoteControlService._owned_session(session_id, user_id, db)
         link = db.exec(
-            select(RemoteControlLink)
-            .where(
+            select(RemoteControlLink).where(
                 RemoteControlLink.session_id == session_id,
                 RemoteControlLink.token_hash == _token_hash(token),
             )
@@ -512,10 +658,11 @@ class RemoteControlService:
         if not RemoteControlRedis.is_bridge_online(data.desktop_instance_id, user_id):
             raise HTTPException(status_code=409, detail={"code": "BRIDGE_OFFLINE"})
 
-        is_v2_request = any(
-            value is not None
-            for value in (data.initial_project_id, data.initial_task_id, data.initial_history_id)
-        ) or data.space_id is not None or not (data.project_id and data.active_task_id)
+        is_v2_request = (
+            any(value is not None for value in (data.initial_project_id, data.initial_task_id, data.initial_history_id))
+            or data.space_id is not None
+            or not (data.project_id and data.active_task_id)
+        )
         target_project_id = data.initial_project_id if data.initial_project_id is not None else data.project_id
         target_task_id = data.initial_task_id if data.initial_task_id is not None else data.active_task_id
         target_history_id = data.initial_history_id if is_v2_request else None
@@ -611,9 +758,7 @@ class RemoteControlService:
             session.last_target_task_id = target_task_id or session.last_target_task_id
             session.last_target_history_id = target_history_id or session.last_target_history_id
             session.last_target_brain_session_id = (
-                current_brain_session_id
-                or legacy_brain_session_id
-                or session.last_target_brain_session_id
+                current_brain_session_id or legacy_brain_session_id or session.last_target_brain_session_id
             )
 
         token = secrets.token_urlsafe(32)
@@ -784,9 +929,7 @@ class RemoteControlService:
                 "current_project_id": session.current_project_id or data.project_id,
                 "current_task_id": session.current_task_id,
                 "current_history_id": session.current_history_id,
-                "current_brain_session_id": (
-                    session.current_brain_session_id or current_brain_session_id
-                ),
+                "current_brain_session_id": (session.current_brain_session_id or current_brain_session_id),
                 "previous_project_id": previous_project_id,
                 "previous_task_id": previous_task_id,
             },
@@ -1177,9 +1320,7 @@ class RemoteControlService:
                 "project_id": project_id,
                 "run_id": data.run_id,
                 "paths": data.paths,
-                "force_resolutions": [
-                    item.model_dump(mode="json") for item in (data.force_resolutions or [])
-                ],
+                "force_resolutions": [item.model_dump(mode="json") for item in (data.force_resolutions or [])],
             },
             db,
             target_project_id=project_id,
@@ -1249,9 +1390,65 @@ class RemoteControlService:
         db: Session,
     ) -> RemoteControlCommandOut:
         session = RemoteControlService._owned_session(session_id, user_id, db)
+        request_fingerprint = _command_request_fingerprint(data)
+        (
+            supersede_chain_depth,
+            superseded,
+            superseded_state,
+        ) = _interaction_supersede_chain(data, user_id=user_id, db=db)
+        client_request_id = _effective_client_request_id(data, supersede_chain_depth=supersede_chain_depth)
+        decision_key = _interaction_decision_key(
+            data,
+            user_id=user_id,
+            supersede_chain_depth=supersede_chain_depth,
+        )
+        replay_statement = _command_replay_statement(
+            session_id=session.id,
+            submitted_client_request_id=data.client_request_id,
+            effective_client_request_id=client_request_id,
+            decision_key=decision_key,
+        )
+        existing = db.exec(replay_statement).first()
+        if existing is not None:
+            if existing.request_fingerprint != request_fingerprint:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "REMOTE_COMMAND_IDEMPOTENCY_CONFLICT",
+                        "command_id": existing.id,
+                    },
+                )
+            return RemoteControlCommandOut(
+                command_id=existing.id,
+                status=existing.status,
+                next_task_id=existing.next_task_id,
+            )
         if not RemoteControlRedis.is_bridge_online(session.desktop_instance_id, user_id):
             raise HTTPException(status_code=409, detail={"code": "BRIDGE_OFFLINE"})
         session_space = RemoteControlService._session_space(session, user_id, db)
+
+        if superseded is not None:
+            unsuccessful_terminal = bool(
+                superseded.status in {COMMAND_FAILED, COMMAND_EXPIRED, "outcome_unknown"}
+                or (
+                    superseded_state is not None
+                    and (
+                        superseded_state.receipt_state == "expired"
+                        or superseded_state.admission_state == "rejected"
+                        or superseded_state.execution_state == "failed"
+                        or superseded_state.actual_execution_state == "outcome_unknown"
+                    )
+                )
+            )
+            if not unsuccessful_terminal:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "REMOTE_COMMAND_NOT_SUPERSEDABLE",
+                        "message": ("Only a terminal unsuccessful decision may be replaced"),
+                        "supersedes_command_id": superseded.id,
+                    },
+                )
 
         normalized = {
             "space_id": data.space_id or session_space.id,
@@ -1306,6 +1503,9 @@ class RemoteControlService:
             id=_id("rc_cmd"),
             session_id=session.id,
             user_id=user_id,
+            client_request_id=client_request_id,
+            request_fingerprint=request_fingerprint,
+            interaction_decision_key=decision_key,
             source_channel=data.source_channel,
             type=command_type,
             payload=normalized["payload"],
@@ -1317,23 +1517,47 @@ class RemoteControlService:
             status=COMMAND_PENDING,
         )
 
-        if next_task_id:
-            try:
-                history = RemoteControlService._create_history_for_command(
-                    user_id,
-                    normalized["space_id"],
-                    target_project_id,
-                    target_task_id,
-                    data,
-                    next_task_id,
-                    db,
-                )
+        try:
+            with db.begin_nested():
+                if next_task_id:
+                    history = RemoteControlService._create_history_for_command(
+                        user_id,
+                        normalized["space_id"],
+                        target_project_id,
+                        target_task_id,
+                        data,
+                        next_task_id,
+                        db,
+                    )
+                    db.flush()
+                    normalized["payload"]["remote_history_id"] = history.id
+                    command.payload = normalized["payload"]
+                db.add(command)
                 db.flush()
-                normalized["payload"]["remote_history_id"] = history.id
-                command.payload = normalized["payload"]
-            except HTTPException:
+        except IntegrityError:
+            existing = db.exec(replay_statement).first()
+            if existing is None:
                 raise
-        db.add(command)
+            if existing.request_fingerprint != request_fingerprint:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "REMOTE_COMMAND_IDEMPOTENCY_CONFLICT",
+                        "command_id": existing.id,
+                    },
+                )
+            return RemoteControlCommandOut(
+                command_id=existing.id,
+                status=existing.status,
+                next_task_id=existing.next_task_id,
+            )
+        command_state = CommandControlService.create_state_for_command(command, session, db)
+        command_state = CommandControlService.lease_command_for_delivery(
+            command.id,
+            session.desktop_instance_id,
+            user_id,
+            db,
+        )
         db.commit()
         db.refresh(command)
         RemoteControlService.record_event(
@@ -1351,7 +1575,7 @@ class RemoteControlService:
             db,
         )
 
-        RemoteControlService.publish_command(session, command)
+        RemoteControlService.publish_command(session, command, command_state)
         return RemoteControlCommandOut(
             command_id=command.id,
             status=command.status,
@@ -1359,10 +1583,16 @@ class RemoteControlService:
         )
 
     @staticmethod
-    def command_payload(session: RemoteControlSession, command: RemoteControlCommand) -> dict[str, Any]:
+    def command_payload(
+        session: RemoteControlSession,
+        command: RemoteControlCommand,
+        state: RemoteCommandState | None = None,
+    ) -> dict[str, Any]:
         project_id = command.target_project_id or session.current_project_id or session.project_id
         task_id = command.target_task_id or session.current_task_id or session.active_task_id
-        brain_session_id = command.target_brain_session_id or session.current_brain_session_id or session.brain_session_id
+        brain_session_id = (
+            command.target_brain_session_id or session.current_brain_session_id or session.brain_session_id
+        )
         payload: dict[str, Any] = {
             "type": "remote_command",
             "command": {
@@ -1384,13 +1614,27 @@ class RemoteControlService:
         }
         if command.next_task_id:
             payload["command"]["next_task_id"] = command.next_task_id
+        if state is not None:
+            payload["command"].update(
+                {
+                    "route_version": state.route_version,
+                    "expires_at": state.expires_at.isoformat(),
+                    "receipt_grace_until": (state.receipt_grace_until.isoformat()),
+                    "requires_online_receipt_confirmation": (command.type in HIGH_RISK_COMMAND_TYPES),
+                    "lease_token": state.lease_token,
+                }
+            )
         return payload
 
     @staticmethod
-    def publish_command(session: RemoteControlSession, command: RemoteControlCommand) -> bool:
+    def publish_command(
+        session: RemoteControlSession,
+        command: RemoteControlCommand,
+        state: RemoteCommandState | None = None,
+    ) -> bool:
         had_subscriber = RemoteControlRedis.publish(
             RemoteControlRedis.command_channel(session.desktop_instance_id),
-            RemoteControlService.command_payload(session, command),
+            RemoteControlService.command_payload(session, command, state),
         )
         logger.info(
             "[RC-TRACE] command published",
@@ -1557,7 +1801,8 @@ class RemoteControlService:
         RemoteControlService._ensure_project_in_session_space(session, user_id, target_project_id, db)
         limit = min(max(limit, 1), 1000)
         histories = db.exec(
-            select(ChatHistory).where(
+            select(ChatHistory)
+            .where(
                 ChatHistory.user_id == user_id,
                 ChatHistory.project_id == target_project_id,
             )
@@ -1627,10 +1872,27 @@ class RemoteControlService:
                 RemoteControlCommand.created_at < cutoff,
             )
         ).all()
+        deliveries: list[
+            tuple[
+                RemoteControlSession,
+                RemoteControlCommand,
+                RemoteCommandState | None,
+            ]
+        ] = []
         for command in commands:
             session = db.get(RemoteControlSession, command.session_id)
             if not session or session.status != SESSION_ACTIVE:
                 continue
+            state = db.get(RemoteCommandState, command.id)
+            if state is not None:
+                now = datetime.now(UTC)
+                if (
+                    state.receipt_state != "pending"
+                    or _utc(state.expires_at) < now
+                    or _utc(state.next_delivery_attempt_at) > now
+                    or (state.lease_until is not None and _utc(state.lease_until) >= now)
+                ):
+                    continue
             if not RemoteControlRedis.is_bridge_online(session.desktop_instance_id, session.user_id):
                 logger.warning(
                     "[RC-TRACE] pending command waiting, bridge offline",
@@ -1649,7 +1911,20 @@ class RemoteControlService:
                     "age_seconds": (_now() - command.created_at).total_seconds(),
                 },
             )
-            RemoteControlService.publish_command(session, command)
+            if state is not None:
+                state = CommandControlService.lease_command_for_delivery(
+                    command.id,
+                    session.desktop_instance_id,
+                    session.user_id,
+                    db,
+                )
+            deliveries.append((session, command, state))
+
+        # Persist the new lease before notifying Desktop. Legacy commands have
+        # no state and retain their existing delivery behavior.
+        db.commit()
+        for session, command, state in deliveries:
+            RemoteControlService.publish_command(session, command, state)
 
     @staticmethod
     def expire_timed_out_commands(db: Session) -> None:

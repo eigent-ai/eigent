@@ -13,35 +13,57 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import AlertDialog from '@/components/ui/alertDialog';
-import { useHost } from '@/host';
-import { useCallback } from 'react';
+import type { CloseExecutionClass, CloseIntent } from '@/shared/windowClose';
 import { useTranslation } from 'react-i18next';
 
 interface Props {
   open: boolean;
+  intent: CloseIntent;
+  executionClass: CloseExecutionClass;
   onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
 }
 
-// Confirming closes the window and terminates the running task, so this uses
-// the shared AlertDialog (destructive confirm) for consistency with the
-// end/delete-project confirmations.
-export default function CloseNoticeDialog({ open, onOpenChange }: Props) {
-  const host = useHost();
-  const electronAPI = host?.electronAPI;
+export default function CloseNoticeDialog({
+  open,
+  intent,
+  executionClass,
+  onOpenChange,
+  onConfirm,
+}: Props) {
   const { t } = useTranslation();
-
-  const onConfirm = useCallback(() => {
-    electronAPI?.closeWindow(true);
-  }, [electronAPI]);
+  const isQuit = intent === 'quit-app';
+  const message =
+    executionClass === 'canonical-durable'
+      ? t(
+          isQuit
+            ? 'layout.close-durable-quit-message'
+            : 'layout.close-durable-window-message'
+        )
+      : executionClass === 'unknown'
+        ? t(
+            isQuit
+              ? 'layout.close-unknown-quit-message'
+              : 'layout.close-unknown-window-message'
+          )
+        : t(
+            isQuit
+              ? 'layout.close-legacy-quit-message'
+              : 'layout.close-legacy-window-message'
+          );
 
   return (
     <AlertDialog
       isOpen={open}
       onClose={() => onOpenChange(false)}
       onConfirm={onConfirm}
-      title={t('layout.close-notice')}
-      message={t('layout.a-task-is-currently-running')}
-      confirmText={t('layout.yes')}
+      title={t(
+        isQuit ? 'layout.shortcuts.quit' : 'layout.shortcuts.close-window'
+      )}
+      message={message}
+      confirmText={t(
+        isQuit ? 'layout.shortcuts.quit' : 'layout.shortcuts.close-window'
+      )}
       cancelText={t('layout.cancel')}
     />
   );

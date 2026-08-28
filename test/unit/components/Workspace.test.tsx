@@ -15,6 +15,7 @@
 import Workspace from '@/components/Workspace';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -59,6 +60,7 @@ const mocks = vi.hoisted(() => {
     navLeadByProjectId: {},
     isEmptyProject: vi.fn(() => false),
     setActiveProject: vi.fn(),
+    getComposerThinkingEffort: vi.fn<() => 'high' | undefined>(() => 'high'),
     getActiveChatStore: vi.fn(() => ({
       getState: () => newChatState,
     })),
@@ -158,8 +160,21 @@ vi.mock('@/lib/spaceProject', () => ({
 }));
 
 vi.mock('@/components/ChatBox/BottomBox', () => ({
-  default: ({ inputProps }: { inputProps: any }) => (
+  default: ({
+    inputProps,
+    sessionModeSelectInteractive,
+    modelSelectProjectId,
+  }: {
+    inputProps: any;
+    sessionModeSelectInteractive?: boolean;
+    modelSelectProjectId?: string | null;
+  }) => (
     <div>
+      <div
+        data-testid="workspace-bottom-box-footer-props"
+        data-interactive={String(Boolean(sessionModeSelectInteractive))}
+        data-project-id={modelSelectProjectId ?? ''}
+      />
       <input
         aria-label="workspace-message"
         value={inputProps.value}
@@ -191,39 +206,25 @@ vi.mock('@/components/Workspace/SingleAgentList', () => ({
 vi.mock('@/components/Workspace/WorkforceAgentList', () => ({
   WorkforceAgentList: () => null,
 }));
-vi.mock('@/components/Workspace/WorkspaceAllSessions', () => ({
-  WorkspaceAllSessions: () => null,
-}));
-vi.mock('@/components/Workspace/WorkspaceCoworkPanel', () => ({
-  WorkspaceCoworkPanel: () => null,
-}));
-vi.mock('@/components/Workspace/WorkspaceExamplePrompts', () => ({
-  WorkspaceExamplePrompts: () => null,
-}));
-vi.mock('@/components/Workspace/WorkspaceInstructionMd', () => ({
-  WorkspaceInstructionMd: () => null,
-}));
 vi.mock('@/components/Workspace/WorkspaceProjectPicker', () => ({
-  WorkspaceProjectPicker: () => null,
+  WorkspaceProjectPicker: () => <div>Space switch</div>,
 }));
-vi.mock('@/components/Workspace/WorkspaceRecentSessions', () => ({
-  WorkspaceRecentSessions: () => null,
-}));
-
-const renderWorkspace = () =>
+const renderWorkspace = (props: ComponentProps<typeof Workspace> = {}) =>
   render(
     <MemoryRouter>
-      <Workspace />
+      <Workspace {...props} />
     </MemoryRouter>
   );
 
-describe('Workspace project creation', () => {
+describe('Workspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.spaceState.projectsBySpaceId = {};
     vi.mocked(createSyncedProjectInSpace).mockResolvedValue({
       projectId: 'new-project',
       spaceId: 'space-1',
     });
+    mocks.projectState.getComposerThinkingEffort.mockReturnValue('high');
     mocks.newStartTask.mockResolvedValue(undefined);
   });
 
@@ -243,6 +244,10 @@ describe('Workspace project creation', () => {
       expect.objectContaining({
         spaceId: 'space-1',
         name: 'Start fresh work',
+        metadata: expect.objectContaining({
+          createdFrom: 'workspace_direct_chat',
+          thinkingEffort: 'high',
+        }),
       })
     );
     expect(mocks.newStartTask).toHaveBeenCalledWith(
@@ -259,10 +264,158 @@ describe('Workspace project creation', () => {
     expect(mocks.oldSetAttaches).not.toHaveBeenCalled();
   });
 
+  it('shares the projectless interactive footer across Workspace and New session', () => {
+    const workspace = renderWorkspace();
+
+    expect(
+      screen.getByTestId('workspace-bottom-box-footer-props')
+    ).toHaveAttribute('data-interactive', 'true');
+    expect(
+      screen.getByTestId('workspace-bottom-box-footer-props')
+    ).toHaveAttribute('data-project-id', '');
+
+    workspace.unmount();
+    renderWorkspace({ variant: 'new-project' });
+
+    expect(
+      screen.getByTestId('workspace-bottom-box-footer-props')
+    ).toHaveAttribute('data-interactive', 'true');
+    expect(
+      screen.getByTestId('workspace-bottom-box-footer-props')
+    ).toHaveAttribute('data-project-id', '');
+  });
+
+  it('inherits the configured thinking effort when the composer is untouched', async () => {
+    mocks.projectState.getComposerThinkingEffort.mockReturnValue(undefined);
+    renderWorkspace();
+
+    fireEvent.change(screen.getByLabelText('workspace-message'), {
+      target: { value: 'Use the configured effort' },
+    });
+    fireEvent.click(screen.getByText('Send'));
+
+    await waitFor(() => {
+      expect(createSyncedProjectInSpace).toHaveBeenCalledTimes(1);
+    });
+    const createInput = vi.mocked(createSyncedProjectInSpace).mock.calls[0][0];
+    expect(createInput.metadata).toEqual({
+      createdFrom: 'workspace_direct_chat',
+    });
+  });
+
+  it('does not show a Workspace Profile control in the header', () => {
+    renderWorkspace();
+
+    expect(
+      screen.queryByRole('button', { name: 'layout.workspace-profile' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('centers the composer without Workspace management subpages', () => {
+    renderWorkspace();
+
+    expect(
+      screen.queryByRole('complementary', { name: 'Workspace management' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Space settings' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Memory settings' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /All projects/ })
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Workspace header')).toHaveClass(
+      'flex-1',
+      'items-center'
+    );
+  });
+
+  it('uses one left-aligned Cowork row without the Space switch above BottomBox', () => {
+    const { container } = renderWorkspace();
+
+    expect(screen.queryByText('Space switch')).not.toBeInTheDocument();
+    const coworkLabel = screen.getByText('Cowork with');
+    const singleAgentLabel = screen.getByText('Single Agent');
+    const coworkRow = coworkLabel.closest('[data-workspace-cowork-row]');
+    const agentList = container.querySelector('[data-workspace-agent-list]');
+    const bottomBox = container.querySelector('[data-workspace-bottom-box]');
+    const inputSection = container.querySelector(
+      '[data-workspace-input-section]'
+    );
+    const workspaceHeader = screen.getByLabelText('Workspace header');
+
+    expect(coworkLabel).toHaveClass('text-ds-text-display', 'font-display');
+    expect(singleAgentLabel).toHaveClass(
+      'text-ds-text-display',
+      'font-display'
+    );
+    expect(workspaceHeader).toHaveClass('flex-1', 'items-center', 'gap-0');
+    expect(inputSection).toHaveClass('items-center', 'p-4');
+    expect(coworkRow).toHaveClass(
+      'min-h-[46px]',
+      'items-center',
+      'justify-start'
+    );
+    expect(agentList).toHaveClass(
+      'h-[46px]',
+      'min-h-[46px]',
+      'items-center',
+      'justify-start',
+      'overflow-visible'
+    );
+    expect(coworkRow?.nextElementSibling).toBe(bottomBox);
+  });
+
+  it('uses the same Cowork composer for the new-project variant', () => {
+    const { container } = renderWorkspace({
+      variant: 'new-project',
+      embedded: true,
+    });
+
+    expect(screen.getByText('Cowork with')).toBeInTheDocument();
+    expect(screen.getByText('Single Agent')).toBeInTheDocument();
+    expect(screen.queryByText('Space switch')).not.toBeInTheDocument();
+    expect(container.querySelector('#workspace-bottom-group')).toBeNull();
+    expect(screen.getByLabelText('Workspace header')).toHaveClass(
+      'flex-1',
+      'items-center',
+      'gap-0'
+    );
+  });
+
+  it('keeps the agent-list height fixed across Single Agent and Workforce modes', () => {
+    const singleAgentView = renderWorkspace({ sessionMode: 'single-agent' });
+    const singleAgentList = singleAgentView.container.querySelector(
+      '[data-workspace-agent-list]'
+    );
+
+    expect(singleAgentList).toHaveClass('h-[46px]', 'min-h-[46px]');
+
+    singleAgentView.unmount();
+    const workforceView = renderWorkspace({ sessionMode: 'workforce' });
+    const workforceAgentList = workforceView.container.querySelector(
+      '[data-workspace-agent-list]'
+    );
+
+    expect(workforceAgentList).toHaveClass('h-[46px]', 'min-h-[46px]');
+  });
+
+  it('shows the mode label only for Single Agent mode', () => {
+    const { unmount } = renderWorkspace({ sessionMode: 'single-agent' });
+
+    expect(screen.getByText('Single Agent')).toBeInTheDocument();
+
+    unmount();
+    renderWorkspace({ sessionMode: 'workforce' });
+
+    expect(screen.queryByText('Single Agent')).not.toBeInTheDocument();
+  });
+
   it('guards against duplicate submissions while project creation is pending', async () => {
     let resolveCreation:
-      | ((value: { projectId: string; spaceId: string }) => void)
-      | undefined;
+      ((value: { projectId: string; spaceId: string }) => void) | undefined;
     vi.mocked(createSyncedProjectInSpace).mockImplementation(
       () =>
         new Promise((resolve) => {

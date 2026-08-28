@@ -12,6 +12,8 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import logging
+import os
 import pathlib
 import sys
 from logging.config import fileConfig
@@ -25,16 +27,31 @@ from sqlalchemy import engine_from_config, pool
 from sqlmodel import SQLModel
 
 from alembic import context
-from app.core.environment import auto_import, env_not_empty
+from app.core.environment import auto_import, env
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
 
+
+def _resolve_database_url() -> str:
+    configured_environment_url = str(env("database_url", "")).strip()
+    if configured_environment_url:
+        return configured_environment_url
+    configured_alembic_url = str(config.get_main_option("sqlalchemy.url") or "").strip()
+    if not configured_alembic_url:
+        raise RuntimeError("database_url is not set and alembic.ini has no sqlalchemy.url")
+    logging.getLogger("alembic.env").warning("database_url is not set; using sqlalchemy.url from alembic.ini")
+    os.environ["database_url"] = configured_alembic_url
+    return configured_alembic_url
+
+
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+database_url = _resolve_database_url()
 
 # add your model's MetaData object here
 # for 'autogenerate' support
@@ -103,7 +120,7 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = env_not_empty("database_url")
+    url = database_url
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -130,7 +147,7 @@ def run_migrations_online() -> None:
 
     """
     options = config.get_section(config.config_ini_section, {})
-    options["sqlalchemy.url"] = env_not_empty("database_url")
+    options["sqlalchemy.url"] = database_url
     connectable = engine_from_config(
         options,
         prefix="sqlalchemy.",

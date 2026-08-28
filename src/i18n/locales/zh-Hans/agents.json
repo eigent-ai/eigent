@@ -55,5 +55,12 @@
   "create-skill-default-name": "新技能",
   "create-skill-default-description": "描述此技能的作用。",
   "save-skill": "保存技能",
-  "compose-skill-hint": "编辑 SKILL.md（需要包含名称和描述的 YAML 前言），然后保存。"
+  "compose-skill-hint": "编辑 SKILL.md（需要包含名称和描述的 YAML 前言），然后保存。",
+  "try-skill-prompt": "我刚刚为 Eigent 添加了 {{name}} 技能。你能用这个技能创造一些很棒的内容吗？",
+  "select-agent-access": "选择智能体访问权限",
+  "all-agents": "所有智能体",
+  "replace-skill-title": "替换“{{name}}”技能？",
+  "replace-skill-message": "已存在同名技能。上传此技能将替换原技能，且无法恢复现有版本。",
+  "update-and-replace": "更新并替换",
+  "agent": "智能体"
 }

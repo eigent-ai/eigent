@@ -35,6 +35,15 @@ logger = logging.getLogger("toolkit_listen")
 MAX_LENGTH = 500
 
 
+def _current_tool_call_id() -> str | None:
+    # Imported lazily because importing app.agent toolkits while app.agent's
+    # package initializer is still assembling factories creates a cycle.
+    from app.run_runtime.tool_checkpoint import get_current_tool_checkpoint
+
+    checkpoint = get_current_tool_checkpoint()
+    return checkpoint.tool_call_id if checkpoint is not None else None
+
+
 def _truncate(text: str, max_length: int = MAX_LENGTH) -> str:
     """Truncate text if it exceeds max_length."""
     if len(text) > max_length:
@@ -122,15 +131,17 @@ def _create_activate_data(
     args_str: str,
 ) -> ActionActivateToolkitData:
     """Create activation data for toolkit method call."""
-    return ActionActivateToolkitData(
-        data={
-            "agent_name": toolkit.agent_name,
-            "process_task_id": process_task_id,
-            "toolkit_name": toolkit_name,
-            "method_name": method_name,
-            "message": args_str,
-        }
-    )
+    data = {
+        "agent_name": toolkit.agent_name,
+        "process_task_id": process_task_id,
+        "toolkit_name": toolkit_name,
+        "method_name": method_name,
+        "message": args_str,
+    }
+    tool_call_id = _current_tool_call_id()
+    if tool_call_id is not None:
+        data["tool_call_id"] = tool_call_id
+    return ActionActivateToolkitData(data=data)
 
 
 def _create_deactivate_data(
@@ -141,15 +152,17 @@ def _create_deactivate_data(
     res_msg: str,
 ) -> ActionDeactivateToolkitData:
     """Create deactivation data for toolkit method call."""
-    return ActionDeactivateToolkitData(
-        data={
-            "agent_name": toolkit.agent_name,
-            "process_task_id": process_task_id,
-            "toolkit_name": toolkit_name,
-            "method_name": method_name,
-            "message": res_msg,
-        }
-    )
+    data = {
+        "agent_name": toolkit.agent_name,
+        "process_task_id": process_task_id,
+        "toolkit_name": toolkit_name,
+        "method_name": method_name,
+        "message": res_msg,
+    }
+    tool_call_id = _current_tool_call_id()
+    if tool_call_id is not None:
+        data["tool_call_id"] = tool_call_id
+    return ActionDeactivateToolkitData(data=data)
 
 
 def _log_deactivate(
@@ -440,6 +453,7 @@ EXCLUDED_METHODS = {
     "json",  # Pydantic legacy json method
     "copy",  # Object copying
     "update",  # Object update
+    "clone_for_new_session",  # Runtime construction, not a tool action
 }
 
 

@@ -29,7 +29,7 @@
   "try-in-chat": "在對話中嘗試",
   "add-skill": "新增技能",
   "drag-and-drop": "拖放檔案到此處",
-  "or-click-to-browse": "或點擊瀏覽",
+  "or-click-to-browse": "或按一下瀏覽",
   "file-requirements": "檔案要求：",
   "file-requirements-detail-1": "上傳的 .zip 或技能包必須在根目錄中包含一個 SKILL.md 檔案。",
   "file-requirements-detail-2": "SKILL.md 檔案必須使用 YAML 格式定義技能名稱和描述。",
@@ -47,7 +47,7 @@
   "skill-add-error": "新增技能失敗。請重試。",
   "custom-skill": "自訂技能",
   "delete-skill": "刪除技能",
-  "delete-skill-confirmation": "您確定要刪除 \"{{name}}\" 嗎？此操作無法撤銷。",
+  "delete-skill-confirmation": "您確定要刪除 \"{{name}}\" 嗎？此操作無法復原。",
   "skill-deleted-success": "技能刪除成功！",
   "create-skill": "建立技能",
   "upload-skill": "上傳技能",
@@ -55,5 +55,12 @@
   "create-skill-default-name": "新技能",
   "create-skill-default-description": "描述此技能的用途。",
   "save-skill": "儲存技能",
-  "compose-skill-hint": "編輯 SKILL.md（需要含名稱與描述的 YAML 前言），然後儲存。"
+  "compose-skill-hint": "編輯 SKILL.md（需要含名稱與描述的 YAML 前言），然後儲存。",
+  "try-skill-prompt": "我剛剛為 Eigent 新增了 {{name}} 技能。你能用這個技能創造一些很棒的內容嗎？",
+  "select-agent-access": "選擇代理存取權",
+  "all-agents": "所有代理",
+  "replace-skill-title": "取代「{{name}}」技能？",
+  "replace-skill-message": "已存在同名技能。上傳此技能將取代原技能，而且無法還原現有版本。",
+  "update-and-replace": "更新並取代",
+  "agent": "智能體"
 }

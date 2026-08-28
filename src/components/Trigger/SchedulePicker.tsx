@@ -736,23 +736,23 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
   }, []);
 
   return (
-    <div className="space-y-4 flex h-full w-full flex-col">
+    <div className="flex h-full w-full min-w-0 flex-col space-y-4">
       <Tabs
         value={frequency}
         onValueChange={(value) => setFrequency(value as FrequencyType)}
-        className="flex-1"
+        className="min-w-0 flex-1"
       >
         <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="one-time" className="text-body-sm">
+          <TabsTrigger value="one-time" className="text-ds-text-base">
             {t('triggers.frequency-one-time')}
           </TabsTrigger>
-          <TabsTrigger value="daily" className="text-body-sm">
+          <TabsTrigger value="daily" className="text-ds-text-base">
             {t('triggers.frequency-daily')}
           </TabsTrigger>
-          <TabsTrigger value="weekly" className="text-body-sm">
+          <TabsTrigger value="weekly" className="text-ds-text-base">
             {t('triggers.frequency-weekly')}
           </TabsTrigger>
-          <TabsTrigger value="monthly" className="text-body-sm">
+          <TabsTrigger value="monthly" className="text-ds-text-base">
             {t('triggers.frequency-monthly')}
           </TabsTrigger>
         </TabsList>
@@ -778,8 +778,8 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 : undefined
             }
           />
-          <div className="gap-3 flex items-end">
-            <div className="flex-1">
+          <div className="grid min-w-0 grid-cols-2 items-end gap-3">
+            <div className="min-w-0">
               <InputSelect
                 value={hour}
                 onChange={(value) => setHour(value)}
@@ -791,7 +791,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 state={showErrors && !hour ? 'error' : undefined}
               />
             </div>
-            <div className="flex-1">
+            <div className="min-w-0">
               <InputSelect
                 value={minute}
                 onChange={(value) => setMinute(value)}
@@ -807,8 +807,8 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
         </TabsContent>
 
         <TabsContent value="daily" className="mt-4 space-y-3">
-          <div className="gap-3 flex items-end">
-            <div className="flex-1">
+          <div className="grid min-w-0 grid-cols-2 items-end gap-3">
+            <div className="min-w-0">
               <InputSelect
                 value={hour}
                 onChange={(value) => setHour(value)}
@@ -820,7 +820,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 state={showErrors && !hour ? 'error' : undefined}
               />
             </div>
-            <div className="flex-1">
+            <div className="min-w-0">
               <InputSelect
                 value={minute}
                 onChange={(value) => setMinute(value)}
@@ -850,8 +850,8 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
         </TabsContent>
 
         <TabsContent value="weekly" className="mt-4 space-y-3">
-          <div className="gap-3 flex items-end">
-            <div className="flex-1">
+          <div className="grid min-w-0 grid-cols-2 items-end gap-3">
+            <div className="min-w-0">
               <InputSelect
                 value={hour}
                 onChange={(value) => setHour(value)}
@@ -863,7 +863,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 state={showErrors && !hour ? 'error' : undefined}
               />
             </div>
-            <div className="flex-1">
+            <div className="min-w-0">
               <InputSelect
                 value={minute}
                 onChange={(value) => setMinute(value)}
@@ -877,7 +877,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
             </div>
           </div>
           <div>
-            <div className="mb-1.5 text-body-sm font-bold text-ds-text-neutral-default-default">
+            <div className="mb-1.5 text-ds-text-meta font-bold text-ds-ink-default-default">
               {t('triggers.schedule-weekdays')} *
             </div>
             <ToggleGroup
@@ -892,7 +892,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                   // This prevents having no weekdays selected
                 }
               }}
-              className="gap-2 flex flex-wrap"
+              className="flex flex-wrap gap-2"
             >
               <ToggleGroupItem
                 value="0"
@@ -977,8 +977,8 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
             required
             state={showErrors && !dayOfMonth ? 'error' : undefined}
           />
-          <div className="gap-3 flex items-end">
-            <div className="flex-1">
+          <div className="grid min-w-0 grid-cols-2 items-end gap-3">
+            <div className="min-w-0">
               <InputSelect
                 value={hour}
                 onChange={(value) => setHour(value)}
@@ -990,7 +990,7 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
                 state={showErrors && !hour ? 'error' : undefined}
               />
             </div>
-            <div className="flex-1">
+            <div className="min-w-0">
               <InputSelect
                 value={minute}
                 onChange={(value) => setMinute(value)}
@@ -1040,19 +1040,19 @@ export const SchedulePicker: React.FC<SchedulePickerProps> = ({
       {/* Scheduled Times Preview */}
       <Accordion type="single" collapsible className="mt-auto w-full">
         <AccordionItem value="scheduled-times" className="border-none">
-          <AccordionTrigger className="py-2 bg-transparent hover:no-underline">
-            <span className="text-sm font-bold text-ds-text-neutral-default-default">
+          <AccordionTrigger className="bg-transparent py-2 hover:no-underline">
+            <span className="text-sm font-bold text-ds-ink-default-default">
               {t('triggers.preview-scheduled-times')}
             </span>
           </AccordionTrigger>
           <AccordionContent>
-            <div className="space-y-2 rounded-lg bg-ds-bg-neutral-subtle-default p-4">
+            <div className="space-y-2 rounded-lg bg-ds-neutral-subtle-default p-4">
               {nextScheduledTimes.map((time, index) => (
                 <div
                   key={index}
-                  className="gap-2 text-label-sm text-ds-text-neutral-default-default flex items-center"
+                  className="flex items-center gap-2 text-ds-text-base text-ds-ink-default-default"
                 >
-                  <span className="w-5 font-mono text-xs text-ds-text-neutral-muted-default">
+                  <span className="w-5 font-mono text-xs text-ds-ink-muted-default">
                     {String(index + 1).padStart(2, '0')}
                   </span>
                   <span>{formatScheduledTime(time)}</span>

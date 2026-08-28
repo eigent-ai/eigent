@@ -72,16 +72,16 @@ export function SubtaskEditor({
   };
 
   return (
-    <div className="px-1 py-1 flex flex-col">
+    <div className="flex flex-col px-1 py-1">
       {taskInfo.map((task, index) => (
         <div
           key={task.id || `row-${index}`}
-          className="gap-2 p-1 flex items-start"
+          className="flex items-start gap-2 p-1"
         >
-          <div className="h-6 flex shrink-0 items-center justify-center">
+          <div className="flex h-6 shrink-0 items-center justify-center">
             <CircleDashed
               size={16}
-              className="text-ds-icon-status-splitting-default-default mt-0.5 fill-current"
+              className="mt-0.5 fill-current text-ds-icon-status-splitting-default-default"
             />
           </div>
           <textarea
@@ -102,7 +102,7 @@ export function SubtaskEditor({
             }}
             onKeyDown={(e) => handleKey(e, index, task.content)}
             rows={1}
-            className="text-body-sm font-normal text-ds-text-neutral-default-default placeholder:text-ds-text-neutral-subtle-disabled min-w-0 leading-10 flex-1 resize-none border-none bg-transparent focus:outline-none"
+            className="min-w-0 flex-1 resize-none border-none bg-transparent text-ds-text-base leading-10 font-normal text-ds-ink-default-default placeholder:text-ds-ink-muted-default focus:outline-none"
           />
         </div>
       ))}

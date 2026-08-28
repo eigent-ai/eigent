@@ -14,7 +14,6 @@
 
 import { fetchPut } from '@/api/http';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
-import type { SelectedProjectTurn } from '@/hooks/useSelectedProjectTurn';
 import { useHost } from '@/host';
 import { TaskStatus } from '@/types/constants';
 import {
@@ -30,14 +29,12 @@ import {
   Image,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { TaskState } from '../TaskState';
 import { Button } from '../ui/button';
 
-export default function BrowserAgentWorkspace({
-  selectedTurn,
-}: {
-  selectedTurn?: SelectedProjectTurn;
-}) {
+export default function BrowserAgentWorkspace() {
+  const { t } = useTranslation();
   //Get Chatstore for the active project's task
   const { chatStore, projectStore } = useChatStoreAdapter();
   const host = useHost();
@@ -47,10 +44,8 @@ export default function BrowserAgentWorkspace({
 
   const agentMap = {
     developer_agent: {
-      name: 'Developer Agent',
-      icon: (
-        <CodeXml size={16} className="text-ds-text-neutral-default-default" />
-      ),
+      name: t('layout.developer-agent'),
+      icon: <CodeXml size={16} className="text-ds-ink-default-default" />,
       textColor: 'text-emerald-700',
       bgColor: 'bg-ds-bg-terminal-default-default',
       shapeColor: 'bg-ds-bg-terminal-subtle-default',
@@ -58,10 +53,8 @@ export default function BrowserAgentWorkspace({
       bgColorLight: 'bg-emerald-200',
     },
     browser_agent: {
-      name: 'Browser Agent',
-      icon: (
-        <Globe size={16} className="text-ds-text-neutral-default-default" />
-      ),
+      name: t('layout.browser-agent'),
+      icon: <Globe size={16} className="text-ds-ink-default-default" />,
       textColor: 'text-blue-700',
       bgColor: 'bg-ds-bg-browser-default-default',
       shapeColor: 'bg-ds-bg-browser-subtle-default',
@@ -69,10 +62,8 @@ export default function BrowserAgentWorkspace({
       bgColorLight: 'bg-blue-200',
     },
     document_agent: {
-      name: 'Document Agent',
-      icon: (
-        <FileText size={16} className="text-ds-text-neutral-default-default" />
-      ),
+      name: t('layout.document-agent'),
+      icon: <FileText size={16} className="text-ds-ink-default-default" />,
       textColor: 'text-yellow-700',
       bgColor: 'bg-ds-bg-document-default-default',
       shapeColor: 'bg-ds-bg-document-subtle-default',
@@ -80,19 +71,17 @@ export default function BrowserAgentWorkspace({
       bgColorLight: 'bg-yellow-200',
     },
     multi_modal_agent: {
-      name: 'Multi Modal Agent',
-      icon: (
-        <Image size={16} className="text-ds-text-neutral-default-default" />
-      ),
+      name: t('layout.multi-modal-agent'),
+      icon: <Image size={16} className="text-ds-ink-default-default" />,
       textColor: 'text-fuchsia-700',
-      bgColor: 'bg-ds-bg-neutral-default-default',
-      shapeColor: 'bg-ds-bg-neutral-subtle-default',
-      borderColor: 'border-ds-border-neutral-default-default',
+      bgColor: 'bg-ds-neutral-default-default',
+      shapeColor: 'bg-ds-neutral-subtle-default',
+      borderColor: 'border-ds-hairline-default-default',
       bgColorLight: 'bg-fuchsia-200',
     },
     social_media_agent: {
-      name: 'Social Media Agent',
-      icon: <Bird size={16} className="text-ds-text-neutral-default-default" />,
+      name: t('layout.social-media-agent'),
+      icon: <Bird size={16} className="text-ds-ink-default-default" />,
       textColor: 'text-purple-700',
       bgColor: 'bg-violet-700',
       shapeColor: 'bg-violet-300',
@@ -101,10 +90,8 @@ export default function BrowserAgentWorkspace({
     },
   };
   // Extract complex expressions to avoid lint error in dependency array
-  const selectedChatState = selectedTurn?.chatStore?.getState();
-  const targetChatStore = selectedChatState ?? chatStore;
-  const activeTaskId =
-    selectedTurn?.taskId ?? (targetChatStore?.activeTaskId as string);
+  const targetChatStore = chatStore;
+  const activeTaskId = targetChatStore?.activeTaskId as string;
   const taskAssigning = targetChatStore?.tasks[activeTaskId]?.taskAssigning;
   const activeWorkspace = targetChatStore?.tasks[activeTaskId]?.activeWorkspace;
 
@@ -178,9 +165,9 @@ export default function BrowserAgentWorkspace({
   }
 
   return isTakeControl ? (
-    <div className="flex h-full w-full flex-col items-center justify-start rounded-xl border border-solid border-ds-border-status-completed-default-default bg-ds-bg-neutral-strong-default">
+    <div className="flex h-full w-full flex-col items-center justify-start rounded-xl border border-x border-y border-solid border-ds-border-status-completed-default-default bg-ds-neutral-strong-default">
       <div className="flex w-full items-start justify-start gap-sm p-sm">
-        <div className="rounded-full border border-solid border-ds-border-neutral-strong-default bg-transparent p-1">
+        <div className="rounded-full border border-x border-y border-solid border-ds-hairline-strong-default bg-transparent p-1">
           <Button
             onClick={() => {
               fetchPut(`/task/${projectStore.activeProjectId}/take-control`, {
@@ -194,7 +181,7 @@ export default function BrowserAgentWorkspace({
             className="rounded-full"
           >
             <ChevronLeft size={16} />
-            <span>Give back to Agent</span>
+            <span>{t('chat.give-back-to-agent')}</span>
           </Button>
         </div>
         {/* <div className="mx-2 bg-border-primary">{url}</div> */}
@@ -203,8 +190,8 @@ export default function BrowserAgentWorkspace({
     </div>
   ) : (
     <div className="flex h-full w-full flex-1 items-center justify-center">
-      <div className="relative flex h-full w-full flex-col overflow-hidden rounded-xl bg-ds-bg-neutral-default-default backdrop-blur-sm">
-        <div className="flex flex-shrink-0 items-center justify-between rounded-t-2xl px-2 pb-2 pt-3">
+      <div className="relative flex h-full w-full flex-col overflow-hidden rounded-xl bg-ds-neutral-default-default backdrop-blur-sm">
+        <div className="flex shrink-0 items-center justify-between rounded-t-2xl px-2 pt-3 pb-2">
           <div className="flex items-center justify-start gap-sm">
             <Button
               size="xs"
@@ -217,7 +204,7 @@ export default function BrowserAgentWorkspace({
               <ChevronLeft size={16} />
             </Button>
             <div
-              className={`text-base font-bold leading-snug ${
+              className={`text-base leading-snug font-bold ${
                 agentMap[activeAgent?.type as keyof typeof agentMap]?.textColor
               }`}
             >
@@ -262,7 +249,7 @@ export default function BrowserAgentWorkspace({
                 ).length || 0
               }
             />
-            {/* <div className="text-[10px] leading-17 font-medium text-ds-text-neutral-muted-default">
+            {/* <div className="text-[10px] leading-17 font-medium text-ds-ink-muted-default">
 							{
 								activeAgent?.tasks?.filter(
 									(task) => task.status && task.status !== "running"
@@ -299,8 +286,10 @@ export default function BrowserAgentWorkspace({
                     className="cursor-pointer rounded-full"
                   >
                     <Hand size={24} />
-                    <span className="text-base font-medium leading-9">
-                      Take Control
+                    <span className="text-base leading-9 font-medium">
+                      {t('chat.take-control', {
+                        defaultValue: 'Take Control',
+                      })}
                     </span>
                   </Button>
                 </div>
@@ -348,8 +337,10 @@ export default function BrowserAgentWorkspace({
                         className="cursor-pointer rounded-full"
                       >
                         <Hand size={24} />
-                        <span className="text-base font-medium leading-9">
-                          Take Control
+                        <span className="text-base leading-9 font-medium">
+                          {t('chat.take-control', {
+                            defaultValue: 'Take Control',
+                          })}
                         </span>
                       </Button>
                     </div>
@@ -359,7 +350,7 @@ export default function BrowserAgentWorkspace({
           </div>
         )}
         {activeAgent?.activeWebviewIds?.length !== 1 && (
-          <div className="z-100 absolute bottom-2 right-2 flex w-auto items-center gap-1 rounded-lg border border-solid border-ds-border-neutral-strong-default bg-ds-bg-neutral-strong-default p-1">
+          <div className="absolute right-2 bottom-2 z-100 flex w-auto items-center gap-1 rounded-lg border border-x border-y border-solid border-ds-hairline-strong-default bg-ds-neutral-strong-default p-1">
             <Button
               size="xs"
               buttonContent="icon-only"

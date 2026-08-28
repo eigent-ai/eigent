@@ -29,6 +29,9 @@ describe('pageTabStore session preview', () => {
     usePageTabStore.setState({
       sessionPreviewProjectId: null,
       sessionPreviewByProject: {},
+      workspaceChatDraftRequest: null,
+      workspaceChatDraftRequestSequence: 0,
+      workspaceReviewHandoffs: [],
     });
     usePageTabStore.getState().setSessionPreviewProject('project-a');
   });
@@ -70,6 +73,30 @@ describe('pageTabStore session preview', () => {
     const newChooserId = slice().activeTabId!;
     store.choosePreviewTabType(newChooserId, 'canvas');
     expect(slice().tabs.map((tab) => tab.type)).toEqual(['browser', 'canvas']);
+  });
+
+  it('opens browser and terminal tabs directly, reusing an existing kind', () => {
+    const store = usePageTabStore.getState();
+
+    store.openPreviewTab('browser');
+    const browserId = slice().activeTabId;
+    expect(slice()).toMatchObject({ open: true });
+    expect(slice().tabs.map((tab) => tab.type)).toEqual(['browser']);
+
+    store.closeSessionPreview();
+    store.openPreviewTab('browser');
+    expect(slice().activeTabId).toBe(browserId);
+    expect(slice().tabs).toHaveLength(1);
+
+    store.openPreviewTab('terminal');
+    expect(slice().tabs.map((tab) => tab.type)).toEqual([
+      'browser',
+      'terminal',
+    ]);
+    expect(slice().tabs[1]).toMatchObject({
+      type: 'terminal',
+      title: 'Terminal',
+    });
   });
 
   it('exposes every content kind via choosePreviewTabType', () => {
@@ -136,6 +163,30 @@ describe('pageTabStore session preview', () => {
     );
   });
 
+  it('does not reuse a read-only agent stream as the interactive terminal', () => {
+    const store = usePageTabStore.getState();
+    store.openAgentTerminalPreview('chat-1:turn-1:sub-1', 'Developer Agent');
+    const agentTabId = slice().activeTabId;
+
+    store.openPreviewTab('terminal');
+
+    const localTerminal = slice().tabs.find(
+      (tab) => tab.type === 'terminal' && !tab.agentSourceId
+    );
+    expect(slice().tabs).toHaveLength(2);
+    expect(localTerminal).toMatchObject({
+      type: 'terminal',
+      title: 'Terminal',
+    });
+    expect(slice().activeTabId).toBe(localTerminal?.id);
+    expect(slice().activeTabId).not.toBe(agentTabId);
+
+    store.closeSessionPreview();
+    store.openPreviewTab('terminal');
+    expect(slice().tabs).toHaveLength(2);
+    expect(slice().activeTabId).toBe(localTerminal?.id);
+  });
+
   it('reuses the chooser tab when a file is opened', () => {
     const store = usePageTabStore.getState();
     store.toggleSessionPreview();
@@ -149,6 +200,219 @@ describe('pageTabStore session preview', () => {
       title: 'doc.txt',
       file,
     });
+  });
+
+  it('opens and refocuses a Run review without replacing Project review', () => {
+    const store = usePageTabStore.getState();
+    store.toggleSessionPreview();
+    const chooserId = slice().activeTabId!;
+    store.choosePreviewTabType(chooserId, 'review');
+
+    const projectReview = slice().tabs[0];
+    expect(projectReview).toMatchObject({
+      type: 'review',
+      title: 'Task review',
+      reviewTarget: { scope: 'project', focusRequestId: 0 },
+    });
+
+    store.openReviewPreview({ runId: 'run-1', path: './src/app.ts' });
+    const runReview = slice().tabs.find(
+      (tab) => tab.type === 'review' && tab.reviewTarget?.scope === 'run'
+    );
+    expect(runReview).toMatchObject({
+      type: 'review',
+      title: 'Task review',
+      reviewTarget: {
+        scope: 'run',
+        runId: 'run-1',
+        focusPath: 'src/app.ts',
+        focusRequestId: 0,
+      },
+    });
+    expect(slice().tabs).toHaveLength(2);
+
+    store.openReviewPreview({ runId: 'run-1', path: 'src/other.ts' });
+    const refocused = slice().tabs.find((tab) => tab.id === runReview?.id);
+    expect(refocused).toMatchObject({
+      reviewTarget: {
+        scope: 'run',
+        runId: 'run-1',
+        focusPath: 'src/other.ts',
+        focusRequestId: 1,
+      },
+    });
+    expect(slice().tabs).toHaveLength(2);
+    expect(slice().activeTabId).toBe(runReview?.id);
+  });
+
+  it('migrates saved Review tabs to the task-focused title contract', async () => {
+    const migrate = usePageTabStore.persist.getOptions().migrate;
+    expect(migrate).toBeDefined();
+    if (!migrate) return;
+
+    const migrated = await migrate(
+      {
+        sessionPreviewByProject: {
+          'project-a': {
+            open: true,
+            activeTabId: 'review-legacy',
+            tabs: [
+              {
+                id: 'review-legacy',
+                type: 'review',
+                title: 'Review',
+                reviewTarget: {
+                  scope: 'project',
+                  focusRequestId: 0,
+                },
+                reviewScope: 'all',
+              },
+            ],
+          },
+        },
+      },
+      4
+    );
+    const restoredReview = (
+      migrated as {
+        sessionPreviewByProject: Record<
+          string,
+          { tabs: Array<Record<string, unknown>> }
+        >;
+      }
+    ).sessionPreviewByProject['project-a'].tabs[0];
+
+    expect(usePageTabStore.persist.getOptions().version).toBe(5);
+    expect(restoredReview).toMatchObject({
+      type: 'review',
+      title: 'Task review',
+      reviewTarget: { scope: 'project', focusRequestId: 0 },
+    });
+    expect(restoredReview).not.toHaveProperty('reviewScope');
+  });
+
+  it('keeps the first review revision per target and mirrors the tab’s own target', () => {
+    const store = usePageTabStore.getState();
+    store.toggleSessionPreview();
+    const chooserId = slice().activeTabId!;
+    store.choosePreviewTabType(chooserId, 'review');
+    const tabId = slice().tabs[0].id;
+    const first = { baseCommit: 'base-1', targetCommit: 'target-1' };
+    const second = { baseCommit: 'base-2', targetCommit: 'target-2' };
+
+    store.setReviewIdentity(tabId, first, 'run:run-1');
+    store.setReviewIdentity(tabId, first);
+
+    // A later revision must not move a pin, or nothing is ever out of date.
+    store.setReviewIdentity(tabId, second, 'run:run-1');
+    store.setReviewIdentity(tabId, second);
+
+    expect(slice().tabs[0]).toMatchObject({
+      // The tab's own target is `project`, so only that one mirrors.
+      reviewIdentity: first,
+      reviewIdentities: { 'run:run-1': first, project: first },
+    });
+  });
+
+  it('persists Review comments and creates a one-shot Project Chat draft', () => {
+    const store = usePageTabStore.getState();
+    store.openReviewPreview();
+    const review = slice().tabs.find((tab) => tab.type === 'review');
+    expect(review).toBeDefined();
+
+    const comments = [
+      {
+        id: 'comment-1',
+        fileId: 'src/app.ts',
+        path: 'src/app.ts',
+        selection: {
+          side: 'modified' as const,
+          startLine: 3,
+          endLine: 4,
+          text: 'const value = 1;',
+        },
+        body: 'Avoid the magic number.',
+        createdAt: 1,
+      },
+    ];
+    store.updateReviewComments(review!.id, comments);
+
+    expect(slice().tabs.find((tab) => tab.id === review!.id)).toMatchObject({
+      reviewComments: comments,
+    });
+
+    usePageTabStore.getState().requestWorkspaceChatDraft('Review feedback', {
+      reviewTabId: review!.id,
+      commentIds: ['comment-1'],
+    });
+    const request = usePageTabStore.getState().workspaceChatDraftRequest;
+    expect(request).toMatchObject({
+      projectId: 'project-a',
+      content: 'Review feedback',
+    });
+    usePageTabStore.getState().consumeWorkspaceChatDraft(request!.requestId);
+    expect(usePageTabStore.getState().workspaceChatDraftRequest).toBeNull();
+    expect(usePageTabStore.getState().workspaceReviewHandoffs).toHaveLength(1);
+    const handoffId =
+      usePageTabStore.getState().workspaceReviewHandoffs[0].handoffId;
+
+    usePageTabStore
+      .getState()
+      .acknowledgeWorkspaceReviewHandoffs('project-a', ['not-this-handoff']);
+    expect(usePageTabStore.getState().workspaceReviewHandoffs).toHaveLength(1);
+
+    usePageTabStore
+      .getState()
+      .acknowledgeWorkspaceReviewHandoffs('project-a', [handoffId]);
+    const sentReview = slice().tabs.find((tab) => tab.id === review!.id);
+    expect(sentReview).toMatchObject({
+      reviewComments: [
+        expect.objectContaining({
+          id: 'comment-1',
+          status: 'sent',
+          sentAt: expect.any(Number),
+        }),
+      ],
+    });
+    expect(usePageTabStore.getState().workspaceReviewHandoffs).toEqual([]);
+  });
+
+  it('discards an edited-away review handoff without marking comments sent', () => {
+    const store = usePageTabStore.getState();
+    store.openReviewPreview();
+    const review = slice().tabs.find((tab) => tab.type === 'review');
+    expect(review).toBeDefined();
+    store.updateReviewComments(review!.id, [
+      {
+        id: 'comment-1',
+        fileId: 'src/app.ts',
+        path: 'src/app.ts',
+        selection: null,
+        body: 'Keep this compatible.',
+        createdAt: 1,
+      },
+    ]);
+    store.requestWorkspaceChatDraft('Review feedback', {
+      reviewTabId: review!.id,
+      commentIds: ['comment-1'],
+    });
+    const handoffId =
+      usePageTabStore.getState().workspaceReviewHandoffs[0].handoffId;
+
+    usePageTabStore
+      .getState()
+      .discardWorkspaceReviewHandoffs('project-a', [handoffId]);
+
+    expect(usePageTabStore.getState().workspaceReviewHandoffs).toEqual([]);
+    const pendingReview = slice().tabs.find((tab) => tab.id === review!.id);
+    expect(pendingReview).toMatchObject({
+      reviewComments: [expect.objectContaining({ id: 'comment-1' })],
+    });
+    expect(
+      pendingReview?.type === 'review'
+        ? pendingReview.reviewComments?.[0].status
+        : 'wrong-tab-type'
+    ).toBeUndefined();
   });
 
   it('reuses the empty file tab and deduplicates files by path', () => {
@@ -165,6 +429,70 @@ describe('pageTabStore session preview', () => {
     expect(fileTabs).toHaveLength(1);
     expect(fileTabs[0]).toMatchObject({ title: 'doc.txt', file });
     expect(slice().activeTabId).toBe(fileTabs[0].id);
+  });
+
+  it('deduplicates pathless Artifacts by durable identity', () => {
+    const store = usePageTabStore.getState();
+    const first = {
+      name: 'first.txt',
+      type: 'txt',
+      path: '',
+      artifactId: 'artifact-1',
+      localPathAvailable: false,
+      assetRef: { chatFileId: 1, key: 'first.txt' },
+    } as FileInfo;
+    const second = {
+      name: 'second.txt',
+      type: 'txt',
+      path: '',
+      artifactId: 'artifact-2',
+      localPathAvailable: false,
+      assetRef: { chatFileId: 2, key: 'second.txt' },
+    } as FileInfo;
+
+    store.openFilePreview(first);
+    store.openFilePreview(second);
+    store.openFilePreview({ ...first });
+
+    const fileTabs = slice().tabs.filter((tab) => tab.type === 'file');
+    expect(fileTabs).toHaveLength(2);
+    expect(fileTabs.map((tab) => tab.title)).toEqual([
+      'first.txt',
+      'second.txt',
+    ]);
+    expect(slice().activeTabId).toBe(fileTabs[0].id);
+  });
+
+  it('refreshes a deduplicated Artifact tab when its preview becomes local', () => {
+    const store = usePageTabStore.getState();
+    const remote = {
+      name: 'index.html',
+      type: 'html',
+      path: 'https://example.test/signed/index.html',
+      relativePath: 'P5/index.html',
+      artifactId: 'artifact-html',
+      localPathAvailable: false,
+      isRemote: true,
+      assetRef: { chatFileId: 3, key: 'P5/index.html' },
+    } as FileInfo;
+    const local = {
+      ...remote,
+      path: '/workspace/space-1/P5/index.html',
+      localPathAvailable: true,
+      isRemote: false,
+    } as FileInfo;
+
+    store.openFilePreview(remote);
+    const originalTab = slice().tabs[0];
+    store.openFilePreview(local);
+
+    expect(slice().tabs).toHaveLength(1);
+    expect(slice().tabs[0]).toMatchObject({
+      id: originalTab.id,
+      type: 'file',
+      title: 'index.html',
+      file: local,
+    });
   });
 
   it('opens chat links in a browser tab of the current project preview', () => {

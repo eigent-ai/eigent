@@ -21,6 +21,10 @@ from pydantic import BaseModel
 
 from app.model.enums import Status
 from app.router_layer.hands_resolver import get_environment_hands
+from app.run_journal import (
+    configured_run_journal_path,
+    get_default_run_journal,
+)
 from app.service.task import get_task_lock_if_exists
 from app.utils.space_overlay_client import overlay_sync_failure_count
 from app.utils.workspace_paths import (
@@ -31,6 +35,12 @@ from app.utils.workspace_paths import (
 from app.utils.workspace_resolver import (
     _same_workspace_path,
     get_workspace_resolver,
+)
+from app.workspace_git import (
+    ContentRepositoryError,
+    ContentRepositoryService,
+    GitBackendError,
+    NestedRepositoryError,
 )
 
 router = APIRouter()
@@ -189,6 +199,103 @@ def _scratch_space_root(
     )
 
 
+def _content_repository_service() -> ContentRepositoryService:
+    return ContentRepositoryService(
+        get_default_run_journal(),
+        state_root=configured_run_journal_path().parent / "workspace-git",
+    )
+
+
+def _default_version_history(
+    *,
+    space_id: str,
+    workspace_root: Path,
+    eigent_owned_space: bool,
+) -> dict[str, Any]:
+    """Enable the default Content Repository for a newly bound Space.
+
+    Bootstrap is deliberately idempotent. A repository rooted at the selected
+    folder is adopted without changing its branch, remotes, or configuration;
+    a plain folder is initialized on ``main`` with an empty root commit and
+    without staging existing files.
+    """
+
+    try:
+        service = _content_repository_service()
+        existing = service.journal.get_space_git_repository(space_id=space_id)
+        if existing is not None:
+            if (
+                Path(existing.root_path).expanduser().resolve()
+                != workspace_root
+            ):
+                raise ContentRepositoryError(
+                    "Version history is bound to a different Space root"
+                )
+            # Older Eigent scratch Spaces could persist a repository binding
+            # while leaving the visible ``main`` branch unborn.  They then
+            # used a private anchor as the Run baseline, so files written to
+            # the visible checkout could never appear in that Run's Git diff.
+            # Heal only Eigent-owned repositories; an unborn repository that
+            # the user selected explicitly must remain untouched.
+            if (
+                existing.ownership == "eigent_owned"
+                and service.git.current_head(workspace_root) is None
+            ):
+                result = service.bootstrap(
+                    space_id=space_id,
+                    space_root=workspace_root,
+                    allow_init=True,
+                    eigent_owned_space=True,
+                )
+                return {
+                    "enabled": True,
+                    "repository_id": result.repository.repository_id,
+                    "initialized": False,
+                    "ownership": result.repository.ownership,
+                    "state": result.repository.state,
+                }
+            status = service.status(existing.repository_id)
+            return {
+                "enabled": True,
+                "repository_id": status.repository.repository_id,
+                "initialized": False,
+                "ownership": status.repository.ownership,
+                "state": status.repository.state,
+            }
+        result = service.bootstrap(
+            space_id=space_id,
+            space_root=workspace_root,
+            allow_init=True,
+            eigent_owned_space=eigent_owned_space,
+        )
+    except NestedRepositoryError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "nested_repository_requires_binding",
+                "message": (
+                    "The selected folder is inside another Git repository. "
+                    "Select that repository root to reuse its history."
+                ),
+            },
+        ) from exc
+    except (ContentRepositoryError, GitBackendError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "workspace_version_history_init_failed",
+                "message": str(exc),
+            },
+        ) from exc
+    return {
+        "enabled": True,
+        "repository_id": result.repository.repository_id,
+        "initialized": result.initialized,
+        "ownership": result.repository.ownership,
+        "state": result.repository.state,
+    }
+
+
 @router.get("/workspace/capabilities")
 async def workspace_capabilities(request: Request) -> dict[str, Any]:
     return _capability_payload(_manifest_from_request(request))
@@ -249,6 +356,11 @@ async def workspace_scratch(
     if existing is not None:
         existing_path = Path(existing.workspace_root).expanduser()
         existing_path.mkdir(parents=True, exist_ok=True)
+        version_history = _default_version_history(
+            space_id=payload.space_id,
+            workspace_root=existing_path.resolve(),
+            eigent_owned_space=True,
+        )
         return {
             "space_id": payload.space_id,
             "email": payload.email,
@@ -256,6 +368,7 @@ async def workspace_scratch(
             "bound": existing_path.is_dir(),
             "workspace_root": existing.workspace_root,
             "binding": existing.__dict__.copy(),
+            "version_history": version_history,
         }
 
     root = _scratch_space_root(
@@ -268,6 +381,19 @@ async def workspace_scratch(
         str(root),
         user_id=payload.user_id,
     )
+    try:
+        version_history = _default_version_history(
+            space_id=payload.space_id,
+            workspace_root=root,
+            eigent_owned_space=True,
+        )
+    except Exception:
+        resolver.store.delete_binding(
+            payload.email,
+            payload.space_id,
+            payload.user_id,
+        )
+        raise
     return {
         "space_id": payload.space_id,
         "email": payload.email,
@@ -275,6 +401,7 @@ async def workspace_scratch(
         "bound": True,
         "workspace_root": binding.workspace_root,
         "binding": binding.__dict__.copy(),
+        "version_history": version_history,
     }
 
 
@@ -301,6 +428,14 @@ async def workspace_bind(
     )
     if existing is not None:
         if _same_workspace_path(existing.workspace_root, payload.path):
+            existing_root = (
+                Path(existing.workspace_root).expanduser().resolve()
+            )
+            version_history = _default_version_history(
+                space_id=space_id,
+                workspace_root=existing_root,
+                eigent_owned_space=False,
+            )
             return {
                 "space_id": space_id,
                 "email": payload.email,
@@ -308,6 +443,7 @@ async def workspace_bind(
                 "bound": Path(existing.workspace_root).expanduser().is_dir(),
                 "workspace_root": existing.workspace_root,
                 "binding": existing.__dict__.copy(),
+                "version_history": version_history,
             }
         raise HTTPException(
             status_code=409,
@@ -353,6 +489,15 @@ async def workspace_bind(
         str(resolved),
         user_id=payload.user_id,
     )
+    try:
+        version_history = _default_version_history(
+            space_id=space_id,
+            workspace_root=resolved,
+            eigent_owned_space=False,
+        )
+    except Exception:
+        resolver.store.delete_binding(payload.email, space_id, payload.user_id)
+        raise
     return {
         "space_id": space_id,
         "email": payload.email,
@@ -360,6 +505,7 @@ async def workspace_bind(
         "bound": True,
         "workspace_root": binding.workspace_root,
         "binding": binding.__dict__.copy(),
+        "version_history": version_history,
     }
 
 

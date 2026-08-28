@@ -18,7 +18,7 @@ import {
   tokenizeRichPlainText,
 } from '@/lib/richText';
 import { cn } from '@/lib/utils';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import React, {
   useCallback,
   useEffect,
@@ -209,6 +209,7 @@ export const RichChatInput = React.forwardRef<
   ref
 ) {
   const { t } = useTranslation();
+  const shouldReduceMotion = Boolean(useReducedMotion());
   const rootRef = useRef<HTMLDivElement | null>(null);
   const internalUpdate = useRef(false);
   const composingRef = useRef(false);
@@ -429,34 +430,25 @@ export const RichChatInput = React.forwardRef<
     <div className="relative isolate w-full min-w-0 flex-1">
       <div
         aria-hidden
-        className="pointer-events-none absolute left-1 top-0 z-[1] w-[calc(100%-0.25rem)] max-w-[calc(100%-0.25rem)] select-none"
+        className="pointer-events-none absolute top-0 left-1 z-[1] w-[calc(100%-0.25rem)] max-w-[calc(100%-0.25rem)] select-none"
       >
-        <AnimatePresence mode="wait">
-          {showPlaceholder ? (
-            <motion.span
-              key={placeholders[placeholderCycleIndex % placeholders.length]}
-              className="block w-full text-body-sm text-ds-text-neutral-subtle-disabled"
-              initial={{
-                opacity: 0,
-                filter: 'blur(8px)',
-                y: -18,
-              }}
-              animate={{
-                opacity: 1,
-                filter: 'blur(0px)',
-                y: 0,
-              }}
-              exit={{
-                opacity: 0,
-                filter: 'blur(8px)',
-                y: 18,
-              }}
-              transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-            >
-              {placeholders[placeholderCycleIndex % placeholders.length]}
-            </motion.span>
-          ) : null}
-        </AnimatePresence>
+        {showPlaceholder ? (
+          <motion.span
+            key={placeholders[placeholderCycleIndex % placeholders.length]}
+            className="block w-full text-ds-text-base text-ds-ink-subtle-disabled"
+            initial={{
+              opacity: 0,
+              y: shouldReduceMotion ? 0 : -4,
+            }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{
+              duration: shouldReduceMotion ? 0.12 : 0.18,
+              ease: [0.32, 0.72, 0, 1],
+            }}
+          >
+            {placeholders[placeholderCycleIndex % placeholders.length]}
+          </motion.span>
+        ) : null}
       </div>
       <div
         ref={setRootRef}
@@ -487,7 +479,7 @@ export const RichChatInput = React.forwardRef<
         className={cn(
           'w-full flex-1 resize-none overflow-auto outline-none',
           'scrollbar max-h-[200px] min-h-[40px] py-0 pl-1',
-          'relative whitespace-pre-wrap break-words',
+          'relative break-words whitespace-pre-wrap',
           disabled && 'cursor-not-allowed opacity-60',
           textClassName,
           className

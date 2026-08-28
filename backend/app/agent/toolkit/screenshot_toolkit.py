@@ -87,8 +87,14 @@ class ScreenshotToolkit(BaseScreenshotToolkit, AbstractToolkit):
                 tools=[],
                 toolkits_to_register_agent=None,
                 external_tools=None,
-                step_timeout=getattr(
-                    self.agent, "step_timeout", default_step_timeout()
+                # Preserve an explicitly unbounded parent step. Avoid using
+                # ``getattr(..., default_step_timeout())`` here because its
+                # default expression is evaluated eagerly and can silently
+                # reintroduce a cumulative cap for nested image review.
+                step_timeout=(
+                    self.agent.step_timeout
+                    if hasattr(self.agent, "step_timeout")
+                    else default_step_timeout()
                 ),
             )
             response = vision_agent.step(message)

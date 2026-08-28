@@ -1,9 +1,9 @@
 {
   "task-hub": "Centro de tareas",
-  "new-project": "Nuevo Proyecto",
+  "new-project": "Nueva sesión",
   "search": "Buscar",
-  "project-archives": "Archivos de proyecto",
-  "ongoing-projects": "Proyectos en progreso",
+  "project-archives": "Sesiones archivadas",
+  "ongoing-projects": "Sesiones en curso",
   "ongoing-tasks": "Tareas en progreso",
   "completed-tasks": "Tareas completadas",
   "share": "Compartir",
@@ -24,6 +24,9 @@
   "document-agent": "Agente de Documentos",
   "multi-modal-agent": "Agente Multi Modal",
   "social-media-agent": "Agente de Redes Sociales",
-  "no-projects-found": "No se encontraron proyectos.",
-  "no-tasks-found": "No se encontraron tareas."
+  "no-projects-found": "No se encontraron sesiones.",
+  "no-tasks-found": "No se encontraron tareas.",
+  "command-search-placeholder": "Escribe un comando o busca…",
+  "more-integrations": "Más integraciones",
+  "today": "Hoy"
 }

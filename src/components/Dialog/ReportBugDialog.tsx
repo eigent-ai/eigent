@@ -212,16 +212,16 @@ export default function ReportBugDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         size="md"
-        className="gap-0 !rounded-xl border border-ds-border-neutral-strong-default !bg-ds-bg-neutral-strong-default p-0 shadow-sm sm:max-w-[560px]"
+        className="gap-0 !rounded-xl border border-x border-y border-ds-hairline-default-default p-0 shadow-sm sm:max-w-[560px]"
       >
-        <div className="w-full rounded-t-xl bg-ds-bg-neutral-strong-default pb-2 pl-md pr-12 pt-md text-left">
-          <DialogTitle className="m-0 block w-full text-left text-body-md font-bold text-ds-text-neutral-default-default">
+        <div className="w-full rounded-t-xl pt-md pr-12 pb-2 pl-md text-left">
+          <DialogTitle className="m-0 block w-full text-left text-ds-text-body-large font-bold text-ds-ink-default-default">
             {t('layout.support', { defaultValue: 'Support' })}
           </DialogTitle>
         </div>
-        <div className="flex max-h-[min(70vh,520px)] flex-col gap-md bg-ds-bg-neutral-strong-default px-md pb-md pt-2 text-left">
+        <div className="flex max-h-[min(70vh,520px)] flex-col gap-md px-md pt-2 pb-md text-left">
           {meta && (
-            <p className="m-0 text-body-sm text-ds-text-neutral-subtle-default">
+            <p className="m-0 text-ds-text-base text-ds-ink-subtle-default">
               {t('layout.report-bug-meta', {
                 version: meta.version,
                 os: meta.platform,
@@ -229,13 +229,13 @@ export default function ReportBugDialog({
               })}
             </p>
           )}
-          <h3 className="m-0 text-body-sm font-bold text-ds-text-neutral-default-default">
+          <h3 className="m-0 text-ds-text-base font-bold text-ds-ink-default-default">
             {t('layout.report-bug-dialog-title', {
               defaultValue: 'Report a bug',
             })}
           </h3>
           <label
-            className="text-body-sm font-medium text-ds-text-neutral-default-default"
+            className="text-ds-text-meta font-medium text-ds-ink-default-default"
             htmlFor="report-bug-description"
           >
             {t('layout.report-bug-field-description')}
@@ -248,7 +248,7 @@ export default function ReportBugDialog({
             className="min-h-[88px] resize-y"
           />
           <label
-            className="text-body-sm font-medium text-ds-text-neutral-default-default"
+            className="text-ds-text-meta font-medium text-ds-ink-default-default"
             htmlFor="report-bug-steps"
           >
             {t('layout.report-bug-field-steps')}
@@ -261,20 +261,20 @@ export default function ReportBugDialog({
             className="min-h-[72px] resize-y"
           />
           {canDownloadLogs && (
-            <div className="mt-1 flex flex-col gap-sm border-0 border-t border-solid border-ds-border-neutral-subtle-default pt-md">
-              <h3 className="m-0 text-body-sm font-bold text-ds-text-neutral-default-default">
+            <div className="mt-1 flex flex-col gap-sm border-0 border-x-0 border-t border-b-0 border-solid border-ds-hairline-subtle-default pt-md">
+              <h3 className="m-0 text-ds-text-base font-bold text-ds-ink-default-default">
                 {t('layout.support-logs-heading', {
                   defaultValue: 'Download logs',
                 })}
               </h3>
               <div className="flex items-center justify-between gap-md">
                 <div className="flex min-w-0 flex-col">
-                  <span className="text-body-sm font-medium text-ds-text-neutral-default-default">
+                  <span className="text-ds-text-base font-medium text-ds-ink-default-default">
                     {t('layout.support-eigent-log', {
                       defaultValue: 'Eigent log',
                     })}
                   </span>
-                  <span className="text-body-xs text-ds-text-neutral-subtle-default">
+                  <span className="text-ds-text-meta text-ds-ink-subtle-default">
                     {t('layout.support-eigent-log-desc', {
                       defaultValue: 'Desktop app logs',
                     })}
@@ -304,12 +304,12 @@ export default function ReportBugDialog({
               {Boolean(host?.electronAPI?.exportCamelLog) && (
                 <div className="flex items-center justify-between gap-md">
                   <div className="flex min-w-0 flex-col">
-                    <span className="text-body-sm font-medium text-ds-text-neutral-default-default">
+                    <span className="text-ds-text-base font-medium text-ds-ink-default-default">
                       {t('layout.support-camel-log', {
                         defaultValue: 'Camel log',
                       })}
                     </span>
-                    <span className="text-body-xs text-ds-text-neutral-subtle-default">
+                    <span className="text-ds-text-meta text-ds-ink-subtle-default">
                       {t('layout.support-camel-log-desc', {
                         defaultValue: 'Agent task logs (CAMEL backend)',
                       })}
@@ -340,9 +340,9 @@ export default function ReportBugDialog({
             </div>
           )}
         </div>
-        <DialogFooter className="flex !flex-col gap-sm !rounded-b-xl !border-0 !border-t-0 bg-transparent p-md shadow-none sm:!flex-col">
+        <DialogFooter className="flex !flex-col gap-sm !rounded-b-xl !border-0 !border-x-0 !border-y-0 !border-t-0 bg-transparent p-md shadow-none sm:!flex-col">
           {hasElectron && (
-            <p className="m-0 w-full text-right text-body-xs text-ds-text-neutral-subtle-default">
+            <p className="m-0 w-full text-right text-ds-text-meta text-ds-ink-subtle-default">
               {t('layout.report-bug-zip-hint', {
                 defaultValue:
                   'A diagnostics zip will be saved — attach it to the issue.',

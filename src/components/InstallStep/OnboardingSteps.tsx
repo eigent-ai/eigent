@@ -20,8 +20,9 @@ import {
   RuledLinesBackground,
 } from '@/components/Background';
 import { Button } from '@/components/ui/button';
-import { LocaleEnum, switchLanguage } from '@/i18n';
+import { LocaleEnum, resolveLocale, switchLanguage } from '@/i18n';
 import { recordOnboardingStepCompleted } from '@/lib/events/appEvents';
+import { getOnboardingThemePresets } from '@/lib/themeTokens/catalog';
 import { cn } from '@/lib/utils';
 import { useAuthStore, type WorkspaceMainBackground } from '@/store/authStore';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
@@ -55,29 +56,9 @@ const LANGUAGE_OPTIONS = [
   { key: LocaleEnum.Italian, nativeLabel: 'Italiano' },
 ];
 
-// ── Theme presets ─────────────────────────────────────────────────────────────
+// ── Theme presets (seeds come from base.color.json only) ──────────────────────
 
-const THEME_PRESETS = [
-  {
-    id: 'eigent',
-    label: 'Eigent',
-    lightAccent: '#1d1d1d',
-    darkAccent: '#ede1db',
-  },
-  {
-    id: 'camel',
-    label: 'CAMEL',
-    lightAccent: '#4c19e8',
-    darkAccent: '#b5afff',
-  },
-  { id: 'claw', label: 'Claw', lightAccent: '#cc7d5e', darkAccent: '#cc7d5e' },
-  {
-    id: 'starfish',
-    label: 'Starfish',
-    lightAccent: '#0169cc',
-    darkAccent: '#0169cc',
-  },
-] as const;
+const THEME_PRESETS = getOnboardingThemePresets();
 
 // ── Background pattern metadata (labels resolved via t() in component) ────────
 
@@ -127,10 +108,10 @@ function StepLanguage({
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col items-center gap-2">
-        <span className="text-heading-base font-bold text-ds-text-neutral-default-default">
+        <span className="text-ds-text-page font-bold text-ds-ink-default-default">
           {t('layout.onboarding-setup-language-title')}
         </span>
-        <span className="text-body-base mt-2 text-ds-text-neutral-muted-default">
+        <span className="mt-2 text-ds-text-base text-ds-ink-muted-default">
           {t('layout.onboarding-setup-language-subtitle')}
         </span>
       </div>
@@ -144,10 +125,10 @@ function StepLanguage({
               key={key}
               onClick={() => onSelect(key)}
               className={cn(
-                'transition-color flex items-center justify-between rounded-xl border border-solid px-6 py-3 text-body-sm font-medium duration-100',
+                'transition-color flex items-center justify-between rounded-xl border border-x border-y border-solid px-6 py-3 text-ds-text-base font-medium duration-100',
                 active
-                  ? 'border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default'
-                  : 'border-transparent bg-ds-bg-neutral-default-default text-ds-text-neutral-muted-default hover:border-ds-border-neutral-default-hover hover:bg-ds-bg-neutral-default-hover hover:text-ds-text-neutral-muted-hover'
+                  ? 'border-ds-hairline-default-default bg-ds-neutral-default-default text-ds-ink-default-default'
+                  : 'border-transparent bg-ds-neutral-default-default text-ds-ink-muted-default hover:border-ds-hairline-default-hover hover:bg-ds-neutral-default-hover hover:text-ds-ink-muted-hover'
               )}
             >
               <span>{displayLabel}</span>
@@ -199,10 +180,10 @@ function StepTheme({
     <div className="flex flex-col gap-8">
       {/* Mode selection */}
       <div className="flex w-full flex-col items-center gap-4">
-        <span className="text-heading-base font-bold text-ds-text-neutral-default-default">
+        <span className="text-ds-text-page font-bold text-ds-ink-default-default">
           {t('layout.onboarding-setup-appearance-title')}
         </span>
-        <span className="text-body-base mt-2 text-ds-text-neutral-muted-default">
+        <span className="mt-2 text-ds-text-base text-ds-ink-muted-default">
           {t('layout.onboarding-setup-language-subtitle')}
         </span>
         <div className="flex w-full gap-3">
@@ -213,14 +194,14 @@ function StepTheme({
                 key={id}
                 onClick={() => onModeChange(id)}
                 className={cn(
-                  'flex flex-1 flex-col items-center gap-2 rounded-xl border border-solid py-4 transition-colors duration-100',
+                  'flex flex-1 flex-col items-center gap-2 rounded-xl border border-x border-y border-solid py-4 transition-colors duration-100',
                   active
-                    ? 'border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default text-ds-text-neutral-default-default'
-                    : 'border-transparent bg-ds-bg-neutral-default-default text-ds-text-neutral-muted-default hover:border-ds-border-neutral-default-hover hover:bg-ds-bg-neutral-default-hover hover:text-ds-text-neutral-muted-hover'
+                    ? 'border-ds-hairline-default-default bg-ds-neutral-default-default text-ds-ink-default-default'
+                    : 'border-transparent bg-ds-neutral-default-default text-ds-ink-muted-default hover:border-ds-hairline-default-hover hover:bg-ds-neutral-default-hover hover:text-ds-ink-muted-hover'
                 )}
               >
                 <Icon size={20} strokeWidth={1.5} />
-                <span className="text-body-sm font-medium">{label}</span>
+                <span className="text-ds-text-base font-medium">{label}</span>
               </button>
             );
           })}
@@ -230,7 +211,7 @@ function StepTheme({
       {/* Color theme selection */}
       <div className="flex w-full flex-col items-center gap-4">
         <div>
-          <span className="text-body-lg font-semibold text-ds-text-neutral-default-default">
+          <span className="text-ds-text-section font-semibold text-ds-ink-default-default">
             {t('layout.onboarding-setup-color-theme')}
           </span>
         </div>
@@ -243,10 +224,10 @@ function StepTheme({
                 key={id}
                 onClick={() => onThemeChange(id)}
                 className={cn(
-                  'flex flex-col items-center gap-3 rounded-xl border border-solid p-4 transition-colors duration-100',
+                  'flex flex-col items-center gap-3 rounded-xl border border-x border-y border-solid p-4 transition-colors duration-100',
                   active
-                    ? 'border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default'
-                    : 'border-transparent bg-ds-bg-neutral-default-default hover:border-ds-border-neutral-default-hover hover:bg-ds-bg-neutral-default-hover'
+                    ? 'border-ds-hairline-default-default bg-ds-neutral-default-default'
+                    : 'border-transparent bg-ds-neutral-default-default hover:border-ds-hairline-default-hover hover:bg-ds-neutral-default-hover'
                 )}
               >
                 <div
@@ -256,16 +237,17 @@ function StepTheme({
                       backgroundColor: accent,
                       ringColor: active ? accent : 'transparent',
                       '--tw-ring-color': active ? accent : 'transparent',
-                      '--tw-ring-offset-color': 'var(--ds-bg-neutral-default)',
+                      '--tw-ring-offset-color':
+                        'var(--ds-neutral-subtle-default)',
                     } as React.CSSProperties
                   }
                 />
                 <span
                   className={cn(
-                    'text-body-sm font-medium',
+                    'text-ds-text-base font-medium',
                     active
-                      ? 'text-ds-text-neutral-default-default'
-                      : 'text-ds-text-neutral-muted-default'
+                      ? 'text-ds-ink-default-default'
+                      : 'text-ds-ink-muted-default'
                   )}
                 >
                   {label}
@@ -297,21 +279,21 @@ function PatternPreviewCard({
     <button
       onClick={onSelect}
       className={cn(
-        'ition-colors flex flex-col items-center gap-2 rounded-xl border border-solid p-2',
+        'ition-colors flex flex-col items-center gap-2 rounded-xl border border-x border-y border-solid p-2',
         selected
-          ? 'border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default'
-          : 'border-transparent bg-ds-bg-neutral-default-default hover:border-ds-border-neutral-default-default'
+          ? 'border-ds-hairline-default-default bg-ds-neutral-default-default'
+          : 'border-transparent bg-ds-neutral-default-default hover:border-ds-hairline-default-default'
       )}
     >
-      <div className="relative isolate h-24 w-full overflow-hidden rounded-xl bg-ds-bg-neutral-subtle-default">
+      <div className="relative isolate h-24 w-full overflow-hidden rounded-xl bg-ds-neutral-subtle-default">
         {Component && <Component />}
         {selected && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="h-6 w-6 rounded-full bg-ds-bg-neutral-strong-default p-1 shadow-sm">
+            <div className="h-6 w-6 rounded-full bg-ds-neutral-strong-default p-1 shadow-sm">
               <Check
                 size={12}
                 strokeWidth={2.5}
-                className="text-ds-text-neutral-default-default"
+                className="text-ds-ink-default-default"
               />
             </div>
           </div>
@@ -319,10 +301,8 @@ function PatternPreviewCard({
       </div>
       <span
         className={cn(
-          'pb-1 text-body-sm font-medium',
-          selected
-            ? 'text-ds-text-neutral-default-default'
-            : 'text-ds-text-neutral-muted-default'
+          'pb-1 text-ds-text-base font-medium',
+          selected ? 'text-ds-ink-default-default' : 'text-ds-ink-muted-default'
         )}
       >
         {label}
@@ -342,10 +322,10 @@ function StepBackground({
   return (
     <div className="flex w-full flex-col gap-8">
       <div className="flex flex-col items-center gap-2">
-        <span className="text-heading-base font-bold text-ds-text-neutral-default-default">
+        <span className="text-ds-text-page font-bold text-ds-ink-default-default">
           {t('layout.onboarding-setup-workspace-title')}
         </span>
-        <span className="text-body-base mt-2 text-ds-text-neutral-muted-default">
+        <span className="mt-2 text-ds-text-base text-ds-ink-muted-default">
           {t('layout.onboarding-setup-workspace-subtitle')}
         </span>
       </div>
@@ -398,11 +378,7 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
 
   const handleLanguage = (key: string) => {
     if (key === 'system') {
-      const systemLang = navigator.language.toLowerCase();
-      const available = Object.values(LocaleEnum);
-      const matched = available.find((l) => systemLang.startsWith(l));
-      const langToApply = matched ?? LocaleEnum.English;
-      switchLanguage(langToApply);
+      switchLanguage(resolveLocale(navigator.language));
       useAuthStore.getState().setLanguage('system');
     } else {
       switchLanguage(key as LocaleEnum);
@@ -455,7 +431,7 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
   };
 
   return (
-    <div className="relative flex h-full w-full flex-col overflow-hidden rounded-2xl bg-ds-bg-neutral-subtle-default">
+    <div className="relative flex h-full w-full flex-col overflow-hidden rounded-2xl bg-ds-neutral-subtle-default">
       {LivePatternComponent && <LivePatternComponent />}
 
       <div className="relative z-[1] flex h-full flex-col px-8 py-6">
@@ -465,7 +441,7 @@ export function OnboardingSteps({ onComplete }: { onComplete: () => void }) {
             <div
               key={s}
               className={cn(
-                'ease-[cubic-bezier(0.23,1,0.32,1)] h-1.5 rounded-full transition-[background-color,opacity] duration-200',
+                'h-1.5 rounded-full transition-[background-color,opacity] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]',
                 s === step
                   ? 'w-8 bg-ds-text-neutral-default-default'
                   : s < step

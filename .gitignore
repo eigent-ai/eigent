@@ -47,6 +47,7 @@ client_secret_*.json
 
 .claude/
 .cursor
+.agents/
 
 # Public directory (large media files)
 public/
@@ -71,6 +72,9 @@ storybook-static
 nul
 
 backend/benchmark/jobs/
+
+# Local Celery beat scheduler state
+server/celerybeat-schedule*
 
 # TypeScript incremental build info
 *.tsbuildinfo

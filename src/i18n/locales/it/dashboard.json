@@ -1,9 +1,9 @@
 {
   "task-hub": "Centro Attività",
-  "new-project": "Nuovo Progetto",
+  "new-project": "Nuova sessione",
   "search": "Cerca",
-  "project-archives": "Archivi Progetti",
-  "ongoing-projects": "Progetti in Corso",
+  "project-archives": "Sessioni archiviate",
+  "ongoing-projects": "Sessioni in corso",
   "ongoing-tasks": "Attività in Corso",
   "completed-tasks": "Attività Completate",
   "share": "Condividi",
@@ -20,10 +20,13 @@
   "search-emoji": "Cerca Emoji",
   "calculator": "Calcolatrice",
   "developer-agent": "Agente Sviluppatore",
-  "browser-agent": "Agente Browser",
+  "browser-agent": "Agente browser",
   "document-agent": "Agente Documenti",
   "multi-modal-agent": "Agente Multi Modale",
   "social-media-agent": "Agente Social Media",
-  "no-projects-found": "Nessun progetto trovato.",
-  "no-tasks-found": "Nessuna attività trovata."
+  "no-projects-found": "Nessuna sessione trovata.",
+  "no-tasks-found": "Nessuna attività trovata.",
+  "command-search-placeholder": "Inserisci una linea di comando o cerca...",
+  "more-integrations": "Ulteriori integrazioni",
+  "today": "Oggi"
 }

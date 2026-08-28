@@ -62,13 +62,13 @@ function ResizableHandle({
     <ResizablePrimitive.PanelResizeHandle
       data-slot="resizable-handle"
       className={cn(
-        'bg-ds-border-neutral-default-default after:inset-y-0 after:w-1 focus-visible:ring-ds-ring-brand-default-focus focus-visible:ring-offset-ds-bg-neutral-subtle-default data-[panel-group-direction=vertical]:after:left-0 data-[panel-group-direction=vertical]:after:h-1 data-[panel-group-direction=vertical]:after:translate-x-0 relative flex w-px items-center justify-center after:absolute after:left-1/2 after:-translate-x-1/2 focus-visible:ring-1 focus-visible:ring-offset-1 focus-visible:outline-hidden data-[panel-group-direction=vertical]:h-px data-[panel-group-direction=vertical]:w-full data-[panel-group-direction=vertical]:after:w-full data-[panel-group-direction=vertical]:after:-translate-y-1/2 [&[data-panel-group-direction=vertical]>div]:rotate-90',
+        'relative flex w-px items-center justify-center bg-ds-border-neutral-default-default after:absolute after:inset-y-0 after:left-1/2 after:w-1 after:-translate-x-1/2 focus-visible:ring-1 focus-visible:ring-ds-ring-focus focus-visible:ring-offset-1 focus-visible:ring-offset-ds-neutral-subtle-default focus-visible:outline-hidden data-[panel-group-direction=vertical]:h-px data-[panel-group-direction=vertical]:w-full data-[panel-group-direction=vertical]:after:left-0 data-[panel-group-direction=vertical]:after:h-1 data-[panel-group-direction=vertical]:after:w-full data-[panel-group-direction=vertical]:after:translate-x-0 data-[panel-group-direction=vertical]:after:-translate-y-1/2 [&[data-panel-group-direction=vertical]>div]:rotate-90',
         className
       )}
       {...props}
     >
       {withHandle && (
-        <div className="h-4 w-3 rounded-xs border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default z-10 flex items-center justify-center border">
+        <div className="z-10 flex h-4 w-3 items-center justify-center rounded-xs border border-x border-y border-ds-hairline-default-default bg-ds-neutral-default-default">
           <GripVerticalIcon className="size-2.5" />
         </div>
       )}

@@ -197,6 +197,10 @@ def list_files(
     skip_dirs: set[str] | None = None,
     skip_extensions: tuple[str, ...] = DEFAULT_SKIP_EXTENSIONS,
     skip_prefix: str = ".",
+    modified_after: float | None = None,
+    modified_before: float | None = None,
+    max_scanned_entries: int | None = None,
+    max_scan_seconds: float | None = None,
     stats: dict[str, float | int] | None = None,
 ) -> list[str]:
     """List files under dir_path with optional base confinement and filters.
@@ -209,6 +213,16 @@ def list_files(
         skip_dirs (set[str] | None): Directory names to skip (default: DEFAULT_SKIP_DIRS).
         skip_extensions (tuple[str, ...]): File extensions to skip (default: DEFAULT_SKIP_EXTENSIONS).
         skip_prefix (str): Skip dirs/files whose name starts with this prefix.
+        modified_after (float | None): If set, only include files whose mtime
+            is at or after this Unix timestamp. Filtering happens before the
+            result limit so recent artifacts are not hidden by older files.
+        modified_before (float | None): If set, only include files whose mtime
+            is at or before this Unix timestamp. This lets historical Run
+            artifact queries exclude files written by later Runs that share a
+            direct-write workspace.
+        max_scanned_entries (int | None): Optional hard cap on filesystem
+            entries visited, including entries filtered out by mtime.
+        max_scan_seconds (float | None): Optional wall-clock scan budget.
 
     Returns:
         List of real absolute file paths under dir_path (subject to filters and max_entries).
@@ -236,6 +250,8 @@ def list_files(
     scan_started = time.perf_counter()
     realpath_elapsed = 0.0
     symlink_count = 0
+    scanned_entries = 0
+    scan_limited = False
 
     def record_stats() -> None:
         if stats is None:
@@ -243,19 +259,62 @@ def list_files(
         stats["scan_elapsed_ms"] = (time.perf_counter() - scan_started) * 1000
         stats["realpath_elapsed_ms"] = realpath_elapsed * 1000
         stats["symlink_count"] = symlink_count
+        stats["scanned_entries"] = scanned_entries
+        stats["scan_limited"] = int(scan_limited)
+
+    def budget_exhausted() -> bool:
+        nonlocal scan_limited
+        if (
+            max_scanned_entries is not None
+            and scanned_entries >= max_scanned_entries
+        ):
+            scan_limited = True
+            return True
+        if (
+            max_scan_seconds is not None
+            and time.perf_counter() - scan_started >= max_scan_seconds
+        ):
+            scan_limited = True
+            return True
+        return False
 
     try:
         for root, dirs, files in os.walk(resolved_dir, followlinks=False):
+            scanned_entries += 1 + len(dirs)
+            if budget_exhausted():
+                record_stats()
+                return result
             dirs[:] = [
                 d
                 for d in dirs
                 if d not in skip_dirs and not _should_skip(d, skip_prefix)
             ]
             for name in files:
+                scanned_entries += 1
+                if budget_exhausted():
+                    record_stats()
+                    return result
                 if _should_skip(name, skip_prefix, skip_extensions):
                     continue
                 try:
                     file_path = os.path.join(root, name)
+                    if (
+                        modified_after is not None
+                        or modified_before is not None
+                    ):
+                        file_mtime = os.stat(
+                            file_path, follow_symlinks=False
+                        ).st_mtime
+                        if (
+                            modified_after is not None
+                            and file_mtime < modified_after
+                        ):
+                            continue
+                        if (
+                            modified_before is not None
+                            and file_mtime > modified_before
+                        ):
+                            continue
                     if os.path.islink(file_path):
                         symlink_count += 1
                         realpath_started = time.perf_counter()

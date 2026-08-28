@@ -60,11 +60,17 @@ from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.agent.tools import get_mcp_tools, get_toolkits
 from app.hands.interface import IHands
 from app.memory import (
-    build_durable_context_for_task_lock,
+    build_durable_context_projection_for_task_lock,
     finalize_task_lock_run_memory,
 )
 from app.model.chat import Chat, NewAgent, Status, TaskContent, sse_json
 from app.model.subscription_runtime import is_subscription_auth
+from app.run_journal.context_projection import (
+    build_project_execution_context_projection,
+    persist_context_projection_diagnostic,
+)
+from app.run_journal.runtime import get_default_run_journal
+from app.run_runtime.admission import activate_improve_admission
 from app.service.single_agent_service import single_agent_solve
 from app.service.task import (
     Action,
@@ -76,7 +82,9 @@ from app.service.task import (
     Agents,
     TaskLock,
     delete_task_lock,
+    notice_event_payload,
     set_current_task_id,
+    write_file_event_payload,
 )
 from app.utils.agent_memory import (
     build_memory_context,
@@ -94,6 +102,20 @@ logger = logging.getLogger("chat_service")
 
 SUMMARY_TASK_NAME_MAX_LENGTH = 80
 SUMMARY_TASK_SUMMARY_MAX_LENGTH = 240
+
+
+async def _activate_improve_admission(
+    task_lock: TaskLock,
+    item: ActionImproveData,
+    *,
+    project_id: str,
+) -> bool:
+    return await activate_improve_admission(
+        task_lock,
+        item,
+        project_id=project_id,
+        logger=logger,
+    )
 
 
 def _truncate_summary_part(value: str, max_length: int) -> str:
@@ -123,6 +145,49 @@ def normalize_summary_task(
         SUMMARY_TASK_SUMMARY_MAX_LENGTH,
     )
     return f"{name or 'Task'}|{summary or name or 'Task'}"
+
+
+async def _summarize_single_agent_task(
+    options: Chat,
+    question: str,
+    task_id: str,
+) -> str:
+    """Generate Single Agent project metadata with Workforce semantics."""
+
+    task = Task(
+        content=question + options.summary_prompt,
+        id=task_id,
+    )
+    try:
+        summary_agent = task_summary_agent(options)
+        return await asyncio.wait_for(
+            summary_task(summary_agent, task),
+            timeout=10,
+        )
+    except TimeoutError:
+        logger.warning(
+            "Single Agent summary_task timeout",
+            extra={
+                "project_id": options.project_id,
+                "task_id": task_id,
+            },
+        )
+    except Exception:
+        logger.exception(
+            "Single Agent task summary failed",
+            extra={
+                "project_id": options.project_id,
+                "task_id": task_id,
+            },
+        )
+    fallback_name = _truncate_summary_part(
+        question,
+        SUMMARY_TASK_NAME_MAX_LENGTH,
+    )
+    return normalize_summary_task(
+        f"{fallback_name or 'Task'}|{question}",
+        question,
+    )
 
 
 def _extract_stream_chunk_content(chunk: Any) -> str:
@@ -415,6 +480,56 @@ def build_conversation_context(
     return context
 
 
+def _build_question_context(
+    task_lock: TaskLock,
+    project_context: str | None,
+    *,
+    header: str = "=== Previous Conversation ===",
+) -> str:
+    """Return the best available context for routing and direct answers.
+
+    A Project TaskLock is process-local, so its conversation history is empty
+    after an app/backend restart even though the Renderer can rebuild prior
+    Runs. Follow-up routing must therefore fall back to the persisted Project
+    projection sent with the request instead of classifying an anaphoric
+    prompt (for example, "optimize its lighting") in isolation.
+    """
+
+    in_process = build_conversation_context(task_lock, header=header)
+    if getattr(task_lock, "conversation_history", None):
+        return in_process
+
+    durable = (project_context or "").strip()
+    if not durable:
+        return in_process
+    return (
+        f"{header}\n"
+        f"{durable}\n"
+        "=== End Previous Conversation ===\n\n"
+        f"{in_process}"
+    )
+
+
+async def _answer_simple_question(
+    agent: ListenChatAgent,
+    *,
+    question: str,
+    context: str,
+) -> str:
+    """Generate one direct answer and fully consume streaming responses."""
+
+    prompt = (
+        f"{context}"
+        f"User Query: {question}\n\n"
+        "Provide a direct, helpful answer to this simple question."
+    )
+    response = await _run_agent_step(agent, prompt)
+    content = _extract_agent_response_content(response)
+    if not content:
+        raise RuntimeError("simple answer model returned an empty response")
+    return content
+
+
 def build_context_for_workforce(
     task_lock: TaskLock,
     options: Chat,
@@ -424,23 +539,66 @@ def build_context_for_workforce(
 
     Prepends durable Project memory (from LocalMemoryStore) when available so
     Workforce recovers cross-restart context the same way Single Agent does
-    via _build_single_agent_context. The in-process conversation_history is
-    still appended afterward because it is the live state for the current
-    session and may contain turns not yet flushed to disk.
+    via _build_single_agent_context. Durable and in-process history are
+    alternative projections of the same facts; concatenating both duplicates
+    prior turns and gives two components ownership of conversation state.
     """
-    durable = build_durable_context_for_task_lock(
+    run_context = getattr(task_lock, "run_context", None)
+    canonical_execution = ""
+    execution_event_ids: tuple[str, ...] = ()
+    project_id = getattr(run_context, "project_id", None)
+    run_id = getattr(run_context, "run_id", None)
+    if isinstance(project_id, str) and isinstance(run_id, str):
+        try:
+            execution_projection = build_project_execution_context_projection(
+                get_default_run_journal(),
+                project_id=project_id,
+                current_run_id=run_id,
+            )
+            canonical_execution = execution_projection.text
+            execution_event_ids = execution_projection.source_event_ids
+        except Exception:
+            logger.warning(
+                "Canonical execution context unavailable; using Memory fallback",
+                extra={"project_id": project_id, "run_id": run_id},
+                exc_info=True,
+            )
+    memory_projection = build_durable_context_projection_for_task_lock(
         task_lock,
         mode="workforce_coordinator",
         current_user_prompt=task_content or "",
+        include_conversation=not bool(canonical_execution),
     )
+    durable = memory_projection.text if memory_projection is not None else None
     in_process = build_conversation_context(
         task_lock, header="=== CONVERSATION HISTORY ==="
     )
-    if durable and in_process:
-        return durable + "\n\n" + in_process
-    if durable:
-        return durable + "\n\n"
-    return in_process
+
+    def record_projection(projected_text: str) -> str:
+        if isinstance(project_id, str) and isinstance(run_id, str):
+            persist_context_projection_diagnostic(
+                get_default_run_journal(),
+                project_id=project_id,
+                run_id=run_id,
+                projected_text=projected_text,
+                source_event_ids=execution_event_ids,
+                source_memory_ids=(
+                    memory_projection.source_memory_ids
+                    if memory_projection is not None
+                    else ()
+                ),
+            )
+        return projected_text
+
+    durable_parts = [
+        part.strip()
+        for part in (durable, canonical_execution)
+        if isinstance(part, str) and part.strip()
+    ]
+    if durable_parts:
+        projected = "\n\n".join(durable_parts) + "\n\n"
+        return record_projection(projected)
+    return record_projection(in_process)
 
 
 @sync_step
@@ -466,8 +624,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
     # Initialize task_lock attributes
     if not hasattr(task_lock, "conversation_history"):
         task_lock.conversation_history = []
-    if not hasattr(task_lock, "last_task_result"):
-        task_lock.last_task_result = ""
     if not hasattr(task_lock, "agent_memory_history"):
         task_lock.agent_memory_history = []
     if not hasattr(task_lock, "memory_summary"):
@@ -518,7 +674,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
 
     if options.session_mode == "single-agent":
         async for chunk in single_agent_solve(
-            options, request, task_lock, hands=hands
+            options,
+            request,
+            task_lock,
+            hands=hands,
+            summarize_task=partial(_summarize_single_agent_task, options),
         ):
             yield chunk
         return
@@ -533,47 +693,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             },
         )
 
-        if await request.is_disconnected():
-            logger.warning("=" * 80)
-            logger.warning(
-                "[LIFECYCLE] CLIENT DISCONNECTED "
-                f"for project {options.project_id}"
-            )
-            logger.warning("=" * 80)
-            if workforce is not None:
-                logger.info(
-                    "[LIFECYCLE] Stopping workforce "
-                    "due to client disconnect, "
-                    "workforce._running="
-                    f"{workforce._running}"
-                )
-                if workforce._running:
-                    workforce.stop()
-                workforce.stop_gracefully()
-                logger.info(
-                    "[LIFECYCLE] Workforce stopped after client disconnect"
-                )
-            else:
-                logger.info("[LIFECYCLE] Workforce is None, no need to stop")
-            task_lock.status = Status.done
-            finalize_task_lock_run_memory(
-                task_lock,
-                state="cancelled",
-                final_result="<summary>Client disconnected</summary>Client disconnected",
-            )
-            try:
-                await delete_task_lock(task_lock.id)
-                logger.info(
-                    "[LIFECYCLE] Task lock deleted after client disconnect"
-                )
-            except Exception as e:
-                logger.error(f"Error deleting task lock on disconnect: {e}")
-            logger.info(
-                "[LIFECYCLE] Breaking out of "
-                "step_solve loop due to "
-                "client disconnect"
-            )
-            break
         try:
             item = await task_lock.get_queue()
         except Exception as e:
@@ -588,6 +707,14 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             )
             # Continue waiting instead of breaking on queue error
             continue
+
+        if isinstance(item, ActionImproveData):
+            if not await _activate_improve_admission(
+                task_lock,
+                item,
+                project_id=options.project_id,
+            ):
+                continue
 
         try:
             if item.action == Action.improve or start_event_loop:
@@ -627,6 +754,7 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 if start_event_loop is True:
                     question = options.question
                     attaches_to_use = options.attaches
+                    project_context = options.project_context
                     logger.info(
                         "[NEW-QUESTION] Initial question"
                         " from options.question: "
@@ -636,6 +764,9 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 else:
                     assert isinstance(item, ActionImproveData)
                     question = item.data.question
+                    project_context = (
+                        item.data.project_context or options.project_context
+                    )
                     attaches_to_use = (
                         item.data.attaches
                         if item.data.attaches
@@ -699,7 +830,10 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     )
                 else:
                     is_complex_task = await question_confirm(
-                        question_agent, question, task_lock
+                        question_agent,
+                        question,
+                        task_lock,
+                        project_context=project_context,
                     )
                     logger.info(
                         "[NEW-QUESTION] question_confirm"
@@ -713,32 +847,17 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                         ", providing direct answer "
                         "without workforce"
                     )
-                    conv_ctx = build_conversation_context(
-                        task_lock, header="=== Previous Conversation ==="
-                    )
-                    simple_answer_prompt = (
-                        f"{conv_ctx}"
-                        f"User Query: {question}\n\n"
-                        "Provide a direct, helpful "
-                        "answer to this simple "
-                        "question."
+                    conv_ctx = _build_question_context(
+                        task_lock,
+                        project_context,
                     )
 
                     try:
-                        simple_resp = await question_agent.astep(
-                            simple_answer_prompt
+                        answer_content = await _answer_simple_question(
+                            question_agent,
+                            question=question,
+                            context=conv_ctx,
                         )
-                        answer_content = _extract_agent_response_content(
-                            simple_resp
-                        )
-                        if not answer_content:
-                            answer_content = (
-                                "I understand your "
-                                "question, but I'm "
-                                "having trouble "
-                                "generating a response "
-                                "right now."
-                            )
 
                         record_agent_memory_snapshot(
                             task_lock,
@@ -749,22 +868,30 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             task_result=answer_content,
                         )
                         task_lock.add_conversation("assistant", answer_content)
+                        task_lock.status = Status.done
+                        finalize_task_lock_run_memory(
+                            task_lock,
+                            state="done",
+                            final_result=answer_content,
+                        )
 
                         yield sse_json(
                             "wait_confirm",
                             {"content": answer_content, "question": question},
                         )
                     except Exception as e:
-                        logger.error(f"Error generating simple answer: {e}")
+                        logger.exception("Error generating simple answer")
                         yield sse_json(
-                            "wait_confirm",
+                            "error",
                             {
-                                "content": "I encountered an error"
-                                " while processing "
-                                "your question.",
-                                "question": question,
+                                "message": "I encountered an error while "
+                                "processing your question.",
+                                "type": "simple_answer_failed",
                             },
                         )
+                        raise RuntimeError(
+                            "simple answer generation failed"
+                        ) from e
 
                     # Clean up empty folder if it was created for this task
                     if (
@@ -1180,8 +1307,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 end_message = (
                     "<summary>Task stopped</summary>Task stopped by user"
                 )
-                task_lock.last_task_result = end_message
-
                 # Add to conversation history (like normal end does)
                 if camel_task is not None:
                     task_content: str = camel_task.content
@@ -1215,10 +1340,16 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 )
                 finalize_task_lock_run_memory(
                     task_lock,
-                    state="done",
+                    state="cancelled",
                     final_result=end_message,
                     summary=getattr(task_lock, "summary_task_content", ""),
                 )
+
+                from app.service.run_cancellation import (
+                    cancel_current_turn_durable,
+                )
+
+                await cancel_current_turn_durable(task_lock)
 
                 # Clear camel_task as well
                 # (workforce is cleared, so
@@ -1419,7 +1550,14 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                             "for new task"
                         )
                         is_multi_turn_complex = await question_confirm(
-                            question_agent, new_task_content, task_lock
+                            question_agent,
+                            new_task_content,
+                            task_lock,
+                            project_context=(
+                                item.data.get("project_context")
+                                if isinstance(item.data, dict)
+                                else None
+                            ),
                         )
                         logger.info(
                             "[LIFECYCLE] Multi-turn: "
@@ -1435,36 +1573,21 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                 " direct answer without "
                                 "workforce"
                             )
-                            conv_ctx = build_conversation_context(
+                            conv_ctx = _build_question_context(
                                 task_lock,
-                                header="=== Previous Conversation ===",
-                            )
-                            simple_answer_prompt = (
-                                f"{conv_ctx}"
-                                "User Query: "
-                                f"{new_task_content}"
-                                "\n\nProvide a direct, "
-                                "helpful answer to this "
-                                "simple question."
+                                (
+                                    item.data.get("project_context")
+                                    if isinstance(item.data, dict)
+                                    else None
+                                ),
                             )
 
                             try:
-                                simple_resp = await question_agent.astep(
-                                    simple_answer_prompt
+                                answer_content = await _answer_simple_question(
+                                    question_agent,
+                                    question=new_task_content,
+                                    context=conv_ctx,
                                 )
-                                answer_content = (
-                                    _extract_agent_response_content(
-                                        simple_resp
-                                    )
-                                )
-                                if not answer_content:
-                                    answer_content = (
-                                        "I understand your "
-                                        "question, but I'm "
-                                        "having trouble "
-                                        "generating a response"
-                                        " right now."
-                                    )
 
                                 record_agent_memory_snapshot(
                                     task_lock,
@@ -1476,6 +1599,12 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                 )
                                 task_lock.add_conversation(
                                     "assistant", answer_content
+                                )
+                                task_lock.status = Status.done
+                                finalize_task_lock_run_memory(
+                                    task_lock,
+                                    state="done",
+                                    final_result=answer_content,
                                 )
 
                                 # Send response to user
@@ -1489,19 +1618,21 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                                     },
                                 )
                             except Exception as e:
-                                logger.error(
-                                    "Error generating simple "
-                                    f"answer in multi-turn: {e}"
+                                logger.exception(
+                                    "Error generating simple answer in "
+                                    "multi-turn"
                                 )
                                 yield sse_json(
-                                    "wait_confirm",
+                                    "error",
                                     {
-                                        "content": "I encountered an error "
-                                        "while processing your "
-                                        "question.",
-                                        "question": new_task_content,
+                                        "message": "I encountered an error "
+                                        "while processing your question.",
+                                        "type": "simple_answer_failed",
                                     },
                                 )
+                                raise RuntimeError(
+                                    "simple answer generation failed"
+                                ) from e
 
                             logger.info(
                                 "[LIFECYCLE] Multi-turn: "
@@ -1713,23 +1844,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
             elif item.action == Action.deactivate_toolkit:
                 yield sse_json("deactivate_toolkit", item.data)
             elif item.action == Action.write_file:
-                yield sse_json(
-                    "write_file",
-                    {
-                        "file_path": item.data,
-                        "process_task_id": item.process_task_id,
-                    },
-                )
+                yield sse_json("write_file", write_file_event_payload(item))
             elif item.action == Action.ask:
                 yield sse_json("ask", item.data)
             elif item.action == Action.notice:
-                yield sse_json(
-                    "notice",
-                    {
-                        "notice": item.data,
-                        "process_task_id": item.process_task_id,
-                    },
-                )
+                yield sse_json("notice", notice_event_payload(item))
             elif item.action == Action.search_mcp:
                 yield sse_json("search_mcp", item.data)
             elif item.action == Action.install_mcp:
@@ -1883,8 +2002,6 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     final_result: str = await get_result(camel_task, options)
 
                 task_lock.status = Status.done
-
-                task_lock.last_task_result = final_result
 
                 # Handle task content - use fallback if camel_task is None
                 if camel_task is not None:
@@ -2042,6 +2159,11 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                     state="cancelled",
                     final_result="<summary>Task stopped</summary>Task stopped by user",
                 )
+                from app.service.run_cancellation import (
+                    cancel_current_turn_durable,
+                )
+
+                await cancel_current_turn_durable(task_lock)
                 logger.info("[LIFECYCLE] Deleting task lock")
                 await delete_task_lock(task_lock.id)
                 logger.info(
@@ -2189,15 +2311,20 @@ def add_sub_tasks(
 
 
 async def question_confirm(
-    agent: ListenChatAgent, prompt: str, task_lock: TaskLock | None = None
+    agent: ListenChatAgent,
+    prompt: str,
+    task_lock: TaskLock | None = None,
+    *,
+    project_context: str | None = None,
 ) -> bool:
     """Simple question confirmation - returns True
     for complex tasks, False for simple questions."""
 
     context_prompt = ""
     if task_lock:
-        context_prompt = build_conversation_context(
-            task_lock, header="=== Previous Conversation ==="
+        context_prompt = _build_question_context(
+            task_lock,
+            project_context,
         )
 
     full_prompt = f"""{context_prompt}User Query: {prompt}
@@ -2213,6 +2340,11 @@ file operations, multi-step planning, or creating/modifying content
 with knowledge or conversation history, no action needed
 - Examples: greetings ("hello", "hi"), \
 fact queries ("what is X?"), clarifications, status checks
+
+A follow-up that asks you to inspect, review, optimize, fix, or modify an \
+existing Project artifact is a complex task, even when it is phrased as a \
+question. If the intent is ambiguous but may require reading files or using \
+tools, answer "yes".
 
 Answer only "yes" or "no". Do not provide any explanation.
 

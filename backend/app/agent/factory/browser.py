@@ -31,6 +31,7 @@ from app.agent.prompt import (
 )
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.agent.toolkit.hybrid_browser_toolkit import HybridBrowserToolkit
+from app.agent.toolkit.memory_toolkit import add_memory_tools
 
 # TODO: Remove NoteTakingToolkit and use TerminalToolkit instead
 from app.agent.toolkit.note_taking_toolkit import NoteTakingToolkit
@@ -76,10 +77,21 @@ class CdpBrowserPoolManager:
     parallel tasks use different browsers."""
 
     def __init__(self):
-        self._occupied_ports: dict[int, str] = {}
+        self._occupied_browsers: dict[str, str] = {}
+        self._session_to_browser_key: dict[str, str] = {}
         self._session_to_port: dict[str, int] = {}
         self._session_to_task: dict[str, str | None] = {}
         self._lock = threading.Lock()
+
+    @staticmethod
+    def _browser_key(browser: dict) -> str | None:
+        target_url = str(browser.get("targetUrl") or "").strip()
+        if target_url:
+            return f"target:{target_url}"
+        try:
+            return f"port:{_get_browser_port(browser)}"
+        except (TypeError, ValueError):
+            return None
 
     def acquire_browser(
         self,
@@ -99,37 +111,44 @@ class CdpBrowserPoolManager:
         """
         with self._lock:
             for browser in cdp_browsers:
-                port = browser.get("port")
-                if port and port not in self._occupied_ports:
-                    self._occupied_ports[port] = session_id
+                try:
+                    port = _get_browser_port(browser)
+                except (TypeError, ValueError):
+                    continue
+                browser_key = self._browser_key(browser)
+                if browser_key and browser_key not in self._occupied_browsers:
+                    self._occupied_browsers[browser_key] = session_id
+                    self._session_to_browser_key[session_id] = browser_key
                     self._session_to_port[session_id] = port
                     self._session_to_task[session_id] = task_id
                     logger.info(
                         f"Acquired browser on port {port} for session "
                         f"{session_id}. Occupied: "
-                        f"{list(self._occupied_ports.keys())}"
+                        f"{list(self._occupied_browsers.keys())}"
                     )
                     return browser
             logger.warning(
                 f"No available browsers for session {session_id}. "
-                f"All occupied: {list(self._occupied_ports.keys())}"
+                f"All occupied: {list(self._occupied_browsers.keys())}"
             )
             return None
 
     def release_browser(self, port: int, session_id: str):
         """Release a browser back to the pool."""
         with self._lock:
+            browser_key = self._session_to_browser_key.get(session_id)
             if (
-                port in self._occupied_ports
-                and self._occupied_ports[port] == session_id
+                browser_key is not None
+                and self._occupied_browsers.get(browser_key) == session_id
             ):
-                del self._occupied_ports[port]
+                del self._occupied_browsers[browser_key]
+                self._session_to_browser_key.pop(session_id, None)
                 self._session_to_port.pop(session_id, None)
                 self._session_to_task.pop(session_id, None)
                 logger.info(
                     f"Released browser on port {port} from session "
                     f"{session_id}. Occupied: "
-                    f"{list(self._occupied_ports.keys())}"
+                    f"{list(self._occupied_browsers.keys())}"
                 )
             else:
                 logger.warning(
@@ -150,11 +169,14 @@ class CdpBrowserPoolManager:
             ]
             for session_id in sessions:
                 port = self._session_to_port.get(session_id)
+                browser_key = self._session_to_browser_key.get(session_id)
                 if (
-                    port is not None
-                    and self._occupied_ports.get(port) == session_id
+                    browser_key is not None
+                    and self._occupied_browsers.get(browser_key) == session_id
                 ):
-                    del self._occupied_ports[port]
+                    del self._occupied_browsers[browser_key]
+                    self._session_to_browser_key.pop(session_id, None)
+                if port is not None:
                     released_ports.append(port)
                 self._session_to_port.pop(session_id, None)
                 self._session_to_task.pop(session_id, None)
@@ -162,14 +184,14 @@ class CdpBrowserPoolManager:
                 logger.info(
                     f"Released {len(released_ports)} browser(s) for "
                     f"task {task_id}. Occupied: "
-                    f"{list(self._occupied_ports.keys())}"
+                    f"{list(self._occupied_browsers.keys())}"
                 )
         return released_ports
 
     def get_occupied_ports(self) -> list[int]:
         """Get list of currently occupied ports."""
         with self._lock:
-            return list(self._occupied_ports.keys())
+            return list(dict.fromkeys(self._session_to_port.values()))
 
 
 # Global CDP browser pool manager instance
@@ -191,7 +213,14 @@ def browser_agent(
         ).send_message_to_user
     )
 
-    use_browser = hands is None or hands.can_use_browser()
+    electron_runtime = env("EIGENT_RUNTIME", "").lower().strip() == "electron"
+    has_owned_electron_target = any(
+        browser.get("managedBy") == "electron" and browser.get("targetUrl")
+        for browser in options.cdp_browsers
+    )
+    use_browser = (hands is None or hands.can_use_browser()) and (
+        not electron_runtime or has_owned_electron_target
+    )
     use_terminal = hands is None or hands.can_execute_terminal()
 
     # Acquire CDP browser from pool or use default port (only when browser enabled)
@@ -200,6 +229,7 @@ def browser_agent(
     selected_is_external = False
     cdp_url = None
     cdp_owned_by_hands = False
+    owned_target_url: str | None = None
 
     if use_browser and options.cdp_browsers:
         selected_browser = _cdp_pool_manager.acquire_browser(
@@ -209,20 +239,34 @@ def browser_agent(
             selected_port = _get_browser_port(selected_browser)
             cdp_url = _get_browser_endpoint(selected_browser)
             selected_is_external = selected_browser.get("isExternal", False)
+            owned_target_url = selected_browser.get("targetUrl")
             logger.info(
                 f"Acquired CDP browser from pool (initial): "
                 f"port={selected_port}, isExternal={selected_is_external}, "
                 f"session_id={toolkit_session_id}"
             )
         else:
-            fallback_browser = options.cdp_browsers[0]
-            selected_port = _get_browser_port(fallback_browser)
-            cdp_url = _get_browser_endpoint(fallback_browser)
-            selected_is_external = fallback_browser.get("isExternal", False)
-            logger.warning(
-                f"No available browsers in pool (initial), using first: "
-                f"port={selected_port}, session_id={toolkit_session_id}"
-            )
+            if electron_runtime:
+                use_browser = False
+                logger.warning(
+                    "No unused Eigent embedded browser target is available; "
+                    "Browser Toolkit will remain disabled for this Agent",
+                    extra={
+                        "project_id": options.project_id,
+                        "task_id": options.task_id,
+                    },
+                )
+            else:
+                fallback_browser = options.cdp_browsers[0]
+                selected_port = _get_browser_port(fallback_browser)
+                cdp_url = _get_browser_endpoint(fallback_browser)
+                selected_is_external = fallback_browser.get(
+                    "isExternal", False
+                )
+                logger.warning(
+                    f"No available browsers in pool (initial), using first: "
+                    f"port={selected_port}, session_id={toolkit_session_id}"
+                )
     elif use_browser:
         existing_cdp_url = env("EIGENT_CDP_URL", "").strip()
         selected_port = env("browser_port", "9222")
@@ -259,9 +303,13 @@ def browser_agent(
             default_start_url=default_start_url,
             headless=False,
             browser_log_to_file=True,
-            stealth=True,
+            # Electron already injects stealth behavior into its isolated
+            # WebContentsView. Playwright context-wide headers would also
+            # affect the main Eigent renderer on the shared CDP endpoint.
+            stealth=not bool(owned_target_url),
             session_id=toolkit_session_id,
             cdp_url=cdp_url,
+            owned_target_url=owned_target_url,
             enabled_tools=[
                 "browser_click",
                 "browser_type",
@@ -364,6 +412,12 @@ def browser_agent(
     if use_terminal and terminal_toolkit:
         tools.extend(terminal_toolkit)
         tool_names.append(TerminalToolkit.toolkit_name())
+    add_memory_tools(
+        tools=tools,
+        tool_names=tool_names,
+        api_task_id=options.project_id,
+        agent_name=Agents.browser_agent,
+    )
 
     # Build external browser notice
     external_browser_notice = ""
@@ -429,7 +483,17 @@ def browser_agent(
         )
         if selected:
             agent_instance._cdp_port = _get_browser_port(selected)
+            agent_instance._cdp_url = _get_browser_endpoint(selected)
+            agent_instance._cdp_owned_target_url = selected.get("targetUrl")
         else:
+            if any(
+                browser.get("managedBy") == "electron"
+                for browser in options.cdp_browsers
+            ):
+                raise RuntimeError(
+                    "No unused Eigent embedded browser target is available "
+                    "for the cloned Agent."
+                )
             agent_instance._cdp_port = _get_browser_port(
                 options.cdp_browsers[0]
             )

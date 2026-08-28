@@ -12,7 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { proxyFetchGet } from '@/api/http';
 import { generateUniqueId } from '@/lib';
 import { getAuthEnvironmentKey } from '@/lib/authEnvironment';
 import {
@@ -25,7 +24,12 @@ import {
   isPlaceholderProjectName,
   isPlaceholderSpaceNameStatic,
 } from '@/lib/spaceLabel';
-import type { ServerProject } from '@/service/spaceApi';
+import { fetchGroupedHistoryProjects } from '@/service/historyApi';
+import {
+  proxyEnsureLegacySpace,
+  proxyFetchSpaceProjects,
+  type ServerProject,
+} from '@/service/spaceApi';
 import type { ProjectGroup } from '@/types/history';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
@@ -42,6 +46,7 @@ const SPACE_STORE_PERSIST_VERSION = 3;
 export const DEFAULT_LOCAL_USER_ID = 'local';
 const PROJECT_SYNC_TTL_MS = 5 * 60 * 1000;
 const PROJECT_PLACEHOLDER_RESYNC_MS = 10 * 1000;
+const BACKGROUND_PROJECT_SYNC_CONCURRENCY = 2;
 const PROJECT_DISPLAY_NAME_MAX = 80;
 const INITIAL_BLANK_SPACE_NAME = 'Untitled Space';
 const INITIAL_BLANK_SPACE_CREATED_FROM = 'initial_hydrate';
@@ -81,6 +86,19 @@ export interface CreateSpaceInput {
   setActive?: boolean;
 }
 
+export type UpdateSpaceInput = Partial<
+  Pick<
+    Space,
+    | 'name'
+    | 'description'
+    | 'sourceType'
+    | 'rootPath'
+    | 'rootFingerprint'
+    | 'status'
+    | 'metadata'
+  >
+>;
+
 export interface SpaceProjectMeta {
   id: string;
   userId?: string;
@@ -112,7 +130,11 @@ interface SpaceStore {
   resetForUser: (userId?: string | number | null) => void;
   ensureLegacySpace: (userId?: string | number | null) => string;
   hydrateFromServer: (userId?: string | number | null) => Promise<void>;
-  syncProjectsFromServer: (spaceId: string) => Promise<void>;
+  syncProjectsFromServer: (
+    spaceId: string,
+    historyProjects?: ProjectGroup[] | null
+  ) => Promise<void>;
+  syncProjectsForSpaces: (spaceIds: string[]) => Promise<void>;
   upsertProjectMetas: (
     projects: SpaceProjectMeta[],
     options?: UpsertProjectMetaOptions
@@ -129,6 +151,10 @@ interface SpaceStore {
   upsertSpaces: (spaces: Space[], activeSpaceId?: string | null) => void;
   createSpace: (input: CreateSpaceInput) => string;
   createSpaceOnServer: (input: CreateSpaceInput) => Promise<string>;
+  updateSpaceOnServer: (
+    spaceId: string,
+    input: UpdateSpaceInput
+  ) => Promise<void>;
   deleteSpace: (spaceId: string) => void;
   deleteSpaceOnServer: (spaceId: string) => Promise<void>;
   cleanupInactiveEmptySpacesOnServer: () => Promise<void>;
@@ -273,18 +299,29 @@ const DISPOSABLE_BLANK_SPACE_CREATED_FROM = new Set([
   'home_hub_toolbar',
   'top_bar',
   'project_sidebar_space_selector',
+  'space_detail_sidebar',
   'workspace_space_picker',
 ]);
+
+/** Empty placeholder Spaces stay available to creation flows but never render as user Spaces. */
+export const isUnconfiguredPlaceholderSpace = (
+  space: Space | null | undefined,
+  projectsBySpaceId: Record<string, Record<string, SpaceProjectMeta>> = {}
+) => {
+  if (!space || space.metadata?.legacy === true) return false;
+  if (space.status !== 'active' || space.sourceType !== 'blank') return false;
+  if (space.rootPath) return false;
+  if (!isPlaceholderSpaceNameStatic(space.name)) return false;
+  return !hasVisibleProjectsForSpace(projectsBySpaceId, space.id);
+};
 
 export const isDisposableBlankSpace = (
   space: Space | null | undefined,
   projectsBySpaceId: Record<string, Record<string, SpaceProjectMeta>> = {}
 ) => {
-  if (!space || space.metadata?.legacy === true) return false;
-  if (space.status !== 'active') return false;
-  if (space.sourceType !== 'blank') return false;
-  if (space.rootPath) return false;
-  if (hasVisibleProjectsForSpace(projectsBySpaceId, space.id)) return false;
+  if (!space || !isUnconfiguredPlaceholderSpace(space, projectsBySpaceId)) {
+    return false;
+  }
   if (space.metadata?.autoCreatedPlaceholder !== true) return false;
 
   const createdFrom =
@@ -416,19 +453,28 @@ const projectDisplayNameFromHistory = (project: ProjectGroup) => {
   return prompt ? truncateProjectDisplayName(prompt) : null;
 };
 
-const fetchHistoryProjectSidebarMetaMap = async (spaceId: string) => {
-  const params = new URLSearchParams({
-    include_tasks: 'true',
-    space_id: spaceId,
-  });
-  const response = (await proxyFetchGet(
-    `/api/v1/chat/histories/grouped?${params.toString()}`
-  )) as { projects?: ProjectGroup[] } | null;
+const projectBelongsToSpace = (project: ProjectGroup, spaceId: string) =>
+  project.space_id === spaceId ||
+  project.tasks?.some((task) => task.space_id === spaceId);
+
+const fetchHistoryProjectSidebarMetaMap = async (
+  spaceId: string,
+  historyProjects?: ProjectGroup[] | null
+) => {
+  const projects =
+    historyProjects === undefined
+      ? await fetchGroupedHistoryProjects({
+          includeTasks: false,
+          spaceId,
+        })
+      : historyProjects?.filter((project) =>
+          projectBelongsToSpace(project, spaceId)
+        );
   const metaByProjectId = new Map<
     string,
     { displayName?: string; navLead: SessionNavLeadPresentation }
   >();
-  for (const project of response?.projects ?? []) {
+  for (const project of projects ?? []) {
     const displayName = projectDisplayNameFromHistory(project) ?? undefined;
     metaByProjectId.set(project.project_id, {
       displayName,
@@ -478,11 +524,27 @@ const rehomeLegacyRuntimeProjects = (
 };
 
 let workspaceReconcileFailureCount = 0;
+const projectSyncInFlight = new Map<string, Promise<void>>();
+const spaceHydrationInFlight = new Map<string, Promise<void>>();
 
 const wait = (ms: number) =>
   new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+
+const resolveHydrationOwnerId = async (
+  userId?: string | number | null
+): Promise<string> => {
+  if (userId !== undefined) {
+    return canonicalUserId(userId);
+  }
+  try {
+    const { getAuthStore } = await import('@/store/authStore');
+    return canonicalUserId(getAuthStore().user_id);
+  } catch {
+    return canonicalUserId(userId);
+  }
+};
 
 const unbindBrainWorkspaceMirror = async (spaceId: string) => {
   const [{ unbindWorkspaceFromBrain }, { getAuthStore }] = await Promise.all([
@@ -577,6 +639,20 @@ export const useSpaceStore = create<SpaceStore>()(
         }),
 
       hydrateFromServer: async (userId) => {
+        const ownerId = await resolveHydrationOwnerId(userId);
+        const hydrationKey = `${getAuthEnvironmentKey()}::${ownerId}`;
+        const existingHydration = spaceHydrationInFlight.get(hydrationKey);
+        if (existingHydration) {
+          await existingHydration;
+          return;
+        }
+
+        let finishHydration: () => void = () => undefined;
+        const currentHydration = new Promise<void>((resolve) => {
+          finishHydration = resolve;
+        });
+        spaceHydrationInFlight.set(hydrationKey, currentHydration);
+
         try {
           const [
             { proxyCreateSpace, proxyFetchSpaceProjects, proxyFetchSpaces },
@@ -585,7 +661,6 @@ export const useSpaceStore = create<SpaceStore>()(
             import('@/service/spaceApi'),
             import('./projectRuntimeStore'),
           ]);
-          const ownerId = canonicalUserId(userId);
           const serverSpaces = await proxyFetchSpaces();
           if (!(await isHydrationStillCurrentForUser(ownerId))) {
             return;
@@ -595,9 +670,6 @@ export const useSpaceStore = create<SpaceStore>()(
           );
           const activeOwnedSpaces = ownedSpaces.filter(
             (space) => space.status === 'active'
-          );
-          const hasActiveNonLegacySpace = activeOwnedSpaces.some(
-            (space) => !isLegacySpace(space)
           );
           const activeLegacySpaces = activeOwnedSpaces.filter(isLegacySpace);
           const legacySpaceIdsWithProjects = new Set<string>();
@@ -622,11 +694,13 @@ export const useSpaceStore = create<SpaceStore>()(
             }
           }
 
-          const shouldCreateInitialBlankSpace =
-            !hasActiveNonLegacySpace &&
-            (activeOwnedSpaces.length === 0 || activeLegacySpaces.length > 0);
-          const shouldPreferInitialBlankSpace =
-            legacySpaceIdsWithProjects.size > 0;
+          const visibleOwnedSpaces = ownedSpaces.filter(
+            (space) =>
+              !isLegacySpace(space) || legacySpaceIdsWithProjects.has(space.id)
+          );
+          const shouldCreateInitialBlankSpace = !visibleOwnedSpaces.some(
+            (space) => space.status === 'active'
+          );
 
           if (shouldCreateInitialBlankSpace) {
             try {
@@ -650,18 +724,19 @@ export const useSpaceStore = create<SpaceStore>()(
             return;
           }
 
-          const visibleOwnedSpaces = ownedSpaces.filter(
-            (space) =>
-              !isLegacySpace(space) || legacySpaceIdsWithProjects.has(space.id)
-          );
           const spaces = initialBlankSpace
             ? [initialBlankSpace, ...visibleOwnedSpaces]
             : visibleOwnedSpaces;
           void Promise.all([
             import('@/service/workspaceApi'),
             import('@/store/authStore'),
+            import('@/store/installationStore'),
           ])
-            .then(([workspaceModule, authModule]) => {
+            .then(async ([workspaceModule, authModule, installationModule]) => {
+              await installationModule.waitForBackendReadiness();
+              if (!(await isHydrationStillCurrentForUser(ownerId))) {
+                return;
+              }
               const email = authModule.getAuthStore().email;
               const userId = authModule.getAuthStore().user_id;
               if (!email) return;
@@ -720,10 +795,7 @@ export const useSpaceStore = create<SpaceStore>()(
               activeSpaceId: pickHydratedActiveSpaceId(
                 nextSpaces,
                 state.activeSpaceId,
-                localLegacyId,
-                shouldPreferInitialBlankSpace
-                  ? initialBlankSpace?.id
-                  : undefined
+                localLegacyId
               ),
             };
           });
@@ -766,6 +838,11 @@ export const useSpaceStore = create<SpaceStore>()(
             '[spaceStore] Failed to hydrate spaces from server:',
             error
           );
+        } finally {
+          if (spaceHydrationInFlight.get(hydrationKey) === currentHydration) {
+            spaceHydrationInFlight.delete(hydrationKey);
+          }
+          finishHydration();
         }
       },
 
@@ -821,93 +898,152 @@ export const useSpaceStore = create<SpaceStore>()(
         return spaceId;
       },
 
-      syncProjectsFromServer: async (spaceId) => {
+      syncProjectsFromServer: async (spaceId, historyProjects) => {
         if (!spaceId) return;
 
-        try {
-          const [
-            { proxyEnsureLegacySpace, proxyFetchSpaceProjects },
-            projectModule,
-          ] = await Promise.all([
-            import('@/service/spaceApi'),
-            import('./projectRuntimeStore'),
-          ]);
-          let targetSpaceId = spaceId;
+        const syncKey = `${getAuthEnvironmentKey()}::${spaceId}`;
+        const existingSync = projectSyncInFlight.get(syncKey);
+        if (existingSync) {
+          await existingSync;
+          return;
+        }
 
-          if (spaceId.startsWith('legacy_')) {
-            const legacySpace = await proxyEnsureLegacySpace();
-            targetSpaceId = legacySpace.id;
-            get().upsertSpaces(
-              [legacySpace],
-              get().activeSpaceId === spaceId ? legacySpace.id : undefined
+        const syncOperation = (async () => {
+          try {
+            const projectModule = await import('./projectRuntimeStore');
+            let targetSpaceId = spaceId;
+
+            if (spaceId.startsWith('legacy_')) {
+              const legacySpace = await proxyEnsureLegacySpace();
+              targetSpaceId = legacySpace.id;
+              get().upsertSpaces(
+                [legacySpace],
+                get().activeSpaceId === spaceId ? legacySpace.id : undefined
+              );
+
+              if (legacySpace.id !== spaceId) {
+                const projectStore =
+                  projectModule.useProjectRuntimeStore.getState();
+                rehomeLegacyRuntimeProjects(
+                  projectStore,
+                  spaceId,
+                  legacySpace.id
+                );
+
+                set((state) => {
+                  const nextSpaces = { ...state.spaces };
+                  delete nextSpaces[spaceId];
+                  return {
+                    spaces: nextSpaces,
+                    activeSpaceId:
+                      state.activeSpaceId === spaceId
+                        ? legacySpace.id
+                        : state.activeSpaceId,
+                  };
+                });
+              }
+            }
+
+            const [serverProjects, historyMetaByProjectId] = await Promise.all([
+              proxyFetchSpaceProjects(targetSpaceId),
+              fetchHistoryProjectSidebarMetaMap(
+                targetSpaceId,
+                historyProjects
+              ).catch((error) => {
+                console.warn(
+                  `[spaceStore] Failed to fetch history sidebar meta for Space ${targetSpaceId}:`,
+                  error
+                );
+                return new Map<
+                  string,
+                  {
+                    displayName?: string;
+                    navLead: SessionNavLeadPresentation;
+                  }
+                >();
+              }),
+            ]);
+            const namedProjects = withHistoryProjectNames(
+              serverProjects,
+              historyMetaByProjectId
             );
-
-            if (legacySpace.id !== spaceId) {
-              const projectStore =
-                projectModule.useProjectRuntimeStore.getState();
-              rehomeLegacyRuntimeProjects(
-                projectStore,
-                spaceId,
-                legacySpace.id
-              );
-
-              set((state) => {
-                const nextSpaces = { ...state.spaces };
-                delete nextSpaces[spaceId];
-                return {
-                  spaces: nextSpaces,
-                  activeSpaceId:
-                    state.activeSpaceId === spaceId
-                      ? legacySpace.id
-                      : state.activeSpaceId,
-                };
-              });
+            const activeNamedProjects = namedProjects.filter(
+              (project) => project.status !== 'archived'
+            );
+            get().upsertProjectMetas(
+              activeNamedProjects.map(projectMetaFromServer),
+              {
+                syncedSpaceId: targetSpaceId,
+                replaceSpace: true,
+                syncedAt: Date.now(),
+              }
+            );
+            const projectStore =
+              projectModule.useProjectRuntimeStore.getState();
+            projectStore.upsertProjectsFromServer(activeNamedProjects);
+            if (historyMetaByProjectId.size > 0) {
+              const navLeads: Record<string, SessionNavLeadPresentation> = {};
+              for (const [projectId, meta] of historyMetaByProjectId) {
+                navLeads[projectId] = meta.navLead;
+              }
+              projectStore.setProjectNavLeads(navLeads);
             }
+          } catch (error) {
+            console.warn(
+              `[spaceStore] Failed to sync projects for Space ${spaceId}:`,
+              error
+            );
           }
+        })();
 
-          const [serverProjects, historyMetaByProjectId] = await Promise.all([
-            proxyFetchSpaceProjects(targetSpaceId),
-            fetchHistoryProjectSidebarMetaMap(targetSpaceId).catch((error) => {
-              console.warn(
-                `[spaceStore] Failed to fetch history sidebar meta for Space ${targetSpaceId}:`,
-                error
-              );
-              return new Map<
-                string,
-                { displayName?: string; navLead: SessionNavLeadPresentation }
-              >();
-            }),
-          ]);
-          const namedProjects = withHistoryProjectNames(
-            serverProjects,
-            historyMetaByProjectId
-          );
-          const activeNamedProjects = namedProjects.filter(
-            (project) => project.status !== 'archived'
-          );
-          get().upsertProjectMetas(
-            activeNamedProjects.map(projectMetaFromServer),
-            {
-              syncedSpaceId: targetSpaceId,
-              replaceSpace: true,
-              syncedAt: Date.now(),
-            }
-          );
-          const projectStore = projectModule.useProjectRuntimeStore.getState();
-          projectStore.upsertProjectsFromServer(activeNamedProjects);
-          if (historyMetaByProjectId.size > 0) {
-            const navLeads: Record<string, SessionNavLeadPresentation> = {};
-            for (const [projectId, meta] of historyMetaByProjectId) {
-              navLeads[projectId] = meta.navLead;
-            }
-            projectStore.setProjectNavLeads(navLeads);
+        projectSyncInFlight.set(syncKey, syncOperation);
+        try {
+          await syncOperation;
+        } finally {
+          if (projectSyncInFlight.get(syncKey) === syncOperation) {
+            projectSyncInFlight.delete(syncKey);
           }
-        } catch (error) {
+        }
+      },
+
+      syncProjectsForSpaces: async (spaceIds) => {
+        const pendingSpaceIds = [...new Set(spaceIds)].filter(
+          (spaceId) =>
+            spaceId &&
+            (spaceId.startsWith('legacy_') || get().shouldSyncProjects(spaceId))
+        );
+        if (pendingSpaceIds.length === 0) return;
+
+        // One summaries-only history read supplies display metadata for every
+        // Space. The previous per-Space include_tasks=true fan-out could issue
+        // dozens of large requests at once and starve the interactive UI.
+        const historyProjects = await fetchGroupedHistoryProjects({
+          includeTasks: false,
+        }).catch((error) => {
           console.warn(
-            `[spaceStore] Failed to sync projects for Space ${spaceId}:`,
+            '[spaceStore] Failed to fetch shared history project metadata:',
             error
           );
-        }
+          return null;
+        });
+
+        let nextIndex = 0;
+        const workers = Array.from(
+          {
+            length: Math.min(
+              BACKGROUND_PROJECT_SYNC_CONCURRENCY,
+              pendingSpaceIds.length
+            ),
+          },
+          async () => {
+            while (nextIndex < pendingSpaceIds.length) {
+              const spaceId = pendingSpaceIds[nextIndex];
+              nextIndex += 1;
+              await get().syncProjectsFromServer(spaceId, historyProjects);
+            }
+          }
+        );
+        await Promise.all(workers);
       },
 
       upsertProjectMetas: (projects, options) =>
@@ -1137,6 +1273,20 @@ export const useSpaceStore = create<SpaceStore>()(
         return space.id;
       },
 
+      updateSpaceOnServer: async (spaceId, input) => {
+        const { proxyUpdateSpace } = await import('@/service/spaceApi');
+        const space = await proxyUpdateSpace(spaceId, {
+          name: input.name,
+          description: input.description,
+          source_type: input.sourceType,
+          root_path: input.rootPath,
+          root_fingerprint: input.rootFingerprint,
+          status: input.status,
+          metadata: input.metadata,
+        });
+        get().upsertSpaces([space], undefined);
+      },
+
       deleteSpace: (spaceId) => {
         const current = get();
         if (!current.spaces[spaceId]) return;
@@ -1260,9 +1410,7 @@ export const useSpaceStore = create<SpaceStore>()(
       renameSpaceOnServer: async (spaceId, name) => {
         const nextName = name.trim();
         if (!nextName) return;
-        const { proxyUpdateSpace } = await import('@/service/spaceApi');
-        const space = await proxyUpdateSpace(spaceId, { name: nextName });
-        get().upsertSpaces([space], undefined);
+        await get().updateSpaceOnServer(spaceId, { name: nextName });
       },
 
       setActiveSpace: (spaceId) => {

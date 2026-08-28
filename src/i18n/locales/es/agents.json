@@ -55,5 +55,12 @@
   "create-skill-default-name": "Nueva habilidad",
   "create-skill-default-description": "Describe qué hace esta habilidad.",
   "save-skill": "Guardar habilidad",
-  "compose-skill-hint": "Edita SKILL.md (se requiere frontmatter YAML con nombre y descripción) y luego guarda."
+  "compose-skill-hint": "Edita SKILL.md (se requiere frontmatter YAML con nombre y descripción) y luego guarda.",
+  "try-skill-prompt": "Acabo de añadir la habilidad {{name}} a Eigent. ¿Puedes crear algo increíble con ella?",
+  "select-agent-access": "Seleccionar acceso de agentes",
+  "all-agents": "Todos los agentes",
+  "replace-skill-title": "¿Reemplazar la habilidad «{{name}}»?",
+  "replace-skill-message": "Ya existe una habilidad con el mismo nombre. Al subir esta habilidad se reemplazará y no se podrá restaurar la versión existente.",
+  "update-and-replace": "Actualizar y reemplazar",
+  "agent": "Agente"
 }

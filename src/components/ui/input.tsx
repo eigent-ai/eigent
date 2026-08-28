@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import * as React from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { cn } from '@/lib/utils';
 import { CircleAlert } from 'lucide-react';
@@ -27,16 +28,14 @@ import { formControlTokenAliases } from './tokenAliases';
 import { TooltipSimple } from './tooltip';
 
 export type InputSize = 'default' | 'sm';
+/** Primary: default surface. Secondary: subtle surface for nested settings fields. */
+export type InputVariant = 'primary' | 'secondary';
 export type InputState =
-  | 'default'
-  | 'hover'
-  | 'input'
-  | 'error'
-  | 'success'
-  | 'disabled';
+  'default' | 'hover' | 'input' | 'error' | 'success' | 'disabled';
 
 type BaseInputProps = Omit<React.ComponentProps<'input'>, 'size'> & {
   size?: InputSize;
+  variant?: InputVariant;
   state?: InputState;
   title?: string;
   tooltip?: string;
@@ -45,6 +44,7 @@ type BaseInputProps = Omit<React.ComponentProps<'input'>, 'size'> & {
   optional?: boolean;
   leadingIcon?: React.ReactNode;
   backIcon?: React.ReactNode;
+  backIconAriaLabel?: string;
   onBackIconClick?: () => void;
   trailingButton?: React.ReactNode;
   onEnter?: () => void;
@@ -56,6 +56,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
       className,
       type,
       size = 'default',
+      variant = 'primary',
       state = 'default',
       title,
       tooltip,
@@ -64,6 +65,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
       optional = false,
       leadingIcon,
       backIcon,
+      backIconAriaLabel,
       onBackIconClick,
       trailingButton,
       disabled,
@@ -73,6 +75,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
     },
     ref
   ) => {
+    const { t } = useTranslation();
     const [isComposing, setIsComposing] = React.useState(false);
     const { onKeyDown, onCompositionStart, onCompositionEnd, ...inputProps } =
       props;
@@ -88,21 +91,21 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
         style={formControlTokenAliases}
       >
         {title ? (
-          <div className="mb-1.5 flex items-center gap-1 text-body-sm font-bold text-ds-text-neutral-default-default">
+          <div className="mb-1.5 flex items-center gap-1 text-ds-text-meta font-bold text-ds-ink-default-default">
             <span>{title}</span>
-            {required && (
-              <span className="text-ds-text-neutral-default-default">*</span>
-            )}
+            {required && <span className="text-ds-ink-default-default">*</span>}
             {optional && (
-              <span className="rounded bg-ds-bg-neutral-muted-disabled px-1.5 py-0.5 text-xs font-normal text-ds-text-neutral-muted-default">
-                (optional)
+              <span className="rounded bg-ds-neutral-muted-disabled px-1.5 py-0.5 text-xs font-normal text-ds-ink-muted-default">
+                {t('layout.optional-parenthetical', {
+                  defaultValue: '(optional)',
+                })}
               </span>
             )}
             {tooltip && (
               <TooltipSimple content={tooltip}>
                 <CircleAlert
                   size={16}
-                  className="text-ds-icon-neutral-default-default"
+                  className="text-ds-ink-default-default"
                 />
               </TooltipSimple>
             )}
@@ -111,21 +114,23 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
 
         <div
           className={cn(
-            'relative flex items-center rounded-xl border border-solid shadow-sm transition-colors',
+            'relative flex items-center rounded-xl border border-x border-y border-solid shadow-sm transition-colors',
             stateCls.field,
             formFieldSizeClasses[size],
             // After field base so hover / focus background wins; subtle surface on interaction
             state !== 'error' &&
               state !== 'success' && [
-                'hover:bg-ds-bg-neutral-subtle-default',
-                'focus-within:bg-ds-bg-neutral-subtle-default',
-                'focus-within:ring-ds-ring-brand-default-focus hover:ring-ds-ring-neutral-strong-default',
+                variant === 'secondary'
+                  ? 'bg-ds-neutral-subtle-default hover:bg-ds-neutral-subtle-hover'
+                  : 'hover:bg-ds-neutral-subtle-default',
+                'focus-within:bg-ds-neutral-subtle-default',
+                'focus-within:ring-ds-ring-focus hover:ring-ds-hairline-strong-default',
                 'focus-within:ring-1 focus-within:ring-offset-0 hover:ring-1 hover:ring-offset-0',
               ]
           )}
         >
           {leadingIcon ? (
-            <span className="pointer-events-none absolute left-2 inline-flex h-5 w-5 items-center justify-center text-ds-icon-neutral-default-default">
+            <span className="pointer-events-none absolute left-2 inline-flex h-5 w-5 items-center justify-center text-ds-ink-default-default">
               {leadingIcon}
             </span>
           ) : null}
@@ -136,11 +141,11 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
             disabled={disabled}
             placeholder={placeholder}
             className={cn(
-              'peer w-full bg-transparent outline-none file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:transition-colors',
+              'peer w-full bg-transparent outline-none file:border-0 file:border-x-0 file:border-y-0 file:bg-transparent file:text-sm file:font-medium placeholder:transition-colors',
               stateCls.input,
               stateCls.placeholder,
-              hasLeft ? 'pl-9' : 'pl-3',
-              hasRight ? 'pr-9' : 'pr-3',
+              hasLeft ? 'pl-6' : 'pl-0',
+              hasRight ? 'pr-6' : 'pr-0',
               isComposing && 'placeholder:opacity-0',
               className
             )}
@@ -168,7 +173,8 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
               size="xs"
               buttonContent="icon-only"
               tabIndex={-1}
-              className="absolute right-2 inline-flex items-center justify-center rounded-full text-ds-icon-neutral-default-default focus:ring-0 disabled:opacity-50"
+              className="absolute right-2 inline-flex items-center justify-center rounded-full text-ds-ink-default-default focus:ring-0 disabled:opacity-50"
+              aria-label={backIconAriaLabel}
               disabled={disabled}
               onClick={onBackIconClick}
             >
@@ -186,7 +192,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
         {note ? (
           <div
             className={cn(
-              'mt-1.5 w-full min-w-0 overflow-hidden break-all !text-body-xs',
+              'mt-1.5 w-full min-w-0 overflow-hidden !text-ds-text-meta break-all',
               formFieldNoteTextClassName(
                 state === 'error'
                   ? 'error'

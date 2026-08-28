@@ -55,5 +55,12 @@
   "create-skill-default-name": "مهارة جديدة",
   "create-skill-default-description": "صفّ ما تفعله هذه المهارة.",
   "save-skill": "حفظ المهارة",
-  "compose-skill-hint": "عدّل SKILL.md (مطلوب ترويسة YAML بالاسم والوصف)، ثم احفظ."
+  "compose-skill-hint": "عدّل SKILL.md (مطلوب ترويسة YAML بالاسم والوصف)، ثم احفظ.",
+  "try-skill-prompt": "أضفت للتو مهارة {{name}} إلى Eigent. هل يمكنك إنشاء شيء رائع باستخدام هذه المهارة؟",
+  "select-agent-access": "اختيار وصول الوكلاء",
+  "all-agents": "كل الوكلاء",
+  "replace-skill-title": "استبدال مهارة «{{name}}»؟",
+  "replace-skill-message": "توجد مهارة بالاسم نفسه. سيؤدي رفع هذه المهارة إلى استبدالها، ولن يمكن استعادة الإصدار الحالي.",
+  "update-and-replace": "تحديث واستبدال",
+  "agent": "وكيل"
 }

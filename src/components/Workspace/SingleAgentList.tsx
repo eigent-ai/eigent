@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { Bot } from 'lucide-react';
+import { AgentAvatar } from '@/components/Workspace/AgentAvatar';
 
 /**
  * Workspace single-agent mode placeholder (visual only until wired).
@@ -20,13 +20,10 @@ import { Bot } from 'lucide-react';
 export function SingleAgentList() {
   return (
     <div
-      className="rounded-xl bg-ds-bg-neutral-strong-default p-2 inline-flex"
+      className="inline-flex size-10 shrink-0 overflow-hidden rounded-xl bg-ds-neutral-strong-default"
       aria-hidden
     >
-      <Bot
-        className="h-6 w-6 text-ds-text-neutral-muted-default shrink-0"
-        strokeWidth={2}
-      />
+      <AgentAvatar agentType="single_agent" fullBleed />
     </div>
   );
 }

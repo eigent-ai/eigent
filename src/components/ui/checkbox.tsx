@@ -17,6 +17,7 @@ import { Check } from 'lucide-react';
 import * as React from 'react';
 
 import { cn } from '@/lib/utils';
+import { DS_FOCUS_RING } from './semanticProps';
 import { checkboxTokenAliases, mergeAliasStyles } from './tokenAliases';
 
 export type CheckboxProps = React.ComponentPropsWithoutRef<
@@ -32,7 +33,8 @@ const Checkbox = React.forwardRef<
   <CheckboxPrimitives.Root
     ref={ref}
     className={cn(
-      'group/checkbox focus-visible:ring-ds-ring-brand-default-focus peer h-4 w-4 rounded border-ds-border-neutral-default-default bg-ds-bg-neutral-default-default hover:border-ds-border-neutral-strong-default data-[state=checked]:border-ds-border-status-completed-default-default data-[state=checked]:bg-ds-bg-success-default-default shrink-0 border border-solid transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
+      'group/checkbox peer size-ds-icon-md shrink-0 rounded-ds-4 border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default transition-colors hover:border-ds-hairline-strong-default disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:border-ds-border-success-default-default data-[state=checked]:bg-ds-bg-success-default-default',
+      DS_FOCUS_RING,
       className
     )}
     style={mergeAliasStyles(checkboxTokenAliases, style)}
@@ -41,7 +43,7 @@ const Checkbox = React.forwardRef<
     <CheckboxPrimitives.Indicator className="flex items-center justify-center">
       <Check
         className={cn(
-          'h-3.5 w-3.5 group-data-[state=checked]/checkbox:text-ds-text-brand-inverse-default shrink-0',
+          'size-ds-icon-sm shrink-0 group-data-[state=checked]/checkbox:!text-ds-success-indicator-on-default',
           iconClassName
         )}
       />

@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { useHost } from '@/host';
+import i18n from '@/i18n';
 import {
   type PreviewBrowserViewport,
   type SessionBrowserNavigationState,
@@ -84,14 +85,17 @@ function visibleStyle(
   };
 }
 
-function browserTitle(state: SessionBrowserNavigationState): string {
+function browserTitle(
+  state: SessionBrowserNavigationState,
+  fallbackTitle: string
+): string {
   const explicitTitle = state.title.trim();
   if (explicitTitle) return explicitTitle;
-  if (!state.url || state.url.startsWith('about:')) return 'New tab';
+  if (!state.url || state.url.startsWith('about:')) return fallbackTitle;
   try {
-    return new URL(state.url).hostname || 'New tab';
+    return new URL(state.url).hostname || fallbackTitle;
   } catch {
-    return 'New tab';
+    return fallbackTitle;
   }
 }
 
@@ -190,7 +194,10 @@ function PreviewGuest({
       usePageTabStore
         .getState()
         .updateBrowserPreviewTabIn(projectId, tabIdRef.current, {
-          title: browserTitle(state),
+          title: browserTitle(
+            state,
+            i18n.t('layout.new-tab', { defaultValue: 'New tab' })
+          ),
           navigation: { ...state, url },
           // Guests mount only while the tab has a URL, so never write an
           // empty one back (early events can fire before a location exists).
@@ -198,7 +205,10 @@ function PreviewGuest({
         });
     };
 
+    const notifyLanguageChanged = () => notify();
+
     GUEST_EVENTS.forEach((event) => element.addEventListener(event, notify));
+    i18n.on('languageChanged', notifyLanguageChanged);
     container.appendChild(element);
     registerPreviewWebview(tab.webviewId, element);
 
@@ -206,6 +216,7 @@ function PreviewGuest({
       GUEST_EVENTS.forEach((event) =>
         element.removeEventListener(event, notify)
       );
+      i18n.off('languageChanged', notifyLanguageChanged);
       unregisterPreviewWebview(tab.webviewId);
       element.remove();
     };

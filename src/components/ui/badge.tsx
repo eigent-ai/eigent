@@ -18,21 +18,24 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 import {
   DEFAULT_EMPHASIS_BY_VARIANT,
+  DS_FOCUS_RING,
+  normalizeUiEmphasis,
   normalizeUiTone,
   type UiEmphasis,
+  type UiEmphasisLegacy,
   type UiTone,
   type UiToneInput,
   type UiVariant,
 } from './semanticProps';
 
 const badgeBase = cva(
-  'inline-flex items-center rounded-md border font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ds-ring-brand-default-focus focus:ring-offset-2 focus:ring-offset-ds-bg-neutral-subtle-default',
+  `inline-flex items-center rounded-full border font-semibold transition-colors ${DS_FOCUS_RING}`,
   {
     variants: {
       size: {
-        xs: 'gap-0.5 px-1 py-0 !text-label-xs',
-        default: 'px-2 py-1 !text-label-sm',
-        sm: 'gap-1 px-2 py-1 !text-label-sm',
+        xs: 'gap-0.5 px-1 py-0 !text-ds-text-meta',
+        default: 'px-2 py-1 !text-ds-text-meta',
+        sm: 'gap-1 px-2 py-1 !text-ds-text-meta',
       },
     },
     defaultVariants: {
@@ -42,25 +45,25 @@ const badgeBase = cva(
 );
 
 type BadgeLegacyVariant = 'default' | 'secondary' | 'destructive' | 'outline';
-type BadgeStyleVariant = UiVariant | 'inverse';
+type BadgeStyleVariant = UiVariant;
 type BadgeTone = UiTone;
 
 const BADGE_PRIMARY: Record<BadgeTone, string> = {
   neutral:
-    'border-transparent bg-ds-bg-brand-default-default text-ds-text-brand-inverse-default',
+    'border-transparent bg-ds-accent-default-default text-ds-accent-on-default',
   success:
-    'border-transparent bg-ds-bg-success-default-default text-ds-text-success-strong-default',
+    'border-transparent bg-ds-bg-success-default-default text-ds-success-on-default',
   error:
-    'border-transparent bg-ds-bg-error-default-default text-ds-text-error-strong-default',
+    'border-transparent bg-ds-bg-error-default-default text-ds-error-on-default',
   information:
-    'border-transparent bg-ds-bg-information-default-default text-ds-text-information-strong-default',
+    'border-transparent bg-ds-bg-information-default-default text-ds-information-on-default',
   warning:
-    'border-transparent bg-ds-bg-warning-default-default text-ds-text-warning-strong-default',
+    'border-transparent bg-ds-bg-warning-default-default text-ds-warning-on-default',
 };
 
 const BADGE_SECONDARY: Record<BadgeTone, string> = {
   neutral:
-    'border-transparent bg-ds-bg-neutral-subtle-default text-ds-text-neutral-default-default',
+    'border-transparent bg-ds-neutral-subtle-default text-ds-ink-default-default',
   success:
     'border-transparent bg-ds-bg-success-subtle-default text-ds-text-success-strong-default',
   error:
@@ -73,7 +76,7 @@ const BADGE_SECONDARY: Record<BadgeTone, string> = {
 
 const BADGE_OUTLINE: Record<BadgeTone, string> = {
   neutral:
-    'bg-transparent border-ds-border-neutral-default-default text-ds-text-neutral-default-default',
+    'bg-transparent border-ds-hairline-default-default text-ds-ink-default-default',
   success:
     'bg-transparent border-ds-border-success-default-default text-ds-text-success-strong-default',
   error:
@@ -85,8 +88,7 @@ const BADGE_OUTLINE: Record<BadgeTone, string> = {
 };
 
 const BADGE_GHOST: Record<BadgeTone, string> = {
-  neutral:
-    'border-transparent bg-transparent text-ds-text-neutral-default-default',
+  neutral: 'border-transparent bg-transparent text-ds-ink-default-default',
   success:
     'border-transparent bg-transparent text-ds-text-success-strong-default',
   error: 'border-transparent bg-transparent text-ds-text-error-strong-default',
@@ -96,13 +98,10 @@ const BADGE_GHOST: Record<BadgeTone, string> = {
     'border-transparent bg-transparent text-ds-text-warning-strong-default',
 };
 
-const BADGE_INVERSE =
-  'border-transparent bg-ds-bg-neutral-inverse-default text-ds-text-neutral-inverse-default';
-
 function resolveBadgeVisual(
   variant: UiVariant | BadgeLegacyVariant | undefined,
   tone: UiToneInput | undefined,
-  emphasis: UiEmphasis | undefined
+  emphasis: UiEmphasisLegacy | undefined
 ): {
   styleVariant: BadgeStyleVariant;
   tone: BadgeTone;
@@ -116,7 +115,8 @@ function resolveBadgeVisual(
     return {
       styleVariant: 'primary',
       tone: normalizedTone,
-      emphasis: emphasis ?? DEFAULT_EMPHASIS_BY_VARIANT.primary,
+      emphasis:
+        normalizeUiEmphasis(emphasis) ?? DEFAULT_EMPHASIS_BY_VARIANT.primary,
       publicVariant: 'primary',
     };
   }
@@ -124,22 +124,16 @@ function resolveBadgeVisual(
     return {
       styleVariant: 'primary',
       tone: tone ? normalizedTone : 'error',
-      emphasis: emphasis ?? DEFAULT_EMPHASIS_BY_VARIANT.primary,
+      emphasis:
+        normalizeUiEmphasis(emphasis) ?? DEFAULT_EMPHASIS_BY_VARIANT.primary,
       publicVariant: 'primary',
     };
   }
 
   const baseVariant = v as UiVariant;
-  const resolvedEmphasis = emphasis ?? DEFAULT_EMPHASIS_BY_VARIANT[baseVariant];
+  const resolvedEmphasis =
+    normalizeUiEmphasis(emphasis) ?? DEFAULT_EMPHASIS_BY_VARIANT[baseVariant];
 
-  if (resolvedEmphasis === 'inverse') {
-    return {
-      styleVariant: 'inverse',
-      tone: normalizedTone,
-      emphasis: resolvedEmphasis,
-      publicVariant: baseVariant,
-    };
-  }
   if (
     (baseVariant === 'primary' &&
       (resolvedEmphasis === 'subtle' || resolvedEmphasis === 'muted')) ||
@@ -165,7 +159,6 @@ function badgeToneClasses(
   styleVariant: BadgeStyleVariant,
   tone: BadgeTone
 ): string {
-  if (styleVariant === 'inverse') return BADGE_INVERSE;
   if (styleVariant === 'primary') return BADGE_PRIMARY[tone];
   if (styleVariant === 'secondary') return BADGE_SECONDARY[tone];
   if (styleVariant === 'outline') return BADGE_OUTLINE[tone];
@@ -176,7 +169,7 @@ export type BadgeSize = 'xs' | 'default' | 'sm';
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLDivElement> {
   variant?: UiVariant | BadgeLegacyVariant;
-  emphasis?: UiEmphasis;
+  emphasis?: UiEmphasisLegacy;
   tone?: UiToneInput;
   size?: BadgeSize;
 }

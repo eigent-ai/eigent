@@ -22,7 +22,11 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { ProjectSection } from './ProjectSection';
+import {
+  animateChatTimelineAnchor,
+  type ChatTimelineScrollAnimation,
+} from './chatTimelineScroll';
+import { groupMessagesByQuery, ProjectSection } from './ProjectSection';
 
 interface ProjectChatContainerProps {
   className?: string;
@@ -30,21 +34,19 @@ interface ProjectChatContainerProps {
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
   /** Bottom padding so scrolled content clears the fixed BottomBox overlay (px); measured in ChatBox. */
   scrollBottomInsetPx: number;
-  onSkip: () => void;
-  isPauseResumeLoading: boolean;
 }
 
 export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   className = '',
   scrollContainerRef,
   scrollBottomInsetPx,
-  onSkip,
-  isPauseResumeLoading,
 }) => {
-  const { projectStore, chatStore } = useChatStoreAdapter();
+  const { projectStore } = useChatStoreAdapter();
   const [activeQueryId, setActiveQueryId] = useState<string | null>(null);
-  const [lastMessageCount, setLastMessageCount] = useState(0);
   const [, setChatRevision] = useState(0);
+  const anchorFrameRef = useRef<number | null>(null);
+  const anchorAnimationRef = useRef<ChatTimelineScrollAnimation | null>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   // Get all chat stores for the active project
   const activeProjectId = projectStore.activeProjectId;
@@ -94,13 +96,6 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
     };
   }, [chatStores]);
 
-  // Extract messages array to avoid complex expression in dependency array
-  const activeTaskId = chatStore?.activeTaskId as string;
-  const messages = useMemo(
-    () => chatStore?.tasks[activeTaskId]?.messages || [],
-    [chatStore, activeTaskId]
-  );
-
   // Scroll to bottom function
   const scrollToBottom = useCallback(() => {
     if (!scrollContainerRef.current) return;
@@ -114,47 +109,100 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
     }, 100);
   }, [scrollContainerRef]);
 
-  // Monitor for new user messages and auto-scroll
+  const userQueryIds = taskSections.flatMap(({ chatStore, taskId }) => {
+    const task = chatStore.getState().tasks[taskId];
+    return groupMessagesByQuery(task?.messages || [])
+      .filter((group) => group.userMessage)
+      .map((group) => group.queryId);
+  });
+  const userQueryCount = userQueryIds.length;
+  const latestUserQueryId = userQueryIds.at(-1);
+  const previousUserQueryStateRef = useRef<{
+    count: number;
+    latestId?: string;
+  }>({ count: 0 });
+  const previousQueryProjectIdRef = useRef<string | null>(activeProjectId);
+
+  const scrollLatestQueryBelowHeader = useCallback(
+    (queryId: string) => {
+      if (anchorFrameRef.current !== null) {
+        cancelAnimationFrame(anchorFrameRef.current);
+      }
+      anchorAnimationRef.current?.stop();
+
+      const run = () => {
+        const container = scrollContainerRef.current;
+        if (!container) return;
+        const targets = Array.from(
+          container.querySelectorAll<HTMLElement>('[data-query-id]')
+        );
+        const queryGroup = targets.find(
+          (candidate) => candidate.dataset.queryId === queryId
+        );
+        const target =
+          queryGroup?.querySelector<HTMLElement>('[data-user-query-anchor]') ||
+          queryGroup;
+        if (target) {
+          anchorAnimationRef.current = animateChatTimelineAnchor(
+            container,
+            target,
+            contentRef.current
+          );
+        }
+      };
+
+      anchorFrameRef.current = requestAnimationFrame(run);
+    },
+    [scrollContainerRef]
+  );
+
+  // The first query follows the existing bottom reveal. From the second query
+  // onward, keep the new user box at the top of the ChatBox viewport so it sits
+  // below the fixed Session header with the standard 44px top gap.
   useEffect(() => {
-    if (!chatStore || !activeProjectId) return;
+    if (previousQueryProjectIdRef.current !== activeProjectId) {
+      previousQueryProjectIdRef.current = activeProjectId;
+      previousUserQueryStateRef.current = {
+        count: userQueryCount,
+        latestId: latestUserQueryId,
+      };
+      return;
+    }
 
-    if (!activeTaskId) return;
+    const previousQueryState = previousUserQueryStateRef.current;
+    const addedQuery =
+      latestUserQueryId !== undefined &&
+      userQueryCount > previousQueryState.count &&
+      latestUserQueryId !== previousQueryState.latestId;
 
-    const task = chatStore.tasks[activeTaskId];
-    if (!task) return;
-
-    const currentMessageCount = messages.length;
-
-    // Check if a new user message was added
-    if (currentMessageCount > lastMessageCount) {
-      const lastMessage = messages[messages.length - 1];
-
-      // If the last message is from user, scroll to bottom
-      if (lastMessage && lastMessage.role === 'user') {
+    if (addedQuery) {
+      if (previousQueryState.count >= 1) {
+        scrollLatestQueryBelowHeader(latestUserQueryId);
+      } else {
         scrollToBottom();
       }
     }
-
-    // Use setTimeout to defer state update and avoid cascading renders
-    setTimeout(() => {
-      setLastMessageCount(currentMessageCount);
-    }, 0);
+    previousUserQueryStateRef.current = {
+      count: userQueryCount,
+      latestId: latestUserQueryId,
+    };
   }, [
-    messages,
-    lastMessageCount,
-    scrollToBottom,
     activeProjectId,
-    chatStore,
-    activeTaskId,
+    latestUserQueryId,
+    scrollLatestQueryBelowHeader,
+    scrollToBottom,
+    userQueryCount,
   ]);
 
-  // Reset message count when active task changes
-  useEffect(() => {
-    // Use setTimeout to defer state update and avoid cascading renders
-    setTimeout(() => {
-      setLastMessageCount(0);
-    }, 0);
-  }, [chatStore?.activeTaskId]);
+  useEffect(
+    () => () => {
+      if (anchorFrameRef.current !== null) {
+        cancelAnimationFrame(anchorFrameRef.current);
+      }
+      anchorAnimationRef.current?.stop();
+    },
+    []
+  );
 
   // When switching projects, jump to the latest message (bottom) instead of
   // staying at the top. Deferred so the switched-to project's messages have
@@ -162,6 +210,8 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   // history on every switch.
   useEffect(() => {
     if (!activeProjectId) return;
+    anchorAnimationRef.current?.stop();
+    if (contentRef.current) contentRef.current.style.minHeight = '';
     const timer = setTimeout(() => {
       const el = scrollContainerRef.current;
       if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'auto' });
@@ -200,63 +250,6 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
     };
   }, [chatStores, scrollContainerRef]);
 
-  // Turn viewport observer — updates which turn is visible in the side panel tabs
-  const setSidePanelViewedTurn = usePageTabStore(
-    (s) => s.setSidePanelViewedTurn
-  );
-  const turnObserverRef = useRef<IntersectionObserver | null>(null);
-  const visibleTurnScoresRef = useRef(new Map<string, number>());
-  const turnIdsKey = taskSections.map(({ taskId }) => taskId).join('|');
-
-  useEffect(() => {
-    const root = scrollContainerRef.current;
-    if (!root || !activeProjectId) return;
-
-    turnObserverRef.current?.disconnect();
-    visibleTurnScoresRef.current.clear();
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          const taskId = entry.target.getAttribute('data-turn-id');
-          if (!taskId) continue;
-          if (!entry.isIntersecting) {
-            visibleTurnScoresRef.current.delete(taskId);
-            continue;
-          }
-          const visibleHeight = entry.intersectionRect.height;
-          const availableHeight = Math.min(
-            entry.boundingClientRect.height,
-            root.clientHeight
-          );
-          visibleTurnScoresRef.current.set(
-            taskId,
-            availableHeight > 0 ? visibleHeight / availableHeight : 0
-          );
-        }
-        let bestTaskId: string | null = null;
-        let bestScore = 0;
-        for (const [taskId, score] of visibleTurnScoresRef.current) {
-          if (score > bestScore) {
-            bestTaskId = taskId;
-            bestScore = score;
-          }
-        }
-        if (bestTaskId) {
-          setSidePanelViewedTurn(activeProjectId, bestTaskId);
-        }
-      },
-      { root, threshold: [0, 0.01, 0.25, 0.5, 0.75, 1] }
-    );
-
-    turnObserverRef.current = observer;
-    root
-      .querySelectorAll('[data-turn-id]')
-      .forEach((el) => observer.observe(el));
-
-    return () => observer.disconnect();
-  }, [turnIdsKey, scrollContainerRef, activeProjectId, setSidePanelViewedTurn]);
-
   // Scroll to a specific query group when triggered from the sidebar
   const scrollToQueryId = usePageTabStore((s) => s.scrollToQueryId);
   const setScrollToQueryId = usePageTabStore((s) => s.setScrollToQueryId);
@@ -278,7 +271,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
     setScrollToQueryId(null);
   }, [scrollToQueryId, setScrollToQueryId, scrollContainerRef]);
 
-  // Scroll to a specific turn when triggered from TurnTabs
+  // Scroll to a historical Run when requested by the Session side panel.
   const scrollToTurnRequest = usePageTabStore((s) => s.scrollToTurnRequest);
   const setScrollToTurnRequest = usePageTabStore(
     (s) => s.setScrollToTurnRequest
@@ -354,6 +347,7 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
   return (
     <div className={`relative z-10 w-full ${className}`}>
       <div
+        ref={contentRef}
         className="mx-auto w-full max-w-[600px] pt-0"
         style={{ paddingBottom: scrollBottomInsetPx }}
       >
@@ -367,8 +361,6 @@ export const ProjectChatContainer: React.FC<ProjectChatContainerProps> = ({
                 taskId={taskId}
                 activeQueryId={activeQueryId}
                 onQueryActive={setActiveQueryId}
-                onSkip={onSkip}
-                isPauseResumeLoading={isPauseResumeLoading}
               />
             );
           })}

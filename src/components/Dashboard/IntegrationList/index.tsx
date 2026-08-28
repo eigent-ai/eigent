@@ -23,6 +23,7 @@ import {
 import { CircleAlert, Settings2 } from 'lucide-react';
 
 import ellipseIcon from '@/assets/mcp/Ellipse-25.svg';
+import { MCPEnvDialog } from '@/components/Settings/Connectors/components/MCPEnvDialog';
 import {
   Select,
   SelectContent,
@@ -37,7 +38,6 @@ import {
 import { getProxyBaseURL } from '@/lib';
 import { OAuth } from '@/lib/oauth';
 import { cn } from '@/lib/utils';
-import { MCPEnvDialog } from '@/pages/Connectors/components/MCPEnvDialog';
 import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -201,9 +201,9 @@ export default function IntegrationList({
           '[IntegrationList onConnect] Starting OAuth status polling'
         );
 
-        const start = Date.now();
-        const timeoutMs = 5 * 60 * 1000; // 5 minutes
-        while (Date.now() - start < timeoutMs) {
+        // 200 attempts × 1.5 seconds preserves the five-minute timeout
+        // without reading the wall clock from the component callback.
+        for (let attempt = 0; attempt < 200; attempt += 1) {
           try {
             const statusRes: any = await fetchGet(
               '/oauth/status/google_calendar'
@@ -304,12 +304,12 @@ export default function IntegrationList({
     : 'flex flex-col w-full items-start justify-start gap-4';
 
   const itemClassName = isSelectMode
-    ? 'cursor-pointer gap-2 rounded-lg bg-ds-bg-neutral-subtle-default px-3 py-2 min-h-0 flex w-full items-center justify-between'
-    : 'w-full px-6 py-4 bg-ds-bg-neutral-subtle-default rounded-2xl';
+    ? 'cursor-pointer gap-2 rounded-lg bg-ds-neutral-subtle-default px-3 py-2 min-h-0 flex w-full items-center justify-between'
+    : 'w-full px-6 py-4 bg-ds-neutral-subtle-default rounded-2xl';
 
   const titleClassName = isSelectMode
-    ? 'min-w-0 flex-1 text-sm font-bold leading-5 text-ds-text-neutral-default-default sm:text-base line-clamp-2 break-words'
-    : 'text-label-lg font-bold text-ds-text-neutral-default-default';
+    ? 'min-w-0 flex-1 text-sm font-bold leading-5 text-ds-ink-default-default sm:text-base line-clamp-2 break-words'
+    : 'text-ds-text-title font-bold text-ds-ink-default-default';
 
   return (
     <div className={cn(containerClassName, rootClassName)}>
@@ -364,7 +364,7 @@ export default function IntegrationList({
               }
             >
               {isSelectMode ? (
-                <div className="gap-2 min-w-0 min-h-0 flex flex-1 items-center">
+                <div className="flex min-h-0 min-w-0 flex-1 items-center gap-2">
                   {selectWithCheckbox && (
                     <Checkbox
                       disabled={checkboxDisabled}
@@ -380,8 +380,8 @@ export default function IntegrationList({
                   <span className={titleClassName}>{item.name}</span>
                 </div>
               ) : (
-                <div className="gap-xs flex w-full flex-row items-center justify-between">
-                  <div className="gap-xs flex flex-row items-center">
+                <div className="flex w-full flex-row items-center justify-between gap-xs">
+                  <div className="flex flex-row items-center gap-xs">
                     {showStatusDot && (
                       <img
                         src={ellipseIcon}
@@ -398,7 +398,7 @@ export default function IntegrationList({
                     <div className="flex items-center">
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <CircleAlert className="h-4 w-4 text-ds-icon-neutral-muted-default" />
+                          <CircleAlert className="h-4 w-4 text-ds-ink-muted-default" />
                         </TooltipTrigger>
                         <TooltipContent>
                           <div>{item.desc}</div>
@@ -406,7 +406,7 @@ export default function IntegrationList({
                       </Tooltip>
                     </div>
                   </div>
-                  <div className="gap-md flex flex-row items-center">
+                  <div className="flex flex-row items-center gap-md">
                     {showConfigButton && (
                       <Button
                         type="button"
@@ -474,9 +474,9 @@ export default function IntegrationList({
             </div>
 
             {!isSelectMode && showSelect && (
-              <div className="mt-6 gap-md border-ds-border-neutral-default-default pt-6 flex w-full flex-row items-center border-x-0 border-b-0 border-solid">
-                <div className="gap-md flex w-full flex-row items-center justify-between">
-                  <div className="text-body-md text-ds-text-neutral-default-default">
+              <div className="mt-6 flex w-full flex-row items-center gap-md border-x-0 border-t-0 border-b-0 border-solid border-ds-hairline-default-default pt-6">
+                <div className="flex w-full flex-row items-center justify-between gap-md">
+                  <div className="text-ds-text-body-large text-ds-ink-default-default">
                     {' '}
                     Default {item.name}
                   </div>
@@ -491,7 +491,9 @@ export default function IntegrationList({
                       {selectContent ?? (
                         <>
                           <SelectItem value="more">
-                            More integrations
+                            {t('dashboard.more-integrations', {
+                              defaultValue: 'More integrations',
+                            })}
                           </SelectItem>
                         </>
                       )}

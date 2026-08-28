@@ -15,6 +15,12 @@
 import { createHost } from '@/host';
 import { canonicalizeBrowserUrl, normalizeBrowserUrl } from '@/lib/browserUrl';
 import { disposeShellSession } from '@/lib/shellSessions';
+import {
+  DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL,
+  normalizeChatTimelineDetailLevel,
+  type ChatTimelineDetailLevel,
+} from '@/types/chatTimeline';
+import i18next from 'i18next';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -25,7 +31,7 @@ import { persist } from 'zustand/middleware';
  */
 export const WorkspaceTab = {
   Workforce: 'workforce',
-  Inbox: 'inbox',
+  Files: 'files',
   Triggers: 'triggers',
   Runs: 'runs',
   Project: 'project',
@@ -66,11 +72,85 @@ export interface SessionChooserTab {
   title: string;
 }
 
-/** Code/diff review surface (content wired up later). */
+export interface SessionReviewTarget {
+  scope: 'project' | 'run';
+  runId?: string;
+  focusPath?: string;
+  focusRequestId: number;
+}
+
+export interface SessionReviewIdentity {
+  baseCommit: string;
+  targetCommit: string;
+}
+
+export type ReviewCommentSide = 'original' | 'modified';
+
+export interface ReviewLineSelection {
+  side: ReviewCommentSide;
+  startLine: number;
+  endLine: number;
+  text: string;
+}
+
+/** A user-authored review draft. It becomes canonical only after Chat sends it. */
+export interface SessionReviewComment {
+  id: string;
+  fileId: string;
+  path: string;
+  selection: ReviewLineSelection | null;
+  body: string;
+  createdAt: number;
+  /** Missing on older persisted drafts and therefore treated as pending. */
+  status?: 'pending' | 'sent';
+  sentAt?: number;
+  /** Exact Git revision on which the line selection was authored. */
+  reviewIdentity?: SessionReviewIdentity;
+}
+
+/** Code/diff review surface for a Project aggregate or one finalized Run. */
 export interface SessionReviewTab {
   id: string;
   type: 'review';
   title: string;
+  /** Optional only for tabs restored from storage before Run review existed. */
+  reviewTarget?: SessionReviewTarget;
+  /** Local review drafts, persisted with this Project's preview tabs. */
+  reviewComments?: SessionReviewComment[];
+  /** First successfully loaded base/target pair; immutable for this tab. */
+  reviewIdentity?: SessionReviewIdentity;
+  /**
+   * First successfully loaded base/target pair per task target the tab has
+   * shown, keyed by `reviewTargetIdentityKey`. A generic Review tab follows
+   * the latest Run, so each Run needs its own pin for the out-of-date guard.
+   */
+  reviewIdentities?: Record<string, SessionReviewIdentity>;
+}
+
+export interface WorkspaceChatDraftRequest {
+  requestId: number;
+  projectId: string;
+  content: string;
+  reviewHandoffIds: string[];
+}
+
+export interface WorkspaceReviewHandoff {
+  handoffId: string;
+  requestId: number;
+  projectId: string;
+  reviewTabId: string;
+  commentIds: string[];
+  content: string;
+}
+
+export interface WorkspaceReviewHandoffSource {
+  reviewTabId: string;
+  commentIds: string[];
+}
+
+export interface OpenReviewPreviewInput {
+  runId?: string;
+  path?: string;
 }
 
 export interface SessionTerminalTab {
@@ -159,12 +239,21 @@ function nextSessionPreviewTabId(type: SessionPreviewTab['type']): string {
   return `${type}-${sessionPreviewTabIdSeed}-${sessionPreviewTabSequence}`;
 }
 
+function nextReviewHandoffId(): string {
+  const randomUuid = globalThis.crypto?.randomUUID?.();
+  return (
+    randomUuid ?? `review-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
+}
+
 function createBrowserPreviewTab(projectId: string | null): SessionBrowserTab {
   const id = nextSessionPreviewTabId('browser');
   return {
     id,
     type: 'browser',
-    title: 'New tab',
+    title: i18next.t('layout.preview-new-tab', {
+      defaultValue: 'New tab',
+    }),
     url: '',
     // Project-scoped so each session keeps its own native webviews (and their
     // navigation history) alive while the app runs.
@@ -183,25 +272,93 @@ function createFilePreviewTab(file: FileInfo | null = null): SessionFileTab {
   return {
     id: nextSessionPreviewTabId('file'),
     type: 'file',
-    title: file?.name || 'Open file',
+    title:
+      file?.name ||
+      i18next.t('layout.preview-open-file', {
+        defaultValue: 'Open file',
+      }),
     file,
   };
+}
+
+function filePreviewIdentity(file: FileInfo): string | null {
+  const artifactId = file.artifactId?.trim();
+  if (artifactId) return `artifact:${artifactId}`;
+  const chatFileId = file.assetRef?.chatFileId;
+  if (typeof chatFileId === 'number') return `chat-file:${chatFileId}`;
+  const path = file.path?.trim();
+  if (path) return `path:${path}`;
+  const relativePath = file.relativePath?.trim();
+  return relativePath ? `relative:${relativePath}` : null;
+}
+
+function isSameFilePreview(left: FileInfo, right: FileInfo): boolean {
+  const leftIdentity = filePreviewIdentity(left);
+  return leftIdentity !== null && leftIdentity === filePreviewIdentity(right);
 }
 
 function createChooserPreviewTab(): SessionChooserTab {
   return {
     id: nextSessionPreviewTabId('chooser'),
     type: 'chooser',
-    title: 'New tab',
+    title: i18next.t('layout.preview-new-tab', {
+      defaultValue: 'New tab',
+    }),
+  };
+}
+
+function normalizeReviewPath(path: string | undefined): string | undefined {
+  const normalized = path?.trim().replace(/\\/g, '/').replace(/^\.\//, '');
+  return normalized || undefined;
+}
+
+function createReviewTarget(
+  input?: OpenReviewPreviewInput
+): SessionReviewTarget {
+  const runId = input?.runId?.trim();
+  return {
+    scope: runId ? 'run' : 'project',
+    ...(runId ? { runId } : {}),
+    ...(normalizeReviewPath(input?.path)
+      ? { focusPath: normalizeReviewPath(input?.path) }
+      : {}),
+    focusRequestId: 0,
+  };
+}
+
+/**
+ * Cache key for one review target. A Run target without an id is still pending
+ * (no task has started yet) and must not share the Project pin, so it keys to
+ * its own slot rather than falling back to `project`.
+ */
+export function reviewTargetIdentityKey(target: SessionReviewTarget): string {
+  return target.scope === 'run' ? `run:${target.runId ?? ''}` : 'project';
+}
+
+function createReviewPreviewTab(
+  input?: OpenReviewPreviewInput
+): SessionReviewTab {
+  const reviewTarget = createReviewTarget(input);
+  return {
+    id: nextSessionPreviewTabId('review'),
+    type: 'review',
+    title: i18next.t('layout.preview-task-review', {
+      defaultValue: 'Task review',
+    }),
+    reviewTarget,
+    reviewComments: [],
   };
 }
 
 /** Placeholder tab title for a URL until the page reports its real one. */
 function browserTabTitleForUrl(url: string): string {
   try {
-    return new URL(url).hostname || 'New tab';
+    return (
+      new URL(url).hostname ||
+      i18next.t('layout.preview-new-tab', { defaultValue: 'New tab' })
+    );
   } catch {
-    return 'New tab';
+    return i18next.t('layout.preview-new-tab', { defaultValue: 'New tab' });
   }
 }
 
@@ -216,17 +373,15 @@ function createPreviewTabOfKind(
     case 'file':
       return createFilePreviewTab();
     case 'review':
-      return {
-        id: nextSessionPreviewTabId('review'),
-        type: 'review',
-        title: 'Review',
-      };
+      return createReviewPreviewTab();
     case 'terminal': {
       const id = nextSessionPreviewTabId('terminal');
       return {
         id,
         type: 'terminal',
-        title: 'Terminal',
+        title: i18next.t('layout.preview-terminal', {
+          defaultValue: 'Terminal',
+        }),
         // Stable per-tab PTY id: the shell keeps running while the user
         // switches preview tabs, and dies when the tab is closed.
         shellId: `session-shell:${projectId ?? 'global'}:${id}`,
@@ -236,7 +391,9 @@ function createPreviewTabOfKind(
       return {
         id: nextSessionPreviewTabId('canvas'),
         type: 'canvas',
-        title: 'Canvas',
+        title: i18next.t('layout.preview-canvas', {
+          defaultValue: 'Canvas',
+        }),
       };
   }
 }
@@ -250,9 +407,23 @@ function createInitialSessionPreviewTabs(): {
   return { tabs: [chooser], activeTabId: chooser.id };
 }
 
+/** Normalize Review tabs created before the task-focused title contract. */
+function normalizeReviewPreviewTab(tab: SessionPreviewTab): SessionPreviewTab {
+  if (tab.type !== 'review') return tab;
+  const normalized = {
+    ...tab,
+    title: i18next.t('layout.preview-task-review', {
+      defaultValue: 'Task review',
+    }),
+  } as SessionReviewTab & { reviewScope?: unknown };
+  delete normalized.reviewScope;
+  return normalized;
+}
+
 /**
  * Strip runtime-only navigation state before persisting: after an app restart
  * the native webview (and its history) is gone, so only url/title survive.
+ * Review tabs are also normalized so retired scope state cannot return.
  */
 function sanitizeSessionPreviewForPersist(
   slices: Record<string, SessionPreviewSlice>
@@ -261,20 +432,21 @@ function sanitizeSessionPreviewForPersist(
   for (const [projectId, slice] of Object.entries(slices)) {
     result[projectId] = {
       ...slice,
-      tabs: slice.tabs.map((tab) =>
-        tab.type === 'browser'
+      tabs: slice.tabs.map((tab) => {
+        const normalizedTab = normalizeReviewPreviewTab(tab);
+        return normalizedTab.type === 'browser'
           ? {
-              ...tab,
+              ...normalizedTab,
               navigation: {
-                url: tab.url,
-                title: tab.title,
+                url: normalizedTab.url,
+                title: normalizedTab.title,
                 isLoading: false,
                 canGoBack: false,
                 canGoForward: false,
               },
             }
-          : tab
-      ),
+          : normalizedTab;
+      }),
     };
   }
   return result;
@@ -296,16 +468,24 @@ interface PageTabState {
   activeWorkspaceTab: WorkspaceTabId;
   setActiveWorkspaceTab: (
     tab: WorkspaceTabId,
-    /** When switching to the folder tab, pass the active project id to clear its inbox dot. */
-    options?: { clearInboxForProjectId?: string | null }
+    /** When switching to Files, pass the active project id to clear its unread-files dot. */
+    options?: { clearFilesForProjectId?: string | null }
   ) => void;
+  /**
+   * Workspace rail visibility, toggled from the title bar. Only the workspace
+   * shell honours this — Home and Settings always show their rail.
+   */
+  workspaceSidebarHidden: boolean;
+  toggleWorkspaceSidebar: () => void;
   // Panel position for ChatBox
   chatPanelPosition: 'left' | 'right';
   setChatPanelPosition: (position: 'left' | 'right') => void;
-  /** Project page left sidebar: icon-only rail (labels fade + width collapse). Persisted. */
-  projectSidebarFolded: boolean;
-  toggleProjectSidebarFolded: () => void;
-  setProjectSidebarFolded: (folded: boolean) => void;
+  /** Event-native ChatBox presentation density. Persisted across Projects. */
+  chatTimelineDetailLevel: ChatTimelineDetailLevel;
+  setChatTimelineDetailLevel: (level: ChatTimelineDetailLevel) => void;
+  /** One-shot request consumed by the active Project session panel. */
+  sessionSidePanelToggleRequestId: number;
+  requestToggleSessionSidePanel: () => void;
   // Track if there are triggers (for dynamic menu toggle visibility)
   hasTriggers: boolean;
   setHasTriggers: (value: boolean) => void;
@@ -313,18 +493,18 @@ interface PageTabState {
   hasAgentFiles: boolean;
   setHasAgentFiles: (value: boolean) => void;
   // Track unviewed tabs with new content (for red dot indicator)
-  unviewedTabs: Set<'triggers' | 'inbox'>;
-  /** Projects with new agent-folder files not yet “seen” on the folder tab (dot on Folder nav). */
-  inboxUnviewedForProjects: Set<string>;
+  unviewedTabs: Set<'triggers' | 'files'>;
+  /** Projects with new agent-folder files not yet seen on the Files tab. */
+  filesUnviewedForProjects: Set<string>;
   markTabAsViewed: (
-    tab: 'triggers' | 'inbox',
-    /** For inbox: project to clear from the folder dot (optional). */
-    inboxProjectId?: string | null
+    tab: 'triggers' | 'files',
+    /** For Files: project to clear from the unread-files dot (optional). */
+    filesProjectId?: string | null
   ) => void;
   markTabAsUnviewed: (
-    tab: 'triggers' | 'inbox',
-    /** For inbox: required — project that received the new file(s). */
-    inboxProjectId?: string
+    tab: 'triggers' | 'files',
+    /** For Files: required — project that received the new file(s). */
+    filesProjectId?: string
   ) => void;
   /** Set by the sidebar to tell the chat container to scroll to a specific query group */
   scrollToQueryId: string | null;
@@ -356,6 +536,25 @@ interface PageTabState {
    */
   workspaceChatFocusRequestId: number;
   requestWorkspaceChatFocus: () => void;
+  /** One-shot handoff that appends review feedback to the matching Chat draft. */
+  workspaceChatDraftRequest: WorkspaceChatDraftRequest | null;
+  workspaceChatDraftRequestSequence: number;
+  /** Review handoffs stay pending until Chat confirms their content was sent. */
+  workspaceReviewHandoffs: WorkspaceReviewHandoff[];
+  requestWorkspaceChatDraft: (
+    content: string,
+    reviewSource?: WorkspaceReviewHandoffSource
+  ) => void;
+  consumeWorkspaceChatDraft: (requestId: number) => void;
+  acknowledgeWorkspaceReviewHandoffs: (
+    projectId: string,
+    handoffIds: readonly string[]
+  ) => void;
+  /** Drop edited-away handoffs without marking their review comments sent. */
+  discardWorkspaceReviewHandoffs: (
+    projectId: string,
+    handoffIds: readonly string[]
+  ) => void;
   /** Incremented to open the add-trigger dialog from the sidebar (Home owns dialog state). */
   triggerAddDialogRequestId: number;
   requestOpenTriggerAddDialog: () => void;
@@ -364,29 +563,7 @@ interface PageTabState {
   triggerSelectRequestId: number;
   requestSelectTrigger: (triggerId: number) => void;
 
-  // ── TurnTabs: per-project turn selection ─────────────────────────────────
-  /**
-   * Which task (turn) is currently highlighted in the side-panel TurnTabs,
-   * per project. `null` / absent → default to the chatStore's activeTaskId.
-   */
-  sidePanelSelectedTurnByProject: Record<string, string>;
-  /**
-   * Unix-ms timestamp until which a user tab-click overrides the
-   * scroll-driven viewport selection, per project.
-   */
-  sidePanelManualUntilByProject: Record<string, number>;
-  /**
-   * Task ID currently visible in the chatbox scroll viewport, per project.
-   * Written by the IntersectionObserver in ProjectChatContainer.
-   */
-  sidePanelViewedTurnByProject: Record<string, string>;
-  setSidePanelSelectedTurn: (
-    projectId: string,
-    taskId: string,
-    manualDurationMs?: number
-  ) => void;
-  setSidePanelViewedTurn: (projectId: string, taskId: string) => void;
-  /** Set by TurnTabs to tell the matching ProjectChatContainer to scroll. */
+  /** One-shot command used by historical rows in the Session side panel. */
   scrollToTurnRequest: { projectId: string; taskId: string } | null;
   setScrollToTurnRequest: (
     request: { projectId: string; taskId: string } | null
@@ -416,6 +593,8 @@ interface PageTabState {
   setPreviewBrowserViewport: (rect: PreviewBrowserViewport | null) => void;
   /** Toggle the unified preview panel (opens onto the chooser tab). */
   toggleSessionPreview: () => void;
+  /** Open and select a preview tab of the requested kind. */
+  openPreviewTab: (kind: PreviewTabKind) => void;
   /** Add and activate a blank chooser tab (the "+" button). */
   addChooserPreviewTab: () => void;
   /**
@@ -425,6 +604,18 @@ interface PageTabState {
   choosePreviewTabType: (tabId: string, kind: PreviewTabKind) => void;
   /** Open a file in a deduplicated file tab (reuses a blank starter tab). */
   openFilePreview: (file?: FileInfo | null) => void;
+  /** Open a task-focused Git review and optionally focus one changed path. */
+  openReviewPreview: (input?: OpenReviewPreviewInput) => void;
+  /** Replace the local comment drafts owned by one Review tab. */
+  updateReviewComments: (
+    tabId: string,
+    comments: SessionReviewComment[]
+  ) => void;
+  setReviewIdentity: (
+    tabId: string,
+    identity: SessionReviewIdentity,
+    targetKey?: string
+  ) => void;
   /**
    * Open a URL in this project's preview browser — the default target for
    * links mentioned in chat content, so they stay inside the session instead
@@ -508,73 +699,82 @@ export const usePageTabStore = create<PageTabState>()(
       setActiveWorkspaceTab: (tab, options) =>
         set((state) => {
           const newUnviewedTabs = new Set(state.unviewedTabs);
-          let nextInboxProjects = state.inboxUnviewedForProjects;
+          let nextFilesProjects = state.filesUnviewedForProjects;
 
           if (tab === 'triggers') {
             newUnviewedTabs.delete('triggers');
           }
 
-          if (tab === 'inbox') {
-            const pid = options?.clearInboxForProjectId ?? undefined;
+          if (tab === 'files') {
+            const pid = options?.clearFilesForProjectId ?? undefined;
             if (pid) {
-              nextInboxProjects = new Set(state.inboxUnviewedForProjects);
-              nextInboxProjects.delete(pid);
+              nextFilesProjects = new Set(state.filesUnviewedForProjects);
+              nextFilesProjects.delete(pid);
             }
-            if (nextInboxProjects.size === 0) {
-              newUnviewedTabs.delete('inbox');
+            if (nextFilesProjects.size === 0) {
+              newUnviewedTabs.delete('files');
             } else {
-              newUnviewedTabs.add('inbox');
+              newUnviewedTabs.add('files');
             }
           }
 
           return {
             activeWorkspaceTab: tab,
             unviewedTabs: newUnviewedTabs,
-            inboxUnviewedForProjects: nextInboxProjects,
+            filesUnviewedForProjects: nextFilesProjects,
           };
         }),
+      workspaceSidebarHidden: false,
+      toggleWorkspaceSidebar: () =>
+        set((state) => ({
+          workspaceSidebarHidden: !state.workspaceSidebarHidden,
+        })),
       chatPanelPosition: 'left',
       setChatPanelPosition: (position) => set({ chatPanelPosition: position }),
-      projectSidebarFolded: false,
-      toggleProjectSidebarFolded: () =>
+      chatTimelineDetailLevel: DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL,
+      setChatTimelineDetailLevel: (level) =>
+        set({
+          chatTimelineDetailLevel: normalizeChatTimelineDetailLevel(level),
+        }),
+      sessionSidePanelToggleRequestId: 0,
+      requestToggleSessionSidePanel: () =>
         set((state) => ({
-          projectSidebarFolded: !state.projectSidebarFolded,
+          sessionSidePanelToggleRequestId:
+            state.sessionSidePanelToggleRequestId + 1,
         })),
-      setProjectSidebarFolded: (folded) =>
-        set({ projectSidebarFolded: folded }),
       hasTriggers: false,
       setHasTriggers: (value) => set({ hasTriggers: value }),
       hasAgentFiles: false,
       setHasAgentFiles: (value) => set({ hasAgentFiles: value }),
-      unviewedTabs: new Set<'triggers' | 'inbox'>(),
-      inboxUnviewedForProjects: new Set<string>(),
-      markTabAsViewed: (tab, inboxProjectId) =>
+      unviewedTabs: new Set<'triggers' | 'files'>(),
+      filesUnviewedForProjects: new Set<string>(),
+      markTabAsViewed: (tab, filesProjectId) =>
         set((state) => {
           const newUnviewedTabs = new Set(state.unviewedTabs);
           newUnviewedTabs.delete(tab);
-          if (tab === 'inbox' && inboxProjectId) {
-            const nextInbox = new Set(state.inboxUnviewedForProjects);
-            nextInbox.delete(inboxProjectId);
-            if (nextInbox.size === 0) newUnviewedTabs.delete('inbox');
-            else newUnviewedTabs.add('inbox');
+          if (tab === 'files' && filesProjectId) {
+            const nextFiles = new Set(state.filesUnviewedForProjects);
+            nextFiles.delete(filesProjectId);
+            if (nextFiles.size === 0) newUnviewedTabs.delete('files');
+            else newUnviewedTabs.add('files');
             return {
               unviewedTabs: newUnviewedTabs,
-              inboxUnviewedForProjects: nextInbox,
+              filesUnviewedForProjects: nextFiles,
             };
           }
           return { unviewedTabs: newUnviewedTabs };
         }),
-      markTabAsUnviewed: (tab, inboxProjectId) =>
+      markTabAsUnviewed: (tab, filesProjectId) =>
         set((state) => {
-          if (tab === 'inbox') {
-            if (!inboxProjectId) return state;
+          if (tab === 'files') {
+            if (!filesProjectId) return state;
             const newUnviewedTabs = new Set(state.unviewedTabs);
-            newUnviewedTabs.add('inbox');
-            const nextInbox = new Set(state.inboxUnviewedForProjects);
-            nextInbox.add(inboxProjectId);
+            newUnviewedTabs.add('files');
+            const nextFiles = new Set(state.filesUnviewedForProjects);
+            nextFiles.add(filesProjectId);
             return {
               unviewedTabs: newUnviewedTabs,
-              inboxUnviewedForProjects: nextInbox,
+              filesUnviewedForProjects: nextFiles,
             };
           }
           const newUnviewedTabs = new Set(state.unviewedTabs);
@@ -604,6 +804,9 @@ export const usePageTabStore = create<PageTabState>()(
           return { customAgentFolderPathByProjectId: next };
         }),
       workspaceChatFocusRequestId: 0,
+      workspaceChatDraftRequest: null,
+      workspaceChatDraftRequestSequence: 0,
+      workspaceReviewHandoffs: [],
       requestWorkspaceChatFocus: () =>
         set((state) => {
           const tab = state.activeWorkspaceTab;
@@ -619,6 +822,123 @@ export const usePageTabStore = create<PageTabState>()(
             workspaceChatFocusRequestId: state.workspaceChatFocusRequestId + 1,
           };
         }),
+      requestWorkspaceChatDraft: (content, reviewSource) => {
+        const normalized = content.trim();
+        const projectId = get().sessionPreviewProjectId;
+        if (!normalized || !projectId) return;
+        set((state) => {
+          const requestId = state.workspaceChatDraftRequestSequence + 1;
+          const commentIds = [
+            ...new Set(
+              reviewSource?.commentIds.map((commentId) => commentId.trim()) ??
+                []
+            ),
+          ].filter(Boolean);
+          const reviewHandoff =
+            reviewSource?.reviewTabId && commentIds.length > 0
+              ? {
+                  handoffId: nextReviewHandoffId(),
+                  requestId,
+                  projectId,
+                  reviewTabId: reviewSource.reviewTabId,
+                  commentIds,
+                  content: normalized,
+                }
+              : null;
+          return {
+            workspaceChatDraftRequestSequence: requestId,
+            workspaceChatDraftRequest: {
+              requestId,
+              projectId,
+              content: normalized,
+              reviewHandoffIds: reviewHandoff ? [reviewHandoff.handoffId] : [],
+            },
+            ...(reviewHandoff
+              ? {
+                  workspaceReviewHandoffs: [
+                    ...state.workspaceReviewHandoffs,
+                    reviewHandoff,
+                  ],
+                }
+              : {}),
+          };
+        });
+        get().requestWorkspaceChatFocus();
+      },
+      consumeWorkspaceChatDraft: (requestId) =>
+        set((state) =>
+          state.workspaceChatDraftRequest?.requestId === requestId
+            ? { workspaceChatDraftRequest: null }
+            : state
+        ),
+      acknowledgeWorkspaceReviewHandoffs: (projectId, handoffIds) => {
+        const acknowledged = new Set(
+          handoffIds.map((handoffId) => handoffId.trim()).filter(Boolean)
+        );
+        if (!projectId || acknowledged.size === 0) return;
+        set((state) => {
+          const matched = state.workspaceReviewHandoffs.filter(
+            (handoff) =>
+              handoff.projectId === projectId &&
+              acknowledged.has(handoff.handoffId)
+          );
+          if (matched.length === 0) return state;
+
+          const matchedRequestIds = new Set(
+            matched.map((handoff) => handoff.requestId)
+          );
+          const commentIdsByTab = new Map<string, Set<string>>();
+          for (const handoff of matched) {
+            const ids =
+              commentIdsByTab.get(handoff.reviewTabId) ?? new Set<string>();
+            handoff.commentIds.forEach((commentId) => ids.add(commentId));
+            commentIdsByTab.set(handoff.reviewTabId, ids);
+          }
+
+          const slice = state.sessionPreviewByProject[projectId];
+          const sentAt = Date.now();
+          const tabs = slice?.tabs.map((tab) => {
+            if (tab.type !== 'review') return tab;
+            const commentIds = commentIdsByTab.get(tab.id);
+            if (!commentIds) return tab;
+            return {
+              ...tab,
+              reviewComments: (tab.reviewComments ?? []).map((comment) =>
+                commentIds.has(comment.id)
+                  ? { ...comment, status: 'sent' as const, sentAt }
+                  : comment
+              ),
+            };
+          });
+
+          return {
+            workspaceReviewHandoffs: state.workspaceReviewHandoffs.filter(
+              (handoff) => !matchedRequestIds.has(handoff.requestId)
+            ),
+            ...(slice && tabs
+              ? {
+                  sessionPreviewByProject: {
+                    ...state.sessionPreviewByProject,
+                    [projectId]: { ...slice, tabs },
+                  },
+                }
+              : {}),
+          };
+        });
+      },
+      discardWorkspaceReviewHandoffs: (projectId, handoffIds) => {
+        const discarded = new Set(
+          handoffIds.map((handoffId) => handoffId.trim()).filter(Boolean)
+        );
+        if (!projectId || discarded.size === 0) return;
+        set((state) => ({
+          workspaceReviewHandoffs: state.workspaceReviewHandoffs.filter(
+            (handoff) =>
+              handoff.projectId !== projectId ||
+              !discarded.has(handoff.handoffId)
+          ),
+        }));
+      },
       triggerAddDialogRequestId: 0,
       requestOpenTriggerAddDialog: () =>
         set((state) => {
@@ -638,49 +958,6 @@ export const usePageTabStore = create<PageTabState>()(
           triggerSelectRequestId: state.triggerSelectRequestId + 1,
         })),
 
-      sidePanelSelectedTurnByProject: {},
-      sidePanelManualUntilByProject: {},
-      sidePanelViewedTurnByProject: {},
-      setSidePanelSelectedTurn: (projectId, taskId, manualDurationMs = 1500) =>
-        set((state) => ({
-          sidePanelSelectedTurnByProject: {
-            ...state.sidePanelSelectedTurnByProject,
-            [projectId]: taskId,
-          },
-          sidePanelManualUntilByProject: {
-            ...state.sidePanelManualUntilByProject,
-            [projectId]: Date.now() + manualDurationMs,
-          },
-        })),
-      setSidePanelViewedTurn: (projectId, taskId) =>
-        set((state) => {
-          const manualUntil =
-            state.sidePanelManualUntilByProject[projectId] ?? 0;
-          // Suppress viewport updates during the manual-selection window so a
-          // tab click isn't immediately overwritten by an in-flight observer
-          // firing while the chatbox is mid-scroll.
-          const selectedTaskId =
-            state.sidePanelSelectedTurnByProject[projectId];
-          if (Date.now() < manualUntil && selectedTaskId !== taskId) {
-            return state;
-          }
-          // Once the window expires, drive both fields so components only need
-          // to read `sidePanelSelectedTurnByProject` — no Date.now() in render.
-          return {
-            sidePanelViewedTurnByProject: {
-              ...state.sidePanelViewedTurnByProject,
-              [projectId]: taskId,
-            },
-            sidePanelSelectedTurnByProject: {
-              ...state.sidePanelSelectedTurnByProject,
-              [projectId]: taskId,
-            },
-            sidePanelManualUntilByProject: {
-              ...state.sidePanelManualUntilByProject,
-              [projectId]: 0,
-            },
-          };
-        }),
       scrollToTurnRequest: null,
       setScrollToTurnRequest: (request) =>
         set({ scrollToTurnRequest: request }),
@@ -706,6 +983,30 @@ export const usePageTabStore = create<PageTabState>()(
             tabs: initial.tabs,
             activeTabId: initial.activeTabId,
           };
+        }),
+      openPreviewTab: (kind) =>
+        setSessionPreviewSlice(set, (slice, state) => {
+          const existing = slice.tabs.find(
+            (tab) =>
+              tab.type === kind &&
+              (kind !== 'terminal' ||
+                (tab.type === 'terminal' && !tab.agentSourceId))
+          );
+          if (existing) {
+            return { ...slice, open: true, activeTabId: existing.id };
+          }
+
+          const reusableIndex = slice.tabs.findIndex(
+            (tab) => tab.type === 'chooser'
+          );
+          const tab = createPreviewTabOfKind(
+            kind,
+            state.sessionPreviewProjectId
+          );
+          const tabs = [...slice.tabs];
+          if (reusableIndex >= 0) tabs[reusableIndex] = tab;
+          else tabs.push(tab);
+          return { open: true, tabs, activeTabId: tab.id };
         }),
       addChooserPreviewTab: () =>
         setSessionPreviewSlice(set, (slice) => {
@@ -738,18 +1039,31 @@ export const usePageTabStore = create<PageTabState>()(
         setSessionPreviewSlice(set, (slice) => {
           const targetFile = file ?? null;
           const previewTabs = slice.tabs;
-          const matchingTab = targetFile
-            ? previewTabs.find(
+          const matchingIndex = targetFile
+            ? previewTabs.findIndex(
                 (tab) =>
-                  tab.type === 'file' && tab.file?.path === targetFile.path
+                  tab.type === 'file' &&
+                  tab.file !== null &&
+                  isSameFilePreview(tab.file, targetFile)
               )
-            : previewTabs.find(
+            : previewTabs.findIndex(
                 (tab) => tab.type === 'file' && tab.file === null
               );
-          if (matchingTab) {
+          if (matchingIndex >= 0) {
+            const matchingTab = previewTabs[matchingIndex] as SessionFileTab;
+            const tabs = [...previewTabs];
+            // Durable Artifact identity intentionally deduplicates the tab,
+            // but its preview source may change after workspace restoration
+            // (for example from a signed Cloud URL to a local Space path).
+            // Refresh the tab payload so a persisted remote source cannot win.
+            tabs[matchingIndex] = {
+              ...matchingTab,
+              title: targetFile?.name || matchingTab.title,
+              file: targetFile,
+            };
             return {
               open: true,
-              tabs: previewTabs,
+              tabs,
               activeTabId: matchingTab.id,
             };
           }
@@ -779,6 +1093,93 @@ export const usePageTabStore = create<PageTabState>()(
             tabs: [...previewTabs, tab],
             activeTabId: tab.id,
           };
+        }),
+      openReviewPreview: (input) =>
+        setSessionPreviewSlice(set, (slice) => {
+          const requestedTarget = createReviewTarget(input);
+          const sameScope = (tab: SessionPreviewTab) => {
+            if (tab.type !== 'review') return false;
+            const currentTarget = tab.reviewTarget ?? createReviewTarget();
+            return (
+              currentTarget.scope === requestedTarget.scope &&
+              currentTarget.runId === requestedTarget.runId
+            );
+          };
+          const existingIndex = slice.tabs.findIndex(sameScope);
+          if (existingIndex >= 0) {
+            const current = slice.tabs[existingIndex] as SessionReviewTab;
+            const currentTarget = current.reviewTarget ?? createReviewTarget();
+            const tabs = [...slice.tabs];
+            tabs[existingIndex] = {
+              ...current,
+              reviewTarget: {
+                ...currentTarget,
+                ...(requestedTarget.focusPath
+                  ? { focusPath: requestedTarget.focusPath }
+                  : {}),
+                focusRequestId: currentTarget.focusRequestId + 1,
+              },
+            };
+            return { open: true, tabs, activeTabId: current.id };
+          }
+
+          const tab = createReviewPreviewTab(input);
+          const reusableIndex = slice.tabs.findIndex(
+            (candidate) => candidate.type === 'chooser'
+          );
+          const tabs = [...slice.tabs];
+          if (reusableIndex >= 0) tabs[reusableIndex] = tab;
+          else tabs.push(tab);
+          return { open: true, tabs, activeTabId: tab.id };
+        }),
+      updateReviewComments: (tabId, comments) =>
+        setSessionPreviewSlice(set, (slice) => {
+          const index = slice.tabs.findIndex(
+            (tab) => tab.id === tabId && tab.type === 'review'
+          );
+          if (index < 0) return null;
+          const current = slice.tabs[index] as SessionReviewTab;
+          const tabs = [...slice.tabs];
+          tabs[index] = { ...current, reviewComments: comments };
+          return { ...slice, tabs };
+        }),
+      setReviewIdentity: (tabId, identity, targetKey) =>
+        setSessionPreviewSlice(set, (slice) => {
+          const index = slice.tabs.findIndex(
+            (tab) => tab.id === tabId && tab.type === 'review'
+          );
+          if (index < 0) return null;
+          const current = slice.tabs[index] as SessionReviewTab;
+          const ownKey = reviewTargetIdentityKey(
+            current.reviewTarget ?? createReviewTarget()
+          );
+          const key = targetKey ?? ownKey;
+          // The tab's own scope keeps mirroring into `reviewIdentity` so tabs
+          // persisted before per-scope pins existed still resolve.
+          const mirrors = key === ownKey;
+          // First write wins: the pin is what the out-of-date guard compares
+          // against, so it must not drift onto each newly fetched revision.
+          const pinned =
+            current.reviewIdentities?.[key] ??
+            (mirrors ? current.reviewIdentity : undefined) ??
+            identity;
+          const needsPin = current.reviewIdentities?.[key] !== pinned;
+          const needsMirror = mirrors && current.reviewIdentity !== pinned;
+          if (!needsPin && !needsMirror) return null;
+          const tabs = [...slice.tabs];
+          tabs[index] = {
+            ...current,
+            ...(needsMirror ? { reviewIdentity: pinned } : {}),
+            ...(needsPin
+              ? {
+                  reviewIdentities: {
+                    ...current.reviewIdentities,
+                    [key]: pinned,
+                  },
+                }
+              : {}),
+          };
+          return { ...slice, tabs };
         }),
       openBrowserPreview: (url) =>
         setSessionPreviewSlice(set, (slice, state) => {
@@ -956,25 +1357,53 @@ export const usePageTabStore = create<PageTabState>()(
     }),
     {
       name: 'eigent-page-tab',
-      version: 1,
+      version: 5,
       // v1: Project.mode becomes the source of truth. Drop the legacy global
       // sessionSidePanelMode so mode no longer drifts between Projects.
+      // v2: Project sidebar fold was removed; drop persisted fold state.
+      // v5: Review tabs are task-focused; normalize their title and remove the
+      // retired change-scope selection.
       migrate: (persistedState, version) => {
-        if (
-          version < 1 &&
-          persistedState &&
-          typeof persistedState === 'object'
-        ) {
+        if (persistedState && typeof persistedState === 'object') {
           const next = { ...(persistedState as Record<string, unknown>) };
-          delete next.sessionSidePanelMode;
+          if (version < 1) {
+            delete next.sessionSidePanelMode;
+          }
+          if (version < 2) {
+            delete next.projectSidebarFolded;
+          }
+          if (version < 3) {
+            // Summarised was retired; the density knob became a two-mode
+            // switch between the narrative and trajectory renderers.
+            next.chatTimelineDetailLevel = normalizeChatTimelineDetailLevel(
+              next.chatTimelineDetailLevel
+            );
+          }
+          if (version < 4) {
+            next.workspaceReviewHandoffs = [];
+          }
+          if (
+            version < 5 &&
+            next.sessionPreviewByProject &&
+            typeof next.sessionPreviewByProject === 'object'
+          ) {
+            next.sessionPreviewByProject = sanitizeSessionPreviewForPersist(
+              next.sessionPreviewByProject as Record<
+                string,
+                SessionPreviewSlice
+              >
+            );
+          }
           return next as unknown as PageTabState;
         }
         return persistedState as PageTabState;
       },
       partialize: (state) => ({
-        projectSidebarFolded: state.projectSidebarFolded,
+        workspaceSidebarHidden: state.workspaceSidebarHidden,
+        chatTimelineDetailLevel: state.chatTimelineDetailLevel,
         customAgentFolderPathByProjectId:
           state.customAgentFolderPathByProjectId,
+        workspaceReviewHandoffs: state.workspaceReviewHandoffs,
         sessionPreviewByProject: sanitizeSessionPreviewForPersist(
           state.sessionPreviewByProject
         ),

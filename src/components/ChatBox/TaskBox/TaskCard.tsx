@@ -238,19 +238,19 @@ export function TaskCard({
 
   return (
     <div>
-      <div className="flex h-auto w-full flex-col gap-2 px-sm py-2">
-        <div className="relative h-auto w-full overflow-hidden rounded-xl bg-ds-bg-neutral-default-default py-sm">
-          <div className="absolute left-0 top-0 w-full bg-transparent">
+      <div className="flex h-auto w-full flex-col gap-2 px-2 py-2">
+        <div className="relative h-auto w-full overflow-hidden rounded-xl bg-ds-neutral-default-default py-2">
+          <div className="absolute top-0 left-0 w-full bg-transparent">
             <Progress value={progressValue} className="h-[2px] w-full" />
           </div>
           {summaryTask && (
-            <div className="mb-2.5 px-sm text-sm font-bold leading-13">
+            <div className="mb-2.5 px-2 text-sm leading-13 font-bold">
               {summaryTask.split('|')[0].replace(/"/g, '')}
             </div>
           )}
 
           {summaryTask && (
-            <div className={`flex items-center justify-between gap-2 px-sm`}>
+            <div className="flex items-center justify-between gap-2 px-2">
               <div className="flex items-center gap-2">
                 {taskType === 1 && (
                   <TaskState
@@ -350,9 +350,9 @@ export function TaskCard({
                   </Button>
                 )}
                 {taskType === 2 && (
-                  <div className="ease-[cubic-bezier(0.23,1,0.32,1)] flex items-center gap-2 duration-200 animate-in fade-in-0 slide-in-from-right-2">
+                  <div className="flex items-center gap-2 duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] animate-in fade-in-0 slide-in-from-right-2">
                     {isExpanded && (
-                      <div className="text-xs font-medium leading-17 text-ds-text-neutral-subtle-default">
+                      <div className="text-xs leading-17 font-medium text-ds-ink-subtle-default">
                         {taskRunning?.filter(
                           (task) =>
                             task.status === TaskStatus.COMPLETED ||
@@ -368,7 +368,7 @@ export function TaskCard({
                     >
                       <ChevronDown
                         size={16}
-                        className={`duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] transition-transform motion-reduce:transition-none ${
+                        className={`transition-transform duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none ${
                           isExpanded ? 'rotate-180' : ''
                         }`}
                       />
@@ -381,11 +381,11 @@ export function TaskCard({
 
           <div className="relative">
             {taskType === 1 && (
-              <div className="ease-[cubic-bezier(0.23,1,0.32,1)] mt-sm flex flex-col px-sm duration-200 animate-in fade-in-0 slide-in-from-bottom-4">
+              <div className="mt-2 flex flex-col px-2 duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] animate-in fade-in-0 slide-in-from-bottom-4">
                 {taskInfo.map((task, taskIndex) => (
                   <div
                     key={`task-${taskIndex}`}
-                    className="ease-[cubic-bezier(0.23,1,0.32,1)] duration-200 animate-in fade-in-0 slide-in-from-left-2"
+                    className="duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] animate-in fade-in-0 slide-in-from-left-2"
                   >
                     <TaskItem
                       taskInfo={task}
@@ -401,13 +401,13 @@ export function TaskCard({
             {taskType === 2 && (
               <div
                 ref={contentRef}
-                className="duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] overflow-hidden transition-opacity"
+                className="overflow-hidden transition-opacity duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)]"
                 style={{
                   height: isExpanded ? contentHeight : 0,
                   opacity: isExpanded ? 1 : 0,
                 }}
               >
-                <div className="mt-sm flex flex-col gap-2 px-2">
+                <div className="mt-2 flex flex-col gap-2 px-2">
                   {filterTasks.map((task: TaskInfo) => {
                     return (
                       <div
@@ -452,7 +452,7 @@ export function TaskCard({
                           }
                         }}
                         key={`taskList-${task.id}`}
-                        className={`ease-[cubic-bezier(0.23,1,0.32,1)] flex gap-2 rounded-lg px-sm py-sm transition-[background-color,border-color] duration-200 animate-in fade-in-0 slide-in-from-left-2 ${
+                        className={`flex gap-2 rounded-lg px-2 py-2 transition-[background-color,border-color] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] animate-in fade-in-0 slide-in-from-left-2 ${
                           task.status === TaskStatus.COMPLETED
                             ? 'bg-ds-bg-completed-subtle-default'
                             : task.status === TaskStatus.FAILED
@@ -468,13 +468,13 @@ export function TaskCard({
                                     : 'bg-ds-bg-running-subtle-default'
                         } cursor-pointer border border-solid border-transparent ${
                           task.status === TaskStatus.COMPLETED
-                            ? 'hover:border-ds-border-status-completed-default-focus'
+                            ? 'hover:border-ds-border-status-completed-default-hover'
                             : task.status === TaskStatus.FAILED
-                              ? 'hover:border-ds-border-status-error-default-focus'
+                              ? 'hover:border-ds-border-status-error-default-hover'
                               : task.status === TaskStatus.RUNNING
-                                ? 'hover:border-ds-border-status-running-default-focus'
+                                ? 'hover:border-ds-border-status-running-default-hover'
                                 : task.status === TaskStatus.BLOCKED
-                                  ? 'hover:border-ds-border-status-blocked-default-focus'
+                                  ? 'hover:border-ds-border-status-blocked-default-hover'
                                   : task.status === TaskStatus.SKIPPED ||
                                       task.status === TaskStatus.WAITING ||
                                       task.status === TaskStatus.EMPTY
@@ -507,7 +507,7 @@ export function TaskCard({
                           {task.status === TaskStatus.FAILED && (
                             <CircleSlash
                               size={16}
-                              className="text-ds-icon-caution-default-default"
+                              className="text-ds-icon-error-default-default"
                             />
                           )}
                           {task.status === TaskStatus.BLOCKED && (
@@ -526,17 +526,17 @@ export function TaskCard({
                         </div>
                         <div className="flex min-w-0 flex-1 flex-col items-start justify-center">
                           <div
-                            className={`w-full min-w-0 whitespace-pre-line [overflow-wrap:anywhere] ${
+                            className={`w-full min-w-0 [overflow-wrap:anywhere] whitespace-pre-line ${
                               task.status === TaskStatus.FAILED
-                                ? 'text-ds-text-caution-default-default'
+                                ? 'text-ds-text-error-default-default'
                                 : task.status === TaskStatus.BLOCKED
                                   ? 'text-ds-text-warning-default-default'
                                   : task.status === TaskStatus.SKIPPED ||
                                       task.status === TaskStatus.WAITING ||
                                       task.status === TaskStatus.EMPTY
                                     ? 'text-ds-text-status-pending-default-default'
-                                    : 'text-ds-text-neutral-default-default'
-                            } text-sm font-medium leading-13`}
+                                    : 'text-ds-ink-default-default'
+                            } text-sm leading-13 font-medium`}
                           >
                             {task.content}
                           </div>

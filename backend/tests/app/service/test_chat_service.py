@@ -14,6 +14,7 @@
 
 import asyncio
 import time
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -21,7 +22,12 @@ from camel.tasks import Task
 from camel.tasks.task import TaskState
 
 from app.model.chat import AgentModelConfig, Chat, NewAgent
+from app.model.enums import DEFAULT_SUMMARY_PROMPT
+from app.run_journal import SQLiteRunJournal
 from app.service.chat_service import (
+    _activate_improve_admission,
+    _answer_simple_question,
+    _build_question_context,
     _extract_stream_chunk_content,
     _render_subtask_report,
     _trim_in_process_history,
@@ -47,6 +53,7 @@ from app.service.task import (
     ActionEndData,
     ActionImproveData,
     ActionInstallMcpData,
+    ActionStopData,
     ImprovePayload,
     TaskLock,
 )
@@ -71,6 +78,75 @@ class _AgentStepResponse:
     def __init__(self, content: str):
         self.msg = None
         self.msgs = [MagicMock(content=content)]
+
+
+def test_default_completion_prompt_requires_concrete_deliverables():
+    assert "entire final report" in DEFAULT_SUMMARY_PROMPT
+    assert "workspace-relative paths" in DEFAULT_SUMMARY_PROMPT
+    assert "Validation performed" in DEFAULT_SUMMARY_PROMPT
+    assert "one-line acknowledgement" in DEFAULT_SUMMARY_PROMPT
+
+
+@pytest.mark.asyncio
+async def test_improve_admission_activates_once_and_deduplicates_retry():
+    task_lock = MagicMock()
+    task_lock.processed_improve_request_ids = set()
+    journal = MagicMock(spec=SQLiteRunJournal)
+    scheduler = MagicMock()
+    activation_order = []
+
+    async def _acquire_writer(**_kwargs):
+        activation_order.append("writer")
+
+    scheduler.wait_until_acquired = AsyncMock(side_effect=_acquire_writer)
+    coordinator = MagicMock()
+    coordinator.refresh_run_boundary_after_writer_acquired.side_effect = (
+        lambda **_kwargs: activation_order.append("boundary")
+    )
+    journal.activate_run_attempt.side_effect = (
+        lambda *_args, **_kwargs: activation_order.append("attempt")
+    )
+    item = ActionImproveData(
+        data=ImprovePayload(question="hello"),
+        request_id="request-1",
+        run_id="run-1",
+        attempt_id="attempt-1",
+    )
+
+    with (
+        patch(
+            "app.run_runtime.admission.get_default_run_journal",
+            return_value=journal,
+        ),
+        patch(
+            "app.run_runtime.admission.WorkspaceWriterScheduler",
+            return_value=scheduler,
+        ),
+        patch(
+            "app.run_runtime.admission.get_default_workspace_git_coordinator",
+            return_value=coordinator,
+        ),
+    ):
+        assert await _activate_improve_admission(
+            task_lock, item, project_id="project-1"
+        )
+        assert not await _activate_improve_admission(
+            task_lock, item, project_id="project-1"
+        )
+
+    scheduler.wait_until_acquired.assert_awaited_once_with(
+        run_id="run-1",
+        task_id="run-1",
+    )
+    coordinator.refresh_run_boundary_after_writer_acquired.assert_called_once_with(
+        run_id="run-1",
+        task_id="run-1",
+        attempt_id="attempt-1",
+    )
+    journal.activate_run_attempt.assert_called_once_with(
+        "attempt-1", expected_run_id="run-1"
+    )
+    assert activation_order == ["writer", "boundary", "attempt"]
 
 
 @pytest.mark.unit
@@ -390,7 +466,6 @@ class TestBuildContextForWorkforce:
                 "content": "I will create a Python script for you",
             },
         ]
-        task_lock.last_task_result = "Script created successfully"
         task_lock.last_task_summary = "Python Script Creation"
 
         # Create mock Chat options
@@ -408,7 +483,6 @@ class TestBuildContextForWorkforce:
         """Test build_context_for_workforce with empty conversation history."""
         task_lock = MagicMock(spec=TaskLock)
         task_lock.conversation_history = []
-        task_lock.last_task_result = ""
         task_lock.last_task_summary = ""
 
         options = MagicMock()
@@ -432,7 +506,6 @@ class TestBuildContextForWorkforce:
                 "content": "Task completed successfully",
             },
         ]
-        task_lock.last_task_result = "Final result"
         task_lock.last_task_summary = "Task summary"
 
         options = MagicMock()
@@ -444,7 +517,7 @@ class TestBuildContextForWorkforce:
         assert "Full task context from previous task" in result
         assert "Task completed successfully" in result
 
-    def test_build_context_for_workforce_with_last_task_result(self, temp_dir):
+    def test_build_context_for_workforce_with_assistant_result(self, temp_dir):
         """Test build_context_for_workforce with assistant entries."""
         task_lock = MagicMock(spec=TaskLock)
         task_lock.conversation_history = [
@@ -453,7 +526,6 @@ class TestBuildContextForWorkforce:
                 "content": "Task completed with output.txt",
             },
         ]
-        task_lock.last_task_result = "Task completed with output.txt"
         task_lock.last_task_summary = "File creation task"
 
         options = MagicMock()
@@ -933,6 +1005,82 @@ class TestChatServiceAgentOperations:
         # Should return True for complex tasks
         assert result is True
 
+    def test_question_context_falls_back_to_persisted_project_projection(self):
+        task_lock = SimpleNamespace(
+            conversation_history=[],
+            agent_memory_history=[],
+            memory_summary="",
+        )
+
+        context = _build_question_context(
+            task_lock,
+            "Assistant previously created scene.html for this Project.",
+        )
+
+        assert "previously created scene.html" in context
+
+    def test_question_context_prefers_current_process_history(self):
+        task_lock = SimpleNamespace(
+            conversation_history=[
+                {"role": "assistant", "content": "current response"}
+            ],
+            agent_memory_history=[],
+            memory_summary="",
+        )
+
+        context = _build_question_context(task_lock, "stale projection")
+
+        assert "current response" in context
+        assert "stale projection" not in context
+
+    @pytest.mark.asyncio
+    async def test_question_confirm_uses_persisted_project_context(
+        self, mock_camel_agent
+    ):
+        mock_camel_agent.step.return_value.msgs[0].content = "yes"
+        task_lock = SimpleNamespace(
+            conversation_history=[],
+            agent_memory_history=[],
+            memory_summary="",
+        )
+
+        assert await question_confirm(
+            mock_camel_agent,
+            "Can you improve its lighting?",
+            task_lock,
+            project_context="The previous Run created an ISS HTML scene.",
+        )
+
+        classifier_prompt = mock_camel_agent.step.call_args.args[0]
+        assert "previous Run created an ISS HTML scene" in classifier_prompt
+        assert "optimize, fix, or modify" in classifier_prompt
+
+    @pytest.mark.asyncio
+    async def test_simple_answer_consumes_streaming_model_response(self):
+        agent = MagicMock()
+        streaming_response = object()
+        agent.step.return_value = streaming_response
+        materialized = _AgentStepResponse("")
+
+        with (
+            patch(
+                "app.service.chat_service.is_streaming_response",
+                return_value=True,
+            ),
+            patch(
+                "app.service.chat_service.consume_response_content",
+                return_value=(materialized, "streamed direct answer"),
+            ) as consume,
+        ):
+            answer = await _answer_simple_question(
+                agent,
+                question="What changed?",
+                context="Previous Project context.\n",
+            )
+
+        assert answer == "streamed direct answer"
+        consume.assert_called_once_with(streaming_response)
+
     @pytest.mark.asyncio
     async def test_summary_task(self, mock_camel_agent):
         """Test summary_task creates proper task summary."""
@@ -1205,7 +1353,6 @@ class TestChatServiceIntegration:
             {"role": "user", "content": "Create a Python script"},
             {"role": "assistant", "content": "Script created successfully"},
         ]
-        task_lock.last_task_result = "def hello(): print('Hello World')"
         task_lock.last_task_summary = "Python Hello World Script"
 
         # Create some files in working directory
@@ -1372,29 +1519,58 @@ class TestChatServiceIntegration:
             assert len(responses) > 0
 
     @pytest.mark.asyncio
-    async def test_step_solve_with_disconnected_request(
-        self, sample_chat_data, mock_request, mock_task_lock
+    async def test_step_solve_ignores_transport_disconnect(
+        self, sample_chat_data, mock_task_lock
     ):
-        """Test step_solve handles disconnected request."""
+        """Execution lifecycle no longer polls the SSE request transport."""
         options = Chat(**sample_chat_data)
-        mock_request.is_disconnected = AsyncMock(return_value=True)
+        request = MagicMock()
+        request.state.hands = None
+        request.headers = {}
+        request.is_disconnected = AsyncMock(return_value=True)
+        mock_task_lock.get_queue = AsyncMock(return_value=ActionStopData())
+        mock_task_lock.conversation_history = []
+        mock_task_lock.agent_memory_history = []
+        mock_task_lock.memory_summary = ""
+        mock_task_lock.summary_generated = False
+        mock_task_lock.memory_service = None
+        mock_task_lock.run_context = None
+        mock_task_lock.question_agent = MagicMock()
 
         mock_workforce = MagicMock()
 
-        with patch(
-            "app.service.chat_service.construct_workforce",
-            return_value=(mock_workforce, MagicMock()),
+        with (
+            patch(
+                "app.service.chat_service.question_confirm",
+                new=AsyncMock(return_value=False),
+            ),
+            patch(
+                "app.service.chat_service._answer_simple_question",
+                new=AsyncMock(return_value="still running"),
+            ),
+            patch(
+                "app.service.chat_service.construct_workforce",
+                return_value=(mock_workforce, MagicMock()),
+            ),
+            patch(
+                "app.service.chat_service.delete_task_lock",
+                new=AsyncMock(),
+            ) as mock_delete_task_lock,
+            patch(
+                "app.run_runtime.get_default_run_coordinator",
+                return_value=SimpleNamespace(
+                    complete_turn=AsyncMock(return_value=True)
+                ),
+            ),
         ):
-            # Should exit immediately if request is disconnected
             responses = []
-            async for response in step_solve(
-                options, mock_request, mock_task_lock
-            ):
+            async for response in step_solve(options, request, mock_task_lock):
                 responses.append(response)
 
-            # Should not have any responses due to immediate disconnection
-            assert len(responses) == 0
-            # Note: Workforce might not be created/stopped if request is immediately disconnected
+            assert len(responses) == 1
+            assert "still running" in responses[0]
+            request.is_disconnected.assert_not_awaited()
+            mock_delete_task_lock.assert_awaited_once_with(mock_task_lock.id)
 
     @pytest.mark.asyncio
     @pytest.mark.skip(reason="Gets Stuck for some reason.")
@@ -1499,7 +1675,6 @@ class TestChatServiceErrorCases:
         # Create task_lock without required attributes
         task_lock = MagicMock(spec=TaskLock)
         task_lock.conversation_history = None  # Missing attribute
-        task_lock.last_task_result = None  # Missing attribute
         task_lock.last_task_summary = None  # Missing attribute
 
         options = MagicMock()
@@ -1514,7 +1689,6 @@ class TestChatServiceErrorCases:
         """Test build_context_for_workforce returns empty for empty conversation."""
         task_lock = MagicMock(spec=TaskLock)
         task_lock.conversation_history = []
-        task_lock.last_task_result = "Test result"
         task_lock.last_task_summary = "Test summary"
 
         options = MagicMock()

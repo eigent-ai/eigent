@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { AgentAvatar } from '@/components/Workspace/AgentAvatar';
 import { Button } from '@/components/ui/button';
 import { MenuToggleGroup, MenuToggleItem } from '@/components/ui/menu-button';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
@@ -19,16 +20,7 @@ import { useHost } from '@/host';
 import { useWorkerList } from '@/store/authStore';
 import { useWorkflowViewportStore } from '@/store/workflowViewportStore';
 import { AnimatePresence, motion } from 'framer-motion';
-import {
-  Bird,
-  Bot,
-  ChevronLeft,
-  ChevronRight,
-  CodeXml,
-  FileText,
-  Globe,
-  Image,
-} from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -250,89 +242,6 @@ export default function WorkforceMenu({
     return <div>Loading...</div>;
   }
 
-  const agentMap = {
-    developer_agent: {
-      name: t('layout.developer-agent'),
-      icon: (
-        <CodeXml size={16} className="text-ds-text-neutral-default-default" />
-      ),
-      textColor: 'text-ds-text-terminal-default-default',
-      bgColor: 'bg-ds-bg-terminal-default-default',
-      shapeColor: 'bg-ds-bg-terminal-subtle-default',
-      borderColor: 'border-ds-border-terminal-default-default',
-      bgColorLight: 'bg-emerald-200',
-    },
-    browser_agent: {
-      name: t('layout.browser-agent'),
-      icon: (
-        <Globe size={16} className="text-ds-text-neutral-default-default" />
-      ),
-      textColor: 'text-blue-700',
-      bgColor: 'bg-ds-bg-browser-default-default',
-      shapeColor: 'bg-ds-bg-browser-subtle-default',
-      borderColor: 'border-ds-border-browser-default-default',
-      bgColorLight: 'bg-blue-200',
-    },
-    document_agent: {
-      name: t('layout.document-agent'),
-      icon: (
-        <FileText size={16} className="text-ds-text-neutral-default-default" />
-      ),
-      textColor: 'text-yellow-700',
-      bgColor: 'bg-ds-bg-document-default-default',
-      shapeColor: 'bg-ds-bg-document-subtle-default',
-      borderColor: 'border-ds-border-document-default-default',
-      bgColorLight: 'bg-yellow-200',
-    },
-    multi_modal_agent: {
-      name: t('layout.multi-modal-agent'),
-      icon: (
-        <Image size={16} className="text-ds-text-neutral-default-default" />
-      ),
-      textColor: 'text-fuchsia-700',
-      bgColor: 'bg-ds-bg-neutral-default-default',
-      shapeColor: 'bg-ds-bg-neutral-subtle-default',
-      borderColor: 'border-ds-border-neutral-default-default',
-      bgColorLight: 'bg-fuchsia-200',
-    },
-    social_media_agent: {
-      name: t('layout.social-media-agent'),
-      icon: <Bird size={16} className="text-ds-text-neutral-default-default" />,
-      textColor: 'text-purple-700',
-      bgColor: 'bg-violet-700',
-      shapeColor: 'bg-violet-300',
-      borderColor: 'border-violet-700',
-      bgColorLight: 'bg-purple-50',
-    },
-  };
-  const agentIconMap = {
-    developer_agent: (
-      <CodeXml
-        className={`!h-[10px] !w-[10px] ${agentMap.developer_agent.textColor}`}
-      />
-    ),
-    browser_agent: (
-      <Globe
-        className={`!h-[10px] !w-[10px] ${agentMap.browser_agent.textColor}`}
-      />
-    ),
-    document_agent: (
-      <FileText
-        className={`!h-[10px] !w-[10px] ${agentMap.document_agent.textColor}`}
-      />
-    ),
-    multi_modal_agent: (
-      <Image
-        className={`!h-[10px] !w-[10px] ${agentMap.multi_modal_agent.textColor}`}
-      />
-    ),
-    social_media_agent: (
-      <Bird
-        className={`!h-[10px] !w-[10px] ${agentMap.social_media_agent.textColor}`}
-      />
-    ),
-  };
-
   const onValueChange = (val: string) => {
     if (!chatStore.activeTaskId) return;
     if (val === '') {
@@ -348,7 +257,7 @@ export default function WorkforceMenu({
   };
 
   return (
-    <div className="h-12 pt-2 relative z-50 flex items-center justify-center">
+    <div className="relative z-50 flex h-12 items-center justify-center pt-2">
       <div className="w-full">
         <div className="relative flex h-full w-full flex-row items-center justify-center">
           {/* activeAgent */}
@@ -359,7 +268,7 @@ export default function WorkforceMenu({
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -30 }}
                 transition={{ duration: 0.3, ease: 'easeInOut' }}
-                className={`gap-2 pl-2 flex w-fit flex-row`}
+                className={`flex w-fit flex-row gap-2 pl-2`}
               >
                 <MenuToggleGroup
                   type="single"
@@ -367,7 +276,7 @@ export default function WorkforceMenu({
                   orientation="horizontal"
                   value={getCurrentTask()?.activeWorkspace as string}
                   onValueChange={onValueChange}
-                  className="gap-2 pb-2 flex w-full items-center"
+                  className="flex w-full items-center gap-2 pb-2"
                 >
                   <AnimatePresence mode="popLayout">
                     {agentList.map((agent) => (
@@ -393,15 +302,19 @@ export default function WorkforceMenu({
                             agent.tasks.length === 0
                           }
                           value={agent.agent_id}
-                          icon={<Bot />}
-                          subIcon={
-                            agentIconMap[
-                              agent.type as keyof typeof agentIconMap
-                            ]
+                          icon={
+                            <span className="flex size-10 overflow-hidden rounded-xl">
+                              <AgentAvatar
+                                agentType={agent.type}
+                                agentName={agent.name}
+                                fullBleed
+                              />
+                            </span>
                           }
-                          showSubIcon={true}
                           className={
-                            agent.tasks.length === 0 ? 'opacity-30' : ''
+                            agent.tasks.length === 0
+                              ? 'overflow-hidden opacity-30'
+                              : 'overflow-hidden'
                           }
                         />
                       </motion.div>
@@ -413,7 +326,7 @@ export default function WorkforceMenu({
           </AnimatePresence>
           {/* Viewport Navigation Buttons */}
           {(moveLeft || moveRight) && (
-            <div className="right-2 pb-2 absolute flex items-center">
+            <div className="absolute right-2 flex items-center pb-2">
               <Button
                 variant="ghost"
                 size="sm"

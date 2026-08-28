@@ -14,119 +14,49 @@
 
 import { Button } from '@/components/ui/button';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import {
+  installDesktopUpdate,
+  startDesktopUpdateDownload,
+} from '@/hooks/useDesktopUpdater';
 import { useHost } from '@/host';
-import type { ProgressInfo } from 'electron-updater';
-import { useCallback, useEffect, useState } from 'react';
+import { useDesktopUpdateStore } from '@/store/updateStore';
+import { Download, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
-// Survives TopBar remounts so a background download is only auto-started once
-// per app session; after that the slot falls back to a manual button.
-const AUTO_DOWNLOAD_KEY = 'eigent-update-auto-download-started';
-
-type UpdatePhase = 'idle' | 'available' | 'downloading' | 'downloaded';
-
-/**
- * Software-update slot at the left end of the top bar's trailing button group.
- * idle → (auto background download with inline progress) → "Launch new version".
- */
+/** Keeps an available update visible while users navigate between app screens. */
 export default function UpdateButton() {
   const { t } = useTranslation();
-  const host = useHost();
-  const ipc = host?.ipcRenderer;
-  const [phase, setPhase] = useState<UpdatePhase>('idle');
-  const [progress, setProgress] = useState(0);
-  const [failed, setFailed] = useState(false);
+  const ipc = useHost()?.ipcRenderer;
+  const phase = useDesktopUpdateStore((state) => state.phase);
+  const progress = useDesktopUpdateStore((state) => state.progress);
+  const newVersion = useDesktopUpdateStore((state) => state.newVersion);
+  const errorMessage = useDesktopUpdateStore((state) => state.errorMessage);
 
-  const startDownload = useCallback(() => {
-    setFailed(false);
-    setProgress(0);
-    setPhase('downloading');
-    void ipc?.invoke('start-download');
-  }, [ipc]);
-
-  useEffect(() => {
-    if (!ipc) return;
-
-    const onUpdateCanAvailable = (
-      _event: Electron.IpcRendererEvent,
-      info: VersionInfo
-    ) => {
-      setPhase((current) => {
-        if (current !== 'idle') return current;
-        return info.update ? 'available' : 'idle';
-      });
-    };
-
-    const onDownloadProgress = (
-      _event: Electron.IpcRendererEvent,
-      info: ProgressInfo
-    ) => {
-      setFailed(false);
-      setProgress(info.percent ?? 0);
-      setPhase((current) =>
-        current === 'downloaded' ? current : 'downloading'
-      );
-    };
-
-    const onUpdateDownloaded = () => {
-      setPhase('downloaded');
-    };
-
-    const onUpdateError = () => {
-      // Inline retry affordance instead of a toast; only relevant mid-download.
-      setPhase((current) => {
-        if (current !== 'downloading') return current;
-        setFailed(true);
-        return 'available';
-      });
-    };
-
-    ipc.on('update-can-available', onUpdateCanAvailable);
-    ipc.on('download-progress', onDownloadProgress);
-    ipc.on('update-downloaded', onUpdateDownloaded);
-    ipc.on('update-error', onUpdateError);
-    void ipc.invoke('check-update');
-
-    return () => {
-      ipc.off('update-can-available', onUpdateCanAvailable);
-      ipc.off('download-progress', onDownloadProgress);
-      ipc.off('update-downloaded', onUpdateDownloaded);
-      ipc.off('update-error', onUpdateError);
-    };
-  }, [ipc]);
-
-  // Auto-start the background download the first time an update is seen.
-  useEffect(() => {
-    if (phase !== 'available' || failed) return;
-    if (sessionStorage.getItem(AUTO_DOWNLOAD_KEY)) return;
-    sessionStorage.setItem(AUTO_DOWNLOAD_KEY, '1');
-    startDownload();
-  }, [phase, failed, startDownload]);
-
-  if (phase === 'idle') return null;
+  if (!ipc || phase === 'idle' || phase === 'checking') return null;
 
   if (phase === 'downloading') {
     const percent = Math.round(progress);
     const label = t('update.downloading', {
       defaultValue: 'Downloading update',
     });
+
     return (
       <TooltipSimple content={label} side="bottom" align="end">
         <div
           className="no-drag flex h-7 shrink-0 items-center gap-1.5 rounded-full px-2"
           role="progressbar"
-          aria-valuenow={percent}
+          aria-label={label}
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-label={label}
+          aria-valuenow={percent}
         >
-          <div className="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-ds-bg-neutral-strong-default">
+          <div className="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-ds-neutral-subtle-default">
             <div
-              className="ease-[cubic-bezier(0.23,1,0.32,1)] h-full w-full origin-left rounded-full bg-ds-bg-brand-default-default transition-transform duration-200 motion-reduce:transition-none"
+              className="h-full w-full origin-left rounded-full bg-ds-accent-default-default transition-transform duration-200 ease-out motion-reduce:transition-none"
               style={{ transform: `scaleX(${percent / 100})` }}
             />
           </div>
-          <span className="text-xs tabular-nums text-ds-text-neutral-subtle-default">
+          <span className="text-xs text-ds-ink-subtle-default tabular-nums">
             {percent}%
           </span>
         </div>
@@ -134,10 +64,11 @@ export default function UpdateButton() {
     );
   }
 
-  if (phase === 'downloaded') {
+  if (phase === 'downloaded' || phase === 'installing') {
     const label = t('update.launch-new-version', {
       defaultValue: 'Launch new version',
     });
+
     return (
       <TooltipSimple
         content={t('update.click-to-install-update', {
@@ -151,7 +82,8 @@ export default function UpdateButton() {
           variant="primary"
           size="sm"
           className="no-drag shrink-0 rounded-full px-3"
-          onClick={() => void ipc?.invoke('quit-and-install')}
+          disabled={phase === 'installing'}
+          onClick={() => void installDesktopUpdate(ipc)}
           aria-label={label}
         >
           {label}
@@ -160,18 +92,16 @@ export default function UpdateButton() {
     );
   }
 
-  // 'available' after the session already auto-downloaded once, or after a
-  // download error: manual (re)start.
-  const label = t('layout.update', { defaultValue: 'Update' });
+  const failed = phase === 'error';
+  const label = failed
+    ? t('update.update-failed-retry', {
+        defaultValue: 'Update failed — click to retry',
+      })
+    : t('update.update', { defaultValue: 'Update' });
+
   return (
     <TooltipSimple
-      content={
-        failed
-          ? t('update.update-failed-retry', {
-              defaultValue: 'Update failed — click to retry',
-            })
-          : label
-      }
+      content={failed ? (errorMessage ?? label) : (newVersion ?? label)}
       side="bottom"
       align="end"
     >
@@ -180,10 +110,17 @@ export default function UpdateButton() {
         variant="primary"
         size="sm"
         className="no-drag shrink-0 rounded-full px-3"
-        onClick={startDownload}
+        onClick={() => void startDesktopUpdateDownload(ipc)}
         aria-label={label}
       >
-        {label}
+        {failed ? (
+          <RefreshCw className="h-4 w-4" aria-hidden />
+        ) : (
+          <Download className="h-4 w-4" aria-hidden />
+        )}
+        {failed
+          ? t('layout.retry', { defaultValue: 'Retry' })
+          : t('update.update', { defaultValue: 'Update' })}
       </Button>
     </TooltipSimple>
   );

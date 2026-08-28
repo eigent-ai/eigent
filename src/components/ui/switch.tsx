@@ -16,6 +16,7 @@ import * as SwitchPrimitives from '@radix-ui/react-switch';
 import * as React from 'react';
 
 import { cn } from '@/lib/utils';
+import { DS_FOCUS_RING } from './semanticProps';
 import { mergeAliasStyles, switchTokenAliases } from './tokenAliases';
 
 export type SwitchSize = 'default' | 'sm';
@@ -41,13 +42,14 @@ const sizeClasses = {
 
 const variantClasses: Record<SwitchVariant, { root: string; thumb: string }> = {
   default: {
-    root: 'shadow-sm border-transparent data-[state=checked]:bg-ds-bg-status-completed-default-default data-[state=unchecked]:bg-ds-bg-neutral-subtle-default',
-    thumb: 'bg-ds-text-brand-inverse-default',
+    root: 'border-transparent data-[state=checked]:bg-ds-bg-success-default-default data-[state=unchecked]:bg-ds-neutral-subtle-default',
+    thumb:
+      'data-[state=checked]:bg-ds-success-indicator-on-default data-[state=unchecked]:bg-ds-neutral-strong-default',
   },
   outline: {
-    root: 'data-[state=checked]:bg-ds-bg-status-completed-default-default data-[state=checked]:border-ds-border-status-completed-default-default data-[state=unchecked]:bg-ds-bg-neutral-default-default data-[state=unchecked]:border-ds-border-neutral-default-default',
+    root: 'data-[state=checked]:bg-ds-bg-success-default-default data-[state=checked]:border-ds-border-success-default-default data-[state=unchecked]:bg-ds-neutral-default-default data-[state=unchecked]:border-ds-hairline-default-default',
     thumb:
-      'bg-ds-text-brand-inverse-default data-[state=unchecked]:bg-ds-bg-neutral-strong-default',
+      'data-[state=checked]:bg-ds-success-indicator-on-default data-[state=unchecked]:bg-ds-neutral-strong-default',
   },
 };
 
@@ -61,7 +63,9 @@ const Switch = React.forwardRef<
   ) => (
     <SwitchPrimitives.Root
       className={cn(
-        'peer inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-brand-default-focus focus-visible:ring-offset-2 focus-visible:ring-offset-ds-bg-neutral-subtle-default disabled:cursor-not-allowed disabled:opacity-50',
+        'peer inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-x-2 border-y-2 transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+        DS_FOCUS_RING,
+        'focus-visible:ring-offset-ds-neutral-subtle-default',
         sizeClasses[size].root,
         variantClasses[variant].root,
         className
@@ -72,7 +76,7 @@ const Switch = React.forwardRef<
     >
       <SwitchPrimitives.Thumb
         className={cn(
-          'pointer-events-none block rounded-full shadow-lg ring-0 transition-transform data-[state=unchecked]:translate-x-0',
+          'pointer-events-none block rounded-full shadow-ds-elevation-control ring-0 transition-transform data-[state=unchecked]:translate-x-0',
           sizeClasses[size].thumb,
           variantClasses[variant].thumb
         )}

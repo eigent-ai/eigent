@@ -24,7 +24,7 @@ import { UserMessageRichContent } from './UserMessageRichContent';
 
 const COPIED_RESET_MS = 2000;
 
-/** Four lines at `body-sm` line height — same tokens as `text-body-sm` (13px / 20px). */
+/** Four lines at `body-sm` line height — same tokens as `text-ds-text-base` (13px / 20px). */
 const USER_MESSAGE_COLLAPSED_MAX = 'calc(4 * var(--lineHeight-14, 20px))';
 
 /** SVG alpha mask: CSS linear-gradient masks are often treated as luminance in WebKit/Chromium (black = hole), which reads as a flat white slab. */
@@ -41,11 +41,17 @@ const USER_MESSAGE_FOLD_FADE_STYLE = {
   WebkitMaskRepeat: 'no-repeat',
 } as const;
 
+export interface UserMessageAttachment {
+  fileName: string;
+  /** Trusted local path. Durable display-only attachments intentionally omit it. */
+  filePath?: string;
+}
+
 interface UserMessageCardProps {
   id: string;
   content: string;
   className?: string;
-  attaches?: File[];
+  attaches?: readonly UserMessageAttachment[];
 }
 
 export function UserMessageCard({
@@ -96,9 +102,28 @@ export function UserMessageCard({
       setCopied(true);
       setTimeout(() => setCopied(false), COPIED_RESET_MS);
     } catch {
-      toast.error('Failed to copy to clipboard');
+      toast.error(
+        t('setting.copy-failed', {
+          defaultValue: 'Failed to copy to clipboard',
+        })
+      );
     }
   }, [content, t]);
+
+  const revealAttachment = useCallback(
+    async (filePath: string) => {
+      try {
+        const result = await ipcRenderer?.invoke('reveal-in-folder', filePath);
+        if (!result?.success) {
+          toast.error(result?.error || t('chat.failed-to-open-folder'));
+        }
+      } catch (error) {
+        console.error('Failed to reveal attachment:', error);
+        toast.error(t('chat.failed-to-open-folder'));
+      }
+    },
+    [ipcRenderer, t]
+  );
 
   // Popover handles outside clicks; no manual listener needed
   const openRemainingPopover = () => {
@@ -122,16 +147,19 @@ export function UserMessageCard({
   const getFileIcon = (fileName: string) => {
     const ext = fileName.split('.').pop()?.toLowerCase() || '';
     if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
-      return <Image className="h-4 w-4 text-ds-icon-neutral-default-default" />;
+      return <Image className="h-4 w-4 text-ds-ink-default-default" />;
     }
-    return (
-      <FileText className="h-4 w-4 text-ds-icon-neutral-default-default" />
-    );
+    return <FileText className="h-4 w-4 text-ds-ink-default-default" />;
   };
 
   return (
-    <div key={id} className={cn('group/msg relative w-full', className)}>
-      <div className="w-full overflow-visible rounded-xl bg-ds-bg-neutral-strong-default px-4 py-2">
+    <div
+      key={id}
+      className={cn('group/msg relative w-full pl-16', className)}
+      data-message-role="user"
+      data-user-query-anchor
+    >
+      <div className="w-full overflow-visible rounded-xl rounded-br-sm bg-ds-neutral-strong-default px-4 py-2">
         {attaches && attaches.length > 0 && (
           <div className="relative mb-2 box-border flex w-full flex-wrap items-start gap-1">
             {(() => {
@@ -146,25 +174,34 @@ export function UserMessageCard({
               return (
                 <>
                   {visibleFiles.map((file) => {
+                    const canReveal = Boolean(file.filePath);
                     return (
                       <div
-                        key={'attache-' + file.fileName}
+                        key={`attache-${file.filePath || file.fileName}`}
+                        data-attachment-capability={
+                          canReveal ? 'reveal' : 'display-only'
+                        }
                         className={cn(
-                          'relative box-border flex h-auto max-w-24 cursor-pointer items-center gap-0.5 rounded-lg bg-ds-bg-neutral-default-default transition-colors duration-300 hover:bg-ds-bg-neutral-default-hover'
+                          'relative box-border flex h-auto max-w-24 items-center gap-0.5 rounded-lg bg-ds-neutral-default-default',
+                          canReveal &&
+                            'cursor-pointer transition-colors duration-300 hover:bg-ds-neutral-default-hover'
                         )}
-                        onMouseEnter={() => setHoveredFilePath(file.filePath)}
+                        onMouseEnter={() => {
+                          if (file.filePath) setHoveredFilePath(file.filePath);
+                        }}
                         onMouseLeave={() =>
                           setHoveredFilePath((prev) =>
                             prev === file.filePath ? null : prev
                           )
                         }
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          ipcRenderer?.invoke(
-                            'reveal-in-folder',
-                            file.filePath
-                          );
-                        }}
+                        onClick={
+                          file.filePath
+                            ? (e) => {
+                                e.stopPropagation();
+                                void revealAttachment(file.filePath!);
+                              }
+                            : undefined
+                        }
                       >
                         {/* File icon */}
                         <div className="flex h-6 w-6 items-center justify-center rounded-md">
@@ -172,14 +209,14 @@ export function UserMessageCard({
                         </div>
 
                         {/* File Name */}
-                        <p
+                        <span
                           className={cn(
-                            "relative my-0 min-h-px min-w-px flex-1 overflow-hidden overflow-ellipsis whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default"
+                            "relative block min-h-px min-w-px flex-1 overflow-hidden font-['Inter'] !text-ds-text-meta font-bold text-ellipsis whitespace-nowrap text-ds-ink-default-default"
                           )}
                           title={file.fileName}
                         >
                           {file.fileName}
-                        </p>
+                        </span>
                       </div>
                     );
                   })}
@@ -195,14 +232,14 @@ export function UserMessageCard({
                           size="xs"
                           buttonContent="text"
                           variant="ghost"
-                          className="relative flex items-center rounded-lg bg-ds-bg-neutral-strong-default"
+                          className="relative flex items-center rounded-lg bg-ds-neutral-strong-default"
                           onMouseEnter={openRemainingPopover}
                           onMouseLeave={scheduleCloseRemainingPopover}
                           onClick={(e) => {
                             e.stopPropagation();
                           }}
                         >
-                          <span className="whitespace-nowrap font-['Inter'] text-label-xs font-bold leading-tight text-ds-text-neutral-default-default">
+                          <span className="font-['Inter'] !text-ds-text-meta leading-tight font-bold whitespace-nowrap text-ds-ink-default-default">
                             {remainingCount}+
                           </span>
                         </Button>
@@ -210,36 +247,45 @@ export function UserMessageCard({
                       <PopoverContent
                         align="end"
                         sideOffset={4}
-                        className="!w-auto max-w-40 rounded-md border border-ds-border-neutral-subtle-default bg-ds-bg-neutral-default-default p-1 shadow-perfect"
+                        className="!w-auto max-w-40 rounded-md border border-x border-y border-ds-hairline-subtle-default bg-ds-neutral-default-default p-1 shadow-ds-elevation-popover"
                         onMouseEnter={openRemainingPopover}
                         onMouseLeave={scheduleCloseRemainingPopover}
                       >
                         <div className="scrollbar-hide flex max-h-[176px] flex-col gap-1 overflow-auto">
                           {attaches.slice(maxVisibleFiles).map((file) => {
+                            const canReveal = Boolean(file.filePath);
                             return (
                               <div
-                                key={file.filePath}
-                                className="flex cursor-pointer items-center gap-1 rounded-lg bg-ds-bg-neutral-strong-default py-0.5 transition-colors duration-300 hover:bg-ds-bg-neutral-default-hover"
+                                key={file.filePath || file.fileName}
+                                data-attachment-capability={
+                                  canReveal ? 'reveal' : 'display-only'
+                                }
+                                className={cn(
+                                  'flex items-center gap-1 rounded-lg bg-ds-neutral-strong-default py-0.5',
+                                  canReveal &&
+                                    'cursor-pointer transition-colors duration-300 hover:bg-ds-neutral-default-hover'
+                                )}
                                 onMouseLeave={() =>
                                   setHoveredFilePath((prev) =>
                                     prev === file.filePath ? null : prev
                                   )
                                 }
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  ipcRenderer?.invoke(
-                                    'reveal-in-folder',
-                                    file.filePath
-                                  );
-                                  setIsRemainingOpen(false);
-                                }}
+                                onClick={
+                                  file.filePath
+                                    ? (e) => {
+                                        e.stopPropagation();
+                                        void revealAttachment(file.filePath!);
+                                        setIsRemainingOpen(false);
+                                      }
+                                    : undefined
+                                }
                               >
                                 <div className="flex h-6 w-6 items-center justify-center rounded-md">
                                   {getFileIcon(file.fileName)}
                                 </div>
-                                <p className="my-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-['Inter'] text-xs font-bold leading-tight text-ds-text-neutral-default-default">
+                                <span className="block flex-1 overflow-hidden font-['Inter'] !text-ds-text-meta font-bold text-ellipsis whitespace-nowrap text-ds-ink-default-default">
                                   {file.fileName}
-                                </p>
+                                </span>
                               </div>
                             );
                           })}
@@ -263,14 +309,14 @@ export function UserMessageCard({
             <UserMessageRichContent content={content} variant="card" />
             {canClamp && !expanded && (
               <div
-                className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-14 bg-ds-bg-neutral-strong-default"
+                className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-14 bg-ds-neutral-strong-default"
                 style={USER_MESSAGE_FOLD_FADE_STYLE}
                 aria-hidden
               />
             )}
           </div>
         </div>
-        <div className="pointer-events-none absolute bottom-1 right-2 z-10 flex w-full shrink-0 items-center justify-end gap-0.5 opacity-0 transition-opacity duration-300 group-hover/msg:pointer-events-auto group-hover/msg:opacity-100">
+        <div className="pointer-events-none absolute right-2 bottom-1 z-10 flex w-full shrink-0 items-center justify-end gap-0.5 opacity-0 transition-opacity duration-300 group-hover/msg:pointer-events-auto group-hover/msg:opacity-100">
           {canClamp && !expanded && (
             <Button
               type="button"

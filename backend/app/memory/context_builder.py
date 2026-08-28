@@ -195,6 +195,7 @@ class ProjectContextBuilder:
         mode: ContextMode,
         token_budget: int,
         current_user_prompt: str,
+        include_conversation: bool = True,
     ) -> AgentContextBundle:
         """Return a bundle sized to roughly `token_budget` tokens.
 
@@ -212,8 +213,15 @@ class ProjectContextBuilder:
         artifacts_raw = self._store.read_artifacts(
             user_key, space_id, project_id
         )
-        recent_conv_raw = self._store.read_conversation_tail(
-            user_key, space_id, project_id, limit=_MAX_RECENT_CONVO_EVENTS
+        recent_conv_raw = (
+            self._store.read_conversation_tail(
+                user_key,
+                space_id,
+                project_id,
+                limit=_MAX_RECENT_CONVO_EVENTS,
+            )
+            if include_conversation
+            else []
         )
 
         # Drop debug_only / audit_only events from the context view -- only

@@ -1,6 +1,17 @@
 /** @type {import('tailwindcss').Config} */
-const fs = require('node:fs');
-const path = require('node:path');
+import fs from 'node:fs';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import tailwindcssAnimate from 'tailwindcss-animate';
+
+// Shared with the code surfaces that need the stack as a plain string
+// (Monaco can't read Tailwind classes). Single source of truth for `font-code`.
+const require = createRequire(import.meta.url);
+const fontStacks = require('./src/style/fontStacks.json');
+const dsGeneratedTokens = require('./src/style/generated/tokens.tailwind.cjs');
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function loadTokenManifest() {
   const fallback = {
@@ -26,14 +37,53 @@ function loadTokenManifest() {
       'terminal',
       'document',
       'success',
-      'caution',
       'error',
       'warning',
       'information',
     ],
+    category: {
+      colors: [
+        'gray',
+        'slate',
+        'red',
+        'blue',
+        'green',
+        'yellow',
+        'orange',
+        'purple',
+        'pink',
+        'cyan',
+        'teal',
+        'indigo',
+        'amber',
+        'lime',
+        'mint',
+        'tomato',
+      ],
+      roles: [
+        ['background', 'app'],
+        ['background', 'subtle'],
+        ['background', 'default'],
+        ['background', 'hover'],
+        ['background', 'active'],
+        ['border', 'subtle'],
+        ['border', 'default'],
+        ['border', 'hover'],
+        ['solid', 'default'],
+        ['solid', 'hover'],
+        ['text', 'default'],
+        ['text', 'strong'],
+      ],
+    },
   };
 
-  const manifestPath = path.join(__dirname, 'tokens', 'manifest.json');
+  const manifestPath = path.join(
+    __dirname,
+    'src',
+    'style',
+    'tokens',
+    'manifest.json'
+  );
   try {
     const raw = fs.readFileSync(manifestPath, 'utf8');
     const parsed = JSON.parse(raw);
@@ -41,7 +91,9 @@ function loadTokenManifest() {
       Array.isArray(parsed.elements) &&
       Array.isArray(parsed.emphasis) &&
       Array.isArray(parsed.states) &&
-      Array.isArray(parsed.tones)
+      Array.isArray(parsed.tones) &&
+      Array.isArray(parsed.category?.colors) &&
+      Array.isArray(parsed.category?.roles)
     ) {
       return parsed;
     }
@@ -56,6 +108,8 @@ const DS_TOKEN_ELEMENTS = TOKEN_MANIFEST.elements;
 const DS_TOKEN_EMPHASIS = TOKEN_MANIFEST.emphasis;
 const DS_TOKEN_STATES = TOKEN_MANIFEST.states;
 const DS_TOKEN_TONES = TOKEN_MANIFEST.tones;
+const DS_CATEGORY_COLORS = TOKEN_MANIFEST.category.colors;
+const DS_CATEGORY_ROLES = TOKEN_MANIFEST.category.roles;
 
 function buildDsTokenColorMap() {
   const map = {};
@@ -67,6 +121,17 @@ function buildDsTokenColorMap() {
           map[token] = `var(--${token})`;
         }
       }
+    }
+  }
+  return map;
+}
+
+function buildDsCategoryColorMap() {
+  const map = {};
+  for (const color of DS_CATEGORY_COLORS) {
+    for (const [style, state] of DS_CATEGORY_ROLES) {
+      const token = `ds-category-${color}-${style}-${state}`;
+      map[token] = `var(--${token})`;
     }
   }
   return map;
@@ -117,7 +182,7 @@ function neutralDsSemanticSafelist() {
   ];
 }
 
-module.exports = {
+export default {
   darkMode: ['class'],
   content: [
     './index.html',
@@ -131,7 +196,9 @@ module.exports = {
     extend: {
       colors: {
         ...buildDsTokenColorMap(),
+        ...buildDsCategoryColorMap(),
         ...buildDsBgStatusSubtleShortAliases(),
+        ...dsGeneratedTokens.colors,
         red: {
           50: 'var(--colors-red-50)',
           100: 'var(--colors-red-100)',
@@ -348,12 +415,10 @@ module.exports = {
           'border-hover': 'var(--input-border-hover)',
           'border-focus': 'var(--input-border-focus)',
           'border-success': 'var(--input-border-success)',
-          'border-caution': 'var(--input-border-caution)',
           'border-warning': 'var(--input-border-warning)',
           'text-default': 'var(--input-text-default)',
           'text-focus': 'var(--input-text-focus)',
           'text-success': 'var(--text-success)',
-          'text-caution': 'var(--text-caution)',
           'text-warning': 'var(--text-warning)',
           'label-default': 'var(--input-label-default)',
         },
@@ -454,10 +519,8 @@ module.exports = {
             'icon-active 2': 'var(--button-tertiary-icon-active-2)',
           },
           'fill-success': 'var(--button-fill-success)',
-          'fill-caution': 'var(--button-fill-caution)',
           'fill-warning': 'var(--button-fill-warning)',
           'fill-success-foreground': 'var(--button-fill-success-foreground)',
-          'fill-caution-foreground': 'var(--button-fill-caution-foreground)',
           'fill-warning-foreground': 'var(--button-fill-warning-foreground)',
           'fill-information': 'var(--button-fill-information)',
           'fill-information-foreground':
@@ -540,8 +603,6 @@ module.exports = {
           'text-success': 'var(--tag-text-success)',
           'fill-warning': 'var(--tag-fill-warning)',
           'foreground-warning': 'var(--tag-foreground-warning)',
-          'fill-caution': 'var(--tag-fill-caution)',
-          'foreground-caution': 'var(--tag-foreground-caution)',
           'fill-default': 'var(--tag-fill-default)',
           'foreground-default': 'var(--tag-foreground-default)',
           'fill-default-foreground': 'var(--tag-fill-default-foreground)',
@@ -618,7 +679,6 @@ module.exports = {
         'text-information': 'var(--text-information)',
         'text-success': 'var(--text-success)',
         'text-warning': 'var(--text-warning)',
-        'text-caution': 'var(--text-caution)',
         'text-on-action': 'var(--text-on-action)',
         'text-on-disabled': 'var(--text-on-disabled)',
         'text-document': 'var(--text-document)',
@@ -636,7 +696,6 @@ module.exports = {
         'surface-success': 'var(--ds-bg-status-completed-subtle-default)',
         'surface-information': 'var(--ds-bg-status-splitting-subtle-default)',
         'surface-warning': 'var(--ds-bg-status-pending-subtle-default)',
-        'surface-caution': 'var(--ds-bg-status-error-subtle-default)',
         'surface-action': 'var(--ds-bg-neutral-default-default)',
         'surface-action-hover': 'var(--ds-bg-neutral-default-hover)',
         'surface-disabled': 'var(--ds-bg-neutral-muted-disabled)',
@@ -656,7 +715,6 @@ module.exports = {
         'border-information': 'var(--border-information)',
         'border-success': 'var(--border-success)',
         'border-warning': 'var(--border-warning)',
-        'border-caution': 'var(--border-caution)',
         'border-focus': 'var(--border-focus)',
         'border-action': 'var(--border-action)',
         'border-action-hover': 'var(--border-action-hover)',
@@ -675,7 +733,6 @@ module.exports = {
         'icon-information': 'var(--icon-information)',
         'icon-success': 'var(--icon-success)',
         'icon-warning': 'var(--icon-warning)',
-        'icon-caution': 'var(--icon-caution)',
         'icon-action-hover': 'var(--icon-action-hover)',
         'icon-multimodal': 'var(--icon-multimodal)',
         'icon-socialmedia': 'var(--icon-socialmedia)',
@@ -712,7 +769,6 @@ module.exports = {
         'fill-fill-success-active': 'var(--fill-fill-success-active)',
         'fill-fill-success-disable': 'var(--fill-fill-success-disable)',
         'fill-fill-warning': 'var(--fill-fill-warning)',
-        'fill-fill-caution': 'var(--fill-fill-caution)',
         'fill-socialmedia': 'var(--fill-socialmedia)',
         'fill-document': 'var(--fill-document)',
         'fill-browser': 'var(--fill-browser)',
@@ -745,12 +801,19 @@ module.exports = {
         short: { raw: '(max-height: 800px)' },
       },
       boxShadow: {
+        // Preserve Tailwind 3's `shadow-sm` visual during the v4 migration.
+        sm: '0 1px 2px 0 rgb(0 0 0 / 0.05)',
         'history-item': '0px 3px 4px -1px rgba(0, 0, 0, 0.10)',
-        perfect: 'var(--shadow-perfect)',
+        perfect: 'var(--ds-elevation-popover)',
         soft: 'var(--shadow-soft)',
         'blur-effect': 'var(--shadow-blur-effect)',
         'button-shadow': 'var(--shadow-button)',
         'workspace-project-picker': 'var(--shadow-workspace-project-picker)',
+        ...dsGeneratedTokens.boxShadow,
+      },
+      blur: {
+        // Tailwind 4 renamed the old 4px `blur-sm` step to `blur-xs`.
+        sm: '4px',
       },
       spacing: {
         xs: 'var(--spacing-xs, 4px)',
@@ -759,16 +822,20 @@ module.exports = {
         lg: 'var(--spacing-lg, 32px)',
         xl: 'var(--spacing-xl, 64px)',
         'multi-value': 'var(--spacing-multi-value, 8 64)',
+        ...dsGeneratedTokens.spacing,
       },
       borderRadius: {
         sm: 'var(--borderRadius-sm, 4px)',
         lg: 'var(--borderRadius-lg, 8px)',
         xl: 'var(--borderRadius-xl, 16px)',
         'multi-value': 'var(--borderRadius-multi-value, 4 8)',
+        ...dsGeneratedTokens.borderRadius,
       },
       fontFamily: {
         sans: ['Inter', 'sans-serif'],
         mono: ['SFMono-Regular', 'Menlo', 'monospace'],
+        code: fontStacks.code,
+        text: dsGeneratedTokens.fontFamily.text,
         inter: ['Inter'],
         menlo: ['Menlo'],
         serif: ['Palatino'],
@@ -839,6 +906,22 @@ module.exports = {
           'var(--fontSize-5xl, 44px)',
           { lineHeight: 'var(--lineHeight-0, 58px)' },
         ],
+        ...dsGeneratedTokens.fontSize,
+      },
+      height: {
+        ...dsGeneratedTokens.height,
+      },
+      width: {
+        ...dsGeneratedTokens.width,
+      },
+      size: {
+        ...dsGeneratedTokens.size,
+      },
+      minHeight: {
+        ...dsGeneratedTokens.minHeight,
+      },
+      borderWidth: {
+        ...dsGeneratedTokens.borderWidth,
       },
       lineHeight: {
         0: 'var(--lineHeight-0, 58)',
@@ -884,10 +967,10 @@ module.exports = {
         '6xl': 'var(--lineHeight-6xl, 58px)',
       },
       fontWeight: {
-        regular: 'var(--fontWeight-regular, 400)',
-        medium: 'var(--fontWeight-medium, 500)',
-        semibold: 'var(--fontWeight-semibold, 600)',
-        bold: 'var(--fontWeight-bold, 700)',
+        regular: 'var(--ds-weight-regular)',
+        medium: 'var(--ds-weight-medium)',
+        semibold: 'var(--ds-weight-semibold)',
+        bold: 'var(--ds-weight-bold)',
         'inter-0': 'var(--fontWeight-inter-0, 700)',
         'inter-1': 'var(--fontWeight-inter-1, 400)',
         'inter-2': 'var(--fontWeight-inter-2, 500)',
@@ -918,5 +1001,5 @@ module.exports = {
   corePlugins: {
     preflight: false,
   },
-  plugins: [require('tailwindcss-animate')],
+  plugins: [tailwindcssAnimate],
 };

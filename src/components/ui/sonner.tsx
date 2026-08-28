@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { useTheme } from 'next-themes';
+import { useAuthStore } from '@/store/authStore';
 import { createPortal } from 'react-dom';
 import { Toaster as Sonner } from 'sonner';
 
@@ -48,23 +48,23 @@ const FOLD_AT_THREE_CSS = `
 `;
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = 'system' } = useTheme();
+  const theme = useAuthStore((state) => state.appearance);
 
   const toaster = (
     <>
       <style>{FOLD_AT_THREE_CSS}</style>
       <Sonner
-        theme={theme as ToasterProps['theme']}
+        theme={theme}
         className="toaster group"
         toastOptions={{
           classNames: {
             toast:
-              'group toast group-[.toaster]:bg-ds-bg-neutral-subtle-default group-[.toaster]:text-ds-text-neutral-default-default group-[.toaster]:border-ds-border-neutral-default-default group-[.toaster]:shadow-lg',
-            description: 'group-[.toast]:text-ds-text-neutral-muted-default',
+              'group toast group-[.toaster]:bg-ds-neutral-subtle-default group-[.toaster]:text-ds-ink-default-default group-[.toaster]:border-ds-hairline-default-default group-[.toaster]:shadow-ds-elevation-floating',
+            description: 'group-[.toast]:text-ds-ink-muted-default',
             actionButton:
-              'group-[.toast]:bg-ds-bg-brand-default-default group-[.toast]:text-ds-text-brand-inverse-default',
+              'group-[.toast]:bg-ds-accent-default-default group-[.toast]:text-ds-accent-on-default',
             cancelButton:
-              'group-[.toast]:bg-ds-bg-neutral-muted-default group-[.toast]:text-ds-text-neutral-muted-default',
+              'group-[.toast]:bg-ds-neutral-muted-default group-[.toast]:text-ds-ink-muted-default',
           },
         }}
         {...props}

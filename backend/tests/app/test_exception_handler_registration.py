@@ -43,6 +43,29 @@ def test_user_exception_returns_api_error_instead_of_http_500():
     }
 
 
+def test_user_exception_can_return_a_stable_typed_error_code():
+    test_api = FastAPI()
+    register_exception_handlers(test_api)
+
+    @test_api.get("/workspace-bundle-pending")
+    async def workspace_bundle_pending():
+        raise UserException(
+            1,
+            "Sync local setup before starting another Run",
+            error_code="workspace_bundle_reconfiguration_pending",
+        )
+
+    with TestClient(test_api) as client:
+        response = client.get("/workspace-bundle-pending")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "code": 1,
+        "text": "Sync local setup before starting another Run",
+        "error_code": "workspace_bundle_reconfiguration_pending",
+    }
+
+
 def test_validation_handler_works_without_eager_translation_import():
     test_api = FastAPI()
     register_exception_handlers(test_api)

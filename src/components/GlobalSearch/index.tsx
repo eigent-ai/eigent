@@ -43,14 +43,18 @@ export function GlobalSearchDialog({
       open={open}
       onOpenChange={onOpenChange}
       overlayClassName="backdrop-blur-none"
-      contentClassName="border-0 bg-ds-bg-neutral-subtle-default shadow-perfect"
-      commandClassName="bg-ds-bg-neutral-subtle-default"
+      contentClassName="border-x-0 border-y-0 border-0 bg-ds-neutral-subtle-default shadow-ds-elevation-popover"
+      commandClassName="bg-ds-neutral-subtle-default"
     >
       <DialogTitle className="sr-only">{t('dashboard.search')}</DialogTitle>
-      <CommandInput placeholder="Type a command or search..." />
+      <CommandInput
+        placeholder={t('dashboard.command-search-placeholder', {
+          defaultValue: 'Type a command or search…',
+        })}
+      />
       <CommandList>
         <CommandEmpty>{t('dashboard.no-results')}</CommandEmpty>
-        <CommandGroup heading="Today">
+        <CommandGroup heading={t('dashboard.today', { defaultValue: 'Today' })}>
           <CommandItem>
             <Calendar />
             <span>{t('dashboard.calendar')}</span>
@@ -76,11 +80,11 @@ export function GlobalSearch() {
   return (
     <>
       <div
-        className="bg-ds-bg-neutral-subtle-default no-drag h-6 w-60 space-x-2 rounded-lg flex items-center justify-center"
+        className="no-drag flex h-6 w-60 items-center justify-center space-x-2 rounded-lg bg-ds-neutral-subtle-default"
         onClick={() => setOpen(true)}
       >
-        <Search className="h-4 w-4 text-ds-text-neutral-muted-default"></Search>
-        <span className="font-inter leading-4 text-ds-text-neutral-muted-default text-[10px]">
+        <Search className="h-4 w-4 text-ds-ink-muted-default"></Search>
+        <span className="font-inter text-[10px] leading-4 text-ds-ink-muted-default">
           {t('dashboard.search-for-a-task-or-document')}
         </span>
       </div>

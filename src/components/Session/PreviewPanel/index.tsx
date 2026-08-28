@@ -39,7 +39,7 @@ const TAB_DEFAULT_WIDTH = 176;
 const TAB_MIN_WIDTH = 92;
 
 export interface PreviewPanelProps {
-  onJumpToContext?: (file: FileInfo | null) => void;
+  onJumpToFiles?: (file: FileInfo | null) => void;
   /**
    * False while the display panel's open animation is still running. Browser
    * tabs hold their fixed-position webview guest parked until it settles so
@@ -55,7 +55,7 @@ export interface PreviewPanelProps {
  * this panel only renders their chrome via BrowserTab.
  */
 export function PreviewPanel({
-  onJumpToContext,
+  onJumpToFiles,
   displaySettled = true,
 }: PreviewPanelProps) {
   const { t } = useTranslation();
@@ -177,9 +177,9 @@ export function PreviewPanel({
           />
         );
       case 'file':
-        return <FileTab tab={activeTab} onJumpToContext={onJumpToContext} />;
+        return <FileTab tab={activeTab} onJumpToFiles={onJumpToFiles} />;
       case 'review':
-        return <ReviewTab />;
+        return <ReviewTab key={activeTab.id} tab={activeTab} />;
       case 'terminal':
         // Keyed so each terminal tab keeps its own shell / stream state.
         return <TerminalTab key={activeTab.id} tab={activeTab} />;
@@ -192,7 +192,7 @@ export function PreviewPanel({
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden px-1 pb-1">
-      <div className="flex h-[44px] shrink-0 items-center justify-start gap-1 px-1.5">
+      <div className="flex h-ds-layout-row-header shrink-0 items-center justify-start gap-1 overflow-visible px-1.5">
         <div className="relative flex min-w-0 items-center">
           <div
             ref={tabListRef}
@@ -218,7 +218,7 @@ export function PreviewPanel({
                     // Every tab uses the selected colors; unselected tabs are
                     // just dimmed (40% at rest, 80% on hover) so selection
                     // reads as full opacity rather than a color change.
-                    'group relative h-7 rounded-lg bg-ds-bg-neutral-strong-default text-ds-text-neutral-default-default transition-opacity',
+                    'group relative h-7 rounded-full bg-ds-neutral-strong-default text-ds-ink-default-default transition-opacity',
                     selected ? 'opacity-100' : 'opacity-40 hover:opacity-80'
                   )}
                 >
@@ -228,7 +228,7 @@ export function PreviewPanel({
                     aria-selected={selected}
                     tabIndex={selected ? 0 : -1}
                     onClick={() => selectSessionPreviewTab(tab.id)}
-                    className="flex h-full w-full min-w-0 cursor-pointer items-center gap-2 border-0 bg-transparent px-2 text-left text-inherit"
+                    className="flex h-full w-full min-w-0 cursor-pointer items-center gap-2 border-0 border-x-0 border-y-0 bg-transparent px-2 text-left text-inherit"
                   >
                     <Icon className="h-4 w-4 shrink-0" aria-hidden />
                     <span className="truncate text-sm font-medium">
@@ -245,10 +245,10 @@ export function PreviewPanel({
                       handleCloseTab(tab);
                     }}
                     className={cn(
-                      'absolute inset-y-0 right-1 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 cursor-pointer items-center justify-center rounded-lg border-0 px-1 text-inherit opacity-0 transition-opacity group-hover:opacity-100',
+                      'absolute inset-y-0 top-1/2 right-1 z-10 flex h-5 w-5 -translate-y-1/2 cursor-pointer items-center justify-center rounded-lg border-0 border-x-0 border-y-0 px-1 text-inherit opacity-0 transition-opacity group-hover:opacity-100',
                       // Keyboard users can't hover — reveal on focus too.
-                      'focus-visible:opacity-100 group-focus-within:opacity-100',
-                      'bg-ds-bg-neutral-subtle-default hover:bg-ds-bg-neutral-muted-default'
+                      'group-focus-within:opacity-100 focus-visible:opacity-100',
+                      'bg-ds-neutral-subtle-default hover:bg-ds-neutral-muted-default'
                     )}
                   >
                     <X className="h-3.5 w-3.5" aria-hidden />
@@ -299,7 +299,7 @@ export function PreviewPanel({
         </TooltipSimple>
       </div>
 
-      <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-xl border-solid border-ds-border-neutral-subtle-disabled bg-ds-bg-neutral-subtle-default">
+      <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-xl border-solid border-ds-hairline-subtle-disabled bg-ds-neutral-subtle-default">
         {renderActiveContent()}
       </div>
     </div>

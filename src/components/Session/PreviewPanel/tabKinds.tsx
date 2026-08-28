@@ -14,7 +14,7 @@
 
 import type { PreviewTabKind, SessionPreviewTab } from '@/store/pageTabStore';
 import {
-  ClipboardCheck,
+  FileDiff,
   FileText,
   Globe,
   type LucideIcon,
@@ -38,10 +38,9 @@ export interface PreviewKindMeta {
  * The content kinds the chooser offers, in display order. Single source of
  * truth for icon + copy so the tab strip and chooser never drift.
  *
- * `review` and `canvas` are reserved tab types (their components and store
- * plumbing exist, and persisted tabs still render) but are hidden from the
- * chooser until a later version ships their content. Re-add their entries
- * here when that lands.
+ * `canvas` is a reserved tab type (its component and store plumbing exist, and
+ * persisted tabs still render) but is hidden from the chooser until a later
+ * version ships its content. Re-add its entry here when that lands.
  */
 export const PREVIEW_TAB_KINDS: PreviewKindMeta[] = [
   {
@@ -61,13 +60,21 @@ export const PREVIEW_TAB_KINDS: PreviewKindMeta[] = [
     defaultDescription: 'Preview files produced or referenced in this session.',
   },
   {
+    kind: 'review',
+    icon: FileDiff,
+    labelKey: 'layout.preview-kind-review',
+    defaultLabel: 'Review',
+    descriptionKey: 'layout.preview-kind-review-desc',
+    defaultDescription: 'Inspect file changes made in this session.',
+  },
+  {
     kind: 'terminal',
     icon: SquareTerminal,
     labelKey: 'layout.preview-kind-terminal',
     defaultLabel: 'Terminal',
     descriptionKey: 'layout.preview-kind-terminal-desc',
     defaultDescription:
-      'Open a local terminal that starts in this project’s folder.',
+      'Open a local terminal that starts in this session’s folder.',
   },
 ];
 
@@ -75,7 +82,7 @@ const KIND_ICONS: Record<SessionPreviewTab['type'], LucideIcon> = {
   chooser: PanelsTopLeft,
   browser: Globe,
   file: FileText,
-  review: ClipboardCheck,
+  review: FileDiff,
   terminal: SquareTerminal,
   canvas: Shapes,
 };

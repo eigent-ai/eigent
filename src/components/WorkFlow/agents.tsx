@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import i18n from '@/i18n';
 import { Bird, Bot, CodeXml, FileText, Globe, Image } from 'lucide-react';
 import type { ReactNode } from 'react';
 
@@ -37,27 +38,10 @@ export interface AgentDisplayInfo {
   bgColorLight: string;
 }
 
-/**
- * Classes for the small top-right role badge on agent tiles. Must be full literal
- * strings (including `!`) so Tailwind emits them, and `!text-*` beats
- * `button .lucide` in `src/style/index.css`.
- */
-export const WORKFLOW_AGENT_SUB_ICON_CLASS: Record<WorkflowAgentType, string> =
-  {
-    developer_agent:
-      '!h-[10px] !w-[10px] shrink-0 !text-ds-text-terminal-default-default',
-    browser_agent: '!h-[10px] !w-[10px] shrink-0 !text-blue-700',
-    document_agent: '!h-[10px] !w-[10px] shrink-0 !text-yellow-700',
-    multi_modal_agent: '!h-[10px] !w-[10px] shrink-0 !text-fuchsia-700',
-    social_media_agent: '!h-[10px] !w-[10px] shrink-0 !text-purple-700',
-  };
-
 export const agentMap: Record<WorkflowAgentType, AgentDisplayInfo> = {
   developer_agent: {
     name: 'Developer Agent',
-    icon: (
-      <CodeXml size={16} className="text-ds-text-neutral-default-default" />
-    ),
+    icon: <CodeXml size={16} className="text-ds-ink-default-default" />,
     textColor: 'text-ds-text-terminal-default-default',
     bgColor: 'bg-ds-bg-terminal-default-default',
     shapeColor: 'bg-ds-bg-terminal-subtle-default',
@@ -66,7 +50,7 @@ export const agentMap: Record<WorkflowAgentType, AgentDisplayInfo> = {
   },
   browser_agent: {
     name: 'Browser Agent',
-    icon: <Globe size={16} className="text-ds-text-neutral-default-default" />,
+    icon: <Globe size={16} className="text-ds-ink-default-default" />,
     textColor: 'text-blue-700',
     bgColor: 'bg-ds-bg-browser-default-default',
     shapeColor: 'bg-ds-bg-browser-subtle-default',
@@ -75,9 +59,7 @@ export const agentMap: Record<WorkflowAgentType, AgentDisplayInfo> = {
   },
   document_agent: {
     name: 'Document Agent',
-    icon: (
-      <FileText size={16} className="text-ds-text-neutral-default-default" />
-    ),
+    icon: <FileText size={16} className="text-ds-ink-default-default" />,
     textColor: 'text-yellow-700',
     bgColor: 'bg-ds-bg-document-default-default',
     shapeColor: 'bg-ds-bg-document-subtle-default',
@@ -86,16 +68,16 @@ export const agentMap: Record<WorkflowAgentType, AgentDisplayInfo> = {
   },
   multi_modal_agent: {
     name: 'Multi Modal Agent',
-    icon: <Image size={16} className="text-ds-text-neutral-default-default" />,
+    icon: <Image size={16} className="text-ds-ink-default-default" />,
     textColor: 'text-fuchsia-700',
-    bgColor: 'bg-ds-bg-neutral-default-default',
-    shapeColor: 'bg-ds-bg-neutral-subtle-default',
-    borderColor: 'border-ds-border-neutral-default-default',
+    bgColor: 'bg-ds-neutral-default-default',
+    shapeColor: 'bg-ds-neutral-subtle-default',
+    borderColor: 'border-ds-hairline-default-default',
     bgColorLight: 'bg-fuchsia-200',
   },
   social_media_agent: {
     name: 'Social Media Agent',
-    icon: <Bird size={16} className="text-ds-text-neutral-default-default" />,
+    icon: <Bird size={16} className="text-ds-ink-default-default" />,
     textColor: 'text-purple-700',
     bgColor: 'bg-violet-700',
     shapeColor: 'bg-violet-300',
@@ -150,8 +132,12 @@ export const SKILL_SCOPE_AGENT_LIST: {
   {
     id: SINGLE_AGENT_ID,
     // Product label (layout.workspace-session-single-agent). Value stays `single_agent`.
-    name: 'Single Agent',
-    icon: <Bot size={16} className="text-ds-text-neutral-default-default" />,
+    get name() {
+      return i18n.t('layout.workspace-session-single-agent', {
+        defaultValue: 'Single Agent',
+      });
+    },
+    icon: <Bot size={16} className="text-ds-ink-default-default" />,
   },
   ...WORKFLOW_AGENT_LIST,
 ];
@@ -202,14 +188,21 @@ export function buildSkillScopeAgentOptions(
     seen.add(value);
     const label =
       value === SINGLE_AGENT_ID
-        ? 'Single Agent'
+        ? i18n.t('layout.workspace-session-single-agent', {
+            defaultValue: 'Single Agent',
+          })
         : String(worker.name || value).trim() || value;
     combined.push({ value, label });
   }
 
   // Last-resort: if somehow dropped, prepend Single Agent.
   if (!combined.some((agent) => agent.value === SINGLE_AGENT_ID)) {
-    combined.unshift({ value: SINGLE_AGENT_ID, label: 'Single Agent' });
+    combined.unshift({
+      value: SINGLE_AGENT_ID,
+      label: i18n.t('layout.workspace-session-single-agent', {
+        defaultValue: 'Single Agent',
+      }),
+    });
   } else if (combined[0]?.value !== SINGLE_AGENT_ID) {
     const single = combined.find((agent) => agent.value === SINGLE_AGENT_ID)!;
     combined.splice(combined.indexOf(single), 1);

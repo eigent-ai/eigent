@@ -1234,6 +1234,7 @@ describe('Electron Main Index Functions', () => {
       mockFileReader = {
         openFile: vi.fn(),
         getFileList: vi.fn(),
+        getCamelLogFileList: vi.fn(),
       };
       mockWebViewManager = {
         captureWebview: vi.fn(),
@@ -1277,6 +1278,20 @@ describe('Electron Main Index Functions', () => {
       expect(mockFileReader.getFileList).toHaveBeenCalledWith(
         'email',
         'taskId'
+      );
+    });
+
+    it('should handle isolated camel-log file listing', async () => {
+      const mockHandler = vi.fn((...args) =>
+        mockFileReader.getCamelLogFileList(...args)
+      );
+      mockIpcMain.handle('get-camel-log-file-list', mockHandler);
+      await mockHandler('email', 'taskId', 'projectId', 7);
+      expect(mockFileReader.getCamelLogFileList).toHaveBeenCalledWith(
+        'email',
+        'taskId',
+        'projectId',
+        7
       );
     });
 

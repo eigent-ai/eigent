@@ -91,11 +91,11 @@ describe('ReportBugDialog', () => {
     render(<ReportBugDialog open onOpenChange={vi.fn()} />);
 
     await userEvent.type(
-      screen.getByLabelText('layout.report-bug-field-description'),
+      screen.getByLabelText('What went wrong?'),
       'A short repro description'
     );
     await userEvent.click(
-      screen.getByRole('button', { name: 'layout.report-bug-open-github' })
+      screen.getByRole('button', { name: 'Open on GitHub' })
     );
 
     await waitFor(() => {
@@ -117,9 +117,7 @@ describe('ReportBugDialog', () => {
 
     render(<ReportBugDialog open onOpenChange={vi.fn()} />);
 
-    await userEvent.click(
-      screen.getByRole('button', { name: 'layout.support-eigent-log' })
-    );
+    await userEvent.click(screen.getByRole('button', { name: 'Eigent log' }));
 
     await waitFor(() => {
       expect(mockElectronAPI.exportLog).toHaveBeenCalled();
@@ -136,9 +134,7 @@ describe('ReportBugDialog', () => {
 
     render(<ReportBugDialog open onOpenChange={vi.fn()} />);
 
-    await userEvent.click(
-      screen.getByRole('button', { name: 'layout.support-camel-log' })
-    );
+    await userEvent.click(screen.getByRole('button', { name: 'Camel log' }));
 
     await waitFor(() => {
       expect(mockElectronAPI.exportCamelLog).toHaveBeenCalledWith(
@@ -160,9 +156,7 @@ describe('ReportBugDialog', () => {
 
     render(<ReportBugDialog open onOpenChange={vi.fn()} />);
 
-    await userEvent.click(
-      screen.getByRole('button', { name: 'layout.support-camel-log' })
-    );
+    await userEvent.click(screen.getByRole('button', { name: 'Camel log' }));
 
     await waitFor(() => {
       expect(mockToast.error).toHaveBeenCalled();
@@ -178,9 +172,7 @@ describe('ReportBugDialog', () => {
 
     render(<ReportBugDialog open onOpenChange={vi.fn()} />);
 
-    await userEvent.click(
-      screen.getByRole('button', { name: 'layout.support-eigent-log' })
-    );
+    await userEvent.click(screen.getByRole('button', { name: 'Eigent log' }));
 
     await waitFor(() => {
       expect(mockElectronAPI.exportLog).toHaveBeenCalled();

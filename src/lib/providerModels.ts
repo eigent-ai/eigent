@@ -12,6 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import i18next from 'i18next';
+
 /**
  * Fetch + parse helper for cloud providers that expose an OpenAI-compatible
  * `/v1/models` listing endpoint (e.g. OrcaRouter). Returns chat-capable
@@ -77,7 +79,11 @@ export async function fetchProviderModels(
   apiKey: string
 ): Promise<ProviderModelGroup[]> {
   if (!apiKey) {
-    throw new Error('API key is required to fetch model list.');
+    throw new Error(
+      i18next.t('setting.models-api-key-required', {
+        defaultValue: 'API key is required to fetch the model list.',
+      })
+    );
   }
   const trimmedHost = apiHost.replace(/\/+$/, '');
   const url = `${trimmedHost}${modelsEndpoint}`;
@@ -92,7 +98,11 @@ export async function fetchProviderModels(
 
   if (!response.ok) {
     throw new Error(
-      `Failed to fetch models: ${response.status} ${response.statusText}`
+      i18next.t('setting.models-fetch-failed', {
+        defaultValue: 'Failed to fetch models: {{status}} {{statusText}}',
+        status: response.status,
+        statusText: response.statusText,
+      })
     );
   }
   const payload = await response.json();

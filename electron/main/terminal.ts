@@ -76,7 +76,7 @@ function defaultShell(): { file: string; args: string[] } {
  * proxy configuration, and toolchain settings.
  */
 const SENSITIVE_ENV_NAME =
-  /(?:^|_)(?:API_KEY|TOKEN|PASSWORD|PASSWD|SECRET|PRIVATE_KEY)(?:$|_)/i;
+  /(?:^|_)(?:API_KEY|TOKEN|PASSWORD|PASSWD|SECRET|PRIVATE_KEY|CAPABILITY)(?:$|_)/i;
 
 export function terminalEnvironment(
   environment: NodeJS.ProcessEnv = process.env

@@ -25,13 +25,17 @@ from camel.types import ModelPlatformType
 from app.agent.listen_chat_agent import ListenChatAgent, logger
 from app.model.chat import AgentModelConfig, Chat
 from app.model.model_platform import (
+    azure_reasoning_tools_require_responses_api,
+    is_eigent_cloud_model_endpoint,
     patch_azure_cloud_config,
     patch_bedrock_cloud_config,
+    resolve_cloud_model_runtime_platform,
 )
 from app.model.subscription_runtime import (
     apply_subscription_runtime,
     is_subscription_auth,
 )
+from app.run_journal.model_capture import instrument_model_backend
 from app.service.task import ActionCreateAgentData, Agents, get_task_lock
 from app.utils.event_loop_utils import _schedule_async_task
 
@@ -144,10 +148,7 @@ def agent_model(
             )
 
         effective_api_url = effective_config.get("api_url")
-        is_effective_cloud = isinstance(effective_api_url, str) and any(
-            marker in effective_api_url
-            for marker in ("eigent-proxy", "proxy.eigent.ai")
-        )
+        is_effective_cloud = is_eigent_cloud_model_endpoint(effective_api_url)
 
         # Cloud mode: inject default Bedrock region and adjust URL for proxy.
         if (
@@ -236,6 +237,74 @@ def agent_model(
             )
 
         # Runtime-owned values are applied after user configuration.
+        if not (
+            custom_model_config and custom_model_config.has_custom_config()
+        ):
+            effort_parameter = getattr(
+                task_lock,
+                "provider_effort_parameter_name",
+                None,
+            )
+            effort_value = getattr(
+                task_lock,
+                "provider_effort_parameter_value",
+                None,
+            )
+            if (
+                isinstance(effort_parameter, str)
+                and effort_parameter
+                and isinstance(effort_value, str)
+                and effort_value != "provider_default"
+            ):
+                model_config[effort_parameter] = effort_value
+
+        # Eigent Cloud transports are declared by the server-owned model
+        # catalog. This lets future models select Responses without a Desktop
+        # release. User-managed Azure GPT-5.6 endpoints retain the model-family
+        # fallback because they do not have server capability metadata.
+        has_function_tools = bool(
+            tools or tool_names or toolkits_to_register_agent
+        )
+        uses_responses_transport = init_params.get("api_mode") == "responses"
+        should_use_azure_responses_fallback = (
+            not is_effective_cloud
+            and has_function_tools
+            and model_config.get("reasoning_effort")
+            not in {None, "", "provider_default"}
+            and azure_reasoning_tools_require_responses_api(
+                model_platform=str(effective_config["model_platform"]),
+                model_type=str(effective_config["model_type"]),
+            )
+        )
+        if should_use_azure_responses_fallback:
+            init_params["api_mode"] = "responses"
+            uses_responses_transport = True
+
+        if uses_responses_transport and model_config.get(
+            "reasoning_effort"
+        ) not in {None, "", "provider_default"}:
+            reasoning_effort = model_config.pop("reasoning_effort")
+            model_config["reasoning"] = {"effort": reasoning_effort}
+            logger.info(
+                "Using Responses API reasoning for model %s",
+                effective_config["model_type"],
+            )
+
+        runtime_model_platform = resolve_cloud_model_runtime_platform(
+            model_platform=str(effective_config["model_platform"]),
+            api_url=effective_api_url,
+            api_mode=init_params.get("api_mode"),
+        )
+        if runtime_model_platform != effective_config["model_platform"]:
+            # These options belong to AzureOpenAI's constructor.  Passing
+            # them to AsyncOpenAI would fail before the request is sent.
+            for azure_only_param in (
+                "api_version",
+                "azure_ad_token",
+                "azure_ad_token_provider",
+                "azure_deployment_name",
+            ):
+                init_params.pop(azure_only_param, None)
         if is_effective_cloud:
             model_config["user"] = str(options.project_id)
         if use_subscription_runtime:
@@ -273,7 +342,11 @@ def agent_model(
         # is set, which would otherwise make request-level accounting count 0.
         # `stream_options: false` in extra_params opts out entirely, for
         # endpoints that reject the parameter (e.g. older vLLM/Azure).
-        if model_config.get("stream_options") is False:
+        if uses_responses_transport:
+            # stream_options belongs to Chat Completions. Azure Responses
+            # rejects it, including when a caller supplied it explicitly.
+            model_config.pop("stream_options", None)
+        elif model_config.get("stream_options") is False:
             model_config.pop("stream_options")
         elif model_config.get("stream") and (
             effective_config["model_platform"].lower()
@@ -283,14 +356,20 @@ def agent_model(
             if isinstance(stream_options, dict):
                 stream_options.setdefault("include_usage", True)
 
-        return ModelFactory.create(
-            model_platform=effective_config["model_platform"],
+        model_backend = ModelFactory.create(
+            model_platform=runtime_model_platform,
             model_type=effective_config["model_type"],
             api_key=effective_config["api_key"],
             url=effective_config["api_url"],
             model_config_dict=model_config or None,
             timeout=600,  # 10 minutes
             **init_params,
+        )
+        return instrument_model_backend(
+            model_backend,
+            agent_id=agent_id,
+            provider=str(effective_config["model_platform"]),
+            model_name=str(effective_config["model_type"]),
         )
 
     model = build_model()

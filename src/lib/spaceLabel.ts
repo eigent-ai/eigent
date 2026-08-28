@@ -43,7 +43,11 @@ export function isPlaceholderProjectName(
 export function isPlaceholderSpaceNameStatic(name?: string | null) {
   const normalized = normalizedText(name);
   return (
-    !normalized || normalized === 'new space' || normalized === 'new project'
+    !normalized ||
+    normalized === 'untitled space' ||
+    normalized === '未命名 space' ||
+    normalized === 'new space' ||
+    normalized === 'new project'
   );
 }
 
@@ -121,7 +125,7 @@ export function getDefaultNewSpaceName(t: TFunction) {
   return t('layout.spaces-untitled');
 }
 
-/** Blank placeholder space with no folder bound — Context tab stays disabled until bound. */
+/** Blank placeholder space with no folder bound — Files stays disabled until bound. */
 export function isUnboundUntitledSpace(
   space: Space | null | undefined,
   t: TFunction
@@ -132,27 +136,27 @@ export function isUnboundUntitledSpace(
   return isPlaceholderSpaceName(space.name, t);
 }
 
-export interface ContextTabBindingLabel {
+export interface FilesTabBindingLabel {
   label: string;
   tooltip?: string;
 }
 
-/** Context tab trailing chip: Unbound, Local, or Remote for the active space folder binding. */
-export function getContextTabBindingLabel(
+/** Files tab trailing chip: Unbound, Local, or Remote for the active space folder binding. */
+export function getFilesTabBindingLabel(
   space: Space | null | undefined,
   t: TFunction
-): ContextTabBindingLabel | null {
+): FilesTabBindingLabel | null {
   if (!space) return null;
   if (isUnboundUntitledSpace(space, t)) {
     return {
-      label: t('layout.context-tab-unbound'),
-      tooltip: t('layout.context-tab-unbound-tooltip'),
+      label: t('layout.files-tab-unbound'),
+      tooltip: t('layout.files-tab-unbound-tooltip'),
     };
   }
   if (isLocalWorkspaceSpace(space)) {
-    return { label: t('layout.context-tab-local') };
+    return { label: t('layout.files-tab-local') };
   }
-  return { label: t('layout.context-tab-remote') };
+  return { label: t('layout.files-tab-remote') };
 }
 
 /** Space list tag: Legacy, Local folder, or remote artifact storage. */

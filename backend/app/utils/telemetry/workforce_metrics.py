@@ -22,6 +22,7 @@ from typing import Any
 import camel
 from camel.societies.workforce.events import (
     LogEvent,
+    StreamChunkEvent,
     TaskAssignedEvent,
     TaskCompletedEvent,
     TaskCreatedEvent,
@@ -601,6 +602,14 @@ class WorkforceMetricsCallback(WorkforceMetrics):
                     span.set_status(
                         Status(StatusCode.ERROR, log_event.message)
                     )
+
+    def log_stream_chunk(self, _event: StreamChunkEvent) -> None:
+        """Accept CAMEL stream callbacks without tracing every text chunk.
+
+        A model response can produce hundreds of chunks. Recording one span
+        per chunk would add high-cardinality telemetry without useful task
+        boundaries, so task lifecycle events remain the tracing unit.
+        """
 
     def log_all_tasks_completed(self, event) -> None:
         """Log when all tasks in the workforce are completed.

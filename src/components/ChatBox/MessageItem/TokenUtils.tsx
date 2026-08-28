@@ -29,16 +29,23 @@ const TOKEN_UNITS = [
 ] as const;
 
 /**
- * Elapsed time during splitting / planning: seconds, then minutes + seconds.
- * Examples: "0s", "45s", "1m 05s", "12m 00s"
+ * Elapsed time during splitting / planning: seconds, minutes, then hours.
+ * Examples: "0s", "45s", "1m 05s", "12m 00s", "1h 01m 05s"
  */
 export function formatSplittingElapsed(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return '0s';
   const sec = Math.floor(ms / 1000);
   if (sec < 60) return `${sec}s`;
-  const m = Math.floor(sec / 60);
+  const totalMinutes = Math.floor(sec / 60);
   const s = sec % 60;
-  return `${m}m ${s.toString().padStart(2, '0')}s`;
+  if (totalMinutes < 60) {
+    return `${totalMinutes}m ${s.toString().padStart(2, '0')}s`;
+  }
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return `${h}h ${m.toString().padStart(2, '0')}m ${s
+    .toString()
+    .padStart(2, '0')}s`;
 }
 
 export function formatTokenCount(n: number): string {

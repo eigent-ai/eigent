@@ -55,5 +55,12 @@
   "create-skill-default-name": "新しいスキル",
   "create-skill-default-description": "このスキルの役割を説明してください。",
   "save-skill": "スキルを保存",
-  "compose-skill-hint": "SKILL.md を編集（名前と説明の YAML フロントマターが必須）してから保存してください。"
+  "compose-skill-hint": "SKILL.md を編集（名前と説明の YAML フロントマターが必須）してから保存してください。",
+  "try-skill-prompt": "Eigent に {{name}} スキルを追加しました。このスキルで素晴らしいものを作ってもらえますか？",
+  "select-agent-access": "エージェントのアクセスを選択",
+  "all-agents": "すべてのエージェント",
+  "replace-skill-title": "「{{name}}」スキルを置き換えますか？",
+  "replace-skill-message": "同じ名前のスキルがすでに存在します。このスキルをアップロードすると既存のスキルが置き換えられ、元に戻せません。",
+  "update-and-replace": "更新して置き換え",
+  "agent": "エージェント"
 }

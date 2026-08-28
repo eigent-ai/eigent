@@ -15,12 +15,20 @@
 import {
   Button,
   type ButtonLegacyVariant,
+  type ButtonTone,
   type ButtonVariant,
 } from '@/components/ui/button';
-import { AnimatePresence, motion } from 'framer-motion';
-import type { ReactNode } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { useId, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 
 type ConfirmVariant = ButtonVariant | ButtonLegacyVariant;
+
+const ALERT_DIALOG_TRANSITION = {
+  duration: 0.2,
+  ease: [0.23, 1, 0.32, 1] as [number, number, number, number],
+};
 
 interface ConfirmModalProps {
   isOpen: boolean;
@@ -31,6 +39,7 @@ interface ConfirmModalProps {
   confirmText?: string;
   cancelText?: string;
   confirmVariant?: ConfirmVariant;
+  confirmTone?: ButtonTone;
   hideCancel?: boolean;
   confirmDisabled?: boolean;
   children?: ReactNode;
@@ -40,16 +49,35 @@ export default function ConfirmModal({
   isOpen,
   onClose,
   onConfirm,
-  title = 'Confirm Title',
-  message = 'Confirm content?',
-  confirmText = 'Confirm',
-  cancelText = 'Cancel',
-  confirmVariant = 'caution',
+  title: titleProp,
+  message: messageProp,
+  confirmText: confirmTextProp,
+  cancelText: cancelTextProp,
+  confirmVariant,
+  confirmTone,
   hideCancel = false,
   confirmDisabled = false,
   children,
 }: ConfirmModalProps) {
-  return (
+  const { t } = useTranslation();
+  const shouldReduceMotion = Boolean(useReducedMotion());
+  const titleId = useId();
+  const descriptionId = useId();
+  const title = titleProp ?? t('layout.confirm');
+  const message = messageProp ?? t('layout.confirm-content');
+  const confirmText = confirmTextProp ?? t('layout.confirm');
+  const cancelText = cancelTextProp ?? t('layout.cancel');
+  const isLegacyCaution = confirmVariant === 'caution';
+  const resolvedVariant: ConfirmVariant =
+    confirmVariant == null || isLegacyCaution ? 'primary' : confirmVariant;
+  const resolvedTone: ButtonTone | undefined =
+    confirmVariant == null || isLegacyCaution
+      ? (confirmTone ?? 'error')
+      : confirmTone;
+
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
         <>
@@ -58,51 +86,79 @@ export default function ConfirmModal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={ALERT_DIALOG_TRANSITION}
             className="alert-dialog fixed inset-0 z-[99] bg-dialog-overlay-scrim"
             onClick={onClose}
           />
 
-          {/* Modal */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="alert-dialog-wrapper fixed left-1/2 top-1/2 z-[100] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl"
+          {/* Viewport-sized layer owns centering; the card only scales/fades. */}
+          <div
+            data-alert-dialog-viewport
+            className="pointer-events-none fixed inset-0 z-[100] grid place-items-center p-4"
           >
-            <div className="rounded-xl border border-ds-border-neutral-default-default bg-ds-bg-neutral-strong-default p-6 shadow-perfect">
-              <span className="mb-2 text-body-lg font-bold text-ds-text-neutral-default-default">
-                {title}
-              </span>
-              {children ? (
-                <div className="mb-6">{children}</div>
-              ) : (
-                <p className="mb-6 text-label-md text-ds-text-neutral-muted-default">
-                  {message}
-                </p>
-              )}
-
-              <div className="flex justify-end gap-3">
-                {!hideCancel && (
-                  <Button variant="ghost" onClick={onClose}>
-                    {cancelText}
-                  </Button>
-                )}
-                <Button
-                  variant={confirmVariant}
-                  disabled={confirmDisabled}
-                  onClick={() => {
-                    if (confirmDisabled) return;
-                    onConfirm();
-                    onClose();
-                  }}
+            <motion.div
+              initial={{
+                opacity: 0,
+                transform: shouldReduceMotion ? 'scale(1)' : 'scale(0.95)',
+              }}
+              animate={{ opacity: 1, transform: 'scale(1)' }}
+              exit={{
+                opacity: 0,
+                transform: shouldReduceMotion ? 'scale(1)' : 'scale(0.95)',
+              }}
+              transition={ALERT_DIALOG_TRANSITION}
+              style={{ transformOrigin: 'center' }}
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby={titleId}
+              aria-describedby={descriptionId}
+              className="alert-dialog-wrapper pointer-events-auto w-full max-w-[400px] overflow-hidden rounded-xl"
+            >
+              <div className="rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default p-6 shadow-ds-elevation-dialog">
+                <span
+                  id={titleId}
+                  className="mb-2 block !text-ds-text-section font-bold text-ds-ink-default-default"
                 >
-                  {confirmText}
-                </Button>
+                  {title}
+                </span>
+                {children ? (
+                  <div id={descriptionId} className="mb-6">
+                    {children}
+                  </div>
+                ) : (
+                  <span
+                    id={descriptionId}
+                    className="mb-6 block !text-ds-text-body-large text-ds-ink-muted-default"
+                  >
+                    {message}
+                  </span>
+                )}
+
+                <div className="flex justify-end gap-3">
+                  {!hideCancel && (
+                    <Button variant="ghost" onClick={onClose}>
+                      {cancelText}
+                    </Button>
+                  )}
+                  <Button
+                    variant={resolvedVariant}
+                    tone={resolvedTone}
+                    disabled={confirmDisabled}
+                    onClick={() => {
+                      if (confirmDisabled) return;
+                      onConfirm();
+                      onClose();
+                    }}
+                  >
+                    {confirmText}
+                  </Button>
+                </div>
               </div>
-            </div>
-          </motion.div>
+            </motion.div>
+          </div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }

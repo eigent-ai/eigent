@@ -18,6 +18,9 @@ import * as React from 'react';
 
 import { cn } from '@/lib/utils';
 
+const DROPDOWN_MENU_ITEM_INTERACTION_CLASS =
+  'cursor-pointer transition-colors outline-none select-none hover:bg-ds-neutral-default-hover focus-visible:text-ds-ink-default-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-inset data-[disabled]:pointer-events-none data-[disabled]:opacity-50';
+
 const DropdownMenu = DropdownMenuPrimitive.Root;
 
 const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
@@ -39,7 +42,8 @@ const DropdownMenuSubTrigger = React.forwardRef<
   <DropdownMenuPrimitive.SubTrigger
     ref={ref}
     className={cn(
-      'gap-2 rounded-xl px-2 py-1.5 text-sm hover:bg-ds-bg-neutral-subtle-hover focus:bg-ds-bg-neutral-subtle-hover data-[state=open]:bg-ds-bg-neutral-subtle-hover [&_svg]:size-4 flex cursor-pointer items-center outline-none select-none [&_svg]:pointer-events-none [&_svg]:shrink-0',
+      'flex items-center gap-2 rounded-ds-menu-row px-2 py-1.5 text-ds-text-base data-[state=open]:bg-ds-neutral-default-hover [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
+      DROPDOWN_MENU_ITEM_INTERACTION_CLASS,
       inset && 'pl-3',
       className
     )}
@@ -59,7 +63,7 @@ const DropdownMenuSubContent = React.forwardRef<
   <DropdownMenuPrimitive.SubContent
     ref={ref}
     className={cn(
-      'text-ds-text-neutral-default-default rounded-xl border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default p-1 shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-[8rem] origin-[--radix-dropdown-menu-content-transform-origin] overflow-hidden border border-solid',
+      'z-50 min-w-[8rem] origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden rounded-ds-popover border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default p-1 text-ds-ink-default-default shadow-ds-elevation-popover data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
       className
     )}
     {...props}
@@ -77,8 +81,8 @@ const DropdownMenuContent = React.forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        'text-ds-text-neutral-default-default rounded-xl border-ds-border-neutral-subtle-default bg-ds-bg-neutral-subtle-default p-xs shadow-md z-50 max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[8rem] overflow-x-hidden overflow-y-auto border border-solid',
-        'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 origin-[--radix-dropdown-menu-content-transform-origin]',
+        'z-50 max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[8rem] overflow-x-hidden overflow-y-auto rounded-ds-popover border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default p-xs text-ds-ink-default-default shadow-ds-elevation-popover',
+        'origin-(--radix-dropdown-menu-content-transform-origin) data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
         className
       )}
       style={style}
@@ -97,7 +101,8 @@ const DropdownMenuItem = React.forwardRef<
   <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
-      'focus:bg-ds-bg-neutral-default-hover focus:text-ds-text-neutral-default-default gap-2 rounded-xl px-2 py-1.5 text-sm hover:bg-ds-bg-neutral-default-hover [&>svg]:size-4 relative flex cursor-pointer items-center transition-colors outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>svg]:shrink-0',
+      'relative flex min-h-ds-control-lg items-center gap-2 rounded-ds-menu-row px-2 py-1.5 text-ds-text-base [&>svg]:size-4 [&>svg]:shrink-0',
+      DROPDOWN_MENU_ITEM_INTERACTION_CLASS,
       inset && 'pl-8',
       className
     )}
@@ -113,13 +118,14 @@ const DropdownMenuCheckboxItem = React.forwardRef<
   <DropdownMenuPrimitive.CheckboxItem
     ref={ref}
     className={cn(
-      'focus:bg-ds-bg-neutral-default-hover focus:text-ds-text-neutral-default-default rounded-sm py-1.5 pl-8 pr-2 text-sm relative flex cursor-default items-center transition-colors outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'relative flex min-h-ds-control-lg items-center rounded-ds-menu-row py-1.5 pr-2 pl-8 text-ds-text-base',
+      DROPDOWN_MENU_ITEM_INTERACTION_CLASS,
       className
     )}
     checked={checked}
     {...props}
   >
-    <span className="left-2 h-3.5 w-3.5 absolute flex items-center justify-center">
+    <span className="absolute inset-y-0 left-2 my-auto flex size-4 items-center justify-center">
       <DropdownMenuPrimitive.ItemIndicator>
         <Check className="h-4 w-4" />
       </DropdownMenuPrimitive.ItemIndicator>
@@ -137,12 +143,13 @@ const DropdownMenuRadioItem = React.forwardRef<
   <DropdownMenuPrimitive.RadioItem
     ref={ref}
     className={cn(
-      'focus:bg-ds-bg-neutral-default-hover focus:text-ds-text-neutral-default-default rounded-sm py-1.5 pl-8 pr-2 text-sm relative flex cursor-default items-center transition-colors outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'relative flex min-h-ds-control-lg items-center rounded-ds-menu-row py-1.5 pr-2 pl-8 text-ds-text-base',
+      DROPDOWN_MENU_ITEM_INTERACTION_CLASS,
       className
     )}
     {...props}
   >
-    <span className="left-2 h-3.5 w-3.5 absolute flex items-center justify-center">
+    <span className="absolute inset-y-0 left-2 my-auto flex size-4 items-center justify-center">
       <DropdownMenuPrimitive.ItemIndicator>
         <Circle className="h-2 w-2 fill-current" />
       </DropdownMenuPrimitive.ItemIndicator>
@@ -161,7 +168,7 @@ const DropdownMenuLabel = React.forwardRef<
   <DropdownMenuPrimitive.Label
     ref={ref}
     className={cn(
-      'px-2 py-1.5 text-sm font-semibold',
+      'px-2 py-1.5 text-ds-text-base font-semibold',
       inset && 'pl-8',
       className
     )}
@@ -176,7 +183,7 @@ const DropdownMenuSeparator = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DropdownMenuPrimitive.Separator
     ref={ref}
-    className={cn('bg-ds-bg-neutral-muted-default -mx-1 my-1 h-px', className)}
+    className={cn('-mx-1 my-1 h-px bg-ds-hairline-default-default', className)}
     {...props}
   />
 ));
@@ -188,7 +195,10 @@ const DropdownMenuShortcut = ({
 }: React.HTMLAttributes<HTMLSpanElement>) => {
   return (
     <span
-      className={cn('text-xs tracking-widest ml-auto opacity-60', className)}
+      className={cn(
+        'ml-auto text-ds-text-meta tracking-widest opacity-60',
+        className
+      )}
       {...props}
     />
   );
