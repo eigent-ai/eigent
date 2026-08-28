@@ -13,7 +13,6 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import type { Space } from '@/store/spaceStore';
-import type { HistoryTask } from '@/types/history';
 
 export type SpaceContentCategory =
   'Documents' | 'Code' | 'Data' | 'Media' | 'Other';
@@ -179,59 +178,4 @@ export function getSpaceSummaryVariantIndex(spaceId: string) {
     hash = (hash * 31 + character.charCodeAt(0)) | 0;
   }
   return Math.abs(hash) % 3;
-}
-
-function buildDayActivity(
-  tasks: Pick<HistoryTask, 'created_at' | 'updated_at'>[],
-  dayCount: number,
-  now = Date.now()
-) {
-  const localDayKey = (date: Date) =>
-    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
-      date.getDate()
-    ).padStart(2, '0')}`;
-  const startOfToday = new Date(now);
-  startOfToday.setHours(0, 0, 0, 0);
-  const days = Array.from({ length: dayCount }, (_, index) => {
-    const date = new Date(startOfToday);
-    date.setDate(startOfToday.getDate() - (dayCount - 1 - index));
-    return {
-      key: localDayKey(date),
-      label: new Intl.DateTimeFormat(undefined, { weekday: 'narrow' }).format(
-        date
-      ),
-      shortLabel: new Intl.DateTimeFormat(undefined, {
-        month: 'numeric',
-        day: 'numeric',
-      }).format(date),
-      count: 0,
-    };
-  });
-  const countsByKey = new Map(days.map((day) => [day.key, day]));
-
-  tasks.forEach((task) => {
-    const timestamp = task.created_at ?? task.updated_at;
-    if (!timestamp) return;
-    const date = new Date(timestamp);
-    if (Number.isNaN(date.getTime())) return;
-    const key = localDayKey(date);
-    const day = countsByKey.get(key);
-    if (day) day.count += 1;
-  });
-
-  return days;
-}
-
-export function buildSevenDayActivity(
-  tasks: Pick<HistoryTask, 'created_at' | 'updated_at'>[],
-  now = Date.now()
-) {
-  return buildDayActivity(tasks, 7, now);
-}
-
-export function buildThirtyDayActivity(
-  tasks: Pick<HistoryTask, 'created_at' | 'updated_at'>[],
-  now = Date.now()
-) {
-  return buildDayActivity(tasks, 30, now);
 }

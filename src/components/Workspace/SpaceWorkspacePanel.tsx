@@ -42,12 +42,17 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { useTranslation } from 'react-i18next';
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+import { Trans, useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  buildSevenDayActivity,
-  buildThirtyDayActivity,
   categorizeSpaceFile,
   getSpaceAgeInDays,
   getSpaceSummaryVariantIndex,
@@ -71,6 +76,10 @@ type RemoteFileRecord = {
 
 const TRIGGER_PAGE_SIZE = 100;
 const TRIGGER_PAGE_LIMIT = 10;
+const COARSE_POINTER_HIT_AREA_XS =
+  'relative after:absolute after:inset-x-0 after:hidden after:-inset-y-ds-10 [@media(pointer:coarse)]:min-w-ds-48 [@media(pointer:coarse)]:after:block';
+const COARSE_POINTER_HIT_AREA_SM =
+  'after:absolute after:hidden after:-inset-ds-8 [@media(pointer:coarse)]:after:block';
 
 /**
  * The trigger endpoint has no Space filter, so the whole account list is
@@ -101,17 +110,25 @@ interface SpaceWorkspacePanelProps {
   onUsePrompt: (prompt: string) => void;
   onConnectApp: () => void;
   onExploreUseCases: () => void;
+  onOpenFiles: () => void;
   onOpenFolder: () => void;
   canOpenFolder: boolean;
+  canUsePrompt?: boolean;
 }
 
 function Section({
   title,
+  titleHref,
+  onTitleClick,
+  titleAccessory,
   first = false,
   end,
   children,
 }: {
   title?: string;
+  titleHref?: string;
+  onTitleClick?: () => void;
+  titleAccessory?: ReactNode;
   first?: boolean;
   end?: ReactNode;
   children: ReactNode;
@@ -124,17 +141,35 @@ function Section({
           : 'border-x-0 border-t border-b-0 border-solid border-ds-hairline-subtle-default py-ds-16'
       }
     >
-      {title || end ? (
+      {title || titleAccessory || end ? (
         <div className="mb-ds-16 flex min-w-0 items-center gap-ds-8">
-          {title ? (
-            <DsText
-              as="h2"
-              role="base"
-              weight="semibold"
-              className="min-w-0 flex-1 text-ds-ink-default-default"
-            >
-              {title}
-            </DsText>
+          {title || titleAccessory ? (
+            <div className="flex min-w-0 flex-1 items-center gap-ds-8 self-stretch">
+              {title ? (
+                <DsText
+                  as="h2"
+                  role="base"
+                  weight="semibold"
+                  className="min-w-0 text-ds-ink-default-default"
+                >
+                  {titleHref ? (
+                    <Link
+                      to={titleHref}
+                      onClick={onTitleClick}
+                      className={cn(
+                        'rounded-ds-control text-inherit no-underline underline-offset-2 ring-offset-ds-neutral-subtle-default hover:underline',
+                        DS_FOCUS_RING
+                      )}
+                    >
+                      {title}
+                    </Link>
+                  ) : (
+                    title
+                  )}
+                </DsText>
+              ) : null}
+              {titleAccessory}
+            </div>
           ) : (
             <span className="flex-1" />
           )}
@@ -188,7 +223,10 @@ function OnboardingTile({
         buttonContent="icon-only"
         aria-label={dismissLabel}
         title={dismissLabel}
-        className="absolute top-1/2 right-ds-8 -translate-y-1/2 opacity-0 transition-opacity duration-[160ms] group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
+        className={cn(
+          'absolute top-1/2 right-ds-8 -translate-y-1/2 opacity-0 transition-opacity duration-[160ms] group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100',
+          COARSE_POINTER_HIT_AREA_SM
+        )}
         onClick={onDismiss}
       >
         <DsIcon icon={X} recipe="main" />
@@ -241,156 +279,15 @@ const contentCategoryTranslationKeys: Record<SpaceContentCategory, string> = {
   Other: 'layout.workspace-overview-content-other',
 };
 
-function ActivityLineGraph({
-  activity,
-}: {
-  activity: ReturnType<typeof buildSevenDayActivity>;
-}) {
-  const { t } = useTranslation();
-  const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
-  const width = 300;
-  const height = 104;
-  const inset = 5;
-  const maxCount = Math.max(...activity.map((day) => day.count), 1);
-  const coordinates = activity.map((day, index) => ({
-    x: inset + (index / Math.max(activity.length - 1, 1)) * (width - inset * 2),
-    y: height - inset - (day.count / maxCount) * (height - inset * 2),
-  }));
-  const smoothPath = coordinates.reduce((path, point, index) => {
-    if (index === 0) return `M ${point.x} ${point.y}`;
-    const previous = coordinates[index - 1];
-    const midpointX = (previous.x + point.x) / 2;
-    return `${path} C ${midpointX} ${previous.y}, ${midpointX} ${point.y}, ${point.x} ${point.y}`;
-  }, '');
-  const firstPoint = coordinates[0] ?? { x: inset, y: height - inset };
-  const lastPoint = coordinates.at(-1) ?? {
-    x: width - inset,
-    y: height - inset,
-  };
-  const areaPath = `${smoothPath} L ${lastPoint.x} ${height - inset} L ${firstPoint.x} ${height - inset} Z`;
-  const labelIndexes = new Set(
-    activity.length <= 7
-      ? activity.map((_, index) => index)
-      : [0, 5, 10, 15, 20, 25, activity.length - 1]
-  );
-  const activePoint =
-    activePointIndex == null ? null : coordinates[activePointIndex];
-  const activeDay =
-    activePointIndex == null ? null : activity[activePointIndex];
-  const totalCount = activity.reduce((total, day) => total + day.count, 0);
-  // One labelled region instead of one tab stop per point: a 30-day range
-  // would otherwise put 30 stops in the rail for a decorative sparkline.
-  const chartLabel = t('layout.workspace-overview-activity-chart', {
-    defaultValue: '{{count}} Tasks over {{dayCount}} days',
-    count: totalCount,
-    dayCount: activity.length,
-  });
-
-  return (
-    <div className="min-w-0">
-      <div
-        className="relative h-[104px]"
-        role="img"
-        aria-label={chartLabel}
-        onPointerLeave={() => setActivePointIndex(null)}
-      >
-        <svg
-          viewBox={`0 0 ${width} ${height}`}
-          preserveAspectRatio="none"
-          aria-hidden
-          className="h-full w-full overflow-visible text-ds-accent-default-default"
-        >
-          <line
-            x1={inset}
-            y1={height - inset}
-            x2={width - inset}
-            y2={height - inset}
-            className="stroke-ds-border-neutral-default-default"
-            strokeWidth="1"
-            vectorEffect="non-scaling-stroke"
-          />
-          <path d={areaPath} fill="currentColor" opacity="0.08" />
-          <path
-            d={smoothPath}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            vectorEffect="non-scaling-stroke"
-          />
-        </svg>
-        {/*
-         * Points live in the DOM rather than the SVG: `preserveAspectRatio`
-         * is `none`, so viewBox circles stretch into ellipses at any rail
-         * width other than 300px.
-         */}
-        {activity.map((day, index) => {
-          const point = coordinates[index];
-          const active = activePointIndex === index;
-          return (
-            <span
-              key={day.key}
-              aria-hidden
-              className={cn(
-                'pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 rounded-full bg-ds-accent-default-default transition-[width,height] duration-[120ms]',
-                active ? 'size-2' : 'size-[5px]'
-              )}
-              style={{
-                left: `${(point.x / width) * 100}%`,
-                top: `${(point.y / height) * 100}%`,
-              }}
-              onPointerEnter={() => setActivePointIndex(index)}
-            />
-          );
-        })}
-        {activePoint && activeDay ? (
-          <div
-            role="tooltip"
-            className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-[calc(100%+6px)] rounded-md bg-ds-neutral-strong-default px-2 py-1 text-ds-text-meta font-medium text-ds-ink-default-default shadow-ds-elevation-popover"
-            style={{
-              left: `${(activePoint.x / width) * 100}%`,
-              top: `${(activePoint.y / height) * 100}%`,
-            }}
-          >
-            {activeDay.count}
-          </div>
-        ) : null}
-      </div>
-      <div className="mt-1 flex justify-between" aria-hidden>
-        {activity.map((day, index) =>
-          labelIndexes.has(index) ? (
-            <span
-              key={day.key}
-              className="!text-ds-text-meta text-ds-ink-muted-default"
-            >
-              {activity.length <= 7 ? day.label : day.shortLabel}
-            </span>
-          ) : null
-        )}
-      </div>
-      <ul className="sr-only">
-        {activity.map((day) => (
-          <li key={day.key}>
-            {t('layout.workspace-overview-activity-point', {
-              defaultValue: '{{count}} Tasks',
-              count: day.count,
-            })}
-            {` — ${day.shortLabel}`}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 export function SpaceWorkspacePanel({
   space,
   onUsePrompt,
   onConnectApp,
   onExploreUseCases,
+  onOpenFiles,
   onOpenFolder,
   canOpenFolder,
+  canUsePrompt = true,
 }: SpaceWorkspacePanelProps) {
   const { t } = useTranslation();
   const email = useAuthStore((state) => state.email);
@@ -409,10 +306,7 @@ export function SpaceWorkspacePanel({
   );
   const projectsBySpaceId = useSpaceStore((state) => state.projectsBySpaceId);
   const sessionMetas = useMemo(
-    () =>
-      getVisibleProjectMetasForSpace(projectsBySpaceId, space.id).sort(
-        (left, right) => right.updatedAt - left.updatedAt
-      ),
+    () => getVisibleProjectMetasForSpace(projectsBySpaceId, space.id),
     [projectsBySpaceId, space.id]
   );
   const totalSessionCount = useMemo(
@@ -435,7 +329,6 @@ export function SpaceWorkspacePanel({
   const [triggerState, setTriggerState] = useState<LoadState>('idle');
   const [spaceFiles, setSpaceFiles] = useState<RemoteFileRecord[]>([]);
   const [filesTruncated, setFilesTruncated] = useState(false);
-  const [activityRange, setActivityRange] = useState<7 | 30>(7);
 
   // Space-identifying primitives, so a new Space object from a server sync
   // does not re-issue every `/files` request on its own.
@@ -444,12 +337,6 @@ export function SpaceWorkspacePanel({
   const spaceSourceType = space.sourceType;
   const spaceBindingSource = space.metadata?.bindingSource;
   const spaceLocalWorkspaceSource = space.metadata?.localWorkspaceSource;
-
-  // A 30-day range carried into a Space with two days of history reads as a
-  // flat line; every Space starts on its own default.
-  useEffect(() => {
-    setActivityRange(7);
-  }, [spaceId]);
 
   useEffect(() => {
     if (!hasOverviewSource) return;
@@ -527,10 +414,13 @@ export function SpaceWorkspacePanel({
     };
   }, [hasOverviewSource, projectIdsKey, space.id]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    // Clear before paint when the Space or its source changes. Keeping the
+    // previous aggregate visible while the next listing loads attributes one
+    // Space's files to another.
+    setSpaceFiles([]);
+    setFilesTruncated(false);
     if (!hasOverviewSource || !email) {
-      setSpaceFiles([]);
-      setFilesTruncated(false);
       return;
     }
     const attempts = resolveSpaceFileTargets(
@@ -546,8 +436,6 @@ export function SpaceWorkspacePanel({
       projectIdsKey.split(',').filter(Boolean)
     );
     if (attempts.length === 0) {
-      setSpaceFiles([]);
-      setFilesTruncated(false);
       return;
     }
     const controller = new AbortController();
@@ -639,24 +527,15 @@ export function SpaceWorkspacePanel({
     userId,
   ]);
 
-  const tasks = useMemo(
-    () => historyProjects.flatMap((project) => project.tasks ?? []),
-    [historyProjects]
-  );
-  const taskCount = historyProjects.reduce(
-    (total, project) =>
-      total + (project.task_count ?? project.tasks?.length ?? 0),
-    0
-  );
-  const sevenDayActivity = useMemo(() => buildSevenDayActivity(tasks), [tasks]);
-  const thirtyDayActivity = useMemo(
-    () => buildThirtyDayActivity(tasks),
-    [tasks]
-  );
-  const activity = activityRange === 7 ? sevenDayActivity : thirtyDayActivity;
-  const thirtyDayActivityCount = thirtyDayActivity.reduce(
-    (total, day) => total + day.count,
-    0
+  const { sessionCount, taskCount } = historyProjects.reduce(
+    (totals, project) => {
+      const projectTaskCount = project.task_count ?? project.tasks?.length ?? 0;
+      return {
+        sessionCount: totals.sessionCount + (projectTaskCount > 0 ? 1 : 0),
+        taskCount: totals.taskCount + projectTaskCount,
+      };
+    },
+    { sessionCount: 0, taskCount: 0 }
   );
   const contentCounts = useMemo(() => {
     const counts = new Map<SpaceContentCategory, number>();
@@ -679,30 +558,49 @@ export function SpaceWorkspacePanel({
   );
   const showContents = contentCounts.length > 0;
   const bindingLabel = getFilesTabBindingLabel(space, t);
-  const showActivity = historyState === 'ready' && thirtyDayActivityCount > 0;
-  const summaryReady =
-    (historyState === 'ready' || historyState === 'error') &&
-    (triggerState === 'ready' || triggerState === 'error');
+  const summaryUnavailable =
+    historyState === 'error' || triggerState === 'error';
+  const summaryReady = historyState === 'ready' && triggerState === 'ready';
   const spaceAgeInDays = getSpaceAgeInDays(space.createdAt);
   const summaryVariantIndex = getSpaceSummaryVariantIndex(space.id);
   const summaryVariants = [
     {
       key: 'layout.workspace-overview-summary-one',
       defaultValue:
-        "You've brought together {{sessionCount}} Sessions and {{taskCount}} Tasks, with {{automationCount}} automations over {{dayCount}} days.",
+        "You've brought together <highlight>{{sessionCountLabel}}</highlight> and <highlight>{{taskCountLabel}}</highlight>, with <highlight>{{automationCountLabel}}</highlight> over <highlight>{{dayCountLabel}}</highlight>.",
     },
     {
       key: 'layout.workspace-overview-summary-two',
       defaultValue:
-        'Over {{dayCount}} days, this Space has grown to {{sessionCount}} Sessions, {{taskCount}} Tasks, and {{automationCount}} automations.',
+        'Over <highlight>{{dayCountLabel}}</highlight>, this Space has grown to <highlight>{{sessionCountLabel}}</highlight>, <highlight>{{taskCountLabel}}</highlight>, and <highlight>{{automationCountLabel}}</highlight>.',
     },
     {
       key: 'layout.workspace-overview-summary-three',
       defaultValue:
-        "In {{dayCount}} days, you've built a Space with {{sessionCount}} Sessions, {{taskCount}} Tasks, and {{automationCount}} automations.",
+        "In <highlight>{{dayCountLabel}}</highlight>, you've built a Space with <highlight>{{sessionCountLabel}}</highlight>, <highlight>{{taskCountLabel}}</highlight>, and <highlight>{{automationCountLabel}}</highlight>.",
     },
   ] as const;
   const summaryVariant = summaryVariants[summaryVariantIndex];
+  const sessionCountLabel = t('layout.workspace-overview-session-count', {
+    defaultValue:
+      sessionCount === 1 ? '{{count}} Session' : '{{count}} Sessions',
+    count: sessionCount,
+  });
+  const taskCountLabel = t('layout.workspace-overview-task-count', {
+    defaultValue: taskCount === 1 ? '{{count}} Task' : '{{count}} Tasks',
+    count: taskCount,
+  });
+  const automationCountLabel = t('layout.workspace-overview-automation-count', {
+    defaultValue:
+      spaceTriggers.length === 1
+        ? '{{count}} automation'
+        : '{{count}} automations',
+    count: spaceTriggers.length,
+  });
+  const dayCountLabel = t('layout.workspace-overview-day-count', {
+    defaultValue: spaceAgeInDays === 1 ? '{{count}} day' : '{{count}} days',
+    count: spaceAgeInDays,
+  });
   const primaryGuideLabel = isFirstTimeUser
     ? t('layout.workspace-onboarding-make-something', {
         defaultValue: 'Show me how to use Eigent',
@@ -720,12 +618,16 @@ export function SpaceWorkspacePanel({
           'Search for the latest Eigent release blog and summarise it in a short introduction.',
       });
   const guideTabs = [
-    {
-      id: 'primary' as const,
-      label: primaryGuideLabel,
-      icon: isFirstTimeUser ? ListTodo : Megaphone,
-      onClick: () => onUsePrompt(primaryGuidePrompt),
-    },
+    ...(canUsePrompt
+      ? [
+          {
+            id: 'primary' as const,
+            label: primaryGuideLabel,
+            icon: isFirstTimeUser ? ListTodo : Megaphone,
+            onClick: () => onUsePrompt(primaryGuidePrompt),
+          },
+        ]
+      : []),
     {
       id: 'connect-tools' as const,
       label: t('layout.workspace-onboarding-connect-app', {
@@ -795,49 +697,36 @@ export function SpaceWorkspacePanel({
       ) : null}
 
       <Section
-        first
+        first={visibleGuideTabs.length === 0}
         title={t('layout.workspace-overview-activity', {
           defaultValue: 'Activity',
         })}
-        end={
-          showActivity ? (
-            <div className="flex shrink-0 gap-1">
-              <Button
-                type="button"
-                size="xs"
-                variant={activityRange === 7 ? 'secondary' : 'ghost'}
-                aria-pressed={activityRange === 7}
-                onClick={() => setActivityRange(7)}
-              >
-                {t('layout.workspace-overview-activity-seven-days', {
-                  defaultValue: '7 days',
-                })}
-              </Button>
-              <Button
-                type="button"
-                size="xs"
-                variant={activityRange === 30 ? 'secondary' : 'ghost'}
-                aria-pressed={activityRange === 30}
-                onClick={() => setActivityRange(30)}
-              >
-                {t('layout.workspace-overview-activity-thirty-days', {
-                  defaultValue: '30 days',
-                })}
-              </Button>
-            </div>
-          ) : undefined
-        }
       >
         {hasOverviewSource ? (
-          summaryReady ? (
+          summaryUnavailable ? (
             <DsText as="p" role="base" className="text-ds-ink-muted-default">
-              {t(summaryVariant.key, {
-                defaultValue: summaryVariant.defaultValue,
-                sessionCount: sessionMetas.length,
-                taskCount,
-                automationCount: spaceTriggers.length,
-                dayCount: spaceAgeInDays,
+              {t('layout.workspace-overview-summary-unavailable', {
+                defaultValue: 'Activity summary is temporarily unavailable.',
               })}
+            </DsText>
+          ) : summaryReady ? (
+            <DsText as="p" role="base" className="text-ds-ink-muted-default">
+              <Trans
+                t={t}
+                i18nKey={summaryVariant.key}
+                defaults={summaryVariant.defaultValue}
+                values={{
+                  sessionCountLabel,
+                  taskCountLabel,
+                  automationCountLabel,
+                  dayCountLabel,
+                }}
+                components={{
+                  highlight: (
+                    <strong className="font-bold text-ds-accent-default-default" />
+                  ),
+                }}
+              />
             </DsText>
           ) : (
             <div className="space-y-2">
@@ -852,47 +741,45 @@ export function SpaceWorkspacePanel({
             })}
           </DsText>
         )}
-
-        {showActivity ? (
-          <div className="mt-4">
-            <ActivityLineGraph activity={activity} />
-          </div>
-        ) : null}
       </Section>
 
       <Section
         title={t('layout.workspace-overview-contents', {
           defaultValue: 'Files',
         })}
-        end={
-          <div className="flex shrink-0 items-center gap-ds-8">
-            {/*
-             * Brain resolves a bound Space to one workspace root and an
-             * unbound one to per-Project roots, so say which the counts below
-             * came from.
-             */}
-            {bindingLabel ? (
-              <Tag
-                size="xs"
-                variant="secondary"
-                tone="neutral"
-                title={bindingLabel.tooltip}
-              >
-                {bindingLabel.label}
-              </Tag>
-            ) : null}
-            <Button
-              type="button"
-              size="xs"
+        titleHref="/"
+        onTitleClick={onOpenFiles}
+        titleAccessory={
+          /*
+           * Brain resolves a bound Space to one workspace root and an
+           * unbound one to per-Project roots, so keep that provenance beside
+           * the Files title rather than grouping it with the folder action.
+           */
+          bindingLabel ? (
+            <Tag
+              size="xxs"
               variant="secondary"
-              disabled={!canOpenFolder}
-              onClick={onOpenFolder}
+              tone="neutral"
+              title={bindingLabel.tooltip}
+              className="shrink-0 self-stretch"
             >
-              {t('layout.workspace-overview-open-folder', {
-                defaultValue: 'Open folder',
-              })}
-            </Button>
-          </div>
+              {bindingLabel.label}
+            </Tag>
+          ) : null
+        }
+        end={
+          <Button
+            type="button"
+            size="xs"
+            variant="secondary"
+            className={COARSE_POINTER_HIT_AREA_XS}
+            disabled={!canOpenFolder}
+            onClick={onOpenFolder}
+          >
+            {t('layout.workspace-overview-open-folder', {
+              defaultValue: 'Open folder',
+            })}
+          </Button>
         }
       >
         {showContents ? (

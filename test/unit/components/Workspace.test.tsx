@@ -75,7 +75,12 @@ const mocks = vi.hoisted(() => {
   };
   const spaces: Record<
     string,
-    { id: string; sourceType: 'blank'; status: 'active' }
+    {
+      id: string;
+      sourceType: 'blank';
+      status: 'active';
+      metadata?: { legacy?: boolean };
+    }
   > = {
     'space-1': {
       id: 'space-1',
@@ -124,10 +129,14 @@ const mocks = vi.hoisted(() => {
   });
 
   const toastCalls: Array<{ action?: { onClick: () => void } }> = [];
+  const toastError = vi.fn();
+  const openExternal = vi.fn();
 
   return {
     authState,
+    openExternal,
     toastCalls,
+    toastError,
     newChatState,
     newStartTask,
     newSetAttaches,
@@ -146,7 +155,7 @@ vi.mock('sonner', () => {
       return 'toast-id';
     },
     {
-      error: vi.fn(),
+      error: mocks.toastError,
       success: vi.fn(),
       dismiss: vi.fn(),
     }
@@ -166,7 +175,9 @@ vi.mock('@/hooks/useModelConfigCheck', () => ({
 }));
 
 vi.mock('@/host', () => ({
-  useHost: () => ({ electronAPI: {} }),
+  useHost: () => ({
+    electronAPI: { openExternal: mocks.openExternal },
+  }),
 }));
 
 vi.mock('@/store/authStore', () => ({
@@ -275,11 +286,13 @@ describe('Workspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.spaceState.activeSpaceId = 'space-1';
+    delete mocks.spaceState.spaces['space-1'].metadata;
     delete mocks.spaceState.spaces['space-2'];
     mocks.spaceState.projectsBySpaceId = {};
     mocks.authState.workspaceGuideAudience = 'new';
     mocks.authState.dismissedWorkspaceGuideTabs = [];
     mocks.toastCalls.length = 0;
+    mocks.openExternal.mockResolvedValue({ success: true });
     mocks.authState.dismissWorkspaceGuideTab.mockImplementation((tabId) => {
       if (!mocks.authState.dismissedWorkspaceGuideTabs.includes(tabId)) {
         mocks.authState.dismissedWorkspaceGuideTabs = [
@@ -413,6 +426,10 @@ describe('Workspace', () => {
     const panel = screen.getByRole('complementary', {
       name: 'Space workspace information',
     });
+    expect(panel.parentElement).toHaveAttribute(
+      'data-space-workspace-panel-container'
+    );
+    expect(panel.parentElement).toHaveClass('hidden', 'lg:contents');
     const onboarding = within(panel);
 
     const guideTabs = [
@@ -446,7 +463,10 @@ describe('Workspace', () => {
     });
     expect(guideTabs[0]).toAppearBefore(activityHeading);
     expect(activityHeading).toAppearBefore(filesHeading);
-    expect(activityHeading.closest('section')).not.toHaveClass('border-t');
+    expect(activityHeading.closest('section')).toHaveClass(
+      'border-t',
+      'py-ds-16'
+    );
     expect(filesHeading.closest('section')).toHaveClass('border-t');
     // Brain resolves a bound Space and an unbound one to different roots, so
     // the Files card says which binding the counts came from.
@@ -492,6 +512,63 @@ describe('Workspace', () => {
     expect(screen.getByLabelText('workspace-message')).toHaveValue(
       'Search for the latest Eigent release blog and summarise it in a short introduction.'
     );
+  });
+
+  it('shows an error toast when Explore use cases IPC rejects', async () => {
+    const error = new Error('IPC unavailable');
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    mocks.openExternal.mockRejectedValueOnce(error);
+    renderWorkspace();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Explore use cases' }));
+
+    await waitFor(() => {
+      expect(mocks.toastError).toHaveBeenCalledWith('Unable to open this URL');
+    });
+    expect(mocks.openExternal).toHaveBeenCalledWith(
+      'https://www.eigent.ai/use-cases'
+    );
+    expect(consoleError).toHaveBeenCalledWith(
+      'Failed to open external URL:',
+      error
+    );
+    consoleError.mockRestore();
+  });
+
+  it('opens the Files workspace tab from the Files title', () => {
+    renderWorkspace();
+
+    fireEvent.click(screen.getByRole('link', { name: 'Files' }));
+
+    expect(mocks.pageState.setActiveWorkspaceTab).toHaveBeenCalledWith('files');
+  });
+
+  it('keeps overview actions but hides the prompt shortcut for legacy Spaces', () => {
+    mocks.spaceState.spaces['space-1'].metadata = { legacy: true };
+    renderWorkspace();
+
+    const panel = screen.getByRole('complementary', {
+      name: 'Space workspace information',
+    });
+    const overview = within(panel);
+
+    expect(
+      overview.queryByRole('button', { name: 'Show me how to use Eigent' })
+    ).not.toBeInTheDocument();
+    expect(
+      overview.getByRole('button', { name: 'Connect tools' })
+    ).toBeInTheDocument();
+    expect(
+      overview.getByRole('button', { name: 'Explore use cases' })
+    ).toBeInTheDocument();
+    expect(
+      overview.getByRole('heading', { name: 'Activity' })
+    ).toBeInTheDocument();
+    expect(
+      overview.getByRole('heading', { name: 'Files' })
+    ).toBeInTheDocument();
   });
 
   it('offers an undo that brings a dismissed guide tab back', () => {

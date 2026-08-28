@@ -15,8 +15,6 @@
 import type { Space } from '@/store/spaceStore';
 import { describe, expect, it } from 'vitest';
 import {
-  buildSevenDayActivity,
-  buildThirtyDayActivity,
   categorizeSpaceFile,
   getSpaceAgeInDays,
   getSpaceSummaryVariantIndex,
@@ -76,34 +74,6 @@ describe('Space Workspace panel summaries', () => {
     expect(variant).toBeGreaterThanOrEqual(0);
     expect(variant).toBeLessThan(3);
     expect(getSpaceSummaryVariantIndex('space-1')).toBe(variant);
-  });
-
-  it('groups Task activity into the latest seven days', () => {
-    const now = new Date('2026-08-27T12:00:00.000Z').getTime();
-    const activity = buildSevenDayActivity(
-      [
-        { created_at: '2026-08-27T08:00:00.000Z' },
-        { created_at: '2026-08-25T08:00:00.000Z' },
-      ],
-      now
-    );
-
-    expect(activity.map((day) => day.count)).toEqual([0, 0, 0, 0, 1, 0, 1]);
-  });
-
-  it('groups Task activity into the latest thirty days', () => {
-    const now = new Date('2026-08-27T12:00:00.000Z').getTime();
-    const activity = buildThirtyDayActivity(
-      [
-        { created_at: '2026-08-27T08:00:00.000Z' },
-        { created_at: '2026-08-01T08:00:00.000Z' },
-        { created_at: '2026-07-27T08:00:00.000Z' },
-      ],
-      now
-    );
-
-    expect(activity).toHaveLength(30);
-    expect(activity.reduce((total, day) => total + day.count, 0)).toBe(2);
   });
 });
 

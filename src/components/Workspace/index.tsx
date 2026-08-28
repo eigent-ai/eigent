@@ -115,8 +115,8 @@ export default function Workspace({
     const url = 'https://www.eigent.ai/use-cases';
     const openExternal = host?.electronAPI?.openExternal;
     if (openExternal) {
-      void openExternal(url).then(
-        (result: { success: boolean; error?: string }) => {
+      void openExternal(url)
+        .then((result: { success: boolean; error?: string }) => {
           if (result?.success === false) {
             toast.error(
               result.error ||
@@ -125,8 +125,15 @@ export default function Workspace({
                 })
             );
           }
-        }
-      );
+        })
+        .catch((error: unknown) => {
+          console.error('Failed to open external URL:', error);
+          toast.error(
+            t('layout.browser-unable-to-open-url', {
+              defaultValue: 'Unable to open this URL',
+            })
+          );
+        });
       return;
     }
     window.open(url, '_blank', 'noopener,noreferrer');
@@ -492,14 +499,22 @@ export default function Workspace({
         </section>
       </div>
       {!embedded && variant === 'workspace' && activeSpace ? (
-        <SpaceWorkspacePanel
-          space={activeSpace}
-          onUsePrompt={handleUsePrompt}
-          onConnectApp={() => openSettings('connectors')}
-          onExploreUseCases={handleExploreUseCases}
-          canOpenFolder={Boolean(activeSpace.rootPath && host?.ipcRenderer)}
-          onOpenFolder={() => void handleOpenSpaceFolder()}
-        />
+        <div
+          data-space-workspace-panel-container
+          className="hidden lg:contents"
+        >
+          <SpaceWorkspacePanel
+            key={activeSpace.id}
+            space={activeSpace}
+            canUsePrompt={!isLegacyActiveSpace}
+            onUsePrompt={handleUsePrompt}
+            onConnectApp={() => openSettings('connectors')}
+            onExploreUseCases={handleExploreUseCases}
+            onOpenFiles={() => setActiveWorkspaceTab('files')}
+            canOpenFolder={Boolean(activeSpace.rootPath && host?.ipcRenderer)}
+            onOpenFolder={() => void handleOpenSpaceFolder()}
+          />
+        </div>
       ) : null}
     </div>
   );
