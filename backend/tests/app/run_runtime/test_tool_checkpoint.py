@@ -233,6 +233,49 @@ def test_display_projection_strips_paths_and_url_queries_from_errors():
     assert "…/secret.txt" in display.output
 
 
+def test_search_display_projection_exposes_only_safe_result_urls():
+    display = build_tool_display_projection(
+        tool_name="search_querit",
+        request={"query": "recent updates"},
+        status="completed",
+        result={
+            "results": [
+                {
+                    "title": "Release notes",
+                    "url": (
+                        "https://user:secret@example.com/releases/latest"
+                        "?token=private#details"
+                    ),
+                },
+                {
+                    "title": "Duplicate",
+                    "url": "https://example.com/releases/latest",
+                },
+                {"title": "Unsafe", "url": "javascript:alert(1)"},
+            ]
+        },
+    )
+
+    assert display.output == "Sources: https://example.com/releases/latest"
+    assert "secret" not in display.output
+    assert "token" not in display.output
+
+
+def test_google_search_display_projection_supports_list_results():
+    display = build_tool_display_projection(
+        tool_name="search_google",
+        request={"query": "recent updates"},
+        status="completed",
+        result={
+            "value": [
+                {"title": "Release notes", "url": "https://example.com/news"}
+            ]
+        },
+    )
+
+    assert display.output == "Sources: https://example.com/news"
+
+
 def test_subagent_tool_projection_uses_typed_delegation_language():
     started = build_tool_display_projection(
         tool_name="agent_run_subagent",
@@ -677,6 +720,10 @@ def test_tool_safety_is_conservative_and_requires_real_idempotency_key():
 
 def test_builtin_read_tools_and_code_owned_declarations_are_trusted():
     assert classify_tool_safety("search_google", {}) == (
+        ToolSafetyClass.SAFE_READ,
+        None,
+    )
+    assert classify_tool_safety("search_querit", {}) == (
         ToolSafetyClass.SAFE_READ,
         None,
     )

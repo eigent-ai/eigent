@@ -138,6 +138,24 @@ describe('groupConsecutiveToolItems', () => {
     );
   });
 
+  it('groups Querit and Google calls under the unified Search row', () => {
+    const querit = makeToolItem('call-1', {
+      toolkitName: 'Search Toolkit',
+      method: 'search querit',
+      rowTitle: 'Search Toolkit · Search',
+    });
+    const google = makeToolItem('call-2', {
+      toolkitName: 'Search Toolkit',
+      method: 'search google',
+      rowTitle: 'Search Toolkit · Search',
+    });
+
+    const [result] = groupConsecutiveToolItems([querit, google]);
+
+    expect(result?.kind).toBe('repeated-tool');
+    expect((result as RepeatedToolItem).calls).toEqual([querit, google]);
+  });
+
   it('treats messages and Human Toolkit receipts as chronology boundaries', () => {
     const message: TimelineItem = {
       kind: 'message',
@@ -319,6 +337,53 @@ describe('TaskWorkLogAccordion repeated tool-call rendering', () => {
         name: 'Browser Toolkit · Browser visit page',
       })
     ).toHaveLength(2);
+  });
+
+  it('keeps Search unified and shows providers only in expanded details', () => {
+    const log = [
+      mk(AgentStep.ACTIVATE_AGENT),
+      ...completedCall(
+        'Search Toolkit',
+        'search querit',
+        "query='OpenAI updates'",
+        '{"results":[]}'
+      ),
+      ...completedCall(
+        'Search Toolkit',
+        'search google',
+        "query='OpenAI updates'",
+        '[]'
+      ),
+    ];
+
+    render(
+      <TaskWorkLogAccordion
+        chatStore={createWorkLogStore(log)}
+        taskId="task-1"
+      />
+    );
+
+    const searchGroup = screen.getByRole('button', {
+      name: 'Search Toolkit · Search · 2 events',
+    });
+    expect(screen.queryByText('Querit')).not.toBeInTheDocument();
+    expect(screen.queryByText('Google')).not.toBeInTheDocument();
+
+    fireEvent.click(searchGroup);
+    const calls = screen.getAllByRole('button', {
+      name: 'Search Toolkit · Search',
+    });
+    fireEvent.click(calls[0]!);
+    fireEvent.click(calls[1]!);
+
+    expect(screen.getByText('Querit')).toHaveAttribute(
+      'data-search-provider',
+      'querit'
+    );
+    expect(screen.getByText('Google')).toHaveAttribute(
+      'data-search-provider',
+      'google'
+    );
   });
 });
 

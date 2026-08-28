@@ -666,7 +666,7 @@ function safeNodeText(node: ChatProjectionNode): string {
     case 'step':
       return `${node.title}\n${node.summary || ''}`;
     case 'activity':
-      return `${node.title}\n${node.detail || ''}`;
+      return `${node.title}\n${node.detail || ''}\n${node.output || ''}`;
     case 'artifact':
       return node.path;
     case 'run_status':

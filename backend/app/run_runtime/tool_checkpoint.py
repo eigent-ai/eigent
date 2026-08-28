@@ -27,7 +27,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 from app.run_context import get_current_run_context
 from app.run_journal import SQLiteRunJournal, get_default_run_journal
@@ -53,6 +53,7 @@ _SAFE_READ_TOOL_NAMES = frozenset(
         "read_files",
         "read_page",
         "search_google",
+        "search_querit",
         "search_mcp_from_url",
         "screenshot",
         "search_web",
@@ -258,6 +259,50 @@ def _first_mapping_value(
     return None
 
 
+def _search_result_display_urls(result: dict[str, Any]) -> list[str]:
+    """Return bounded public URLs from a search result projection."""
+
+    candidates = result.get("results")
+    if not isinstance(candidates, list):
+        candidates = result.get("value")
+    if not isinstance(candidates, list):
+        return []
+
+    urls: list[str] = []
+    seen: set[str] = set()
+    for item in candidates:
+        if not isinstance(item, dict):
+            continue
+        raw_url = _first_mapping_value(
+            item,
+            ("url", "link", "context_url", "image_url"),
+        )
+        if not isinstance(raw_url, str):
+            continue
+        try:
+            parsed = urlsplit(raw_url.strip())
+            hostname = parsed.hostname
+            if parsed.scheme.lower() not in {"http", "https"} or not hostname:
+                continue
+            port = parsed.port
+        except ValueError:
+            continue
+        host = hostname
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        netloc = f"{host}:{port}" if port is not None else host
+        safe_url = urlunsplit(
+            (parsed.scheme.lower(), netloc, parsed.path or "/", "", "")
+        )
+        safe_url = _truncate_display(safe_url, 240)
+        if safe_url not in seen:
+            seen.add(safe_url)
+            urls.append(safe_url)
+        if len(urls) >= 10:
+            break
+    return urls
+
+
 def _humanize_tool_name(tool_name: str) -> str:
     words = tool_name.strip().replace("-", "_").replace("_", " ")
     return words[:1].upper() + words[1:] if words else "Tool call"
@@ -423,6 +468,13 @@ def _tool_display_output(
         if state is not None:
             return "Sub-agent status: " + _sanitize_display_text(state, 80)
         return "Sub-agent task updated"
+    if normalized in {"search_google", "search_querit", "search_web"}:
+        urls = _search_result_display_urls(result)
+        if urls:
+            return _truncate_display(
+                "Sources: " + " ".join(urls),
+                _MAX_DISPLAY_TEXT_LENGTH,
+            )
     message = _first_mapping_value(result, ("message", "summary"))
     if message is not None:
         if isinstance(message, str):

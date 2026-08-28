@@ -44,6 +44,7 @@ type BaseInputProps = Omit<React.ComponentProps<'input'>, 'size'> & {
   optional?: boolean;
   leadingIcon?: React.ReactNode;
   backIcon?: React.ReactNode;
+  backIconAriaLabel?: string;
   onBackIconClick?: () => void;
   trailingButton?: React.ReactNode;
   onEnter?: () => void;
@@ -64,6 +65,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
       optional = false,
       leadingIcon,
       backIcon,
+      backIconAriaLabel,
       onBackIconClick,
       trailingButton,
       disabled,
@@ -172,6 +174,7 @@ const Input = React.forwardRef<HTMLInputElement, BaseInputProps>(
               buttonContent="icon-only"
               tabIndex={-1}
               className="absolute right-2 inline-flex items-center justify-center rounded-full text-ds-ink-default-default focus:ring-0 disabled:opacity-50"
+              aria-label={backIconAriaLabel}
               disabled={disabled}
               onClick={onBackIconClick}
             >

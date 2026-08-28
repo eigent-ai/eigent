@@ -34,6 +34,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import type { IntegrationItem } from '@/hooks/useIntegrationManagement';
+import { isSearchConfigured } from '@/lib/searchConfig';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import type { TFunction } from 'i18next';
 import {
@@ -184,12 +185,7 @@ function isBuiltInConfigured(
   configs: StoredConfig[]
 ): boolean {
   if (item.key === 'Search') {
-    const names = new Set(
-      configs
-        .filter((config) => String(config.config_value || '').trim())
-        .map((config) => config.config_name)
-    );
-    return names.has('GOOGLE_API_KEY') && names.has('SEARCH_ENGINE_ID');
+    return isSearchConfigured(configs);
   }
   return configs.some(
     (config) =>
