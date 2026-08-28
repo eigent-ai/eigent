@@ -365,10 +365,38 @@ _MUTATING_VALUE_OPTIONS: dict[str, frozenset[str]] = {
     "rebase": frozenset({"--empty", "--onto"}),
     "reset": frozenset(),
 }
-_URL_WITH_CREDENTIALS = re.compile(
-    r"\b[a-z][a-z0-9+.-]*://[^\s/@]+:[^\s/@]+@", re.I
-)
 _URL_USERINFO = re.compile(r"(\b[a-z][a-z0-9+.-]*://)[^\s/@]+@", re.I)
+
+
+def _contains_url_credentials(value: str) -> bool:
+    """Return whether an argv value embeds user:password URL credentials."""
+
+    cursor = 0
+    scheme_characters = frozenset(
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+.-"
+    )
+    while True:
+        separator = value.find("://", cursor)
+        if separator < 0:
+            return False
+        scheme_start = separator
+        while (
+            scheme_start > 0 and value[scheme_start - 1] in scheme_characters
+        ):
+            scheme_start -= 1
+        scheme = value[scheme_start:separator]
+        if scheme and scheme[0].isalpha():
+            authority_start = separator + 3
+            authority_end = len(value)
+            for delimiter in "/?# \t\r\n":
+                position = value.find(delimiter, authority_start)
+                if position >= 0:
+                    authority_end = min(authority_end, position)
+            authority = value[authority_start:authority_end]
+            userinfo, marker, _ = authority.rpartition("@")
+            if marker and ":" in userinfo:
+                return True
+        cursor = separator + 3
 
 
 class AdvancedGitError(RuntimeError):
@@ -730,7 +758,7 @@ class AdvancedGitCommandClassifier:
     def _reject_sensitive_transport(argv: tuple[str, ...]) -> None:
         for value in argv:
             lowered = value.lower()
-            if _URL_WITH_CREDENTIALS.search(value):
+            if _contains_url_credentials(value):
                 raise AdvancedGitCommandRejected(
                     "credentials must not be embedded in Git argv"
                 )

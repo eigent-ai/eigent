@@ -188,6 +188,14 @@ class WorkspaceGitCoordinator:
         run = self.journal.get_run_git_materialization(run_id)
         if run is None:
             return None
+        if self.journal.get_git_change_set_for_run(run_id) is not None:
+            # The Run already executed on this boundary: durable ChangeSet
+            # preimages are anchored to it, so a resumed Attempt must keep
+            # the earned base even though checkout HEAD moved (the Run's own
+            # checkpoints advance HEAD past the admission commit). Refresh
+            # exists only for queued Runs that never started; the journal
+            # guard rejects any other attempt to move this boundary.
+            return run
         binding = self.journal.get_project_workspace_binding(run.project_id)
         if binding is None:
             raise ContentRepositoryError(

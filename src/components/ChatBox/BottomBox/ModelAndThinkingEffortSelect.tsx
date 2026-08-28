@@ -13,12 +13,13 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 /**
- * Default model picker for the chat input bar — same structure as Agents → Models.
+ * Combined thinking-effort and model selector for the chat input bar.
  * Configured models switch inline; unconfigured options open Agents → Models.
  */
 
 import { proxyFetchGet } from '@/api/http';
 import folderIcon from '@/assets/logo/eigent_icon_rich.svg';
+import { DefaultModelMenuItem } from '@/components/ModelSelection/DefaultModelMenuItem';
 import {
   getLocalPlatformName,
   LOCAL_MODEL_OPTIONS,
@@ -26,12 +27,16 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
 import { createHost } from '@/host/createHost';
 import {
   applyDefaultModelSelection,
@@ -41,30 +46,29 @@ import {
 import { INIT_PROVODERS } from '@/lib/llm';
 import { getProviderValid } from '@/lib/providerStatus';
 import { cn } from '@/lib/utils';
-import {
-  getModelImage,
-  needsInvertModelImage,
-} from '@/shared/modelProviderImages';
 import { useAuthStore } from '@/store/authStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import type { Provider } from '@/types';
+import { ThinkingEffort, type ThinkingEffortType } from '@/types/constants';
 
-import {
-  Check,
-  ChevronDown,
-  HardDrive,
-  Key,
-  Layers,
-  Server,
-} from 'lucide-react';
+import { Check, ChevronDown, HardDrive, Layers } from 'lucide-react';
 import type { Dispatch, SetStateAction } from 'react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 
-export interface ModelSelectProps {
+export interface ModelAndThinkingEffortSelectProps {
+  thinkingEffort: ThinkingEffortType | undefined;
+  onThinkingEffortChange?: (effort: ThinkingEffortType | undefined) => void;
   disabled?: boolean;
   /**
    * Project whose pinned model this dropdown reads and writes. When set,
@@ -79,25 +83,38 @@ export interface ModelSelectProps {
    * Used for session chat input where the model is fixed for the session.
    */
   readOnly?: boolean;
+  className?: string;
 }
 
-const modelTriggerShellClass = cn(
+const THINKING_EFFORT_OPTIONS: ThinkingEffortType[] = [
+  ThinkingEffort.LOW,
+  ThinkingEffort.MEDIUM,
+  ThinkingEffort.HIGH,
+  ThinkingEffort.XHIGH,
+  ThinkingEffort.MAX,
+];
+
+const combinedTriggerShellClass = cn(
   'rounded-xl px-2 py-1 inline-flex max-w-[min(100%,320px)] shrink-0 items-center gap-1.5',
   'bg-ds-neutral-default-default text-ds-ink-default-default'
 );
 
-export function ModelSelect({
+export function ModelAndThinkingEffortSelect({
+  thinkingEffort,
+  onThinkingEffortChange,
   disabled,
   projectId,
   readOnly = false,
-}: ModelSelectProps) {
+  className,
+}: ModelAndThinkingEffortSelectProps) {
   const { t } = useTranslation();
+  const thinkingEffortLabelId = useId();
+  const modelLabelId = useId();
   const {
     modelType,
     cloud_model_type,
     codex_model_type,
     email,
-    appearance,
     setModelType,
     setCloudModelType,
   } = useAuthStore();
@@ -404,8 +421,56 @@ export function ModelSelect({
     t,
   ]);
 
-  const needsInvert = (modelId: string | null): boolean =>
-    needsInvertModelImage(modelId, appearance);
+  const triggerThinkingEffortName =
+    thinkingEffort === undefined
+      ? t('layout.default')
+      : t(`layout.thinking-effort-${thinkingEffort}`);
+  const selectedCloudModelId =
+    (pinnedSelection?.modelType === 'cloud'
+      ? pinnedSelection.cloud_model_type || effectiveCloudModelId
+      : !pinnedSelection && cloudPrefer
+        ? effectiveCloudModelId
+        : '') ?? '';
+  const codexSubscriptionItemId =
+    items.find((provider) => provider.authMode === 'oauth_subscription')?.id ??
+    '';
+  const preferredCustomIndex = form.findIndex((provider) => provider.prefer);
+  const selectedCustomModelId = pinnedSelection
+    ? pinnedSelection.modelType === 'codex_subscription'
+      ? codexSubscriptionItemId
+      : // A pin without `provider_id` matches nothing: `form[index].provider_id`
+        // is `undefined` for every not-yet-loaded provider, so an unguarded
+        // lookup would tick the first (usually unconfigured) row.
+        pinnedSelection.modelType === 'custom' &&
+          pinnedSelection.provider_id !== undefined
+        ? (items.find(
+            (_, index) =>
+              form[index]?.provider_id === pinnedSelection.provider_id
+          )?.id ?? '')
+        : ''
+    : modelType === 'codex_subscription'
+      ? codexSubscriptionItemId
+      : preferredCustomIndex >= 0
+        ? items[preferredCustomIndex].id
+        : '';
+  const selectedLocalModelId =
+    // Same guard as above: `localProviderIds` holds `undefined` for every
+    // unconfigured platform, so a pin without `provider_id` must match none.
+    pinnedSelection?.modelType === 'local' &&
+    pinnedSelection.provider_id !== undefined
+      ? (Object.keys(localProviderIds).find(
+          (platform) =>
+            localProviderIds[platform] === pinnedSelection.provider_id
+        ) ?? '')
+      : !pinnedSelection && localPrefer
+        ? localPlatform
+        : '';
+  const combinedTriggerText = `${triggerModelName} ${triggerThinkingEffortName}`;
+  const combinedAccessibleName = `${t(
+    'setting.model'
+  )}: ${triggerModelName}; ${t(
+    'layout.thinking-effort-label'
+  )}: ${triggerThinkingEffortName}`;
 
   const handleDefaultModelSelect = useCallback(
     async (category: DefaultModelCategory, modelId: string) => {
@@ -486,11 +551,6 @@ export function ModelSelect({
     ]
   );
 
-  // Grow the trigger to match the open dropdown's content width (never shrink
-  // below its own natural content width). Keep in sync with the `w-[180px]`
-  // on `DropdownMenuContent` below.
-  const [open, setOpen] = useState(false);
-
   const activeSubTriggerRef = useRef<HTMLElement | null>(null);
 
   // Bottom-align the sub content with the trigger row purely imperatively:
@@ -506,23 +566,29 @@ export function ModelSelect({
     el.style.marginTop = `${trigH - subH}px`;
   }, []);
 
+  const [open, setOpen] = useState(false);
+
   if (readOnly) {
     return (
       <div
         role="status"
-        title={triggerModelName}
-        aria-label={triggerModelName}
+        title={combinedTriggerText}
+        aria-label={combinedAccessibleName}
         className={cn(
-          modelTriggerShellClass,
+          combinedTriggerShellClass,
           'pointer-events-none bg-transparent',
           {
             'opacity-50': disabled,
-          }
+          },
+          className
         )}
       >
         <span className="inline-flex min-h-[1.25rem] min-w-0 items-center gap-1.5 overflow-hidden">
           <span className="min-w-0 truncate !text-ds-text-meta font-semibold">
             {triggerModelName}
+          </span>
+          <span className="shrink-0 !text-ds-text-meta font-semibold text-ds-ink-muted-default">
+            {triggerThinkingEffortName}
           </span>
         </span>
       </div>
@@ -540,31 +606,30 @@ export function ModelSelect({
         <button
           type="button"
           disabled={disabled}
-          title={triggerModelName}
-          aria-label={triggerModelName}
+          title={combinedTriggerText}
+          aria-label={combinedAccessibleName}
           aria-haspopup="menu"
           className={cn(
-            modelTriggerShellClass,
+            combinedTriggerShellClass,
             'min-w-0 cursor-pointer border-0 border-x-0 border-y-0 text-left',
             'justify-between font-semibold transition-[background-color,box-shadow,opacity] duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)]',
             'hover:bg-ds-neutral-subtle-default active:shadow-ds-elevation-control-pressed data-[state=open]:bg-ds-neutral-subtle-default',
-            'focus-visible:ring-2 focus-visible:ring-ds-hairline-strong-default focus-visible:ring-offset-2 focus-visible:ring-offset-ds-neutral-default-default focus-visible:outline-none',
+            DS_FOCUS_RING,
+            'focus-visible:ring-offset-ds-neutral-default-default',
             'disabled:pointer-events-none disabled:opacity-50',
-            // While open, only the trigger's content grows to the menu width;
-            // the chevron stays pinned at the right edge.
-            open && 'min-w-[180px]'
+            open && 'min-w-56',
+            className
           )}
         >
           <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
-            <span className="min-w-0 flex-1 truncate text-center !text-ds-text-meta text-ds-ink-default-default">
+            <span className="min-w-0 flex-1 truncate text-left !text-ds-text-meta text-ds-ink-default-default">
               {triggerModelName}
             </span>
+            <span className="shrink-0 !text-ds-text-meta text-ds-ink-muted-default">
+              {triggerThinkingEffortName}
+            </span>
           </span>
-          <ChevronDown
-            className="h-3.5 w-3.5 shrink-0 opacity-80"
-            aria-hidden
-            strokeWidth={2}
-          />
+          <ChevronDown className="size-4 shrink-0 opacity-80" aria-hidden />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -573,223 +638,222 @@ export function ModelSelect({
         sideOffset={4}
         collisionPadding={12}
         avoidCollisions
-        className="w-[180px]"
+        className="min-w-56"
       >
-        {import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' && (
+        <DropdownMenuLabel
+          id={thinkingEffortLabelId}
+          className="px-2 py-1.5 text-ds-text-meta font-medium text-ds-ink-muted-default"
+        >
+          {t('layout.thinking-effort-label')}
+        </DropdownMenuLabel>
+        <DropdownMenuGroup aria-labelledby={thinkingEffortLabelId}>
+          <DropdownMenuItem
+            role="menuitemradio"
+            aria-checked={thinkingEffort === undefined}
+            onSelect={() => onThinkingEffortChange?.(undefined)}
+            className="h-ds-control-md min-h-ds-control-md py-0"
+          >
+            <span className="min-w-0 flex-1 truncate">
+              {t('layout.default')}
+            </span>
+            {thinkingEffort === undefined ? (
+              <Check
+                className="ml-auto size-4 shrink-0 text-ds-ink-default-default"
+                aria-hidden
+              />
+            ) : null}
+          </DropdownMenuItem>
+          {THINKING_EFFORT_OPTIONS.map((effort) => {
+            const selected = effort === thinkingEffort;
+            return (
+              <DropdownMenuItem
+                key={effort}
+                role="menuitemradio"
+                aria-checked={selected}
+                onSelect={() => onThinkingEffortChange?.(effort)}
+                className="h-ds-control-md min-h-ds-control-md py-0"
+              >
+                <span className="min-w-0 flex-1 truncate">
+                  {t(`layout.thinking-effort-${effort}`)}
+                </span>
+                {selected ? (
+                  <Check
+                    className="ml-auto size-4 shrink-0 text-ds-ink-default-default"
+                    aria-hidden
+                  />
+                ) : null}
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuGroup>
+
+        <DropdownMenuSeparator />
+
+        <DropdownMenuLabel
+          id={modelLabelId}
+          className="px-2 py-1.5 text-ds-text-meta font-medium text-ds-ink-muted-default"
+        >
+          {t('setting.model')}
+        </DropdownMenuLabel>
+        <DropdownMenuGroup aria-labelledby={modelLabelId}>
+          {import.meta.env.VITE_USE_LOCAL_PROXY !== 'true' && (
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger
+                className="h-ds-control-md min-h-ds-control-md w-full min-w-0 py-0"
+                onPointerEnter={(e) => {
+                  activeSubTriggerRef.current = e.currentTarget;
+                }}
+              >
+                <span className="flex size-ds-icon-lg shrink-0 items-center justify-center">
+                  <img
+                    src={folderIcon}
+                    alt=""
+                    className="size-ds-icon-lg"
+                    aria-hidden
+                  />
+                </span>
+                <span className="min-w-0 flex-1 text-left text-ds-text-base">
+                  {t('setting.eigent-cloud')}
+                </span>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent
+                ref={subContentCallbackRef}
+                className="scrollbar-always-visible max-h-[300px] w-[200px] overflow-y-auto"
+              >
+                <DropdownMenuGroup aria-label={t('setting.eigent-cloud')}>
+                  {cloudModelOptions.map((model) => {
+                    const selected = selectedCloudModelId === model.id;
+                    return (
+                      <DefaultModelMenuItem
+                        key={model.id}
+                        configured
+                        selected={selected}
+                        statusLabel={t('setting.configured')}
+                        onSelect={() => {
+                          void handleDefaultModelSelect('cloud', model.id);
+                        }}
+                      >
+                        {model.name}
+                      </DefaultModelMenuItem>
+                    );
+                  })}
+                </DropdownMenuGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          )}
+
           <DropdownMenuSub>
             <DropdownMenuSubTrigger
-              className="flex w-full min-w-0 items-center justify-start gap-2 [&>svg:first-child]:!h-4 [&>svg:first-child]:!min-h-4 [&>svg:first-child]:!w-4 [&>svg:first-child]:!min-w-4"
+              className="h-ds-control-md min-h-ds-control-md w-full min-w-0 py-0"
               onPointerEnter={(e) => {
                 activeSubTriggerRef.current = e.currentTarget;
               }}
             >
-              <img
-                src={folderIcon}
-                alt=""
-                className="mt-0.5 h-4 w-4 shrink-0"
-                aria-hidden
-              />
+              <span className="flex size-ds-icon-lg shrink-0 items-center justify-center">
+                <Layers className="size-ds-icon-md" aria-hidden />
+              </span>
               <span className="min-w-0 flex-1 text-left text-ds-text-base">
-                {t('setting.eigent-cloud')}
+                {t('setting.custom-model')}
               </span>
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent
               ref={subContentCallbackRef}
-              className="max-h-[300px] w-[200px] overflow-y-auto"
+              className="scrollbar-always-visible max-h-[440px] w-[220px] overflow-y-auto"
             >
-              {cloudModelOptions.map((model) => (
-                <DropdownMenuItem
-                  key={model.id}
-                  onSelect={() => {
-                    void handleDefaultModelSelect('cloud', model.id);
-                  }}
-                  className="flex items-center justify-between"
-                >
-                  <span className="text-ds-text-base">{model.name}</span>
-                  {(pinnedSelection
-                    ? pinnedSelection.modelType === 'cloud' &&
-                      (pinnedSelection.cloud_model_type ||
-                        effectiveCloudModelId) === model.id
-                    : cloudPrefer && effectiveCloudModelId === model.id) && (
-                    <Check className="h-4 w-4 text-ds-text-success-default-default" />
-                  )}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-        )}
+              <DropdownMenuGroup aria-label={t('setting.custom-model')}>
+                {items
+                  .map((item, idx) => ({ item, idx }))
+                  .sort((a, b) => {
+                    // Subscription (OAuth) providers first, original order otherwise.
+                    const aSub =
+                      a.item.authMode === 'oauth_subscription' ? 0 : 1;
+                    const bSub =
+                      b.item.authMode === 'oauth_subscription' ? 0 : 1;
+                    return aSub - bSub;
+                  })
+                  .map(({ item, idx }) => {
+                    const isSubscriptionAuth =
+                      item.authMode === 'oauth_subscription';
+                    const isConfigured = isSubscriptionAuth
+                      ? codexStatus.connected
+                      : !!form[idx]?.provider_id;
+                    const selected = selectedCustomModelId === item.id;
 
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger
-            className="flex w-full min-w-0 items-center justify-start gap-2 [&>svg:first-child]:!h-5 [&>svg:first-child]:!min-h-4 [&>svg:first-child]:!w-4 [&>svg:first-child]:!min-w-4"
-            onPointerEnter={(e) => {
-              activeSubTriggerRef.current = e.currentTarget;
-            }}
-          >
-            <Layers
-              className="shrink-0 text-ds-ink-default-default"
-              aria-hidden
-            />
-            <span className="min-w-0 flex-1 text-left text-ds-text-base">
-              {t('setting.custom-model')}
-            </span>
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent
-            ref={subContentCallbackRef}
-            className="max-h-[440px] w-[220px] overflow-y-auto"
-          >
-            {items
-              .map((item, idx) => ({ item, idx }))
-              .sort((a, b) => {
-                // Subscription (OAuth) providers first, original order otherwise.
-                const aSub = a.item.authMode === 'oauth_subscription' ? 0 : 1;
-                const bSub = b.item.authMode === 'oauth_subscription' ? 0 : 1;
-                return aSub - bSub;
-              })
-              .map(({ item, idx }) => {
-                const isSubscriptionAuth =
-                  item.authMode === 'oauth_subscription';
-                const isConfigured = isSubscriptionAuth
-                  ? codexStatus.connected
-                  : !!form[idx]?.provider_id;
-                const isPreferred = pinnedSelection
-                  ? isSubscriptionAuth
-                    ? pinnedSelection.modelType === 'codex_subscription'
-                    : pinnedSelection.modelType === 'custom' &&
-                      pinnedSelection.provider_id !== undefined &&
-                      form[idx]?.provider_id === pinnedSelection.provider_id
-                  : isSubscriptionAuth
-                    ? modelType === 'codex_subscription'
-                    : form[idx]?.prefer;
-                const modelImage = getModelImage(item.id);
-
-                return (
-                  <DropdownMenuItem
-                    key={item.id}
-                    onSelect={() => {
-                      if (isSubscriptionAuth) {
-                        if (isConfigured) {
-                          handleCodexSetDefault();
-                        } else {
-                          openSettings('models');
-                        }
-                        return;
-                      }
-                      void handleDefaultModelSelect('custom', item.id);
-                    }}
-                    className="flex items-center justify-between"
-                  >
-                    <div className="flex items-center gap-2">
-                      {modelImage ? (
-                        <img
-                          src={modelImage}
-                          alt={item.name}
-                          className="h-4 w-4"
-                          style={
-                            needsInvert(item.id)
-                              ? { filter: 'invert(1)' }
-                              : undefined
+                    return (
+                      <DefaultModelMenuItem
+                        key={item.id}
+                        configured={isConfigured}
+                        selected={selected}
+                        statusLabel={t(
+                          isConfigured
+                            ? 'setting.configured'
+                            : 'setting.not-configured'
+                        )}
+                        onSelect={() => {
+                          if (isSubscriptionAuth) {
+                            if (isConfigured) {
+                              handleCodexSetDefault();
+                            } else {
+                              openSettings('models');
+                            }
+                            return;
                           }
-                        />
-                      ) : (
-                        <Key className="h-3 w-3 text-ds-ink-muted-default" />
-                      )}
-                      <span
-                        className={`text-ds-text-base ${isConfigured ? 'text-ds-ink-default-default' : 'text-ds-ink-subtle-default'}`}
+                          void handleDefaultModelSelect('custom', item.id);
+                        }}
                       >
                         {item.name}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {!isConfigured && (
-                        <div className="h-2 w-2 rounded-full bg-ds-text-neutral-subtle-default opacity-10" />
-                      )}
-                      {isPreferred && (
-                        <Check className="h-4 w-4 text-ds-text-success-default-default" />
-                      )}
-                      {isConfigured && !isPreferred && (
-                        <div className="h-2 w-2 rounded-full bg-ds-text-success-default-default" />
-                      )}
-                    </div>
-                  </DropdownMenuItem>
-                );
-              })}
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
+                      </DefaultModelMenuItem>
+                    );
+                  })}
+              </DropdownMenuGroup>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
 
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger
-            className="flex w-full min-w-0 items-center justify-start gap-2 [&>svg:first-child]:!h-4 [&>svg:first-child]:!min-h-4 [&>svg:first-child]:!w-4 [&>svg:first-child]:!min-w-4"
-            onPointerEnter={(e) => {
-              activeSubTriggerRef.current = e.currentTarget;
-            }}
-          >
-            <HardDrive
-              className="shrink-0 text-ds-ink-default-default"
-              aria-hidden
-            />
-            <span className="min-w-0 flex-1 text-left text-ds-text-base">
-              {t('setting.local-model')}
-            </span>
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent
-            ref={subContentCallbackRef}
-            className="w-[200px]"
-          >
-            {LOCAL_MODEL_OPTIONS.map((model) => {
-              const isConfigured = !!localProviderIds[model.id];
-              const isPreferred = pinnedSelection
-                ? pinnedSelection.modelType === 'local' &&
-                  pinnedSelection.provider_id !== undefined &&
-                  localProviderIds[model.id] === pinnedSelection.provider_id
-                : localPrefer && localPlatform === model.id;
-              const modelImage = getModelImage(`local-${model.id}`);
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger
+              className="h-ds-control-md min-h-ds-control-md w-full min-w-0 py-0"
+              onPointerEnter={(e) => {
+                activeSubTriggerRef.current = e.currentTarget;
+              }}
+            >
+              <span className="flex size-ds-icon-lg shrink-0 items-center justify-center">
+                <HardDrive className="size-ds-icon-md" aria-hidden />
+              </span>
+              <span className="min-w-0 flex-1 text-left text-ds-text-base">
+                {t('setting.local-model')}
+              </span>
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent
+              ref={subContentCallbackRef}
+              className="scrollbar-always-visible max-h-[300px] w-[200px] overflow-y-auto"
+            >
+              <DropdownMenuGroup aria-label={t('setting.local-model')}>
+                {LOCAL_MODEL_OPTIONS.map((model) => {
+                  const isConfigured = !!localProviderIds[model.id];
+                  const selected = selectedLocalModelId === model.id;
 
-              return (
-                <DropdownMenuItem
-                  key={model.id}
-                  onSelect={() => {
-                    void handleDefaultModelSelect('local', model.id);
-                  }}
-                  className="flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-2">
-                    {modelImage ? (
-                      <img
-                        src={modelImage}
-                        alt={model.name}
-                        className="h-4 w-4"
-                        style={
-                          needsInvert(`local-${model.id}`)
-                            ? { filter: 'invert(1)' }
-                            : undefined
-                        }
-                      />
-                    ) : (
-                      <Server className="h-4 w-4 text-ds-ink-muted-default" />
-                    )}
-                    <span
-                      className={`text-ds-text-base ${isConfigured ? 'text-ds-ink-default-default' : 'text-ds-ink-subtle-default'}`}
+                  return (
+                    <DefaultModelMenuItem
+                      key={model.id}
+                      configured={isConfigured}
+                      selected={selected}
+                      statusLabel={t(
+                        isConfigured
+                          ? 'setting.configured'
+                          : 'setting.not-configured'
+                      )}
+                      onSelect={() => {
+                        void handleDefaultModelSelect('local', model.id);
+                      }}
                     >
                       {model.name}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {!isConfigured && (
-                      <div className="h-2 w-2 rounded-full bg-ds-text-neutral-subtle-default opacity-10" />
-                    )}
-                    {isPreferred && (
-                      <Check className="h-4 w-4 text-ds-text-success-default-default" />
-                    )}
-                    {isConfigured && !isPreferred && (
-                      <div className="h-2 w-2 rounded-full bg-ds-text-success-default-default" />
-                    )}
-                  </div>
-                </DropdownMenuItem>
-              );
-            })}
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
+                    </DefaultModelMenuItem>
+                  );
+                })}
+              </DropdownMenuGroup>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );

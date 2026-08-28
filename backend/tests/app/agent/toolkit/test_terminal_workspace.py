@@ -112,6 +112,93 @@ def test_terminal_materializes_run_workspace_before_process_spawn(
     assert result == "terminal-1:touch generated.txt:True:20.0"
 
 
+def test_terminal_serializes_parallel_workspace_mutations(
+    tmp_path,
+    monkeypatch,
+):
+    user_root = tmp_path / "user"
+    run_root = tmp_path / "run"
+    user_root.mkdir()
+    run_root.mkdir()
+    toolkit = TerminalToolkit.__new__(TerminalToolkit)
+    toolkit.api_task_id = "project-1"
+    toolkit.agent_name = "developer_agent"
+    toolkit.working_dir = str(user_root)
+    toolkit._terminal_mutation_lock = threading.RLock()
+    first_spawned = threading.Event()
+    release_first = threading.Event()
+    second_prepared = threading.Event()
+    calls: list[str] = []
+    results: list[str] = []
+
+    class _MutationService:
+        def prepare_broad_write(self, **_kwargs):
+            name = threading.current_thread().name
+            calls.append(f"prepare:{name}")
+            if name == "second":
+                second_prepared.set()
+            return SimpleNamespace(
+                mutation_root=run_root,
+                context=SimpleNamespace(run_id="run-1"),
+            )
+
+        def complete_broad_write(self, _prepared, **_kwargs):
+            calls.append(f"complete:{threading.current_thread().name}")
+
+    mutation_service = _MutationService()
+
+    def fake_shell_exec(self, *, id, command, block, timeout):
+        name = threading.current_thread().name
+        calls.append(f"spawn:{name}")
+        if name == "first":
+            first_spawned.set()
+            assert release_first.wait(1)
+        return _original_isolated_local_command(command) or command
+
+    def run(command: str) -> None:
+        with run_context_scope(_context(user_root)):
+            results.append(toolkit.shell_exec(command=command, id=command))
+
+    monkeypatch.setattr(
+        terminal_toolkit,
+        "get_default_workspace_mutation_service",
+        lambda: mutation_service,
+    )
+    monkeypatch.setattr(BaseTerminalToolkit, "shell_exec", fake_shell_exec)
+    monkeypatch.setattr(
+        toolkit_listen,
+        "get_task_lock",
+        lambda _task_id: object(),
+    )
+    monkeypatch.setattr(
+        toolkit_listen,
+        "_safe_put_queue",
+        lambda _lock, _event: None,
+    )
+
+    first = threading.Thread(target=run, args=("first",), name="first")
+    second = threading.Thread(target=run, args=("second",), name="second")
+    first.start()
+    assert first_spawned.wait(1)
+    second.start()
+    assert not second_prepared.wait(0.05)
+    release_first.set()
+    first.join(1)
+    second.join(1)
+
+    assert not first.is_alive()
+    assert not second.is_alive()
+    assert results == ["first", "second"]
+    assert calls == [
+        "prepare:first",
+        "spawn:first",
+        "complete:first",
+        "prepare:second",
+        "spawn:second",
+        "complete:second",
+    ]
+
+
 def test_terminal_remaps_visible_space_absolute_paths_to_agent_checkout(
     tmp_path,
     monkeypatch,

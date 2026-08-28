@@ -66,7 +66,7 @@ export function TopBarPrimaryNavigation({
         <span
           data-topbar-primary-divider
           aria-hidden
-          className="pointer-events-none absolute -left-px top-1/2 h-5 w-px -translate-y-1/2 bg-ds-border-neutral-subtle-default"
+          className="pointer-events-none absolute top-1/2 -left-px h-5 w-px -translate-y-1/2 bg-ds-border-neutral-subtle-default"
         />
         {contentControls}
       </div>

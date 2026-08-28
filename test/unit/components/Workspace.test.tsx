@@ -60,6 +60,7 @@ const mocks = vi.hoisted(() => {
     navLeadByProjectId: {},
     isEmptyProject: vi.fn(() => false),
     setActiveProject: vi.fn(),
+    getComposerThinkingEffort: vi.fn<() => 'high' | undefined>(() => 'high'),
     getActiveChatStore: vi.fn(() => ({
       getState: () => newChatState,
     })),
@@ -159,8 +160,21 @@ vi.mock('@/lib/spaceProject', () => ({
 }));
 
 vi.mock('@/components/ChatBox/BottomBox', () => ({
-  default: ({ inputProps }: { inputProps: any }) => (
+  default: ({
+    inputProps,
+    sessionModeSelectInteractive,
+    modelSelectProjectId,
+  }: {
+    inputProps: any;
+    sessionModeSelectInteractive?: boolean;
+    modelSelectProjectId?: string | null;
+  }) => (
     <div>
+      <div
+        data-testid="workspace-bottom-box-footer-props"
+        data-interactive={String(Boolean(sessionModeSelectInteractive))}
+        data-project-id={modelSelectProjectId ?? ''}
+      />
       <input
         aria-label="workspace-message"
         value={inputProps.value}
@@ -210,6 +224,7 @@ describe('Workspace', () => {
       projectId: 'new-project',
       spaceId: 'space-1',
     });
+    mocks.projectState.getComposerThinkingEffort.mockReturnValue('high');
     mocks.newStartTask.mockResolvedValue(undefined);
   });
 
@@ -229,6 +244,10 @@ describe('Workspace', () => {
       expect.objectContaining({
         spaceId: 'space-1',
         name: 'Start fresh work',
+        metadata: expect.objectContaining({
+          createdFrom: 'workspace_direct_chat',
+          thinkingEffort: 'high',
+        }),
       })
     );
     expect(mocks.newStartTask).toHaveBeenCalledWith(
@@ -243,6 +262,45 @@ describe('Workspace', () => {
       'single-agent'
     );
     expect(mocks.oldSetAttaches).not.toHaveBeenCalled();
+  });
+
+  it('shares the projectless interactive footer across Workspace and New session', () => {
+    const workspace = renderWorkspace();
+
+    expect(
+      screen.getByTestId('workspace-bottom-box-footer-props')
+    ).toHaveAttribute('data-interactive', 'true');
+    expect(
+      screen.getByTestId('workspace-bottom-box-footer-props')
+    ).toHaveAttribute('data-project-id', '');
+
+    workspace.unmount();
+    renderWorkspace({ variant: 'new-project' });
+
+    expect(
+      screen.getByTestId('workspace-bottom-box-footer-props')
+    ).toHaveAttribute('data-interactive', 'true');
+    expect(
+      screen.getByTestId('workspace-bottom-box-footer-props')
+    ).toHaveAttribute('data-project-id', '');
+  });
+
+  it('inherits the configured thinking effort when the composer is untouched', async () => {
+    mocks.projectState.getComposerThinkingEffort.mockReturnValue(undefined);
+    renderWorkspace();
+
+    fireEvent.change(screen.getByLabelText('workspace-message'), {
+      target: { value: 'Use the configured effort' },
+    });
+    fireEvent.click(screen.getByText('Send'));
+
+    await waitFor(() => {
+      expect(createSyncedProjectInSpace).toHaveBeenCalledTimes(1);
+    });
+    const createInput = vi.mocked(createSyncedProjectInSpace).mock.calls[0][0];
+    expect(createInput.metadata).toEqual({
+      createdFrom: 'workspace_direct_chat',
+    });
   });
 
   it('does not show a Workspace Profile control in the header', () => {

@@ -30,7 +30,7 @@ export default function SettingsContentShell({
     <div
       ref={scrollRef}
       className={cn(
-        'scrollbar-always-visible min-h-0 flex-1 overflow-y-scroll [scrollbar-gutter:stable]',
+        'scrollbar-always-visible min-h-0 flex-1 [scrollbar-gutter:stable] overflow-y-scroll',
         className
       )}
     >

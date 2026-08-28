@@ -545,10 +545,24 @@ _WEAK_CONTINUATION_MESSAGES = frozenset(
     }
 )
 
+_UNKNOWN_SIDE_EFFECT_ACKNOWLEDGEMENTS = frozenset(
+    {
+        "i acknowledge the tool may have executed; do not retry it; continue",
+        "我确认该工具可能已经执行，不要重试，继续",
+        "我确认该工具可能已经执行，不要重试，继续。",
+    }
+)
+
 
 def _is_weak_continuation(content: str) -> bool:
     return " ".join(content.strip().lower().split()) in (
         _WEAK_CONTINUATION_MESSAGES
+    )
+
+
+def _acknowledges_unknown_side_effect(content: str) -> bool:
+    return " ".join(content.strip().lower().split()) in (
+        _UNKNOWN_SIDE_EFFECT_ACKNOWLEDGEMENTS
     )
 
 
@@ -598,7 +612,8 @@ async def _resolve_continuation_admission(
 ) -> Chat | SupplementChat:
     """Resolve weak continuation intent before any model inference."""
 
-    if not _is_weak_continuation(data.question):
+    acknowledges_unknown = _acknowledges_unknown_side_effect(data.question)
+    if not _is_weak_continuation(data.question) and not acknowledges_unknown:
         return data
     active = await asyncio.to_thread(
         journal.get_active_project_run, project_id
@@ -661,22 +676,25 @@ async def _resolve_continuation_admission(
             latest_has_unknown_tool_outcome
             or blocked_by == "external_tool_outcome_unknown"
         ):
-            message = (
-                "The failed Run has an unknown external side effect. Review "
-                "the durable tool outcome before starting new work."
-            )
-            await _reject_pending_continuation(
-                journal,
-                project_id=project_id,
-                request_id=run_id,
-                code_value="continuation_outcome_unknown",
-                message=message,
-            )
-            raise _continuation_http_error(
-                code_value="continuation_outcome_unknown",
-                message=message,
-                project_state_version=state.state_version,
-            )
+            if not acknowledges_unknown:
+                message = (
+                    "The failed Run has an unknown external side effect. "
+                    "Review the durable tool outcome. To continue without "
+                    "replaying it, send exactly: I acknowledge the tool may "
+                    "have executed; do not retry it; continue"
+                )
+                await _reject_pending_continuation(
+                    journal,
+                    project_id=project_id,
+                    request_id=run_id,
+                    code_value="continuation_outcome_unknown",
+                    message=message,
+                )
+                raise _continuation_http_error(
+                    code_value="continuation_outcome_unknown",
+                    message=message,
+                    project_state_version=state.state_version,
+                )
         retry_failed_run = True
         if not isinstance(next_action, str) or not next_action.strip():
             objective = frontier.get("objective")
@@ -750,7 +768,14 @@ async def _resolve_continuation_admission(
         f"remaining: {json.dumps(remaining, ensure_ascii=False)}\n"
         "Continue from durable Project history. Do not repeat completed "
         "external actions or the prior final answer.\n"
-        "=== End Durable Continuation Intent ==="
+        + (
+            "unknown_external_side_effect_acknowledged: true\n"
+            "A previous tool may already have executed. Do not replay it; "
+            "continue only with the saved next action.\n"
+            if acknowledges_unknown
+            else ""
+        )
+        + "=== End Durable Continuation Intent ==="
     )
     # The Workforce execution path does not consume ``project_context``.
     # Put the resolved continuation in the actual model instruction so it

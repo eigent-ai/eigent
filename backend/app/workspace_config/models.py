@@ -191,10 +191,25 @@ _BASE64_CANDIDATE = re.compile(
 
 
 def _normalized_field_name(value: str) -> str:
-    value = value.replace("-", "_")
-    value = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", value)
-    value = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", value)
-    return re.sub(r"_+", "_", value).strip("_").lower()
+    normalized: list[str] = []
+    for index, character in enumerate(value):
+        character = "_" if character == "-" else character
+        previous = value[index - 1] if index else ""
+        following = value[index + 1] if index + 1 < len(value) else ""
+        is_upper = "A" <= character <= "Z"
+        starts_word = is_upper and (
+            ("a" <= previous <= "z")
+            or ("0" <= previous <= "9")
+            or ("A" <= previous <= "Z" and "a" <= following <= "z")
+        )
+        if starts_word and normalized and normalized[-1] != "_":
+            normalized.append("_")
+        if character == "_" and (not normalized or normalized[-1] == "_"):
+            continue
+        normalized.append(character.lower())
+    while normalized and normalized[-1] == "_":
+        normalized.pop()
+    return "".join(normalized)
 
 
 def _is_slot_reference(value: Any) -> bool:

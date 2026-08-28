@@ -206,6 +206,87 @@ async def test_continue_never_retries_failed_run_with_unknown_tool_outcome(
             )
 
         assert captured.value.detail["code"] == "continuation_outcome_unknown"
+        assert "do not retry it; continue" in captured.value.detail["message"]
+
+
+@pytest.mark.asyncio
+async def test_explicit_acknowledgement_continues_without_replaying_unknown_tool(
+    tmp_path,
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(
+            run_id="failed-run", project_id="project-1", status="pending"
+        )
+        journal.append_event(
+            "failed-run",
+            RunEventDraft(
+                event_id="user:failed-run",
+                event_type="user.message",
+                payload={"content": "Create the requested ticket"},
+            ),
+        )
+        journal.append_event(
+            "failed-run",
+            RunEventDraft(
+                event_id="todos:failed-run",
+                event_type="legacy.todo_state",
+                legacy_step="todo_state",
+                payload={
+                    "todos": [
+                        {
+                            "id": "todo-1",
+                            "content": "Verify the ticket exists",
+                            "active_form": "Verifying the ticket",
+                            "status": "pending",
+                        }
+                    ]
+                },
+            ),
+        )
+        tool = {
+            "tool_call_id": "tool-1",
+            "run_id": "failed-run",
+            "attempt_id": None,
+            "tool_name": "create_ticket",
+            "safety_class": ToolSafetyClass.UNSAFE_WRITE,
+            "request": {"title": "Incident"},
+        }
+        journal.checkpoint_tool_call(status="prepared", now=1, **tool)
+        journal.checkpoint_tool_call(status="dispatched", now=2, **tool)
+        journal.checkpoint_tool_call(
+            status="outcome_unknown",
+            outcome="outcome_unknown",
+            now=3,
+            **tool,
+        )
+        journal.append_event(
+            "failed-run",
+            RunEventDraft(
+                event_id="failed:failed-run",
+                event_type="run.failed",
+                payload={"reason": "execution_backend_failure"},
+            ),
+        )
+
+        admitted = await _resolve_continuation_admission(
+            journal,
+            data=SupplementChat(
+                question="我确认该工具可能已经执行，不要重试，继续",
+                task_id="run-2",
+            ),
+            project_id="project-1",
+            run_id="run-2",
+        )
+
+        assert "mode: retry_failed_run" in admitted.question
+        assert "next_action: Verify the ticket exists" in admitted.question
+        assert (
+            "unknown_external_side_effect_acknowledged: true"
+            in admitted.question
+        )
+        assert "Do not replay it" in admitted.question
+        [persisted_tool] = journal.list_tool_calls("failed-run")
+        assert persisted_tool.status == "outcome_unknown"
 
 
 @pytest.mark.asyncio

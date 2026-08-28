@@ -437,7 +437,7 @@ class CommandControlWorker:
         self._auth_paused_configuration = None
         self._auth_pause_code = None
         self._auth_retry_at = 0.0
-        logger.info(
+        logger.debug(
             "Remote command sync resumed after authentication recovered"
         )
 
@@ -586,7 +586,7 @@ class CommandControlWorker:
             else:
                 await self._retry(batch, str(exc))
         except OutboxLeaseLostError:
-            logger.info(
+            logger.debug(
                 "Ignoring stale command sync result",
                 extra={"command_id": batch.command_id},
             )
@@ -607,7 +607,7 @@ class CommandControlWorker:
                 next_attempt_at=time.time() + delay,
             )
         except OutboxLeaseLostError:
-            logger.info("Command retry lost its lease")
+            logger.debug("Command retry lost its lease")
 
     @staticmethod
     def _failed_event_id(detail: Any, batch: CommandResultSyncBatch) -> str:

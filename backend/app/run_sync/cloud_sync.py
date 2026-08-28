@@ -880,7 +880,7 @@ class CloudSyncWorker:
         self._auth_paused_configuration = None
         self._auth_pause_code = None
         self._auth_retry_at = 0.0
-        logger.info("Cloud sync resumed after authentication recovered")
+        logger.debug("Cloud sync resumed after authentication recovered")
 
     def _artifact_upload_finished(self, task: asyncio.Task[int]) -> None:
         self._artifact_tasks.discard(task)
@@ -1559,7 +1559,7 @@ class CloudSyncWorker:
             self._memory_writer_epochs.pop(key, None)
             ready.discard(key)
         if missing:
-            logger.info(
+            logger.debug(
                 "Cloud Memory heartbeat requested full repair for %d scope(s)",
                 len(missing),
             )
@@ -1800,7 +1800,7 @@ class CloudSyncWorker:
             else:
                 await self._retry_memory_batch(batch, str(exc))
         except OutboxLeaseLostError:
-            logger.info(
+            logger.debug(
                 "Ignoring stale Memory sync result after lease handoff",
                 extra={
                     "scope_type": batch.scope_type,
@@ -1838,7 +1838,7 @@ class CloudSyncWorker:
                 next_attempt_at=time.time() + delay,
             )
         except OutboxLeaseLostError:
-            logger.info("Retry result lost its Memory sync lease")
+            logger.debug("Retry result lost its Memory sync lease")
 
     async def _block_memory_batch(
         self,
@@ -1854,7 +1854,7 @@ class CloudSyncWorker:
                 error=error,
             )
         except OutboxLeaseLostError:
-            logger.info("Permanent error lost its Memory sync lease")
+            logger.debug("Permanent error lost its Memory sync lease")
             return
         logger.error(
             "Memory sync scope blocked by permanent mutation error",
@@ -1939,7 +1939,7 @@ class CloudSyncWorker:
             else:
                 await self._mark_retry(batch, str(exc))
         except OutboxLeaseLostError:
-            logger.info(
+            logger.debug(
                 "Ignoring stale Run sync result after lease handoff",
                 extra={"run_id": batch.run_id},
             )
@@ -1975,7 +1975,7 @@ class CloudSyncWorker:
                 next_attempt_at=time.time() + delay,
             )
         except OutboxLeaseLostError:
-            logger.info(
+            logger.debug(
                 "Retry result lost its Run sync lease",
                 extra={"run_id": batch.run_id},
             )
@@ -1994,7 +1994,7 @@ class CloudSyncWorker:
                 error=error,
             )
         except OutboxLeaseLostError:
-            logger.info(
+            logger.debug(
                 "Permanent error lost its Run sync lease",
                 extra={"run_id": batch.run_id},
             )

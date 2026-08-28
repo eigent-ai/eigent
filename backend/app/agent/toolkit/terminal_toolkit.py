@@ -248,6 +248,11 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         self._runtime_env_overlay: dict[str, str] | None = None
         self._active_runtime_secret_values: tuple[str, ...] = ()
         self._runtime_env_lock = threading.RLock()
+        # One Agent can issue multiple shell calls in parallel. Keep each
+        # prepare -> execute -> checkpoint interval atomic so the calls do not
+        # compete for the same Git ChangeSet (including the shared terminal
+        # log file).
+        self._terminal_mutation_lock = threading.RLock()
         if agent_name is not None:
             self.agent_name = agent_name
 
@@ -742,6 +747,28 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         Returns:
             str: The output of the command execution.
         """
+        mutation_lock = getattr(self, "_terminal_mutation_lock", None)
+        if mutation_lock is None:
+            # Compatibility for older tests/adapters that construct the
+            # Toolkit without calling __init__. Production instances always
+            # initialize the lock above.
+            mutation_lock = threading.RLock()
+            self._terminal_mutation_lock = mutation_lock
+        with mutation_lock:
+            return self._shell_exec_with_workspace_checkpoint(
+                command=command,
+                id=id,
+                block=block,
+                timeout=timeout,
+            )
+
+    def _shell_exec_with_workspace_checkpoint(
+        self,
+        command: str,
+        id: str | None = None,
+        block: bool = True,
+        timeout: float = 20.0,
+    ) -> str:
         runtime_env_provider = getattr(self, "_runtime_env_provider", None)
         if runtime_env_provider is not None and not block:
             return (

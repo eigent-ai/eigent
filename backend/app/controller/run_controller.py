@@ -280,8 +280,12 @@ async def _durable_event_stream(
             except SubscriberLaggedError:
                 subscriber_lagged = True
                 subscription = None
-            except RunExecutionError as exc:
-                runtime_error = str(exc)
+            except RunExecutionError:
+                logger.warning(
+                    "Run execution stream detached after runtime failure",
+                    extra={"run_id": run_id},
+                )
+                runtime_error = "Run execution stopped unexpectedly."
                 subscription = None
             finally:
                 pending_notification = None

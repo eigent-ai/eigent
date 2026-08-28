@@ -423,7 +423,7 @@ function HomeSettingsPageContent() {
       onBack={handleHomeSectionChange}
     />
   ) : isSpacesView ? (
-    <div className="scrollbar-always-visible flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-scroll [scrollbar-gutter:stable]">
+    <div className="scrollbar-always-visible flex min-h-0 w-full min-w-0 flex-1 [scrollbar-gutter:stable] flex-col overflow-y-scroll">
       <div className="min-h-full px-8 py-6">
         <div className="mx-auto w-full max-w-[1100px]">
           <HomeGreeting />
