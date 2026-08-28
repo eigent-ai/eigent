@@ -192,4 +192,19 @@ describe('inlineLocalHtmlScriptElements', () => {
 
     expect(result).toContain('src="missing.js"');
   });
+
+  it('does not treat explicit URL schemes as local script paths', async () => {
+    const html =
+      '<html><body><script src="vbscript:alert(1)"></script></body></html>';
+    const readTextFile = vi.fn();
+
+    const result = await inlineLocalHtmlScriptElements(
+      html,
+      '/Users/test/P5-new',
+      readTextFile
+    );
+
+    expect(readTextFile).not.toHaveBeenCalled();
+    expect(result).toContain('src="vbscript:alert(1)"');
+  });
 });

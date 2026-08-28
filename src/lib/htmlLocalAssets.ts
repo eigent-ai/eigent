@@ -111,8 +111,21 @@ function isSpecialImageSrc(src: string): boolean {
 
 function isLocalScriptSrc(src: string): boolean {
   const normalizedSrc = src.trim().toLowerCase();
+  const colonIndex = normalizedSrc.indexOf(':');
+  const hasExplicitScheme =
+    colonIndex > 0 &&
+    Array.from(normalizedSrc.slice(0, colonIndex)).every((character, index) =>
+      index === 0
+        ? character >= 'a' && character <= 'z'
+        : (character >= 'a' && character <= 'z') ||
+          (character >= '0' && character <= '9') ||
+          character === '+' ||
+          character === '.' ||
+          character === '-'
+    );
   return (
     Boolean(normalizedSrc) &&
+    !hasExplicitScheme &&
     !(
       normalizedSrc.startsWith('http://') ||
       normalizedSrc.startsWith('https://') ||
@@ -120,7 +133,6 @@ function isLocalScriptSrc(src: string): boolean {
       normalizedSrc.startsWith('data:') ||
       normalizedSrc.startsWith('blob:') ||
       normalizedSrc.startsWith('localfile:') ||
-      normalizedSrc.startsWith('javascript:') ||
       normalizedSrc.startsWith('#')
     )
   );

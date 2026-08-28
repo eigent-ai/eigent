@@ -956,7 +956,7 @@ class RunCoordinator:
                                 if attempt
                                 else current.created_at
                             ),
-                            ended_at=current.deadline_at,
+                            ended_at=max(time.time(), current.deadline_at),
                             run_id=current.run_id,
                             attempt_id=attempt.attempt_id if attempt else None,
                         ),

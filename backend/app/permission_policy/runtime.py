@@ -115,6 +115,8 @@ async def authorize_tool_checkpoint(
     # Register the waiter before publishing the card. A fast local renderer
     # can otherwise decide before get_human_input has appended its Future.
     await asyncio.sleep(0)
+    pause_context = pause_active_execution_timeout(task_lock)
+    await pause_context.__aenter__()
     try:
         await task_lock.put_queue(
             ActionAskData(
@@ -146,6 +148,7 @@ async def authorize_tool_checkpoint(
             )
         )
     except BaseException:
+        await pause_context.__aexit__(None, None, None)
         human_input_task.cancel()
         raise
     approval_expires_at = result.approval.expires_at
@@ -159,11 +162,10 @@ async def authorize_tool_checkpoint(
             # latency must not consume CAMEL's model/tool execution timeout;
             # otherwise every valid 24-hour Approval is cancelled at the
             # default 30-minute Agent step deadline.
-            async with pause_active_execution_timeout(task_lock):
-                reply = await asyncio.wait_for(
-                    human_input_task,
-                    timeout=max(0.0, approval_expires_at - time.time()),
-                )
+            reply = await asyncio.wait_for(
+                human_input_task,
+                timeout=max(0.0, approval_expires_at - time.time()),
+            )
         except TimeoutError:
             run = store.get_run(checkpoint.run_id)
             try:
@@ -215,6 +217,7 @@ async def authorize_tool_checkpoint(
             )
         return result.decision
     finally:
+        await pause_context.__aexit__(None, None, None)
         if not human_input_task.done():
             human_input_task.cancel()
             await asyncio.gather(human_input_task, return_exceptions=True)

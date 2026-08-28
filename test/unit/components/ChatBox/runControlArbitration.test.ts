@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
-  canUseLegacyControlWhileEventNativeHydrates,
+  canUseLegacyControlWithoutCanonicalOwner,
   selectActionableInterruptedRun,
   selectComposerTaskControlState,
   selectEventNativeActiveRunId,
@@ -126,56 +126,32 @@ function snapshot({
 }
 
 describe('event-native Run-control arbitration', () => {
-  it('uses legacy control only during a trusted hydration window', () => {
-    expect(canUseLegacyControlWhileEventNativeHydrates(null, 'loading')).toBe(
+  it('uses legacy control only when no safe canonical owner is retained', () => {
+    expect(canUseLegacyControlWithoutCanonicalOwner(null, 'legacy-live')).toBe(
       true
     );
     expect(
-      canUseLegacyControlWhileEventNativeHydrates(
-        snapshot({ runs: [], hasHydratedSnapshot: false }),
-        'retrying'
+      canUseLegacyControlWithoutCanonicalOwner(
+        snapshot({ runs: [run('legacy-live', 'running')] }),
+        'legacy-live'
       )
     ).toBe(true);
     expect(
-      canUseLegacyControlWhileEventNativeHydrates(
-        snapshot({ runs: [] }),
-        'ready'
+      canUseLegacyControlWithoutCanonicalOwner(
+        snapshot({
+          runs: [run('legacy-live', 'running')],
+          nodes: [canonicalNode('legacy-live')],
+        }),
+        'legacy-live'
       )
     ).toBe(false);
-    expect(canUseLegacyControlWhileEventNativeHydrates(null, 'error')).toBe(
-      false
-    );
-    expect(canUseLegacyControlWhileEventNativeHydrates(null, 'ready')).toBe(
-      false
-    );
     expect(
-      canUseLegacyControlWhileEventNativeHydrates(
+      canUseLegacyControlWithoutCanonicalOwner(
         snapshot({
-          runs: [],
-          hasHydratedSnapshot: false,
+          runs: [run('legacy-live', 'running')],
           eventsTruncated: true,
         }),
-        'loading'
-      )
-    ).toBe(false);
-    expect(
-      canUseLegacyControlWhileEventNativeHydrates(
-        snapshot({
-          runs: [],
-          hasHydratedSnapshot: false,
-          needsResync: true,
-        }),
-        'loading'
-      )
-    ).toBe(false);
-    expect(
-      canUseLegacyControlWhileEventNativeHydrates(
-        snapshot({
-          runs: [],
-          hasHydratedSnapshot: false,
-          overflowed: true,
-        }),
-        'loading'
+        'legacy-live'
       )
     ).toBe(false);
   });
@@ -227,7 +203,7 @@ describe('event-native Run-control arbitration', () => {
         legacyControlRunId: 'legacy-live',
         activeTaskStatus: ChatTaskStatus.RUNNING,
         eventNativeActiveRunId: null,
-        allowLegacyHydrationControl: true,
+        allowLegacyFallbackControl: true,
       })
     ).toBe('running');
   });
