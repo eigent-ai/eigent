@@ -337,6 +337,88 @@ async def test_queued_direct_run_refreshes_base_after_writer_acquisition(
     }
 
 
+@pytest.mark.asyncio
+async def test_resumed_run_with_change_set_keeps_earned_boundary(
+    tmp_path,
+    journal,
+):
+    """Resume admission must not move a boundary a ChangeSet is anchored to.
+
+    An interrupted Run that already mutated files has (a) a durable ChangeSet
+    and (b) checkout HEAD advanced past its admission base by its own
+    checkpoint commits. Re-admission after restart must keep the earned base
+    instead of tripping the journal's fail-closed boundary guard.
+    """
+
+    content, coordinator, backend = _services(tmp_path, journal)
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    target = space / "report.md"
+    target.write_text("first\n", encoding="utf-8")
+    admission_head = backend.commit_paths(space, (target,), message="first")
+    journal.ensure_run(
+        run_id="run-1",
+        project_id="project-1",
+        status="pending",
+    )
+    attempt = journal.create_run_attempt(
+        "run-1",
+        request_id="attempt-request-1",
+        reason="initial",
+        attempt_id="attempt-1",
+    )
+    admitted = coordinator.admit_run(
+        space_id="space-1",
+        project_id="project-1",
+        run_id="run-1",
+        task_id="task-1",
+        session_mode="single-agent",
+    )
+    assert admitted is not None
+    assert admitted.writer.request.status == "acquired"
+    assert admitted.run.workspace_base_commit == admission_head
+
+    # The Run mutates the workspace: its ChangeSet anchors to the admission
+    # base while its checkpoint commit advances checkout HEAD past it.
+    journal.ensure_git_change_set(
+        change_set_id="change-set-1",
+        run_id="run-1",
+        repository_id=admitted.run.repository_id,
+        worktree_ref="refs/heads/main",
+        base_commit=admission_head,
+    )
+    target.write_text("second\n", encoding="utf-8")
+    checkpoint_head = backend.commit_paths(
+        space,
+        (target,),
+        message="Checkpoint Task workspace changes",
+    )
+    assert checkpoint_head != admission_head
+
+    refreshed = coordinator.refresh_run_boundary_after_writer_acquired(
+        run_id="run-1",
+        task_id="task-1",
+        attempt_id=attempt.attempt_id,
+    )
+
+    assert refreshed is not None
+    assert refreshed.workspace_base_commit == admission_head
+    assert (
+        journal.get_run_git_materialization("run-1").workspace_base_commit
+        == admission_head
+    )
+    assert [
+        event
+        for event in journal.list_events("run-1")
+        if event.event_type == "workspace.run_base_refreshed"
+    ] == []
+
+
 def test_direct_run_boundary_cannot_move_after_attempt_activation(
     tmp_path,
     journal,
