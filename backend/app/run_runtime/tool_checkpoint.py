@@ -282,10 +282,7 @@ def _search_result_display_urls(result: dict[str, Any]) -> list[str]:
         try:
             parsed = urlsplit(raw_url.strip())
             hostname = parsed.hostname
-            if (
-                parsed.scheme.lower() not in {"http", "https"}
-                or not hostname
-            ):
+            if parsed.scheme.lower() not in {"http", "https"} or not hostname:
                 continue
             port = parsed.port
         except ValueError:
