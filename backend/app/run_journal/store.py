@@ -8688,7 +8688,7 @@ class SQLiteRunJournal:
 
         # Schema v20 already contains canonical terminal history. Lazily
         # derive its first Project frontier after upgrading instead of making
-        # a real v1.0.2 Project look empty until another Run completes.
+        # a real v1.0.3 Project look empty until another Run completes.
         with self._write_transaction() as connection:
             self._backfill_project_execution_state_in_transaction(
                 connection, project_id=project_id
