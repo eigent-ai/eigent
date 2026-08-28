@@ -18,11 +18,12 @@ from sqlmodel import Session
 
 from app.core.database import session
 from app.domains.space.service.apply_service import SpaceApplyService
+from app.domains.space.service.deletion_service import SpaceDeletionService
 from app.domains.space.service.overlay_service import (
     PendingOverlayError,
     SpaceOverlayService,
 )
-from app.domains.space.service.space_service import SpaceHasProjectsError, SpaceService
+from app.domains.space.service.space_service import SpaceService
 from app.model.project import ProjectIn, ProjectOut, ProjectUpdate
 from app.model.space import (
     SpaceIn,
@@ -99,17 +100,7 @@ def delete_space(
     auth: V1UserAuth = Depends(auth_must),
 ):
     try:
-        SpaceService.delete_space(space_id, auth.id, db_session)
-    except SpaceHasProjectsError as exc:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": "space_has_projects",
-                "message": str(exc),
-                "project_count": exc.project_count,
-                "projects": exc.projects,
-            },
-        ) from exc
+        SpaceDeletionService.delete_space(space_id, auth.id, db_session)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -209,6 +200,28 @@ def update_space_project(
     try:
         return ProjectOut.from_model(
             SpaceService.update_project(space_id, project_id, data, auth.id, db_session)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.delete(
+    "/{space_id}/projects/{project_id}",
+    name="delete space project",
+    status_code=204,
+)
+def delete_space_project(
+    space_id: str,
+    project_id: str,
+    db_session: Session = Depends(session),
+    auth: V1UserAuth = Depends(auth_must),
+):
+    try:
+        SpaceDeletionService.delete_project(
+            project_id,
+            auth.id,
+            db_session,
+            space_id=space_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
