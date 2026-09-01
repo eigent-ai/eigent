@@ -17,7 +17,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.agent.agent_model import agent_model
+from app.agent.agent_model import (
+    _configure_responses_instructions,
+    agent_model,
+)
 from app.model.chat import AgentModelConfig, Chat
 from app.service.task import Agents
 
@@ -55,6 +58,42 @@ class TestAgentFactoryFunctions:
 
             assert result is mock_agent
             mock_listen_agent.assert_called_once()
+
+    def test_responses_instructions_are_not_duplicated_in_input(self):
+        class ResponsesBackend:
+            def _prepare_responses_input_and_chain(
+                self, messages, chain_enabled=True
+            ):
+                return {
+                    "input_messages": list(messages),
+                    "chain_enabled": chain_enabled,
+                }
+
+        backend = ResponsesBackend()
+        _configure_responses_instructions(backend)
+        _configure_responses_instructions(backend)
+
+        state = backend._prepare_responses_input_and_chain(
+            [
+                {"role": "system", "content": "system prompt"},
+                {"role": "developer", "content": "developer prompt"},
+                {"role": "user", "content": "hello"},
+                {
+                    "type": "function_call_output",
+                    "call_id": "call_123",
+                    "output": "done",
+                },
+            ]
+        )
+
+        assert state["input_messages"] == [
+            {"role": "user", "content": "hello"},
+            {
+                "type": "function_call_output",
+                "call_id": "call_123",
+                "output": "done",
+            },
+        ]
 
     def test_codex_subscription_model_uses_responses_api(
         self, monkeypatch, sample_chat_data
@@ -326,6 +365,7 @@ class TestAgentFactoryFunctions:
         assert "api_version" not in kwargs
         assert "azure_deployment_name" not in kwargs
         assert kwargs["model_config_dict"]["reasoning"] == {"effort": "high"}
+        assert kwargs["model_config_dict"]["instructions"] == "You are helpful"
         assert "reasoning_effort" not in kwargs["model_config_dict"]
         assert "stream_options" not in kwargs["model_config_dict"]
 
@@ -366,6 +406,7 @@ class TestAgentFactoryFunctions:
         assert kwargs["model_platform"] == "azure"
         assert kwargs["api_mode"] == "responses"
         assert kwargs["model_config_dict"]["reasoning"] == {"effort": "high"}
+        assert kwargs["model_config_dict"]["instructions"] == "You are helpful"
         assert "reasoning_effort" not in kwargs["model_config_dict"]
         assert "stream_options" not in kwargs["model_config_dict"]
 
