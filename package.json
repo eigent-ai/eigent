@@ -147,7 +147,7 @@
     "@storybook/react-vite": "^10.1.11",
     "@tailwindcss/cli": "4.3.3",
     "@tailwindcss/postcss": "4.3.3",
-    "@testing-library/jest-dom": "^6.8.0",
+    "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
     "@types/archiver": "^6.0.3",
