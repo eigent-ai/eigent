@@ -28,6 +28,7 @@ export {
   type NavTabLayout,
   type NavTabProps,
 } from './NavTab';
+export { SidebarBackHeader } from './SidebarBackHeader';
 export {
   SidebarScrollArea,
   type SidebarScrollAreaProps,

@@ -1422,6 +1422,7 @@
   "workspace-resource-sharing": "共有",
   "workspace-resource-skill": "スキル",
   "workspace-resource-skill-reference": "スキル参照",
+  "workspace-resource-skill-refs-unique": "スキル参照は一意にしてください。",
   "workspace-resource-skills": "スキル",
   "workspace-resource-slack": "Slack",
   "workspace-resource-slack-description": "チャンネルとメッセージを接続します。",

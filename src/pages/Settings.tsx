@@ -29,6 +29,9 @@ import {
   SettingsSectionContent,
   SettingsSidebar,
 } from '@/components/Settings';
+import SkillDetail from '@/components/Settings/Skills/components/SkillDetail';
+import SkillDetailSidebar from '@/components/Settings/Skills/components/SkillDetailSidebar';
+import { SkillsProvider } from '@/components/Settings/Skills/SkillsProvider';
 import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
 import { LegacyRouteWorkflowDialog } from '@/routers/LegacyRouteCompatibility';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -184,7 +187,7 @@ function AnimatedSidebarPane({
 }: {
   children: ReactNode;
   motionContext: SpaceNavigationMotionContext;
-  pane: 'home' | 'detail';
+  pane: 'home' | 'detail' | 'skill-detail';
 }) {
   const paneRef = useRef<HTMLDivElement>(null);
   const isPresent = useExitingPaneGuard(paneRef);
@@ -218,7 +221,7 @@ function AnimatedContentPane({
 }: {
   children: ReactNode;
   motionContext: SpaceNavigationMotionContext;
-  pane: 'home' | 'detail';
+  pane: 'home' | 'detail' | 'skill-detail';
 }) {
   const paneRef = useRef<HTMLElement>(null);
   const isPresent = useExitingPaneGuard(paneRef);
@@ -288,10 +291,12 @@ function HomeSettingsPageContent() {
   const activeSpaceTab: SpaceDetailTab = isSpaceDetailTab(spaceTabFromUrl)
     ? spaceTabFromUrl
     : 'projects';
-  const isSpaceDetailView = Boolean(visibleSpaceId);
-  const navigationDirection: SpaceNavigationDirection = isSpaceDetailView
-    ? 1
-    : -1;
+  const visibleSkillId =
+    !isSpacesView && activeSection === 'skills'
+      ? searchParams.get('skillId')
+      : null;
+  const isDetailView = Boolean(visibleSpaceId || visibleSkillId);
+  const navigationDirection: SpaceNavigationDirection = isDetailView ? 1 : -1;
   const navigationMotion: SpaceNavigationMotion =
     navigationInput === 'keyboard'
       ? 'instant'
@@ -382,7 +387,19 @@ function HomeSettingsPageContent() {
     [navigateHome, spaceId]
   );
 
-  const sidebarPane = visibleSpaceId ? 'detail' : 'home';
+  const handleSelectSkill = (skillId: string | null) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('section', 'settings');
+    next.set('tab', 'skills');
+    if (skillId) next.set('skillId', skillId);
+    else next.delete('skillId');
+    navigateHome(`?${next.toString()}`);
+  };
+  const sidebarPane = visibleSpaceId
+    ? 'detail'
+    : visibleSkillId
+      ? 'skill-detail'
+      : 'home';
   const sidebar = (
     <div className="relative h-full min-h-0 w-full overflow-hidden">
       <AnimatePresence
@@ -395,7 +412,13 @@ function HomeSettingsPageContent() {
           pane={sidebarPane}
           motionContext={navigationMotionContext}
         >
-          {visibleSpaceId ? (
+          {visibleSkillId ? (
+            <SkillDetailSidebar
+              selectedSkillId={visibleSkillId}
+              onBack={() => handleSelectSkill(null)}
+              onSelectSkill={handleSelectSkill}
+            />
+          ) : visibleSpaceId ? (
             <SpaceDetailSidebar
               selectedSpaceId={visibleSpaceId}
               onBack={handleHomeSectionChange}
@@ -414,8 +437,10 @@ function HomeSettingsPageContent() {
     </div>
   );
 
-  const contentPane = visibleSpaceId ? 'detail' : 'home';
-  const content = visibleSpaceId ? (
+  const contentPane = sidebarPane;
+  const content = visibleSkillId ? (
+    <SkillDetail skillId={visibleSkillId} />
+  ) : visibleSpaceId ? (
     <SpaceDetail
       spaceId={visibleSpaceId}
       activeTab={activeSpaceTab}
@@ -436,29 +461,33 @@ function HomeSettingsPageContent() {
     </div>
   ) : (
     <SettingsHeaderProvider activeSection={activeSection}>
-      <SettingsHeader activeSection={activeSection} />
+      {activeSection !== 'skills' && (
+        <SettingsHeader activeSection={activeSection} />
+      )}
       <SettingsSectionContent activeSection={activeSection} />
     </SettingsHeaderProvider>
   );
 
   return (
-    <AppShellLayout sidebar={sidebar} sidebarHidden={sidebarHidden}>
-      <div className="relative h-full min-h-0 min-w-0 overflow-hidden">
-        <AnimatePresence
-          initial={false}
-          mode="sync"
-          custom={navigationMotionContext}
-        >
-          <AnimatedContentPane
-            key={contentPane}
-            pane={contentPane}
-            motionContext={navigationMotionContext}
+    <SkillsProvider active={!isSpacesView && activeSection === 'skills'}>
+      <AppShellLayout sidebar={sidebar} sidebarHidden={sidebarHidden}>
+        <div className="relative h-full min-h-0 min-w-0 overflow-hidden">
+          <AnimatePresence
+            initial={false}
+            mode="sync"
+            custom={navigationMotionContext}
           >
-            {content}
-          </AnimatedContentPane>
-        </AnimatePresence>
-      </div>
-    </AppShellLayout>
+            <AnimatedContentPane
+              key={contentPane}
+              pane={contentPane}
+              motionContext={navigationMotionContext}
+            >
+              {content}
+            </AnimatedContentPane>
+          </AnimatePresence>
+        </div>
+      </AppShellLayout>
+    </SkillsProvider>
   );
 }
 

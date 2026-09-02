@@ -1473,6 +1473,7 @@
   "workspace-resource-sharing": "Общий доступ",
   "workspace-resource-skill": "Навык",
   "workspace-resource-skill-reference": "Ссылка на Навык",
+  "workspace-resource-skill-refs-unique": "Ссылки на навыки должны быть уникальными.",
   "workspace-resource-skills": "Навыки",
   "workspace-resource-slack": "Slack",
   "workspace-resource-slack-description": "Подключайте каналы и сообщения.",

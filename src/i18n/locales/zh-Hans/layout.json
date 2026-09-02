@@ -1422,6 +1422,7 @@
   "workspace-resource-sharing": "共享",
   "workspace-resource-skill": "技能",
   "workspace-resource-skill-reference": "技能引用",
+  "workspace-resource-skill-refs-unique": "技能引用必须唯一。",
   "workspace-resource-skills": "技能",
   "workspace-resource-slack": "Slack",
   "workspace-resource-slack-description": "连接频道和消息。",

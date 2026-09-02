@@ -105,10 +105,24 @@ export async function skillRead(
   return fetchGet(`/skills/${encodeURIComponent(skillDirName)}`);
 }
 
+const SKILL_REQUEST_TIMEOUT_MS = 30_000;
+
+function skillRequestSignal(): AbortSignal | undefined {
+  if (typeof AbortSignal.timeout === 'function') {
+    return AbortSignal.timeout(SKILL_REQUEST_TIMEOUT_MS);
+  }
+  return undefined;
+}
+
 export async function skillDelete(
   skillDirName: string
 ): Promise<{ success: boolean }> {
-  return fetchDelete(`/skills/${encodeURIComponent(skillDirName)}`);
+  return fetchDelete(
+    `/skills/${encodeURIComponent(skillDirName)}`,
+    undefined,
+    undefined,
+    { signal: skillRequestSignal() }
+  );
 }
 
 export async function skillListFiles(
@@ -182,7 +196,10 @@ export async function skillConfigDelete(
     ? `&legacy_user_id=${encodeURIComponent(legacyUserId)}`
     : '';
   return fetchDelete(
-    `/skills/config/${encodeURIComponent(skillName)}?user_id=${encodeURIComponent(userId)}${legacyQuery}`
+    `/skills/config/${encodeURIComponent(skillName)}?user_id=${encodeURIComponent(userId)}${legacyQuery}`,
+    undefined,
+    undefined,
+    { signal: skillRequestSignal() }
   );
 }
 

@@ -1439,6 +1439,7 @@
   "workspace-resource-sharing": "Teilen",
   "workspace-resource-skill": "Fähigkeit",
   "workspace-resource-skill-reference": "Fähigkeitsreferenz",
+  "workspace-resource-skill-refs-unique": "Fähigkeitsreferenzen müssen eindeutig sein.",
   "workspace-resource-skills": "Fähigkeiten",
   "workspace-resource-slack": "Slack",
   "workspace-resource-slack-description": "Verbinden Sie Kanäle und Nachrichten.",

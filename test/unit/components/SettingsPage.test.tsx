@@ -15,6 +15,7 @@
 import SettingsSection from '@/components/Settings/SettingsSection';
 import SettingsPage from '@/pages/Settings';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useSkillsStore, type Skill } from '@/store/skillsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -27,6 +28,13 @@ import {
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('@/api/brain', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/brain')>()),
+  skillRead: vi
+    .fn()
+    .mockResolvedValue({ success: true, content: '# Research' }),
+}));
 
 const homeOverviewMocks = vi.hoisted(() => ({
   fetchConnectedProviders: vi.fn(),
@@ -83,6 +91,11 @@ vi.mock('@/components/Settings/Appearance', () => ({
 
 vi.mock('@/components/Settings/Privacy', () => ({
   default: () => <div data-testid="privacy-settings" />,
+}));
+
+// These tests exercise navigation and the real Skills surface, not model APIs.
+vi.mock('@/components/Settings/Models', () => ({
+  default: () => <div data-testid="models-settings" />,
 }));
 
 vi.mock('@/store/authStore', () => {
@@ -171,7 +184,7 @@ describe('SettingsPage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('renders scoped navigation in the shared app shell', () => {
+  it('renders scoped navigation in the shared app shell', async () => {
     renderSettingsPage();
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -278,6 +291,7 @@ describe('SettingsPage', () => {
     expect(
       within(sidebar).queryByRole('button', { name: 'Privacy' })
     ).not.toBeInTheDocument();
+    expect(await screen.findByTestId('models-settings')).toBeInTheDocument();
   });
 
   it('switches between Home and Settings sections in the same shell', async () => {
@@ -473,73 +487,137 @@ describe('SettingsPage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('updates the content header for a settings sub-tab', async () => {
+  it('shows one Skills overview with source filters instead of ownership tabs', async () => {
     const user = userEvent.setup();
-
     renderSettingsPage();
-
     await user.click(screen.getByRole('button', { name: 'Skills' }));
-    const exampleSkillsTab = await screen.findByRole('tab', {
-      name: 'Example skills',
-    });
-    const yourSkillsTab = screen.getByRole('tab', {
-      name: 'Your skills',
-    });
-    const header = getSettingsHeader();
-    const heading = await within(header).findByRole('heading', {
-      name: 'Your skills',
-      level: 1,
-    });
-    expect(heading).toHaveClass('sr-only');
-    expect(header).toContainElement(exampleSkillsTab);
-    expect(within(header).getByRole('tablist')).toHaveClass(
-      'rounded-xl',
-      'bg-ds-neutral-strong-default'
-    );
-    expect(exampleSkillsTab).toHaveAttribute('data-tabs-appearance', 'default');
-    expect(exampleSkillsTab).toHaveClass(
-      'rounded-xl',
-      'bg-ds-neutral-strong-default'
-    );
     expect(
-      within(header).getByPlaceholderText('Search skills...')
-    ).toBeInTheDocument();
+      await screen.findByRole('heading', { name: 'Skills', level: 1 })
+    ).not.toHaveClass('sr-only');
     expect(
-      within(header).getByRole('button', { name: 'Add Skill' })
-    ).toBeInTheDocument();
-
-    expect(yourSkillsTab).toHaveAttribute('aria-selected', 'true');
-    expect(
-      within(header).getByText('Your skills', { selector: 'span' })
-    ).toBeInTheDocument();
-
-    await user.click(exampleSkillsTab);
-
-    await waitFor(() => {
-      expect(exampleSkillsTab).toHaveAttribute('aria-selected', 'true');
-    });
-    expect(
-      screen.queryByRole('heading', {
-        name: 'Example skills',
-        level: 3,
-      })
+      screen.queryByRole('tab', { name: 'Your skills' })
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('tab', { name: 'Example skills' })
+    ).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole('combobox', { name: 'Skill source' })
+    ).toBeVisible();
+    expect(screen.getByRole('combobox', { name: 'Status' })).toBeVisible();
+    expect(
+      screen.getByRole('textbox', { name: 'Search skills…' })
+    ).toBeVisible();
+    const toolbar = screen.getByRole('region', { name: 'Skills toolbar' });
+    const dashboard = screen.getByRole('region', { name: 'Skill overview' });
+    expect(within(dashboard).getAllByRole('term')).toHaveLength(4);
+    expect(screen.getByRole('main').querySelector('header')).toBeNull();
+    expect(
+      within(toolbar).getByRole('button', { name: 'Add skill' })
+    ).toBeVisible();
+    expect(
+      dashboard.compareDocumentPosition(toolbar) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    await user.click(
+      within(toolbar).getByRole('button', { name: 'Add skill' })
+    );
+    expect(
+      await screen.findByRole('dialog', { name: 'Add skill' })
+    ).toBeVisible();
   });
 
-  it('clears section-owned header controls during a page switch', async () => {
+  it('navigates Skills with the same shell transition and preserves overview filters on return', async () => {
+    const user = userEvent.setup();
+    const skill: Skill = {
+      id: 'disk-research',
+      name: 'research',
+      skillDirName: 'research',
+      description: 'Find sources',
+      filePath: 'research/SKILL.md',
+      fileContent: '',
+      addedAt: 0,
+      enabled: true,
+      isExample: false,
+      scope: { isGlobal: true, selectedAgents: [] },
+    };
+    useSkillsStore.setState({ skills: [skill] });
+    const sync = vi
+      .spyOn(useSkillsStore.getState(), 'syncFromDisk')
+      .mockResolvedValue();
+    const { unmount } = renderSettingsPage(
+      '/home?section=settings&tab=skills&skillSearch=research&skillFilter=global'
+    );
+    const shell = document.querySelector(
+      '[data-home-space-sidebar-pane]'
+    )?.parentElement;
+    const skillLink = await screen.findByRole('link', {
+      name: 'research',
+      exact: true,
+    });
+    expect(skillLink).toHaveAttribute(
+      'href',
+      '/home?section=settings&tab=skills&skillSearch=research&skillFilter=global&skillId=global%3Aresearch'
+    );
+    await user.click(skillLink);
+    await waitFor(() =>
+      expect(document.querySelector('[data-skill-detail]')).toBeInTheDocument()
+    );
+    const pane = document.querySelector(
+      '[data-home-space-sidebar-pane="skill-detail"]'
+    );
+    expect(pane?.parentElement).toBe(shell);
+    expect(pane).toHaveAttribute('data-space-navigation-direction', 'forward');
+    expect(pane).toHaveAttribute('data-space-navigation-motion', 'full');
+    await waitFor(() =>
+      expect(
+        screen.getByRole('navigation', { name: 'Select a skill' })
+      ).toBeVisible()
+    );
+    const back = within(
+      screen.getByRole('complementary', { name: 'Skills' })
+    ).getByRole('button', { name: 'Back to Skills' });
+    fireEvent.keyDown(back, { key: 'Enter' });
+    fireEvent.click(back);
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-home-space-sidebar-pane="home"]')
+      ).toHaveAttribute('data-space-navigation-motion', 'instant')
+    );
+    expect(
+      await screen.findByRole('textbox', { name: 'Search skills…' })
+    ).toHaveValue('research');
+    expect(
+      await screen.findByRole('combobox', { name: 'Skill source' })
+    ).toHaveTextContent('Global');
+    unmount();
+    sync.mockRestore();
+    useSkillsStore.setState({ skills: [] });
+  });
+
+  it('removes the Skills toolbar and restores the settings header during a page switch', async () => {
     const user = userEvent.setup();
 
     renderSettingsPage();
 
     await user.click(screen.getByRole('button', { name: 'Skills' }));
-    const header = getSettingsHeader();
+    const toolbar = await screen.findByRole('region', {
+      name: 'Skills toolbar',
+    });
 
-    expect(await within(header).findByRole('tablist')).toBeInTheDocument();
+    expect(
+      within(toolbar).getByRole('button', { name: 'Add skill' })
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Channels' }));
 
     await waitFor(() => {
-      expect(within(header).queryByRole('tablist')).not.toBeInTheDocument();
+      const header = getSettingsHeader();
+      expect(
+        screen.queryByRole('region', { name: 'Skills toolbar' })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Add skill' })
+      ).not.toBeInTheDocument();
       expect(within(header).getByText('Channels')).toBeInTheDocument();
     });
     await waitFor(() => {

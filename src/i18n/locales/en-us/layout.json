@@ -1439,6 +1439,7 @@
   "workspace-resource-sharing": "Sharing",
   "workspace-resource-skill": "skill",
   "workspace-resource-skill-reference": "Skill reference",
+  "workspace-resource-skill-refs-unique": "Skill references must be unique.",
   "workspace-resource-skills": "Skills",
   "workspace-resource-slack": "Slack",
   "workspace-resource-slack-description": "Connect channels and messages.",

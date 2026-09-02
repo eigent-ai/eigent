@@ -356,8 +356,12 @@ export const fetchPut = (url: string, data?: any, headers?: any) =>
 export const fetchPatch = (url: string, data?: any, headers?: any) =>
   fetchRequest('PATCH', url, data, headers);
 
-export const fetchDelete = (url: string, data?: any, headers?: any) =>
-  fetchRequest('DELETE', url, data, headers);
+export const fetchDelete = (
+  url: string,
+  data?: any,
+  headers?: any,
+  options?: FetchRequestOptions
+) => fetchRequest('DELETE', url, data, headers, options);
 
 /** POST FormData to Brain base URL (for file uploads). */
 export async function fetchPostForm(

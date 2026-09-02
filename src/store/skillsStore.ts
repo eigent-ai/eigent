@@ -16,9 +16,9 @@ import {
   skillConfigDelete as brainSkillConfigDelete,
   skillConfigInit as brainSkillConfigInit,
   skillConfigLoad as brainSkillConfigLoad,
-  skillConfigToggle as brainSkillConfigToggle,
   skillConfigUpdate as brainSkillConfigUpdate,
   skillDelete as brainSkillDelete,
+  skillRead as brainSkillRead,
   skillsScan as brainSkillsScan,
   skillWrite as brainSkillWrite,
 } from '@/api/brain';
@@ -57,6 +57,17 @@ function getSkillConfigUserIds(): {
   };
 }
 
+/**
+ * A skill setting could not be persisted because no account is signed in.
+ * Callers surface the sign-in prompt instead of a generic retry message.
+ */
+export class SkillSignInRequiredError extends Error {
+  constructor() {
+    super('Sign in to save skill settings');
+    this.name = 'SkillSignInRequiredError';
+  }
+}
+
 // Skill scope interface
 export interface SkillScope {
   isGlobal: boolean;
@@ -89,8 +100,6 @@ interface SkillsState {
   ) => Promise<void>;
   updateSkill: (id: string, updates: Partial<Skill>) => Promise<void>;
   deleteSkill: (id: string) => Promise<void>;
-  toggleSkill: (id: string) => Promise<void>;
-  getSkillsByType: (isExample: boolean) => Skill[];
   // Sync skills from filesystem (Electron) based on SKILL.md files
   syncFromDisk: () => Promise<void>;
 }
@@ -107,19 +116,35 @@ export const useSkillsStore = create<SkillsState>()(
 
       addSkill: async (skill) => {
         // Persist to filesystem (Electron) as CAMEL-compatible SKILL.md
+        let previousContent: string | null = null;
+        let wrotePackage = false;
+        let dirName: string | undefined;
         if (hasSkillsFsApi()) {
           const meta = parseSkillMd(skill.fileContent);
           const name = meta?.name || skill.name;
           const description = meta?.description || skill.description;
           const body = meta?.body || skill.fileContent;
           const content = buildSkillMd(name, description, body);
-          const dirName =
-            skill.skillDirName || skillNameToDirName(name || 'skill');
+          dirName = skill.skillDirName || skillNameToDirName(name || 'skill');
           try {
-            await brainSkillWrite(dirName, content);
+            const existing = await brainSkillRead(dirName);
+            if (
+              existing?.success === true &&
+              typeof existing.content === 'string'
+            ) {
+              previousContent = existing.content;
+            }
+          } catch {
+            // New package — nothing to restore if the later config write fails.
+          }
+          try {
+            const result = await brainSkillWrite(dirName, content);
+            if (!result.success)
+              throw new Error('Failed to write skill package');
+            wrotePackage = true;
           } catch (e) {
             console.warn('[Skills] brainSkillWrite failed:', e);
-            // Ignore; UI still holds the in-memory skill
+            throw e;
           }
           skill = {
             ...skill,
@@ -141,7 +166,7 @@ export const useSkillsStore = create<SkillsState>()(
           try {
             const { userId, legacyUserId } = getSkillConfigUserIds();
             if (userId) {
-              await brainSkillConfigUpdate(
+              const result = await brainSkillConfigUpdate(
                 userId,
                 newSkill.name,
                 {
@@ -152,15 +177,38 @@ export const useSkillsStore = create<SkillsState>()(
                 },
                 legacyUserId
               );
+              if (!result.success)
+                throw new Error('Failed to save skill settings');
             }
           } catch (error) {
             console.warn('[Skills] Failed to update skill config:', error);
-            // Continue anyway - skill is added to UI
+            if (wrotePackage && dirName) {
+              try {
+                if (previousContent !== null) {
+                  await brainSkillWrite(dirName, previousContent);
+                } else {
+                  await brainSkillDelete(dirName);
+                }
+              } catch (rollbackError) {
+                console.warn(
+                  '[Skills] Failed to roll back skill package:',
+                  rollbackError
+                );
+              }
+            }
+            throw error;
           }
         }
 
         set((state) => ({
-          skills: [newSkill, ...state.skills],
+          skills: [
+            newSkill,
+            ...state.skills.filter(
+              (existing) =>
+                !newSkill.skillDirName ||
+                existing.skillDirName !== newSkill.skillDirName
+            ),
+          ],
         }));
       },
 
@@ -181,10 +229,10 @@ export const useSkillsStore = create<SkillsState>()(
         ) {
           try {
             const { userId, legacyUserId } = getSkillConfigUserIds();
-            if (!userId) return;
+            if (!userId) throw new SkillSignInRequiredError();
 
             const updatedSkill = { ...skill, ...updates };
-            await brainSkillConfigUpdate(
+            const result = await brainSkillConfigUpdate(
               userId,
               skill.name,
               {
@@ -195,6 +243,8 @@ export const useSkillsStore = create<SkillsState>()(
               },
               legacyUserId
             );
+            if (!result.success)
+              throw new Error('Failed to save skill settings');
             console.log(
               `[Skills] Updated config for skill: ${skill.name}`,
               updates
@@ -205,6 +255,7 @@ export const useSkillsStore = create<SkillsState>()(
             set((state) => ({
               skills: state.skills.map((s) => (s.id === id ? skill : s)),
             }));
+            throw error;
           }
         }
       },
@@ -219,10 +270,11 @@ export const useSkillsStore = create<SkillsState>()(
         // Delete from filesystem via Brain REST API
         if (current.skillDirName && hasSkillsFsApi()) {
           try {
-            await brainSkillDelete(current.skillDirName);
+            const result = await brainSkillDelete(current.skillDirName);
+            if (!result.success) throw new Error('Failed to delete skill');
           } catch (e) {
             console.warn('[Skills] brainSkillDelete failed:', e);
-            // Ignore; state will still be updated
+            throw e;
           }
         }
 
@@ -244,179 +296,125 @@ export const useSkillsStore = create<SkillsState>()(
         }));
       },
 
-      toggleSkill: async (id) => {
-        const skill = get().skills.find((s) => s.id === id);
-        if (!skill) return;
-
-        const newEnabled = !skill.enabled;
-
-        // Optimistically update UI
-        set((state) => ({
-          skills: state.skills.map((s) =>
-            s.id === id ? { ...s, enabled: newEnabled } : s
-          ),
-        }));
-
-        // Persist to local configuration via Brain REST API
-        if (hasSkillsFsApi()) {
-          try {
-            const { userId, legacyUserId } = getSkillConfigUserIds();
-            if (userId) {
-              const result = await brainSkillConfigToggle(
-                userId,
-                skill.name,
-                newEnabled,
-                legacyUserId
-              );
-              if (!result.success) {
-                throw new Error('Failed to toggle skill configuration');
-              }
-              console.log('Skill configuration updated:', result);
-            }
-          } catch (error) {
-            // Revert on error
-            console.error('Failed to toggle skill:', error);
-            set((state) => ({
-              skills: state.skills.map((s) =>
-                s.id === id ? { ...s, enabled: !newEnabled } : s
-              ),
-            }));
-          }
-        }
-      },
-
-      getSkillsByType: (isExample) => {
-        return get().skills.filter((skill) => skill.isExample === isExample);
-      },
-
       // Load skills from ~/.eigent/skills via Brain REST API
+      // Rejects on failure so the caller can keep the last known list on
+      // screen and offer a retry; it never leaves partial state behind.
       syncFromDisk: async () => {
         if (!hasSkillsFsApi()) return;
-        try {
-          const { userId, legacyUserId } = getSkillConfigUserIds();
+        const { userId, legacyUserId } = getSkillConfigUserIds();
 
-          const result = await brainSkillsScan();
-          if (!result.success || !result.skills) return;
+        const result = await brainSkillsScan();
+        if (!result.success || !result.skills)
+          throw new Error('Failed to load skills');
 
-          if (userId) {
-            console.log(`[Skills] Initializing config for user: ${userId}`);
-            await brainSkillConfigInit(userId, legacyUserId);
-          }
+        if (userId) {
+          console.log(`[Skills] Initializing config for user: ${userId}`);
+          await brainSkillConfigInit(userId, legacyUserId);
+        }
 
-          let config: any = { global: null, project: null };
-          try {
-            if (userId) {
-              console.log(`[Skills] Loading config for user: ${userId}`);
-              const loadResult = await brainSkillConfigLoad(
+        let config: any = { global: null, project: null };
+        if (userId) {
+          console.log(`[Skills] Loading config for user: ${userId}`);
+          const loadResult = await brainSkillConfigLoad(userId, legacyUserId);
+          if (!loadResult.success || !loadResult.config)
+            throw new Error('Failed to load skill settings');
+          config.global = loadResult.config;
+          console.log(
+            `[Skills] Loaded config with ${Object.keys(loadResult.config.skills || {}).length} skills configured`
+          );
+        } else {
+          console.warn('[Skills] No userId available, skipping config load');
+        }
+
+        // A scan started for another account must not replace this account's view.
+        if (getSkillConfigUserIds().userId !== userId) return;
+        const prevByKey = new Map<string, Skill>(
+          get().skills.map((s) => [s.skillDirName ?? s.id, s])
+        );
+
+        const diskSkills: Skill[] = [];
+        for (const s of result.skills) {
+          const existing = prevByKey.get(s.skillDirName);
+          const isExample = s.isExample ?? false;
+
+          // Get config from global/project (config key = skill name from SKILL.md)
+          const globalConfig = config.global?.skills?.[s.name];
+          const projectConfig = config.project?.skills?.[s.name];
+          const skillConfig = projectConfig ?? globalConfig;
+
+          // Register to config if not present (e.g. newly uploaded zip or single file)
+          const isNewSkill = !skillConfig;
+          if (isNewSkill && userId && hasSkillsFsApi()) {
+            try {
+              const addedAt = existing?.addedAt ?? Date.now();
+              const newSkillConfig = {
+                enabled: true,
+                scope: { isGlobal: true, selectedAgents: [] },
+                addedAt,
+                isExample,
+              };
+              await brainSkillConfigUpdate(
                 userId,
+                s.name,
+                newSkillConfig,
                 legacyUserId
               );
-              if (loadResult.success && loadResult.config) {
-                config.global = loadResult.config;
-                console.log(
-                  `[Skills] Loaded config with ${Object.keys(loadResult.config.skills || {}).length} skills configured`
-                );
-              } else {
-                console.warn('[Skills] Failed to load config');
-              }
-            } else {
+              // Update in-memory config so subsequent skills in same sync see it
+              if (!config.global) config.global = { skills: {} };
+              if (!config.global.skills) config.global.skills = {};
+              config.global.skills[s.name] = newSkillConfig;
+            } catch (error) {
               console.warn(
-                '[Skills] No userId available, skipping config load'
+                `[Skills] Failed to register skill ${s.name} to config:`,
+                error
               );
             }
-          } catch (error) {
-            console.error('[Skills] Error loading skill config:', error);
           }
 
-          const prevByKey = new Map<string, Skill>(
-            get().skills.map((s) => [s.skillDirName ?? s.id, s])
-          );
-
-          const diskSkills: Skill[] = [];
-          for (const s of result.skills) {
-            const existing = prevByKey.get(s.skillDirName);
-            const isExample = s.isExample ?? false;
-
-            // Get config from global/project (config key = skill name from SKILL.md)
-            const globalConfig = config.global?.skills?.[s.name];
-            const projectConfig = config.project?.skills?.[s.name];
-            const skillConfig = projectConfig ?? globalConfig;
-
-            // Register to config if not present (e.g. newly uploaded zip or single file)
-            const isNewSkill = !skillConfig;
-            if (isNewSkill && userId && hasSkillsFsApi()) {
-              try {
-                const addedAt = existing?.addedAt ?? Date.now();
-                const newSkillConfig = {
-                  enabled: true,
-                  scope: { isGlobal: true, selectedAgents: [] },
-                  addedAt,
-                  isExample,
-                };
-                await brainSkillConfigUpdate(
-                  userId,
-                  s.name,
-                  newSkillConfig,
-                  legacyUserId
-                );
-                // Update in-memory config so subsequent skills in same sync see it
-                if (!config.global) config.global = { skills: {} };
-                if (!config.global.skills) config.global.skills = {};
-                config.global.skills[s.name] = newSkillConfig;
-              } catch (error) {
-                console.warn(
-                  `[Skills] Failed to register skill ${s.name} to config:`,
-                  error
-                );
+          const effectiveConfig = isNewSkill
+            ? {
+                enabled: true,
+                scope: { isGlobal: true, selectedAgents: [] },
+                addedAt: existing?.addedAt ?? Date.now(),
+                isExample,
               }
-            }
+            : skillConfig;
 
-            const effectiveConfig = isNewSkill
-              ? {
-                  enabled: true,
-                  scope: { isGlobal: true, selectedAgents: [] },
-                  addedAt: existing?.addedAt ?? Date.now(),
-                  isExample,
-                }
-              : skillConfig;
-
-            const enabledFromConfig = effectiveConfig?.enabled ?? true;
-            let scopeFromConfig: SkillScope;
-            if (
-              effectiveConfig?.scope &&
-              typeof effectiveConfig.scope === 'object'
-            ) {
-              scopeFromConfig = {
-                isGlobal: effectiveConfig.scope.isGlobal ?? true,
-                selectedAgents: effectiveConfig.scope.selectedAgents ?? [],
-              };
-            } else {
-              scopeFromConfig = {
-                isGlobal: true,
-                selectedAgents: [],
-              };
-            }
-
-            diskSkills.push({
-              id: `disk-${s.skillDirName}`,
-              name: s.name,
-              description: s.description,
-              filePath: s.path,
-              fileContent: existing?.fileContent ?? '',
-              skillDirName: s.skillDirName,
-              addedAt:
-                effectiveConfig?.addedAt ?? existing?.addedAt ?? Date.now(),
-              scope: scopeFromConfig,
-              enabled: enabledFromConfig,
-              isExample: effectiveConfig?.isExample ?? isExample,
-            });
+          const enabledFromConfig = effectiveConfig?.enabled ?? true;
+          let scopeFromConfig: SkillScope;
+          if (
+            effectiveConfig?.scope &&
+            typeof effectiveConfig.scope === 'object'
+          ) {
+            scopeFromConfig = {
+              isGlobal: effectiveConfig.scope.isGlobal ?? true,
+              selectedAgents: effectiveConfig.scope.selectedAgents ?? [],
+            };
+          } else {
+            scopeFromConfig = {
+              isGlobal: true,
+              selectedAgents: [],
+            };
           }
-          diskSkills.sort((a: Skill, b: Skill) => a.name.localeCompare(b.name));
 
-          set({ skills: diskSkills });
-        } catch {
-          // Ignore sync errors; keep existing state
+          diskSkills.push({
+            id: `disk-${s.skillDirName}`,
+            name: s.name,
+            description: s.description,
+            filePath: s.path,
+            fileContent: existing?.fileContent ?? '',
+            skillDirName: s.skillDirName,
+            addedAt:
+              effectiveConfig?.addedAt ?? existing?.addedAt ?? Date.now(),
+            scope: scopeFromConfig,
+            enabled: enabledFromConfig,
+            isExample,
+          });
         }
+        if (getSkillConfigUserIds().userId !== userId) return;
+        diskSkills.sort((a: Skill, b: Skill) => a.name.localeCompare(b.name));
+
+        set({ skills: diskSkills });
       },
     }),
     {

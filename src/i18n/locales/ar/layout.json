@@ -1406,6 +1406,7 @@
   "workspace-resource-sharing": "المشاركة",
   "workspace-resource-skill": "مهارة",
   "workspace-resource-skill-reference": "مرجع المهارة",
+  "workspace-resource-skill-refs-unique": "يجب أن تكون مراجع المهارات فريدة.",
   "workspace-resource-skills": "المهارات",
   "workspace-resource-slack": "Slack",
   "workspace-resource-slack-description": "ربط القنوات والرسائل.",

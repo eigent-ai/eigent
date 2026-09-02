@@ -1456,6 +1456,7 @@
   "workspace-resource-sharing": "Condivisione",
   "workspace-resource-skill": "Abilità",
   "workspace-resource-skill-reference": "Riferimento all'abilità",
+  "workspace-resource-skill-refs-unique": "I riferimenti alle abilità devono essere unici.",
   "workspace-resource-skills": "Abilità",
   "workspace-resource-slack": "Slack",
   "workspace-resource-slack-description": "Connettere canali e messaggi.",

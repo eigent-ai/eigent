@@ -15,10 +15,10 @@
 
 import {
   NavTab,
+  SidebarBackHeader,
   SidebarNavGroup,
   SidebarScrollArea,
   SidebarSection,
-  SidebarSeparator,
   SidebarShell,
 } from '@/components/Layout/AppSidebar';
 import AlertDialog from '@/components/ui/alertDialog';
@@ -37,14 +37,7 @@ import {
   useSpaceStore,
   type Space,
 } from '@/store/spaceStore';
-import {
-  ArrowLeft,
-  Folder,
-  MoreHorizontal,
-  Pencil,
-  Plus,
-  Trash2,
-} from 'lucide-react';
+import { Folder, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -263,21 +256,11 @@ export default function SpaceDetailSidebar({
         confirmDisabled={deleting}
       />
 
-      <SidebarShell ariaLabel={t('layout.spaces', { defaultValue: 'Spaces' })}>
-        <SidebarSection>
-          <SidebarNavGroup>
-            <NavTab
-              active={false}
-              onClick={onBack}
-              leading={<ArrowLeft className="h-4 w-4 shrink-0" aria-hidden />}
-              label={t('layout.back-to-home', { defaultValue: 'Back to Home' })}
-              ariaLabel={t('layout.back-to-home', {
-                defaultValue: 'Back to Home',
-              })}
-            />
-          </SidebarNavGroup>
-        </SidebarSection>
-        <SidebarSeparator />
+      <SidebarShell
+        ariaLabel={t('layout.spaces', { defaultValue: 'Spaces' })}
+        className="pt-0"
+      >
+        <SidebarBackHeader onBack={onBack} />
         <SidebarSection grow="fill">
           <SidebarScrollArea
             role="navigation"

@@ -26,6 +26,10 @@ export const CONTENT_HEADER_CLASS =
 export const CONTENT_HEADER_BORDER_CLASS =
   'border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default';
 
+/** Title typography, exported for `titleAsChild` callers to reapply. */
+export const CONTENT_HEADER_TITLE_CLASS =
+  'min-w-0 shrink truncate !text-ds-text-body-large font-semibold text-ds-ink-default-default';
+
 /**
  * Controls placed in a `ContentHeader` share one size so their heights match
  * the 40px row: `size="sm"` (28px) with `buttonContent="icon-only"` for icon
@@ -36,6 +40,13 @@ export interface ContentHeaderProps {
   leading?: ReactNode;
   /** Header title; omit for headers that only carry controls. */
   title?: ReactNode;
+  /**
+   * Render `title` as-is instead of wrapping it in the default `<span>`. Use
+   * when the title must be a real heading element — a heading nested in the
+   * wrapper span would be invalid content nesting. Apply
+   * {@link CONTENT_HEADER_TITLE_CLASS} to the element you pass.
+   */
+  titleAsChild?: boolean;
   /** Right-aligned controls — keep every button at `size="sm"`. */
   actions?: ReactNode;
   /** Free-form children rendered after the title, before `actions`. */
@@ -48,6 +59,7 @@ export interface ContentHeaderProps {
 export default function ContentHeader({
   leading,
   title,
+  titleAsChild = false,
   actions,
   children,
   border = true,
@@ -63,9 +75,11 @@ export default function ContentHeader({
     >
       {leading}
       {title ? (
-        <span className="min-w-0 shrink truncate !text-ds-text-body-large font-semibold text-ds-ink-default-default">
-          {title}
-        </span>
+        titleAsChild ? (
+          title
+        ) : (
+          <span className={CONTENT_HEADER_TITLE_CLASS}>{title}</span>
+        )
       ) : null}
       {children}
       {actions ? (

@@ -1422,6 +1422,7 @@
   "workspace-resource-sharing": "공유",
   "workspace-resource-skill": "스킬",
   "workspace-resource-skill-reference": "스킬 참조",
+  "workspace-resource-skill-refs-unique": "스킬 참조는 고유해야 합니다.",
   "workspace-resource-skills": "스킬",
   "workspace-resource-slack": "Slack",
   "workspace-resource-slack-description": "채널과 메시지를 연결합니다.",

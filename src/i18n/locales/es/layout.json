@@ -1433,6 +1433,7 @@
   "workspace-resource-sharing": "Uso compartido",
   "workspace-resource-skill": "Habilidad",
   "workspace-resource-skill-reference": "Referencia de Habilidad",
+  "workspace-resource-skill-refs-unique": "Las referencias de habilidades deben ser únicas.",
   "workspace-resource-slack-description": "Conecta canales y mensajes.",
   "workspace-resource-slot-name": "Nombre del espacio",
   "workspace-resource-source-type": "Tipo de origen",

@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fetchConnectedProviders } from '@/api/connectors';
+import OverviewIconFrame from '@/components/Layout/OverviewIconFrame';
 import WordCarousel from '@/components/ui/WordCarousel';
 import { listMemoryEntries } from '@/service/memoryApi';
 import { useAuthStore } from '@/store/authStore';
@@ -51,12 +52,9 @@ function OverviewStat({
 }) {
   return (
     <div className="flex min-w-0 items-center gap-3">
-      <div
-        aria-hidden
-        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-default-default text-ds-ink-default-default"
-      >
+      <OverviewIconFrame>
         <Icon className="h-5 w-5" />
-      </div>
+      </OverviewIconFrame>
       <div className="min-w-0">
         <span className="block truncate !text-ds-text-meta font-semibold tracking-wide text-ds-ink-muted-default uppercase">
           {label}

@@ -13,6 +13,10 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import SearchInput from '@/components/Dashboard/SearchInput';
+import CollectionToolbar, {
+  COLLECTION_TOOLBAR_SEARCH_CLASS,
+} from '@/components/Layout/CollectionToolbar';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -72,25 +76,20 @@ export default function HomeHeader() {
   };
 
   return (
-    <section
-      data-home-spaces-toolbar
-      aria-label={t('layout.spaces-toolbar', {
-        defaultValue: 'Spaces toolbar',
-      })}
-      className="sticky -top-px z-20 flex min-w-0 flex-wrap items-center justify-between gap-4 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default py-4"
-    >
-      <div className="flex min-w-0 items-center gap-2">
-        <h2 className="!text-ds-text-section font-bold text-ds-ink-default-default">
-          {t('layout.spaces')}
-        </h2>
-        <span className="inline-flex shrink-0 items-center rounded-xl bg-ds-neutral-muted-default px-2 py-0.5 !text-ds-text-meta font-medium text-ds-ink-muted-default tabular-nums">
-          {sectionCounts.spaces}{' '}
-          {sectionCounts.spaces === 1 ? 'Space' : 'Spaces'}
-        </span>
-      </div>
-
-      <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-        <div className="w-56 max-w-full">
+    <>
+      <CollectionToolbar
+        data-home-spaces-toolbar
+        aria-label={t('layout.spaces-toolbar', {
+          defaultValue: 'Spaces toolbar',
+        })}
+        title={t('layout.spaces')}
+        count={
+          <Badge variant="secondary" size="xs">
+            {sectionCounts.spaces}
+          </Badge>
+        }
+      >
+        <div className={COLLECTION_TOOLBAR_SEARCH_CLASS}>
           <SearchInput
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
@@ -168,7 +167,7 @@ export default function HomeHeader() {
         >
           {t('layout.spaces-new-space')}
         </Button>
-      </div>
+      </CollectionToolbar>
 
       <NewSpaceDialog
         open={newSpaceDialogOpen}
@@ -176,6 +175,6 @@ export default function HomeHeader() {
         onStartFromScratch={createBlankSpace}
         onUseLocalFolder={createSpaceFromFolder}
       />
-    </section>
+    </>
   );
 }
