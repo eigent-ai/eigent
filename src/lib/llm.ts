@@ -233,6 +233,18 @@ export const INIT_PROVODERS: Provider[] = [
     websiteUrl: 'https://www.orcarouter.ai',
   },
   {
+    id: 'meta',
+    name: 'Meta Model API',
+    apiKey: '',
+    apiHost: 'https://api.meta.ai/v1',
+    description: 'Meta Model API model configuration.',
+    is_valid: false,
+    model_type: 'muse-spark-1.3',
+    modelsEndpoint: '/models',
+    modelIdPrefix: 'muse-spark-',
+    websiteUrl: 'https://dev.meta.ai/docs/quickstart',
+  },
+  {
     id: 'nebius',
     name: 'Nebius Token Factory',
     apiKey: '',

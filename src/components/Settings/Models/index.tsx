@@ -302,7 +302,7 @@ export default function SettingModels() {
     > = {};
     for (const p of INIT_PROVODERS) {
       if (!p.modelsEndpoint) continue;
-      const cached = loadCachedModels(p.id);
+      const cached = loadCachedModels(p.id, p.modelIdPrefix);
       if (cached) {
         initial[p.id] = { groups: cached, loading: false, error: null };
       }
@@ -329,7 +329,8 @@ export default function SettingModels() {
         const groups = await fetchProviderModels(
           apiHost,
           item.modelsEndpoint,
-          apiKey
+          apiKey,
+          item.modelIdPrefix
         );
         setCloudModelsState((prev) => ({
           ...prev,
@@ -1257,7 +1258,7 @@ export default function SettingModels() {
             // Restore provider's default API host instead of clearing it
             apiHost: item.apiHost,
             is_valid: false,
-            model_type: '',
+            model_type: item.model_type ?? '',
             modelConfigJson: '',
             externalConfig: item.externalConfig
               ? item.externalConfig.map((ec) => ({ ...ec, value: '' }))

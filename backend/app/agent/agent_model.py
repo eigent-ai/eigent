@@ -26,6 +26,7 @@ from app.agent.listen_chat_agent import ListenChatAgent, logger
 from app.model.chat import AgentModelConfig, Chat
 from app.model.model_platform import (
     azure_reasoning_tools_require_responses_api,
+    configure_meta_model_api_backend,
     is_eigent_cloud_model_endpoint,
     patch_azure_cloud_config,
     patch_bedrock_cloud_config,
@@ -425,6 +426,7 @@ def agent_model(
             timeout=600,  # 10 minutes
             **init_params,
         )
+        configure_meta_model_api_backend(model_backend, effective_api_url)
         if uses_responses_transport and model_config.get("instructions"):
             _configure_responses_instructions(model_backend)
         return instrument_model_backend(
