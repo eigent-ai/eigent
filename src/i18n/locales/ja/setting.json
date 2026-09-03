@@ -210,6 +210,8 @@
   "proxy-placeholder": "http://127.0.0.1:7890",
   "proxy-saved-restart-required": "プロキシ設定が保存されました。変更を適用するにはアプリを再起動してください。",
   "proxy-save-failed": "プロキシ設定の保存に失敗しました。",
+  "proxy-cleared-restart-required": "プロキシ設定が消去されました。変更を適用するにはアプリを再起動してください。",
+  "proxy-reset-failed": "プロキシ設定のリセットに失敗しました。",
   "proxy-invalid-url": "無効なプロキシURLです。http://、https://、socks4://、またはsocks5://で始まる必要があります。",
   "proxy-restart-hint": "プロキシの変更を適用するには再起動が必要です。",
   "cloud-not-available-in-local-proxy": "ローカルプロキシモードではクラウド版は利用できません",

@@ -12,9 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-// These tests protect the persisted Network Proxy baseline: loading and saving
-// establish it, edits enable Save and Reset, and Reset never writes to disk.
-// They also cover disabling an existing proxy and the restart-required action.
+// The Network Proxy row exposes a single action button: it reads "Save" while
+// the input differs from the persisted baseline and "Reset" once they match,
+// where Reset clears the saved proxy. Restarting is offered from the toast and
+// echoed by the note under the input, never by the button itself.
 
 import SettingGeneral from '@/components/Settings/General';
 import { HostProvider } from '@/host';
@@ -22,6 +23,8 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const RESTART_NOTE = 'Restart required to apply proxy changes.';
 
 const dependencyMocks = vi.hoisted(() => ({
   clearTasks: vi.fn(),
@@ -102,129 +105,250 @@ function renderProxySettings(
   return electronAPI;
 }
 
+/** The row renders exactly one action button, whatever it currently reads. */
+function actionButton() {
+  const buttons = screen.getAllByRole('button');
+  expect(buttons).toHaveLength(1);
+  return buttons[0];
+}
+
+/** Options passed alongside the most recent success toast. */
+function lastSuccessToastAction() {
+  const calls = dependencyMocks.toastSuccess.mock.calls;
+  const [, options] = calls[calls.length - 1] as [
+    string,
+    { action?: { label: string; onClick: () => void } } | undefined,
+  ];
+  return options?.action;
+}
+
 describe('General settings Network Proxy', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('loads the saved proxy as the disabled action baseline', async () => {
+  it('offers a single Reset action for a saved proxy', async () => {
     const electronAPI = renderProxySettings('http://saved-proxy:8080');
 
     expect(
       await screen.findByDisplayValue('http://saved-proxy:8080')
     ).toBeEnabled();
     expect(electronAPI.readGlobalEnv).toHaveBeenCalledWith('HTTP_PROXY');
-    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Reset' })).toBeDisabled();
+
+    const button = actionButton();
+    expect(button).toHaveTextContent('Reset');
+    expect(button).toBeEnabled();
+    expect(screen.queryByText(RESTART_NOTE)).not.toBeInTheDocument();
   });
 
-  it('enables Save and Reset for an edit, then resets without writing', async () => {
+  it('nests the action inside the input field', async () => {
+    renderProxySettings('http://saved-proxy:8080');
+    const input = await screen.findByDisplayValue('http://saved-proxy:8080');
+
+    // The button sits in the field row beside the <input>, not in a sibling
+    // block underneath it.
+    const field = input.parentElement;
+    expect(field).not.toBeNull();
+    expect(field).toContainElement(actionButton());
+    // Padding keeps a long URL from sliding under the nested button.
+    expect(input).toHaveClass('pr-24');
+  });
+
+  it('disables the action when there is no saved proxy to clear', async () => {
+    renderProxySettings(undefined);
+    const input = screen.getByPlaceholderText('http://127.0.0.1:7890');
+
+    await waitFor(() => expect(input).toBeEnabled());
+    expect(input).toHaveValue('');
+
+    const button = actionButton();
+    expect(button).toHaveTextContent('Reset');
+    expect(button).toBeDisabled();
+  });
+
+  it('switches the action to Save while the input is edited', async () => {
     const user = userEvent.setup();
-    const electronAPI = renderProxySettings('http://saved-proxy:8080');
+    renderProxySettings('http://saved-proxy:8080');
     const input = await screen.findByDisplayValue('http://saved-proxy:8080');
 
     await user.clear(input);
     await user.type(input, 'http://edited-proxy:9090');
 
-    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
-    const resetButton = screen.getByRole('button', { name: 'Reset' });
-    expect(resetButton).toBeEnabled();
-
-    await user.click(resetButton);
-
-    expect(input).toHaveValue('http://saved-proxy:8080');
-    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
-    expect(resetButton).toBeDisabled();
-    expect(electronAPI.envWrite).not.toHaveBeenCalled();
-    expect(electronAPI.envRemove).not.toHaveBeenCalled();
+    const button = actionButton();
+    expect(button).toHaveTextContent('Save');
+    expect(button).toBeEnabled();
   });
 
-  it('keeps Reset available for a whitespace-only edit', async () => {
+  it('treats a whitespace-only edit as Save, never as Reset', async () => {
     const user = userEvent.setup();
     renderProxySettings('http://saved-proxy:8080');
     const input = await screen.findByDisplayValue('http://saved-proxy:8080');
 
     await user.type(input, '   ');
 
-    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
-    const resetButton = screen.getByRole('button', { name: 'Reset' });
-    expect(resetButton).toBeEnabled();
-
-    await user.click(resetButton);
-
-    expect(input).toHaveValue('http://saved-proxy:8080');
-    expect(resetButton).toBeDisabled();
+    // Guards the destructive path: the button must not read "Reset" under a
+    // field the user has typed into, even when the change trims away to nothing.
+    const button = actionButton();
+    expect(button).toHaveTextContent('Save');
+    expect(button).toBeEnabled();
   });
 
-  it('uses a successful save as the new reset baseline', async () => {
+  it('saves an edit, then returns the action to Reset', async () => {
     const user = userEvent.setup();
     const electronAPI = renderProxySettings('http://saved-proxy:8080');
     const input = await screen.findByDisplayValue('http://saved-proxy:8080');
 
     await user.clear(input);
     await user.type(input, 'http://new-proxy:9090');
-    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await user.click(actionButton());
 
     await waitFor(() => {
       expect(electronAPI.envWrite).toHaveBeenCalledWith('test@example.com', {
         key: 'HTTP_PROXY',
         value: 'http://new-proxy:9090',
       });
-      expect(
-        screen.getByRole('button', { name: 'Restart to Apply' })
-      ).toBeEnabled();
-      expect(
-        screen.getByText('Restart required to apply proxy changes.')
-      ).toBeInTheDocument();
     });
 
-    await user.clear(input);
-    await user.type(input, 'http://another-proxy:7070');
-    expect(
-      screen.queryByText('Restart required to apply proxy changes.')
-    ).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Reset' }));
+    expect(dependencyMocks.toastSuccess).toHaveBeenCalledWith(
+      'Proxy configuration saved. Restart the app to apply changes.',
+      expect.objectContaining({
+        action: expect.objectContaining({ label: 'Restart to Apply' }),
+      })
+    );
+    // A DsText span on the `meta` role, tinted with the error tone so the
+    // pending restart is hard to miss while the field itself stays valid.
+    const note = screen.getByText(RESTART_NOTE);
+    expect(note.tagName).toBe('SPAN');
+    // Both survive tailwind-merge: the role owns the size, the class the color.
+    expect(note).toHaveClass('!text-ds-text-meta');
+    expect(note).toHaveClass('text-ds-text-status-error-strong-default');
+    expect(input).not.toHaveClass(
+      'border-ds-border-status-error-default-default'
+    );
 
-    expect(input).toHaveValue('http://new-proxy:9090');
-    expect(electronAPI.envWrite).toHaveBeenCalledTimes(1);
+    const button = actionButton();
+    expect(button).toHaveTextContent('Reset');
+    expect(button).toBeEnabled();
     expect(electronAPI.envRemove).not.toHaveBeenCalled();
-    expect(
-      screen.getByRole('button', { name: 'Restart to Apply' })
-    ).toBeEnabled();
-    expect(
-      screen.getByText('Restart required to apply proxy changes.')
-    ).toBeInTheDocument();
   });
 
-  it('rejects an invalid URL without writing or disabling Reset', async () => {
+  it('restarts from the toast action rather than the button', async () => {
+    const user = userEvent.setup();
+    const electronAPI = renderProxySettings('http://saved-proxy:8080');
+    const input = await screen.findByDisplayValue('http://saved-proxy:8080');
+
+    await user.clear(input);
+    await user.type(input, 'http://new-proxy:9090');
+    await user.click(actionButton());
+
+    await waitFor(() => expect(electronAPI.envWrite).toHaveBeenCalledTimes(1));
+
+    expect(
+      screen.queryByRole('button', { name: 'Restart to Apply' })
+    ).not.toBeInTheDocument();
+
+    const action = lastSuccessToastAction();
+    expect(action?.label).toBe('Restart to Apply');
+    act(() => action?.onClick());
+    expect(electronAPI.restartApp).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears the saved proxy when Reset is used', async () => {
+    const user = userEvent.setup();
+    const electronAPI = renderProxySettings('http://saved-proxy:8080');
+    const input = await screen.findByDisplayValue('http://saved-proxy:8080');
+
+    await user.click(actionButton());
+
+    await waitFor(() => {
+      expect(electronAPI.envRemove).toHaveBeenCalledWith(
+        'test@example.com',
+        'HTTP_PROXY'
+      );
+    });
+
+    expect(input).toHaveValue('');
+    expect(electronAPI.envWrite).not.toHaveBeenCalled();
+    expect(dependencyMocks.toastSuccess).toHaveBeenCalledWith(
+      'Proxy configuration cleared. Restart the app to apply changes.',
+      expect.objectContaining({
+        action: expect.objectContaining({ label: 'Restart to Apply' }),
+      })
+    );
+    expect(screen.getByText(RESTART_NOTE)).toBeInTheDocument();
+
+    // Baseline is now empty, so there is nothing left to clear.
+    const button = actionButton();
+    expect(button).toHaveTextContent('Reset');
+    expect(button).toBeDisabled();
+  });
+
+  it('keeps the saved proxy when the reset write fails', async () => {
+    const user = userEvent.setup();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const envRemove = vi.fn().mockResolvedValue({ success: false });
+    renderProxySettings('http://saved-proxy:8080', { envRemove });
+    const input = await screen.findByDisplayValue('http://saved-proxy:8080');
+
+    await user.click(actionButton());
+
+    await waitFor(() => {
+      expect(dependencyMocks.toastError).toHaveBeenCalledWith(
+        'Failed to reset proxy configuration.'
+      );
+    });
+    expect(input).toHaveValue('http://saved-proxy:8080');
+    expect(actionButton()).toHaveTextContent('Reset');
+    expect(screen.queryByText(RESTART_NOTE)).not.toBeInTheDocument();
+    errorSpy.mockRestore();
+  });
+
+  it('saves an emptied field with envRemove', async () => {
+    const user = userEvent.setup();
+    const electronAPI = renderProxySettings('http://saved-proxy:8080');
+    const input = await screen.findByDisplayValue('http://saved-proxy:8080');
+
+    await user.clear(input);
+    expect(actionButton()).toHaveTextContent('Save');
+    await user.click(actionButton());
+
+    await waitFor(() => {
+      expect(electronAPI.envRemove).toHaveBeenCalledWith(
+        'test@example.com',
+        'HTTP_PROXY'
+      );
+    });
+    expect(input).toHaveValue('');
+    expect(actionButton()).toBeDisabled();
+  });
+
+  it('rejects an invalid URL without writing', async () => {
     const user = userEvent.setup();
     const electronAPI = renderProxySettings('http://saved-proxy:8080');
     const input = await screen.findByDisplayValue('http://saved-proxy:8080');
 
     await user.clear(input);
     await user.type(input, 'ftp://invalid-proxy');
-    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await user.click(actionButton());
 
     expect(dependencyMocks.toastError).toHaveBeenCalledWith(
       'Invalid proxy URL. Must start with http://, https://, socks4://, or socks5://.'
     );
     expect(electronAPI.envWrite).not.toHaveBeenCalled();
     expect(electronAPI.envRemove).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Reset' })).toBeEnabled();
+    expect(actionButton()).toHaveTextContent('Save');
   });
 
-  it('keeps the loaded baseline after a failed save', async () => {
+  it('keeps the edit and the baseline after a failed save', async () => {
     const user = userEvent.setup();
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const envWrite = vi.fn().mockResolvedValue({ success: false });
-    const electronAPI = renderProxySettings('http://saved-proxy:8080', {
-      envWrite,
-    });
+    renderProxySettings('http://saved-proxy:8080', { envWrite });
     const input = await screen.findByDisplayValue('http://saved-proxy:8080');
 
     await user.clear(input);
     await user.type(input, 'http://failed-proxy:9090');
-    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await user.click(actionButton());
 
     await waitFor(() => {
       expect(dependencyMocks.toastError).toHaveBeenCalledWith(
@@ -232,17 +356,11 @@ describe('General settings Network Proxy', () => {
       );
     });
     expect(input).toHaveValue('http://failed-proxy:9090');
-    expect(screen.getByRole('button', { name: 'Reset' })).toBeEnabled();
-
-    await user.click(screen.getByRole('button', { name: 'Reset' }));
-
-    expect(input).toHaveValue('http://saved-proxy:8080');
-    expect(electronAPI.envWrite).toHaveBeenCalledTimes(1);
-    expect(electronAPI.envRemove).not.toHaveBeenCalled();
+    expect(actionButton()).toHaveTextContent('Save');
     errorSpy.mockRestore();
   });
 
-  it('disables Reset while a save is in flight', async () => {
+  it('disables the action while a save is in flight', async () => {
     const user = userEvent.setup();
     let resolveSave: (result: { success: boolean }) => void = () => {};
     const envWrite = vi.fn(
@@ -256,56 +374,17 @@ describe('General settings Network Proxy', () => {
 
     await user.clear(input);
     await user.type(input, 'http://pending-proxy:9090');
-    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await user.click(actionButton());
 
     await waitFor(() => expect(envWrite).toHaveBeenCalledTimes(1));
-    expect(screen.getByRole('button', { name: 'Reset' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Saving...' })).toBeDisabled();
+    expect(actionButton()).toHaveTextContent('Saving...');
+    expect(actionButton()).toBeDisabled();
 
     await act(async () => {
       resolveSave({ success: true });
     });
 
-    expect(
-      await screen.findByRole('button', { name: 'Restart to Apply' })
-    ).toBeEnabled();
-  });
-
-  it('resets edits to an empty loaded proxy without removing it', async () => {
-    const user = userEvent.setup();
-    const electronAPI = renderProxySettings(undefined);
-    const input = screen.getByPlaceholderText('http://127.0.0.1:7890');
-
-    await waitFor(() => expect(input).toBeEnabled());
-    expect(input).toHaveValue('');
-
-    await user.type(input, 'socks5://temporary-proxy:1080');
-    await user.click(screen.getByRole('button', { name: 'Reset' }));
-
-    expect(input).toHaveValue('');
-    expect(electronAPI.envWrite).not.toHaveBeenCalled();
-    expect(electronAPI.envRemove).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
-  });
-
-  it('saves an empty proxy with envRemove and keeps Restart to Apply', async () => {
-    const user = userEvent.setup();
-    const electronAPI = renderProxySettings('http://saved-proxy:8080');
-    const input = await screen.findByDisplayValue('http://saved-proxy:8080');
-
-    await user.clear(input);
-    await user.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => {
-      expect(electronAPI.envRemove).toHaveBeenCalledWith(
-        'test@example.com',
-        'HTTP_PROXY'
-      );
-      expect(
-        screen.getByRole('button', { name: 'Restart to Apply' })
-      ).toBeEnabled();
-    });
-    expect(input).toHaveValue('');
-    expect(screen.getByRole('button', { name: 'Reset' })).toBeDisabled();
+    await waitFor(() => expect(actionButton()).toHaveTextContent('Reset'));
+    expect(actionButton()).toBeEnabled();
   });
 });
