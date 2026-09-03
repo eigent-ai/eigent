@@ -52,8 +52,18 @@ const AgentResultCard: React.FC<{
   agentName?: string;
   content: string;
   attaches?: any[];
+  feedbackRunId?: string;
+  messageStep?: string;
   defaultOpen?: boolean;
-}> = ({ id, agentName, content, attaches, defaultOpen = false }) => {
+}> = ({
+  id,
+  agentName,
+  content,
+  attaches,
+  feedbackRunId,
+  messageStep,
+  defaultOpen = false,
+}) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const label = agentName || 'Agent';
 
@@ -84,6 +94,8 @@ const AgentResultCard: React.FC<{
             typewriter={false}
             onTyping={() => {}}
             attaches={attaches}
+            feedbackRunId={feedbackRunId}
+            messageStep={messageStep}
           />
         </div>
       </div>
@@ -524,6 +536,8 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   content={message.content}
                   errorReason={message.errorReason}
                   onTyping={() => {}}
+                  feedbackRunId={activeTaskId ?? undefined}
+                  messageStep={message.step}
                   deferredFooter={
                     message.fileList?.length ||
                     task?.artifactManifestTruncated ||
@@ -560,6 +574,8 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                     defaultValue: 'No reply received; the task continues…',
                   })}
                   onTyping={() => {}}
+                  feedbackRunId={activeTaskId ?? undefined}
+                  messageStep={message.step}
                 />
               </motion.div>
             );
@@ -577,6 +593,8 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   agentName={message.agent_name}
                   content={message.content}
                   attaches={message.attaches}
+                  feedbackRunId={activeTaskId ?? undefined}
+                  messageStep={message.step}
                   defaultOpen
                 />
               </motion.div>
@@ -598,6 +616,8 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   errorReason={message.errorReason}
                   onTyping={() => {}}
                   attaches={message.attaches}
+                  feedbackRunId={activeTaskId ?? undefined}
+                  messageStep={message.step}
                 />
               </motion.div>
             );

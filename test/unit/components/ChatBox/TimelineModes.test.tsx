@@ -14,6 +14,7 @@
 
 import { presentChatSemanticEntities } from '@/components/ChatBox/EventTimeline/presentationPolicy';
 import { TimelineModeRenderer } from '@/components/ChatBox/TimelineModes';
+import { subscribeAppEvents, type AppEvent } from '@/lib/events/appEvents';
 import { selectRenderableChatNodes } from '@/lib/projector/chat';
 import {
   composeTimelineRuns,
@@ -306,6 +307,50 @@ describe('ChatBox timeline modes', () => {
       sessionPreviewProjectId: null,
       sessionPreviewByProject: {},
     });
+  });
+
+  it('records final-message feedback with logical message and Run identities', async () => {
+    const finalMessage: ChatProjectionNode = {
+      ...base,
+      kind: 'message',
+      id: 'final-event',
+      eventId: 'final-event',
+      eventType: 'assistant.final',
+      runSequence: 1,
+      createdAt: '2026-08-19T00:00:00Z',
+      role: 'assistant',
+      purpose: 'final',
+      status: 'complete',
+      content: 'Final answer',
+      messageId: 'logical-final-message',
+    };
+    const events: AppEvent[] = [];
+    const unsubscribe = subscribeAppEvents((event) => events.push(event));
+
+    try {
+      render(
+        <TimelineModeRenderer
+          detailLevel="narrative"
+          runs={composeTimelineRuns([finalMessage])}
+        />
+      );
+
+      fireEvent.click(await screen.findByLabelText('Thumb up'));
+
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          name: 'message_feedback',
+          properties: {
+            rating: 'up',
+            message_id: 'logical-final-message',
+            run_id: 'run-1',
+            message_step: 'end',
+          },
+        })
+      );
+    } finally {
+      unsubscribe();
+    }
   });
 
   it('renders Detailed as labelled rows with vertical Input then Output', () => {

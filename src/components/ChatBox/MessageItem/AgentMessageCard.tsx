@@ -12,6 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import {
+  recordMessageFeedback,
+  type MessageFeedbackRating,
+} from '@/lib/events/appEvents';
 import { fileInfoFromPath } from '@/lib/fileInfo';
 import {
   classifyError,
@@ -29,7 +33,21 @@ import { MarkDown } from './MarkDown';
 
 const COPIED_RESET_MS = 2000;
 
-type MessageFeedback = 'up' | 'down' | null;
+type MessageFeedback = MessageFeedbackRating | null;
+
+type MessageFeedbackState = {
+  key: string;
+  rating: MessageFeedbackRating;
+};
+
+// Keep accepted feedback stable while a message card is remounted (for
+// example, after switching Timeline modes). The Run scope prevents otherwise
+// identical message ids from colliding across separate Runs.
+const messageFeedbackByKey = new Map<string, MessageFeedbackRating>();
+
+function getMessageFeedbackKey(runId: string | undefined, messageId: string) {
+  return JSON.stringify([runId ?? null, messageId]);
+}
 
 interface AgentMessageCardProps {
   id: string;
@@ -38,6 +56,12 @@ interface AgentMessageCardProps {
   className?: string;
   typewriter?: boolean;
   attaches?: File[];
+  /** Stable logical message identity used by feedback analytics. */
+  feedbackMessageId?: string;
+  /** Run scope for feedback correlation and deduplication. */
+  feedbackRunId?: string;
+  /** Lifecycle step of the rated message; forwarded with the feedback event. */
+  messageStep?: string;
   /** Shown only after markdown (and typewriter, if enabled) has finished rendering — e.g. generated file chips. */
   deferredFooter?: ReactNode;
   onTyping?: () => void;
@@ -56,6 +80,9 @@ export function AgentMessageCard({
   onMarkdownRenderComplete,
   className,
   attaches,
+  feedbackMessageId,
+  feedbackRunId,
+  messageStep,
   deferredFooter,
 }: AgentMessageCardProps) {
   const openFilePreview = usePageTabStore((s) => s.openFilePreview);
@@ -71,12 +98,23 @@ export function AgentMessageCard({
   const enableTypewriter = !isCompleted;
 
   const [copied, setCopied] = useState(false);
-  const [feedback, setFeedback] = useState<MessageFeedback>(null);
+  const resolvedFeedbackMessageId = feedbackMessageId?.trim()
+    ? feedbackMessageId
+    : id;
+  const resolvedFeedbackRunId = feedbackRunId?.trim()
+    ? feedbackRunId
+    : undefined;
+  const messageFeedbackKey = getMessageFeedbackKey(
+    resolvedFeedbackRunId,
+    resolvedFeedbackMessageId
+  );
+  const [feedbackState, setFeedbackState] =
+    useState<MessageFeedbackState | null>(null);
+  const feedback: MessageFeedback =
+    feedbackState?.key === messageFeedbackKey
+      ? feedbackState.rating
+      : (messageFeedbackByKey.get(messageFeedbackKey) ?? null);
   const { t } = useTranslation();
-
-  useEffect(() => {
-    setFeedback(null);
-  }, [id]);
 
   const handleTypingComplete = () => {
     if (!completedTypewriterByMessageId.has(id)) {
@@ -107,21 +145,50 @@ export function AgentMessageCard({
     onMarkdownRenderComplete?.();
   }, [onMarkdownRenderComplete]);
 
-  const handleThumbUp = useCallback(() => {
-    if (feedback !== null) return;
-    setFeedback('up');
-    toast.success(
-      t('chat.feedback-thanks', { defaultValue: 'Thanks for your feedback' })
-    );
-  }, [feedback, t]);
+  // Feedback is recorded once per run-scoped message identity for this app
+  // session. The rating goes to the app event bus so edition adapters can
+  // report it; rated content and agent names are not included in the event.
+  const submitFeedback = useCallback(
+    (rating: MessageFeedbackRating) => {
+      const recordedRating = messageFeedbackByKey.get(messageFeedbackKey);
+      if (recordedRating) {
+        setFeedbackState({
+          key: messageFeedbackKey,
+          rating: recordedRating,
+        });
+        return;
+      }
 
-  const handleThumbDown = useCallback(() => {
-    if (feedback !== null) return;
-    setFeedback('down');
-    toast.success(
-      t('chat.feedback-thanks', { defaultValue: 'Thanks for your feedback' })
-    );
-  }, [feedback, t]);
+      messageFeedbackByKey.set(messageFeedbackKey, rating);
+      setFeedbackState({ key: messageFeedbackKey, rating });
+      recordMessageFeedback({
+        rating,
+        message_id: resolvedFeedbackMessageId,
+        run_id: resolvedFeedbackRunId,
+        message_step: messageStep,
+      });
+      toast.success(
+        t('chat.feedback-thanks', { defaultValue: 'Thanks for your feedback' })
+      );
+    },
+    [
+      messageFeedbackKey,
+      messageStep,
+      resolvedFeedbackMessageId,
+      resolvedFeedbackRunId,
+      t,
+    ]
+  );
+
+  const handleThumbUp = useCallback(
+    () => submitFeedback('up'),
+    [submitFeedback]
+  );
+
+  const handleThumbDown = useCallback(
+    () => submitFeedback('down'),
+    [submitFeedback]
+  );
 
   if (errorReason || isLegacyTaskError(content)) {
     return <TaskErrorNotice reason={errorReason ?? classifyError(content)} />;
