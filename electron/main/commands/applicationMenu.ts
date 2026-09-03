@@ -36,8 +36,6 @@ export interface ApplicationMenuOptions {
   onOpenExternalError?: (error: unknown) => void;
   openExternal: (url: string) => Promise<void>;
   platform: DesktopMenuPlatform;
-  /** Guarded close request; must not force-close the BrowserWindow. */
-  requestClose: () => void;
   /** Guarded application quit request; intentionally not Electron's quit role. */
   requestQuit: () => void;
 }
@@ -434,13 +432,7 @@ function buildMacAppMenu(
 function buildFileMenu(
   options: ApplicationMenuOptions
 ): Electron.MenuItemConstructorOptions {
-  const {
-    dispatchRendererCommand,
-    messages,
-    platform,
-    requestClose,
-    requestQuit,
-  } = options;
+  const { dispatchRendererCommand, messages, platform, requestQuit } = options;
   const submenu: Electron.MenuItemConstructorOptions[] = [
     terminalSafe(platform, 'N', {
       id: 'file.new-project',
@@ -465,9 +457,9 @@ function buildFileMenu(
       id: 'file.close-window',
       label: messages.closeWindow,
       accelerator: platformAccelerator(platform, 'Command+W', 'Control+W'),
-      // Closing the only window exits Eigent on Windows/Linux and tears down
-      // the local Brain, so it must use quit intent/copy on those platforms.
-      click: platform === 'darwin' ? requestClose : requestQuit,
+      // Eigent owns a single application window. Closing it must tear down
+      // the local Brain and exit the app on every platform.
+      click: requestQuit,
     })
   );
 
