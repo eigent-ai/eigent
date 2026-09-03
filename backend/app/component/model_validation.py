@@ -22,6 +22,7 @@ from camel.models import ModelFactory, ModelProcessingError
 from app.model.effort import resolve_model_effort_config
 from app.model.model_platform import (
     BEDROCK_CONVERSE_REGION,
+    configure_meta_model_api_backend,
     is_eigent_cloud_model_endpoint,
     resolve_cloud_model_runtime_platform,
 )
@@ -304,6 +305,7 @@ def create_agent(
         model_config_dict=model_config_dict,
         **kwargs,
     )
+    configure_meta_model_api_backend(model, url)
     configure_responses_input(model)
     agent = ChatAgent(
         system_message="You are a helpful assistant that must use the tool get_website_content to get the content of a website.",
@@ -419,6 +421,7 @@ def validate_model_with_details(
             model_config_dict=model_config_dict,
             **kwargs,
         )
+        configure_meta_model_api_backend(model, url)
         configure_responses_input(model)
         result.validation_stages[ValidationStage.MODEL_CREATION] = True
         result.successful_stages.append(ValidationStage.MODEL_CREATION)
