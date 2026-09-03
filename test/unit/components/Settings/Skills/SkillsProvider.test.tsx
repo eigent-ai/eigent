@@ -144,16 +144,19 @@ describe('Skills library state', () => {
     await waitFor(() => expect(library.loading).toBe(false));
   });
 
-  it('bounds a stalled Space profile request and releases the library', async () => {
+  it('bounds the whole Space batch without blocking global Skill writes', async () => {
     vi.useFakeTimers();
-    mocks.spaceState.spaces = {
-      alpha: {
-        id: 'alpha',
-        name: 'Alpha',
-        status: 'active',
-        sourceType: 'cloud',
-      },
-    };
+    mocks.spaceState.spaces = Object.fromEntries(
+      Array.from({ length: 7 }, (_, index) => [
+        `space-${index}`,
+        {
+          id: `space-${index}`,
+          name: `Space ${index}`,
+          status: 'active',
+          sourceType: 'cloud',
+        },
+      ])
+    );
     mocks.fetchWorkspaceConfiguration.mockImplementation(
       (
         _spaceId: string,
@@ -170,13 +173,28 @@ describe('Skills library state', () => {
 
     render(<Library />);
     expect(library.loading).toBe(true);
+    expect(library.profilesLoading).toBe(true);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(library.loading).toBe(false);
+    expect(library.profilesLoading).toBe(true);
+    await act(async () => {
+      expect(await library.updateGlobal(skill, { enabled: false })).toBe(true);
+    });
+    expect(mocks.skillState.updateSkill).toHaveBeenCalledTimes(1);
+    expect(mocks.fetchWorkspaceConfiguration).toHaveBeenCalledTimes(3);
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(15_000);
     });
 
     expect(library.loading).toBe(false);
-    expect(library.errors).toContain('en:agents.library-space-load-failed');
+    expect(library.profilesLoading).toBe(false);
+    expect(library.errors).toHaveLength(7);
+    expect(mocks.fetchWorkspaceConfiguration).toHaveBeenCalledTimes(3);
   });
 
   it('prevents settings writes while a refresh is reading configuration', async () => {

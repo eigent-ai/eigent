@@ -12,24 +12,89 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { skillRead } from '@/api/brain';
-import { FileViewerPanel, type FileInfo } from '@/components/Folder';
+import {
+  skillListFiles,
+  skillReadFile,
+  type SkillPackageFile,
+} from '@/api/brain';
+import {
+  buildFileTree,
+  FileTree,
+  FileViewerPanel,
+  type FileInfo,
+} from '@/components/Folder';
+import { RIGHT_RAIL_CONTENT_WIDTH_CLASS } from '@/components/Layout/rightRail';
 import { Button } from '@/components/ui/button';
 import { DsText } from '@/components/ui/ds-text';
 import { shellDetailBackState } from '@/lib/shellRoutes';
 import { splitFrontmatter } from '@/lib/skillToolkit';
-import { FILE_PREVIEW_LIMITS } from '@/shared/filePreviewContract';
+import { decideFilePreview } from '@/shared/filePreviewContract';
 import { useAuthStore } from '@/store/authStore';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { SkillLibraryEntry } from '../skillLibrary';
 import { spaceSkillSettingsUrl } from './SkillActions';
 
 type GlobalSkillEntry = Exclude<SkillLibraryEntry, { kind: 'space' }>;
-type SkillDocument = { content: string; url: string; size: number };
+type LoadedSkillFile = { file: FileInfo; objectUrl: string };
 
-function GlobalSkillDocument({
+const TEXT_FILE_TYPES = new Set([
+  'css',
+  'csv',
+  'env',
+  'go',
+  'h',
+  'html',
+  'java',
+  'js',
+  'json',
+  'jsx',
+  'log',
+  'md',
+  'py',
+  'rs',
+  'sh',
+  'sql',
+  'ts',
+  'tsx',
+  'txt',
+  'xml',
+  'yaml',
+  'yml',
+]);
+
+function fileName(relativePath: string) {
+  return relativePath.split('/').filter(Boolean).at(-1) || relativePath;
+}
+
+function fileType(relativePath: string) {
+  const name = fileName(relativePath);
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? name.slice(dot + 1).toLocaleLowerCase() : '';
+}
+
+function skillFileUrl(skillDirName: string, relativePath: string) {
+  const query = new URLSearchParams({ path: relativePath });
+  return `/skills/${encodeURIComponent(skillDirName)}/file?${query}`;
+}
+
+function toFileInfo(
+  skillDirName: string,
+  packageFile: SkillPackageFile
+): FileInfo {
+  return {
+    name: fileName(packageFile.path),
+    path: skillFileUrl(skillDirName, packageFile.path),
+    relativePath: packageFile.path,
+    type: fileType(packageFile.path),
+    size: packageFile.size ?? undefined,
+    mimeType: packageFile.mimeType ?? undefined,
+    isRemote: true,
+  };
+}
+
+function GlobalSkillPackage({
   entry,
   revision,
 }: {
@@ -37,62 +102,233 @@ function GlobalSkillDocument({
   revision: string | number;
 }) {
   const { t } = useTranslation();
-  const [documentFile, setDocumentFile] = useState<SkillDocument | null>(null);
-  const [error, setError] = useState(false);
-  const [retry, setRetry] = useState(0);
+  const [files, setFiles] = useState<FileInfo[]>([]);
+  const [inventoryLoading, setInventoryLoading] = useState(true);
+  const [inventoryError, setInventoryError] = useState(false);
+  const [inventoryRetry, setInventoryRetry] = useState(0);
+  const [selectedPath, setSelectedPath] = useState('');
+  const [loaded, setLoaded] = useState<LoadedSkillFile | null>(null);
+  const [fileLoading, setFileLoading] = useState(false);
+  const [fileError, setFileError] = useState(false);
+  const [fileRetry, setFileRetry] = useState(0);
   const [source, setSource] = useState(false);
+  const [treeOpen, setTreeOpen] = useState(true);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
+    new Set()
+  );
+  const treeId = useId();
   const skillDirName = entry.skill.skillDirName;
 
   useEffect(() => {
     let active = true;
-    let objectUrl: string | undefined;
-    setDocumentFile(null);
-    setError(false);
+    setInventoryLoading(true);
+    setInventoryError(false);
+    setFiles([]);
 
-    const load = async () => {
+    const loadInventory = async () => {
       if (!skillDirName) throw new Error('Skill package has no folder');
-      const result = await skillRead(skillDirName);
+      const result = await skillListFiles(skillDirName);
       if (!active) return;
-      if (result?.success !== true || typeof result.content !== 'string') {
-        throw new Error('Invalid skill document response');
+      if (result?.success !== true) {
+        throw new Error('Invalid skill package response');
       }
-      const blob = new Blob([result.content], {
-        type: 'text/markdown;charset=utf-8',
+      const nextFiles = result.files
+        .map((packageFile) => toFileInfo(skillDirName, packageFile))
+        .sort((left, right) =>
+          (left.relativePath || left.name).localeCompare(
+            right.relativePath || right.name
+          )
+        );
+      if (!nextFiles.length) throw new Error('Skill package is empty');
+      setFiles(nextFiles);
+      setSelectedPath((currentPath) => {
+        if (
+          currentPath &&
+          nextFiles.some((file) => file.relativePath === currentPath)
+        ) {
+          return currentPath;
+        }
+        return (
+          nextFiles.find((file) => file.relativePath === 'SKILL.md')
+            ?.relativePath ||
+          nextFiles[0]?.relativePath ||
+          ''
+        );
       });
+      const folders = new Set<string>();
+      for (const file of nextFiles) {
+        const segments = (file.relativePath || '').split('/').filter(Boolean);
+        for (let index = 1; index < segments.length; index += 1) {
+          folders.add(segments.slice(0, index).join('/'));
+        }
+      }
+      setExpandedFolders(folders);
+    };
+    void loadInventory()
+      .catch(() => {
+        if (active) setInventoryError(true);
+      })
+      .finally(() => {
+        if (active) setInventoryLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [skillDirName, inventoryRetry, revision]);
+
+  const selectedMetadata = useMemo(
+    () => files.find((file) => file.relativePath === selectedPath) || null,
+    [files, selectedPath]
+  );
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl: string | undefined;
+    setLoaded(null);
+    setFileError(false);
+    setSource(false);
+
+    const loadFile = async () => {
+      if (!skillDirName || !selectedMetadata?.relativePath) return;
+      const decision = decideFilePreview(selectedMetadata.type, {
+        size: selectedMetadata.size ?? null,
+        mimeType: selectedMetadata.mimeType,
+        supportsRanges: true,
+      });
+      if (
+        decision.mode === 'blocked' ||
+        (decision.mode === 'bounded-text' &&
+          selectedMetadata.size !== undefined &&
+          decision.limit !== null &&
+          selectedMetadata.size > decision.limit)
+      ) {
+        setLoaded({
+          file: {
+            ...selectedMetadata,
+            preview: {
+              kind: 'blocked',
+              reason: decision.reason || 'too-large',
+              size: selectedMetadata.size ?? null,
+              limit: decision.limit,
+            },
+          },
+          objectUrl: '',
+        });
+        return;
+      }
+
+      setFileLoading(true);
+      const blob = await skillReadFile(
+        skillDirName,
+        selectedMetadata.relativePath
+      );
+      if (!active) return;
       objectUrl = URL.createObjectURL(blob);
-      setDocumentFile({
-        content: result.content,
-        url: objectUrl,
-        size: blob.size,
+      const shouldDecodeText =
+        TEXT_FILE_TYPES.has(selectedMetadata.type) ||
+        selectedMetadata.mimeType?.startsWith('text/') ||
+        !selectedMetadata.type;
+      const content = shouldDecodeText ? await blob.text() : objectUrl;
+      if (!active) return;
+      setLoaded({
+        file: {
+          ...selectedMetadata,
+          path: shouldDecodeText ? selectedMetadata.path : objectUrl,
+          content,
+          size: blob.size,
+        },
+        objectUrl,
       });
     };
-    void load().catch(() => {
-      if (active) setError(true);
-    });
+
+    void loadFile()
+      .catch(() => {
+        if (active) setFileError(true);
+      })
+      .finally(() => {
+        if (active) setFileLoading(false);
+      });
     return () => {
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [skillDirName, retry, revision]);
+  }, [fileRetry, selectedMetadata, skillDirName]);
 
-  if (!documentFile) {
+  const hasLoadedSelected = loaded?.file.relativePath === selectedPath;
+  const selectedFile = hasLoadedSelected ? loaded.file : selectedMetadata;
+  const viewerLoading =
+    fileLoading ||
+    Boolean(selectedMetadata && !hasLoadedSelected && !fileError);
+  const displayedFile = useMemo(() => {
+    if (
+      !selectedFile ||
+      source ||
+      selectedFile.relativePath !== 'SKILL.md' ||
+      typeof selectedFile.content !== 'string'
+    ) {
+      return selectedFile;
+    }
+    return {
+      ...selectedFile,
+      content: splitFrontmatter(selectedFile.content).body,
+    };
+  }, [selectedFile, source]);
+  const tree = useMemo(() => buildFileTree(files), [files]);
+
+  const toggleFolder = useCallback((path: string) => {
+    setExpandedFolders((current) => {
+      const next = new Set(current);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
+
+  const downloadSelected = useCallback(async () => {
+    if (!skillDirName || !selectedMetadata?.relativePath) return;
+    let objectUrl = loaded?.objectUrl;
+    let release = false;
+    try {
+      if (!objectUrl) {
+        objectUrl = URL.createObjectURL(
+          await skillReadFile(skillDirName, selectedMetadata.relativePath)
+        );
+        release = true;
+      }
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = selectedMetadata.name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch {
+      setFileError(true);
+    } finally {
+      if (release && objectUrl) {
+        const temporaryUrl = objectUrl;
+        window.setTimeout(() => URL.revokeObjectURL(temporaryUrl), 0);
+      }
+    }
+  }, [loaded?.objectUrl, selectedMetadata, skillDirName]);
+
+  if (inventoryLoading || inventoryError) {
     return (
       <div
         className="flex flex-1 flex-col items-center justify-center gap-ds-12 p-ds-24 text-center"
-        role={error ? 'alert' : 'status'}
+        role={inventoryError ? 'alert' : 'status'}
       >
         <DsText>
           {t(
-            error
+            inventoryError
               ? 'agents.library-files-failed'
               : 'agents.library-loading-files'
           )}
         </DsText>
-        {error && (
+        {inventoryError && (
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => setRetry((value) => value + 1)}
+            onClick={() => setInventoryRetry((value) => value + 1)}
           >
             {t('agents.library-retry')}
           </Button>
@@ -101,50 +337,81 @@ function GlobalSkillDocument({
     );
   }
 
-  const downloadDocument = () => {
-    const link = document.createElement('a');
-    link.href = documentFile.url;
-    link.download = 'SKILL.md';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-  };
-  // The established Skills API returns the whole document. Bound rendering
-  // without implying that it supports recursive package browsing or ranges.
-  if (documentFile.size > FILE_PREVIEW_LIMITS.textBytes) {
-    return (
-      <div
-        className="flex flex-1 flex-col items-center justify-center gap-ds-12 p-ds-24 text-center"
-        role="status"
-      >
-        <DsText>{t('folder.preview-too-large')}</DsText>
-      </div>
-    );
-  }
-
-  const file: FileInfo = {
-    name: 'SKILL.md',
-    path: documentFile.url,
-    relativePath: 'SKILL.md',
-    type: 'md',
-    content: source
-      ? documentFile.content
-      : splitFrontmatter(documentFile.content).body,
-    size: documentFile.size,
-    isRemote: true,
-  };
   return (
-    <FileViewerPanel
-      selectedFile={file}
-      loading={false}
-      isShowSourceCode={source}
-      breadcrumbSegments={[entry.name, file.name]}
-      projectFiles={[file]}
-      embedded
-      onRevealFile={downloadDocument}
-      onDownloadFile={downloadDocument}
-      onToggleSourceCode={() => setSource((value) => !value)}
-    />
+    <div className="flex h-full min-h-0 min-w-0 flex-1 overflow-hidden">
+      <FileViewerPanel
+        selectedFile={fileError ? null : displayedFile}
+        loading={viewerLoading}
+        isShowSourceCode={source}
+        breadcrumbSegments={[
+          entry.name,
+          ...(displayedFile?.relativePath || displayedFile?.name || '')
+            .split('/')
+            .filter(Boolean),
+        ]}
+        projectFiles={files.map((file) =>
+          displayedFile && file.relativePath === displayedFile.relativePath
+            ? displayedFile
+            : file
+        )}
+        embedded
+        isFileTreeOpen={treeOpen}
+        onToggleFileTree={() => setTreeOpen((open) => !open)}
+        fileTreeControlsId={treeId}
+        emptyState={
+          fileError ? (
+            <div
+              className="flex flex-1 flex-col items-center justify-center gap-ds-12 p-ds-24 text-center"
+              role="alert"
+            >
+              <DsText>{t('agents.library-files-failed')}</DsText>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setFileRetry((value) => value + 1)}
+              >
+                {t('agents.library-retry')}
+              </Button>
+            </div>
+          ) : undefined
+        }
+        onRevealFile={() => void downloadSelected()}
+        onDownloadFile={() => void downloadSelected()}
+        onToggleSourceCode={() => setSource((value) => !value)}
+      />
+      {treeOpen && (
+        <aside
+          className={`flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-y-0 border-r-0 border-l border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default ${RIGHT_RAIL_CONTENT_WIDTH_CLASS}`}
+          style={{ maxWidth: '50%' }}
+          aria-label={t('chat.files', { defaultValue: 'Files' })}
+        >
+          <div className="flex h-ds-layout-row-header min-h-ds-layout-row-header shrink-0 items-center px-ds-12">
+            <DsText as="span" weight="semibold">
+              {t('chat.files', { defaultValue: 'Files' })}
+            </DsText>
+          </div>
+          <div
+            id={treeId}
+            className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto px-ds-8 pb-ds-8"
+          >
+            <FileTree
+              node={tree}
+              selectedFile={displayedFile}
+              expandedFolders={expandedFolders}
+              onToggleFolder={toggleFolder}
+              onSelectFile={(file) => {
+                if (file.isFolder) {
+                  toggleFolder(file.path);
+                  return;
+                }
+                setSelectedPath(file.relativePath || file.path);
+              }}
+              isShowSourceCode={source}
+            />
+          </div>
+        </aside>
+      )}
+    </div>
   );
 }
 
@@ -190,7 +457,7 @@ export default function SkillFiles({
           </Button>
         </div>
       ) : (
-        <GlobalSkillDocument
+        <GlobalSkillPackage
           key={JSON.stringify([
             entry.id,
             entry.skill.skillDirName,

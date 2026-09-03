@@ -107,7 +107,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import SettingsContentShell from '../SettingsContentShell';
 import SettingsSectionPage from '../SettingsSectionPage';
-import { useConnectorsNavigation } from './ConnectorsNavigationContext';
+import { usePublishConnectorsNavigation } from './ConnectorsNavigationContext';
 import ConnectorBrowserPage, {
   actionLabel,
   isConnectedProvider,
@@ -404,7 +404,7 @@ export default function ConnectorGateway() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { publishItems } = useConnectorsNavigation();
+  const publishItems = usePublishConnectorsNavigation();
   const { checkAgentTool, modelType } = useAuthStore();
   const capabilityStatus = useServerCapabilityStore((state) => state.status);
   const connectorGatewayEnabled = useServerCapabilityStore((state) =>

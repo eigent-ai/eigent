@@ -54,7 +54,11 @@ export default function SettingsSidebar({
   const { t } = useTranslation();
   const host = useHost();
   const email = useAuthStore((state) => state.email);
-  const { entries: skills, loading: skillsLoading } = useSkillsLibrary();
+  const {
+    entries: skills,
+    loading: skillsLoading,
+    profilesLoading: skillProfilesLoading,
+  } = useSkillsLibrary();
   const { items: connectorItems, loading: connectorsLoading } =
     useConnectorsNavigation();
   const browserCount = useSettingsResourceCountsStore(
@@ -136,7 +140,7 @@ export default function SettingsSidebar({
     ? initialConnectorCount
     : connectorItems.length;
   const sectionCounts: Partial<Record<SettingsSectionId, number | null>> = {
-    skills: skillsLoading ? null : skills.length,
+    skills: skillsLoading || skillProfilesLoading ? null : skills.length,
     connectors: connectorCount,
     'browser-connections': browserCount,
     cookies: cookieCount,

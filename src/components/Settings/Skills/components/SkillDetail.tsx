@@ -45,6 +45,7 @@ export default function SkillDetail({
   const {
     entries,
     loading,
+    profilesLoading,
     updateGlobal,
     pendingIds,
     refresh,
@@ -156,9 +157,13 @@ export default function SkillDetail({
           role="status"
         >
           <DsText>
-            {t(loading ? 'agents.library-loading' : 'agents.library-not-found')}
+            {t(
+              loading || profilesLoading
+                ? 'agents.library-loading'
+                : 'agents.library-not-found'
+            )}
           </DsText>
-          {!loading && (
+          {!loading && !profilesLoading && (
             <Button
               variant="secondary"
               disabled={pendingIds.size > 0}
