@@ -181,7 +181,9 @@ const rendererAppCommands = new RendererAppCommandCoordinator({
   diagnostic: (message) => log.warn(message),
 });
 const closeCoordinator = new CloseCoordinator({
-  defaultIntent: process.platform === 'darwin' ? 'close-window' : 'quit-app',
+  // Eigent owns a single application window. Closing it exits the app on
+  // every platform so shutdown cleanup also stops the local backend.
+  defaultIntent: 'quit-app',
   quit: () => app.quit(),
   shouldGuard: () => rendererAppCommands.isReady(),
   diagnostic: (message) => log.info(message),
@@ -249,7 +251,6 @@ function installNativeApplicationMenu(): void {
     },
     openExternal: (url) => shell.openExternal(url),
     platform,
-    requestClose: () => closeCoordinator.request('close-window'),
     requestQuit: () => closeCoordinator.request('quit-app'),
   });
 }
@@ -1919,18 +1920,9 @@ function registerIpcHandlers() {
   });
 
   // ==================== window control handler ====================
-  ipcMain.on('window-close', (event, data: unknown) => {
+  ipcMain.on('window-close', (event) => {
     if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
-    const isForceQuit =
-      Boolean(data) &&
-      typeof data === 'object' &&
-      (data as { isForceQuit?: unknown }).isForceQuit === true;
-    if (isForceQuit) {
-      return closeCoordinator.request('quit-app');
-    }
-    return closeCoordinator.request(
-      process.platform === 'darwin' ? 'close-window' : 'quit-app'
-    );
+    return closeCoordinator.request('quit-app');
   });
   ipcMain.on(WINDOW_CLOSE_RESPONSE_CHANNEL, (event, response: unknown) => {
     if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
@@ -4011,9 +4003,7 @@ app.on('window-all-closed', () => {
   appShellReadinessGate.markDocumentLoading();
   protocolUrlQueue = [];
 
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  app.quit();
 });
 
 // ==================== app activate event ====================

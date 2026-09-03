@@ -16,7 +16,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { CloseCoordinator } from '../../../../electron/main/closeCoordinator';
 import { isWindowCloseResponse } from '../../../../src/shared/windowClose';
 
-function createWindow(webContentsDestroyed = false) {
+function createWindow(initialWebContentsDestroyed = false) {
+  let windowDestroyed = false;
+  let webContentsDestroyed = initialWebContentsDestroyed;
+  let webContentsUnavailable = false;
   const windowListeners = new Map<string, Set<(...args: any[]) => void>>();
   const webContentsListeners = new Map<string, Set<(...args: any[]) => void>>();
   const addListener = (
@@ -45,9 +48,24 @@ function createWindow(webContentsDestroyed = false) {
     closeEvents.push(event);
     emit(windowListeners, 'close', event);
   });
+  const webContents = {
+    isDestroyed: () => webContentsDestroyed,
+    send,
+    on: vi.fn((event: string, listener: (...args: any[]) => void) => {
+      addListener(webContentsListeners, event, listener);
+      return webContents;
+    }),
+    off: vi.fn((event: string, listener: (...args: any[]) => void) => {
+      if (webContentsDestroyed) {
+        throw new TypeError('Object has been destroyed');
+      }
+      removeListener(webContentsListeners, event, listener);
+      return webContents;
+    }),
+  };
   const window = {
     close,
-    isDestroyed: () => false,
+    isDestroyed: () => windowDestroyed,
     on: vi.fn((event: string, listener: (...args: any[]) => void) => {
       addListener(windowListeners, event, listener);
       return window;
@@ -56,37 +74,41 @@ function createWindow(webContentsDestroyed = false) {
       removeListener(windowListeners, event, listener);
       return window;
     }),
-    webContents: {
-      isDestroyed: () => webContentsDestroyed,
-      send,
-      on: vi.fn((event: string, listener: (...args: any[]) => void) => {
-        addListener(webContentsListeners, event, listener);
-        return window.webContents;
-      }),
-      off: vi.fn((event: string, listener: (...args: any[]) => void) => {
-        removeListener(webContentsListeners, event, listener);
-        return window.webContents;
-      }),
+    get webContents() {
+      if (webContentsUnavailable) {
+        throw new TypeError('Object has been destroyed');
+      }
+      return webContents;
     },
   };
   return {
     window,
+    webContents,
     close,
     closeEvents,
     emitWindow: (event: string, ...args: any[]) =>
       emit(windowListeners, event, ...args),
     emitWebContents: (event: string, ...args: any[]) =>
       emit(webContentsListeners, event, ...args),
+    markWindowDestroyed: () => {
+      windowDestroyed = true;
+      webContentsDestroyed = true;
+      webContentsUnavailable = true;
+    },
+    markWebContentsDestroyed: () => {
+      webContentsDestroyed = true;
+      webContentsUnavailable = true;
+    },
     send,
   };
 }
 
 describe('CloseCoordinator', () => {
-  it('routes a native macOS window close through a close-window request', () => {
+  it('routes a native window close through the single-window app quit', () => {
     const quit = vi.fn();
     const fixture = createWindow();
     const coordinator = new CloseCoordinator({
-      defaultIntent: 'close-window',
+      defaultIntent: 'quit-app',
       quit,
     });
     coordinator.bindWindow(fixture.window as never);
@@ -94,18 +116,18 @@ describe('CloseCoordinator', () => {
     fixture.close();
 
     expect(fixture.send).toHaveBeenCalledWith('before-close', {
-      intent: 'close-window',
+      intent: 'quit-app',
     });
-    expect(coordinator.getPendingIntent()).toBe('close-window');
+    expect(coordinator.getPendingIntent()).toBe('quit-app');
 
     expect(
       coordinator.respond({
-        intent: 'close-window',
+        intent: 'quit-app',
         action: 'confirm',
       })
     ).toBe(true);
-    expect(fixture.close).toHaveBeenCalledTimes(2);
-    expect(quit).not.toHaveBeenCalled();
+    expect(fixture.close).toHaveBeenCalledOnce();
+    expect(quit).toHaveBeenCalledOnce();
   });
 
   it('routes an explicit quit through the same guard and quits after confirm', () => {
@@ -226,6 +248,37 @@ describe('CloseCoordinator', () => {
       'unresponsive',
       expect.any(Function)
     );
+  });
+
+  it('does not remove listeners from destroyed web contents when unbinding', () => {
+    const fixture = createWindow();
+    const coordinator = new CloseCoordinator({
+      defaultIntent: 'close-window',
+      quit: vi.fn(),
+    });
+    coordinator.bindWindow(fixture.window as never);
+    fixture.markWebContentsDestroyed();
+
+    expect(() => coordinator.unbindWindow()).not.toThrow();
+    expect(fixture.window.off).toHaveBeenCalledWith(
+      'close',
+      expect.any(Function)
+    );
+    expect(fixture.webContents.off).not.toHaveBeenCalled();
+  });
+
+  it('does not remove listeners from a destroyed window when unbinding', () => {
+    const fixture = createWindow();
+    const coordinator = new CloseCoordinator({
+      defaultIntent: 'close-window',
+      quit: vi.fn(),
+    });
+    coordinator.bindWindow(fixture.window as never);
+    fixture.markWindowDestroyed();
+
+    expect(() => coordinator.unbindWindow()).not.toThrow();
+    expect(fixture.window.off).not.toHaveBeenCalled();
+    expect(fixture.webContents.off).not.toHaveBeenCalled();
   });
 
   it('lets trusted updater or restart quits bypass the renderer guard', () => {
