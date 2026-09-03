@@ -104,11 +104,11 @@ function createWindow(initialWebContentsDestroyed = false) {
 }
 
 describe('CloseCoordinator', () => {
-  it('routes a native macOS window close through a close-window request', () => {
+  it('routes a native window close through the single-window app quit', () => {
     const quit = vi.fn();
     const fixture = createWindow();
     const coordinator = new CloseCoordinator({
-      defaultIntent: 'close-window',
+      defaultIntent: 'quit-app',
       quit,
     });
     coordinator.bindWindow(fixture.window as never);
@@ -116,18 +116,18 @@ describe('CloseCoordinator', () => {
     fixture.close();
 
     expect(fixture.send).toHaveBeenCalledWith('before-close', {
-      intent: 'close-window',
+      intent: 'quit-app',
     });
-    expect(coordinator.getPendingIntent()).toBe('close-window');
+    expect(coordinator.getPendingIntent()).toBe('quit-app');
 
     expect(
       coordinator.respond({
-        intent: 'close-window',
+        intent: 'quit-app',
         action: 'confirm',
       })
     ).toBe(true);
-    expect(fixture.close).toHaveBeenCalledTimes(2);
-    expect(quit).not.toHaveBeenCalled();
+    expect(fixture.close).toHaveBeenCalledOnce();
+    expect(quit).toHaveBeenCalledOnce();
   });
 
   it('routes an explicit quit through the same guard and quits after confirm', () => {
