@@ -31,10 +31,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
       - name: Install frontend dependencies
-        run: npm ci --ignore-scripts --no-audit --fund=false
+        run: npm install --ignore-scripts
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -68,10 +67,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
       - name: Install frontend dependencies
-        run: npm ci --ignore-scripts --no-audit --fund=false
+        run: npm install --ignore-scripts
 
       - name: Run type check
         run: npm run type-check
