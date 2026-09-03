@@ -1,0 +1,3 @@
+interface:
+  display_name: "Animations"
+  short_description: "Decides when to animate, and picks the easing, duration, and springs"

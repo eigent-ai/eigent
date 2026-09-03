@@ -20,9 +20,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
+import { shellDetailBackState } from '@/lib/shellRoutes';
 import { Ellipsis, MessageSquare, Settings, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import type { SkillLibraryEntry } from '../skillLibrary';
 import { useSkillsLibrary } from '../SkillsProvider';
 
@@ -32,6 +33,7 @@ export function spaceSkillSettingsUrl(spaceId: string) {
 export default function SkillActions({ entry }: { entry: SkillLibraryEntry }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const { projectStore } = useChatStoreAdapter();
   const { setDeleteTarget, loading, pendingIds } = useSkillsLibrary();
   // Only this row's own in-flight save blocks it; a save on another skill
@@ -45,6 +47,7 @@ export default function SkillActions({ entry }: { entry: SkillLibraryEntry }) {
           variant="ghost"
           size="sm"
           buttonContent="icon-only"
+          className="relative touch-manipulation before:absolute before:-inset-ds-8 before:content-['']"
           disabled={disabled}
           aria-label={t('agents.library-actions', { name: entry.name })}
         >
@@ -54,7 +57,14 @@ export default function SkillActions({ entry }: { entry: SkillLibraryEntry }) {
       <DropdownMenuContent align="end">
         {entry.kind === 'space' ? (
           <DropdownMenuItem
-            onSelect={() => navigate(spaceSkillSettingsUrl(entry.spaceId))}
+            onSelect={() =>
+              navigate(spaceSkillSettingsUrl(entry.spaceId), {
+                state: shellDetailBackState(
+                  location.state as Record<string, unknown> | null,
+                  `${location.pathname}${location.search}`
+                ),
+              })
+            }
           >
             <Settings />
             {t('agents.library-manage-profile')}
@@ -75,11 +85,11 @@ export default function SkillActions({ entry }: { entry: SkillLibraryEntry }) {
             </DropdownMenuItem>
             {entry.kind === 'global' && (
               <DropdownMenuItem
-                className="text-ds-text-error-default-default"
+                className="text-ds-text-error-default-default hover:text-ds-text-error-default-default focus:text-ds-text-error-default-default data-[highlighted]:text-ds-text-error-default-default [&>svg]:text-ds-icon-error-default-default hover:[&>svg]:text-ds-icon-error-default-default focus:[&>svg]:text-ds-icon-error-default-default data-[highlighted]:[&>svg]:text-ds-icon-error-default-default"
                 disabled={disabled}
                 onSelect={() => setDeleteTarget(entry.skill)}
               >
-                <Trash2 />
+                <Trash2 className="text-ds-icon-error-default-default" />
                 {t('agents.delete-skill')}
               </DropdownMenuItem>
             )}

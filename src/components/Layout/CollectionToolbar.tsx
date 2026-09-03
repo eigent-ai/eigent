@@ -14,15 +14,26 @@
 
 import { cn } from '@/lib/utils';
 import type { ComponentPropsWithoutRef, ReactNode, Ref } from 'react';
+import ContentHeader, { CONTENT_HEADER_TITLE_CLASS } from './ContentHeader';
 
 export const COLLECTION_TOOLBAR_SEARCH_CLASS = 'w-56 max-w-full';
 
-/** The shared in-page collection toolbar used by Spaces and Skills. */
+export const COLLECTION_RAIL_CLASS = {
+  standard: 'max-w-[964px]',
+  wide: 'max-w-[1100px]',
+} as const;
+
+/**
+ * Page-level header for searchable collections. The outer header owns the
+ * full-width divider while the inner rail stays aligned with the collection
+ * content below it.
+ */
 export default function CollectionToolbar({
   title,
   count,
   headingLevel = 2,
   headingRef,
+  width = 'standard',
   children,
   className,
   ...props
@@ -31,29 +42,34 @@ export default function CollectionToolbar({
   count?: ReactNode;
   headingLevel?: 1 | 2;
   headingRef?: Ref<HTMLHeadingElement>;
+  width?: keyof typeof COLLECTION_RAIL_CLASS;
 }) {
   const Heading = headingLevel === 1 ? 'h1' : 'h2';
   return (
-    <section
-      className={cn(
-        'sticky -top-px z-20 flex min-w-0 flex-wrap items-center justify-between gap-ds-16 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default py-ds-16',
-        className
-      )}
-      {...props}
-    >
-      <div className="flex min-w-0 items-center gap-ds-8">
-        <Heading
-          ref={headingRef}
-          tabIndex={headingRef ? -1 : undefined}
-          className="m-0 !text-ds-text-section font-bold text-ds-ink-default-default outline-none"
-        >
-          {title}
-        </Heading>
-        {count}
-      </div>
-      <div className="ml-auto flex max-w-full min-w-0 flex-wrap items-center justify-end gap-ds-8">
-        {children}
-      </div>
-    </section>
+    <ContentHeader height="adaptive" inset="none">
+      <section
+        role="region"
+        className={cn(
+          'mx-auto flex min-h-ds-layout-row-header w-full min-w-0 flex-wrap items-center justify-between gap-x-ds-16 gap-y-ds-8 px-ds-32 py-ds-6',
+          COLLECTION_RAIL_CLASS[width],
+          className
+        )}
+        {...props}
+      >
+        <div className="flex min-w-0 shrink-0 items-center gap-ds-8">
+          <Heading
+            ref={headingRef}
+            tabIndex={headingRef ? -1 : undefined}
+            className={cn('m-0 outline-none', CONTENT_HEADER_TITLE_CLASS)}
+          >
+            {title}
+          </Heading>
+          {count}
+        </div>
+        <div className="ml-auto flex max-w-full min-w-0 flex-wrap items-center justify-end gap-ds-8">
+          {children}
+        </div>
+      </section>
+    </ContentHeader>
   );
 }

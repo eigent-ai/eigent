@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 import type { SkillLibraryEntry } from '../skillLibrary';
 
@@ -28,16 +29,18 @@ const sourceTagClasses = {
 export default function SkillSourceTag({
   kind,
   count,
+  className,
 }: {
   kind: SkillLibraryEntry['kind'];
   count?: string | number;
+  className?: string;
 }) {
   const { t } = useTranslation();
   const label = t(`agents.library-filter-${kind}`);
   return (
     <Badge
       variant="secondary"
-      className={`whitespace-nowrap ${sourceTagClasses[kind]}`}
+      className={cn('whitespace-nowrap', sourceTagClasses[kind], className)}
     >
       {count === undefined ? label : `${label} ${count}`}
     </Badge>

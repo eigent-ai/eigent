@@ -14,6 +14,7 @@
 
 import SettingsSection from '@/components/Settings/SettingsSection';
 import SettingsPage from '@/pages/Settings';
+import { useSettingsResourceCountsStore } from '@/store/settingsResourceCountsStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useSkillsStore, type Skill } from '@/store/skillsStore';
 import { useSpaceStore } from '@/store/spaceStore';
@@ -26,7 +27,7 @@ import {
   within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/api/brain', async (importOriginal) => ({
@@ -38,6 +39,11 @@ vi.mock('@/api/brain', async (importOriginal) => ({
 
 const homeOverviewMocks = vi.hoisted(() => ({
   fetchConnectedProviders: vi.fn(),
+  fetchConnectorProviders: vi.fn(),
+  fetchConnectorProvider: vi.fn(),
+  prefetchConnectorProviders: vi.fn(),
+  fetchGet: vi.fn(),
+  proxyFetchGet: vi.fn(),
   listMemoryEntries: vi.fn(),
 }));
 
@@ -62,6 +68,15 @@ vi.mock('framer-motion', async (importOriginal) => ({
 vi.mock('@/api/connectors', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/connectors')>()),
   fetchConnectedProviders: homeOverviewMocks.fetchConnectedProviders,
+  fetchConnectorProviders: homeOverviewMocks.fetchConnectorProviders,
+  fetchConnectorProvider: homeOverviewMocks.fetchConnectorProvider,
+  prefetchConnectorProviders: homeOverviewMocks.prefetchConnectorProviders,
+}));
+
+vi.mock('@/api/http', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/http')>()),
+  fetchGet: homeOverviewMocks.fetchGet,
+  proxyFetchGet: homeOverviewMocks.proxyFetchGet,
 }));
 
 vi.mock('@/service/memoryApi', async (importOriginal) => ({
@@ -118,8 +133,28 @@ vi.mock('@/store/authStore', () => {
   };
 });
 
+type SettingsInitialEntry =
+  | string
+  | {
+      pathname: string;
+      search?: string;
+      state?: Record<string, unknown>;
+    };
+
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <output data-testid="settings-location">
+      {location.pathname}
+      {location.search}
+    </output>
+  );
+}
+
 function renderSettingsPage(
-  initialEntry = '/home?section=settings&tab=models'
+  initialEntry:
+    | SettingsInitialEntry
+    | SettingsInitialEntry[] = '/home?section=settings&tab=models'
 ) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -128,10 +163,18 @@ function renderSettingsPage(
     },
   });
 
+  const initialEntries = Array.isArray(initialEntry)
+    ? initialEntry
+    : [initialEntry];
+
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[initialEntry]}>
+      <MemoryRouter
+        initialEntries={initialEntries}
+        initialIndex={initialEntries.length - 1}
+      >
         <SettingsPage />
+        <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>
   );
@@ -150,10 +193,56 @@ describe('SettingsPage', () => {
     useSettingsStore.setState({
       activeSection: 'models',
     });
+    useSettingsResourceCountsStore.setState({
+      counts: { 'browser-connections': null, cookies: null },
+    });
     homeOverviewMocks.fetchConnectedProviders.mockResolvedValue([
       { service: 'github' },
       { service: 'notion' },
     ]);
+    homeOverviewMocks.fetchConnectorProviders.mockResolvedValue({
+      enabled: true,
+      source: 'connector_gateway',
+      provider_count: 0,
+      filtered_count: 0,
+      connected_count: 0,
+      page: 1,
+      page_size: 60,
+      total_pages: 1,
+      providers: [],
+    });
+    homeOverviewMocks.fetchConnectorProvider.mockResolvedValue({
+      enabled: true,
+      source: 'connector_gateway',
+      provider: { service: 'github', displayName: 'GitHub', actions: [] },
+    });
+    homeOverviewMocks.prefetchConnectorProviders.mockResolvedValue(undefined);
+    homeOverviewMocks.fetchGet.mockImplementation(async (path: string) => {
+      if (path === '/browser/cdp/list') {
+        return [
+          { id: 'browser-1', port: 9222 },
+          { id: 'browser-2', port: 9223 },
+        ];
+      }
+      if (path === '/browser/cookies') {
+        return {
+          success: true,
+          domains: [
+            { domain: 'github.com' },
+            { domain: 'notion.so' },
+            { domain: 'slack.com' },
+          ],
+        };
+      }
+      return {};
+    });
+    homeOverviewMocks.proxyFetchGet.mockImplementation(async (path: string) => {
+      if (path === '/api/v1/server/capabilities') {
+        return { features: { connector_gateway: { enabled: true } } };
+      }
+      if (path === '/api/v1/mcp/users' || path === '/api/v1/configs') return [];
+      return {};
+    });
     homeOverviewMocks.listMemoryEntries.mockResolvedValue({
       scope_state: {
         token_limit: 5000,
@@ -168,7 +257,12 @@ describe('SettingsPage', () => {
     const user = userEvent.setup();
     renderSettingsPage('/home?section=spaces');
 
-    await user.click(await screen.findByRole('button', { name: 'New Space' }));
+    const spacesToolbar = document.querySelector(
+      '[data-home-spaces-toolbar]'
+    ) as HTMLElement;
+    await user.click(
+      await within(spacesToolbar).findByRole('button', { name: 'New Space' })
+    );
     await user.click(
       screen.getByRole('button', { name: 'Import from Workspace Bundle' })
     );
@@ -294,6 +388,51 @@ describe('SettingsPage', () => {
     expect(await screen.findByTestId('models-settings')).toBeInTheDocument();
   });
 
+  it('shows live resource counts on the Skills, Connectors, Browser, and Cookies tabs', async () => {
+    useSkillsStore.setState({
+      skills: [
+        {
+          id: 'research',
+          name: 'Research',
+          description: 'Find sources',
+          filePath: 'research/SKILL.md',
+          fileContent: '',
+          addedAt: 0,
+          scope: { isGlobal: true, selectedAgents: [] },
+          enabled: true,
+          isExample: false,
+        },
+      ],
+    });
+
+    renderSettingsPage();
+
+    const sidebar = screen.getByRole('complementary', { name: 'Home' });
+
+    await waitFor(() => {
+      expect(
+        within(
+          within(sidebar).getByRole('button', { name: 'Skills' })
+        ).getByText('1')
+      ).toBeVisible();
+      expect(
+        within(
+          within(sidebar).getByRole('button', { name: 'Connectors' })
+        ).getByText('2')
+      ).toBeVisible();
+      expect(
+        within(
+          within(sidebar).getByRole('button', { name: 'Browser' })
+        ).getByText('2')
+      ).toBeVisible();
+      expect(
+        within(
+          within(sidebar).getByRole('button', { name: 'Cookies' })
+        ).getByText('3')
+      ).toBeVisible();
+    });
+  });
+
   it('switches between Home and Settings sections in the same shell', async () => {
     const user = userEvent.setup();
 
@@ -314,14 +453,15 @@ describe('SettingsPage', () => {
     const toolbar = document.querySelector(
       '[data-home-spaces-toolbar]'
     ) as HTMLElement;
+    const collectionHeader = toolbar.closest('header');
     const list = document.querySelector('[data-home-spaces-list]');
-    expect(toolbar).toHaveClass(
-      'sticky',
-      '-top-px',
-      'z-20',
-      'bg-ds-neutral-subtle-default'
+    expect(collectionHeader).toHaveClass(
+      'min-h-ds-layout-row-header',
+      'border-ds-hairline-subtle-default'
     );
-    expect(document.querySelector('main > header')).not.toBeInTheDocument();
+    expect(toolbar).toHaveClass('max-w-[1100px]', 'px-ds-32');
+    expect(collectionHeader?.nextElementSibling).toContainElement(overview);
+    expect(collectionHeader).not.toContainElement(overview);
     expect(overview).toHaveTextContent(/Morning|Good Afternoon|Evening/);
     expect(overview).toHaveTextContent('Douglas');
     expect(within(overview).queryByText('Status')).not.toBeInTheDocument();
@@ -489,6 +629,10 @@ describe('SettingsPage', () => {
 
   it('shows one Skills overview with source filters instead of ownership tabs', async () => {
     const user = userEvent.setup();
+    useSkillsStore.setState({ skills: [] });
+    const sync = vi
+      .spyOn(useSkillsStore.getState(), 'syncFromDisk')
+      .mockResolvedValue();
     renderSettingsPage();
     await user.click(screen.getByRole('button', { name: 'Skills' }));
     expect(
@@ -509,21 +653,31 @@ describe('SettingsPage', () => {
     ).toBeVisible();
     const toolbar = screen.getByRole('region', { name: 'Skills toolbar' });
     const dashboard = screen.getByRole('region', { name: 'Skill overview' });
+    const collectionHeader = toolbar.closest('header');
     expect(within(dashboard).getAllByRole('term')).toHaveLength(4);
-    expect(screen.getByRole('main').querySelector('header')).toBeNull();
+    expect(collectionHeader).toHaveClass('min-h-ds-layout-row-header');
+    expect(toolbar).toHaveClass('max-w-[1100px]', 'px-ds-32');
+    expect(collectionHeader?.nextElementSibling?.firstElementChild).toHaveClass(
+      'max-w-[1100px]',
+      'px-8'
+    );
+    expect(collectionHeader?.nextElementSibling).toContainElement(dashboard);
+    expect(collectionHeader).not.toContainElement(dashboard);
     expect(
       within(toolbar).getByRole('button', { name: 'Add skill' })
     ).toBeVisible();
     expect(
-      dashboard.compareDocumentPosition(toolbar) &
+      toolbar.compareDocumentPosition(dashboard) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
     await user.click(
       within(toolbar).getByRole('button', { name: 'Add skill' })
     );
-    expect(
-      await screen.findByRole('dialog', { name: 'Add skill' })
-    ).toBeVisible();
+    const addSkillDialog = await screen.findByRole('dialog', {
+      name: 'Add skill',
+    });
+    await waitFor(() => expect(addSkillDialog).toBeVisible());
+    sync.mockRestore();
   });
 
   it('navigates Skills with the same shell transition and preserves overview filters on return', async () => {
@@ -554,6 +708,21 @@ describe('SettingsPage', () => {
       name: 'research',
       exact: true,
     });
+    const skillsTable = screen.getByRole('table', { name: 'Skills' });
+    const headerRow = within(skillsTable).getAllByRole('row')[0];
+    expect(headerRow).toHaveClass('hover:bg-transparent');
+    expect(
+      within(headerRow).queryByRole('button', { name: 'Skill' })
+    ).not.toBeInTheDocument();
+    expect(skillLink).toHaveClass(
+      'hover:!text-ds-ink-default-default',
+      'hover:no-underline'
+    );
+    expect(skillLink.closest('td')?.firstElementChild).toHaveClass(
+      'flex',
+      'flex-col',
+      'justify-center'
+    );
     expect(skillLink).toHaveAttribute(
       'href',
       '/home?section=settings&tab=skills&skillSearch=research&skillFilter=global&skillId=global%3Aresearch'
@@ -573,9 +742,34 @@ describe('SettingsPage', () => {
         screen.getByRole('navigation', { name: 'Select a skill' })
       ).toBeVisible()
     );
-    const back = within(
-      screen.getByRole('complementary', { name: 'Skills' })
-    ).getByRole('button', { name: 'Back to Skills' });
+    const skillSidebar = screen.getByRole('complementary', { name: 'Skills' });
+    const skillSidebarHeader = skillSidebar.querySelector(
+      'header'
+    ) as HTMLElement;
+    expect(skillSidebarHeader).not.toHaveClass('border-b');
+    const back = within(skillSidebarHeader).getByRole('button', {
+      name: 'Back',
+    });
+    const addSkill = within(skillSidebarHeader).getByRole('button', {
+      name: 'Add skill',
+    });
+    expect(addSkill).toHaveAttribute('data-variant', 'primary');
+    expect(addSkill).toHaveClass('!rounded-full');
+    const skillSearch = within(skillSidebar).getByRole('searchbox', {
+      name: 'Search skills…',
+    });
+    expect(skillSearch.closest('.py-ds-8')).not.toHaveClass('px-ds-8');
+    expect(
+      addSkill.compareDocumentPosition(skillSearch) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(skillSidebar.querySelector('.uppercase')).not.toBeInTheDocument();
+    await user.type(skillSearch, 'missing');
+    expect(
+      within(skillSidebar).queryByRole('button', { name: 'research' })
+    ).not.toBeInTheDocument();
+    expect(skillSidebar).toHaveTextContent('No skills match your filters.');
+    await user.clear(skillSearch);
     fireEvent.keyDown(back, { key: 'Enter' });
     fireEvent.click(back);
     await waitFor(() =>
@@ -589,6 +783,9 @@ describe('SettingsPage', () => {
     expect(
       await screen.findByRole('combobox', { name: 'Skill source' })
     ).toHaveTextContent('Global');
+    expect(screen.getByTestId('settings-location')).toHaveTextContent(
+      '/home?section=settings&tab=skills&skillSearch=research&skillFilter=global'
+    );
     unmount();
     sync.mockRestore();
     useSkillsStore.setState({ skills: [] });
@@ -625,6 +822,118 @@ describe('SettingsPage', () => {
         document.querySelector('[data-settings-section="channels"]')
       ).toBeInTheDocument();
     });
+  });
+
+  it('uses the connector-focused sidebar for the Add connector subpage', async () => {
+    renderSettingsPage(
+      '/home?section=settings&tab=connectors&connectorView=add&connectorAdd=browse'
+    );
+
+    await waitFor(() =>
+      expect(document.querySelector('[data-add-connector]')).toBeInTheDocument()
+    );
+    const sidebarPane = document.querySelector(
+      '[data-home-space-sidebar-pane="connector-detail"]'
+    );
+    expect(sidebarPane).toBeInTheDocument();
+    const connectorSidebar = await screen.findByRole('complementary', {
+      name: 'Connectors',
+    });
+    expect(
+      within(connectorSidebar).getByRole('button', { name: 'Back' })
+    ).toBeVisible();
+    expect(
+      within(connectorSidebar).getByRole('button', { name: 'Add connector' })
+    ).toHaveAttribute('data-variant', 'primary');
+
+    const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(
+      within(breadcrumb).getByRole('button', { name: 'Connector' })
+    ).toBeVisible();
+    expect(breadcrumb.querySelector('ol')).not.toBeNull();
+    expect(breadcrumb).not.toHaveAttribute('title');
+    expect(
+      screen.getByRole('heading', {
+        name: 'Add connector',
+        level: 1,
+      })
+    ).toBeVisible();
+    expect(within(breadcrumb).queryByRole('heading')).toBeNull();
+  });
+
+  it('returns from Connector detail to the page that opened it', async () => {
+    const user = userEvent.setup();
+    renderSettingsPage([
+      '/?space=workspace-space',
+      {
+        pathname: '/home',
+        search:
+          '?section=settings&tab=connectors&connectorView=add&connectorAdd=browse',
+        state: { from: '/?space=workspace-space' },
+      },
+    ]);
+
+    const connectorSidebar = await screen.findByRole('complementary', {
+      name: 'Connectors',
+    });
+    await user.click(
+      within(connectorSidebar).getByRole('button', { name: 'Back' })
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-location')).toHaveTextContent(
+        '/?space=workspace-space'
+      )
+    );
+  });
+
+  it('returns from Space detail to its workspace origin', async () => {
+    const user = userEvent.setup();
+    const now = Date.now();
+    useSpaceStore.setState((state) => ({
+      ...state,
+      spaces: {
+        ...state.spaces,
+        'origin-space': {
+          id: 'origin-space',
+          name: 'Origin Space',
+          sourceType: 'folder',
+          rootPath: '/work/origin-space',
+          status: 'active',
+          schemaVersion: 1,
+          createdAt: now,
+          updatedAt: now,
+        },
+      },
+      projectsBySpaceId: {
+        ...state.projectsBySpaceId,
+        'origin-space': {},
+      },
+      projectsSyncedAt: {
+        ...state.projectsSyncedAt,
+        'origin-space': now,
+      },
+    }));
+
+    renderSettingsPage([
+      '/',
+      {
+        pathname: '/home',
+        search: '?section=spaces&spaceId=origin-space&spaceTab=projects',
+        state: { from: '/' },
+      },
+    ]);
+
+    const spaceSidebar = await screen.findByRole('complementary', {
+      name: 'Spaces',
+    });
+    await user.click(
+      within(spaceSidebar).getByRole('button', { name: 'Back' })
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-location')).toHaveTextContent(/^\/$/)
+    );
   });
 
   it('switches to the Space detail layout without changing the shared shell', async () => {
@@ -669,7 +978,7 @@ describe('SettingsPage', () => {
     renderSettingsPage('/home?section=spaces');
 
     const homeSpaceCard = (await screen.findByText('Design Space')).closest(
-      '[role="button"]'
+      'button'
     ) as HTMLElement;
     expect(homeSpaceCard).toBeInTheDocument();
     await user.click(homeSpaceCard);
@@ -689,21 +998,37 @@ describe('SettingsPage', () => {
     expect(
       within(detailSidebar).getByRole('button', { name: 'Design Space' })
     ).toHaveAttribute('aria-current', 'page');
+    const detailSidebarHeader = detailSidebar.querySelector(
+      'header'
+    ) as HTMLElement;
+    expect(detailSidebarHeader).not.toHaveClass('border-b');
     expect(
-      within(detailSidebar).getByRole('button', { name: 'Back to Home' })
+      within(detailSidebarHeader).getByRole('button', { name: 'Back' })
     ).toBeInTheDocument();
-    const newSpaceTab = within(detailSidebar).getByRole('button', {
+    const newSpaceTab = within(detailSidebarHeader).getByRole('button', {
       name: 'New Space',
     });
+    expect(newSpaceTab).toHaveAttribute('data-variant', 'primary');
+    expect(newSpaceTab).toHaveClass('!rounded-full');
     expect(newSpaceTab.querySelector('svg')).toHaveClass('lucide-plus');
+    const spaceSearch = within(detailSidebar).getByRole('searchbox', {
+      name: 'Search spaces...',
+    });
+    expect(spaceSearch.closest('.py-ds-8')).not.toHaveClass('px-ds-8');
     expect(
-      newSpaceTab.compareDocumentPosition(
-        within(detailSidebar).getByText('Spaces')
-      ) & Node.DOCUMENT_POSITION_FOLLOWING
+      newSpaceTab.compareDocumentPosition(spaceSearch) &
+        Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
+    expect(detailSidebar.querySelector('.uppercase')).not.toBeInTheDocument();
     expect(
       within(detailSidebar).queryByRole('button', { name: 'Untitled Space' })
     ).not.toBeInTheDocument();
+    await user.type(spaceSearch, 'missing');
+    expect(
+      within(detailSidebar).queryByRole('button', { name: 'Design Space' })
+    ).not.toBeInTheDocument();
+    expect(detailSidebar).toHaveTextContent('No results match your search.');
+    await user.clear(spaceSearch);
     await user.click(newSpaceTab);
     expect(
       await screen.findByRole('dialog', { name: 'Create a new Space' })
@@ -749,11 +1074,18 @@ describe('SettingsPage', () => {
     await user.click(
       within(deleteDialog).getByRole('button', { name: 'Cancel' })
     );
-    const detailHeader = document.querySelector('main header');
-    expect(detailHeader).not.toBeInTheDocument();
-    expect(
-      within(screen.getByRole('main')).getByText('Design Space')
-    ).toHaveClass('!text-ds-text-section');
+    const detailHeader = document.querySelector('main header') as HTMLElement;
+    expect(detailHeader).toHaveClass('px-ds-16');
+    const detailHeading = within(detailHeader).getByRole('heading', {
+      name: 'Design Space',
+      level: 1,
+    });
+    expect(detailHeading).toHaveClass('!text-ds-text-base');
+    const openWorkspaceButton = within(detailHeader).getByRole('button', {
+      name: 'Open workspace',
+    });
+    expect(openWorkspaceButton).toHaveAttribute('data-variant', 'primary');
+    expect(openWorkspaceButton).toHaveClass('!rounded-full');
     expect(screen.getByText('Product design work')).toBeInTheDocument();
     expect(screen.getByText('Local')).toBeInTheDocument();
 
@@ -763,7 +1095,7 @@ describe('SettingsPage', () => {
       'Automations',
       'Context',
       'Memory',
-      'Space Settings',
+      'Space settings',
     ]) {
       expect(screen.getByRole('tab', { name: tabName })).toBeInTheDocument();
     }
@@ -771,18 +1103,6 @@ describe('SettingsPage', () => {
       'gap-2',
       'pb-2'
     );
-    const spaceTabRow = screen.getByRole('tablist', {
-      name: 'Space content',
-    }).parentElement;
-    expect(spaceTabRow).toHaveClass('justify-between');
-    const openWorkspaceButton = within(spaceTabRow as HTMLElement).getByRole(
-      'button',
-      {
-        name: 'Open Workspace',
-      }
-    );
-    expect(openWorkspaceButton).toHaveAttribute('data-variant', 'primary');
-    expect(openWorkspaceButton).toHaveClass('!rounded-full');
     expect(
       within(screen.getByRole('tab', { name: 'Sessions' })).getByText(
         'Sessions'
@@ -802,7 +1122,7 @@ describe('SettingsPage', () => {
       screen.getByRole('tab', { name: 'Context' }).querySelector('svg')
     ).toHaveClass('lucide-library');
     expect(
-      screen.getByRole('tab', { name: 'Space Settings' }).querySelector('svg')
+      screen.getByRole('tab', { name: 'Space settings' }).querySelector('svg')
     ).toHaveClass('lucide-settings');
     fireEvent.pointerEnter(screen.getByRole('tab', { name: 'Memory' }), {
       pointerType: 'mouse',
@@ -848,7 +1168,7 @@ describe('SettingsPage', () => {
     );
 
     await user.click(
-      within(detailSidebar).getByRole('button', { name: 'Back to Home' })
+      within(detailSidebar).getByRole('button', { name: 'Back' })
     );
 
     await waitFor(() => {
@@ -886,9 +1206,9 @@ describe('SettingsPage', () => {
       'rounded-lg',
       'font-medium'
     );
-    expect(
-      cardWorkspaceButtons[0].closest('[role="button"]')
-    ).not.toHaveTextContent('Last updated:');
+    expect(cardWorkspaceButtons[0].parentElement).not.toHaveTextContent(
+      'Last updated:'
+    );
 
     const homeToolbar = document.querySelector(
       '[data-home-spaces-toolbar]'
@@ -904,10 +1224,12 @@ describe('SettingsPage', () => {
       return buttons;
     });
     expect(listWorkspaceButtons[0]).toHaveClass(
-      'justify-self-end',
       'cursor-pointer',
       'rounded-lg',
       'font-medium'
+    );
+    expect(listWorkspaceButtons[0].parentElement).toHaveClass(
+      'justify-self-end'
     );
     expect(listWorkspaceButtons[0]).toHaveAttribute('data-variant', 'ghost');
     expect(listWorkspaceButtons[0].parentElement?.lastElementChild).toBe(
@@ -949,7 +1271,7 @@ describe('SettingsPage', () => {
     renderSettingsPage('/home?section=spaces');
 
     const spaceCard = (await screen.findByText('Motion Space')).closest(
-      '[role="button"]'
+      'button'
     ) as HTMLElement;
     await user.click(spaceCard);
 
@@ -964,7 +1286,7 @@ describe('SettingsPage', () => {
     ).toHaveAttribute('data-space-navigation-motion', 'fade');
 
     const backButton = within(detailSidebar).getByRole('button', {
-      name: 'Back to Home',
+      name: 'Back',
     });
     backButton.focus();
     await user.keyboard('{Enter}');
@@ -1059,6 +1381,19 @@ describe('SettingsPage', () => {
       'border-0',
       'bg-ds-neutral-default-default',
       'p-4'
+    );
+
+    rerender(
+      <SettingsSection titleVariant="hidden" surface="plain">
+        <span>Section content</span>
+      </SettingsSection>
+    );
+
+    expect(screen.getByText('Section content').parentElement).toHaveClass(
+      'bg-transparent'
+    );
+    expect(screen.getByText('Section content').parentElement).not.toHaveClass(
+      'bg-ds-neutral-default-default'
     );
   });
 });

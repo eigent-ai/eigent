@@ -14,7 +14,6 @@
 
 import { AUTOMATION_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   Brain,
   Library,
@@ -26,15 +25,6 @@ import {
 import { useCallback, useRef, useState, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 
-const underlineSlideTransition = {
-  type: 'spring' as const,
-  stiffness: 420,
-  damping: 34,
-  mass: 0.55,
-};
-
-const uiEaseOut = [0.23, 1, 0.32, 1] as const;
-
 export const SPACE_DETAIL_TABS = [
   'projects',
   'tasks',
@@ -45,6 +35,14 @@ export const SPACE_DETAIL_TABS = [
 ] as const;
 
 export type SpaceDetailTab = (typeof SPACE_DETAIL_TABS)[number];
+
+export function getSpaceDetailTabId(tab: SpaceDetailTab) {
+  return `space-detail-tab-${tab}`;
+}
+
+export function getSpaceDetailPanelId(tab: SpaceDetailTab) {
+  return `space-detail-panel-${tab}`;
+}
 
 export function isSpaceDetailTab(value: unknown): value is SpaceDetailTab {
   return SPACE_DETAIL_TABS.includes(value as SpaceDetailTab);
@@ -90,14 +88,14 @@ const SPACE_DETAIL_TAB_OPTIONS: SpaceDetailTabConfig[] = [
   },
   {
     id: 'workspace-profile',
-    labelKey: 'layout.space-settings-heading',
-    defaultLabel: 'Space Settings',
+    labelKey: 'layout.space-settings',
+    defaultLabel: 'Space settings',
     icon: Settings,
   },
 ];
 
 const tabButtonClass =
-  'group relative z-10 inline-flex h-8 min-h-8 shrink-0 items-center gap-2 rounded-full border-x-0 border-y-0 border-solid bg-transparent !px-2 !py-0 !text-ds-text-base font-bold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-ds-neutral-default-default';
+  "group relative z-10 inline-flex h-8 min-h-8 shrink-0 touch-manipulation items-center gap-2 rounded-full border-x-0 border-y-0 border-solid bg-transparent !px-2 !py-0 !text-ds-text-base font-bold outline-none before:absolute before:inset-x-0 before:-inset-y-ds-6 before:content-[''] focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-ds-neutral-subtle-default";
 
 const iconSlotClass =
   'relative z-10 inline-flex size-4 shrink-0 items-center justify-center [&_svg]:size-4';
@@ -116,14 +114,6 @@ export function SpaceDetailTabsNav({
   const { t } = useTranslation();
   const navRef = useRef<HTMLDivElement>(null);
   const [hoveredTab, setHoveredTab] = useState<SpaceDetailTab | null>(null);
-  const [layoutInput, setLayoutInput] = useState<'pointer' | 'keyboard'>(
-    'pointer'
-  );
-  const reduceMotion = Boolean(useReducedMotion());
-  const useInstantLayout = reduceMotion || layoutInput === 'keyboard';
-  const layoutTransition = useInstantLayout
-    ? { duration: 0 }
-    : underlineSlideTransition;
 
   const findTab = useCallback((tab: SpaceDetailTab) => {
     return navRef.current?.querySelector<HTMLElement>(
@@ -135,18 +125,6 @@ export function SpaceDetailTabsNav({
     (event: KeyboardEvent<HTMLButtonElement>, tab: SpaceDetailTab) => {
       const currentIndex = SPACE_DETAIL_TABS.indexOf(tab);
       let nextIndex: number | null = null;
-
-      if (
-        event.key === 'ArrowRight' ||
-        event.key === 'ArrowLeft' ||
-        event.key === 'Home' ||
-        event.key === 'End' ||
-        event.key === 'Enter' ||
-        event.key === ' ' ||
-        event.key === 'Spacebar'
-      ) {
-        setLayoutInput('keyboard');
-      }
 
       if (event.key === 'ArrowRight') {
         nextIndex = (currentIndex + 1) % SPACE_DETAIL_TABS.length;
@@ -180,8 +158,7 @@ export function SpaceDetailTabsNav({
         'relative flex flex-row flex-wrap items-center gap-2 pb-2',
         className
       )}
-      data-motion-reduced={reduceMotion ? 'true' : 'false'}
-      data-layout-movement={useInstantLayout ? 'instant' : 'spring'}
+      data-layout-movement="instant"
       onPointerLeave={() => setHoveredTab(null)}
     >
       {SPACE_DETAIL_TAB_OPTIONS.map(
@@ -193,13 +170,14 @@ export function SpaceDetailTabsNav({
               key={id}
               type="button"
               role="tab"
+              id={getSpaceDetailTabId(id)}
+              aria-controls={getSpaceDetailPanelId(id)}
               data-space-detail-tab={id}
               aria-selected={selected}
               tabIndex={selected ? 0 : -1}
               onClick={() => onChange(id)}
               onKeyDown={(event) => handleKeyDown(event, id)}
               onPointerDown={(event) => {
-                setLayoutInput('pointer');
                 if (event.pointerType === 'touch') setHoveredTab(null);
               }}
               onPointerEnter={(event) => {
@@ -207,7 +185,6 @@ export function SpaceDetailTabsNav({
                   setHoveredTab(null);
                   return;
                 }
-                setLayoutInput('pointer');
                 setHoveredTab(id);
               }}
               className={cn(
@@ -217,42 +194,18 @@ export function SpaceDetailTabsNav({
                   : 'text-ds-ink-muted-default hover:text-ds-ink-default-default'
               )}
             >
-              <AnimatePresence initial={false}>
-                {hoveredTab === id ? (
-                  <motion.span
-                    key="space-detail-tab-hover"
-                    layoutId="space-detail-tab-hover"
-                    data-space-detail-tab-hover
-                    aria-hidden
-                    className="pointer-events-none absolute inset-0 z-0 rounded-full bg-ds-neutral-default-default shadow-sm ring-1 ring-ds-hairline-default-default"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{
-                      layout: layoutTransition,
-                      opacity: {
-                        duration: reduceMotion ? 0.12 : 0.18,
-                        ease: uiEaseOut,
-                      },
-                    }}
-                  />
-                ) : null}
-              </AnimatePresence>
+              {hoveredTab === id ? (
+                <span
+                  data-space-detail-tab-hover
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 z-0 rounded-full bg-ds-neutral-default-default shadow-sm ring-1 ring-ds-hairline-default-default"
+                />
+              ) : null}
               {selected ? (
-                <motion.span
-                  layoutId="space-detail-tab-indicator"
+                <span
                   data-space-detail-tab-indicator
                   aria-hidden
                   className="pointer-events-none absolute top-[calc(100%+8px)] left-0 z-[11] h-0.5 w-full rounded-full bg-ds-accent-default-default"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{
-                    layout: layoutTransition,
-                    opacity: {
-                      duration: reduceMotion ? 0.12 : 0.2,
-                      ease: uiEaseOut,
-                    },
-                  }}
                 />
               ) : null}
               <span className={iconSlotClass} aria-hidden>

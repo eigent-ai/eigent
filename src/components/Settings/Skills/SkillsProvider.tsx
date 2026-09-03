@@ -49,6 +49,8 @@ type SkillLibraryLoadError = {
   name?: string;
 };
 
+const SPACE_PROFILE_LOAD_TIMEOUT_MS = 15_000;
+
 /**
  * A save that failed only because nobody is signed in gets the actionable
  * prompt; everything else gets the generic retry message.
@@ -59,7 +61,7 @@ function saveErrorKey(error: unknown) {
     : 'agents.library-save-failed';
 }
 
-function useLibrary(active: boolean) {
+function useLibrary() {
   const { t } = useTranslation();
   const skills = useSkillsStore((state) => state.skills);
   const syncFromDisk = useSkillsStore((state) => state.syncFromDisk);
@@ -117,13 +119,7 @@ function useLibrary(active: boolean) {
 
   useEffect(() => {
     const current = ++generation.current;
-    if (!active) {
-      // Any load still in flight belongs to a superseded generation and will
-      // bail at its own guard, so the section is idle from here on.
-      loadingRef.current = false;
-      setLoading(false);
-      return;
-    }
+    const controllers = new Set<AbortController>();
     loadingRef.current = true;
     setLoading(true);
     setErrors([]);
@@ -145,18 +141,31 @@ function useLibrary(active: boolean) {
           Array.from({ length: Math.min(queue.length, 3) }, async () => {
             while (queue.length && generation.current === current) {
               const space = queue.shift()!;
+              const controller = new AbortController();
+              controllers.add(controller);
+              const timeoutId = window.setTimeout(
+                () => controller.abort(),
+                SPACE_PROFILE_LOAD_TIMEOUT_MS
+              );
               try {
                 const draft = await fetchWorkspaceConfiguration(
                   space.id,
                   { email, userId },
-                  space.name
+                  space.name,
+                  { signal: controller.signal }
                 );
+                if (!Array.isArray(draft?.document?.spec?.skills)) {
+                  throw new Error('Invalid Space skill profile response');
+                }
                 loaded.push({ space, draft });
               } catch {
                 failures.push({
                   key: 'agents.library-space-load-failed',
                   name: space.name,
                 });
+              } finally {
+                window.clearTimeout(timeoutId);
+                controllers.delete(controller);
               }
             }
           })
@@ -174,8 +183,10 @@ function useLibrary(active: boolean) {
     void load();
     return () => {
       generation.current += 1;
+      controllers.forEach((controller) => controller.abort());
+      controllers.clear();
     };
-  }, [active, email, userId, spacesKey, syncFromDisk, refreshKey]);
+  }, [email, userId, spacesKey, syncFromDisk, refreshKey]);
 
   /**
    * Saves one skill and reports the outcome without raising a toast.
@@ -303,7 +314,9 @@ export function SkillsProvider({
   active: boolean;
   children: ReactNode;
 }) {
-  const value = useLibrary(active);
+  // The Settings sidebar displays an authoritative skill count, so the
+  // library loads with the shell rather than waiting for the Skills tab.
+  const value = useLibrary();
   const { openSkillDialog, loading, pendingIds } = value;
   const [params, setParams] = useSearchParams();
   useEffect(() => {

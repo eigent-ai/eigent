@@ -12,7 +12,9 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import Skills from '@/components/Settings/Skills';
+import Skills, {
+  SKILLS_NOTICE_MINIMIZED_STORAGE_KEY,
+} from '@/components/Settings/Skills';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
@@ -46,6 +48,7 @@ function renderSkills() {
 
 describe('Skills library load notice', () => {
   beforeEach(() => {
+    window.localStorage.clear();
     library.entries = [];
     library.spaces = [];
     library.loading = false;
@@ -58,9 +61,9 @@ describe('Skills library load notice', () => {
     library.openUpload.mockReset();
   });
 
-  it('styles the notice with information color and lets it be dismissed', async () => {
+  it('minimizes the notice and remembers that preference after remount', async () => {
     const user = userEvent.setup();
-    renderSkills();
+    const view = renderSkills();
 
     const notice = screen.getByRole('alert');
     expect(notice).toHaveClass('bg-ds-bg-information-subtle-default');
@@ -73,6 +76,9 @@ describe('Skills library load notice', () => {
     );
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(
+      window.localStorage.getItem(SKILLS_NOTICE_MINIMIZED_STORAGE_KEY)
+    ).toBe('1');
     const toolbar = screen.getByRole('region', { name: 'Skills toolbar' });
     expect(
       within(toolbar).getByRole('heading', { name: 'Skills', level: 1 })
@@ -86,6 +92,13 @@ describe('Skills library load notice', () => {
 
     await user.click(retry);
     expect(library.refresh).toHaveBeenCalledTimes(1);
+
+    view.unmount();
+    renderSkills();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Retry (2)' })
+    ).toBeInTheDocument();
   });
 
   it('retries from the notice card before it is dismissed', async () => {

@@ -1,0 +1,3 @@
+interface:
+  display_name: "Color"
+  short_description: "OKLCH palettes with contrast that gets checked, in light and dark mode"

@@ -18,24 +18,15 @@ import { describe, expect, it } from 'vitest';
 
 describe('Skills dashboard data availability', () => {
   it.each([
-    { loading: true, hasErrors: false, note: 'Loading skills…' },
-    {
-      loading: false,
-      hasErrors: true,
-      note: 'Some skill data is unavailable. Refresh to see complete totals.',
-    },
-  ])(
-    'does not show incomplete data as zero totals: $note',
-    ({ loading, hasErrors, note }) => {
-      render(
-        <SkillsDashboard entries={[]} loading={loading} hasErrors={hasErrors} />
-      );
-      expect(
-        screen.getAllByRole('definition').map((node) => node.textContent)
-      ).toEqual(['—', '—', '—', '—']);
-      expect(screen.getByText(note)).toBeVisible();
-    }
-  );
+    { loading: true, hasErrors: false },
+    { loading: false, hasErrors: true },
+  ])('hides incomplete totals: %o', ({ loading, hasErrors }) => {
+    render(
+      <SkillsDashboard entries={[]} loading={loading} hasErrors={hasErrors} />
+    );
+    expect(screen.queryByRole('definition')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Skills overview')).not.toBeInTheDocument();
+  });
 
   it('shows real zero totals for an empty, successfully loaded library', () => {
     render(<SkillsDashboard entries={[]} loading={false} hasErrors={false} />);

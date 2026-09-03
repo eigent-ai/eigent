@@ -56,6 +56,7 @@ export default function SkillUploadDialog({
   const [fileContent, setFileContent] = useState<string>('');
   const [_isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const confirmingConflictRef = useRef(false);
   const [isZip, setIsZip] = useState(false);
   const [uploadError, setUploadError] = useState<'invalid_format' | null>(null);
   const [conflictDialog, setConflictDialog] = useState<{
@@ -152,15 +153,78 @@ export default function SkillUploadDialog({
 
   const handleConflictConfirm = useCallback(async () => {
     if (!conflictDialog) return;
+    confirmingConflictRef.current = true;
+    try {
+      const { folderName } = conflictDialog;
+      const newConfirmed = new Set(confirmedReplacements);
+      newConfirmed.add(folderName);
+      setConfirmedReplacements(newConfirmed);
 
-    const { folderName } = conflictDialog;
-    const newConfirmed = new Set(confirmedReplacements);
-    newConfirmed.add(folderName);
-    setConfirmedReplacements(newConfirmed);
+      // Remove current conflict from pending list
+      const remaining = pendingConflicts.filter(
+        (c) => c.folderName !== folderName
+      );
+      setPendingConflicts(remaining);
 
-    // Remove current conflict from pending list
+      // If more conflicts, show next one
+      if (remaining.length > 0) {
+        setConflictDialog({
+          open: true,
+          folderName: remaining[0].folderName,
+          skillName: remaining[0].skillName,
+        });
+      } else {
+        // All conflicts handled, proceed with import
+        setConflictDialog(null);
+        if (!pendingFileBuffer) {
+          resetConflictState();
+          return;
+        }
+
+        if (pendingFileBuffer.byteLength > MAX_SKILL_ZIP_IMPORT_BYTES) {
+          toast.error(t('agents.zip-import-too-large'));
+          resetConflictState();
+          return;
+        }
+
+        try {
+          const result = await skillImportZip(
+            pendingFileBuffer,
+            Array.from(newConfirmed)
+          );
+
+          if (!result?.success) {
+            toast.error(result?.error || t('agents.skill-add-error'));
+            resetConflictState();
+            return;
+          }
+
+          await refreshAfterImport();
+          toast.success(t('agents.skill-added-success'));
+        } catch {
+          toast.error(t('agents.skill-add-error'));
+        }
+        resetConflictState();
+      }
+    } finally {
+      confirmingConflictRef.current = false;
+    }
+  }, [
+    conflictDialog,
+    confirmedReplacements,
+    pendingConflicts,
+    pendingFileBuffer,
+    resetConflictState,
+    refreshAfterImport,
+    t,
+  ]);
+
+  const handleConflictCancel = useCallback(async () => {
+    if (!conflictDialog || confirmingConflictRef.current) return;
+
+    // Remove current conflict from pending list (user skipped this one)
     const remaining = pendingConflicts.filter(
-      (c) => c.folderName !== folderName
+      (c) => c.folderName !== conflictDialog.folderName
     );
     setPendingConflicts(remaining);
 
@@ -179,61 +243,10 @@ export default function SkillUploadDialog({
         return;
       }
 
-      if (pendingFileBuffer.byteLength > MAX_SKILL_ZIP_IMPORT_BYTES) {
-        toast.error(t('agents.zip-import-too-large'));
-        resetConflictState();
-        return;
-      }
-
-      try {
-        const result = await skillImportZip(
-          pendingFileBuffer,
-          Array.from(newConfirmed)
-        );
-
-        if (!result?.success) {
-          toast.error(result?.error || t('agents.skill-add-error'));
-          resetConflictState();
-          return;
-        }
-
+      if (confirmedReplacements.size === 0) {
+        // The initial import may already have installed non-conflicting skills.
+        // Refresh even when every conflict was skipped so those skills appear.
         await refreshAfterImport();
-        toast.success(t('agents.skill-added-success'));
-      } catch {
-        toast.error(t('agents.skill-add-error'));
-      }
-      resetConflictState();
-    }
-  }, [
-    conflictDialog,
-    confirmedReplacements,
-    pendingConflicts,
-    pendingFileBuffer,
-    resetConflictState,
-    refreshAfterImport,
-    t,
-  ]);
-
-  const handleConflictCancel = useCallback(async () => {
-    if (!conflictDialog) return;
-
-    // Remove current conflict from pending list (user skipped this one)
-    const remaining = pendingConflicts.filter(
-      (c) => c.folderName !== conflictDialog.folderName
-    );
-    setPendingConflicts(remaining);
-
-    // If more conflicts, show next one
-    if (remaining.length > 0) {
-      setConflictDialog({
-        open: true,
-        folderName: remaining[0].folderName,
-        skillName: remaining[0].skillName,
-      });
-    } else {
-      // All conflicts handled, proceed with import
-      setConflictDialog(null);
-      if (!pendingFileBuffer || confirmedReplacements.size === 0) {
         resetConflictState();
         return;
       }
@@ -412,15 +425,8 @@ export default function SkillUploadDialog({
         return;
       }
 
-      // Validate file size (max 5MB to allow small zip bundles)
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error(t('agents.file-too-large'));
-        return;
-      }
-
       try {
         setUploadError(null);
-        setSelectedFile(file);
 
         // Detect if file is a zip archive: .zip always, .skill by magic bytes
         let treatAsZip = extension === '.zip';
@@ -436,6 +442,20 @@ export default function SkillUploadDialog({
             treatAsZip = true;
           }
         }
+
+        const maxBytes = treatAsZip ? MAX_SKILL_ZIP_IMPORT_BYTES : 1024 * 1024;
+        if (file.size > maxBytes) {
+          toast.error(
+            t(
+              treatAsZip
+                ? 'agents.zip-import-too-large'
+                : 'agents.file-too-large'
+            )
+          );
+          return;
+        }
+
+        setSelectedFile(file);
 
         if (treatAsZip) {
           setIsZip(true);

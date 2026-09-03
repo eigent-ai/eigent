@@ -170,7 +170,7 @@ describe('Home Tasks runtime controls', () => {
       />
     );
 
-    const row = screen.getByText(task.question).closest('[role="button"]');
+    const row = screen.getByText(task.question).closest('[role="row"]');
     expect(row).not.toBeNull();
     fireEvent.contextMenu(row!);
     await user.click(await screen.findByRole('menuitem', { name: 'Resume' }));

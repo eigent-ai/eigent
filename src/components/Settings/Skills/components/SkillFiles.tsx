@@ -16,13 +16,13 @@ import { skillRead } from '@/api/brain';
 import { FileViewerPanel, type FileInfo } from '@/components/Folder';
 import { Button } from '@/components/ui/button';
 import { DsText } from '@/components/ui/ds-text';
+import { shellDetailBackState } from '@/lib/shellRoutes';
 import { splitFrontmatter } from '@/lib/skillToolkit';
 import { FILE_PREVIEW_LIMITS } from '@/shared/filePreviewContract';
 import { useAuthStore } from '@/store/authStore';
-import { Download } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import type { SkillLibraryEntry } from '../skillLibrary';
 import { spaceSkillSettingsUrl } from './SkillActions';
 
@@ -109,13 +109,6 @@ function GlobalSkillDocument({
     link.click();
     link.remove();
   };
-  const downloadAction = (
-    <Button variant="ghost" size="sm" onClick={downloadDocument}>
-      <Download />
-      {t('agents.library-download-file')}
-    </Button>
-  );
-
   // The established Skills API returns the whole document. Bound rendering
   // without implying that it supports recursive package browsing or ranges.
   if (documentFile.size > FILE_PREVIEW_LIMITS.textBytes) {
@@ -125,7 +118,6 @@ function GlobalSkillDocument({
         role="status"
       >
         <DsText>{t('folder.preview-too-large')}</DsText>
-        {downloadAction}
       </div>
     );
   }
@@ -152,7 +144,6 @@ function GlobalSkillDocument({
       onRevealFile={downloadDocument}
       onDownloadFile={downloadDocument}
       onToggleSourceCode={() => setSource((value) => !value)}
-      headerActionsExtra={downloadAction}
     />
   );
 }
@@ -166,6 +157,7 @@ export default function SkillFiles({
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const email = useAuthStore((state) => state.email);
   const userId = useAuthStore((state) => state.user_id);
   return (
@@ -185,7 +177,14 @@ export default function SkillFiles({
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => navigate(spaceSkillSettingsUrl(entry.spaceId))}
+            onClick={() =>
+              navigate(spaceSkillSettingsUrl(entry.spaceId), {
+                state: shellDetailBackState(
+                  location.state as Record<string, unknown> | null,
+                  `${location.pathname}${location.search}`
+                ),
+              })
+            }
           >
             {t('agents.library-manage-profile')}
           </Button>

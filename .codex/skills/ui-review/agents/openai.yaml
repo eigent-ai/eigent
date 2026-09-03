@@ -1,0 +1,3 @@
+interface:
+  display_name: "UI Review"
+  short_description: "Review interface code and catch what AI got wrong"

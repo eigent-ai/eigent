@@ -12,14 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import ContentHeader, {
-  CONTENT_HEADER_TITLE_CLASS,
-} from '@/components/Layout/ContentHeader';
-import { Badge } from '@/components/ui/badge';
+import ContentBreadcrumb from '@/components/Layout/ContentBreadcrumb';
+import ContentHeader from '@/components/Layout/ContentHeader';
+import DocumentContentRail from '@/components/Layout/DocumentContentRail';
 import { Button } from '@/components/ui/button';
 import { DsText } from '@/components/ui/ds-text';
 import { Switch } from '@/components/ui/switch';
-import { cn } from '@/lib/utils';
+import { Tag } from '@/components/ui/tag';
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSkillsLibrary } from '../SkillsProvider';
@@ -29,7 +28,19 @@ import SkillActions from './SkillActions';
 import SkillFiles from './SkillFiles';
 import SkillSourceTag from './SkillSourceTag';
 
-export default function SkillDetail({ skillId }: { skillId: string }) {
+const SKILL_DETAIL_HEADER_CONTROL_CLASS = 'box-border h-ds-control-sm';
+
+export default function SkillDetail({
+  skillId,
+  onNavigateHome,
+  onNavigateToSkills,
+}: {
+  skillId: string;
+  /** Breadcrumb root — returns to the Home hub. */
+  onNavigateHome?: () => void;
+  /** Breadcrumb parent — returns to the Skills list. */
+  onNavigateToSkills?: () => void;
+}) {
   const { t } = useTranslation();
   const {
     entries,
@@ -51,89 +62,94 @@ export default function SkillDetail({ skillId }: { skillId: string }) {
         className="gap-ds-12 px-ds-16"
         titleAsChild
         title={
-          <h1
-            ref={heading}
-            tabIndex={-1}
-            title={entry?.name}
-            className={cn(CONTENT_HEADER_TITLE_CLASS, 'm-0 outline-none')}
-          >
-            {entry?.name || t('agents.library-title')}
-          </h1>
+          <ContentBreadcrumb
+            headingRef={heading}
+            ariaLabel={t('layout.breadcrumb', { defaultValue: 'Breadcrumb' })}
+            segments={[
+              {
+                label: t('layout.home', { defaultValue: 'Home' }),
+                onClick: onNavigateHome,
+              },
+              {
+                label: t('agents.skills', { defaultValue: 'Skills' }),
+                onClick: onNavigateToSkills,
+              },
+              { label: entry?.name || t('agents.library-title') },
+            ]}
+          />
         }
         actions={
           entry && (
             <>
               {entry.kind !== 'space' && (
-                <label className="flex items-center gap-ds-8 whitespace-nowrap">
-                  <DsText as="span" role="meta">
-                    {t(
-                      entry.skill.enabled
-                        ? 'agents.library-enabled'
-                        : 'agents.library-disabled'
-                    )}
-                  </DsText>
-                  <Switch
-                    checked={entry.skill.enabled}
-                    disabled={loading || pendingIds.has(entry.skill.id)}
-                    aria-label={t('agents.library-enable', {
-                      name: entry.name,
-                    })}
-                    onCheckedChange={(enabled) =>
-                      void updateGlobal(entry.skill, { enabled })
-                    }
-                  />
-                </label>
+                <Tag
+                  asChild
+                  size="sm"
+                  variant="primary"
+                  tone="neutral"
+                  emphasis="subtle"
+                  className={SKILL_DETAIL_HEADER_CONTROL_CLASS}
+                >
+                  <label
+                    data-skill-detail-enabled-control
+                    className="cursor-pointer whitespace-nowrap"
+                  >
+                    <DsText as="span" role="meta">
+                      {t(
+                        entry.skill.enabled
+                          ? 'agents.library-enabled'
+                          : 'agents.library-disabled'
+                      )}
+                    </DsText>
+                    <Switch
+                      size="sm"
+                      checked={entry.skill.enabled}
+                      disabled={loading || pendingIds.has(entry.skill.id)}
+                      aria-label={t('agents.library-enable', {
+                        name: entry.name,
+                      })}
+                      onCheckedChange={(enabled) =>
+                        void updateGlobal(entry.skill, { enabled })
+                      }
+                    />
+                  </label>
+                </Tag>
               )}
               <SkillActions entry={entry} />
             </>
           )
         }
-      />
-      {entry ? (
-        <>
-          <div className="flex min-w-0 flex-wrap items-center gap-ds-8 px-ds-16 py-ds-8">
-            <SkillSourceTag kind={entry.kind} />
+      >
+        {entry && (
+          <div className="flex shrink-0 items-center gap-ds-8">
+            <SkillSourceTag
+              kind={entry.kind}
+              className={SKILL_DETAIL_HEADER_CONTROL_CLASS}
+            />
             {entry.kind === 'space' ? (
-              <>
-                <SkillAccessTag
-                  allAgents={!entry.assignTo.length}
-                  agentCount={new Set(entry.assignTo).size}
-                  title={entry.assignTo.join(', ')}
-                />
-                <Badge variant="secondary">
-                  {t('agents.library-status-profile')}
-                </Badge>
-                <DsText
-                  as="p"
-                  role="meta"
-                  className="m-0 w-full break-words text-ds-ink-muted-default"
-                >
-                  <span className="font-medium">{entry.spaceName}</span>
-                  {' · '}
-                  {t('agents.library-profile-note')}
-                </DsText>
-              </>
+              <SkillAccessTag
+                allAgents={!entry.assignTo.length}
+                agentCount={new Set(entry.assignTo).size}
+                title={entry.assignTo.join(', ')}
+                className={SKILL_DETAIL_HEADER_CONTROL_CLASS}
+              />
             ) : (
-              <>
-                <SkillAccessMenu skill={entry.skill} />
-                {entry.description && (
-                  <DsText
-                    as="p"
-                    role="meta"
-                    className="m-0 w-full break-words text-ds-ink-muted-default"
-                  >
-                    {entry.description}
-                  </DsText>
-                )}
-              </>
+              <SkillAccessMenu
+                skill={entry.skill}
+                className={SKILL_DETAIL_HEADER_CONTROL_CLASS}
+              />
             )}
           </div>
+        )}
+      </ContentHeader>
+      {entry ? (
+        <DocumentContentRail className="flex min-h-0 flex-1 flex-col px-ds-16">
           <SkillFiles
             key={`${entry.id}:${refreshKey}:${previewGeneration}`}
             entry={entry}
             revision={`${refreshKey}:${previewGeneration}`}
           />
-        </>
+        </DocumentContentRail>
       ) : (
         <div
           className="flex flex-1 flex-col items-center justify-center gap-ds-12 p-ds-24"

@@ -320,7 +320,7 @@ export async function fetchGetBlob(
   const query = queryParams.size > 0 ? `?${queryParams.toString()}` : '';
   const response = await fetch(`${baseURL}${url}${query}`, {
     method: 'GET',
-    headers: await buildBrainHeaders(url, { Accept: 'image/*' }, false),
+    headers: await buildBrainHeaders(url, { Accept: '*/*' }, false),
     signal: options.signal,
   });
   persistSessionIdFromResponse(response);

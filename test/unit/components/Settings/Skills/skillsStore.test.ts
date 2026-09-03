@@ -133,13 +133,12 @@ describe('skill management failure handling', () => {
     expect(useSkillsStore.getState().skills).toEqual([skill]);
   });
 
-  it('removes a newly written package when config cannot be saved', async () => {
+  it('does not delete a package when its previous contents could not be read', async () => {
     api.read.mockRejectedValue(
       Object.assign(new Error('missing'), { status: 404 })
     );
     api.write.mockResolvedValue({ success: true });
     api.save.mockResolvedValue({ success: false });
-    api.remove.mockResolvedValue({ success: true });
     await expect(
       useSkillsStore.getState().addSkill({
         ...skill,
@@ -148,7 +147,7 @@ describe('skill management failure handling', () => {
         fileContent: '---\nname: notes\ndescription: Notes\n---\nBody',
       })
     ).rejects.toThrow();
-    expect(api.remove).toHaveBeenCalledWith('notes');
+    expect(api.remove).not.toHaveBeenCalled();
     expect(useSkillsStore.getState().skills).toEqual([skill]);
   });
 });

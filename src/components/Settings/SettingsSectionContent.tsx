@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { cn } from '@/lib/utils';
 import type { SettingsSectionId } from '@/store/settingsStore';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { LoaderCircle } from 'lucide-react';
@@ -53,6 +54,8 @@ export function preloadSettingsSection(section: SettingsSectionId) {
 
 interface SettingsSectionContentProps {
   activeSection: SettingsSectionId;
+  contentClassName?: string;
+  layout?: 'content' | 'collection';
 }
 
 function SectionFallback() {
@@ -101,12 +104,14 @@ interface AnimatedSettingsSectionProps {
   section: SettingsSectionId;
   scrollRef: RefObject<HTMLDivElement>;
   shouldReduceMotion: boolean | null;
+  layout: 'content' | 'collection';
 }
 
 function AnimatedSettingsSection({
   section,
   scrollRef,
   shouldReduceMotion,
+  layout,
 }: AnimatedSettingsSectionProps) {
   useLayoutEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
@@ -115,7 +120,9 @@ function AnimatedSettingsSection({
   return (
     <motion.div
       data-settings-section={section}
-      className="min-h-full"
+      className={cn(
+        layout === 'collection' ? 'flex h-full min-h-0 flex-col' : 'min-h-full'
+      )}
       initial={
         shouldReduceMotion
           ? { opacity: 1 }
@@ -141,20 +148,34 @@ function AnimatedSettingsSection({
 
 export default function SettingsSectionContent({
   activeSection,
+  contentClassName,
+  layout = 'content',
 }: SettingsSectionContentProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const shouldReduceMotion = useReducedMotion();
 
+  const section = (
+    <AnimatePresence mode="wait" initial={false}>
+      <AnimatedSettingsSection
+        key={activeSection}
+        section={activeSection}
+        scrollRef={scrollRef}
+        shouldReduceMotion={shouldReduceMotion}
+        layout={layout}
+      />
+    </AnimatePresence>
+  );
+
+  if (layout === 'collection') {
+    return <div className="min-h-0 flex-1 overflow-hidden">{section}</div>;
+  }
+
   return (
-    <SettingsContentShell scrollRef={scrollRef}>
-      <AnimatePresence mode="wait" initial={false}>
-        <AnimatedSettingsSection
-          key={activeSection}
-          section={activeSection}
-          scrollRef={scrollRef}
-          shouldReduceMotion={shouldReduceMotion}
-        />
-      </AnimatePresence>
+    <SettingsContentShell
+      scrollRef={scrollRef}
+      contentClassName={contentClassName}
+    >
+      {section}
     </SettingsContentShell>
   );
 }

@@ -182,13 +182,9 @@ export const useSkillsStore = create<SkillsState>()(
             }
           } catch (error) {
             console.warn('[Skills] Failed to update skill config:', error);
-            if (wrotePackage && dirName) {
+            if (wrotePackage && dirName && previousContent !== null) {
               try {
-                if (previousContent !== null) {
-                  await brainSkillWrite(dirName, previousContent);
-                } else {
-                  await brainSkillDelete(dirName);
-                }
+                await brainSkillWrite(dirName, previousContent);
               } catch (rollbackError) {
                 console.warn(
                   '[Skills] Failed to roll back skill package:',

@@ -1,0 +1,3 @@
+interface:
+  display_name: "Writing Skills"
+  short_description: "Write skill files that actually change what your agent does"

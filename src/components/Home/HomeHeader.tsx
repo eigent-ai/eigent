@@ -21,17 +21,22 @@ import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import { ArrowUpDown, LayoutGrid, List } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  LayoutGrid,
+  List,
+} from 'lucide-react';
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHomeHub } from './context';
-import { useNewSpaceCreation } from './hooks/useNewSpaceCreation';
-import NewSpaceDialog from './NewSpaceDialog';
 import { defaultSortDirectionForField, type HomeSortBy } from './utils';
 
 /**
@@ -39,9 +44,6 @@ import { defaultSortDirectionForField, type HomeSortBy } from './utils';
  */
 export default function HomeHeader() {
   const { t } = useTranslation();
-  const [newSpaceDialogOpen, setNewSpaceDialogOpen] = useState(false);
-  const { createBlankSpace, createSpaceFromFolder } =
-    useNewSpaceCreation('home_hub_toolbar');
   const {
     sectionCounts,
     viewMode,
@@ -52,6 +54,7 @@ export default function HomeHeader() {
     setSortBy,
     sortDirection,
     setSortDirection,
+    openNewSpaceDialog,
   } = useHomeHub();
 
   const sortLabel = useMemo(() => {
@@ -76,105 +79,108 @@ export default function HomeHeader() {
   };
 
   return (
-    <>
-      <CollectionToolbar
-        data-home-spaces-toolbar
-        aria-label={t('layout.spaces-toolbar', {
-          defaultValue: 'Spaces toolbar',
-        })}
-        title={t('layout.spaces')}
-        count={
-          <Badge variant="secondary" size="xs">
-            {sectionCounts.spaces}
-          </Badge>
-        }
+    <CollectionToolbar
+      data-home-spaces-toolbar
+      aria-label={t('layout.spaces-toolbar', {
+        defaultValue: 'Spaces toolbar',
+      })}
+      headingLevel={1}
+      width="wide"
+      title={t('layout.spaces')}
+      count={
+        <Badge variant="secondary" size="xs">
+          {sectionCounts.spaces}
+        </Badge>
+      }
+    >
+      <div className={COLLECTION_TOOLBAR_SEARCH_CLASS}>
+        <SearchInput
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          placeholder={t('layout.search-spaces')}
+        />
+      </div>
+
+      <DropdownMenu>
+        <TooltipSimple content={sortLabel} variant="instant" side="bottom">
+          <span className="inline-flex">
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="secondary"
+                buttonContent="icon-only"
+                size="sm"
+                className="rounded-full"
+                aria-label={sortLabel}
+              >
+                <ArrowUpDown className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+          </span>
+        </TooltipSimple>
+        <DropdownMenuContent align="end">
+          <DropdownMenuRadioGroup value={sortBy}>
+            {(['created', 'updated', 'name'] as const).map((field) => (
+              <DropdownMenuRadioItem
+                key={field}
+                value={field}
+                className="gap-3"
+                onSelect={() => handleSortChange(field)}
+              >
+                <span className="flex-1">{t(`layout.home-sort-${field}`)}</span>
+                {sortBy === field ? (
+                  sortDirection === 'desc' ? (
+                    <ArrowDown aria-hidden />
+                  ) : (
+                    <ArrowUp aria-hidden />
+                  )
+                ) : null}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Tabs
+        value={viewMode === 'board' ? 'grid' : viewMode}
+        onValueChange={(value) => setViewMode(value as 'grid' | 'list')}
       >
-        <div className={COLLECTION_TOOLBAR_SEARCH_CLASS}>
-          <SearchInput
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder={t('layout.search-spaces')}
-          />
-        </div>
+        <TabsList appearance="default">
+          <TabsTrigger value="grid" aria-label={t('dashboard.grid')}>
+            <TooltipSimple
+              content={t('dashboard.grid')}
+              variant="instant"
+              side="bottom"
+            >
+              <div className="inline-flex h-5 w-5 items-center justify-center">
+                <LayoutGrid size={16} />
+              </div>
+            </TooltipSimple>
+          </TabsTrigger>
+          <TabsTrigger value="list" aria-label={t('dashboard.list')}>
+            <TooltipSimple
+              content={t('dashboard.list')}
+              variant="instant"
+              side="bottom"
+            >
+              <div className="inline-flex h-5 w-5 items-center justify-center">
+                <List size={16} />
+              </div>
+            </TooltipSimple>
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
 
-        <DropdownMenu>
-          <TooltipSimple content={sortLabel} variant="instant" side="bottom">
-            <span className="inline-flex">
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  buttonContent="icon-only"
-                  size="sm"
-                  className="rounded-full"
-                  aria-label={sortLabel}
-                >
-                  <ArrowUpDown className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-            </span>
-          </TooltipSimple>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => handleSortChange('created')}>
-              {t('layout.home-sort-created')}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleSortChange('updated')}>
-              {t('layout.home-sort-updated')}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleSortChange('name')}>
-              {t('layout.home-sort-name')}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <Tabs
-          value={viewMode === 'board' ? 'grid' : viewMode}
-          onValueChange={(value) => setViewMode(value as 'grid' | 'list')}
-        >
-          <TabsList appearance="default">
-            <TabsTrigger value="grid" aria-label={t('dashboard.grid')}>
-              <TooltipSimple
-                content={t('dashboard.grid')}
-                variant="instant"
-                side="bottom"
-              >
-                <div className="inline-flex h-5 w-5 items-center justify-center">
-                  <LayoutGrid size={16} />
-                </div>
-              </TooltipSimple>
-            </TabsTrigger>
-            <TabsTrigger value="list" aria-label={t('dashboard.list')}>
-              <TooltipSimple
-                content={t('dashboard.list')}
-                variant="instant"
-                side="bottom"
-              >
-                <div className="inline-flex h-5 w-5 items-center justify-center">
-                  <List size={16} />
-                </div>
-              </TooltipSimple>
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-
-        <Button
-          type="button"
-          variant="primary"
-          size="sm"
-          buttonContent="text"
-          className="rounded-full"
-          onClick={() => setNewSpaceDialogOpen(true)}
-        >
-          {t('layout.spaces-new-space')}
-        </Button>
-      </CollectionToolbar>
-
-      <NewSpaceDialog
-        open={newSpaceDialogOpen}
-        onOpenChange={setNewSpaceDialogOpen}
-        onStartFromScratch={createBlankSpace}
-        onUseLocalFolder={createSpaceFromFolder}
-      />
-    </>
+      <Button
+        type="button"
+        variant="primary"
+        size="sm"
+        buttonContent="text"
+        className="rounded-full"
+        onClick={openNewSpaceDialog}
+      >
+        {t('layout.spaces-new-space')}
+      </Button>
+    </CollectionToolbar>
   );
 }

@@ -19,8 +19,10 @@ import type { ReactNode } from 'react';
  * Canonical layout header row: 40px, 8px inline inset, overflow visible so
  * the 2px focus ring is not clipped. Composes Button `sm` (28px).
  */
-export const CONTENT_HEADER_CLASS =
-  'flex h-ds-layout-row-header min-h-ds-layout-row-header w-full shrink-0 items-center gap-ds-6 overflow-visible px-ds-8';
+const CONTENT_HEADER_BASE_CLASS =
+  'flex w-full shrink-0 items-center gap-ds-6 overflow-visible';
+
+export const CONTENT_HEADER_CLASS = `${CONTENT_HEADER_BASE_CLASS} h-ds-layout-row-header min-h-ds-layout-row-header px-ds-8`;
 
 /** Bottom hairline for headers that sit above a scrolling list. */
 export const CONTENT_HEADER_BORDER_CLASS =
@@ -53,6 +55,10 @@ export interface ContentHeaderProps {
   children?: ReactNode;
   /** Bottom divider (default true). */
   border?: boolean;
+  /** Allow a named composition such as a collection toolbar to wrap safely. */
+  height?: 'routine' | 'adaptive';
+  /** Remove the outer inset when a child pattern owns its aligned content rail. */
+  inset?: 'default' | 'none';
   className?: string;
 }
 
@@ -63,12 +69,18 @@ export default function ContentHeader({
   actions,
   children,
   border = true,
+  height = 'routine',
+  inset = 'default',
   className,
 }: ContentHeaderProps) {
   return (
     <header
       className={cn(
-        CONTENT_HEADER_CLASS,
+        CONTENT_HEADER_BASE_CLASS,
+        height === 'routine'
+          ? 'h-ds-layout-row-header min-h-ds-layout-row-header'
+          : 'min-h-ds-layout-row-header',
+        inset === 'default' && 'px-ds-8',
         border && CONTENT_HEADER_BORDER_CLASS,
         className
       )}

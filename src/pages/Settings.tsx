@@ -29,9 +29,15 @@ import {
   SettingsSectionContent,
   SettingsSidebar,
 } from '@/components/Settings';
+import ConnectorDetailSidebar from '@/components/Settings/Connectors/components/ConnectorDetailSidebar';
+import { ConnectorsNavigationProvider } from '@/components/Settings/Connectors/ConnectorsNavigationContext';
 import SkillDetail from '@/components/Settings/Skills/components/SkillDetail';
 import SkillDetailSidebar from '@/components/Settings/Skills/components/SkillDetailSidebar';
 import { SkillsProvider } from '@/components/Settings/Skills/SkillsProvider';
+import {
+  shellDetailBackTarget,
+  withoutShellDetailBackState,
+} from '@/lib/shellRoutes';
 import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
 import { LegacyRouteWorkflowDialog } from '@/routers/LegacyRouteCompatibility';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -73,8 +79,11 @@ type SpaceNavigationMotionContext = {
 const DRAWER_EASE = [0.32, 0.72, 0, 1] as const;
 const UI_EASE_OUT = [0.23, 1, 0.32, 1] as const;
 const SIDEBAR_TRANSITION_DURATION = 0.22;
+const SIDEBAR_EXIT_TRANSITION_DURATION = 0.14;
 const CONTENT_TRANSITION_DURATION = 0.14;
+const CONTENT_EXIT_TRANSITION_DURATION = 0.1;
 const REDUCED_TRANSITION_DURATION = 0.12;
+const REDUCED_EXIT_TRANSITION_DURATION = 0.1;
 const RESTING_TRANSFORM = 'translate3d(0, 0, 0)';
 
 const sidebarTransitionVariants = {
@@ -118,9 +127,9 @@ const sidebarTransitionVariants = {
         mode === 'instant'
           ? 0
           : mode === 'fade'
-            ? REDUCED_TRANSITION_DURATION
-            : SIDEBAR_TRANSITION_DURATION,
-      ease: DRAWER_EASE,
+            ? REDUCED_EXIT_TRANSITION_DURATION
+            : SIDEBAR_EXIT_TRANSITION_DURATION,
+      ease: UI_EASE_OUT,
     },
   }),
 };
@@ -157,8 +166,8 @@ const contentTransitionVariants = {
         mode === 'instant'
           ? 0
           : mode === 'fade'
-            ? REDUCED_TRANSITION_DURATION
-            : CONTENT_TRANSITION_DURATION,
+            ? REDUCED_EXIT_TRANSITION_DURATION
+            : CONTENT_EXIT_TRANSITION_DURATION,
       ease: UI_EASE_OUT,
     },
   }),
@@ -187,7 +196,7 @@ function AnimatedSidebarPane({
 }: {
   children: ReactNode;
   motionContext: SpaceNavigationMotionContext;
-  pane: 'home' | 'detail' | 'skill-detail';
+  pane: 'home' | 'detail' | 'skill-detail' | 'connector-detail';
 }) {
   const paneRef = useRef<HTMLDivElement>(null);
   const isPresent = useExitingPaneGuard(paneRef);
@@ -221,7 +230,7 @@ function AnimatedContentPane({
 }: {
   children: ReactNode;
   motionContext: SpaceNavigationMotionContext;
-  pane: 'home' | 'detail' | 'skill-detail';
+  pane: 'home' | 'detail' | 'skill-detail' | 'connector-detail';
 }) {
   const paneRef = useRef<HTMLElement>(null);
   const isPresent = useExitingPaneGuard(paneRef);
@@ -295,7 +304,22 @@ function HomeSettingsPageContent() {
     !isSpacesView && activeSection === 'skills'
       ? searchParams.get('skillId')
       : null;
-  const isDetailView = Boolean(visibleSpaceId || visibleSkillId);
+  const visibleConnectorId =
+    !isSpacesView && activeSection === 'connectors'
+      ? searchParams.get('connectorId')
+      : null;
+  const connectorView =
+    !isSpacesView && activeSection === 'connectors'
+      ? searchParams.get('connectorView')
+      : null;
+  const visibleConnectorTarget =
+    connectorView === 'add' ? searchParams.get('connectorTarget') : null;
+  const isConnectorSubpage = Boolean(
+    visibleConnectorId || connectorView === 'add'
+  );
+  const isDetailView = Boolean(
+    visibleSpaceId || visibleSkillId || isConnectorSubpage
+  );
   const navigationDirection: SpaceNavigationDirection = isDetailView ? 1 : -1;
   const navigationMotion: SpaceNavigationMotion =
     navigationInput === 'keyboard'
@@ -348,6 +372,49 @@ function HomeSettingsPageContent() {
     });
   }, [navigateHome]);
 
+  const navigateFromDetail = useCallback(
+    (fallbackSearch: string) => {
+      void runAfterWorkspaceConfigurationSave(() => {
+        const routeState = location.state as Record<string, unknown> | null;
+        const target = shellDetailBackTarget(routeState);
+        const nextState = withoutShellDetailBackState(routeState);
+        const currentRoute = `${location.pathname}${location.search}`;
+        if (target && target !== currentRoute) {
+          navigate(-1);
+          return;
+        }
+        navigate(
+          { pathname: '/home', search: fallbackSearch },
+          { replace: true, state: nextState }
+        );
+      });
+    },
+    [location.pathname, location.search, location.state, navigate]
+  );
+
+  const handleSpaceDetailBack = useCallback(() => {
+    navigateFromDetail('?section=spaces');
+  }, [navigateFromDetail]);
+
+  const handleSkillDetailBack = useCallback(() => {
+    const next = new URLSearchParams(searchParams);
+    next.set('section', 'settings');
+    next.set('tab', 'skills');
+    next.delete('skillId');
+    navigateFromDetail(`?${next.toString()}`);
+  }, [navigateFromDetail, searchParams]);
+
+  const handleConnectorDetailBack = useCallback(() => {
+    const next = new URLSearchParams(searchParams);
+    next.set('section', 'settings');
+    next.set('tab', 'connectors');
+    next.delete('connectorId');
+    next.delete('connectorView');
+    next.delete('connectorAdd');
+    next.delete('connectorTarget');
+    navigateFromDetail(`?${next.toString()}`);
+  }, [navigateFromDetail, searchParams]);
+
   useEffect(() => {
     if (spaceId && !visibleSpaceId && routeSpace) {
       navigateHome('?section=spaces');
@@ -395,11 +462,34 @@ function HomeSettingsPageContent() {
     else next.delete('skillId');
     navigateHome(`?${next.toString()}`);
   };
+  const handleSelectConnector = (connectorId: string | null) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('section', 'settings');
+    next.set('tab', 'connectors');
+    next.delete('connectorView');
+    next.delete('connectorAdd');
+    next.delete('connectorTarget');
+    if (connectorId) next.set('connectorId', connectorId);
+    else next.delete('connectorId');
+    navigateHome(`?${next.toString()}`);
+  };
+  const handleAddConnector = () => {
+    const next = new URLSearchParams(searchParams);
+    next.set('section', 'settings');
+    next.set('tab', 'connectors');
+    next.set('connectorView', 'add');
+    next.set('connectorAdd', 'browse');
+    next.delete('connectorId');
+    next.delete('connectorTarget');
+    navigateHome(`?${next.toString()}`);
+  };
   const sidebarPane = visibleSpaceId
     ? 'detail'
     : visibleSkillId
       ? 'skill-detail'
-      : 'home';
+      : isConnectorSubpage
+        ? 'connector-detail'
+        : 'home';
   const sidebar = (
     <div className="relative h-full min-h-0 w-full overflow-hidden">
       <AnimatePresence
@@ -412,16 +502,23 @@ function HomeSettingsPageContent() {
           pane={sidebarPane}
           motionContext={navigationMotionContext}
         >
-          {visibleSkillId ? (
+          {isConnectorSubpage ? (
+            <ConnectorDetailSidebar
+              selectedConnectorId={visibleConnectorId || visibleConnectorTarget}
+              onBack={handleConnectorDetailBack}
+              onAddConnector={handleAddConnector}
+              onSelectConnector={handleSelectConnector}
+            />
+          ) : visibleSkillId ? (
             <SkillDetailSidebar
               selectedSkillId={visibleSkillId}
-              onBack={() => handleSelectSkill(null)}
+              onBack={handleSkillDetailBack}
               onSelectSkill={handleSelectSkill}
             />
           ) : visibleSpaceId ? (
             <SpaceDetailSidebar
               selectedSpaceId={visibleSpaceId}
-              onBack={handleHomeSectionChange}
+              onBack={handleSpaceDetailBack}
               onSelectSpace={handleSelectSpace}
             />
           ) : (
@@ -439,7 +536,11 @@ function HomeSettingsPageContent() {
 
   const contentPane = sidebarPane;
   const content = visibleSkillId ? (
-    <SkillDetail skillId={visibleSkillId} />
+    <SkillDetail
+      skillId={visibleSkillId}
+      onNavigateHome={handleHomeSectionChange}
+      onNavigateToSkills={() => handleSelectSkill(null)}
+    />
   ) : visibleSpaceId ? (
     <SpaceDetail
       spaceId={visibleSpaceId}
@@ -448,45 +549,54 @@ function HomeSettingsPageContent() {
       onBack={handleHomeSectionChange}
     />
   ) : isSpacesView ? (
-    <div className="scrollbar-always-visible flex min-h-0 w-full min-w-0 flex-1 [scrollbar-gutter:stable] flex-col overflow-y-scroll">
-      <div className="min-h-full px-8 py-6">
-        <div className="mx-auto w-full max-w-[1100px]">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
+      <HomeHeader />
+      <div className="scrollbar-always-visible min-h-0 flex-1 [scrollbar-gutter:stable] overflow-y-scroll">
+        <div className="mx-auto min-h-full w-full max-w-[1100px] px-ds-32 py-ds-24">
           <HomeGreeting />
-          <div className="mt-8">
-            <HomeHeader />
-            <HomeSections />
-          </div>
+          <HomeSections />
         </div>
       </div>
     </div>
   ) : (
     <SettingsHeaderProvider activeSection={activeSection}>
-      {activeSection !== 'skills' && (
+      {activeSection !== 'skills' && activeSection !== 'connectors' && (
         <SettingsHeader activeSection={activeSection} />
       )}
-      <SettingsSectionContent activeSection={activeSection} />
+      <SettingsSectionContent
+        activeSection={activeSection}
+        contentClassName={isConnectorSubpage ? 'max-w-none px-0' : undefined}
+        layout={
+          activeSection === 'skills' ||
+          (activeSection === 'connectors' && !isConnectorSubpage)
+            ? 'collection'
+            : 'content'
+        }
+      />
     </SettingsHeaderProvider>
   );
 
   return (
     <SkillsProvider active={!isSpacesView && activeSection === 'skills'}>
-      <AppShellLayout sidebar={sidebar} sidebarHidden={sidebarHidden}>
-        <div className="relative h-full min-h-0 min-w-0 overflow-hidden">
-          <AnimatePresence
-            initial={false}
-            mode="sync"
-            custom={navigationMotionContext}
-          >
-            <AnimatedContentPane
-              key={contentPane}
-              pane={contentPane}
-              motionContext={navigationMotionContext}
+      <ConnectorsNavigationProvider>
+        <AppShellLayout sidebar={sidebar} sidebarHidden={sidebarHidden}>
+          <div className="relative h-full min-h-0 min-w-0 overflow-hidden">
+            <AnimatePresence
+              initial={false}
+              mode="sync"
+              custom={navigationMotionContext}
             >
-              {content}
-            </AnimatedContentPane>
-          </AnimatePresence>
-        </div>
-      </AppShellLayout>
+              <AnimatedContentPane
+                key={contentPane}
+                pane={contentPane}
+                motionContext={navigationMotionContext}
+              >
+                {content}
+              </AnimatedContentPane>
+            </AnimatePresence>
+          </div>
+        </AppShellLayout>
+      </ConnectorsNavigationProvider>
     </SkillsProvider>
   );
 }

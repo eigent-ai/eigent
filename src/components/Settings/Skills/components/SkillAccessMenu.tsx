@@ -31,7 +31,13 @@ import { useTranslation } from 'react-i18next';
 import { useSkillsLibrary } from '../SkillsProvider';
 import SkillAccessTag from './SkillAccessTag';
 
-export default function SkillAccessMenu({ skill }: { skill: Skill }) {
+export default function SkillAccessMenu({
+  skill,
+  className,
+}: {
+  skill: Skill;
+  className?: string;
+}) {
   const { t } = useTranslation();
   const workerList = useWorkerList();
   const options = buildSkillScopeAgentOptions(workerList);
@@ -52,6 +58,7 @@ export default function SkillAccessMenu({ skill }: { skill: Skill }) {
           asChild
           allAgents={skill.scope.isGlobal}
           agentCount={selected.size}
+          className={className}
         >
           <button
             type="button"

@@ -15,27 +15,34 @@
 import ContentHeader from '@/components/Layout/ContentHeader';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { ArrowLeft } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NavTab } from './NavTab';
 
-/** The standard sidebar navigation button inside a 40px row with its divider. */
+/** The standard sidebar navigation button inside a borderless 40px row. */
 export function SidebarBackHeader({
   onBack,
-  label,
+  action,
 }: {
   onBack: () => void;
-  label?: string;
+  /** Optional primary collection action kept beside the back control. */
+  action?: ReactNode;
 }) {
   const { t } = useTranslation();
-  const backLabel = label ?? t('layout.back-to-home');
+  const backLabel = t('layout.back');
   return (
-    <ContentHeader className="!px-0">
+    <ContentHeader
+      className={action ? '!ps-0 !pe-ds-8' : '!px-0'}
+      actions={action}
+      border={false}
+    >
       <NavTab
         active={false}
         onClick={onBack}
         leading={<DsIcon icon={ArrowLeft} />}
         label={backLabel}
         ariaLabel={backLabel}
+        className={action ? 'w-auto flex-1 shrink' : undefined}
       />
     </ContentHeader>
   );

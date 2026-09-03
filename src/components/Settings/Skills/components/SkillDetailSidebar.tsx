@@ -20,8 +20,11 @@ import {
   SidebarSection,
   SidebarShell,
 } from '@/components/Layout/AppSidebar';
+import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
+import { DsText } from '@/components/ui/ds-text';
 import { Input } from '@/components/ui/input';
+import { TooltipSimple } from '@/components/ui/tooltip';
 import { Plus, Search, WandSparkles } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -47,34 +50,47 @@ export default function SkillDetailSidebar({
   );
   return (
     <SidebarShell ariaLabel={t('agents.library-title')} className="pt-0">
-      <SidebarBackHeader onBack={onBack} label={t('agents.library-back')} />
+      <SidebarBackHeader
+        onBack={onBack}
+        action={
+          <TooltipSimple
+            content={t('agents.add-skill')}
+            variant="instant"
+            side="bottom"
+          >
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              buttonRadius="full"
+              buttonContent="icon-only"
+              onClick={openUpload}
+              disabled={loading || pendingIds.size > 0}
+              aria-label={t('agents.add-skill')}
+            >
+              <Plus aria-hidden />
+            </Button>
+          </TooltipSimple>
+        }
+      />
+      <SidebarSection className="py-ds-8">
+        <Input
+          type="search"
+          size="sm"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          leadingIcon={<DsIcon icon={Search} />}
+          aria-label={t('agents.library-search')}
+          placeholder={t('agents.library-search')}
+        />
+      </SidebarSection>
       <SidebarSection grow="fill">
         <SidebarScrollArea
           role="navigation"
           ariaLabel={t('agents.library-select-skill')}
-          className="gap-ds-12 pt-ds-4"
+          className="pt-ds-4"
         >
-          <div className="px-ds-8">
-            <Input
-              type="search"
-              size="sm"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              leadingIcon={<Search />}
-              aria-label={t('agents.library-search')}
-              placeholder={t('agents.library-search')}
-            />
-          </div>
           <SidebarNavGroup>
-            <NavTab
-              active={false}
-              onClick={openUpload}
-              disabled={loading || pendingIds.size > 0}
-              leading={<DsIcon icon={Plus} />}
-              label={t('agents.add-skill')}
-            />
-          </SidebarNavGroup>
-          <SidebarNavGroup label={t('agents.skills')}>
             {visible.map((entry) => (
               <NavTab
                 key={entry.id}
@@ -99,6 +115,15 @@ export default function SkillDetailSidebar({
                 ariaCurrentPage={entry.id === selectedSkillId}
               />
             ))}
+            {visible.length === 0 && (
+              <DsText
+                as="p"
+                role="meta"
+                className="px-ds-12 py-ds-16 text-center text-ds-ink-muted-default"
+              >
+                {t('agents.library-no-results')}
+              </DsText>
+            )}
           </SidebarNavGroup>
         </SidebarScrollArea>
       </SidebarSection>

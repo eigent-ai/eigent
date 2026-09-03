@@ -1,0 +1,3 @@
+interface:
+  display_name: "Engineering Vocabulary"
+  short_description: "Name a frontend engineering concept from a loose description"

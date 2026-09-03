@@ -29,6 +29,7 @@ export {
   type NavTabProps,
 } from './NavTab';
 export { SidebarBackHeader } from './SidebarBackHeader';
+export { SidebarCountBadge } from './SidebarCountBadge';
 export {
   SidebarScrollArea,
   type SidebarScrollAreaProps,

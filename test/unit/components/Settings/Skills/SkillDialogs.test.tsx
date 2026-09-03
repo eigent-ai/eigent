@@ -147,6 +147,44 @@ describe('Skill dialogs inside the redesigned library', () => {
     );
   });
 
+  it('refreshes skills already imported when every conflict is skipped', async () => {
+    mocks.importZip.mockResolvedValueOnce({
+      success: false,
+      conflicts: [{ folderName: 'research', skillName: 'research' }],
+    });
+    render(
+      <MemoryRouter>
+        <SkillsProvider active>
+          <UploadButton />
+        </SkillsProvider>
+      </MemoryRouter>
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Upload skill' })).toBeEnabled()
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Upload skill' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Add skill' });
+    const file = new File(['zip'], 'research.zip', { type: 'application/zip' });
+    Object.defineProperty(file, 'arrayBuffer', {
+      value: () => Promise.resolve(new ArrayBuffer(3)),
+    });
+    fireEvent.change(dialog.querySelector('input[type="file"]')!, {
+      target: { files: [file] },
+    });
+
+    const confirmation = await screen.findByRole('alertdialog', {
+      name: 'Replace "research" skill?',
+    });
+    fireEvent.click(
+      within(confirmation).getByRole('button', { name: 'Cancel' })
+    );
+
+    await waitFor(() =>
+      expect(mocks.skillState.syncFromDisk).toHaveBeenCalledTimes(2)
+    );
+    expect(mocks.importZip).toHaveBeenCalledTimes(1);
+  });
+
   it('reports an installed ZIP as added even when the follow-up refresh fails', async () => {
     // The package is already on disk; a failed refresh is a stale list, and
     // calling it a failed import would send the user back to re-import it.

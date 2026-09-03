@@ -1,0 +1,3 @@
+interface:
+  display_name: "Ask Emil"
+  short_description: "Ask which skill fits the problem in front of you, and in what order"

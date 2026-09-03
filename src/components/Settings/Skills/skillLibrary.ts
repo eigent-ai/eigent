@@ -70,6 +70,11 @@ export function getSkillLibraryStats(entries: SkillLibraryEntry[]) {
   };
 }
 
+/** Presentation-only cleanup for serialized frontmatter escape sequences. */
+export function normalizeSkillDescription(description: string): string {
+  return description.replace(/\\(["'])/g, '$1').trim();
+}
+
 export function buildSkillLibrary(
   skills: Skill[],
   profiles: SpaceSkillProfile[]
@@ -82,24 +87,34 @@ export function buildSkillLibrary(
       description: skill.description,
       skill,
     })),
-    ...profiles.flatMap(({ space, draft }) =>
-      draft.document.spec.skills.map((assignment): SkillLibraryEntry => ({
-        id: `space:${space.id}:${assignment.ref}`,
-        kind: 'space',
-        name:
-          assignment.ref
-            .replace(/\/SKILL\.md$/i, '')
-            .split('/')
-            .pop() || assignment.ref,
-        // A profile assignment records only a package path, never a
-        // description; `ref` carries the path so the two stay distinct.
-        description: '',
-        spaceId: space.id,
-        spaceName: space.name,
-        ref: assignment.ref,
-        assignTo: assignment.assignTo,
-      }))
-    ),
+    ...profiles.flatMap(({ space, draft }) => {
+      const refCounts = new Map<string, number>();
+      for (const assignment of draft.document.spec.skills) {
+        refCounts.set(assignment.ref, (refCounts.get(assignment.ref) ?? 0) + 1);
+      }
+      return draft.document.spec.skills.map(
+        (assignment, assignmentIndex): SkillLibraryEntry => ({
+          id: `space:${space.id}:${assignment.ref}${
+            (refCounts.get(assignment.ref) ?? 0) > 1
+              ? `:assignment-${assignmentIndex}`
+              : ''
+          }`,
+          kind: 'space',
+          name:
+            assignment.ref
+              .replace(/\/SKILL\.md$/i, '')
+              .split('/')
+              .pop() || assignment.ref,
+          // A profile assignment records only a package path, never a
+          // description; `ref` carries the path so the two stay distinct.
+          description: '',
+          spaceId: space.id,
+          spaceName: space.name,
+          ref: assignment.ref,
+          assignTo: assignment.assignTo,
+        })
+      );
+    }),
   ].sort(
     (left, right) =>
       left.name.localeCompare(right.name) || left.id.localeCompare(right.id)
@@ -111,7 +126,9 @@ export function buildSkillLibrary(
  * assignment, which has no description — the package path it points at.
  */
 export function getSkillLibrarySubtitle(entry: SkillLibraryEntry) {
-  return entry.kind === 'space' ? entry.ref : entry.description;
+  return entry.kind === 'space'
+    ? entry.ref
+    : normalizeSkillDescription(entry.description);
 }
 
 export function filterSkillLibrary(

@@ -195,12 +195,18 @@ const identityParams = (identity: WorkspaceConfigurationIdentity) => ({
 export const fetchWorkspaceConfiguration = async (
   spaceId: string,
   identity: WorkspaceConfigurationIdentity,
-  name?: string
+  name?: string,
+  options: { signal?: AbortSignal } = {}
 ): Promise<WorkspaceConfigurationDraft> =>
-  fetchGet(`/spaces/${encodeURIComponent(spaceId)}/workspace-configuration`, {
-    ...identityParams(identity),
-    ...(name ? { name } : {}),
-  });
+  fetchGet(
+    `/spaces/${encodeURIComponent(spaceId)}/workspace-configuration`,
+    {
+      ...identityParams(identity),
+      ...(name ? { name } : {}),
+    },
+    undefined,
+    options
+  );
 
 export const saveWorkspaceConfiguration = async (
   spaceId: string,

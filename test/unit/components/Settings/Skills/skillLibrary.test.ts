@@ -124,4 +124,19 @@ describe('skill library source identity', () => {
       )
     ).toEqual(['writing']);
   });
+  it('gives repeated skill refs within one Space distinct detail identities', () => {
+    const duplicateProfile = profile('alpha');
+    duplicateProfile.draft.document.spec.skills.push({
+      ref: 'bundle://skills/research/SKILL.md',
+      assignTo: ['reviewer'],
+    });
+
+    const duplicateEntries = buildSkillLibrary([], [duplicateProfile]);
+
+    expect(duplicateEntries.map((entry) => entry.id)).toEqual([
+      'space:alpha:bundle://skills/research/SKILL.md:assignment-0',
+      'space:alpha:bundle://skills/research/SKILL.md:assignment-1',
+    ]);
+    expect(new Set(duplicateEntries.map((entry) => entry.id)).size).toBe(2);
+  });
 });

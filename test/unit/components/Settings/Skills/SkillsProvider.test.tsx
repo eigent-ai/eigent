@@ -26,17 +26,18 @@ import {
 } from '@testing-library/react';
 import { useEffect } from 'react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   language: 'en',
   skillState: { skills: [], syncFromDisk: vi.fn(), updateSkill: vi.fn() },
   spaceState: { spaces: {}, projectsBySpaceId: {} },
+  fetchWorkspaceConfiguration: vi.fn(),
 }));
 
 vi.mock('@/api/http', () => ({ getBaseURL: vi.fn().mockResolvedValue('') }));
 vi.mock('@/service/workspaceConfigurationApi', () => ({
-  fetchWorkspaceConfiguration: vi.fn(),
+  fetchWorkspaceConfiguration: mocks.fetchWorkspaceConfiguration,
 }));
 vi.mock('@/store/skillsStore', async (importOriginal) => ({
   SkillSignInRequiredError: (
@@ -106,12 +107,14 @@ function LibraryProbe() {
 
 function Library({
   initialEntry = '/home?section=settings&tab=skills',
+  active = true,
 }: {
   initialEntry?: string;
+  active?: boolean;
 }) {
   return (
     <MemoryRouter initialEntries={[initialEntry]}>
-      <SkillsProvider active>
+      <SkillsProvider active={active}>
         <LibraryProbe />
       </SkillsProvider>
     </MemoryRouter>
@@ -123,6 +126,57 @@ describe('Skills library state', () => {
     mocks.language = 'en';
     mocks.skillState.syncFromDisk.mockReset().mockResolvedValue(undefined);
     mocks.skillState.updateSkill.mockReset().mockResolvedValue(undefined);
+    mocks.fetchWorkspaceConfiguration.mockReset();
+    mocks.spaceState.spaces = {};
+    mocks.spaceState.projectsBySpaceId = {};
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('loads skill counts even while another Settings section is active', async () => {
+    render(<Library active={false} />);
+
+    await waitFor(() =>
+      expect(mocks.skillState.syncFromDisk).toHaveBeenCalledTimes(1)
+    );
+    await waitFor(() => expect(library.loading).toBe(false));
+  });
+
+  it('bounds a stalled Space profile request and releases the library', async () => {
+    vi.useFakeTimers();
+    mocks.spaceState.spaces = {
+      alpha: {
+        id: 'alpha',
+        name: 'Alpha',
+        status: 'active',
+        sourceType: 'cloud',
+      },
+    };
+    mocks.fetchWorkspaceConfiguration.mockImplementation(
+      (
+        _spaceId: string,
+        _identity: unknown,
+        _name: string,
+        options: { signal?: AbortSignal }
+      ) =>
+        new Promise((_resolve, reject) => {
+          options.signal?.addEventListener('abort', () => {
+            reject(new DOMException('Aborted', 'AbortError'));
+          });
+        })
+    );
+
+    render(<Library />);
+    expect(library.loading).toBe(true);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+
+    expect(library.loading).toBe(false);
+    expect(library.errors).toContain('en:agents.library-space-load-failed');
   });
 
   it('prevents settings writes while a refresh is reading configuration', async () => {

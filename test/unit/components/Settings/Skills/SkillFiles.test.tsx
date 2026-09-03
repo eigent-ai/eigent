@@ -243,32 +243,24 @@ describe('Skills document preview with the existing API', () => {
     }
   );
 
-  it('downloads the actual document and releases its URL on unmount', async () => {
+  it('releases the document URL without exposing an individual file download', async () => {
     vi.mocked(fetchGet).mockResolvedValueOnce({
       success: true,
       content: '# Read me',
     });
-    const user = userEvent.setup();
-    let download: HTMLAnchorElement | undefined;
-    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(
-      function () {
-        download = this;
-      }
-    );
     const view = renderDocument(globalEntry());
-    await user.click(
-      await screen.findByRole('button', { name: 'Download file' })
-    );
+    await screen.findByRole('article');
 
-    expect(download?.download).toBe('SKILL.md');
-    expect(download?.getAttribute('href')).toBe('blob:skill-document');
+    expect(
+      screen.queryByRole('button', { name: 'Download file' })
+    ).not.toBeInTheDocument();
     expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
     expect(revokeObjectURL).not.toHaveBeenCalled();
     view.unmount();
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:skill-document');
   });
 
-  it('keeps oversized instructions downloadable without mounting their preview', async () => {
+  it('keeps oversized instructions out of the preview without a file action', async () => {
     vi.mocked(fetchGet).mockResolvedValueOnce({
       success: true,
       content: 'a'.repeat(FILE_PREVIEW_LIMITS.textBytes + 1),
@@ -279,7 +271,9 @@ describe('Skills document preview with the existing API', () => {
         'This file exceeds the safe in-app preview limit.'
       )
     ).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Download file' })).toBeEnabled();
+    expect(
+      screen.queryByRole('button', { name: 'Download file' })
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole('article')).not.toBeInTheDocument();
   });
 
