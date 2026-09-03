@@ -30,6 +30,8 @@ export interface TaskOutcomeEventProperties extends Record<string, unknown> {
   task_category?: string;
 }
 
+export type MessageFeedbackRating = 'up' | 'down';
+
 export interface AppEventMap {
   app_launch_failed: { reason: string };
   onboarding_step_completed: {
@@ -73,6 +75,15 @@ export interface AppEventMap {
   task_stopped: TaskOutcomeEventProperties & { stop_reason: string };
   task_completed: TaskOutcomeEventProperties;
   file_generated: { count: number };
+  message_feedback: {
+    rating: MessageFeedbackRating;
+    message_id: string;
+    // Message ids are only assumed to be stable inside one Run.
+    run_id?: string;
+    // Low-cardinality lifecycle step of the rated message (see AgentStep).
+    // The rated content and the agent name stay on-device.
+    message_step?: string;
+  };
   user_identity_available: UserIdentity;
   user_session_cleared: Record<string, never>;
 }
@@ -242,4 +253,10 @@ export function recordTaskCompleted(
 
 export function recordFileGenerated(count: number): void {
   emitAppEvent('file_generated', { count });
+}
+
+export function recordMessageFeedback(
+  properties: AppEventMap['message_feedback']
+): void {
+  emitAppEvent('message_feedback', properties);
 }
