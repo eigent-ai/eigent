@@ -20,6 +20,7 @@ import {
   useIntegrationManagement,
   type IntegrationItem,
 } from '@/hooks/useIntegrationManagement';
+import { shouldExposeBuiltInConnector } from '@/lib/builtInConnectorPolicy';
 import { integrationLeadingIconUrl } from '@/lib/connectorIcons';
 import {
   RICH_CONNECTOR_STYLE_CLASSES,
@@ -322,13 +323,16 @@ export function ConnectorPickerPanel({
   const builtIn = useMemo(
     () =>
       builtInItems
+        .filter((item) =>
+          shouldExposeBuiltInConnector(item.key, gatewayEnabled)
+        )
         .filter((item) => installed[item.key])
         .map((item) => ({
           id: `builtin-${item.key}`,
           name: item.name,
           token: connectorNameToToken(item.key),
         })),
-    [builtInItems, installed]
+    [builtInItems, gatewayEnabled, installed]
   );
 
   const groups: PickerGroup[] = [
