@@ -57,6 +57,57 @@ _NATIVE_STREAM_USAGE_PLATFORMS = {
 }
 
 
+def _responses_instructions(system_message: str | BaseMessage) -> str:
+    """Return the trusted agent prompt for the Responses instructions field."""
+    if isinstance(system_message, str):
+        return system_message
+
+    content = getattr(system_message, "content", "")
+    return content if isinstance(content, str) else ""
+
+
+def _configure_responses_instructions(model_backend: Any) -> None:
+    """Keep system/developer text only in Responses `instructions`.
+
+    CAMEL converts the agent system message into an input item. Eigent also
+    supplies that trusted text through `instructions` so it is present on every
+    chained response. Remove the duplicate input item to avoid sending and
+    billing the same prompt twice.
+    """
+    if getattr(model_backend, "_eigent_instructions_configured", False):
+        return
+
+    prepare = getattr(
+        model_backend, "_prepare_responses_input_and_chain", None
+    )
+    if not callable(prepare):
+        return
+
+    def prepare_without_instruction_messages(messages, chain_enabled=True):
+        state = prepare(messages, chain_enabled=chain_enabled)
+        input_messages = state.get("input_messages")
+        if not isinstance(input_messages, list):
+            return state
+
+        filtered = [
+            item
+            for item in input_messages
+            if not (
+                isinstance(item, dict)
+                and item.get("role") in {"system", "developer"}
+            )
+        ]
+        if len(filtered) == len(input_messages):
+            return state
+
+        return {**state, "input_messages": filtered}
+
+    model_backend._prepare_responses_input_and_chain = (  # noqa: SLF001
+        prepare_without_instruction_messages
+    )
+    model_backend._eigent_instructions_configured = True  # noqa: SLF001
+
+
 def agent_model(
     agent_name: str,
     system_message: str | BaseMessage,
@@ -290,6 +341,15 @@ def agent_model(
                 effective_config["model_type"],
             )
 
+        if uses_responses_transport:
+            # Responses does not carry a prior response's `instructions`
+            # forward when `previous_response_id` is used. Send the trusted
+            # agent prompt on every call so the proxy Prompt Guard can validate
+            # continuation/tool turns without weakening its fail-closed rule.
+            instructions = _responses_instructions(system_message)
+            if instructions:
+                model_config["instructions"] = instructions
+
         runtime_model_platform = resolve_cloud_model_runtime_platform(
             model_platform=str(effective_config["model_platform"]),
             api_url=effective_api_url,
@@ -365,6 +425,8 @@ def agent_model(
             timeout=600,  # 10 minutes
             **init_params,
         )
+        if uses_responses_transport and model_config.get("instructions"):
+            _configure_responses_instructions(model_backend)
         return instrument_model_backend(
             model_backend,
             agent_id=agent_id,
