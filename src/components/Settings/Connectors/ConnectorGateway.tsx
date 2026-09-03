@@ -148,7 +148,7 @@ type ConnectorListItem =
       id: string;
       source: 'builtin';
       name: string;
-      active: true;
+      active: boolean;
       item: IntegrationItem;
     }
   | {
@@ -566,13 +566,15 @@ export default function ConnectorGateway() {
       active: true,
       provider,
     }));
+    // Web search owns its configuration panel on this surface, so keep the
+    // disconnected row visible instead of removing the user's only setup path.
     const builtIns: ConnectorListItem[] = exposedBuiltInItems
-      .filter((item) => builtInInstalled[item.key])
+      .filter((item) => item.key === 'Search' || builtInInstalled[item.key])
       .map((item) => ({
         id: `builtin:${item.key}`,
         source: 'builtin',
         name: item.name,
-        active: true,
+        active: Boolean(builtInInstalled[item.key]),
         item,
       }));
     const custom: ConnectorListItem[] = customMcps.map((item) => ({
