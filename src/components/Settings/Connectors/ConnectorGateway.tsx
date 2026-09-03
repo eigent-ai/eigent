@@ -44,6 +44,7 @@ import {
   type IntegrationItem,
 } from '@/hooks/useIntegrationManagement';
 import { capitalizeFirstLetter, getProxyBaseURL } from '@/lib';
+import { shouldExposeBuiltInConnector } from '@/lib/builtInConnectorPolicy';
 import { integrationLeadingIconUrl } from '@/lib/connectorIcons';
 import {
   GOOGLE_API_KEY,
@@ -147,7 +148,7 @@ type ConnectorListItem =
       id: string;
       source: 'builtin';
       name: string;
-      active: true;
+      active: boolean;
       item: IntegrationItem;
     }
   | {
@@ -412,14 +413,22 @@ export default function ConnectorGateway() {
     return next;
   }, [configs, rawBuiltInInstalled, searchRequiresApiKey]);
 
+  const exposedBuiltInItems = useMemo(
+    () =>
+      builtInItems.filter((item) =>
+        shouldExposeBuiltInConnector(item.key, connectorGatewayEnabled)
+      ),
+    [builtInItems, connectorGatewayEnabled]
+  );
+
   // When Google Search is enabled by default there is nothing to install, so
   // keep it out of the Add-connector dialog; it still shows in the sidebar.
   const dialogBuiltInItems = useMemo(
     () =>
       searchRequiresApiKey
-        ? builtInItems
-        : builtInItems.filter((item) => item.key !== 'Search'),
-    [builtInItems, searchRequiresApiKey]
+        ? exposedBuiltInItems
+        : exposedBuiltInItems.filter((item) => item.key !== 'Search'),
+    [exposedBuiltInItems, searchRequiresApiKey]
   );
 
   const loadBuiltInCatalog = useCallback(async () => {
@@ -557,13 +566,15 @@ export default function ConnectorGateway() {
       active: true,
       provider,
     }));
-    const builtIns: ConnectorListItem[] = builtInItems
-      .filter((item) => builtInInstalled[item.key])
+    // Web search owns its configuration panel on this surface, so keep the
+    // disconnected row visible instead of removing the user's only setup path.
+    const builtIns: ConnectorListItem[] = exposedBuiltInItems
+      .filter((item) => item.key === 'Search' || builtInInstalled[item.key])
       .map((item) => ({
         id: `builtin:${item.key}`,
         source: 'builtin',
         name: item.name,
-        active: true,
+        active: Boolean(builtInInstalled[item.key]),
         item,
       }));
     const custom: ConnectorListItem[] = customMcps.map((item) => ({
@@ -580,7 +591,7 @@ export default function ConnectorGateway() {
       if (left.active !== right.active) return left.active ? -1 : 1;
       return left.name.localeCompare(right.name);
     });
-  }, [builtInInstalled, builtInItems, customMcps, openConnections]);
+  }, [builtInInstalled, customMcps, exposedBuiltInItems, openConnections]);
 
   useEffect(() => {
     const preferred = preferredSelectionRef.current;
