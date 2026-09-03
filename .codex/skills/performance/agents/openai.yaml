@@ -1,3 +1,0 @@
-interface:
-  display_name: "Performance"
-  short_description: "Fast interfaces through virtualization, preloading, and perceived speed"

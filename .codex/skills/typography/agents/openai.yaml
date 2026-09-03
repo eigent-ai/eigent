@@ -1,3 +1,0 @@
-interface:
-  display_name: "Typography"
-  short_description: "Type that reads well, from font choice and scales to spacing and truncation"

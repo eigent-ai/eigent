@@ -1,3 +1,0 @@
-interface:
-  display_name: "Component Design"
-  short_description: "React component APIs built on composition, compound components, and sensible props"
