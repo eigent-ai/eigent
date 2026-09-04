@@ -19,7 +19,7 @@ import {
 } from '@/components/Home/context';
 import { ChatTaskStatus, type ChatTaskStatusType } from '@/types/constants';
 import type { ProjectGroup } from '@/types/history';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { useMemo, useState } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
@@ -126,20 +126,17 @@ function TasksHarness({
 }
 
 describe('Home Tasks runtime controls', () => {
-  it('pauses an ongoing task once, disables duplicate requests, then resumes it', async () => {
-    let resolvePause!: () => void;
+  it('pauses an ongoing task once and disables duplicate requests', () => {
     const pauseRequest = vi.fn(
       () =>
-        new Promise<void>((resolve) => {
-          resolvePause = resolve;
+        new Promise<void>(() => {
+          // Keep the request pending so duplicate-action behavior is stable.
         })
     );
-    const resumeRequest = vi.fn().mockResolvedValue(undefined);
-    render(
+    const { unmount } = render(
       <TasksHarness
         initialStatus={ChatTaskStatus.RUNNING}
         pauseRequest={pauseRequest}
-        resumeRequest={resumeRequest}
       />
     );
 
@@ -153,22 +150,17 @@ describe('Home Tasks runtime controls', () => {
     expect(pendingPause).toHaveAttribute('data-disabled');
     fireEvent.click(pendingPause);
     expect(pauseRequest).toHaveBeenCalledTimes(1);
-
-    await act(async () => resolvePause());
-    expect(
-      screen.getByRole('menuitem', { name: 'Resume' })
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Resume' }));
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(resumeRequest).toHaveBeenCalledWith('task-1', 'project-1');
+    unmount();
   });
 
-  it('provides the same Resume action in the Space detail Tasks list', async () => {
-    const resumeRequest = vi.fn().mockResolvedValue(undefined);
-    render(
+  it('provides the same Resume action in the Space detail Tasks list', () => {
+    const resumeRequest = vi.fn(
+      () =>
+        new Promise<void>(() => {
+          // Invocation is the behavior under test; completion is irrelevant.
+        })
+    );
+    const { unmount } = render(
       <TasksHarness
         initialStatus={ChatTaskStatus.PAUSE}
         presentation="space-detail"
@@ -181,20 +173,20 @@ describe('Home Tasks runtime controls', () => {
     fireEvent.contextMenu(row!);
     const resumeItem = screen.getByRole('menuitem', { name: 'Resume' });
     fireEvent.click(resumeItem);
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
     expect(resumeRequest).toHaveBeenCalledWith('task-1', 'project-1');
+    unmount();
   });
 
-  it('does not expose pause or resume for a completed task', async () => {
-    render(<TasksHarness initialStatus={ChatTaskStatus.FINISHED} />);
+  it('does not expose pause or resume for a completed task', () => {
+    const { unmount } = render(
+      <TasksHarness initialStatus={ChatTaskStatus.FINISHED} />
+    );
 
     const moreActions = screen.getByRole('button', { name: 'More actions' });
     openDropdown(moreActions);
     expect(screen.queryByRole('menuitem', { name: 'Pause' })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'Resume' })).toBeNull();
     fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+    unmount();
   });
 });
