@@ -59,6 +59,37 @@ class TestAgentFactoryFunctions:
             assert result is mock_agent
             mock_listen_agent.assert_called_once()
 
+    def test_agent_model_configures_meta_backend(self, sample_chat_data):
+        options = Chat(
+            **{
+                **sample_chat_data,
+                "model_platform": "meta",
+                "model_type": "muse-spark-1.3",
+                "api_url": "https://api.meta.ai/v1",
+            }
+        )
+        mock_task_lock = MagicMock()
+        mock_task_lock.put_queue = AsyncMock()
+        model_backend = MagicMock()
+
+        _m = sys.modules["app.agent.agent_model"]
+        with (
+            patch.object(_m, "ListenChatAgent"),
+            patch.object(_m, "ModelFactory") as mock_model_factory,
+            patch.object(_m, "get_task_lock", return_value=mock_task_lock),
+            patch.object(
+                _m, "configure_meta_model_api_backend"
+            ) as configure_meta_backend,
+            patch("asyncio.create_task"),
+        ):
+            mock_model_factory.create.return_value = model_backend
+
+            agent_model("TestAgent", "You are helpful", options, [])
+
+        configure_meta_backend.assert_called_once_with(
+            model_backend, "https://api.meta.ai/v1"
+        )
+
     def test_responses_instructions_are_not_duplicated_in_input(self):
         class ResponsesBackend:
             def _prepare_responses_input_and_chain(

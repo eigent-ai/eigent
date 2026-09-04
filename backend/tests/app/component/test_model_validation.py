@@ -202,6 +202,28 @@ def test_create_agent_success(mock_chat_agent, mock_model_factory):
 
 
 @pytest.mark.unit
+@patch("app.component.model_validation.configure_meta_model_api_backend")
+@patch("app.component.model_validation.ModelFactory.create")
+@patch("app.component.model_validation.ChatAgent")
+def test_create_agent_configures_meta_backend(
+    mock_chat_agent, mock_model_factory, configure_meta_backend
+):
+    mock_model = MagicMock()
+    mock_model_factory.return_value = mock_model
+
+    create_agent(
+        model_platform="openai-compatible-model",
+        model_type="muse-spark-1.3",
+        api_key="test_key",
+        url="https://api.meta.ai/v1",
+    )
+
+    configure_meta_backend.assert_called_once_with(
+        mock_model, "https://api.meta.ai/v1"
+    )
+
+
+@pytest.mark.unit
 def test_create_agent_invalid_model_type():
     """Test agent creation with invalid model type."""
     with pytest.raises(ValueError, match="Invalid model_type"):
@@ -319,6 +341,31 @@ def test_validation_model_call_failure(mock_chat_agent, mock_model_factory):
     assert result.is_valid is False
     assert result.failed_stage == ValidationStage.MODEL_CALL
     assert result.validation_stages[ValidationStage.AGENT_CREATION] is True
+
+
+@pytest.mark.unit
+@patch("app.component.model_validation.configure_meta_model_api_backend")
+@patch("app.component.model_validation.ModelFactory.create")
+@patch("app.component.model_validation.ChatAgent")
+def test_validation_details_configures_meta_backend(
+    mock_chat_agent, mock_model_factory, configure_meta_backend
+):
+    mock_model = MagicMock()
+    mock_model_factory.return_value = mock_model
+    mock_agent = MagicMock()
+    mock_agent.step.side_effect = Exception("Test stop after model creation")
+    mock_chat_agent.return_value = mock_agent
+
+    validate_model_with_details(
+        model_platform="openai-compatible-model",
+        model_type="muse-spark-1.3",
+        api_key="test_key",
+        url="https://api.meta.ai/v1",
+    )
+
+    configure_meta_backend.assert_called_once_with(
+        mock_model, "https://api.meta.ai/v1"
+    )
 
 
 @pytest.mark.unit

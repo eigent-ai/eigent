@@ -12,7 +12,6 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import copy
 from typing import Annotated, Any, Final
 from urllib.parse import urlparse
 
@@ -93,7 +92,11 @@ def is_eigent_cloud_model_endpoint(api_url: object) -> bool:
 
 
 def is_meta_model_api_endpoint(api_url: object) -> bool:
-    """Return whether ``api_url`` targets the official Meta Model API."""
+    """Return whether ``api_url`` directly targets the official Meta API.
+
+    Proxies and alternate hosts deliberately do not inherit Meta-specific
+    request rewriting.
+    """
     if not isinstance(api_url, str):
         return False
     try:
@@ -120,6 +123,8 @@ def configure_meta_model_api_backend(
     ):
         return
 
+    # This private hook is specific to CAMEL's Chat Completions transport.
+    # Responses uses a separate request-preparation path.
     prepare = getattr(model_backend, "_prepare_request_config", None)
     if not callable(prepare):
         return
@@ -130,14 +135,19 @@ def configure_meta_model_api_backend(
         if not isinstance(request_tools, list):
             return request_config
 
-        compatible_tools = copy.deepcopy(request_tools)
-        for tool in compatible_tools:
+        compatible_tools = []
+        for tool in request_tools:
             if not isinstance(tool, dict) or tool.get("type") != "function":
+                compatible_tools.append(tool)
                 continue
+            compatible_tool = dict(tool)
             function = tool.get("function")
             if isinstance(function, dict):
-                function.pop("strict", None)
-            tool.pop("strict", None)
+                compatible_function = dict(function)
+                compatible_function.pop("strict", None)
+                compatible_tool["function"] = compatible_function
+            compatible_tool.pop("strict", None)
+            compatible_tools.append(compatible_tool)
 
         return {**request_config, "tools": compatible_tools}
 
