@@ -71,6 +71,8 @@ describe('Skill actions', () => {
   });
 
   it('offers chat and delete actions without a package download', async () => {
+    const mark = (step: string) =>
+      console.info(`[ci-timing][skill-actions] ${step}`);
     const user = setupUser();
 
     render(
@@ -78,12 +80,16 @@ describe('Skill actions', () => {
         <SkillActions entry={entry} />
       </MemoryRouter>
     );
+    mark('rendered');
     const actions = screen.getByRole('button', {
       name: 'Actions for research',
     });
+    mark('queried trigger');
     expect(actions).toHaveClass('!size-[var(--ds-button-sm-height)]');
     await user.click(actions);
+    mark('clicked trigger');
     const deleteItem = screen.getByRole('menuitem', { name: 'Delete Skill' });
+    mark('queried delete');
     expect(deleteItem).toHaveClass('text-ds-text-error-default-default');
     expect(deleteItem.querySelector('svg')).toHaveClass(
       'text-ds-icon-error-default-default'

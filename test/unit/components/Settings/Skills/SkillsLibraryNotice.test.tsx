@@ -71,10 +71,14 @@ describe('Skills library load notice', () => {
   });
 
   it('minimizes the notice and remembers that preference after remount', async () => {
+    const mark = (step: string) =>
+      console.info(`[ci-timing][skills-notice] ${step}`);
     const user = setupUser();
     const view = renderSkills();
+    mark('rendered');
 
     const notice = screen.getByRole('alert');
+    mark('queried alert');
     expect(notice).toHaveClass('bg-ds-bg-information-subtle-default');
     expect(notice).toHaveClass('text-ds-text-information-strong-default');
     expect(notice).toHaveTextContent('Global skills could not be refreshed.');
@@ -83,27 +87,34 @@ describe('Skills library load notice', () => {
     await user.click(
       screen.getByRole('button', { name: 'Dismiss skill notice' })
     );
+    mark('clicked dismiss');
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(
       window.localStorage.getItem(SKILLS_NOTICE_MINIMIZED_STORAGE_KEY)
     ).toBe('1');
     const toolbar = screen.getByRole('region', { name: 'Skills toolbar' });
+    mark('queried toolbar');
     expect(
       within(toolbar).getByRole('heading', { name: 'Skills', level: 1 })
     ).toBeVisible();
     const retry = within(toolbar).getByRole('button', { name: 'Retry (2)' });
+    mark('queried retry');
     expect(retry).toBeVisible();
     expect(retry).toHaveTextContent('2');
 
     await user.hover(retry);
+    mark('hovered retry');
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Retry');
+    mark('queried tooltip');
 
     await user.click(retry);
+    mark('clicked retry');
     expect(library.refresh).toHaveBeenCalledTimes(1);
 
     view.unmount();
     renderSkills();
+    mark('remounted');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Retry (2)' })

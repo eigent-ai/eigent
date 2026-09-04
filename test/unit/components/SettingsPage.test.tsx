@@ -946,6 +946,8 @@ describe('SettingsPage', () => {
   });
 
   it('switches to the Space detail layout without changing the shared shell', async () => {
+    const mark = (step: string) =>
+      console.info(`[ci-timing][space-detail] ${step}`);
     const user = setupUser();
     const now = Date.now();
     useSpaceStore.setState((state) => ({
@@ -985,16 +987,20 @@ describe('SettingsPage', () => {
     }));
 
     renderSettingsPage('/home?section=spaces');
+    mark('rendered');
 
     const homeSpaceCard = (await screen.findByText('Design Space')).closest(
       'button'
     ) as HTMLElement;
+    mark('queried card');
     expect(homeSpaceCard).toBeInTheDocument();
     await user.click(homeSpaceCard);
+    mark('clicked card');
 
     const detailSidebar = await screen.findByRole('complementary', {
       name: 'Spaces',
     });
+    mark('queried sidebar');
     expect(
       document.querySelector('[data-home-space-sidebar-pane="detail"]')
     ).toHaveAttribute('data-space-navigation-direction', 'forward');
@@ -1032,17 +1038,22 @@ describe('SettingsPage', () => {
     expect(
       within(detailSidebar).queryByRole('button', { name: 'Untitled Space' })
     ).not.toBeInTheDocument();
+    mark('checked sidebar');
     await user.type(spaceSearch, 'missing');
+    mark('typed search');
     expect(
       within(detailSidebar).queryByRole('button', { name: 'Design Space' })
     ).not.toBeInTheDocument();
     expect(detailSidebar).toHaveTextContent('No results match your search.');
     await user.clear(spaceSearch);
+    mark('cleared search');
     await user.click(newSpaceTab);
+    mark('clicked new space');
     expect(
       await screen.findByRole('dialog', { name: 'Create a new Space' })
     ).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Close' }));
+    mark('closed new space');
     expect(
       detailSidebar.querySelector('.lucide-check')
     ).not.toBeInTheDocument();
@@ -1055,11 +1066,13 @@ describe('SettingsPage', () => {
     expect(spaceMoreButton.closest('.group')).toContainElement(designSpaceTab);
 
     await user.click(spaceMoreButton);
+    mark('opened rename menu');
     await user.click(
       within(screen.getByRole('menu')).getByRole('menuitem', {
         name: 'Rename Space',
       })
     );
+    mark('opened rename dialog');
     const renameDialog = screen.getByRole('alertdialog', {
       name: 'Rename Space',
     });
@@ -1069,13 +1082,16 @@ describe('SettingsPage', () => {
     await user.click(
       within(renameDialog).getByRole('button', { name: 'Cancel' })
     );
+    mark('closed rename dialog');
 
     await user.click(spaceMoreButton);
+    mark('opened delete menu');
     await user.click(
       within(screen.getByRole('menu')).getByRole('menuitem', {
         name: 'Delete',
       })
     );
+    mark('opened delete dialog');
     const deleteDialog = screen.getByRole('alertdialog', { name: 'Delete' });
     expect(deleteDialog).toHaveTextContent(
       'Are you sure you want to delete this space and all its sessions?'
@@ -1083,6 +1099,7 @@ describe('SettingsPage', () => {
     await user.click(
       within(deleteDialog).getByRole('button', { name: 'Cancel' })
     );
+    mark('closed delete dialog');
     const detailHeader = document.querySelector('main header') as HTMLElement;
     expect(detailHeader).toHaveClass('px-ds-16');
     const detailHeading = within(detailHeader).getByRole('heading', {
@@ -1163,8 +1180,10 @@ describe('SettingsPage', () => {
     expect(document.querySelector('[data-space-stat="Status"]')).toHaveClass(
       'items-center'
     );
+    mark('checked detail content');
 
     await user.click(screen.getByRole('tab', { name: 'Tasks' }));
+    mark('clicked tasks');
     await waitFor(() => {
       expect(screen.getByRole('tab', { name: 'Tasks' })).toHaveAttribute(
         'aria-selected',
@@ -1179,6 +1198,7 @@ describe('SettingsPage', () => {
     await user.click(
       within(detailSidebar).getByRole('button', { name: 'Back' })
     );
+    mark('clicked back');
 
     await waitFor(() => {
       expect(
@@ -1194,6 +1214,7 @@ describe('SettingsPage', () => {
     expect(
       document.querySelector('[data-home-space-content-pane="home"]')
     ).toHaveAttribute('data-space-navigation-motion', 'full');
+    mark('returned home');
     expect(screen.getByRole('button', { name: 'Models' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Spaces' })).toHaveAttribute(
       'aria-current',
@@ -1209,6 +1230,7 @@ describe('SettingsPage', () => {
       expect(buttons.length).toBeGreaterThan(0);
       return buttons;
     });
+    mark('queried card workspace buttons');
     expect(cardWorkspaceButtons[0]).toHaveAttribute('data-variant', 'ghost');
     expect(cardWorkspaceButtons[0]).toHaveClass(
       'cursor-pointer',
@@ -1223,6 +1245,7 @@ describe('SettingsPage', () => {
       '[data-home-spaces-toolbar]'
     ) as HTMLElement;
     await user.click(within(homeToolbar).getByRole('tab', { name: 'List' }));
+    mark('clicked list');
     const listWorkspaceButtons = await waitFor(() => {
       const buttons = Array.from(
         document.querySelectorAll<HTMLButtonElement>(
@@ -1232,6 +1255,7 @@ describe('SettingsPage', () => {
       expect(buttons.length).toBeGreaterThan(0);
       return buttons;
     });
+    mark('queried list workspace buttons');
     expect(listWorkspaceButtons[0]).toHaveClass(
       'cursor-pointer',
       'rounded-lg',
@@ -1245,6 +1269,7 @@ describe('SettingsPage', () => {
       listWorkspaceButtons[0]
     );
     await user.click(within(homeToolbar).getByRole('tab', { name: 'Grid' }));
+    mark('clicked grid');
   });
 
   it('keeps reduced-motion navigation to fades and keyboard navigation instant', async () => {

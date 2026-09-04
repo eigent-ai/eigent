@@ -132,6 +132,8 @@ function TasksHarness({
 
 describe('Home Tasks runtime controls', () => {
   it('pauses an ongoing task once, disables duplicate requests, then resumes it', async () => {
+    const mark = (step: string) =>
+      console.info(`[ci-timing][home-pause] ${step}`);
     const user = setupUser();
     let resolvePause!: () => void;
     const pauseRequest = vi.fn(
@@ -148,27 +150,40 @@ describe('Home Tasks runtime controls', () => {
         resumeRequest={resumeRequest}
       />
     );
+    mark('rendered');
 
-    await user.click(screen.getByRole('button', { name: 'More actions' }));
-    await user.click(await screen.findByRole('menuitem', { name: 'Pause' }));
+    const moreActions = screen.getByRole('button', { name: 'More actions' });
+    mark('queried trigger');
+    await user.click(moreActions);
+    mark('clicked trigger');
+    const pauseItem = await screen.findByRole('menuitem', { name: 'Pause' });
+    mark('queried pause');
+    await user.click(pauseItem);
+    mark('clicked pause');
     expect(pauseRequest).toHaveBeenCalledWith('task-1', 'project-1');
 
     const pendingPause = await screen.findByRole('menuitem', { name: 'Pause' });
+    mark('queried pending pause');
     expect(pendingPause).toHaveAttribute('data-disabled');
     await user.click(pendingPause);
+    mark('clicked pending pause');
     expect(pauseRequest).toHaveBeenCalledTimes(1);
 
     await act(async () => resolvePause());
+    mark('resolved pause');
     await waitFor(() =>
       expect(
         screen.getByRole('menuitem', { name: 'Resume' })
       ).toBeInTheDocument()
     );
     await user.click(screen.getByRole('menuitem', { name: 'Resume' }));
+    mark('clicked resume');
     expect(resumeRequest).toHaveBeenCalledWith('task-1', 'project-1');
   });
 
   it('provides the same Resume action in the Space detail Tasks list', async () => {
+    const mark = (step: string) =>
+      console.info(`[ci-timing][space-resume] ${step}`);
     const user = setupUser();
     const resumeRequest = vi.fn().mockResolvedValue(undefined);
     render(
@@ -178,19 +193,31 @@ describe('Home Tasks runtime controls', () => {
         resumeRequest={resumeRequest}
       />
     );
+    mark('rendered');
 
     const row = screen.getByText(task.question).closest('[role="row"]');
+    mark('queried row');
     expect(row).not.toBeNull();
     fireEvent.contextMenu(row!);
-    await user.click(await screen.findByRole('menuitem', { name: 'Resume' }));
+    mark('opened context menu');
+    const resumeItem = await screen.findByRole('menuitem', { name: 'Resume' });
+    mark('queried resume');
+    await user.click(resumeItem);
+    mark('clicked resume');
     expect(resumeRequest).toHaveBeenCalledWith('task-1', 'project-1');
   });
 
   it('does not expose pause or resume for a completed task', async () => {
+    const mark = (step: string) =>
+      console.info(`[ci-timing][completed-task] ${step}`);
     const user = setupUser();
     render(<TasksHarness initialStatus={ChatTaskStatus.FINISHED} />);
+    mark('rendered');
 
-    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    const moreActions = screen.getByRole('button', { name: 'More actions' });
+    mark('queried trigger');
+    await user.click(moreActions);
+    mark('clicked trigger');
     expect(screen.queryByRole('menuitem', { name: 'Pause' })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'Resume' })).toBeNull();
   });
