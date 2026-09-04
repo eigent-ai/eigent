@@ -1479,7 +1479,68 @@ describe('ChatStore - Core Functionality', () => {
         });
       });
 
+      it('retries a canonical terminal update without enqueueing a competing legacy outcome', async () => {
+        vi.mocked(proxyUpdateTriggerExecution)
+          .mockRejectedValueOnce(new Error('trigger API temporarily offline'))
+          .mockResolvedValue(undefined);
+        const { streamContaining } = await startObservedLiveTask({
+          initialRunId: 'trigger-retry-run',
+          executionId: 'execution-canonical-retry',
+        });
+        await vi.waitFor(() =>
+          expect(runDomainEventHub.listenerCount()).toBe(1)
+        );
+
+        runEventIngressRegistry.ingest(
+          'project-1',
+          'trigger-retry-run',
+          canonicalEvent(
+            'trigger-retry-run',
+            'run.failed',
+            'Canonical cleanup failed.'
+          ),
+          'live'
+        );
+        // Model a legacy ERROR frame that was already queued when the
+        // canonical terminal receipt disposed the observer and transport.
+        await streamContaining('/chat').onmessage?.({
+          data: JSON.stringify({
+            step: AgentStep.ERROR,
+            data: { message: 'Legacy cleanup failed.' },
+          }),
+        });
+
+        await vi.waitFor(
+          () => expect(proxyUpdateTriggerExecution).toHaveBeenCalledTimes(2),
+          { timeout: 2_000 }
+        );
+        const terminalUpdates = vi
+          .mocked(proxyUpdateTriggerExecution)
+          .mock.calls.map(([, update]) => update.status);
+        expect(terminalUpdates).toEqual([
+          ExecutionStatus.Failed,
+          ExecutionStatus.Failed,
+        ]);
+        expect(proxyUpdateTriggerExecution).toHaveBeenLastCalledWith(
+          'execution-canonical-retry',
+          expect.objectContaining({
+            status: ExecutionStatus.Failed,
+            error_message: 'Canonical cleanup failed.',
+          }),
+          { projectId: 'project-1' }
+        );
+      });
+
       it('reports a terminal trigger status after an earlier running update', async () => {
+        let resolveRunningUpdate!: () => void;
+        vi.mocked(proxyUpdateTriggerExecution)
+          .mockImplementationOnce(
+            () =>
+              new Promise<void>((resolve) => {
+                resolveRunningUpdate = resolve;
+              })
+          )
+          .mockResolvedValue(undefined);
         const { store, streamContaining } = await startObservedLiveTask({
           initialRunId: 'trigger-initial-run',
         });
@@ -1504,10 +1565,12 @@ describe('ChatStore - Core Functionality', () => {
             data: { question: 'Continue scheduled task' },
           }),
         });
-        expect(proxyUpdateTriggerExecution).toHaveBeenCalledWith(
-          'execution-running-then-failed',
-          expect.objectContaining({ status: ExecutionStatus.Running }),
-          { projectId: 'project-1' }
+        await vi.waitFor(() =>
+          expect(proxyUpdateTriggerExecution).toHaveBeenCalledWith(
+            'execution-running-then-failed',
+            expect.objectContaining({ status: ExecutionStatus.Running }),
+            { projectId: 'project-1' }
+          )
         );
 
         runEventIngressRegistry.ingest(
@@ -1520,6 +1583,11 @@ describe('ChatStore - Core Functionality', () => {
           ),
           'live'
         );
+
+        // The terminal update is serialized after the already-issued Running
+        // request, so a slow old response cannot land after and overwrite it.
+        expect(proxyUpdateTriggerExecution).toHaveBeenCalledTimes(1);
+        resolveRunningUpdate();
 
         await vi.waitFor(() =>
           expect(proxyUpdateTriggerExecution).toHaveBeenCalledWith(

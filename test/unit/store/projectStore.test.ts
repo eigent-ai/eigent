@@ -972,6 +972,69 @@ describe('projectStore runtime shape', () => {
     );
   });
 
+  it('retries an older stale runtime on a later Project transition', async () => {
+    const staleProjectId = useProjectStore
+      .getState()
+      .createProject('Stale Project', undefined, 'project_stale_retry');
+    const nextProjectId = useProjectStore
+      .getState()
+      .createProject(
+        'Next Project',
+        undefined,
+        'project_stale_retry_next',
+        undefined,
+        undefined,
+        false
+      );
+    const laterProjectId = useProjectStore
+      .getState()
+      .createProject(
+        'Later Project',
+        undefined,
+        'project_stale_retry_later',
+        undefined,
+        undefined,
+        false
+      );
+
+    useProjectStore
+      .getState()
+      .appendInitChatStore(staleProjectId, 'task_finished');
+    useProjectStore.setState({
+      staleProjectIds: new Set([staleProjectId]),
+    });
+    fetchGetMock
+      .mockRejectedValueOnce(new Error('runtime status temporarily offline'))
+      .mockResolvedValue({
+        status: 'done',
+        run_id: 'task_finished',
+        consumer_alive: false,
+      });
+
+    useProjectStore.getState().setActiveProject(nextProjectId);
+
+    await vi.waitFor(() => expect(fetchGetMock).toHaveBeenCalledTimes(1));
+    expect(useProjectStore.getState().projects[staleProjectId]).toBeDefined();
+    expect(useProjectStore.getState().staleProjectIds.has(staleProjectId)).toBe(
+      true
+    );
+
+    // The old Project is not reopened. A later unrelated transition sweeps
+    // all inactive stale runtimes and retries the failed status request.
+    useProjectStore.getState().setActiveProject(laterProjectId);
+
+    await vi.waitFor(() =>
+      expect(
+        useProjectStore.getState().projects[staleProjectId]
+      ).toBeUndefined()
+    );
+    expect(fetchGetMock).toHaveBeenCalledTimes(2);
+    expect(useProjectStore.getState().activeProjectId).toBe(laterProjectId);
+    expect(closeIdleSSEConnectionsForTasksMock).toHaveBeenCalledWith(
+      expect.arrayContaining(['task_finished'])
+    );
+  });
+
   it('replays stale cached history during the same project open', async () => {
     const { useAuthStore } = await import('@/store/authStore');
     const previousUserId = useAuthStore.getState().user_id;

@@ -2119,9 +2119,14 @@ const ttftTracking: Record<
 > = {};
 
 // Canonical and legacy streams can both report the same terminal outcome.
-// Running is deliberately excluded: observing admission must never suppress a
-// later completed/failed/cancelled update for the same trigger execution.
+// Keep the accepted terminal outcome locked while its bounded delivery retries
+// run so a second stream cannot enqueue a competing final status.
 const reportedTerminalExecutionIds = new Set<string>();
+const triggerExecutionUpdateChains = new Map<string, Promise<void>>();
+const TERMINAL_EXECUTION_RETRY_DELAYS_MS = [250, 1_000] as const;
+
+const waitForTriggerExecutionRetry = (delayMs: number) =>
+  new Promise<void>((resolve) => window.setTimeout(resolve, delayMs));
 
 // Helper function to update trigger execution status using executionId from task
 const updateTriggerExecutionStatus = async (
@@ -2154,50 +2159,78 @@ const updateTriggerExecutionStatus = async (
 
   const isTerminalStatus = status !== ExecutionStatus.Running;
 
-  // Check if this terminal execution has already been reported.
-  if (isTerminalStatus && reportedTerminalExecutionIds.has(executionId)) {
+  // Once a terminal outcome is accepted, suppress both duplicate terminal
+  // receipts and late Running updates. The latter may otherwise be delivered
+  // after a retried terminal request and overwrite the final state.
+  if (reportedTerminalExecutionIds.has(executionId)) {
     console.log(
-      '[updateTriggerExecutionStatus] Execution already reported:',
+      isTerminalStatus
+        ? '[updateTriggerExecutionStatus] Execution already reported:'
+        : '[updateTriggerExecutionStatus] Ignoring Running after terminal outcome:',
       executionId
     );
     return;
   }
 
-  try {
-    // Mark terminal updates before awaiting the request so concurrently
-    // delivered canonical/legacy receipts remain idempotent.
-    if (isTerminalStatus) {
-      reportedTerminalExecutionIds.add(executionId);
-    }
-
-    // Call the API to update execution status
-    await proxyUpdateTriggerExecution(
-      executionId,
-      {
-        status,
-        completed_at: new Date().toISOString(),
-        ...(errorMessage && { error_message: errorMessage }),
-        tokens_used: tokens,
-      },
-      { projectId: projectId || undefined }
-    );
-
-    console.log(
-      '[updateTriggerExecutionStatus] Execution status updated:',
-      executionId,
-      '->',
-      status
-    );
-  } catch (err) {
-    console.warn(
-      `[updateTriggerExecutionStatus] Failed to update execution status to ${status}:`,
-      err
-    );
-    // Remove from reported set so it can be retried
-    if (isTerminalStatus) {
-      reportedTerminalExecutionIds.delete(executionId);
-    }
+  // Mark terminal updates before the first await so canonical and legacy
+  // receipts remain idempotent even while delivery is being retried.
+  if (isTerminalStatus) {
+    reportedTerminalExecutionIds.add(executionId);
   }
+
+  const payload = {
+    status,
+    completed_at: new Date().toISOString(),
+    ...(errorMessage && { error_message: errorMessage }),
+    tokens_used: tokens,
+  };
+  const previousUpdate =
+    triggerExecutionUpdateChains.get(executionId) ?? Promise.resolve();
+  let queuedUpdate: Promise<void>;
+  queuedUpdate = previousUpdate
+    .catch(() => undefined)
+    .then(async () => {
+      const maxAttempts = isTerminalStatus
+        ? TERMINAL_EXECUTION_RETRY_DELAYS_MS.length + 1
+        : 1;
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        try {
+          await proxyUpdateTriggerExecution(executionId, payload, {
+            projectId: projectId || undefined,
+          });
+          console.log(
+            '[updateTriggerExecutionStatus] Execution status updated:',
+            executionId,
+            '->',
+            status
+          );
+          return;
+        } catch (err) {
+          console.warn(
+            `[updateTriggerExecutionStatus] Failed to update execution status to ${status} (attempt ${attempt + 1}/${maxAttempts}):`,
+            err
+          );
+          if (attempt + 1 < maxAttempts) {
+            await waitForTriggerExecutionRetry(
+              TERMINAL_EXECUTION_RETRY_DELAYS_MS[attempt]
+            );
+          }
+        }
+      }
+
+      // All bounded attempts failed. Re-open the dedupe gate so a later
+      // independent receipt can make another bounded delivery attempt.
+      if (isTerminalStatus) {
+        reportedTerminalExecutionIds.delete(executionId);
+      }
+    })
+    .finally(() => {
+      if (triggerExecutionUpdateChains.get(executionId) === queuedUpdate) {
+        triggerExecutionUpdateChains.delete(executionId);
+      }
+    });
+  triggerExecutionUpdateChains.set(executionId, queuedUpdate);
+  await queuedUpdate;
 };
 
 const chatStore = (initial?: Partial<ChatStore>) =>
