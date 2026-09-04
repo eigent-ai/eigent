@@ -564,14 +564,11 @@ class GitBackend:
         if not probe.is_repository or not probe.owns_requested_root:
             raise GitBackendError(f"not an owned Git root: {root}")
         index = self._run(root, ("ls-files", "--stage", "-z"))
-        status = self._run(
-            root,
-            ("status", "--porcelain=v1", "-z", "--untracked-files=all"),
-        )
-        worktree_metadata = self._status_metadata(root, status.stdout)
+        status_output = self._content_worktree_status_output(root)
+        worktree_metadata = self._status_metadata(root, status_output)
         index_digest = hashlib.sha256(
             (
-                index.stdout + "\0" + status.stdout + "\0" + worktree_metadata
+                index.stdout + "\0" + status_output + "\0" + worktree_metadata
             ).encode("utf-8")
         ).hexdigest()
         return RepoStateToken(
@@ -1142,11 +1139,8 @@ class GitBackend:
     ) -> dict[str, str]:
         if limit < 1:
             raise ValueError("status limit must be positive")
-        result = self._run(
-            worktree_root,
-            ("status", "--porcelain=v1", "-z", "--untracked-files=all"),
-        )
-        values = result.stdout.split("\0")
+        root = worktree_root.expanduser().resolve()
+        values = self._content_worktree_status_output(root).split("\0")
         records: dict[str, str] = {}
         index = 0
         while index < len(values):
@@ -1265,11 +1259,12 @@ class GitBackend:
         )
         if changed.returncode != 0:
             return False
+        root = worktree_root.expanduser().resolve()
         untracked = self._run(
-            worktree_root,
+            root,
             ("ls-files", "--others", "--exclude-standard", "-z"),
         )
-        return not untracked.stdout
+        return not self._content_untracked_paths_output(root, untracked.stdout)
 
     def refresh_owned_worktree(
         self,
@@ -1477,6 +1472,93 @@ class GitBackend:
                 )
             pathspecs.append(relative.as_posix())
         return tuple(pathspecs)
+
+    def _content_worktree_status_output(self, repository_root: Path) -> str:
+        """Return changes owned by the parent Content Repository.
+
+        Git deliberately reports an untracked nested repository as one
+        directory entry (for example ``?? child/``), even when
+        ``--untracked-files=all`` is used. A Space can contain multiple
+        independent repositories, so that entry is a repository boundary,
+        not a path that the parent repository may checkpoint as a file or an
+        implicit gitlink.
+        """
+
+        result = self._run(
+            repository_root,
+            ("status", "--porcelain=v1", "-z", "--untracked-files=all"),
+        )
+        values = result.stdout.split("\0")
+        filtered: list[str] = []
+        index = 0
+        while index < len(values):
+            record = values[index]
+            index += 1
+            if not record:
+                continue
+            rename_source = None
+            if len(record) >= 4 and ("R" in record[:2] or "C" in record[:2]):
+                if index < len(values):
+                    rename_source = values[index]
+                    index += 1
+            if not self._is_untracked_repository_boundary(
+                repository_root,
+                record,
+            ):
+                filtered.append(record)
+                if rename_source:
+                    filtered.append(rename_source)
+        if not filtered:
+            return ""
+        return "\0".join(filtered) + "\0"
+
+    def _content_untracked_paths_output(
+        self,
+        repository_root: Path,
+        untracked_output: str,
+    ) -> str:
+        paths = [path for path in untracked_output.split("\0") if path]
+        filtered = [
+            path
+            for path in paths
+            if not self._is_untracked_repository_boundary(
+                repository_root,
+                f"?? {path}",
+            )
+        ]
+        if not filtered:
+            return ""
+        return "\0".join(filtered) + "\0"
+
+    def _is_untracked_repository_boundary(
+        self,
+        repository_root: Path,
+        status_record: str,
+    ) -> bool:
+        if (
+            len(status_record) < 4
+            or status_record[:2] != "??"
+            or not status_record[3:].endswith("/")
+        ):
+            return False
+        relative_path = status_record[3:].rstrip("/")
+        try:
+            normalized = self._normalize_relative_git_path(relative_path)
+        except ValueError:
+            return False
+        root = repository_root.expanduser().resolve()
+        candidate = (root / normalized).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            return False
+        if not candidate.is_dir():
+            return False
+        try:
+            probe = self.probe(candidate)
+        except GitBackendError:
+            return False
+        return probe.is_repository and probe.owns_requested_root
 
     @staticmethod
     def _status_metadata(repository_root: Path, status_output: str) -> str:
