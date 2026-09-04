@@ -43,7 +43,6 @@ async def test_developer_agent_creation(sample_chat_data):
         patch("asyncio.create_task"),
         patch(f"{_mod}.HumanToolkit") as mock_human_toolkit,
         patch(f"{_mod}.NoteTakingToolkit") as mock_note_toolkit,
-        patch(f"{_mod}.WebDeployToolkit") as mock_web_toolkit,
         patch(f"{_mod}.ScreenshotToolkit") as mock_screenshot_toolkit,
         patch(f"{_mod}.TerminalToolkit") as mock_terminal_toolkit,
         patch(f"{_mod}.ToolkitMessageIntegration"),
@@ -51,7 +50,6 @@ async def test_developer_agent_creation(sample_chat_data):
         # Mock all toolkit instances
         mock_human_toolkit.get_can_use_tools.return_value = []
         mock_note_toolkit.return_value.get_tools.return_value = []
-        mock_web_toolkit.return_value.get_tools.return_value = []
         mock_screenshot_toolkit.return_value.get_tools.return_value = []
         mock_terminal_toolkit.return_value.get_tools.return_value = []
 
@@ -75,6 +73,7 @@ async def test_developer_agent_creation(sample_chat_data):
         )  # agent_name (enum contains this value)
         tools_arg = call_args[0][3]  # tools argument
         assert isinstance(tools_arg, list)
+        assert "Web Deploy Toolkit" not in call_args.kwargs["tool_names"]
 
 
 @pytest.mark.asyncio
@@ -97,7 +96,6 @@ async def test_developer_agent_with_multiple_toolkits(sample_chat_data):
         patch("asyncio.create_task"),
         patch(f"{_mod}.HumanToolkit") as mock_human_toolkit,
         patch(f"{_mod}.NoteTakingToolkit") as mock_note_toolkit,
-        patch(f"{_mod}.WebDeployToolkit") as mock_web_toolkit,
         patch(f"{_mod}.ScreenshotToolkit") as mock_screenshot_toolkit,
         patch(f"{_mod}.TerminalToolkit") as mock_terminal_toolkit,
         patch(f"{_mod}.ToolkitMessageIntegration"),
@@ -105,7 +103,6 @@ async def test_developer_agent_with_multiple_toolkits(sample_chat_data):
         # Mock all toolkit instances
         mock_human_toolkit.get_can_use_tools.return_value = []
         mock_note_toolkit.return_value.get_tools.return_value = []
-        mock_web_toolkit.return_value.get_tools.return_value = []
         mock_screenshot_toolkit.return_value.get_tools.return_value = []
         mock_terminal_toolkit.return_value.get_tools.return_value = []
 
