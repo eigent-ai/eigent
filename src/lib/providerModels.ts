@@ -76,7 +76,8 @@ function splitProviderPrefix(id: string): [string, string] {
 export async function fetchProviderModels(
   apiHost: string,
   modelsEndpoint: string,
-  apiKey: string
+  apiKey: string,
+  modelIdPrefix?: string
 ): Promise<ProviderModelGroup[]> {
   if (!apiKey) {
     throw new Error(
@@ -110,7 +111,13 @@ export async function fetchProviderModels(
 
   const grouped = new Map<string, ProviderModelInfo[]>();
   for (const model of data) {
-    if (!model?.id || !isChatCapable(model)) continue;
+    if (
+      !model?.id ||
+      !isChatCapable(model) ||
+      (modelIdPrefix && !model.id.startsWith(modelIdPrefix))
+    ) {
+      continue;
+    }
     const [provider] = splitProviderPrefix(model.id);
     const bucket = provider || 'other';
     const info: ProviderModelInfo = {
@@ -137,14 +144,24 @@ export async function fetchProviderModels(
 const CACHE_KEY_PREFIX = 'eigent-provider-models-v1:';
 
 export function loadCachedModels(
-  providerId: string
+  providerId: string,
+  modelIdPrefix?: string
 ): ProviderModelGroup[] | null {
   try {
     const raw = localStorage.getItem(CACHE_KEY_PREFIX + providerId);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return null;
-    return parsed as ProviderModelGroup[];
+    const groups = parsed as ProviderModelGroup[];
+    if (!modelIdPrefix) return groups;
+    return groups
+      .map((group) => ({
+        ...group,
+        models: group.models.filter((model) =>
+          model.id.startsWith(modelIdPrefix)
+        ),
+      }))
+      .filter((group) => group.models.length > 0);
   } catch {
     return null;
   }

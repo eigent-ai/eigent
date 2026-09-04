@@ -52,6 +52,15 @@ class TestModelControllerEnhanced:
         )
         assert request_data.model_platform == "openai-compatible-model"
 
+    def test_validate_model_request_maps_meta_alias(self):
+        """Test request model maps Meta Model API alias correctly."""
+        request_data = ValidateModelRequest(
+            model_platform="meta",
+            model_type="muse-spark-1.3",
+            api_key="test_key",
+        )
+        assert request_data.model_platform == "openai-compatible-model"
+
     def test_validate_model_request_keeps_supported_platforms_unchanged(self):
         """Test request model keeps native camel-ai platforms unchanged."""
         request_data = ValidateModelRequest(

@@ -14,9 +14,25 @@
 
 import { describe, expect, it } from 'vitest';
 
+import metaImage from '@/assets/model/meta.svg';
 import { INIT_PROVODERS } from '@/lib/llm';
+import { getModelImage } from '@/shared/modelProviderImages';
 
 describe('INIT_PROVODERS', () => {
+  it('includes Meta Model API with Muse Spark model discovery', () => {
+    const provider = INIT_PROVODERS.find((item) => item.id === 'meta');
+
+    expect(provider).toMatchObject({
+      name: 'Meta Model API',
+      apiHost: 'https://api.meta.ai/v1',
+      model_type: '',
+      modelsEndpoint: '/models',
+      modelIdPrefix: 'muse-spark-',
+      websiteUrl: 'https://dev.meta.ai/docs/quickstart',
+    });
+    expect(getModelImage('meta')).toBe(metaImage);
+  });
+
   it('includes Nebius Token Factory as an OpenAI-compatible BYOK provider', () => {
     const provider = INIT_PROVODERS.find((item) => item.id === 'nebius');
 
