@@ -2875,8 +2875,7 @@ the current date.
     workforce.add_single_agent_worker(
         "Developer Agent: A master-level coding assistant with a powerful "
         "terminal. It can write and execute code, manage files, automate "
-        "desktop tasks, and deploy web applications to solve complex "
-        "technical challenges.",
+        "desktop tasks, and solve complex technical challenges.",
         developer,
     )
     workforce.add_single_agent_worker(

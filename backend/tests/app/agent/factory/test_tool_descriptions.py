@@ -122,6 +122,42 @@ async def test_default_single_agent_tools_have_descriptions(
 
 
 @pytest.mark.asyncio
+async def test_single_agent_ignores_legacy_web_deploy_config(
+    sample_chat_data, monkeypatch, tmp_path
+):
+    import app.agent.factory.toolkit_assembler as assembler
+
+    toolkit_config = {
+        name: {"enabled": False}
+        for name in assembler.DEFAULT_SINGLE_AGENT_TOOLKIT_CONFIG
+    }
+    toolkit_config["web_deploy"] = {"enabled": True}
+    options = _bedrock_chat(sample_chat_data).model_copy(
+        update={"toolkit_config": toolkit_config}
+    )
+    _patch_toolkit_creation_side_effects(
+        monkeypatch, tmp_path, options.project_id
+    )
+
+    assembly = await assemble_single_agent_toolkits(
+        options,
+        task_id=options.task_id,
+        working_directory=str(tmp_path),
+        hands=None,
+        can_delegate=False,
+    )
+
+    function_names = {
+        tool.get_function_name()
+        for tool in assembly.tools
+        if hasattr(tool, "get_function_name")
+    }
+    assert "Web Deploy Toolkit" not in assembly.tool_names
+    assert "deploy_html_content" not in function_names
+    assert "deploy_folder" not in function_names
+
+
+@pytest.mark.asyncio
 async def test_active_bundle_runtime_inputs_override_request_toolkit_config(
     sample_chat_data, monkeypatch, tmp_path
 ):

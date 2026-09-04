@@ -13,11 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 const agentToolkits: Record<string, string[]> = {
-  developer_agent: [
-    '# Terminal & Shell ',
-    '# Web Deployment ',
-    '# Screen Capture ',
-  ],
+  developer_agent: ['# Terminal & Shell ', '# Screen Capture '],
   browser_agent: ['# Web Browser ', '# Search Engines '],
   multi_modal_agent: [
     '# Image Analysis ',

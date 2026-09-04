@@ -45,7 +45,6 @@ from app.agent.toolkit.terminal_toolkit import (
     TerminalToolkit,
     is_secret_broker_environment_key,
 )
-from app.agent.toolkit.web_deploy_toolkit import WebDeployToolkit
 from app.agent.toolkit.workspace_git_toolkit import WorkspaceGitToolkit
 from app.component.environment import env
 from app.hands.interface import IHands
@@ -123,7 +122,6 @@ _SAFE_READ_TOOLKIT_FUNCTIONS: dict[str, frozenset[str] | None] = {
 DEFAULT_SINGLE_AGENT_TOOLKIT_CONFIG: dict[str, Any] = {
     "human": {"enabled": True},
     "file": {"enabled": True},
-    "web_deploy": {"enabled": True},
     "screenshot": {"enabled": True},
     "skill": {"enabled": True},
     "todo": {"enabled": True},
@@ -458,17 +456,6 @@ async def assemble_single_agent_toolkits(
         toolkit.agent_name = Agents.single_agent
         toolkit = message_integration.register_toolkits(toolkit)
         assembly.add_tools(toolkit.get_tools(), FileToolkit.toolkit_name())
-
-    if _enabled(config, "web_deploy"):
-        toolkit = WebDeployToolkit(
-            api_task_id=options.project_id,
-            **_options(config, "web_deploy"),
-        )
-        toolkit.agent_name = Agents.single_agent
-        toolkit = message_integration.register_toolkits(toolkit)
-        assembly.add_tools(
-            toolkit.get_tools(), WebDeployToolkit.toolkit_name()
-        )
 
     if _enabled(config, "screenshot"):
         screenshot_options = {
