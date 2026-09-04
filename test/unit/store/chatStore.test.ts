@@ -158,6 +158,7 @@ import {
   extractFinalOutputFileList,
   hasActiveSSEConnection,
   hasAnyActiveLegacySSEConnection,
+  hasSSETransportForTasks,
   mergeFileInfoLists,
   normalizeTaskArtifactFileList,
   resolveConfirmedUserMessageContent,
@@ -1414,6 +1415,7 @@ describe('ChatStore - Core Functionality', () => {
 
         expect(signal.aborted).toBe(false);
         expect(hasActiveSSEConnection([initialRunId])).toBe(false);
+        expect(hasSSETransportForTasks([initialRunId])).toBe(true);
         expect(hasAnyActiveLegacySSEConnection()).toBe(false);
 
         store.getState().setNextTaskId(followUpRunId);
@@ -1562,6 +1564,7 @@ describe('ChatStore - Core Functionality', () => {
         });
 
         expect(hasActiveSSEConnection(['idle-run'])).toBe(false);
+        expect(hasSSETransportForTasks(['idle-run'])).toBe(true);
         expect(hasAnyActiveLegacySSEConnection()).toBe(false);
         expect(signal.aborted).toBe(false);
 
@@ -1569,6 +1572,7 @@ describe('ChatStore - Core Functionality', () => {
 
         expect(signal.aborted).toBe(true);
         expect(hasActiveSSEConnection(['idle-run'])).toBe(false);
+        expect(hasSSETransportForTasks(['idle-run'])).toBe(false);
       });
 
       it.each(['stop', 'remove', 'close'] as const)(
