@@ -1253,6 +1253,12 @@ class TestChatServiceAgentOperations:
 
             # Should add multiple agent workers
             assert mock_workforce.add_single_agent_worker.call_count >= 4
+            developer_description = (
+                mock_workforce.add_single_agent_worker.call_args_list[0]
+                .args[0]
+                .lower()
+            )
+            assert "deploy" not in developer_description
             assert (
                 mock_workforce_cls.call_args.kwargs[
                     "use_structured_output_handler"
