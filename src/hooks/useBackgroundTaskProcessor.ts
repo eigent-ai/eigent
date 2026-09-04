@@ -17,16 +17,14 @@ import i18n from '@/i18n';
 import { generateUniqueId } from '@/lib';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import {
-  buildProjectContinuationContext,
   closeIdleSSEConnectionsForTasks,
-  getIdleSSETransportTaskId,
   hasActiveSSEConnection,
   hasSSETransportForTasks,
 } from '@/store/chatStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useTriggerTaskStore } from '@/store/triggerTaskStore';
 import { ExecutionStatus } from '@/types';
-import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
+import { AgentStep, ChatTaskStatus } from '@/types/constants';
 import { useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 
@@ -44,7 +42,6 @@ interface LegacyChatRuntimeStatus {
   status?: string;
   run_id?: string | null;
   consumer_alive?: boolean;
-  subscriber_count?: number;
 }
 
 /**
@@ -52,7 +49,7 @@ interface LegacyChatRuntimeStatus {
  * Supports trigger tasks (with executionId) and can be extended for other task types.
  *
  * - Polls all projects' queuedMessages for messages with executionId
- * - Reuses one Project consumer or retires it before cold start
+ * - Retires an idle Project consumer before cold start
  */
 export function useBackgroundTaskProcessor() {
   const projectStore = useProjectRuntimeStore();
@@ -77,7 +74,6 @@ export function useBackgroundTaskProcessor() {
         triggerId?: number;
         triggerName?: string;
         timestamp: number;
-        warmSourceTaskId?: string;
       } | null = null;
 
       for (const project of projects) {
@@ -163,8 +159,6 @@ export function useBackgroundTaskProcessor() {
           continue;
         }
 
-        const idleTransportTaskId = getIdleSSETransportTaskId(allTaskIds);
-        let warmSourceTaskId: string | undefined;
         if (runtimeStatus.consumer_alive) {
           if (runtimeStatus.status !== 'done' || !runtimeStatus.run_id) {
             console.log(
@@ -175,58 +169,41 @@ export function useBackgroundTaskProcessor() {
             continue;
           }
 
-          if (
-            idleTransportTaskId === runtimeStatus.run_id &&
-            (runtimeStatus.subscriber_count || 0) > 0
-          ) {
-            // Keep the subscriber and reuse the exact warm consumer. The
-            // improve endpoint rebinds its RuntimeHandle before queueing the
-            // trigger for step_solve/single_agent_solve.
-            warmSourceTaskId = idleTransportTaskId;
-          } else if (
-            !idleTransportTaskId ||
-            idleTransportTaskId === runtimeStatus.run_id
-          ) {
-            // RuntimeSubscription.aclose() only detached the renderer. Await
-            // the real consumer's exit before starting a cold `/chat` stream.
-            let retired: LegacyChatRuntimeStatus;
-            try {
-              retired = await fetchPost(
-                `/chat/${encodeURIComponent(project.id)}/runtime/retire-idle`,
-                { run_id: runtimeStatus.run_id }
-              );
-            } catch (error) {
-              console.warn(
-                '[BackgroundTaskProcessor] Skipping project',
-                project.id,
-                '- could not retire the backend idle consumer',
-                error
-              );
-              continue;
-            }
-            if (retired?.consumer_alive) {
-              console.warn(
-                '[BackgroundTaskProcessor] Skipping project',
-                project.id,
-                '- backend idle consumer did not retire'
-              );
-              continue;
-            }
-          } else {
+          // subscriber_count is only a point-in-time observation. Reusing a
+          // warm consumer would race a renderer disconnect between this read
+          // and follow-up admission, leaving the new Run without either the
+          // legacy stream or a canonical terminal observer. Scheduled work
+          // therefore retires the idle consumer before opening a fresh stream.
+          let retired: LegacyChatRuntimeStatus;
+          try {
+            retired = await fetchPost(
+              `/chat/${encodeURIComponent(project.id)}/runtime/retire-idle`,
+              { run_id: runtimeStatus.run_id }
+            );
+          } catch (error) {
             console.warn(
               '[BackgroundTaskProcessor] Skipping project',
               project.id,
-              '- renderer and backend disagree on Run ownership'
+              '- could not retire the backend idle consumer',
+              error
+            );
+            continue;
+          }
+          if (retired?.consumer_alive) {
+            console.warn(
+              '[BackgroundTaskProcessor] Skipping project',
+              project.id,
+              '- backend idle consumer did not retire'
             );
             continue;
           }
         }
 
-        if (!warmSourceTaskId && hasSSETransportForTasks(allTaskIds)) {
+        if (hasSSETransportForTasks(allTaskIds)) {
           console.log(
             '[BackgroundTaskProcessor] Closing idle SSE for project',
             project.id,
-            '- backend has no matching warm consumer'
+            '- backend consumer is retired'
           );
           closeIdleSSEConnectionsForTasks(allTaskIds);
           if (hasSSETransportForTasks(allTaskIds)) {
@@ -249,7 +226,6 @@ export function useBackgroundTaskProcessor() {
           triggerId: msg.triggerId,
           triggerName: msg.triggerName,
           timestamp: msg.timestamp,
-          warmSourceTaskId,
         };
         break;
       }
@@ -265,7 +241,6 @@ export function useBackgroundTaskProcessor() {
         triggerTaskId,
         triggerId,
         triggerName,
-        warmSourceTaskId,
       } = messageToProcess;
 
       const newTaskId = generateUniqueId();
@@ -319,76 +294,18 @@ export function useBackgroundTaskProcessor() {
           )
         );
 
-        let admissionPromise: Promise<void>;
-        if (warmSourceTaskId) {
-          const latestProject = projectStore.getProjectById(projectId);
-          const sourceChatStore = Object.values(
-            latestProject?.chatStores || {}
-          ).find((store) => store.getState().tasks[warmSourceTaskId]);
-          if (!sourceChatStore) {
-            throw new Error('Warm background Run owner is unavailable');
-          }
-          const nextChat = projectStore.appendInitChatStore(
-            projectId,
-            newTaskId
-          );
-          if (!nextChat) {
-            throw new Error('Failed to prepare the background follow-up');
-          }
-
-          const sourceState = sourceChatStore.getState();
-          const nextState = nextChat.chatStore.getState();
-          sourceState.setNextTaskId(newTaskId);
-          sourceState.setNextExecutionId(warmSourceTaskId, executionId);
-          nextState.setNextTaskId(newTaskId);
-          nextState.setTaskSessionMode(
+        const admissionPromise = chatStore
+          .getState()
+          .startTask(
             newTaskId,
-            latestProject?.mode || SessionMode.SINGLE_AGENT
-          );
-          nextState.setTaskSource(newTaskId, 'trigger');
-          nextState.setExecutionId(newTaskId, executionId);
-          nextState.setIsPending(newTaskId, true);
-          nextState.setHasMessages(newTaskId, true);
-          nextState.addMessages(newTaskId, {
-            id: generateUniqueId(),
-            role: 'user',
+            undefined,
+            undefined,
+            undefined,
             content,
             attaches,
-          });
-
-          admissionPromise = fetchPost(
-            `/chat/${encodeURIComponent(projectId)}`,
-            {
-              question: content,
-              task_id: newTaskId,
-              attaches: attaches.map((file) => file.filePath),
-              project_context: buildProjectContinuationContext(
-                projectId,
-                newTaskId
-              ),
-              target: undefined,
-            }
-          ).catch((error) => {
-            sourceState.setNextTaskId(null);
-            sourceState.setNextExecutionId(warmSourceTaskId, undefined);
-            nextState.setIsPending(newTaskId, false);
-            nextState.setStatus(newTaskId, ChatTaskStatus.FINISHED);
-            throw error;
-          });
-        } else {
-          admissionPromise = chatStore
-            .getState()
-            .startTask(
-              newTaskId,
-              undefined,
-              undefined,
-              undefined,
-              content,
-              attaches,
-              executionId,
-              projectId
-            );
-        }
+            executionId,
+            projectId
+          );
 
         // Fire and forget - task state and canonical ingress track completion.
         admissionPromise

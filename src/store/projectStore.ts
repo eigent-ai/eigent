@@ -40,7 +40,6 @@ import { getAuthStore } from './authStore';
 import {
   closeIdleSSEConnectionsForTasks,
   createChatStoreInstance,
-  getIdleSSETransportTaskId,
   hasActiveSSEConnection,
   VanillaChatStore,
   type DurableRunDisplayStatus,
@@ -1349,60 +1348,51 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     if (hasActiveSSEConnection(outgoingTaskIds)) {
       return;
     }
-    const idleTransportTaskId = getIdleSSETransportTaskId(outgoingTaskIds);
-    if (idleTransportTaskId) {
-      if (staleRuntimeEvictionsInFlight.has(previousProjectId)) return;
-      staleRuntimeEvictionsInFlight.add(previousProjectId);
-      void (async () => {
-        try {
-          const runtimeStatus = await fetchGet(
-            `/chat/${encodeURIComponent(previousProjectId)}/status`
-          );
-          if (runtimeStatus?.consumer_alive) {
-            if (
-              runtimeStatus.status !== 'done' ||
-              runtimeStatus.run_id !== idleTransportTaskId
-            ) {
-              return;
-            }
-            if (get().activeProjectId === previousProjectId) return;
-            const retired = await fetchPost(
-              `/chat/${encodeURIComponent(previousProjectId)}/runtime/retire-idle`,
-              { run_id: idleTransportTaskId }
-            );
-            if (retired?.consumer_alive) return;
-          }
-
-          const latest = get();
-          if (
-            !latest.staleProjectIds.has(previousProjectId) ||
-            !latest.projects[previousProjectId]
-          ) {
+    // Renderer subscription lifetime is independent from the backend's warm
+    // TaskLock consumer. Even with no local transport, verify and retire the
+    // backend owner before dropping the only runtime state that identifies it.
+    if (staleRuntimeEvictionsInFlight.has(previousProjectId)) return;
+    staleRuntimeEvictionsInFlight.add(previousProjectId);
+    void (async () => {
+      try {
+        const runtimeStatus = await fetchGet(
+          `/chat/${encodeURIComponent(previousProjectId)}/status`
+        );
+        if (runtimeStatus?.consumer_alive) {
+          if (runtimeStatus.status !== 'done' || !runtimeStatus.run_id) {
             return;
           }
-          const latestTaskIds = Object.values(
-            latest.projects[previousProjectId].chatStores
-          ).flatMap((chatStore) => Object.keys(chatStore.getState().tasks));
-          if (hasActiveSSEConnection(latestTaskIds)) return;
-          closeIdleSSEConnectionsForTasks(latestTaskIds);
-          if (latest.activeProjectId === previousProjectId) return;
-          latest._evictProjectRuntime(previousProjectId);
-        } catch (error) {
-          console.warn(
-            '[ProjectStore] Deferred stale runtime eviction until its backend consumer can retire',
-            error
+          if (get().activeProjectId === previousProjectId) return;
+          const retired = await fetchPost(
+            `/chat/${encodeURIComponent(previousProjectId)}/runtime/retire-idle`,
+            { run_id: runtimeStatus.run_id }
           );
-        } finally {
-          staleRuntimeEvictionsInFlight.delete(previousProjectId);
+          if (retired?.consumer_alive) return;
         }
-      })();
-      return;
-    }
-    // With no reusable renderer transport, local runtime eviction can remain
-    // synchronous. The branch above owns the backend retirement barrier.
-    closeIdleSSEConnectionsForTasks(outgoingTaskIds);
-    // _evictProjectRuntime handles staleProjectIds cleanup itself.
-    get()._evictProjectRuntime(previousProjectId);
+
+        const latest = get();
+        if (
+          !latest.staleProjectIds.has(previousProjectId) ||
+          !latest.projects[previousProjectId]
+        ) {
+          return;
+        }
+        const latestTaskIds = Object.values(
+          latest.projects[previousProjectId].chatStores
+        ).flatMap((chatStore) => Object.keys(chatStore.getState().tasks));
+        if (hasActiveSSEConnection(latestTaskIds)) return;
+        if (latest.activeProjectId === previousProjectId) return;
+        closeIdleSSEConnectionsForTasks(latestTaskIds);
+        latest._evictProjectRuntime(previousProjectId);
+      } catch (error) {
+        console.warn(
+          '[ProjectStore] Deferred stale runtime eviction until its backend consumer can retire',
+          error
+        );
+      } finally {
+        staleRuntimeEvictionsInFlight.delete(previousProjectId);
+      }
+    })();
   },
 
   removeProject: (

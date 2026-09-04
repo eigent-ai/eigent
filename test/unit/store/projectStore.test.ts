@@ -29,7 +29,6 @@ const {
   fetchGetMock,
   fetchPostMock,
   getCachedProjectMock,
-  getIdleSSETransportTaskIdMock,
   hasActiveSSEConnectionMock,
   putCachedProjectMock,
   proxyFetchGetMock,
@@ -41,7 +40,6 @@ const {
   fetchGetMock: vi.fn(),
   fetchPostMock: vi.fn(),
   getCachedProjectMock: vi.fn(),
-  getIdleSSETransportTaskIdMock: vi.fn(),
   hasActiveSSEConnectionMock: vi.fn(),
   putCachedProjectMock: vi.fn(),
   proxyFetchGetMock: vi.fn(),
@@ -89,7 +87,6 @@ vi.mock('@/store/chatStore', async (importOriginal) => {
       return store;
     },
     closeIdleSSEConnectionsForTasks: closeIdleSSEConnectionsForTasksMock,
-    getIdleSSETransportTaskId: getIdleSSETransportTaskIdMock,
     hasActiveSSEConnection: hasActiveSSEConnectionMock,
   };
 });
@@ -117,7 +114,6 @@ describe('projectStore runtime shape', () => {
     getCachedProjectMock.mockResolvedValue(null);
     putCachedProjectMock.mockResolvedValue(undefined);
     hasActiveSSEConnectionMock.mockReturnValue(false);
-    getIdleSSETransportTaskIdMock.mockReturnValue(null);
     fetchGetMock.mockResolvedValue({ runs: [] });
     fetchPostMock.mockResolvedValue({
       retired: false,
@@ -885,10 +881,20 @@ describe('projectStore runtime shape', () => {
     expect(closeIdleSSEConnectionsForTasksMock).not.toHaveBeenCalled();
   });
 
-  it('closes an idle SSE before evicting a stale project runtime', () => {
+  it('closes an idle SSE before evicting a stale project runtime', async () => {
     const projectId = useProjectStore
       .getState()
       .createProject('Stale Project', undefined, 'project_stale_safe');
+    const nextProjectId = useProjectStore
+      .getState()
+      .createProject(
+        'Next Project',
+        undefined,
+        'project_stale_safe_next',
+        undefined,
+        undefined,
+        false
+      );
 
     useProjectStore.getState().appendInitChatStore(projectId, 'task_finished');
     useProjectStore.setState({
@@ -899,9 +905,12 @@ describe('projectStore runtime shape', () => {
       expect(useProjectStore.getState().projects[projectId]).toBeDefined();
     });
 
-    useProjectStore.getState()._evictStaleOnTransition('project_next');
+    useProjectStore.getState().setActiveProject(nextProjectId);
 
-    expect(useProjectStore.getState().projects[projectId]).toBeUndefined();
+    expect(useProjectStore.getState().projects[projectId]).toBeDefined();
+    await vi.waitFor(() =>
+      expect(useProjectStore.getState().projects[projectId]).toBeUndefined()
+    );
     expect(useProjectStore.getState().staleProjectIds.has(projectId)).toBe(
       false
     );
@@ -914,7 +923,7 @@ describe('projectStore runtime shape', () => {
     );
   });
 
-  it('awaits backend consumer retirement before stale runtime eviction', async () => {
+  it('retires a backend consumer after its renderer transport is gone', async () => {
     const projectId = useProjectStore
       .getState()
       .createProject('Stale Project', undefined, 'project_stale_backend');
@@ -933,7 +942,6 @@ describe('projectStore runtime shape', () => {
     useProjectStore.setState({
       staleProjectIds: new Set([projectId]),
     });
-    getIdleSSETransportTaskIdMock.mockReturnValue('task_finished');
     fetchGetMock.mockResolvedValue({
       status: 'done',
       run_id: 'task_finished',

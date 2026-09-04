@@ -1488,6 +1488,27 @@ export function settleLegacyTaskFromCanonicalTerminal(
   state.setStatus(taskId, ChatTaskStatus.FINISHED);
 
   if (durableRunStatus === 'failed') {
+    state.setTaskRunning(
+      taskId,
+      task.taskRunning.map((item) =>
+        item.status === TaskStatus.COMPLETED ||
+        item.status === TaskStatus.FAILED
+          ? item
+          : { ...item, status: TaskStatus.FAILED }
+      )
+    );
+    state.setTaskAssigning(
+      taskId,
+      task.taskAssigning.map((agent) => ({
+        ...agent,
+        tasks: agent.tasks.map((item) =>
+          item.status === TaskStatus.COMPLETED ||
+          item.status === TaskStatus.FAILED
+            ? item
+            : { ...item, status: TaskStatus.FAILED }
+        ),
+      }))
+    );
     const rawMessage = event.payload?.message;
     const message =
       typeof rawMessage === 'string' && rawMessage.trim()
@@ -1501,13 +1522,16 @@ export function settleLegacyTaskFromCanonicalTerminal(
       message,
     });
     const alreadyRendered = state.tasks[taskId]?.messages.some(
-      (item) => item.role === 'agent' && item.content === content
+      (item) =>
+        item.role === 'agent' &&
+        (item.step === AgentStep.ERROR || item.content === content)
     );
     if (!alreadyRendered) {
       state.addMessages(taskId, {
         id: generateUniqueId(),
         role: 'agent',
         content,
+        step: AgentStep.ERROR,
       });
     }
   }
@@ -2094,8 +2118,10 @@ const ttftTracking: Record<
   { confirmedAt: number; firstTokenLogged: boolean }
 > = {};
 
-// Track which executionIds have already been reported to prevent duplicate updates
-const reportedExecutionIds = new Set<string>();
+// Canonical and legacy streams can both report the same terminal outcome.
+// Running is deliberately excluded: observing admission must never suppress a
+// later completed/failed/cancelled update for the same trigger execution.
+const reportedTerminalExecutionIds = new Set<string>();
 
 // Helper function to update trigger execution status using executionId from task
 const updateTriggerExecutionStatus = async (
@@ -2126,8 +2152,10 @@ const updateTriggerExecutionStatus = async (
     return;
   }
 
-  // Check if this execution has already been reported
-  if (reportedExecutionIds.has(executionId)) {
+  const isTerminalStatus = status !== ExecutionStatus.Running;
+
+  // Check if this terminal execution has already been reported.
+  if (isTerminalStatus && reportedTerminalExecutionIds.has(executionId)) {
     console.log(
       '[updateTriggerExecutionStatus] Execution already reported:',
       executionId
@@ -2136,8 +2164,11 @@ const updateTriggerExecutionStatus = async (
   }
 
   try {
-    // Mark as reported to prevent duplicate updates
-    reportedExecutionIds.add(executionId);
+    // Mark terminal updates before awaiting the request so concurrently
+    // delivered canonical/legacy receipts remain idempotent.
+    if (isTerminalStatus) {
+      reportedTerminalExecutionIds.add(executionId);
+    }
 
     // Call the API to update execution status
     await proxyUpdateTriggerExecution(
@@ -2163,7 +2194,9 @@ const updateTriggerExecutionStatus = async (
       err
     );
     // Remove from reported set so it can be retried
-    reportedExecutionIds.delete(executionId);
+    if (isTerminalStatus) {
+      reportedTerminalExecutionIds.delete(executionId);
+    }
   }
 };
 
@@ -3135,6 +3168,26 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             }
             return;
           }
+
+          const settledState = observedChatStore.getState();
+          const triggerStatus =
+            event.eventType === 'run.completed'
+              ? ExecutionStatus.Completed
+              : event.eventType === 'run.cancelled'
+                ? ExecutionStatus.Cancelled
+                : ExecutionStatus.Failed;
+          const terminalMessage =
+            typeof event.payload?.message === 'string'
+              ? event.payload.message
+              : undefined;
+          void updateTriggerExecutionStatus(
+            settledState,
+            project_id,
+            observedTaskId,
+            triggerStatus,
+            settledState.tasks[observedTaskId]?.tokens || 0,
+            terminalMessage
+          );
           binding.dispose();
 
           // Failed/cancelled/interrupted executions cannot produce another
@@ -5115,11 +5168,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 errorMessage === 'Single Agent is already processing a task.';
               const isRetryableRunError =
                 agentMessages.data?.retryable === true;
+              const failedTask = tasks[currentTaskId];
+              const wasAlreadySettledByCanonical =
+                failedTask?.status === ChatTaskStatus.FINISHED &&
+                failedTask?.durableRunStatus === 'failed';
+              const errorContent = i18next.t('chat.error-message', {
+                defaultValue: '❌ **Error**: {{message}}',
+                message: errorMessage,
+              });
 
               // Freeze the live clock before switching to FINISHED. The work
               // log only advances taskTime while RUNNING; skipping this step
               // made every error path render "Worked for 0s".
-              const failedTask = tasks[currentTaskId];
               const settledElapsed = settleTaskElapsedMs(
                 failedTask,
                 Date.now()
@@ -5167,19 +5227,37 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               setStatus(currentTaskId, ChatTaskStatus.FINISHED);
               setIsPending(currentTaskId, false);
 
-              // Add error message to the current task
-              addMessages(currentTaskId, {
-                id: generateUniqueId(),
-                role: 'agent',
-                content: i18next.t('chat.error-message', {
-                  defaultValue: '❌ **Error**: {{message}}',
-                  message: errorMessage,
-                }),
-              });
+              // Canonical and legacy terminal streams are independent. If the
+              // canonical failure won the race, refine its existing receipt
+              // instead of rendering another error card.
+              const existingError = tasks[currentTaskId].messages.find(
+                (message) => message.step === AgentStep.ERROR
+              );
+              if (existingError) {
+                if (existingError.content !== errorContent) {
+                  updateMessage(currentTaskId, existingError.id, {
+                    ...existingError,
+                    content: errorContent,
+                    step: AgentStep.ERROR,
+                  });
+                }
+              } else {
+                addMessages(currentTaskId, {
+                  id: generateUniqueId(),
+                  role: 'agent',
+                  content: errorContent,
+                  step: AgentStep.ERROR,
+                });
+              }
               // Record the tokens consumed before the failure so the run's
               // spend is not lost from the history row (a failed run
               // otherwise stays at zero tokens forever).
-              if (!type && historyId && !isProjectBusyError) {
+              if (
+                !wasAlreadySettledByCanonical &&
+                !type &&
+                historyId &&
+                !isProjectBusyError
+              ) {
                 const tokensSoFar = getTokens(currentTaskId);
                 if (tokensSoFar > 0) {
                   proxyFetchPut(`/api/v1/chat/history/${historyId}`, {
@@ -5189,9 +5267,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   });
                 }
               }
-              uploadLog(currentTaskId, type);
+              if (!wasAlreadySettledByCanonical) {
+                uploadLog(currentTaskId, type);
+              }
               // Analytics: task failed — split breakage vs disinterest.
-              if (!type || type === 'normal') {
+              if (
+                !wasAlreadySettledByCanonical &&
+                (!type || type === 'normal')
+              ) {
                 recordTaskFailed({
                   error_type: classifyError(errorMessage),
                   is_project_busy: isProjectBusyError,
@@ -5211,7 +5294,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               // A busy Project means another run in the same long conversation
               // is still active. Do not stop that active Project while marking
               // only this rejected run as failed.
-              if (!isProjectBusyError && type !== 'replay') {
+              if (
+                !wasAlreadySettledByCanonical &&
+                !isProjectBusyError &&
+                type !== 'replay'
+              ) {
                 try {
                   await fetchDelete(`/chat/${project_id}`);
                 } catch (error) {

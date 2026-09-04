@@ -80,6 +80,10 @@ vi.mock('@microsoft/fetch-event-source', () => ({
   fetchEventSource: vi.fn(),
 }));
 
+vi.mock('@/service/triggerApi', () => ({
+  proxyUpdateTriggerExecution: vi.fn(() => Promise.resolve()),
+}));
+
 vi.mock('../../../src/store/authStore', () => ({
   useAuthStore: {
     token: null,
@@ -127,11 +131,13 @@ vi.mock('../../../src/store/projectStore', () => ({
 }));
 
 import {
+  fetchDelete,
   fetchPost,
   fetchPut,
   proxyFetchGet,
   waitForBackendReady,
 } from '@/api/http';
+import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { generateUniqueId } from '../../../src/lib';
 import {
@@ -159,6 +165,7 @@ import {
   useChatStore,
 } from '../../../src/store/chatStore';
 import { useProjectStore } from '../../../src/store/projectStore';
+import { ExecutionStatus } from '../../../src/types';
 import { AgentStep, ChatTaskStatus } from '../../../src/types/constants';
 
 // Mock electron IPC
@@ -1274,9 +1281,11 @@ describe('ChatStore - Core Functionality', () => {
       const startObservedLiveTask = async ({
         initialRunId = 'live-run',
         projectedStatus,
+        executionId,
       }: {
         initialRunId?: string;
         projectedStatus?: 'failed' | 'completed' | 'cancelled' | 'interrupted';
+        executionId?: string;
       } = {}) => {
         vi.mocked(proxyFetchGet).mockResolvedValue({
           value: 'test-cloud-key',
@@ -1349,7 +1358,7 @@ describe('ChatStore - Core Functionality', () => {
             undefined,
             'Create a game',
             [],
-            undefined,
+            executionId,
             'project-1',
             'single' as any
           );
@@ -1431,6 +1440,97 @@ describe('ChatStore - Core Functionality', () => {
             originalProjectStoreImplementation
           );
         }
+      });
+
+      it('reports a canonical-only trigger failure without waiting for the legacy ERROR frame', async () => {
+        const { store } = await startObservedLiveTask({
+          initialRunId: 'trigger-run',
+          executionId: 'execution-canonical-failure',
+        });
+        await vi.waitFor(() =>
+          expect(runDomainEventHub.listenerCount()).toBe(1)
+        );
+
+        runEventIngressRegistry.ingest(
+          'project-1',
+          'trigger-run',
+          canonicalEvent(
+            'trigger-run',
+            'run.failed',
+            'Workspace cleanup failed.'
+          ),
+          'live'
+        );
+
+        await vi.waitFor(() =>
+          expect(proxyUpdateTriggerExecution).toHaveBeenCalledWith(
+            'execution-canonical-failure',
+            expect.objectContaining({
+              status: ExecutionStatus.Failed,
+              error_message: 'Workspace cleanup failed.',
+            }),
+            { projectId: 'project-1' }
+          )
+        );
+        expect(store.getState().tasks['trigger-run']).toMatchObject({
+          status: ChatTaskStatus.FINISHED,
+          durableRunStatus: 'failed',
+          isPending: false,
+        });
+      });
+
+      it('reports a terminal trigger status after an earlier running update', async () => {
+        const { store, streamContaining } = await startObservedLiveTask({
+          initialRunId: 'trigger-initial-run',
+        });
+        const legacyStream = streamContaining('/chat');
+        await legacyStream.onmessage?.({
+          data: JSON.stringify({
+            step: AgentStep.CONFIRMED,
+            data: { question: 'Initial scheduled task' },
+          }),
+        });
+        store.getState().setNextTaskId('trigger-follow-up-run');
+        store
+          .getState()
+          .setNextExecutionId(
+            'trigger-initial-run',
+            'execution-running-then-failed'
+          );
+
+        await legacyStream.onmessage?.({
+          data: JSON.stringify({
+            step: AgentStep.CONFIRMED,
+            data: { question: 'Continue scheduled task' },
+          }),
+        });
+        expect(proxyUpdateTriggerExecution).toHaveBeenCalledWith(
+          'execution-running-then-failed',
+          expect.objectContaining({ status: ExecutionStatus.Running }),
+          { projectId: 'project-1' }
+        );
+
+        runEventIngressRegistry.ingest(
+          'project-1',
+          'trigger-follow-up-run',
+          canonicalEvent(
+            'trigger-follow-up-run',
+            'run.failed',
+            'Follow-up failed.'
+          ),
+          'live'
+        );
+
+        await vi.waitFor(() =>
+          expect(proxyUpdateTriggerExecution).toHaveBeenCalledWith(
+            'execution-running-then-failed',
+            expect.objectContaining({
+              status: ExecutionStatus.Failed,
+              error_message: 'Follow-up failed.',
+            }),
+            { projectId: 'project-1' }
+          )
+        );
       });
 
       it('rebinds the terminal observer and ingress when the legacy stream switches to a follow-up Run', async () => {
@@ -1666,6 +1766,34 @@ describe('ChatStore - Core Functionality', () => {
               item.content.includes(message)
             )
         ).toHaveLength(1);
+        expect(runDomainEventHub.listenerCount()).toBe(0);
+      });
+
+      it('does not duplicate an error when canonical failure arrives before legacy ERROR', async () => {
+        const { store, streamContaining } = await startObservedLiveTask();
+        const message = 'Background preview did not stop.';
+
+        runEventIngressRegistry.ingest(
+          'project-1',
+          'live-run',
+          canonicalEvent('live-run', 'run.failed', message),
+          'live'
+        );
+        await streamContaining('/chat').onmessage?.({
+          data: JSON.stringify({
+            step: AgentStep.ERROR,
+            data: { message },
+          }),
+        });
+
+        const errors = store
+          .getState()
+          .tasks['live-run'].messages.filter(
+            (item) => item.step === AgentStep.ERROR
+          );
+        expect(errors).toHaveLength(1);
+        expect(errors[0].content).toContain(message);
+        expect(fetchDelete).not.toHaveBeenCalled();
         expect(runDomainEventHub.listenerCount()).toBe(0);
       });
     });
