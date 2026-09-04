@@ -50,7 +50,11 @@ import {
   REMOTE_SUB_AGENT_PROVIDER_ID,
   toRemoteSubAgentRuntimeConfig,
 } from '@/lib/remoteSubAgent';
-import { runEventIngressRegistry } from '@/lib/runEvents';
+import {
+  runDomainEventHub,
+  runEventIngressRegistry,
+  type RunDomainEvent,
+} from '@/lib/runEvents';
 import { buildSearchRuntimeConfig } from '@/lib/searchConfig';
 import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import { settleTaskElapsedMs } from '@/lib/taskDuration';
@@ -1325,6 +1329,73 @@ const activeSSEControllers: Record<
   string,
   { controller: AbortController; live: boolean }
 > = {};
+
+const CANONICAL_TERMINAL_RUN_STATUSES: Partial<
+  Record<string, DurableRunDisplayStatus>
+> = {
+  'run.completed': 'completed',
+  'run.failed': 'failed',
+  'run.deadline_reached': 'failed',
+  'run.cancelled': 'cancelled',
+  'run.interrupted': 'interrupted',
+  'runtime.interrupted': 'interrupted',
+};
+
+/**
+ * Keep the legacy ChatTask lifecycle aligned with the canonical Run outcome.
+ *
+ * The legacy `/chat` stream can end with a transport error before it emits an
+ * ERROR/END frame. The durable Run stream is authoritative in that case, so a
+ * terminal event must also stop the legacy clock and release the composer.
+ */
+export function settleLegacyTaskFromCanonicalTerminal(
+  chatStore: Pick<VanillaChatStore, 'getState'>,
+  taskId: string,
+  event: Pick<RunDomainEvent, 'eventType' | 'payload'>
+): boolean {
+  const durableRunStatus = CANONICAL_TERMINAL_RUN_STATUSES[event.eventType];
+  if (!durableRunStatus) return false;
+
+  const state = chatStore.getState();
+  const task = state.tasks[taskId];
+  if (!task) return false;
+
+  const elapsed = settleTaskElapsedMs(task, Date.now());
+  state.setTaskTime(taskId, 0);
+  state.setElapsed(taskId, elapsed);
+  state.setDurableRunStatus(taskId, durableRunStatus);
+  state.setActiveAsk(taskId, '');
+  state.setActiveAskList(taskId, []);
+  state.setIsPending(taskId, false);
+  state.setStatus(taskId, ChatTaskStatus.FINISHED);
+
+  if (durableRunStatus === 'failed') {
+    const rawMessage = event.payload?.message;
+    const message =
+      typeof rawMessage === 'string' && rawMessage.trim()
+        ? rawMessage.trim()
+        : i18next.t('chat.run-no-final-response', {
+            defaultValue:
+              'This task failed before it produced a final response.',
+          });
+    const content = i18next.t('chat.error-message', {
+      defaultValue: '❌ **Error**: {{message}}',
+      message,
+    });
+    const alreadyRendered = state.tasks[taskId]?.messages.some(
+      (item) => item.role === 'agent' && item.content === content
+    );
+    if (!alreadyRendered) {
+      state.addMessages(taskId, {
+        id: generateUniqueId(),
+        role: 'agent',
+        content,
+      });
+    }
+  }
+
+  return true;
+}
 
 const FINAL_OUTPUT_FILE_PATH_REGEX =
   /(?<![A-Za-z0-9:\\/])(?:[A-Za-z]:)?[\\/][^\s`"'<>|*]+?\.[A-Za-z0-9]{1,12}(?=$|[\s`"'<>|*),;:\]}])/g;
@@ -2900,6 +2971,40 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       activeSSEControllers[newTaskId] = {
         controller: abortController,
         live: isLiveTask,
+      };
+      let unsubscribeCanonicalTerminal: (() => void) | null = null;
+
+      const observeCanonicalTerminal = () => {
+        if (type || !project_id || unsubscribeCanonicalTerminal) return;
+        unsubscribeCanonicalTerminal = runDomainEventHub.subscribe(
+          {
+            projectId: project_id,
+            runId: newTaskId,
+            eventTypes: Object.keys(CANONICAL_TERMINAL_RUN_STATUSES),
+          },
+          (event) => {
+            if (
+              !settleLegacyTaskFromCanonicalTerminal(
+                targetChatStore,
+                newTaskId,
+                event
+              )
+            ) {
+              return;
+            }
+            unsubscribeCanonicalTerminal?.();
+            unsubscribeCanonicalTerminal = null;
+
+            // Failed/cancelled/interrupted executions cannot produce another
+            // useful legacy frame. Stop any retry loop left by the broken
+            // `/chat` transport. A completed Run still gets a chance to emit
+            // its legacy END frame with the final assistant response.
+            if (event.eventType !== 'run.completed') {
+              abortController.abort();
+              delete activeSSEControllers[newTaskId];
+            }
+          }
+        );
       };
 
       // Getter functions that use the locked references instead of dynamic ones
@@ -5556,6 +5661,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           resumeStreamOpened = true;
           resolveResumeStreamOpen?.();
           if (!type && project_id) {
+            observeCanonicalTerminal();
             runEventIngressRegistry.ensureLocal(project_id, newTaskId);
           }
           const { setAttaches, activeTaskId } = get();

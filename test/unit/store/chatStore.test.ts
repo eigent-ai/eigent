@@ -135,6 +135,10 @@ import {
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { generateUniqueId } from '../../../src/lib';
 import {
+  runDomainEventHub,
+  runEventIngressRegistry,
+} from '../../../src/lib/runEvents';
+import {
   collectTaskUploadFiles,
   extractEndPayloadText,
   extractFinalOutputFileList,
@@ -143,6 +147,7 @@ import {
   resolveConfirmedUserMessageContent,
   resolveEndMessageText,
   resolveRunOutputFileList,
+  settleLegacyTaskFromCanonicalTerminal,
   useChatStore,
 } from '../../../src/store/chatStore';
 import { useProjectStore } from '../../../src/store/projectStore';
@@ -1097,6 +1102,142 @@ describe('ChatStore - Core Functionality', () => {
   });
 
   describe('Task startup', () => {
+    it('settles a live task from a canonical failure when legacy SSE ends without ERROR', () => {
+      const { result } = renderHook(() => useChatStore());
+      const taskId = result.current.getState().create('failed-run');
+      result.current.getState().setStatus(taskId, ChatTaskStatus.RUNNING);
+      result.current.getState().setIsPending(taskId, true);
+      result.current.getState().setTaskTime(taskId, Date.now() - 1000);
+
+      const event = {
+        eventType: 'run.failed',
+        payload: { message: 'Background preview did not stop.' },
+      } as const;
+
+      expect(
+        settleLegacyTaskFromCanonicalTerminal(result.current, taskId, event)
+      ).toBe(true);
+      expect(
+        settleLegacyTaskFromCanonicalTerminal(result.current, taskId, event)
+      ).toBe(true);
+
+      const task = result.current.getState().tasks[taskId];
+      expect(task).toMatchObject({
+        status: ChatTaskStatus.FINISHED,
+        durableRunStatus: 'failed',
+        isPending: false,
+        taskTime: 0,
+      });
+      expect(task.elapsed).toBeGreaterThanOrEqual(1000);
+      expect(
+        task.messages.filter((message) =>
+          message.content.includes('Background preview did not stop.')
+        )
+      ).toHaveLength(1);
+    });
+
+    it('settles the live ChatTask when the canonical stream reports run.failed', async () => {
+      vi.mocked(proxyFetchGet).mockResolvedValue({
+        value: 'test-cloud-key',
+        api_url: 'https://models.example.test',
+        items: [],
+        warning_code: null,
+      });
+      runDomainEventHub.clear();
+      runEventIngressRegistry.clear();
+
+      let canonicalOnMessage:
+        | ((event: { event?: string; id?: string; data: string }) => unknown)
+        | undefined;
+      vi.mocked(fetchEventSource).mockImplementation(async (url, options) => {
+        const response = new Response('', {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        });
+        await options.onopen?.(response);
+        if (String(url).includes('/runs/live-run/stream')) {
+          canonicalOnMessage = options.onmessage as typeof canonicalOnMessage;
+        }
+        await new Promise<void>(() => {});
+      });
+
+      const { result } = renderHook(() => useChatStore());
+      const getProjectStoreState = vi.mocked(useProjectStore.getState);
+      const previousProjectStoreImplementation =
+        getProjectStoreState.getMockImplementation();
+      const appendInitChatStore = vi.fn(() => {
+        const liveTaskId = result.current.getState().create('live-run');
+        result.current.getState().setActiveTaskId(liveTaskId);
+        return { taskId: liveTaskId, chatStore: result.current };
+      });
+      getProjectStoreState.mockReturnValue({
+        activeProjectId: 'project-1',
+        appendInitChatStore,
+        getProjectById: () => ({
+          id: 'project-1',
+          mode: 'single',
+          spaceId: 'space-1',
+        }),
+        getHistoryId: () => null,
+        getAllChatStores: () => [],
+        getProjectModel: () => null,
+        setProjectModel: vi.fn(),
+        setProjectSpace: vi.fn(),
+        setHistoryId: vi.fn(),
+        getProjectThinkingEffortOverride: () => undefined,
+      } as any);
+
+      await act(async () => {
+        await result.current
+          .getState()
+          .startTask(
+            'initial-task',
+            undefined,
+            undefined,
+            undefined,
+            'Create a game',
+            [],
+            undefined,
+            'project-1',
+            'single' as any
+          );
+      });
+      await vi.waitFor(() => expect(canonicalOnMessage).toBeDefined());
+      result.current.getState().setStatus('live-run', ChatTaskStatus.RUNNING);
+      result.current.getState().setTaskTime('live-run', Date.now() - 1000);
+
+      await canonicalOnMessage?.({
+        event: 'run_event',
+        id: '1',
+        data: JSON.stringify({
+          event_id: 'run-failed:live-run',
+          event_type: 'run.failed',
+          legacy_step: null,
+          payload: { message: 'Background preview did not stop.' },
+          project_id: 'project-1',
+          run_id: 'live-run',
+          sequence: 1,
+          run_version: 1,
+          created_at: Date.now() / 1000,
+        }),
+      });
+
+      expect(result.current.getState().tasks['live-run']).toMatchObject({
+        status: ChatTaskStatus.FINISHED,
+        durableRunStatus: 'failed',
+        isPending: false,
+        taskTime: 0,
+      });
+
+      runEventIngressRegistry.clear();
+      runDomainEventHub.clear();
+      if (previousProjectStoreImplementation) {
+        getProjectStoreState.mockImplementation(
+          previousProjectStoreImplementation
+        );
+      }
+    });
+
     it('renders the pending user turn before backend readiness resolves', async () => {
       let resolveBackendReady!: (ready: boolean) => void;
       vi.mocked(waitForBackendReady).mockReturnValueOnce(
