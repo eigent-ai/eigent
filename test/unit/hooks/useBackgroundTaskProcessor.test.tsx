@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => {
     getAllProjects: vi.fn(),
     getProjectById: vi.fn(),
     getChatStore: vi.fn(),
+    appendInitChatStore: vi.fn(),
     markQueuedMessageAsProcessing: vi.fn(),
     removeQueuedMessage: vi.fn(),
   };
@@ -37,7 +38,11 @@ const mocks = vi.hoisted(() => {
   };
 
   return {
+    buildProjectContinuationContext: vi.fn(() => 'project context'),
     closeIdleSSEConnectionsForTasks: vi.fn(),
+    fetchGet: vi.fn(),
+    fetchPost: vi.fn(),
+    getIdleSSETransportTaskId: vi.fn(),
     hasActiveSSEConnection: vi.fn(),
     hasSSETransportForTasks: vi.fn(),
     projectRuntimeStore,
@@ -55,6 +60,11 @@ vi.mock('@/i18n', () => ({
   },
 }));
 
+vi.mock('@/api/http', () => ({
+  fetchGet: mocks.fetchGet,
+  fetchPost: mocks.fetchPost,
+}));
+
 vi.mock('@/lib', () => ({
   generateUniqueId: () => 'new-trigger-run',
 }));
@@ -64,7 +74,9 @@ vi.mock('@/service/triggerApi', () => ({
 }));
 
 vi.mock('@/store/chatStore', () => ({
+  buildProjectContinuationContext: mocks.buildProjectContinuationContext,
   closeIdleSSEConnectionsForTasks: mocks.closeIdleSSEConnectionsForTasks,
+  getIdleSSETransportTaskId: mocks.getIdleSSETransportTaskId,
   hasActiveSSEConnection: mocks.hasActiveSSEConnection,
   hasSSETransportForTasks: mocks.hasSSETransportForTasks,
 }));
@@ -84,13 +96,15 @@ vi.mock('sonner', () => ({
 describe('useBackgroundTaskProcessor SSE admission', () => {
   let idleController: AbortController;
   let physicalTransportPresent: boolean;
+  let sourceState: any;
+  let nextState: any;
 
   beforeEach(() => {
     vi.clearAllMocks();
     idleController = new AbortController();
     physicalTransportPresent = true;
 
-    const chatState = {
+    sourceState = {
       activeTaskId: 'ended-run',
       tasks: {
         'ended-run': {
@@ -101,10 +115,25 @@ describe('useBackgroundTaskProcessor SSE admission', () => {
         },
       },
       startTask: mocks.startTask,
+      setNextTaskId: vi.fn(),
+      setNextExecutionId: vi.fn(),
     };
-    const chatStore = { getState: () => chatState };
+    nextState = {
+      tasks: { 'new-trigger-run': { messages: [] } },
+      setNextTaskId: vi.fn(),
+      setTaskSessionMode: vi.fn(),
+      setTaskSource: vi.fn(),
+      setExecutionId: vi.fn(),
+      setIsPending: vi.fn(),
+      setHasMessages: vi.fn(),
+      addMessages: vi.fn(),
+      setStatus: vi.fn(),
+    };
+    const chatStore = { getState: () => sourceState };
+    const nextChatStore = { getState: () => nextState };
     const project = {
       id: 'project-1',
+      mode: 'single-agent',
       chatStores: { primary: chatStore },
       queuedMessages: [
         {
@@ -123,10 +152,17 @@ describe('useBackgroundTaskProcessor SSE admission', () => {
     mocks.projectRuntimeStore.getAllProjects.mockReturnValue([project]);
     mocks.projectRuntimeStore.getProjectById.mockReturnValue(project);
     mocks.projectRuntimeStore.getChatStore.mockReturnValue(chatStore);
+    mocks.projectRuntimeStore.appendInitChatStore.mockReturnValue({
+      taskId: 'new-trigger-run',
+      chatStore: nextChatStore,
+    });
     Object.assign(mocks.projectRuntimeStore, {
       projects: { 'project-1': project },
     });
     mocks.hasActiveSSEConnection.mockReturnValue(false);
+    mocks.getIdleSSETransportTaskId.mockImplementation(() =>
+      physicalTransportPresent ? 'ended-run' : null
+    );
     mocks.hasSSETransportForTasks.mockImplementation(
       () => physicalTransportPresent
     );
@@ -134,10 +170,105 @@ describe('useBackgroundTaskProcessor SSE admission', () => {
       idleController.abort();
       physicalTransportPresent = false;
     });
+    mocks.fetchGet.mockResolvedValue({
+      status: 'done',
+      run_id: 'ended-run',
+      consumer_alive: true,
+      subscriber_count: 1,
+    });
+    mocks.fetchPost.mockImplementation(() => new Promise<void>(() => {}));
     mocks.startTask.mockImplementation(() => new Promise<void>(() => {}));
   });
 
-  it('aborts an END-idled transport before starting its queued trigger', async () => {
+  it('rebinds a queued trigger onto the END-idled warm consumer', async () => {
+    const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+
+    await waitFor(() =>
+      expect(mocks.fetchPost).toHaveBeenCalledWith('/chat/project-1', {
+        question: 'Run scheduled task',
+        task_id: 'new-trigger-run',
+        attaches: [],
+        project_context: 'project context',
+        target: undefined,
+      })
+    );
+    expect(mocks.closeIdleSSEConnectionsForTasks).not.toHaveBeenCalled();
+    expect(mocks.startTask).not.toHaveBeenCalled();
+    expect(idleController.signal.aborted).toBe(false);
+    expect(sourceState.setNextTaskId).toHaveBeenCalledWith('new-trigger-run');
+    expect(sourceState.setNextExecutionId).toHaveBeenCalledWith(
+      'ended-run',
+      'execution-1'
+    );
+    expect(nextState.setTaskSource).toHaveBeenCalledWith(
+      'new-trigger-run',
+      'trigger'
+    );
+
+    // Re-entrant project-store notifications must see the execution guard and
+    // cannot admit the same trigger twice.
+    const subscription =
+      mocks.useProjectRuntimeStore.subscribe.mock.calls[0][0];
+    subscription();
+    await Promise.resolve();
+    expect(mocks.fetchPost).toHaveBeenCalledTimes(1);
+
+    unmount();
+  });
+
+  it('awaits backend retirement after the renderer subscriber is gone', async () => {
+    physicalTransportPresent = false;
+    let retirementCompleted = false;
+    mocks.fetchPost.mockImplementation(async (url: string) => {
+      expect(url).toBe('/chat/project-1/runtime/retire-idle');
+      retirementCompleted = true;
+      return { retired: true, consumer_alive: false };
+    });
+    mocks.startTask.mockImplementation(() => {
+      expect(retirementCompleted).toBe(true);
+      return new Promise<void>(() => {});
+    });
+
+    const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+
+    await waitFor(() => expect(mocks.startTask).toHaveBeenCalledTimes(1));
+    expect(mocks.fetchPost).toHaveBeenCalledWith(
+      '/chat/project-1/runtime/retire-idle',
+      { run_id: 'ended-run' }
+    );
+    expect(mocks.fetchPost.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.startTask.mock.invocationCallOrder[0]
+    );
+    expect(mocks.closeIdleSSEConnectionsForTasks).not.toHaveBeenCalled();
+
+    unmount();
+  });
+
+  it('keeps a queued trigger pending when backend retirement fails', async () => {
+    physicalTransportPresent = false;
+    mocks.fetchPost.mockRejectedValue(new Error('retirement unavailable'));
+
+    const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+
+    await waitFor(() => expect(mocks.fetchPost).toHaveBeenCalledTimes(1));
+    expect(mocks.startTask).not.toHaveBeenCalled();
+    expect(
+      mocks.projectRuntimeStore.markQueuedMessageAsProcessing
+    ).not.toHaveBeenCalled();
+    expect(
+      mocks.projectRuntimeStore.removeQueuedMessage
+    ).not.toHaveBeenCalled();
+
+    unmount();
+  });
+
+  it('closes a stale renderer transport when Brain has no consumer', async () => {
+    mocks.fetchGet.mockResolvedValue({
+      status: 'done',
+      run_id: 'ended-run',
+      consumer_alive: false,
+      subscriber_count: 0,
+    });
     mocks.startTask.mockImplementation(() => {
       expect(idleController.signal.aborted).toBe(true);
       expect(physicalTransportPresent).toBe(false);
@@ -153,24 +284,6 @@ describe('useBackgroundTaskProcessor SSE admission', () => {
     expect(
       mocks.closeIdleSSEConnectionsForTasks.mock.invocationCallOrder[0]
     ).toBeLessThan(mocks.startTask.mock.invocationCallOrder[0]);
-    expect(mocks.startTask).toHaveBeenCalledWith(
-      'new-trigger-run',
-      undefined,
-      undefined,
-      undefined,
-      'Run scheduled task',
-      [],
-      'execution-1',
-      'project-1'
-    );
-
-    // Re-entrant project-store notifications must see the execution guard and
-    // cannot create a second transport for the same queued trigger.
-    const subscription =
-      mocks.useProjectRuntimeStore.subscribe.mock.calls[0][0];
-    subscription();
-    await Promise.resolve();
-    expect(mocks.startTask).toHaveBeenCalledTimes(1);
 
     unmount();
   });
