@@ -26,7 +26,9 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import userEvent, {
+  PointerEventsCheckLevel,
+} from '@testing-library/user-event';
 import { useMemo, useState } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
@@ -59,6 +61,13 @@ const project: ProjectGroup = {
   total_ongoing_tasks: 1,
   average_tokens_per_task: 12,
 };
+
+const setupUser = () =>
+  userEvent.setup({
+    // These behavior tests do not assert CSS hit-testing. Skipping it avoids
+    // expensive full-style traversal in GitHub's jsdom runner.
+    pointerEventsCheck: PointerEventsCheckLevel.Never,
+  });
 
 function TasksHarness({
   initialStatus,
@@ -123,7 +132,7 @@ function TasksHarness({
 
 describe('Home Tasks runtime controls', () => {
   it('pauses an ongoing task once, disables duplicate requests, then resumes it', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     let resolvePause!: () => void;
     const pauseRequest = vi.fn(
       () =>
@@ -160,7 +169,7 @@ describe('Home Tasks runtime controls', () => {
   });
 
   it('provides the same Resume action in the Space detail Tasks list', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     const resumeRequest = vi.fn().mockResolvedValue(undefined);
     render(
       <TasksHarness
@@ -178,7 +187,7 @@ describe('Home Tasks runtime controls', () => {
   });
 
   it('does not expose pause or resume for a completed task', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     render(<TasksHarness initialStatus={ChatTaskStatus.FINISHED} />);
 
     await user.click(screen.getByRole('button', { name: 'More actions' }));

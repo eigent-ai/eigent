@@ -15,7 +15,9 @@
 import SkillActions from '@/components/Settings/Skills/components/SkillActions';
 import type { SkillLibraryEntry } from '@/components/Settings/Skills/skillLibrary';
 import { cleanup, render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import userEvent, {
+  PointerEventsCheckLevel,
+} from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -55,6 +57,13 @@ const entry: Exclude<SkillLibraryEntry, { kind: 'space' }> = {
   },
 };
 
+const setupUser = () =>
+  userEvent.setup({
+    // This behavior test does not assert CSS hit-testing. Skipping it avoids
+    // expensive full-style traversal in GitHub's jsdom runner.
+    pointerEventsCheck: PointerEventsCheckLevel.Never,
+  });
+
 describe('Skill actions', () => {
   afterEach(() => {
     cleanup();
@@ -62,7 +71,7 @@ describe('Skill actions', () => {
   });
 
   it('offers chat and delete actions without a package download', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
 
     render(
       <MemoryRouter>

@@ -26,7 +26,9 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import userEvent, {
+  PointerEventsCheckLevel,
+} from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -186,6 +188,13 @@ function getSettingsHeader() {
   return header as HTMLElement;
 }
 
+const setupUser = () =>
+  userEvent.setup({
+    // These behavior tests do not assert CSS hit-testing. Skipping it avoids
+    // expensive full-style traversal in GitHub's jsdom runner.
+    pointerEventsCheck: PointerEventsCheckLevel.Never,
+  });
+
 describe('SettingsPage', () => {
   beforeEach(() => {
     pageMotionMocks.reduced = false;
@@ -254,7 +263,7 @@ describe('SettingsPage', () => {
 
   it('hides Desktop-only Agent Plugin import from the web dialog', async () => {
     platformMocks.desktop = false;
-    const user = userEvent.setup();
+    const user = setupUser();
     renderSettingsPage('/home?section=spaces');
 
     const spacesToolbar = document.querySelector(
@@ -434,7 +443,7 @@ describe('SettingsPage', () => {
   });
 
   it('switches between Home and Settings sections in the same shell', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
 
     renderSettingsPage();
 
@@ -597,7 +606,7 @@ describe('SettingsPage', () => {
   });
 
   it('combines the app settings categories into one vertical page', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
 
     renderSettingsPage();
 
@@ -628,7 +637,7 @@ describe('SettingsPage', () => {
   });
 
   it('shows one Skills overview with source filters instead of ownership tabs', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     useSkillsStore.setState({ skills: [] });
     const sync = vi
       .spyOn(useSkillsStore.getState(), 'syncFromDisk')
@@ -681,7 +690,7 @@ describe('SettingsPage', () => {
   });
 
   it('navigates Skills with the same shell transition and preserves overview filters on return', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     const skill: Skill = {
       id: 'disk-research',
       name: 'research',
@@ -792,7 +801,7 @@ describe('SettingsPage', () => {
   });
 
   it('removes the Skills toolbar and restores the settings header during a page switch', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
 
     renderSettingsPage();
 
@@ -862,7 +871,7 @@ describe('SettingsPage', () => {
   });
 
   it('returns from Connector detail to the page that opened it', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     renderSettingsPage([
       '/?space=workspace-space',
       {
@@ -888,7 +897,7 @@ describe('SettingsPage', () => {
   });
 
   it('returns from Space detail to its workspace origin', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     const now = Date.now();
     useSpaceStore.setState((state) => ({
       ...state,
@@ -937,7 +946,7 @@ describe('SettingsPage', () => {
   });
 
   it('switches to the Space detail layout without changing the shared shell', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     const now = Date.now();
     useSpaceStore.setState((state) => ({
       ...state,
@@ -1240,7 +1249,7 @@ describe('SettingsPage', () => {
 
   it('keeps reduced-motion navigation to fades and keyboard navigation instant', async () => {
     pageMotionMocks.reduced = true;
-    const user = userEvent.setup();
+    const user = setupUser();
     const now = Date.now();
     useSpaceStore.setState((state) => ({
       ...state,

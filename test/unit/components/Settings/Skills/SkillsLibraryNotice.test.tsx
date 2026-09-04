@@ -16,7 +16,9 @@ import Skills, {
   SKILLS_NOTICE_MINIMIZED_STORAGE_KEY,
 } from '@/components/Settings/Skills';
 import { render, screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import userEvent, {
+  PointerEventsCheckLevel,
+} from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -46,6 +48,13 @@ function renderSkills() {
   );
 }
 
+const setupUser = () =>
+  userEvent.setup({
+    // These behavior tests do not assert CSS hit-testing. Skipping it avoids
+    // expensive full-style traversal in GitHub's jsdom runner.
+    pointerEventsCheck: PointerEventsCheckLevel.Never,
+  });
+
 describe('Skills library load notice', () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -62,7 +71,7 @@ describe('Skills library load notice', () => {
   });
 
   it('minimizes the notice and remembers that preference after remount', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     const view = renderSkills();
 
     const notice = screen.getByRole('alert');
@@ -102,7 +111,7 @@ describe('Skills library load notice', () => {
   });
 
   it('retries from the notice card before it is dismissed', async () => {
-    const user = userEvent.setup();
+    const user = setupUser();
     renderSkills();
 
     await user.click(
