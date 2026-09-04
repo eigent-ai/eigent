@@ -20,7 +20,6 @@ import { useSkillsStore, type Skill } from '@/store/skillsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
-  act,
   fireEvent,
   render,
   screen,
@@ -132,12 +131,6 @@ function openDropdown(trigger: HTMLElement) {
   });
   Object.defineProperty(event, 'pointerType', { value: 'mouse' });
   fireEvent(trigger, event);
-}
-
-async function flushReactUpdates() {
-  await act(async () => {
-    await Promise.resolve();
-  });
 }
 
 vi.mock('@/service/historyApi', () => ({
@@ -989,7 +982,7 @@ describe('SettingsPage', () => {
     );
   });
 
-  it('switches to the Space detail layout without changing the shared shell', async () => {
+  it('switches to the Space detail layout without changing the shared shell', () => {
     const now = Date.now();
     useSpaceStore.setState((state) => ({
       ...state,
@@ -1027,8 +1020,7 @@ describe('SettingsPage', () => {
       },
     }));
 
-    renderSettingsPage('/home?section=spaces');
-    await flushReactUpdates();
+    const { unmount } = renderSettingsPage('/home?section=spaces');
 
     const cardWorkspaceButtons = Array.from(
       document.querySelectorAll<HTMLButtonElement>(
@@ -1230,10 +1222,10 @@ describe('SettingsPage', () => {
     expect(document.querySelector('[data-space-stat="Status"]')).toHaveClass(
       'items-center'
     );
-    await flushReactUpdates();
+    unmount();
   });
 
-  it('keeps the workspace action last in a Spaces list row', async () => {
+  it('keeps the workspace action last in a Spaces list row', () => {
     const now = Date.now();
     useSpaceStore.setState((state) => ({
       ...state,
@@ -1254,8 +1246,7 @@ describe('SettingsPage', () => {
     }));
     window.localStorage.setItem('eigent-home-hub-view-mode', 'list');
 
-    renderSettingsPage('/home?section=spaces');
-    await flushReactUpdates();
+    const { unmount } = renderSettingsPage('/home?section=spaces');
 
     const listWorkspaceButton = document.querySelector<HTMLButtonElement>(
       '[data-home-space-open-workspace][data-layout="list"]'
@@ -1270,7 +1261,7 @@ describe('SettingsPage', () => {
     expect(listWorkspaceButton?.parentElement?.lastElementChild).toBe(
       listWorkspaceButton
     );
-    await flushReactUpdates();
+    unmount();
   });
 
   it('keeps reduced-motion navigation to fades and keyboard navigation instant', async () => {
