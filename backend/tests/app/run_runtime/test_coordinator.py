@@ -19,7 +19,7 @@ import asyncio
 import pytest
 
 from app.run_journal import SQLiteRunJournal
-from app.run_runtime import RunCoordinator, RunExecutionError
+from app.run_runtime import RunCoordinator, RunExecutionError, RunRuntimeError
 
 
 @pytest.mark.asyncio
@@ -164,6 +164,103 @@ async def test_rebind_moves_live_consumer_to_follow_up_run():
     with pytest.raises(StopAsyncIteration):
         await subscription.__anext__()
     assert await coordinator.get_handle("run-2") is None
+
+
+@pytest.mark.asyncio
+async def test_detached_warm_consumer_owns_follow_up_trigger_and_terminal(
+    tmp_path,
+):
+    journal = SQLiteRunJournal(tmp_path / "journal.sqlite3")
+    coordinator = RunCoordinator(journal)
+    command_queue: asyncio.Queue[str] = asyncio.Queue()
+    consumer_started = asyncio.Event()
+    active_consumers = 0
+    max_consumers = 0
+    consumed: list[tuple[str, str]] = []
+    handle_box = {}
+    try:
+        journal.ensure_run(run_id="run-old", project_id="project-1")
+
+        async def source():
+            nonlocal active_consumers, max_consumers
+            active_consumers += 1
+            max_consumers = max(max_consumers, active_consumers)
+            consumer_started.set()
+            try:
+                while True:
+                    command = await command_queue.get()
+                    current_run_id = handle_box["handle"].run_id
+                    consumed.append((current_run_id, command))
+                    assert await coordinator.complete_turn(
+                        current_run_id,
+                        project_id="project-1",
+                        assistant_data=f"handled {command}",
+                    )
+                    yield f"{current_run_id}:{command}"
+            finally:
+                active_consumers -= 1
+
+        subscription = await coordinator.start_with_subscription(
+            run_id="run-old",
+            stream_factory=source,
+            command_queue=command_queue,
+        )
+        handle_box["handle"] = subscription.handle
+        await consumer_started.wait()
+        assert await coordinator.complete_turn(
+            "run-old",
+            project_id="project-1",
+            assistant_data="old result",
+        )
+
+        # Browser transport abort only detaches its subscriber. The queue
+        # consumer intentionally remains warm for a follow-up rebind.
+        await subscription.aclose()
+        assert subscription.handle.subscriber_count == 0
+        assert subscription.handle.consumer_alive is True
+
+        journal.ensure_run(run_id="run-new", project_id="project-1")
+        assert await coordinator.rebind_run("run-old", "run-new") is True
+        follow_up = await coordinator.subscribe("run-new")
+        await command_queue.put("scheduled-trigger")
+
+        assert await follow_up.__anext__() == "run-new:scheduled-trigger"
+        assert consumed == [("run-new", "scheduled-trigger")]
+        assert max_consumers == 1
+        assert journal.get_run("run-new").status == "completed"
+        final = journal.get_run_final_result_event("run-new")
+        assert final is not None
+        assert final.payload == {"message": "handled scheduled-trigger"}
+    finally:
+        await coordinator.close()
+        journal.close()
+
+
+@pytest.mark.asyncio
+async def test_task_lock_queue_rejects_a_second_live_consumer():
+    coordinator = RunCoordinator()
+    command_queue: asyncio.Queue[str] = asyncio.Queue()
+    release = asyncio.Event()
+
+    async def source():
+        await release.wait()
+        yield "done"
+
+    first = await coordinator.start_with_subscription(
+        run_id="run-old",
+        stream_factory=source,
+        command_queue=command_queue,
+    )
+    with pytest.raises(RunRuntimeError, match="already has a live consumer"):
+        await coordinator.start_with_subscription(
+            run_id="run-new",
+            stream_factory=source,
+            command_queue=command_queue,
+        )
+
+    assert await coordinator.get_queue_owner(command_queue) is first.handle
+    release.set()
+    await first.handle.wait()
 
 
 @pytest.mark.asyncio

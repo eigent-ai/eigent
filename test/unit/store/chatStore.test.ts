@@ -80,6 +80,10 @@ vi.mock('@microsoft/fetch-event-source', () => ({
   fetchEventSource: vi.fn(),
 }));
 
+vi.mock('@/service/triggerApi', () => ({
+  proxyUpdateTriggerExecution: vi.fn(() => Promise.resolve()),
+}));
+
 vi.mock('../../../src/store/authStore', () => ({
   useAuthStore: {
     token: null,
@@ -127,26 +131,42 @@ vi.mock('../../../src/store/projectStore', () => ({
 }));
 
 import {
+  fetchDelete,
   fetchPost,
   fetchPut,
   proxyFetchGet,
   waitForBackendReady,
 } from '@/api/http';
+import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { generateUniqueId } from '../../../src/lib';
 import {
+  runDomainEventHub,
+  runEventIngressRegistry,
+  runProjectionStore,
+} from '../../../src/lib/runEvents';
+import {
+  closeIdleSSEConnectionsForTasks,
+  closeSSEConnectionsForTasks,
   collectTaskUploadFiles,
+  createChatStoreInstance,
   extractEndPayloadText,
   extractFinalOutputFileList,
+  getIdleSSETransportTaskId,
+  hasActiveSSEConnection,
+  hasAnyActiveLegacySSEConnection,
+  hasSSETransportForTasks,
   mergeFileInfoLists,
   normalizeTaskArtifactFileList,
   resolveConfirmedUserMessageContent,
   resolveEndMessageText,
   resolveRunOutputFileList,
+  settleLegacyTaskFromCanonicalTerminal,
   useChatStore,
 } from '../../../src/store/chatStore';
 import { useProjectStore } from '../../../src/store/projectStore';
-import { ChatTaskStatus } from '../../../src/types/constants';
+import { ExecutionStatus } from '../../../src/types';
+import { AgentStep, ChatTaskStatus } from '../../../src/types/constants';
 
 // Mock electron IPC
 (global as any).ipcRenderer = {
@@ -1097,6 +1117,755 @@ describe('ChatStore - Core Functionality', () => {
   });
 
   describe('Task startup', () => {
+    it('settles a live task from a canonical failure when legacy SSE ends without ERROR', () => {
+      const { result } = renderHook(() => useChatStore());
+      const taskId = result.current.getState().create('failed-run');
+      result.current.getState().setStatus(taskId, ChatTaskStatus.RUNNING);
+      result.current.getState().setIsPending(taskId, true);
+      result.current.getState().setTaskTime(taskId, Date.now() - 1000);
+
+      const event = {
+        eventType: 'run.failed',
+        payload: { message: 'Background preview did not stop.' },
+      } as const;
+
+      expect(
+        settleLegacyTaskFromCanonicalTerminal(result.current, taskId, event)
+      ).toBe(true);
+      expect(
+        settleLegacyTaskFromCanonicalTerminal(result.current, taskId, event)
+      ).toBe(true);
+
+      const task = result.current.getState().tasks[taskId];
+      expect(task).toMatchObject({
+        status: ChatTaskStatus.FINISHED,
+        durableRunStatus: 'failed',
+        isPending: false,
+        taskTime: 0,
+      });
+      expect(task.elapsed).toBeGreaterThanOrEqual(1000);
+      expect(
+        task.messages.filter((message) =>
+          message.content.includes('Background preview did not stop.')
+        )
+      ).toHaveLength(1);
+    });
+
+    it('settles the live ChatTask when the canonical stream reports run.failed', async () => {
+      vi.mocked(proxyFetchGet).mockResolvedValue({
+        value: 'test-cloud-key',
+        api_url: 'https://models.example.test',
+        items: [],
+        warning_code: null,
+      });
+      runDomainEventHub.clear();
+      runEventIngressRegistry.clear();
+
+      let canonicalOnMessage:
+        | ((event: { event?: string; id?: string; data: string }) => unknown)
+        | undefined;
+      vi.mocked(fetchEventSource).mockImplementation(async (url, options) => {
+        const response = new Response('', {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        });
+        await options.onopen?.(response);
+        if (String(url).includes('/runs/live-run/stream')) {
+          canonicalOnMessage = options.onmessage as typeof canonicalOnMessage;
+        }
+        await new Promise<void>(() => {});
+      });
+
+      const { result } = renderHook(() => useChatStore());
+      const getProjectStoreState = vi.mocked(useProjectStore.getState);
+      const previousProjectStoreImplementation =
+        getProjectStoreState.getMockImplementation();
+      const appendInitChatStore = vi.fn(() => {
+        const liveTaskId = result.current.getState().create('live-run');
+        result.current.getState().setActiveTaskId(liveTaskId);
+        return { taskId: liveTaskId, chatStore: result.current };
+      });
+      getProjectStoreState.mockReturnValue({
+        activeProjectId: 'project-1',
+        appendInitChatStore,
+        getProjectById: () => ({
+          id: 'project-1',
+          mode: 'single',
+          spaceId: 'space-1',
+        }),
+        getHistoryId: () => null,
+        getAllChatStores: () => [],
+        getProjectModel: () => null,
+        setProjectModel: vi.fn(),
+        setProjectSpace: vi.fn(),
+        setHistoryId: vi.fn(),
+        getProjectThinkingEffortOverride: () => undefined,
+      } as any);
+
+      await act(async () => {
+        await result.current
+          .getState()
+          .startTask(
+            'initial-task',
+            undefined,
+            undefined,
+            undefined,
+            'Create a game',
+            [],
+            undefined,
+            'project-1',
+            'single' as any
+          );
+      });
+      await vi.waitFor(() => expect(canonicalOnMessage).toBeDefined());
+      result.current.getState().setStatus('live-run', ChatTaskStatus.RUNNING);
+      result.current.getState().setTaskTime('live-run', Date.now() - 1000);
+
+      await canonicalOnMessage?.({
+        event: 'run_event',
+        id: '1',
+        data: JSON.stringify({
+          event_id: 'run-failed:live-run',
+          event_type: 'run.failed',
+          legacy_step: null,
+          payload: { message: 'Background preview did not stop.' },
+          project_id: 'project-1',
+          run_id: 'live-run',
+          sequence: 1,
+          run_version: 1,
+          created_at: Date.now() / 1000,
+        }),
+      });
+
+      expect(result.current.getState().tasks['live-run']).toMatchObject({
+        status: ChatTaskStatus.FINISHED,
+        durableRunStatus: 'failed',
+        isPending: false,
+        taskTime: 0,
+      });
+
+      runEventIngressRegistry.clear();
+      runDomainEventHub.clear();
+      if (previousProjectStoreImplementation) {
+        getProjectStoreState.mockImplementation(
+          previousProjectStoreImplementation
+        );
+      }
+    });
+
+    describe('canonical terminal observer lifecycle', () => {
+      const projectStoreState = vi.mocked(useProjectStore.getState);
+      const originalProjectStoreImplementation =
+        projectStoreState.getMockImplementation();
+      const originalFetchEventSourceImplementation = vi
+        .mocked(fetchEventSource)
+        .getMockImplementation();
+      let stores: ReturnType<typeof createChatStoreInstance>[] = [];
+
+      const canonicalEvent = (
+        runId: string,
+        eventType: string,
+        message = 'Background preview did not stop.'
+      ) => ({
+        event_id: `${eventType}:${runId}`,
+        event_type: eventType,
+        legacy_step: null,
+        payload: { message },
+        project_id: 'project-1',
+        run_id: runId,
+        sequence: 1,
+        run_version: 1,
+        created_at: Date.now() / 1000,
+      });
+
+      const startObservedLiveTask = async ({
+        initialRunId = 'live-run',
+        projectedStatus,
+        executionId,
+      }: {
+        initialRunId?: string;
+        projectedStatus?: 'failed' | 'completed' | 'cancelled' | 'interrupted';
+        executionId?: string;
+      } = {}) => {
+        vi.mocked(proxyFetchGet).mockResolvedValue({
+          value: 'test-cloud-key',
+          api_url: 'https://models.example.test',
+          items: [],
+          warning_code: null,
+        });
+        runDomainEventHub.clear();
+        runEventIngressRegistry.clear();
+        runProjectionStore.clear();
+
+        const streams = new Map<string, any>();
+        vi.mocked(fetchEventSource).mockImplementation(async (url, options) => {
+          streams.set(String(url), options);
+          const response = new Response('', {
+            status: 200,
+            headers: { 'content-type': 'text/event-stream' },
+          });
+          await options.onopen?.(response);
+          await new Promise<void>(() => {});
+        });
+
+        const store = createChatStoreInstance();
+        stores.push(store);
+        const appendInitChatStore = vi.fn(
+          (_projectId: string, requestedRunId?: string) => {
+            const runId = requestedRunId || initialRunId;
+            if (!store.getState().tasks[runId]) {
+              store.getState().create(runId);
+            }
+            store.getState().setActiveTaskId(runId);
+            return { taskId: runId, chatStore: store };
+          }
+        );
+        projectStoreState.mockReturnValue({
+          activeProjectId: 'project-1',
+          appendInitChatStore,
+          getChatStore: () => store,
+          getProjectById: () => ({
+            id: 'project-1',
+            mode: 'single',
+            spaceId: 'space-1',
+          }),
+          getHistoryId: () => null,
+          getAllChatStores: () => [],
+          getProjectModel: () => null,
+          setProjectModel: vi.fn(),
+          setProjectSpace: vi.fn(),
+          setHistoryId: vi.fn(),
+          getProjectThinkingEffortOverride: () => undefined,
+        } as any);
+
+        if (projectedStatus) {
+          runProjectionStore.upsertRunSummaries('project-1', [
+            {
+              run_id: initialRunId,
+              project_id: 'project-1',
+              status: projectedStatus,
+              updated_at: Date.now(),
+            },
+          ]);
+        }
+
+        await store
+          .getState()
+          .startTask(
+            'initial-task',
+            undefined,
+            undefined,
+            undefined,
+            'Create a game',
+            [],
+            executionId,
+            'project-1',
+            'single' as any
+          );
+        await vi.waitFor(() =>
+          expect([...streams.keys()].some((url) => url.endsWith('/chat'))).toBe(
+            true
+          )
+        );
+
+        const streamContaining = (path: string) =>
+          [...streams.entries()].find(([url]) => url.includes(path))?.[1];
+        return { store, streamContaining };
+      };
+
+      const switchLegacyStreamToFollowUp = async ({
+        store,
+        streamContaining,
+        initialRunId = 'live-run',
+        followUpRunId = 'follow-up-run',
+      }: {
+        store: ReturnType<typeof createChatStoreInstance>;
+        streamContaining: (path: string) => any;
+        initialRunId?: string;
+        followUpRunId?: string;
+      }) => {
+        const legacyStream = streamContaining('/chat');
+        const signal = legacyStream.signal as AbortSignal;
+
+        expect(hasActiveSSEConnection([initialRunId])).toBe(true);
+        expect(hasAnyActiveLegacySSEConnection()).toBe(true);
+
+        await legacyStream.onmessage?.({
+          data: JSON.stringify({
+            step: AgentStep.END,
+            data: { content: 'Done' },
+          }),
+        });
+
+        expect(signal.aborted).toBe(false);
+        expect(hasActiveSSEConnection([initialRunId])).toBe(false);
+        expect(hasSSETransportForTasks([initialRunId])).toBe(true);
+        expect(hasAnyActiveLegacySSEConnection()).toBe(false);
+
+        store.getState().setNextTaskId(followUpRunId);
+        await legacyStream.onmessage?.({
+          data: JSON.stringify({
+            step: AgentStep.NEW_TASK_STATE,
+            data: {
+              task_id: followUpRunId,
+              content: 'Improve the game',
+            },
+          }),
+        });
+
+        expect(hasActiveSSEConnection([initialRunId])).toBe(false);
+        expect(hasActiveSSEConnection([followUpRunId])).toBe(true);
+        expect(hasAnyActiveLegacySSEConnection()).toBe(true);
+        expect(signal.aborted).toBe(false);
+
+        return signal;
+      };
+
+      afterEach(() => {
+        for (const store of stores) {
+          closeSSEConnectionsForTasks(Object.keys(store.getState().tasks));
+        }
+        stores = [];
+        runEventIngressRegistry.clear();
+        runDomainEventHub.clear();
+        runProjectionStore.clear();
+        vi.mocked(fetchEventSource).mockReset();
+        if (originalFetchEventSourceImplementation) {
+          vi.mocked(fetchEventSource).mockImplementation(
+            originalFetchEventSourceImplementation
+          );
+        }
+        if (originalProjectStoreImplementation) {
+          projectStoreState.mockImplementation(
+            originalProjectStoreImplementation
+          );
+        }
+      });
+
+      it('reports a canonical-only trigger failure without waiting for the legacy ERROR frame', async () => {
+        const { store } = await startObservedLiveTask({
+          initialRunId: 'trigger-run',
+          executionId: 'execution-canonical-failure',
+        });
+        await vi.waitFor(() =>
+          expect(runDomainEventHub.listenerCount()).toBe(1)
+        );
+
+        runEventIngressRegistry.ingest(
+          'project-1',
+          'trigger-run',
+          canonicalEvent(
+            'trigger-run',
+            'run.failed',
+            'Workspace cleanup failed.'
+          ),
+          'live'
+        );
+
+        await vi.waitFor(() =>
+          expect(proxyUpdateTriggerExecution).toHaveBeenCalledWith(
+            'execution-canonical-failure',
+            expect.objectContaining({
+              status: ExecutionStatus.Failed,
+              error_message: 'Workspace cleanup failed.',
+            }),
+            { projectId: 'project-1' }
+          )
+        );
+        expect(store.getState().tasks['trigger-run']).toMatchObject({
+          status: ChatTaskStatus.FINISHED,
+          durableRunStatus: 'failed',
+          isPending: false,
+        });
+      });
+
+      it('retries a canonical terminal update without enqueueing a competing legacy outcome', async () => {
+        vi.mocked(proxyUpdateTriggerExecution)
+          .mockRejectedValueOnce(new Error('trigger API temporarily offline'))
+          .mockResolvedValue(undefined);
+        const { streamContaining } = await startObservedLiveTask({
+          initialRunId: 'trigger-retry-run',
+          executionId: 'execution-canonical-retry',
+        });
+        await vi.waitFor(() =>
+          expect(runDomainEventHub.listenerCount()).toBe(1)
+        );
+
+        runEventIngressRegistry.ingest(
+          'project-1',
+          'trigger-retry-run',
+          canonicalEvent(
+            'trigger-retry-run',
+            'run.failed',
+            'Canonical cleanup failed.'
+          ),
+          'live'
+        );
+        // Model a legacy ERROR frame that was already queued when the
+        // canonical terminal receipt disposed the observer and transport.
+        await streamContaining('/chat').onmessage?.({
+          data: JSON.stringify({
+            step: AgentStep.ERROR,
+            data: { message: 'Legacy cleanup failed.' },
+          }),
+        });
+
+        await vi.waitFor(
+          () => expect(proxyUpdateTriggerExecution).toHaveBeenCalledTimes(2),
+          { timeout: 2_000 }
+        );
+        const terminalUpdates = vi
+          .mocked(proxyUpdateTriggerExecution)
+          .mock.calls.map(([, update]) => update.status);
+        expect(terminalUpdates).toEqual([
+          ExecutionStatus.Failed,
+          ExecutionStatus.Failed,
+        ]);
+        expect(proxyUpdateTriggerExecution).toHaveBeenLastCalledWith(
+          'execution-canonical-retry',
+          expect.objectContaining({
+            status: ExecutionStatus.Failed,
+            error_message: 'Canonical cleanup failed.',
+          }),
+          { projectId: 'project-1' }
+        );
+      });
+
+      it('reports a terminal trigger status after an earlier running update', async () => {
+        let resolveRunningUpdate!: () => void;
+        vi.mocked(proxyUpdateTriggerExecution)
+          .mockImplementationOnce(
+            () =>
+              new Promise<void>((resolve) => {
+                resolveRunningUpdate = resolve;
+              })
+          )
+          .mockResolvedValue(undefined);
+        const { store, streamContaining } = await startObservedLiveTask({
+          initialRunId: 'trigger-initial-run',
+        });
+        const legacyStream = streamContaining('/chat');
+        await legacyStream.onmessage?.({
+          data: JSON.stringify({
+            step: AgentStep.CONFIRMED,
+            data: { question: 'Initial scheduled task' },
+          }),
+        });
+        store.getState().setNextTaskId('trigger-follow-up-run');
+        store
+          .getState()
+          .setNextExecutionId(
+            'trigger-initial-run',
+            'execution-running-then-failed'
+          );
+
+        await legacyStream.onmessage?.({
+          data: JSON.stringify({
+            step: AgentStep.CONFIRMED,
+            data: { question: 'Continue scheduled task' },
+          }),
+        });
+        await vi.waitFor(() =>
+          expect(proxyUpdateTriggerExecution).toHaveBeenCalledWith(
+            'execution-running-then-failed',
+            expect.objectContaining({ status: ExecutionStatus.Running }),
+            { projectId: 'project-1' }
+          )
+        );
+
+        runEventIngressRegistry.ingest(
+          'project-1',
+          'trigger-follow-up-run',
+          canonicalEvent(
+            'trigger-follow-up-run',
+            'run.failed',
+            'Follow-up failed.'
+          ),
+          'live'
+        );
+
+        // The terminal update is serialized after the already-issued Running
+        // request, so a slow old response cannot land after and overwrite it.
+        expect(proxyUpdateTriggerExecution).toHaveBeenCalledTimes(1);
+        resolveRunningUpdate();
+
+        await vi.waitFor(() =>
+          expect(proxyUpdateTriggerExecution).toHaveBeenCalledWith(
+            'execution-running-then-failed',
+            expect.objectContaining({
+              status: ExecutionStatus.Failed,
+              error_message: 'Follow-up failed.',
+            }),
+            { projectId: 'project-1' }
+          )
+        );
+      });
+
+      it('rebinds the terminal observer and ingress when the legacy stream switches to a follow-up Run', async () => {
+        const { store, streamContaining } = await startObservedLiveTask();
+        await vi.waitFor(() =>
+          expect(runDomainEventHub.listenerCount()).toBe(1)
+        );
+        const signal = await switchLegacyStreamToFollowUp({
+          store,
+          streamContaining,
+        });
+
+        await vi.waitFor(() =>
+          expect(runEventIngressRegistry.has('follow-up-run')).toBe(true)
+        );
+        expect(runDomainEventHub.listenerCount()).toBe(1);
+
+        runEventIngressRegistry.ingest(
+          'project-1',
+          'live-run',
+          canonicalEvent('live-run', 'run.failed'),
+          'live'
+        );
+        expect(store.getState().tasks['follow-up-run'].status).not.toBe(
+          ChatTaskStatus.FINISHED
+        );
+        expect(runDomainEventHub.listenerCount()).toBe(1);
+
+        runEventIngressRegistry.ingest(
+          'project-1',
+          'follow-up-run',
+          canonicalEvent('follow-up-run', 'run.failed'),
+          'live'
+        );
+        expect(store.getState().tasks['follow-up-run']).toMatchObject({
+          status: ChatTaskStatus.FINISHED,
+          durableRunStatus: 'failed',
+          isPending: false,
+        });
+        expect(runDomainEventHub.listenerCount()).toBe(0);
+        expect(signal.aborted).toBe(true);
+      });
+
+      it('keeps the follow-up observer active when NEW_TASK_STATE races an async END handler', async () => {
+        const { store, streamContaining } = await startObservedLiveTask();
+        const legacyStream = streamContaining('/chat');
+        const signal = legacyStream.signal as AbortSignal;
+        store.getState().setNextTaskId('follow-up-run');
+
+        // The real fetch-event-source dispatcher does not await this Promise
+        // before invoking the next onmessage callback.
+        const endHandling = legacyStream.onmessage?.({
+          data: JSON.stringify({
+            step: AgentStep.END,
+            data: { content: 'Done' },
+          }),
+        });
+        const followUpHandling = legacyStream.onmessage?.({
+          data: JSON.stringify({
+            step: AgentStep.NEW_TASK_STATE,
+            data: {
+              task_id: 'follow-up-run',
+              content: 'Improve the game',
+            },
+          }),
+        });
+        await Promise.all([endHandling, followUpHandling]);
+
+        await vi.waitFor(() =>
+          expect(runEventIngressRegistry.has('follow-up-run')).toBe(true)
+        );
+        expect(hasActiveSSEConnection(['live-run'])).toBe(false);
+        expect(hasActiveSSEConnection(['follow-up-run'])).toBe(true);
+        expect(hasAnyActiveLegacySSEConnection()).toBe(true);
+        expect(runDomainEventHub.listenerCount()).toBe(1);
+        expect(signal.aborted).toBe(false);
+
+        runEventIngressRegistry.ingest(
+          'project-1',
+          'follow-up-run',
+          canonicalEvent('follow-up-run', 'run.failed'),
+          'live'
+        );
+
+        expect(store.getState().tasks['follow-up-run']).toMatchObject({
+          status: ChatTaskStatus.FINISHED,
+          durableRunStatus: 'failed',
+          isPending: false,
+        });
+        expect(runDomainEventHub.listenerCount()).toBe(0);
+        expect(signal.aborted).toBe(true);
+      });
+
+      it('closes an idle reusable transport without treating it as an active Run', async () => {
+        const { streamContaining } = await startObservedLiveTask({
+          initialRunId: 'idle-run',
+        });
+        const legacyStream = streamContaining('/chat');
+        const signal = legacyStream.signal as AbortSignal;
+
+        await legacyStream.onmessage?.({
+          data: JSON.stringify({
+            step: AgentStep.END,
+            data: { content: 'Done' },
+          }),
+        });
+
+        expect(hasActiveSSEConnection(['idle-run'])).toBe(false);
+        expect(hasSSETransportForTasks(['idle-run'])).toBe(true);
+        expect(getIdleSSETransportTaskId(['idle-run'])).toBe('idle-run');
+        expect(hasAnyActiveLegacySSEConnection()).toBe(false);
+        expect(signal.aborted).toBe(false);
+
+        closeIdleSSEConnectionsForTasks(['idle-run']);
+
+        expect(signal.aborted).toBe(true);
+        expect(hasActiveSSEConnection(['idle-run'])).toBe(false);
+        expect(hasSSETransportForTasks(['idle-run'])).toBe(false);
+        expect(getIdleSSETransportTaskId(['idle-run'])).toBeNull();
+      });
+
+      it.each(['stop', 'remove', 'close'] as const)(
+        '%s on the follow-up Run aborts its shared legacy connection',
+        async (action) => {
+          const initialRunId = `${action}-initial-run`;
+          const followUpRunId = `${action}-follow-up-run`;
+          const { store, streamContaining } = await startObservedLiveTask({
+            initialRunId,
+          });
+          const signal = await switchLegacyStreamToFollowUp({
+            store,
+            streamContaining,
+            initialRunId,
+            followUpRunId,
+          });
+
+          if (action === 'stop') {
+            store.getState().stopTask(followUpRunId);
+          } else if (action === 'remove') {
+            store.getState().removeTask(followUpRunId);
+          } else {
+            closeSSEConnectionsForTasks([followUpRunId]);
+          }
+
+          expect(signal.aborted).toBe(true);
+          expect(hasActiveSSEConnection([initialRunId])).toBe(false);
+          expect(hasActiveSSEConnection([followUpRunId])).toBe(false);
+          expect(hasAnyActiveLegacySSEConnection()).toBe(false);
+          expect(runDomainEventHub.listenerCount()).toBe(0);
+        }
+      );
+
+      it('settles from an existing terminal projection after subscribing', async () => {
+        const { store, streamContaining } = await startObservedLiveTask({
+          projectedStatus: 'failed',
+        });
+
+        expect(store.getState().tasks['live-run']).toMatchObject({
+          status: ChatTaskStatus.FINISHED,
+          durableRunStatus: 'failed',
+          isPending: false,
+        });
+        expect(runDomainEventHub.listenerCount()).toBe(0);
+        expect(streamContaining('/runs/live-run/stream')).toBeUndefined();
+      });
+
+      it('releases listeners on fatal legacy errors and normal stream close', async () => {
+        const first = await startObservedLiveTask({
+          initialRunId: 'fatal-run',
+        });
+        await vi.waitFor(() =>
+          expect(runDomainEventHub.listenerCount()).toBe(1)
+        );
+        expect(() =>
+          first.streamContaining('/chat').onerror?.(new Error('fatal'))
+        ).toThrow('fatal');
+        expect(runDomainEventHub.listenerCount()).toBe(0);
+
+        const second = await startObservedLiveTask({
+          initialRunId: 'closed-run',
+        });
+        await vi.waitFor(() =>
+          expect(runDomainEventHub.listenerCount()).toBe(1)
+        );
+        second.streamContaining('/chat').onclose?.();
+        expect(runDomainEventHub.listenerCount()).toBe(0);
+      });
+
+      it('releases listeners through explicit task close and clearTasks', async () => {
+        const first = await startObservedLiveTask({
+          initialRunId: 'explicit-close-run',
+        });
+        await vi.waitFor(() =>
+          expect(runDomainEventHub.listenerCount()).toBe(1)
+        );
+        closeSSEConnectionsForTasks(['explicit-close-run']);
+        expect(runDomainEventHub.listenerCount()).toBe(0);
+
+        const second = await startObservedLiveTask({
+          initialRunId: 'clear-run',
+        });
+        await vi.waitFor(() =>
+          expect(runDomainEventHub.listenerCount()).toBe(1)
+        );
+        second.store.getState().clearTasks();
+        expect(runDomainEventHub.listenerCount()).toBe(0);
+        expect(
+          first.store.getState().tasks['explicit-close-run']
+        ).toBeDefined();
+      });
+
+      it('does not duplicate an error when legacy and canonical failures interleave', async () => {
+        const { store, streamContaining } = await startObservedLiveTask();
+        const message = 'Background preview did not stop.';
+
+        await streamContaining('/chat').onmessage?.({
+          data: JSON.stringify({
+            step: AgentStep.ERROR,
+            data: { message },
+          }),
+        });
+        runEventIngressRegistry.ingest(
+          'project-1',
+          'live-run',
+          canonicalEvent('live-run', 'run.failed', message),
+          'live'
+        );
+
+        expect(
+          store
+            .getState()
+            .tasks['live-run'].messages.filter((item) =>
+              item.content.includes(message)
+            )
+        ).toHaveLength(1);
+        expect(runDomainEventHub.listenerCount()).toBe(0);
+      });
+
+      it('does not duplicate an error when canonical failure arrives before legacy ERROR', async () => {
+        const { store, streamContaining } = await startObservedLiveTask();
+        const message = 'Background preview did not stop.';
+
+        runEventIngressRegistry.ingest(
+          'project-1',
+          'live-run',
+          canonicalEvent('live-run', 'run.failed', message),
+          'live'
+        );
+        await streamContaining('/chat').onmessage?.({
+          data: JSON.stringify({
+            step: AgentStep.ERROR,
+            data: { message },
+          }),
+        });
+
+        const errors = store
+          .getState()
+          .tasks['live-run'].messages.filter(
+            (item) => item.step === AgentStep.ERROR
+          );
+        expect(errors).toHaveLength(1);
+        expect(errors[0].content).toContain(message);
+        expect(fetchDelete).not.toHaveBeenCalled();
+        expect(runDomainEventHub.listenerCount()).toBe(0);
+      });
+    });
+
     it('renders the pending user turn before backend readiness resolves', async () => {
       let resolveBackendReady!: (ready: boolean) => void;
       vi.mocked(waitForBackendReady).mockReturnValueOnce(

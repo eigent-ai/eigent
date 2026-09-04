@@ -39,6 +39,7 @@ from app.model.chat import (
     FollowUpRequestCreate,
     HumanReply,
     McpServers,
+    RetireIdleRuntimeRequest,
     Status,
     SupplementChat,
     sse_json,
@@ -1483,7 +1484,7 @@ async def start_chat_stream(data: Chat, request: Request):
     journal = get_default_run_journal()
     if isinstance(journal, SQLiteRunJournal):
         coordinator.bind_journal(journal)
-    async with coordinator.admission_scope(run_id):
+    async with coordinator.admission_scope(run_id, project_id=data.project_id):
         subscription = await coordinator.attach_if_running(run_id)
         if subscription is not None:
             chat_logger.info(
@@ -1491,6 +1492,19 @@ async def start_chat_stream(data: Chat, request: Request):
                 extra={"run_id": run_id, "project_id": data.project_id},
             )
             return timeout_stream_wrapper(subscription, run_id=run_id)
+
+        existing_task_lock = get_task_lock_if_exists(data.project_id)
+        if existing_task_lock is not None:
+            queue_owner = await coordinator.get_queue_owner(
+                existing_task_lock.queue
+            )
+            if queue_owner is not None:
+                raise UserException(
+                    code.error,
+                    "This Project already has a live chat consumer. "
+                    "Submit the new Run through the follow-up endpoint or "
+                    "retire the idle runtime first.",
+                )
 
         if data.resume_request_id:
             run = await asyncio.to_thread(journal.get_run, run_id)
@@ -1762,6 +1776,77 @@ async def status(project_id: str):
 
 
 @router.post(
+    "/chat/{project_id}/runtime/retire-idle",
+    dependencies=_CHAT_CONTROL_DEPENDENCIES,
+)
+async def retire_idle_runtime(project_id: str, data: RetireIdleRuntimeRequest):
+    """Await disposal of a completed warm consumer before cold admission."""
+
+    coordinator = get_default_run_coordinator()
+    async with coordinator.admission_scope(data.run_id, project_id=project_id):
+        task_lock = get_task_lock_if_exists(project_id)
+        if task_lock is None:
+            return {
+                "project_id": project_id,
+                "run_id": data.run_id,
+                "retired": False,
+                "consumer_alive": False,
+            }
+
+        run_context = getattr(task_lock, "run_context", None)
+        current_run_id = getattr(run_context, "run_id", None)
+        if current_run_id != data.run_id:
+            raise HTTPException(
+                status_code=409,
+                detail="The Project runtime moved to another Run.",
+            )
+        if task_lock.status != Status.done:
+            raise HTTPException(
+                status_code=409,
+                detail="The Project runtime is not idle.",
+            )
+
+        run = await asyncio.to_thread(
+            get_default_run_journal().get_run, data.run_id
+        )
+        if run is None or run.project_id != project_id:
+            raise HTTPException(status_code=404, detail="Run not found.")
+        if run.status not in {"completed", "failed", "cancelled"}:
+            raise HTTPException(
+                status_code=409,
+                detail="The Run has not reached a terminal state.",
+            )
+
+        owner = await coordinator.get_queue_owner(task_lock.queue)
+        if owner is None:
+            return {
+                "project_id": project_id,
+                "run_id": data.run_id,
+                "retired": False,
+                "consumer_alive": False,
+            }
+        if owner.run_id != data.run_id:
+            raise HTTPException(
+                status_code=409,
+                detail="The TaskLock queue belongs to another Run.",
+            )
+
+        await coordinator.retire(data.run_id, command_queue=task_lock.queue)
+        remaining = await coordinator.get_queue_owner(task_lock.queue)
+        if remaining is not None:
+            raise HTTPException(
+                status_code=503,
+                detail="The idle Project runtime did not stop.",
+            )
+        return {
+            "project_id": project_id,
+            "run_id": data.run_id,
+            "retired": True,
+            "consumer_alive": False,
+        }
+
+
+@router.post(
     "/projects/{project_id}/follow-ups",
     dependencies=_CHAT_CONTROL_DEPENDENCIES,
 )
@@ -1896,7 +1981,7 @@ async def mark_follow_up_admitted(
 async def improve(id: str, data: SupplementChat, request: Request):
     if data.task_id:
         coordinator = get_default_run_coordinator()
-        async with coordinator.admission_scope(data.task_id):
+        async with coordinator.admission_scope(data.task_id, project_id=id):
             request_id = _admission_request_id(
                 data.task_id,
                 question=data.question,

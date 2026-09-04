@@ -12,12 +12,14 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { fetchGet, fetchPost } from '@/api/http';
 import i18n from '@/i18n';
 import { generateUniqueId } from '@/lib';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import {
-  closeSSEConnectionsForTasks,
+  closeIdleSSEConnectionsForTasks,
   hasActiveSSEConnection,
+  hasSSETransportForTasks,
 } from '@/store/chatStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useTriggerTaskStore } from '@/store/triggerTaskStore';
@@ -36,12 +38,18 @@ interface ActiveBackgroundTask {
   triggerTaskId?: string;
 }
 
+interface LegacyChatRuntimeStatus {
+  status?: string;
+  run_id?: string | null;
+  consumer_alive?: boolean;
+}
+
 /**
  * Hook that processes background tasks from project queuedMessages.
  * Supports trigger tasks (with executionId) and can be extended for other task types.
  *
  * - Polls all projects' queuedMessages for messages with executionId
- * - Uses appendInitChatStore + startTask for execution (supports same-project parallelism)
+ * - Retires an idle Project consumer before cold start
  */
 export function useBackgroundTaskProcessor() {
   const projectStore = useProjectRuntimeStore();
@@ -71,6 +79,11 @@ export function useBackgroundTaskProcessor() {
       for (const project of projects) {
         const projectData = projectStore.getProjectById(project.id);
         if (!projectData?.queuedMessages?.length) continue;
+        const msg = projectData.queuedMessages.find(
+          (queuedMessage) =>
+            queuedMessage.executionId && !queuedMessage.processing
+        );
+        if (!msg?.executionId) continue;
 
         // Per-project concurrency: skip if this project already has an active background task
         const hasActiveBackgroundTask = Array.from(
@@ -116,58 +129,105 @@ export function useBackgroundTaskProcessor() {
           continue;
         }
 
-        // If SSE is active, starting a new task would duplicate trigger processing.
-        // Wait for the active task to finish; if task is done but SSE lingers, close it
-        // so the trigger can start fresh on the next poll.
+        // A logically active Run blocks queued trigger processing. Browser SSE
+        // ownership and the backend TaskLock consumer have separate lifetimes,
+        // so both must be resolved before admitting a scheduled Run.
         const allTaskIds = Object.values(projectData.chatStores || {}).flatMap(
           (cs) => Object.keys(cs.getState().tasks)
         );
         if (hasActiveSSEConnection(allTaskIds)) {
-          const activeChatStore = projectStore.getChatStore(project.id);
-          const activeState = activeChatStore?.getState();
-          const activeTaskId = activeState?.activeTaskId;
-          const activeTask = activeTaskId
-            ? activeState?.tasks[activeTaskId]
-            : null;
-
-          const isActiveTaskDone =
-            activeTask?.status === ChatTaskStatus.FINISHED ||
-            activeTask?.hasWaitComfirm;
-
-          if (isActiveTaskDone) {
-            console.log(
-              '[BackgroundTaskProcessor] Closing stale SSE for project',
-              project.id,
-              '- active task done, trigger waiting in queue'
-            );
-            closeSSEConnectionsForTasks(allTaskIds);
-          } else {
-            console.log(
-              '[BackgroundTaskProcessor] Skipping project',
-              project.id,
-              '- SSE active, task still in progress'
-            );
-          }
+          console.log(
+            '[BackgroundTaskProcessor] Skipping project',
+            project.id,
+            '- SSE Run still logically active'
+          );
           continue;
         }
 
-        const msg = projectData.queuedMessages.find(
-          (m) => m.executionId && !m.processing
-        );
-        if (msg && msg.executionId) {
-          messageToProcess = {
-            projectId: project.id,
-            task_id: msg.task_id,
-            content: msg.content,
-            attaches: msg.attaches || [],
-            executionId: msg.executionId,
-            triggerTaskId: msg.triggerTaskId,
-            triggerId: msg.triggerId,
-            triggerName: msg.triggerName,
-            timestamp: msg.timestamp,
-          };
-          break;
+        let runtimeStatus: LegacyChatRuntimeStatus;
+        try {
+          runtimeStatus = await fetchGet(
+            `/chat/${encodeURIComponent(project.id)}/status`
+          );
+        } catch (error) {
+          console.warn(
+            '[BackgroundTaskProcessor] Skipping project',
+            project.id,
+            '- could not verify legacy runtime ownership',
+            error
+          );
+          continue;
         }
+
+        if (runtimeStatus.consumer_alive) {
+          if (runtimeStatus.status !== 'done' || !runtimeStatus.run_id) {
+            console.log(
+              '[BackgroundTaskProcessor] Skipping project',
+              project.id,
+              '- backend legacy Run is not idle'
+            );
+            continue;
+          }
+
+          // subscriber_count is only a point-in-time observation. Reusing a
+          // warm consumer would race a renderer disconnect between this read
+          // and follow-up admission, leaving the new Run without either the
+          // legacy stream or a canonical terminal observer. Scheduled work
+          // therefore retires the idle consumer before opening a fresh stream.
+          let retired: LegacyChatRuntimeStatus;
+          try {
+            retired = await fetchPost(
+              `/chat/${encodeURIComponent(project.id)}/runtime/retire-idle`,
+              { run_id: runtimeStatus.run_id }
+            );
+          } catch (error) {
+            console.warn(
+              '[BackgroundTaskProcessor] Skipping project',
+              project.id,
+              '- could not retire the backend idle consumer',
+              error
+            );
+            continue;
+          }
+          if (retired?.consumer_alive) {
+            console.warn(
+              '[BackgroundTaskProcessor] Skipping project',
+              project.id,
+              '- backend idle consumer did not retire'
+            );
+            continue;
+          }
+        }
+
+        if (hasSSETransportForTasks(allTaskIds)) {
+          console.log(
+            '[BackgroundTaskProcessor] Closing idle SSE for project',
+            project.id,
+            '- backend consumer is retired'
+          );
+          closeIdleSSEConnectionsForTasks(allTaskIds);
+          if (hasSSETransportForTasks(allTaskIds)) {
+            console.warn(
+              '[BackgroundTaskProcessor] Skipping project',
+              project.id,
+              '- idle SSE cleanup did not release the transport'
+            );
+            continue;
+          }
+        }
+
+        messageToProcess = {
+          projectId: project.id,
+          task_id: msg.task_id,
+          content: msg.content,
+          attaches: msg.attaches || [],
+          executionId: msg.executionId,
+          triggerTaskId: msg.triggerTaskId,
+          triggerId: msg.triggerId,
+          triggerName: msg.triggerName,
+          timestamp: msg.timestamp,
+        };
+        break;
       }
 
       if (!messageToProcess) return;
@@ -234,8 +294,7 @@ export function useBackgroundTaskProcessor() {
           )
         );
 
-        // Fire and forget - startTask streams until completion
-        chatStore
+        const admissionPromise = chatStore
           .getState()
           .startTask(
             newTaskId,
@@ -246,7 +305,10 @@ export function useBackgroundTaskProcessor() {
             attaches,
             executionId,
             projectId
-          )
+          );
+
+        // Fire and forget - task state and canonical ingress track completion.
+        admissionPromise
           .then(() => {
             console.log(
               '[BackgroundTaskProcessor] Background task completed:',

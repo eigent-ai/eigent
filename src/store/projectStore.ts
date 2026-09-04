@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { proxyFetchGet } from '@/api/http';
+import { fetchGet, fetchPost, proxyFetchGet } from '@/api/http';
 import { generateUniqueId } from '@/lib';
 import {
   deleteCachedProject,
@@ -38,6 +38,7 @@ import {
 import { create } from 'zustand';
 import { getAuthStore } from './authStore';
 import {
+  closeIdleSSEConnectionsForTasks,
   createChatStoreInstance,
   hasActiveSSEConnection,
   VanillaChatStore,
@@ -53,6 +54,8 @@ import {
   useSpaceStore,
   type SpaceProjectMeta,
 } from './spaceStore';
+
+const staleRuntimeEvictionsInFlight = new Set<string>();
 
 /**
  * After a history project finishes replaying, the per-subtask `status` may be
@@ -435,12 +438,12 @@ interface ProjectStore {
    */
   _evictProjectRuntime: (projectId: string) => void;
   /**
-   * If `activeProjectId` is currently in `staleProjectIds` and we are
-   * transitioning to a different project (or to null), evict the runtime
-   * state of the outgoing one. Call this immediately before any direct
-   * write to `activeProjectId` so all transition paths (`setActiveProject`,
-   * `createProject`, `replayProject`, `loadProjectFromHistory`) honour
-   * the stale-eviction contract.
+   * On an active-project transition, retry eviction for every stale runtime
+   * except the Project being activated. This includes older entries whose
+   * backend status/retirement request failed during an earlier transition.
+   * Call this immediately before any direct write to `activeProjectId` so all
+   * transition paths (`setActiveProject`, `createProject`, `replayProject`,
+   * `loadProjectFromHistory`) honour the stale-eviction contract.
    */
   _evictStaleOnTransition: (nextProjectId: string | null) => void;
 
@@ -1325,28 +1328,69 @@ const projectStore = create<ProjectStore>()((set, get) => ({
   },
 
   _evictStaleOnTransition: (nextProjectId: string | null) => {
-    const previousProjectId = get().activeProjectId;
-    if (
-      !previousProjectId ||
-      previousProjectId === nextProjectId ||
-      !get().staleProjectIds.has(previousProjectId)
-    ) {
-      return;
+    const staleProjectIds = [...get().staleProjectIds];
+    for (const staleProjectId of staleProjectIds) {
+      // The destination is either already active or about to become active.
+      // Never let an older asynchronous retirement evict its fresh runtime.
+      if (staleProjectId === nextProjectId) continue;
+
+      // Never evict a project that still has a live run. Eviction drops the
+      // runtime chat stores, so returning to the project rebuilds it from
+      // history and replays the ongoing task id -- which aborts the live
+      // run's stream and kills the run on the backend. Keep the stale flag
+      // so the eviction can be retried on a later safe transition.
+      const staleProject = get().projects[staleProjectId];
+      const staleTaskIds = Object.values(
+        staleProject?.chatStores ?? {}
+      ).flatMap((chatStore) => Object.keys(chatStore.getState().tasks));
+      if (hasActiveSSEConnection(staleTaskIds)) continue;
+
+      // Renderer subscription lifetime is independent from the backend's warm
+      // TaskLock consumer. Even with no local transport, verify and retire the
+      // backend owner before dropping the only runtime state that identifies it.
+      if (staleRuntimeEvictionsInFlight.has(staleProjectId)) continue;
+      staleRuntimeEvictionsInFlight.add(staleProjectId);
+      void (async () => {
+        try {
+          const runtimeStatus = await fetchGet(
+            `/chat/${encodeURIComponent(staleProjectId)}/status`
+          );
+          if (runtimeStatus?.consumer_alive) {
+            if (runtimeStatus.status !== 'done' || !runtimeStatus.run_id) {
+              return;
+            }
+            if (get().activeProjectId === staleProjectId) return;
+            const retired = await fetchPost(
+              `/chat/${encodeURIComponent(staleProjectId)}/runtime/retire-idle`,
+              { run_id: runtimeStatus.run_id }
+            );
+            if (retired?.consumer_alive) return;
+          }
+
+          const latest = get();
+          if (
+            !latest.staleProjectIds.has(staleProjectId) ||
+            !latest.projects[staleProjectId]
+          ) {
+            return;
+          }
+          const latestTaskIds = Object.values(
+            latest.projects[staleProjectId].chatStores
+          ).flatMap((chatStore) => Object.keys(chatStore.getState().tasks));
+          if (hasActiveSSEConnection(latestTaskIds)) return;
+          if (latest.activeProjectId === staleProjectId) return;
+          closeIdleSSEConnectionsForTasks(latestTaskIds);
+          latest._evictProjectRuntime(staleProjectId);
+        } catch (error) {
+          console.warn(
+            '[ProjectStore] Deferred stale runtime eviction until its backend consumer can retire',
+            error
+          );
+        } finally {
+          staleRuntimeEvictionsInFlight.delete(staleProjectId);
+        }
+      })();
     }
-    // Never evict a project that still has a live run. Eviction drops the
-    // runtime chat stores, so returning to the project rebuilds it from
-    // history and replays the ongoing task id -- which aborts the live
-    // run's stream and kills the run on the backend. Keep the stale flag
-    // so the eviction simply happens on a later, safe transition.
-    const outgoingProject = get().projects[previousProjectId];
-    const outgoingTaskIds = Object.values(
-      outgoingProject?.chatStores ?? {}
-    ).flatMap((chatStore) => Object.keys(chatStore.getState().tasks));
-    if (hasActiveSSEConnection(outgoingTaskIds)) {
-      return;
-    }
-    // _evictProjectRuntime handles staleProjectIds cleanup itself.
-    get()._evictProjectRuntime(previousProjectId);
   },
 
   removeProject: (

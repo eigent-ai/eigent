@@ -50,7 +50,12 @@ import {
   REMOTE_SUB_AGENT_PROVIDER_ID,
   toRemoteSubAgentRuntimeConfig,
 } from '@/lib/remoteSubAgent';
-import { runEventIngressRegistry } from '@/lib/runEvents';
+import {
+  runDomainEventHub,
+  runEventIngressRegistry,
+  runProjectionStore,
+  type RunDomainEvent,
+} from '@/lib/runEvents';
 import { buildSearchRuntimeConfig } from '@/lib/searchConfig';
 import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import { settleTaskElapsedMs } from '@/lib/taskDuration';
@@ -1319,12 +1324,220 @@ export type VanillaChatStore = {
 const autoConfirmTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 const AUTO_CONFIRM_TIMEOUT_MS = 30000;
 
-// Track active SSE connections for proper cleanup. `live` distinguishes
-// real Brain runs from history/share playback streams.
-const activeSSEControllers: Record<
-  string,
-  { controller: AbortController; live: boolean }
-> = {};
+// Track active SSE connections for proper cleanup. A live `/chat` transport
+// can outlive one Run and be reused by a follow-up Run, so ownership must move
+// with the reducer lock instead of remaining attached to the initial Run ID.
+// `logicalActive` keeps an idle, reusable transport from blocking app close.
+type ActiveSSEConnection = {
+  controller: AbortController;
+  live: boolean;
+  logicalActive: boolean;
+  taskId: string;
+};
+
+const activeSSEControllers: Record<string, ActiveSSEConnection> = {};
+
+// A follow-up Run reuses the original legacy `/chat` connection while its
+// canonical observer follows the currently active task. Index the disposer by
+// that current owner only; ownership moves atomically with the reducer lock.
+const canonicalTerminalObserverCleanups = new Map<string, () => void>();
+
+function registerCanonicalTerminalObserverCleanup(
+  taskId: string,
+  cleanup: () => void
+): void {
+  const previous = canonicalTerminalObserverCleanups.get(taskId);
+  if (previous && previous !== cleanup) previous();
+  canonicalTerminalObserverCleanups.set(taskId, cleanup);
+}
+
+function unregisterCanonicalTerminalObserverCleanup(cleanup: () => void): void {
+  for (const [taskId, registered] of canonicalTerminalObserverCleanups) {
+    if (registered === cleanup) {
+      canonicalTerminalObserverCleanups.delete(taskId);
+    }
+  }
+}
+
+function cleanupCanonicalTerminalObserverForTask(taskId: string): void {
+  canonicalTerminalObserverCleanups.get(taskId)?.();
+}
+
+function cleanupAllCanonicalTerminalObservers(): void {
+  for (const cleanup of new Set(canonicalTerminalObserverCleanups.values())) {
+    cleanup();
+  }
+  canonicalTerminalObserverCleanups.clear();
+}
+
+function cleanupSSEConnection(
+  connection: ActiveSSEConnection,
+  { abort = true }: { abort?: boolean } = {}
+): void {
+  // A superseded transport may deliver a late onerror/onclose callback after
+  // another transport has claimed the same Run. Only the current owner may
+  // dispose that Run's canonical observer.
+  if (activeSSEControllers[connection.taskId] === connection) {
+    cleanupCanonicalTerminalObserverForTask(connection.taskId);
+  }
+  if (abort) {
+    try {
+      connection.controller.abort();
+    } catch {
+      // Ignore abort errors while releasing task-scoped resources.
+    }
+  }
+  for (const [taskId, registered] of Object.entries(activeSSEControllers)) {
+    if (registered === connection) delete activeSSEControllers[taskId];
+  }
+}
+
+function bindSSEConnectionToTask(
+  connection: ActiveSSEConnection,
+  taskId: string
+): void {
+  const existing = activeSSEControllers[taskId];
+  if (existing && existing !== connection) {
+    cleanupSSEConnection(existing);
+  }
+  for (const [registeredTaskId, registered] of Object.entries(
+    activeSSEControllers
+  )) {
+    if (registered === connection && registeredTaskId !== taskId) {
+      delete activeSSEControllers[registeredTaskId];
+    }
+  }
+  connection.taskId = taskId;
+  connection.logicalActive = true;
+  activeSSEControllers[taskId] = connection;
+}
+
+function markSSEConnectionIdleForTask(
+  connection: ActiveSSEConnection,
+  completedTaskId: string
+): void {
+  // fetch-event-source does not serialize async onmessage handlers. An END
+  // handler may resume after NEW_TASK_STATE has already rebound this physical
+  // transport. The completed Run may only idle the connection while it still
+  // owns it; otherwise it would tear down the follow-up Run's observer.
+  if (
+    connection.taskId !== completedTaskId ||
+    activeSSEControllers[completedTaskId] !== connection
+  ) {
+    return;
+  }
+  cleanupCanonicalTerminalObserverForTask(completedTaskId);
+  connection.logicalActive = false;
+}
+
+function cleanupTaskSSEResources(
+  taskId: string,
+  { abort = true }: { abort?: boolean } = {}
+): void {
+  cleanupCanonicalTerminalObserverForTask(taskId);
+  const connection = activeSSEControllers[taskId];
+  if (!connection) return;
+  cleanupSSEConnection(connection, { abort });
+}
+
+const CANONICAL_TERMINAL_RUN_STATUSES: Partial<
+  Record<string, DurableRunDisplayStatus>
+> = {
+  'run.completed': 'completed',
+  'run.failed': 'failed',
+  'run.deadline_reached': 'failed',
+  'run.cancelled': 'cancelled',
+  'run.interrupted': 'interrupted',
+  'runtime.interrupted': 'interrupted',
+};
+
+const CANONICAL_TERMINAL_EVENT_BY_RUN_STATUS: Partial<Record<string, string>> =
+  {
+    completed: 'run.completed',
+    failed: 'run.failed',
+    cancelled: 'run.cancelled',
+    interrupted: 'run.interrupted',
+  };
+
+/**
+ * Keep the legacy ChatTask lifecycle aligned with the canonical Run outcome.
+ *
+ * The legacy `/chat` stream can end with a transport error before it emits an
+ * ERROR/END frame. The durable Run stream is authoritative in that case, so a
+ * terminal event must also stop the legacy clock and release the composer.
+ */
+export function settleLegacyTaskFromCanonicalTerminal(
+  chatStore: Pick<VanillaChatStore, 'getState'>,
+  taskId: string,
+  event: Pick<RunDomainEvent, 'eventType' | 'payload'>
+): boolean {
+  const durableRunStatus = CANONICAL_TERMINAL_RUN_STATUSES[event.eventType];
+  if (!durableRunStatus) return false;
+
+  const state = chatStore.getState();
+  const task = state.tasks[taskId];
+  if (!task) return false;
+
+  const elapsed = settleTaskElapsedMs(task, Date.now());
+  state.setTaskTime(taskId, 0);
+  state.setElapsed(taskId, elapsed);
+  state.setDurableRunStatus(taskId, durableRunStatus);
+  state.setActiveAsk(taskId, '');
+  state.setActiveAskList(taskId, []);
+  state.setIsPending(taskId, false);
+  state.setStatus(taskId, ChatTaskStatus.FINISHED);
+
+  if (durableRunStatus === 'failed') {
+    state.setTaskRunning(
+      taskId,
+      task.taskRunning.map((item) =>
+        item.status === TaskStatus.COMPLETED ||
+        item.status === TaskStatus.FAILED
+          ? item
+          : { ...item, status: TaskStatus.FAILED }
+      )
+    );
+    state.setTaskAssigning(
+      taskId,
+      task.taskAssigning.map((agent) => ({
+        ...agent,
+        tasks: agent.tasks.map((item) =>
+          item.status === TaskStatus.COMPLETED ||
+          item.status === TaskStatus.FAILED
+            ? item
+            : { ...item, status: TaskStatus.FAILED }
+        ),
+      }))
+    );
+    const rawMessage = event.payload?.message;
+    const message =
+      typeof rawMessage === 'string' && rawMessage.trim()
+        ? rawMessage.trim()
+        : i18next.t('chat.run-no-final-response', {
+            defaultValue:
+              'This task failed before it produced a final response.',
+          });
+    const content = i18next.t('chat.error-message', {
+      defaultValue: '❌ **Error**: {{message}}',
+      message,
+    });
+    const alreadyRendered = state.tasks[taskId]?.messages.some(
+      (item) =>
+        item.role === 'agent' &&
+        (item.step === AgentStep.ERROR || item.content === content)
+    );
+    if (!alreadyRendered) {
+      state.addMessages(taskId, {
+        id: generateUniqueId(),
+        role: 'agent',
+        content,
+        step: AgentStep.ERROR,
+      });
+    }
+  }
+
+  return true;
+}
 
 const FINAL_OUTPUT_FILE_PATH_REGEX =
   /(?<![A-Za-z0-9:\\/])(?:[A-Za-z]:)?[\\/][^\s`"'<>|*]+?\.[A-Za-z0-9]{1,12}(?=$|[\s`"'<>|*),;:\]}])/g;
@@ -1905,8 +2118,15 @@ const ttftTracking: Record<
   { confirmedAt: number; firstTokenLogged: boolean }
 > = {};
 
-// Track which executionIds have already been reported to prevent duplicate updates
-const reportedExecutionIds = new Set<string>();
+// Canonical and legacy streams can both report the same terminal outcome.
+// Keep the accepted terminal outcome locked while its bounded delivery retries
+// run so a second stream cannot enqueue a competing final status.
+const reportedTerminalExecutionIds = new Set<string>();
+const triggerExecutionUpdateChains = new Map<string, Promise<void>>();
+const TERMINAL_EXECUTION_RETRY_DELAYS_MS = [250, 1_000] as const;
+
+const waitForTriggerExecutionRetry = (delayMs: number) =>
+  new Promise<void>((resolve) => window.setTimeout(resolve, delayMs));
 
 // Helper function to update trigger execution status using executionId from task
 const updateTriggerExecutionStatus = async (
@@ -1937,45 +2157,80 @@ const updateTriggerExecutionStatus = async (
     return;
   }
 
-  // Check if this execution has already been reported
-  if (reportedExecutionIds.has(executionId)) {
+  const isTerminalStatus = status !== ExecutionStatus.Running;
+
+  // Once a terminal outcome is accepted, suppress both duplicate terminal
+  // receipts and late Running updates. The latter may otherwise be delivered
+  // after a retried terminal request and overwrite the final state.
+  if (reportedTerminalExecutionIds.has(executionId)) {
     console.log(
-      '[updateTriggerExecutionStatus] Execution already reported:',
+      isTerminalStatus
+        ? '[updateTriggerExecutionStatus] Execution already reported:'
+        : '[updateTriggerExecutionStatus] Ignoring Running after terminal outcome:',
       executionId
     );
     return;
   }
 
-  try {
-    // Mark as reported to prevent duplicate updates
-    reportedExecutionIds.add(executionId);
-
-    // Call the API to update execution status
-    await proxyUpdateTriggerExecution(
-      executionId,
-      {
-        status,
-        completed_at: new Date().toISOString(),
-        ...(errorMessage && { error_message: errorMessage }),
-        tokens_used: tokens,
-      },
-      { projectId: projectId || undefined }
-    );
-
-    console.log(
-      '[updateTriggerExecutionStatus] Execution status updated:',
-      executionId,
-      '->',
-      status
-    );
-  } catch (err) {
-    console.warn(
-      `[updateTriggerExecutionStatus] Failed to update execution status to ${status}:`,
-      err
-    );
-    // Remove from reported set so it can be retried
-    reportedExecutionIds.delete(executionId);
+  // Mark terminal updates before the first await so canonical and legacy
+  // receipts remain idempotent even while delivery is being retried.
+  if (isTerminalStatus) {
+    reportedTerminalExecutionIds.add(executionId);
   }
+
+  const payload = {
+    status,
+    completed_at: new Date().toISOString(),
+    ...(errorMessage && { error_message: errorMessage }),
+    tokens_used: tokens,
+  };
+  const previousUpdate =
+    triggerExecutionUpdateChains.get(executionId) ?? Promise.resolve();
+  let queuedUpdate: Promise<void>;
+  queuedUpdate = previousUpdate
+    .catch(() => undefined)
+    .then(async () => {
+      const maxAttempts = isTerminalStatus
+        ? TERMINAL_EXECUTION_RETRY_DELAYS_MS.length + 1
+        : 1;
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        try {
+          await proxyUpdateTriggerExecution(executionId, payload, {
+            projectId: projectId || undefined,
+          });
+          console.log(
+            '[updateTriggerExecutionStatus] Execution status updated:',
+            executionId,
+            '->',
+            status
+          );
+          return;
+        } catch (err) {
+          console.warn(
+            `[updateTriggerExecutionStatus] Failed to update execution status to ${status} (attempt ${attempt + 1}/${maxAttempts}):`,
+            err
+          );
+          if (attempt + 1 < maxAttempts) {
+            await waitForTriggerExecutionRetry(
+              TERMINAL_EXECUTION_RETRY_DELAYS_MS[attempt]
+            );
+          }
+        }
+      }
+
+      // All bounded attempts failed. Re-open the dedupe gate so a later
+      // independent receipt can make another bounded delivery attempt.
+      if (isTerminalStatus) {
+        reportedTerminalExecutionIds.delete(executionId);
+      }
+    })
+    .finally(() => {
+      if (triggerExecutionUpdateChains.get(executionId) === queuedUpdate) {
+        triggerExecutionUpdateChains.delete(executionId);
+      }
+    });
+  triggerExecutionUpdateChains.set(executionId, queuedUpdate);
+  await queuedUpdate;
 };
 
 const chatStore = (initial?: Partial<ChatStore>) =>
@@ -2085,10 +2340,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
       // Clean up SSE connection if it exists
       try {
-        if (activeSSEControllers[taskId]) {
-          activeSSEControllers[taskId].controller.abort();
-          delete activeSSEControllers[taskId];
-        }
+        cleanupTaskSSEResources(taskId);
       } catch (error) {
         console.warn('Error aborting SSE connection in removeTask:', error);
       }
@@ -2128,13 +2380,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       try {
         if (activeSSEControllers[taskId]) {
           console.log(`Stopping SSE connection for task ${taskId}`);
-          activeSSEControllers[taskId].controller.abort();
-          delete activeSSEControllers[taskId];
         }
+        cleanupTaskSSEResources(taskId);
       } catch (error) {
         console.warn('Error aborting SSE connection in stopTask:', error);
         // Even if abort fails, still clean up the reference
         try {
+          cleanupCanonicalTerminalObserverForTask(taskId);
           delete activeSSEControllers[taskId];
         } catch (cleanupError) {
           console.warn(
@@ -2343,14 +2595,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         const targetState = targetChatStore.getState();
         const task = targetState.tasks[newTaskId];
         if (!task) return;
-        if (activeSSEControllers[newTaskId]) {
-          try {
-            activeSSEControllers[newTaskId].controller.abort();
-          } catch {
-            // Ignore abort errors while cleaning up a failed startup.
-          }
-          delete activeSSEControllers[newTaskId];
-        }
+        cleanupTaskSSEResources(newTaskId);
         if (task.isPending) {
           targetState.setIsPending(newTaskId, false);
         }
@@ -2888,18 +3133,136 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         console.warn(
           `Task ${newTaskId} already has an active SSE connection, aborting old one`
         );
-        try {
-          activeSSEControllers[newTaskId].controller.abort();
-        } catch (error) {
-          console.warn('Error aborting existing SSE connection:', error);
-        }
-        delete activeSSEControllers[newTaskId];
+        cleanupTaskSSEResources(newTaskId);
       }
 
       const abortController = new AbortController();
-      activeSSEControllers[newTaskId] = {
+      const sseConnection: ActiveSSEConnection = {
         controller: abortController,
         live: isLiveTask,
+        logicalActive: true,
+        taskId: newTaskId,
+      };
+      bindSSEConnectionToTask(sseConnection, newTaskId);
+      let canonicalTerminalBinding: {
+        taskId: string;
+        chatStore: Pick<VanillaChatStore, 'getState'>;
+        dispose: () => void;
+      } | null = null;
+
+      const disposeCanonicalTerminalObserver = () => {
+        canonicalTerminalBinding?.dispose();
+      };
+
+      const observeCanonicalTerminal = (
+        observedChatStore: Pick<VanillaChatStore, 'getState'>,
+        observedTaskId: string
+      ) => {
+        if (type || !project_id) return;
+        if (
+          canonicalTerminalBinding?.taskId === observedTaskId &&
+          canonicalTerminalBinding.chatStore === observedChatStore
+        ) {
+          return;
+        }
+
+        disposeCanonicalTerminalObserver();
+        let active = true;
+        let unsubscribe: () => void = () => {};
+        const binding = {
+          taskId: observedTaskId,
+          chatStore: observedChatStore,
+          dispose: () => {
+            if (!active) return;
+            active = false;
+            unsubscribe();
+            unregisterCanonicalTerminalObserverCleanup(binding.dispose);
+            if (canonicalTerminalBinding?.dispose === binding.dispose) {
+              canonicalTerminalBinding = null;
+            }
+          },
+        };
+
+        const settleTerminal = (
+          event: Pick<RunDomainEvent, 'eventType' | 'payload'>
+        ) => {
+          if (!active) return;
+          if (
+            !settleLegacyTaskFromCanonicalTerminal(
+              observedChatStore,
+              observedTaskId,
+              event
+            )
+          ) {
+            // A deleted task cannot ever consume a later terminal event. Drop
+            // the observer immediately instead of retaining its store closure.
+            if (!observedChatStore.getState().tasks[observedTaskId]) {
+              binding.dispose();
+            }
+            return;
+          }
+
+          const settledState = observedChatStore.getState();
+          const triggerStatus =
+            event.eventType === 'run.completed'
+              ? ExecutionStatus.Completed
+              : event.eventType === 'run.cancelled'
+                ? ExecutionStatus.Cancelled
+                : ExecutionStatus.Failed;
+          const terminalMessage =
+            typeof event.payload?.message === 'string'
+              ? event.payload.message
+              : undefined;
+          void updateTriggerExecutionStatus(
+            settledState,
+            project_id,
+            observedTaskId,
+            triggerStatus,
+            settledState.tasks[observedTaskId]?.tokens || 0,
+            terminalMessage
+          );
+          binding.dispose();
+
+          // Failed/cancelled/interrupted executions cannot produce another
+          // useful legacy frame. Stop any retry loop left by the broken
+          // `/chat` transport. A completed Run still gets a chance to emit
+          // its legacy END frame with the final assistant response.
+          if (event.eventType !== 'run.completed') {
+            cleanupSSEConnection(sseConnection);
+          }
+        };
+
+        unsubscribe = runDomainEventHub.subscribe(
+          {
+            projectId: project_id,
+            runId: observedTaskId,
+            eventTypes: Object.keys(CANONICAL_TERMINAL_RUN_STATUSES),
+          },
+          settleTerminal
+        );
+        canonicalTerminalBinding = binding;
+        registerCanonicalTerminalObserverCleanup(
+          observedTaskId,
+          binding.dispose
+        );
+
+        // Subscribe first, then read the projection. RunDomainEventHub has no
+        // replay buffer, while RunEventIngress always commits the projection
+        // before publishing. This ordering covers both sides of the race.
+        const projectedStatus = runProjectionStore.getRun(
+          project_id,
+          observedTaskId
+        )?.status;
+        const projectedEventType = projectedStatus
+          ? CANONICAL_TERMINAL_EVENT_BY_RUN_STATUS[projectedStatus]
+          : undefined;
+        if (projectedEventType) {
+          settleTerminal({ eventType: projectedEventType, payload: {} });
+        }
+
+        if (active) {
+          runEventIngressRegistry.ensureLocal(project_id, observedTaskId);
+        }
       };
 
       // Getter functions that use the locked references instead of dynamic ones
@@ -2919,6 +3282,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       ) => {
         lockedChatStore = newChatStore;
         lockedTaskId = newTaskId;
+        bindSSEConnectionToTask(sseConnection, newTaskId);
+        observeCanonicalTerminal(newChatStore, newTaskId);
       };
 
       /**
@@ -4836,11 +5201,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 errorMessage === 'Single Agent is already processing a task.';
               const isRetryableRunError =
                 agentMessages.data?.retryable === true;
+              const failedTask = tasks[currentTaskId];
+              const wasAlreadySettledByCanonical =
+                failedTask?.status === ChatTaskStatus.FINISHED &&
+                failedTask?.durableRunStatus === 'failed';
+              const errorContent = i18next.t('chat.error-message', {
+                defaultValue: '❌ **Error**: {{message}}',
+                message: errorMessage,
+              });
 
               // Freeze the live clock before switching to FINISHED. The work
               // log only advances taskTime while RUNNING; skipping this step
               // made every error path render "Worked for 0s".
-              const failedTask = tasks[currentTaskId];
               const settledElapsed = settleTaskElapsedMs(
                 failedTask,
                 Date.now()
@@ -4888,19 +5260,37 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               setStatus(currentTaskId, ChatTaskStatus.FINISHED);
               setIsPending(currentTaskId, false);
 
-              // Add error message to the current task
-              addMessages(currentTaskId, {
-                id: generateUniqueId(),
-                role: 'agent',
-                content: i18next.t('chat.error-message', {
-                  defaultValue: '❌ **Error**: {{message}}',
-                  message: errorMessage,
-                }),
-              });
+              // Canonical and legacy terminal streams are independent. If the
+              // canonical failure won the race, refine its existing receipt
+              // instead of rendering another error card.
+              const existingError = tasks[currentTaskId].messages.find(
+                (message) => message.step === AgentStep.ERROR
+              );
+              if (existingError) {
+                if (existingError.content !== errorContent) {
+                  updateMessage(currentTaskId, existingError.id, {
+                    ...existingError,
+                    content: errorContent,
+                    step: AgentStep.ERROR,
+                  });
+                }
+              } else {
+                addMessages(currentTaskId, {
+                  id: generateUniqueId(),
+                  role: 'agent',
+                  content: errorContent,
+                  step: AgentStep.ERROR,
+                });
+              }
               // Record the tokens consumed before the failure so the run's
               // spend is not lost from the history row (a failed run
               // otherwise stays at zero tokens forever).
-              if (!type && historyId && !isProjectBusyError) {
+              if (
+                !wasAlreadySettledByCanonical &&
+                !type &&
+                historyId &&
+                !isProjectBusyError
+              ) {
                 const tokensSoFar = getTokens(currentTaskId);
                 if (tokensSoFar > 0) {
                   proxyFetchPut(`/api/v1/chat/history/${historyId}`, {
@@ -4910,9 +5300,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   });
                 }
               }
-              uploadLog(currentTaskId, type);
+              if (!wasAlreadySettledByCanonical) {
+                uploadLog(currentTaskId, type);
+              }
               // Analytics: task failed — split breakage vs disinterest.
-              if (!type || type === 'normal') {
+              if (
+                !wasAlreadySettledByCanonical &&
+                (!type || type === 'normal')
+              ) {
                 recordTaskFailed({
                   error_type: classifyError(errorMessage),
                   is_project_busy: isProjectBusyError,
@@ -4932,7 +5327,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               // A busy Project means another run in the same long conversation
               // is still active. Do not stop that active Project while marking
               // only this rejected run as failed.
-              if (!isProjectBusyError && type !== 'replay') {
+              if (
+                !wasAlreadySettledByCanonical &&
+                !isProjectBusyError &&
+                type !== 'replay'
+              ) {
                 try {
                   await fetchDelete(`/chat/${project_id}`);
                 } catch (error) {
@@ -5108,6 +5507,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             setActiveAskList(currentTaskId, []);
             setStatus(currentTaskId, ChatTaskStatus.FINISHED);
             setUpdateCount();
+
+            // Complete the Run's connection-state transition before the first
+            // await below. A following NEW_TASK_STATE can then reactivate and
+            // transfer ownership without a resumed END handler undoing it.
+            markSSEConnectionIdleForTask(sseConnection, currentTaskId);
 
             // Finish the local UI projection before any cloud upload or
             // history request. Camel-log and generated-file uploads can take
@@ -5353,10 +5757,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               getTokens(currentTaskId)
             );
 
-            // The run is finished; drop its SSE controller so a completed
-            // task no longer counts as an active run (e.g. the close guard).
-            delete activeSSEControllers[newTaskId];
-
             return;
           }
           if (agentMessages.step === AgentStep.NOTICE) {
@@ -5556,7 +5956,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           resumeStreamOpened = true;
           resolveResumeStreamOpen?.();
           if (!type && project_id) {
-            runEventIngressRegistry.ensureLocal(project_id, newTaskId);
+            observeCanonicalTerminal(targetChatStore, newTaskId);
           }
           const { setAttaches, activeTaskId } = get();
           setAttaches(activeTaskId as string, []);
@@ -5576,9 +5976,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               `[fetchEventSource] Task ${lockedId} already finished, stopping retry to avoid duplicate execution`
             );
             try {
-              if (activeSSEControllers[newTaskId]) {
-                delete activeSSEControllers[newTaskId];
-              }
+              cleanupSSEConnection(sseConnection);
             } catch (cleanupError) {
               console.warn(
                 'Error cleaning up AbortController on finished task:',
@@ -5665,12 +6063,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
           // Clean up AbortController on error with robust error handling
           try {
-            if (activeSSEControllers[newTaskId]) {
-              delete activeSSEControllers[newTaskId];
-              console.log(
-                `Cleaned up SSE controller for task ${newTaskId} after error`
-              );
-            }
+            cleanupSSEConnection(sseConnection);
+            console.log(
+              `Cleaned up SSE resources for task ${sseConnection.taskId} after error`
+            );
           } catch (cleanupError) {
             console.warn(
               'Error cleaning up AbortController on SSE error:',
@@ -5702,12 +6098,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
           // Clean up AbortController when connection closes with robust error handling
           try {
-            if (activeSSEControllers[newTaskId]) {
-              delete activeSSEControllers[newTaskId];
-              console.log(
-                `Cleaned up SSE controller for task ${newTaskId} after connection close`
-              );
-            }
+            cleanupSSEConnection(sseConnection, { abort: false });
+            console.log(
+              `Cleaned up SSE resources for task ${sseConnection.taskId} after connection close`
+            );
           } catch (cleanupError) {
             console.warn(
               'Error cleaning up AbortController on SSE close:',
@@ -6746,12 +7140,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
       // Clean up all active SSE connections
       try {
+        cleanupAllCanonicalTerminalObservers();
         Object.keys(activeSSEControllers).forEach((taskId) => {
           try {
-            if (activeSSEControllers[taskId]) {
-              activeSSEControllers[taskId].controller.abort();
-              delete activeSSEControllers[taskId];
-            }
+            cleanupTaskSSEResources(taskId);
           } catch (error) {
             console.warn(
               `Error aborting SSE connection for task ${taskId}:`,
@@ -6915,9 +7307,26 @@ export const createChatStoreInstance = chatStore;
 
 export const getToolStore = () => chatStore().getState();
 
-/** Returns true if any task has an active SSE connection. */
+/** Returns true if any task currently owns a logically active SSE Run. */
 export function hasActiveSSEConnection(taskIds: string[]): boolean {
+  return taskIds.some(
+    (taskId) => activeSSEControllers[taskId]?.logicalActive === true
+  );
+}
+
+/** Returns true if any task still owns a physical SSE transport. */
+export function hasSSETransportForTasks(taskIds: string[]): boolean {
   return taskIds.some((taskId) => !!activeSSEControllers[taskId]);
+}
+
+/** Return the Run id that owns an idle reusable legacy `/chat` transport. */
+export function getIdleSSETransportTaskId(taskIds: string[]): string | null {
+  return (
+    taskIds.find((taskId) => {
+      const connection = activeSSEControllers[taskId];
+      return connection?.live === true && !connection.logicalActive;
+    }) ?? null
+  );
 }
 
 /**
@@ -6927,7 +7336,7 @@ export function hasActiveSSEConnection(taskIds: string[]): boolean {
  */
 export function hasAnyActiveLegacySSEConnection(): boolean {
   return Object.values(activeSSEControllers).some(
-    (connection) => connection.live
+    (connection) => connection.live && connection.logicalActive
   );
 }
 
@@ -6939,12 +7348,21 @@ export function closeSSEConnectionsForTasks(taskIds: string[]): void {
         '[closeSSEConnectionsForTasks] Closing SSE for task:',
         taskId
       );
-      try {
-        activeSSEControllers[taskId].controller.abort();
-      } catch (_e) {
-        // Ignore if already aborted
-      }
-      delete activeSSEControllers[taskId];
+    }
+    cleanupTaskSSEResources(taskId);
+  }
+}
+
+/** Close only reusable transports that no longer have a logically active Run. */
+export function closeIdleSSEConnectionsForTasks(taskIds: string[]): void {
+  for (const taskId of taskIds) {
+    const connection = activeSSEControllers[taskId];
+    if (connection && !connection.logicalActive) {
+      console.log(
+        '[closeIdleSSEConnectionsForTasks] Closing idle SSE for task:',
+        taskId
+      );
+      cleanupSSEConnection(connection);
     }
   }
 }
