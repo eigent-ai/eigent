@@ -1324,28 +1324,31 @@ export type VanillaChatStore = {
 const autoConfirmTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 const AUTO_CONFIRM_TIMEOUT_MS = 30000;
 
-// Track active SSE connections for proper cleanup. `live` distinguishes
-// real Brain runs from history/share playback streams.
-const activeSSEControllers: Record<
-  string,
-  { controller: AbortController; live: boolean }
-> = {};
+// Track active SSE connections for proper cleanup. A live `/chat` transport
+// can outlive one Run and be reused by a follow-up Run, so ownership must move
+// with the reducer lock instead of remaining attached to the initial Run ID.
+// `logicalActive` keeps an idle, reusable transport from blocking app close.
+type ActiveSSEConnection = {
+  controller: AbortController;
+  live: boolean;
+  logicalActive: boolean;
+  taskId: string;
+};
+
+const activeSSEControllers: Record<string, ActiveSSEConnection> = {};
 
 // A follow-up Run reuses the original legacy `/chat` connection while its
 // canonical observer follows the currently active task. Index the disposer by
-// both the connection owner and the current task so every task-scoped cleanup
-// path can release the listener without retaining a stale closure.
+// that current owner only; ownership moves atomically with the reducer lock.
 const canonicalTerminalObserverCleanups = new Map<string, () => void>();
 
 function registerCanonicalTerminalObserverCleanup(
-  taskIds: readonly string[],
+  taskId: string,
   cleanup: () => void
 ): void {
-  for (const taskId of new Set(taskIds)) {
-    const previous = canonicalTerminalObserverCleanups.get(taskId);
-    if (previous && previous !== cleanup) previous();
-    canonicalTerminalObserverCleanups.set(taskId, cleanup);
-  }
+  const previous = canonicalTerminalObserverCleanups.get(taskId);
+  if (previous && previous !== cleanup) previous();
+  canonicalTerminalObserverCleanups.set(taskId, cleanup);
 }
 
 function unregisterCanonicalTerminalObserverCleanup(cleanup: () => void): void {
@@ -1367,13 +1370,16 @@ function cleanupAllCanonicalTerminalObservers(): void {
   canonicalTerminalObserverCleanups.clear();
 }
 
-function cleanupTaskSSEResources(
-  taskId: string,
+function cleanupSSEConnection(
+  connection: ActiveSSEConnection,
   { abort = true }: { abort?: boolean } = {}
 ): void {
-  cleanupCanonicalTerminalObserverForTask(taskId);
-  const connection = activeSSEControllers[taskId];
-  if (!connection) return;
+  // A superseded transport may deliver a late onerror/onclose callback after
+  // another transport has claimed the same Run. Only the current owner may
+  // dispose that Run's canonical observer.
+  if (activeSSEControllers[connection.taskId] === connection) {
+    cleanupCanonicalTerminalObserverForTask(connection.taskId);
+  }
   if (abort) {
     try {
       connection.controller.abort();
@@ -1381,7 +1387,46 @@ function cleanupTaskSSEResources(
       // Ignore abort errors while releasing task-scoped resources.
     }
   }
-  delete activeSSEControllers[taskId];
+  for (const [taskId, registered] of Object.entries(activeSSEControllers)) {
+    if (registered === connection) delete activeSSEControllers[taskId];
+  }
+}
+
+function bindSSEConnectionToTask(
+  connection: ActiveSSEConnection,
+  taskId: string
+): void {
+  const existing = activeSSEControllers[taskId];
+  if (existing && existing !== connection) {
+    cleanupSSEConnection(existing);
+  }
+  for (const [registeredTaskId, registered] of Object.entries(
+    activeSSEControllers
+  )) {
+    if (registered === connection && registeredTaskId !== taskId) {
+      delete activeSSEControllers[registeredTaskId];
+    }
+  }
+  connection.taskId = taskId;
+  connection.logicalActive = true;
+  activeSSEControllers[taskId] = connection;
+}
+
+function markSSEConnectionIdle(connection: ActiveSSEConnection): void {
+  if (activeSSEControllers[connection.taskId] === connection) {
+    cleanupCanonicalTerminalObserverForTask(connection.taskId);
+  }
+  connection.logicalActive = false;
+}
+
+function cleanupTaskSSEResources(
+  taskId: string,
+  { abort = true }: { abort?: boolean } = {}
+): void {
+  cleanupCanonicalTerminalObserverForTask(taskId);
+  const connection = activeSSEControllers[taskId];
+  if (!connection) return;
+  cleanupSSEConnection(connection, { abort });
 }
 
 const CANONICAL_TERMINAL_RUN_STATUSES: Partial<
@@ -3015,10 +3060,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }
 
       const abortController = new AbortController();
-      activeSSEControllers[newTaskId] = {
+      const sseConnection: ActiveSSEConnection = {
         controller: abortController,
         live: isLiveTask,
+        logicalActive: true,
+        taskId: newTaskId,
       };
+      bindSSEConnectionToTask(sseConnection, newTaskId);
       let canonicalTerminalBinding: {
         taskId: string;
         chatStore: Pick<VanillaChatStore, 'getState'>;
@@ -3083,7 +3131,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           // `/chat` transport. A completed Run still gets a chance to emit
           // its legacy END frame with the final assistant response.
           if (event.eventType !== 'run.completed') {
-            cleanupTaskSSEResources(newTaskId);
+            cleanupSSEConnection(sseConnection);
           }
         };
 
@@ -3097,7 +3145,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         );
         canonicalTerminalBinding = binding;
         registerCanonicalTerminalObserverCleanup(
-          [newTaskId, observedTaskId],
+          observedTaskId,
           binding.dispose
         );
 
@@ -3137,6 +3185,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       ) => {
         lockedChatStore = newChatStore;
         lockedTaskId = newTaskId;
+        bindSSEConnectionToTask(sseConnection, newTaskId);
         observeCanonicalTerminal(newChatStore, newTaskId);
       };
 
@@ -5572,9 +5621,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               getTokens(currentTaskId)
             );
 
-            // The run is finished; drop its SSE controller so a completed
-            // task no longer counts as an active run (e.g. the close guard).
-            cleanupTaskSSEResources(newTaskId, { abort: false });
+            // The Run is finished, but the legacy `/chat` transport remains
+            // open so it can carry a prepared follow-up Run. Keep it indexed
+            // by the completed Run until ownership moves or a task-scoped
+            // cleanup closes it, while excluding this idle period from the
+            // app-close guard.
+            markSSEConnectionIdle(sseConnection);
 
             return;
           }
@@ -5795,7 +5847,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               `[fetchEventSource] Task ${lockedId} already finished, stopping retry to avoid duplicate execution`
             );
             try {
-              cleanupTaskSSEResources(newTaskId);
+              cleanupSSEConnection(sseConnection);
             } catch (cleanupError) {
               console.warn(
                 'Error cleaning up AbortController on finished task:',
@@ -5882,9 +5934,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
           // Clean up AbortController on error with robust error handling
           try {
-            cleanupTaskSSEResources(newTaskId);
+            cleanupSSEConnection(sseConnection);
             console.log(
-              `Cleaned up SSE resources for task ${newTaskId} after error`
+              `Cleaned up SSE resources for task ${sseConnection.taskId} after error`
             );
           } catch (cleanupError) {
             console.warn(
@@ -5917,9 +5969,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
           // Clean up AbortController when connection closes with robust error handling
           try {
-            cleanupTaskSSEResources(newTaskId, { abort: false });
+            cleanupSSEConnection(sseConnection, { abort: false });
             console.log(
-              `Cleaned up SSE resources for task ${newTaskId} after connection close`
+              `Cleaned up SSE resources for task ${sseConnection.taskId} after connection close`
             );
           } catch (cleanupError) {
             console.warn(
@@ -7138,7 +7190,7 @@ export function hasActiveSSEConnection(taskIds: string[]): boolean {
  */
 export function hasAnyActiveLegacySSEConnection(): boolean {
   return Object.values(activeSSEControllers).some(
-    (connection) => connection.live
+    (connection) => connection.live && connection.logicalActive
   );
 }
 

@@ -145,6 +145,8 @@ import {
   createChatStoreInstance,
   extractEndPayloadText,
   extractFinalOutputFileList,
+  hasActiveSSEConnection,
+  hasAnyActiveLegacySSEConnection,
   mergeFileInfoLists,
   normalizeTaskArtifactFileList,
   resolveConfirmedUserMessageContent,
@@ -1359,6 +1361,53 @@ describe('ChatStore - Core Functionality', () => {
         return { store, streamContaining };
       };
 
+      const switchLegacyStreamToFollowUp = async ({
+        store,
+        streamContaining,
+        initialRunId = 'live-run',
+        followUpRunId = 'follow-up-run',
+      }: {
+        store: ReturnType<typeof createChatStoreInstance>;
+        streamContaining: (path: string) => any;
+        initialRunId?: string;
+        followUpRunId?: string;
+      }) => {
+        const legacyStream = streamContaining('/chat');
+        const signal = legacyStream.signal as AbortSignal;
+
+        expect(hasActiveSSEConnection([initialRunId])).toBe(true);
+        expect(hasAnyActiveLegacySSEConnection()).toBe(true);
+
+        await legacyStream.onmessage?.({
+          data: JSON.stringify({
+            step: AgentStep.END,
+            data: { content: 'Done' },
+          }),
+        });
+
+        expect(signal.aborted).toBe(false);
+        expect(hasActiveSSEConnection([initialRunId])).toBe(true);
+        expect(hasAnyActiveLegacySSEConnection()).toBe(false);
+
+        store.getState().setNextTaskId(followUpRunId);
+        await legacyStream.onmessage?.({
+          data: JSON.stringify({
+            step: AgentStep.NEW_TASK_STATE,
+            data: {
+              task_id: followUpRunId,
+              content: 'Improve the game',
+            },
+          }),
+        });
+
+        expect(hasActiveSSEConnection([initialRunId])).toBe(false);
+        expect(hasActiveSSEConnection([followUpRunId])).toBe(true);
+        expect(hasAnyActiveLegacySSEConnection()).toBe(true);
+        expect(signal.aborted).toBe(false);
+
+        return signal;
+      };
+
       afterEach(() => {
         for (const store of stores) {
           closeSSEConnectionsForTasks(Object.keys(store.getState().tasks));
@@ -1385,16 +1434,9 @@ describe('ChatStore - Core Functionality', () => {
         await vi.waitFor(() =>
           expect(runDomainEventHub.listenerCount()).toBe(1)
         );
-        store.getState().setNextTaskId('follow-up-run');
-
-        await streamContaining('/chat').onmessage?.({
-          data: JSON.stringify({
-            step: AgentStep.NEW_TASK_STATE,
-            data: {
-              task_id: 'follow-up-run',
-              content: 'Improve the game',
-            },
-          }),
+        const signal = await switchLegacyStreamToFollowUp({
+          store,
+          streamContaining,
         });
 
         await vi.waitFor(() =>
@@ -1425,7 +1467,39 @@ describe('ChatStore - Core Functionality', () => {
           isPending: false,
         });
         expect(runDomainEventHub.listenerCount()).toBe(0);
+        expect(signal.aborted).toBe(true);
       });
+
+      it.each(['stop', 'remove', 'close'] as const)(
+        '%s on the follow-up Run aborts its shared legacy connection',
+        async (action) => {
+          const initialRunId = `${action}-initial-run`;
+          const followUpRunId = `${action}-follow-up-run`;
+          const { store, streamContaining } = await startObservedLiveTask({
+            initialRunId,
+          });
+          const signal = await switchLegacyStreamToFollowUp({
+            store,
+            streamContaining,
+            initialRunId,
+            followUpRunId,
+          });
+
+          if (action === 'stop') {
+            store.getState().stopTask(followUpRunId);
+          } else if (action === 'remove') {
+            store.getState().removeTask(followUpRunId);
+          } else {
+            closeSSEConnectionsForTasks([followUpRunId]);
+          }
+
+          expect(signal.aborted).toBe(true);
+          expect(hasActiveSSEConnection([initialRunId])).toBe(false);
+          expect(hasActiveSSEConnection([followUpRunId])).toBe(false);
+          expect(hasAnyActiveLegacySSEConnection()).toBe(false);
+          expect(runDomainEventHub.listenerCount()).toBe(0);
+        }
+      );
 
       it('settles from an existing terminal projection after subscribing', async () => {
         const { store, streamContaining } = await startObservedLiveTask({
