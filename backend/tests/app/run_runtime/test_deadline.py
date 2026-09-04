@@ -270,8 +270,11 @@ async def test_extending_deadline_reschedules_existing_watcher(tmp_path):
         assert subscription.handle.consumer_alive
         assert journal.get_run("run-1").status == "running"
 
-        await asyncio.sleep(0.12)
-        assert subscription.handle.execution_task is not None
-        assert subscription.handle.execution_task.cancelled()
+        execution_task = subscription.handle.execution_task
+        assert execution_task is not None
+        async with asyncio.timeout(2):
+            while not execution_task.done():
+                await asyncio.sleep(0.01)
+        assert execution_task.cancelled()
         assert journal.get_run("run-1").status == "failed"
         await coordinator.close()

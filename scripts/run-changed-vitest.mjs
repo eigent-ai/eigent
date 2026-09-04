@@ -81,7 +81,16 @@ try {
     }
     const result = run(
       executable,
-      ['run', '--passWithNoTests', ...testFiles.map((path) => `./${path}`)],
+      [
+        'run',
+        '--passWithNoTests',
+        // GitHub-hosted runners can report more CPUs than they can sustain.
+        // Bound jsdom workers so user-event tests are not starved into the
+        // suite's 29-second per-test timeout.
+        '--maxWorkers=2',
+        '--minWorkers=1',
+        ...testFiles.map((path) => `./${path}`),
+      ],
       { inherit: true }
     );
     exitCode = result.status ?? 1;
