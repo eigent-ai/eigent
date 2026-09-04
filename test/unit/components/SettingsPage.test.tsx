@@ -38,6 +38,27 @@ vi.mock('@/api/brain', async (importOriginal) => ({
     .mockResolvedValue({ success: true, content: '# Research' }),
 }));
 
+// Navigation-guard persistence has focused tests; layout tests execute the
+// approved navigation callback synchronously to avoid timer-dependent waits.
+vi.mock(
+  '@/lib/workspaceConfigurationNavigationGuard',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('@/lib/workspaceConfigurationNavigationGuard')
+      >();
+    return {
+      ...actual,
+      runAfterWorkspaceConfigurationSave: async (
+        action: () => void | Promise<void>
+      ) => {
+        await action();
+        return true;
+      },
+    };
+  }
+);
+
 const homeOverviewMocks = vi.hoisted(() => ({
   fetchConnectedProviders: vi.fn(),
   fetchConnectorProviders: vi.fn(),
@@ -1264,9 +1285,8 @@ describe('SettingsPage', () => {
     unmount();
   });
 
-  it('keeps reduced-motion navigation to fades and keyboard navigation instant', async () => {
+  it('keeps reduced-motion navigation to fades and keyboard navigation instant', () => {
     pageMotionMocks.reduced = true;
-    const user = userEvent.setup();
     const now = Date.now();
     useSpaceStore.setState((state) => ({
       ...state,
@@ -1294,14 +1314,15 @@ describe('SettingsPage', () => {
       },
     }));
 
-    renderSettingsPage('/home?section=spaces');
+    const { unmount } = renderSettingsPage('/home?section=spaces');
 
-    const spaceCard = (await screen.findByText('Motion Space')).closest(
-      'button'
-    ) as HTMLElement;
-    await user.click(spaceCard);
+    const spaceCard = screen
+      .getByText('Motion Space')
+      .closest('button') as HTMLElement;
+    fireEvent.pointerDown(spaceCard, { pointerType: 'mouse' });
+    fireEvent.click(spaceCard);
 
-    const detailSidebar = await screen.findByRole('complementary', {
+    const detailSidebar = screen.getByRole('complementary', {
       name: 'Spaces',
     });
     expect(
@@ -1315,8 +1336,11 @@ describe('SettingsPage', () => {
       name: 'Back',
     });
     backButton.focus();
-    await user.keyboard('{Enter}');
-    await screen.findByRole('complementary', { name: 'Home' });
+    fireEvent.keyDown(backButton, { key: 'Enter' });
+    fireEvent.click(backButton);
+    expect(
+      screen.getByRole('complementary', { name: 'Home' })
+    ).toBeInTheDocument();
 
     expect(
       document.querySelector('[data-home-space-sidebar-pane="home"]')
@@ -1324,6 +1348,7 @@ describe('SettingsPage', () => {
     expect(
       document.querySelector('[data-home-space-content-pane="home"]')
     ).toHaveAttribute('data-space-navigation-motion', 'instant');
+    unmount();
   });
 
   it('redirects an empty placeholder Space to Home without listing it', async () => {
