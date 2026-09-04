@@ -15,6 +15,8 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -23,7 +25,6 @@ import pytest
 from app.agent.toolkit.human_toolkit import HumanToolkit
 from app.run_context import RunContext
 from app.run_journal import SQLiteRunJournal
-from app.run_runtime.active_timeout import ActiveExecutionTimeout
 
 
 def _run_context(tmp_path: Path) -> RunContext:
@@ -92,47 +93,49 @@ async def test_ask_human_creates_question_not_approval(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_ask_human_pauses_active_agent_timeout(tmp_path):
+async def test_ask_human_pauses_active_agent_timeout():
     task_lock = MagicMock()
-    task_lock.run_context = _run_context(tmp_path)
+    task_lock.run_context = None
     task_lock.add_human_input_listen = MagicMock()
     task_lock.put_queue = AsyncMock()
+    pause_state = {"active": False}
+
+    @asynccontextmanager
+    async def observed_pause(observer: object) -> AsyncIterator[None]:
+        assert observer is task_lock
+        pause_state["active"] = True
+        try:
+            yield
+        finally:
+            pause_state["active"] = False
 
     async def delayed_reply(_agent_name: str) -> str:
-        await asyncio.sleep(0.04)
+        assert pause_state["active"]
+        await asyncio.sleep(0)
+        assert pause_state["active"]
         return "continue"
 
     task_lock.get_human_input = AsyncMock(side_effect=delayed_reply)
 
-    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
-        journal.ensure_run(run_id="run-1", project_id="project-1")
-        journal.create_run_attempt(
-            "run-1",
-            request_id="initial",
-            reason="initial_execution",
-            activate=True,
-            now=1,
-        )
-        with (
-            patch(
-                "app.agent.toolkit.human_toolkit.get_task_lock",
-                return_value=task_lock,
-            ),
-            patch(
-                "app.utils.listen.toolkit_listen.get_task_lock",
-                return_value=task_lock,
-            ),
-            patch(
-                "app.agent.toolkit.human_toolkit.get_default_run_journal",
-                return_value=journal,
-            ),
-            patch("app.run_sync.runtime.notify_default_cloud_sync_worker"),
-        ):
-            toolkit = HumanToolkit("project-1", "worker")
-            async with ActiveExecutionTimeout(0.01, refresh_on_progress=True):
-                reply = await toolkit.ask_human_via_gui("Continue?")
+    with (
+        patch(
+            "app.agent.toolkit.human_toolkit.get_task_lock",
+            return_value=task_lock,
+        ),
+        patch(
+            "app.utils.listen.toolkit_listen.get_task_lock",
+            return_value=task_lock,
+        ),
+        patch(
+            "app.agent.toolkit.human_toolkit.pause_active_execution_timeout",
+            side_effect=observed_pause,
+        ),
+    ):
+        toolkit = HumanToolkit("project-1", "worker")
+        reply = await toolkit.ask_human_via_gui("Continue?")
 
     assert reply == "continue"
+    assert pause_state["active"] is False
 
 
 def test_send_message_notice_uses_current_tool_call_identity():

@@ -24,6 +24,7 @@ import { useTranslation } from 'react-i18next';
 import HomeHubBoard from './components/HomeHubBoard';
 import HomeHubBoardCard from './components/HomeHubBoardCard';
 import HomeHubCard from './components/HomeHubCard';
+import HomeHubEmptyState from './components/HomeHubEmptyState';
 import HomeHubGrid from './components/HomeHubGrid';
 import HomeHubListItem from './components/HomeHubListItem';
 import HomeHubListTable from './components/HomeHubListTable';
@@ -211,18 +212,12 @@ export default function Triggers({
     <div className="flex w-full min-w-0 flex-col">
       <div className="mb-12 w-full min-w-0">
         {triggers.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-8 text-center">
-            <AUTOMATION_ICON className="mb-4 h-12 w-12 text-ds-ink-muted-default" />
-            <div className="text-sm text-ds-ink-muted-default">
-              {t('triggers.no-triggers') || t('layout.triggers')}
-            </div>
-          </div>
+          <HomeHubEmptyState
+            icon={AUTOMATION_ICON}
+            title={t('triggers.no-triggers') || t('layout.triggers')}
+          />
         ) : filteredTriggers.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-8 text-center">
-            <div className="text-sm text-ds-ink-muted-default">
-              {t('layout.search-no-results')}
-            </div>
-          </div>
+          <HomeHubEmptyState title={t('layout.search-no-results')} />
         ) : effectiveViewMode === 'board' ? (
           <HomeHubBoard columns={boardColumns} />
         ) : effectiveViewMode === 'grid' ? (

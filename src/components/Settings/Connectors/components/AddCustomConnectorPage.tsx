@@ -54,12 +54,16 @@ const LOCAL_MCP_EXAMPLE = `{
 }`;
 
 interface AddCustomConnectorPageProps {
+  embedded?: boolean;
+  customType?: 'local' | 'remote';
   customMcps: MCPUserItem[];
   onBack: () => void;
   onInstalled: (hint: ConnectorInstallHint) => void | Promise<void>;
 }
 
 export default function AddCustomConnectorPage({
+  embedded = false,
+  customType: controlledCustomType,
   customMcps,
   onBack,
   onInstalled,
@@ -67,7 +71,10 @@ export default function AddCustomConnectorPage({
   const { t } = useTranslation();
   const customHeaderTitle = t('connectors.custom-title');
   const { setHeaderOverride } = useSettingsHeader();
-  const [customType, setCustomType] = useState<'local' | 'remote'>('local');
+  const [internalCustomType, setInternalCustomType] = useState<
+    'local' | 'remote'
+  >('local');
+  const customType = controlledCustomType || internalCustomType;
   const [localJson, setLocalJson] = useState(LOCAL_MCP_EXAMPLE);
   const [remoteName, setRemoteName] = useState('');
   const [remoteUrl, setRemoteUrl] = useState('');
@@ -235,7 +242,7 @@ export default function AddCustomConnectorPage({
   const changeCustomType = useCallback(
     (value: string) => {
       const next = value as 'local' | 'remote';
-      setCustomType(next);
+      setInternalCustomType(next);
       setFormError(null);
       if (next !== 'local') return;
       try {
@@ -252,39 +259,42 @@ export default function AddCustomConnectorPage({
     [localJson, t]
   );
   useEffect(() => {
+    if (embedded) return;
     setHeaderOverride({
       title: customHeaderTitle,
       onBack: closePage,
     });
     return () => setHeaderOverride(null);
-  }, [closePage, customHeaderTitle, setHeaderOverride]);
+  }, [closePage, customHeaderTitle, embedded, setHeaderOverride]);
 
   return (
-    <SettingsSectionPage className="min-h-full">
+    <SettingsSectionPage className={embedded ? 'min-h-0 py-0' : 'min-h-full'}>
       <SettingsSection
         titleVariant="hidden"
         className="min-h-0 flex-1"
         boxClassName="min-h-[54vh] flex-1 gap-5"
       >
         <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-5">
-          <div className="flex w-full justify-center">
-            <Tabs value={customType} onValueChange={changeCustomType}>
-              <TabsList appearance="default">
-                <TabsTrigger value="local">
-                  <Wrench className="h-3.5 w-3.5" />
-                  <span className="!text-ds-text-base !font-bold !text-ds-ink-default-default">
-                    {t('connectors.source-local')}
-                  </span>
-                </TabsTrigger>
-                <TabsTrigger value="remote">
-                  <Server className="h-3.5 w-3.5" />
-                  <span className="!text-ds-text-base !font-bold !text-ds-ink-default-default">
-                    {t('connectors.source-remote')}
-                  </span>
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
+          {!embedded ? (
+            <div className="flex w-full justify-center">
+              <Tabs value={customType} onValueChange={changeCustomType}>
+                <TabsList appearance="default">
+                  <TabsTrigger value="local">
+                    <Wrench aria-hidden />
+                    <span className="!text-ds-text-base !font-bold !text-ds-ink-default-default">
+                      {t('connectors.source-local')}
+                    </span>
+                  </TabsTrigger>
+                  <TabsTrigger value="remote">
+                    <Server aria-hidden />
+                    <span className="!text-ds-text-base !font-bold !text-ds-ink-default-default">
+                      {t('connectors.source-remote')}
+                    </span>
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+          ) : null}
 
           <div className="rounded-xl border border-x border-y border-solid border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default p-4 text-ds-text-base text-ds-text-warning-strong-default">
             {t('connectors.custom-warning')}

@@ -12,7 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { isSettingsRoutePath } from '@/lib/shellRoutes';
+import {
+  isSettingsRoutePath,
+  shellBackState,
+  shellDetailBackState,
+  shellDetailBackTarget,
+  withoutShellDetailBackState,
+} from '@/lib/shellRoutes';
 import { describe, expect, it } from 'vitest';
 
 describe('isSettingsRoutePath', () => {
@@ -29,4 +35,31 @@ describe('isSettingsRoutePath', () => {
       expect(isSettingsRoutePath(pathname)).toBe(false);
     }
   );
+});
+
+describe('detail back state', () => {
+  it('prefers the page that opened the detail and retains the shell origin', () => {
+    const state = shellDetailBackState(
+      shellBackState('/'),
+      '/home?section=settings&tab=skills&skillFilter=global'
+    );
+
+    expect(shellDetailBackTarget(state)).toBe(
+      '/home?section=settings&tab=skills&skillFilter=global'
+    );
+    expect(withoutShellDetailBackState(state)).toEqual({ from: '/' });
+  });
+
+  it('returns to the workspace shell origin for a directly opened detail', () => {
+    expect(shellDetailBackTarget(shellBackState('/'))).toBe('/');
+  });
+
+  it('ignores external-looking router state', () => {
+    expect(
+      shellDetailBackTarget({
+        detailFrom: 'https://example.com',
+        from: '//example.com',
+      })
+    ).toBeNull();
+  });
 });

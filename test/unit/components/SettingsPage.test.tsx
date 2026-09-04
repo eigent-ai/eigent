@@ -14,7 +14,9 @@
 
 import SettingsSection from '@/components/Settings/SettingsSection';
 import SettingsPage from '@/pages/Settings';
+import { useSettingsResourceCountsStore } from '@/store/settingsResourceCountsStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useSkillsStore, type Skill } from '@/store/skillsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -25,11 +27,45 @@ import {
   within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import type { ReactNode } from 'react';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('@/api/brain', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/brain')>()),
+  skillRead: vi
+    .fn()
+    .mockResolvedValue({ success: true, content: '# Research' }),
+}));
+
+// Navigation-guard persistence has focused tests; layout tests execute the
+// approved navigation callback synchronously to avoid timer-dependent waits.
+vi.mock(
+  '@/lib/workspaceConfigurationNavigationGuard',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('@/lib/workspaceConfigurationNavigationGuard')
+      >();
+    return {
+      ...actual,
+      runAfterWorkspaceConfigurationSave: async (
+        action: () => void | Promise<void>
+      ) => {
+        await action();
+        return true;
+      },
+    };
+  }
+);
 
 const homeOverviewMocks = vi.hoisted(() => ({
   fetchConnectedProviders: vi.fn(),
+  fetchConnectorProviders: vi.fn(),
+  fetchConnectorProvider: vi.fn(),
+  prefetchConnectorProviders: vi.fn(),
+  fetchGet: vi.fn(),
+  proxyFetchGet: vi.fn(),
   listMemoryEntries: vi.fn(),
 }));
 
@@ -46,14 +82,56 @@ vi.mock('@/client/platform', async (importOriginal) => ({
   isDesktop: () => platformMocks.desktop,
 }));
 
-vi.mock('framer-motion', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('framer-motion')>()),
-  useReducedMotion: () => pageMotionMocks.reduced,
-}));
+// Navigation semantics are asserted below; animation timing has focused tests.
+vi.mock('framer-motion', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('framer-motion')>();
+  const React = await import('react');
+  const motionProps = new Set([
+    'animate',
+    'custom',
+    'exit',
+    'initial',
+    'onAnimationComplete',
+    'transition',
+    'variants',
+  ]);
+  const createMotionComponent = (tag: 'div' | 'main') => {
+    const MotionComponent = React.forwardRef<
+      HTMLElement,
+      Record<string, unknown>
+    >((props, ref) => {
+      const domProps = Object.fromEntries(
+        Object.entries(props).filter(([key]) => !motionProps.has(key))
+      );
+      return React.createElement(tag, { ...domProps, ref });
+    });
+    MotionComponent.displayName = `MockMotion.${tag}`;
+    return MotionComponent;
+  };
+
+  return {
+    ...actual,
+    AnimatePresence: ({ children }: { children?: ReactNode }) => children,
+    motion: {
+      div: createMotionComponent('div'),
+      main: createMotionComponent('main'),
+    },
+    useReducedMotion: () => pageMotionMocks.reduced,
+  };
+});
 
 vi.mock('@/api/connectors', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/connectors')>()),
   fetchConnectedProviders: homeOverviewMocks.fetchConnectedProviders,
+  fetchConnectorProviders: homeOverviewMocks.fetchConnectorProviders,
+  fetchConnectorProvider: homeOverviewMocks.fetchConnectorProvider,
+  prefetchConnectorProviders: homeOverviewMocks.prefetchConnectorProviders,
+}));
+
+vi.mock('@/api/http', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/http')>()),
+  fetchGet: homeOverviewMocks.fetchGet,
+  proxyFetchGet: homeOverviewMocks.proxyFetchGet,
 }));
 
 vi.mock('@/service/memoryApi', async (importOriginal) => ({
@@ -64,6 +142,17 @@ vi.mock('@/service/memoryApi', async (importOriginal) => ({
 vi.mock('@/hooks/queries/useTriggerQueries', () => ({
   useUserTriggerCountQuery: () => ({ data: 0 }),
 }));
+
+function openDropdown(trigger: HTMLElement) {
+  const event = new MouseEvent('pointerdown', {
+    bubbles: true,
+    cancelable: true,
+    button: 0,
+    ctrlKey: false,
+  });
+  Object.defineProperty(event, 'pointerType', { value: 'mouse' });
+  fireEvent(trigger, event);
+}
 
 vi.mock('@/service/historyApi', () => ({
   fetchGroupedHistoryTasks: vi.fn(() => new Promise(() => undefined)),
@@ -83,6 +172,11 @@ vi.mock('@/components/Settings/Appearance', () => ({
 
 vi.mock('@/components/Settings/Privacy', () => ({
   default: () => <div data-testid="privacy-settings" />,
+}));
+
+// These tests exercise navigation and the real Skills surface, not model APIs.
+vi.mock('@/components/Settings/Models', () => ({
+  default: () => <div data-testid="models-settings" />,
 }));
 
 vi.mock('@/store/authStore', () => {
@@ -105,8 +199,28 @@ vi.mock('@/store/authStore', () => {
   };
 });
 
+type SettingsInitialEntry =
+  | string
+  | {
+      pathname: string;
+      search?: string;
+      state?: Record<string, unknown>;
+    };
+
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <output data-testid="settings-location">
+      {location.pathname}
+      {location.search}
+    </output>
+  );
+}
+
 function renderSettingsPage(
-  initialEntry = '/home?section=settings&tab=models'
+  initialEntry:
+    | SettingsInitialEntry
+    | SettingsInitialEntry[] = '/home?section=settings&tab=models'
 ) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -115,10 +229,18 @@ function renderSettingsPage(
     },
   });
 
+  const initialEntries = Array.isArray(initialEntry)
+    ? initialEntry
+    : [initialEntry];
+
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[initialEntry]}>
+      <MemoryRouter
+        initialEntries={initialEntries}
+        initialIndex={initialEntries.length - 1}
+      >
         <SettingsPage />
+        <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>
   );
@@ -134,13 +256,60 @@ describe('SettingsPage', () => {
   beforeEach(() => {
     pageMotionMocks.reduced = false;
     platformMocks.desktop = true;
+    window.localStorage.setItem('eigent-home-hub-view-mode', 'grid');
     useSettingsStore.setState({
       activeSection: 'models',
+    });
+    useSettingsResourceCountsStore.setState({
+      counts: { 'browser-connections': null, cookies: null },
     });
     homeOverviewMocks.fetchConnectedProviders.mockResolvedValue([
       { service: 'github' },
       { service: 'notion' },
     ]);
+    homeOverviewMocks.fetchConnectorProviders.mockResolvedValue({
+      enabled: true,
+      source: 'connector_gateway',
+      provider_count: 0,
+      filtered_count: 0,
+      connected_count: 0,
+      page: 1,
+      page_size: 60,
+      total_pages: 1,
+      providers: [],
+    });
+    homeOverviewMocks.fetchConnectorProvider.mockResolvedValue({
+      enabled: true,
+      source: 'connector_gateway',
+      provider: { service: 'github', displayName: 'GitHub', actions: [] },
+    });
+    homeOverviewMocks.prefetchConnectorProviders.mockResolvedValue(undefined);
+    homeOverviewMocks.fetchGet.mockImplementation(async (path: string) => {
+      if (path === '/browser/cdp/list') {
+        return [
+          { id: 'browser-1', port: 9222 },
+          { id: 'browser-2', port: 9223 },
+        ];
+      }
+      if (path === '/browser/cookies') {
+        return {
+          success: true,
+          domains: [
+            { domain: 'github.com' },
+            { domain: 'notion.so' },
+            { domain: 'slack.com' },
+          ],
+        };
+      }
+      return {};
+    });
+    homeOverviewMocks.proxyFetchGet.mockImplementation(async (path: string) => {
+      if (path === '/api/v1/server/capabilities') {
+        return { features: { connector_gateway: { enabled: true } } };
+      }
+      if (path === '/api/v1/mcp/users' || path === '/api/v1/configs') return [];
+      return {};
+    });
     homeOverviewMocks.listMemoryEntries.mockResolvedValue({
       scope_state: {
         token_limit: 5000,
@@ -155,7 +324,12 @@ describe('SettingsPage', () => {
     const user = userEvent.setup();
     renderSettingsPage('/home?section=spaces');
 
-    await user.click(await screen.findByRole('button', { name: 'New Space' }));
+    const spacesToolbar = document.querySelector(
+      '[data-home-spaces-toolbar]'
+    ) as HTMLElement;
+    await user.click(
+      await within(spacesToolbar).findByRole('button', { name: 'New Space' })
+    );
     await user.click(
       screen.getByRole('button', { name: 'Import from Workspace Bundle' })
     );
@@ -171,7 +345,7 @@ describe('SettingsPage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('renders scoped navigation in the shared app shell', () => {
+  it('renders scoped navigation in the shared app shell', async () => {
     renderSettingsPage();
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -278,6 +452,52 @@ describe('SettingsPage', () => {
     expect(
       within(sidebar).queryByRole('button', { name: 'Privacy' })
     ).not.toBeInTheDocument();
+    expect(await screen.findByTestId('models-settings')).toBeInTheDocument();
+  });
+
+  it('shows live resource counts on the Skills, Connectors, Browser, and Cookies tabs', async () => {
+    useSkillsStore.setState({
+      skills: [
+        {
+          id: 'research',
+          name: 'Research',
+          description: 'Find sources',
+          filePath: 'research/SKILL.md',
+          fileContent: '',
+          addedAt: 0,
+          scope: { isGlobal: true, selectedAgents: [] },
+          enabled: true,
+          isExample: false,
+        },
+      ],
+    });
+
+    renderSettingsPage();
+
+    const sidebar = screen.getByRole('complementary', { name: 'Home' });
+
+    await waitFor(() => {
+      expect(
+        within(
+          within(sidebar).getByRole('button', { name: 'Skills' })
+        ).getByText('1')
+      ).toBeVisible();
+      expect(
+        within(
+          within(sidebar).getByRole('button', { name: 'Connectors' })
+        ).getByText('2')
+      ).toBeVisible();
+      expect(
+        within(
+          within(sidebar).getByRole('button', { name: 'Browser' })
+        ).getByText('2')
+      ).toBeVisible();
+      expect(
+        within(
+          within(sidebar).getByRole('button', { name: 'Cookies' })
+        ).getByText('3')
+      ).toBeVisible();
+    });
   });
 
   it('switches between Home and Settings sections in the same shell', async () => {
@@ -300,14 +520,15 @@ describe('SettingsPage', () => {
     const toolbar = document.querySelector(
       '[data-home-spaces-toolbar]'
     ) as HTMLElement;
+    const collectionHeader = toolbar.closest('header');
     const list = document.querySelector('[data-home-spaces-list]');
-    expect(toolbar).toHaveClass(
-      'sticky',
-      '-top-px',
-      'z-20',
-      'bg-ds-neutral-subtle-default'
+    expect(collectionHeader).toHaveClass(
+      'min-h-ds-layout-row-header',
+      'border-ds-hairline-subtle-default'
     );
-    expect(document.querySelector('main > header')).not.toBeInTheDocument();
+    expect(toolbar).toHaveClass('max-w-[1100px]', 'px-ds-32');
+    expect(collectionHeader?.nextElementSibling).toContainElement(overview);
+    expect(collectionHeader).not.toContainElement(overview);
     expect(overview).toHaveTextContent(/Morning|Good Afternoon|Evening/);
     expect(overview).toHaveTextContent('Douglas');
     expect(within(overview).queryByText('Status')).not.toBeInTheDocument();
@@ -473,73 +694,194 @@ describe('SettingsPage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('updates the content header for a settings sub-tab', async () => {
+  it('shows one Skills overview with source filters instead of ownership tabs', async () => {
     const user = userEvent.setup();
-
+    useSkillsStore.setState({ skills: [] });
+    const sync = vi
+      .spyOn(useSkillsStore.getState(), 'syncFromDisk')
+      .mockResolvedValue();
     renderSettingsPage();
-
     await user.click(screen.getByRole('button', { name: 'Skills' }));
-    const exampleSkillsTab = await screen.findByRole('tab', {
-      name: 'Example skills',
-    });
-    const yourSkillsTab = screen.getByRole('tab', {
-      name: 'Your skills',
-    });
-    const header = getSettingsHeader();
-    const heading = await within(header).findByRole('heading', {
-      name: 'Your skills',
-      level: 1,
-    });
-    expect(heading).toHaveClass('sr-only');
-    expect(header).toContainElement(exampleSkillsTab);
-    expect(within(header).getByRole('tablist')).toHaveClass(
-      'rounded-xl',
-      'bg-ds-neutral-strong-default'
-    );
-    expect(exampleSkillsTab).toHaveAttribute('data-tabs-appearance', 'default');
-    expect(exampleSkillsTab).toHaveClass(
-      'rounded-xl',
-      'bg-ds-neutral-strong-default'
-    );
     expect(
-      within(header).getByPlaceholderText('Search skills...')
-    ).toBeInTheDocument();
+      await screen.findByRole('heading', { name: 'Skills', level: 1 })
+    ).not.toHaveClass('sr-only');
     expect(
-      within(header).getByRole('button', { name: 'Add Skill' })
-    ).toBeInTheDocument();
-
-    expect(yourSkillsTab).toHaveAttribute('aria-selected', 'true');
-    expect(
-      within(header).getByText('Your skills', { selector: 'span' })
-    ).toBeInTheDocument();
-
-    await user.click(exampleSkillsTab);
-
-    await waitFor(() => {
-      expect(exampleSkillsTab).toHaveAttribute('aria-selected', 'true');
-    });
-    expect(
-      screen.queryByRole('heading', {
-        name: 'Example skills',
-        level: 3,
-      })
+      screen.queryByRole('tab', { name: 'Your skills' })
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('tab', { name: 'Example skills' })
+    ).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole('combobox', { name: 'Skill source' })
+    ).toBeVisible();
+    expect(screen.getByRole('combobox', { name: 'Status' })).toBeVisible();
+    expect(
+      screen.getByRole('textbox', { name: 'Search skills…' })
+    ).toBeVisible();
+    const toolbar = screen.getByRole('region', { name: 'Skills toolbar' });
+    const dashboard = screen.getByRole('region', { name: 'Skill overview' });
+    const collectionHeader = toolbar.closest('header');
+    expect(within(dashboard).getAllByRole('term')).toHaveLength(4);
+    expect(collectionHeader).toHaveClass('min-h-ds-layout-row-header');
+    expect(toolbar).toHaveClass('max-w-[1100px]', 'px-ds-32');
+    expect(collectionHeader?.nextElementSibling?.firstElementChild).toHaveClass(
+      'max-w-[1100px]',
+      'px-8'
+    );
+    expect(collectionHeader?.nextElementSibling).toContainElement(dashboard);
+    expect(collectionHeader).not.toContainElement(dashboard);
+    expect(
+      within(toolbar).getByRole('button', { name: 'Add skill' })
+    ).toBeVisible();
+    expect(
+      toolbar.compareDocumentPosition(dashboard) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    await user.click(
+      within(toolbar).getByRole('button', { name: 'Add skill' })
+    );
+    const addSkillDialog = await screen.findByRole('dialog', {
+      name: 'Add skill',
+    });
+    await waitFor(() => expect(addSkillDialog).toBeVisible());
+    sync.mockRestore();
   });
 
-  it('clears section-owned header controls during a page switch', async () => {
+  it('navigates Skills with the same shell transition and preserves overview filters on return', async () => {
+    const user = userEvent.setup();
+    const skill: Skill = {
+      id: 'disk-research',
+      name: 'research',
+      skillDirName: 'research',
+      description: 'Find sources',
+      filePath: 'research/SKILL.md',
+      fileContent: '',
+      addedAt: 0,
+      enabled: true,
+      isExample: false,
+      scope: { isGlobal: true, selectedAgents: [] },
+    };
+    useSkillsStore.setState({ skills: [skill] });
+    const sync = vi
+      .spyOn(useSkillsStore.getState(), 'syncFromDisk')
+      .mockResolvedValue();
+    const { unmount } = renderSettingsPage(
+      '/home?section=settings&tab=skills&skillSearch=research&skillFilter=global'
+    );
+    const shell = document.querySelector(
+      '[data-home-space-sidebar-pane]'
+    )?.parentElement;
+    const skillLink = await screen.findByRole('link', {
+      name: 'research',
+      exact: true,
+    });
+    const skillsTable = screen.getByRole('table', { name: 'Skills' });
+    const headerRow = within(skillsTable).getAllByRole('row')[0];
+    expect(headerRow).toHaveClass('hover:bg-transparent');
+    expect(
+      within(headerRow).queryByRole('button', { name: 'Skill' })
+    ).not.toBeInTheDocument();
+    expect(skillLink).toHaveClass(
+      'hover:!text-ds-ink-default-default',
+      'hover:no-underline'
+    );
+    expect(skillLink.closest('td')?.firstElementChild).toHaveClass(
+      'flex',
+      'flex-col',
+      'justify-center'
+    );
+    expect(skillLink).toHaveAttribute(
+      'href',
+      '/home?section=settings&tab=skills&skillSearch=research&skillFilter=global&skillId=global%3Aresearch'
+    );
+    await user.click(skillLink);
+    await waitFor(() =>
+      expect(document.querySelector('[data-skill-detail]')).toBeInTheDocument()
+    );
+    const pane = document.querySelector(
+      '[data-home-space-sidebar-pane="skill-detail"]'
+    );
+    expect(pane?.parentElement).toBe(shell);
+    expect(pane).toHaveAttribute('data-space-navigation-direction', 'forward');
+    expect(pane).toHaveAttribute('data-space-navigation-motion', 'full');
+    await waitFor(() =>
+      expect(
+        screen.getByRole('navigation', { name: 'Select a skill' })
+      ).toBeVisible()
+    );
+    const skillSidebar = screen.getByRole('complementary', { name: 'Skills' });
+    const skillSidebarHeader = skillSidebar.querySelector(
+      'header'
+    ) as HTMLElement;
+    expect(skillSidebarHeader).not.toHaveClass('border-b');
+    const back = within(skillSidebarHeader).getByRole('button', {
+      name: 'Back',
+    });
+    const addSkill = within(skillSidebarHeader).getByRole('button', {
+      name: 'Add skill',
+    });
+    expect(addSkill).toHaveAttribute('data-variant', 'primary');
+    expect(addSkill).toHaveClass('!rounded-full');
+    const skillSearch = within(skillSidebar).getByRole('searchbox', {
+      name: 'Search skills…',
+    });
+    expect(skillSearch.closest('.py-ds-8')).not.toHaveClass('px-ds-8');
+    expect(
+      addSkill.compareDocumentPosition(skillSearch) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(skillSidebar.querySelector('.uppercase')).not.toBeInTheDocument();
+    await user.type(skillSearch, 'missing');
+    expect(
+      within(skillSidebar).queryByRole('button', { name: 'research' })
+    ).not.toBeInTheDocument();
+    expect(skillSidebar).toHaveTextContent('No skills match your filters.');
+    await user.clear(skillSearch);
+    fireEvent.keyDown(back, { key: 'Enter' });
+    fireEvent.click(back);
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-home-space-sidebar-pane="home"]')
+      ).toHaveAttribute('data-space-navigation-motion', 'instant')
+    );
+    expect(
+      await screen.findByRole('textbox', { name: 'Search skills…' })
+    ).toHaveValue('research');
+    expect(
+      await screen.findByRole('combobox', { name: 'Skill source' })
+    ).toHaveTextContent('Global');
+    expect(screen.getByTestId('settings-location')).toHaveTextContent(
+      '/home?section=settings&tab=skills&skillSearch=research&skillFilter=global'
+    );
+    unmount();
+    sync.mockRestore();
+    useSkillsStore.setState({ skills: [] });
+  });
+
+  it('removes the Skills toolbar and restores the settings header during a page switch', async () => {
     const user = userEvent.setup();
 
     renderSettingsPage();
 
     await user.click(screen.getByRole('button', { name: 'Skills' }));
-    const header = getSettingsHeader();
+    const toolbar = await screen.findByRole('region', {
+      name: 'Skills toolbar',
+    });
 
-    expect(await within(header).findByRole('tablist')).toBeInTheDocument();
+    expect(
+      within(toolbar).getByRole('button', { name: 'Add skill' })
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Channels' }));
 
     await waitFor(() => {
-      expect(within(header).queryByRole('tablist')).not.toBeInTheDocument();
+      const header = getSettingsHeader();
+      expect(
+        screen.queryByRole('region', { name: 'Skills toolbar' })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Add skill' })
+      ).not.toBeInTheDocument();
       expect(within(header).getByText('Channels')).toBeInTheDocument();
     });
     await waitFor(() => {
@@ -549,8 +891,119 @@ describe('SettingsPage', () => {
     });
   });
 
-  it('switches to the Space detail layout without changing the shared shell', async () => {
+  it('uses the connector-focused sidebar for the Add connector subpage', async () => {
+    renderSettingsPage(
+      '/home?section=settings&tab=connectors&connectorView=add&connectorAdd=browse'
+    );
+
+    await waitFor(() =>
+      expect(document.querySelector('[data-add-connector]')).toBeInTheDocument()
+    );
+    const sidebarPane = document.querySelector(
+      '[data-home-space-sidebar-pane="connector-detail"]'
+    );
+    expect(sidebarPane).toBeInTheDocument();
+    const connectorSidebar = await screen.findByRole('complementary', {
+      name: 'Connectors',
+    });
+    expect(
+      within(connectorSidebar).getByRole('button', { name: 'Back' })
+    ).toBeVisible();
+    expect(
+      within(connectorSidebar).getByRole('button', { name: 'Add connector' })
+    ).toHaveAttribute('data-variant', 'primary');
+
+    const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(
+      within(breadcrumb).getByRole('button', { name: 'Connector' })
+    ).toBeVisible();
+    expect(breadcrumb.querySelector('ol')).not.toBeNull();
+    expect(breadcrumb).not.toHaveAttribute('title');
+    expect(
+      screen.getByRole('heading', {
+        name: 'Add connector',
+        level: 1,
+      })
+    ).toBeVisible();
+    expect(within(breadcrumb).queryByRole('heading')).toBeNull();
+  });
+
+  it('returns from Connector detail to the page that opened it', async () => {
     const user = userEvent.setup();
+    renderSettingsPage([
+      '/?space=workspace-space',
+      {
+        pathname: '/home',
+        search:
+          '?section=settings&tab=connectors&connectorView=add&connectorAdd=browse',
+        state: { from: '/?space=workspace-space' },
+      },
+    ]);
+
+    const connectorSidebar = await screen.findByRole('complementary', {
+      name: 'Connectors',
+    });
+    await user.click(
+      within(connectorSidebar).getByRole('button', { name: 'Back' })
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-location')).toHaveTextContent(
+        '/?space=workspace-space'
+      )
+    );
+  });
+
+  it('returns from Space detail to its workspace origin', async () => {
+    const user = userEvent.setup();
+    const now = Date.now();
+    useSpaceStore.setState((state) => ({
+      ...state,
+      spaces: {
+        ...state.spaces,
+        'origin-space': {
+          id: 'origin-space',
+          name: 'Origin Space',
+          sourceType: 'folder',
+          rootPath: '/work/origin-space',
+          status: 'active',
+          schemaVersion: 1,
+          createdAt: now,
+          updatedAt: now,
+        },
+      },
+      projectsBySpaceId: {
+        ...state.projectsBySpaceId,
+        'origin-space': {},
+      },
+      projectsSyncedAt: {
+        ...state.projectsSyncedAt,
+        'origin-space': now,
+      },
+    }));
+
+    renderSettingsPage([
+      '/',
+      {
+        pathname: '/home',
+        search: '?section=spaces&spaceId=origin-space&spaceTab=projects',
+        state: { from: '/' },
+      },
+    ]);
+
+    const spaceSidebar = await screen.findByRole('complementary', {
+      name: 'Spaces',
+    });
+    await user.click(
+      within(spaceSidebar).getByRole('button', { name: 'Back' })
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-location')).toHaveTextContent(/^\/$/)
+    );
+  });
+
+  it('switches to the Space detail layout without changing the shared shell', () => {
     const now = Date.now();
     useSpaceStore.setState((state) => ({
       ...state,
@@ -588,15 +1041,32 @@ describe('SettingsPage', () => {
       },
     }));
 
-    renderSettingsPage('/home?section=spaces');
+    const { unmount } = renderSettingsPage('/home?section=spaces');
 
-    const homeSpaceCard = (await screen.findByText('Design Space')).closest(
-      '[role="button"]'
-    ) as HTMLElement;
+    const cardWorkspaceButtons = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(
+        '[data-home-space-open-workspace][data-layout="card"]'
+      )
+    );
+    expect(cardWorkspaceButtons.length).toBeGreaterThan(0);
+    expect(cardWorkspaceButtons[0]).toHaveAttribute('data-variant', 'ghost');
+    expect(cardWorkspaceButtons[0]).toHaveClass(
+      'cursor-pointer',
+      'rounded-lg',
+      'font-medium'
+    );
+    expect(cardWorkspaceButtons[0].parentElement).not.toHaveTextContent(
+      'Last updated:'
+    );
+
+    const homeSpaceCard = screen
+      .getByText('Design Space')
+      .closest('button') as HTMLElement;
     expect(homeSpaceCard).toBeInTheDocument();
-    await user.click(homeSpaceCard);
+    fireEvent.pointerDown(homeSpaceCard, { pointerType: 'mouse' });
+    fireEvent.click(homeSpaceCard);
 
-    const detailSidebar = await screen.findByRole('complementary', {
+    const detailSidebar = screen.getByRole('complementary', {
       name: 'Spaces',
     });
     expect(
@@ -605,32 +1075,52 @@ describe('SettingsPage', () => {
     expect(
       document.querySelector('[data-home-space-sidebar-pane="detail"]')
     ).toHaveAttribute('data-space-navigation-motion', 'full');
-    expect(
-      document.querySelector('[data-home-space-content-pane="detail"]')
-    ).toHaveAttribute('data-space-navigation-motion', 'full');
+    const detailContent = document.querySelector(
+      '[data-home-space-content-pane="detail"]'
+    ) as HTMLElement;
+    expect(detailContent).toHaveAttribute(
+      'data-space-navigation-motion',
+      'full'
+    );
     expect(
       within(detailSidebar).getByRole('button', { name: 'Design Space' })
     ).toHaveAttribute('aria-current', 'page');
+    const detailSidebarHeader = detailSidebar.querySelector(
+      'header'
+    ) as HTMLElement;
+    expect(detailSidebarHeader).not.toHaveClass('border-b');
     expect(
-      within(detailSidebar).getByRole('button', { name: 'Back to Home' })
+      within(detailSidebarHeader).getByRole('button', { name: 'Back' })
     ).toBeInTheDocument();
-    const newSpaceTab = within(detailSidebar).getByRole('button', {
+    const newSpaceTab = within(detailSidebarHeader).getByRole('button', {
       name: 'New Space',
     });
+    expect(newSpaceTab).toHaveAttribute('data-variant', 'primary');
+    expect(newSpaceTab).toHaveClass('!rounded-full');
     expect(newSpaceTab.querySelector('svg')).toHaveClass('lucide-plus');
+    const spaceSearch = within(detailSidebar).getByRole('searchbox', {
+      name: 'Search spaces...',
+    });
+    expect(spaceSearch.closest('.py-ds-8')).not.toHaveClass('px-ds-8');
     expect(
-      newSpaceTab.compareDocumentPosition(
-        within(detailSidebar).getByText('Spaces')
-      ) & Node.DOCUMENT_POSITION_FOLLOWING
+      newSpaceTab.compareDocumentPosition(spaceSearch) &
+        Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
+    expect(detailSidebar.querySelector('.uppercase')).not.toBeInTheDocument();
     expect(
       within(detailSidebar).queryByRole('button', { name: 'Untitled Space' })
     ).not.toBeInTheDocument();
-    await user.click(newSpaceTab);
+    fireEvent.change(spaceSearch, { target: { value: 'missing' } });
     expect(
-      await screen.findByRole('dialog', { name: 'Create a new Space' })
+      within(detailSidebar).queryByRole('button', { name: 'Design Space' })
+    ).not.toBeInTheDocument();
+    expect(detailSidebar).toHaveTextContent('No results match your search.');
+    fireEvent.change(spaceSearch, { target: { value: '' } });
+    fireEvent.click(newSpaceTab);
+    expect(
+      screen.getByRole('dialog', { name: 'Create a new Space' })
     ).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(
       detailSidebar.querySelector('.lucide-check')
     ).not.toBeInTheDocument();
@@ -642,8 +1132,8 @@ describe('SettingsPage', () => {
     });
     expect(spaceMoreButton.closest('.group')).toContainElement(designSpaceTab);
 
-    await user.click(spaceMoreButton);
-    await user.click(
+    openDropdown(spaceMoreButton);
+    fireEvent.click(
       within(screen.getByRole('menu')).getByRole('menuitem', {
         name: 'Rename Space',
       })
@@ -654,12 +1144,12 @@ describe('SettingsPage', () => {
     expect(within(renameDialog).getByPlaceholderText('Space name')).toHaveValue(
       'Design Space'
     );
-    await user.click(
+    fireEvent.click(
       within(renameDialog).getByRole('button', { name: 'Cancel' })
     );
 
-    await user.click(spaceMoreButton);
-    await user.click(
+    openDropdown(spaceMoreButton);
+    fireEvent.click(
       within(screen.getByRole('menu')).getByRole('menuitem', {
         name: 'Delete',
       })
@@ -668,16 +1158,25 @@ describe('SettingsPage', () => {
     expect(deleteDialog).toHaveTextContent(
       'Are you sure you want to delete this space and all its sessions?'
     );
-    await user.click(
+    fireEvent.click(
       within(deleteDialog).getByRole('button', { name: 'Cancel' })
     );
-    const detailHeader = document.querySelector('main header');
-    expect(detailHeader).not.toBeInTheDocument();
+    const detailHeader = detailContent.querySelector('header') as HTMLElement;
+    expect(detailHeader).toHaveClass('px-ds-16');
+    const detailHeading = within(detailHeader).getByRole('heading', {
+      name: 'Design Space',
+      level: 1,
+    });
+    expect(detailHeading).toHaveClass('!text-ds-text-base');
+    const openWorkspaceButton = within(detailHeader).getByRole('button', {
+      name: 'Open workspace',
+    });
+    expect(openWorkspaceButton).toHaveAttribute('data-variant', 'primary');
+    expect(openWorkspaceButton).toHaveClass('!rounded-full');
     expect(
-      within(screen.getByRole('main')).getByText('Design Space')
-    ).toHaveClass('!text-ds-text-section');
-    expect(screen.getByText('Product design work')).toBeInTheDocument();
-    expect(screen.getByText('Local')).toBeInTheDocument();
+      within(detailContent).getByText('Product design work')
+    ).toBeInTheDocument();
+    expect(within(detailContent).getByText('Local')).toBeInTheDocument();
 
     for (const tabName of [
       'Sessions',
@@ -685,7 +1184,7 @@ describe('SettingsPage', () => {
       'Automations',
       'Context',
       'Memory',
-      'Space Settings',
+      'Space settings',
     ]) {
       expect(screen.getByRole('tab', { name: tabName })).toBeInTheDocument();
     }
@@ -693,18 +1192,6 @@ describe('SettingsPage', () => {
       'gap-2',
       'pb-2'
     );
-    const spaceTabRow = screen.getByRole('tablist', {
-      name: 'Space content',
-    }).parentElement;
-    expect(spaceTabRow).toHaveClass('justify-between');
-    const openWorkspaceButton = within(spaceTabRow as HTMLElement).getByRole(
-      'button',
-      {
-        name: 'Open Workspace',
-      }
-    );
-    expect(openWorkspaceButton).toHaveAttribute('data-variant', 'primary');
-    expect(openWorkspaceButton).toHaveClass('!rounded-full');
     expect(
       within(screen.getByRole('tab', { name: 'Sessions' })).getByText(
         'Sessions'
@@ -724,7 +1211,7 @@ describe('SettingsPage', () => {
       screen.getByRole('tab', { name: 'Context' }).querySelector('svg')
     ).toHaveClass('lucide-library');
     expect(
-      screen.getByRole('tab', { name: 'Space Settings' }).querySelector('svg')
+      screen.getByRole('tab', { name: 'Space settings' }).querySelector('svg')
     ).toHaveClass('lucide-settings');
     fireEvent.pointerEnter(screen.getByRole('tab', { name: 'Memory' }), {
       pointerType: 'mouse',
@@ -756,91 +1243,50 @@ describe('SettingsPage', () => {
     expect(document.querySelector('[data-space-stat="Status"]')).toHaveClass(
       'items-center'
     );
-
-    await user.click(screen.getByRole('tab', { name: 'Tasks' }));
-    await waitFor(() => {
-      expect(screen.getByRole('tab', { name: 'Tasks' })).toHaveAttribute(
-        'aria-selected',
-        'true'
-      );
-    });
-    expect(screen.getByRole('tab', { name: 'Sessions' })).toHaveAttribute(
-      'aria-selected',
-      'false'
-    );
-
-    await user.click(
-      within(detailSidebar).getByRole('button', { name: 'Back to Home' })
-    );
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole('complementary', { name: 'Home' })
-      ).toBeInTheDocument();
-    });
-    expect(
-      document.querySelector('[data-home-space-sidebar-pane="home"]')
-    ).toHaveAttribute('data-space-navigation-direction', 'back');
-    expect(
-      document.querySelector('[data-home-space-sidebar-pane="home"]')
-    ).toHaveAttribute('data-space-navigation-motion', 'full');
-    expect(
-      document.querySelector('[data-home-space-content-pane="home"]')
-    ).toHaveAttribute('data-space-navigation-motion', 'full');
-    expect(screen.getByRole('button', { name: 'Models' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Spaces' })).toHaveAttribute(
-      'aria-current',
-      'page'
-    );
-
-    const cardWorkspaceButtons = await waitFor(() => {
-      const buttons = Array.from(
-        document.querySelectorAll<HTMLButtonElement>(
-          '[data-home-space-open-workspace][data-layout="card"]'
-        )
-      );
-      expect(buttons.length).toBeGreaterThan(0);
-      return buttons;
-    });
-    expect(cardWorkspaceButtons[0]).toHaveAttribute('data-variant', 'ghost');
-    expect(cardWorkspaceButtons[0]).toHaveClass(
-      'cursor-pointer',
-      'rounded-lg',
-      'font-medium'
-    );
-    expect(
-      cardWorkspaceButtons[0].closest('[role="button"]')
-    ).not.toHaveTextContent('Last updated:');
-
-    const homeToolbar = document.querySelector(
-      '[data-home-spaces-toolbar]'
-    ) as HTMLElement;
-    await user.click(within(homeToolbar).getByRole('tab', { name: 'List' }));
-    const listWorkspaceButtons = await waitFor(() => {
-      const buttons = Array.from(
-        document.querySelectorAll<HTMLButtonElement>(
-          '[data-home-space-open-workspace][data-layout="list"]'
-        )
-      );
-      expect(buttons.length).toBeGreaterThan(0);
-      return buttons;
-    });
-    expect(listWorkspaceButtons[0]).toHaveClass(
-      'justify-self-end',
-      'cursor-pointer',
-      'rounded-lg',
-      'font-medium'
-    );
-    expect(listWorkspaceButtons[0]).toHaveAttribute('data-variant', 'ghost');
-    expect(listWorkspaceButtons[0].parentElement?.lastElementChild).toBe(
-      listWorkspaceButtons[0]
-    );
-    await user.click(within(homeToolbar).getByRole('tab', { name: 'Grid' }));
+    unmount();
   });
 
-  it('keeps reduced-motion navigation to fades and keyboard navigation instant', async () => {
+  it('keeps the workspace action last in a Spaces list row', () => {
+    const now = Date.now();
+    useSpaceStore.setState((state) => ({
+      ...state,
+      spaces: {
+        'list-space': {
+          id: 'list-space',
+          name: 'List Space',
+          sourceType: 'folder',
+          rootPath: '/work/list-space',
+          status: 'active',
+          schemaVersion: 1,
+          createdAt: now,
+          updatedAt: now,
+        },
+      },
+      projectsBySpaceId: { 'list-space': {} },
+      projectsSyncedAt: { 'list-space': now },
+    }));
+    window.localStorage.setItem('eigent-home-hub-view-mode', 'list');
+
+    const { unmount } = renderSettingsPage('/home?section=spaces');
+
+    const listWorkspaceButton = document.querySelector<HTMLButtonElement>(
+      '[data-home-space-open-workspace][data-layout="list"]'
+    );
+    expect(listWorkspaceButton).toHaveClass(
+      'cursor-pointer',
+      'rounded-lg',
+      'font-medium'
+    );
+    expect(listWorkspaceButton?.parentElement).toHaveClass('justify-self-end');
+    expect(listWorkspaceButton).toHaveAttribute('data-variant', 'ghost');
+    expect(listWorkspaceButton?.parentElement?.lastElementChild).toBe(
+      listWorkspaceButton
+    );
+    unmount();
+  });
+
+  it('keeps reduced-motion navigation to fades and keyboard navigation instant', () => {
     pageMotionMocks.reduced = true;
-    const user = userEvent.setup();
     const now = Date.now();
     useSpaceStore.setState((state) => ({
       ...state,
@@ -868,14 +1314,15 @@ describe('SettingsPage', () => {
       },
     }));
 
-    renderSettingsPage('/home?section=spaces');
+    const { unmount } = renderSettingsPage('/home?section=spaces');
 
-    const spaceCard = (await screen.findByText('Motion Space')).closest(
-      '[role="button"]'
-    ) as HTMLElement;
-    await user.click(spaceCard);
+    const spaceCard = screen
+      .getByText('Motion Space')
+      .closest('button') as HTMLElement;
+    fireEvent.pointerDown(spaceCard, { pointerType: 'mouse' });
+    fireEvent.click(spaceCard);
 
-    const detailSidebar = await screen.findByRole('complementary', {
+    const detailSidebar = screen.getByRole('complementary', {
       name: 'Spaces',
     });
     expect(
@@ -886,11 +1333,14 @@ describe('SettingsPage', () => {
     ).toHaveAttribute('data-space-navigation-motion', 'fade');
 
     const backButton = within(detailSidebar).getByRole('button', {
-      name: 'Back to Home',
+      name: 'Back',
     });
     backButton.focus();
-    await user.keyboard('{Enter}');
-    await screen.findByRole('complementary', { name: 'Home' });
+    fireEvent.keyDown(backButton, { key: 'Enter' });
+    fireEvent.click(backButton);
+    expect(
+      screen.getByRole('complementary', { name: 'Home' })
+    ).toBeInTheDocument();
 
     expect(
       document.querySelector('[data-home-space-sidebar-pane="home"]')
@@ -898,6 +1348,7 @@ describe('SettingsPage', () => {
     expect(
       document.querySelector('[data-home-space-content-pane="home"]')
     ).toHaveAttribute('data-space-navigation-motion', 'instant');
+    unmount();
   });
 
   it('redirects an empty placeholder Space to Home without listing it', async () => {
@@ -981,6 +1432,19 @@ describe('SettingsPage', () => {
       'border-0',
       'bg-ds-neutral-default-default',
       'p-4'
+    );
+
+    rerender(
+      <SettingsSection titleVariant="hidden" surface="plain">
+        <span>Section content</span>
+      </SettingsSection>
+    );
+
+    expect(screen.getByText('Section content').parentElement).toHaveClass(
+      'bg-transparent'
+    );
+    expect(screen.getByText('Section content').parentElement).not.toHaveClass(
+      'bg-ds-neutral-default-default'
     );
   });
 });

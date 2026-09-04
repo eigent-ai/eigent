@@ -21,6 +21,7 @@ import i18next from 'i18next';
 import {
   fetchDelete,
   fetchGet,
+  fetchGetBlob,
   fetchPost,
   fetchPostForm,
   fetchPut,
@@ -105,19 +106,74 @@ export async function skillRead(
   return fetchGet(`/skills/${encodeURIComponent(skillDirName)}`);
 }
 
+const SKILL_REQUEST_TIMEOUT_MS = 30_000;
+
+function skillRequestSignal(): AbortSignal | undefined {
+  if (typeof AbortSignal.timeout === 'function') {
+    return AbortSignal.timeout(SKILL_REQUEST_TIMEOUT_MS);
+  }
+  return undefined;
+}
+
 export async function skillDelete(
   skillDirName: string
 ): Promise<{ success: boolean }> {
-  return fetchDelete(`/skills/${encodeURIComponent(skillDirName)}`);
+  return fetchDelete(
+    `/skills/${encodeURIComponent(skillDirName)}`,
+    undefined,
+    undefined,
+    { signal: skillRequestSignal() }
+  );
 }
 
 export async function skillListFiles(
   skillDirName: string
-): Promise<{ success: boolean; files: string[] }> {
+): Promise<{ success: boolean; files: SkillPackageFile[] }> {
   const res = await fetchGet(
     `/skills/${encodeURIComponent(skillDirName)}/files`
   );
-  return res?.files !== undefined ? res : { success: true, files: [] };
+  if (!Array.isArray(res?.files)) return { success: true, files: [] };
+  return {
+    success: res.success !== false,
+    files: res.files.flatMap((file: unknown) => {
+      if (typeof file === 'string') {
+        return [{ path: file, size: null }];
+      }
+      if (
+        file &&
+        typeof file === 'object' &&
+        typeof (file as SkillPackageFile).path === 'string'
+      ) {
+        const entry = file as SkillPackageFile;
+        return [
+          {
+            path: entry.path,
+            size: typeof entry.size === 'number' ? entry.size : null,
+            mimeType:
+              typeof entry.mimeType === 'string' ? entry.mimeType : null,
+          },
+        ];
+      }
+      return [];
+    }),
+  };
+}
+
+export type SkillPackageFile = {
+  path: string;
+  size: number | null;
+  mimeType?: string | null;
+};
+
+export async function skillReadFile(
+  skillDirName: string,
+  relativePath: string
+): Promise<Blob> {
+  return fetchGetBlob(
+    `/skills/${encodeURIComponent(skillDirName)}/file`,
+    { path: relativePath },
+    { signal: skillRequestSignal() }
+  );
 }
 
 export async function skillGetPathByName(
@@ -182,7 +238,10 @@ export async function skillConfigDelete(
     ? `&legacy_user_id=${encodeURIComponent(legacyUserId)}`
     : '';
   return fetchDelete(
-    `/skills/config/${encodeURIComponent(skillName)}?user_id=${encodeURIComponent(userId)}${legacyQuery}`
+    `/skills/config/${encodeURIComponent(skillName)}?user_id=${encodeURIComponent(userId)}${legacyQuery}`,
+    undefined,
+    undefined,
+    { signal: skillRequestSignal() }
   );
 }
 

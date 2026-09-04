@@ -13,21 +13,30 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import SearchInput from '@/components/Dashboard/SearchInput';
+import CollectionToolbar, {
+  COLLECTION_TOOLBAR_SEARCH_CLASS,
+} from '@/components/Layout/CollectionToolbar';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TooltipSimple } from '@/components/ui/tooltip';
-import { ArrowUpDown, LayoutGrid, List } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  LayoutGrid,
+  List,
+} from 'lucide-react';
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHomeHub } from './context';
-import { useNewSpaceCreation } from './hooks/useNewSpaceCreation';
-import NewSpaceDialog from './NewSpaceDialog';
 import { defaultSortDirectionForField, type HomeSortBy } from './utils';
 
 /**
@@ -35,9 +44,6 @@ import { defaultSortDirectionForField, type HomeSortBy } from './utils';
  */
 export default function HomeHeader() {
   const { t } = useTranslation();
-  const [newSpaceDialogOpen, setNewSpaceDialogOpen] = useState(false);
-  const { createBlankSpace, createSpaceFromFolder } =
-    useNewSpaceCreation('home_hub_toolbar');
   const {
     sectionCounts,
     viewMode,
@@ -48,6 +54,7 @@ export default function HomeHeader() {
     setSortBy,
     sortDirection,
     setSortDirection,
+    openNewSpaceDialog,
   } = useHomeHub();
 
   const sortLabel = useMemo(() => {
@@ -72,110 +79,108 @@ export default function HomeHeader() {
   };
 
   return (
-    <section
+    <CollectionToolbar
       data-home-spaces-toolbar
       aria-label={t('layout.spaces-toolbar', {
         defaultValue: 'Spaces toolbar',
       })}
-      className="sticky -top-px z-20 flex min-w-0 flex-wrap items-center justify-between gap-4 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default py-4"
+      headingLevel={1}
+      width="wide"
+      title={t('layout.spaces')}
+      count={
+        <Badge variant="secondary" size="xs">
+          {sectionCounts.spaces}
+        </Badge>
+      }
     >
-      <div className="flex min-w-0 items-center gap-2">
-        <h2 className="!text-ds-text-section font-bold text-ds-ink-default-default">
-          {t('layout.spaces')}
-        </h2>
-        <span className="inline-flex shrink-0 items-center rounded-xl bg-ds-neutral-muted-default px-2 py-0.5 !text-ds-text-meta font-medium text-ds-ink-muted-default tabular-nums">
-          {sectionCounts.spaces}{' '}
-          {sectionCounts.spaces === 1 ? 'Space' : 'Spaces'}
-        </span>
+      <div className={COLLECTION_TOOLBAR_SEARCH_CLASS}>
+        <SearchInput
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          placeholder={t('layout.search-spaces')}
+        />
       </div>
 
-      <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-        <div className="w-56 max-w-full">
-          <SearchInput
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder={t('layout.search-spaces')}
-          />
-        </div>
-
-        <DropdownMenu>
-          <TooltipSimple content={sortLabel} variant="instant" side="bottom">
-            <span className="inline-flex">
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  buttonContent="icon-only"
-                  size="sm"
-                  className="rounded-full"
-                  aria-label={sortLabel}
-                >
-                  <ArrowUpDown className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-            </span>
-          </TooltipSimple>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => handleSortChange('created')}>
-              {t('layout.home-sort-created')}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleSortChange('updated')}>
-              {t('layout.home-sort-updated')}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleSortChange('name')}>
-              {t('layout.home-sort-name')}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <Tabs
-          value={viewMode === 'board' ? 'grid' : viewMode}
-          onValueChange={(value) => setViewMode(value as 'grid' | 'list')}
-        >
-          <TabsList appearance="default">
-            <TabsTrigger value="grid" aria-label={t('dashboard.grid')}>
-              <TooltipSimple
-                content={t('dashboard.grid')}
-                variant="instant"
-                side="bottom"
+      <DropdownMenu>
+        <TooltipSimple content={sortLabel} variant="instant" side="bottom">
+          <span className="inline-flex">
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="secondary"
+                buttonContent="icon-only"
+                size="sm"
+                className="rounded-full"
+                aria-label={sortLabel}
               >
-                <div className="inline-flex h-5 w-5 items-center justify-center">
-                  <LayoutGrid size={16} />
-                </div>
-              </TooltipSimple>
-            </TabsTrigger>
-            <TabsTrigger value="list" aria-label={t('dashboard.list')}>
-              <TooltipSimple
-                content={t('dashboard.list')}
-                variant="instant"
-                side="bottom"
+                <ArrowUpDown className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+          </span>
+        </TooltipSimple>
+        <DropdownMenuContent align="end">
+          <DropdownMenuRadioGroup value={sortBy}>
+            {(['created', 'updated', 'name'] as const).map((field) => (
+              <DropdownMenuRadioItem
+                key={field}
+                value={field}
+                className="gap-3"
+                onSelect={() => handleSortChange(field)}
               >
-                <div className="inline-flex h-5 w-5 items-center justify-center">
-                  <List size={16} />
-                </div>
-              </TooltipSimple>
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+                <span className="flex-1">{t(`layout.home-sort-${field}`)}</span>
+                {sortBy === field ? (
+                  sortDirection === 'desc' ? (
+                    <ArrowDown aria-hidden />
+                  ) : (
+                    <ArrowUp aria-hidden />
+                  )
+                ) : null}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-        <Button
-          type="button"
-          variant="primary"
-          size="sm"
-          buttonContent="text"
-          className="rounded-full"
-          onClick={() => setNewSpaceDialogOpen(true)}
-        >
-          {t('layout.spaces-new-space')}
-        </Button>
-      </div>
+      <Tabs
+        value={viewMode === 'board' ? 'grid' : viewMode}
+        onValueChange={(value) => setViewMode(value as 'grid' | 'list')}
+      >
+        <TabsList appearance="default">
+          <TabsTrigger value="grid" aria-label={t('dashboard.grid')}>
+            <TooltipSimple
+              content={t('dashboard.grid')}
+              variant="instant"
+              side="bottom"
+            >
+              <div className="inline-flex h-5 w-5 items-center justify-center">
+                <LayoutGrid size={16} />
+              </div>
+            </TooltipSimple>
+          </TabsTrigger>
+          <TabsTrigger value="list" aria-label={t('dashboard.list')}>
+            <TooltipSimple
+              content={t('dashboard.list')}
+              variant="instant"
+              side="bottom"
+            >
+              <div className="inline-flex h-5 w-5 items-center justify-center">
+                <List size={16} />
+              </div>
+            </TooltipSimple>
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
 
-      <NewSpaceDialog
-        open={newSpaceDialogOpen}
-        onOpenChange={setNewSpaceDialogOpen}
-        onStartFromScratch={createBlankSpace}
-        onUseLocalFolder={createSpaceFromFolder}
-      />
-    </section>
+      <Button
+        type="button"
+        variant="primary"
+        size="sm"
+        buttonContent="text"
+        className="rounded-full"
+        onClick={openNewSpaceDialog}
+      >
+        {t('layout.spaces-new-space')}
+      </Button>
+    </CollectionToolbar>
   );
 }

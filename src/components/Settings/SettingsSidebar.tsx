@@ -12,18 +12,27 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { fetchConnectedProviders } from '@/api/connectors';
+import { fetchGet } from '@/api/http';
 import { HomeSidebarNavGroup } from '@/components/Home';
 import type { HomeSection } from '@/components/Home/hooks/useHomeSection';
 import {
   NavTab,
+  SidebarCountBadge,
   SidebarNavGroup,
   SidebarScrollArea,
   SidebarSection,
   SidebarShell,
 } from '@/components/Layout/AppSidebar';
+import { useHost } from '@/host';
+import { useAuthStore } from '@/store/authStore';
+import { useSettingsResourceCountsStore } from '@/store/settingsResourceCountsStore';
 import type { SettingsSectionId } from '@/store/settingsStore';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useConnectorsNavigation } from './Connectors/ConnectorsNavigationContext';
 import { preloadSettingsSection } from './SettingsSectionContent';
+import { useSkillsLibrary } from './Skills/SkillsProvider';
 import { SETTINGS_NAVIGATION } from './settingsNavigation';
 
 interface SettingsSidebarProps {
@@ -43,6 +52,99 @@ export default function SettingsSidebar({
   className,
 }: SettingsSidebarProps) {
   const { t } = useTranslation();
+  const host = useHost();
+  const email = useAuthStore((state) => state.email);
+  const {
+    entries: skills,
+    loading: skillsLoading,
+    profilesLoading: skillProfilesLoading,
+  } = useSkillsLibrary();
+  const { items: connectorItems, loading: connectorsLoading } =
+    useConnectorsNavigation();
+  const browserCount = useSettingsResourceCountsStore(
+    (state) => state.counts['browser-connections']
+  );
+  const cookieCount = useSettingsResourceCountsStore(
+    (state) => state.counts.cookies
+  );
+  const setResourceCount = useSettingsResourceCountsStore(
+    (state) => state.setCount
+  );
+  const [initialConnectorCount, setInitialConnectorCount] = useState<
+    number | null
+  >(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!email) {
+      setInitialConnectorCount(0);
+    } else {
+      setInitialConnectorCount(null);
+      void fetchConnectedProviders()
+        .then((providers) => {
+          if (!cancelled) setInitialConnectorCount(providers.length);
+        })
+        .catch(() => undefined);
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [email]);
+
+  useEffect(() => {
+    if (browserCount != null) return;
+    let cancelled = false;
+    const electronAPI = host?.electronAPI;
+
+    const browsersRequest = electronAPI?.getCdpBrowsers
+      ? electronAPI.getCdpBrowsers()
+      : fetchGet('/browser/cdp/list');
+    void Promise.resolve(browsersRequest)
+      .then((browsers) => {
+        if (!cancelled) {
+          setResourceCount(
+            'browser-connections',
+            Array.isArray(browsers) ? browsers.length : 0
+          );
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [browserCount, host?.electronAPI, setResourceCount]);
+
+  useEffect(() => {
+    if (cookieCount != null) return;
+    let cancelled = false;
+
+    void fetchGet('/browser/cookies')
+      .then((response) => {
+        if (!cancelled) {
+          setResourceCount(
+            'cookies',
+            Array.isArray(response?.domains) ? response.domains.length : 0
+          );
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cookieCount, setResourceCount]);
+
+  const connectorCount = connectorsLoading
+    ? initialConnectorCount
+    : connectorItems.length;
+  const sectionCounts: Partial<Record<SettingsSectionId, number | null>> = {
+    skills: skillsLoading || skillProfilesLoading ? null : skills.length,
+    connectors: connectorCount,
+    'browser-connections': browserCount,
+    cookies: cookieCount,
+  };
 
   return (
     <SidebarShell
@@ -70,6 +172,7 @@ export default function SettingsSidebar({
                 const label = t(item.labelKey, {
                   defaultValue: item.defaultLabel,
                 });
+                const count = sectionCounts[item.id];
                 return (
                   <NavTab
                     key={item.id}
@@ -77,6 +180,11 @@ export default function SettingsSidebar({
                     onClick={() => onSectionChange(item.id)}
                     leading={<Icon className="h-4 w-4 shrink-0" aria-hidden />}
                     label={label}
+                    trailing={
+                      count == null ? undefined : (
+                        <SidebarCountBadge count={count} />
+                      )
+                    }
                     ariaLabel={label}
                     ariaCurrentPage={active}
                     onPointerEnter={() => preloadSettingsSection(item.id)}
