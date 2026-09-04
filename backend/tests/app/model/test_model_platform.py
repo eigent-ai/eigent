@@ -55,6 +55,8 @@ def test_meta_model_api_endpoint_matches_exact_official_host():
 
 
 def test_meta_model_api_backend_omits_strict_without_changing_schema():
+    assert hasattr(OpenAICompatibleModel, "_prepare_request_config")
+
     tools = [
         {
             "type": "function",
