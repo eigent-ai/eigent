@@ -510,6 +510,18 @@ function Picker({
   return null;
 }
 
+function hasDuplicateSkillRef(
+  editor: Extract<WorkspaceResourceEditorState, { kind: 'skill' }>,
+  document?: WorkspaceConfigurationDocument
+) {
+  return Boolean(
+    document?.spec.skills.some(
+      (assignment, index) =>
+        index !== editor.index && assignment.ref === editor.item.ref
+    )
+  );
+}
+
 export function canCommitResourceEditor(
   editor: WorkspaceResourceEditorState,
   document?: WorkspaceConfigurationDocument
@@ -532,7 +544,10 @@ export function canCommitResourceEditor(
       editor.item.role.trim() &&
       editor.item.modelProfile.trim()
     );
-  if (editor.kind === 'skill') return Boolean(editor.item.ref.trim());
+  if (editor.kind === 'skill')
+    return (
+      Boolean(editor.item.ref.trim()) && !hasDuplicateSkillRef(editor, document)
+    );
   if (editor.kind === 'connector')
     return Boolean(
       editor.item.id.trim() &&
@@ -1027,6 +1042,12 @@ function EditorFields({
   }
 
   if (editor.kind === 'skill') {
+    const duplicateRef = hasDuplicateSkillRef(editor, document);
+    const refNote = duplicateRef
+      ? t('layout.workspace-resource-skill-refs-unique', {
+          defaultValue: 'Skill references must be unique.',
+        })
+      : undefined;
     return (
       <div className="space-y-4">
         <Input
@@ -1035,6 +1056,8 @@ function EditorFields({
             defaultValue: 'Skill reference',
           })}
           value={editor.item.ref}
+          state={refNote ? 'error' : 'default'}
+          note={refNote}
           onChange={(event) =>
             onChange({
               ...editor,

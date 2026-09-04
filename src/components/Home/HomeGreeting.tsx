@@ -13,7 +13,8 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fetchConnectedProviders } from '@/api/connectors';
-import WordCarousel from '@/components/ui/WordCarousel';
+import { DsIcon } from '@/components/ui/ds-icon';
+import { DsText } from '@/components/ui/ds-text';
 import { listMemoryEntries } from '@/service/memoryApi';
 import { useAuthStore } from '@/store/authStore';
 import { useSkillsStore } from '@/store/skillsStore';
@@ -50,20 +51,24 @@ function OverviewStat({
   value: string | number;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-3">
-      <div
-        aria-hidden
-        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-default-default text-ds-ink-default-default"
-      >
-        <Icon className="h-5 w-5" />
-      </div>
+    <div className="flex min-w-0 items-center gap-2">
+      <DsIcon icon={Icon} className="text-ds-ink-muted-default" />
       <div className="min-w-0">
-        <span className="block truncate !text-ds-text-meta font-semibold tracking-wide text-ds-ink-muted-default uppercase">
+        <DsText
+          as="dt"
+          role="meta"
+          className="truncate text-ds-ink-muted-default"
+        >
           {label}
-        </span>
-        <span className="mt-1 block truncate !text-ds-text-body-large font-semibold text-ds-ink-default-default">
+        </DsText>
+        <DsText
+          as="dd"
+          role="base"
+          weight="semibold"
+          className="truncate text-ds-ink-default-default tabular-nums"
+        >
           {value}
-        </span>
+        </DsText>
       </div>
     </div>
   );
@@ -127,36 +132,27 @@ export default function HomeGreeting() {
   return (
     <section
       data-home-spaces-overview
-      className="grid w-full gap-8 xl:grid-cols-[minmax(240px,0.8fr)_minmax(600px,1.4fr)]"
+      className="grid w-full gap-4 rounded-ds-card border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default px-ds-16 py-ds-12 lg:grid-cols-[minmax(220px,0.8fr)_minmax(520px,1.4fr)] lg:items-center"
     >
-      <div className="min-w-0 pt-1">
-        <h1 className="m-0 flex flex-col items-start">
-          <WordCarousel
-            words={[t(timeGreetingKey)]}
-            className="history-welcome-headline !text-ds-text-display font-bold tracking-tight not-italic"
-            rotateIntervalMs={100}
-            sweepDurationMs={2000}
-            sweepOnce
-            gradient="linear-gradient(90deg, var(--ds-accent-subtle-default) 0%, var(--ds-accent-muted-default) 100%)"
-          />
-          {welcomeName ? (
-            <span className="history-welcome-headline block !text-ds-text-display font-bold tracking-tight text-ds-accent-default-default italic">
-              {t('layout.welcome-name', {
+      <div className="min-w-0">
+        <DsText role="body-large" weight="semibold">
+          {t(timeGreetingKey)}
+          {welcomeName
+            ? ` ${t('layout.welcome-name', {
                 name: welcomeName,
                 defaultValue: '{{name}}!',
-              })}
-            </span>
-          ) : null}
-        </h1>
-        <p className="mt-2 !text-ds-text-base text-ds-ink-muted-default">
+              })}`
+            : null}
+        </DsText>
+        <DsText role="meta" className="mt-1 text-ds-ink-muted-default">
           {t('layout.home-spaces-description', {
             defaultValue:
               'Manage your Spaces and connected workspace resources.',
           })}
-        </p>
+        </DsText>
       </div>
 
-      <div className="grid h-fit min-w-0 grid-cols-2 items-center gap-x-6 gap-y-5 self-center">
+      <dl className="m-0 grid h-fit min-w-0 grid-cols-2 items-center gap-x-ds-24 gap-y-ds-12 self-center sm:grid-cols-4">
         <OverviewStat
           icon={Folder}
           label={t('layout.spaces', { defaultValue: 'Spaces' })}
@@ -181,7 +177,7 @@ export default function HomeGreeting() {
               : new Intl.NumberFormat().format(memoryRemaining)
           }
         />
-      </div>
+      </dl>
     </section>
   );
 }

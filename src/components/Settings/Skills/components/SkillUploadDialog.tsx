@@ -39,12 +39,15 @@ interface SkillUploadDialogProps {
   onClose: () => void;
   /** File upload vs compose SKILL.md in the editor */
   mode?: 'upload' | 'create';
+  /** Same-name replace keeps `skillDirName` stable; bump the document preview. */
+  onPackageWritten?: () => void;
 }
 
 export default function SkillUploadDialog({
   open,
   onClose,
   mode = 'upload',
+  onPackageWritten,
 }: SkillUploadDialogProps) {
   const { t } = useTranslation();
   const { addSkill, syncFromDisk } = useSkillsStore();
@@ -53,6 +56,7 @@ export default function SkillUploadDialog({
   const [fileContent, setFileContent] = useState<string>('');
   const [_isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const confirmingConflictRef = useRef(false);
   const [isZip, setIsZip] = useState(false);
   const [uploadError, setUploadError] = useState<'invalid_format' | null>(null);
   const [conflictDialog, setConflictDialog] = useState<{
@@ -115,13 +119,30 @@ export default function SkillUploadDialog({
       });
       toast.success(t('agents.skill-added-success'));
       recordFeatureUsed('skills', { action: 'create' });
+      onPackageWritten?.();
       handleClose();
     } catch {
       toast.error(t('agents.skill-add-error'));
     } finally {
       setSavingCompose(false);
     }
-  }, [addSkill, composeContent, handleClose, t]);
+  }, [addSkill, composeContent, handleClose, onPackageWritten, t]);
+
+  /**
+   * The package is already written to disk by the time this runs, so a failed
+   * refresh means a stale list — never a failed import. Reporting it as
+   * `skill-add-error` would send the user back to re-import a skill they
+   * already have.
+   */
+  const refreshAfterImport = useCallback(async () => {
+    try {
+      await syncFromDisk();
+    } catch (error) {
+      console.warn('[Skills] Refresh after import failed:', error);
+      toast.warning(t('agents.library-global-load-failed'));
+    }
+    onPackageWritten?.();
+  }, [onPackageWritten, syncFromDisk, t]);
 
   const resetConflictState = useCallback(() => {
     setConflictDialog(null);
@@ -132,15 +153,78 @@ export default function SkillUploadDialog({
 
   const handleConflictConfirm = useCallback(async () => {
     if (!conflictDialog) return;
+    confirmingConflictRef.current = true;
+    try {
+      const { folderName } = conflictDialog;
+      const newConfirmed = new Set(confirmedReplacements);
+      newConfirmed.add(folderName);
+      setConfirmedReplacements(newConfirmed);
 
-    const { folderName } = conflictDialog;
-    const newConfirmed = new Set(confirmedReplacements);
-    newConfirmed.add(folderName);
-    setConfirmedReplacements(newConfirmed);
+      // Remove current conflict from pending list
+      const remaining = pendingConflicts.filter(
+        (c) => c.folderName !== folderName
+      );
+      setPendingConflicts(remaining);
 
-    // Remove current conflict from pending list
+      // If more conflicts, show next one
+      if (remaining.length > 0) {
+        setConflictDialog({
+          open: true,
+          folderName: remaining[0].folderName,
+          skillName: remaining[0].skillName,
+        });
+      } else {
+        // All conflicts handled, proceed with import
+        setConflictDialog(null);
+        if (!pendingFileBuffer) {
+          resetConflictState();
+          return;
+        }
+
+        if (pendingFileBuffer.byteLength > MAX_SKILL_ZIP_IMPORT_BYTES) {
+          toast.error(t('agents.zip-import-too-large'));
+          resetConflictState();
+          return;
+        }
+
+        try {
+          const result = await skillImportZip(
+            pendingFileBuffer,
+            Array.from(newConfirmed)
+          );
+
+          if (!result?.success) {
+            toast.error(result?.error || t('agents.skill-add-error'));
+            resetConflictState();
+            return;
+          }
+
+          await refreshAfterImport();
+          toast.success(t('agents.skill-added-success'));
+        } catch {
+          toast.error(t('agents.skill-add-error'));
+        }
+        resetConflictState();
+      }
+    } finally {
+      confirmingConflictRef.current = false;
+    }
+  }, [
+    conflictDialog,
+    confirmedReplacements,
+    pendingConflicts,
+    pendingFileBuffer,
+    resetConflictState,
+    refreshAfterImport,
+    t,
+  ]);
+
+  const handleConflictCancel = useCallback(async () => {
+    if (!conflictDialog || confirmingConflictRef.current) return;
+
+    // Remove current conflict from pending list (user skipped this one)
     const remaining = pendingConflicts.filter(
-      (c) => c.folderName !== folderName
+      (c) => c.folderName !== conflictDialog.folderName
     );
     setPendingConflicts(remaining);
 
@@ -159,61 +243,10 @@ export default function SkillUploadDialog({
         return;
       }
 
-      if (pendingFileBuffer.byteLength > MAX_SKILL_ZIP_IMPORT_BYTES) {
-        toast.error(t('agents.zip-import-too-large'));
-        resetConflictState();
-        return;
-      }
-
-      try {
-        const result = await skillImportZip(
-          pendingFileBuffer,
-          Array.from(newConfirmed)
-        );
-
-        if (!result?.success) {
-          toast.error(result?.error || t('agents.skill-add-error'));
-          resetConflictState();
-          return;
-        }
-
-        await syncFromDisk();
-        toast.success(t('agents.skill-added-success'));
-      } catch {
-        toast.error(t('agents.skill-add-error'));
-      }
-      resetConflictState();
-    }
-  }, [
-    conflictDialog,
-    confirmedReplacements,
-    pendingConflicts,
-    pendingFileBuffer,
-    resetConflictState,
-    syncFromDisk,
-    t,
-  ]);
-
-  const handleConflictCancel = useCallback(async () => {
-    if (!conflictDialog) return;
-
-    // Remove current conflict from pending list (user skipped this one)
-    const remaining = pendingConflicts.filter(
-      (c) => c.folderName !== conflictDialog.folderName
-    );
-    setPendingConflicts(remaining);
-
-    // If more conflicts, show next one
-    if (remaining.length > 0) {
-      setConflictDialog({
-        open: true,
-        folderName: remaining[0].folderName,
-        skillName: remaining[0].skillName,
-      });
-    } else {
-      // All conflicts handled, proceed with import
-      setConflictDialog(null);
-      if (!pendingFileBuffer || confirmedReplacements.size === 0) {
+      if (confirmedReplacements.size === 0) {
+        // The initial import may already have installed non-conflicting skills.
+        // Refresh even when every conflict was skipped so those skills appear.
+        await refreshAfterImport();
         resetConflictState();
         return;
       }
@@ -236,7 +269,7 @@ export default function SkillUploadDialog({
           return;
         }
 
-        await syncFromDisk();
+        await refreshAfterImport();
         toast.success(t('agents.skill-added-success'));
       } catch {
         toast.error(t('agents.skill-add-error'));
@@ -249,7 +282,7 @@ export default function SkillUploadDialog({
     pendingConflicts,
     pendingFileBuffer,
     resetConflictState,
-    syncFromDisk,
+    refreshAfterImport,
     t,
   ]);
 
@@ -306,7 +339,7 @@ export default function SkillUploadDialog({
             return;
           }
 
-          await syncFromDisk();
+          await refreshAfterImport();
           toast.success(t('agents.skill-added-success'));
           recordFeatureUsed('skills', { action: 'upload', format: 'zip' });
           handleClose();
@@ -336,7 +369,7 @@ export default function SkillUploadDialog({
           }
         }
 
-        addSkill({
+        await addSkill({
           name,
           description: description || t('agents.custom-skill'),
           filePath: fileToUse.name,
@@ -347,6 +380,7 @@ export default function SkillUploadDialog({
 
         toast.success(t('agents.skill-added-success'));
         recordFeatureUsed('skills', { action: 'upload', format: 'md' });
+        onPackageWritten?.();
         handleClose();
       } catch (_error) {
         toast.error(t('agents.skill-add-error'));
@@ -361,8 +395,9 @@ export default function SkillUploadDialog({
       isZip,
       onClose,
       selectedFile,
-      syncFromDisk,
+      refreshAfterImport,
       t,
+      onPackageWritten,
     ]
   );
 
@@ -390,15 +425,8 @@ export default function SkillUploadDialog({
         return;
       }
 
-      // Validate file size (max 5MB to allow small zip bundles)
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error(t('agents.file-too-large'));
-        return;
-      }
-
       try {
         setUploadError(null);
-        setSelectedFile(file);
 
         // Detect if file is a zip archive: .zip always, .skill by magic bytes
         let treatAsZip = extension === '.zip';
@@ -414,6 +442,20 @@ export default function SkillUploadDialog({
             treatAsZip = true;
           }
         }
+
+        const maxBytes = treatAsZip ? MAX_SKILL_ZIP_IMPORT_BYTES : 1024 * 1024;
+        if (file.size > maxBytes) {
+          toast.error(
+            t(
+              treatAsZip
+                ? 'agents.zip-import-too-large'
+                : 'agents.file-too-large'
+            )
+          );
+          return;
+        }
+
+        setSelectedFile(file);
 
         if (treatAsZip) {
           setIsZip(true);
@@ -478,6 +520,7 @@ export default function SkillUploadDialog({
       <Dialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()}>
         <DialogContent
           size={mode === 'create' ? 'md' : 'sm'}
+          aria-describedby={undefined}
           showCloseButton
           onClose={handleClose}
           overlayVariant="dimmed"

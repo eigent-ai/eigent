@@ -22,6 +22,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useHost } from '@/host';
+import { useSettingsResourceCountsStore } from '@/store/settingsResourceCountsStore';
 import { Globe, Link2, Loader2, Plus, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -56,6 +57,9 @@ export default function CDP() {
   const [connectPort, setConnectPort] = useState('');
   const [connectChecking, setConnectChecking] = useState(false);
   const [connectError, setConnectError] = useState('');
+  const setResourceCount = useSettingsResourceCountsStore(
+    (state) => state.setCount
+  );
   const isDesktopMode = !!electronAPI?.getCdpBrowsers;
   const failedToLoadBrowsers = t('layout.failed-to-load-browsers');
 
@@ -92,6 +96,12 @@ export default function CDP() {
     });
     return cleanup;
   }, [electronAPI]);
+
+  useEffect(() => {
+    if (!browsersLoading) {
+      setResourceCount('browser-connections', cdpBrowsers.length);
+    }
+  }, [browsersLoading, cdpBrowsers.length, setResourceCount]);
 
   const handleRemoveBrowser = async (browserId: string) => {
     setDeletingBrowser(browserId);

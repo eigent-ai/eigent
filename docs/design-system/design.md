@@ -338,6 +338,9 @@ are:
 - `sm`: 32px single-line / 64px minimum textarea.
 - `default`: 40px single-line / 80px minimum textarea.
 
+`Select` also supports `size="xs"` at 28px for toolbar filters beside
+`Button size="sm"`. Regular form selects retain the `sm` and `default` sizes.
+
 The primitive owns label, placeholder, validation, disabled, focus, radius,
 and inset behavior. Validation tone is independent from interaction state.
 
@@ -362,6 +365,9 @@ Use `ContentHeader` from `src/components/Layout/ContentHeader.tsx`.
 - Title: `text.body-large`, semibold.
 - Keep focus overflow visible.
 - Do not create a 44px header variant.
+- The title is wrapped in a `span`. When the header must carry a real page
+  heading, pass `titleAsChild` and apply `CONTENT_HEADER_TITLE_CLASS` to your
+  own element — never nest a heading inside the default wrapper.
 
 ### Markdown
 
