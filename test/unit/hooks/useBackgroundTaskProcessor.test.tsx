@@ -38,11 +38,9 @@ const mocks = vi.hoisted(() => {
   };
 
   return {
-    buildProjectContinuationContext: vi.fn(() => 'project context'),
     closeIdleSSEConnectionsForTasks: vi.fn(),
     fetchGet: vi.fn(),
     fetchPost: vi.fn(),
-    getIdleSSETransportTaskId: vi.fn(),
     hasActiveSSEConnection: vi.fn(),
     hasSSETransportForTasks: vi.fn(),
     projectRuntimeStore,
@@ -74,9 +72,7 @@ vi.mock('@/service/triggerApi', () => ({
 }));
 
 vi.mock('@/store/chatStore', () => ({
-  buildProjectContinuationContext: mocks.buildProjectContinuationContext,
   closeIdleSSEConnectionsForTasks: mocks.closeIdleSSEConnectionsForTasks,
-  getIdleSSETransportTaskId: mocks.getIdleSSETransportTaskId,
   hasActiveSSEConnection: mocks.hasActiveSSEConnection,
   hasSSETransportForTasks: mocks.hasSSETransportForTasks,
 }));
@@ -97,7 +93,6 @@ describe('useBackgroundTaskProcessor SSE admission', () => {
   let idleController: AbortController;
   let physicalTransportPresent: boolean;
   let sourceState: any;
-  let nextState: any;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -115,22 +110,8 @@ describe('useBackgroundTaskProcessor SSE admission', () => {
         },
       },
       startTask: mocks.startTask,
-      setNextTaskId: vi.fn(),
-      setNextExecutionId: vi.fn(),
-    };
-    nextState = {
-      tasks: { 'new-trigger-run': { messages: [] } },
-      setNextTaskId: vi.fn(),
-      setTaskSessionMode: vi.fn(),
-      setTaskSource: vi.fn(),
-      setExecutionId: vi.fn(),
-      setIsPending: vi.fn(),
-      setHasMessages: vi.fn(),
-      addMessages: vi.fn(),
-      setStatus: vi.fn(),
     };
     const chatStore = { getState: () => sourceState };
-    const nextChatStore = { getState: () => nextState };
     const project = {
       id: 'project-1',
       mode: 'single-agent',
@@ -152,17 +133,10 @@ describe('useBackgroundTaskProcessor SSE admission', () => {
     mocks.projectRuntimeStore.getAllProjects.mockReturnValue([project]);
     mocks.projectRuntimeStore.getProjectById.mockReturnValue(project);
     mocks.projectRuntimeStore.getChatStore.mockReturnValue(chatStore);
-    mocks.projectRuntimeStore.appendInitChatStore.mockReturnValue({
-      taskId: 'new-trigger-run',
-      chatStore: nextChatStore,
-    });
     Object.assign(mocks.projectRuntimeStore, {
       projects: { 'project-1': project },
     });
     mocks.hasActiveSSEConnection.mockReturnValue(false);
-    mocks.getIdleSSETransportTaskId.mockImplementation(() =>
-      physicalTransportPresent ? 'ended-run' : null
-    );
     mocks.hasSSETransportForTasks.mockImplementation(
       () => physicalTransportPresent
     );
@@ -176,33 +150,37 @@ describe('useBackgroundTaskProcessor SSE admission', () => {
       consumer_alive: true,
       subscriber_count: 1,
     });
-    mocks.fetchPost.mockImplementation(() => new Promise<void>(() => {}));
+    mocks.fetchPost.mockResolvedValue({
+      retired: true,
+      consumer_alive: false,
+    });
     mocks.startTask.mockImplementation(() => new Promise<void>(() => {}));
   });
 
-  it('rebinds a queued trigger onto the END-idled warm consumer', async () => {
+  it('retires an attached warm consumer before starting a fresh trigger stream', async () => {
     const { unmount } = renderHook(() => useBackgroundTaskProcessor());
 
-    await waitFor(() =>
-      expect(mocks.fetchPost).toHaveBeenCalledWith('/chat/project-1', {
-        question: 'Run scheduled task',
-        task_id: 'new-trigger-run',
-        attaches: [],
-        project_context: 'project context',
-        target: undefined,
-      })
+    await waitFor(() => expect(mocks.startTask).toHaveBeenCalledTimes(1));
+    expect(mocks.fetchPost).toHaveBeenCalledWith(
+      '/chat/project-1/runtime/retire-idle',
+      { run_id: 'ended-run' }
     );
-    expect(mocks.closeIdleSSEConnectionsForTasks).not.toHaveBeenCalled();
-    expect(mocks.startTask).not.toHaveBeenCalled();
-    expect(idleController.signal.aborted).toBe(false);
-    expect(sourceState.setNextTaskId).toHaveBeenCalledWith('new-trigger-run');
-    expect(sourceState.setNextExecutionId).toHaveBeenCalledWith(
-      'ended-run',
-      'execution-1'
+    expect(mocks.fetchPost.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.closeIdleSSEConnectionsForTasks.mock.invocationCallOrder[0]
     );
-    expect(nextState.setTaskSource).toHaveBeenCalledWith(
+    expect(
+      mocks.closeIdleSSEConnectionsForTasks.mock.invocationCallOrder[0]
+    ).toBeLessThan(mocks.startTask.mock.invocationCallOrder[0]);
+    expect(idleController.signal.aborted).toBe(true);
+    expect(mocks.startTask).toHaveBeenCalledWith(
       'new-trigger-run',
-      'trigger'
+      undefined,
+      undefined,
+      undefined,
+      'Run scheduled task',
+      [],
+      'execution-1',
+      'project-1'
     );
 
     // Re-entrant project-store notifications must see the execution guard and
