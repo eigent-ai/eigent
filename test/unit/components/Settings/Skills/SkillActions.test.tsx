@@ -14,10 +14,7 @@
 
 import SkillActions from '@/components/Settings/Skills/components/SkillActions';
 import type { SkillLibraryEntry } from '@/components/Settings/Skills/skillLibrary';
-import { cleanup, render, screen } from '@testing-library/react';
-import userEvent, {
-  PointerEventsCheckLevel,
-} from '@testing-library/user-event';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -57,12 +54,16 @@ const entry: Exclude<SkillLibraryEntry, { kind: 'space' }> = {
   },
 };
 
-const setupUser = () =>
-  userEvent.setup({
-    // This behavior test does not assert CSS hit-testing. Skipping it avoids
-    // expensive full-style traversal in GitHub's jsdom runner.
-    pointerEventsCheck: PointerEventsCheckLevel.Never,
+function openDropdown(trigger: HTMLElement) {
+  const event = new MouseEvent('pointerdown', {
+    bubbles: true,
+    cancelable: true,
+    button: 0,
+    ctrlKey: false,
   });
+  Object.defineProperty(event, 'pointerType', { value: 'mouse' });
+  fireEvent(trigger, event);
+}
 
 describe('Skill actions', () => {
   afterEach(() => {
@@ -70,26 +71,18 @@ describe('Skill actions', () => {
     vi.restoreAllMocks();
   });
 
-  it('offers chat and delete actions without a package download', async () => {
-    const mark = (step: string) =>
-      console.info(`[ci-timing][skill-actions] ${step}`);
-    const user = setupUser();
-
+  it('offers chat and delete actions without a package download', () => {
     render(
       <MemoryRouter>
         <SkillActions entry={entry} />
       </MemoryRouter>
     );
-    mark('rendered');
     const actions = screen.getByRole('button', {
       name: 'Actions for research',
     });
-    mark('queried trigger');
     expect(actions).toHaveClass('!size-[var(--ds-button-sm-height)]');
-    await user.click(actions);
-    mark('clicked trigger');
+    openDropdown(actions);
     const deleteItem = screen.getByRole('menuitem', { name: 'Delete Skill' });
-    mark('queried delete');
     expect(deleteItem).toHaveClass('text-ds-text-error-default-default');
     expect(deleteItem.querySelector('svg')).toHaveClass(
       'text-ds-icon-error-default-default'
@@ -97,5 +90,6 @@ describe('Skill actions', () => {
     expect(
       screen.queryByRole('menuitem', { name: /download skill zip package/i })
     ).toBeNull();
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
   });
 });

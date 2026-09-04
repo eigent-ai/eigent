@@ -15,10 +15,7 @@
 import Skills, {
   SKILLS_NOTICE_MINIMIZED_STORAGE_KEY,
 } from '@/components/Settings/Skills';
-import { render, screen, within } from '@testing-library/react';
-import userEvent, {
-  PointerEventsCheckLevel,
-} from '@testing-library/user-event';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -48,13 +45,6 @@ function renderSkills() {
   );
 }
 
-const setupUser = () =>
-  userEvent.setup({
-    // These behavior tests do not assert CSS hit-testing. Skipping it avoids
-    // expensive full-style traversal in GitHub's jsdom runner.
-    pointerEventsCheck: PointerEventsCheckLevel.Never,
-  });
-
 describe('Skills library load notice', () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -70,62 +60,48 @@ describe('Skills library load notice', () => {
     library.openUpload.mockReset();
   });
 
-  it('minimizes the notice and remembers that preference after remount', async () => {
-    const mark = (step: string) =>
-      console.info(`[ci-timing][skills-notice] ${step}`);
-    const user = setupUser();
+  it('minimizes the notice and remembers that preference after remount', () => {
     const view = renderSkills();
-    mark('rendered');
 
     const notice = screen.getByRole('alert');
-    mark('queried alert');
     expect(notice).toHaveClass('bg-ds-bg-information-subtle-default');
     expect(notice).toHaveClass('text-ds-text-information-strong-default');
     expect(notice).toHaveTextContent('Global skills could not be refreshed.');
     expect(within(notice).getByRole('button', { name: 'Retry' })).toBeVisible();
 
-    await user.click(
+    fireEvent.click(
       screen.getByRole('button', { name: 'Dismiss skill notice' })
     );
-    mark('clicked dismiss');
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(
       window.localStorage.getItem(SKILLS_NOTICE_MINIMIZED_STORAGE_KEY)
     ).toBe('1');
     const toolbar = screen.getByRole('region', { name: 'Skills toolbar' });
-    mark('queried toolbar');
     expect(
       within(toolbar).getByRole('heading', { name: 'Skills', level: 1 })
     ).toBeVisible();
     const retry = within(toolbar).getByRole('button', { name: 'Retry (2)' });
-    mark('queried retry');
     expect(retry).toBeVisible();
     expect(retry).toHaveTextContent('2');
 
-    await user.hover(retry);
-    mark('hovered retry');
-    expect(await screen.findByRole('tooltip')).toHaveTextContent('Retry');
-    mark('queried tooltip');
-
-    await user.click(retry);
-    mark('clicked retry');
+    fireEvent.focus(retry);
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Retry');
+    fireEvent.click(retry);
     expect(library.refresh).toHaveBeenCalledTimes(1);
 
     view.unmount();
     renderSkills();
-    mark('remounted');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Retry (2)' })
     ).toBeInTheDocument();
   });
 
-  it('retries from the notice card before it is dismissed', async () => {
-    const user = setupUser();
+  it('retries from the notice card before it is dismissed', () => {
     renderSkills();
 
-    await user.click(
+    fireEvent.click(
       within(screen.getByRole('alert')).getByRole('button', { name: 'Retry' })
     );
     expect(library.refresh).toHaveBeenCalledTimes(1);
