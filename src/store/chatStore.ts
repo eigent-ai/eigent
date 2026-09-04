@@ -7194,6 +7194,11 @@ export function hasActiveSSEConnection(taskIds: string[]): boolean {
   );
 }
 
+/** Returns true if any task still owns a physical SSE transport. */
+export function hasSSETransportForTasks(taskIds: string[]): boolean {
+  return taskIds.some((taskId) => !!activeSSEControllers[taskId]);
+}
+
 /**
  * Returns true when any legacy `/chat` task still owns a live renderer SSE.
  * This is a compatibility signal only; canonical Run state comes from the
