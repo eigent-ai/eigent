@@ -1374,7 +1374,7 @@ export default function SettingModels() {
             // Restore provider's default API host instead of clearing it
             apiHost: item.apiHost,
             is_valid: false,
-            model_type: item.model_type ?? '',
+            model_type: '',
             modelConfigJson: '',
             externalConfig: item.externalConfig
               ? item.externalConfig.map((ec) => ({ ...ec }))
