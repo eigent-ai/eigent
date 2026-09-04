@@ -19,13 +19,13 @@ import { INIT_PROVODERS } from '@/lib/llm';
 import { getModelImage } from '@/shared/modelProviderImages';
 
 describe('INIT_PROVODERS', () => {
-  it('includes Meta Model API with Muse Spark 1.3 defaults', () => {
+  it('includes Meta Model API with Muse Spark model discovery', () => {
     const provider = INIT_PROVODERS.find((item) => item.id === 'meta');
 
     expect(provider).toMatchObject({
       name: 'Meta Model API',
       apiHost: 'https://api.meta.ai/v1',
-      model_type: 'muse-spark-1.3',
+      model_type: '',
       modelsEndpoint: '/models',
       modelIdPrefix: 'muse-spark-',
       websiteUrl: 'https://dev.meta.ai/docs/quickstart',

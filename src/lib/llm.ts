@@ -239,7 +239,7 @@ export const INIT_PROVODERS: Provider[] = [
     apiHost: 'https://api.meta.ai/v1',
     description: 'Meta Model API model configuration.',
     is_valid: false,
-    model_type: 'muse-spark-1.3',
+    model_type: '',
     modelsEndpoint: '/models',
     modelIdPrefix: 'muse-spark-',
     websiteUrl: 'https://dev.meta.ai/docs/quickstart',
