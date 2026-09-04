@@ -85,10 +85,11 @@ try {
         'run',
         '--passWithNoTests',
         // GitHub-hosted runners can report more CPUs than they can sustain.
-        // Bound jsdom workers so user-event tests are not starved into the
-        // suite's 29-second per-test timeout.
-        '--maxWorkers=2',
+        // Run jsdom files serially so concurrent user-event suites do not
+        // starve each other into the suite's 29-second per-test timeout.
+        '--maxWorkers=1',
         '--minWorkers=1',
+        '--no-file-parallelism',
         ...testFiles.map((path) => `./${path}`),
       ],
       { inherit: true }
