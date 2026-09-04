@@ -49,7 +49,7 @@ type SkillLibraryLoadError = {
   name?: string;
 };
 
-const SPACE_PROFILE_LOAD_TIMEOUT_MS = 15_000;
+const SPACE_PROFILE_BATCH_TIMEOUT_MS = 15_000;
 
 /**
  * A save that failed only because nobody is signed in gets the actionable
@@ -87,7 +87,13 @@ function useLibrary() {
   const [profiles, setProfiles] = useState<SpaceSkillProfile[]>([]);
   const [loading, setLoading] = useState(false);
   const loadingRef = useRef(false);
-  const [errors, setErrors] = useState<SkillLibraryLoadError[]>([]);
+  const [profilesLoading, setProfilesLoading] = useState(false);
+  const [globalError, setGlobalError] = useState<SkillLibraryLoadError | null>(
+    null
+  );
+  const [profileErrors, setProfileErrors] = useState<SkillLibraryLoadError[]>(
+    []
+  );
   const [refreshKey, setRefreshKey] = useState(0);
   const [previewGeneration, setPreviewGeneration] = useState(0);
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
@@ -122,31 +128,60 @@ function useLibrary() {
     const controllers = new Set<AbortController>();
     loadingRef.current = true;
     setLoading(true);
-    setErrors([]);
+    setGlobalError(null);
+    setProfileErrors([]);
     setProfiles([]);
-    const load = async () => {
-      const failures: SkillLibraryLoadError[] = [];
-      const loaded: SpaceSkillProfile[] = [];
-      const globalLoad = getBaseURL()
-        .then(() => syncFromDisk())
-        .catch(() => {
-          failures.push({ key: 'agents.library-global-load-failed' });
-        });
+
+    const loadGlobalSkills = async () => {
+      try {
+        await getBaseURL();
+        await syncFromDisk();
+      } catch {
+        if (generation.current === current) {
+          setGlobalError({ key: 'agents.library-global-load-failed' });
+        }
+      } finally {
+        if (generation.current === current) {
+          loadingRef.current = false;
+          setLoading(false);
+        }
+      }
+    };
+
+    const loadSpaceProfiles = async () => {
       const queue = JSON.parse(spacesKey) as Array<{
         id: string;
         name: string;
       }>;
-      if (email) {
+      if (!queue.length) {
+        setProfilesLoading(false);
+        return;
+      }
+      if (!email) {
+        setProfileErrors([{ key: 'agents.library-sign-in' }]);
+        setProfilesLoading(false);
+        return;
+      }
+
+      setProfilesLoading(true);
+      const failures: SkillLibraryLoadError[] = [];
+      let batchExpired = false;
+      const batchTimeoutId = window.setTimeout(() => {
+        batchExpired = true;
+        controllers.forEach((controller) => controller.abort());
+      }, SPACE_PROFILE_BATCH_TIMEOUT_MS);
+
+      try {
         await Promise.all(
           Array.from({ length: Math.min(queue.length, 3) }, async () => {
-            while (queue.length && generation.current === current) {
+            while (
+              queue.length &&
+              !batchExpired &&
+              generation.current === current
+            ) {
               const space = queue.shift()!;
               const controller = new AbortController();
               controllers.add(controller);
-              const timeoutId = window.setTimeout(
-                () => controller.abort(),
-                SPACE_PROFILE_LOAD_TIMEOUT_MS
-              );
               try {
                 const draft = await fetchWorkspaceConfiguration(
                   space.id,
@@ -157,30 +192,39 @@ function useLibrary() {
                 if (!Array.isArray(draft?.document?.spec?.skills)) {
                   throw new Error('Invalid Space skill profile response');
                 }
-                loaded.push({ space, draft });
+                if (generation.current === current) {
+                  setProfiles((currentProfiles) =>
+                    [...currentProfiles, { space, draft }].sort((left, right) =>
+                      left.space.id.localeCompare(right.space.id)
+                    )
+                  );
+                }
               } catch {
                 failures.push({
                   key: 'agents.library-space-load-failed',
                   name: space.name,
                 });
               } finally {
-                window.clearTimeout(timeoutId);
                 controllers.delete(controller);
               }
             }
           })
         );
-      } else if (queue.length) {
-        failures.push({ key: 'agents.library-sign-in' });
+        failures.push(
+          ...queue.map((space) => ({
+            key: 'agents.library-space-load-failed' as const,
+            name: space.name,
+          }))
+        );
+        if (generation.current === current) setProfileErrors(failures);
+      } finally {
+        window.clearTimeout(batchTimeoutId);
+        if (generation.current === current) setProfilesLoading(false);
       }
-      await globalLoad;
-      if (generation.current !== current) return;
-      setProfiles(loaded);
-      setErrors(failures);
-      loadingRef.current = false;
-      setLoading(false);
     };
-    void load();
+
+    void loadGlobalSkills();
+    void loadSpaceProfiles();
     return () => {
       generation.current += 1;
       controllers.forEach((controller) => controller.abort());
@@ -251,6 +295,10 @@ function useLibrary() {
     () => buildSkillLibrary(skills, profiles),
     [skills, profiles]
   );
+  const errors = useMemo(
+    () => [...(globalError ? [globalError] : []), ...profileErrors],
+    [globalError, profileErrors]
+  );
   const messages = useMemo(
     () => errors.map(({ key, name }) => t(key, { name })),
     [errors, t]
@@ -263,6 +311,7 @@ function useLibrary() {
       entries,
       spaces,
       loading,
+      profilesLoading,
       errors: messages,
       refresh,
       refreshKey,
@@ -282,6 +331,7 @@ function useLibrary() {
       entries,
       spaces,
       loading,
+      profilesLoading,
       messages,
       refresh,
       refreshKey,

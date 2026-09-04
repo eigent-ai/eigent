@@ -103,6 +103,7 @@ export default function Skills() {
     entries,
     spaces,
     loading,
+    profilesLoading,
     errors,
     refresh,
     openUpload,
@@ -141,10 +142,10 @@ export default function Skills() {
     actionable.length > 0 && selectedRows.length === actionable.length;
   useEffect(() => setSelected(new Set()), [query, filter, status, spaceId]);
   useEffect(() => {
-    if (!loading && errors.length === 0) {
+    if (!loading && !profilesLoading && errors.length === 0) {
       setDismissedNoticeCount(0);
     }
-  }, [loading, errors.length]);
+  }, [loading, profilesLoading, errors.length]);
   const compactNoticeCount =
     errors.length > 0 ? errors.length : dismissedNoticeCount;
   const showNoticeBanner = errors.length > 0 && !noticeMinimized;
@@ -345,7 +346,7 @@ export default function Skills() {
           )}
           <SkillsDashboard
             entries={entries}
-            loading={loading}
+            loading={loading || profilesLoading}
             hasErrors={errors.length > 0}
           />
           {selectedRows.length > 0 && (
@@ -581,7 +582,7 @@ export default function Skills() {
               </Table>
             </div>
           )}
-          {!loading && !visible.length && (
+          {!loading && !profilesLoading && !visible.length && (
             <div className="flex flex-col items-center gap-ds-12 py-ds-40 text-center">
               <DsIcon icon={Folder} recipe="detailed" />
               <DsText className="m-0">

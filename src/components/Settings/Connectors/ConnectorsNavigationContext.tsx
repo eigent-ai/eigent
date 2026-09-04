@@ -95,3 +95,17 @@ export function useConnectorsNavigation() {
   }
   return context;
 }
+
+const ignoreConnectorNavigationItems = () => undefined;
+
+/**
+ * ConnectorGateway also has standalone consumers that do not render the
+ * Settings sidebar. Publishing is optional for those consumers; the strict
+ * reader above remains the contract for sidebar surfaces.
+ */
+export function usePublishConnectorsNavigation() {
+  return (
+    useContext(ConnectorsNavigationContext)?.publishItems ??
+    ignoreConnectorNavigationItems
+  );
+}

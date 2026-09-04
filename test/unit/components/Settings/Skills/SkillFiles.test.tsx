@@ -12,12 +12,12 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { fetchGet } from '@/api/http';
+import { fetchGet, fetchGetBlob } from '@/api/http';
 import SkillFiles from '@/components/Settings/Skills/components/SkillFiles';
 import type { SkillLibraryEntry } from '@/components/Settings/Skills/skillLibrary';
 import { FILE_PREVIEW_LIMITS } from '@/shared/filePreviewContract';
 import { useAuthStore } from '@/store/authStore';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -25,6 +25,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@/api/http', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/http')>()),
   fetchGet: vi.fn(),
+  fetchGetBlob: vi.fn(),
 }));
 
 vi.mock('@/components/ChatBox/MessageItem/MarkDown', () => ({
@@ -37,8 +38,16 @@ vi.mock('@/components/CodeViewer/SourceCodeViewer', () => ({
   ),
 }));
 
-const createObjectURL = vi.fn(() => 'blob:skill-document');
+const createObjectURL = vi.fn(() => 'blob:skill-file');
 const revokeObjectURL = vi.fn();
+
+function fileBlob(content: string) {
+  const blob = new Blob([content]);
+  Object.defineProperty(blob, 'text', {
+    value: vi.fn().mockResolvedValue(content),
+  });
+  return blob;
+}
 
 function globalEntry(
   directory = 'research',
@@ -64,12 +73,17 @@ function globalEntry(
   };
 }
 
-function deferredResponse() {
-  let resolve!: (response: { success: boolean; content: string }) => void;
-  const promise = new Promise<{ success: boolean; content: string }>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+function inventory(
+  files: Array<{
+    path: string;
+    size: number;
+    mimeType?: string;
+  }> = [
+    { path: 'SKILL.md', size: 32, mimeType: 'text/markdown' },
+    { path: 'scripts/helper.py', size: 24, mimeType: 'text/x-python' },
+  ]
+) {
+  return { success: true, files };
 }
 
 function Location() {
@@ -79,7 +93,7 @@ function Location() {
   );
 }
 
-function renderDocument(entry: SkillLibraryEntry) {
+function renderPackage(entry: SkillLibraryEntry) {
   return render(
     <MemoryRouter>
       <SkillFiles entry={entry} />
@@ -88,10 +102,11 @@ function renderDocument(entry: SkillLibraryEntry) {
   );
 }
 
-describe('Skills document preview with the existing API', () => {
+describe('Skill package file browser', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(fetchGet).mockReset();
+    vi.mocked(fetchGetBlob).mockReset();
     useAuthStore.setState({ email: 'viewer@example.com', user_id: 1 });
     vi.stubGlobal(
       'URL',
@@ -109,74 +124,121 @@ describe('Skills document preview with the existing API', () => {
   });
 
   it.each(['global', 'builtin'] as const)(
-    'loads a %s SKILL.md from the existing endpoint and toggles source locally',
+    'loads the complete %s package and previews nested files',
     async (kind) => {
       const user = userEvent.setup();
-      const pending = deferredResponse();
-      vi.mocked(fetchGet).mockReturnValueOnce(pending.promise);
-      renderDocument(globalEntry('research notes', kind));
+      vi.mocked(fetchGet).mockResolvedValueOnce(inventory());
+      vi.mocked(fetchGetBlob).mockImplementation(
+        async (_url, params: Record<string, string>) =>
+          fileBlob(
+            params.path === 'SKILL.md'
+              ? '# Current instructions'
+              : 'print("helper")'
+          )
+      );
+
+      renderPackage(globalEntry('research notes', kind));
 
       expect(screen.getByRole('status')).toHaveTextContent(
         'Loading skill document…'
       );
-      await act(async () => {
-        pending.resolve({ success: true, content: '# Current instructions' });
-      });
+      expect(await screen.findByRole('article')).toHaveTextContent(
+        '# Current instructions'
+      );
+      expect(fetchGet).toHaveBeenCalledWith('/skills/research%20notes/files');
+      expect(fetchGetBlob).toHaveBeenCalledWith(
+        '/skills/research%20notes/file',
+        { path: 'SKILL.md' },
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      );
+      expect(screen.getByRole('tree', { name: 'Files' })).toBeVisible();
 
-      expect(screen.getByRole('article')).toHaveTextContent(
-        '# Current instructions'
+      await user.click(screen.getByRole('treeitem', { name: 'helper.py' }));
+      expect(await screen.findByTestId('skill-source')).toHaveTextContent(
+        'print("helper")'
       );
-      expect(fetchGet).toHaveBeenCalledTimes(1);
-      expect(fetchGet).toHaveBeenCalledWith('/skills/research%20notes');
-      expect(screen.queryByText(/Cached content/)).not.toBeInTheDocument();
-      expect(
-        screen.queryByRole('button', { name: /file tree/i })
-      ).not.toBeInTheDocument();
-      await user.click(screen.getByRole('button', { name: 'Source' }));
-      expect(screen.getByTestId('skill-source')).toHaveTextContent(
-        '# Current instructions'
+      expect(fetchGetBlob).toHaveBeenLastCalledWith(
+        '/skills/research%20notes/file',
+        { path: 'scripts/helper.py' },
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
       );
-      await user.click(screen.getByRole('button', { name: 'Preview' }));
-      expect(screen.getByRole('article')).toBeVisible();
-      expect(fetchGet).toHaveBeenCalledTimes(1);
     }
   );
 
-  it('omits YAML frontmatter only in Preview and preserves the complete Source', async () => {
+  it('omits SKILL.md frontmatter only in Preview and preserves Source', async () => {
     const user = userEvent.setup();
     const body = '\n# Research instructions\n\nCheck each cited source.\n';
     const raw = `---\nname: research\ndescription: Verify references\n---\n${body}`;
-    vi.mocked(fetchGet).mockResolvedValueOnce({ success: true, content: raw });
-    renderDocument(globalEntry());
+    vi.mocked(fetchGet).mockResolvedValueOnce(
+      inventory([{ path: 'SKILL.md', size: raw.length }])
+    );
+    vi.mocked(fetchGetBlob).mockResolvedValueOnce(fileBlob(raw));
+    renderPackage(globalEntry());
 
     expect((await screen.findByRole('article')).textContent).toBe(body);
-    expect(screen.queryByText(/name: research/)).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Source' }));
     expect(screen.getByTestId('skill-source').textContent).toBe(raw);
     await user.click(screen.getByRole('button', { name: 'Preview' }));
     expect(screen.getByRole('article').textContent).toBe(body);
-    expect(fetchGet).toHaveBeenCalledTimes(1);
-    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    expect(fetchGetBlob).toHaveBeenCalledTimes(1);
   });
 
   it.each([
-    { success: false, content: '# Failed response' },
-    { success: true, content: null },
-  ])('rejects invalid document responses: %j', async (response) => {
+    { success: false, files: [] },
+    { success: true, files: [] },
+  ])('rejects an unusable package inventory: %j', async (response) => {
     vi.mocked(fetchGet).mockResolvedValueOnce(response);
-    renderDocument(globalEntry());
+    renderPackage(globalEntry());
+
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Could not load the skill document.'
     );
-    expect(screen.queryByRole('article')).not.toBeInTheDocument();
-    expect(createObjectURL).not.toHaveBeenCalled();
+    expect(fetchGetBlob).not.toHaveBeenCalled();
   });
 
-  it('reloads the document when the same package is replaced in place', async () => {
+  it('retries an inventory failure and then loads the package', async () => {
+    const user = userEvent.setup();
     vi.mocked(fetchGet)
-      .mockResolvedValueOnce({ success: true, content: '# Original' })
-      .mockResolvedValueOnce({ success: true, content: '# Replaced' });
-    const view = renderDocument(globalEntry());
+      .mockRejectedValueOnce(new Error('Offline'))
+      .mockResolvedValueOnce(inventory());
+    vi.mocked(fetchGetBlob).mockResolvedValueOnce(fileBlob('# Recovered'));
+    renderPackage(globalEntry());
+
+    await screen.findByRole('alert');
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByRole('article')).toHaveTextContent('# Recovered');
+    expect(fetchGet).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries the selected file without refetching the inventory', async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetchGet).mockResolvedValueOnce(inventory());
+    vi.mocked(fetchGetBlob)
+      .mockRejectedValueOnce(new Error('Offline'))
+      .mockResolvedValueOnce(fileBlob('# Recovered file'));
+    renderPackage(globalEntry());
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not load the skill document.'
+    );
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByRole('article')).toHaveTextContent(
+      '# Recovered file'
+    );
+    expect(fetchGet).toHaveBeenCalledTimes(1);
+    expect(fetchGetBlob).toHaveBeenCalledTimes(2);
+  });
+
+  it('reloads package inventory and content when it is replaced in place', async () => {
+    vi.mocked(fetchGet)
+      .mockResolvedValueOnce(inventory())
+      .mockResolvedValueOnce(inventory());
+    vi.mocked(fetchGetBlob)
+      .mockResolvedValueOnce(fileBlob('# Original'))
+      .mockResolvedValueOnce(fileBlob('# Replaced'));
+    const view = renderPackage(globalEntry());
     expect(await screen.findByRole('article')).toHaveTextContent('# Original');
 
     view.rerender(
@@ -188,99 +250,45 @@ describe('Skills document preview with the existing API', () => {
 
     expect(await screen.findByRole('article')).toHaveTextContent('# Replaced');
     expect(fetchGet).toHaveBeenCalledTimes(2);
+    expect(fetchGetBlob).toHaveBeenCalledTimes(2);
   });
 
-  it('retries a failed read without needing any package-browser endpoint', async () => {
-    vi.mocked(fetchGet)
-      .mockRejectedValueOnce(new Error('Offline'))
-      .mockResolvedValueOnce({ success: true, content: '# Recovered' });
-    const user = userEvent.setup();
-    renderDocument(globalEntry());
-    await screen.findByRole('alert');
-    await user.click(screen.getByRole('button', { name: 'Retry' }));
+  it('does not automatically read a file above the preview limit', async () => {
+    vi.mocked(fetchGet).mockResolvedValueOnce(
+      inventory([
+        {
+          path: 'SKILL.md',
+          size: FILE_PREVIEW_LIMITS.textBytes + 1,
+          mimeType: 'text/markdown',
+        },
+      ])
+    );
+    renderPackage(globalEntry());
 
-    expect(await screen.findByRole('article')).toHaveTextContent('# Recovered');
-    expect(vi.mocked(fetchGet).mock.calls).toEqual([
-      ['/skills/research'],
-      ['/skills/research'],
-    ]);
-  });
-
-  it.each(['skill', 'account'] as const)(
-    'ignores an old response after switching %s',
-    async (switchTarget) => {
-      const old = deferredResponse();
-      const current = deferredResponse();
-      vi.mocked(fetchGet)
-        .mockReturnValueOnce(old.promise)
-        .mockReturnValueOnce(current.promise);
-      const view = renderDocument(globalEntry());
-
-      if (switchTarget === 'skill') {
-        view.rerender(
-          <MemoryRouter>
-            <SkillFiles entry={globalEntry('writing')} />
-          </MemoryRouter>
-        );
-      } else {
-        act(() => {
-          useAuthStore.setState({ email: 'other@example.com', user_id: 2 });
-        });
-      }
-      await waitFor(() => expect(fetchGet).toHaveBeenCalledTimes(2));
-      await act(async () => {
-        current.resolve({ success: true, content: '# Current document' });
-      });
-      await act(async () => {
-        old.resolve({ success: true, content: '# Stale document' });
-      });
-
-      expect(screen.getByRole('article')).toHaveTextContent(
-        '# Current document'
-      );
-      expect(screen.queryByText('# Stale document')).not.toBeInTheDocument();
-      expect(createObjectURL).toHaveBeenCalledTimes(1);
-    }
-  );
-
-  it('releases the document URL without exposing an individual file download', async () => {
-    vi.mocked(fetchGet).mockResolvedValueOnce({
-      success: true,
-      content: '# Read me',
-    });
-    const view = renderDocument(globalEntry());
-    await screen.findByRole('article');
-
-    expect(
-      screen.queryByRole('button', { name: 'Download file' })
-    ).not.toBeInTheDocument();
-    expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
-    expect(revokeObjectURL).not.toHaveBeenCalled();
-    view.unmount();
-    expect(revokeObjectURL).toHaveBeenCalledWith('blob:skill-document');
-  });
-
-  it('keeps oversized instructions out of the preview without a file action', async () => {
-    vi.mocked(fetchGet).mockResolvedValueOnce({
-      success: true,
-      content: 'a'.repeat(FILE_PREVIEW_LIMITS.textBytes + 1),
-    });
-    renderDocument(globalEntry());
     expect(
       await screen.findByText(
         'This file exceeds the safe in-app preview limit.'
       )
     ).toBeVisible();
-    expect(
-      screen.queryByRole('button', { name: 'Download file' })
-    ).not.toBeInTheDocument();
-    expect(screen.queryByRole('article')).not.toBeInTheDocument();
+    expect(fetchGetBlob).not.toHaveBeenCalled();
   });
 
-  it('shows the exact Space reference and its settings without fetching another skill', async () => {
+  it('releases the selected file object URL on unmount', async () => {
+    vi.mocked(fetchGet).mockResolvedValueOnce(inventory());
+    vi.mocked(fetchGetBlob).mockResolvedValueOnce(fileBlob('# Read me'));
+    const view = renderPackage(globalEntry());
+    await screen.findByRole('article');
+
+    expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+    view.unmount();
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:skill-file');
+  });
+
+  it('shows the exact Space reference and settings without fetching a package', async () => {
     const user = userEvent.setup();
     const ref = 'bundle://skills/research/SKILL.md';
-    renderDocument({
+    renderPackage({
       id: `space:space 1:${ref}`,
       kind: 'space',
       name: 'research',
@@ -295,16 +303,36 @@ describe('Skills document preview with the existing API', () => {
     expect(screen.getByRole('status')).toHaveTextContent(
       'Space skill file previews are not supported here.'
     );
-    expect(
-      screen.queryByRole('button', { name: 'Retry' })
-    ).not.toBeInTheDocument();
     expect(fetchGet).not.toHaveBeenCalled();
+    expect(fetchGetBlob).not.toHaveBeenCalled();
     await user.click(
       screen.getByRole('button', { name: 'Manage in Space settings' })
     );
     expect(screen.getByTestId('location')).toHaveTextContent(
       '/home?section=spaces&spaceId=space%201&spaceTab=workspace-profile'
     );
-    expect(fetchGet).not.toHaveBeenCalled();
+  });
+
+  it('ignores a stale inventory after switching accounts', async () => {
+    let resolveOld!: (value: ReturnType<typeof inventory>) => void;
+    const oldInventory = new Promise<ReturnType<typeof inventory>>(
+      (resolve) => {
+        resolveOld = resolve;
+      }
+    );
+    vi.mocked(fetchGet)
+      .mockReturnValueOnce(oldInventory)
+      .mockResolvedValueOnce(inventory());
+    vi.mocked(fetchGetBlob).mockResolvedValueOnce(fileBlob('# Current'));
+    renderPackage(globalEntry());
+
+    act(() => {
+      useAuthStore.setState({ email: 'other@example.com', user_id: 2 });
+    });
+    expect(await screen.findByRole('article')).toHaveTextContent('# Current');
+    await act(async () => resolveOld(inventory()));
+
+    expect(screen.getByRole('article')).toHaveTextContent('# Current');
+    expect(fetchGetBlob).toHaveBeenCalledTimes(1);
   });
 });
