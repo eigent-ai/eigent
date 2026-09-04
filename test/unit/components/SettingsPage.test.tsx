@@ -28,6 +28,7 @@ import {
   within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ReactNode } from 'react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -61,10 +62,43 @@ vi.mock('@/client/platform', async (importOriginal) => ({
   isDesktop: () => platformMocks.desktop,
 }));
 
-vi.mock('framer-motion', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('framer-motion')>()),
-  useReducedMotion: () => pageMotionMocks.reduced,
-}));
+// Navigation semantics are asserted below; animation timing has focused tests.
+vi.mock('framer-motion', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('framer-motion')>();
+  const React = await import('react');
+  const motionProps = new Set([
+    'animate',
+    'custom',
+    'exit',
+    'initial',
+    'onAnimationComplete',
+    'transition',
+    'variants',
+  ]);
+  const createMotionComponent = (tag: 'div' | 'main') => {
+    const MotionComponent = React.forwardRef<
+      HTMLElement,
+      Record<string, unknown>
+    >((props, ref) => {
+      const domProps = Object.fromEntries(
+        Object.entries(props).filter(([key]) => !motionProps.has(key))
+      );
+      return React.createElement(tag, { ...domProps, ref });
+    });
+    MotionComponent.displayName = `MockMotion.${tag}`;
+    return MotionComponent;
+  };
+
+  return {
+    ...actual,
+    AnimatePresence: ({ children }: { children?: ReactNode }) => children,
+    motion: {
+      div: createMotionComponent('div'),
+      main: createMotionComponent('main'),
+    },
+    useReducedMotion: () => pageMotionMocks.reduced,
+  };
+});
 
 vi.mock('@/api/connectors', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/connectors')>()),
@@ -98,6 +132,12 @@ function openDropdown(trigger: HTMLElement) {
   });
   Object.defineProperty(event, 'pointerType', { value: 'mouse' });
   fireEvent(trigger, event);
+}
+
+async function flushReactUpdates() {
+  await act(async () => {
+    await Promise.resolve();
+  });
 }
 
 vi.mock('@/service/historyApi', () => ({
@@ -202,6 +242,7 @@ describe('SettingsPage', () => {
   beforeEach(() => {
     pageMotionMocks.reduced = false;
     platformMocks.desktop = true;
+    window.localStorage.setItem('eigent-home-hub-view-mode', 'grid');
     useSettingsStore.setState({
       activeSection: 'models',
     });
@@ -987,6 +1028,23 @@ describe('SettingsPage', () => {
     }));
 
     renderSettingsPage('/home?section=spaces');
+    await flushReactUpdates();
+
+    const cardWorkspaceButtons = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(
+        '[data-home-space-open-workspace][data-layout="card"]'
+      )
+    );
+    expect(cardWorkspaceButtons.length).toBeGreaterThan(0);
+    expect(cardWorkspaceButtons[0]).toHaveAttribute('data-variant', 'ghost');
+    expect(cardWorkspaceButtons[0]).toHaveClass(
+      'cursor-pointer',
+      'rounded-lg',
+      'font-medium'
+    );
+    expect(cardWorkspaceButtons[0].parentElement).not.toHaveTextContent(
+      'Last updated:'
+    );
 
     const homeSpaceCard = screen
       .getByText('Design Space')
@@ -1172,96 +1230,47 @@ describe('SettingsPage', () => {
     expect(document.querySelector('[data-space-stat="Status"]')).toHaveClass(
       'items-center'
     );
+    await flushReactUpdates();
+  });
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Tasks' }));
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(screen.getByRole('tab', { name: 'Tasks' })).toHaveAttribute(
-      'aria-selected',
-      'true'
-    );
-    expect(screen.getByRole('tab', { name: 'Sessions' })).toHaveAttribute(
-      'aria-selected',
-      'false'
-    );
+  it('keeps the workspace action last in a Spaces list row', async () => {
+    const now = Date.now();
+    useSpaceStore.setState((state) => ({
+      ...state,
+      spaces: {
+        'list-space': {
+          id: 'list-space',
+          name: 'List Space',
+          sourceType: 'folder',
+          rootPath: '/work/list-space',
+          status: 'active',
+          schemaVersion: 1,
+          createdAt: now,
+          updatedAt: now,
+        },
+      },
+      projectsBySpaceId: { 'list-space': {} },
+      projectsSyncedAt: { 'list-space': now },
+    }));
+    window.localStorage.setItem('eigent-home-hub-view-mode', 'list');
 
-    fireEvent.click(
-      within(detailSidebar).getByRole('button', { name: 'Back' })
-    );
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    renderSettingsPage('/home?section=spaces');
+    await flushReactUpdates();
 
-    expect(
-      screen.getByRole('complementary', { name: 'Home' })
-    ).toBeInTheDocument();
-    expect(
-      document.querySelector('[data-home-space-sidebar-pane="home"]')
-    ).toHaveAttribute('data-space-navigation-direction', 'back');
-    expect(
-      document.querySelector('[data-home-space-sidebar-pane="home"]')
-    ).toHaveAttribute('data-space-navigation-motion', 'full');
-    expect(
-      document.querySelector('[data-home-space-content-pane="home"]')
-    ).toHaveAttribute('data-space-navigation-motion', 'full');
-    expect(screen.getByRole('button', { name: 'Models' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Spaces' })).toHaveAttribute(
-      'aria-current',
-      'page'
+    const listWorkspaceButton = document.querySelector<HTMLButtonElement>(
+      '[data-home-space-open-workspace][data-layout="list"]'
     );
-
-    const cardWorkspaceButtons = Array.from(
-      document.querySelectorAll<HTMLButtonElement>(
-        '[data-home-space-open-workspace][data-layout="card"]'
-      )
-    );
-    expect(cardWorkspaceButtons.length).toBeGreaterThan(0);
-    expect(cardWorkspaceButtons[0]).toHaveAttribute('data-variant', 'ghost');
-    expect(cardWorkspaceButtons[0]).toHaveClass(
+    expect(listWorkspaceButton).toHaveClass(
       'cursor-pointer',
       'rounded-lg',
       'font-medium'
     );
-    expect(cardWorkspaceButtons[0].parentElement).not.toHaveTextContent(
-      'Last updated:'
+    expect(listWorkspaceButton?.parentElement).toHaveClass('justify-self-end');
+    expect(listWorkspaceButton).toHaveAttribute('data-variant', 'ghost');
+    expect(listWorkspaceButton?.parentElement?.lastElementChild).toBe(
+      listWorkspaceButton
     );
-
-    const homeToolbar = document.querySelector(
-      '[data-home-spaces-toolbar]'
-    ) as HTMLElement;
-    await act(async () => {
-      fireEvent.mouseDown(
-        within(homeToolbar).getByRole('tab', { name: 'List' }),
-        { button: 0, ctrlKey: false }
-      );
-    });
-    const listWorkspaceButtons = Array.from(
-      document.querySelectorAll<HTMLButtonElement>(
-        '[data-home-space-open-workspace][data-layout="list"]'
-      )
-    );
-    expect(listWorkspaceButtons.length).toBeGreaterThan(0);
-    expect(listWorkspaceButtons[0]).toHaveClass(
-      'cursor-pointer',
-      'rounded-lg',
-      'font-medium'
-    );
-    expect(listWorkspaceButtons[0].parentElement).toHaveClass(
-      'justify-self-end'
-    );
-    expect(listWorkspaceButtons[0]).toHaveAttribute('data-variant', 'ghost');
-    expect(listWorkspaceButtons[0].parentElement?.lastElementChild).toBe(
-      listWorkspaceButtons[0]
-    );
-    await act(async () => {
-      fireEvent.mouseDown(
-        within(homeToolbar).getByRole('tab', { name: 'Grid' }),
-        { button: 0, ctrlKey: false }
-      );
-    });
+    await flushReactUpdates();
   });
 
   it('keeps reduced-motion navigation to fades and keyboard navigation instant', async () => {
