@@ -34,13 +34,21 @@ from app.controller.chat_controller import (
     improve,
     install_mcp,
     post,
+    retire_idle_runtime,
     start_chat_stream,
     status,
     stop,
     supplement,
 )
 from app.exception.exception import UserException
-from app.model.chat import Chat, HumanReply, McpServers, Status, SupplementChat
+from app.model.chat import (
+    Chat,
+    HumanReply,
+    McpServers,
+    RetireIdleRuntimeRequest,
+    Status,
+    SupplementChat,
+)
 from app.run_context import RunContext
 from app.run_journal import InvalidRunTransitionError, SQLiteRunJournal
 from app.run_runtime import RunCoordinator
@@ -801,6 +809,97 @@ class TestChatController:
         await subscription.aclose()
         release.set()
         await subscription.handle.wait()
+
+    @pytest.mark.asyncio
+    async def test_retire_idle_runtime_waits_before_queue_reuse(
+        self, controller_run_journal
+    ):
+        from app.service.task import TaskLock
+
+        coordinator = RunCoordinator()
+        task_lock = TaskLock("project-1", asyncio.Queue(), {})
+        task_lock.status = Status.done
+        task_lock.run_context = SimpleNamespace(run_id="run-old")
+        old_started = asyncio.Event()
+        new_started = asyncio.Event()
+        active_consumers = 0
+        max_consumers = 0
+        old_commands: list[str] = []
+        new_commands: list[str] = []
+
+        async def old_source():
+            nonlocal active_consumers, max_consumers
+            active_consumers += 1
+            max_consumers = max(max_consumers, active_consumers)
+            old_started.set()
+            try:
+                command = await task_lock.queue.get()
+                old_commands.append(command)
+                yield f"old:{command}"
+            finally:
+                active_consumers -= 1
+
+        old_subscription = await coordinator.start_with_subscription(
+            run_id="run-old",
+            stream_factory=old_source,
+            command_queue=task_lock.queue,
+        )
+        await old_started.wait()
+        await old_subscription.aclose()
+        assert old_subscription.handle.subscriber_count == 0
+        assert old_subscription.handle.consumer_alive is True
+
+        controller_run_journal.get_run.return_value = SimpleNamespace(
+            run_id="run-old",
+            project_id="project-1",
+            status="completed",
+        )
+        with (
+            patch(
+                "app.controller.chat_controller.get_task_lock_if_exists",
+                return_value=task_lock,
+            ),
+            patch(
+                "app.controller.chat_controller.get_default_run_coordinator",
+                return_value=coordinator,
+            ),
+        ):
+            result = await retire_idle_runtime(
+                "project-1",
+                RetireIdleRuntimeRequest(run_id="run-old"),
+            )
+
+        assert result["retired"] is True
+        assert result["consumer_alive"] is False
+        assert old_subscription.handle.consumer_alive is False
+        assert await coordinator.get_queue_owner(task_lock.queue) is None
+
+        async def new_source():
+            nonlocal active_consumers, max_consumers
+            active_consumers += 1
+            max_consumers = max(max_consumers, active_consumers)
+            new_started.set()
+            try:
+                command = await task_lock.queue.get()
+                new_commands.append(command)
+                yield f"new:{command}"
+            finally:
+                active_consumers -= 1
+
+        new_subscription = await coordinator.start_with_subscription(
+            run_id="run-new",
+            stream_factory=new_source,
+            command_queue=task_lock.queue,
+        )
+        await new_started.wait()
+        await task_lock.queue.put("scheduled-trigger")
+
+        assert await new_subscription.__anext__() == "new:scheduled-trigger"
+        assert old_commands == []
+        assert new_commands == ["scheduled-trigger"]
+        assert max_consumers == 1
+        with pytest.raises(StopAsyncIteration):
+            await new_subscription.__anext__()
 
     @pytest.mark.asyncio
     async def test_post_chat_sets_run_context_and_third_party_env(

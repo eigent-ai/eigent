@@ -115,6 +115,7 @@ class RuntimeHandle:
     started_at: float = field(default_factory=time.time)
     consumer_heartbeat_at: float = field(default_factory=time.time)
     completed_at: float | None = None
+    retiring: bool = False
     _subscribers: dict[str, asyncio.Queue[Any]] = field(
         default_factory=dict, init=False, repr=False
     )
@@ -247,20 +248,27 @@ class RunCoordinator:
             self._journal = journal
 
     @asynccontextmanager
-    async def admission_scope(self, run_id: str) -> AsyncIterator[None]:
-        """Serialize admission side effects for one Run, not all Runs.
+    async def admission_scope(
+        self,
+        run_id: str,
+        *,
+        project_id: str | None = None,
+    ) -> AsyncIterator[None]:
+        """Serialize admission side effects for one Run or legacy Project.
 
         The controller must enter this scope before creating durable memory,
         mutating compatibility TaskLock state, or queueing the initial command.
-        A concurrent retry can then attach to the first consumer without
-        repeating any of those effects.
+        A Project key is required for legacy ``/chat`` because different Run
+        ids still share one mutable TaskLock queue. A concurrent retry can then
+        attach to the first consumer without repeating any of those effects.
         """
 
+        gate_key = f"project:{project_id}" if project_id else f"run:{run_id}"
         async with self._lock:
-            gate = self._admission_gates.get(run_id)
+            gate = self._admission_gates.get(gate_key)
             if gate is None:
                 gate = _AdmissionGate()
-                self._admission_gates[run_id] = gate
+                self._admission_gates[gate_key] = gate
             gate.users += 1
 
         acquired = False
@@ -275,9 +283,9 @@ class RunCoordinator:
                 gate.users -= 1
                 if (
                     gate.users == 0
-                    and self._admission_gates.get(run_id) is gate
+                    and self._admission_gates.get(gate_key) is gate
                 ):
-                    self._admission_gates.pop(run_id, None)
+                    self._admission_gates.pop(gate_key, None)
 
     async def attach_if_running(
         self,
@@ -289,7 +297,7 @@ class RunCoordinator:
 
         async with self._lock:
             handle = self._handles.get(run_id)
-            if handle is None or not handle.consumer_alive:
+            if handle is None or not handle.consumer_alive or handle.retiring:
                 return None
             return handle.subscribe(max_buffer=max_buffer)
 
@@ -306,7 +314,27 @@ class RunCoordinator:
         async with self._lock:
             existing = self._handles.get(run_id)
             if existing is not None and existing.consumer_alive:
+                if existing.retiring:
+                    raise RunRuntimeError(
+                        f"run {run_id!r} consumer is retiring"
+                    )
                 return existing.subscribe(max_buffer=subscriber_buffer)
+
+            if command_queue is not None:
+                queue_owner = next(
+                    (
+                        candidate
+                        for candidate in self._handles.values()
+                        if candidate.consumer_alive
+                        and candidate.command_queue is command_queue
+                    ),
+                    None,
+                )
+                if queue_owner is not None:
+                    raise RunRuntimeError(
+                        "TaskLock queue already has a live consumer owned by "
+                        f"run {queue_owner.run_id!r}"
+                    )
 
             handle = RuntimeHandle(
                 run_id=run_id,
@@ -338,12 +366,28 @@ class RunCoordinator:
         async with self._lock:
             return self._handles.get(run_id)
 
+    async def get_queue_owner(
+        self, command_queue: asyncio.Queue[Any]
+    ) -> RuntimeHandle | None:
+        """Return the sole live consumer for one compatibility TaskLock."""
+
+        async with self._lock:
+            return next(
+                (
+                    handle
+                    for handle in self._handles.values()
+                    if handle.consumer_alive
+                    and handle.command_queue is command_queue
+                ),
+                None,
+            )
+
     async def rebind_run(self, previous_run_id: str, run_id: str) -> bool:
         """Move a compatibility consumer to a newly admitted follow-up Run."""
 
         async with self._lock:
             handle = self._handles.get(previous_run_id)
-            if handle is None or not handle.consumer_alive:
+            if handle is None or not handle.consumer_alive or handle.retiring:
                 return False
             if previous_run_id == run_id:
                 return True
@@ -359,6 +403,36 @@ class RunCoordinator:
             handle.deadline_changed_event.set()
             self._handles[run_id] = handle
             return True
+
+    async def retire(
+        self,
+        run_id: str,
+        *,
+        command_queue: asyncio.Queue[Any] | None = None,
+    ) -> bool:
+        """Stop and await one warm consumer before its queue is reused.
+
+        Detaching a renderer subscription deliberately does not stop Run
+        execution. Callers that need to replace a warm legacy ``/chat``
+        consumer must use this explicit barrier; returning means the old
+        ``step_solve`` loop can no longer take another queue item.
+        """
+
+        async with self._lock:
+            handle = self._handles.get(run_id)
+            if handle is None:
+                return False
+            if (
+                command_queue is not None
+                and handle.command_queue is not command_queue
+            ):
+                raise RunRuntimeError(
+                    f"run {run_id!r} does not own the requested TaskLock queue"
+                )
+            handle.retiring = True
+
+        await handle.cancel()
+        return True
 
     async def notify_deadline_changed(self, run_id: str) -> bool:
         async with self._lock:

@@ -7199,6 +7199,16 @@ export function hasSSETransportForTasks(taskIds: string[]): boolean {
   return taskIds.some((taskId) => !!activeSSEControllers[taskId]);
 }
 
+/** Return the Run id that owns an idle reusable legacy `/chat` transport. */
+export function getIdleSSETransportTaskId(taskIds: string[]): string | null {
+  return (
+    taskIds.find((taskId) => {
+      const connection = activeSSEControllers[taskId];
+      return connection?.live === true && !connection.logicalActive;
+    }) ?? null
+  );
+}
+
 /**
  * Returns true when any legacy `/chat` task still owns a live renderer SSE.
  * This is a compatibility signal only; canonical Run state comes from the
