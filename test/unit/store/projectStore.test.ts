@@ -24,6 +24,7 @@ import { normalizeThinkingEffort, ThinkingEffort } from '@/types/constants';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
+  closeIdleSSEConnectionsForTasksMock,
   deleteCachedProjectMock,
   fetchGetMock,
   getCachedProjectMock,
@@ -33,6 +34,7 @@ const {
   proxyUpdateSpaceProjectMock,
   replayMock,
 } = vi.hoisted(() => ({
+  closeIdleSSEConnectionsForTasksMock: vi.fn(),
   deleteCachedProjectMock: vi.fn(),
   fetchGetMock: vi.fn(),
   getCachedProjectMock: vi.fn(),
@@ -81,6 +83,7 @@ vi.mock('@/store/chatStore', async (importOriginal) => {
       store.setState({ replay: replayMock } as any);
       return store;
     },
+    closeIdleSSEConnectionsForTasks: closeIdleSSEConnectionsForTasksMock,
     hasActiveSSEConnection: hasActiveSSEConnectionMock,
   };
 });
@@ -867,9 +870,10 @@ describe('projectStore runtime shape', () => {
     expect(hasActiveSSEConnectionMock).toHaveBeenCalledWith(
       expect.arrayContaining(['task_live'])
     );
+    expect(closeIdleSSEConnectionsForTasksMock).not.toHaveBeenCalled();
   });
 
-  it('evicts a stale project runtime on a later transition after active SSE is gone', () => {
+  it('closes an idle SSE before evicting a stale project runtime', () => {
     const projectId = useProjectStore
       .getState()
       .createProject('Stale Project', undefined, 'project_stale_safe');
@@ -879,6 +883,9 @@ describe('projectStore runtime shape', () => {
       staleProjectIds: new Set([projectId]),
     });
     hasActiveSSEConnectionMock.mockReturnValue(false);
+    closeIdleSSEConnectionsForTasksMock.mockImplementation(() => {
+      expect(useProjectStore.getState().projects[projectId]).toBeDefined();
+    });
 
     useProjectStore.getState()._evictStaleOnTransition('project_next');
 
@@ -888,6 +895,9 @@ describe('projectStore runtime shape', () => {
     );
     expect(useSpaceStore.getState().getProjectMeta(projectId)).toBeDefined();
     expect(hasActiveSSEConnectionMock).toHaveBeenCalledWith(
+      expect.arrayContaining(['task_finished'])
+    );
+    expect(closeIdleSSEConnectionsForTasksMock).toHaveBeenCalledWith(
       expect.arrayContaining(['task_finished'])
     );
   });
