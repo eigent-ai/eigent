@@ -38,6 +38,7 @@ import {
 import { create } from 'zustand';
 import { getAuthStore } from './authStore';
 import {
+  closeIdleSSEConnectionsForTasks,
   createChatStoreInstance,
   hasActiveSSEConnection,
   VanillaChatStore,
@@ -1345,6 +1346,11 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     if (hasActiveSSEConnection(outgoingTaskIds)) {
       return;
     }
+    // A completed Run may leave its legacy `/chat` transport open for a
+    // follow-up. It is safe to evict the stale runtime only after closing that
+    // idle transport; otherwise the renderer loses the final abort handle and
+    // leaves an orphan connection behind.
+    closeIdleSSEConnectionsForTasks(outgoingTaskIds);
     // _evictProjectRuntime handles staleProjectIds cleanup itself.
     get()._evictProjectRuntime(previousProjectId);
   },

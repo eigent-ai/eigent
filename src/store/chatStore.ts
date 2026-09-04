@@ -1412,10 +1412,21 @@ function bindSSEConnectionToTask(
   activeSSEControllers[taskId] = connection;
 }
 
-function markSSEConnectionIdle(connection: ActiveSSEConnection): void {
-  if (activeSSEControllers[connection.taskId] === connection) {
-    cleanupCanonicalTerminalObserverForTask(connection.taskId);
+function markSSEConnectionIdleForTask(
+  connection: ActiveSSEConnection,
+  completedTaskId: string
+): void {
+  // fetch-event-source does not serialize async onmessage handlers. An END
+  // handler may resume after NEW_TASK_STATE has already rebound this physical
+  // transport. The completed Run may only idle the connection while it still
+  // owns it; otherwise it would tear down the follow-up Run's observer.
+  if (
+    connection.taskId !== completedTaskId ||
+    activeSSEControllers[completedTaskId] !== connection
+  ) {
+    return;
   }
+  cleanupCanonicalTerminalObserverForTask(completedTaskId);
   connection.logicalActive = false;
 }
 
@@ -5377,6 +5388,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             setStatus(currentTaskId, ChatTaskStatus.FINISHED);
             setUpdateCount();
 
+            // Complete the Run's connection-state transition before the first
+            // await below. A following NEW_TASK_STATE can then reactivate and
+            // transfer ownership without a resumed END handler undoing it.
+            markSSEConnectionIdleForTask(sseConnection, currentTaskId);
+
             // Finish the local UI projection before any cloud upload or
             // history request. Camel-log and generated-file uploads can take
             // minutes on a large Run; keeping elapsed/artifacts behind those
@@ -5620,13 +5636,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               ExecutionStatus.Completed,
               getTokens(currentTaskId)
             );
-
-            // The Run is finished, but the legacy `/chat` transport remains
-            // open so it can carry a prepared follow-up Run. Keep it indexed
-            // by the completed Run until ownership moves or a task-scoped
-            // cleanup closes it, while excluding this idle period from the
-            // app-close guard.
-            markSSEConnectionIdle(sseConnection);
 
             return;
           }
@@ -7178,9 +7187,11 @@ export const createChatStoreInstance = chatStore;
 
 export const getToolStore = () => chatStore().getState();
 
-/** Returns true if any task has an active SSE connection. */
+/** Returns true if any task currently owns a logically active SSE Run. */
 export function hasActiveSSEConnection(taskIds: string[]): boolean {
-  return taskIds.some((taskId) => !!activeSSEControllers[taskId]);
+  return taskIds.some(
+    (taskId) => activeSSEControllers[taskId]?.logicalActive === true
+  );
 }
 
 /**
@@ -7204,5 +7215,19 @@ export function closeSSEConnectionsForTasks(taskIds: string[]): void {
       );
     }
     cleanupTaskSSEResources(taskId);
+  }
+}
+
+/** Close only reusable transports that no longer have a logically active Run. */
+export function closeIdleSSEConnectionsForTasks(taskIds: string[]): void {
+  for (const taskId of taskIds) {
+    const connection = activeSSEControllers[taskId];
+    if (connection && !connection.logicalActive) {
+      console.log(
+        '[closeIdleSSEConnectionsForTasks] Closing idle SSE for task:',
+        taskId
+      );
+      cleanupSSEConnection(connection);
+    }
   }
 }

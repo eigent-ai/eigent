@@ -140,6 +140,7 @@ import {
   runProjectionStore,
 } from '../../../src/lib/runEvents';
 import {
+  closeIdleSSEConnectionsForTasks,
   closeSSEConnectionsForTasks,
   collectTaskUploadFiles,
   createChatStoreInstance,
@@ -1386,7 +1387,7 @@ describe('ChatStore - Core Functionality', () => {
         });
 
         expect(signal.aborted).toBe(false);
-        expect(hasActiveSSEConnection([initialRunId])).toBe(true);
+        expect(hasActiveSSEConnection([initialRunId])).toBe(false);
         expect(hasAnyActiveLegacySSEConnection()).toBe(false);
 
         store.getState().setNextTaskId(followUpRunId);
@@ -1468,6 +1469,80 @@ describe('ChatStore - Core Functionality', () => {
         });
         expect(runDomainEventHub.listenerCount()).toBe(0);
         expect(signal.aborted).toBe(true);
+      });
+
+      it('keeps the follow-up observer active when NEW_TASK_STATE races an async END handler', async () => {
+        const { store, streamContaining } = await startObservedLiveTask();
+        const legacyStream = streamContaining('/chat');
+        const signal = legacyStream.signal as AbortSignal;
+        store.getState().setNextTaskId('follow-up-run');
+
+        // The real fetch-event-source dispatcher does not await this Promise
+        // before invoking the next onmessage callback.
+        const endHandling = legacyStream.onmessage?.({
+          data: JSON.stringify({
+            step: AgentStep.END,
+            data: { content: 'Done' },
+          }),
+        });
+        const followUpHandling = legacyStream.onmessage?.({
+          data: JSON.stringify({
+            step: AgentStep.NEW_TASK_STATE,
+            data: {
+              task_id: 'follow-up-run',
+              content: 'Improve the game',
+            },
+          }),
+        });
+        await Promise.all([endHandling, followUpHandling]);
+
+        await vi.waitFor(() =>
+          expect(runEventIngressRegistry.has('follow-up-run')).toBe(true)
+        );
+        expect(hasActiveSSEConnection(['live-run'])).toBe(false);
+        expect(hasActiveSSEConnection(['follow-up-run'])).toBe(true);
+        expect(hasAnyActiveLegacySSEConnection()).toBe(true);
+        expect(runDomainEventHub.listenerCount()).toBe(1);
+        expect(signal.aborted).toBe(false);
+
+        runEventIngressRegistry.ingest(
+          'project-1',
+          'follow-up-run',
+          canonicalEvent('follow-up-run', 'run.failed'),
+          'live'
+        );
+
+        expect(store.getState().tasks['follow-up-run']).toMatchObject({
+          status: ChatTaskStatus.FINISHED,
+          durableRunStatus: 'failed',
+          isPending: false,
+        });
+        expect(runDomainEventHub.listenerCount()).toBe(0);
+        expect(signal.aborted).toBe(true);
+      });
+
+      it('closes an idle reusable transport without treating it as an active Run', async () => {
+        const { streamContaining } = await startObservedLiveTask({
+          initialRunId: 'idle-run',
+        });
+        const legacyStream = streamContaining('/chat');
+        const signal = legacyStream.signal as AbortSignal;
+
+        await legacyStream.onmessage?.({
+          data: JSON.stringify({
+            step: AgentStep.END,
+            data: { content: 'Done' },
+          }),
+        });
+
+        expect(hasActiveSSEConnection(['idle-run'])).toBe(false);
+        expect(hasAnyActiveLegacySSEConnection()).toBe(false);
+        expect(signal.aborted).toBe(false);
+
+        closeIdleSSEConnectionsForTasks(['idle-run']);
+
+        expect(signal.aborted).toBe(true);
+        expect(hasActiveSSEConnection(['idle-run'])).toBe(false);
       });
 
       it.each(['stop', 'remove', 'close'] as const)(
