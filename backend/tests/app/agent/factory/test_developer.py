@@ -71,6 +71,7 @@ async def test_developer_agent_creation(sample_chat_data):
         assert "developer_agent" in str(
             call_args[0][0]
         )  # agent_name (enum contains this value)
+        assert "deploy" not in call_args[0][1].content.lower()
         tools_arg = call_args[0][3]  # tools argument
         assert isinstance(tools_arg, list)
         assert "Web Deploy Toolkit" not in call_args.kwargs["tool_names"]
