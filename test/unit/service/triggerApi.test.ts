@@ -99,6 +99,81 @@ describe('trigger execution status delivery', () => {
     expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(2);
   });
 
+  it('lets a terminal receipt advance after a hung Running update times out', async () => {
+    vi.useFakeTimers();
+    mocks.proxyFetchPut
+      .mockImplementationOnce(
+        (
+          _url: string,
+          _body: unknown,
+          _headers: unknown,
+          options?: { signal?: AbortSignal }
+        ) =>
+          new Promise<void>((_resolve, reject) => {
+            options?.signal?.addEventListener('abort', () => {
+              reject(new DOMException('Aborted', 'AbortError'));
+            });
+          })
+      )
+      .mockResolvedValue(undefined);
+    const { proxyUpdateTriggerExecution } =
+      await import('@/service/triggerApi');
+
+    const runningResult = proxyUpdateTriggerExecution('execution-hung', {
+      status: ExecutionStatus.Running,
+    }).catch((error) => error);
+    await vi.waitFor(() =>
+      expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(1)
+    );
+    const completed = proxyUpdateTriggerExecution('execution-hung', {
+      status: ExecutionStatus.Completed,
+    });
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await completed;
+
+    expect(await runningResult).toMatchObject({ name: 'AbortError' });
+    expect(
+      mocks.proxyFetchPut.mock.calls.map(([, body]) => body.status)
+    ).toEqual([ExecutionStatus.Running, ExecutionStatus.Completed]);
+    expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
+  });
+
+  it('retries a terminal receipt after its network request times out', async () => {
+    vi.useFakeTimers();
+    mocks.proxyFetchPut
+      .mockImplementationOnce(
+        (
+          _url: string,
+          _body: unknown,
+          _headers: unknown,
+          options?: { signal?: AbortSignal }
+        ) =>
+          new Promise<void>((_resolve, reject) => {
+            options?.signal?.addEventListener('abort', () => {
+              reject(new DOMException('Aborted', 'AbortError'));
+            });
+          })
+      )
+      .mockResolvedValue(undefined);
+    const { proxyUpdateTriggerExecution } =
+      await import('@/service/triggerApi');
+
+    const delivery = proxyUpdateTriggerExecution('execution-timeout', {
+      status: ExecutionStatus.Failed,
+      error_message: 'Run timed out',
+    });
+    await vi.waitFor(() =>
+      expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(1)
+    );
+
+    await vi.advanceTimersByTimeAsync(10_250);
+    await delivery;
+
+    expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(2);
+    expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
+  });
+
   it('replays an exhausted terminal delivery from the durable outbox', async () => {
     vi.useFakeTimers();
     mocks.proxyFetchPut.mockRejectedValue(new Error('temporarily unavailable'));
@@ -128,7 +203,9 @@ describe('trigger execution status delivery', () => {
 
     expect(mocks.proxyFetchPut).toHaveBeenCalledWith(
       '/api/v1/execution/execution-durable',
-      expect.objectContaining({ status: ExecutionStatus.Failed })
+      expect.objectContaining({ status: ExecutionStatus.Failed }),
+      undefined,
+      expect.objectContaining({ signal: expect.anything() })
     );
     expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
   });
