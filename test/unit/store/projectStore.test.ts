@@ -18,7 +18,10 @@ import {
   getProjectEventStore,
   resetProjectEventStoresForTests,
 } from '@/store/projectEventStore';
-import { useProjectStore } from '@/store/projectStore';
+import {
+  useProjectStore,
+  waitForPendingStaleRuntimeEviction,
+} from '@/store/projectStore';
 import { SPACE_SCHEMA_VERSION, useSpaceStore } from '@/store/spaceStore';
 import { normalizeThinkingEffort, ThinkingEffort } from '@/types/constants';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -970,6 +973,55 @@ describe('projectStore runtime shape', () => {
     expect(closeIdleSSEConnectionsForTasksMock).toHaveBeenCalledWith(
       expect.arrayContaining(['task_finished'])
     );
+  });
+
+  it('lets a reactivated Project wait for an older stale retirement', async () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject('Stale Project', undefined, 'project_reactivated');
+    const nextProjectId = useProjectStore
+      .getState()
+      .createProject(
+        'Next Project',
+        undefined,
+        'project_reactivated_next',
+        undefined,
+        undefined,
+        false
+      );
+
+    useProjectStore.getState().appendInitChatStore(projectId, 'run_finished');
+    useProjectStore.setState({ staleProjectIds: new Set([projectId]) });
+    fetchGetMock.mockResolvedValue({
+      status: 'done',
+      run_id: 'run_finished',
+      consumer_alive: true,
+    });
+    const retirement = deferred<{
+      retired: boolean;
+      consumer_alive: boolean;
+    }>();
+    fetchPostMock.mockReturnValue(retirement.promise);
+
+    useProjectStore.getState().setActiveProject(nextProjectId);
+    await vi.waitFor(() => expect(fetchPostMock).toHaveBeenCalledTimes(1));
+    useProjectStore.getState().setActiveProject(projectId);
+
+    let waitFinished = false;
+    const admissionBarrier = waitForPendingStaleRuntimeEviction(projectId).then(
+      () => {
+        waitFinished = true;
+      }
+    );
+    await Promise.resolve();
+    expect(waitFinished).toBe(false);
+
+    retirement.resolve({ retired: true, consumer_alive: false });
+    await admissionBarrier;
+
+    expect(useProjectStore.getState().activeProjectId).toBe(projectId);
+    expect(useProjectStore.getState().projects[projectId]).toBeDefined();
+    expect(closeIdleSSEConnectionsForTasksMock).not.toHaveBeenCalled();
   });
 
   it('retries an older stale runtime on a later Project transition', async () => {
