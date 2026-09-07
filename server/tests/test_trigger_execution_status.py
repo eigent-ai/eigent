@@ -12,17 +12,36 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
 
+from app.domains.trigger.service.trigger_crud_service import TriggerCrudService
 from app.domains.trigger.service.trigger_service import TriggerService
+from app.model.trigger.trigger_execution import TriggerExecutionUpdate
 from app.shared.types.trigger_types import ExecutionStatus
 
 
 class _RejectingSession:
     def __getattr__(self, name: str):
         raise AssertionError(f"terminal no-op must not access session.{name}")
+
+
+class _ExecutionResult:
+    def __init__(self, execution: SimpleNamespace) -> None:
+        self.execution = execution
+
+    def first(self) -> SimpleNamespace:
+        return self.execution
+
+
+class _TerminalExecutionSession(_RejectingSession):
+    def __init__(self, execution: SimpleNamespace) -> None:
+        self.execution = execution
+
+    def exec(self, _statement: object) -> _ExecutionResult:
+        return _ExecutionResult(self.execution)
 
 
 def _service() -> TriggerService:
@@ -66,3 +85,31 @@ def test_first_terminal_execution_outcome_wins() -> None:
     _service().update_execution_status(execution, ExecutionStatus.failed)
 
     assert execution.status == ExecutionStatus.completed
+
+
+def test_terminal_receipt_metadata_is_immutable_in_crud_update() -> None:
+    completed_at = datetime(2026, 9, 7, tzinfo=UTC)
+    execution = SimpleNamespace(
+        execution_id="execution-completed",
+        status=ExecutionStatus.completed,
+        completed_at=completed_at,
+        duration_seconds=12.0,
+        output_data={"result": "accepted"},
+    )
+
+    result = TriggerCrudService.update_execution(
+        "execution-completed",
+        TriggerExecutionUpdate(
+            status=ExecutionStatus.failed,
+            completed_at=datetime(2026, 9, 8, tzinfo=UTC),
+            duration_seconds=99.0,
+            output_data={"result": "late"},
+        ),
+        user_id=1,
+        s=_TerminalExecutionSession(execution),
+    )
+
+    assert result == {"success": True, "execution": execution}
+    assert execution.completed_at == completed_at
+    assert execution.duration_seconds == 12.0
+    assert execution.output_data == {"result": "accepted"}
