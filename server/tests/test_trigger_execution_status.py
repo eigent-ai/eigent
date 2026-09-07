@@ -16,11 +16,21 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
+from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.domains.trigger.service.trigger_crud_service import TriggerCrudService
 from app.domains.trigger.service.trigger_service import TriggerService
-from app.model.trigger.trigger_execution import TriggerExecutionUpdate
-from app.shared.types.trigger_types import ExecutionStatus
+from app.model.trigger.trigger import Trigger
+from app.model.trigger.trigger_execution import (
+    TriggerExecution,
+    TriggerExecutionUpdate,
+)
+from app.shared.types.trigger_types import (
+    ExecutionStatus,
+    ExecutionType,
+    TriggerStatus,
+    TriggerType,
+)
 
 
 class _RejectingSession:
@@ -113,3 +123,76 @@ def test_terminal_receipt_metadata_is_immutable_in_crud_update() -> None:
     assert execution.completed_at == completed_at
     assert execution.duration_seconds == 12.0
     assert execution.output_data == {"result": "accepted"}
+
+
+def test_timeout_transition_refreshes_stale_execution_before_write(
+    tmp_path,
+) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'trigger-race.db'}")
+    SQLModel.metadata.create_all(
+        engine,
+        tables=[Trigger.__table__, TriggerExecution.__table__],
+    )
+    with Session(engine) as setup:
+        trigger = Trigger(
+            user_id="1",
+            project_id="project-1",
+            name="Scheduled task",
+            trigger_type=TriggerType.schedule,
+            status=TriggerStatus.active,
+        )
+        setup.add(trigger)
+        setup.flush()
+        setup.add(
+            TriggerExecution(
+                trigger_id=trigger.id,
+                execution_id="execution-race",
+                execution_type=ExecutionType.scheduled,
+                status=ExecutionStatus.running,
+                started_at=datetime(2026, 9, 7, tzinfo=UTC),
+            )
+        )
+        setup.commit()
+
+    with Session(engine) as stale_session, Session(engine) as terminal_session:
+        stale_execution = stale_session.exec(
+            select(TriggerExecution).where(
+                TriggerExecution.execution_id == "execution-race"
+            )
+        ).one()
+        assert stale_execution.status == ExecutionStatus.running
+
+        terminal_execution = terminal_session.exec(
+            select(TriggerExecution).where(
+                TriggerExecution.execution_id == "execution-race"
+            )
+        ).one()
+        TriggerService(terminal_session).update_execution_status(
+            terminal_execution,
+            ExecutionStatus.completed,
+            output_data={"result": "accepted"},
+        )
+
+        refreshed, transitioned = TriggerService(
+            stale_session
+        ).transition_execution_status_by_id(
+            "execution-race",
+            ExecutionStatus.failed,
+            expected_statuses={ExecutionStatus.running},
+            error_message="running timeout",
+        )
+
+        assert transitioned is False
+        assert refreshed is not None
+        assert refreshed.status == ExecutionStatus.completed
+        assert refreshed.output_data == {"result": "accepted"}
+
+    with Session(engine) as verify:
+        persisted = verify.exec(
+            select(TriggerExecution).where(
+                TriggerExecution.execution_id == "execution-race"
+            )
+        ).one()
+        assert persisted.status == ExecutionStatus.completed
+        assert persisted.error_message is None
+        assert persisted.output_data == {"result": "accepted"}
