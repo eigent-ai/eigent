@@ -1504,6 +1504,7 @@ async def start_chat_stream(data: Chat, request: Request):
                     "This Project already has a live chat consumer. "
                     "Submit the new Run through the follow-up endpoint or "
                     "retire the idle runtime first.",
+                    error_code="project_consumer_active",
                 )
 
         if data.resume_request_id:

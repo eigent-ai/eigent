@@ -283,6 +283,45 @@ class TestChatController:
             await coordinator.close()
 
     @pytest.mark.asyncio
+    async def test_project_consumer_conflict_has_stable_error_code(
+        self, sample_chat_data, mock_request, mock_task_lock
+    ):
+        chat_data = Chat(**sample_chat_data)
+        mock_task_lock.queue = asyncio.Queue()
+        coordinator = RunCoordinator()
+        release = asyncio.Event()
+
+        async def source():
+            await release.wait()
+            yield "data: done\n\n"
+
+        subscription = await coordinator.start_with_subscription(
+            run_id="existing-run",
+            stream_factory=source,
+            command_queue=mock_task_lock.queue,
+        )
+        try:
+            with (
+                patch(
+                    "app.controller.chat_controller.get_task_lock_if_exists",
+                    return_value=mock_task_lock,
+                ),
+                patch(
+                    "app.controller.chat_controller."
+                    "get_default_run_coordinator",
+                    return_value=coordinator,
+                ),
+            ):
+                with pytest.raises(UserException) as error:
+                    await start_chat_stream(chat_data, mock_request)
+
+            assert error.value.error_code == "project_consumer_active"
+        finally:
+            release.set()
+            await subscription.aclose()
+            await coordinator.close()
+
+    @pytest.mark.asyncio
     async def test_pending_partial_admission_is_retryable_but_reuse_conflicts(
         self, tmp_path
     ):

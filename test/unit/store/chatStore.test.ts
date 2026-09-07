@@ -1714,6 +1714,36 @@ describe('ChatStore - Core Functionality', () => {
         expect(getIdleSSETransportTaskId(['idle-run'])).toBeNull();
       });
 
+      it('marks a canonical-only completed Run idle while preserving its warm transport', async () => {
+        const { store, streamContaining } = await startObservedLiveTask({
+          initialRunId: 'canonical-completed-run',
+        });
+        const signal = streamContaining('/chat').signal as AbortSignal;
+
+        runEventIngressRegistry.ingest(
+          'project-1',
+          'canonical-completed-run',
+          canonicalEvent('canonical-completed-run', 'run.completed', 'Done'),
+          'live'
+        );
+
+        expect(store.getState().tasks['canonical-completed-run']).toMatchObject(
+          {
+            status: ChatTaskStatus.FINISHED,
+            durableRunStatus: 'completed',
+            isPending: false,
+          }
+        );
+        expect(hasActiveSSEConnection(['canonical-completed-run'])).toBe(false);
+        expect(hasSSETransportForTasks(['canonical-completed-run'])).toBe(true);
+        expect(getIdleSSETransportTaskId(['canonical-completed-run'])).toBe(
+          'canonical-completed-run'
+        );
+        expect(hasAnyActiveLegacySSEConnection()).toBe(false);
+        expect(signal.aborted).toBe(false);
+        expect(runDomainEventHub.listenerCount()).toBe(0);
+      });
+
       it.each(['stop', 'remove', 'close'] as const)(
         '%s on the follow-up Run aborts its shared legacy connection',
         async (action) => {
@@ -1759,7 +1789,7 @@ describe('ChatStore - Core Functionality', () => {
         expect(streamContaining('/runs/live-run/stream')).toBeUndefined();
       });
 
-      it('releases listeners on fatal legacy errors and normal stream close', async () => {
+      it('keeps the canonical observer after a fatal legacy error until terminal settlement', async () => {
         const first = await startObservedLiveTask({
           initialRunId: 'fatal-run',
         });
@@ -1769,8 +1799,23 @@ describe('ChatStore - Core Functionality', () => {
         expect(() =>
           first.streamContaining('/chat').onerror?.(new Error('fatal'))
         ).toThrow('fatal');
-        expect(runDomainEventHub.listenerCount()).toBe(0);
+        expect(hasSSETransportForTasks(['fatal-run'])).toBe(false);
+        expect(runDomainEventHub.listenerCount()).toBe(1);
 
+        runEventIngressRegistry.ingest(
+          'project-1',
+          'fatal-run',
+          canonicalEvent('fatal-run', 'run.failed'),
+          'live'
+        );
+        expect(first.store.getState().tasks['fatal-run']).toMatchObject({
+          status: ChatTaskStatus.FINISHED,
+          durableRunStatus: 'failed',
+        });
+        expect(runDomainEventHub.listenerCount()).toBe(0);
+      });
+
+      it('keeps the canonical observer after legacy close until terminal settlement', async () => {
         const second = await startObservedLiveTask({
           initialRunId: 'closed-run',
         });
@@ -1778,6 +1823,19 @@ describe('ChatStore - Core Functionality', () => {
           expect(runDomainEventHub.listenerCount()).toBe(1)
         );
         second.streamContaining('/chat').onclose?.();
+        expect(hasSSETransportForTasks(['closed-run'])).toBe(false);
+        expect(runDomainEventHub.listenerCount()).toBe(1);
+
+        runEventIngressRegistry.ingest(
+          'project-1',
+          'closed-run',
+          canonicalEvent('closed-run', 'runtime.interrupted'),
+          'live'
+        );
+        expect(second.store.getState().tasks['closed-run']).toMatchObject({
+          status: ChatTaskStatus.FINISHED,
+          durableRunStatus: 'interrupted',
+        });
         expect(runDomainEventHub.listenerCount()).toBe(0);
       });
 
@@ -1949,15 +2007,12 @@ describe('ChatStore - Core Functionality', () => {
       vi.mocked(fetchEventSource).mockImplementation(async (_url, options) => {
         const response = new Response(
           JSON.stringify({
-            detail: {
-              code: 'continuation_clarification_required',
-              message:
-                'The saved Project frontier has no unfinished next action.',
-              project_state_version: 1,
-            },
+            code: 1,
+            text: 'The saved Project frontier has no unfinished next action.',
+            error_code: 'continuation_clarification_required',
           }),
           {
-            status: 409,
+            status: 200,
             headers: { 'content-type': 'application/json' },
           }
         );
