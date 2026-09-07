@@ -15,7 +15,10 @@
 import { fetchGet, fetchPost } from '@/api/http';
 import i18n from '@/i18n';
 import { generateUniqueId } from '@/lib';
-import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
+import {
+  flushPendingTriggerExecutionUpdates,
+  proxyUpdateTriggerExecution,
+} from '@/service/triggerApi';
 import {
   closeIdleSSEConnectionsForTasks,
   hasActiveSSEConnection,
@@ -438,6 +441,15 @@ export function useBackgroundTaskProcessor() {
   }, [checkCompletedTasks, processOneTask]);
 
   useEffect(() => {
+    // Recover terminal receipts persisted by a previous renderer session.
+    // This is independent from canonical/legacy observer lifetime.
+    void flushPendingTriggerExecutionUpdates().catch((error) => {
+      console.warn(
+        '[BackgroundTaskProcessor] Failed to flush terminal execution updates:',
+        error
+      );
+    });
+
     // Run poll immediately on mount - don't wait for first interval
     poll();
 

@@ -41,6 +41,7 @@ const mocks = vi.hoisted(() => {
     closeIdleSSEConnectionsForTasks: vi.fn(),
     fetchGet: vi.fn(),
     fetchPost: vi.fn(),
+    flushPendingTriggerExecutionUpdates: vi.fn(() => Promise.resolve()),
     hasActiveSSEConnection: vi.fn(),
     hasSSETransportForTasks: vi.fn(),
     projectRuntimeStore,
@@ -68,6 +69,8 @@ vi.mock('@/lib', () => ({
 }));
 
 vi.mock('@/service/triggerApi', () => ({
+  flushPendingTriggerExecutionUpdates:
+    mocks.flushPendingTriggerExecutionUpdates,
   proxyUpdateTriggerExecution: mocks.proxyUpdateTriggerExecution,
 }));
 

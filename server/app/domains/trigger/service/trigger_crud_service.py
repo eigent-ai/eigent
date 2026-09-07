@@ -510,6 +510,7 @@ class TriggerCrudService:
             select(TriggerExecution)
             .join(Trigger)
             .where(and_(TriggerExecution.execution_id == execution_id, Trigger.user_id == str(user_id)))
+            .with_for_update()
         ).first()
         if not execution:
             return {"success": False, "error": "Execution not found", "status_code": 404}
