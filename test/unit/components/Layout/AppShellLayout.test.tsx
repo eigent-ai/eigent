@@ -13,11 +13,22 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import AppShellLayout from '@/components/Layout/AppShellLayout';
 
+const motionMocks = vi.hoisted(() => ({ reduced: false }));
+
+vi.mock('framer-motion', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('framer-motion')>()),
+  useReducedMotion: () => motionMocks.reduced,
+}));
+
 describe('AppShellLayout', () => {
+  beforeEach(() => {
+    motionMocks.reduced = false;
+  });
+
   afterEach(cleanup);
 
   it('makes the workspace sidebar inert while it animates closed', () => {
@@ -39,10 +50,30 @@ describe('AppShellLayout', () => {
 
     expect(sidebarRail).toHaveAttribute('aria-hidden', 'true');
     expect(sidebarRail).toHaveAttribute('inert', '');
+    expect(sidebarRail).toHaveAttribute('data-sidebar-motion', 'spring');
 
     rerender(renderShell(false));
 
     expect(sidebarRail).toHaveAttribute('aria-hidden', 'false');
     expect(sidebarRail).not.toHaveAttribute('inert');
+  });
+
+  it('makes sidebar folding instant when reduced motion is requested', () => {
+    motionMocks.reduced = true;
+
+    render(
+      <AppShellLayout
+        sidebar={<button type="button">Sidebar action</button>}
+        sidebarHidden
+      >
+        <button type="button">Content action</button>
+      </AppShellLayout>
+    );
+
+    expect(
+      screen
+        .getByRole('button', { name: 'Sidebar action', hidden: true })
+        .closest('[aria-hidden]')
+    ).toHaveAttribute('data-sidebar-motion', 'instant');
   });
 });

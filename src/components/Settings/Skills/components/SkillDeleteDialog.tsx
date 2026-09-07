@@ -14,6 +14,7 @@
 
 import ConfirmModal from '@/components/ui/alertDialog';
 import { useSkillsStore, type Skill } from '@/store/skillsStore';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -33,19 +34,32 @@ export default function SkillDeleteDialog({
   const { t } = useTranslation();
   const { deleteSkill } = useSkillsStore();
 
-  const handleDelete = () => {
-    if (skill) {
-      deleteSkill(skill.id);
+  const [deleting, setDeleting] = useState(false);
+  const deletingRef = useRef(false);
+  const handleDelete = async () => {
+    if (!skill || deletingRef.current) return;
+    deletingRef.current = true;
+    setDeleting(true);
+    try {
+      await deleteSkill(skill.id);
       toast.success(t('agents.skill-deleted-success'));
+      onConfirm();
+    } catch {
+      toast.error(t('agents.library-delete-failed'));
+    } finally {
+      deletingRef.current = false;
+      setDeleting(false);
     }
-    onConfirm();
   };
 
   return (
     <ConfirmModal
       isOpen={open}
-      onClose={onCancel}
-      onConfirm={handleDelete}
+      onClose={() => {
+        if (!deletingRef.current) onCancel();
+      }}
+      onConfirm={() => void handleDelete()}
+      confirmDisabled={deleting}
       title={t('agents.delete-skill')}
       message={t('agents.delete-skill-confirmation', {
         name: skill?.name || '',

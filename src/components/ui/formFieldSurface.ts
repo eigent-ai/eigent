@@ -28,11 +28,13 @@ export const formFieldSizeClasses: Record<FormFieldSize, string> = {
   sm: 'h-ds-control-md !text-ds-text-base rounded-ds-field !px-ds-12',
 };
 
-/** Select trigger: same vertical rhythm, no `md:` breakpoint on body text. */
-export const formFieldSelectSizeClasses: Record<FormFieldSize, string> = {
-  default: 'h-ds-control-xl !text-ds-text-base rounded-ds-field !px-ds-12',
-  sm: 'h-ds-control-md !text-ds-text-base rounded-ds-field !px-ds-12',
-};
+/** Select trigger: form rhythm plus a compact 28px toolbar size. */
+export const formFieldSelectSizeClasses: Record<FormFieldSize | 'xs', string> =
+  {
+    xs: 'h-ds-control-sm !text-ds-text-base rounded-ds-field !px-ds-12',
+    default: 'h-ds-control-xl !text-ds-text-base rounded-ds-field !px-ds-12',
+    sm: 'h-ds-control-md !text-ds-text-base rounded-ds-field !px-ds-12',
+  };
 
 export const formFieldInputSelectSizeClasses: Record<FormFieldSize, string> = {
   default: 'h-ds-control-xl !text-ds-text-base rounded-ds-field !px-ds-12',

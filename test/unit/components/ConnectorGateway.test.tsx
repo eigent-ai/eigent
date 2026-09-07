@@ -144,7 +144,9 @@ describe('ConnectorGateway Web search visibility', () => {
     const webSearch = await screen.findByRole('button', {
       name: 'Web search',
     });
-    expect(within(webSearch).getByText('Not connected')).toBeInTheDocument();
+    const row = webSearch.closest('tr');
+    expect(row).not.toBeNull();
+    expect(within(row!).getByText('Not connected')).toBeInTheDocument();
 
     await user.click(webSearch);
 
@@ -160,6 +162,8 @@ describe('ConnectorGateway Web search visibility', () => {
     const webSearch = await screen.findByRole('button', {
       name: 'Web search',
     });
-    expect(within(webSearch).getByText('Connected')).toBeInTheDocument();
+    const row = webSearch.closest('tr');
+    expect(row).not.toBeNull();
+    expect(within(row!).getByText('Connected')).toBeInTheDocument();
   });
 });

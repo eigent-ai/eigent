@@ -15,10 +15,10 @@
 
 import {
   NavTab,
+  SidebarBackHeader,
   SidebarNavGroup,
   SidebarScrollArea,
   SidebarSection,
-  SidebarSeparator,
   SidebarShell,
 } from '@/components/Layout/AppSidebar';
 import AlertDialog from '@/components/ui/alertDialog';
@@ -30,7 +30,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
+import { DsText } from '@/components/ui/ds-text';
 import { Input } from '@/components/ui/input';
+import { TooltipSimple } from '@/components/ui/tooltip';
 import { isLegacySpace } from '@/lib/spaceLabel';
 import {
   isUnconfiguredPlaceholderSpace,
@@ -38,11 +41,11 @@ import {
   type Space,
 } from '@/store/spaceStore';
 import {
-  ArrowLeft,
   Folder,
   MoreHorizontal,
   Pencil,
   Plus,
+  Search,
   Trash2,
 } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
@@ -135,6 +138,7 @@ export default function SpaceDetailSidebar({
   const [deleteTarget, setDeleteTarget] = useState<Space | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [newSpaceDialogOpen, setNewSpaceDialogOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const { createBlankSpace, createSpaceFromFolder } = useNewSpaceCreation(
     'space_detail_sidebar'
   );
@@ -149,6 +153,16 @@ export default function SpaceDetailSidebar({
         .sort((left, right) => right.updatedAt - left.updatedAt),
     [projectsBySpaceId, spacesById]
   );
+  const visibleSpaces = useMemo(() => {
+    const term = query.trim().toLocaleLowerCase();
+    return term
+      ? spaces.filter((space) =>
+          (space.name?.trim() || 'Untitled Space')
+            .toLocaleLowerCase()
+            .includes(term)
+        )
+      : spaces;
+  }, [query, spaces]);
 
   const openRenameDialog = useCallback((space: Space) => {
     setRenameValue(space.name?.trim() || '');
@@ -263,46 +277,55 @@ export default function SpaceDetailSidebar({
         confirmDisabled={deleting}
       />
 
-      <SidebarShell ariaLabel={t('layout.spaces', { defaultValue: 'Spaces' })}>
-        <SidebarSection>
-          <SidebarNavGroup>
-            <NavTab
-              active={false}
-              onClick={onBack}
-              leading={<ArrowLeft className="h-4 w-4 shrink-0" aria-hidden />}
-              label={t('layout.back-to-home', { defaultValue: 'Back to Home' })}
-              ariaLabel={t('layout.back-to-home', {
-                defaultValue: 'Back to Home',
-              })}
-            />
-          </SidebarNavGroup>
+      <SidebarShell
+        ariaLabel={t('layout.spaces', { defaultValue: 'Spaces' })}
+        className="pt-0"
+      >
+        <SidebarBackHeader
+          onBack={onBack}
+          action={
+            <TooltipSimple
+              content={t('layout.new-space', { defaultValue: 'New Space' })}
+              variant="instant"
+              side="bottom"
+            >
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                buttonRadius="full"
+                buttonContent="icon-only"
+                aria-label={t('layout.new-space', {
+                  defaultValue: 'New Space',
+                })}
+                onClick={() => setNewSpaceDialogOpen(true)}
+              >
+                <Plus aria-hidden />
+              </Button>
+            </TooltipSimple>
+          }
+        />
+        <SidebarSection className="py-ds-8">
+          <Input
+            type="search"
+            size="sm"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            leadingIcon={<DsIcon icon={Search} />}
+            aria-label={t('layout.search-spaces')}
+            placeholder={t('layout.search-spaces')}
+          />
         </SidebarSection>
-        <SidebarSeparator />
         <SidebarSection grow="fill">
           <SidebarScrollArea
             role="navigation"
             ariaLabel={t('layout.select-space', {
               defaultValue: 'Select a Space',
             })}
-            className="gap-4 pt-1"
+            className="pt-ds-4"
           >
             <SidebarNavGroup>
-              <NavTab
-                active={false}
-                onClick={() => setNewSpaceDialogOpen(true)}
-                leading={<Plus className="h-4 w-4 shrink-0" aria-hidden />}
-                label={t('layout.new-space', { defaultValue: 'New Space' })}
-                tooltip={t('layout.new-space', { defaultValue: 'New Space' })}
-                tooltipEnabledWhenCollapsed
-                ariaLabel={t('layout.new-space', {
-                  defaultValue: 'New Space',
-                })}
-              />
-            </SidebarNavGroup>
-            <SidebarNavGroup
-              label={t('layout.spaces', { defaultValue: 'Spaces' })}
-            >
-              {spaces.map((space) => {
+              {visibleSpaces.map((space) => {
                 const selected = space.id === selectedSpaceId;
                 const canManage = !isLegacySpace(space);
                 return (
@@ -310,9 +333,7 @@ export default function SpaceDetailSidebar({
                     key={space.id}
                     active={selected}
                     onClick={() => onSelectSpace(space.id)}
-                    leading={
-                      <Folder className="h-4 w-4 shrink-0" aria-hidden />
-                    }
+                    leading={<DsIcon icon={Folder} />}
                     label={space.name?.trim() || 'Untitled Space'}
                     layout={canManage ? 'split' : 'simple'}
                     endAction={
@@ -331,6 +352,15 @@ export default function SpaceDetailSidebar({
                   />
                 );
               })}
+              {visibleSpaces.length === 0 && (
+                <DsText
+                  as="p"
+                  role="meta"
+                  className="px-ds-12 py-ds-16 text-center text-ds-ink-muted-default"
+                >
+                  {t('layout.search-no-results')}
+                </DsText>
+              )}
             </SidebarNavGroup>
           </SidebarScrollArea>
         </SidebarSection>

@@ -16,7 +16,10 @@ import { cn } from '@/lib/utils';
 import { type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { HomeHubItemKind } from './HomeHubItemShared';
-import { HOME_HUB_LIST_GRID_CLASS } from './HomeHubItemShared';
+import {
+  HOME_HUB_LIST_GRID_CLASS,
+  HomeHubListLayoutContext,
+} from './HomeHubItemShared';
 
 type HomeHubListColumn = {
   id: string;
@@ -55,45 +58,86 @@ const LIST_COLUMNS: Record<HomeHubItemKind, HomeHubListColumn[]> = {
   ],
 };
 
+const LIST_MIN_WIDTH_CLASS: Record<HomeHubItemKind, string> = {
+  space: 'min-w-[720px]',
+  project: 'min-w-[560px]',
+  task: 'min-w-[420px]',
+  trigger: 'min-w-[560px]',
+};
+
+const PROJECT_WITHOUT_SPACE_GRID_CLASS =
+  'grid-cols-[minmax(0,2fr)_72px_72px_80px]';
+
 type HomeHubListTableProps = {
   kind: HomeHubItemKind;
   children: ReactNode;
   className?: string;
+  hideSpaceColumn?: boolean;
 };
 
 export default function HomeHubListTable({
   kind,
   children,
   className,
+  hideSpaceColumn = false,
 }: HomeHubListTableProps) {
   const { t } = useTranslation();
-  const columns = LIST_COLUMNS[kind];
-  const gridClass = HOME_HUB_LIST_GRID_CLASS[kind];
+  const hiddenColumns = hideSpaceColumn ? ['space'] : [];
+  const columns = LIST_COLUMNS[kind].filter(
+    (column) => !hiddenColumns.includes(column.id)
+  );
+  const gridClass =
+    kind === 'project' && hideSpaceColumn
+      ? PROJECT_WITHOUT_SPACE_GRID_CLASS
+      : HOME_HUB_LIST_GRID_CLASS[kind];
+  const label = {
+    space: t('layout.spaces'),
+    project: t('layout.projects'),
+    task: t('layout.tasks-heading'),
+    trigger: t('layout.triggers'),
+  }[kind];
 
   return (
-    <div className={cn('w-full min-w-0', className)}>
-      <div className={cn('grid items-center gap-x-4 px-3 py-2.5', gridClass)}>
-        {columns.map((column) => (
-          <span
-            key={column.id}
-            className={cn(
-              'truncate !text-ds-text-base leading-none font-normal text-ds-ink-muted-default',
-              column.align === 'right' ? 'text-right' : 'text-left'
-            )}
-          >
-            {column.labelKey ? (
-              t(column.labelKey)
-            ) : (
-              <span className="sr-only">
-                {t('layout.workspace-action', {
-                  defaultValue: 'Workspace action',
-                })}
-              </span>
-            )}
-          </span>
-        ))}
-      </div>
-      <div className="flex flex-col gap-1">{children}</div>
+    <div
+      role="table"
+      aria-label={label}
+      className={cn('w-full min-w-0 overflow-x-auto', className)}
+    >
+      <HomeHubListLayoutContext.Provider value={{ gridClass, hiddenColumns }}>
+        <div className={LIST_MIN_WIDTH_CLASS[kind]}>
+          <div role="rowgroup">
+            <div
+              role="row"
+              className={cn('grid items-center gap-x-4 px-3 py-2.5', gridClass)}
+            >
+              {columns.map((column) => (
+                <span
+                  key={column.id}
+                  role="columnheader"
+                  data-home-hub-column={column.id}
+                  className={cn(
+                    'truncate !text-ds-text-base leading-none font-normal text-ds-ink-muted-default',
+                    column.align === 'right' ? 'text-right' : 'text-left'
+                  )}
+                >
+                  {column.labelKey ? (
+                    t(column.labelKey)
+                  ) : (
+                    <span className="sr-only">
+                      {t('layout.workspace-action', {
+                        defaultValue: 'Workspace action',
+                      })}
+                    </span>
+                  )}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div role="rowgroup" className="flex flex-col gap-1">
+            {children}
+          </div>
+        </div>
+      </HomeHubListLayoutContext.Provider>
     </div>
   );
 }

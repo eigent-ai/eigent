@@ -18,12 +18,14 @@ import type { ReactNode, RefObject } from 'react';
 interface SettingsContentShellProps {
   children: ReactNode;
   className?: string;
+  contentClassName?: string;
   scrollRef?: RefObject<HTMLDivElement>;
 }
 
 export default function SettingsContentShell({
   children,
   className,
+  contentClassName,
   scrollRef,
 }: SettingsContentShellProps) {
   return (
@@ -36,7 +38,12 @@ export default function SettingsContentShell({
     >
       {/* Sections stay in one centered measure so they don't stretch across a
           wide window. */}
-      <div className="mx-auto min-h-full w-full max-w-[964px] px-8">
+      <div
+        className={cn(
+          'mx-auto min-h-full w-full max-w-[964px] px-8',
+          contentClassName
+        )}
+      >
         {children}
       </div>
     </div>

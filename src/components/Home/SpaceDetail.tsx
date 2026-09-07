@@ -14,9 +14,14 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 
 import { resolveSpaceDetailMemoryTarget } from '@/components/Home/memoryRoute';
+import ContentBreadcrumb from '@/components/Layout/ContentBreadcrumb';
+import ContentHeader from '@/components/Layout/ContentHeader';
+import OverviewIconFrame from '@/components/Layout/OverviewIconFrame';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
+import { DsText } from '@/components/ui/ds-text';
 import { Skeleton } from '@/components/ui/skeleton';
-import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
+import { getSpaceStatusLabel, isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import { AUTOMATION_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -32,12 +37,14 @@ import {
   HardDrive,
   ListChecks,
   MessageCircle,
+  type LucideIcon,
 } from 'lucide-react';
 import {
   lazy,
   Suspense,
   useCallback,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -46,7 +53,12 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useSpaceDetailData } from './hooks/useSpaceDetailData';
 import Projects from './Projects';
 import { SpaceDetailTabSkeleton } from './SpaceDetailLoadingSkeleton';
-import { SpaceDetailTabsNav, type SpaceDetailTab } from './SpaceDetailTabsNav';
+import {
+  getSpaceDetailPanelId,
+  getSpaceDetailTabId,
+  SpaceDetailTabsNav,
+  type SpaceDetailTab,
+} from './SpaceDetailTabsNav';
 import Tasks from './Tasks';
 import Triggers from './Triggers';
 import { formatHubDate } from './utils';
@@ -106,36 +118,43 @@ export function SpaceDetailSuspenseContent({
   const revealDuration = reduceMotion ? 0.12 : 0.2;
 
   return (
-    <Suspense
-      fallback={
-        <CommittedSpaceDetailFallback
-          tab={activeTab}
-          onCommit={handleFallbackCommit}
-        />
-      }
+    <div
+      id={getSpaceDetailPanelId(activeTab)}
+      role="tabpanel"
+      aria-labelledby={getSpaceDetailTabId(activeTab)}
+      className={contextLikeTab ? 'h-full' : 'min-h-full'}
     >
-      <motion.div
-        key={activeTab}
-        data-space-detail-resolved-content={activeTab}
-        data-space-detail-content-reveal={shouldReveal ? 'true' : 'false'}
-        data-space-detail-reveal-duration={shouldReveal ? revealDuration : 0}
-        className={contextLikeTab ? 'h-full' : 'min-h-full'}
-        initial={{ opacity: shouldReveal ? 0 : 1 }}
-        animate={{ opacity: 1 }}
-        transition={{
-          duration: shouldReveal ? revealDuration : 0,
-          ease: uiEaseOut,
-        }}
-        onAnimationComplete={() => {
-          if (!shouldReveal) return;
-          setPendingRevealTab((current) =>
-            current === activeTab ? null : current
-          );
-        }}
+      <Suspense
+        fallback={
+          <CommittedSpaceDetailFallback
+            tab={activeTab}
+            onCommit={handleFallbackCommit}
+          />
+        }
       >
-        {children}
-      </motion.div>
-    </Suspense>
+        <motion.div
+          key={activeTab}
+          data-space-detail-resolved-content={activeTab}
+          data-space-detail-content-reveal={shouldReveal ? 'true' : 'false'}
+          data-space-detail-reveal-duration={shouldReveal ? revealDuration : 0}
+          className={contextLikeTab ? 'h-full' : 'min-h-full'}
+          initial={{ opacity: shouldReveal ? 0 : 1 }}
+          animate={{ opacity: 1 }}
+          transition={{
+            duration: shouldReveal ? revealDuration : 0,
+            ease: uiEaseOut,
+          }}
+          onAnimationComplete={() => {
+            if (!shouldReveal) return;
+            setPendingRevealTab((current) =>
+              current === activeTab ? null : current
+            );
+          }}
+        >
+          {children}
+        </motion.div>
+      </Suspense>
+    </div>
   );
 }
 
@@ -145,23 +164,24 @@ function Stat({
   value,
   loading = false,
 }: {
-  icon: ReactNode;
+  icon: LucideIcon;
   label: string;
   value: ReactNode;
   loading?: boolean;
 }) {
   return (
     <div data-space-stat={label} className="flex min-w-0 items-center gap-3">
-      <div
-        aria-hidden
-        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-default-default text-ds-ink-default-default"
-      >
-        {icon}
-      </div>
+      <OverviewIconFrame>
+        <DsIcon icon={icon} />
+      </OverviewIconFrame>
       <div className="min-w-0">
-        <span className="block truncate !text-ds-text-meta font-semibold tracking-wide text-ds-ink-muted-default uppercase">
+        <DsText
+          as="span"
+          role="meta"
+          className="block truncate text-ds-ink-muted-default"
+        >
           {label}
-        </span>
+        </DsText>
         {loading ? (
           <Skeleton
             data-space-stat-skeleton={label}
@@ -169,7 +189,7 @@ function Stat({
           />
         ) : (
           <span
-            className="mt-1 block truncate !text-ds-text-body-large font-semibold text-ds-ink-default-default"
+            className="mt-1 block truncate !text-ds-text-body-large font-semibold text-ds-ink-default-default tabular-nums"
             title={typeof value === 'string' ? value : undefined}
           >
             {value}
@@ -206,11 +226,17 @@ export default function SpaceDetail({
   );
   const data = useSpaceDetailData(spaceId);
   const { space } = data;
+  const spaceName = space?.name?.trim() || t('layout.spaces-untitled');
   const memoryTarget = resolveSpaceDetailMemoryTarget(
     spaceId,
     searchParams,
     data.projects
   );
+
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    heading.current?.focus({ preventScroll: true });
+  }, [spaceId]);
 
   const handleOpenWorkspace = useCallback(() => {
     setActiveSpace(spaceId);
@@ -229,7 +255,28 @@ export default function SpaceDetail({
 
   if (!space) {
     return (
-      <div className="flex h-full flex-col">
+      <div className="flex h-full min-h-0 min-w-0 flex-col">
+        <ContentHeader
+          className="px-ds-16"
+          titleAsChild
+          title={
+            <ContentBreadcrumb
+              headingRef={heading}
+              ariaLabel={t('layout.breadcrumb', { defaultValue: 'Breadcrumb' })}
+              segments={[
+                {
+                  label: t('layout.home', { defaultValue: 'Home' }),
+                  onClick: onBack,
+                },
+                {
+                  label: t('layout.spaces', { defaultValue: 'Spaces' }),
+                  onClick: onBack,
+                },
+                { label: t('layout.space-unavailable') },
+              ]}
+            />
+          }
+        />
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
           <FolderOpen
             className="h-10 w-10 text-ds-ink-muted-default"
@@ -242,15 +289,16 @@ export default function SpaceDetail({
           </span>
           <Button type="button" variant="secondary" size="sm" onClick={onBack}>
             <ArrowLeft className="h-4 w-4" aria-hidden />
-            {t('layout.back-to-home', { defaultValue: 'Back to Home' })}
+            {t('layout.back')}
           </Button>
         </div>
       </div>
     );
   }
 
-  const location = isLocalWorkspaceSpace(space) ? 'Local' : 'Remote';
-  const statIconClassName = 'h-5 w-5';
+  const location = isLocalWorkspaceSpace(space)
+    ? t('layout.files-tab-local')
+    : t('layout.files-tab-remote');
 
   const tabContent = (() => {
     switch (activeTab) {
@@ -303,70 +351,96 @@ export default function SpaceDetail({
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
+      <ContentHeader
+        className="px-ds-16"
+        titleAsChild
+        title={
+          <ContentBreadcrumb
+            headingRef={heading}
+            ariaLabel={t('layout.breadcrumb', { defaultValue: 'Breadcrumb' })}
+            segments={[
+              {
+                label: t('layout.home', { defaultValue: 'Home' }),
+                onClick: onBack,
+              },
+              {
+                label: t('layout.spaces', { defaultValue: 'Spaces' }),
+                onClick: onBack,
+              },
+              { label: spaceName },
+            ]}
+          />
+        }
+        actions={
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            buttonRadius="full"
+            onClick={handleOpenWorkspace}
+          >
+            {t('layout.open-workspace', {
+              defaultValue: 'Open workspace',
+            })}
+          </Button>
+        }
+      />
       <div className="flex min-h-0 flex-1 flex-col">
         <div
           data-space-detail-scroll-container
-          className="scrollbar-always-visible min-h-0 flex-1 [scrollbar-gutter:stable] overflow-y-scroll"
+          className="scrollbar-always-visible grid min-h-0 flex-1 [scrollbar-gutter:stable] grid-rows-[auto_auto_minmax(32rem,1fr)] overflow-y-scroll"
         >
-          <div className="px-8 py-8">
+          <div className="px-8 py-6">
             <div
               data-space-detail-summary-rail
               className={cn(
                 SPACE_DETAIL_RAIL_CLASS,
-                'grid gap-8 xl:grid-cols-[minmax(240px,0.8fr)_minmax(600px,1.4fr)] xl:items-start'
+                'grid gap-6 lg:grid-cols-[minmax(220px,0.8fr)_minmax(420px,1.4fr)] lg:items-start'
               )}
             >
               <div className="min-w-0 overflow-hidden">
                 <span
                   className="block truncate !text-ds-text-section font-bold text-ds-ink-default-default"
-                  title={space.name?.trim() || 'Untitled Space'}
+                  title={spaceName}
                 >
-                  {space.name?.trim() || 'Untitled Space'}
+                  {spaceName}
                 </span>
-                <span className="mt-2 block !text-ds-text-base text-ds-ink-muted-default">
-                  {space.description?.trim() || 'No description added.'}
+                <span className="mt-1 block !text-ds-text-base text-ds-ink-muted-default">
+                  {space.description?.trim() || t('layout.no-description')}
                 </span>
               </div>
-              <div className="grid min-w-0 grid-cols-3 gap-x-6 gap-y-5">
+              <div className="grid min-w-0 grid-cols-1 gap-x-6 gap-y-4 min-[560px]:grid-cols-2 xl:grid-cols-3">
                 <Stat
-                  icon={<MessageCircle className={statIconClassName} />}
-                  label="Sessions"
+                  icon={MessageCircle}
+                  label={t('layout.projects')}
                   value={data.projectCount}
                   loading={data.projectsLoading}
                 />
                 <Stat
-                  icon={<ListChecks className={statIconClassName} />}
-                  label="Tasks"
+                  icon={ListChecks}
+                  label={t('layout.tasks-heading')}
                   value={data.taskCount}
                   loading={data.projectsLoading}
                 />
                 <Stat
-                  icon={<AUTOMATION_ICON className={statIconClassName} />}
+                  icon={AUTOMATION_ICON}
                   label={t('layout.triggers')}
                   value={data.triggerCount}
                   loading={data.triggersLoading}
                 />
                 <Stat
-                  icon={<Activity className={statIconClassName} />}
-                  label="Status"
-                  value={
-                    space.status.charAt(0).toUpperCase() + space.status.slice(1)
-                  }
+                  icon={Activity}
+                  label={t('layout.home-list-status')}
+                  value={getSpaceStatusLabel(space.status, t)}
                 />
                 <Stat
-                  icon={
-                    isLocalWorkspaceSpace(space) ? (
-                      <HardDrive className={statIconClassName} />
-                    ) : (
-                      <Cloud className={statIconClassName} />
-                    )
-                  }
-                  label="Location"
+                  icon={isLocalWorkspaceSpace(space) ? HardDrive : Cloud}
+                  label={t('layout.home-list-location')}
                   value={location}
                 />
                 <Stat
-                  icon={<CalendarDays className={statIconClassName} />}
-                  label="Added"
+                  icon={CalendarDays}
+                  label={t('layout.home-list-created')}
                   value={formatHubDate(space.createdAt) || '—'}
                 />
               </div>
@@ -381,34 +455,18 @@ export default function SpaceDetail({
               data-space-detail-tabs-rail
               className={SPACE_DETAIL_RAIL_CLASS}
             >
-              <div className="flex min-w-0 items-start justify-between gap-4">
-                <SpaceDetailTabsNav
-                  activeTab={activeTab}
-                  onChange={onTabChange}
-                  className="min-w-0 flex-1"
-                />
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  buttonRadius="full"
-                  className="h-8 shrink-0 font-bold"
-                  onClick={handleOpenWorkspace}
-                >
-                  {t('layout.open-workspace', {
-                    defaultValue: 'Open Workspace',
-                  })}
-                </Button>
-              </div>
+              <SpaceDetailTabsNav
+                activeTab={activeTab}
+                onChange={onTabChange}
+                className="min-w-0"
+              />
             </div>
           </div>
 
           <div
             className={cn(
-              'px-8',
-              contextLikeTab
-                ? 'h-[calc(100dvh-8.5rem)] min-h-[32rem]'
-                : 'min-h-full py-4'
+              'min-h-0 px-8 py-4',
+              contextLikeTab ? 'h-full' : 'min-h-full'
             )}
           >
             <div

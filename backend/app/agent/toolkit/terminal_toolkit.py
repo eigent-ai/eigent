@@ -61,7 +61,7 @@ logger = logging.getLogger("terminal_toolkit")
 
 # App version - should match electron app version
 # TODO: Consider getting this from a shared config
-APP_VERSION = "1.0.3"
+APP_VERSION = "1.0.4"
 
 
 _SECRET_BROKER_ENVIRONMENT_KEY = re.compile(
@@ -96,7 +96,10 @@ _BUNDLE_RUNTIME_BASE_ENVIRONMENT_KEYS = {
     "WINDIR",
 }
 
-_RUN_BACKGROUND_QUIESCE_TIMEOUT_SECONDS = 5.0
+# A stopped background command still has to release its broad-write lease and
+# finish the workspace Git checkpoint before the Run can be terminalized. A
+# five-second budget was too close to normal checkpoint latency on macOS.
+_RUN_BACKGROUND_QUIESCE_TIMEOUT_SECONDS = 30.0
 
 _LOCAL_PROCESS_GROUP_BOOTSTRAP = (
     "import os,sys; os.setsid(); "

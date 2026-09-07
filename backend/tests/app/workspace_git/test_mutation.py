@@ -963,6 +963,80 @@ def test_primary_checkout_broad_process_commits_only_visible_checkout(
     assert not (tmp_path / "state" / "worktrees").exists()
 
 
+def test_primary_checkout_broad_process_preserves_nested_repository_boundary(
+    tmp_path,
+    journal,
+):
+    content, coordinator, _, backend = _services(tmp_path, journal)
+    direct = WorkspaceMutationService(
+        journal,
+        state_root=tmp_path / "state",
+        coordinator=coordinator,
+    )
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    seed = space / "seed.txt"
+    seed.write_text("seed", encoding="utf-8")
+    backend.commit_paths(space, (seed,), message="seed")
+    parent_head = backend.current_head(space)
+    parent_state = backend.repo_state_token(space)
+    _admit(journal, coordinator)
+
+    prepared = direct.prepare_broad_write(
+        context=_context(space),
+        operation_request_id="direct-terminal-clone",
+        actor_id="developer-agent",
+        trigger="terminal.execute",
+    )
+    assert prepared is not None
+    nested = prepared.mutation_root / "child-repository"
+    nested.mkdir()
+    _git(nested, "init", "--initial-branch=main")
+    (nested / "README.md").write_text("# Child\n", encoding="utf-8")
+    _git(nested, "add", "README.md")
+    _git(
+        nested,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "-m",
+        "seed child",
+    )
+
+    assert (
+        _git(space, "status", "--porcelain=v1", "--untracked-files=all")
+        == "?? child-repository/\n"
+    )
+    commits = direct.complete_broad_write(
+        prepared,
+        operation_request_id="direct-terminal-clone",
+        actor_id="developer-agent",
+        trigger="terminal.execute",
+    )
+
+    assert commits == ()
+    assert backend.current_head(space) == parent_head
+    assert backend.repo_state_token(space) == parent_state
+    assert backend.worktree_status(space) == {}
+    # Physical Git status still exposes the independent repository boundary;
+    # only Eigent's parent Content Repository ownership view excludes it.
+    assert not backend.is_worktree_clean(space)
+    assert backend.worktree_matches_commit(space, parent_head)
+    assert _git(nested, "show", "HEAD:README.md") == "# Child\n"
+    assert _git(space, "ls-files", "child-repository") == ""
+    items = journal.list_git_change_set_items(
+        prepared.change_set.change_set_id
+    )
+    assert items == []
+
+
 def test_failed_primary_checkout_run_keeps_a_recovery_ref(tmp_path, journal):
     content, coordinator, _, backend = _services(tmp_path, journal)
     direct = WorkspaceMutationService(

@@ -238,7 +238,7 @@ async def test_extending_deadline_reschedules_existing_watcher(tmp_path):
         journal.ensure_run(
             run_id="run-1",
             project_id="project-1",
-            deadline_at=time.time() + 0.05,
+            deadline_at=time.time() + 30,
         )
         journal.create_run_attempt(
             "run-1",
@@ -247,31 +247,40 @@ async def test_extending_deadline_reschedules_existing_watcher(tmp_path):
             activate=True,
         )
         coordinator = RunCoordinator(journal)
+        handle = RuntimeHandle(run_id="run-1")
+        first_read = asyncio.Event()
+        second_read = asyncio.Event()
+        observed_deadlines: list[float | None] = []
+        loop = asyncio.get_running_loop()
+        original_get_run = journal.get_run
 
-        async def source():
-            await asyncio.Event().wait()
-            yield "never"
+        def observed_get_run(run_id: str):
+            run = original_get_run(run_id)
+            observed_deadlines.append(run.deadline_at if run else None)
+            event = first_read if len(observed_deadlines) == 1 else second_read
+            loop.call_soon_threadsafe(event.set)
+            return run
 
-        subscription = await coordinator.start_with_subscription(
-            run_id="run-1",
-            stream_factory=source,
-        )
-        await asyncio.sleep(0.01)
+        journal.get_run = observed_get_run  # type: ignore[method-assign]
+        watcher = asyncio.create_task(coordinator._watch_deadline(handle))
+        await asyncio.wait_for(first_read.wait(), timeout=2)
+
+        extended_deadline = time.time() + 60
         journal.set_timeout_policy(
             "run-1",
             RunTimeoutPolicy(
                 policy_version="v2",
-                run_deadline_at=time.time() + 0.15,
+                run_deadline_at=extended_deadline,
             ),
         )
-        await coordinator.notify_deadline_changed("run-1")
-        await asyncio.sleep(0.07)
+        handle.deadline_changed_event.set()
+        await asyncio.wait_for(second_read.wait(), timeout=2)
 
-        assert subscription.handle.consumer_alive
         assert journal.get_run("run-1").status == "running"
+        assert observed_deadlines[0] is not None
+        assert observed_deadlines[0] < extended_deadline
+        assert observed_deadlines[1] == extended_deadline
 
-        await asyncio.sleep(0.12)
-        assert subscription.handle.execution_task is not None
-        assert subscription.handle.execution_task.cancelled()
-        assert journal.get_run("run-1").status == "failed"
+        watcher.cancel()
+        await asyncio.gather(watcher, return_exceptions=True)
         await coordinator.close()

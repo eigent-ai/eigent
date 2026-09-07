@@ -21,9 +21,56 @@ import { matchPath } from 'react-router-dom';
  */
 export const SHELL_BACK_STATE_KEY = 'from';
 
+/**
+ * Router-state key for the page that opened a Space, Skill, or Connector
+ * detail. This is separate from `from`, which records where the full Home /
+ * Settings shell was opened from.
+ */
+export const SHELL_DETAIL_BACK_STATE_KEY = 'detailFrom';
+
 /** Build the `state` payload for a navigation into a full-page shell surface. */
 export function shellBackState(from: string): { from: string } {
   return { [SHELL_BACK_STATE_KEY]: from };
+}
+
+type ShellRouteState = Record<string, unknown> | null | undefined;
+
+function isInternalRoute(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.startsWith('/') &&
+    !value.startsWith('//')
+  );
+}
+
+/** Preserve the shell origin while recording the page that opened a detail. */
+export function shellDetailBackState(
+  state: ShellRouteState,
+  from: string
+): Record<string, unknown> {
+  return {
+    ...(state ?? {}),
+    [SHELL_DETAIL_BACK_STATE_KEY]: from,
+  };
+}
+
+/** Resolve a detail's explicit origin, falling back to the shell entry page. */
+export function shellDetailBackTarget(state: ShellRouteState): string | null {
+  const detailOrigin = state?.[SHELL_DETAIL_BACK_STATE_KEY];
+  if (isInternalRoute(detailOrigin)) return detailOrigin;
+
+  const shellOrigin = state?.[SHELL_BACK_STATE_KEY];
+  return isInternalRoute(shellOrigin) ? shellOrigin : null;
+}
+
+/** Remove a consumed detail origin while retaining unrelated router state. */
+export function withoutShellDetailBackState(
+  state: ShellRouteState
+): Record<string, unknown> | undefined {
+  if (!state) return undefined;
+  const next = { ...state };
+  delete next[SHELL_DETAIL_BACK_STATE_KEY];
+  return next;
 }
 
 /** Match the canonical Home management surface and its legacy Settings URL. */

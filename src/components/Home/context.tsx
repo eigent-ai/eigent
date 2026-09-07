@@ -38,6 +38,7 @@ export type HomeHubContextValue = {
   setSortBy: (sortBy: HomeSortBy) => void;
   sortDirection: HomeSortDirection;
   setSortDirection: (direction: HomeSortDirection) => void;
+  openNewSpaceDialog: () => void;
   projects: ProjectGroupType[];
   projectsLoading: boolean;
   triggers: Trigger[];

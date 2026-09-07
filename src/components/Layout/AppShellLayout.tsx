@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { cn } from '@/lib/utils';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
 
 import { SIDEBAR_FOLD_SPRING } from './AppSidebar/constants';
@@ -68,6 +68,10 @@ export default function AppShellLayout({
   contentClassName,
 }: AppShellLayoutProps) {
   const sidebarRailRef = useRef<HTMLDivElement>(null);
+  const shouldReduceMotion = Boolean(useReducedMotion());
+  const sidebarTransition = shouldReduceMotion
+    ? { duration: 0 }
+    : SIDEBAR_FOLD_SPRING;
 
   // React 18 does not support the boolean `inert` JSX prop. Set the native
   // attribute before paint so a folded rail and all of its descendants leave
@@ -100,7 +104,8 @@ export default function AppShellLayout({
               ? 0
               : APP_SHELL_SIDEBAR_WIDTH_PX + APP_SHELL_COLUMN_GAP_PX,
           }}
-          transition={SIDEBAR_FOLD_SPRING}
+          transition={sidebarTransition}
+          data-sidebar-motion={shouldReduceMotion ? 'instant' : 'spring'}
           aria-hidden={sidebarHidden}
           style={{ pointerEvents: sidebarHidden ? 'none' : undefined }}
         >
@@ -113,11 +118,7 @@ export default function AppShellLayout({
           </div>
         </motion.div>
 
-        <motion.div
-          layout
-          transition={{ layout: SIDEBAR_FOLD_SPRING }}
-          className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-        >
+        <div className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {contentSurface ? (
             <div
               className={cn(APP_SHELL_CONTENT_SURFACE_CLASS, contentClassName)}
@@ -127,7 +128,7 @@ export default function AppShellLayout({
           ) : (
             children
           )}
-        </motion.div>
+        </div>
       </div>
       {overlay}
     </div>

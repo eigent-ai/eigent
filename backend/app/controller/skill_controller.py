@@ -16,6 +16,7 @@ import logging
 from typing import Annotated
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
 
 from app.service.skill_config_service import (
     skill_config_delete,
@@ -26,6 +27,7 @@ from app.service.skill_config_service import (
 )
 from app.service.skill_service import (
     skill_delete,
+    skill_file_path,
     skill_get_path_by_name,
     skill_import_zip,
     skill_list_files,
@@ -215,7 +217,7 @@ def skill_remove(skill_dir_name: str) -> dict:
 
 @router.get("/skills/{skill_dir_name}/files")
 def skill_files(skill_dir_name: str) -> dict:
-    """List files in skill directory."""
+    """List regular files in a skill package recursively."""
     try:
         files = skill_list_files(skill_dir_name)
         return {"success": True, "files": files}
@@ -223,3 +225,21 @@ def skill_files(skill_dir_name: str) -> dict:
         raise HTTPException(status_code=400, detail=str(e))
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Skill not found")
+
+
+@router.get("/skills/{skill_dir_name}/file")
+def skill_file(
+    skill_dir_name: str,
+    path: str = Query(..., description="Relative path inside the skill"),
+) -> FileResponse:
+    """Stream one regular file contained by a skill package."""
+    try:
+        return FileResponse(skill_file_path(skill_dir_name, path))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Skill file not found")

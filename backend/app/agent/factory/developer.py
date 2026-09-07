@@ -35,7 +35,6 @@ from app.agent.toolkit.screenshot_toolkit import ScreenshotToolkit
 from app.agent.toolkit.search_toolkit import SearchToolkit
 from app.agent.toolkit.skill_toolkit import SkillToolkit
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
-from app.agent.toolkit.web_deploy_toolkit import WebDeployToolkit
 from app.agent.utils import NOW_STR
 from app.hands.interface import IHands
 from app.model.chat import Chat
@@ -63,10 +62,6 @@ async def developer_agent(
         working_directory=working_directory,
     )
     note_toolkit = message_integration.register_toolkits(note_toolkit)
-    web_deploy_toolkit = WebDeployToolkit(api_task_id=options.project_id)
-    web_deploy_toolkit = message_integration.register_toolkits(
-        web_deploy_toolkit
-    )
     screenshot_toolkit = ScreenshotToolkit(
         options.project_id,
         working_directory=working_directory,
@@ -98,7 +93,6 @@ async def developer_agent(
             options.project_id, Agents.developer_agent
         ),
         *note_toolkit.get_tools(),
-        *web_deploy_toolkit.get_tools(),
         *screenshot_toolkit.get_tools(),
         *skill_toolkit.get_tools(),
         *search_tools,
@@ -106,7 +100,6 @@ async def developer_agent(
     tool_names = [
         HumanToolkit.toolkit_name(),
         NoteTakingToolkit.toolkit_name(),
-        WebDeployToolkit.toolkit_name(),
         ScreenshotToolkit.toolkit_name(),
         SkillToolkit.toolkit_name(),
     ]

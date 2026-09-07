@@ -30,6 +30,13 @@ import {
   proxyFetchPut,
 } from '@/api/http';
 import SearchInput from '@/components/Dashboard/SearchInput';
+import CollectionToolbar, {
+  COLLECTION_RAIL_CLASS,
+  COLLECTION_TOOLBAR_SEARCH_CLASS,
+} from '@/components/Layout/CollectionToolbar';
+import ContentBreadcrumb from '@/components/Layout/ContentBreadcrumb';
+import ContentHeader from '@/components/Layout/ContentHeader';
+import DocumentContentRail from '@/components/Layout/DocumentContentRail';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -38,7 +45,23 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   useIntegrationManagement,
   type IntegrationItem,
@@ -53,6 +76,7 @@ import {
   QUERIT_ENABLED,
   SEARCH_ENGINE_ID,
 } from '@/lib/searchConfig';
+import { shellDetailBackState } from '@/lib/shellRoutes';
 import { useAuthStore } from '@/store/authStore';
 import { useServerCapabilityStore } from '@/store/serverCapabilityStore';
 import type { TFunction } from 'i18next';
@@ -66,27 +90,24 @@ import {
   Server,
   Trash2,
   Wrench,
+  X,
 } from 'lucide-react';
 import {
   lazy,
   Suspense,
   useCallback,
   useEffect,
-  useId,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import {
-  SettingsHeaderActions,
-  useSettingsHeader,
-} from '../SettingsHeaderContext';
-import SettingsSection from '../SettingsSection';
+import SettingsContentShell from '../SettingsContentShell';
 import SettingsSectionPage from '../SettingsSectionPage';
+import { usePublishConnectorsNavigation } from './ConnectorsNavigationContext';
 import ConnectorBrowserPage, {
   actionLabel,
   isConnectedProvider,
@@ -95,6 +116,9 @@ import ConnectorBrowserPage, {
   providerLabel,
   type AddConnectorTarget,
 } from './components/ConnectorBrowserPage';
+import ConnectorSourceTag, {
+  type ConnectorSourceTagKind,
+} from './components/ConnectorSourceTag';
 import MCPConfigDialog from './components/MCPConfigDialog';
 import MCPDeleteDialog from './components/MCPDeleteDialog';
 import { SearchSettingsPanel } from './components/SearchSettingsPanel';
@@ -107,7 +131,17 @@ import { arrayToArgsJson, parseArgsToArray } from './components/utils';
 
 const IS_LOCAL_MODE = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
 const OVERVIEW_ID = '__overview__';
-type ConnectorPage = 'overview' | 'browse' | 'custom';
+type AddConnectorTab = 'browse' | 'local' | 'remote';
+const RECOMMENDATIONS_DISMISSED_KEY =
+  'eigent.connectors.recommendations-dismissed.v1';
+const CONNECTOR_TABLE_ROW_CLASS = [
+  'border-0 border-x-0 border-y-0 bg-transparent hover:bg-transparent data-[state=selected]:bg-transparent',
+  '[&>td]:border-x-0 [&>td]:border-y [&>td]:border-solid [&>td]:border-transparent',
+  '[&>td]:bg-ds-neutral-subtle-default [&>td]:transition-colors [&>td]:duration-150 motion-reduce:[&>td]:transition-none',
+  '[&>td:first-child]:rounded-s-ds-field [&>td:first-child]:border-x-0 [&>td:first-child]:border-y [&>td:first-child]:border-s [&>td:first-child]:border-e-0',
+  '[&>td:last-child]:rounded-e-ds-field [&>td:last-child]:border-x-0 [&>td:last-child]:border-y [&>td:last-child]:border-s-0 [&>td:last-child]:border-e',
+  '[&:hover>td]:border-ds-hairline-subtle-default [&:hover>td]:bg-ds-neutral-default-hover',
+].join(' ');
 const loadAddCustomConnectorPage = () =>
   import('./components/AddCustomConnectorPage');
 const AddCustomConnectorPage = lazy(loadAddCustomConnectorPage);
@@ -121,10 +155,6 @@ const HIDDEN_BUILT_INS = new Set([
   'Reddit',
   'Github',
 ]);
-
-/** Shared surface for recommended and installed connector cards. */
-const CONNECTOR_ITEM_SURFACE_CLASS =
-  'rounded-2xl border-x border-y border border-solid border-transparent !bg-ds-neutral-subtle-default transition-colors hover:border-ds-hairline-default-default hover:!bg-ds-neutral-subtle-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring-focus';
 
 /** Preferred hosted connector service keys for the overview recommendations. */
 const RECOMMENDED_SERVICE_KEYS = [
@@ -286,6 +316,27 @@ function sourceLabel(item: ConnectorListItem, t: TFunction): string {
     : t('connectors.source-local');
 }
 
+function sourceTagKind(item: ConnectorListItem): ConnectorSourceTagKind {
+  if (item.source !== 'custom') return item.source;
+  return item.subtype;
+}
+
+function addConnectorTargetId(
+  target: Exclude<AddConnectorTarget, null>
+): string {
+  return target.source === 'open'
+    ? `open:${target.provider.service}`
+    : `builtin:${target.item.key}`;
+}
+
+function addConnectorTargetName(
+  target: Exclude<AddConnectorTarget, null>
+): string {
+  return target.source === 'open'
+    ? providerLabel(target.provider)
+    : target.item.name;
+}
+
 function connectorListRank(item: ConnectorListItem): number {
   if (item.source === 'custom') return 0;
   if (item.source === 'open') return 1;
@@ -349,11 +400,11 @@ async function resolveOpenProviderByName(
 }
 
 export default function ConnectorGateway() {
-  const { t } = useTranslation();
-  const connectorCardListId = useId();
-  const connectorHeaderTitle = t('layout.connectors');
-  const { setHeaderOverride } = useSettingsHeader();
+  const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
+  const publishItems = usePublishConnectorsNavigation();
   const { checkAgentTool, modelType } = useAuthStore();
   const capabilityStatus = useServerCapabilityStore((state) => state.status);
   const connectorGatewayEnabled = useServerCapabilityStore((state) =>
@@ -370,21 +421,33 @@ export default function ConnectorGateway() {
   );
   const [openConnectionsLoaded, setOpenConnectionsLoaded] =
     useState(IS_LOCAL_MODE);
-  const [selectedId, setSelectedId] = useState<string>(OVERVIEW_ID);
   const [recommendedProviders, setRecommendedProviders] = useState<
     ConnectorProvider[]
   >([]);
   const [recommendedLoading, setRecommendedLoading] = useState(!IS_LOCAL_MODE);
   const [openDetail, setOpenDetail] = useState<ConnectorProvider | null>(null);
   const [listQuery, setListQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [loadingOpen, setLoadingOpen] = useState(false);
   const [loadingCustom, setLoadingCustom] = useState(true);
   const [loadingBuiltIns, setLoadingBuiltIns] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
-  const [connectorPage, setConnectorPage] = useState<ConnectorPage>('overview');
   const [browseTarget, setBrowseTarget] = useState<AddConnectorTarget>(null);
+  const [browseQuery, setBrowseQuery] = useState('');
+  const [recommendationsDismissed, setRecommendationsDismissed] = useState(
+    () => {
+      try {
+        return (
+          window.localStorage.getItem(RECOMMENDATIONS_DISMISSED_KEY) === 'true'
+        );
+      } catch {
+        return false;
+      }
+    }
+  );
   const [showConfig, setShowConfig] = useState<MCPUserItem | null>(null);
   const [configForm, setConfigForm] = useState<MCPConfigForm | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
@@ -394,6 +457,77 @@ export default function ConnectorGateway() {
   const [actionsOverflow, setActionsOverflow] = useState(false);
   const preferredSelectionRef = useRef<ConnectorInstallHint | null>(null);
   const actionsListRef = useRef<HTMLDivElement | null>(null);
+  const detailHeadingRef = useRef<HTMLHeadingElement>(null);
+  const translationRef = useRef(t);
+  const locale = i18n.resolvedLanguage || i18n.language;
+  const selectedId = searchParams.get('connectorId') || OVERVIEW_ID;
+  const connectorView = searchParams.get('connectorView');
+  const connectorTargetId =
+    connectorView === 'add' ? searchParams.get('connectorTarget') : null;
+  const addTabValue = searchParams.get('connectorAdd');
+  const addTab: AddConnectorTab =
+    addTabValue === 'local' || addTabValue === 'remote'
+      ? addTabValue
+      : 'browse';
+
+  const updateConnectorLocation = useCallback(
+    ({
+      connectorId,
+      view,
+      tab,
+      targetId,
+      replace,
+    }: {
+      connectorId?: string | null;
+      view?: 'add' | null;
+      tab?: AddConnectorTab;
+      targetId?: string | null;
+      replace?: boolean;
+    }) => {
+      const next = new URLSearchParams(searchParams);
+      next.set('section', 'settings');
+      next.set('tab', 'connectors');
+      if (connectorId) next.set('connectorId', connectorId);
+      else next.delete('connectorId');
+      if (view === 'add') {
+        next.set('connectorView', 'add');
+        next.set('connectorAdd', tab || 'browse');
+        if (targetId) next.set('connectorTarget', targetId);
+        else next.delete('connectorTarget');
+      } else {
+        next.delete('connectorView');
+        next.delete('connectorAdd');
+        next.delete('connectorTarget');
+      }
+      const isCurrentSubpage =
+        selectedId !== OVERVIEW_ID || connectorView === 'add';
+      const opensSubpage = Boolean(connectorId || view === 'add');
+      const state =
+        !isCurrentSubpage && opensSubpage
+          ? shellDetailBackState(
+              location.state as Record<string, unknown> | null,
+              `${location.pathname}${location.search}`
+            )
+          : location.state;
+      setSearchParams(next, {
+        replace: replace ?? isCurrentSubpage,
+        state,
+      });
+    },
+    [
+      connectorView,
+      location.pathname,
+      location.search,
+      location.state,
+      searchParams,
+      selectedId,
+      setSearchParams,
+    ]
+  );
+
+  useEffect(() => {
+    translationRef.current = t;
+  }, [t]);
 
   const {
     installed: rawBuiltInInstalled,
@@ -431,18 +565,107 @@ export default function ConnectorGateway() {
     [exposedBuiltInItems, searchRequiresApiKey]
   );
 
+  useEffect(() => {
+    if (connectorView !== 'add' || !connectorTargetId) {
+      setBrowseTarget(null);
+      return;
+    }
+    setBrowseTarget(null);
+
+    if (connectorTargetId.startsWith('builtin:')) {
+      const key = connectorTargetId.slice('builtin:'.length);
+      const item = dialogBuiltInItems.find(
+        (candidate) => candidate.key === key
+      );
+      if (item) {
+        setBrowseTarget((current) =>
+          current?.source === 'builtin' && current.item.key === item.key
+            ? current
+            : { source: 'builtin', item }
+        );
+      } else if (!loadingBuiltIns) {
+        updateConnectorLocation({
+          view: 'add',
+          tab: 'browse',
+          targetId: null,
+        });
+      }
+      return;
+    }
+
+    if (!connectorTargetId.startsWith('open:')) {
+      updateConnectorLocation({
+        view: 'add',
+        tab: 'browse',
+        targetId: null,
+      });
+      return;
+    }
+    const service = connectorTargetId.slice('open:'.length);
+    const knownProvider = [...openConnections, ...recommendedProviders].find(
+      (provider) => provider.service === service
+    );
+    if (knownProvider) {
+      setBrowseTarget((current) =>
+        current?.source === 'open' &&
+        current.provider.service === knownProvider.service
+          ? current
+          : { source: 'open', provider: knownProvider }
+      );
+      return;
+    }
+
+    let cancelled = false;
+    void fetchConnectorProvider(service)
+      .then((response) => {
+        if (!cancelled) {
+          setBrowseTarget({ source: 'open', provider: response.provider });
+        }
+      })
+      .catch(async () => {
+        const provider = await resolveOpenProviderByName(service);
+        if (!cancelled) {
+          if (provider) {
+            setBrowseTarget({ source: 'open', provider });
+          } else {
+            updateConnectorLocation({
+              view: 'add',
+              tab: 'browse',
+              targetId: null,
+            });
+          }
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    connectorTargetId,
+    connectorView,
+    dialogBuiltInItems,
+    loadingBuiltIns,
+    openConnections,
+    recommendedProviders,
+    updateConnectorLocation,
+  ]);
+
   const loadBuiltInCatalog = useCallback(async () => {
+    // Rebuild translated built-in names and descriptions after a locale switch.
+    void locale;
     setLoadingBuiltIns(true);
     try {
       const response = await proxyFetchGet('/api/v1/config/info');
-      setBuiltInItems(buildBuiltInItems(response, t));
+      setBuiltInItems(buildBuiltInItems(response, translationRef.current));
     } catch (error: any) {
-      setPageError(error?.message || t('connectors.load-built-in-failed'));
-      setBuiltInItems(buildBuiltInItems({}, t));
+      setPageError(
+        error?.message ||
+          translationRef.current('connectors.load-built-in-failed')
+      );
+      setBuiltInItems(buildBuiltInItems({}, translationRef.current));
     } finally {
       setLoadingBuiltIns(false);
     }
-  }, [t]);
+  }, [locale]);
 
   const loadCustomMcps = useCallback(async () => {
     setLoadingCustom(true);
@@ -456,12 +679,15 @@ export default function ConnectorGateway() {
             : []
       );
     } catch (error: any) {
-      setPageError(error?.message || t('connectors.load-custom-failed'));
+      setPageError(
+        error?.message ||
+          translationRef.current('connectors.load-custom-failed')
+      );
       setCustomMcps([]);
     } finally {
       setLoadingCustom(false);
     }
-  }, [t]);
+  }, []);
 
   const loadOpenConnections = useCallback(async () => {
     if (!connectorGatewayEnabled) {
@@ -474,13 +700,16 @@ export default function ConnectorGateway() {
     try {
       setOpenConnections(await fetchConnectedProviders());
     } catch (error: any) {
-      setPageError(error?.message || t('connectors.load-gateway-failed'));
+      setPageError(
+        error?.message ||
+          translationRef.current('connectors.load-gateway-failed')
+      );
       setOpenConnections([]);
     } finally {
       setLoadingOpen(false);
       setOpenConnectionsLoaded(true);
     }
-  }, [connectorGatewayEnabled, t]);
+  }, [connectorGatewayEnabled]);
 
   const refreshAll = useCallback(async () => {
     setPageError(null);
@@ -610,21 +839,23 @@ export default function ConnectorGateway() {
         );
       });
       if (match) {
-        setSelectedId(match.id);
+        updateConnectorLocation({ connectorId: match.id });
         preferredSelectionRef.current = null;
         return;
       }
     }
-
-    if (selectedId === OVERVIEW_ID) return;
-    if (connectorItems.some((item) => item.id === selectedId)) return;
-    setSelectedId(OVERVIEW_ID);
-  }, [connectorItems, selectedId]);
+  }, [connectorItems, updateConnectorLocation]);
 
   const selected = useMemo(
     () => connectorItems.find((item) => item.id === selectedId) || null,
     [connectorItems, selectedId]
   );
+
+  useEffect(() => {
+    if (selected) {
+      detailHeadingRef.current?.focus({ preventScroll: true });
+    }
+  }, [selected]);
 
   const selectedOpenService =
     selected?.source === 'open' ? selected.provider.service : null;
@@ -671,17 +902,14 @@ export default function ConnectorGateway() {
     if (action !== 'add' && section !== 'mcp-tools' && section !== 'your-mcp') {
       return;
     }
-    if (section === 'your-mcp') {
-      setConnectorPage('custom');
-    } else {
-      setBrowseTarget(null);
-      setConnectorPage('browse');
-    }
     const next = new URLSearchParams(searchParams);
     next.delete('connectorAction');
     next.delete('connectorSection');
-    setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams]);
+    next.delete('connectorId');
+    next.set('connectorView', 'add');
+    next.set('connectorAdd', section === 'your-mcp' ? 'local' : 'browse');
+    setSearchParams(next, { replace: true, state: location.state });
+  }, [location.state, searchParams, setSearchParams]);
 
   useEffect(() => {
     if (!showConfig) {
@@ -701,13 +929,19 @@ export default function ConnectorGateway() {
 
   const visibleItems = useMemo(() => {
     const query = listQuery.trim().toLowerCase();
-    if (!query) return connectorItems;
-    return connectorItems.filter(
-      (item) =>
+    return connectorItems.filter((item) => {
+      const matchesQuery =
+        !query ||
         item.name.toLowerCase().includes(query) ||
-        sourceLabel(item, t).toLowerCase().includes(query)
-    );
-  }, [connectorItems, listQuery, t]);
+        sourceLabel(item, t).toLowerCase().includes(query);
+      const itemType = item.source === 'custom' ? item.subtype : item.source;
+      const matchesType = typeFilter === 'all' || itemType === typeFilter;
+      const matchesStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'active' ? item.active : !item.active);
+      return matchesQuery && matchesType && matchesStatus;
+    });
+  }, [connectorItems, listQuery, statusFilter, t, typeFilter]);
 
   const openBrowsePage = useCallback(
     (target: AddConnectorTarget = null) => {
@@ -716,31 +950,48 @@ export default function ConnectorGateway() {
       // background so the button never feels dead.
       if (!IS_LOCAL_MODE && target?.source === 'builtin') {
         setBrowseTarget(null);
-        setConnectorPage('browse');
+        updateConnectorLocation({
+          view: 'add',
+          tab: 'browse',
+          targetId: null,
+        });
         if (connectorGatewayEnabled) {
           const builtInKey = target.item.key;
           void resolveOpenProviderByName(builtInKey).then((provider) => {
             if (provider) {
               setBrowseTarget({ source: 'open', provider });
+              updateConnectorLocation({
+                view: 'add',
+                tab: 'browse',
+                targetId: `open:${provider.service}`,
+                replace: true,
+              });
             }
           });
         }
         return;
       }
       setBrowseTarget(target);
-      setConnectorPage('browse');
+      updateConnectorLocation({
+        view: 'add',
+        tab: 'browse',
+        targetId: target ? addConnectorTargetId(target) : null,
+      });
     },
-    [connectorGatewayEnabled]
+    [connectorGatewayEnabled, updateConnectorLocation]
   );
-
-  const openCustomPage = useCallback(() => {
-    setConnectorPage('custom');
-  }, []);
 
   const closeConnectorSubpage = useCallback(() => {
     setBrowseTarget(null);
-    setConnectorPage('overview');
-  }, []);
+    updateConnectorLocation({ connectorId: null });
+  }, [updateConnectorLocation]);
+  const backToAddConnector = useCallback(() => {
+    setBrowseTarget(null);
+    updateConnectorLocation({ view: 'add', tab: 'browse', targetId: null });
+  }, [updateConnectorLocation]);
+  const navigateHome = useCallback(() => {
+    navigate('/home?section=spaces');
+  }, [navigate]);
 
   const openRecommendedConnector = (provider: ConnectorProvider) => {
     const existing = connectorItems.find(
@@ -748,26 +999,11 @@ export default function ConnectorGateway() {
         item.source === 'open' && item.provider.service === provider.service
     );
     if (existing) {
-      setSelectedId(existing.id);
+      updateConnectorLocation({ connectorId: existing.id });
       return;
     }
     openBrowsePage({ source: 'open', provider });
   };
-
-  useEffect(() => {
-    if (connectorPage !== 'overview') return;
-    setHeaderOverride(
-      selected
-        ? {
-            title: selected.name,
-            onBack: () => setSelectedId(OVERVIEW_ID),
-          }
-        : {
-            title: connectorHeaderTitle,
-          }
-    );
-    return () => setHeaderOverride(null);
-  }, [connectorHeaderTitle, connectorPage, selected, setHeaderOverride]);
 
   const handleInstalled = useCallback(
     async (hint: ConnectorInstallHint) => {
@@ -929,6 +1165,67 @@ export default function ConnectorGateway() {
     loadingCustom ||
     loadingBuiltIns;
 
+  useEffect(() => {
+    const navigationItems = connectorItems.map((item) => ({
+      id: item.id,
+      name: item.name,
+      source: item.source,
+      subtype: item.source === 'custom' ? item.subtype : undefined,
+      active: item.active,
+      iconUrl:
+        item.source === 'open' ? item.provider.iconUrl || undefined : undefined,
+      builtInKey: item.source === 'builtin' ? item.item.key : undefined,
+    }));
+    if (browseTarget) {
+      const targetId = addConnectorTargetId(browseTarget);
+      if (!navigationItems.some((item) => item.id === targetId)) {
+        navigationItems.unshift({
+          id: targetId,
+          name: addConnectorTargetName(browseTarget),
+          source: browseTarget.source,
+          subtype: undefined,
+          active:
+            browseTarget.source === 'open'
+              ? isConnectedProvider(browseTarget.provider)
+              : Boolean(builtInInstalled[browseTarget.item.key]),
+          iconUrl:
+            browseTarget.source === 'open'
+              ? browseTarget.provider.iconUrl || undefined
+              : undefined,
+          builtInKey:
+            browseTarget.source === 'builtin'
+              ? browseTarget.item.key
+              : undefined,
+        });
+      }
+    }
+    publishItems(navigationItems, pageLoading);
+  }, [
+    browseTarget,
+    builtInInstalled,
+    connectorItems,
+    pageLoading,
+    publishItems,
+  ]);
+
+  useEffect(() => {
+    if (
+      selectedId === OVERVIEW_ID ||
+      selected ||
+      pageLoading ||
+      connectorView === 'add'
+    ) {
+      return;
+    }
+    updateConnectorLocation({ connectorId: null });
+  }, [
+    connectorView,
+    pageLoading,
+    selected,
+    selectedId,
+    updateConnectorLocation,
+  ]);
+
   const renderListIcon = (item: ConnectorListItem) => {
     if (item.source === 'open') {
       return <ProviderIcon provider={item.provider} size="list" />;
@@ -953,99 +1250,102 @@ export default function ConnectorGateway() {
     item.item.key === 'Search' &&
     !searchRequiresApiKey;
 
-  const renderDetailHeader = (item: ConnectorListItem) => (
-    <div className="mx-6 flex items-center gap-3 border-x-0 border-t-0 border-b border-solid border-ds-hairline-default-default py-4">
-      {item.source === 'open' ? (
-        <ProviderIcon provider={openDetail || item.provider} size="detail" />
-      ) : (
-        renderListIcon(item)
-      )}
-      <span className="min-w-0 flex-1 truncate text-ds-text-base font-bold text-ds-ink-default-default">
-        {item.name}
-      </span>
-      {item.source !== 'open' ? (
-        <Badge
-          size="xs"
+  const renderDetailActions = (item: ConnectorListItem) => (
+    <>
+      {item.source === 'custom' ? (
+        <Switch
           variant="outline"
-          className="shrink-0 whitespace-nowrap"
+          checked={item.active}
+          disabled={actionLoading}
+          onCheckedChange={(checked) =>
+            void handleCustomSwitch(item.item, checked)
+          }
+          aria-label={
+            item.active
+              ? t('connectors.disable-connector')
+              : t('connectors.enable-connector')
+          }
+        />
+      ) : item.source === 'builtin' && item.item.key === 'Search' ? null : (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() =>
+            openBrowsePage(
+              item.source === 'open'
+                ? { source: 'open', provider: item.provider }
+                : { source: 'builtin', item: item.item }
+            )
+          }
         >
-          {sourceLabel(item, t)}
-        </Badge>
-      ) : null}
-      <div className="flex shrink-0 items-center gap-1">
-        {item.source === 'custom' ? (
-          <Switch
-            variant="outline"
-            checked={item.active}
-            disabled={actionLoading}
-            onCheckedChange={(checked) =>
-              void handleCustomSwitch(item.item, checked)
-            }
-            aria-label={
-              item.active
-                ? t('connectors.disable-connector')
-                : t('connectors.enable-connector')
-            }
-          />
-        ) : item.source === 'builtin' && item.item.key === 'Search' ? null : (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() =>
-              openBrowsePage(
-                item.source === 'open'
-                  ? { source: 'open', provider: item.provider }
-                  : { source: 'builtin', item: item.item }
-              )
-            }
-          >
-            <ExternalLink className="h-4 w-4" />
-            {t('connectors.open')}
-          </Button>
-        )}
-        {isDefaultEnabledSearch(item) ? null : (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                buttonContent="icon-only"
-                size="sm"
-                disabled={actionLoading}
-                aria-label={t('connectors.more-actions')}
-              >
-                <Ellipsis className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {item.source === 'custom' ? (
-                <DropdownMenuItem onClick={() => setShowConfig(item.item)}>
-                  <Pencil className="h-4 w-4" />
-                  {t('connectors.edit')}
-                </DropdownMenuItem>
-              ) : null}
-              <DropdownMenuItem
-                disabled={actionLoading}
-                className="text-ds-text-error-default-default focus:text-ds-text-error-default-default"
-                onClick={() => {
-                  if (item.source === 'open') {
-                    void handleDisconnectOpen(item.provider);
-                    return;
-                  }
-                  if (item.source === 'builtin') {
-                    void handleDisconnectBuiltIn(item.item);
-                    return;
-                  }
-                  setDeleteTarget(item.item);
-                }}
-              >
-                <Trash2 className="h-4 w-4" />
-                {t('connectors.delete')}
+          <ExternalLink className="h-4 w-4" />
+          {t('connectors.open')}
+        </Button>
+      )}
+      {isDefaultEnabledSearch(item) ? null : (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              buttonContent="icon-only"
+              size="sm"
+              disabled={actionLoading}
+              aria-label={t('connectors.more-actions')}
+            >
+              <Ellipsis className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {item.source === 'custom' ? (
+              <DropdownMenuItem onClick={() => setShowConfig(item.item)}>
+                <Pencil className="h-4 w-4" />
+                {t('connectors.edit')}
               </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+            ) : null}
+            <DropdownMenuItem
+              disabled={actionLoading}
+              className="text-ds-text-error-default-default focus:text-ds-text-error-default-default"
+              onClick={() => {
+                if (item.source === 'open') {
+                  void handleDisconnectOpen(item.provider);
+                  return;
+                }
+                if (item.source === 'builtin') {
+                  void handleDisconnectBuiltIn(item.item);
+                  return;
+                }
+                setDeleteTarget(item.item);
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+              {item.source === 'custom'
+                ? t('connectors.delete')
+                : t('connectors.disconnect')}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </>
+  );
+
+  const renderDetailIdentity = (item: ConnectorListItem) => (
+    <div className="flex min-w-0 items-center gap-ds-12">
+      {item.source === 'open' ? (
+        <ProviderIcon provider={openDetail || item.provider} size="lg" />
+      ) : (
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-ds-card bg-ds-neutral-subtle-default">
+          {renderListIcon(item)}
+        </div>
+      )}
+      <div className="min-w-0">
+        <span className="block truncate text-ds-text-section font-semibold text-ds-ink-default-default">
+          {item.name}
+        </span>
+        <ConnectorSourceTag kind={sourceTagKind(item)} className="mt-ds-4">
+          {sourceLabel(item, t)}
+        </ConnectorSourceTag>
       </div>
     </div>
   );
@@ -1221,14 +1521,40 @@ export default function ConnectorGateway() {
   };
 
   const renderDetailPanel = (item: ConnectorListItem) => (
-    <div className="flex min-h-0 w-full flex-1 flex-col rounded-2xl bg-ds-neutral-subtle-default">
-      {renderDetailHeader(item)}
-      <div className="space-y-5 px-6 py-4">
-        {item.source === 'open'
-          ? renderOpenDetailBody(item)
-          : item.source === 'builtin'
-            ? renderBuiltInDetailBody(item)
-            : renderCustomDetailBody(item)}
+    <div className="flex min-h-full min-w-0 flex-col" data-connector-detail>
+      <ContentHeader
+        className="gap-ds-12 px-ds-16"
+        titleAsChild
+        title={
+          <ContentBreadcrumb
+            headingRef={detailHeadingRef}
+            ariaLabel={t('layout.breadcrumb', { defaultValue: 'Breadcrumb' })}
+            segments={[
+              {
+                label: t('layout.home', { defaultValue: 'Home' }),
+                onClick: navigateHome,
+              },
+              {
+                label: t('connectors.connector'),
+                onClick: closeConnectorSubpage,
+              },
+              { label: item.name },
+            ]}
+          />
+        }
+        actions={renderDetailActions(item)}
+      />
+      <div className="px-ds-24 py-ds-24">
+        <DocumentContentRail className="flex flex-col gap-ds-24">
+          {renderDetailIdentity(item)}
+          <div className="flex flex-col gap-ds-16">
+            {item.source === 'open'
+              ? renderOpenDetailBody(item)
+              : item.source === 'builtin'
+                ? renderBuiltInDetailBody(item)
+                : renderCustomDetailBody(item)}
+          </div>
+        </DocumentContentRail>
       </div>
     </div>
   );
@@ -1236,11 +1562,11 @@ export default function ConnectorGateway() {
   const renderRecommendedConnectors = () => {
     if (recommendedLoading && recommendedProviders.length === 0) {
       return (
-        <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3">
+        <div className="flex w-full flex-wrap gap-ds-8">
           {Array.from({ length: 6 }).map((_, index) => (
             <div
               key={index}
-              className="h-16 animate-pulse rounded-2xl bg-ds-neutral-subtle-default"
+              className="rounded-ds-control h-ds-control-sm w-28 animate-pulse bg-ds-neutral-strong-default motion-reduce:animate-none"
             />
           ))}
         </div>
@@ -1258,38 +1584,42 @@ export default function ConnectorGateway() {
     }
 
     return (
-      <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3">
+      <div className="flex w-full flex-wrap gap-ds-8">
         {recommendedProviders.slice(0, 6).map((provider) => {
           const liveProvider =
             openConnections.find((item) => item.service === provider.service) ||
             provider;
           return (
-            <button
+            <Button
               key={provider.service}
               type="button"
+              variant="outline"
+              size="sm"
               onClick={() => openRecommendedConnector(liveProvider)}
-              className={`group flex h-16 min-w-0 items-center gap-3 px-3 text-left ${CONNECTOR_ITEM_SURFACE_CLASS}`}
+              className="min-w-0"
             >
-              <ProviderIcon provider={liveProvider} />
-              <span className="min-w-0 flex-1 truncate text-ds-text-base font-bold text-ds-ink-default-default">
+              <ProviderIcon provider={liveProvider} size="list" />
+              <span className="max-w-32 truncate">
                 {providerLabel(liveProvider)}
               </span>
-              <Plus className="h-4 w-4 shrink-0 text-ds-ink-muted-default transition-colors group-hover:text-ds-ink-default-default" />
-            </button>
+              <Plus aria-hidden />
+            </Button>
           );
         })}
       </div>
     );
   };
 
-  const renderConnectorCards = () => {
+  const renderConnectorTable = () => {
     if (pageLoading && connectorItems.length === 0) {
       return (
-        <div className="flex w-full flex-col gap-2">
+        <div className="flex w-full flex-col gap-ds-4" role="status">
+          <span className="sr-only">{t('connectors.loading')}</span>
           {Array.from({ length: 4 }).map((_, index) => (
             <div
               key={index}
-              className="h-16 animate-pulse rounded-2xl bg-ds-neutral-subtle-default"
+              aria-hidden
+              className="h-14 animate-pulse rounded-ds-field bg-ds-neutral-subtle-default motion-reduce:animate-none"
             />
           ))}
         </div>
@@ -1298,185 +1628,167 @@ export default function ConnectorGateway() {
 
     if (visibleItems.length === 0) {
       return (
-        <div className="flex min-h-32 w-full items-center justify-center text-ds-text-base text-ds-ink-muted-default">
-          {t('connectors.no-matching')}
+        <div className="flex min-h-40 w-full flex-col items-center justify-center gap-ds-12 rounded-ds-card bg-ds-neutral-subtle-default px-ds-24 text-center">
+          <span className="text-ds-text-base text-ds-ink-muted-default">
+            {connectorItems.length === 0
+              ? t('connectors.no-connectors')
+              : t('connectors.no-matching')}
+          </span>
+          {connectorItems.length === 0 ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              buttonRadius="full"
+              onClick={() => openBrowsePage()}
+            >
+              {t('connectors.add-connector')}
+            </Button>
+          ) : null}
         </div>
       );
     }
 
     return (
-      <div className="flex w-full flex-col gap-2">
-        {visibleItems.map((item, index) => {
-          const cardId = `${connectorCardListId}-connector-${index}`;
-          const statusLabel = item.active
-            ? t('connectors.connected')
-            : t('connectors.not-connected');
-
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setSelectedId(item.id)}
-              aria-labelledby={`${cardId}-name`}
-              aria-describedby={`${cardId}-source ${cardId}-status`}
-              className={`group flex min-h-16 w-full min-w-0 items-center gap-3 px-4 py-3 text-left ${CONNECTOR_ITEM_SURFACE_CLASS}`}
-            >
-              {renderListIcon(item)}
-              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span
-                  id={`${cardId}-name`}
-                  className="truncate text-ds-text-base font-medium text-ds-ink-default-default"
-                >
-                  {item.name}
-                </span>
-                <span
-                  id={`${cardId}-source`}
-                  className="truncate text-ds-text-base text-ds-ink-muted-default"
-                >
-                  {sourceLabel(item, t)}
-                </span>
-              </span>
-              <Badge
-                id={`${cardId}-status`}
-                size="sm"
-                variant="secondary"
-                tone={item.active ? 'success' : 'neutral'}
-                className="shrink-0 whitespace-nowrap"
-              >
-                {statusLabel}
-              </Badge>
-            </button>
-          );
-        })}
+      <div className="-m-ds-4 [&>div]:p-ds-4">
+        <Table
+          aria-label={t('connectors.connector-table')}
+          containerClassName="scrollbar-always-visible"
+          className="min-w-[640px] border-separate border-spacing-x-0 border-spacing-y-ds-4 text-start text-ds-text-base"
+        >
+          <TableHeader>
+            <TableRow className="border-ds-hairline-subtle-default hover:bg-transparent [&>th]:whitespace-nowrap">
+              <TableHead className="w-full text-start">
+                {t('connectors.connector')}
+              </TableHead>
+              <TableHead className="w-px text-start">
+                {t('connectors.type')}
+              </TableHead>
+              <TableHead className="text-start">
+                {t('connectors.status')}
+              </TableHead>
+              <TableHead className="text-start">
+                <span className="sr-only">{t('connectors.more-actions')}</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {visibleItems.map((item) => {
+              const statusLabel = item.active
+                ? t('connectors.connected')
+                : t('connectors.not-connected');
+              return (
+                <TableRow key={item.id} className={CONNECTOR_TABLE_ROW_CLASS}>
+                  <TableCell className="w-full max-w-0">
+                    <Button
+                      type="button"
+                      variant="text"
+                      size="sm"
+                      textWeight="medium"
+                      className="w-full min-w-0 justify-start !text-ds-ink-default-default no-underline hover:!text-ds-ink-default-default hover:underline"
+                      title={item.name}
+                      onClick={() =>
+                        updateConnectorLocation({ connectorId: item.id })
+                      }
+                    >
+                      {renderListIcon(item)}
+                      <span className="min-w-0 truncate">{item.name}</span>
+                    </Button>
+                  </TableCell>
+                  <TableCell className="w-px whitespace-nowrap">
+                    <ConnectorSourceTag kind={sourceTagKind(item)}>
+                      {sourceLabel(item, t)}
+                    </ConnectorSourceTag>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex min-h-ds-control-sm items-center gap-ds-8">
+                      {item.source === 'custom' ? (
+                        <Switch
+                          size="sm"
+                          variant="outline"
+                          checked={item.active}
+                          disabled={actionLoading}
+                          onCheckedChange={(checked) =>
+                            void handleCustomSwitch(item.item, checked)
+                          }
+                          aria-label={
+                            item.active
+                              ? t('connectors.disable-connector')
+                              : t('connectors.enable-connector')
+                          }
+                        />
+                      ) : null}
+                      <span className="text-ds-text-base whitespace-nowrap text-ds-ink-muted-default">
+                        {statusLabel}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {isDefaultEnabledSearch(item) ? null : (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            buttonContent="icon-only"
+                            disabled={actionLoading}
+                            aria-label={t('connectors.connector-actions', {
+                              name: item.name,
+                            })}
+                          >
+                            <Ellipsis />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() =>
+                              updateConnectorLocation({ connectorId: item.id })
+                            }
+                          >
+                            <ExternalLink />
+                            {t('connectors.open')}
+                          </DropdownMenuItem>
+                          {item.source === 'custom' ? (
+                            <DropdownMenuItem
+                              onClick={() => setShowConfig(item.item)}
+                            >
+                              <Pencil />
+                              {t('connectors.edit')}
+                            </DropdownMenuItem>
+                          ) : null}
+                          <DropdownMenuItem
+                            disabled={actionLoading}
+                            className="text-ds-text-error-default-default focus:text-ds-text-error-default-default"
+                            onClick={() => {
+                              if (item.source === 'open') {
+                                void handleDisconnectOpen(item.provider);
+                              } else if (item.source === 'builtin') {
+                                void handleDisconnectBuiltIn(item.item);
+                              } else {
+                                setDeleteTarget(item.item);
+                              }
+                            }}
+                          >
+                            <Trash2 />
+                            {item.source === 'custom'
+                              ? t('connectors.delete')
+                              : t('connectors.disconnect')}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
       </div>
     );
   };
 
-  if (connectorPage === 'browse') {
-    return (
-      <ConnectorBrowserPage
-        connectorGatewayEnabled={connectorGatewayEnabled}
-        localMode={IS_LOCAL_MODE}
-        builtInItems={dialogBuiltInItems}
-        builtInInstalled={builtInInstalled}
-        configs={configs}
-        initialTarget={browseTarget}
-        onBack={closeConnectorSubpage}
-        onInstalled={handleInstalled}
-        saveBuiltInValue={saveEnvAndConfig}
-        refreshBuiltIns={refreshBuiltIns}
-      />
-    );
-  }
-
-  if (connectorPage === 'custom') {
-    return (
-      <Suspense
-        fallback={
-          <div
-            role="status"
-            aria-live="polite"
-            className="flex min-h-[420px] w-full flex-col gap-4 py-4"
-          >
-            <span className="sr-only">
-              {t('setting.loading', {
-                defaultValue: 'Loading connector settings',
-              })}
-            </span>
-            <div
-              aria-hidden
-              className="h-12 animate-pulse rounded-2xl bg-ds-neutral-subtle-default motion-reduce:animate-none"
-            />
-            <div
-              aria-hidden
-              className="h-80 animate-pulse rounded-2xl bg-ds-neutral-subtle-default motion-reduce:animate-none"
-            />
-          </div>
-        }
-      >
-        <AddCustomConnectorPage
-          customMcps={customMcps}
-          onBack={closeConnectorSubpage}
-          onInstalled={handleInstalled}
-        />
-      </Suspense>
-    );
-  }
-
-  return (
-    <SettingsSectionPage className={selected ? 'min-h-full' : undefined}>
-      {!selected ? (
-        <SettingsHeaderActions>
-          <div className="w-56 max-w-full">
-            <SearchInput
-              value={listQuery}
-              onChange={(event) => setListQuery(event.target.value)}
-              placeholder={t('connectors.search-placeholder')}
-            />
-          </div>
-          <Button variant="primary" size="sm" onClick={() => openBrowsePage()}>
-            {t('connectors.browse')}
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={openCustomPage}
-            onFocus={preloadAddCustomConnectorPage}
-            onPointerEnter={preloadAddCustomConnectorPage}
-          >
-            <Plus />
-            {t('connectors.add-custom')}
-          </Button>
-        </SettingsHeaderActions>
-      ) : null}
-      {pageError ? (
-        <div className="flex items-center justify-between gap-3 rounded-xl bg-ds-bg-error-subtle-default px-4 py-3 text-ds-text-base text-ds-text-error-strong-default">
-          <span>{pageError}</span>
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={pageLoading}
-            onClick={() => void refreshAll()}
-          >
-            <RefreshCw className="h-4 w-4" />
-            {t('connectors.retry')}
-          </Button>
-        </div>
-      ) : null}
-
-      {selected ? (
-        <SettingsSection
-          titleVariant="hidden"
-          className="min-h-0 flex-1"
-          boxClassName="min-h-[54vh] flex-1 overflow-hidden p-0"
-        >
-          <div className="flex min-h-0 w-full min-w-0 flex-1">
-            {renderDetailPanel(selected)}
-          </div>
-        </SettingsSection>
-      ) : (
-        <>
-          <SettingsSection
-            title={t('connectors.recommended')}
-            boxClassName="p-3"
-          >
-            {renderRecommendedConnectors()}
-          </SettingsSection>
-
-          <SettingsSection
-            title={t('connectors.your-connectors')}
-            action={
-              <Badge size="xs" variant="secondary">
-                {connectorItems.length}
-              </Badge>
-            }
-            boxClassName="p-3"
-          >
-            {renderConnectorCards()}
-          </SettingsSection>
-        </>
-      )}
-
+  const dialogs = (
+    <>
       <MCPConfigDialog
         open={Boolean(showConfig)}
         form={configForm}
@@ -1495,6 +1807,373 @@ export default function ConnectorGateway() {
         onConfirm={handleDelete}
         loading={deleteLoading}
       />
-    </SettingsSectionPage>
+    </>
+  );
+
+  if (connectorView === 'add') {
+    if (connectorTargetId) {
+      const targetName = browseTarget
+        ? addConnectorTargetName(browseTarget)
+        : capitalizeFirstLetter(
+            connectorTargetId
+              .slice(connectorTargetId.indexOf(':') + 1)
+              .replace(/[-_]+/g, ' ')
+          );
+      return (
+        <div
+          className="flex min-h-full min-w-0 flex-col"
+          data-add-connector
+          data-connector-browser-detail
+        >
+          <ContentHeader
+            className="gap-ds-12 px-ds-16"
+            titleAsChild
+            title={
+              <ContentBreadcrumb
+                currentAsHeading={false}
+                ariaLabel={t('layout.breadcrumb', {
+                  defaultValue: 'Breadcrumb',
+                })}
+                segments={[
+                  {
+                    label: t('layout.home', { defaultValue: 'Home' }),
+                    onClick: navigateHome,
+                  },
+                  {
+                    label: t('connectors.connector'),
+                    onClick: closeConnectorSubpage,
+                  },
+                  {
+                    label: t('connectors.add-connector'),
+                    onClick: backToAddConnector,
+                  },
+                  { label: targetName },
+                ]}
+              />
+            }
+          />
+          <div className="mx-auto flex w-full max-w-[964px] flex-col px-8">
+            {browseTarget ? (
+              <ConnectorBrowserPage
+                embedded
+                connectorGatewayEnabled={connectorGatewayEnabled}
+                localMode={IS_LOCAL_MODE}
+                builtInItems={dialogBuiltInItems}
+                builtInInstalled={builtInInstalled}
+                configs={configs}
+                initialTarget={browseTarget}
+                onBack={backToAddConnector}
+                onInstalled={handleInstalled}
+                saveBuiltInValue={saveEnvAndConfig}
+                refreshBuiltIns={refreshBuiltIns}
+              />
+            ) : (
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex min-h-[420px] w-full flex-col gap-ds-16"
+              >
+                <span className="sr-only">{t('connectors.loading')}</span>
+                <div
+                  aria-hidden
+                  className="h-20 animate-pulse rounded-ds-card bg-ds-neutral-subtle-default motion-reduce:animate-none"
+                />
+                <div
+                  aria-hidden
+                  className="h-80 animate-pulse rounded-ds-card bg-ds-neutral-subtle-default motion-reduce:animate-none"
+                />
+              </div>
+            )}
+          </div>
+          {dialogs}
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex min-h-full min-w-0 flex-col" data-add-connector>
+        <ContentHeader
+          className="gap-ds-12 px-ds-16"
+          titleAsChild
+          title={
+            <ContentBreadcrumb
+              ariaLabel={t('layout.breadcrumb', { defaultValue: 'Breadcrumb' })}
+              segments={[
+                {
+                  label: t('layout.home', { defaultValue: 'Home' }),
+                  onClick: navigateHome,
+                },
+                {
+                  label: t('connectors.connector'),
+                  onClick: closeConnectorSubpage,
+                },
+                { label: t('connectors.add-connector') },
+              ]}
+            />
+          }
+        />
+        <div className="mx-auto flex w-full max-w-[964px] flex-col gap-ds-16 px-8 py-ds-24">
+          <Tabs
+            className="flex flex-col gap-ds-16"
+            value={addTab}
+            onValueChange={(value) => {
+              setBrowseTarget(null);
+              updateConnectorLocation({
+                view: 'add',
+                tab: value as AddConnectorTab,
+              });
+            }}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-ds-12">
+              <TabsList appearance="default" className="w-[420px] max-w-full">
+                <TabsTrigger
+                  value="browse"
+                  className="flex-1 !text-ds-text-base"
+                >
+                  {t('connectors.browse')}
+                </TabsTrigger>
+                <TabsTrigger
+                  value="local"
+                  className="flex-1 !text-ds-text-base"
+                  onFocus={preloadAddCustomConnectorPage}
+                  onPointerEnter={preloadAddCustomConnectorPage}
+                >
+                  {t('connectors.source-local')}
+                </TabsTrigger>
+                <TabsTrigger
+                  value="remote"
+                  className="flex-1 !text-ds-text-base"
+                  onFocus={preloadAddCustomConnectorPage}
+                  onPointerEnter={preloadAddCustomConnectorPage}
+                >
+                  {t('connectors.source-remote')}
+                </TabsTrigger>
+              </TabsList>
+              {addTab === 'browse' ? (
+                <div className="w-56 max-w-full">
+                  <SearchInput
+                    value={browseQuery}
+                    onChange={(event) => setBrowseQuery(event.target.value)}
+                    ariaLabel={t('connectors.search-connectors')}
+                    placeholder={t('connectors.search-connectors')}
+                    clearOnEscape
+                  />
+                </div>
+              ) : null}
+            </div>
+            <TabsContent value="browse" className="mt-0">
+              <ConnectorBrowserPage
+                embedded
+                hideSearch
+                searchValue={browseQuery}
+                onSearchValueChange={setBrowseQuery}
+                onSelectTarget={openBrowsePage}
+                connectorGatewayEnabled={connectorGatewayEnabled}
+                localMode={IS_LOCAL_MODE}
+                builtInItems={dialogBuiltInItems}
+                builtInInstalled={builtInInstalled}
+                configs={configs}
+                onBack={closeConnectorSubpage}
+                onInstalled={handleInstalled}
+                saveBuiltInValue={saveEnvAndConfig}
+                refreshBuiltIns={refreshBuiltIns}
+              />
+            </TabsContent>
+            {(['local', 'remote'] as const).map((customType) => (
+              <TabsContent key={customType} value={customType} className="mt-0">
+                <Suspense
+                  fallback={
+                    <div
+                      role="status"
+                      aria-live="polite"
+                      className="flex min-h-[420px] w-full flex-col gap-ds-16 py-ds-16"
+                    >
+                      <span className="sr-only">{t('connectors.loading')}</span>
+                      <div
+                        aria-hidden
+                        className="h-12 animate-pulse rounded-ds-card bg-ds-neutral-subtle-default motion-reduce:animate-none"
+                      />
+                      <div
+                        aria-hidden
+                        className="h-80 animate-pulse rounded-ds-card bg-ds-neutral-subtle-default motion-reduce:animate-none"
+                      />
+                    </div>
+                  }
+                >
+                  <AddCustomConnectorPage
+                    embedded
+                    customType={customType}
+                    customMcps={customMcps}
+                    onBack={closeConnectorSubpage}
+                    onInstalled={handleInstalled}
+                  />
+                </Suspense>
+              </TabsContent>
+            ))}
+          </Tabs>
+        </div>
+        {dialogs}
+      </div>
+    );
+  }
+
+  if (selected) {
+    return (
+      <>
+        {renderDetailPanel(selected)}
+        {dialogs}
+      </>
+    );
+  }
+
+  if (selectedId !== OVERVIEW_ID) {
+    return (
+      <div className="flex min-h-full flex-col" role="status">
+        <ContentHeader className="px-ds-16" title={t('connectors.loading')} />
+        <DocumentContentRail className="flex flex-col gap-ds-8 px-ds-24 py-ds-24">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div
+              key={index}
+              aria-hidden
+              className="h-16 animate-pulse rounded-ds-card bg-ds-neutral-subtle-default motion-reduce:animate-none"
+            />
+          ))}
+        </DocumentContentRail>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <CollectionToolbar
+        title={t('connectors.title')}
+        headingLevel={1}
+        width="wide"
+        aria-label={t('connectors.connector-toolbar')}
+        count={
+          <Badge variant="secondary" size="xs">
+            {visibleItems.length}
+          </Badge>
+        }
+      >
+        <div className={COLLECTION_TOOLBAR_SEARCH_CLASS}>
+          <SearchInput
+            value={listQuery}
+            onChange={(event) => setListQuery(event.target.value)}
+            ariaLabel={t('connectors.search-placeholder')}
+            placeholder={t('connectors.search-placeholder')}
+            clearOnEscape
+          />
+        </div>
+        <Select value={typeFilter} onValueChange={setTypeFilter}>
+          <SelectTrigger size="xs" aria-label={t('connectors.type-filter')}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t('connectors.all-types')}</SelectItem>
+            <SelectItem value="open">{t('connectors.source-open')}</SelectItem>
+            <SelectItem value="builtin">
+              {t('connectors.source-built-in')}
+            </SelectItem>
+            <SelectItem value="local">
+              {t('connectors.source-local')}
+            </SelectItem>
+            <SelectItem value="remote">
+              {t('connectors.source-remote')}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger size="xs" aria-label={t('connectors.status-filter')}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t('connectors.all-statuses')}</SelectItem>
+            <SelectItem value="active">{t('connectors.active')}</SelectItem>
+            <SelectItem value="inactive">{t('connectors.disabled')}</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          buttonRadius="full"
+          buttonContent="icon-only"
+          disabled={pageLoading}
+          onClick={() => void refreshAll()}
+          aria-label={t('connectors.refresh')}
+        >
+          <RefreshCw aria-hidden />
+        </Button>
+        <Button
+          type="button"
+          variant="primary"
+          size="sm"
+          buttonRadius="full"
+          onClick={() => openBrowsePage()}
+        >
+          {t('connectors.add-connector')}
+        </Button>
+      </CollectionToolbar>
+      <SettingsContentShell contentClassName={COLLECTION_RAIL_CLASS.wide}>
+        <SettingsSectionPage className="gap-ds-16 py-ds-24">
+          {pageError ? (
+            <div className="flex items-center justify-between gap-ds-12 rounded-ds-card bg-ds-bg-error-subtle-default p-ds-12 text-ds-text-base text-ds-text-error-strong-default">
+              <span>{pageError}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={pageLoading}
+                onClick={() => void refreshAll()}
+              >
+                <RefreshCw aria-hidden />
+                {t('connectors.retry')}
+              </Button>
+            </div>
+          ) : null}
+          {!recommendationsDismissed ? (
+            <section
+              aria-label={t('connectors.recommended')}
+              className="flex flex-col gap-ds-12 rounded-ds-card bg-ds-bg-information-subtle-default p-ds-12"
+            >
+              <div className="flex items-start gap-ds-12">
+                <div className="min-w-0 flex-1">
+                  <h2 className="m-0 text-ds-text-base font-semibold text-ds-text-information-strong-default">
+                    {t('connectors.recommended')}
+                  </h2>
+                  <span className="mt-ds-4 block text-ds-text-base text-ds-text-information-strong-default">
+                    {t('connectors.recommendations-description')}
+                  </span>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  tone="information"
+                  size="sm"
+                  buttonContent="icon-only"
+                  onClick={() => {
+                    setRecommendationsDismissed(true);
+                    try {
+                      window.localStorage.setItem(
+                        RECOMMENDATIONS_DISMISSED_KEY,
+                        'true'
+                      );
+                    } catch {
+                      // Dismissal still applies for the current session.
+                    }
+                  }}
+                  aria-label={t('connectors.dismiss-recommendations')}
+                >
+                  <X aria-hidden />
+                </Button>
+              </div>
+              {renderRecommendedConnectors()}
+            </section>
+          ) : null}
+          {renderConnectorTable()}
+          {dialogs}
+        </SettingsSectionPage>
+      </SettingsContentShell>
+    </>
   );
 }

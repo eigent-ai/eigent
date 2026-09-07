@@ -27,11 +27,15 @@ import {
 } from '@/api/connectors';
 import { proxyFetchGet } from '@/api/http';
 import SearchInput from '@/components/Dashboard/SearchInput';
+import DocumentContentRail from '@/components/Layout/DocumentContentRail';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
+import { DsText } from '@/components/ui/ds-text';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tag } from '@/components/ui/tag';
 import { Textarea } from '@/components/ui/textarea';
 import type { IntegrationItem } from '@/hooks/useIntegrationManagement';
 import { isSearchConfigured } from '@/lib/searchConfig';
@@ -66,6 +70,7 @@ import {
 } from '../../SettingsHeaderContext';
 import SettingsSection from '../../SettingsSection';
 import SettingsSectionPage from '../../SettingsSectionPage';
+import ConnectorSourceTag from './ConnectorSourceTag';
 import type { ConnectorInstallHint } from './types';
 
 export type { ConnectorInstallHint };
@@ -86,6 +91,11 @@ interface StoredConfig {
 }
 
 interface ConnectorBrowserPageProps {
+  embedded?: boolean;
+  hideSearch?: boolean;
+  searchValue?: string;
+  onSearchValueChange?: (value: string) => void;
+  onSelectTarget?: (target: Exclude<AddConnectorTarget, null>) => void;
   connectorGatewayEnabled: boolean;
   localMode: boolean;
   builtInItems: IntegrationItem[];
@@ -199,7 +209,7 @@ export function ProviderIcon({
   size = 'sm',
 }: {
   provider: ConnectorProvider | null | undefined;
-  size?: 'list' | 'sm' | 'detail' | 'lg';
+  size?: 'list' | 'sm' | 'detail' | 'lg' | 'profile';
 }) {
   const iconUrl = provider?.iconUrl || '';
   const [iconFailed, setIconFailed] = useState(false);
@@ -209,17 +219,21 @@ export function ProviderIcon({
   const shellClass =
     size === 'list'
       ? 'h-5 w-5'
-      : size === 'detail'
-        ? 'h-7 w-7 rounded-lg border-x border-y border border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default'
-        : size === 'lg'
-          ? 'h-12 w-12 rounded-xl border-x border-y border border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default'
-          : 'h-10 w-10 rounded-xl border-x border-y border border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default';
+      : size === 'profile'
+        ? 'h-16 w-16 rounded-ds-card bg-ds-neutral-default-default shadow-ds-elevation-control'
+        : size === 'detail'
+          ? 'h-7 w-7 rounded-lg border-x border-y border border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default'
+          : size === 'lg'
+            ? 'h-12 w-12 rounded-xl border-x border-y border border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default'
+            : 'h-10 w-10 rounded-xl border-x border-y border border-solid border-ds-hairline-default-default bg-ds-neutral-subtle-default';
   const imageClass =
     size === 'list' || size === 'detail'
       ? 'h-5 w-5'
-      : size === 'lg'
-        ? 'h-7 w-7 rounded-lg'
-        : 'h-6 w-6 rounded-lg';
+      : size === 'profile'
+        ? 'h-8 w-8 rounded-ds-8'
+        : size === 'lg'
+          ? 'h-7 w-7 rounded-lg'
+          : 'h-6 w-6 rounded-lg';
 
   return (
     <div className={`flex shrink-0 items-center justify-center ${shellClass}`}>
@@ -234,7 +248,13 @@ export function ProviderIcon({
         />
       ) : (
         <PlugZap
-          className={`${size === 'list' ? 'h-5 w-5' : 'h-4 w-4'} text-ds-ink-muted-default`}
+          className={`${
+            size === 'list'
+              ? 'h-5 w-5'
+              : size === 'profile'
+                ? 'h-6 w-6'
+                : 'h-4 w-4'
+          } text-ds-ink-muted-default`}
         />
       )}
     </div>
@@ -294,6 +314,11 @@ function CatalogLoadingBanner({ label }: { label: string }) {
 }
 
 export default function ConnectorBrowserPage({
+  embedded = false,
+  hideSearch = false,
+  searchValue,
+  onSearchValueChange,
+  onSelectTarget,
   connectorGatewayEnabled,
   localMode,
   builtInItems,
@@ -312,7 +337,9 @@ export default function ConnectorBrowserPage({
   const [browseSource, setBrowseSource] = useState<'open' | 'builtin'>(
     connectorGatewayEnabled || !localMode ? 'open' : 'builtin'
   );
-  const [query, setQuery] = useState('');
+  const [internalQuery, setInternalQuery] = useState('');
+  const query = searchValue ?? internalQuery;
+  const setQuery = onSearchValueChange ?? setInternalQuery;
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
@@ -341,6 +368,7 @@ export default function ConnectorBrowserPage({
   const browseScrollRef = useRef<HTMLDivElement | null>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   const actionsListRef = useRef<HTMLDivElement | null>(null);
+  const detailMastheadRef = useRef<HTMLElement | null>(null);
   const savedScrollTopRef = useRef(0);
   const catalogRequestIdRef = useRef(0);
   const oauthPollRef = useRef<number | null>(null);
@@ -806,6 +834,10 @@ export default function ConnectorBrowserPage({
   ]);
 
   const openProvider = (provider: ConnectorProvider) => {
+    if (onSelectTarget) {
+      onSelectTarget({ source: 'open', provider });
+      return;
+    }
     savedScrollTopRef.current = browseScrollRef.current?.scrollTop || 0;
     setSelectedProvider(provider);
     setSelectedAuthType(preferredAuthType(provider));
@@ -833,6 +865,14 @@ export default function ConnectorBrowserPage({
   const detailOpenedDirectly = initialTarget !== null;
 
   useEffect(() => {
+    if (!showingDetail) return;
+    detailMastheadRef.current
+      ?.querySelector<HTMLElement>('h1')
+      ?.focus({ preventScroll: true });
+  }, [selectedBuiltIn?.key, selectedProvider?.service, showingDetail]);
+
+  useEffect(() => {
+    if (embedded) return;
     setHeaderOverride({
       title: selectedProvider
         ? providerLabel(selectedProvider)
@@ -847,6 +887,7 @@ export default function ConnectorBrowserPage({
     browseHeaderTitle,
     closePage,
     detailOpenedDirectly,
+    embedded,
     goBackToBrowse,
     selectedBuiltIn,
     selectedProvider,
@@ -854,44 +895,61 @@ export default function ConnectorBrowserPage({
     showingDetail,
   ]);
 
+  const browseControls = (
+    <>
+      {!hideSearch ? (
+        <div className="w-56 max-w-full">
+          <SearchInput
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            ariaLabel={t('connectors.search-connectors')}
+            placeholder={t('connectors.search-connectors')}
+            clearOnEscape
+          />
+        </div>
+      ) : null}
+      {localMode && connectorGatewayEnabled ? (
+        <Button
+          type="button"
+          variant={browseSource === 'open' ? 'secondary' : 'ghost'}
+          size="xs"
+          onClick={() => setBrowseSource('open')}
+        >
+          <PlugZap aria-hidden />
+          {t('connectors.gateway-connectors')}
+        </Button>
+      ) : null}
+      {localMode ? (
+        <Button
+          type="button"
+          variant={browseSource === 'builtin' ? 'secondary' : 'ghost'}
+          size="xs"
+          onClick={() => setBrowseSource('builtin')}
+        >
+          <Server aria-hidden />
+          {t('connectors.source-built-in')}
+        </Button>
+      ) : null}
+    </>
+  );
+
   return (
-    <SettingsSectionPage className="min-h-full w-full">
-      {!showingDetail ? (
-        <SettingsHeaderActions>
-          <div className="w-56 max-w-full">
-            <SearchInput
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={t('connectors.search-connectors')}
-            />
+    <SettingsSectionPage
+      className={embedded ? 'min-h-0 w-full py-0' : 'min-h-full w-full'}
+    >
+      {!showingDetail && (!hideSearch || localMode) ? (
+        embedded ? (
+          <div className="flex flex-wrap items-center justify-end gap-ds-8">
+            {browseControls}
           </div>
-          {localMode && connectorGatewayEnabled ? (
-            <Button
-              type="button"
-              variant={browseSource === 'open' ? 'secondary' : 'ghost'}
-              size="xs"
-              onClick={() => setBrowseSource('open')}
-            >
-              <PlugZap className="h-3.5 w-3.5" />
-              {t('connectors.gateway-connectors')}
-            </Button>
-          ) : null}
-          {localMode ? (
-            <Button
-              type="button"
-              variant={browseSource === 'builtin' ? 'secondary' : 'ghost'}
-              size="xs"
-              onClick={() => setBrowseSource('builtin')}
-            >
-              <Server className="h-3.5 w-3.5" />
-              {t('connectors.source-built-in')}
-            </Button>
-          ) : null}
-        </SettingsHeaderActions>
+        ) : (
+          <SettingsHeaderActions>{browseControls}</SettingsHeaderActions>
+        )
       ) : null}
       <SettingsSection
         titleVariant="hidden"
         className="min-h-0 flex-1"
+        surface={showingDetail ? 'plain' : 'panel'}
         boxClassName="min-h-[54vh] flex-1 overflow-hidden p-0"
       >
         {!showingDetail ? (
@@ -1028,6 +1086,10 @@ export default function ConnectorBrowserPage({
                         key={item.key}
                         type="button"
                         onClick={() => {
+                          if (onSelectTarget) {
+                            onSelectTarget({ source: 'builtin', item });
+                            return;
+                          }
                           savedScrollTopRef.current =
                             browseScrollRef.current?.scrollTop || 0;
                           setSelectedBuiltIn(item);
@@ -1043,9 +1105,9 @@ export default function ConnectorBrowserPage({
                             <span className="truncate text-ds-text-base font-bold text-ds-ink-default-default">
                               {item.name}
                             </span>
-                            <Badge size="xs" variant="outline">
+                            <ConnectorSourceTag kind="builtin">
                               {t('connectors.source-built-in')}
-                            </Badge>
+                            </ConnectorSourceTag>
                           </div>
                           <span className="mt-1 line-clamp-1 block text-ds-text-meta text-ds-ink-muted-default">
                             {typeof item.desc === 'string'
@@ -1067,344 +1129,482 @@ export default function ConnectorBrowserPage({
           </div>
         ) : selectedProvider ? (
           <>
-            <div className="min-h-0 flex-1 overflow-y-auto p-6">
-              {detailLoading ? (
-                <div className="space-y-3">
-                  <div className="h-24 animate-pulse rounded-xl bg-ds-neutral-strong-default" />
-                  <div className="h-44 animate-pulse rounded-xl bg-ds-neutral-strong-default" />
-                </div>
-              ) : (
-                <div className="mx-auto flex max-w-3xl flex-col gap-5">
-                  <div className="flex items-center gap-3">
-                    <ProviderIcon provider={selectedProvider} size="lg" />
-                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-                      <span className="truncate text-ds-text-meta font-bold text-ds-ink-default-default">
-                        {providerLabel(selectedProvider)}
-                      </span>
-                      <span className="shrink-0 text-ds-text-base text-ds-ink-muted-default">
-                        {t('connectors.supported-actions-count', {
-                          num: providerActionCount(selectedProvider),
-                        })}
-                      </span>
-                    </div>
+            <header
+              ref={detailMastheadRef}
+              data-connector-profile-masthead
+              className="shrink-0 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default px-ds-24 py-ds-20"
+            >
+              <DocumentContentRail className="flex flex-wrap items-center gap-ds-16">
+                <ProviderIcon provider={selectedProvider} size="profile" />
+                <div className="min-w-0 flex-1 basis-64">
+                  <DsText
+                    as="h1"
+                    role="section"
+                    tabIndex={-1}
+                    weight="semibold"
+                    className="text-balance text-ds-ink-default-default outline-none"
+                  >
+                    {providerLabel(selectedProvider)}
+                  </DsText>
+                  {selectedProvider.description?.trim() ? (
+                    <DsText
+                      as="p"
+                      role="base"
+                      className="mt-ds-6 text-pretty text-ds-ink-muted-default"
+                    >
+                      {selectedProvider.description.trim()}
+                    </DsText>
+                  ) : null}
+                  <div className="mt-ds-12 flex flex-wrap items-center gap-ds-8">
+                    <ConnectorSourceTag kind="open">
+                      {t('connectors.source-open')}
+                    </ConnectorSourceTag>
+                    <DsText role="meta" className="text-ds-ink-muted-default">
+                      {t('connectors.supported-actions-count', {
+                        num: providerActionCount(selectedProvider),
+                      })}
+                    </DsText>
                     {selectedProvider.homepageUrl ? (
-                      <a
-                        href={selectedProvider.homepageUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex shrink-0 items-center gap-1 text-ds-text-base text-ds-ink-muted-default underline-offset-2 hover:underline"
-                      >
-                        {t('connectors.provider-website')}
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
+                      <Button asChild variant="text" size="xs">
+                        <a
+                          href={selectedProvider.homepageUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline-offset-2 hover:underline"
+                        >
+                          {t('connectors.provider-website')}
+                          <DsIcon icon={ExternalLink} recipe="main-compact" />
+                        </a>
+                      </Button>
                     ) : null}
                   </div>
-
-                  {selectedProvider.actions?.length ? (
-                    <div className="overflow-hidden rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default">
-                      <div className="relative">
-                        <div
-                          ref={actionsListRef}
-                          className={`flex flex-wrap gap-2 p-4 ${
-                            actionsExpanded
-                              ? ''
-                              : 'max-h-[200px] overflow-hidden'
-                          }`}
-                        >
-                          {selectedProvider.actions.map((action, index) => (
-                            <span
-                              key={action.id || action.name || index}
-                              className="inline-flex items-center rounded-full bg-ds-neutral-subtle-default px-3 py-1 text-ds-text-meta text-ds-ink-default-default"
-                            >
-                              {actionLabel(action, t)}
-                            </span>
-                          ))}
-                        </div>
-                        {!actionsExpanded && actionsOverflow ? (
-                          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-ds-neutral-default-default to-transparent" />
-                        ) : null}
-                      </div>
-                      {actionsOverflow ? (
-                        <button
-                          type="button"
-                          onClick={() => setActionsExpanded((value) => !value)}
-                          className="flex w-full items-center justify-center gap-1.5 border-0 border-x-0 border-y-0 bg-transparent px-4 py-2.5 text-ds-text-meta text-ds-ink-muted-default transition-colors hover:bg-ds-neutral-default-hover hover:text-ds-ink-default-default"
-                        >
-                          {actionsExpanded
-                            ? t('connectors.show-less')
-                            : t('connectors.show-more')}
-                          <ChevronDown
-                            className={`h-4 w-4 transition-transform motion-reduce:transition-none ${
-                              actionsExpanded ? 'rotate-180' : ''
-                            }`}
-                          />
-                        </button>
-                      ) : null}
-                    </div>
-                  ) : null}
-
-                  {authDefinitions(selectedProvider).length > 1 ? (
-                    <div className="space-y-2">
-                      <div className="text-ds-text-base font-bold text-ds-ink-default-default">
-                        {t('connectors.authentication')}
-                      </div>
-                      <Tabs
-                        value={selectedAuthType || undefined}
-                        onValueChange={(value) => {
-                          setSelectedAuthType(value);
-                          setCredentialValues({});
-                          setFormError(null);
-                        }}
-                      >
-                        <TabsList appearance="default">
-                          {authDefinitions(selectedProvider).map((auth) => (
-                            <TabsTrigger
-                              key={auth.type}
-                              value={auth.type}
-                              className="!text-ds-text-base"
-                            >
-                              {authLabel(auth.type, t)}
-                            </TabsTrigger>
-                          ))}
-                        </TabsList>
-                      </Tabs>
-                    </div>
-                  ) : null}
-
-                  {selectedAuth?.type === 'oauth2' ? (
-                    <div className="rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default p-4 text-ds-text-base text-ds-ink-muted-default">
-                      <div className="mb-2 font-bold text-ds-ink-default-default">
-                        {t('connectors.oauth-title')}
-                      </div>
-                      {t('connectors.oauth-desc')}
-                      {selectedAuth.scopes?.length ? (
-                        <span className="mt-3 block text-ds-text-meta">
-                          {t('connectors.oauth-scopes', {
-                            scopes: selectedAuth.scopes.join(', '),
-                          })}
-                        </span>
-                      ) : null}
-                    </div>
-                  ) : selectedAuth?.type === 'no_auth' ? (
-                    <div className="flex items-start gap-3 rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default p-4 text-ds-text-base text-ds-ink-muted-default">
-                      <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-                      {t('connectors.no-auth-desc')}
-                    </div>
-                  ) : credentialFields.length ? (
-                    <div className="space-y-3">
-                      {credentialFields.map((field) =>
-                        field.inputType === 'textarea' ||
-                        field.inputType === 'json' ? (
-                          <Textarea
-                            key={field.key}
-                            variant="enhanced"
-                            title={field.label}
-                            required={field.required}
-                            placeholder={field.placeholder || undefined}
-                            note={field.description || undefined}
-                            value={credentialValues[field.key] || ''}
-                            onChange={(event) =>
-                              setCredentialValues((current) => ({
-                                ...current,
-                                [field.key]: event.target.value,
-                              }))
-                            }
-                          />
-                        ) : (
-                          <Input
-                            key={field.key}
-                            title={field.label}
-                            required={field.required}
-                            type={field.secret ? 'password' : 'text'}
-                            placeholder={field.placeholder || undefined}
-                            note={field.description || undefined}
-                            leadingIcon={<KeyRound className="h-4 w-4" />}
-                            value={credentialValues[field.key] || ''}
-                            onChange={(event) =>
-                              setCredentialValues((current) => ({
-                                ...current,
-                                [field.key]: event.target.value,
-                              }))
-                            }
-                          />
-                        )
-                      )}
-                    </div>
-                  ) : null}
-
-                  {authorizationPending ? (
-                    <div className="flex items-center gap-2 rounded-xl bg-ds-bg-information-subtle-default p-3 text-ds-text-base text-ds-text-information-strong-default">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      {t('connectors.waiting-authorization')}
-                    </div>
-                  ) : null}
-                  {formError ? (
-                    <div className="rounded-xl bg-ds-bg-error-subtle-default p-3 text-ds-text-base text-ds-text-error-strong-default">
-                      {formError}
-                    </div>
-                  ) : null}
                 </div>
-              )}
-            </div>
-            <div className="flex items-center justify-end gap-2 border-x-0 border-t border-b-0 border-solid border-ds-hairline-muted-default p-4">
-              <Button variant="ghost" size="sm" onClick={closePage}>
-                {t('connectors.cancel')}
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                disabled={!canInstallProvider || saving || authorizationPending}
-                onClick={() => void installOpenProvider()}
-              >
-                {saving
-                  ? t('connectors.installing')
-                  : isConnectedProvider(selectedProvider)
-                    ? t('connectors.save')
-                    : t('connectors.install')}
-              </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="shrink-0"
+                  disabled={
+                    detailLoading ||
+                    !canInstallProvider ||
+                    saving ||
+                    authorizationPending
+                  }
+                  onClick={() => void installOpenProvider()}
+                >
+                  {saving
+                    ? t('connectors.installing')
+                    : isConnectedProvider(selectedProvider)
+                      ? t('connectors.save')
+                      : t('connectors.install')}
+                </Button>
+              </DocumentContentRail>
+            </header>
+
+            <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto px-ds-24 py-ds-24">
+              <DocumentContentRail className="flex flex-col gap-ds-24">
+                {detailLoading ? (
+                  <div role="status" className="flex flex-col gap-ds-12">
+                    <span className="sr-only">{t('connectors.loading')}</span>
+                    <div
+                      aria-hidden
+                      className="h-24 animate-pulse rounded-ds-card bg-ds-neutral-strong-default motion-reduce:animate-none"
+                    />
+                    <div
+                      aria-hidden
+                      className="h-44 animate-pulse rounded-ds-card bg-ds-neutral-strong-default motion-reduce:animate-none"
+                    />
+                  </div>
+                ) : (
+                  <>
+                    {authDefinitions(selectedProvider).length ||
+                    authorizationPending ||
+                    formError ? (
+                      <section
+                        aria-labelledby="connector-authentication-heading"
+                        className="flex flex-col gap-ds-12"
+                      >
+                        <DsText
+                          id="connector-authentication-heading"
+                          as="h2"
+                          role="title"
+                          weight="semibold"
+                          className="text-ds-ink-default-default"
+                        >
+                          {t('connectors.authentication')}
+                        </DsText>
+
+                        {authDefinitions(selectedProvider).length > 1 ? (
+                          <Tabs
+                            value={selectedAuthType || undefined}
+                            onValueChange={(value) => {
+                              setSelectedAuthType(value);
+                              setCredentialValues({});
+                              setFormError(null);
+                            }}
+                          >
+                            <TabsList appearance="default">
+                              {authDefinitions(selectedProvider).map((auth) => (
+                                <TabsTrigger
+                                  key={auth.type}
+                                  value={auth.type}
+                                  className="!text-ds-text-base"
+                                >
+                                  {authLabel(auth.type, t)}
+                                </TabsTrigger>
+                              ))}
+                            </TabsList>
+                          </Tabs>
+                        ) : null}
+
+                        {selectedAuth?.type === 'oauth2' ? (
+                          <div className="flex flex-col gap-ds-8 rounded-ds-card border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default p-ds-16">
+                            <DsText
+                              role="base"
+                              weight="semibold"
+                              className="text-ds-ink-default-default"
+                            >
+                              {t('connectors.oauth-title')}
+                            </DsText>
+                            <DsText
+                              as="p"
+                              role="base"
+                              className="text-ds-ink-muted-default"
+                            >
+                              {t('connectors.oauth-desc')}
+                            </DsText>
+                            {selectedAuth.scopes?.length ? (
+                              <DsText
+                                as="p"
+                                role="meta"
+                                className="text-ds-ink-muted-default"
+                              >
+                                {t('connectors.oauth-scopes', {
+                                  scopes: selectedAuth.scopes.join(', '),
+                                })}
+                              </DsText>
+                            ) : null}
+                          </div>
+                        ) : selectedAuth?.type === 'no_auth' ? (
+                          <div className="flex items-start gap-ds-12 rounded-ds-card border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default p-ds-16 text-ds-ink-muted-default">
+                            <DsIcon icon={ShieldCheck} />
+                            <DsText as="p" role="base">
+                              {t('connectors.no-auth-desc')}
+                            </DsText>
+                          </div>
+                        ) : credentialFields.length ? (
+                          <div className="flex flex-col gap-ds-12">
+                            {credentialFields.map((field) =>
+                              field.inputType === 'textarea' ||
+                              field.inputType === 'json' ? (
+                                <Textarea
+                                  key={field.key}
+                                  variant="enhanced"
+                                  title={field.label}
+                                  required={field.required}
+                                  placeholder={field.placeholder || undefined}
+                                  note={field.description || undefined}
+                                  value={credentialValues[field.key] || ''}
+                                  onChange={(event) =>
+                                    setCredentialValues((current) => ({
+                                      ...current,
+                                      [field.key]: event.target.value,
+                                    }))
+                                  }
+                                />
+                              ) : (
+                                <Input
+                                  key={field.key}
+                                  title={field.label}
+                                  required={field.required}
+                                  type={field.secret ? 'password' : 'text'}
+                                  placeholder={field.placeholder || undefined}
+                                  note={field.description || undefined}
+                                  leadingIcon={<DsIcon icon={KeyRound} />}
+                                  value={credentialValues[field.key] || ''}
+                                  onChange={(event) =>
+                                    setCredentialValues((current) => ({
+                                      ...current,
+                                      [field.key]: event.target.value,
+                                    }))
+                                  }
+                                />
+                              )
+                            )}
+                          </div>
+                        ) : null}
+
+                        {authorizationPending ? (
+                          <div
+                            role="status"
+                            className="flex items-center gap-ds-8 rounded-ds-card bg-ds-bg-information-subtle-default p-ds-12 text-ds-text-base text-ds-text-information-strong-default"
+                          >
+                            <DsIcon icon={Loader2} className="animate-spin" />
+                            {t('connectors.waiting-authorization')}
+                          </div>
+                        ) : null}
+                        {formError ? (
+                          <div
+                            role="alert"
+                            className="rounded-ds-card bg-ds-bg-error-subtle-default p-ds-12 text-ds-text-base text-ds-text-error-strong-default"
+                          >
+                            {formError}
+                          </div>
+                        ) : null}
+                      </section>
+                    ) : null}
+
+                    {selectedProvider.actions?.length ? (
+                      <section
+                        aria-labelledby="connector-supported-actions-heading"
+                        className="flex flex-col gap-ds-12"
+                      >
+                        <div className="flex items-center justify-between gap-ds-12">
+                          <DsText
+                            id="connector-supported-actions-heading"
+                            as="h2"
+                            role="title"
+                            weight="semibold"
+                            className="text-ds-ink-default-default"
+                          >
+                            {t('connectors.supported-actions')}
+                          </DsText>
+                          <Badge size="xs" variant="secondary">
+                            {selectedProvider.actions.length}
+                          </Badge>
+                        </div>
+                        <div className="overflow-hidden rounded-ds-card border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default">
+                          <div className="relative">
+                            <div
+                              id="connector-supported-actions-list"
+                              ref={actionsListRef}
+                              className={`flex flex-wrap gap-ds-8 p-ds-16 ${
+                                actionsExpanded
+                                  ? ''
+                                  : 'max-h-[200px] overflow-hidden'
+                              }`}
+                            >
+                              {selectedProvider.actions.map((action, index) => (
+                                <Tag
+                                  key={action.id || action.name || index}
+                                  variant="secondary"
+                                  emphasis="muted"
+                                  size="sm"
+                                >
+                                  {actionLabel(action, t)}
+                                </Tag>
+                              ))}
+                            </div>
+                            {!actionsExpanded && actionsOverflow ? (
+                              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-ds-neutral-default-default to-transparent" />
+                            ) : null}
+                          </div>
+                          {actionsOverflow ? (
+                            <div className="flex justify-center border-x-0 border-t border-b-0 border-solid border-ds-hairline-subtle-default p-ds-8">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                aria-expanded={actionsExpanded}
+                                aria-controls="connector-supported-actions-list"
+                                onClick={() =>
+                                  setActionsExpanded((value) => !value)
+                                }
+                              >
+                                {actionsExpanded
+                                  ? t('connectors.show-less')
+                                  : t('connectors.show-more')}
+                                <DsIcon
+                                  icon={ChevronDown}
+                                  className={`transition-transform duration-150 motion-reduce:transition-none ${
+                                    actionsExpanded ? 'rotate-180' : ''
+                                  }`}
+                                />
+                              </Button>
+                            </div>
+                          ) : null}
+                        </div>
+                      </section>
+                    ) : null}
+                  </>
+                )}
+              </DocumentContentRail>
             </div>
           </>
         ) : selectedBuiltIn ? (
           <>
-            <div className="min-h-0 flex-1 overflow-y-auto p-6">
-              <div className="mx-auto flex max-w-2xl flex-col gap-5">
-                <div className="flex items-start gap-4">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default">
-                    <Server className="h-6 w-6 text-ds-ink-muted-default" />
-                  </div>
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-ds-text-meta text-ds-ink-default-default">
-                        {selectedBuiltIn.name}
-                      </span>
-                      <Badge size="sm" variant="outline">
-                        {t('connectors.source-built-in')}
+            <header
+              ref={detailMastheadRef}
+              data-connector-profile-masthead
+              className="shrink-0 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default px-ds-24 py-ds-20"
+            >
+              <DocumentContentRail className="flex flex-wrap items-start gap-ds-16">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-ds-card bg-ds-neutral-default-default text-ds-ink-muted-default shadow-ds-elevation-control">
+                  <DsIcon icon={Server} recipe="detailed" />
+                </div>
+                <div className="min-w-0 flex-1 basis-64">
+                  <DsText
+                    as="h1"
+                    role="section"
+                    tabIndex={-1}
+                    weight="semibold"
+                    className="text-balance text-ds-ink-default-default outline-none"
+                  >
+                    {selectedBuiltIn.name}
+                  </DsText>
+                  <DsText
+                    as="p"
+                    role="base"
+                    className="mt-ds-6 text-pretty text-ds-ink-muted-default"
+                  >
+                    {typeof selectedBuiltIn.desc === 'string'
+                      ? selectedBuiltIn.desc
+                      : t('connectors.built-in-generic-desc')}
+                  </DsText>
+                  <div className="mt-ds-12 flex flex-wrap items-center gap-ds-8">
+                    <ConnectorSourceTag kind="builtin">
+                      {t('connectors.source-built-in')}
+                    </ConnectorSourceTag>
+                    {builtInInstalled[selectedBuiltIn.key] ? (
+                      <Badge size="sm" variant="secondary" tone="success">
+                        {t('connectors.installed')}
                       </Badge>
-                      {builtInInstalled[selectedBuiltIn.key] ? (
-                        <Badge size="sm" variant="secondary" tone="success">
-                          {t('connectors.installed')}
-                        </Badge>
-                      ) : null}
-                    </div>
-                    <span className="mt-2 block text-ds-text-base text-ds-ink-muted-default">
-                      {typeof selectedBuiltIn.desc === 'string'
-                        ? selectedBuiltIn.desc
-                        : t('connectors.built-in-generic-desc')}
-                    </span>
+                    ) : null}
                   </div>
                 </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="shrink-0"
+                  disabled={saving || authorizationPending}
+                  onClick={() => void installBuiltIn()}
+                >
+                  {saving
+                    ? t('connectors.installing')
+                    : t('connectors.install')}
+                </Button>
+              </DocumentContentRail>
+            </header>
 
-                {selectedBuiltIn.env_vars.length ? (
-                  <div className="space-y-3">
-                    {selectedBuiltIn.env_vars.map((key) => (
-                      <Input
-                        key={key}
-                        title={key}
-                        required
-                        type="password"
-                        leadingIcon={<KeyRound className="h-4 w-4" />}
-                        value={builtInValues[key] || ''}
-                        onChange={(event) =>
-                          setBuiltInValues((current) => ({
-                            ...current,
-                            [key]: event.target.value,
-                          }))
+            <div className="scrollbar-always-visible min-h-0 flex-1 overflow-y-auto px-ds-24 py-ds-24">
+              <DocumentContentRail>
+                <section
+                  aria-labelledby="connector-authentication-heading"
+                  className="flex flex-col gap-ds-12"
+                >
+                  <DsText
+                    id="connector-authentication-heading"
+                    as="h2"
+                    role="title"
+                    weight="semibold"
+                    className="text-ds-ink-default-default"
+                  >
+                    {t('connectors.authentication')}
+                  </DsText>
+                  {selectedBuiltIn.env_vars.length ? (
+                    <div className="flex flex-col gap-ds-12">
+                      {selectedBuiltIn.env_vars.map((key) => (
+                        <Input
+                          key={key}
+                          title={key}
+                          required
+                          type="password"
+                          leadingIcon={<DsIcon icon={KeyRound} />}
+                          value={builtInValues[key] || ''}
+                          onChange={(event) =>
+                            setBuiltInValues((current) => ({
+                              ...current,
+                              [key]: event.target.value,
+                            }))
+                          }
+                          placeholder={t('connectors.enter-value', {
+                            field: key,
+                          })}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-ds-12 rounded-ds-card border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default p-ds-16 text-ds-ink-muted-default">
+                      <DsIcon icon={ShieldCheck} />
+                      <DsText as="p" role="base">
+                        {t('connectors.built-in-auth-desc')}
+                      </DsText>
+                    </div>
+                  )}
+
+                  <AnimatePresence initial={false}>
+                    {authorizationPending ? (
+                      <motion.div
+                        key="authorization-pending"
+                        initial={
+                          shouldReduceMotion
+                            ? { opacity: 0 }
+                            : {
+                                opacity: 0,
+                                transform: 'translateY(-8px)',
+                              }
                         }
-                        placeholder={t('connectors.enter-value', {
-                          field: key,
-                        })}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-x border-y border-solid border-ds-hairline-default-default bg-ds-neutral-default-default p-4 text-ds-text-base text-ds-ink-muted-default">
-                    {t('connectors.built-in-auth-desc')}
-                  </div>
-                )}
-
-                <AnimatePresence initial={false}>
-                  {authorizationPending ? (
-                    <motion.div
-                      key="authorization-pending"
-                      initial={
-                        shouldReduceMotion
-                          ? { opacity: 0 }
-                          : {
-                              opacity: 0,
-                              transform: 'translateY(-8px)',
-                            }
-                      }
-                      animate={
-                        shouldReduceMotion
-                          ? {
-                              opacity: 1,
-                              transition: {
-                                duration: 0.16,
-                                ease: [0.23, 1, 0.32, 1],
-                              },
-                            }
-                          : {
-                              opacity: 1,
-                              transform: 'translateY(0px)',
-                              transition: {
-                                duration: 0.18,
-                                ease: [0.23, 1, 0.32, 1],
-                              },
-                            }
-                      }
-                      exit={
-                        shouldReduceMotion
-                          ? {
-                              opacity: 0,
-                              transition: {
-                                duration: 0.16,
-                                ease: [0.23, 1, 0.32, 1],
-                              },
-                            }
-                          : {
-                              opacity: 0,
-                              transform: 'translateY(-4px)',
-                              transition: {
-                                duration: 0.14,
-                                ease: [0.23, 1, 0.32, 1],
-                              },
-                            }
-                      }
-                      className="flex items-center justify-between gap-3 rounded-xl bg-ds-bg-information-subtle-default p-3 text-ds-text-base text-ds-text-information-strong-default"
-                    >
-                      <span>{t('connectors.complete-authorization')}</span>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        disabled={saving}
-                        onClick={() => void verifyBuiltInAuthorization()}
+                        animate={
+                          shouldReduceMotion
+                            ? {
+                                opacity: 1,
+                                transition: {
+                                  duration: 0.16,
+                                  ease: [0.23, 1, 0.32, 1],
+                                },
+                              }
+                            : {
+                                opacity: 1,
+                                transform: 'translateY(0px)',
+                                transition: {
+                                  duration: 0.18,
+                                  ease: [0.23, 1, 0.32, 1],
+                                },
+                              }
+                        }
+                        exit={
+                          shouldReduceMotion
+                            ? {
+                                opacity: 0,
+                                transition: {
+                                  duration: 0.16,
+                                  ease: [0.23, 1, 0.32, 1],
+                                },
+                              }
+                            : {
+                                opacity: 0,
+                                transform: 'translateY(-4px)',
+                                transition: {
+                                  duration: 0.14,
+                                  ease: [0.23, 1, 0.32, 1],
+                                },
+                              }
+                        }
+                        className="flex items-center justify-between gap-ds-12 rounded-ds-card bg-ds-bg-information-subtle-default p-ds-12 text-ds-text-base text-ds-text-information-strong-default"
                       >
-                        <RefreshCw className="h-4 w-4" />
-                        {t('connectors.refresh-status')}
-                      </Button>
-                    </motion.div>
+                        <span>{t('connectors.complete-authorization')}</span>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          disabled={saving}
+                          onClick={() => void verifyBuiltInAuthorization()}
+                        >
+                          <DsIcon icon={RefreshCw} />
+                          {t('connectors.refresh-status')}
+                        </Button>
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
+                  {formError ? (
+                    <div
+                      role="alert"
+                      className="rounded-ds-card bg-ds-bg-error-subtle-default p-ds-12 text-ds-text-base text-ds-text-error-strong-default"
+                    >
+                      {formError}
+                    </div>
                   ) : null}
-                </AnimatePresence>
-                {formError ? (
-                  <div className="rounded-xl bg-ds-bg-error-subtle-default p-3 text-ds-text-base text-ds-text-error-strong-default">
-                    {formError}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-            <div className="flex items-center justify-end gap-2 border-x-0 border-t border-b-0 border-solid border-ds-hairline-muted-default p-4">
-              <Button variant="ghost" size="sm" onClick={closePage}>
-                {t('connectors.cancel')}
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                disabled={saving || authorizationPending}
-                onClick={() => void installBuiltIn()}
-              >
-                {saving ? t('connectors.installing') : t('connectors.install')}
-              </Button>
+                </section>
+              </DocumentContentRail>
             </div>
           </>
         ) : null}

@@ -671,3 +671,27 @@ def test_run_completion_stops_background_session_before_checkpoint(
     assert toolkit.quiesce_run_background_sessions("run-1") == ()
     assert checkpointed.is_set()
     assert calls == ["kill", "complete", "finalize"]
+
+
+def test_run_completion_allows_workspace_checkpoint_to_settle():
+    toolkit = TerminalToolkit.__new__(TerminalToolkit)
+    toolkit._session_lock = threading.RLock()
+    toolkit.shell_sessions = {"preview-server": {"running": False}}
+    observed_timeouts: list[float] = []
+
+    class _Completion:
+        def wait(self, timeout):
+            observed_timeouts.append(timeout)
+            return True
+
+    toolkit._workspace_checkpoint_watchers_lock = threading.Lock()
+    toolkit._workspace_checkpoint_runs = {"preview-server": "run-1"}
+    toolkit._workspace_checkpoint_wakeups = {
+        "preview-server": threading.Event()
+    }
+    toolkit._workspace_checkpoint_completions = {
+        "preview-server": _Completion()
+    }
+
+    assert toolkit.quiesce_run_background_sessions("run-1") == ()
+    assert observed_timeouts[0] >= 29.0

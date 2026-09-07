@@ -17,6 +17,7 @@ import {
   computeProjectFreshnessAnchor,
   loadProjectFromHistory,
 } from '@/lib/replay';
+import { shellDetailBackState } from '@/lib/shellRoutes';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { useSpaceStore } from '@/store/spaceStore';
@@ -44,10 +45,15 @@ export function useHomeHubNavigation() {
     (spaceId: string) => {
       navigate(
         `/home?section=spaces&spaceId=${encodeURIComponent(spaceId)}&spaceTab=projects`,
-        { state: location.state }
+        {
+          state: shellDetailBackState(
+            location.state as Record<string, unknown> | null,
+            `${location.pathname}${location.search}`
+          ),
+        }
       );
     },
-    [location.state, navigate]
+    [location.pathname, location.search, location.state, navigate]
   );
 
   const openWorkspace = useCallback(

@@ -66,6 +66,7 @@ import FolderComponent from './FolderComponent';
 import { fetchGet, getBaseURL } from '@/api/http';
 import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
 import { SourceCodeViewer } from '@/components/CodeViewer/SourceCodeViewer';
+import DocumentContentRail from '@/components/Layout/DocumentContentRail';
 import { getSidePanelOutputFilesRevision } from '@/components/Session/SidePanel/sections/collectSidePanelOutputFiles';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
@@ -3346,7 +3347,7 @@ export function FileViewerPanel({
                 <CsvPreviewTable preview={selectedFile.preview} />
               ) : ['md', 'markdown'].includes(selectedType) &&
                 !isShowSourceCode ? (
-                <div className="mx-auto w-full max-w-4xl">
+                <DocumentContentRail>
                   <TruncatedPreviewNotice file={selectedFile} />
                   <MarkDown
                     content={selectedFile.content || ''}
@@ -3358,7 +3359,7 @@ export function FileViewerPanel({
                         : getDirPath(selectedFile.path)
                     }
                   />
-                </div>
+                </DocumentContentRail>
               ) : selectedType === 'pdf' ? (
                 <iframe
                   src={selectedFile.content as string}
