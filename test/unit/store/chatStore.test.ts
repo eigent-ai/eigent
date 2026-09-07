@@ -1505,10 +1505,8 @@ describe('ChatStore - Core Functionality', () => {
         });
       });
 
-      it('retries a canonical terminal update without enqueueing a competing legacy outcome', async () => {
-        vi.mocked(proxyUpdateTriggerExecution)
-          .mockRejectedValueOnce(new Error('trigger API temporarily offline'))
-          .mockResolvedValue(undefined);
+      it('delegates one canonical terminal receipt without enqueueing a competing legacy outcome', async () => {
+        vi.mocked(proxyUpdateTriggerExecution).mockResolvedValue(undefined);
         const { streamContaining } = await startObservedLiveTask({
           initialRunId: 'trigger-retry-run',
           executionId: 'execution-canonical-retry',
@@ -1536,17 +1534,13 @@ describe('ChatStore - Core Functionality', () => {
           }),
         });
 
-        await vi.waitFor(
-          () => expect(proxyUpdateTriggerExecution).toHaveBeenCalledTimes(2),
-          { timeout: 2_000 }
+        await vi.waitFor(() =>
+          expect(proxyUpdateTriggerExecution).toHaveBeenCalledTimes(1)
         );
         const terminalUpdates = vi
           .mocked(proxyUpdateTriggerExecution)
           .mock.calls.map(([, update]) => update.status);
-        expect(terminalUpdates).toEqual([
-          ExecutionStatus.Failed,
-          ExecutionStatus.Failed,
-        ]);
+        expect(terminalUpdates).toEqual([ExecutionStatus.Failed]);
         expect(proxyUpdateTriggerExecution).toHaveBeenLastCalledWith(
           'execution-canonical-retry',
           expect.objectContaining({
@@ -1610,9 +1604,9 @@ describe('ChatStore - Core Functionality', () => {
           'live'
         );
 
-        // The terminal update is serialized after the already-issued Running
-        // request, so a slow old response cannot land after and overwrite it.
-        expect(proxyUpdateTriggerExecution).toHaveBeenCalledTimes(1);
+        // ChatStore delegates both receipts immediately. The trigger API owns
+        // their per-execution serialization and durable terminal delivery.
+        expect(proxyUpdateTriggerExecution).toHaveBeenCalledTimes(2);
         resolveRunningUpdate();
 
         await vi.waitFor(() =>

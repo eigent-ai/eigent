@@ -28,6 +28,15 @@ from app.model.trigger.app_configs import ScheduleTriggerConfig, WebhookTriggerC
 from app.model.trigger.app_configs.base_config import BaseTriggerConfig
 
 
+TERMINAL_EXECUTION_STATUSES = frozenset(
+    {
+        ExecutionStatus.completed,
+        ExecutionStatus.failed,
+        ExecutionStatus.cancelled,
+        ExecutionStatus.missed,
+    }
+)
+
 
 class TriggerService:
     """Service for managing trigger operations and scheduling."""
@@ -82,6 +91,18 @@ class TriggerService:
         tools_executed: Optional[Dict[str, Any]] = None
     ) -> TriggerExecution:
         """Update execution status and metadata."""
+        current_status = execution.status
+        if current_status in TERMINAL_EXECUTION_STATUSES:
+            logger.info(
+                "Ignored trigger execution update after terminal outcome",
+                extra={
+                    "execution_id": execution.execution_id,
+                    "current_status": current_status.value,
+                    "requested_status": status.value,
+                },
+            )
+            return execution
+
         execution.status = status
         
         # Set completed_at and duration for terminal statuses
