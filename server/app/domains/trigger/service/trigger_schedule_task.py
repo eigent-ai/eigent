@@ -82,7 +82,6 @@ def check_execution_timeouts() -> None:
 
         for execution in executions:
             is_pending = execution.status == ExecutionStatus.pending
-            is_running = execution.status == ExecutionStatus.running
 
             if is_pending:
                 reference_time = execution.created_at
@@ -99,17 +98,25 @@ def check_execution_timeouts() -> None:
                 if is_pending:
                     new_status = ExecutionStatus.missed
                     error_message = f"Execution acknowledgment timeout ({timeout_seconds} seconds)"
-                    timed_out_pending_count += 1
                 else:
                     new_status = ExecutionStatus.failed
                     error_message = f"Execution running timeout ({timeout_seconds} seconds) - no completion received"
-                    timed_out_running_count += 1
 
-                trigger_service.update_execution_status(
-                    execution=execution,
-                    status=new_status,
-                    error_message=error_message
+                updated_execution, transitioned = (
+                    trigger_service.transition_execution_status_by_id(
+                        execution_id=execution.execution_id,
+                        status=new_status,
+                        expected_statuses={execution.status},
+                        error_message=error_message,
+                    )
                 )
+                if not transitioned or updated_execution is None:
+                    continue
+                execution = updated_execution
+                if is_pending:
+                    timed_out_pending_count += 1
+                else:
+                    timed_out_running_count += 1
 
                 try:
                     trigger = session.get(Trigger, execution.trigger_id)

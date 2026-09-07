@@ -49,6 +49,7 @@ import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import { buildProjectContinuationContext } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
+import { waitForPendingStaleRuntimeEviction } from '@/store/projectStore';
 import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { ExecutionStatus } from '@/types';
@@ -1239,13 +1240,14 @@ export default function ChatBox(): JSX.Element {
     let messageAccepted = false;
     try {
       if (queuedRequestId) {
-        chatStore.setNextTaskId(queuedRequestId);
-        chatStore.setNextExecutionId(_taskId, undefined);
         const queuedFiles = queuedAttaches || [];
+        await waitForPendingStaleRuntimeEviction(targetProjectId);
         const backendStatus = await fetchGet(
           `/chat/${encodeURIComponent(targetProjectId)}/status`
         );
-        if (backendStatus?.has_lock) {
+        if (backendStatus?.consumer_alive) {
+          chatStore.setNextTaskId(queuedRequestId);
+          chatStore.setNextExecutionId(_taskId, undefined);
           await fetchPost(`/chat/${targetProjectId}`, {
             question: tempMessageContent,
             task_id: queuedRequestId,
@@ -1454,83 +1456,113 @@ export default function ChatBox(): JSX.Element {
                 (f: { filePath: string }) => f.filePath
               ) || [];
 
-            // A normal follow-up is a new durable Run. Seed it before the
-            // admission request completes so the reply and its pending work
-            // log are visible immediately, while the completed Run remains a
-            // stable history section above it.
             const nextTaskId = generateUniqueId();
-            chatStore.setNextTaskId(nextTaskId);
-            chatStore.setNextExecutionId(_taskId as string, executionId);
-            const nextChatResult = projectStore.appendInitChatStore(
-              targetProjectId,
-              nextTaskId
+            await waitForPendingStaleRuntimeEviction(targetProjectId);
+            const backendStatus = await fetchGet(
+              `/chat/${encodeURIComponent(targetProjectId)}/status`
             );
-            if (!nextChatResult) {
-              // Every other failure path in this handler surfaces a toast. The
-              // outer catch only logs, so without this the user would click
-              // Send and observe nothing at all.
-              const prepareError = new Error(
-                t('chat.follow-up-prepare-failed')
+
+            if (!backendStatus?.consumer_alive) {
+              // A stale-runtime transition may have retired the completed warm
+              // consumer while this Project was being reactivated. Admit the
+              // follow-up as a cold Run instead of posting to a dead queue.
+              ensureActiveProjectMode();
+              await chatStore.startTask(
+                nextTaskId,
+                undefined,
+                undefined,
+                undefined,
+                tempMessageContent,
+                attachesForThisTurn,
+                executionId,
+                targetProjectId,
+                effectiveSessionMode,
+                {
+                  preserveTaskId: true,
+                  awaitAdmission: true,
+                  ...(reviewHandoffIds.length ? { reviewHandoffIds } : {}),
+                }
               );
-              toast.error(prepareError.message);
-              throw prepareError;
-            }
-
-            const nextChatState = nextChatResult.chatStore.getState();
-            // During the remaining multi-store migration window the prepared
-            // Run can live in a different store from the completed Run. Keep
-            // the boundary token on both sides so CONFIRMED reuses this exact
-            // task instead of creating a duplicate.
-            nextChatState.setNextTaskId(nextTaskId);
-            nextChatState.setTaskSessionMode(nextTaskId, effectiveSessionMode);
-            nextChatState.setTaskSource(
-              nextTaskId,
-              executionId ? 'trigger' : 'user'
-            );
-            nextChatState.setExecutionId(nextTaskId, executionId);
-            nextChatState.setIsPending(nextTaskId, true);
-            nextChatState.setHasMessages(nextTaskId, true);
-            nextChatState.addMessages(nextTaskId, {
-              id: generateUniqueId(),
-              role: 'user',
-              content: displayContent,
-              attaches: attachesForThisTurn,
-            });
-            if (!preserveComposer) {
-              chatStore.setAttaches(_taskId, []);
-              setMessage('');
-            }
-
-            try {
-              // Use improve endpoint (POST /chat/{id}) - {id} is project_id.
-              await fetchPost(`/chat/${targetProjectId}`, {
-                question: tempMessageContent,
-                task_id: nextTaskId,
-                attaches: improveAttaches,
-                project_context: buildProjectContinuationContext(
-                  targetProjectId,
-                  nextTaskId
-                ),
-                ...(reviewHandoffIds.length
-                  ? { review_handoff_ids: reviewHandoffIds }
-                  : {}),
-                target: undefined,
-              });
               messageAccepted = true;
-            } catch (error: any) {
-              // Keep the failed turn as a traceable receipt instead of moving
-              // the reply back into (or mutating) the completed history Run.
-              nextChatState.setIsPending(nextTaskId, false);
-              nextChatState.setStatus(nextTaskId, ChatTaskStatus.FINISHED);
+              if (!preserveComposer) {
+                chatStore.setAttaches(_taskId, []);
+                setMessage('');
+              }
+            } else {
+              // A normal warm follow-up is a new durable Run. Seed it before
+              // admission so its pending work is visible immediately.
+              chatStore.setNextTaskId(nextTaskId);
+              chatStore.setNextExecutionId(_taskId as string, executionId);
+              const nextChatResult = projectStore.appendInitChatStore(
+                targetProjectId,
+                nextTaskId
+              );
+              if (!nextChatResult) {
+                const prepareError = new Error(
+                  t('chat.follow-up-prepare-failed')
+                );
+                toast.error(prepareError.message);
+                throw prepareError;
+              }
+
+              const nextChatState = nextChatResult.chatStore.getState();
+              // During the remaining multi-store migration window the
+              // prepared Run can live in a different store. Keep the boundary
+              // token on both sides so CONFIRMED reuses this exact task.
+              nextChatState.setNextTaskId(nextTaskId);
+              nextChatState.setTaskSessionMode(
+                nextTaskId,
+                effectiveSessionMode
+              );
+              nextChatState.setTaskSource(
+                nextTaskId,
+                executionId ? 'trigger' : 'user'
+              );
+              nextChatState.setExecutionId(nextTaskId, executionId);
+              nextChatState.setIsPending(nextTaskId, true);
+              nextChatState.setHasMessages(nextTaskId, true);
               nextChatState.addMessages(nextTaskId, {
                 id: generateUniqueId(),
-                role: 'agent',
-                content:
-                  error?.message ||
-                  '❌ **Error**: Failed to start the follow-up task.',
+                role: 'user',
+                content: displayContent,
+                attaches: attachesForThisTurn,
               });
-              toast.error(error?.message || 'Failed to send follow-up.');
-              if (preserveComposer) throw error;
+              if (!preserveComposer) {
+                chatStore.setAttaches(_taskId, []);
+                setMessage('');
+              }
+
+              try {
+                // Use improve endpoint (POST /chat/{id}) - {id} is project_id.
+                await fetchPost(`/chat/${targetProjectId}`, {
+                  question: tempMessageContent,
+                  task_id: nextTaskId,
+                  attaches: improveAttaches,
+                  project_context: buildProjectContinuationContext(
+                    targetProjectId,
+                    nextTaskId
+                  ),
+                  ...(reviewHandoffIds.length
+                    ? { review_handoff_ids: reviewHandoffIds }
+                    : {}),
+                  target: undefined,
+                });
+                messageAccepted = true;
+              } catch (error: any) {
+                // Keep the failed turn as a traceable receipt instead of
+                // mutating the completed history Run.
+                nextChatState.setIsPending(nextTaskId, false);
+                nextChatState.setStatus(nextTaskId, ChatTaskStatus.FINISHED);
+                nextChatState.addMessages(nextTaskId, {
+                  id: generateUniqueId(),
+                  role: 'agent',
+                  content:
+                    error?.message ||
+                    '❌ **Error**: Failed to start the follow-up task.',
+                });
+                toast.error(error?.message || 'Failed to send follow-up.');
+                if (preserveComposer) throw error;
+              }
             }
           }
         } else {
