@@ -5460,6 +5460,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             setStatus(currentTaskId, ChatTaskStatus.FINISHED);
             setUpdateCount();
 
+            // END is the compatibility Run's terminal boundary. Persist the
+            // Trigger receipt before artifact/history work can yield or hang,
+            // and use the store that owned this frame even if a follow-up
+            // rebinds the shared transport while those awaits are in flight.
+            void updateTriggerExecutionStatus(
+              previousChatStore,
+              project_id,
+              currentTaskId,
+              ExecutionStatus.Completed,
+              getTokens(currentTaskId)
+            );
+
             // Complete the Run's connection-state transition before the first
             // await below. A following NEW_TASK_STATE can then reactivate and
             // transfer ownership without a resumed END handler undoing it.
@@ -5699,15 +5711,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             setTaskRunning(currentTaskId, [...taskRunning]);
 
             console.log(tasks[currentTaskId], 'end');
-
-            // Update trigger execution status to Completed
-            updateTriggerExecutionStatus(
-              getCurrentChatStore(),
-              project_id,
-              currentTaskId,
-              ExecutionStatus.Completed,
-              getTokens(currentTaskId)
-            );
 
             return;
           }

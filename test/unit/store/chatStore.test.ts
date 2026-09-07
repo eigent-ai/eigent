@@ -1637,7 +1637,9 @@ describe('ChatStore - Core Functionality', () => {
       });
 
       it('keeps the follow-up observer active when NEW_TASK_STATE races an async END handler', async () => {
-        const { store, streamContaining } = await startObservedLiveTask();
+        const { store, streamContaining } = await startObservedLiveTask({
+          executionId: 'execution-before-follow-up',
+        });
         const legacyStream = streamContaining('/chat');
         const signal = legacyStream.signal as AbortSignal;
         store.getState().setNextTaskId('follow-up-run');
@@ -1669,6 +1671,13 @@ describe('ChatStore - Core Functionality', () => {
         expect(hasAnyActiveLegacySSEConnection()).toBe(true);
         expect(runDomainEventHub.listenerCount()).toBe(1);
         expect(signal.aborted).toBe(false);
+        await vi.waitFor(() =>
+          expect(proxyUpdateTriggerExecution).toHaveBeenCalledWith(
+            'execution-before-follow-up',
+            expect.objectContaining({ status: ExecutionStatus.Completed }),
+            { projectId: 'project-1' }
+          )
+        );
 
         runEventIngressRegistry.ingest(
           'project-1',
