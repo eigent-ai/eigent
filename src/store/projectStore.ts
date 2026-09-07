@@ -55,7 +55,23 @@ import {
   type SpaceProjectMeta,
 } from './spaceStore';
 
-const staleRuntimeEvictionsInFlight = new Set<string>();
+const staleRuntimeEvictionsInFlight = new Map<string, Promise<void>>();
+const staleRuntimeEvictionRetriesAfterFlight = new Set<string>();
+
+/**
+ * Wait until an older Project transition has finished inspecting or retiring
+ * this Project's stale warm runtime. Callers that want to admit a follow-up
+ * must wait before deciding whether the compatibility consumer can be reused.
+ */
+export async function waitForPendingStaleRuntimeEviction(
+  projectId: string
+): Promise<void> {
+  while (true) {
+    const eviction = staleRuntimeEvictionsInFlight.get(projectId);
+    if (!eviction) return;
+    await eviction;
+  }
+}
 
 /**
  * After a history project finishes replaying, the per-subtask `status` may be
@@ -1348,9 +1364,28 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       // Renderer subscription lifetime is independent from the backend's warm
       // TaskLock consumer. Even with no local transport, verify and retire the
       // backend owner before dropping the only runtime state that identifies it.
-      if (staleRuntimeEvictionsInFlight.has(staleProjectId)) continue;
-      staleRuntimeEvictionsInFlight.add(staleProjectId);
-      void (async () => {
+      const inFlightEviction =
+        staleRuntimeEvictionsInFlight.get(staleProjectId);
+      if (inFlightEviction) {
+        // Do not lose a newer safe transition merely because an older status
+        // request is still unwinding. Retry once that request has released its
+        // registry slot, using the then-current active Project as the guard.
+        if (!staleRuntimeEvictionRetriesAfterFlight.has(staleProjectId)) {
+          staleRuntimeEvictionRetriesAfterFlight.add(staleProjectId);
+          void inFlightEviction.then(() => {
+            staleRuntimeEvictionRetriesAfterFlight.delete(staleProjectId);
+            const latest = get();
+            if (
+              latest.staleProjectIds.has(staleProjectId) &&
+              latest.activeProjectId !== staleProjectId
+            ) {
+              latest._evictStaleOnTransition(latest.activeProjectId);
+            }
+          });
+        }
+        continue;
+      }
+      const eviction = (async () => {
         try {
           const runtimeStatus = await fetchGet(
             `/chat/${encodeURIComponent(staleProjectId)}/status`
@@ -1386,10 +1421,14 @@ const projectStore = create<ProjectStore>()((set, get) => ({
             '[ProjectStore] Deferred stale runtime eviction until its backend consumer can retire',
             error
           );
-        } finally {
-          staleRuntimeEvictionsInFlight.delete(staleProjectId);
         }
       })();
+      staleRuntimeEvictionsInFlight.set(staleProjectId, eviction);
+      void eviction.finally(() => {
+        if (staleRuntimeEvictionsInFlight.get(staleProjectId) === eviction) {
+          staleRuntimeEvictionsInFlight.delete(staleProjectId);
+        }
+      });
     }
   },
 

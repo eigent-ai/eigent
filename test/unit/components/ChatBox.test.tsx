@@ -34,6 +34,7 @@ const eventNativeHarness = vi.hoisted(() => ({
   snapshot: null as any,
   controlOptions: null as any,
 }));
+const waitForPendingStaleRuntimeEvictionMock = vi.hoisted(() => vi.fn());
 
 // Mock dependencies (use the same relative paths as the imports above)
 vi.mock('../../../src/store/authStore', () => ({
@@ -112,7 +113,10 @@ vi.mock('../../../src/store/projectStore', () => {
   (useProjectStore as any).getState = vi.fn(() => ({
     getAllChatStores: () => [],
   }));
-  return { useProjectStore };
+  return {
+    useProjectStore,
+    waitForPendingStaleRuntimeEviction: waitForPendingStaleRuntimeEvictionMock,
+  };
 });
 
 vi.mock('@/store/projectStore', () => {
@@ -120,7 +124,10 @@ vi.mock('@/store/projectStore', () => {
   (useProjectStore as any).getState = vi.fn(() => ({
     getAllChatStores: () => [],
   }));
-  return { useProjectStore };
+  return {
+    useProjectStore,
+    waitForPendingStaleRuntimeEviction: waitForPendingStaleRuntimeEvictionMock,
+  };
 });
 
 // Mock useChatStoreAdapter to provide both stores
@@ -436,6 +443,8 @@ describe('ChatBox Component', async () => {
       () => undefined
     );
     defaultProjectStoreState.getAllChatStores.mockReturnValue([]);
+    waitForPendingStaleRuntimeEvictionMock.mockReset();
+    waitForPendingStaleRuntimeEvictionMock.mockResolvedValue(undefined);
 
     // Setup default store states
     mockUseChatStoreAdapter.mockReturnValue({
@@ -446,7 +455,18 @@ describe('ChatBox Component', async () => {
     mockUseAuthStore.mockReturnValue(defaultAuthStoreState as any);
 
     // Setup default API responses
-    mockFetchGet.mockResolvedValue({ runs: [] });
+    mockFetchGet.mockImplementation((url: string) =>
+      Promise.resolve(
+        url === '/chat/test-project-id/status'
+          ? {
+              has_lock: true,
+              status: 'done',
+              run_id: 'test-task-id',
+              consumer_alive: true,
+            }
+          : { runs: [] }
+      )
+    );
     mockProxyFetchGet.mockImplementation((url: string) => {
       if (url === '/api/user/key' || url === '/api/v1/user/key') {
         return Promise.resolve({ value: 'test-api-key' });
@@ -1009,6 +1029,88 @@ describe('ChatBox Component', async () => {
       );
     });
 
+    it('waits for stale retirement and cold-admits when the warm consumer is gone', async () => {
+      const user = userEvent.setup();
+      let releaseRetirement!: () => void;
+      waitForPendingStaleRuntimeEvictionMock.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseRetirement = resolve;
+          })
+      );
+      mockFetchGet.mockImplementation((url: string) =>
+        Promise.resolve(
+          url === '/chat/test-project-id/status'
+            ? {
+                has_lock: true,
+                status: 'done',
+                run_id: 'test-task-id',
+                consumer_alive: false,
+              }
+            : { runs: [] }
+        )
+      );
+      const completedChatState = {
+        ...defaultChatStoreState,
+        tasks: {
+          'test-task-id': {
+            ...defaultChatStoreState.tasks['test-task-id'],
+            messages: [
+              { id: '1', role: 'user', content: 'Initial task', attaches: [] },
+              {
+                id: '2',
+                role: 'assistant',
+                content: 'Initial result',
+                step: 'wait_confirm',
+                attaches: [],
+              },
+            ],
+            hasMessages: true,
+            hasWaitComfirm: true,
+            status: 'pending',
+          },
+        },
+      };
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: completedChatState as any,
+      });
+
+      renderChatBox();
+      await user.type(screen.getByTestId('message-input'), 'Continue safely');
+      await user.click(screen.getByTestId('send-button'));
+      await Promise.resolve();
+
+      expect(mockFetchGet).not.toHaveBeenCalledWith(
+        '/chat/test-project-id/status'
+      );
+      expect(completedChatState.startTask).not.toHaveBeenCalled();
+
+      releaseRetirement();
+
+      await waitFor(() =>
+        expect(completedChatState.startTask).toHaveBeenCalledWith(
+          'test-unique-id',
+          undefined,
+          undefined,
+          undefined,
+          'Continue safely',
+          [],
+          undefined,
+          'test-project-id',
+          'single-agent',
+          expect.objectContaining({
+            preserveTaskId: true,
+            awaitAdmission: true,
+          })
+        )
+      );
+      expect(_mockFetchPost).not.toHaveBeenCalledWith(
+        '/chat/test-project-id',
+        expect.anything()
+      );
+    });
+
     it('keeps the composer available and queues a second task while running', async () => {
       const user = userEvent.setup();
       const runningChatState = {
@@ -1136,6 +1238,7 @@ describe('ChatBox Component', async () => {
             has_lock: true,
             status: 'done',
             run_id: 'test-task-id',
+            consumer_alive: true,
           });
         }
         return Promise.resolve({ items: [] });
