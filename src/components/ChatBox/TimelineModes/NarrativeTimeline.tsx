@@ -31,7 +31,11 @@ import {
   type TimelineSegment,
 } from '@/lib/projector/chat/presentation';
 import { cn } from '@/lib/utils';
-import { SessionMode, type SessionModeType } from '@/types/constants';
+import {
+  AgentStep,
+  SessionMode,
+  type SessionModeType,
+} from '@/types/constants';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -1042,7 +1046,13 @@ export function NarrativeTimeline({
                     />
                   ) : undefined
                 }
+                feedbackMessageId={
+                  run.finalAssistantResponse.messageId ??
+                  run.finalAssistantResponse.id
+                }
+                feedbackRunId={run.runId}
                 id={run.finalAssistantResponse.id}
+                messageStep={AgentStep.END}
                 typewriter={isActiveRunStatus(run.status)}
               />
             ) : null}
