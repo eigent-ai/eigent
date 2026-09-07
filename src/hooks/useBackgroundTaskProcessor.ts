@@ -47,6 +47,17 @@ interface LegacyChatRuntimeStatus {
   consumer_alive?: boolean;
 }
 
+const RETRYABLE_BACKGROUND_ADMISSION_ERROR_CODES = new Set([
+  'project_consumer_active',
+]);
+
+const isRetryableBackgroundAdmissionError = (error: unknown): boolean =>
+  typeof error === 'object' &&
+  error !== null &&
+  'code' in error &&
+  typeof error.code === 'string' &&
+  RETRYABLE_BACKGROUND_ADMISSION_ERROR_CODES.has(error.code);
+
 /**
  * Hook that processes background tasks from project queuedMessages.
  * Supports trigger tasks (with executionId) and can be extended for other task types.
@@ -106,8 +117,12 @@ export function useBackgroundTaskProcessor() {
           projectData.chatStores || {}
         ).some((cs) => {
           const state = cs.getState();
-          return Object.values(state.tasks).some(
-            (t) =>
+          return Object.values(state.tasks).some((t) => {
+            // A terminal direct/single-agent task may have no TO_SUB_TASKS
+            // message. Its old skeleton markers must not block later queued
+            // trigger admission.
+            if (t.status === ChatTaskStatus.FINISHED) return false;
+            return (
               t.status === ChatTaskStatus.RUNNING ||
               t.status === ChatTaskStatus.PAUSE ||
               // splitting phase
@@ -119,7 +134,8 @@ export function useBackgroundTaskProcessor() {
                 !t.hasWaitComfirm &&
                 t.messages.length > 0) ||
               t.isTakeControl
-          );
+            );
+          });
         });
 
         if (hasRunningChatTask) {
@@ -307,17 +323,23 @@ export function useBackgroundTaskProcessor() {
             content,
             attaches,
             executionId,
-            projectId
+            projectId,
+            undefined,
+            {
+              preserveTaskId: true,
+              awaitAdmission: true,
+            }
           );
 
-        // Fire and forget - task state and canonical ingress track completion.
+        // The Promise resolves after Brain admits this exact Run. Runtime
+        // completion remains owned by task state and canonical ingress.
         admissionPromise
           .then(() => {
             console.log(
-              '[BackgroundTaskProcessor] Background task completed:',
+              '[BackgroundTaskProcessor] Background task admitted:',
               executionId
             );
-            // Remove from queue after successful completion
+            // Only remove the durable queue item after the server owns it.
             projectStore.removeQueuedMessage(projectId, task_id);
             activeTasksRef.current.delete(executionId);
           })
@@ -326,6 +348,18 @@ export function useBackgroundTaskProcessor() {
               '[BackgroundTaskProcessor] Background task error:',
               err
             );
+            if (isRetryableBackgroundAdmissionError(err)) {
+              // Status/retirement checks and admission are separate requests.
+              // If another Run wins that race, retain this trigger and let a
+              // later poll repeat the full ownership check.
+              projectStore.setQueuedMessageProcessing(
+                projectId,
+                task_id,
+                false
+              );
+              activeTasksRef.current.delete(executionId);
+              return;
+            }
             // Remove from queue on error as well
             projectStore.removeQueuedMessage(projectId, task_id);
             // Report failure to backend

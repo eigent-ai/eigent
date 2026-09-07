@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { useBackgroundTaskProcessor } from '@/hooks/useBackgroundTaskProcessor';
+import { ExecutionStatus } from '@/types';
 import { AgentStep, ChatTaskStatus } from '@/types/constants';
 import { renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -24,6 +25,7 @@ const mocks = vi.hoisted(() => {
     getChatStore: vi.fn(),
     appendInitChatStore: vi.fn(),
     markQueuedMessageAsProcessing: vi.fn(),
+    setQueuedMessageProcessing: vi.fn(),
     removeQueuedMessage: vi.fn(),
   };
   const useProjectRuntimeStore = Object.assign(
@@ -183,7 +185,9 @@ describe('useBackgroundTaskProcessor SSE admission', () => {
       'Run scheduled task',
       [],
       'execution-1',
-      'project-1'
+      'project-1',
+      undefined,
+      { preserveTaskId: true, awaitAdmission: true }
     );
 
     // Re-entrant project-store notifications must see the execution guard and
@@ -193,6 +197,70 @@ describe('useBackgroundTaskProcessor SSE admission', () => {
     subscription();
     await Promise.resolve();
     expect(mocks.fetchPost).toHaveBeenCalledTimes(1);
+
+    unmount();
+  });
+
+  it('keeps the queue item until the exact Run is admitted', async () => {
+    let admitRun!: () => void;
+    mocks.startTask.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          admitRun = resolve;
+        })
+    );
+
+    const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+
+    await waitFor(() => expect(mocks.startTask).toHaveBeenCalledTimes(1));
+    expect(
+      mocks.projectRuntimeStore.removeQueuedMessage
+    ).not.toHaveBeenCalled();
+
+    admitRun();
+    await waitFor(() =>
+      expect(
+        mocks.projectRuntimeStore.removeQueuedMessage
+      ).toHaveBeenCalledWith('project-1', 'queued-trigger')
+    );
+
+    unmount();
+  });
+
+  it('requeues a trigger when another Project consumer wins admission', async () => {
+    mocks.startTask.mockRejectedValue(
+      Object.assign(new Error('Project consumer is active'), {
+        code: 'project_consumer_active',
+      })
+    );
+
+    const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+
+    await waitFor(() =>
+      expect(
+        mocks.projectRuntimeStore.setQueuedMessageProcessing
+      ).toHaveBeenCalledWith('project-1', 'queued-trigger', false)
+    );
+    expect(
+      mocks.projectRuntimeStore.removeQueuedMessage
+    ).not.toHaveBeenCalled();
+    expect(
+      mocks.proxyUpdateTriggerExecution.mock.calls.some(
+        ([, update]) => update.status === ExecutionStatus.Failed
+      )
+    ).toBe(false);
+
+    unmount();
+  });
+
+  it('does not treat a finished direct task as an active skeleton phase', async () => {
+    sourceState.tasks['ended-run'].messages = [
+      { role: 'user', content: 'Create a direct answer' },
+    ];
+
+    const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+
+    await waitFor(() => expect(mocks.startTask).toHaveBeenCalledTimes(1));
 
     unmount();
   });

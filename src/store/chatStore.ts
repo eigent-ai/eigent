@@ -1401,12 +1401,18 @@ function cleanupAllCanonicalTerminalObservers(): void {
 
 function cleanupSSEConnection(
   connection: ActiveSSEConnection,
-  { abort = true }: { abort?: boolean } = {}
+  {
+    abort = true,
+    disposeCanonicalObserver = true,
+  }: { abort?: boolean; disposeCanonicalObserver?: boolean } = {}
 ): void {
   // A superseded transport may deliver a late onerror/onclose callback after
   // another transport has claimed the same Run. Only the current owner may
   // dispose that Run's canonical observer.
-  if (activeSSEControllers[connection.taskId] === connection) {
+  if (
+    disposeCanonicalObserver &&
+    activeSSEControllers[connection.taskId] === connection
+  ) {
     cleanupCanonicalTerminalObserverForTask(connection.taskId);
   }
   if (abort) {
@@ -3188,13 +3194,19 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             settledState.tasks[observedTaskId]?.tokens || 0,
             terminalMessage
           );
-          binding.dispose();
 
           // Failed/cancelled/interrupted executions cannot produce another
           // useful legacy frame. Stop any retry loop left by the broken
           // `/chat` transport. A completed Run still gets a chance to emit
           // its legacy END frame with the final assistant response.
-          if (event.eventType !== 'run.completed') {
+          if (event.eventType === 'run.completed') {
+            markSSEConnectionIdleForTask(sseConnection, observedTaskId);
+            // The legacy transport may already have closed and relinquished
+            // ownership, in which case the guarded idle transition is a
+            // no-op but this terminal observer is still finished.
+            binding.dispose();
+          } else {
+            binding.dispose();
             cleanupSSEConnection(sseConnection);
           }
         };
@@ -5972,6 +5984,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             try {
               const body = await respond.clone().json();
               const bodyDetail = body?.detail ?? body?.message ?? body?.text;
+              if (typeof body?.error_code === 'string') {
+                errorCode = body.error_code;
+              }
               if (typeof bodyDetail === 'string') {
                 detail = bodyDetail;
                 userMessage = bodyDetail;
@@ -6116,7 +6131,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
           // Clean up AbortController on error with robust error handling
           try {
-            cleanupSSEConnection(sseConnection);
+            cleanupSSEConnection(sseConnection, {
+              // Once admitted, the independent canonical stream remains the
+              // authority for the Run outcome even if legacy `/chat` dies.
+              disposeCanonicalObserver: !resumeStreamOpened,
+            });
             console.log(
               `Cleaned up SSE resources for task ${sseConnection.taskId} after error`
             );
@@ -6152,7 +6171,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
           // Clean up AbortController when connection closes with robust error handling
           try {
-            cleanupSSEConnection(sseConnection, { abort: false });
+            cleanupSSEConnection(sseConnection, {
+              abort: false,
+              // Live Runs still settle from the independent canonical stream.
+              // Replay/share streams do not install that observer.
+              disposeCanonicalObserver: Boolean(type),
+            });
             console.log(
               `Cleaned up SSE resources for task ${sseConnection.taskId} after connection close`
             );
