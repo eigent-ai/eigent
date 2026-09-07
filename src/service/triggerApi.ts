@@ -273,6 +273,7 @@ type PendingTerminalExecutionUpdate = {
 
 const TERMINAL_EXECUTION_OUTBOX_KEY = 'eigent.trigger-terminal-outbox.v1';
 const TERMINAL_EXECUTION_RETRY_DELAYS_MS = [250, 1_000] as const;
+const TRIGGER_EXECUTION_REQUEST_TIMEOUT_MS = 10_000;
 const terminalExecutionStatuses = new Set<string>([
   ExecutionStatus.Completed,
   ExecutionStatus.Failed,
@@ -371,11 +372,26 @@ const sendTriggerExecutionUpdate = async (
   updateData: TriggerExecutionUpdateData,
   triggerInfo?: TriggerExecutionInfo
 ) => {
+  const controller = new AbortController();
+  let timeoutId: ReturnType<typeof globalThis.setTimeout> | undefined;
   try {
-    const res = await proxyFetchPut(
+    const request = proxyFetchPut(
       `/api/v1/execution/${executionId}`,
-      updateData
+      updateData,
+      undefined,
+      { signal: controller.signal }
     );
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timeoutId = globalThis.setTimeout(() => {
+        controller.abort();
+        reject(
+          new Error(
+            `Trigger execution update timed out after ${TRIGGER_EXECUTION_REQUEST_TIMEOUT_MS}ms`
+          )
+        );
+      }, TRIGGER_EXECUTION_REQUEST_TIMEOUT_MS);
+    });
+    const res = await Promise.race([request, timeout]);
 
     // Log activity when execution status is updated
     if (updateData.status) {
@@ -427,6 +443,10 @@ const sendTriggerExecutionUpdate = async (
   } catch (error) {
     console.error('Failed to update trigger execution:', error);
     throw error;
+  } finally {
+    if (timeoutId !== undefined) {
+      globalThis.clearTimeout(timeoutId);
+    }
   }
 };
 
