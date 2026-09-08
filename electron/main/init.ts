@@ -29,6 +29,7 @@ import {
   findNodejsWheelNpmPath,
   getBackendPath,
   getBinaryPath,
+  getBundledGitPath,
   getCachePath,
   getPrebuiltPythonDir,
   getUvEnv,
@@ -326,8 +327,13 @@ export async function startBackend(
   // Add nodejs-wheel paths for browser toolkit (needs npm, npx, and node)
   const npmWrapperDir = findNodejsWheelNpmPath(venvPath);
   const nodejsWheelBin = findNodejsWheelBinPath(venvPath);
+  const bundledGitPath = getBundledGitPath();
   const pathEnv = process.env.PATH || '';
   const pathParts: string[] = [];
+  if (bundledGitPath) {
+    pathParts.push(path.dirname(bundledGitPath));
+    log.info(`[BACKEND] Using bundled Git: ${bundledGitPath}`);
+  }
   if (npmWrapperDir) pathParts.push(npmWrapperDir);
   if (nodejsWheelBin && nodejsWheelBin !== npmWrapperDir) {
     pathParts.push(nodejsWheelBin);
@@ -347,6 +353,7 @@ export async function startBackend(
     PYTHONUNBUFFERED: '1',
     npm_config_cache: npmCacheDir,
     PATH: updatedPath,
+    ...(bundledGitPath ? { EIGENT_BUNDLED_GIT: bundledGitPath } : {}),
     ...extraEnv,
   };
 
