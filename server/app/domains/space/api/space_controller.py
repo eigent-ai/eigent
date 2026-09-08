@@ -214,6 +214,19 @@ def update_space_project(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@router.delete("/{space_id}/projects/{project_id}", name="delete space project", status_code=204)
+def delete_space_project(
+    space_id: str,
+    project_id: str,
+    db_session: Session = Depends(session),
+    auth: V1UserAuth = Depends(auth_must),
+):
+    try:
+        SpaceService.delete_project(space_id, project_id, auth.id, db_session)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.post("/{space_id}/projects/{project_id}/promote", name="promote project to folder space", response_model=ProjectOut)
 def promote_space_project(
     space_id: str,
