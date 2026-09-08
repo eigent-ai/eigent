@@ -247,7 +247,6 @@ def create_agent(
         model_config_dict=model_config_dict,
         **kwargs,
     )
-    configure_meta_model_api_backend(model, url)
     agent = ChatAgent(
         system_message="You are a helpful assistant that must use the tool get_website_content to get the content of a website.",
         model=model,

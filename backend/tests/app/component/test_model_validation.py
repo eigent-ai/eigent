@@ -202,28 +202,6 @@ def test_create_agent_success(mock_chat_agent, mock_model_factory):
 
 
 @pytest.mark.unit
-@patch("app.component.model_validation.configure_meta_model_api_backend")
-@patch("app.component.model_validation.ModelFactory.create")
-@patch("app.component.model_validation.ChatAgent")
-def test_create_agent_configures_meta_backend(
-    mock_chat_agent, mock_model_factory, configure_meta_backend
-):
-    mock_model = MagicMock()
-    mock_model_factory.return_value = mock_model
-
-    create_agent(
-        model_platform="openai-compatible-model",
-        model_type="muse-spark-1.3",
-        api_key="test_key",
-        url="https://api.meta.ai/v1",
-    )
-
-    configure_meta_backend.assert_called_once_with(
-        mock_model, "https://api.meta.ai/v1"
-    )
-
-
-@pytest.mark.unit
 def test_create_agent_invalid_model_type():
     """Test agent creation with invalid model type."""
     with pytest.raises(ValueError, match="Invalid model_type"):
