@@ -234,7 +234,7 @@ export const INIT_PROVODERS: Provider[] = [
   },
   {
     id: 'meta',
-    name: 'Meta Model API',
+    name: 'Meta',
     apiKey: '',
     apiHost: 'https://api.meta.ai/v1',
     description: 'Meta Model API model configuration.',
