@@ -108,6 +108,42 @@ def _configure_responses_instructions(model_backend: Any) -> None:
     model_backend._eigent_instructions_configured = True  # noqa: SLF001
 
 
+def _sanitize_tool_schema(obj):
+    """Recursively fix tool JSON schemas for strict providers (e.g. Groq)."""
+    if isinstance(obj, list):
+        for item in obj:
+            _sanitize_tool_schema(item)
+        return
+    if not isinstance(obj, dict):
+        return
+    # force additionalProperties to false on objects
+    if obj.get("type") == "object":
+        obj["additionalProperties"] = False
+    # collapse integer/number overlap in anyOf/oneOf
+    for union_key in ("anyOf", "oneOf"):
+        union = obj.get(union_key)
+        if isinstance(union, list):
+            types_in_union = [
+                item.get("type")
+                for item in union
+                if isinstance(item, dict) and "type" in item
+            ]
+            if "integer" in types_in_union and "number" in types_in_union:
+                obj[union_key] = [
+                    item
+                    for item in union
+                    if not (
+                        isinstance(item, dict)
+                        and item.get("type") == "integer"
+                    )
+                ]
+    # Recurse
+    for key, value in list(obj.items()):
+        if key == "additionalProperties" and value is not False:
+            continue
+        _sanitize_tool_schema(value)
+
+
 def agent_model(
     agent_name: str,
     system_message: str | BaseMessage,
@@ -435,6 +471,15 @@ def agent_model(
         )
 
     model = build_model()
+
+    # Fix tool schemas for strict providers (e.g. Groq) that require
+    # additionalProperties: false and reject integer/number overlap.
+    if tools:
+        for tool in tools:
+            if isinstance(tool, FunctionTool) and hasattr(
+                tool, "openai_tool_schema"
+            ):
+                _sanitize_tool_schema(tool.openai_tool_schema)
 
     return ListenChatAgent(
         options.project_id,
