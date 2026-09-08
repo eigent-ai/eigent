@@ -22,7 +22,9 @@ from pydantic import BaseModel
 from app.model.model_platform import (
     NormalizedModelPlatform,
     NormalizedOptionalModelPlatform,
+    configure_meta_model_api_backend,
     is_eigent_cloud_model_endpoint,
+    is_meta_model_api_endpoint,
     normalize_model_platform,
     normalize_optional_model_platform,
     resolve_cloud_model_runtime_platform,
@@ -35,12 +37,80 @@ def test_normalize_model_platform_maps_known_aliases():
     assert normalize_model_platform("ModelArk") == "openai-compatible-model"
     assert normalize_model_platform("ernie") == "qianfan"
     assert normalize_model_platform("llama.cpp") == "openai-compatible-model"
+    assert normalize_model_platform("meta") == "openai-compatible-model"
     assert normalize_model_platform("nebius") == "openai-compatible-model"
 
 
 def test_normalize_model_platform_keeps_non_alias_unchanged():
     assert normalize_model_platform("openai") == "openai"
     assert normalize_model_platform("mistral") == "mistral"
+
+
+def test_meta_model_api_endpoint_matches_exact_official_host():
+    assert is_meta_model_api_endpoint("https://api.meta.ai/v1")
+    assert is_meta_model_api_endpoint("https://API.META.AI/v1/")
+    assert not is_meta_model_api_endpoint("https://api.meta.ai.example/v1")
+    assert not is_meta_model_api_endpoint("https://example.com/api.meta.ai")
+    assert not is_meta_model_api_endpoint(None)
+
+
+def test_meta_model_api_backend_omits_strict_without_changing_schema():
+    assert hasattr(OpenAICompatibleModel, "_prepare_request_config")
+
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "planning_exit_plan_mode",
+                "strict": True,
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "allowed_prompts": {
+                            "type": "object",
+                            "additionalProperties": {"type": "string"},
+                        }
+                    },
+                },
+            },
+        }
+    ]
+    backend = ModelFactory.create(
+        model_platform="openai-compatible-model",
+        model_type="muse-spark-1.3",
+        api_key="test-key",
+        url="https://api.meta.ai/v1",
+        model_config_dict={"stream": True},
+    )
+
+    configure_meta_model_api_backend(backend, "https://api.meta.ai/v1")
+    request_config = backend._prepare_request_config(tools)
+
+    function = request_config["tools"][0]["function"]
+    assert "strict" not in function
+    assert function["parameters"]["properties"]["allowed_prompts"][
+        "additionalProperties"
+    ] == {"type": "string"}
+    assert tools[0]["function"]["strict"] is True
+    assert request_config["stream"] is True
+
+
+def test_non_meta_backend_keeps_strict_tool_schema():
+    class _Backend:
+        def _prepare_request_config(self, tools=None):
+            return {"tools": tools}
+
+    tools = [
+        {
+            "type": "function",
+            "function": {"name": "example", "strict": True},
+        }
+    ]
+    backend = _Backend()
+
+    configure_meta_model_api_backend(backend, "https://api.openai.com/v1")
+
+    assert backend._prepare_request_config(tools)["tools"] == tools
 
 
 def test_normalize_optional_model_platform_handles_none():

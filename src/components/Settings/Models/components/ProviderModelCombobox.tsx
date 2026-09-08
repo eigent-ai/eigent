@@ -56,8 +56,9 @@ function splitPrefix(id: string): [string, string] {
 
 /**
  * Model-type picker for providers that expose a `/models` endpoint
- * (Nebius, OrcaRouter). A full-width {@link Select} (matching the Eigent Cloud
- * model select) with a trailing rounded "Refresh" button to re-fetch the list.
+ * (Meta Model API, Nebius, OrcaRouter). A full-width {@link Select} (matching
+ * the Eigent Cloud model select) with a trailing rounded "Refresh" button to
+ * re-fetch the list.
  */
 export function ProviderModelCombobox({
   providerName,

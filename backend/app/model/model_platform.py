@@ -12,7 +12,8 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from typing import Annotated, Final
+from typing import Annotated, Any, Final
+from urllib.parse import urlparse
 
 from pydantic import BeforeValidator
 
@@ -23,6 +24,7 @@ PLATFORM_ALIAS_MAPPING: Final[dict[str, str]] = {
     "grok": "openai-compatible-model",
     "ernie": "qianfan",
     "llama.cpp": "openai-compatible-model",
+    "meta": "openai-compatible-model",
     "nebius": "openai-compatible-model",
     "orcarouter": "openai-compatible-model",
 }
@@ -41,6 +43,7 @@ EIGENT_CLOUD_MODEL_ENDPOINT_MARKERS: Final[tuple[str, ...]] = (
 )
 
 OPENAI_COMPATIBLE_MODEL_PLATFORM: Final[str] = "openai-compatible-model"
+META_MODEL_API_HOST: Final[str] = "api.meta.ai"
 
 # Azure's GPT-5.6 model family rejects function tools combined with
 # `reasoning_effort` on the legacy chat-completions transport. CAMEL supports
@@ -86,6 +89,72 @@ def is_eigent_cloud_model_endpoint(api_url: object) -> bool:
     return isinstance(api_url, str) and any(
         marker in api_url for marker in EIGENT_CLOUD_MODEL_ENDPOINT_MARKERS
     )
+
+
+def is_meta_model_api_endpoint(api_url: object) -> bool:
+    """Return whether ``api_url`` directly targets the official Meta API.
+
+    Proxies and alternate hosts deliberately do not inherit Meta-specific
+    request rewriting.
+    """
+    if not isinstance(api_url, str):
+        return False
+    try:
+        return urlparse(api_url).hostname == META_MODEL_API_HOST
+    except ValueError:
+        return False
+
+
+def configure_meta_model_api_backend(
+    model_backend: Any, api_url: object
+) -> None:
+    """Use Meta-compatible function schemas for Chat Completions.
+
+    CAMEL marks generated function schemas as strict. Meta strict mode requires
+    every object schema to set ``additionalProperties`` to ``false``, but
+    Eigent has tools with dictionary arguments whose additional properties
+    describe the dictionary value type. Meta accepts those schemas when strict
+    mode is omitted, which is also the documented default. Eigent currently
+    uses Meta's Chat Completions transport, whose CAMEL request preparation is
+    adapted here.
+    """
+    if not is_meta_model_api_endpoint(api_url) or getattr(
+        model_backend, "_eigent_meta_tools_configured", False
+    ):
+        return
+
+    # This private hook is specific to CAMEL's Chat Completions transport.
+    # Responses uses a separate request-preparation path.
+    prepare = getattr(model_backend, "_prepare_request_config", None)
+    if not callable(prepare):
+        return
+
+    def prepare_without_strict_tools(tools=None):
+        request_config = prepare(tools)
+        request_tools = request_config.get("tools")
+        if not isinstance(request_tools, list):
+            return request_config
+
+        compatible_tools = []
+        for tool in request_tools:
+            if not isinstance(tool, dict) or tool.get("type") != "function":
+                compatible_tools.append(tool)
+                continue
+            compatible_tool = dict(tool)
+            function = tool.get("function")
+            if isinstance(function, dict):
+                compatible_function = dict(function)
+                compatible_function.pop("strict", None)
+                compatible_tool["function"] = compatible_function
+            compatible_tool.pop("strict", None)
+            compatible_tools.append(compatible_tool)
+
+        return {**request_config, "tools": compatible_tools}
+
+    model_backend._prepare_request_config = (  # noqa: SLF001
+        prepare_without_strict_tools
+    )
+    model_backend._eigent_meta_tools_configured = True  # noqa: SLF001
 
 
 def resolve_cloud_model_runtime_platform(
