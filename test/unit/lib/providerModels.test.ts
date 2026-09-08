@@ -75,12 +75,12 @@ describe('provider model filtering', () => {
 
   it('limits Meta discovery results to the Muse Spark family', async () => {
     mocks.fetchPost.mockResolvedValue({
-          data: [
-            { id: 'muse-voice-transcribe-1.0' },
-            { id: 'muse-spark-1.3' },
-            { id: 'muse-image-1.0' },
-            { id: 'muse-spark-1.3-contributor' },
-          ],
+      data: [
+        { id: 'muse-voice-transcribe-1.0' },
+        { id: 'muse-spark-1.3' },
+        { id: 'muse-image-1.0' },
+        { id: 'muse-spark-1.3-contributor' },
+      ],
     });
 
     const groups = await fetchProviderModels(
