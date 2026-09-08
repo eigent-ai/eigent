@@ -23,7 +23,7 @@ describe('INIT_PROVODERS', () => {
     const provider = INIT_PROVODERS.find((item) => item.id === 'meta');
 
     expect(provider).toMatchObject({
-      name: 'Meta Model API',
+      name: 'Meta',
       apiHost: 'https://api.meta.ai/v1',
       model_type: '',
       modelsEndpoint: '/models',
