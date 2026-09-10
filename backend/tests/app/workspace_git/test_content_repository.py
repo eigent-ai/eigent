@@ -260,6 +260,46 @@ def test_checkpoint_commits_only_explicit_paths_and_preserves_user_index(
         )
 
 
+@pytest.mark.parametrize("filename", ["my report.md", "报告.md"])
+def test_status_reports_pending_managed_paths_with_quoted_names(
+    tmp_path,
+    journal,
+    filename,
+):
+    space = tmp_path / "repo"
+    space.mkdir()
+    service, backend = _service(tmp_path, journal)
+    result = service.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    target = space / filename
+    target.write_text("baseline\n", encoding="utf-8")
+    service.checkpoint(
+        result.repository.repository_id,
+        operation_request_id="checkpoint-1",
+        expected_repo_state_digest=backend.repo_state_token(space).digest,
+        paths=(target,),
+        path_sources={filename: "user_selected"},
+        target_role="user",
+        target_id="space-1",
+        actor_id="user-1",
+        trigger="user_save",
+        message="Save progress",
+    )
+    assert (
+        service.status(result.repository.repository_id).pending_managed_paths
+        == ()
+    )
+
+    target.write_text("pending edit\n", encoding="utf-8")
+
+    status = service.status(result.repository.repository_id)
+    assert status.pending_managed_paths == (filename,)
+    assert status.pending_managed_paths_truncated is False
+
+
 def test_checkpoint_refuses_to_overwrite_selected_path_staging(
     tmp_path,
     journal,
