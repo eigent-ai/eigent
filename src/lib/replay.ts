@@ -141,3 +141,60 @@ export const replayProject = async (
   projectStore.replayProject(taskIdsList, question, projectId, historyId);
   navigate({ pathname: '/' });
 };
+
+/**
+ * Replay function specifically for the current active task in ChatBox
+ * This extracts the necessary data from the current chat store and project store
+ *
+ * @param chatStore - The chat store instance
+ * @param projectStore - The project store instance
+ * @param navigate - The navigate function from useNavigate hook
+ */
+export const replayActiveTask = async (
+  chatStore: ChatStore,
+  projectStore: ProjectStore,
+  navigate: NavigateFunction
+) => {
+  const taskId = chatStore.activeTaskId as string;
+  const projectId = projectStore.activeProjectId as string;
+
+  if (!taskId || !projectId) {
+    console.error('Missing taskId or projectId for replay');
+    return;
+  }
+
+  // Get the question from the active task's own messages
+  const activeTask = chatStore.tasks[taskId];
+  let question = '';
+  if (activeTask && activeTask.messages && activeTask.messages.length > 0) {
+    const userMessage = activeTask.messages.find(
+      (msg: any) => msg.role === 'user'
+    );
+    if (userMessage && userMessage.content) {
+      question = userMessage.content.trim();
+    }
+  }
+
+  // Fallback to first message if no user message found
+  if (
+    !question &&
+    activeTask &&
+    activeTask.messages[0] &&
+    activeTask.messages[0].content
+  ) {
+    question = activeTask.messages[0].content;
+    console.log('[REPLAY] question fall back to ', question);
+  }
+
+  const historyId = projectStore.getHistoryId(projectId);
+
+  // Use replayProject from projectStore instead of replay from chatStore
+  const taskIdsList = [taskId];
+  projectStore.replayProject(
+    taskIdsList,
+    question,
+    projectId,
+    historyId || undefined
+  );
+  navigate('/');
+};
