@@ -31,6 +31,10 @@ from app.model.model_platform import (
     patch_bedrock_cloud_config,
     resolve_cloud_model_runtime_platform,
 )
+from app.model.responses_runtime import (
+    install_camel_responses_multimodal_patch,
+    normalize_responses_multimodal_content,
+)
 from app.model.subscription_runtime import (
     apply_subscription_runtime,
     is_subscription_auth,
@@ -67,12 +71,15 @@ def _responses_instructions(system_message: str | BaseMessage) -> str:
 
 
 def _configure_responses_instructions(model_backend: Any) -> None:
-    """Keep system/developer text only in Responses `instructions`.
+    """Adapt CAMEL Responses input for Eigent's proxy and Azure backends.
 
     CAMEL converts the agent system message into an input item. Eigent also
     supplies that trusted text through `instructions` so it is present on every
     chained response. Remove the duplicate input item to avoid sending and
     billing the same prompt twice.
+
+    Image inspection also arrives as chat-completions parts. Rewrite those
+    to Responses ``input_text`` / ``input_image`` before the request is sent.
     """
     if getattr(model_backend, "_eigent_instructions_configured", False):
         return
@@ -97,10 +104,11 @@ def _configure_responses_instructions(model_backend: Any) -> None:
                 and item.get("role") in {"system", "developer"}
             )
         ]
-        if len(filtered) == len(input_messages):
+        normalized = normalize_responses_multimodal_content(filtered)
+        if normalized == input_messages:
             return state
 
-        return {**state, "input_messages": filtered}
+        return {**state, "input_messages": normalized}
 
     model_backend._prepare_responses_input_and_chain = (  # noqa: SLF001
         prepare_without_instruction_messages
@@ -342,6 +350,9 @@ def agent_model(
             )
 
         if uses_responses_transport:
+            # CAMEL copies chat-completions image parts as-is. Azure/LiteLLM
+            # Responses reject ``type: "text"`` / ``type: "image_url"``.
+            install_camel_responses_multimodal_patch()
             # Responses does not carry a prior response's `instructions`
             # forward when `previous_response_id` is used. Send the trusted
             # agent prompt on every call so the proxy Prompt Guard can validate
@@ -425,7 +436,7 @@ def agent_model(
             timeout=600,  # 10 minutes
             **init_params,
         )
-        if uses_responses_transport and model_config.get("instructions"):
+        if uses_responses_transport:
             _configure_responses_instructions(model_backend)
         return instrument_model_backend(
             model_backend,

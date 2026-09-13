@@ -95,6 +95,51 @@ class TestAgentFactoryFunctions:
             },
         ]
 
+    def test_responses_image_parts_are_rewritten_for_azure(self):
+        class ResponsesBackend:
+            def _prepare_responses_input_and_chain(
+                self, messages, chain_enabled=True
+            ):
+                return {
+                    "input_messages": list(messages),
+                    "chain_enabled": chain_enabled,
+                }
+
+        backend = ResponsesBackend()
+        _configure_responses_instructions(backend)
+
+        state = backend._prepare_responses_input_and_chain(
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "what is in this image?"},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": "data:image/png;base64,abc",
+                                "detail": "auto",
+                            },
+                        },
+                    ],
+                }
+            ]
+        )
+
+        assert state["input_messages"] == [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": "what is in this image?"},
+                    {
+                        "type": "input_image",
+                        "image_url": "data:image/png;base64,abc",
+                        "detail": "auto",
+                    },
+                ],
+            }
+        ]
+
     def test_codex_subscription_model_uses_responses_api(
         self, monkeypatch, sample_chat_data
     ):
@@ -368,6 +413,43 @@ class TestAgentFactoryFunctions:
         assert kwargs["model_config_dict"]["instructions"] == "You are helpful"
         assert "reasoning_effort" not in kwargs["model_config_dict"]
         assert "stream_options" not in kwargs["model_config_dict"]
+
+    def test_cloud_responses_installs_image_inspection_patch(
+        self, sample_chat_data
+    ):
+        options = Chat(
+            **{
+                **sample_chat_data,
+                "model_platform": "azure",
+                "model_type": "gpt-6-astra",
+                "api_url": "https://proxy.eigent.ai",
+                "extra_params": {"api_mode": "responses"},
+            }
+        )
+        mock_task_lock = MagicMock()
+        mock_task_lock.put_queue = MagicMock(return_value=None)
+
+        _m = sys.modules["app.agent.agent_model"]
+        with (
+            patch.object(_m, "ListenChatAgent"),
+            patch.object(_m, "ModelFactory") as mock_model_factory,
+            patch.object(_m, "get_task_lock", return_value=mock_task_lock),
+            patch.object(_m, "_schedule_async_task"),
+            patch.object(
+                _m, "install_camel_responses_multimodal_patch"
+            ) as mock_patch,
+        ):
+            mock_model_factory.create.return_value = MagicMock()
+            agent_model(
+                "TestAgent",
+                "You are helpful",
+                options,
+                [MagicMock()],
+            )
+
+        mock_patch.assert_called_once()
+        kwargs = mock_model_factory.create.call_args.kwargs
+        assert kwargs["api_mode"] == "responses"
 
     def test_direct_azure_gpt_5_6_reasoning_with_tools_uses_responses_api(
         self, sample_chat_data
