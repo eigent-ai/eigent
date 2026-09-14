@@ -10856,29 +10856,44 @@ class SQLiteRunJournal:
             raise ValueError("invalid extraction cursor range")
         if not 1 <= limit <= 100:
             raise ValueError("extraction metadata limit must be 1..100")
-        order = (
-            "COALESCE(r.attempts, 0), h.journal_cursor"
+        query = (
+            """
+            SELECT h.journal_cursor, e.event_id, e.run_id, e.event_type,
+                   e.created_at, r.last_error,
+                   length(CAST(e.payload_json AS BLOB)) AS payload_bytes
+            FROM project_history_events h
+            JOIN run_events e ON e.event_id = h.event_id
+            LEFT JOIN memory_extraction_receipts r
+                ON r.target_scope_type = ? AND r.target_scope_id = ?
+                AND r.source_project_id = h.project_id
+                AND r.journal_cursor = h.journal_cursor
+            WHERE h.project_id = ? AND h.journal_cursor > ?
+                AND h.journal_cursor <= ?
+                AND (r.disposition IS NULL
+                     OR (? AND r.disposition = 'deferred_budget'))
+            ORDER BY COALESCE(r.attempts, 0), h.journal_cursor LIMIT ?
+            """
             if prioritize_fewer_attempts
-            else "h.journal_cursor"
+            else """
+            SELECT h.journal_cursor, e.event_id, e.run_id, e.event_type,
+                   e.created_at, r.last_error,
+                   length(CAST(e.payload_json AS BLOB)) AS payload_bytes
+            FROM project_history_events h
+            JOIN run_events e ON e.event_id = h.event_id
+            LEFT JOIN memory_extraction_receipts r
+                ON r.target_scope_type = ? AND r.target_scope_id = ?
+                AND r.source_project_id = h.project_id
+                AND r.journal_cursor = h.journal_cursor
+            WHERE h.project_id = ? AND h.journal_cursor > ?
+                AND h.journal_cursor <= ?
+                AND (r.disposition IS NULL
+                     OR (? AND r.disposition = 'deferred_budget'))
+            ORDER BY h.journal_cursor LIMIT ?
+            """
         )
         with self._lock:
             rows = self._connection.execute(
-                f"""
-                SELECT h.journal_cursor, e.event_id, e.run_id, e.event_type,
-                       e.created_at, r.last_error,
-                       length(CAST(e.payload_json AS BLOB)) AS payload_bytes
-                FROM project_history_events h
-                JOIN run_events e ON e.event_id = h.event_id
-                LEFT JOIN memory_extraction_receipts r
-                    ON r.target_scope_type = ? AND r.target_scope_id = ?
-                    AND r.source_project_id = h.project_id
-                    AND r.journal_cursor = h.journal_cursor
-                WHERE h.project_id = ? AND h.journal_cursor > ?
-                    AND h.journal_cursor <= ?
-                    AND (r.disposition IS NULL
-                         OR (? AND r.disposition = 'deferred_budget'))
-                ORDER BY {order} LIMIT ?
-                """,
+                query,
                 (
                     target_scope_type,
                     target_scope_id,

@@ -841,3 +841,119 @@ def test_retry_does_not_starve_later_recoverable_deferred_event(
         service.scope("project", "project-1").processed_through_watermark
         == "sqlite-project-v1:0"
     )
+
+
+@pytest.mark.parametrize(
+    ("prioritize_fewer_attempts", "include_deferred", "limit", "expected"),
+    [
+        (False, True, 1, [2]),
+        (False, True, 3, [2, 4, 5]),
+        (True, True, 1, [5]),
+        (True, True, 3, [4, 5, 6]),
+        (False, False, 1, [5]),
+        (True, False, 1, [5]),
+        (False, False, 3, [5, 6]),
+        (True, False, 3, [5, 6]),
+    ],
+)
+def test_metadata_selection_preserves_bounded_order_and_deferred_filter(
+    service, prioritize_fewer_attempts, include_deferred, limit, expected
+):
+    for cursor in range(1, 9):
+        append(service, f"event-{cursor}", f"Remember fact {cursor}.")
+    scope = {
+        "source_project_id": "project-1",
+        "target_scope_type": "project",
+        "target_scope_id": "project-1",
+    }
+    events = service.journal.list_memory_extraction_events(
+        **scope, after_cursor=0, through_cursor=8
+    )
+    for cursors, disposition, error in (
+        ((2, 4), "deferred_budget", "fixture budget"),
+        ((2,), "deferred_budget", "fixture budget"),
+        ((3,), "processed", None),
+        ((7,), "excluded", None),
+    ):
+        service.journal.record_memory_extraction_receipts(
+            **scope,
+            extractor_version="fixture",
+            receipts=tuple(
+                (events[cursor - 1], disposition, error) for cursor in cursors
+            ),
+        )
+
+    selected = service.journal.list_memory_extraction_events(
+        **scope,
+        after_cursor=1,
+        through_cursor=7,
+        include_deferred=include_deferred,
+        prioritize_fewer_attempts=prioritize_fewer_attempts,
+        limit=limit,
+    )
+
+    # Select by the requested priority before LIMIT, then return cursor order.
+    assert [event.journal_cursor for event in selected] == expected
+
+
+@pytest.mark.parametrize("prioritize_fewer_attempts", [False, True])
+def test_metadata_scope_bindings_preserve_literal_project_ids(
+    service, prioritize_fewer_attempts
+):
+    project_id = "project' OR 1=1 --"
+    scope_id = "scope' OR 1=1 --"
+    events = {}
+    for index, source_id in enumerate(("project-1", project_id)):
+        run_id = f"scope-run-{index}"
+        service.journal.ensure_run(run_id=run_id, project_id=source_id)
+        for cursor in range(1, 4):
+            service.journal.append_event(
+                run_id,
+                RunEventDraft(
+                    event_id=f"scope-event-{index}-{cursor}",
+                    event_type="user.message",
+                    payload={"content": f"Remember fact {cursor}."},
+                ),
+            )
+        events[source_id] = service.journal.list_memory_extraction_events(
+            source_project_id=source_id,
+            target_scope_type="space",
+            target_scope_id=scope_id,
+            after_cursor=0,
+            through_cursor=3,
+            prioritize_fewer_attempts=prioritize_fewer_attempts,
+        )
+        assert [event.event_id for event in events[source_id]] == [
+            f"scope-event-{index}-{cursor}" for cursor in range(1, 4)
+        ]
+
+    for source_id, scope_type, target_id, cursors in (
+        (project_id, "user", scope_id, (1,)),
+        (project_id, "space", "other-scope", (2,)),
+        ("project-1", "space", scope_id, (1, 2)),
+        (project_id, "space", scope_id, (3,)),
+    ):
+        service.journal.record_memory_extraction_receipts(
+            source_project_id=source_id,
+            target_scope_type=scope_type,
+            target_scope_id=target_id,
+            extractor_version="fixture",
+            receipts=tuple(
+                (events[source_id][cursor - 1], "processed", None)
+                for cursor in cursors
+            ),
+        )
+
+    for source_id, expected in (
+        (project_id, ["scope-event-1-1", "scope-event-1-2"]),
+        ("project-1", ["scope-event-0-3"]),
+    ):
+        selected = service.journal.list_memory_extraction_events(
+            source_project_id=source_id,
+            target_scope_type="space",
+            target_scope_id=scope_id,
+            after_cursor=0,
+            through_cursor=3,
+            prioritize_fewer_attempts=prioritize_fewer_attempts,
+        )
+        assert [event.event_id for event in selected] == expected
