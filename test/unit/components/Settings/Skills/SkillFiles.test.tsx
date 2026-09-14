@@ -145,6 +145,9 @@ describe('Skill package file browser', () => {
       expect(await screen.findByRole('article')).toHaveTextContent(
         '# Current instructions'
       );
+      expect(screen.getByRole('group', { name: 'File path' })).toHaveTextContent(
+        /^SKILL\.md$/
+      );
       expect(fetchGet).toHaveBeenCalledWith('/skills/research%20notes/files');
       expect(fetchGetBlob).toHaveBeenCalledWith(
         '/skills/research%20notes/file',
@@ -156,6 +159,9 @@ describe('Skill package file browser', () => {
       await user.click(screen.getByRole('treeitem', { name: 'helper.py' }));
       expect(await screen.findByTestId('skill-source')).toHaveTextContent(
         'print("helper")'
+      );
+      expect(screen.getByRole('group', { name: 'File path' })).toHaveTextContent(
+        /^scripts \/ helper\.py$/
       );
       expect(fetchGetBlob).toHaveBeenLastCalledWith(
         '/skills/research%20notes/file',

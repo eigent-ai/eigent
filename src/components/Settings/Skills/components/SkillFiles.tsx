@@ -343,12 +343,14 @@ function GlobalSkillPackage({
         selectedFile={fileError ? null : displayedFile}
         loading={viewerLoading}
         isShowSourceCode={source}
-        breadcrumbSegments={[
-          entry.name,
-          ...(displayedFile?.relativePath || displayedFile?.name || '')
-            .split('/')
-            .filter(Boolean),
-        ]}
+        breadcrumbSegments={(
+          displayedFile?.relativePath ||
+          displayedFile?.name ||
+          ''
+        )
+          .split('/')
+          .filter(Boolean)}
+        pathPresentation="file-path"
         projectFiles={files.map((file) =>
           displayedFile && file.relativePath === displayedFile.relativePath
             ? displayedFile

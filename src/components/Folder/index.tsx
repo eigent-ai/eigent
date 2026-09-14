@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { DsIcon } from '@/components/ui/ds-icon';
+import { DsText } from '@/components/ui/ds-text';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import type { LucideIcon } from 'lucide-react';
@@ -2911,6 +2912,8 @@ export interface FileViewerPanelProps {
   isShowSourceCode: boolean;
   /** Breadcrumb labels for the file path header. */
   breadcrumbSegments: string[];
+  /** Present a contextual file path when page navigation already supplies the root. */
+  pathPresentation?: 'breadcrumb' | 'file-path';
   /** Sibling project files, used by the HTML renderer to resolve local assets. */
   projectFiles: FileInfo[];
   /** Outer surface background class. */
@@ -3072,6 +3075,7 @@ export function FileViewerPanel({
   loading,
   isShowSourceCode,
   breadcrumbSegments,
+  pathPresentation = 'breadcrumb',
   projectFiles,
   surfaceClassName = 'bg-ds-neutral-subtle-default',
   embedded = false,
@@ -3130,7 +3134,24 @@ export function FileViewerPanel({
       {/* head */}
       {(selectedFile || onToggleFileTree) && (
         <div className="flex min-h-ds-layout-row-header shrink-0 flex-wrap items-center justify-between gap-2 border-y-0 border-r-0 border-l-0 border-solid border-ds-hairline-subtle-default pr-2 pl-4">
-          {selectedFile ? (
+          {selectedFile && pathPresentation === 'file-path' ? (
+            <div
+              className="min-w-0 flex-1 basis-32 overflow-hidden"
+              role="group"
+              aria-label={t('folder.file-path-breadcrumb', {
+                defaultValue: 'File path',
+              })}
+            >
+              <DsText
+                as="p"
+                role="meta"
+                className="truncate text-ds-ink-muted-default"
+                title={breadcrumbSegments.join(' / ')}
+              >
+                {breadcrumbSegments.join(' / ')}
+              </DsText>
+            </div>
+          ) : selectedFile ? (
             <div
               onClick={segmentsClickable ? undefined : onRevealFile}
               className={`flex min-w-0 flex-1 basis-32 items-center overflow-hidden ${
