@@ -18811,6 +18811,31 @@ class SQLiteRunJournal:
             raise InvalidRunTransitionError(
                 f"run {run_id!r} is read-only Cloud-restored history"
             )
+        if draft.event_type == "run.completed":
+            unresolved = connection.execute(
+                """
+                SELECT sets.change_set_id FROM git_change_sets AS sets
+                WHERE sets.run_id = ? AND (
+                    sets.state = 'needs_attention'
+                    OR EXISTS (
+                        SELECT 1 FROM git_mutation_intents AS intents
+                        WHERE intents.change_set_id = sets.change_set_id
+                        AND intents.status IN ('prepared', 'needs_attention')
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM git_change_set_items AS items
+                        WHERE items.change_set_id = sets.change_set_id
+                        AND items.item_state IN ('pending', 'preimage_checkpointed')
+                    )
+                ) LIMIT 1
+                """,
+                (run_id,),
+            ).fetchone()
+            if unresolved is not None:
+                raise InvalidRunTransitionError(
+                    "a Run with an unresolved workspace mutation cannot complete successfully "
+                    f"({unresolved['change_set_id']})"
+                )
         if draft.event_type == "assistant.final":
             if not allow_assistant_final:
                 raise InvalidRunTransitionError(

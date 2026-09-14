@@ -83,6 +83,8 @@ try {
       executable,
       [
         'run',
+        '--config',
+        'vitest.config.ts',
         '--passWithNoTests',
         // GitHub-hosted runners can report more CPUs than they can sustain.
         // Bound jsdom workers so frontend tests fit within the CPU available

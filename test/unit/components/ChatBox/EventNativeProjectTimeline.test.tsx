@@ -54,6 +54,7 @@ const mocks = vi.hoisted(() => ({
   projection: null as ChatProjectionState | null,
   projectedRuns: undefined as Record<string, ProjectedRun> | undefined,
   retry: vi.fn(),
+  loadOlder: vi.fn(async () => undefined),
   hydration: {
     status: 'ready',
     errorCode: null,
@@ -226,11 +227,16 @@ describe('EventNativeProjectTimeline', () => {
     mocks.projection = projection([]);
     mocks.projectedRuns = undefined;
     mocks.retry.mockClear();
+    mocks.loadOlder.mockClear();
     vi.mocked(animate).mockClear();
     mocks.hydration = {
       status: 'ready',
       errorCode: null,
       eventsTruncated: false,
+      hasOlderHistory: false,
+      isLoadingOlder: false,
+      olderHistoryError: false,
+      loadOlder: mocks.loadOlder,
       retry: mocks.retry,
     };
     usePageTabStore.getState().setScrollToTurnRequest(null);
@@ -834,7 +840,7 @@ describe('EventNativeProjectTimeline', () => {
     expect(mocks.projection.nodes).toEqual([request, resolution]);
   });
 
-  it('mounts a bounded latest window and lets the user reveal older messages', () => {
+  it('mounts the entire loaded history without an older-messages window', () => {
     mocks.projection = projection(
       Array.from({ length: 251 }, (_, index) => messageNode(index))
     );
@@ -846,20 +852,78 @@ describe('EventNativeProjectTimeline', () => {
       />
     );
 
-    const showOlder = screen.getByRole('button', {
-      name: 'Show older messages',
-    });
-    expect(screen.queryByText('Message 0')).not.toBeInTheDocument();
     expect(screen.getByText('Message 250')).toBeInTheDocument();
-    expect(screen.getAllByRole('listitem')).toHaveLength(250);
-
-    fireEvent.click(showOlder);
-
     expect(screen.getByText('Message 0')).toBeInTheDocument();
     expect(screen.getAllByRole('listitem')).toHaveLength(251);
     expect(
       screen.queryByRole('button', { name: 'Show older messages' })
     ).not.toBeInTheDocument();
+  });
+
+  it('keeps dialogue AND every activity visible under a terminal flood', () => {
+    const query = { ...messageNode(0, 'user'), purpose: 'query' as const };
+    const final = { ...messageNode(1), purpose: 'final' as const };
+    const activities = Array.from({ length: 300 }, (_, index) => ({
+      ...messageNode(index + 2),
+      kind: 'activity' as const,
+      activityType: 'terminal' as const,
+      status: 'completed' as const,
+      phase: 'completed' as const,
+      title: `Frame ${index}`,
+    }));
+    const window = prepareEventNativeTimelineWindow([
+      query,
+      final,
+      ...activities,
+    ]);
+    expect(window.nodes).toHaveLength(302);
+    expect(window.nodes.slice(0, 2)).toEqual([query, final]);
+    expect(window.hiddenNodeCount).toBe(0);
+  });
+
+  it('shows background history loading without requiring a reveal button', () => {
+    mocks.projection = projection([messageNode(1)]);
+    mocks.hydration.hasOlderHistory = true;
+    mocks.hydration.eventsTruncated = true;
+    mocks.hydration.isLoadingOlder = true;
+    render(
+      <EventNativeProjectTimeline
+        projectId="project-1"
+        scrollBottomInsetPx={128}
+      />
+    );
+    expect(screen.getByRole('status')).toHaveAttribute('aria-busy', 'true');
+    expect(
+      screen.queryByRole('button', { name: 'Show older messages' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Only your most recent activity/)
+    ).not.toBeInTheDocument();
+    expect(mocks.retry).not.toHaveBeenCalled();
+  });
+
+  it('indicates background loading and retries a failed page', async () => {
+    mocks.projection = projection([messageNode(1)]);
+    mocks.hydration.hasOlderHistory = true;
+    mocks.hydration.isLoadingOlder = true;
+    const { rerender } = render(
+      <EventNativeProjectTimeline
+        projectId="project-1"
+        scrollBottomInsetPx={128}
+      />
+    );
+    expect(screen.getByRole('status')).toHaveAttribute('aria-busy', 'true');
+    mocks.hydration.isLoadingOlder = false;
+    mocks.hydration.olderHistoryError = true;
+    rerender(
+      <EventNativeProjectTimeline
+        projectId="project-1"
+        scrollBottomInsetPx={128}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(mocks.loadOlder).toHaveBeenCalledTimes(1));
+    expect(mocks.retry).not.toHaveBeenCalled();
   });
 
   it('correlates an interaction before slicing the bounded DOM window', () => {
@@ -1007,7 +1071,7 @@ describe('EventNativeProjectTimeline', () => {
     });
   });
 
-  it('keeps safe tool input when its start receipt falls outside the DOM window', () => {
+  it('keeps complete tool lifecycles across more than 250 loaded nodes', () => {
     const start = toolNode('tool-start', 1, 'running', {
       input: '{"query":"ISS modules"}',
       phase: 'started',
@@ -1033,8 +1097,8 @@ describe('EventNativeProjectTimeline', () => {
     expect(screen.getByText('{"query":"ISS modules"}')).toBeInTheDocument();
     expect(screen.getByText('Found 4 sources')).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Show older messages' })
-    ).toBeInTheDocument();
+      screen.queryByRole('button', { name: 'Show older messages' })
+    ).not.toBeInTheDocument();
   });
 
   it('surfaces a fail-closed hydration error instead of waiting forever', () => {
@@ -1275,6 +1339,49 @@ describe('EventNativeProjectTimeline', () => {
     expect(scrollContainer.scrollTo).not.toHaveBeenCalled();
   });
 
+  it('preserves the visible Task position when older history is inserted automatically', () => {
+    const scrollContainer = createScrollContainer();
+    const scrollContainerRef = { current: scrollContainer };
+    const current = [messageNode(1, 'user'), messageNode(2)];
+    mocks.projection = projection(current);
+    const { container, rerender } = render(
+      <EventNativeProjectTimeline
+        projectId="project-1"
+        scrollContainerRef={scrollContainerRef}
+        scrollBottomInsetPx={128}
+      />
+    );
+    const row = container.querySelector<HTMLElement>('[data-run-id="run-1"]')!;
+    let offset = 0;
+    vi.spyOn(row, 'getBoundingClientRect').mockImplementation(
+      () =>
+        ({
+          top: 20 + offset,
+          bottom: 520 + offset,
+        }) as DOMRect
+    );
+    scrollContainer.scrollTop = 400;
+    fireEvent.scroll(scrollContainer);
+    vi.mocked(scrollContainer.scrollTo).mockClear();
+    offset = 300;
+    mocks.projection = projection([
+      { ...messageNode(0, 'user'), runId: 'run-older' },
+      ...current,
+    ]);
+    rerender(
+      <EventNativeProjectTimeline
+        projectId="project-1"
+        scrollContainerRef={scrollContainerRef}
+        scrollBottomInsetPx={128}
+      />
+    );
+    expect(scrollContainer.scrollTo).toHaveBeenLastCalledWith({
+      top: 700,
+      behavior: 'auto',
+    });
+    expect(animate).not.toHaveBeenCalled();
+  });
+
   it('consumes a missed scroll-to-run request only once', () => {
     const scrollContainer = createScrollContainer();
     const scrollContainerRef = { current: scrollContainer };
@@ -1310,5 +1417,74 @@ describe('EventNativeProjectTimeline', () => {
     expect(scrollContainer.scrollTo).not.toHaveBeenCalledWith(
       expect.objectContaining({ behavior: 'smooth' })
     );
+  });
+  it('anchors the visible receipt when history is inserted inside the same Task', () => {
+    const scrollContainer = createScrollContainer();
+    const scrollContainerRef = { current: scrollContainer };
+    const current = [messageNode(1, 'user'), messageNode(20)];
+    mocks.projection = projection(current);
+    const { container, rerender } = render(
+      <EventNativeProjectTimeline
+        projectId="project-1"
+        scrollContainerRef={scrollContainerRef}
+        scrollBottomInsetPx={128}
+      />
+    );
+    const row = container.querySelector<HTMLElement>(
+      '[data-event-node-id="message-20"]'
+    )!;
+    let offset = 0;
+    vi.spyOn(row, 'getBoundingClientRect').mockImplementation(
+      () => ({ top: 20 + offset, bottom: 80 + offset }) as DOMRect
+    );
+    scrollContainer.scrollTop = 400;
+    fireEvent.scroll(scrollContainer);
+    vi.mocked(scrollContainer.scrollTo).mockClear();
+    offset = 180;
+    mocks.projection = projection([current[0], messageNode(10), current[1]]);
+    rerender(
+      <EventNativeProjectTimeline
+        projectId="project-1"
+        scrollContainerRef={scrollContainerRef}
+        scrollBottomInsetPx={128}
+      />
+    );
+    expect(scrollContainer.scrollTo).toHaveBeenLastCalledWith({
+      top: 580,
+      behavior: 'auto',
+    });
+    expect(animate).not.toHaveBeenCalled();
+  });
+
+  it('shows an incomplete-history notice after the backend Run list limit', () => {
+    mocks.projection = projection([messageNode(1)]);
+    mocks.hydration.eventsTruncated = true;
+    mocks.hydration.hasOlderHistory = false;
+    render(
+      <EventNativeProjectTimeline
+        projectId="project-1"
+        scrollBottomInsetPx={128}
+      />
+    );
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Only your most recent activity'
+    );
+  });
+
+  it('offers retry even when the initial page had no visible semantic nodes', () => {
+    mocks.projection = projection([]);
+    mocks.hydration.hasOlderHistory = true;
+    mocks.hydration.olderHistoryError = true;
+    render(
+      <EventNativeProjectTimeline
+        projectId="project-1"
+        scrollBottomInsetPx={128}
+      />
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      "Couldn't load earlier messages"
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(mocks.loadOlder).toHaveBeenCalledTimes(1);
   });
 });
