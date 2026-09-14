@@ -15,6 +15,7 @@
 import { QueuedBox } from '@/components/ChatBox/BottomBox/QueuedBox';
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -22,7 +23,7 @@ import {
   within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const motionPreferences = vi.hoisted(() => ({ reduced: false }));
 vi.mock('framer-motion', async (importOriginal) => ({
@@ -69,11 +70,18 @@ function mockQueueGeometry() {
 
 const messages = [{ id: 'follow-1', content: 'Use the new attachment' }];
 const busy = { sessionId: 'session-1', activeTaskId: 'run-1', busy: true };
+function assertNoNativeTopLayer() {
+  expect(document.querySelector('dialog, [popover]')).toBeNull();
+  expect(document.fullscreenElement ?? null).toBeNull();
+}
 async function openMenu() {
+  assertNoNativeTopLayer();
   await userEvent.click(
     screen.getAllByRole('button', { name: 'More task actions' })[0]
   );
-  return screen.findByRole('menu');
+  const menu = await screen.findByRole('menu');
+  assertNoNativeTopLayer();
+  return menu;
 }
 async function openConfirmation() {
   await userEvent.click(
@@ -84,11 +92,39 @@ async function openConfirmation() {
   return waitFor(() => {
     const dialog = screen.getByRole('dialog');
     expect(dialog).toBeVisible();
+    assertNoNativeTopLayer();
     return dialog;
   });
 }
 
 describe('QueuedBox Quiet layout', () => {
+  beforeEach(() => {
+    // Floating UI's exact :modal query can recurse through jsdom/nwsapi in
+    // CI. These Radix menus/dialogs use ordinary DOM, not the native top
+    // layer. Keep real positioning, focus and every other selector intact.
+    // Check that assumption outside matches: Floating UI catches errors.
+    const originalMatches = Element.prototype.matches;
+    const matchesSpy = vi
+      .spyOn(Element.prototype, 'matches')
+      .mockImplementation(function (this: Element, selector: string) {
+        return selector === ':modal'
+          ? false
+          : originalMatches.call(this, selector);
+      });
+    return () => {
+      try {
+        assertNoNativeTopLayer();
+      } finally {
+        try {
+          cleanup();
+        } finally {
+          matchesSpy.mockRestore();
+          expect(Element.prototype.matches).toBe(originalMatches);
+        }
+      }
+    };
+  });
+
   it('shows compact task rows with trash and more controls, without a disclosure or inline start action', () => {
     render(
       <QueuedBox
@@ -106,6 +142,12 @@ describe('QueuedBox Quiet layout', () => {
     expect(
       screen.getAllByRole('button', { name: 'More task actions' })
     ).toHaveLength(2);
+    const moreButton = screen.getAllByRole('button', {
+      name: 'More task actions',
+    })[0];
+    expect(moreButton.matches('button')).toBe(true);
+    expect(moreButton.matches('dialog')).toBe(false);
+    expect(() => moreButton.matches('[')).toThrow();
     expect(
       screen.queryByRole('button', { name: 'Stop and start this' })
     ).toBeNull();
@@ -247,6 +289,7 @@ describe('QueuedBox Quiet layout', () => {
         within(screen.getByRole('dialog')).getByText(messages[0].content)
       ).toBeVisible()
     );
+    assertNoNativeTopLayer();
     await userEvent.keyboard('{Escape}');
     expect(
       screen.getByRole('button', { name: 'More task actions' })
