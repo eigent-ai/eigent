@@ -27,6 +27,7 @@ import time
 import uuid
 from collections.abc import Callable
 from contextlib import AbstractContextManager
+from inspect import getdoc
 from pathlib import Path
 
 from camel.toolkits.terminal_toolkit import (
@@ -51,6 +52,7 @@ from app.service.task import (
 from app.utils.listen.toolkit_listen import (
     _safe_put_queue,
     auto_listen_toolkit,
+    listen_toolkit,
 )
 from app.utils.runtime_storage import runtime_storage
 from app.utils.space_overlay_client import run_context_for_task
@@ -767,6 +769,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             ),
         )
 
+    @listen_toolkit(BaseTerminalToolkit.shell_exec)
     def shell_exec(
         self,
         command: str,
@@ -809,6 +812,20 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 block=block,
                 timeout=timeout,
             )
+
+    # Preserve CAMEL's parameter contract while documenting Run storage.
+    shell_exec.__doc__ = (
+        "Use $EIGENT_RUNTIME_DIR for venvs, installers and toolchains, "
+        "$EIGENT_CACHE_DIR for caches, and $EIGENT_INTERMEDIATE_DIR for "
+        "recoverable render frames. These Run-scoped directories survive "
+        "commands and are excluded from workspace checkpoints and Artifacts. "
+        "Write final MP4/.blend deliverables in the working directory. Never "
+        "move existing user files or create escape symlinks to reduce a budget. "
+        "These paths do not bypass command permissions or the 500-path "
+        "workspace checkpoint budget. Install Python packages with the "
+        "selected venv's python -m pip.\n\n"
+        f"{getdoc(BaseTerminalToolkit.shell_exec)}"
+    )
 
     def _shell_exec_with_workspace_checkpoint(
         self,
@@ -1391,20 +1408,3 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                         "error": str(e),
                     },
                 )
-
-    def get_tools(self):
-        tools = super().get_tools()
-        for tool in tools:
-            if tool.get_function_name() == "shell_exec":
-                schema = tool.get_openai_tool_schema()
-                schema["function"]["description"] += (
-                    " Use EIGENT_RUNTIME_DIR for Task venvs/toolchains/installers, "
-                    "EIGENT_CACHE_DIR for caches, and EIGENT_INTERMEDIATE_DIR for "
-                    "recoverable frames. Install Python packages with the selected "
-                    "venv's python -m pip. Save final MP4/.blend deliverables in the "
-                    "working directory. These paths do not bypass command permissions. "
-                    "Never move user files or create escape symlinks to evade the "
-                    "500-path workspace checkpoint budget."
-                )
-                tool.set_openai_tool_schema(schema)
-        return tools
