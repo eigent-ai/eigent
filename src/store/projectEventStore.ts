@@ -27,6 +27,7 @@ import {
 } from '@/lib/projector';
 import {
   createChatProjectionState,
+  isConversationAnchor,
   projectChatEvents,
   type ChatProjectionState,
 } from '@/lib/projector/chat';
@@ -45,8 +46,10 @@ const DEFAULT_MAX_SEEN_EVENT_IDS = 5_000;
 const DEFAULT_MAX_UNKNOWN_EVENTS = 200;
 const DEFAULT_MAX_LEGACY_STEPS = 2_000;
 const DEFAULT_MAX_LEGACY_BYTES = 8 * 1024 * 1024;
-const DEFAULT_MAX_CHAT_NODES = 2_000;
-const DEFAULT_MAX_CHAT_BYTES = 8 * 1024 * 1024;
+// The transcript is loaded in bounded batches, but retained in full. A total
+// tail/heap cap silently drops earlier work logs and their lifecycle receipts.
+const DEFAULT_MAX_CHAT_NODES = Number.POSITIVE_INFINITY;
+const DEFAULT_MAX_CHAT_BYTES = Number.POSITIVE_INFINITY;
 const DEFAULT_MAX_RESOLVED_CONTROLS = 200;
 const DEFAULT_MAX_CONTROL_SEEN_EVENT_IDS = 5_000;
 const DEFAULT_MAX_PENDING_CONTROLS = 128;
@@ -72,6 +75,14 @@ export type ProjectEventStoreSnapshot = {
   hasHydratedSnapshot: boolean;
   overflowed: boolean;
   lastEffects: readonly ProjectorEffect[];
+  /** Display-only replay cursors; never used by live streams or Run controls. */
+  history?: ProjectChatHistory;
+};
+
+export type ProjectChatHistory = {
+  /** Inclusive last sequence not yet read, in newest-Run-first order. */
+  beforeByRun: Readonly<Record<string, number>>;
+  runsTruncated: boolean;
 };
 
 /**
@@ -349,10 +360,12 @@ function compactChatProjection(
     (count, node) => count + (node.kind === 'unknown' ? 1 : 0),
     0
   );
-  const estimatedNodeBytes = state.nodes.reduce(
-    (total, node) => total + estimateChatNodeBytes(node),
-    0
-  );
+  const estimatedNodeBytes = Number.isFinite(maxChatBytes)
+    ? state.nodes.reduce(
+        (total, node) => total + estimateChatNodeBytes(node),
+        0
+      )
+    : 0;
   const nodesNeedCompaction =
     state.nodes.length > maxChatNodes ||
     unknownCount > maxUnknownEvents ||
@@ -368,30 +381,46 @@ function compactChatProjection(
     const retainedReversed = [] as ChatProjectionState['nodes'];
     let retainedUnknownCount = 0;
     let retainedBytes = 0;
-    for (
-      let index = state.nodes.length - 1;
-      index >= 0 && retainedReversed.length < maxChatNodes;
-      index -= 1
-    ) {
-      const node = state.nodes[index];
-      if (node.kind === 'unknown') {
-        if (retainedUnknownCount >= maxUnknownEvents) continue;
-      }
-      const nodeBytes = estimateChatNodeBytes(node);
-      if (nodeBytes > maxChatBytes - retainedBytes) continue;
+    const retainedIds = new Set<string>();
+    // Keep the same hard count/heap ceilings, but reserve capacity for user
+    // queries and final replies before filling it with recent activity.
+    for (const anchorsOnly of [true, false]) {
+      for (
+        let index = state.nodes.length - 1;
+        index >= 0 && retainedReversed.length < maxChatNodes;
+        index -= 1
+      ) {
+        const node = state.nodes[index];
+        if (isConversationAnchor(node) !== anchorsOnly) continue;
+        if (node.kind === 'unknown' && retainedUnknownCount >= maxUnknownEvents)
+          continue;
+        const nodeBytes = Number.isFinite(maxChatBytes)
+          ? estimateChatNodeBytes(node)
+          : 0;
+        if (nodeBytes > maxChatBytes - retainedBytes) continue;
 
-      if (node.kind === 'unknown') retainedUnknownCount += 1;
-      retainedBytes += nodeBytes;
-      retainedReversed.push(node);
+        if (node.kind === 'unknown') retainedUnknownCount += 1;
+        retainedBytes += nodeBytes;
+        retainedReversed.push(node);
+        retainedIds.add(node.id);
+      }
     }
-    nodes = retainedReversed.reverse();
+    nodes = state.nodes.filter((node) => retainedIds.has(node.id));
     nodeById = Object.fromEntries(nodes.map((node) => [node.id, node]));
     nodeIndexById = Object.fromEntries(
       nodes.map((node, index) => [node.id, index])
     );
   }
 
-  return { ...state, nodes, nodeById, nodeIndexById, seenEventIds };
+  return {
+    ...state,
+    nodes,
+    nodeById,
+    nodeIndexById,
+    seenEventIds,
+    historyTruncated:
+      state.historyTruncated || nodes.length < state.nodes.length,
+  };
 }
 
 /** Keep every actionable request, while bounding historical command receipts. */
@@ -843,7 +872,8 @@ export class ProjectEventStore {
    */
   commitSnapshotReplacement(
     replacement: ProjectEventStoreSnapshotReplacement,
-    snapshot: ProjectSnapshotInput
+    snapshot: ProjectSnapshotInput,
+    history?: ProjectChatHistory
   ): boolean {
     if (!this.ownsSnapshotReplacement(replacement)) return false;
     if (this.activeSnapshotReplacement?.invalidated) {
@@ -852,7 +882,7 @@ export class ProjectEventStore {
     }
 
     try {
-      if (!this.applySnapshot(snapshot)) {
+      if (!this.applySnapshot(snapshot, history)) {
         this.activeSnapshotReplacement = null;
         return false;
       }
@@ -879,13 +909,19 @@ export class ProjectEventStore {
     }
   }
 
-  private applySnapshot(snapshot: ProjectSnapshotInput): boolean {
+  private applySnapshot(
+    snapshot: ProjectSnapshotInput,
+    history?: ProjectChatHistory
+  ): boolean {
     if (snapshot.project_id !== this.projectId) {
       throw new Error('Project snapshot does not match event store scope');
     }
     this.cancelScheduledFlush?.();
     this.cancelScheduledFlush = null;
-    const projectedView = { ...projectSnapshot(snapshot), mode: this.mode };
+    const projectedView = {
+      ...projectSnapshot(snapshot, history ? this.snapshot.view : undefined),
+      mode: this.mode,
+    };
     const view = compactView(
       projectedView,
       this.maxSeenEventIds,
@@ -897,7 +933,13 @@ export class ProjectEventStore {
       snapshot.recent_events
     ).filter((event) => eventEnteredSemanticLane(event, projectedView));
     const chat = compactChatProjection(
-      projectChatEvents(this.projectId, snapshotEvents),
+      // A bounded refresh is a new control checkpoint, not permission to erase
+      // already read receipts. Same-id replacement/import must call reset().
+      projectChatEvents(
+        this.projectId,
+        snapshotEvents,
+        history ? this.snapshot.chat : undefined
+      ),
       this.maxChatNodes,
       this.maxChatBytes,
       this.maxSeenEventIds,
@@ -919,10 +961,97 @@ export class ProjectEventStore {
       this.rejectQueuedBatch(pendingControlOverflowReason);
       return false;
     }
-    this.publish(view, chat, control, [], false, true);
+    this.publish(view, chat, control, [], false, true, history ?? null);
     this.discardQueuedEventsCoveredBySnapshot();
     if (this.queue.length > 0) this.ensureScheduled();
     return true;
+  }
+
+  /**
+   * Add validated historical display receipts without replaying old commands,
+   * rewinding live watermarks, or replacing events received during the fetch.
+   */
+  prependChatHistory(
+    events: readonly CanonicalProjectEvent[],
+    expectedHistory: ProjectChatHistory,
+    history: ProjectChatHistory
+  ): boolean {
+    if (
+      !this.isChatHistoryCurrent(expectedHistory) ||
+      history.runsTruncated !== expectedHistory.runsTruncated ||
+      Object.keys(history.beforeByRun).length !==
+        Object.keys(expectedHistory.beforeByRun).length ||
+      Object.entries(expectedHistory.beforeByRun).some(([runId, before]) => {
+        const next = history.beforeByRun[runId];
+        return !Number.isSafeInteger(next) || next < 0 || next > before;
+      }) ||
+      events.some((event) => {
+        const existing = this.snapshot.chat.nodeById[event.eventId];
+        return (
+          event.projectId !== this.projectId ||
+          !Number.isSafeInteger(event.runSequence) ||
+          event.runSequence < 1 ||
+          event.runSequence > (expectedHistory.beforeByRun[event.runId] ?? 0) ||
+          Boolean(
+            existing &&
+            (existing.runId !== event.runId ||
+              existing.runSequence !== event.runSequence)
+          )
+        );
+      })
+    ) {
+      return false;
+    }
+    const projected = projectChatEvents(
+      this.projectId,
+      events,
+      this.snapshot.chat
+    );
+    const nodes = [...projected.nodes].sort((left, right) => {
+      if (left.runId === right.runId)
+        return left.runSequence - right.runSequence;
+      return (
+        (left.createdAt ?? '').localeCompare(right.createdAt ?? '') ||
+        left.runId.localeCompare(right.runId)
+      );
+    });
+    const chat = compactChatProjection(
+      {
+        ...projected,
+        nodes,
+        nodeIndexById: Object.fromEntries(
+          nodes.map((node, index) => [node.id, index])
+        ),
+      },
+      this.maxChatNodes,
+      this.maxChatBytes,
+      this.maxSeenEventIds,
+      this.maxUnknownEvents
+    );
+    this.publish(
+      {
+        ...this.snapshot.view,
+        eventsTruncated:
+          history.runsTruncated ||
+          Object.values(history.beforeByRun).some((value) => value > 0),
+      },
+      chat,
+      this.snapshot.control,
+      [],
+      this.snapshot.overflowed,
+      this.snapshot.hasHydratedSnapshot,
+      history
+    );
+    return true;
+  }
+
+  /** Page owners recheck this after every await, not just before publishing. */
+  isChatHistoryCurrent(history: ProjectChatHistory): boolean {
+    return (
+      !this.disposed &&
+      !this.activeSnapshotReplacement &&
+      this.snapshot.history === history
+    );
   }
 
   setMode(mode: ProjectorMode): void {
@@ -951,7 +1080,8 @@ export class ProjectEventStore {
       createHumanControlProjectionState(this.projectId),
       [],
       false,
-      false
+      false,
+      undefined
     );
   }
 
@@ -1060,16 +1190,18 @@ export class ProjectEventStore {
     control: HumanControlProjectionState,
     effects: readonly ProjectorEffect[],
     overflowed: boolean,
-    hasHydratedSnapshot = this.snapshot.hasHydratedSnapshot
+    hasHydratedSnapshot = this.snapshot.hasHydratedSnapshot,
+    history: ProjectChatHistory | null | undefined = this.snapshot.history
   ): void {
     this.snapshot = {
-      view,
+      view: chat.historyTruncated ? { ...view, eventsTruncated: true } : view,
       chat,
       control,
       revision: this.snapshot.revision + 1,
       hasHydratedSnapshot,
       overflowed,
       lastEffects: effects,
+      history: hasHydratedSnapshot ? (history ?? undefined) : undefined,
     };
     if (effects.length > 0) this.onEffects?.(effects);
     for (const listener of this.listeners) listener();

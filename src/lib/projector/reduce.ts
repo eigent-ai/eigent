@@ -294,6 +294,20 @@ export function reduceProjectView(
       : candidateStatus;
   const run: ProjectedRun = {
     ...previousRun,
+    // An active snapshot's elapsed total is measured at its checkpoint. Once
+    // live execution advances, do not keep re-anchoring that old value to new
+    // events (or freeze the final duration at the earlier snapshot value).
+    ...(previousRun?.totalAttemptElapsedMs != null &&
+    (['pending', 'running', 'waiting_for_user', 'cancelling'].includes(
+      previousRun.status
+    ) ||
+      ['pending', 'running', 'waiting_for_user', 'cancelling'].includes(
+        status
+      )) &&
+    event.source === 'canonical' &&
+    event.runVersion > previousRun.runVersion
+      ? { totalAttemptElapsedMs: null, totalAttemptElapsedAt: null }
+      : {}),
     runId: event.runId,
     status,
     // Legacy ChatStep IDs are global database IDs, not Run-local sequences.

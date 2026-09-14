@@ -2128,6 +2128,32 @@ describe('ChatBox timeline modes', () => {
     expect(workLogTrigger).not.toHaveTextContent('{{time}}');
   });
 
+  it('shows canonical duration even when an older Task has no work-log items yet', () => {
+    const composed = composeTimelineRuns(
+      nodes('completed').filter(
+        (node) =>
+          node.kind === 'message' &&
+          (node.role === 'user' || node.purpose === 'final')
+      )
+    )[0]!;
+    const run = reconcileTimelineRun(composed, {
+      runId: 'run-1',
+      status: 'completed',
+      lastSequence: 6,
+      runVersion: 6,
+      updatedAt: '2026-08-20T00:00:00Z',
+      totalAttemptElapsedMs: 108_200,
+    });
+    render(<TimelineModeRenderer detailLevel="narrative" runs={[run]} />);
+    expect(screen.getByText('1m 48s')).toBeInTheDocument();
+    expect(
+      screen.getByText('1m 48s').closest('[data-narrative-run-summary]')
+    ).toHaveTextContent('Worked for');
+    expect(
+      screen.queryByRole('button', { name: 'Worked for 1m 48s' })
+    ).not.toBeInTheDocument();
+  });
+
   it('holds elapsed time and the shimmer while the user has taken control', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-19T00:00:10Z'));

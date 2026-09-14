@@ -13,12 +13,16 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { useProjectEventStoreHydration } from '@/hooks/useProjectEventStoreHydration';
-import { resetProjectEventStoresForTests } from '@/store/projectEventStore';
-import { act, renderHook } from '@testing-library/react';
+import {
+  getProjectEventStore,
+  resetProjectEventStoresForTests,
+} from '@/store/projectEventStore';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   hydrate: vi.fn(),
+  loadOlder: vi.fn(),
 }));
 
 vi.mock('@/service/projectEventStoreHydration', async (importOriginal) => {
@@ -29,6 +33,7 @@ vi.mock('@/service/projectEventStoreHydration', async (importOriginal) => {
   return {
     ...original,
     hydrateProjectEventStore: mocks.hydrate,
+    loadOlderProjectChatHistory: mocks.loadOlder,
   };
 });
 
@@ -58,7 +63,7 @@ describe('useProjectEventStoreHydration', () => {
   afterEach(() => {
     warn.mockRestore();
     vi.useRealTimers();
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     resetProjectEventStoresForTests();
   });
 
@@ -120,5 +125,193 @@ describe('useProjectEventStoreHydration', () => {
 
     expect(mocks.hydrate).toHaveBeenCalledTimes(2);
     expect(result.current.status).toBe('ready');
+  });
+
+  it('allows an explicit retry even after a successful truncated hydration', async () => {
+    const store = getProjectEventStore('project-1');
+    store.replaceSnapshot({
+      project_id: 'project-1',
+      current_cursor: 0,
+      runs: [],
+      recent_events: [],
+      events_truncated: true,
+    });
+    mocks.hydrate.mockResolvedValue(hydrated);
+    const { result } = renderHook(() =>
+      useProjectEventStoreHydration({ projectId: 'project-1', enabled: true })
+    );
+    await flushHydration();
+    expect(mocks.hydrate).not.toHaveBeenCalled();
+    act(() => result.current.retry());
+    await flushHydration();
+    expect(mocks.hydrate).toHaveBeenCalledTimes(1);
+  });
+
+  it('deduplicates older-page requests and aborts them when switching Sessions', async () => {
+    mocks.hydrate.mockResolvedValue(hydrated);
+    let resolve!: () => void;
+    mocks.loadOlder.mockImplementationOnce(
+      () =>
+        new Promise<void>((done) => {
+          resolve = done;
+        })
+    );
+    const { result, rerender } = renderHook(
+      ({ projectId }) =>
+        useProjectEventStoreHydration({ projectId, enabled: true }),
+      { initialProps: { projectId: 'project-1' } }
+    );
+    await flushHydration();
+    let loading!: Promise<void>;
+    act(() => {
+      loading = result.current.loadOlder();
+      void result.current.loadOlder();
+    });
+    expect(mocks.loadOlder).toHaveBeenCalledTimes(1);
+    expect(result.current.isLoadingOlder).toBe(true);
+    const signal = mocks.loadOlder.mock.calls[0][0].signal;
+    rerender({ projectId: 'project-2' });
+    expect(signal.aborted).toBe(true);
+    await act(async () => {
+      resolve();
+      await loading;
+    });
+    expect(result.current.isLoadingOlder).toBe(false);
+    expect(result.current.olderHistoryError).toBe(false);
+  });
+
+  it('keeps a failed older page retryable without restarting hydration', async () => {
+    mocks.hydrate.mockResolvedValue(hydrated);
+    mocks.loadOlder
+      .mockRejectedValueOnce(new Error('Temporary read failure'))
+      .mockResolvedValueOnce(undefined);
+    const { result } = renderHook(() =>
+      useProjectEventStoreHydration({ projectId: 'project-1', enabled: true })
+    );
+    await flushHydration();
+    await act(async () => result.current.loadOlder());
+    expect(result.current.olderHistoryError).toBe(true);
+    await act(async () => result.current.loadOlder());
+    expect(result.current.olderHistoryError).toBe(false);
+    expect(mocks.hydrate).toHaveBeenCalledTimes(1);
+  });
+
+  function seedOlderHistory() {
+    const store = getProjectEventStore('project-1');
+    const replacement = store.beginSnapshotReplacement()!;
+    store.commitSnapshotReplacement(
+      replacement,
+      {
+        project_id: 'project-1',
+        current_cursor: 0,
+        runs: [],
+        recent_events: [],
+        events_truncated: true,
+      },
+      { beforeByRun: { 'run-1': 4 }, runsTruncated: false }
+    );
+    return store;
+  }
+
+  it('automatically drains all older pages while keeping each request bounded', async () => {
+    const store = seedOlderHistory();
+    mocks.loadOlder.mockImplementation(async () => {
+      const previous = store.getSnapshot().history!;
+      store.prependChatHistory([], previous, {
+        ...previous,
+        beforeByRun: { 'run-1': previous.beforeByRun['run-1'] - 2 },
+      });
+    });
+    const { result } = renderHook(() =>
+      useProjectEventStoreHydration({
+        projectId: 'project-1',
+        enabled: true,
+      })
+    );
+    await waitFor(() => expect(result.current.hasOlderHistory).toBe(false));
+    expect(mocks.loadOlder).toHaveBeenCalledTimes(2);
+    expect(mocks.hydrate).not.toHaveBeenCalled();
+    expect(result.current.isLoadingOlder).toBe(false);
+    expect(result.current.eventsTruncated).toBe(false);
+  });
+
+  it('stops automatic history replay on a non-advancing cursor', async () => {
+    seedOlderHistory();
+    mocks.loadOlder.mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useProjectEventStoreHydration({
+        projectId: 'project-1',
+        enabled: true,
+      })
+    );
+    await waitFor(() => expect(result.current.olderHistoryError).toBe(true));
+    expect(mocks.loadOlder).toHaveBeenCalledTimes(1);
+    expect(result.current.hasOlderHistory).toBe(true);
+  });
+
+  it('cancels automatic replay when disabled without showing a stuck loading state', async () => {
+    seedOlderHistory();
+    mocks.loadOlder.mockImplementation(
+      () => new Promise<void>(() => undefined)
+    );
+    const { result, rerender } = renderHook(
+      ({ enabled }) =>
+        useProjectEventStoreHydration({
+          projectId: 'project-1',
+          enabled,
+        }),
+      { initialProps: { enabled: true } }
+    );
+    await waitFor(() => expect(result.current.isLoadingOlder).toBe(true));
+    const signal = mocks.loadOlder.mock.calls[0][0].signal;
+    rerender({ enabled: false });
+    expect(signal.aborted).toBe(true);
+    expect(result.current.isLoadingOlder).toBe(false);
+    expect(result.current.olderHistoryError).toBe(false);
+  });
+
+  it('keeps a failed automatic page visible and resumes the remaining history on retry', async () => {
+    const store = seedOlderHistory();
+    mocks.loadOlder
+      .mockRejectedValueOnce(new Error('Offline'))
+      .mockImplementation(async () => {
+        const previous = store.getSnapshot().history!;
+        store.prependChatHistory([], previous, {
+          ...previous,
+          beforeByRun: { 'run-1': 0 },
+        });
+      });
+    const { result } = renderHook(() =>
+      useProjectEventStoreHydration({
+        projectId: 'project-1',
+        enabled: true,
+      })
+    );
+    await waitFor(() => expect(result.current.olderHistoryError).toBe(true));
+    expect(mocks.loadOlder).toHaveBeenCalledTimes(1);
+    await act(async () => result.current.loadOlder());
+    expect(result.current.hasOlderHistory).toBe(false);
+    expect(result.current.olderHistoryError).toBe(false);
+    expect(mocks.hydrate).not.toHaveBeenCalled();
+  });
+  it('does not carry a manual refresh into another already hydrated Session', async () => {
+    for (const id of ['project-1', 'project-2'])
+      getProjectEventStore(id).replaceSnapshot({
+        project_id: id,
+        current_cursor: 0,
+        recent_events: [],
+      });
+    mocks.hydrate.mockResolvedValue(hydrated);
+    const { result, rerender } = renderHook(
+      ({ projectId }) =>
+        useProjectEventStoreHydration({ projectId, enabled: true }),
+      { initialProps: { projectId: 'project-1' } }
+    );
+    act(() => result.current.retry());
+    await flushHydration();
+    expect(mocks.hydrate).toHaveBeenCalledTimes(1);
+    rerender({ projectId: 'project-2' });
+    await flushHydration();
+    expect(mocks.hydrate).toHaveBeenCalledTimes(1);
   });
 });
