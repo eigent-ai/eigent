@@ -286,6 +286,55 @@ describe('FileViewerPanel toolbar', () => {
     expect(screen.queryByRole('button', { name: 'Download file' })).toBeNull();
   });
 
+  it('explains unsupported Blender preview and preserves the existing external-open action', async () => {
+    renderViewer(
+      textFile({
+        name: 'scene.blend',
+        type: 'blend',
+        path: '/workspace/scene.blend',
+        relativePath: 'scene.blend',
+        content: undefined,
+        preview: {
+          kind: 'blocked',
+          reason: 'unsupported',
+          size: 2048,
+          limit: null,
+        },
+      })
+    );
+    expect(screen.getByText('Preview not loaded')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'This file type cannot be safely previewed in this environment.'
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('source-code-viewer')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Download' })).toBeNull();
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: 'Open externally' }));
+    expect(callbacks.onOpenExternalFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders an authorized MP4 with the existing native video controls', () => {
+    const { container } = renderViewer(
+      textFile({
+        name: 'final.mp4',
+        type: 'mp4',
+        path: '/workspace/final.mp4',
+        relativePath: 'final.mp4',
+        content: 'localfile://preview/?path=%2Fworkspace%2Ffinal.mp4',
+      })
+    );
+    const video = container.querySelector('video');
+    expect(video).toHaveAttribute('controls');
+    expect(video).toHaveAttribute(
+      'src',
+      'localfile://preview/?path=%2Fworkspace%2Ffinal.mp4'
+    );
+    expect(screen.queryByText('Preview not loaded')).toBeNull();
+  });
+
   it('keeps folder destinations available while hiding file-only actions', async () => {
     const user = userEvent.setup();
     const openFolder = vi.fn();

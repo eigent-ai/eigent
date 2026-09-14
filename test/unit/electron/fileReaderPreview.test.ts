@@ -13,7 +13,17 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { FILE_PREVIEW_LIMITS } from '@/shared/filePreviewContract';
-import { mkdir, mkdtemp, rm, truncate, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  symlink,
+  truncate,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -88,9 +98,11 @@ describe('FileReader bounded preview', () => {
   });
 
   it('resolves only requested files and rejects traversal', async () => {
-    const directory = await mkdtemp(path.join(tmpdir(), 'eigent-workspace-'));
-    temporaryDirectories.push(directory);
-    const outsideFile = path.join(path.dirname(directory), 'outside.txt');
+    const fixture = await mkdtemp(path.join(tmpdir(), 'eigent-workspace-'));
+    temporaryDirectories.push(fixture);
+    const directory = path.join(fixture, 'workspace');
+    await mkdir(directory);
+    const outsideFile = path.join(fixture, 'outside.txt');
     await writeFile(path.join(directory, 'preview.png'), 'image');
     await writeFile(outsideFile, 'secret');
 
@@ -110,6 +122,98 @@ describe('FileReader bounded preview', () => {
     } finally {
       await rm(outsideFile, { force: true });
     }
+  });
+
+  it('keeps an empty manifest empty and excludes escapes and symlinks from requested resolution', async () => {
+    const fixture = await mkdtemp(path.join(tmpdir(), 'eigent-workspace-'));
+    temporaryDirectories.push(fixture);
+    const workspace = path.join(fixture, 'workspace');
+    const outside = path.join(fixture, 'outside');
+    await mkdir(workspace);
+    await mkdir(outside);
+    await writeFile(
+      path.join(workspace, 'final.mp4'),
+      'resolver-only media fixture'
+    );
+    await writeFile(path.join(workspace, 'scene.blend'), 'BLENDER-v300');
+    await writeFile(
+      path.join(workspace, 'unregistered.txt'),
+      'not an artifact'
+    );
+    await writeFile(
+      path.join(outside, 'secret.txt'),
+      'isolated secret fixture'
+    );
+    await symlink(
+      path.join(outside, 'secret.txt'),
+      path.join(workspace, 'link.txt')
+    );
+    await symlink(outside, path.join(workspace, 'linked-directory'));
+    await symlink(
+      path.join(workspace, 'final.mp4'),
+      path.join(workspace, 'alias.mp4')
+    );
+
+    const reader = new FileReader(null as never);
+    expect(reader.getWorkspaceFileList(workspace, [])).toEqual([]);
+    const files = reader.getWorkspaceFileList(workspace, [
+      'final.mp4',
+      'final.mp4',
+      'scene.blend',
+      'missing.mp4',
+      '../outside/secret.txt',
+      path.join(outside, 'secret.txt'),
+      'link.txt',
+      'linked-directory/secret.txt',
+      'alias.mp4',
+      'final.mp4\0scene.blend',
+      '%2e%2e/outside/secret.txt',
+      'https://example.test/final.mp4',
+    ]);
+    expect(files.map((file) => file.relativePath)).toEqual([
+      'final.mp4',
+      'scene.blend',
+    ]);
+    expect(files[0]).toMatchObject({
+      path: await realpath(path.join(workspace, 'final.mp4')),
+      type: 'mp4',
+      mimeType: 'video/mp4',
+    });
+    expect(files[1]).toMatchObject({
+      path: await realpath(path.join(workspace, 'scene.blend')),
+      type: 'blend',
+    });
+  });
+
+  it('does not recover moved paths, discover replacements, or rewrite a manifest', async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), 'eigent-workspace-'));
+    temporaryDirectories.push(workspace);
+    await mkdir(path.join(workspace, 'frames'));
+    await mkdir(path.join(workspace, 'resume_frames'));
+    await writeFile(path.join(workspace, 'frames/frame.png'), 'fixture frame');
+    const manifest = JSON.stringify({
+      artifacts: [
+        { artifact_id: 'old-frame', relative_path: 'frames/frame.png' },
+      ],
+    });
+    const manifestPath = path.join(workspace, 'manifest.json');
+    await writeFile(manifestPath, manifest);
+    const reader = new FileReader(null as never);
+    expect(
+      reader.getWorkspaceFileList(workspace, ['frames/frame.png'])
+    ).toHaveLength(1);
+    await rename(
+      path.join(workspace, 'frames/frame.png'),
+      path.join(workspace, 'resume_frames/frame.png')
+    );
+    expect(
+      reader.getWorkspaceFileList(workspace, ['frames/frame.png'])
+    ).toEqual([]);
+    expect(await readFile(manifestPath, 'utf8')).toBe(manifest);
+    expect(
+      reader.getWorkspaceFileList(workspace, ['resume_frames/frame.png'])[0]
+        .relativePath
+    ).toBe(path.join('resume_frames', 'frame.png'));
   });
 
   it('fails closed before fully reading oversized rich text', async () => {
