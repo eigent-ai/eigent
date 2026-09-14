@@ -131,6 +131,7 @@ import { arrayToArgsJson, parseArgsToArray } from './components/utils';
 
 const IS_LOCAL_MODE = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
 const OVERVIEW_ID = '__overview__';
+const PENDING_BUILT_IN_ITEMS: IntegrationItem[] = [];
 type AddConnectorTab = 'browse' | 'local' | 'remote';
 const RECOMMENDATIONS_DISMISSED_KEY =
   'eigent.connectors.recommendations-dismissed.v1';
@@ -414,7 +415,11 @@ export default function ConnectorGateway() {
     (state) => state.fetchCapabilities
   );
 
-  const [builtInItems, setBuiltInItems] = useState<IntegrationItem[]>([]);
+  // Web search is available before the remote catalog arrives.
+  const [builtInItems, setBuiltInItems] = useState<IntegrationItem[]>(() =>
+    buildBuiltInItems({}, t)
+  );
+  const [builtInCatalogLoaded, setBuiltInCatalogLoaded] = useState(false);
   const [customMcps, setCustomMcps] = useState<MCPUserItem[]>([]);
   const [openConnections, setOpenConnections] = useState<ConnectorProvider[]>(
     []
@@ -536,7 +541,10 @@ export default function ConnectorGateway() {
     fetchInstalled: refreshBuiltIns,
     saveEnvAndConfig,
     handleUninstall,
-  } = useIntegrationManagement(builtInItems);
+  } = useIntegrationManagement(
+    // OAuth callbacks must still wait for the full catalog's provider metadata.
+    builtInCatalogLoaded ? builtInItems : PENDING_BUILT_IN_ITEMS
+  );
 
   // Managed models retain the existing cloud Google fallback. Custom models
   // are connected when Querit is enabled or both Google values are present.
@@ -663,6 +671,7 @@ export default function ConnectorGateway() {
       );
       setBuiltInItems(buildBuiltInItems({}, translationRef.current));
     } finally {
+      setBuiltInCatalogLoaded(true);
       setLoadingBuiltIns(false);
     }
   }, [locale]);
@@ -1523,6 +1532,7 @@ export default function ConnectorGateway() {
   const renderDetailPanel = (item: ConnectorListItem) => (
     <div className="flex min-h-full min-w-0 flex-col" data-connector-detail>
       <ContentHeader
+        persistent
         className="gap-ds-12 px-ds-16"
         titleAsChild
         title={
@@ -1535,7 +1545,7 @@ export default function ConnectorGateway() {
                 onClick: navigateHome,
               },
               {
-                label: t('connectors.connector'),
+                label: t('layout.connectors'),
                 onClick: closeConnectorSubpage,
               },
               { label: item.name },
@@ -1673,9 +1683,15 @@ export default function ConnectorGateway() {
           </TableHeader>
           <TableBody>
             {visibleItems.map((item) => {
-              const statusLabel = item.active
-                ? t('connectors.connected')
-                : t('connectors.not-connected');
+              const statusLabel =
+                item.source === 'builtin' &&
+                item.item.key === 'Search' &&
+                searchRequiresApiKey &&
+                configsLoading
+                  ? t('connectors.loading')
+                  : item.active
+                    ? t('connectors.connected')
+                    : t('connectors.not-connected');
               return (
                 <TableRow key={item.id} className={CONNECTOR_TABLE_ROW_CLASS}>
                   <TableCell className="w-full max-w-0">
@@ -1826,6 +1842,7 @@ export default function ConnectorGateway() {
           data-connector-browser-detail
         >
           <ContentHeader
+            persistent
             className="gap-ds-12 px-ds-16"
             titleAsChild
             title={
@@ -1840,7 +1857,7 @@ export default function ConnectorGateway() {
                     onClick: navigateHome,
                   },
                   {
-                    label: t('connectors.connector'),
+                    label: t('layout.connectors'),
                     onClick: closeConnectorSubpage,
                   },
                   {
@@ -1893,6 +1910,7 @@ export default function ConnectorGateway() {
     return (
       <div className="flex min-h-full min-w-0 flex-col" data-add-connector>
         <ContentHeader
+          persistent
           className="gap-ds-12 px-ds-16"
           titleAsChild
           title={
@@ -1904,7 +1922,7 @@ export default function ConnectorGateway() {
                   onClick: navigateHome,
                 },
                 {
-                  label: t('connectors.connector'),
+                  label: t('layout.connectors'),
                   onClick: closeConnectorSubpage,
                 },
                 { label: t('connectors.add-connector') },
@@ -2029,7 +2047,11 @@ export default function ConnectorGateway() {
   if (selectedId !== OVERVIEW_ID) {
     return (
       <div className="flex min-h-full flex-col" role="status">
-        <ContentHeader className="px-ds-16" title={t('connectors.loading')} />
+        <ContentHeader
+          persistent
+          className="px-ds-16"
+          title={t('connectors.loading')}
+        />
         <DocumentContentRail className="flex flex-col gap-ds-8 px-ds-24 py-ds-24">
           {Array.from({ length: 4 }).map((_, index) => (
             <div
@@ -2046,6 +2068,7 @@ export default function ConnectorGateway() {
   return (
     <>
       <CollectionToolbar
+        persistentHeader
         title={t('connectors.title')}
         headingLevel={1}
         width="wide"

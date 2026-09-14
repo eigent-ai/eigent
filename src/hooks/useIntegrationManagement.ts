@@ -52,7 +52,10 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
   // Local installed status
   const [installed, setInstalled] = useState<{ [key: string]: boolean }>({});
   // Configs cache
-  const [configs, setConfigs] = useState<any[]>([]);
+  const [configs, setConfigs] = useState<any[]>(() => {
+    const snapshot = integrationConfigsSnapshot;
+    return snapshot?.email === (email ?? null) ? snapshot.configs : [];
+  });
   const [configsLoading, setConfigsLoading] = useState(() => {
     const snapshot = integrationConfigsSnapshot;
     return !snapshot || snapshot.email !== (email ?? null);

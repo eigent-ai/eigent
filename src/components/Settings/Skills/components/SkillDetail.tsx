@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/button';
 import { DsText } from '@/components/ui/ds-text';
 import { Switch } from '@/components/ui/switch';
 import { Tag } from '@/components/ui/tag';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSkillsLibrary } from '../SkillsProvider';
 import SkillAccessMenu from './SkillAccessMenu';
@@ -53,18 +53,23 @@ export default function SkillDetail({
     previewGeneration,
   } = useSkillsLibrary();
   const entry = entries.find((item) => item.id === skillId);
-  const heading = useRef<HTMLHeadingElement>(null);
+  const heading = useRef<HTMLHeadingElement | null>(null);
+  const setHeading = useCallback((node: HTMLHeadingElement | null) => {
+    heading.current = node;
+    node?.focus({ preventScroll: true });
+  }, []);
   useEffect(() => {
     heading.current?.focus({ preventScroll: true });
   }, [entry?.id]);
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col" data-skill-detail>
       <ContentHeader
+        persistent
         className="gap-ds-12 px-ds-16"
         titleAsChild
         title={
           <ContentBreadcrumb
-            headingRef={heading}
+            headingRef={setHeading}
             ariaLabel={t('layout.breadcrumb', { defaultValue: 'Breadcrumb' })}
             segments={[
               {

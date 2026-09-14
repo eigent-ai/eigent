@@ -14,7 +14,7 @@
 
 import ConnectorGateway from '@/components/Settings/Connectors/ConnectorGateway';
 import { SettingsHeaderProvider } from '@/components/Settings/SettingsHeaderContext';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -22,6 +22,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   modelType: 'custom',
   configs: [] as Array<Record<string, unknown>>,
+  configsLoading: false,
+  language: 'en',
+  webSearchLabel: 'Web search',
   installed: {} as Record<string, boolean>,
   checkAgentTool: vi.fn(),
   fetchCapabilities: vi.fn(),
@@ -35,8 +38,9 @@ const mocks = vi.hoisted(() => ({
         'layout.connectors': 'Connectors',
         'connectors.connected': 'Connected',
         'connectors.not-connected': 'Not connected',
+        'connectors.loading': 'Loading...',
         'connectors.source-built-in': 'Built-in',
-        'connectors.web-search': 'Web search',
+        'connectors.web-search': mocks.webSearchLabel,
         'connectors.web-search-desc':
           'Choose Querit or Google for browser and research tasks.',
         'connectors.querit-configuration-title': 'Querit authentication',
@@ -48,7 +52,7 @@ vi.mock('react-i18next', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react-i18next')>()),
   useTranslation: () => ({
     t: mocks.translate,
-    i18n: { language: 'en', changeLanguage: vi.fn() },
+    i18n: { language: mocks.language, changeLanguage: vi.fn() },
   }),
 }));
 
@@ -79,7 +83,7 @@ vi.mock('@/hooks/useIntegrationManagement', () => ({
   useIntegrationManagement: () => ({
     installed: mocks.installed,
     configs: mocks.configs,
-    configsLoading: false,
+    configsLoading: mocks.configsLoading,
     fetchInstalled: mocks.fetchInstalled,
     saveEnvAndConfig: mocks.saveEnvAndConfig,
     handleUninstall: mocks.handleUninstall,
@@ -126,6 +130,9 @@ describe('ConnectorGateway Web search visibility', () => {
     vi.clearAllMocks();
     mocks.modelType = 'custom';
     mocks.configs = [];
+    mocks.configsLoading = false;
+    mocks.language = 'en';
+    mocks.webSearchLabel = 'Web search';
     mocks.installed = {};
     mocks.fetchCapabilities.mockResolvedValue(undefined);
     mocks.fetchInstalled.mockResolvedValue(undefined);
@@ -165,5 +172,97 @@ describe('ConnectorGateway Web search visibility', () => {
     const row = webSearch.closest('tr');
     expect(row).not.toBeNull();
     expect(within(row!).getByText('Connected')).toBeInTheDocument();
+  });
+
+  it.each([{}, { Search: { env_vars: [], toolkit: 'search' } }])(
+    'keeps the same Web search row through a delayed catalog response: %j',
+    async (catalog) => {
+      let resolveCatalog!: (value: unknown) => void;
+      const pendingCatalog = new Promise((resolve) => {
+        resolveCatalog = resolve;
+      });
+      mocks.get.mockImplementation((url: string) =>
+        url === '/api/v1/config/info' ? pendingCatalog : Promise.resolve([])
+      );
+      const { unmount } = renderGateway();
+
+      const row = screen
+        .getByRole('button', { name: 'Web search' })
+        .closest('tr');
+      expect(row).toBeVisible();
+      await act(async () => resolveCatalog(catalog));
+      expect(
+        screen.getAllByRole('button', { name: 'Web search' })
+      ).toHaveLength(1);
+      expect(
+        screen.getByRole('button', { name: 'Web search' }).closest('tr')
+      ).toBe(row);
+
+      unmount();
+      mocks.get.mockImplementation(() => new Promise(() => {}));
+      renderGateway();
+      expect(screen.getByRole('button', { name: 'Web search' })).toBeVisible();
+    }
+  );
+
+  it('keeps Web search visible when the catalog fails', async () => {
+    let rejectCatalog!: (error: Error) => void;
+    const pendingCatalog = new Promise((_resolve, reject) => {
+      rejectCatalog = reject;
+    });
+    mocks.get.mockImplementation((url: string) =>
+      url === '/api/v1/config/info' ? pendingCatalog : Promise.resolve([])
+    );
+    renderGateway();
+    const row = screen
+      .getByRole('button', { name: 'Web search' })
+      .closest('tr');
+
+    await act(async () => rejectCatalog(new Error('Catalog unavailable')));
+
+    expect(screen.getByText('Catalog unavailable')).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Web search' }).closest('tr')
+    ).toBe(row);
+  });
+
+  it('refreshes the seeded Web search label after a locale change', async () => {
+    const view = renderGateway();
+    await act(async () => {});
+    mocks.language = 'de';
+    mocks.webSearchLabel = 'Websuche';
+    view.rerender(
+      <MemoryRouter>
+        <SettingsHeaderProvider activeSection="connectors">
+          <ConnectorGateway />
+        </SettingsHeaderProvider>
+      </MemoryRouter>
+    );
+    expect(
+      await screen.findByRole('button', { name: 'Websuche' })
+    ).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Web search' })).toBeNull();
+  });
+
+  it('shows loading instead of disconnected while custom-model configs are unknown', () => {
+    mocks.configsLoading = true;
+    mocks.get.mockImplementation(() => new Promise(() => {}));
+    const view = renderGateway();
+    const row = screen
+      .getByRole('button', { name: 'Web search' })
+      .closest('tr')!;
+    expect(within(row).getByText('Loading...')).toBeVisible();
+    expect(within(row).queryByText('Not connected')).not.toBeInTheDocument();
+
+    mocks.configsLoading = false;
+    mocks.configs = [{ config_name: 'QUERIT_ENABLED', config_value: 'true' }];
+    view.rerender(
+      <MemoryRouter>
+        <SettingsHeaderProvider activeSection="connectors">
+          <ConnectorGateway />
+        </SettingsHeaderProvider>
+      </MemoryRouter>
+    );
+    expect(within(row).getByText('Connected')).toBeVisible();
   });
 });

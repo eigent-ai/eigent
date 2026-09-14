@@ -188,6 +188,7 @@ export default function Skills() {
   return (
     <>
       <CollectionToolbar
+        persistentHeader
         data-skills-toolbar
         aria-label={t('agents.library-toolbar')}
         title={t('agents.library-title')}

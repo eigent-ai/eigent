@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { SettingsSectionId } from '@/store/settingsStore';
 import { ArrowLeft } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSettingsHeader } from './SettingsHeaderContext';
 import { getSettingsNavigationItem } from './settingsNavigation';
@@ -27,25 +27,23 @@ interface SettingsHeaderProps {
 }
 
 /**
- * Settings content-pane header. Same 44px row as the other pages; sections
+ * Settings content-pane header. Same 40px row as the other pages; sections
  * still push their own title/back/actions through `SettingsHeaderContext`.
  */
 export default function SettingsHeader({ activeSection }: SettingsHeaderProps) {
   const { t } = useTranslation();
   const { headerOverride, setHeaderActionsElement } = useSettingsHeader();
-  const headingRef = useRef<HTMLHeadingElement>(null);
+  const headingRef = useCallback((heading: HTMLHeadingElement | null) => {
+    heading?.focus();
+  }, []);
   const item = getSettingsNavigationItem(activeSection);
   const title =
     headerOverride?.title ??
     t(item.labelKey, { defaultValue: item.defaultLabel });
   const backLabel = t('layout.back', { defaultValue: 'Back' });
 
-  useEffect(() => {
-    headingRef.current?.focus();
-  }, []);
-
   return (
-    <ContentHeader>
+    <ContentHeader persistent>
       <div className="flex min-w-0 flex-1 items-center gap-2">
         {headerOverride?.onBack ? (
           <>

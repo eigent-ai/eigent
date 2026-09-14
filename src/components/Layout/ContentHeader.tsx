@@ -13,7 +13,15 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { cn } from '@/lib/utils';
-import type { ReactNode } from 'react';
+import { useIsPresent } from 'framer-motion';
+import {
+  createContext,
+  useContext,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+import { createPortal } from 'react-dom';
 
 /**
  * Canonical layout header row: 40px, 8px inline inset, overflow visible so
@@ -31,6 +39,54 @@ export const CONTENT_HEADER_BORDER_CLASS =
 /** Title typography, exported for `titleAsChild` callers to reapply. */
 export const CONTENT_HEADER_TITLE_CLASS =
   'min-w-0 shrink truncate !text-ds-text-body-large font-semibold text-ds-ink-default-default';
+
+const ContentHeaderFrameContext = createContext<{
+  activeKey: string;
+  element: HTMLElement | null;
+} | null>(null);
+const ContentHeaderOwnerContext = createContext<string | null>(null);
+
+export const ContentHeaderOwner = ContentHeaderOwnerContext.Provider;
+
+/** Capture this value on a keyed animation child, including its lazy content. */
+export function useContentHeaderOwner() {
+  return useContext(ContentHeaderOwnerContext);
+}
+
+/** Keep the page divider outside keyed content transitions and lazy loading. */
+export function ContentHeaderFrame({
+  activeKey,
+  enabled = true,
+  children,
+}: {
+  activeKey: string;
+  enabled?: boolean;
+  children: ReactNode;
+}) {
+  const [element, setElement] = useState<HTMLElement | null>(null);
+  const value = useMemo(() => ({ activeKey, element }), [activeKey, element]);
+  return (
+    <ContentHeaderFrameContext.Provider value={enabled ? value : null}>
+      {enabled && (
+        <header
+          ref={setElement}
+          data-content-header-frame
+          className="relative min-h-ds-layout-row-header w-full shrink-0"
+        >
+          <div
+            aria-hidden
+            data-content-header-divider
+            className={cn(
+              'pointer-events-none absolute inset-x-0 bottom-0',
+              CONTENT_HEADER_BORDER_CLASS
+            )}
+          />
+        </header>
+      )}
+      {children}
+    </ContentHeaderFrameContext.Provider>
+  );
+}
 
 /**
  * Controls placed in a `ContentHeader` share one size so their heights match
@@ -60,6 +116,8 @@ export interface ContentHeaderProps {
   /** Remove the outer inset when a child pattern owns its aligned content rail. */
   inset?: 'default' | 'none';
   className?: string;
+  /** Render in the nearest stable page frame, outside content animations. */
+  persistent?: boolean;
 }
 
 export default function ContentHeader({
@@ -72,16 +130,22 @@ export default function ContentHeader({
   height = 'routine',
   inset = 'default',
   className,
+  persistent = false,
 }: ContentHeaderProps) {
-  return (
-    <header
+  const frame = useContext(ContentHeaderFrameContext);
+  const ownerKey = useContentHeaderOwner();
+  const isPresent = useIsPresent();
+  const portaled = persistent && frame !== null;
+  const Element = portaled ? 'div' : 'header';
+  const content = (
+    <Element
       className={cn(
         CONTENT_HEADER_BASE_CLASS,
         height === 'routine'
           ? 'h-ds-layout-row-header min-h-ds-layout-row-header'
           : 'min-h-ds-layout-row-header',
         inset === 'default' && 'px-ds-8',
-        border && CONTENT_HEADER_BORDER_CLASS,
+        border && !portaled && CONTENT_HEADER_BORDER_CLASS,
         className
       )}
     >
@@ -99,6 +163,10 @@ export default function ContentHeader({
           {actions}
         </div>
       ) : null}
-    </header>
+    </Element>
   );
+  if (!portaled) return content;
+  return frame.element && ownerKey === frame.activeKey && isPresent
+    ? createPortal(content, frame.element)
+    : null;
 }

@@ -12,6 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import {
+  ContentHeaderOwner,
+  useContentHeaderOwner,
+} from '@/components/Layout/ContentHeader';
 import { cn } from '@/lib/utils';
 import type { SettingsSectionId } from '@/store/settingsStore';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
@@ -101,6 +105,7 @@ function SettingsSection({ section }: { section: SettingsSectionId }) {
 }
 
 interface AnimatedSettingsSectionProps {
+  headerOwner: string | null;
   section: SettingsSectionId;
   scrollRef: RefObject<HTMLDivElement>;
   shouldReduceMotion: boolean | null;
@@ -108,6 +113,7 @@ interface AnimatedSettingsSectionProps {
 }
 
 function AnimatedSettingsSection({
+  headerOwner,
   section,
   scrollRef,
   shouldReduceMotion,
@@ -139,9 +145,11 @@ function AnimatedSettingsSection({
         ease: [0.23, 1, 0.32, 1],
       }}
     >
-      <Suspense fallback={<SectionFallback />}>
-        <SettingsSection section={section} />
-      </Suspense>
+      <ContentHeaderOwner value={headerOwner}>
+        <Suspense fallback={<SectionFallback />}>
+          <SettingsSection section={section} />
+        </Suspense>
+      </ContentHeaderOwner>
     </motion.div>
   );
 }
@@ -153,10 +161,12 @@ export default function SettingsSectionContent({
 }: SettingsSectionContentProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const shouldReduceMotion = useReducedMotion();
+  const headerOwner = useContentHeaderOwner();
 
   const section = (
     <AnimatePresence mode="wait" initial={false}>
       <AnimatedSettingsSection
+        headerOwner={headerOwner}
         key={activeSection}
         section={activeSection}
         scrollRef={scrollRef}
