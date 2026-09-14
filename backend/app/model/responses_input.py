@@ -14,7 +14,60 @@
 
 """Instance-scoped message adaptation for CAMEL's Responses transports."""
 
+from inspect import isawaitable
 from typing import Any
+
+
+def _check_response_event(event: Any) -> None:
+    # The SDK preserves flat ResponseErrorEvent objects, but CAMEL's pinned
+    # chunk converter ignores them and may synthesize a successful stop.
+    if getattr(event, "type", None) == "error":
+        raise RuntimeError(f"Responses API stream error: {event.message}")
+
+
+def _checked_response_stream(stream):
+    with stream:
+        for event in stream:
+            _check_response_event(event)
+            yield event
+
+
+async def _checked_async_response_stream(stream):
+    async with stream:
+        async for event in stream:
+            _check_response_event(event)
+            yield event
+
+
+async def _await_checked_response_stream(response):
+    return _checked_async_response_stream(await response)
+
+
+class _ResponsesResource:
+    def __init__(self, resource):
+        self._resource = resource
+
+    def __getattr__(self, name):
+        return getattr(self._resource, name)
+
+    def create(self, *args, **kwargs):
+        response = self._resource.create(*args, **kwargs)
+        if not kwargs.get("stream"):
+            return response
+        if isawaitable(response):
+            return _await_checked_response_stream(response)
+        return _checked_response_stream(response)
+
+
+class _ResponsesClient:
+    """Expose a guarded Responses resource without mutating a shared SDK client."""
+
+    def __init__(self, client):
+        self._client = client
+        self.responses = _ResponsesResource(client.responses)
+
+    def __getattr__(self, name):
+        return getattr(self._client, name)
 
 
 def _content_part(part: Any) -> Any:
@@ -83,4 +136,11 @@ def configure_responses_input(model_backend: Any) -> None:
         return items
 
     model_backend._convert_messages_to_responses_input = convert_messages  # noqa: SLF001
+    # Guard raw SDK events before CAMEL converts them to Chat chunks. Delegate
+    # requests unchanged; the original clients/resources may be shared by
+    # other backends and must remain untouched.
+    for attribute in ("_client", "_async_client"):
+        client = getattr(model_backend, attribute, None)
+        if client is not None and not isinstance(client, _ResponsesClient):
+            setattr(model_backend, attribute, _ResponsesClient(client))
     model_backend._eigent_responses_input_configured = True  # noqa: SLF001

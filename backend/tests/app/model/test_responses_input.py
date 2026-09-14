@@ -216,6 +216,73 @@ async def invoke(backend, messages, asynchronous):
     return result
 
 
+@pytest.mark.parametrize("route", ["openai", "openai-compatible-model"])
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.asyncio
+async def test_explicit_stream_error_is_local_to_the_request(
+    make_backend, route, asynchronous
+):
+    responses = []
+
+    def respond(request):
+        if responses:
+            response = mock_response(request)
+        else:
+            events = [
+                {
+                    "type": "response.output_text.delta",
+                    "delta": "partial inspection",
+                    "item_id": "msg_fixture",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "sequence_number": 0,
+                },
+                {
+                    "type": "error",
+                    "code": "server_error",
+                    "message": "fixture stream rejected",
+                    "param": None,
+                    "sequence_number": 1,
+                },
+            ]
+            response = httpx.Response(
+                200,
+                headers={"content-type": "text/event-stream"},
+                text="".join(
+                    f"data: {json.dumps(event)}\n\n" for event in events
+                ),
+            )
+        responses.append(response)
+        return response
+
+    backend, requests = make_backend(route, stream=True, handler=respond)
+    shared_client = backend._async_client if asynchronous else backend._client
+    resource = shared_client.responses
+    create = resource.create
+    configure_responses_input(backend)
+    guarded_client = backend._async_client if asynchronous else backend._client
+    configure_responses_input(backend)
+    assert guarded_client is (
+        backend._async_client if asynchronous else backend._client
+    )
+    messages = [{"role": "user", "content": "inspect fixture"}]
+    with pytest.raises(RuntimeError, match="fixture stream rejected"):
+        await invoke(backend, messages, asynchronous)
+    assert responses[0].is_closed
+    assert shared_client.responses is resource
+    assert resource.create == create
+
+    # The same backend can serve its next request; no sticky error state or
+    # completion callback may be left behind by the failed stream.
+    chunks = await invoke(backend, messages, asynchronous)
+    assert any(
+        chunk.choices and chunk.choices[0].delta.content == "image reviewed"
+        for chunk in chunks
+    )
+    assert len(requests) == 2
+    assert "previous_response_id" not in json.loads(requests[1].content)
+
+
 @pytest.mark.parametrize("route", ROUTES)
 @pytest.mark.parametrize("stream", [False, True])
 @pytest.mark.parametrize("asynchronous", [False, True])

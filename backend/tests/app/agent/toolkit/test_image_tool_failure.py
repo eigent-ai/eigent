@@ -36,6 +36,7 @@ from app.run_journal import SQLiteRunJournal
 from app.run_policy import ToolSafetyClass
 from app.run_runtime import tool_checkpoint
 from app.run_runtime.tool_checkpoint import UnsafeToolOutcomeError
+from app.utils.listen.toolkit_listen import _log_deactivate
 
 
 @pytest.fixture
@@ -105,20 +106,40 @@ def execute(agent, request, asynchronous):
     return agent._execute_tool(request)
 
 
+def image_tool_logs(caplog, method="read image"):
+    prefix = (
+        "[TOOLKIT DEACTIVATE] Toolkit: Screenshot Toolkit | "
+        f"Method: {method} | "
+    )
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "toolkit_listen"
+        and record.getMessage().startswith(prefix)
+        and "| Agent: image_agent |" in record.getMessage()
+    ]
+    assert messages, "The target image tool must emit a deactivation log"
+    return "\n".join(messages)
+
+
 @pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("route", ["openai", "openai-compatible-model"])
 @pytest.mark.parametrize(
     "outcome",
     [
         "http400",
         "http400-stream",
         "stream-failed",
+        "stream-error",
+        "stream-error-done",
+        "stream-error-no-text",
         "stream-disconnected",
         "success",
         "success-stream",
     ],
 )
 def test_image_model_outcome_reaches_durable_tool_events(
-    tool_environment, tmp_path, caplog, asynchronous, outcome
+    tool_environment, tmp_path, caplog, asynchronous, outcome, route
 ):
     journal, events, agent_for = tool_environment
     path = tmp_path / "fixture.png"
@@ -129,6 +150,83 @@ def test_image_model_outcome_reaches_durable_tool_events(
 
     def reject(request):
         requests.append(json.loads(request.content))
+        # Simulate unrelated object cleanup without running a real tool.
+        _log_deactivate(
+            "Terminal Toolkit",
+            "cleanup",
+            "unrelated-task",
+            "other_agent",
+            None,
+        )
+        if outcome.startswith("stream-error"):
+            response = {
+                "id": "resp_fixture",
+                "object": "response",
+                "created_at": 1,
+                "status": "in_progress",
+                "model": "gpt-6-astra",
+                "output": [],
+            }
+            item = {
+                "id": "msg_fixture",
+                "type": "message",
+                "role": "assistant",
+                "status": "in_progress",
+                "content": [],
+            }
+            wire_events = [
+                {"type": "response.created", "response": response},
+                {"type": "response.in_progress", "response": response},
+                {
+                    "type": "response.output_item.added",
+                    "output_index": 0,
+                    "item": item,
+                },
+                {
+                    "type": "response.content_part.added",
+                    "item_id": item["id"],
+                    "output_index": 0,
+                    "content_index": 0,
+                    "part": {
+                        "type": "output_text",
+                        "text": "",
+                        "annotations": [],
+                    },
+                },
+            ]
+            if outcome != "stream-error-no-text":
+                wire_events.append(
+                    {
+                        "type": "response.output_text.delta",
+                        "delta": "partial inspection",
+                        "item_id": item["id"],
+                        "output_index": 0,
+                        "content_index": 0,
+                        "logprobs": [],
+                    }
+                )
+            # Standard flat ResponseErrorEvent, distinct from response.failed.
+            wire_events.append(
+                {
+                    "type": "error",
+                    "code": "server_error",
+                    "message": "fixture image request rejected",
+                    "param": None,
+                }
+            )
+            for sequence, event in enumerate(wire_events):
+                event["sequence_number"] = sequence
+            body = "".join(
+                f"event: {event['type']}\ndata: {json.dumps(event)}\n\n"
+                for event in wire_events
+            )
+            if outcome == "stream-error-done":
+                body += "data: [DONE]\n\n"
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/event-stream"},
+                text=body,
+            )
         if success:
             response = {
                 "id": "resp_fixture",
@@ -221,7 +319,7 @@ def test_image_model_outcome_reaches_durable_tool_events(
         http_client=httpx.Client(transport=httpx.MockTransport(reject)),
     ) as client:
         backend = ModelFactory.create(
-            model_platform="openai",
+            model_platform=route,
             model_type="gpt-6-astra",
             api_key="fixture-key",
             client=client,
@@ -251,12 +349,15 @@ def test_image_model_outcome_reaches_durable_tool_events(
             result = execute(agent, request, asynchronous)
 
     assert requests, "The fixture must reach the actual SDK HTTP transport"
+    assert "Toolkit: Terminal Toolkit | Method: cleanup |" in caplog.text
+    assert "Agent: other_agent | Status: SUCCESS" in caplog.text
+    target_logs = image_tool_logs(caplog)
     [call] = journal.list_tool_calls("run-image")
     if success:
         assert result == "image reviewed"
         assert call.status == "completed"
-        assert "Status: SUCCESS" in caplog.text
-        assert "Status: ERROR" not in caplog.text
+        assert "Status: SUCCESS" in target_logs
+        assert "Status: ERROR" not in target_logs
         return
     assert call.status == "failed"
     assert call.outcome == "failed"
@@ -274,8 +375,8 @@ def test_image_model_outcome_reaches_durable_tool_events(
         event.event_type in {"tool.completed", "tool.outcome_unknown"}
         for event in tool_events
     )
-    assert "Status: ERROR" in caplog.text
-    assert "Status: SUCCESS" not in caplog.text
+    assert "Status: ERROR" in target_logs
+    assert "Status: SUCCESS" not in target_logs
     assert len(events) == 2
     assert events[-1].data["tool_call_id"] == call.tool_call_id
     assert "fixture image request rejected" in events[-1].data["message"]
@@ -408,6 +509,13 @@ def test_capture_model_failure_does_not_report_success(
         tool_call_id="capture-call",
     )
     with caplog.at_level(logging.INFO, logger="toolkit_listen"):
+        _log_deactivate(
+            "Terminal Toolkit",
+            "cleanup",
+            "unrelated-task",
+            "other_agent",
+            None,
+        )
         if capture_enabled:
             with pytest.raises(UnsafeToolOutcomeError):
                 execute(agent, request, False)
@@ -418,7 +526,13 @@ def test_capture_model_failure_does_not_report_success(
             assert not (tmp_path / "capture-fixture.png").exists()
     [call] = journal.list_tool_calls("run-image")
     assert call.status == ("outcome_unknown" if capture_enabled else "failed")
-    assert "Status: SUCCESS" not in caplog.text
+    target_logs = image_tool_logs(caplog, "take screenshot and read image")
+    assert "Status: ERROR" in target_logs
+    assert "Status: SUCCESS" not in target_logs
+    if capture_enabled:
+        reader_logs = image_tool_logs(caplog)
+        assert "Status: ERROR" in reader_logs
+        assert "Status: SUCCESS" not in reader_logs
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
