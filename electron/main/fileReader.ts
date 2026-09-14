@@ -23,6 +23,7 @@ import path from 'node:path';
 import { URL } from 'node:url';
 import * as unzipper from 'unzipper';
 import { parseStringPromise } from 'xml2js';
+import { normalizeWorkspaceRelativePath } from '../../src/lib/workspaceRelativePath';
 import {
   decideFilePreview,
   FILE_PREVIEW_LIMITS,
@@ -1375,6 +1376,9 @@ export class FileReader {
         const files: FileInfo[] = [];
         for (const relativePath of new Set(requestedRelativePaths)) {
           if (!relativePath || path.isAbsolute(relativePath)) continue;
+          const requestedIdentity =
+            normalizeWorkspaceRelativePath(relativePath);
+          if (!requestedIdentity) continue;
           const candidatePath = path.resolve(rootRealPath, relativePath);
           const relativeToRoot = path.relative(rootRealPath, candidatePath);
           if (
@@ -1392,6 +1396,15 @@ export class FileReader {
             if (
               realRelativePath.startsWith('..') ||
               path.isAbsolute(realRelativePath)
+            ) {
+              continue;
+            }
+            // A directory symlink can point at a different in-root identity.
+            // Omit that alias instead of returning an unrequested real path
+            // that would invalidate the renderer's entire batch.
+            if (
+              normalizeWorkspaceRelativePath(realRelativePath) !==
+              requestedIdentity
             ) {
               continue;
             }

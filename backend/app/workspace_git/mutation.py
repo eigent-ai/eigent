@@ -17,8 +17,10 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,11 +30,15 @@ from app.run_journal import (
     GitChangeSetRecord,
     GitMutationIntentRecord,
     ProjectWorkspaceBindingRecord,
+    RunEventDraft,
     SQLiteRunJournal,
     configured_run_journal_path,
     get_default_run_journal,
 )
 from app.workspace_config import canonical_digest
+from app.workspace_git.backend import (
+    WorkspaceDeltaLimitExceeded,
+)
 from app.workspace_git.content import ContentRepositoryError
 from app.workspace_git.coordinator import (
     GitRunWorkspace,
@@ -281,6 +287,25 @@ class WorkspaceMutationService:
         actor_id: str,
         trigger: str,
     ) -> PreparedWorkspaceExecution | None:
+        try:
+            return self._prepare_broad_write(
+                context=context,
+                operation_request_id=operation_request_id,
+                actor_id=actor_id,
+                trigger=trigger,
+            )
+        except WorkspaceDeltaLimitExceeded as error:
+            error.diagnostic["phase"] = "pre_dispatch"
+            raise
+
+    def _prepare_broad_write(
+        self,
+        *,
+        context: RunContext,
+        operation_request_id: str,
+        actor_id: str,
+        trigger: str,
+    ) -> PreparedWorkspaceExecution | None:
         """Materialize before spawning terminal/script-like processes.
 
         Only overlay paths already admitted to the Run snapshot are imported.
@@ -384,6 +409,32 @@ class WorkspaceMutationService:
         )
 
     def complete_broad_write(
+        self,
+        prepared: PreparedWorkspaceExecution,
+        *,
+        operation_request_id: str,
+        actor_id: str,
+        trigger: str,
+    ) -> tuple[str, ...]:
+        self._check_overflow_recovery_coverage(prepared)
+        try:
+            return self._complete_broad_write(
+                prepared,
+                operation_request_id=operation_request_id,
+                actor_id=actor_id,
+                trigger=trigger,
+            )
+        except WorkspaceDeltaLimitExceeded as error:
+            error.diagnostic.update(
+                {
+                    "phase": "post_dispatch",
+                    "intent_id": prepared.intent.intent_id,
+                }
+            )
+            self._record_path_budget_overflow(prepared, error)
+            raise
+
+    def _complete_broad_write(
         self,
         prepared: PreparedWorkspaceExecution,
         *,
@@ -534,6 +585,187 @@ class WorkspaceMutationService:
         if outcome.merged_commit is not None:
             commits = [outcome.merged_commit]
         return tuple(commits)
+
+    def _overflow_receipt_path(
+        self, prepared: PreparedWorkspaceExecution
+    ) -> Path:
+        return (
+            self.state_root
+            / "path-budget"
+            / (
+                canonical_digest({"intent_id": prepared.intent.intent_id})
+                + ".json"
+            )
+        )
+
+    def _record_path_budget_overflow(self, prepared, error) -> None:
+        """Persist the original scope so changing ignore rules cannot resolve it."""
+        path = self._overflow_receipt_path(prepared)
+        if not path.exists():
+            receipt = {
+                "intent_id": prepared.intent.intent_id,
+                "run_id": prepared.context.run_id,
+                "paths": error.observed_paths,
+                "count_is_exact": error.diagnostic["count_is_exact"],
+                "head_oid": self.git.current_head(prepared.mutation_root),
+                "created_at": time.time(),
+            }
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = path.with_suffix(f".{uuid.uuid4().hex}.tmp")
+            try:
+                temporary.write_text(
+                    json.dumps(receipt, sort_keys=True), encoding="utf-8"
+                )
+                temporary.chmod(0o600)
+                os.replace(temporary, path)
+            finally:
+                temporary.unlink(missing_ok=True)
+        payload = {
+            "intent_id": prepared.intent.intent_id,
+            "diagnostic": error.diagnostic,
+            "receipt_digest": hashlib.sha256(path.read_bytes()).hexdigest(),
+        }
+        self.journal.append_event(
+            prepared.context.run_id,
+            RunEventDraft(
+                event_id="wpb_" + canonical_digest(payload)[:48],
+                event_type="workspace.path_budget.exceeded",
+                payload=payload,
+            ),
+        )
+
+    def _check_overflow_recovery_coverage(self, prepared) -> None:
+        path = self._overflow_receipt_path(prepared)
+        if not path.exists():
+            if any(
+                event.event_type == "workspace.path_budget.exceeded"
+                and event.payload.get("intent_id") == prepared.intent.intent_id
+                for event in self.journal.list_events(prepared.context.run_id)
+            ):
+                raise ContentRepositoryError(
+                    "Path-budget recovery receipt is missing"
+                )
+            return
+        raw = path.read_bytes()
+        receipt = json.loads(raw)
+        digest = hashlib.sha256(raw).hexdigest()
+        if not any(
+            event.event_type == "workspace.path_budget.exceeded"
+            and event.payload.get("receipt_digest") == digest
+            and event.payload.get("intent_id") == prepared.intent.intent_id
+            for event in self.journal.list_events(prepared.context.run_id)
+        ):
+            raise ContentRepositoryError(
+                "Path-budget recovery receipt is not verified"
+            )
+        if not receipt["count_is_exact"]:
+            raise ContentRepositoryError(
+                "Path-budget observation was truncated; explicit full scope review is required"
+            )
+        try:
+            pending = self.git.worktree_status(prepared.mutation_root)
+        except WorkspaceDeltaLimitExceeded as error:
+            pending = dict.fromkeys(error.observed_paths)
+        approved = set()
+        for checkpoint in self.journal.list_git_checkpoints(
+            prepared.change_set.repository_id, limit=500
+        ):
+            if (
+                checkpoint.target_role != "run"
+                or checkpoint.target_id != prepared.context.run_id
+                or checkpoint.created_at < receipt["created_at"]
+            ):
+                continue
+            head = self.git.current_head(prepared.mutation_root)
+            if head is not None and self.git.is_ancestor(
+                prepared.mutation_root, checkpoint.commit_oid, head
+            ):
+                approved.update(checkpoint.paths)
+        missing = set(receipt["paths"]) - set(pending) - approved
+        if missing:
+            raise ContentRepositoryError(
+                f"Path-budget recovery still has {len(missing)} uncheckpointed paths; "
+                "ignoring, moving or deleting observed files is not successful capture"
+            )
+
+    def retry_broad_write_checkpoint(
+        self,
+        prepared: PreparedWorkspaceExecution,
+        *,
+        expected_repo_state_digest: str,
+    ) -> tuple[str, ...]:
+        """Retry capture after explicitly reviewed <=500-path checkpoints.
+
+        The caller must quiesce its terminal sessions first. This never spawns
+        or repeats the original command, changes ToolCall outcomes, acquires a
+        new writer lease or marks a failed Run completed. Historical failures
+        still require their existing explicit recovery/admission workflow.
+        """
+        if not self._overflow_receipt_path(prepared).exists():
+            raise ContentRepositoryError(
+                "No path-budget overflow receipt is available"
+            )
+        if any(
+            call.status == "dispatched"
+            for call in self.journal.list_tool_calls(prepared.context.run_id)
+        ):
+            raise ContentRepositoryError(
+                "Stop dispatched tools before checkpoint recovery"
+            )
+        if prepared.direct_binding is not None:
+            run = self.journal.get_run_git_materialization(
+                prepared.context.run_id
+            )
+            repository = self.journal.get_git_repository(
+                prepared.change_set.repository_id
+            )
+            binding = self.journal.get_project_workspace_binding(
+                prepared.context.project_id
+            )
+            if (
+                run is None
+                or repository is None
+                or binding != prepared.direct_binding
+            ):
+                raise ContentRepositoryError(
+                    "Recovery checkout binding changed"
+                )
+            self._require_direct_checkout(
+                context=prepared.context,
+                run=run,
+                repository_root=Path(repository.root_path),
+                binding=binding,
+            )
+        else:
+            self.renew_broad_write(prepared)
+        if (
+            self.git.repo_state_token(prepared.mutation_root).digest
+            != expected_repo_state_digest
+        ):
+            raise ContentRepositoryError(
+                "Workspace changed after path-budget recovery review"
+            )
+        commits = self.complete_broad_write(
+            prepared,
+            operation_request_id=prepared.intent.operation_request_id,
+            actor_id=prepared.intent.actor_id,
+            trigger=prepared.intent.trigger,
+        )
+        self.journal.append_event(
+            prepared.context.run_id,
+            RunEventDraft(
+                event_id="wpbr_"
+                + canonical_digest({"intent_id": prepared.intent.intent_id})[
+                    :48
+                ],
+                event_type="workspace.path_budget.capture_recovered",
+                payload={
+                    "intent_id": prepared.intent.intent_id,
+                    "tool_outcome_unchanged": True,
+                },
+            ),
+        )
+        return commits
 
     def renew_broad_write(
         self,
@@ -817,6 +1049,9 @@ class WorkspaceMutationService:
             repository_root=repository_root,
             binding=binding,
         )
+        # Every new process admission observes the same budget, even after a
+        # previous exact write has already frozen the Run's preimage.
+        self.git.worktree_status(root)
         run = self._preserve_direct_preimage(
             context=context,
             run=run,

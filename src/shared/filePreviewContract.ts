@@ -15,6 +15,7 @@
 import i18next from 'i18next';
 
 export const FILE_PREVIEW_LIMITS = {
+  workspaceResolverPaths: 500,
   csvScanBytes: 2 * 1024 * 1024,
   csvRows: 500,
   csvColumns: 50,
@@ -154,6 +155,12 @@ export function decideFilePreview(
 ): FilePreviewDecision {
   const normalized = normalizePreviewFileType(type);
   const size = metadata.size;
+
+  // Native Blender projects are binary assets, not text or browser media.
+  // Keep the existing external-open action without decoding them as text.
+  if (normalized === 'blend') {
+    return { mode: 'blocked', limit: null, reason: 'unsupported' };
+  }
 
   if (normalized === 'csv' || normalized === 'tsv') {
     return { mode: 'bounded-csv', limit: FILE_PREVIEW_LIMITS.csvScanBytes };

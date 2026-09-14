@@ -41,6 +41,12 @@ from app.utils.workspace_paths import (
     sanitize_identity,
 )
 from app.utils.workspace_resolver import TaskSnapshot, get_workspace_resolver
+from app.workspace_git.backend import (
+    WORKSPACE_PATH_LIMIT,
+    GitBackend,
+    GitBackendError,
+)
+from app.workspace_git.path_policy import WorkspacePathPolicy
 
 logger = logging.getLogger("artifacts")
 
@@ -162,6 +168,103 @@ def _artifact_upload_policy(root: _ArtifactRoot, relative_path: str) -> str:
     return root.upload_policy
 
 
+def _artifact_path_filter(root: Path, *, deadline: float | None = None):
+    """Classify before consuming the manifest cap. Failure never widens scope."""
+    deadline = (
+        deadline
+        if deadline is not None
+        else time.perf_counter() + MAX_ARTIFACT_SCAN_SECONDS
+    )
+    seconds_left = deadline - time.perf_counter()
+    if seconds_left <= 0:
+        raise GitBackendError(
+            "Artifact classification exceeded its scan budget"
+        )
+    git = GitBackend(timeout_seconds=seconds_left)
+    probe = git.probe(root)
+    repository_root = probe.repository_root if probe.is_repository else None
+    policy = WorkspacePathPolicy(root)
+
+    def include(paths: tuple[str, ...]) -> set[str]:
+        candidates: dict[str, str] = {}
+        tracked_candidates: set[str] = set()
+        for value in paths:
+            seconds_left = deadline - time.perf_counter()
+            if seconds_left <= 0:
+                raise GitBackendError(
+                    "Artifact classification exceeded its scan budget"
+                )
+            git.timeout_seconds = seconds_left
+            path = Path(value)
+            relative = path.relative_to(root).as_posix()
+            if path.is_symlink() or not path.resolve().is_relative_to(root):
+                continue
+            if ".git" in Path(relative).parts:
+                continue
+            if path.is_dir() and (path / ".git").exists():
+                continue
+            tracked = (
+                repository_root is not None
+                and git.is_tracked(repository_root, path)
+                if path.is_dir()
+                or any(p.startswith(".") for p in Path(relative).parts)
+                else False
+            )
+            operational_path = relative + (
+                "/__entry__" if path.is_dir() else ""
+            )
+            if policy.is_operational(operational_path):
+                tracked = tracked or (
+                    repository_root is not None
+                    and git.is_tracked(repository_root, path)
+                )
+                if not tracked:
+                    continue
+            if (
+                any(p.startswith(".") for p in Path(relative).parts)
+                and not tracked
+            ):
+                continue
+            if tracked:
+                tracked_candidates.add(value)
+            candidates[value] = (
+                path.relative_to(repository_root).as_posix()
+                if repository_root is not None
+                else relative
+            )
+        ignored = set()
+        if repository_root is not None:
+            relative_paths = tuple(candidates.values())
+            for offset in range(0, len(relative_paths), WORKSPACE_PATH_LIMIT):
+                seconds_left = deadline - time.perf_counter()
+                if seconds_left <= 0:
+                    raise GitBackendError(
+                        "Artifact classification exceeded its scan budget"
+                    )
+                git.timeout_seconds = seconds_left
+                ignored.update(
+                    git.ignored_paths(
+                        repository_root,
+                        relative_paths[offset : offset + WORKSPACE_PATH_LIMIT],
+                    )
+                )
+        return {
+            value
+            for value, relative in candidates.items()
+            if relative not in ignored or value in tracked_candidates
+        }
+
+    return include
+
+
+def _deliverable_fields(path: Path) -> dict[str, str]:
+    return (
+        {"artifactRole": "deliverable"}
+        if path.suffix.lower() in {".mp4", ".blend"}
+        else {}
+    )
+
+
 def _git_run_changed_artifacts(
     journal: SQLiteRunJournal,
     run: RunRecord,
@@ -204,16 +307,33 @@ def _git_run_changed_artifacts(
             return None
         visible_root = Path(project.worktree_path).expanduser().resolve()
     values: list[dict[str, Any]] = []
-    truncated = len(changes) > MAX_ARTIFACTS_PER_RUN
+    truncated = False
     artifact_root = _ArtifactRoot(
         path=visible_root,
         scan_all=False,
         upload_policy=_AGENT_GENERATED_UPLOAD_POLICY,
     )
-    for change in changes[:MAX_ARTIFACTS_PER_RUN]:
+    try:
+        include = _artifact_path_filter(visible_root)
+        allowed = include(
+            tuple(
+                str(visible_root / change.relative_path) for change in changes
+            )
+        )
+    except (GitBackendError, OSError, ValueError):
+        return ArtifactScanResult([], "classification_unavailable", True)
+    for change in sorted(
+        changes,
+        key=lambda item: (
+            Path(item.relative_path).suffix.lower() not in {".mp4", ".blend"},
+            item.relative_path,
+        ),
+    ):
         if change.status in {"D", "T"}:
             continue
         path = visible_root / change.relative_path
+        if str(path) not in allowed:
+            continue
         try:
             if path.is_symlink() or not path.is_file():
                 continue
@@ -222,6 +342,7 @@ def _git_run_changed_artifacts(
             continue
         values.append(
             {
+                **_deliverable_fields(path),
                 "filename": path.name,
                 "path": str(path.resolve()),
                 "relativePath": change.relative_path,
@@ -236,6 +357,10 @@ def _git_run_changed_artifacts(
                 ),
             }
         )
+        if len(values) > MAX_ARTIFACTS_PER_RUN:
+            truncated = True
+            values.pop()
+            break
     return ArtifactScanResult(
         artifacts=values,
         scan_status="partial" if truncated else "complete",
@@ -295,36 +420,93 @@ def discover_task_changed_files(
         if remaining <= 0:
             scan_limited = True
             break
-        if artifact_root.scan_all:
-            paths = bounded_list_files(root, limit=remaining)
-        else:
-            paths = []
-            window_seen: set[str] = set()
-            for modified_after, modified_before in windows:
-                if len(paths) >= remaining:
-                    break
-                window_paths = bounded_list_files(
-                    root,
-                    limit=remaining - len(paths),
-                    modified_after=modified_after,
-                    modified_before=modified_before,
+        try:
+            include = _artifact_path_filter(root, deadline=deadline)
+            verified: set[str] = set()
+            classification_unavailable = False
+
+            def include_verified(paths: tuple[str, ...]) -> set[str]:
+                nonlocal scan_limited, classification_unavailable
+                allowed = verified.intersection(paths)
+                pending = tuple(path for path in paths if path not in verified)
+                for offset in range(0, len(pending), WORKSPACE_PATH_LIMIT):
+                    if classification_unavailable:
+                        break
+                    batch = pending[offset : offset + WORKSPACE_PATH_LIMIT]
+                    try:
+                        classified = include(batch)
+                    except (GitBackendError, OSError, ValueError) as error:
+                        logger.warning(
+                            "Artifact classification unavailable: %s", error
+                        )
+                        scan_limited = True
+                        classification_unavailable = True
+                        break
+                    verified.update(classified)
+                    allowed.update(classified)
+                return allowed
+
+            scan_options = {
+                "include_paths": include_verified,
+                "use_default_skips": False,
+                "skip_prefix": "",
+                "skip_extensions": (),
+                "priority_extensions": (".mp4", ".blend"),
+            }
+            if artifact_root.scan_all:
+                paths = bounded_list_files(
+                    root, limit=remaining, **scan_options
                 )
-                for window_path in window_paths:
-                    if window_path in window_seen:
-                        continue
-                    window_seen.add(window_path)
-                    paths.append(window_path)
+            else:
+                paths = []
+                window_seen: set[str] = set()
+                for modified_after, modified_before in windows:
+                    if len(paths) >= remaining:
+                        break
+                    window_paths = bounded_list_files(
+                        root,
+                        limit=remaining - len(paths),
+                        modified_after=modified_after,
+                        modified_before=modified_before,
+                        **scan_options,
+                    )
+                    for window_path in window_paths:
+                        if window_path in window_seen:
+                            continue
+                        window_seen.add(window_path)
+                        paths.append(window_path)
+            # Reuse completed classification after the deadline. Injected
+            # scanners must still prove every previously unseen path.
+            allowed = include_verified(tuple(paths))
+            paths = [path for path in paths if path in allowed]
+        except (GitBackendError, OSError, ValueError) as error:
+            logger.warning("Artifact classification unavailable: %s", error)
+            scan_limited = True
+            continue
         for absolute_path in paths:
             try:
-                path = Path(absolute_path).resolve()
-                if not path.is_file():
+                candidate = Path(absolute_path)
+                path = candidate.resolve()
+                # A verified path may have become a symlink during the scan;
+                # do not transfer its classification to a different target.
+                if (
+                    candidate.is_symlink()
+                    or path != candidate
+                    or not path.is_file()
+                ):
                     continue
                 identity = str(path)
                 if identity in seen_paths:
                     continue
                 relative_path = path.relative_to(root).as_posix()
                 stat_result = path.stat()
-            except (OSError, ValueError):
+                if not artifact_root.scan_all and not any(
+                    start <= stat_result.st_mtime
+                    and (end is None or stat_result.st_mtime <= end)
+                    for start, end in windows
+                ):
+                    continue
+            except (OSError, RuntimeError, ValueError):
                 # A tool may atomically replace or remove a file while the
                 # final scan runs. One vanished file cannot poison the Run.
                 continue
@@ -333,6 +515,7 @@ def discover_task_changed_files(
             remaining -= 1
             result.append(
                 {
+                    **_deliverable_fields(path),
                     "filename": path.name,
                     "path": identity,
                     "relativePath": relative_path,
