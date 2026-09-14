@@ -705,10 +705,11 @@ class TaskLock:
             waiters.clear()
 
         # Clean up registered toolkits (e.g., remove TerminalToolkit venvs)
+        remaining_toolkits = []
         for toolkit in self.registered_toolkits:
             try:
                 if hasattr(toolkit, "cleanup"):
-                    toolkit.cleanup()
+                    await asyncio.to_thread(toolkit.cleanup)
                     logger.info(
                         "Toolkit cleanup completed",
                         extra={
@@ -717,6 +718,7 @@ class TaskLock:
                         },
                     )
             except Exception as e:
+                remaining_toolkits.append(toolkit)
                 logger.warning(
                     f"Failed to cleanup toolkit: {e}",
                     extra={
@@ -724,7 +726,11 @@ class TaskLock:
                         "toolkit": type(toolkit).__name__,
                     },
                 )
-        self.registered_toolkits.clear()
+        self.registered_toolkits = remaining_toolkits
+        if remaining_toolkits:
+            # Keep ownership so delete_task_lock cannot orphan resources after
+            # a failed process-group kill. Repeated cleanup retries those only.
+            raise RuntimeError("Task resources did not finish cleanup")
 
         logger.info("Task lock cleanup completed", extra={"task_id": self.id})
 

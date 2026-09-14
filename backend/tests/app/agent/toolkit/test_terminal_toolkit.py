@@ -15,6 +15,7 @@
 import asyncio
 import os
 import signal
+import subprocess
 import threading
 import time
 from unittest.mock import MagicMock
@@ -35,7 +36,20 @@ from app.service.task import TaskLock, task_locks
 class TestTerminalToolkit:
     """Test to verify the RuntimeError: no running event loop."""
 
-    def test_no_runtime_error_in_sync_context(self):
+    def test_failed_force_kill_does_not_claim_session_stopped(self):
+        toolkit = TerminalToolkit.__new__(TerminalToolkit)
+        toolkit._session_lock = threading.RLock()
+        toolkit._output_condition = threading.Condition(toolkit._session_lock)
+        process = MagicMock()
+        process.poll.return_value = None
+        process.wait.side_effect = subprocess.TimeoutExpired("fixture", 0)
+        session = {"running": True, "backend": "local", "process": process}
+        toolkit.shell_sessions = {"stuck": session}
+        assert toolkit._kill_registered_process("stuck").startswith("Error")
+        assert session["running"] is True
+        assert not session.get("eigent_group_stopped", False)
+
+    def test_no_runtime_error_in_sync_context(self, tmp_path):
         """Test  no running event loop."""
         test_api_task_id = "test_api_task_123"
 
@@ -48,7 +62,7 @@ class TestTerminalToolkit:
         # This should NOT raise RuntimeError: no running event loop
         # This simulates the exact scenario from the error traceback
         try:
-            toolkit._write_to_log("/tmp/test.log", "Test output")
+            toolkit._write_to_log(str(tmp_path / "test.log"), "Test output")
             time.sleep(0.1)  # Give thread time to complete
 
         except RuntimeError as e:
@@ -59,7 +73,7 @@ class TestTerminalToolkit:
             else:
                 raise  # Re-raise if it's a different RuntimeError
 
-    def test_multiple_calls_no_runtime_error(self):
+    def test_multiple_calls_no_runtime_error(self, tmp_path):
         """Test that multiple calls don't raise RuntimeError."""
         test_api_task_id = "test_api_task_123"
 
@@ -72,7 +86,9 @@ class TestTerminalToolkit:
         # Make multiple calls - none should raise RuntimeError
         try:
             for i in range(5):
-                toolkit._write_to_log(f"/tmp/test_{i}.log", f"Output {i}")
+                toolkit._write_to_log(
+                    str(tmp_path / f"test_{i}.log"), f"Output {i}"
+                )
             time.sleep(0.2)  # Give threads time to complete
         except RuntimeError as e:
             if "no running event loop" in str(e):
@@ -82,7 +98,7 @@ class TestTerminalToolkit:
             else:
                 raise
 
-    def test_thread_safety_no_runtime_error(self):
+    def test_thread_safety_no_runtime_error(self, tmp_path):
         """Test thread safety without RuntimeError."""
         test_api_task_id = "test_api_task_123"
 
@@ -97,7 +113,7 @@ class TestTerminalToolkit:
         for i in range(5):
             thread = threading.Thread(
                 target=toolkit._write_to_log,
-                args=(f"/tmp/test_{i}.log", f"Thread {i} output"),
+                args=(str(tmp_path / f"test_{i}.log"), f"Thread {i} output"),
             )
             threads.append(thread)
             thread.start()
@@ -110,7 +126,7 @@ class TestTerminalToolkit:
 
         # Should not have raised any RuntimeError
 
-    def test_async_context_still_works(self):
+    def test_async_context_still_works(self, tmp_path):
         """Test that async context still works without RuntimeError."""
         test_api_task_id = "test_api_task_123"
 
@@ -121,7 +137,9 @@ class TestTerminalToolkit:
         toolkit = TerminalToolkit("test_api_task_123")
 
         async def test_async_context():
-            toolkit._write_to_log("/tmp/async_test.log", "Async context test")
+            toolkit._write_to_log(
+                str(tmp_path / "async_test.log"), "Async context test"
+            )
             await asyncio.sleep(0.1)
 
         # Should work in async context without RuntimeError

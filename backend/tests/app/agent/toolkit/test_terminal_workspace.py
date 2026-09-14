@@ -109,7 +109,8 @@ def test_terminal_materializes_run_workspace_before_process_spawn(
         )
 
     assert calls == ["prepare", "spawn", "complete"]
-    assert result == "terminal-1:touch generated.txt:True:20.0"
+    # The blocking API now waits on an immediately registered local session.
+    assert result == "terminal-1:touch generated.txt:False:20.0"
 
 
 def test_terminal_serializes_parallel_workspace_mutations(
@@ -695,3 +696,36 @@ def test_run_completion_allows_workspace_checkpoint_to_settle():
 
     assert toolkit.quiesce_run_background_sessions("run-1") == ()
     assert observed_timeouts[0] >= 29.0
+
+
+def test_background_checkpoint_failure_remains_visible_to_repeated_teardown(
+    monkeypatch,
+):
+    toolkit = TerminalToolkit.__new__(TerminalToolkit)
+    toolkit.agent_name = "agent-1"
+    toolkit._session_lock = threading.RLock()
+    toolkit.shell_sessions = {"bg": {"running": False}}
+    attempted = threading.Event()
+
+    class Mutation:
+        def complete_broad_write(self, *_a, **_k):
+            attempted.set()
+            raise RuntimeError("checkpoint persistence lost")
+
+        def mark_broad_write_needs_attention(self, *_a, **_k):
+            pass
+
+    prepared = SimpleNamespace(context=SimpleNamespace(run_id="run-1"))
+    toolkit._watch_background_workspace_mutation(
+        session_id="bg",
+        mutation_service=Mutation(),
+        prepared=prepared,
+        operation_request_id="op",
+    )
+    assert attempted.wait(2)
+    assert toolkit.quiesce_run_background_sessions("run-1", timeout=2) == (
+        "bg",
+    )
+    assert toolkit.quiesce_run_background_sessions("run-1", timeout=2) == (
+        "bg",
+    )
