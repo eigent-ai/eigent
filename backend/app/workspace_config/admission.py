@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import re
+from copy import deepcopy
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -63,6 +64,24 @@ class EnvironmentAdmissionTemplate:
     runtime_capability_manifest: dict[str, Any]
     # None means the user did not override the installed Bundle layer.
     thinking_effort_requested: ThinkingEffort | None
+    # In-process selection only: do not serialize it into environment facts.
+    model_capability_inputs: dict[str, Any] | None = None
+
+    def refresh_model_capability(self) -> EnvironmentAdmissionTemplate:
+        """Resolve a new Run's capability without reinterpreting old Attempts."""
+        if self.model_capability_inputs is None:
+            return self
+        capability = ModelCapabilityRegistry().resolve(
+            **self.model_capability_inputs
+        )
+        return replace(
+            self,
+            provider_capability=capability,
+            runtime_capability_manifest={
+                **self.runtime_capability_manifest,
+                "model_capability": capability.snapshot(),
+            },
+        )
 
 
 @dataclass(frozen=True)
@@ -101,7 +120,7 @@ class LegacyEnvironmentImporter:
         provider_override: dict[str, Any] | None = None,
         is_cloud: bool = False,
     ) -> EnvironmentAdmissionTemplate:
-        capability = self.capability_registry.resolve(
+        capability_inputs = dict(
             model_platform=model_platform,
             model_type=model_type,
             auth_source=auth_source,
@@ -112,6 +131,7 @@ class LegacyEnvironmentImporter:
             provider_override=provider_override,
             is_cloud=is_cloud,
         )
+        capability = self.capability_registry.resolve(**capability_inputs)
         explicit_effort = (
             normalize_thinking_effort(requested_effort)
             if requested_effort is not None
@@ -217,6 +237,7 @@ class LegacyEnvironmentImporter:
             provider_capability=capability,
             runtime_capability_manifest=runtime_capability_manifest,
             thinking_effort_requested=explicit_effort,
+            model_capability_inputs=deepcopy(capability_inputs),
         )
 
     @staticmethod
@@ -583,7 +604,10 @@ class EnvironmentAdmissionService:
             ),
             permission_profile_revision_override=(permission_profile_revision),
             allow_provider_default=(
-                effective_template.thinking_effort_requested is None
+                # Only the synthetic legacy layer can stand for no choice.
+                # A materialized Bundle's medium is an actual model policy.
+                installed is None
+                and effective_template.thinking_effort_requested is None
             ),
             runtime_capability_manifest={
                 **effective_template.runtime_capability_manifest,

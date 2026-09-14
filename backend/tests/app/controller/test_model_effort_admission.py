@@ -22,6 +22,7 @@ from fastapi import HTTPException
 from app.controller import chat_controller
 from app.model.chat import Chat
 from app.run_journal import SQLiteRunJournal
+from app.workspace_config import WorkspaceBundleManifest
 from app.workspace_config.admission import EnvironmentAdmissionService
 
 
@@ -101,3 +102,97 @@ async def test_bad_metadata_returns_422_without_echoing_provider_secrets(
     assert error.value.detail["code"] == "invalid_model_capability"
     assert error.value.detail["message"] == "invalid_model_capability_override"
     assert "fixture-secret" not in str(error.value.detail)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("effort", ["low", "medium", "high", "xhigh", "max"])
+async def test_unknown_model_rejects_materialized_bundle_effort(
+    tmp_path, monkeypatch, sample_chat_data, effort
+):
+    manifest = WorkspaceBundleManifest.model_validate(
+        {
+            "apiVersion": "eigent.ai/v1alpha1",
+            "kind": "WorkspaceBundle",
+            "metadata": {
+                "id": "bundle-fixture",
+                "name": "Fixture",
+                "revision": 1,
+            },
+            "spec": {
+                "models": {
+                    "default": {
+                        "modelRef": "provider://default",
+                        "thinkingEffort": effort,
+                    }
+                }
+            },
+        }
+    ).canonical_payload()
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        revision = journal.put_workspace_config_revision(
+            revision_id="bundle-fixture@1",
+            bundle_id="bundle-fixture",
+            revision_number=1,
+            manifest=manifest,
+            status="published",
+            created_by="fixture",
+        )
+        journal.put_workspace_config_materialization(
+            materialization_id="materialization-fixture",
+            space_id="space-1",
+            revision_id=revision.revision_id,
+            config_placement="sidecar",
+        )
+        proposal = journal.put_workspace_bundle_install_proposal(
+            proposal_id="proposal-fixture",
+            request_id="install-fixture",
+            space_id="space-1",
+            bundle_id="bundle-fixture",
+            revision_id=revision.revision_id,
+            config_placement="sidecar",
+            manifest=manifest,
+            assets=[],
+            install_plan={
+                "connector_slots": [],
+                "local_path_slots": [],
+                "script_actions": [],
+            },
+        )
+        for state in ("approved", "materializing", "materialized"):
+            proposal = journal.transition_workspace_bundle_install_proposal(
+                proposal.proposal_id,
+                expected_version=proposal.version,
+                state=state,
+                decided_by="fixture",
+            )
+        journal.ensure_run(
+            run_id="run-1", project_id="project-1", status="pending"
+        )
+
+        async def admit(data, request):
+            return EnvironmentAdmissionService(journal).persist_for_run(
+                run_id="run-1",
+                space_id="space-1",
+                working_directory=tmp_path,
+                created_by="fixture",
+                template=chat_controller._legacy_environment_template(data),
+            )
+
+        monkeypatch.setattr(chat_controller, "start_chat_stream", admit)
+        options = Chat(
+            **{
+                **sample_chat_data,
+                "model_type": "unknown-deployment",
+                "model_platform": "azure",
+                "thinking_effort": None,
+            }
+        )
+        with pytest.raises(HTTPException) as error:
+            await chat_controller.post(options, MagicMock())
+        assert error.value.status_code == 422
+        assert error.value.detail["code"] == "unsupported_thinking_effort"
+        assert "unknown_model" in error.value.detail["message"]
+        assert effort in error.value.detail["message"]
+        assert journal.list_run_attempts("run-1") == []
+        assert not journal.list_model_invocations("run-1")
+        assert not journal.list_events("run-1")

@@ -2200,6 +2200,9 @@ async def _improve_chat(
             EnvironmentAdmissionTemplate,
         ):
             try:
+                template = await asyncio.to_thread(
+                    template.refresh_model_capability
+                )
                 environment = await asyncio.to_thread(
                     EnvironmentAdmissionService(journal).persist_for_run,
                     run_id=refreshed_context.run_id,
