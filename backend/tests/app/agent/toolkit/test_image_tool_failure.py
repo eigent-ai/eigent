@@ -36,6 +36,11 @@ from app.run_journal import SQLiteRunJournal
 from app.run_policy import ToolSafetyClass
 from app.run_runtime import tool_checkpoint
 from app.run_runtime.tool_checkpoint import UnsafeToolOutcomeError
+from app.service.task import (
+    ActionActivateToolkitData,
+    ActionDeactivateToolkitData,
+)
+from app.utils.listen import toolkit_listen
 from app.utils.listen.toolkit_listen import _log_deactivate
 
 
@@ -54,16 +59,35 @@ def tool_environment(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(tool_checkpoint, "_notify_cloud_sync", lambda: None)
     events = []
-    lock = SimpleNamespace(put_queue=AsyncMock(side_effect=events.append))
+
+    def collect(event):
+        data = getattr(event, "data", {})
+        if (
+            data.get("agent_name") == "image_agent"
+            and data.get("process_task_id") == "process-image"
+            and data.get("toolkit_name") == "Screenshot Toolkit"
+            and data.get("method_name")
+            in {"read image", "take screenshot and read image"}
+        ):
+            # Never filter on tool_call_id, action, or result: the assertions
+            # below must still detect wrong IDs, event order, and error text.
+            events.append(event)
+
+    lock = SimpleNamespace(put_queue=AsyncMock(side_effect=collect))
+    locks = {"project-image": lock}
+
+    def get_lock(project_id):
+        if project_id not in locks:
+            locks[project_id] = SimpleNamespace(put_queue=AsyncMock())
+        return locks[project_id]
+
+    monkeypatch.setattr("app.agent.listen_chat_agent.get_task_lock", get_lock)
     monkeypatch.setattr(
-        "app.agent.listen_chat_agent.get_task_lock", lambda _: lock
-    )
-    monkeypatch.setattr(
-        "app.utils.listen.toolkit_listen.get_task_lock", lambda _: lock
+        "app.utils.listen.toolkit_listen.get_task_lock", get_lock
     )
     monkeypatch.setattr(
         "app.utils.listen.toolkit_listen._safe_put_queue",
-        lambda _, event: events.append(event),
+        lambda task_lock, event: collect(event) if task_lock is lock else None,
     )
     monkeypatch.setattr(
         "app.agent.listen_chat_agent.authorize_tool_checkpoint", AsyncMock()
@@ -378,8 +402,125 @@ def test_image_model_outcome_reaches_durable_tool_events(
     assert "Status: ERROR" in target_logs
     assert "Status: SUCCESS" not in target_logs
     assert len(events) == 2
+    assert [event.action.value for event in events] == [
+        "activate_toolkit",
+        "deactivate_toolkit",
+    ]
+    assert events[0].data["tool_call_id"] == call.tool_call_id
     assert events[-1].data["tool_call_id"] == call.tool_call_id
     assert "fixture image request rejected" in events[-1].data["message"]
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("queue_entry", ["safe_put_queue", "put_queue"])
+def test_image_events_ignore_unrelated_cleanup(
+    tool_environment, tmp_path, caplog, asynchronous, queue_entry
+):
+    from app.agent import listen_chat_agent
+
+    async def emit_noise():
+        # Each pair differs at an actual routing/ownership boundary. No real
+        # Terminal object or cleanup runs, and call IDs cannot define scope.
+        for project_id, overrides in [
+            ("other-project", {}),
+            ("project-image", {"agent_name": "other_agent"}),
+            ("project-image", {"process_task_id": "other-process"}),
+            (
+                "project-image",
+                {"toolkit_name": "Terminal Toolkit", "method_name": "cleanup"},
+            ),
+            ("project-image", {"method_name": "cleanup"}),
+        ]:
+            lock = toolkit_listen.get_task_lock(project_id)
+            assert listen_chat_agent.get_task_lock(project_id) is lock
+            data = {
+                "agent_name": "image_agent",
+                "process_task_id": "process-image",
+                "toolkit_name": "Screenshot Toolkit",
+                "method_name": "read image",
+                "tool_call_id": "unrelated-call",
+                "message": "unrelated cleanup",
+                **overrides,
+            }
+            for event_type in (
+                ActionActivateToolkitData,
+                ActionDeactivateToolkitData,
+            ):
+                event = event_type(data=data.copy())
+                if queue_entry == "safe_put_queue":
+                    toolkit_listen._safe_put_queue(lock, event)
+                else:
+                    await lock.put_queue(event)
+
+    asyncio.run(emit_noise())
+    test_image_model_outcome_reaches_durable_tool_events(
+        tool_environment, tmp_path, caplog, asynchronous, "http400", "openai"
+    )
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize(
+    "fault", ["activate-id", "deactivate-id", "error-message", "event-order"]
+)
+def test_target_event_errors_still_fail_assertions(
+    tool_environment, tmp_path, caplog, monkeypatch, asynchronous, fault
+):
+    journal, events, _ = tool_environment
+    put_queue = toolkit_listen._safe_put_queue
+    target_lock = toolkit_listen.get_task_lock("project-image")
+    pending = []
+
+    def corrupt_target_event(lock, event):
+        if (
+            lock is not target_lock
+            or event.data.get("agent_name") != "image_agent"
+            or event.data.get("toolkit_name") != "Screenshot Toolkit"
+            or event.data.get("method_name") != "read image"
+        ):
+            put_queue(lock, event)
+            return
+        activate = event.action.value == "activate_toolkit"
+        if fault == "activate-id" and activate:
+            event.data["tool_call_id"] = "wrong-call"
+        elif fault == "deactivate-id" and not activate:
+            event.data["tool_call_id"] = "wrong-call"
+        elif fault == "error-message" and not activate:
+            event.data["message"] = "incorrect result"
+        elif fault == "event-order":
+            if activate:
+                pending.append(event)
+                return
+            put_queue(lock, event)
+            put_queue(lock, pending.pop())
+            return
+        put_queue(lock, event)
+
+    monkeypatch.setattr(
+        toolkit_listen, "_safe_put_queue", corrupt_target_event
+    )
+    with pytest.raises(AssertionError):
+        test_image_model_outcome_reaches_durable_tool_events(
+            tool_environment,
+            tmp_path,
+            caplog,
+            asynchronous,
+            "http400",
+            "openai",
+        )
+    # The invalid target events must remain visible, not disappear into a
+    # collector filter and merely trigger an unrelated event-count failure.
+    assert len(events) == 2
+    assert journal.list_tool_calls("run-image")[0].status == "failed"
+    if fault.endswith("-id"):
+        index = 0 if fault == "activate-id" else 1
+        assert events[index].data["tool_call_id"] == "wrong-call"
+    elif fault == "error-message":
+        assert events[-1].data["message"] == "incorrect result"
+    else:
+        assert [event.action.value for event in events] == [
+            "deactivate_toolkit",
+            "activate_toolkit",
+        ]
 
 
 @pytest.mark.parametrize(
