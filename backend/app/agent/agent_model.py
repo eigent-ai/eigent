@@ -31,6 +31,7 @@ from app.model.model_platform import (
     patch_bedrock_cloud_config,
     resolve_cloud_model_runtime_platform,
 )
+from app.model.responses_input import configure_responses_input
 from app.model.subscription_runtime import (
     apply_subscription_runtime,
     is_subscription_auth,
@@ -74,6 +75,7 @@ def _configure_responses_instructions(model_backend: Any) -> None:
     chained response. Remove the duplicate input item to avoid sending and
     billing the same prompt twice.
     """
+    configure_responses_input(model_backend)
     if getattr(model_backend, "_eigent_instructions_configured", False):
         return
 
@@ -425,14 +427,18 @@ def agent_model(
             timeout=600,  # 10 minutes
             **init_params,
         )
-        if uses_responses_transport and model_config.get("instructions"):
-            _configure_responses_instructions(model_backend)
-        return instrument_model_backend(
+        # Install SDK observers before the Responses adapter wraps clients.
+        model_backend = instrument_model_backend(
             model_backend,
             agent_id=agent_id,
             provider=str(effective_config["model_platform"]),
             model_name=str(effective_config["model_type"]),
         )
+        # Empty instructions still need the shared multimodal input adapter.
+        configure_responses_input(model_backend)
+        if uses_responses_transport and model_config.get("instructions"):
+            _configure_responses_instructions(model_backend)
+        return model_backend
 
     model = build_model()
 

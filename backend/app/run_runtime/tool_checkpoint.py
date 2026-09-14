@@ -923,6 +923,19 @@ def finish_tool_checkpoint(
         status = "failed"
         outcome = "failed"
         result_payload = _bounded_record({"error": str(error)})
+    if error is not None:
+        from app.workspace_git.backend import WorkspaceDeltaLimitExceeded
+
+        cause: BaseException | None = error
+        seen: set[int] = set()
+        while cause is not None and id(cause) not in seen:
+            seen.add(id(cause))
+            if isinstance(cause, WorkspaceDeltaLimitExceeded):
+                result_payload["workspace_path_budget"] = _bounded_record(
+                    cause.diagnostic
+                )
+                break
+            cause = cause.__cause__ or cause.__context__
     duration_ms = max(
         0,
         round((time.monotonic() - checkpoint.started_monotonic) * 1000),

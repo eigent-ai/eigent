@@ -50,7 +50,10 @@ from app.workspace_git import (
     WorkspaceSnapshotError,
     WorkspaceSnapshotService,
 )
-from app.workspace_git.backend import RepositoryDiagnostics
+from app.workspace_git.backend import (
+    RepositoryDiagnostics,
+    WorkspaceDeltaLimitExceeded,
+)
 
 router = APIRouter(dependencies=[Depends(require_local_control_principal)])
 
@@ -289,6 +292,10 @@ def _assert_repository_binding(repository, root: Path) -> None:
 def _git_error(exc: Exception) -> HTTPException:
     if isinstance(exc, HTTPException):
         return exc
+    if isinstance(exc, WorkspaceDeltaLimitExceeded):
+        return HTTPException(
+            status_code=409, detail={**exc.diagnostic, "message": str(exc)}
+        )
     if isinstance(exc, ContentRepositoryConsentRequired):
         return HTTPException(
             status_code=409,
