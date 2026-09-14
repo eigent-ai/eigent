@@ -338,7 +338,7 @@ describe('FileViewerPanel toolbar', () => {
   it('keeps folder destinations available while hiding file-only actions', async () => {
     const user = userEvent.setup();
     const openFolder = vi.fn();
-    renderViewer(
+    const { unmount } = renderViewer(
       textFile({ name: 'src', path: 'src', type: '', isFolder: true }),
       {
         openInActions: [
@@ -360,10 +360,47 @@ describe('FileViewerPanel toolbar', () => {
     expect(screen.queryByRole('button', { name: 'Preview' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Download file' })).toBeNull();
 
-    await user.click(screen.getByRole('button', { name: 'Open in' }));
-    await user.click(
-      await screen.findByRole('menuitem', { name: 'Open in Finder' })
-    );
-    expect(openFolder).toHaveBeenCalledTimes(1);
+    const assertNoNativeTopLayer = () => {
+      expect(document.querySelector('dialog, [popover]')).toBeNull();
+      expect(document.fullscreenElement ?? null).toBeNull();
+    };
+    assertNoNativeTopLayer();
+
+    // Floating UI's exact :modal query recurses through jsdom/nwsapi. This
+    // Radix menu uses ordinary DOM, so isolate only that query for this case.
+    // Keep preconditions outside matches: Floating UI catches selector errors.
+    const originalMatches = Element.prototype.matches;
+    const matchesSpy = vi
+      .spyOn(Element.prototype, 'matches')
+      .mockImplementation(function (this: Element, selector: string) {
+        return selector === ':modal'
+          ? false
+          : originalMatches.call(this, selector);
+      });
+    try {
+      const openInButton = screen.getByRole('button', { name: 'Open in' });
+      expect(openInButton).toBeVisible();
+      expect(openInButton.matches('button')).toBe(true);
+      expect(openInButton.matches('dialog')).toBe(false);
+      expect(() => openInButton.matches('[')).toThrow();
+      expect(openFolder).not.toHaveBeenCalled();
+
+      await user.click(openInButton);
+      const destination = await screen.findByRole('menuitem', {
+        name: 'Open in Finder',
+      });
+      assertNoNativeTopLayer();
+      expect(destination).toBeVisible();
+      expect(openFolder).not.toHaveBeenCalled();
+      await user.click(destination);
+      expect(openFolder).toHaveBeenCalledTimes(1);
+    } finally {
+      try {
+        unmount();
+      } finally {
+        matchesSpy.mockRestore();
+        expect(Element.prototype.matches).toBe(originalMatches);
+      }
+    }
   });
 });
