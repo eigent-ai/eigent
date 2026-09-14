@@ -50,6 +50,56 @@ describe('parseBoundedCsvPreview', () => {
 });
 
 describe('loadFilePreview', () => {
+  it.each([
+    { type: 'mp4', mimeType: 'video/mp4' },
+    { type: 'blend', mimeType: 'application/octet-stream' },
+  ])(
+    'authorizes $type metadata without reading it as text or fetching HTTP',
+    async ({ type, mimeType }) => {
+      const invoke = vi.fn().mockResolvedValue({ size: 2048, mimeType });
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      const result = await loadFilePreview(
+        { name: `final.${type}`, path: `/workspace/final.${type}`, type },
+        { ipcRenderer: { invoke } }
+      );
+      expect(invoke).toHaveBeenCalledTimes(1);
+      expect(invoke).toHaveBeenCalledWith(
+        'get-file-preview-metadata',
+        `/workspace/final.${type}`
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+      if (type === 'blend') {
+        expect(result.content).toBeUndefined();
+        expect(result.preview).toMatchObject({
+          kind: 'blocked',
+          reason: 'unsupported',
+        });
+      } else {
+        expect(result.content).toBe(toLocalPreviewUrl('/workspace/final.mp4'));
+        expect(result.preview).toBeUndefined();
+      }
+    }
+  );
+
+  it('does not use HTTP after local metadata authorization fails', async () => {
+    const invoke = vi
+      .fn()
+      .mockRejectedValue(
+        new Error('Preview file is outside the active workspace')
+      );
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(
+      loadFilePreview(
+        { name: 'final.mp4', path: '/outside/final.mp4', type: 'mp4' },
+        { ipcRenderer: { invoke } }
+      )
+    ).rejects.toThrow('outside the active workspace');
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('keeps an absolute local path out of the custom URL hostname', () => {
     expect(toLocalPreviewUrl('/Users/Example User/report.pdf')).toBe(
       'localfile://preview/?path=%2FUsers%2FExample%20User%2Freport.pdf'

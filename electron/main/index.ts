@@ -2680,7 +2680,8 @@ function registerIpcHandlers() {
       if (
         typeof workspaceRoot !== 'string' ||
         !Array.isArray(requestedRelativePaths) ||
-        requestedRelativePaths.length > 500 ||
+        requestedRelativePaths.length >
+          FILE_PREVIEW_LIMITS.workspaceResolverPaths ||
         requestedRelativePaths.some((value) => typeof value !== 'string')
       ) {
         throw new Error('Invalid workspace file resolver request');
