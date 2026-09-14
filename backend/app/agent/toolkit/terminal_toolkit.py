@@ -1042,6 +1042,9 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             session = self.shell_sessions.get(session_id)
         if session is None:  # Injected adapters may return a result directly.
             return dispatch_result
+        # Match communicate()'s foreground EOF without sharing stdout with
+        # the reader. Only explicitly background calls keep interactive stdin.
+        self._close_local_stdin(session)
         deadline = time.monotonic() + max(0.0, timeout)
         while self._workspace_session_running(session_id):
             remaining = deadline - time.monotonic()
@@ -1067,6 +1070,18 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             return f"Error: Command exited with code {exit_code}.\n{text}"
         return text
 
+    def _close_local_stdin(self, session: dict) -> None:
+        """Release our input pipe; stdout belongs exclusively to its reader."""
+        if session.get("backend") != "local":
+            return
+        stdin = getattr(session.get("process"), "stdin", None)
+        if stdin is not None and not stdin.closed:
+            try:
+                stdin.close()
+            except BrokenPipeError:
+                # Like communicate(), tolerate a child that closed its input.
+                pass
+
     def _start_output_reader_thread(self, session_id):
         """Retain reader ownership; stdout EOF alone is not process exit."""
         with self._session_lock:
@@ -1086,6 +1101,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                     with self._output_condition:
                         self._output_condition.notify_all()
                 process.wait()
+                self._close_local_stdin(session)
             except Exception as error:
                 session["error"] = str(error)
             finally:
@@ -1348,6 +1364,8 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             if session is None:
                 return f"Error: No active session found with ID '{id}'."
             if session.get("backend") != "local":
+                if session.get("running"):
+                    session["eigent_stop_requested"] = True
                 return super().shell_kill_process(id)
             session["stopping"] = True
             session["eigent_stop_requested"] = True
@@ -1365,7 +1383,8 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             )
             return f"Error killing process in session '{id}': {exc}"
 
-        # Do not close stdin/stdout here.  The output reader owns stdout and
+        self._close_local_stdin(session)
+        # Do not close stdout here.  The output reader owns stdout and
         # closes it after every process in the isolated group has released the
         # pipe.  Cross-thread TextIOWrapper.close() is the deadlock fixed here.
         with self._output_condition:
@@ -1381,6 +1400,26 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         """Terminate a tracked process within a bounded amount of time."""
 
         return self._kill_registered_process(id)
+
+    def _session_exit_code(self, session: dict) -> int | None:
+        """Read an observed exit from the existing local or Docker backend."""
+        if session.get("backend") == "docker":
+            exec_id = session.get("exec_id")
+            if exec_id is None:
+                return None
+            state = self.docker_api_client.exec_inspect(exec_id)
+            exit_code = (
+                state.get("ExitCode")
+                if state.get("Running") is False
+                else None
+            )
+        elif session.get("backend") == "local":
+            process = session.get("process")
+            exit_code = process.poll() if process is not None else None
+        else:
+            return None
+        # Missing/malformed state is not evidence of a completed command.
+        return exit_code if type(exit_code) is int else None
 
     def _watch_background_workspace_mutation(
         self,
@@ -1461,8 +1500,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                     )
                 )
                 if tool_is_pending:
-                    process = session.get("process")
-                    exit_code = process.poll() if process is not None else None
+                    exit_code = self._session_exit_code(session)
                     stopped = session.get("eigent_stop_requested", False)
                     failure = stopped or exit_code != 0 or session.get("error")
                     finish_tool_checkpoint(
@@ -1634,6 +1672,10 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 reader.join(timeout=1.0)
                 if reader.is_alive():
                     lingering.append(session_id)
+            if session.get("backend") == "local":
+                process = session.get("process")
+                if process is not None and process.poll() is not None:
+                    self._close_local_stdin(session)
         return tuple(lingering)
 
     def _workspace_session_running(self, session_id: str) -> bool:

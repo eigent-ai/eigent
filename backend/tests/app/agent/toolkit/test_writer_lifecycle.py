@@ -7,6 +7,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from unittest.mock import Mock
 
 import pytest
 
@@ -233,6 +234,8 @@ def test_terminal_teardown_stops_group_reader_and_settles_once(
     session = toolkit.shell_sessions["bg"]
     assert session["process"].poll() is not None
     assert not session["eigent_reader_thread"].is_alive()
+    assert session["process"].stdin.closed
+    assert session["process"].stdout.closed
     size = (context.working_directory / "growing.txt").read_bytes()
     toolkit.cleanup(remove_venv=False)
     toolkit.cleanup(remove_venv=False)
@@ -316,7 +319,213 @@ def test_foreground_process_is_registered_and_stoppable(owned_workspace):
         toolkit.cleanup(remove_venv=False)
         future.result(timeout=2)
     assert toolkit.shell_sessions["fg"]["process"].poll() is not None
+    assert toolkit.shell_sessions["fg"]["process"].stdin.closed
+    assert toolkit.shell_sessions["fg"]["process"].stdout.closed
+    assert not toolkit.shell_sessions["fg"]["eigent_reader_thread"].is_alive()
     assert not journal.list_git_mutation_intents(statuses=("prepared",))
+
+
+def test_foreground_stdin_eof_releases_writer(owned_workspace):
+    journal, mutation, backend, context, make_toolkit, _ = owned_workspace
+    toolkit = make_toolkit()
+    with run_context_scope(context):
+        checkpoint = prepare_tool_checkpoint(
+            raw_tool_call_id="reads-stdin",
+            tool_name="shell_exec",
+            arguments={},
+            journal=journal,
+        )
+        with tool_checkpoint_scope(checkpoint):
+            result = toolkit.shell_exec(
+                python_command(
+                    "import sys; from pathlib import Path; "
+                    "Path('stdin.txt').write_text(repr(sys.stdin.read()))"
+                ),
+                id="reads-stdin",
+                timeout=2,
+            )
+        finish_tool_checkpoint(checkpoint, result=result, journal=journal)
+        assert not isinstance(result, BackgroundToolResult)
+        assert (context.working_directory / "stdin.txt").read_text() == "''"
+        assert not journal.list_git_mutation_intents(
+            statuses=("prepared", "needs_attention")
+        )
+        make_toolkit("agent-2").shell_exec(
+            python_command(
+                "from pathlib import Path; Path('next.txt').write_text('done')"
+            )
+        )
+    assert (context.working_directory / "next.txt").read_text() == "done"
+    assert journal.list_tool_calls("run-1")[0].status == "completed"
+    assert backend.is_worktree_clean(context.working_directory)
+
+
+@pytest.mark.parametrize("block", [True, False])
+def test_completed_sessions_release_pipes_before_repeated_cleanup(
+    owned_workspace, block
+):
+    _, _, _, _, make_toolkit, _ = owned_workspace
+    toolkit = make_toolkit()
+    before = len(os.listdir("/dev/fd")) if os.path.isdir("/dev/fd") else None
+    try:
+        for index in range(12):
+            toolkit.shell_exec(
+                python_command("pass"), id=f"command-{index}", block=block
+            )
+            session = toolkit.shell_sessions[f"command-{index}"]
+            session["eigent_reader_thread"].join(timeout=2)
+            assert not session["eigent_reader_thread"].is_alive()
+        assert all(
+            session["process"].stdin.closed
+            and session["process"].stdout.closed
+            for session in toolkit.shell_sessions.values()
+        )
+        if before is not None:
+            assert len(os.listdir("/dev/fd")) <= before
+        toolkit.cleanup(remove_venv=False)
+        toolkit.cleanup(remove_venv=False)
+        if before is not None:
+            assert len(os.listdir("/dev/fd")) <= before
+    finally:
+        # Keep a failing regression from leaking its own fixture descriptors.
+        for session in toolkit.shell_sessions.values():
+            session["process"].stdin.close()
+
+
+def test_live_background_stdin_remains_interactive(owned_workspace):
+    journal, _, backend, context, make_toolkit, _ = owned_workspace
+    toolkit = make_toolkit()
+    with run_context_scope(context):
+        checkpoint = prepare_tool_checkpoint(
+            raw_tool_call_id="interactive",
+            tool_name="shell_exec",
+            arguments={"block": False},
+            journal=journal,
+        )
+        with tool_checkpoint_scope(checkpoint):
+            result = toolkit.shell_exec(
+                python_command(
+                    "import sys; from pathlib import Path\n"
+                    "for _ in range(2):\n"
+                    "    value = sys.stdin.readline()\n"
+                    "    with Path('input.txt').open('a') as output:\n"
+                    "        output.write(value)\n"
+                    "    print(value, end='', flush=True)\n"
+                ),
+                id="interactive",
+                block=False,
+            )
+        finish_tool_checkpoint(checkpoint, result=result, journal=journal)
+        session = toolkit.shell_sessions["interactive"]
+        assert not session["process"].stdin.closed
+        assert "first" in toolkit.shell_write_to_process(
+            "interactive", "first"
+        )
+        assert session["process"].poll() is None
+        assert not session["process"].stdin.closed
+        assert "second" in toolkit.shell_write_to_process(
+            "interactive", "second"
+        )
+    wait_for(lambda: not toolkit._workspace_checkpoint_watchers)
+    assert (
+        context.working_directory / "input.txt"
+    ).read_text() == "first\nsecond\n"
+    assert journal.list_tool_calls("run-1")[0].status == "completed"
+    assert session["process"].stdin.closed
+    assert session["process"].stdout.closed
+    assert backend.is_worktree_clean(context.working_directory)
+
+
+@pytest.mark.parametrize(
+    ("exec_state", "stopped", "expected_status"),
+    [
+        ({"Running": False, "ExitCode": 0}, False, "completed"),
+        ({"Running": False, "ExitCode": 7}, False, "failed"),
+        ({"Running": False, "ExitCode": 137}, True, "failed"),
+        ({"Running": False, "ExitCode": 0}, True, "failed"),
+        ({"Running": False, "ExitCode": None}, False, "outcome_unknown"),
+        ({"Running": False, "ExitCode": None}, True, "outcome_unknown"),
+        ({"Running": True, "ExitCode": 0}, True, "outcome_unknown"),
+        ({"ExitCode": 0}, False, "outcome_unknown"),
+        ({"Running": False, "ExitCode": "0"}, False, "outcome_unknown"),
+        ({"Running": False, "ExitCode": False}, False, "outcome_unknown"),
+        (RuntimeError("exec status unavailable"), False, "outcome_unknown"),
+    ],
+)
+def test_docker_background_outcome_uses_exec_status(
+    owned_workspace, exec_state, stopped, expected_status
+):
+    journal, mutation, backend, context, make_toolkit, _ = owned_workspace
+    toolkit = make_toolkit()
+    with run_context_scope(context):
+        checkpoint = prepare_tool_checkpoint(
+            raw_tool_call_id="docker-command",
+            tool_name="shell_exec",
+            arguments={"block": False},
+            journal=journal,
+        )
+        assert checkpoint is not None
+        prepared = mutation.prepare_broad_write(
+            context=context,
+            operation_request_id=checkpoint.tool_call_id,
+            actor_id=toolkit.agent_name,
+            trigger="terminal.execute",
+        )
+
+    class ExecSocket:
+        """CAMEL stores a Docker exec socket here, with no Popen methods."""
+
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    socket = ExecSocket()
+    toolkit.shell_sessions["docker-command"] = {
+        "backend": "docker",
+        "process": socket,
+        "exec_id": "test-exec",
+        "running": stopped,
+    }
+    toolkit.docker_api_client = Mock(spec=["exec_inspect"])
+    if isinstance(exec_state, Exception):
+        toolkit.docker_api_client.exec_inspect.side_effect = exec_state
+    else:
+        toolkit.docker_api_client.exec_inspect.return_value = exec_state
+    if stopped:
+        assert not toolkit.shell_kill_process("docker-command").startswith(
+            "Error"
+        )
+        assert socket.closed
+    (context.working_directory / "docker-output.txt").write_text("captured")
+    toolkit._watch_background_workspace_mutation(
+        session_id="docker-command",
+        mutation_service=mutation,
+        prepared=prepared,
+        operation_request_id=checkpoint.tool_call_id,
+        checkpoint=checkpoint,
+    )
+    wait_for(lambda: not toolkit._workspace_checkpoint_watchers)
+    call = journal.list_tool_calls("run-1")[0]
+    assert call.status == expected_status
+    toolkit.docker_api_client.exec_inspect.assert_called_with("test-exec")
+    if expected_status == "outcome_unknown":
+        assert call.result["external_effect_may_have_occurred"] is True
+        assert toolkit.quiesce_run_background_sessions("run-1") == (
+            "docker-command",
+        )
+    else:
+        assert call.result == {
+            "session_id": "docker-command",
+            "exit_code": exec_state["ExitCode"],
+            "stopped": stopped,
+            "workspace_checkpointed": True,
+        }
+        assert toolkit.quiesce_run_background_sessions("run-1") == ()
+        assert not journal.list_git_mutation_intents(
+            statuses=("prepared", "needs_attention")
+        )
+        assert backend.is_worktree_clean(context.working_directory)
 
 
 def test_background_capture_cannot_upgrade_previous_unknown_result(
