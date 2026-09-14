@@ -28,15 +28,53 @@ from app.workload import (
     DEFAULT_PRODUCTION_WORKLOAD_PROFILE,
     RETENTION_POLICY_EVIDENCE_REQUIRED,
 )
-from tests.app.model.test_provider_wait import (
-    Clock,
-    client_for,
-    completed,
-    events,
-)
 
 MESSAGES = [{"role": "user", "content": "synthetic fixture"}]
 INVALID_DATE = "Thu, 01 Jan 10000 00:00:00 GMT"
+
+
+class Clock:
+    def __init__(self, monkeypatch):
+        loop = asyncio.get_running_loop()
+        self.now = loop.time()
+        monkeypatch.setattr(loop, "time", lambda: self.now)
+
+    async def sleep(self, seconds):
+        self.now += seconds
+        for _ in range(4):
+            await asyncio.sleep(0)
+
+
+def client_for(handler, **kwargs):
+    return openai.AsyncOpenAI(
+        api_key="fixture-not-a-credential",
+        base_url="https://provider.invalid/v1",
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        **kwargs,
+    )
+
+
+def completed():
+    return httpx.Response(
+        200,
+        json={
+            "id": "resp_fixture",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "model": "gpt-6-astra",
+            "output": [],
+        },
+        headers={"x-request-id": "private-request-id"},
+    )
+
+
+def events(caplog):
+    return [
+        record.provider_wait
+        for record in caplog.records
+        if hasattr(record, "provider_wait")
+    ]
 
 
 def sse(value):
