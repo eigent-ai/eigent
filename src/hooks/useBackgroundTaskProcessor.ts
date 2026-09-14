@@ -14,6 +14,7 @@
 
 import i18n from '@/i18n';
 import { generateUniqueId } from '@/lib';
+import { notifyExecutionError } from '@/lib/notifyError';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import {
   closeSSEConnectionsForTasks,
@@ -24,7 +25,6 @@ import { useTriggerTaskStore } from '@/store/triggerTaskStore';
 import { ExecutionStatus } from '@/types';
 import { AgentStep, ChatTaskStatus } from '@/types/constants';
 import { useCallback, useEffect, useRef } from 'react';
-import { toast } from 'sonner';
 
 /** Poll interval in ms */
 const POLL_INTERVAL_MS = 2000;
@@ -277,7 +277,7 @@ export function useBackgroundTaskProcessor() {
                 e
               )
             );
-            toast.error(
+            notifyExecutionError(
               i18n.t('triggers.background-task-failed', {
                 defaultValue: 'Background task failed',
               }),
@@ -324,7 +324,7 @@ export function useBackgroundTaskProcessor() {
             e
           )
         );
-        toast.error(
+        notifyExecutionError(
           i18n.t('triggers.background-task-failed', {
             defaultValue: 'Background task failed',
           }),
