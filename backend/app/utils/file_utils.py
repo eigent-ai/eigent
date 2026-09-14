@@ -19,6 +19,7 @@ import os
 import platform
 import shutil
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 from app.component.environment import env
@@ -60,7 +61,7 @@ def _should_skip(
     skip_extensions: tuple[str, ...] = (),
 ) -> bool:
     """Return True if a file or directory name should be excluded from listing."""
-    if name.startswith(skip_prefix):
+    if skip_prefix and name.startswith(skip_prefix):
         return True
     return any(name.endswith(ext) for ext in skip_extensions)
 
@@ -202,6 +203,9 @@ def list_files(
     max_scanned_entries: int | None = None,
     max_scan_seconds: float | None = None,
     stats: dict[str, float | int] | None = None,
+    include_paths: Callable[[tuple[str, ...]], set[str]] | None = None,
+    use_default_skips: bool = True,
+    priority_extensions: tuple[str, ...] = (),
 ) -> list[str]:
     """List files under dir_path with optional base confinement and filters.
     If base is set, only returns paths that resolve under base (no traversal).
@@ -245,7 +249,9 @@ def list_files(
     except OSError:
         return []
     base_real = os.path.realpath(resolve_base)
-    skip_dirs = set(DEFAULT_SKIP_DIRS).union(skip_dirs or set())
+    skip_dirs = set(DEFAULT_SKIP_DIRS if use_default_skips else ()).union(
+        skip_dirs or set()
+    )
     result: list[str] = []
     scan_started = time.perf_counter()
     realpath_elapsed = 0.0
@@ -289,12 +295,32 @@ def list_files(
                 for d in dirs
                 if d not in skip_dirs and not _should_skip(d, skip_prefix)
             ]
+            if include_paths is not None:
+                directory_paths = tuple(
+                    os.path.join(root, d) + os.sep for d in dirs
+                )
+                allowed_dirs = include_paths(directory_paths)
+                dirs[:] = [
+                    d
+                    for d in dirs
+                    if os.path.join(root, d) + os.sep in allowed_dirs
+                ]
+                allowed_files = include_paths(
+                    tuple(os.path.join(root, name) for name in files)
+                )
+            else:
+                allowed_files = None
             for name in files:
                 scanned_entries += 1
                 if budget_exhausted():
                     record_stats()
                     return result
                 if _should_skip(name, skip_prefix, skip_extensions):
+                    continue
+                if (
+                    allowed_files is not None
+                    and os.path.join(root, name) not in allowed_files
+                ):
                     continue
                 try:
                     file_path = os.path.join(root, name)
@@ -331,7 +357,21 @@ def list_files(
                         result.append(real_path)
                     else:
                         result.append(os.path.normpath(file_path))
-                    if len(result) >= max_entries:
+                    if priority_extensions and len(result) > max_entries:
+                        # Keep bounded look-ahead storage while scanning for
+                        # explicit deliverables that may occur after frames.
+                        drop = next(
+                            (
+                                i
+                                for i in range(len(result) - 1, -1, -1)
+                                if Path(result[i]).suffix.lower()
+                                not in priority_extensions
+                            ),
+                            len(result) - 1,
+                        )
+                        result.pop(drop)
+                        scan_limited = True
+                    if not priority_extensions and len(result) >= max_entries:
                         logger.debug(
                             "list_files hit max_entries=%d", max_entries
                         )
