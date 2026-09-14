@@ -908,7 +908,20 @@ function NarrativeRunWorkLog({
     wasLive.current = live;
   }, [live]);
 
-  if (items.length === 0) return null;
+  if (items.length === 0) {
+    // Lifecycle/time belongs to the Task, not to the availability of tool
+    // rows. Keep its receipt visible even before older work-log pages arrive.
+    return isTerminalRunStatus(run.status) ? (
+      <div
+        className="w-full border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default py-ds-8"
+        data-narrative-run-summary
+      >
+        <span className="text-ds-text-base font-medium text-ds-ink-muted-default">
+          <NarrativeWorkLogSummary paused={paused} run={run} />
+        </span>
+      </div>
+    ) : null;
+  }
 
   return (
     <motion.div
