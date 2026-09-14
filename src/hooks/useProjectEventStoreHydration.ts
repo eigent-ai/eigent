@@ -168,7 +168,13 @@ export function useProjectEventStoreHydration({
       }
     } catch (error) {
       if (!controller.signal.aborted && !isAbortError(error)) {
-        setOlderState({ projectId, loading: false, error: true });
+        // Overflow requires a fresh checkpoint, not another read against the
+        // rejected cursor. The hydration owner exposes its explicit retry.
+        setOlderState({
+          projectId,
+          loading: false,
+          error: !getProjectEventStore(projectId).getSnapshot().overflowed,
+        });
       }
     } finally {
       if (olderRequestRef.current === controller)
@@ -235,6 +241,24 @@ export function useProjectEventStoreHydration({
         retryTimer ||
         !needsHydration()
       ) {
+        return;
+      }
+      const snapshot = store.getSnapshot();
+      if (
+        !forceHydration &&
+        snapshot.overflowed &&
+        store.getControlReplayCursor() &&
+        (snapshot.view.resyncReason?.startsWith('frontend_pending_control_') ||
+          snapshot.view.resyncReason === 'frontend_control_replay_overflow')
+      ) {
+        // A successful tail read cannot repair an oversized control prefix.
+        // Avoid repeatedly clearing backoff with that same partial snapshot.
+        blockedIncarnation = store.getIncarnation();
+        setHydrationState({
+          status: 'error',
+          errorCode: 'limit_exceeded',
+          eventsTruncated: true,
+        });
         return;
       }
       const requestIncarnation = store.getIncarnation();
@@ -328,9 +352,10 @@ export function useProjectEventStoreHydration({
     const snapshot = getProjectEventStore(projectId).getSnapshot();
     if (
       snapshot.hasHydratedSnapshot &&
-      Object.values(snapshot.history?.beforeByRun ?? {}).some(
+      (Object.values(snapshot.history?.beforeByRun ?? {}).some(
         (value) => value > 0
-      )
+      ) ||
+        getProjectEventStore(projectId).getControlReplayCursor())
     ) {
       // One automatic pass per successful hydration. A failed page remains
       // visible and manually retryable instead of entering a hot retry loop.
@@ -348,9 +373,13 @@ export function useProjectEventStoreHydration({
     eventsTruncated:
       snapshot?.view.eventsTruncated ?? hydrationState.eventsTruncated,
     retry,
-    hasOlderHistory: Object.values(history?.beforeByRun ?? {}).some(
-      (value) => value > 0
-    ),
+    hasOlderHistory:
+      Object.values(history?.beforeByRun ?? {}).some((value) => value > 0) ||
+      Boolean(
+        enabled &&
+        projectId &&
+        getProjectEventStore(projectId).getControlReplayCursor()
+      ),
     isLoadingOlder:
       enabled && olderState.projectId === projectId && olderState.loading,
     olderHistoryError:

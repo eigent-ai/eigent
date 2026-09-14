@@ -32,6 +32,7 @@ import {
   type ChatProjectionState,
 } from '@/lib/projector/chat';
 import {
+  adaptHumanControlEvent,
   createHumanControlProjectionState,
   projectHumanControlEvents,
   type HumanControlProjectionState,
@@ -83,6 +84,19 @@ export type ProjectChatHistory = {
   /** Inclusive last sequence not yet read, in newest-Run-first order. */
   beforeByRun: Readonly<Record<string, number>>;
   runsTruncated: boolean;
+};
+
+/** A forward-only control checkpoint, separate from display and live cursors. */
+export type ProjectControlReplayCursor = Readonly<{
+  afterByRun: Readonly<Record<string, number>>;
+  throughByRun: Readonly<Record<string, number>>;
+}>;
+
+type ProjectControlReplay = {
+  cursor: ProjectControlReplayCursor;
+  control: HumanControlProjectionState;
+  liveEvents: CanonicalProjectEvent[];
+  liveBytes: number;
 };
 
 /**
@@ -527,6 +541,19 @@ function pendingControlCapacityReason(
   return null;
 }
 
+function samePendingControls(
+  left: HumanControlProjectionState,
+  right: HumanControlProjectionState
+): boolean {
+  const pending = (state: HumanControlProjectionState) =>
+    state.orderedInteractionIds
+      .map((id) => state.interactionById[id])
+      .filter((interaction) => interaction.status === 'requested');
+  // Pending state is already count/byte bounded. Historical terminal receipts
+  // need not replace an equivalent current checkpoint or notify its consumers.
+  return JSON.stringify(pending(left)) === JSON.stringify(pending(right));
+}
+
 function isCanonicalProjectEvent(
   value: unknown
 ): value is CanonicalProjectEvent {
@@ -600,6 +627,7 @@ export class ProjectEventStore {
     invalidated: boolean;
   } | null = null;
   private snapshot: ProjectEventStoreSnapshot;
+  private controlReplay: ProjectControlReplay | null = null;
 
   constructor(projectId: string, options: ProjectEventStoreOptions = {}) {
     if (!projectId) throw new Error('ProjectEventStore requires a project id');
@@ -682,6 +710,9 @@ export class ProjectEventStore {
   getChatSnapshot = (): ChatProjectionState => this.snapshot.chat;
 
   getControlSnapshot = (): HumanControlProjectionState => this.snapshot.control;
+
+  getControlReplayCursor = (): ProjectControlReplayCursor | null =>
+    this.controlReplay?.cursor ?? null;
 
   getIncarnation(): number {
     return this.incarnation;
@@ -814,6 +845,26 @@ export class ProjectEventStore {
       this.rejectQueuedBatch(pendingControlOverflowReason);
       return;
     }
+    if (this.controlReplay) {
+      // A forward rebuild has not seen the prefix yet. Retain newer lifecycle
+      // evidence until it catches up; compacted terminal receipts cannot prove
+      // that an older request was resolved. This buffer is bounded like ingress.
+      const liveEvents = acceptedBatch.filter(adaptHumanControlEvent);
+      const liveBytes = liveEvents.reduce(
+        (bytes, event) => bytes + estimateEventBytes(event),
+        0
+      );
+      if (
+        this.controlReplay.liveEvents.length + liveEvents.length >
+          this.maxQueueEvents ||
+        this.controlReplay.liveBytes + liveBytes > this.maxQueueBytes
+      ) {
+        this.rejectQueuedBatch('frontend_control_replay_overflow');
+        return;
+      }
+      this.controlReplay.liveEvents.push(...liveEvents);
+      this.controlReplay.liveBytes += liveBytes;
+    }
     this.publish(
       compactView(
         result.state,
@@ -945,11 +996,56 @@ export class ProjectEventStore {
       this.maxSeenEventIds,
       this.maxUnknownEvents
     );
-    const control = compactHumanControlProjection(
-      projectHumanControlEvents(this.projectId, snapshotEvents),
+    const canExtendControl = Boolean(
+      history &&
+      this.snapshot.hasHydratedSnapshot &&
+      !this.controlReplay &&
+      !this.snapshot.overflowed &&
+      !this.snapshot.view.needsResync &&
+      !this.snapshot.view.eventsTruncated &&
+      Object.entries(history.beforeByRun).every(
+        ([runId, before]) =>
+          before <= (this.snapshot.view.runs[runId]?.lastSequence ?? 0)
+      )
+    );
+    const incomingThrough = Object.fromEntries(
+      (snapshot.runs ?? []).map((run) => [
+        run.run_id,
+        run.expected_next_run_sequence - 1,
+      ])
+    );
+    for (const event of snapshotEvents) {
+      incomingThrough[event.runId] = Math.max(
+        incomingThrough[event.runId] ?? 0,
+        event.runSequence
+      );
+    }
+    const needsControlReplay = Boolean(
+      history &&
+      !canExtendControl &&
+      Object.entries(view.runs).some(
+        ([runId, run]) =>
+          (history.beforeByRun[runId] ?? 0) > 0 ||
+          run.lastSequence > (incomingThrough[runId] ?? 0)
+      )
+    );
+    const snapshotControl = compactHumanControlProjection(
+      projectHumanControlEvents(
+        this.projectId,
+        canExtendControl
+          ? snapshotEvents.filter(
+              (event) => !this.isCoveredByCurrentWatermark(event)
+            )
+          : snapshotEvents,
+        canExtendControl ? this.snapshot.control : undefined
+      ),
       this.maxResolvedControls,
       this.maxControlSeenEventIds
     );
+    const control =
+      needsControlReplay && this.snapshot.hasHydratedSnapshot
+        ? this.snapshot.control
+        : snapshotControl;
     const pendingControlOverflowReason = pendingControlCapacityReason(
       control,
       this.maxPendingControls,
@@ -961,9 +1057,111 @@ export class ProjectEventStore {
       this.rejectQueuedBatch(pendingControlOverflowReason);
       return false;
     }
+    this.controlReplay = needsControlReplay
+      ? {
+          cursor: {
+            afterByRun: Object.fromEntries(
+              Object.keys(view.runs).map((runId) => [runId, 0])
+            ),
+            throughByRun: Object.fromEntries(
+              Object.entries(view.runs).map(([runId, run]) => [
+                runId,
+                run.lastSequence,
+              ])
+            ),
+          },
+          control:
+            Object.keys(control.seenEventIds).length === 0
+              ? control
+              : createHumanControlProjectionState(this.projectId),
+          liveEvents: [],
+          liveBytes: 0,
+        }
+      : null;
     this.publish(view, chat, control, [], false, true, history ?? null);
     this.discardQueuedEventsCoveredBySnapshot();
     if (this.queue.length > 0) this.ensureScheduled();
+    return true;
+  }
+
+  /** Commit validated forward evidence without changing execution watermarks. */
+  appendControlHistory(
+    expected: ProjectControlReplayCursor,
+    events: readonly CanonicalProjectEvent[],
+    afterByRun: Readonly<Record<string, number>>
+  ): boolean {
+    const replay = this.controlReplay;
+    if (
+      !replay ||
+      replay.cursor !== expected ||
+      this.disposed ||
+      this.activeSnapshotReplacement ||
+      this.snapshot.overflowed
+    )
+      return false;
+    const advanced = { ...expected.afterByRun };
+    for (const event of events) {
+      if (
+        event.projectId !== this.projectId ||
+        event.source !== 'canonical' ||
+        event.runSequence !== (advanced[event.runId] ?? -1) + 1 ||
+        event.runSequence > (expected.throughByRun[event.runId] ?? -1)
+      )
+        return false;
+      advanced[event.runId] = event.runSequence;
+    }
+    if (
+      Object.keys(afterByRun).length !== Object.keys(advanced).length ||
+      Object.entries(advanced).some(
+        ([runId, after]) => afterByRun[runId] !== after
+      )
+    )
+      return false;
+    const complete = Object.entries(expected.throughByRun).every(
+      ([runId, through]) => advanced[runId] === through
+    );
+    const control = compactHumanControlProjection(
+      projectHumanControlEvents(
+        this.projectId,
+        complete ? [...events, ...replay.liveEvents] : events,
+        replay.control
+      ),
+      this.maxResolvedControls,
+      this.maxControlSeenEventIds
+    );
+    const overflow = pendingControlCapacityReason(
+      control,
+      this.maxPendingControls,
+      this.maxPendingControlBytes
+    );
+    if (overflow) {
+      this.rejectQueuedBatch(overflow);
+      return false;
+    }
+    this.controlReplay = complete
+      ? null
+      : {
+          ...replay,
+          cursor: { ...expected, afterByRun: advanced },
+          control,
+        };
+    const history = this.snapshot.history;
+    this.publish(
+      {
+        ...this.snapshot.view,
+        eventsTruncated: Boolean(
+          !complete ||
+          history?.runsTruncated ||
+          Object.values(history?.beforeByRun ?? {}).some((before) => before > 0)
+        ),
+      },
+      this.snapshot.chat,
+      complete && !samePendingControls(control, this.snapshot.control)
+        ? control
+        : this.snapshot.control,
+      [],
+      this.snapshot.overflowed
+    );
     return true;
   }
 
@@ -1072,6 +1270,7 @@ export class ProjectEventStore {
     this.cancelScheduledFlush?.();
     this.cancelScheduledFlush = null;
     this.activeSnapshotReplacement = null;
+    this.controlReplay = null;
     this.clearQueue();
     this.incarnation += 1;
     this.publish(
@@ -1091,6 +1290,7 @@ export class ProjectEventStore {
     this.cancelScheduledFlush?.();
     this.cancelScheduledFlush = null;
     this.activeSnapshotReplacement = null;
+    this.controlReplay = null;
     this.clearQueue();
     this.listeners.clear();
   }
@@ -1194,7 +1394,10 @@ export class ProjectEventStore {
     history: ProjectChatHistory | null | undefined = this.snapshot.history
   ): void {
     this.snapshot = {
-      view: chat.historyTruncated ? { ...view, eventsTruncated: true } : view,
+      view:
+        chat.historyTruncated || this.controlReplay
+          ? { ...view, eventsTruncated: true }
+          : view,
       chat,
       control,
       revision: this.snapshot.revision + 1,

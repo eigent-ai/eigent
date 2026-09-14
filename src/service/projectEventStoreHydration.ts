@@ -877,15 +877,7 @@ export async function hydrateProjectEventStore({
   }
 }
 
-/** Read one bounded older page using existing APIs, without pausing live ingest. */
-export async function loadOlderProjectChatHistory({
-  projectId,
-  signal,
-  store = getProjectEventStore(projectId),
-  maxEvents = DEFAULT_MAX_EVENTS,
-  eventPageSize = DEFAULT_EVENT_PAGE_SIZE,
-  eventPageTimeoutMs = DEFAULT_EVENT_PAGE_TIMEOUT_MS,
-}: Pick<
+type OlderHistoryOptions = Pick<
   ProjectEventStoreHydrationOptions,
   | 'projectId'
   | 'signal'
@@ -893,7 +885,163 @@ export async function loadOlderProjectChatHistory({
   | 'maxEvents'
   | 'eventPageSize'
   | 'eventPageTimeoutMs'
->): Promise<void> {
+>;
+
+/** One display batch, followed by bounded forward control batches at the end. */
+export async function loadOlderProjectChatHistory(
+  options: OlderHistoryOptions
+): Promise<void> {
+  const store = options.store ?? getProjectEventStore(options.projectId);
+  if (store.projectId !== options.projectId)
+    invalidResponse('History requires one matching Project scope');
+  throwIfAborted(options.signal);
+  let history = store.getSnapshot().history;
+  if (!history) return;
+  if (Object.values(history.beforeByRun).some((before) => before > 0)) {
+    history = await loadOlderChatBatch({ ...options, store });
+  }
+  if (!history) return;
+  const owner = history;
+  const assertCurrent = () => {
+    throwIfAborted(options.signal);
+    if (!store.isChatHistoryCurrent(owner)) {
+      throw new ProjectEventStoreHydrationError(
+        'History changed during control replay',
+        'replacement_invalidated'
+      );
+    }
+  };
+  assertCurrent();
+  if (Object.values(owner.beforeByRun).some((before) => before > 0)) return;
+
+  // Backward display pages cannot safely merge into compacted controls: a
+  // terminal receipt may already have been evicted. Rebuild in durable order,
+  // with a fresh count/byte budget and an input/paint yield for every batch.
+  while (store.getControlReplayCursor()) {
+    assertCurrent();
+    await loadControlHistoryBatch({ ...options, store }, assertCurrent);
+    assertCurrent();
+    await abortableRead(
+      new Promise<void>((resolve) => setTimeout(resolve, 0)),
+      options.signal
+    );
+    assertCurrent();
+  }
+}
+
+async function loadControlHistoryBatch(
+  {
+    projectId,
+    signal,
+    store = getProjectEventStore(projectId),
+    maxEvents,
+    eventPageSize,
+    eventPageTimeoutMs,
+  }: OlderHistoryOptions,
+  assertHistoryCurrent: () => void
+): Promise<void> {
+  const cursor = store.getControlReplayCursor();
+  if (!cursor) return;
+  const controller = new AbortController();
+  const abortFromCaller = () => controller.abort(signal?.reason);
+  signal?.addEventListener('abort', abortFromCaller, { once: true });
+  if (signal?.aborted) abortFromCaller();
+  const assertCurrent = () => {
+    assertHistoryCurrent();
+    if (
+      store.getControlReplayCursor() !== cursor ||
+      store.getSnapshot().overflowed
+    ) {
+      throw new ProjectEventStoreHydrationError(
+        'Control checkpoint changed during replay',
+        'replacement_invalidated'
+      );
+    }
+  };
+  const unsubscribe = store.subscribe(() => {
+    try {
+      assertCurrent();
+    } catch (error) {
+      controller.abort(error);
+    }
+  });
+  try {
+    const loaded = await fitReplayBatch(
+      boundedInteger(maxEvents, DEFAULT_MAX_EVENTS, DEFAULT_MAX_EVENTS),
+      async (limit) => {
+        assertCurrent();
+        const budget: HydrationBudget = {
+          pages: 0,
+          scannedEvents: 0,
+          events: 0,
+          bytes: 0,
+        };
+        const events: CanonicalProjectEvent[] = [];
+        const seenEventIds = new Set<string>();
+        const afterByRun = { ...cursor.afterByRun };
+        for (const [runId, target] of Object.entries(cursor.throughByRun)) {
+          const remaining = limit - budget.events;
+          if (remaining <= 0) break;
+          const afterSequence = afterByRun[runId];
+          if (afterSequence >= target) continue;
+          const throughSequence = Math.min(target, afterSequence + remaining);
+          await readRunEvents(
+            { runId },
+            {
+              projectId,
+              signal: controller.signal,
+              assertCurrent,
+              eventPageTimeoutMs: boundedInteger(
+                eventPageTimeoutMs,
+                DEFAULT_EVENT_PAGE_TIMEOUT_MS
+              ),
+              eventPageSize: boundedInteger(
+                eventPageSize,
+                DEFAULT_EVENT_PAGE_SIZE,
+                API_MAX_EVENT_PAGE_SIZE
+              ),
+              maxEventPages: DEFAULT_MAX_EVENT_PAGES,
+              maxEvents: limit,
+              maxBytes: DEFAULT_MAX_BYTES,
+              maxEventBytes: DEFAULT_MAX_EVENT_BYTES,
+              maxScannedEvents: limit,
+              budget,
+              seenEventIds,
+              events,
+              afterSequence,
+              throughSequence,
+              retainLimit: remaining,
+            }
+          );
+          afterByRun[runId] = throughSequence;
+        }
+        return { events, afterByRun };
+      },
+      controller.signal
+    );
+    throwIfAborted(controller.signal);
+    assertCurrent();
+    if (!store.appendControlHistory(cursor, loaded.events, loaded.afterByRun)) {
+      throw new ProjectEventStoreHydrationError(
+        'Control checkpoint could not be committed',
+        'replacement_invalidated'
+      );
+    }
+  } finally {
+    unsubscribe();
+    signal?.removeEventListener('abort', abortFromCaller);
+  }
+}
+
+/** Read one bounded older page using existing APIs, without pausing live ingest. */
+async function loadOlderChatBatch({
+  projectId,
+  signal,
+  store = getProjectEventStore(projectId),
+  maxEvents = DEFAULT_MAX_EVENTS,
+  eventPageSize = DEFAULT_EVENT_PAGE_SIZE,
+  eventPageTimeoutMs = DEFAULT_EVENT_PAGE_TIMEOUT_MS,
+}: OlderHistoryOptions): Promise<ProjectChatHistory | undefined> {
   if (store.projectId !== projectId)
     invalidResponse('History requires one matching Project scope');
   throwIfAborted(signal);
@@ -984,17 +1132,14 @@ export async function loadOlderProjectChatHistory({
       controller.signal
     );
     throwIfAborted(controller.signal);
-    if (
-      !store.prependChatHistory(loaded.events, previous, {
-        ...previous,
-        beforeByRun: loaded.beforeByRun,
-      })
-    ) {
+    const history = { ...previous, beforeByRun: loaded.beforeByRun };
+    if (!store.prependChatHistory(loaded.events, previous, history)) {
       throw new ProjectEventStoreHydrationError(
         'History changed during replay; retry against the current snapshot',
         'replacement_invalidated'
       );
     }
+    return history;
   } finally {
     unsubscribe();
     signal?.removeEventListener('abort', abortFromCaller);

@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { useProjectEventStoreHydration } from '@/hooks/useProjectEventStoreHydration';
+import { normalizeLocalRunEvent } from '@/lib/projector';
 import {
   getProjectEventStore,
   resetProjectEventStoresForTests,
@@ -235,6 +236,75 @@ describe('useProjectEventStoreHydration', () => {
     expect(result.current.eventsTruncated).toBe(false);
   });
 
+  it('continues control history after display completes and exposes a failed batch for retry', async () => {
+    const store = getProjectEventStore('project-1');
+    const events = [1, 2].map((sequence) =>
+      normalizeLocalRunEvent(
+        {
+          event_id: `control-event-${sequence}`,
+          run_id: 'run-1',
+          sequence,
+          run_version: sequence,
+          event_type:
+            sequence === 1 ? 'interaction.requested' : 'legacy.terminal',
+          payload:
+            sequence === 1
+              ? { interaction_id: 'question-1', prompt: 'Question' }
+              : { content: 'Work' },
+          created_at: 1_786_441_600 + sequence,
+        },
+        'project-1'
+      )
+    );
+    store.commitSnapshotReplacement(
+      store.beginSnapshotReplacement()!,
+      {
+        project_id: 'project-1',
+        current_cursor: 0,
+        recent_events: [events[1]],
+        runs: [
+          {
+            run_id: 'run-1',
+            status: 'waiting_for_user',
+            expected_next_run_sequence: 3,
+            updated_at: '2026-08-11T10:00:02.000Z',
+            run_version: 2,
+            origin: 'local',
+          },
+        ],
+        events_truncated: true,
+      },
+      { beforeByRun: { 'run-1': 1 }, runsTruncated: false }
+    );
+    const history = store.getSnapshot().history!;
+    store.prependChatHistory([events[0]], history, {
+      ...history,
+      beforeByRun: { 'run-1': 0 },
+    });
+    mocks.loadOlder
+      .mockRejectedValueOnce(new Error('Offline'))
+      .mockImplementationOnce(async () => {
+        expect(
+          store.appendControlHistory(store.getControlReplayCursor()!, events, {
+            'run-1': 2,
+          })
+        ).toBe(true);
+      });
+    const { result } = renderHook(() =>
+      useProjectEventStoreHydration({ projectId: 'project-1', enabled: true })
+    );
+    await waitFor(() => expect(result.current.olderHistoryError).toBe(true));
+    expect(result.current.hasOlderHistory).toBe(true);
+    expect(result.current.eventsTruncated).toBe(true);
+    expect(mocks.loadOlder).toHaveBeenCalledTimes(1);
+    expect(mocks.hydrate).not.toHaveBeenCalled();
+    await act(async () => result.current.loadOlder());
+    expect(mocks.loadOlder).toHaveBeenCalledTimes(2);
+    expect(result.current.olderHistoryError).toBe(false);
+    expect(result.current.hasOlderHistory).toBe(false);
+    expect(result.current.eventsTruncated).toBe(false);
+  });
+
   it('stops automatic history replay on a non-advancing cursor', async () => {
     seedOlderHistory();
     mocks.loadOlder.mockResolvedValue(undefined);
@@ -247,6 +317,83 @@ describe('useProjectEventStoreHydration', () => {
     await waitFor(() => expect(result.current.olderHistoryError).toBe(true));
     expect(mocks.loadOlder).toHaveBeenCalledTimes(1);
     expect(result.current.hasOlderHistory).toBe(true);
+  });
+
+  it('blocks repeated tail hydration after control overflow and permits an explicit fresh retry', async () => {
+    const store = getProjectEventStore('project-1', { maxPendingControls: 1 });
+    const events = [1, 2].map((sequence) =>
+      normalizeLocalRunEvent(
+        {
+          event_id: `pending-event-${sequence}`,
+          run_id: 'run-1',
+          sequence,
+          run_version: sequence,
+          event_type: 'interaction.requested',
+          payload: {
+            interaction_id: `question-${sequence}`,
+            prompt: 'Question',
+          },
+          created_at: 1_786_441_600 + sequence,
+        },
+        'project-1'
+      )
+    );
+    store.commitSnapshotReplacement(
+      store.beginSnapshotReplacement()!,
+      {
+        project_id: 'project-1',
+        current_cursor: 0,
+        recent_events: [events[1]],
+        runs: [
+          {
+            run_id: 'run-1',
+            status: 'waiting_for_user',
+            expected_next_run_sequence: 3,
+            updated_at: '2026-08-11T10:00:02.000Z',
+            run_version: 2,
+            origin: 'local',
+          },
+        ],
+        events_truncated: true,
+      },
+      { beforeByRun: { 'run-1': 1 }, runsTruncated: false }
+    );
+    const history = store.getSnapshot().history!;
+    store.prependChatHistory([events[0]], history, {
+      ...history,
+      beforeByRun: { 'run-1': 0 },
+    });
+    mocks.loadOlder.mockImplementation(async () => {
+      expect(
+        store.appendControlHistory(store.getControlReplayCursor()!, events, {
+          'run-1': 2,
+        })
+      ).toBe(false);
+      throw new Error('Control checkpoint overflow');
+    });
+    const { result } = renderHook(() =>
+      useProjectEventStoreHydration({ projectId: 'project-1', enabled: true })
+    );
+    await waitFor(() => expect(result.current.status).toBe('error'));
+    expect(result.current.errorCode).toBe('limit_exceeded');
+    expect(result.current.olderHistoryError).toBe(false);
+    expect(mocks.loadOlder).toHaveBeenCalledTimes(1);
+    expect(mocks.hydrate).not.toHaveBeenCalled();
+    act(() => store.setMode('shadow'));
+    await flushHydration();
+    expect(mocks.hydrate).not.toHaveBeenCalled();
+    mocks.hydrate.mockImplementationOnce(async () => {
+      store.replaceSnapshot({
+        project_id: 'project-1',
+        current_cursor: 0,
+        recent_events: [events[0]],
+      });
+      return hydrated;
+    });
+    act(() => result.current.retry());
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(mocks.hydrate).toHaveBeenCalledTimes(1);
+    expect(store.getSnapshot().overflowed).toBe(false);
   });
 
   it('cancels automatic replay when disabled without showing a stuck loading state', async () => {
