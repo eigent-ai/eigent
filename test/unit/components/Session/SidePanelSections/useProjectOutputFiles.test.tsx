@@ -12,13 +12,33 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import {
+  mergeProjectFiles,
+  type SessionFileItem,
+} from '@/components/Session/SidePanel/sections/buildProjectSessionPanelData';
 import { useProjectOutputFiles } from '@/components/Session/SidePanel/sections/useProjectOutputFiles';
 import { HostProvider } from '@/host';
 import { useAuthStore } from '@/store/authStore';
 import { ChatTaskStatus } from '@/types/constants';
 import { act, renderHook, waitFor } from '@testing-library/react';
+import {
+  mkdir,
+  mkdtemp,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { FileReader } from '../../../../../electron/main/fileReader';
+
+vi.mock('electron', () => ({
+  app: { getPath: vi.fn(() => '') },
+  BrowserWindow: class BrowserWindow {},
+}));
 
 const { fetchGetMock, getBaseURLMock, invokeMock } = vi.hoisted(() => ({
   fetchGetMock: vi.fn(),
@@ -160,6 +180,87 @@ describe('useProjectOutputFiles', () => {
     );
     expect(result.current[0].path).toBe('/workspace/space-one/report.md');
     expect(fetchGetMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps a normal artifact previewable when the real resolver omits a directory symlink alias', async () => {
+    const workspace = await realpath(
+      await mkdtemp(path.join(tmpdir(), 'eigent-resolver-boundary-'))
+    );
+    let unmount = () => {};
+    try {
+      await mkdir(path.join(workspace, 'archive'));
+      await writeFile(
+        path.join(workspace, 'archive/frame.txt'),
+        'synthetic archived frame'
+      );
+      await writeFile(
+        path.join(workspace, 'final.mp4'),
+        'resolver metadata fixture, not playable media'
+      );
+      await symlink(
+        path.join(workspace, 'archive'),
+        path.join(workspace, 'frames'),
+        'junction'
+      );
+      const requested = ['final.mp4', 'frames/frame.txt'];
+      const reader = new FileReader(null as never);
+      invokeMock.mockImplementation(async (channel, root, paths) => {
+        if (channel === 'set-local-file-preview-roots') {
+          return { success: true, roots: 1 };
+        }
+        if (channel === 'get-workspace-file-list') {
+          return reader.getWorkspaceFileList(root, paths);
+        }
+        throw new Error(`Unexpected IPC channel: ${channel}`);
+      });
+      const items: SessionFileItem[] = requested.map((relativePath, index) => ({
+        id: `artifact-${index}`,
+        file: {
+          name: relativePath.split('/').at(-1) || '',
+          path: relativePath,
+          relativePath,
+          type: index === 0 ? 'mp4' : 'txt',
+          artifactId: `artifact-${index}`,
+        },
+        previewable: false,
+        taskId: 'run-fixture',
+        historical: false,
+        createdAt: 1,
+        updatedAt: 1,
+      }));
+      const originalItems = JSON.stringify(items);
+      const view = renderHook(
+        () =>
+          useProjectOutputFiles(
+            'project_one',
+            { status: ChatTaskStatus.FINISHED, taskAssigning: [] },
+            'run-fixture',
+            workspace,
+            requested
+          ),
+        { wrapper }
+      );
+      unmount = view.unmount;
+      await act(async () => {});
+
+      const merged = mergeProjectFiles(items, view.result.current);
+      expect(merged[0]).toMatchObject({
+        previewable: true,
+        file: {
+          relativePath: 'final.mp4',
+          path: path.join(workspace, 'final.mp4'),
+        },
+      });
+      expect(merged[1]).toEqual(items[1]);
+      expect(view.result.current.map((file) => file.relativePath)).toEqual([
+        'final.mp4',
+      ]);
+      expect(JSON.stringify(items)).toBe(originalItems);
+      expectNoFallback();
+    } finally {
+      unmount();
+      await rm(workspace, { recursive: true, force: true });
+    }
   });
 
   it('does not reload files for agent-only live status changes', async () => {

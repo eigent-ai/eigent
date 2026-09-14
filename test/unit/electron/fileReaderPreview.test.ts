@@ -216,6 +216,60 @@ describe('FileReader bounded preview', () => {
     ).toBe(path.join('resume_frames', 'frame.png'));
   });
 
+  it('omits directory aliases whose real identity differs and retains explicitly requested canonical files', async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), 'eigent-workspace-'));
+    temporaryDirectories.push(workspace);
+    await mkdir(path.join(workspace, 'archive'));
+    await writeFile(path.join(workspace, 'archive/frame.txt'), 'fixture frame');
+    await writeFile(path.join(workspace, 'final.mp4'), 'resolver-only fixture');
+    await symlink(
+      path.join(workspace, 'archive'),
+      path.join(workspace, 'frames'),
+      'junction'
+    );
+    const reader = new FileReader(null as never);
+
+    expect(
+      reader.getWorkspaceFileList(workspace, ['frames/frame.txt'])
+    ).toEqual([]);
+    const files = reader.getWorkspaceFileList(workspace, [
+      'frames/frame.txt',
+      'archive/frame.txt',
+      'final.mp4',
+    ]);
+    expect(files.map((file) => file.relativePath)).toEqual([
+      path.join('archive', 'frame.txt'),
+      'final.mp4',
+    ]);
+    expect(files[0].path).toBe(
+      await realpath(path.join(workspace, 'archive/frame.txt'))
+    );
+  });
+
+  it('compares normalized identities while preserving native canonical paths', async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), 'eigent-workspace-'));
+    temporaryDirectories.push(workspace);
+    await mkdir(path.join(workspace, 'nested'));
+    await writeFile(
+      path.join(workspace, 'nested/report.txt'),
+      'fixture report'
+    );
+    const reader = new FileReader(null as never);
+
+    for (const relativePath of [
+      'nested/report.txt',
+      './nested//./report.txt',
+      path.join('nested', 'report.txt'),
+    ]) {
+      const files = reader.getWorkspaceFileList(workspace, [relativePath]);
+      expect(files).toHaveLength(1);
+      expect(files[0]).toMatchObject({
+        relativePath: path.join('nested', 'report.txt'),
+        path: await realpath(path.join(workspace, 'nested/report.txt')),
+      });
+    }
+  });
+
   it('fails closed before fully reading oversized rich text', async () => {
     const filePath = await temporaryFile('large.md', '');
     await truncate(filePath, FILE_PREVIEW_LIMITS.textBytes + 1);
