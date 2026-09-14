@@ -32,6 +32,10 @@ from types import MethodType
 from typing import Any
 from weakref import WeakKeyDictionary
 
+from app.model.provider_wait import (
+    instrument_provider_wait,
+    provider_invocation_scope,
+)
 from app.permission_policy.models import redact_action_arguments
 from app.run_context.context import get_current_run_context
 from app.run_journal.models import ModelInvocationRecord
@@ -879,11 +883,9 @@ def instrument_model_backend(
 ) -> Any:
     """Install one idempotent capture adapter on a CAMEL model instance."""
 
-    # TODO(camel): Replace this public run/arun adapter when CAMEL exposes a
-    # transport-attempt hook with pre-dispatch, terminal/stream, provider
-    # request-id, and SDK retry-index callbacks. Without that upstream hook,
-    # one CAMEL model call is durable here but hidden HTTP retries cannot be
-    # represented as separate ModelInvocation rows.
+    # One CAMEL call remains one durable ModelInvocation. The separate,
+    # content-free SDK observer correlates serial HTTP attempts with this id.
+    instrument_provider_wait(model_backend)
 
     if getattr(model_backend, _CAPTURE_INSTALLED, False):
         return model_backend
@@ -908,7 +910,10 @@ def instrument_model_backend(
             call_kwargs=kwargs,
         )
         try:
-            response = original_run(messages, *args, **kwargs)
+            with provider_invocation_scope(
+                session.record.invocation_id if session else None
+            ):
+                response = original_run(messages, *args, **kwargs)
         except BaseException as exc:
             if session is not None:
                 session.fail(
@@ -953,7 +958,10 @@ def instrument_model_backend(
             call_kwargs=kwargs,
         )
         try:
-            response = await original_arun(messages, *args, **kwargs)
+            with provider_invocation_scope(
+                session.record.invocation_id if session else None
+            ):
+                response = await original_arun(messages, *args, **kwargs)
         except BaseException as exc:
             if session is not None:
                 await session.afail(
