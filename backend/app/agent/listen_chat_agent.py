@@ -41,6 +41,7 @@ from pydantic import BaseModel
 
 from app.model.provider_wait import (
     provider_stream_scope,
+    provider_sync_stream_scope,
     sdk_owns_model_retries,
 )
 from app.permission_policy import (
@@ -657,36 +658,37 @@ class ListenChatAgent(ChatAgent):
         terminal_status = "failed"
 
         try:
-            try:
-                for chunk in response_gen:
-                    last_chunk = chunk
-                    if chunk.msg and chunk.msg.content:
-                        accumulated_content += chunk.msg.content
-                    yield chunk
-            except ModelProcessingError as error:
-                can_retry = (
-                    auth_retry_available
-                    and input_message is not None
-                    and not accumulated_content
-                    and self._reload_model_after_auth_error(error)
-                )
-                if not can_retry:
-                    raise
-
-                retry_response = ChatAgent.step(
-                    self, input_message, response_format
-                )
-                if isinstance(retry_response, StreamingChatAgentResponse):
-                    for chunk in retry_response:
+            with provider_sync_stream_scope(self._mark_provider_progress):
+                try:
+                    for chunk in response_gen:
                         last_chunk = chunk
                         if chunk.msg and chunk.msg.content:
                             accumulated_content += chunk.msg.content
                         yield chunk
-                else:
-                    last_chunk = retry_response
-                    if retry_response.msg and retry_response.msg.content:
-                        accumulated_content += retry_response.msg.content
-                    yield retry_response
+                except ModelProcessingError as error:
+                    can_retry = (
+                        auth_retry_available
+                        and input_message is not None
+                        and not accumulated_content
+                        and self._reload_model_after_auth_error(error)
+                    )
+                    if not can_retry:
+                        raise
+
+                    retry_response = ChatAgent.step(
+                        self, input_message, response_format
+                    )
+                    if isinstance(retry_response, StreamingChatAgentResponse):
+                        for chunk in retry_response:
+                            last_chunk = chunk
+                            if chunk.msg and chunk.msg.content:
+                                accumulated_content += chunk.msg.content
+                            yield chunk
+                    else:
+                        last_chunk = retry_response
+                        if retry_response.msg and retry_response.msg.content:
+                            accumulated_content += retry_response.msg.content
+                        yield retry_response
             terminal_status = "completed"
         except GeneratorExit:
             terminal_status = "cancelled"

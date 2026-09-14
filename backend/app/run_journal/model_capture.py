@@ -407,7 +407,8 @@ class _RecordedSyncStream:
 
     def __next__(self) -> Any:
         try:
-            chunk = next(self._stream)
+            with provider_invocation_scope(self._session.record.invocation_id):
+                chunk = next(self._stream)
         except StopIteration:
             self._complete_from_stream()
             raise
@@ -435,7 +436,10 @@ class _RecordedSyncStream:
         enter = getattr(self._stream, "__enter__", None)
         if enter is not None:
             try:
-                entered = enter()
+                with provider_invocation_scope(
+                    self._session.record.invocation_id
+                ):
+                    entered = enter()
             except BaseException as exc:
                 self._session.fail(
                     exc, outcome_unknown=_exception_outcome_unknown(exc)
@@ -511,7 +515,8 @@ class _RecordedSyncStreamManager:
 
     def __enter__(self) -> _RecordedSyncStream:
         try:
-            entered = self._manager.__enter__()
+            with provider_invocation_scope(self._session.record.invocation_id):
+                entered = self._manager.__enter__()
         except BaseException as exc:
             self._session.fail(
                 exc, outcome_unknown=_exception_outcome_unknown(exc)
@@ -551,7 +556,8 @@ class _RecordedAsyncStream:
 
     async def __anext__(self) -> Any:
         try:
-            chunk = await self._stream.__anext__()
+            with provider_invocation_scope(self._session.record.invocation_id):
+                chunk = await self._stream.__anext__()
         except StopAsyncIteration:
             await self._complete_from_stream()
             raise
@@ -576,7 +582,10 @@ class _RecordedAsyncStream:
         enter = getattr(self._stream, "__aenter__", None)
         if enter is not None:
             try:
-                entered = await enter()
+                with provider_invocation_scope(
+                    self._session.record.invocation_id
+                ):
+                    entered = await enter()
             except BaseException as exc:
                 await self._session.afail(
                     exc, outcome_unknown=_exception_outcome_unknown(exc)
@@ -664,7 +673,8 @@ class _RecordedAsyncStreamManager:
 
     async def __aenter__(self) -> _RecordedAsyncStream:
         try:
-            entered = await self._manager.__aenter__()
+            with provider_invocation_scope(self._session.record.invocation_id):
+                entered = await self._manager.__aenter__()
         except BaseException as exc:
             await self._session.afail(
                 exc, outcome_unknown=_exception_outcome_unknown(exc)

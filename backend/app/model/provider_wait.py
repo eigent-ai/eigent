@@ -13,6 +13,7 @@ import json
 import logging
 import math
 import sys
+import threading
 import time
 import uuid
 from collections.abc import Callable
@@ -48,6 +49,9 @@ _INVOCATION: ContextVar[str | None] = ContextVar(
 )
 _STREAMS: ContextVar[list[Any] | None] = ContextVar(
     "provider_streams", default=None
+)
+_SYNC_STREAMS: ContextVar[list[Any] | None] = ContextVar(
+    "provider_sync_streams", default=None
 )
 _PROGRESS: ContextVar[Callable[[], None] | None] = ContextVar(
     "provider_progress", default=None
@@ -92,6 +96,23 @@ def _error_kind(exc: BaseException) -> str:
     return "failed"
 
 
+def _retry_after(client: Any, response: httpx.Response) -> float | None:
+    try:
+        return client._parse_retry_after_header(response.headers)
+    except Exception:
+        # Optional diagnostics must not turn a valid response into a
+        # transport failure. Leave the SDK's retry calculation unchanged.
+        return None
+
+
+def _sync_owner() -> tuple[int, asyncio.Task | None]:
+    try:
+        task = asyncio.current_task()
+    except RuntimeError:
+        task = None
+    return threading.get_ident(), task
+
+
 class _Observation:
     def __init__(self, client: Any, options: Any, *, stream: bool = False):
         self.started = _now()
@@ -100,6 +121,7 @@ class _Observation:
         self.phase = "waiting"
         self.closed = False
         self.stream = stream
+        self.response: httpx.Response | None = None
         self.status: int | None = None
         self.retry_after_seconds: float | None = None
         self.request_ids: dict[str, str] = {}
@@ -212,6 +234,9 @@ class _Observation:
     def headers(
         self, response: httpx.Response, retry_after: float | None
     ) -> None:
+        # Headers arrive before the SDK reads an error body or returns a
+        # stream. Keep request-local ownership for failures in that gap.
+        self.response = response
         self.status = response.status_code
         self.retry_after_seconds = _number(retry_after)
         self.headers_elapsed = round(_now() - self.attempt_started, 6)
@@ -342,6 +367,41 @@ async def provider_stream_scope(on_progress: Callable[[], None] | None = None):
             logger.warning("provider_wait stream_cleanup_failed")
 
 
+@contextmanager
+def provider_sync_stream_scope(
+    on_progress: Callable[[], None] | None = None,
+):
+    """Own sync responses until the enclosing CAMEL consumer exits."""
+    streams: list[Any] = []
+    token = _SYNC_STREAMS.set(streams)
+    progress_token = _PROGRESS.set(on_progress)
+    try:
+        yield
+    finally:
+        primary_error = sys.exception()
+        _SYNC_STREAMS.reset(token)
+        _PROGRESS.reset(progress_token)
+        error = None
+        for stream in reversed(list(streams)):
+            try:
+                if (
+                    primary_error is not None
+                    and not stream._observation.closed
+                ):
+                    stream._observation.finish(
+                        "closed"
+                        if isinstance(primary_error, GeneratorExit)
+                        else _error_kind(primary_error)
+                    )
+                stream.close()
+            except Exception as exc:
+                error = error or exc
+        if error is not None:
+            if primary_error is None:
+                raise error
+            logger.warning("provider_wait stream_cleanup_failed")
+
+
 class _ObservedAsyncStream(AsyncStream):
     def __init__(self, stream: AsyncStream, observation: _Observation):
         self._inner = stream
@@ -398,6 +458,10 @@ class _ObservedSyncStream(Stream):
         self._observation = observation
         self.response = stream.response
         self._closed = False
+        self.owner = _sync_owner()
+        self.registry = _SYNC_STREAMS.get()
+        if self.registry is not None:
+            self.registry.append(self)
 
     def __iter__(self):
         return self
@@ -422,9 +486,11 @@ class _ObservedSyncStream(Stream):
     def close(self):
         if self._closed:
             return
-        self._closed = True
         try:
             self._inner.close()
+            self._closed = True
+            if self.registry is not None and self in self.registry:
+                self.registry.remove(self)
         finally:
             if not self._observation.closed:
                 self._observation.finish("closed")
@@ -469,7 +535,7 @@ def _install_client(client: Any) -> None:
 
     def should_retry(self, response):
         retry = original_should_retry(response)
-        delay = self._parse_retry_after_header(response.headers)
+        delay = _retry_after(self, response) if retry else None
         # This SDK replaces server hints > 60 s with short backoff. Decline
         # that retry and preserve the original HTTP error instead.
         if retry and delay is not None and math.isfinite(delay) and delay > 60:
@@ -506,7 +572,7 @@ def _install_client(client: Any) -> None:
             if observation is not None:
                 observation.headers(
                     response,
-                    client._parse_retry_after_header(response.headers),
+                    _retry_after(client, response),
                 )
 
         async def sleep_for_retry(self, **kwargs):
@@ -547,6 +613,14 @@ def _install_client(client: Any) -> None:
                 return result
             except BaseException as exc:
                 observation.finish(_error_kind(exc))
+                response = observation.response
+                if response is not None and not response.is_closed:
+                    try:
+                        with anyio.CancelScope(shield=True):
+                            await response.aclose()
+                    except BaseException:
+                        # Preserve the original cancellation/provider error.
+                        logger.warning("provider_wait response_cleanup_failed")
                 raise
             finally:
                 _CURRENT.reset(token)
@@ -572,13 +646,19 @@ def _install_client(client: Any) -> None:
             if observation is not None:
                 observation.headers(
                     response,
-                    client._parse_retry_after_header(response.headers),
+                    _retry_after(client, response),
                 )
 
         def sleep_for_retry(self, **kwargs):
             time.sleep(_retry_delay(self, kwargs))
 
         def request(self, *args, **kwargs):
+            for stream in list(_SYNC_STREAMS.get() or []):
+                if (
+                    stream.owner == _sync_owner()
+                    and stream._observation.closed
+                ):
+                    stream.close()
             options = kwargs.get("options") if "options" in kwargs else args[1]
             observation = _Observation(
                 self, options, stream=kwargs.get("stream", False)
@@ -604,6 +684,12 @@ def _install_client(client: Any) -> None:
                 return result
             except BaseException as exc:
                 observation.finish(_error_kind(exc))
+                response = observation.response
+                if response is not None and not response.is_closed:
+                    try:
+                        response.close()
+                    except BaseException:
+                        logger.warning("provider_wait response_cleanup_failed")
                 raise
             finally:
                 _CURRENT.reset(token)
