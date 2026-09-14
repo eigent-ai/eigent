@@ -24,8 +24,8 @@ from camel.types import ModelPlatformType
 
 from app.agent.listen_chat_agent import ListenChatAgent, logger
 from app.model.chat import AgentModelConfig, Chat
+from app.model.effort import resolve_model_effort_config
 from app.model.model_platform import (
-    azure_reasoning_tools_require_responses_api,
     is_eigent_cloud_model_endpoint,
     patch_azure_cloud_config,
     patch_bedrock_cloud_config,
@@ -184,6 +184,18 @@ def agent_model(
     base_effective_config = dict(effective_config)
     base_extra_params = dict(extra_params or {})
     base_model_config = dict(explicit_model_config or {})
+    if (
+        custom_model_config
+        and custom_model_config.has_custom_config()
+        and custom_model_config.extra_params is None
+        and any(
+            effective_config[key] != getattr(options, key)
+            for key in ("model_platform", "model_type", "api_url")
+        )
+    ):
+        # A task's declaration is scoped to its provider/model. An agent that
+        # inherits other constructor settings must resolve its own capability.
+        base_extra_params.pop("model_capability", None)
 
     def build_model(force_refresh: bool = False):
         effective_config = dict(base_effective_config)
@@ -219,6 +231,7 @@ def agent_model(
             and is_effective_cloud
         ):
             extra_params = patch_azure_cloud_config(extra_params)
+        provider_override = extra_params.pop("model_capability", None)
         init_param_keys = {
             "api_version",
             "azure_ad_token",
@@ -287,59 +300,46 @@ def agent_model(
                 exc_info=True,
             )
 
-        # Runtime-owned values are applied after user configuration.
-        if not (
+        # Resolve only configuration here; the Responses input adapter below
+        # independently owns instructions and message normalization.
+        use_task_effort = not (
             custom_model_config and custom_model_config.has_custom_config()
-        ):
-            effort_parameter = getattr(
-                task_lock,
-                "provider_effort_parameter_name",
-                None,
-            )
-            effort_value = getattr(
-                task_lock,
-                "provider_effort_parameter_value",
-                None,
-            )
-            if (
-                isinstance(effort_parameter, str)
-                and effort_parameter
-                and isinstance(effort_value, str)
-                and effort_value != "provider_default"
-            ):
-                model_config[effort_parameter] = effort_value
-
-        # Eigent Cloud transports are declared by the server-owned model
-        # catalog. This lets future models select Responses without a Desktop
-        # release. User-managed Azure GPT-5.6 endpoints retain the model-family
-        # fallback because they do not have server capability metadata.
-        has_function_tools = bool(
-            tools or tool_names or toolkits_to_register_agent
         )
-        uses_responses_transport = init_params.get("api_mode") == "responses"
-        should_use_azure_responses_fallback = (
-            not is_effective_cloud
-            and has_function_tools
-            and model_config.get("reasoning_effort")
-            not in {None, "", "provider_default"}
-            and azure_reasoning_tools_require_responses_api(
-                model_platform=str(effective_config["model_platform"]),
-                model_type=str(effective_config["model_type"]),
-            )
-        )
-        if should_use_azure_responses_fallback:
-            init_params["api_mode"] = "responses"
-            uses_responses_transport = True
 
-        if uses_responses_transport and model_config.get(
-            "reasoning_effort"
-        ) not in {None, "", "provider_default"}:
-            reasoning_effort = model_config.pop("reasoning_effort")
-            model_config["reasoning"] = {"effort": reasoning_effort}
-            logger.info(
-                "Using Responses API reasoning for model %s",
-                effective_config["model_type"],
-            )
+        def pinned_string(name: str) -> str | None:
+            value = getattr(task_lock, name, None) if use_task_effort else None
+            return value if isinstance(value, str) else None
+
+        model_config, transport = resolve_model_effort_config(
+            model_platform=str(effective_config["model_platform"]),
+            model_type=str(effective_config["model_type"]),
+            model_config=model_config,
+            api_mode=init_params.get("api_mode"),
+            provider_override=provider_override,
+            auth_source=options.auth_source
+            if use_subscription_runtime
+            else None,
+            requested_effort=options.thinking_effort
+            if use_task_effort
+            else None,
+            pinned_parameter=pinned_string("provider_effort_parameter_name"),
+            pinned_value=pinned_string("provider_effort_parameter_value"),
+            pinned_transport=pinned_string("provider_model_transport"),
+            has_function_tools=bool(
+                tools
+                or tool_names
+                or toolkits_to_register_agent
+                or model_config.get("tools")
+                or (
+                    isinstance(model_config.get("extra_body"), dict)
+                    and model_config["extra_body"].get("tools")
+                )
+            ),
+            is_cloud=is_effective_cloud,
+        )
+        uses_responses_transport = transport == "responses"
+        if uses_responses_transport or "api_mode" in init_params:
+            init_params["api_mode"] = transport
 
         if uses_responses_transport:
             # Responses does not carry a prior response's `instructions`

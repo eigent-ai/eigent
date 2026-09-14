@@ -97,11 +97,20 @@ class LegacyEnvironmentImporter:
         mcp_server_configs: dict[str, dict[str, Any]] | None = None,
         skill_config: dict[str, Any] | None = None,
         session_mode: str = "workforce",
+        api_mode: str | None = None,
+        provider_override: dict[str, Any] | None = None,
+        is_cloud: bool = False,
     ) -> EnvironmentAdmissionTemplate:
         capability = self.capability_registry.resolve(
             model_platform=model_platform,
             model_type=model_type,
             auth_source=auth_source,
+            api_mode=api_mode,
+            # Any task can construct agents with function tools. Pin a
+            # compatible transport before creating an immutable environment.
+            has_function_tools=True,
+            provider_override=provider_override,
+            is_cloud=is_cloud,
         )
         explicit_effort = (
             normalize_thinking_effort(requested_effort)
@@ -201,6 +210,7 @@ class LegacyEnvironmentImporter:
             "skill_refs": list(enabled_skills),
             "legacy_source_checksum": source_checksum,
             "session_mode": session_mode,
+            "model_capability": capability.snapshot(),
         }
         return EnvironmentAdmissionTemplate(
             manifest=manifest,
@@ -572,7 +582,9 @@ class EnvironmentAdmissionService:
                 effective_template.thinking_effort_requested
             ),
             permission_profile_revision_override=(permission_profile_revision),
-            allow_dynamic_effort_remap=True,
+            allow_provider_default=(
+                effective_template.thinking_effort_requested is None
+            ),
             runtime_capability_manifest={
                 **effective_template.runtime_capability_manifest,
                 "workspace": {

@@ -100,7 +100,10 @@ from app.workspace_bundle.runtime import (
 )
 from app.workspace_config import (
     EffectiveEnvironmentSpec,
+    ModelCapabilityConfigError,
+    UnsupportedThinkingEffortError,
     WorkspaceBundleReconfigurationPendingError,
+    WorkspaceConfigError,
     canonical_digest,
 )
 from app.workspace_config.admission import (
@@ -217,6 +220,8 @@ _RESUME_TOOL_RESULT_MAX_CHARS = 1000
 
 
 def _legacy_environment_template(data: Chat) -> EnvironmentAdmissionTemplate:
+    from app.model.model_platform import is_eigent_cloud_model_endpoint
+
     skill_config: dict[str, Any] = {}
     skill_owner = data.skill_config_user_id()
     if skill_owner:
@@ -235,6 +240,9 @@ def _legacy_environment_template(data: Chat) -> EnvironmentAdmissionTemplate:
         model_type=data.model_type,
         auth_source=data.auth_source,
         requested_effort=data.thinking_effort,
+        api_mode=(data.extra_params or {}).get("api_mode"),
+        provider_override=(data.extra_params or {}).get("model_capability"),
+        is_cloud=is_eigent_cloud_model_endpoint(data.api_url),
         allow_local_system=data.allow_local_system,
         mcp_server_names=tuple(mcp_configs.keys()),
         mcp_server_configs=mcp_configs,
@@ -328,6 +336,11 @@ def _apply_environment_to_task_lock(
     task_lock.provider_effort_parameter_name = spec.provider_parameter_name
     task_lock.provider_effort_parameter_value = spec.provider_value
     task_lock.provider_capability_revision = spec.provider_capability_revision
+    task_lock.provider_model_transport = (
+        spec.semantic_spec.get("runtime_capability_manifest", {})
+        .get("model_capability", {})
+        .get("api_mode")
+    )
     task_lock.resolved_runtime_environment = runtime_environment
 
 
@@ -1723,10 +1736,27 @@ async def start_chat_stream(data: Chat, request: Request):
     "/chat", name="start chat", dependencies=_CHAT_CONTROL_DEPENDENCIES
 )
 async def post(data: Chat, request: Request):
-    stream = await start_chat_stream(data, request)
+    try:
+        stream = await start_chat_stream(data, request)
+    except (ModelCapabilityConfigError, UnsupportedThinkingEffortError) as exc:
+        raise _model_capability_http_error(exc) from exc
     return StreamingResponse(
         stream,
         media_type="text/event-stream",
+    )
+
+
+def _model_capability_http_error(exc: WorkspaceConfigError) -> HTTPException:
+    return HTTPException(
+        status_code=422,
+        detail={
+            "code": (
+                "unsupported_thinking_effort"
+                if isinstance(exc, UnsupportedThinkingEffortError)
+                else "invalid_model_capability"
+            ),
+            "message": str(exc),
+        },
     )
 
 
@@ -2185,6 +2215,12 @@ async def _improve_chat(
             except EnvironmentSetupRequiredError as exc:
                 await rollback_runtime_binding()
                 raise _environment_setup_error(exc) from exc
+            except (
+                ModelCapabilityConfigError,
+                UnsupportedThinkingEffortError,
+            ) as exc:
+                await rollback_runtime_binding()
+                raise _model_capability_http_error(exc) from exc
             try:
                 runtime_environment = await asyncio.to_thread(
                     _assemble_runtime_environment,

@@ -23,12 +23,110 @@ from app.agent.agent_model import (
 )
 from app.model.chat import AgentModelConfig, Chat
 from app.service.task import Agents
+from app.workspace_config import (
+    ModelCapabilityConfigError,
+    ModelCapabilityRegistry,
+)
 
 pytestmark = pytest.mark.unit
 
 
 class TestAgentFactoryFunctions:
     """Test cases for agent factory functions."""
+
+    def test_pinned_chat_transport_replaces_stale_responses_initializer(
+        self, sample_chat_data
+    ):
+        options = Chat(
+            **{
+                **sample_chat_data,
+                "model_type": "gpt-5.5",
+                "extra_params": {"api_mode": "responses"},
+            }
+        )
+        lock = MagicMock()
+        lock.put_queue = MagicMock(return_value=None)
+        lock.provider_effort_parameter_name = "reasoning_effort"
+        lock.provider_effort_parameter_value = "high"
+        lock.provider_model_transport = "chat_completions"
+        module = sys.modules["app.agent.agent_model"]
+        with (
+            patch.object(module, "ListenChatAgent"),
+            patch.object(module, "ModelFactory") as factory,
+            patch.object(module, "get_task_lock", return_value=lock),
+            patch.object(module, "_schedule_async_task"),
+        ):
+            agent_model("FixtureAgent", "fixture", options, [])
+        params = factory.create.call_args.kwargs
+        assert params["api_mode"] == "chat_completions"
+        assert params["model_config_dict"]["reasoning_effort"] == "high"
+        assert "reasoning" not in params["model_config_dict"]
+
+    @pytest.mark.parametrize("explicit_override", [False, True])
+    def test_custom_agent_resolves_its_own_capability(
+        self, sample_chat_data, explicit_override
+    ):
+        metadata = next(
+            entry
+            for entry in ModelCapabilityRegistry().catalog.models
+            if entry.model_platform == "azure"
+            and entry.model_type == "gpt-6-astra"
+        ).model_dump(mode="json")
+        options = Chat(
+            **{
+                **sample_chat_data,
+                "model_platform": "azure",
+                "model_type": "gpt-6-astra",
+                "thinking_effort": "max",
+                "extra_params": {"model_capability": metadata},
+            }
+        )
+        custom = AgentModelConfig(
+            model_type="gpt-5.5",
+            model_config_dict={"reasoning_effort": "high"},
+            extra_params={"model_capability": metadata}
+            if explicit_override
+            else None,
+        )
+        lock = MagicMock()
+        lock.put_queue = MagicMock(return_value=None)
+        lock.provider_effort_parameter_name = "reasoning.effort"
+        lock.provider_effort_parameter_value = "max"
+        lock.provider_model_transport = "responses"
+        module = sys.modules["app.agent.agent_model"]
+        with (
+            patch.object(module, "ListenChatAgent"),
+            patch.object(module, "ModelFactory") as factory,
+            patch.object(module, "get_task_lock", return_value=lock),
+            patch.object(module, "_schedule_async_task"),
+        ):
+            if explicit_override:
+                with pytest.raises(
+                    ModelCapabilityConfigError, match="scope_mismatch"
+                ):
+                    agent_model(
+                        "FixtureAgent",
+                        "fixture",
+                        options,
+                        [],
+                        custom_model_config=custom,
+                    )
+                factory.create.assert_not_called()
+            else:
+                agent_model(
+                    "FixtureAgent",
+                    "fixture",
+                    options,
+                    [],
+                    custom_model_config=custom,
+                )
+                params = factory.create.call_args.kwargs
+                assert params["model_type"] == "gpt-5.5"
+                assert (
+                    params["model_config_dict"]["reasoning_effort"] == "high"
+                )
+                assert "model_capability" not in params["model_config_dict"]
+                assert "reasoning" not in params["model_config_dict"]
 
     def test_agent_model_creation(self, sample_chat_data):
         """Test agent_model creates agent properly."""
