@@ -372,16 +372,6 @@ export default function Workspace({
         className="flex h-[46px] min-h-[46px] min-w-0 flex-1 items-center justify-start gap-3 overflow-visible"
       >
         {renderAgentList()}
-        {effectiveSessionMode === SessionMode.SINGLE_AGENT ? (
-          <span
-            data-workspace-single-agent-label
-            className={WORKSPACE_COWORK_TEXT_CLASS}
-          >
-            {t('layout.workspace-session-single-agent', {
-              defaultValue: 'Single Agent',
-            })}
-          </span>
-        ) : null}
       </div>
     </div>
   );

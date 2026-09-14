@@ -213,7 +213,7 @@ export default function SpaceDetail({
   onTabChange,
   onBack,
 }: SpaceDetailProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const setActiveSpace = useSpaceStore((state) => state.setActiveSpace);
@@ -441,7 +441,12 @@ export default function SpaceDetail({
                 <Stat
                   icon={CalendarDays}
                   label={t('layout.home-list-created')}
-                  value={formatHubDate(space.createdAt) || '—'}
+                  value={
+                    formatHubDate(
+                      space.createdAt,
+                      i18n.resolvedLanguage || i18n.language
+                    ) || '—'
+                  }
                 />
               </div>
             </div>

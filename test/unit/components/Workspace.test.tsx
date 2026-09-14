@@ -337,7 +337,6 @@ describe('Workspace', () => {
 
     expect(screen.queryByText('Space switch')).not.toBeInTheDocument();
     const coworkLabel = screen.getByText('Cowork with');
-    const singleAgentLabel = screen.getByText('Single Agent');
     const coworkRow = coworkLabel.closest('[data-workspace-cowork-row]');
     const agentList = container.querySelector('[data-workspace-agent-list]');
     const bottomBox = container.querySelector('[data-workspace-bottom-box]');
@@ -347,10 +346,6 @@ describe('Workspace', () => {
     const workspaceHeader = screen.getByLabelText('Workspace header');
 
     expect(coworkLabel).toHaveClass('text-ds-text-display', 'font-display');
-    expect(singleAgentLabel).toHaveClass(
-      'text-ds-text-display',
-      'font-display'
-    );
     expect(workspaceHeader).toHaveClass('flex-1', 'items-center', 'gap-0');
     expect(inputSection).toHaveClass('items-center', 'p-4');
     expect(coworkRow).toHaveClass(
@@ -375,7 +370,7 @@ describe('Workspace', () => {
     });
 
     expect(screen.getByText('Cowork with')).toBeInTheDocument();
-    expect(screen.getByText('Single Agent')).toBeInTheDocument();
+    expect(screen.queryByText('Single Agent')).not.toBeInTheDocument();
     expect(screen.queryByText('Space switch')).not.toBeInTheDocument();
     expect(container.querySelector('#workspace-bottom-group')).toBeNull();
     expect(screen.getByLabelText('Workspace header')).toHaveClass(
@@ -402,14 +397,16 @@ describe('Workspace', () => {
     expect(workforceAgentList).toHaveClass('h-[46px]', 'min-h-[46px]');
   });
 
-  it('shows the mode label only for Single Agent mode', () => {
+  it('omits the mode label from the Cowork row in both modes', () => {
     const { unmount } = renderWorkspace({ sessionMode: 'single-agent' });
 
-    expect(screen.getByText('Single Agent')).toBeInTheDocument();
+    expect(screen.getByText('Cowork with')).toBeInTheDocument();
+    expect(screen.queryByText('Single Agent')).not.toBeInTheDocument();
 
     unmount();
     renderWorkspace({ sessionMode: 'workforce' });
 
+    expect(screen.getByText('Cowork with')).toBeInTheDocument();
     expect(screen.queryByText('Single Agent')).not.toBeInTheDocument();
   });
 
