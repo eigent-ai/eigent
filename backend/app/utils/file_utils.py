@@ -253,6 +253,7 @@ def list_files(
         skip_dirs or set()
     )
     result: list[str] = []
+    priority_count = 0
     scan_started = time.perf_counter()
     realpath_elapsed = 0.0
     symlink_count = 0
@@ -305,16 +306,21 @@ def list_files(
                     for d in dirs
                     if os.path.join(root, d) + os.sep in allowed_dirs
                 ]
-                allowed_files = include_paths(
-                    tuple(os.path.join(root, name) for name in files)
-                )
-            else:
-                allowed_files = None
-            for name in files:
+            allowed_files = None
+            for index, name in enumerate(files):
                 scanned_entries += 1
                 if budget_exhausted():
                     record_stats()
                     return result
+                if include_paths is not None and index % 500 == 0:
+                    # Consume each verified batch before classifying the next;
+                    # a later timeout must not discard completed candidates.
+                    allowed_files = include_paths(
+                        tuple(
+                            os.path.join(root, entry)
+                            for entry in files[index : index + 500]
+                        )
+                    )
                 if _should_skip(name, skip_prefix, skip_extensions):
                     continue
                 if (
@@ -354,22 +360,23 @@ def list_files(
                                 file_path,
                             )
                             continue
-                        result.append(real_path)
+                        candidate = real_path
                     else:
-                        result.append(os.path.normpath(file_path))
+                        candidate = os.path.normpath(file_path)
+                    if (
+                        priority_extensions
+                        and Path(candidate).suffix.lower()
+                        in priority_extensions
+                    ):
+                        # Every bounded prefix must retain deliverables,
+                        # including callers that remove a look-ahead entry.
+                        result.insert(priority_count, candidate)
+                        priority_count += 1
+                    else:
+                        result.append(candidate)
                     if priority_extensions and len(result) > max_entries:
-                        # Keep bounded look-ahead storage while scanning for
-                        # explicit deliverables that may occur after frames.
-                        drop = next(
-                            (
-                                i
-                                for i in range(len(result) - 1, -1, -1)
-                                if Path(result[i]).suffix.lower()
-                                not in priority_extensions
-                            ),
-                            len(result) - 1,
-                        )
-                        result.pop(drop)
+                        result.pop()
+                        priority_count = min(priority_count, len(result))
                         scan_limited = True
                     if not priority_extensions and len(result) >= max_entries:
                         logger.debug(

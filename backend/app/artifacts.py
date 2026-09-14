@@ -422,8 +422,32 @@ def discover_task_changed_files(
             break
         try:
             include = _artifact_path_filter(root, deadline=deadline)
+            verified: set[str] = set()
+            classification_unavailable = False
+
+            def include_verified(paths: tuple[str, ...]) -> set[str]:
+                nonlocal scan_limited, classification_unavailable
+                allowed = verified.intersection(paths)
+                pending = tuple(path for path in paths if path not in verified)
+                for offset in range(0, len(pending), WORKSPACE_PATH_LIMIT):
+                    if classification_unavailable:
+                        break
+                    batch = pending[offset : offset + WORKSPACE_PATH_LIMIT]
+                    try:
+                        classified = include(batch)
+                    except (GitBackendError, OSError, ValueError) as error:
+                        logger.warning(
+                            "Artifact classification unavailable: %s", error
+                        )
+                        scan_limited = True
+                        classification_unavailable = True
+                        break
+                    verified.update(classified)
+                    allowed.update(classified)
+                return allowed
+
             scan_options = {
-                "include_paths": include,
+                "include_paths": include_verified,
                 "use_default_skips": False,
                 "skip_prefix": "",
                 "skip_extensions": (),
@@ -451,8 +475,9 @@ def discover_task_changed_files(
                             continue
                         window_seen.add(window_path)
                         paths.append(window_path)
-            # Injected scanners are not trusted to apply the filter themselves.
-            allowed = include(tuple(paths))
+            # Reuse completed classification after the deadline. Injected
+            # scanners must still prove every previously unseen path.
+            allowed = include_verified(tuple(paths))
             paths = [path for path in paths if path in allowed]
         except (GitBackendError, OSError, ValueError) as error:
             logger.warning("Artifact classification unavailable: %s", error)
@@ -460,15 +485,28 @@ def discover_task_changed_files(
             continue
         for absolute_path in paths:
             try:
-                path = Path(absolute_path).resolve()
-                if not path.is_file():
+                candidate = Path(absolute_path)
+                path = candidate.resolve()
+                # A verified path may have become a symlink during the scan;
+                # do not transfer its classification to a different target.
+                if (
+                    candidate.is_symlink()
+                    or path != candidate
+                    or not path.is_file()
+                ):
                     continue
                 identity = str(path)
                 if identity in seen_paths:
                     continue
                 relative_path = path.relative_to(root).as_posix()
                 stat_result = path.stat()
-            except (OSError, ValueError):
+                if not artifact_root.scan_all and not any(
+                    start <= stat_result.st_mtime
+                    and (end is None or stat_result.st_mtime <= end)
+                    for start, end in windows
+                ):
+                    continue
+            except (OSError, RuntimeError, ValueError):
                 # A tool may atomically replace or remove a file while the
                 # final scan runs. One vanished file cannot poison the Run.
                 continue
