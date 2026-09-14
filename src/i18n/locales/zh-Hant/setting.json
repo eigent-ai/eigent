@@ -453,5 +453,10 @@
   "theme-description": "選擇應用的顏色主題。",
   "thinking-effort": "思考強度",
   "version": "版本",
-  "version-description": "當前版本和可用更新。"
+  "version-description": "當前版本和可用更新。",
+  "models-api-key-invalid": "API key 無效。請檢查 API key，然後再次點擊重新整理。",
+  "models-access-denied": "存取遭拒。請檢查 API key 權限和帳戶存取權限，然後再次點擊重新整理。",
+  "models-setup-hint": "先填寫 API key，再點擊重新整理，然後從下拉式清單中選擇模型。",
+  "models-add-api-key-tooltip": "新增 API key 以載入模型類型",
+  "models-connection-failed": "無法載入模型。請檢查網路連線和 API 位址，然後再次點擊重新整理。"
 }

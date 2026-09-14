@@ -481,7 +481,9 @@ export function ModelAndThinkingEffortSelect({
           localProviderIds,
         })
       ) {
-        openSettings('models');
+        openSettings('models', {
+          modelProvider: category === 'custom' ? modelId : undefined,
+        });
         return;
       }
       if (projectId) {
@@ -794,7 +796,9 @@ export function ModelAndThinkingEffortSelect({
                             if (isConfigured) {
                               handleCodexSetDefault();
                             } else {
-                              openSettings('models');
+                              openSettings('models', {
+                                modelProvider: item.id,
+                              });
                             }
                             return;
                           }

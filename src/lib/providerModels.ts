@@ -43,6 +43,16 @@ export type ProviderModelGroup = {
   models: ProviderModelInfo[];
 };
 
+export class ProviderModelsError extends Error {
+  constructor(
+    message: string,
+    public readonly status?: number
+  ) {
+    super(message);
+    this.name = 'ProviderModelsError';
+  }
+}
+
 /**
  * Decide whether a model is chat-capable enough to surface in the dropdown.
  * Keeps models that explicitly emit text, plus models that omit the
@@ -88,14 +98,41 @@ export async function fetchProviderModels(
   const trimmedHost = apiHost.replace(/\/+$/, '');
   const url = `${trimmedHost}${modelsEndpoint}`;
 
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      Accept: 'application/json',
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: 'application/json',
+      },
+    });
+  } catch {
+    throw new ProviderModelsError(
+      i18next.t('setting.models-connection-failed', {
+        defaultValue:
+          'Could not load models. Check your connection and API host, then click Refresh again.',
+      })
+    );
+  }
 
+  if (response.status === 401) {
+    throw new ProviderModelsError(
+      i18next.t('setting.models-api-key-invalid', {
+        defaultValue:
+          'Invalid API key. Check your API key and click Refresh again.',
+      }),
+      response.status
+    );
+  }
+  if (response.status === 403) {
+    throw new Error(
+      i18next.t('setting.models-access-denied', {
+        defaultValue:
+          'Access denied. Check your API key permissions and account access, then click Refresh again.',
+      })
+    );
+  }
   if (!response.ok) {
     throw new Error(
       i18next.t('setting.models-fetch-failed', {
@@ -158,5 +195,13 @@ export function saveCachedModels(
     localStorage.setItem(CACHE_KEY_PREFIX + providerId, JSON.stringify(groups));
   } catch {
     // localStorage may be unavailable (quota / private mode); silently ignore.
+  }
+}
+
+export function clearCachedModels(providerId: string): void {
+  try {
+    localStorage.removeItem(CACHE_KEY_PREFIX + providerId);
+  } catch {
+    // Storage may be unavailable; the in-memory model list is still reset.
   }
 }

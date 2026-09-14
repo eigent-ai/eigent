@@ -42,7 +42,47 @@ describe('SettingsRouteBridge', () => {
     useSettingsStore.setState({
       activeSection: 'models',
       isOpen: false,
+      modelProvider: null,
     });
+  });
+
+  it('preserves the provider target until the destination consumes it', async () => {
+    mocks.runAfterWorkspaceConfigurationSave.mockImplementation(
+      async (action: () => void) => {
+        action();
+        return true;
+      }
+    );
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <SettingsRouteBridge />
+        <LocationProbe />
+      </MemoryRouter>
+    );
+    act(() => openSettings('models', { modelProvider: 'ant-ling' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/home?section=settings&tab=models'
+      )
+    );
+    expect(useSettingsStore.getState()).toMatchObject({
+      isOpen: false,
+      modelProvider: 'ant-ling',
+    });
+  });
+
+  it('discards the provider target when navigation is rejected', async () => {
+    mocks.runAfterWorkspaceConfigurationSave.mockResolvedValue(false);
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <SettingsRouteBridge />
+        <LocationProbe />
+      </MemoryRouter>
+    );
+    act(() => openSettings('models', { modelProvider: 'ant-ling' }));
+    await waitFor(() => expect(useSettingsStore.getState().isOpen).toBe(false));
+    expect(useSettingsStore.getState().modelProvider).toBeNull();
+    expect(screen.getByTestId('location')).toHaveTextContent('/:null');
   });
 
   it('clears a rejected request so the same Settings command can retry', async () => {

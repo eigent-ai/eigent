@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { ModelAndThinkingEffortSelect } from '@/components/ChatBox/BottomBox/ModelAndThinkingEffortSelect';
+import { useSettingsStore } from '@/store/settingsStore';
 import { ThinkingEffort } from '@/types/constants';
 import {
   act,
@@ -383,6 +384,36 @@ describe('ModelAndThinkingEffortSelect', () => {
       'size-ds-icon-md'
     );
     expect(openAiItem.querySelector('img')).toBeNull();
+  });
+
+  it('opens the selected unconfigured provider directly from the home menu', async () => {
+    mocks.proxyFetchGet.mockResolvedValue({ items: [] });
+    useSettingsStore.setState({ isOpen: false, modelProvider: null });
+    const user = userEvent.setup();
+    render(
+      <ModelAndThinkingEffortSelect thinkingEffort={ThinkingEffort.HIGH} />
+    );
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Model: Select Default Model; Thinking effort: High',
+      })
+    );
+    await user.hover(screen.getByRole('menuitem', { name: 'Custom model' }));
+    const group = await screen.findByRole('group', { name: 'Custom model' });
+    const item = within(group).getByRole('menuitemradio', {
+      name: 'Not configured Ant Ling',
+    });
+    act(() => {
+      fireEvent.pointerMove(item);
+      item.focus();
+    });
+    await user.keyboard('{Enter}');
+    expect(useSettingsStore.getState()).toMatchObject({
+      isOpen: true,
+      activeSection: 'models',
+      modelProvider: 'ant-ling',
+    });
+    expect(mocks.setProjectModel).not.toHaveBeenCalled();
   });
 
   it('shows a green leading dot for configured custom models', async () => {

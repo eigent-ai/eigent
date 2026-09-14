@@ -30,10 +30,18 @@ export const SETTINGS_SECTIONS = [
 export type SettingsSectionId = (typeof SETTINGS_SECTIONS)[number];
 export type SettingsScope = 'global' | 'device' | 'settings';
 
+type SettingsOpenOptions = { modelProvider?: string };
+
 interface SettingsState {
   isOpen: boolean;
   activeSection: SettingsSectionId;
-  openSettings: (section?: SettingsSectionId) => void;
+  modelProvider: string | null;
+  openSettings: (
+    section?: SettingsSectionId,
+    options?: SettingsOpenOptions
+  ) => void;
+  clearModelProvider: () => void;
+  finishSettingsNavigation: () => void;
   closeSettings: () => void;
   setActiveSection: (section: SettingsSectionId) => void;
 }
@@ -41,16 +49,25 @@ interface SettingsState {
 export const useSettingsStore = create<SettingsState>((set) => ({
   isOpen: false,
   activeSection: 'models',
-  openSettings: (section) =>
+  modelProvider: null,
+  clearModelProvider: () => set({ modelProvider: null }),
+  openSettings: (section, options) =>
     set((state) => ({
       isOpen: true,
+      modelProvider:
+        section === 'models' ? (options?.modelProvider ?? null) : null,
       activeSection: section ?? state.activeSection,
     })),
-  closeSettings: () => set({ isOpen: false }),
+  // The destination consumes modelProvider after the route has mounted.
+  finishSettingsNavigation: () => set({ isOpen: false }),
+  closeSettings: () => set({ isOpen: false, modelProvider: null }),
   setActiveSection: (activeSection) => set({ activeSection }),
 }));
 
 /** Open settings from callbacks and non-React modules without route changes. */
-export function openSettings(section?: SettingsSectionId) {
-  useSettingsStore.getState().openSettings(section);
+export function openSettings(
+  section?: SettingsSectionId,
+  options?: SettingsOpenOptions
+) {
+  useSettingsStore.getState().openSettings(section, options);
 }

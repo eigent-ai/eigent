@@ -12,11 +12,14 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { motion, useReducedMotion } from 'framer-motion';
 import { Loader2, RotateCcw } from 'lucide-react';
-import { useMemo } from 'react';
+import { useId, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/ui/button';
+import { DsText } from '@/components/ui/ds-text';
+import { itemFadeMotion } from '@/components/ui/motion';
 import {
   Select,
   SelectContent,
@@ -26,6 +29,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
+import { TooltipSimple } from '@/components/ui/tooltip';
 import type { ProviderModelGroup } from '@/lib/providerModels';
 
 type Props = {
@@ -39,6 +44,8 @@ type Props = {
   groups: ProviderModelGroup[];
   loading: boolean;
   error: string | null;
+  /** Refresh failure, separate from validation of the selected model. */
+  fetchError?: string | null;
   /** Disable everything when the user hasn't filled in an API key yet. */
   disabled: boolean;
   /** Reason to show inside the dropdown when disabled (e.g. "Enter API Key first"). */
@@ -67,12 +74,15 @@ export function ProviderModelCombobox({
   groups,
   loading,
   error,
+  fetchError,
   disabled,
   disabledReason,
   onRefresh,
   triggerPlaceholder,
 }: Props) {
   const { t } = useTranslation();
+  const feedbackId = useId();
+  const shouldReduceMotion = useReducedMotion();
 
   // Saved value not present in any group — surface it as a "Current" entry so
   // the select can still display and keep the existing selection.
@@ -95,6 +105,15 @@ export function ProviderModelCombobox({
       ? (disabledReason ?? t('setting.enter-api-key-first'))
       : t('setting.click-refresh-to-load-models');
 
+  const feedbackError = fetchError || error;
+  const feedback =
+    feedbackError ||
+    (loading
+      ? t('setting.loading-models')
+      : disabled || !hasAnyModels
+        ? t('setting.models-setup-hint')
+        : null);
+
   return (
     <div className="flex w-full flex-col">
       {title ? (
@@ -105,22 +124,51 @@ export function ProviderModelCombobox({
 
       <div className="flex w-full items-center gap-2">
         <Select
-          value={value || undefined}
+          value={value}
           onValueChange={onChange}
           disabled={selectDisabled}
         >
-          <SelectTrigger
-            wrapperClassName="min-w-0 flex-1"
-            state={error ? 'error' : undefined}
-            note={error ?? undefined}
-            aria-label={t('setting.provider-model-type-label', {
-              provider: providerName,
-            })}
+          <TooltipSimple
+            enabled={selectDisabled}
+            className="text-ds-text-error-default-default"
+            content={
+              feedbackError ||
+              (disabled
+                ? t('setting.models-add-api-key-tooltip')
+                : emptyMessage)
+            }
           >
-            <SelectValue
-              placeholder={triggerPlaceholder ?? t('setting.select-model-type')}
-            />
-          </SelectTrigger>
+            <div
+              className={`min-w-0 flex-1 rounded-ds-field ${selectDisabled ? DS_FOCUS_RING : ''}`}
+              tabIndex={selectDisabled ? 0 : undefined}
+              role={selectDisabled ? 'group' : undefined}
+              aria-label={
+                selectDisabled
+                  ? t('setting.provider-model-type-label', {
+                      provider: providerName,
+                    })
+                  : undefined
+              }
+            >
+              <SelectTrigger
+                wrapperClassName="w-full"
+                state={error ? 'error' : undefined}
+                disabled={selectDisabled}
+                aria-describedby={feedback ? feedbackId : undefined}
+                aria-invalid={!!error}
+                aria-busy={loading}
+                aria-label={t('setting.provider-model-type-label', {
+                  provider: providerName,
+                })}
+              >
+                <SelectValue
+                  placeholder={
+                    triggerPlaceholder ?? t('setting.select-model-type')
+                  }
+                />
+              </SelectTrigger>
+            </div>
+          </TooltipSimple>
           <SelectContent>
             {!hasAnyModels && !orphanValue ? (
               <span className="block px-3 py-6 text-center text-xs text-ds-ink-muted-default">
@@ -168,12 +216,36 @@ export function ProviderModelCombobox({
           className="shrink-0 text-ds-text-base"
         >
           {loading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Loader2
+              className="animate-spin motion-reduce:animate-none"
+              aria-hidden
+            />
           ) : (
-            <RotateCcw className="!h-4 !w-4" />
+            <RotateCcw aria-hidden />
           )}
           {t('setting.refresh')}
         </Button>
+      </div>
+      <div id={feedbackId} aria-live="polite" aria-atomic="true">
+        {feedback ? (
+          <motion.div
+            key={feedback}
+            className="mt-ds-4"
+            {...itemFadeMotion(!!shouldReduceMotion)}
+          >
+            <DsText
+              as="p"
+              role="meta"
+              className={
+                feedbackError
+                  ? 'text-ds-text-error-default-default'
+                  : 'text-ds-ink-muted-default'
+              }
+            >
+              {feedback}
+            </DsText>
+          </motion.div>
+        ) : null}
       </div>
     </div>
   );

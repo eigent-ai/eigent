@@ -39,13 +39,16 @@ export function SettingsRouteBridge() {
   const location = useLocation();
   const isOpen = useSettingsStore((state) => state.isOpen);
   const activeSection = useSettingsStore((state) => state.activeSection);
+  const finishSettingsNavigation = useSettingsStore(
+    (state) => state.finishSettingsNavigation
+  );
   const closeSettings = useSettingsStore((state) => state.closeSettings);
 
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
     const routeRequest = runAfterWorkspaceConfigurationSave(() => {
-      closeSettings();
+      finishSettingsNavigation();
       if (isSettingsRoutePath(location.pathname)) {
         const searchParams = new URLSearchParams(location.search);
         if (
@@ -76,6 +79,7 @@ export function SettingsRouteBridge() {
       cancelled = true;
     };
   }, [
+    finishSettingsNavigation,
     closeSettings,
     activeSection,
     isOpen,

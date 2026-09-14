@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { itemFadeMotion } from '@/components/ui/motion';
 import { cn } from '@/lib/utils';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import type { ReactNode } from 'react';
@@ -26,58 +27,6 @@ const BORDER_COLOR: Record<Exclude<ConfigCardRingStatus, 'idle'>, string> = {
   error: 'var(--ds-border-error-default-default)',
 };
 
-const CONFIGURING_TRANSITION = {
-  transform: {
-    duration: 1.2,
-    repeat: Infinity,
-    ease: 'linear' as const,
-  },
-  opacity: {
-    duration: 1.2,
-    repeat: Infinity,
-    ease: 'linear' as const,
-  },
-};
-
-const SUCCESS_TRANSITION = {
-  duration: 0.24,
-  ease: [0.23, 1, 0.32, 1] as const,
-};
-
-const ERROR_TRANSITION = {
-  duration: 0.28,
-  ease: [0.23, 1, 0.32, 1] as const,
-};
-
-function getRingMotionProps(status: Exclude<ConfigCardRingStatus, 'idle'>) {
-  switch (status) {
-    case 'configuring':
-      return {
-        animate: {
-          transform: ['scale(1)', 'scale(1.01)', 'scale(1)'],
-          opacity: [0.7, 1, 0.7],
-        },
-        transition: CONFIGURING_TRANSITION,
-      };
-    case 'success':
-      return {
-        animate: {
-          transform: 'scale(1)',
-          opacity: 1,
-        },
-        transition: SUCCESS_TRANSITION,
-      };
-    case 'error':
-      return {
-        animate: {
-          transform: ['scale(1)', 'scale(1.01)', 'scale(1)'],
-          opacity: [1, 0.2, 1],
-        },
-        transition: ERROR_TRANSITION,
-      };
-  }
-}
-
 export function ConfigModelCard({
   status,
   children,
@@ -90,31 +39,19 @@ export function ConfigModelCard({
   const shouldReduceMotion = useReducedMotion();
   const showRing = status !== 'idle';
 
-  const ringMotion = showRing
-    ? shouldReduceMotion
-      ? {
-          animate: { transform: 'scale(1)', opacity: 1 },
-          transition: { duration: 0.2, ease: [0.23, 1, 0.32, 1] as const },
-        }
-      : getRingMotionProps(status)
-    : null;
+  const ringMotion = itemFadeMotion(!!shouldReduceMotion);
   const ringColor = status === 'idle' ? undefined : BORDER_COLOR[status];
 
   return (
     <div className={cn('relative w-full', className)}>
       <AnimatePresence>
-        {ringMotion && (
+        {showRing && (
           <motion.div
             key="config-card-ring"
             className="pointer-events-none absolute z-0 rounded-2xl border-2 border-x-2 border-y-2 border-solid"
             style={{ inset: RING_INSET, borderColor: ringColor }}
-            initial={{
-              transform: 'scale(1)',
-              opacity: 0,
-            }}
-            animate={ringMotion.animate}
-            exit={{ opacity: 0, transition: { duration: 0.2 } }}
-            transition={ringMotion.transition}
+            aria-hidden="true"
+            {...ringMotion}
           />
         )}
       </AnimatePresence>

@@ -20,6 +20,7 @@ describe('settingsStore', () => {
     useSettingsStore.setState({
       isOpen: false,
       activeSection: 'models',
+      modelProvider: null,
     });
   });
 
@@ -40,6 +41,17 @@ describe('settingsStore', () => {
       isOpen: true,
       activeSection: 'cookies',
     });
+  });
+
+  it('clears a consumed provider target and does not reuse it on a general open', () => {
+    openSettings('models', { modelProvider: 'ant-ling' });
+    expect(useSettingsStore.getState().modelProvider).toBe('ant-ling');
+    useSettingsStore.getState().clearModelProvider();
+    expect(useSettingsStore.getState().modelProvider).toBeNull();
+    openSettings('models', { modelProvider: 'openai' });
+    useSettingsStore.getState().closeSettings();
+    openSettings('models');
+    expect(useSettingsStore.getState().modelProvider).toBeNull();
   });
 
   it('closes without losing the selected section', () => {

@@ -458,5 +458,10 @@
   "theme-description": "Choose the app color theme.",
   "thinking-effort": "Thinking effort",
   "version": "Version",
-  "version-description": "Current version and available updates."
+  "version-description": "Current version and available updates.",
+  "models-api-key-invalid": "Invalid API key. Check your API key and click Refresh again.",
+  "models-access-denied": "Access denied. Check your API key permissions and account access, then click Refresh again.",
+  "models-setup-hint": "Enter your API key, click Refresh, then select a model from the dropdown.",
+  "models-add-api-key-tooltip": "Add API key to load model type",
+  "models-connection-failed": "Could not load models. Check your connection and API host, then click Refresh again."
 }
