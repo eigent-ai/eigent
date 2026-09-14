@@ -55,13 +55,22 @@ vi.mock('@/components/Folder/index', () => ({
   FileViewerPanel: ({
     selectedFile,
     onRevealFile,
+    onOpenExternalFile,
   }: {
     selectedFile: FileInfo | null;
     onRevealFile: () => void;
+    onOpenExternalFile: () => void;
   }) => (
-    <button type="button" disabled={!selectedFile} onClick={onRevealFile}>
-      Reveal file
-    </button>
+    <>
+      <button type="button" disabled={!selectedFile} onClick={onRevealFile}>
+        Reveal file
+      </button>
+      {selectedFile?.preview?.kind === 'blocked' && (
+        <button type="button" onClick={onOpenExternalFile}>
+          Open externally
+        </button>
+      )}
+    </>
   ),
 }));
 
@@ -99,5 +108,38 @@ describe('FilePreview', () => {
         'Path is outside the active workspace'
       )
     );
+  });
+
+  it('opens an unsupported local Blender file only through the existing workspace action on a user click', async () => {
+    loadFilePreviewMock.mockImplementation(async (file) => ({
+      ...file,
+      content: undefined,
+      preview: {
+        kind: 'blocked',
+        reason: 'unsupported',
+        size: 2048,
+        limit: null,
+      },
+    }));
+    render(
+      <FilePreview
+        file={{
+          name: 'scene.blend',
+          type: 'blend',
+          path: '/workspace/scene.blend',
+          relativePath: 'scene.blend',
+        }}
+      />
+    );
+    const openButton = await screen.findByRole('button', {
+      name: 'Open externally',
+    });
+    expect(invokeMock).not.toHaveBeenCalled();
+    fireEvent.click(openButton);
+    expect(invokeMock).toHaveBeenCalledWith(
+      'open-local-file',
+      '/workspace/scene.blend'
+    );
+    expect(invokeMock).toHaveBeenCalledTimes(1);
   });
 });
