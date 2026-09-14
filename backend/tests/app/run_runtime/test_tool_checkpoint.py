@@ -64,6 +64,33 @@ def _running_journal(tmp_path: Path) -> SQLiteRunJournal:
     return journal
 
 
+def test_path_budget_evidence_survives_wrappers_and_stays_unknown(tmp_path):
+    from app.workspace_git.backend import WorkspaceDeltaLimitExceeded
+
+    with (
+        _running_journal(tmp_path) as journal,
+        run_context_scope(_context(tmp_path)),
+    ):
+        checkpoint = prepare_tool_checkpoint(
+            raw_tool_call_id="overflow",
+            tool_name="shell_exec",
+            arguments={"command": "render"},
+            journal=journal,
+        )
+        cause = WorkspaceDeltaLimitExceeded(
+            {f"frames/{i}.png": "??" for i in range(720)}
+        )
+        cause.diagnostic["phase"] = "post_dispatch"
+        wrapper = ValueError("tool wrapper")
+        wrapper.__cause__ = cause
+        with pytest.raises(UnsafeToolOutcomeError):
+            finish_tool_checkpoint(checkpoint, error=wrapper, journal=journal)
+        call = journal.list_tool_calls("run-1")[0]
+        assert call.status == "outcome_unknown"
+        assert call.result["workspace_path_budget"]["observed_count"] == 720
+        assert call.result["workspace_path_budget"]["phase"] == "post_dispatch"
+
+
 def test_checkpoint_surrounds_tool_and_redacts_credentials(tmp_path):
     with _running_journal(tmp_path) as journal:
         with run_context_scope(_context(tmp_path)):

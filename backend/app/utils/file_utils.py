@@ -19,6 +19,7 @@ import os
 import platform
 import shutil
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 from app.component.environment import env
@@ -60,7 +61,7 @@ def _should_skip(
     skip_extensions: tuple[str, ...] = (),
 ) -> bool:
     """Return True if a file or directory name should be excluded from listing."""
-    if name.startswith(skip_prefix):
+    if skip_prefix and name.startswith(skip_prefix):
         return True
     return any(name.endswith(ext) for ext in skip_extensions)
 
@@ -202,6 +203,9 @@ def list_files(
     max_scanned_entries: int | None = None,
     max_scan_seconds: float | None = None,
     stats: dict[str, float | int] | None = None,
+    include_paths: Callable[[tuple[str, ...]], set[str]] | None = None,
+    use_default_skips: bool = True,
+    priority_extensions: tuple[str, ...] = (),
 ) -> list[str]:
     """List files under dir_path with optional base confinement and filters.
     If base is set, only returns paths that resolve under base (no traversal).
@@ -245,8 +249,11 @@ def list_files(
     except OSError:
         return []
     base_real = os.path.realpath(resolve_base)
-    skip_dirs = set(DEFAULT_SKIP_DIRS).union(skip_dirs or set())
+    skip_dirs = set(DEFAULT_SKIP_DIRS if use_default_skips else ()).union(
+        skip_dirs or set()
+    )
     result: list[str] = []
+    priority_count = 0
     scan_started = time.perf_counter()
     realpath_elapsed = 0.0
     symlink_count = 0
@@ -289,12 +296,37 @@ def list_files(
                 for d in dirs
                 if d not in skip_dirs and not _should_skip(d, skip_prefix)
             ]
-            for name in files:
+            if include_paths is not None:
+                directory_paths = tuple(
+                    os.path.join(root, d) + os.sep for d in dirs
+                )
+                allowed_dirs = include_paths(directory_paths)
+                dirs[:] = [
+                    d
+                    for d in dirs
+                    if os.path.join(root, d) + os.sep in allowed_dirs
+                ]
+            allowed_files = None
+            for index, name in enumerate(files):
                 scanned_entries += 1
                 if budget_exhausted():
                     record_stats()
                     return result
+                if include_paths is not None and index % 500 == 0:
+                    # Consume each verified batch before classifying the next;
+                    # a later timeout must not discard completed candidates.
+                    allowed_files = include_paths(
+                        tuple(
+                            os.path.join(root, entry)
+                            for entry in files[index : index + 500]
+                        )
+                    )
                 if _should_skip(name, skip_prefix, skip_extensions):
+                    continue
+                if (
+                    allowed_files is not None
+                    and os.path.join(root, name) not in allowed_files
+                ):
                     continue
                 try:
                     file_path = os.path.join(root, name)
@@ -328,10 +360,25 @@ def list_files(
                                 file_path,
                             )
                             continue
-                        result.append(real_path)
+                        candidate = real_path
                     else:
-                        result.append(os.path.normpath(file_path))
-                    if len(result) >= max_entries:
+                        candidate = os.path.normpath(file_path)
+                    if (
+                        priority_extensions
+                        and Path(candidate).suffix.lower()
+                        in priority_extensions
+                    ):
+                        # Every bounded prefix must retain deliverables,
+                        # including callers that remove a look-ahead entry.
+                        result.insert(priority_count, candidate)
+                        priority_count += 1
+                    else:
+                        result.append(candidate)
+                    if priority_extensions and len(result) > max_entries:
+                        result.pop()
+                        priority_count = min(priority_count, len(result))
+                        scan_limited = True
+                    if not priority_extensions and len(result) >= max_entries:
                         logger.debug(
                             "list_files hit max_entries=%d", max_entries
                         )
