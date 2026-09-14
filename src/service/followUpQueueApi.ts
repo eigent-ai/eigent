@@ -26,7 +26,7 @@ const pendingFollowUpCache = new Map<
   { expiresAt: number; request: Promise<DurableFollowUpRequest[]> }
 >();
 
-function invalidatePendingFollowUps(projectId: string): void {
+export function invalidatePendingFollowUps(projectId: string): void {
   pendingFollowUpCache.delete(projectId);
 }
 
