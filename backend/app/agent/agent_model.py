@@ -427,16 +427,18 @@ def agent_model(
             timeout=600,  # 10 minutes
             **init_params,
         )
-        # Empty instructions still need the shared multimodal input adapter.
-        configure_responses_input(model_backend)
-        if uses_responses_transport and model_config.get("instructions"):
-            _configure_responses_instructions(model_backend)
-        return instrument_model_backend(
+        # Install SDK observers before the Responses adapter wraps clients.
+        model_backend = instrument_model_backend(
             model_backend,
             agent_id=agent_id,
             provider=str(effective_config["model_platform"]),
             model_name=str(effective_config["model_type"]),
         )
+        # Empty instructions still need the shared multimodal input adapter.
+        configure_responses_input(model_backend)
+        if uses_responses_transport and model_config.get("instructions"):
+            _configure_responses_instructions(model_backend)
+        return model_backend
 
     model = build_model()
 

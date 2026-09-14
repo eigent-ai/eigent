@@ -18,6 +18,7 @@ import base64
 import json
 import sys
 from copy import deepcopy
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -32,6 +33,14 @@ from app.agent.agent_model import _configure_responses_instructions
 from app.model.model_platform import resolve_cloud_model_runtime_platform
 from app.model.responses_input import configure_responses_input
 from app.model.subscription_runtime import codex
+from app.run_context import RunContext, run_context_scope
+from app.run_journal import SQLiteRunJournal
+from app.run_journal.model_capture import instrument_model_backend
+from app.workload import (
+    CAPTURE_POLICY_REQUIRED,
+    DEFAULT_PRODUCTION_WORKLOAD_PROFILE,
+    RETENTION_POLICY_EVIDENCE_REQUIRED,
+)
 
 ROUTES = ("openai", "openai-compatible-model", "azure", "cloud-azure", "codex")
 
@@ -533,15 +542,8 @@ def test_configuring_one_backend_never_patches_camel_classes(make_backend):
     assert second._convert_messages_to_responses_input is converters[0]
 
 
-@pytest.mark.parametrize("instructions", ["trusted prompt", ""])
-@pytest.mark.parametrize("route", ROUTES)
-@pytest.mark.asyncio
-async def test_agent_factory_installs_adapter_including_reload(
-    make_backend, monkeypatch, sample_chat_data, image_url, route, instructions
-):
-    from app.model.chat import Chat
-
-    fixture, requests = make_backend(route)
+@pytest.fixture
+def factory_runtime(monkeypatch, tmp_path):
     module = sys.modules["app.agent.agent_model"]
     monkeypatch.setattr(
         module,
@@ -556,6 +558,75 @@ async def test_agent_factory_installs_adapter_including_reload(
         "ListenChatAgent",
         lambda *args, **kwargs: SimpleNamespace(**kwargs),
     )
+    journal = SQLiteRunJournal(tmp_path / "journal.sqlite3")
+    journal.ensure_run(
+        run_id="factory-run", project_id="factory-project", status="pending"
+    )
+    attempt = journal.create_run_attempt(
+        "factory-run",
+        request_id="fixture",
+        reason="initial_execution",
+        workload_profile=replace(
+            DEFAULT_PRODUCTION_WORKLOAD_PROFILE,
+            workload_kind="test",
+            profile_version="test-v1",
+            capture_policy_ref=CAPTURE_POLICY_REQUIRED,
+            retention_policy_ref=RETENTION_POLICY_EVIDENCE_REQUIRED,
+        ),
+    )
+    context = RunContext(
+        space_id="factory-space",
+        project_id="factory-project",
+        run_id="factory-run",
+        task_id="factory-task",
+        email="fixture@example.test",
+        user_id="fixture",
+        working_directory=tmp_path,
+        task_output_root=tmp_path,
+        camel_log_dir=tmp_path / "logs",
+        binding_source="fixture",
+        workdir_mode="fixture",
+        browser_port=0,
+        attempt_id=attempt.attempt_id,
+    )
+
+    def instrument(backend, **kwargs):
+        # SDK observers must receive real clients before input facades wrap
+        # them. Keep this regression independent of optional observer code.
+        assert isinstance(backend._client, OpenAI)
+        assert isinstance(backend._async_client, AsyncOpenAI)
+        return instrument_model_backend(backend, journal=journal, **kwargs)
+
+    spy = MagicMock(side_effect=instrument)
+    monkeypatch.setattr(module, "instrument_model_backend", spy)
+    yield SimpleNamespace(
+        module=module, journal=journal, context=context, instrument=spy
+    )
+    journal.close()
+
+
+@pytest.mark.parametrize("instructions", ["trusted prompt", ""])
+@pytest.mark.parametrize("route", ROUTES)
+@pytest.mark.parametrize("asynchronous,stream", [(False, False), (True, True)])
+@pytest.mark.asyncio
+async def test_agent_factory_installs_adapter_including_reload(
+    make_backend,
+    factory_runtime,
+    sample_chat_data,
+    image_url,
+    route,
+    instructions,
+    asynchronous,
+    stream,
+):
+    from app.model.chat import Chat
+
+    fixture, requests = make_backend(route)
+    module = factory_runtime.module
+    shared_create = (
+        fixture._client.responses.create,
+        fixture._async_client.responses.create,
+    )
     platform = (
         "azure"
         if route == "cloud-azure"
@@ -567,6 +638,7 @@ async def test_agent_factory_installs_adapter_including_reload(
         "api_mode": "responses",
         "client": fixture._client,
         "async_client": fixture._async_client,
+        "stream": stream,
     }
     if platform == "azure":
         kwargs["api_version"] = "2025-03-01-preview"
@@ -603,17 +675,138 @@ async def test_agent_factory_installs_adapter_including_reload(
     assert (
         agent.model._convert_messages_to_responses_input(messages) == expected
     )
-    await invoke(agent.model, messages, True)
-    assert json.loads(requests[-1].content)["input"] == expected
+    user_messages = deepcopy(messages)
+    if instructions:
+        messages.insert(0, {"role": "system", "content": instructions})
+        messages.insert(1, {"role": "developer", "content": instructions})
+    original = deepcopy(messages)
+    configure_responses_input(agent.model)
+    if instructions:
+        _configure_responses_instructions(agent.model)
+    with run_context_scope(factory_runtime.context):
+        await invoke(agent.model, messages, asynchronous)
+    body = json.loads(requests[-1].content)
+    assert body["input"] == expected
+    assert body.get("instructions", "") == instructions
+    assert messages == original
+    assert factory_runtime.instrument.call_count == 1
     if route == "codex":
         refreshed = agent.model_reload_callback()
         assert refreshed is not agent.model
         assert (
-            refreshed._convert_messages_to_responses_input(messages)
+            refreshed._convert_messages_to_responses_input(user_messages)
             == expected
         )
-        await invoke(refreshed, messages, False)
+        with run_context_scope(factory_runtime.context):
+            await invoke(refreshed, messages, not asynchronous)
         assert json.loads(requests[-1].content)["input"] == expected
+        assert (
+            json.loads(requests[-1].content).get("instructions", "")
+            == instructions
+        )
+        assert factory_runtime.instrument.call_count == 2
+    assert shared_create == (
+        fixture._client.responses.create,
+        fixture._async_client.responses.create,
+    )
+    records = factory_runtime.journal.list_model_invocations("factory-run")
+    assert (
+        len(records) == len(requests) == factory_runtime.instrument.call_count
+    )
+    assert all(record.status == "completed" for record in records)
+    assert {record.agent_id for record in records} == {agent.agent_id}
+
+
+@pytest.mark.parametrize("api_mode", ["responses", "chat_completions"])
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.asyncio
+async def test_factory_capture_is_single_and_required_before_dispatch(
+    make_backend,
+    factory_runtime,
+    monkeypatch,
+    sample_chat_data,
+    image_url,
+    api_mode,
+    asynchronous,
+    stream,
+):
+    from app.model.chat import Chat
+
+    fixture, requests = make_backend("openai", api_mode=api_mode)
+    chat = Chat(
+        **{
+            **sample_chat_data,
+            "model_type": "gpt-6-astra",
+            "extra_params": {
+                "api_mode": api_mode,
+                "client": fixture._client,
+                "async_client": fixture._async_client,
+                "stream": stream,
+            },
+        }
+    )
+    agent = factory_runtime.module.agent_model(
+        "image_agent", "", chat, tools=[]
+    )
+    model = agent.model
+    # Repeated installation must not add a second durable capture wrapper.
+    assert (
+        instrument_model_backend(
+            model,
+            agent_id=agent.agent_id,
+            provider="openai",
+            model_name="gpt-6-astra",
+            journal=factory_runtime.journal,
+        )
+        is model
+    )
+    configure_responses_input(model)
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "inspect"},
+                {"type": "image_url", "image_url": {"url": image_url}},
+            ],
+        }
+    ]
+    original = deepcopy(messages)
+    with run_context_scope(factory_runtime.context):
+        await invoke(model, messages, asynchronous)
+    records = factory_runtime.journal.list_model_invocations("factory-run")
+    assert len(records) == len(requests) == 1
+    assert records[0].status == "completed"
+    assert messages == original
+    if api_mode == "chat_completions":
+        assert json.loads(requests[0].content)["messages"] == original
+        assert model._client is fixture._client
+        assert model._async_client is fixture._async_client
+    else:
+        assert json.loads(requests[0].content)["input"][0]["content"] == [
+            {"type": "input_text", "text": "inspect"},
+            {"type": "input_image", "image_url": image_url},
+        ]
+    monkeypatch.setattr(
+        factory_runtime.journal,
+        "start_model_invocation",
+        MagicMock(side_effect=RuntimeError("capture unavailable")),
+    )
+    with (
+        run_context_scope(factory_runtime.context),
+        pytest.raises(RuntimeError, match="capture unavailable"),
+    ):
+        await invoke(model, messages, asynchronous)
+    assert len(requests) == 1
+    assert (
+        factory_runtime.journal.list_model_invocations("factory-run")
+        == records
+    )
+    gaps = factory_runtime.journal.list_attempt_evidence_gaps(
+        factory_runtime.context.attempt_id
+    )
+    assert len(gaps) == 1
+    assert gaps[0].reason_code == "capture_failed"
 
 
 @pytest.mark.parametrize(
