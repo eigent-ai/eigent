@@ -220,7 +220,11 @@ export class RunEventIngressRegistry {
       return current.reconciler.request();
     const key = `${projectId}\u0000${runId}`;
     const pending = this.runReads.get(key);
-    if (pending?.reconciler.isCurrent()) return pending.promise;
+    if (pending?.reconciler.isCurrent()) {
+      // Keep the later boundary while sharing this owner's cleanup promise.
+      void pending.reconciler.request();
+      return pending.promise;
+    }
     pending?.reconciler.dispose();
     const generation = this.generation;
     const reconciler = new RunStateReconciler(

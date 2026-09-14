@@ -185,6 +185,76 @@ describe('stream to canonical state reconciliation', () => {
     expect(store.getSnapshot().view.runs[runId].status).toBe('failed');
   });
 
+  it.each(
+    ['failed', 'completed', 'cancelled'].flatMap((status) => [
+      { status, owner: 'standalone' },
+      { status, owner: 'primary' },
+    ])
+  )(
+    'retains overlapping recovery boundaries for $status with a $owner owner',
+    async ({ status, owner }) => {
+      const store = seed();
+      const before = store.getSnapshot();
+      let resolveOld!: (value: unknown) => void;
+      let resolveFresh!: (value: unknown) => void;
+      fetchGetMock
+        .mockReturnValueOnce(
+          new Promise((done) => {
+            resolveOld = done;
+          })
+        )
+        .mockReturnValueOnce(
+          new Promise((done) => {
+            resolveFresh = done;
+          })
+        );
+      if (owner === 'primary') registry.ensureLocal(projectId, runId);
+
+      const first = registry.reconcileRun(projectId, runId);
+      // A later close/detach boundary follows an error while its GET is pending.
+      const second = registry.reconcileRun(projectId, runId);
+      expect(second).toBe(first);
+      expect(fetchGetMock).toHaveBeenCalledTimes(1);
+      let finished = false;
+      void Promise.all([first, second]).then(() => {
+        finished = true;
+      });
+
+      resolveOld(summary('waiting_for_user', 2));
+      await settle();
+      expect(fetchGetMock).toHaveBeenCalledTimes(2);
+      expect(finished).toBe(false);
+      expect(
+        selectPendingHumanControls(store.getSnapshot().control)
+      ).toHaveLength(1);
+
+      resolveFresh(summary(status));
+      await Promise.all([first, second]);
+      const after = store.getSnapshot();
+      expect(after.view.runs[runId]).toMatchObject({
+        status,
+        runVersion: 3,
+        lastSequence: 2,
+      });
+      expect(runProjectionStore.getRun(projectId, runId)?.status).toBe(status);
+      expect(after.chat).toBe(before.chat);
+      expect(after.view.currentCursor).toBe(before.view.currentCursor);
+      expect(after.control.interactionById).toEqual(
+        before.control.interactionById
+      );
+      expect(selectPendingHumanControls(after.control)).toEqual([]);
+      expect(streams).toHaveLength(owner === 'primary' ? 1 : 0);
+
+      // The completed owner must not swallow another recovery boundary.
+      fetchGetMock.mockResolvedValue(summary(status));
+      await registry.reconcileRun(projectId, runId);
+      expect(fetchGetMock).toHaveBeenCalledTimes(3);
+      expect(
+        fetchGetMock.mock.calls.every(([url]) => url === `/runs/${runId}`)
+      ).toBe(true);
+    }
+  );
+
   it('keeps a genuinely active request actionable after detach', async () => {
     const store = seed();
     fetchGetMock.mockResolvedValue(summary('waiting_for_user', 2));
@@ -509,6 +579,55 @@ describe('stream to canonical state reconciliation', () => {
     expect(state.setElapsed).toHaveBeenCalledWith(runId, 1200);
     expect(state.tasks[runId]).toBe(task);
     expect(state.setStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it('settles the legacy Task after overlapping recovery boundaries without primary ingress', async () => {
+    seed();
+    let resolveOld!: (value: unknown) => void;
+    fetchGetMock
+      .mockReturnValueOnce(
+        new Promise((done) => {
+          resolveOld = done;
+        })
+      )
+      .mockResolvedValue(summary('failed'));
+    const task = { messages: [{ content: 'original failure' }] };
+    const state = {
+      tasks: { [runId]: task },
+      setStatus: vi.fn(),
+      setDurableRunStatus: vi.fn(),
+      setIsPending: vi.fn(),
+      setActiveAsk: vi.fn(),
+      setActiveAskList: vi.fn(),
+      setTaskTime: vi.fn(),
+      setElapsed: vi.fn(),
+    };
+    const options = {
+      projectId,
+      runId,
+      getState: () => state as never,
+      isCurrent: () => true,
+    };
+    const first = reconcileLegacyRunState(options);
+    const second = reconcileLegacyRunState(options);
+    expect(fetchGetMock).toHaveBeenCalledTimes(1);
+    expect(state.setStatus).not.toHaveBeenCalled();
+    resolveOld(summary('waiting_for_user', 2));
+    await Promise.all([first, second]);
+
+    expect(fetchGetMock).toHaveBeenCalledTimes(2);
+    expect(sseTransportMock).not.toHaveBeenCalled();
+    expect(state.setStatus).toHaveBeenCalledWith(
+      runId,
+      ChatTaskStatus.FINISHED
+    );
+    expect(state.setDurableRunStatus).toHaveBeenCalledWith(runId, 'failed');
+    expect(state.setIsPending).toHaveBeenCalledWith(runId, false);
+    expect(state.setActiveAsk).toHaveBeenCalledWith(runId, '');
+    expect(state.setActiveAskList).toHaveBeenCalledWith(runId, []);
+    expect(state.setTaskTime).toHaveBeenCalledWith(runId, 0);
+    expect(state.setElapsed).toHaveBeenCalledWith(runId, 1200);
+    expect(state.tasks[runId]).toBe(task);
   });
 
   it('does not clear the legacy UI after its captured Session or Run changed', async () => {
