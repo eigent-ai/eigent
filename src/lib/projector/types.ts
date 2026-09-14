@@ -173,6 +173,8 @@ export type ProjectedRun = {
     status: string;
   } | null;
   totalAttemptElapsedMs?: number | null;
+  /** Renderer receipt time for a canonical elapsed checkpoint; never persisted. */
+  totalAttemptElapsedAt?: string | null;
 };
 
 export type ProjectedArtifact = {

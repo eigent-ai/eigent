@@ -12,6 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { TERMINAL_RUN_STATUSES } from '../runSummary';
+import type { ProjectViewState } from '../types';
 import { adaptHumanControlEvent } from './adapter';
 import type {
   HumanControlInteraction,
@@ -25,6 +27,19 @@ const TERMINAL_STATUSES = new Set<HumanControlInteraction['status']>([
   'expired',
   'cancelled',
 ]);
+
+/** Closing a Run disables its requests without inventing approval decisions. */
+export function reconcileHumanControlAvailability(
+  state: HumanControlProjectionState,
+  runs: ProjectViewState['runs']
+): HumanControlProjectionState {
+  const inactiveRunIds = Object.fromEntries(
+    Object.values(runs)
+      .filter((run) => TERMINAL_RUN_STATUSES.has(run.status))
+      .map((run) => [run.runId, true as const])
+  );
+  return { ...state, inactiveRunIds };
+}
 
 function isTypedRequestEvent(eventType: string | undefined): boolean {
   return (

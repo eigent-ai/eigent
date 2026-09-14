@@ -55,6 +55,8 @@ import { buildSearchRuntimeConfig } from '@/lib/searchConfig';
 import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import { settleTaskElapsedMs } from '@/lib/taskDuration';
 import { cancelFollowUpRequest } from '@/service/followUpQueueApi';
+import { reconcileLegacyRunState } from '@/service/reconcileLegacyRunState';
+import { RUN_RECONCILIATION_MARKERS } from '@/service/runStateReconciliation';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { ExecutionStatus } from '@/types';
 import {
@@ -2912,6 +2914,22 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         return lockedTaskId;
       };
 
+      const reconcileStreamRun = () => {
+        if (type || !project_id) return;
+        const runId = lockedTaskId;
+        const runStore = lockedChatStore;
+        void reconcileLegacyRunState({
+          projectId: project_id,
+          runId,
+          getState: () => runStore.getState(),
+          isCurrent: () =>
+            lockedTaskId === runId &&
+            lockedChatStore === runStore &&
+            (!activeSSEControllers[newTaskId] ||
+              activeSSEControllers[newTaskId].controller === abortController),
+        });
+      };
+
       // Function to update locked references (only for special cases like replay)
       const updateLockedReferences = (
         newChatStore: VanillaChatStore,
@@ -3075,6 +3093,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           if (replayCaughtUpPromise && event?.event === 'replay_caught_up') {
             replayCaughtUp = true;
             resolveReplayCaughtUp?.();
+            return;
+          }
+          if (RUN_RECONCILIATION_MARKERS.has(event?.event)) {
+            reconcileStreamRun();
             return;
           }
           let agentMessages: AgentMessage;
@@ -5553,6 +5575,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             rejectResumeStreamOpen?.(error);
             throw error;
           }
+          if (resumeStreamOpened) reconcileStreamRun();
           resumeStreamOpened = true;
           resolveResumeStreamOpen?.();
           if (!type && project_id) {
@@ -5565,6 +5588,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
         onerror(err) {
           console.error('[fetchEventSource] Error:', err);
+          if (resumeStreamOpened) reconcileStreamRun();
 
           // Do not retry if the task has already finished (avoids duplicate execution
           // after ERR_NETWORK_CHANGED, ERR_INTERNET_DISCONNECTED, sleep/wake - see issue #1212)
@@ -5647,15 +5671,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             }
           }
 
-          const currentTaskId = getCurrentTaskId();
-          // Update trigger execution status to Completed for connection closed by server
-          updateTriggerExecutionStatus(
-            getCurrentChatStore(),
-            project_id,
-            currentTaskId,
-            ExecutionStatus.Cancelled,
-            getCurrentChatStore().tasks[currentTaskId]?.tokens || 0
-          );
+          // A transport error does not establish a cancelled execution outcome.
 
           // For other errors, log and throw to stop retrying
           console.error(
@@ -5683,6 +5699,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         // Server closes connection
         onclose() {
           console.log('SSE connection closed');
+          if (resumeStreamOpened) reconcileStreamRun();
           if (type) {
             const currentStore = getCurrentChatStore();
             const currentTaskId = getCurrentTaskId();

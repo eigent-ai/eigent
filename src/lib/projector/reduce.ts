@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { TERMINAL_RUN_STATUSES } from './runSummary';
 import type {
   CanonicalProjectEvent,
   ProjectedArtifact,
@@ -281,19 +282,34 @@ export function reduceProjectView(
     (interactionDecisionContinued
       ? 'running'
       : RUN_STATUS_BY_EVENT[event.eventType]) ||
-    (event.legacyStep === 'end'
+    (event.source !== 'canonical' && event.legacyStep === 'end'
       ? 'completed'
       : previousRun?.status || 'running');
   const status =
-    !interactionDecisionContinued &&
     previousRun &&
-    previousRun.status !== 'running' &&
-    previousRun.status !== 'interrupted' &&
-    candidateStatus === 'running'
+    ((TERMINAL_RUN_STATUSES.has(previousRun.status) &&
+      ['pending', 'running', 'waiting_for_user', 'cancelling'].includes(
+        candidateStatus
+      )) ||
+      (event.source === 'canonical'
+        ? event.runVersion < previousRun.runVersion
+        : previousRun.runVersion > 0))
       ? previousRun.status
-      : candidateStatus;
+      : !interactionDecisionContinued &&
+          !RUN_STATUS_BY_EVENT[event.eventType] &&
+          previousRun &&
+          previousRun.status !== 'running' &&
+          previousRun.status !== 'interrupted' &&
+          candidateStatus === 'running'
+        ? previousRun.status
+        : candidateStatus;
   const run: ProjectedRun = {
     ...previousRun,
+    ...(previousRun?.totalAttemptElapsedMs != null &&
+    event.source === 'canonical' &&
+    event.runVersion > previousRun.runVersion
+      ? { totalAttemptElapsedMs: null, totalAttemptElapsedAt: null }
+      : {}),
     runId: event.runId,
     status,
     // Legacy ChatStep IDs are global database IDs, not Run-local sequences.
@@ -306,7 +322,10 @@ export function reduceProjectView(
       event.source === 'canonical'
         ? Math.max(previousRun?.runVersion || 0, event.runVersion)
         : previousRun?.runVersion || 0,
-    updatedAt: event.createdAt,
+    updatedAt:
+      previousRun && event.runVersion < previousRun.runVersion
+        ? previousRun.updatedAt
+        : event.createdAt,
     origin: previousRun?.origin ?? event.origin ?? null,
     resumeBlockedReason: previousRun?.resumeBlockedReason ?? null,
   };
