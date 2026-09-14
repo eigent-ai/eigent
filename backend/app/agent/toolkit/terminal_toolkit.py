@@ -399,8 +399,33 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         environment = None
         venv = None
         if self._runtime_env_provider is None:
-            environment = dict(self._get_env_vars())
-            venv = self._get_venv_path()
+            # Spawn getters may materialize runtime storage or clone a venv.
+            # Read only the configured keys this metadata probe consumes.
+            environment = {}
+            runtime_environment = self._runtime_env_vars
+            for key in (
+                "PATH",
+                "EIGENT_RUNTIME_DIR",
+                "EIGENT_CACHE_DIR",
+                "EIGENT_INTERMEDIATE_DIR",
+            ):
+                if key in runtime_environment:
+                    environment[key] = runtime_environment[key]
+                elif key in os.environ:
+                    environment[key] = os.environ[key]
+            selection = getattr(self, "_preflight_venv_selection", None)
+            if selection is not None:
+                context = run_context_for_task(self.api_task_id)
+                owner = (
+                    (context.project_id, context.run_id) if context else None
+                )
+                candidate, selected_owner = selection
+                if (
+                    selected_owner == owner
+                    and candidate == self.cloned_env_path
+                    and Path(candidate).is_dir()
+                ):
+                    venv = candidate
             if venv:
                 bin_dir = "Scripts" if self.os_type == "Windows" else "bin"
                 environment["PATH"] = os.pathsep.join(
@@ -423,6 +448,14 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         elif venv:
             report["environment_source"] = (
                 "worker_environment_with_selected_venv_bin"
+            )
+        report["venv_selection"] = {
+            "status": "confirmed" if venv else "unconfirmed"
+        }
+        if not venv:
+            report["venv_selection"]["reason"] = (
+                "The virtual environment for the current Task has not been "
+                "confirmed; no environment setup was attempted."
             )
         report["activation_scripts_evaluated"] = False
         return json.dumps(report, sort_keys=True)
@@ -643,7 +676,17 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         Creates a lightweight clone using symlinks to the terminal_base venv,
         which contains pre-installed packages (pandas, numpy, matplotlib, etc.).
         """
+        # A cwd/Run rebind is not proof of which venv was selected. Publish
+        # only after this existing setup path successfully selects an environment.
+        self._preflight_venv_selection: (
+            tuple[str, tuple[str, str] | None] | None
+        ) = None
         self.cloned_env_path = os.path.join(self._agent_venv_dir, ".venv")
+        context = run_context_for_task(self.api_task_id)
+        selection = (
+            self.cloned_env_path,
+            (context.project_id, context.run_id) if context else None,
+        )
         terminal_base_path = get_terminal_base_venv_path()
 
         # Check if terminal_base exists
@@ -674,6 +717,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 f"Using existing cloned environment: {self.cloned_env_path}"
             )
             self.python_executable = cloned_python
+            self._preflight_venv_selection = selection
             return
 
         logger.info(f"Cloning terminal_base venv to: {self.cloned_env_path}")
@@ -689,6 +733,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             )
 
             self.python_executable = cloned_python
+            self._preflight_venv_selection = selection
             logger.info(
                 f"Successfully cloned environment to: {self.cloned_env_path}"
             )

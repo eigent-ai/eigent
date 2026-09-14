@@ -1,6 +1,7 @@
 """Real CAMEL export/permission integration, with process and runtime mocks."""
 
 import json
+from dataclasses import replace
 from unittest.mock import Mock
 
 import pytest
@@ -18,6 +19,7 @@ from app.permission_policy.models import (
     PolicyEffect,
 )
 from app.permission_policy.tool_actions import build_tool_action_descriptor
+from app.run_context import RunContext, run_context_scope
 from app.run_policy import ToolSafetyClass
 from app.run_runtime.tool_checkpoint import (
     classify_tool_safety,
@@ -27,7 +29,27 @@ from app.utils.listen import toolkit_listen
 
 
 @pytest.fixture
-def toolkit(tmp_path, monkeypatch):
+def run_context(tmp_path):
+    context = RunContext(
+        space_id="space-1",
+        project_id="isolated-project",
+        run_id="run-1",
+        task_id="task-1",
+        email="fixture@example.invalid",
+        user_id="fixture-user",
+        working_directory=tmp_path,
+        task_output_root=tmp_path / "output",
+        camel_log_dir=tmp_path / "logs",
+        binding_source="fixture",
+        workdir_mode=None,
+        browser_port=0,
+    )
+    with run_context_scope(context):
+        yield context
+
+
+@pytest.fixture
+def toolkit(tmp_path, monkeypatch, run_context):
     instance = TerminalToolkit.__new__(TerminalToolkit)
     monkeypatch.setattr(
         instance, "api_task_id", "isolated-project", raising=False
@@ -39,8 +61,19 @@ def toolkit(tmp_path, monkeypatch):
     instance.os_type = "Darwin"
     instance.use_docker_backend = False
     monkeypatch.setattr(instance, "_runtime_env_provider", None, raising=False)
-    monkeypatch.setattr(instance, "_get_env_vars", lambda: {"PATH": ""})
-    monkeypatch.setattr(instance, "_get_venv_path", lambda: None)
+    instance._runtime_env_vars = {"PATH": ""}
+    instance.cloned_env_path = None
+    for name in (
+        "_get_env_vars",
+        "_get_venv_path",
+        "_setup_cloned_environment",
+        "_clone_venv_with_symlinks",
+    ):
+        monkeypatch.setattr(
+            instance,
+            name,
+            Mock(side_effect=AssertionError(f"preflight cannot call {name}")),
+        )
     monkeypatch.setattr(toolkit_listen, "get_task_lock", lambda _: object())
     monkeypatch.setattr(toolkit_listen, "_safe_put_queue", lambda *_: None)
     monkeypatch.setattr(
@@ -54,6 +87,24 @@ def toolkit(tmp_path, monkeypatch):
         Mock(side_effect=AssertionError("preflight cannot spawn")),
     )
     return instance
+
+
+@pytest.fixture
+def selected_venv(toolkit, tmp_path, monkeypatch):
+    selected = tmp_path / "selected environment" / ".venv"
+    for root in (selected, tmp_path / "base environment"):
+        (root / "bin").mkdir(parents=True)
+        (root / "bin" / "python").write_text("fixture, never executed")
+    monkeypatch.setattr(
+        terminal_toolkit,
+        "get_terminal_base_venv_path",
+        lambda: str(tmp_path / "base environment"),
+    )
+    toolkit._agent_venv_dir = str(selected.parent)
+    # Use the real existing-environment selection branch. The instance-level
+    # setup/getter guards remain in place for every subsequent preflight call.
+    TerminalToolkit._setup_cloned_environment(toolkit)
+    return selected
 
 
 def test_exported_camel_probe_has_a_narrow_read_declaration(toolkit):
@@ -135,15 +186,13 @@ def test_read_declaration_survives_real_message_integration(toolkit):
 
 
 def test_preflight_uses_spawn_environment_and_selected_venv(
-    toolkit, tmp_path, monkeypatch
+    toolkit, tmp_path, monkeypatch, selected_venv
 ):
-    selected = tmp_path / "selected environment"
+    selected = selected_venv
     binary_dir = selected / "bin"
-    binary_dir.mkdir(parents=True)
     binary = binary_dir / "blender"
     binary.write_text("fixture, never executed")
     binary.chmod(0o755)
-    monkeypatch.setattr(toolkit, "_get_venv_path", lambda: str(selected))
     monkeypatch.setenv("PATH", str(tmp_path / "unrelated login path"))
     result = json.loads(toolkit.terminal_preflight(commands=["blender"]))
     assert result["commands"][0]["path"] == str(binary)
@@ -151,9 +200,10 @@ def test_preflight_uses_spawn_environment_and_selected_venv(
         "worker_environment_with_selected_venv_bin"
     )
     assert result["activation_scripts_evaluated"] is False
+    assert result["venv_selection"]["status"] == "confirmed"
 
 
-def test_real_environment_getter_prefers_worker_runtime_path(
+def test_preflight_prefers_worker_runtime_path_without_spawn_getters(
     toolkit, tmp_path, monkeypatch
 ):
     worker_bin = tmp_path / "worker bin"
@@ -163,7 +213,6 @@ def test_real_environment_getter_prefers_worker_runtime_path(
         binary = directory / name
         binary.write_text("fixture, never executed")
         binary.chmod(0o755)
-    monkeypatch.delattr(toolkit, "_get_env_vars")
     toolkit._runtime_env_vars = {"PATH": str(worker_bin)}
     monkeypatch.setenv("PATH", str(login_bin))
     monkeypatch.setenv("PRIVATE_TEST_SECRET", "never include in diagnostics")
@@ -176,6 +225,179 @@ def test_real_environment_getter_prefers_worker_runtime_path(
     assert result["commands"][1]["status"] == "not_found"
     assert "never include in diagnostics" not in json.dumps(result)
     assert result["login_shell_checked"] is False
+
+
+def test_preflight_uses_process_path_when_runtime_has_no_override(
+    toolkit, tmp_path, monkeypatch
+):
+    binary = tmp_path / "blender"
+    binary.write_text("fixture, never executed")
+    binary.chmod(0o755)
+    toolkit._runtime_env_vars = {}
+    monkeypatch.setenv("PATH", str(tmp_path))
+    result = json.loads(toolkit.terminal_preflight(commands=["blender"]))
+    assert result["commands"][0]["path"] == str(binary)
+
+
+def test_empty_worker_path_keeps_cwd_without_process_path_fallback(
+    toolkit, tmp_path, monkeypatch
+):
+    process_bin = tmp_path / "process bin"
+    process_bin.mkdir()
+    for binary in (tmp_path / "blender", process_bin / "ffmpeg"):
+        binary.write_text("fixture, never executed")
+        binary.chmod(0o755)
+    monkeypatch.setenv("PATH", str(process_bin))
+    result = json.loads(
+        toolkit.terminal_preflight(commands=["blender", "ffmpeg"])
+    )
+    assert result["commands"][0]["path"] == str(tmp_path / "blender")
+    assert result["commands"][1]["status"] == "not_found"
+
+
+def test_missing_worker_path_is_unavailable(toolkit, monkeypatch):
+    toolkit._runtime_env_vars = {}
+    monkeypatch.delenv("PATH", raising=False)
+    result = json.loads(toolkit.terminal_preflight(commands=["blender"]))
+    assert result["commands"][0]["status"] == "path_unavailable"
+
+
+@pytest.mark.parametrize("configured", [False, True])
+def test_runtime_configuration_does_not_materialize_directories(
+    toolkit, tmp_path, monkeypatch, configured
+):
+    keys = (
+        "EIGENT_RUNTIME_DIR",
+        "EIGENT_CACHE_DIR",
+        "EIGENT_INTERMEDIATE_DIR",
+    )
+    for key in keys:
+        monkeypatch.delenv(key, raising=False)
+        if configured:
+            monkeypatch.setenv(key, str(tmp_path / "process runtime" / key))
+            toolkit._runtime_env_vars[key] = str(tmp_path / "runtime" / key)
+    toolkit._runtime_env_vars["PRIVATE_TEST_SECRET"] = "do not disclose"
+    with monkeypatch.context() as guard:
+        guard.setattr(
+            terminal_toolkit.os,
+            "mkdir",
+            Mock(side_effect=AssertionError("preflight cannot mkdir")),
+        )
+        guard.setattr(
+            terminal_toolkit.shutil,
+            "rmtree",
+            Mock(side_effect=AssertionError("preflight cannot clean up")),
+        )
+        result = json.loads(toolkit.terminal_preflight(commands=[]))
+    for key in keys:
+        assert result["storage"][key]["status"] == (
+            "configured_uninspected" if configured else "not_supplied"
+        )
+        assert result["storage"][key]["path"] == (
+            str(tmp_path / "runtime" / key) if configured else None
+        )
+    assert not (tmp_path / "runtime").exists()
+    assert not (tmp_path / "process runtime").exists()
+    assert "do not disclose" not in json.dumps(result)
+    assert result["execution_authorized"] is False
+
+
+@pytest.mark.parametrize(
+    "selection",
+    [
+        "unknown",
+        "other_run",
+        "other_project",
+        "changed_path",
+        "missing_directory",
+    ],
+)
+def test_unconfirmed_venv_is_not_reported_as_current(
+    toolkit, tmp_path, monkeypatch, run_context, selected_venv, selection
+):
+    binary = selected_venv / "bin" / "blender"
+    binary.write_text("fixture, never executed")
+    binary.chmod(0o755)
+    current = run_context
+    if selection == "unknown":
+        del toolkit._preflight_venv_selection
+    elif selection == "other_run":
+        current = replace(run_context, run_id="run-2")
+    elif selection == "other_project":
+        current = replace(run_context, project_id="project-2")
+    elif selection == "missing_directory":
+        selected_venv.rename(tmp_path / "moved environment")
+    else:
+        toolkit.cloned_env_path = str(tmp_path / "unselected environment")
+    # cwd ownership can advance before the venv getter/clone runs. It is not
+    # evidence that an earlier environment belongs to the current Task.
+    toolkit._workspace_run_id = current.run_id
+    with run_context_scope(current), monkeypatch.context() as guard:
+        guard.setattr(
+            terminal_toolkit.os,
+            "mkdir",
+            Mock(side_effect=AssertionError("preflight cannot mkdir")),
+        )
+        guard.setattr(
+            terminal_toolkit.shutil,
+            "rmtree",
+            Mock(side_effect=AssertionError("preflight cannot clean up")),
+        )
+        result = json.loads(toolkit.terminal_preflight(commands=["blender"]))
+    assert result["commands"][0]["status"] == "not_found"
+    assert result["venv_selection"]["status"] == "unconfirmed"
+    assert "has not been confirmed" in result["venv_selection"]["reason"]
+    assert str(selected_venv) not in json.dumps(result)
+    assert result["environment_source"] == "worker_environment"
+    assert result["execution_authorized"] is False
+
+
+def test_selection_is_invalidated_when_setup_cannot_select_an_environment(
+    toolkit, tmp_path, monkeypatch, selected_venv
+):
+    monkeypatch.setattr(
+        terminal_toolkit,
+        "get_terminal_base_venv_path",
+        lambda: str(tmp_path / "missing base"),
+    )
+    TerminalToolkit._setup_cloned_environment(toolkit)
+    result = json.loads(toolkit.terminal_preflight(commands=[]))
+    assert result["venv_selection"]["status"] == "unconfirmed"
+
+
+def test_confirmed_selection_keeps_explicit_empty_path_entry(
+    toolkit, tmp_path, selected_venv
+):
+    binary = tmp_path / "blender"
+    binary.write_text("fixture, never executed")
+    binary.chmod(0o755)
+    result = json.loads(toolkit.terminal_preflight(commands=["blender"]))
+    assert result["venv_selection"]["status"] == "confirmed"
+    assert result["commands"][0]["path"] == str(binary)
+
+
+@pytest.mark.parametrize("succeeds", [True, False])
+def test_setup_publishes_selection_only_after_successful_clone(
+    toolkit, monkeypatch, selected_venv, succeeds
+):
+    (selected_venv / "bin" / "python").unlink()
+
+    def synthetic_clone(source, target):
+        assert target == str(selected_venv)
+        if not succeeds:
+            raise RuntimeError("synthetic clone failure")
+        (selected_venv / "bin" / "python").write_text(
+            "fixture, never executed"
+        )
+
+    clone = Mock(side_effect=synthetic_clone)
+    monkeypatch.setattr(toolkit, "_clone_venv_with_symlinks", clone)
+    TerminalToolkit._setup_cloned_environment(toolkit)
+    result = json.loads(toolkit.terminal_preflight(commands=[]))
+    assert result["venv_selection"]["status"] == (
+        "confirmed" if succeeds else "unconfirmed"
+    )
+    assert clone.call_count == 1
 
 
 def test_protected_environment_is_not_opened_for_preflight(
