@@ -47,7 +47,6 @@ import {
   ToolCallsDialog,
 } from '@/components/Session/SidePanel/sections/SessionSidePanelDialogs';
 import { useProjectOutputFiles } from '@/components/Session/SidePanel/sections/useProjectOutputFiles';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { itemFadeMotion } from '@/components/ui/motion';
 import { TooltipSimple } from '@/components/ui/tooltip';
@@ -65,7 +64,6 @@ import { useSkillsStore } from '@/store/skillsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
-  AlertTriangle,
   ExternalLink,
   FileText,
   Globe,
@@ -586,7 +584,7 @@ export function SessionActivityPanel({
   const host = useHost();
   const { chatStore } = useChatStoreAdapter();
   const projectStore = useProjectRuntimeStore();
-  const { hydration, projectId } = useProjectEventRuntime();
+  const { projectId } = useProjectEventRuntime();
   const overview = useProjectSessionOverview(projectId);
   const scopedChatStore =
     projectId && projectStore.activeProjectId === projectId ? chatStore : null;
@@ -830,52 +828,6 @@ export function SessionActivityPanel({
           the sections outgrow the column. */}
       <div className="relative flex min-h-0 w-full min-w-0 flex-col overflow-hidden">
         <div className="scrollbar-always-visible flex min-h-0 min-w-0 flex-col overflow-x-hidden overflow-y-auto">
-          {projectId && hydration.status === 'error' ? (
-            <div className="px-3 pt-3">
-              <Alert tone="warning">
-                <AlertTriangle className="size-4" aria-hidden />
-                <AlertDescription className="flex flex-col items-start gap-2">
-                  <span>
-                    {t(
-                      hydration.errorCode === 'unsupported'
-                        ? 'layout.session-panel-history-unsupported'
-                        : 'layout.session-panel-history-unavailable',
-                      {
-                        defaultValue:
-                          hydration.errorCode === 'unsupported'
-                            ? 'This backend does not support session history yet.'
-                            : 'Some session history could not be loaded.',
-                      }
-                    )}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    buttonRadius="full"
-                    onClick={hydration.retry}
-                  >
-                    {t('chat.timeline-history-retry', {
-                      defaultValue: 'Try again',
-                    })}
-                  </Button>
-                </AlertDescription>
-              </Alert>
-            </div>
-          ) : projectId &&
-            (hydration.status === 'loading' ||
-              hydration.status === 'retrying') ? (
-            <div
-              className="px-3 pt-3 text-ds-text-base text-ds-ink-muted-default"
-              role="status"
-            >
-              {t(
-                hydration.status === 'retrying'
-                  ? 'chat.timeline-history-reconnecting'
-                  : 'chat.timeline-history-loading'
-              )}
-            </div>
-          ) : null}
           <SectionList>
             {agents.length > 0 ? (
               <AgentCategorySection

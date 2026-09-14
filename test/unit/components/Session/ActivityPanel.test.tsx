@@ -280,7 +280,7 @@ describe('SessionActivityPanel project scope', () => {
     );
   });
 
-  it('shows unsupported history as degraded and exposes manual retry', async () => {
+  it('leaves history recovery controls to the panel header', async () => {
     mocks.hydration = {
       status: 'error',
       errorCode: 'unsupported',
@@ -293,11 +293,10 @@ describe('SessionActivityPanel project scope', () => {
       await new Promise((resolve) => setTimeout(resolve, 40));
     });
 
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      "This version of Eigent can't show session history yet."
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(mocks.hydration.retry).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Try again/ })
+    ).not.toBeInTheDocument();
   });
 
   it('keeps an artifact noninteractive until the workspace resolver matches it', async () => {
