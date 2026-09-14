@@ -17,7 +17,6 @@ import { SITE_URL } from '@/lib';
 import { toast } from 'sonner';
 
 export function showStorageToast() {
-  toast.dismiss();
   toast(
     <div>
       {i18n.t(
@@ -35,6 +34,7 @@ export function showStorageToast() {
       )}{' '}
     </div>,
     {
+      id: 'eigent-storage',
       duration: Infinity,
       closeButton: true,
     }

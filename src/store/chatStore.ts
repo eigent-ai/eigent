@@ -25,7 +25,6 @@ import {
   uploadFile,
   waitForBackendReady,
 } from '@/api/http';
-import { showCreditsToast } from '@/components/Toast/creditsToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
 import type { AppHost } from '@/host/types';
 import { generateUniqueId, uploadLog } from '@/lib';
@@ -45,6 +44,7 @@ import {
   buildAgentModelConfigFromProvider,
   splitProviderConfig,
 } from '@/lib/modelConfig';
+import { reportError } from '@/lib/notifyError';
 import {
   normalizeRemoteSubAgentProvider,
   REMOTE_SUB_AGENT_PROVIDER_ID,
@@ -54,10 +54,15 @@ import { runEventIngressRegistry } from '@/lib/runEvents';
 import { buildSearchRuntimeConfig } from '@/lib/searchConfig';
 import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import { settleTaskElapsedMs } from '@/lib/taskDuration';
+import {
+  classifyError as classifyUsageError,
+  errorCopy,
+} from '@/lib/usageErrors';
 import { cancelFollowUpRequest } from '@/service/followUpQueueApi';
 import { reconcileLegacyRunState } from '@/service/reconcileLegacyRunState';
 import { RUN_RECONCILIATION_MARKERS } from '@/service/runStateReconciliation';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
+import { confirmCloudRecovery } from '@/store/usageNoticeStore';
 import { ExecutionStatus } from '@/types';
 import {
   AgentMessageStatus,
@@ -2460,6 +2465,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       const pinnedModelSelection =
         !type && project_id ? projectStore.getProjectModel(project_id) : null;
       const effectiveModelType = pinnedModelSelection?.modelType ?? modelType;
+      const requestAccount =
+        getAuthStore().user_id != null ? String(getAuthStore().user_id) : null;
       let resolvedProviderId: number | undefined;
       let resolvedCloudModelId: string | undefined;
       let resolvedCodexModelId: string | undefined;
@@ -2580,28 +2587,22 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           const responseData = error?.response?.data;
           if (
             hasApiCode(responseData, API_CODE_TRIAL_LIMIT) ||
+            hasApiCode(responseData, '20') ||
             hasApiCode(error, API_CODE_TRIAL_LIMIT)
           ) {
-            throw new Error(
-              responseData?.text ||
-                error?.message ||
-                i18next.t('chat.free-trial-limit-reached', {
-                  defaultValue:
-                    'Free trial usage limit reached. Switch to a local or custom model, or use another API key to continue.',
-                })
-            );
+            throw Object.assign(new Error(errorCopy('credits')), {
+              usageReason: 'credits',
+              response: error?.response,
+            });
           }
           throw error;
         }
-        if (hasApiCode(res, API_CODE_TRIAL_LIMIT)) {
+        if (hasApiCode(res, API_CODE_TRIAL_LIMIT) || hasApiCode(res, '20')) {
           finishStartupFailure();
-          throw new Error(
-            res.text ||
-              i18next.t('chat.free-trial-limit-reached', {
-                defaultValue:
-                  'Free trial usage limit reached. Switch to a local or custom model, or use another API key to continue.',
-              })
-          );
+          throw Object.assign(new Error(errorCopy('credits')), {
+            usageReason: 'credits',
+            response: { data: res },
+          });
         }
         if (!res.value) {
           finishStartupFailure();
@@ -4795,7 +4796,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
           if (agentMessages.step === AgentStep.BUDGET_NOT_ENOUGH) {
             console.log('error', agentMessages.data);
-            showCreditsToast();
+            if (!type)
+              reportError(
+                { code: 20 },
+                { modelType: effectiveModelType },
+                requestAccount
+              );
             setStatus(currentTaskId, ChatTaskStatus.PAUSE);
             uploadLog(currentTaskId, type);
             return;
@@ -4807,7 +4813,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             const maxLength = agentMessages.data.max_length || 100000;
 
             // Show toast notification
-            toast.dismiss();
             toast.error(
               i18next.t('chat.context-limit-exceeded', {
                 defaultValue:
@@ -4854,6 +4859,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   defaultValue:
                     'An error occurred while processing your request',
                 });
+              const errorContext = {
+                modelType: effectiveModelType,
+                modelId: resolvedCloudModelId,
+              };
+              const errorReason = type
+                ? classifyUsageError(agentMessages.data, errorContext)
+                : reportError(agentMessages.data, errorContext, requestAccount);
               const isProjectBusyError =
                 errorMessage === 'Single Agent is already processing a task.';
               const isRetryableRunError =
@@ -4914,6 +4926,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               addMessages(currentTaskId, {
                 id: generateUniqueId(),
                 role: 'agent',
+                step: AgentStep.ERROR,
+                errorReason,
                 content: i18next.t('chat.error-message', {
                   defaultValue: '❌ **Error**: {{message}}',
                   message: errorMessage,
@@ -5108,6 +5122,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               currentTaskId,
               wasStoppedByUser ? 'stopped' : 'completed'
             );
+            if (
+              !type &&
+              effectiveModelType === 'cloud' &&
+              !wasStoppedByUser &&
+              endTokens > 0 &&
+              !endMessageText.startsWith('<summary>Task paused</summary>')
+            )
+              confirmCloudRecovery(requestAccount, resolvedCloudModelId);
 
             const endMessage = resolveEndMessageText(
               endMessageText,
@@ -5667,6 +5689,19 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 id: generateUniqueId(),
                 role: 'agent',
                 content,
+                ...(!isContinuationClarification
+                  ? {
+                      step: AgentStep.ERROR,
+                      errorReason: reportError(
+                        err,
+                        {
+                          modelType: effectiveModelType,
+                          modelId: resolvedCloudModelId,
+                        },
+                        requestAccount
+                      ),
+                    }
+                  : {}),
               });
             }
           }
