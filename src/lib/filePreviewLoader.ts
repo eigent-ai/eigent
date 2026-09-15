@@ -35,6 +35,7 @@ interface PrefixReadResult {
   bytes: Uint8Array;
   bytesRead: number;
   totalBytes: number | null;
+  isPartialResponse: boolean;
   contentType?: string;
   supportsRanges?: boolean;
 }
@@ -72,6 +73,8 @@ function remoteTotalBytes(response: Response): number | null {
   const contentRange = response.headers.get('content-range');
   const rangeTotal = contentRange?.match(/\/(\d+)$/)?.[1];
   if (rangeTotal) return finiteSize(Number(rangeTotal));
+  // For 206, Content-Length measures the fragment, not the entire file.
+  if (response.status === 206) return null;
   return headerSize(response.headers.get('content-length'));
 }
 
@@ -150,6 +153,7 @@ async function readRemotePrefix(
       bytes: new Uint8Array(),
       bytesRead: 0,
       totalBytes: remoteTotalBytes(response),
+      isPartialResponse: response.status === 206,
       contentType: response.headers.get('content-type') || undefined,
       supportsRanges:
         response.status === 206 ||
@@ -185,6 +189,7 @@ async function readRemotePrefix(
     bytes,
     bytesRead,
     totalBytes: remoteTotalBytes(response),
+    isPartialResponse: response.status === 206,
     contentType: response.headers.get('content-type') || undefined,
     supportsRanges:
       response.status === 206 ||
@@ -413,22 +418,26 @@ export async function loadFilePreview(
 
   const limit = decision.limit || FILE_PREVIEW_LIMITS.defaultBytes;
   const result = await readRemotePrefix(file.path, limit + 1, options.signal);
-  const contentBytes =
-    result.bytesRead > limit ? result.bytes.slice(0, limit) : result.bytes;
+  // The current response may describe a newer file than the listing metadata.
+  const totalBytes = result.totalBytes ?? metadata.size;
+  const truncated =
+    result.bytesRead > limit ||
+    (result.isPartialResponse && result.totalBytes === null) ||
+    (totalBytes !== null && result.bytesRead < totalBytes);
+  const contentBytes = truncated
+    ? result.bytes.slice(0, FILE_PREVIEW_LIMITS.textBytes)
+    : result.bytes;
   const content = new TextDecoder().decode(contentBytes);
-  const totalBytes = metadata.size ?? result.totalBytes;
   throwIfAborted(options.signal);
   return {
     ...baseFile,
     content,
-    preview:
-      result.bytesRead > limit ||
-      (totalBytes !== null && contentBytes.byteLength < totalBytes)
-        ? {
-            kind: 'truncated-text',
-            bytesRead: contentBytes.byteLength,
-            totalBytes,
-          }
-        : undefined,
+    preview: truncated
+      ? {
+          kind: 'truncated-text',
+          bytesRead: contentBytes.byteLength,
+          totalBytes,
+        }
+      : undefined,
   };
 }
