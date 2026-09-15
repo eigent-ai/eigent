@@ -73,6 +73,7 @@ from app.service.task import (
     get_task_lock_if_exists,
     set_process_task,
 )
+from app.tool_validation import prewrite_validation_result
 from app.utils.event_loop_utils import _schedule_async_task
 
 # Logger for agent tracking
@@ -1170,17 +1171,22 @@ class ListenChatAgent(ChatAgent):
         except ToolCheckpointError:
             raise
         except Exception as e:
+            rejection = prewrite_validation_result(e)
             finish_tool_checkpoint(
                 checkpoint,
+                result=rejection,
                 error=e,
-                outcome_known=_tool_failure_outcome_known(
-                    e,
-                    checkpoint_dispatched=dispatched,
+                outcome_known=(
+                    rejection is not None
+                    or _tool_failure_outcome_known(
+                        e,
+                        checkpoint_dispatched=dispatched,
+                    )
                 ),
             )
             # Capture the error message to prevent framework crash
             error_msg = f"Error executing tool '{func_name}': {e!s}"
-            result = f"Tool execution failed: {error_msg}"
+            result = rejection or f"Tool execution failed: {error_msg}"
             mask_flag = False
             logger.error(
                 f"Tool execution failed for {func_name}: {e}", exc_info=True
@@ -1401,18 +1407,23 @@ class ListenChatAgent(ChatAgent):
             )
         except Exception as e:
             execution_error = e
+            rejection = prewrite_validation_result(e)
             await asyncio.to_thread(
                 finish_tool_checkpoint,
                 checkpoint,
+                result=rejection,
                 error=e,
-                outcome_known=_tool_failure_outcome_known(
-                    e,
-                    checkpoint_dispatched=dispatched,
+                outcome_known=(
+                    rejection is not None
+                    or _tool_failure_outcome_known(
+                        e,
+                        checkpoint_dispatched=dispatched,
+                    )
                 ),
             )
             # Capture the error message to prevent framework crash
             error_msg = f"Error executing async tool '{func_name}': {e!s}"
-            result = {"error": error_msg}
+            result = rejection or {"error": error_msg}
             logger.error(
                 f"Async tool execution failed for {func_name}: {e}",
                 exc_info=True,

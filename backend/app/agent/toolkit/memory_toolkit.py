@@ -122,10 +122,19 @@ class MemoryToolkit(BaseToolkit, AbstractToolkit):
             content: The short, stable Memory statement to save.
             reason: Why the item is durable and useful in future Runs.
             source_trust: One of user_asserted, tool_observed,
-                external_untrusted, or model_inferred. The pre-enum legacy
+                external_untrusted, or model_inferred. user_asserted requires
+                citations to matching user.message events in this Project;
+                never assign it to model or tool text. Use model_inferred for
+                your inference and tool_observed for tool observations.
+                The pre-enum legacy
                 spelling untrusted_external is accepted but not advertised
                 to models, and is normalized before any durable write.
-            source_event_ids: Optional canonical History event citations.
+            source_event_ids: Required for user_asserted: a nonempty list of
+                canonical event_id values of matching user.message events
+                from this Project, returned by search_project_history.
+                Do not use citation_id or Run IDs. Optional for other trust
+                values. If evidence is unavailable, skip saving Memory and
+                continue delivering the work.
         """
 
         if kind not in _AGENT_WRITABLE_MEMORY_KINDS:

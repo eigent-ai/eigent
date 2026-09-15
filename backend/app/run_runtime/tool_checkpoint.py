@@ -36,6 +36,7 @@ from app.run_runtime.step_coordinator import (
     RunStepCoordinator,
     get_current_step_id,
 )
+from app.tool_validation import prewrite_validation_result
 
 # This allowlist is trusted code, unlike model-generated names and arguments.
 # Unknown tools default to UNSAFE_WRITE. Browser actions are deliberately
@@ -885,6 +886,10 @@ def finish_tool_checkpoint(
     if checkpoint is None:
         return
     store = journal or get_default_run_journal()
+    rejection = prewrite_validation_result(error)
+    if rejection is not None:
+        result = rejection
+        outcome_known = True
     if error is None:
         status = "completed"
         outcome = "completed"
