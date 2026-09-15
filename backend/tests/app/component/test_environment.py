@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import os
+import stat
 import tempfile
 from pathlib import Path
 
@@ -24,6 +25,7 @@ from app.component.environment import (
     env,
     env_base_dir,
     sanitize_env_path,
+    set_user_env_path,
 )
 
 
@@ -264,3 +266,107 @@ def test_env_process_value_overrides_live_dotenv(monkeypatch, temp_dir: Path):
     )
 
     assert env("PROCESS_PRIORITY_KEY") == "from_process"
+
+
+def _clear_thread_env_path() -> None:
+    if hasattr(environment._thread_local, "env_path"):
+        delattr(environment._thread_local, "env_path")
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file modes only")
+def test_load_initial_env_files_restricts_user_home_env_permissions(
+    monkeypatch, temp_dir: Path
+):
+    """~/.eigent/.env is loaded at startup and must not stay world-readable."""
+    monkeypatch.setattr(environment, "env_base_dir", str(temp_dir))
+    env_file = temp_dir / ".env"
+    env_file.write_text("EIGENT_PERM_INIT_KEY=secret\n")
+    os.chmod(env_file, 0o644)
+
+    try:
+        _load_initial_env_files((env_file,))
+        mode = stat.S_IMODE(env_file.stat().st_mode)
+        assert mode == 0o600, f"expected 0600, got {oct(mode)}"
+    finally:
+        monkeypatch.delenv("EIGENT_PERM_INIT_KEY", raising=False)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file modes only")
+def test_load_initial_env_files_does_not_chmod_repo_env_files(
+    monkeypatch, temp_dir: Path
+):
+    """Repo-local .env files are not user secret stores; leave their mode."""
+    env_file = temp_dir / ".env"
+    env_file.write_text("EIGENT_PERM_REPO_KEY=secret\n")
+    os.chmod(env_file, 0o644)
+
+    try:
+        _load_initial_env_files((env_file,))
+        mode = stat.S_IMODE(env_file.stat().st_mode)
+        assert mode == 0o644, f"expected 0644, got {oct(mode)}"
+    finally:
+        monkeypatch.delenv("EIGENT_PERM_REPO_KEY", raising=False)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file modes only")
+def test_set_user_env_path_restricts_existing_env_file_permissions(
+    monkeypatch, temp_dir: Path
+):
+    """User .env files must be owner-only (0600), not default umask 0644."""
+    monkeypatch.setattr(environment, "env_base_dir", str(temp_dir))
+    env_file = temp_dir / "user.env"
+    env_file.write_text("EIGENT_PERM_TEST_KEY=secret\n")
+    os.chmod(env_file, 0o644)
+
+    try:
+        set_user_env_path(str(env_file))
+        mode = stat.S_IMODE(env_file.stat().st_mode)
+        assert mode == 0o600, f"expected 0600, got {oct(mode)}"
+    finally:
+        _clear_thread_env_path()
+        monkeypatch.delenv("EIGENT_PERM_TEST_KEY", raising=False)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file modes only")
+def test_set_user_env_path_restricts_default_env_when_resetting(
+    monkeypatch, temp_dir: Path
+):
+    """Falling back to the global ~/.eigent/.env should still tighten it."""
+    default_env = temp_dir / ".env"
+    default_env.write_text("EIGENT_PERM_DEFAULT_KEY=secret\n")
+    os.chmod(default_env, 0o644)
+    monkeypatch.setattr(environment, "env_base_dir", str(temp_dir))
+    monkeypatch.setattr(environment, "default_env_path", str(default_env))
+
+    try:
+        set_user_env_path(None)
+        mode = stat.S_IMODE(default_env.stat().st_mode)
+        assert mode == 0o600, f"expected 0600, got {oct(mode)}"
+    finally:
+        _clear_thread_env_path()
+        monkeypatch.delenv("EIGENT_PERM_DEFAULT_KEY", raising=False)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file modes only")
+def test_set_user_env_path_still_loads_if_chmod_fails(
+    monkeypatch, temp_dir: Path
+):
+    """Permission hardening is best-effort and must not block loading."""
+    monkeypatch.setattr(environment, "env_base_dir", str(temp_dir))
+    env_file = temp_dir / "user.env"
+    env_file.write_text("EIGENT_PERM_FAIL_KEY=secret\n")
+    os.chmod(env_file, 0o644)
+
+    def _boom(_path, _mode):
+        raise OSError("operation not permitted")
+
+    monkeypatch.setattr(os, "chmod", _boom)
+
+    try:
+        set_user_env_path(str(env_file))
+        assert Path(environment.get_current_env_path()).resolve() == (
+            env_file.resolve()
+        )
+    finally:
+        _clear_thread_env_path()
+        monkeypatch.delenv("EIGENT_PERM_FAIL_KEY", raising=False)
