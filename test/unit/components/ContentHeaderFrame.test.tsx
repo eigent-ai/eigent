@@ -14,27 +14,25 @@
 
 import ContentHeader, {
   ContentHeaderFrame,
-  ContentHeaderOwner,
 } from '@/components/Layout/ContentHeader';
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { lazy, Suspense } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 describe('ContentHeaderFrame', () => {
   it('keeps the divider outside fading content and preserves header interaction', () => {
     const onAdd = vi.fn();
-    const page = (activeKey: string) => (
-      <ContentHeaderFrame activeKey={activeKey}>
-        <ContentHeaderOwner value={activeKey}>
-          <div data-testid="animated-content" style={{ opacity: 0 }}>
-            <ContentHeader
-              persistent
-              title={activeKey}
-              actions={<button onClick={onAdd}>Add</button>}
-            />
-            Page body
-          </div>
-        </ContentHeaderOwner>
+    const page = (title: string) => (
+      <ContentHeaderFrame>
+        <div data-testid="animated-content" style={{ opacity: 0 }}>
+          <ContentHeader
+            persistent
+            title={title}
+            actions={<button onClick={onAdd}>Add</button>}
+          />
+          Page body
+        </div>
       </ContentHeaderFrame>
     );
     const view = render(page('Skills'));
@@ -58,7 +56,7 @@ describe('ContentHeaderFrame', () => {
     expect(document.querySelectorAll('header')).toHaveLength(1);
   });
 
-  it('retains the frame during lazy loading and rejects a late outgoing header', async () => {
+  it('rejects a late header from an outgoing nested presence tree', async () => {
     let resolveHeader!: (module: { default: () => React.JSX.Element }) => void;
     const LateHeader = lazy(
       () =>
@@ -66,27 +64,30 @@ describe('ContentHeaderFrame', () => {
           resolveHeader = resolve;
         })
     );
-    const page = (activeKey: string, showCurrent: boolean) => (
-      <ContentHeaderFrame activeKey={activeKey}>
-        <ContentHeaderOwner value="Skills">
-          <Suspense fallback={<span>Loading skills</span>}>
-            <LateHeader />
-          </Suspense>
-        </ContentHeaderOwner>
-        {showCurrent && (
-          <ContentHeaderOwner value="Connectors">
-            <ContentHeader persistent title="Connectors" />
-          </ContentHeaderOwner>
-        )}
+    const page = (current: 'skills' | 'connectors') => (
+      <ContentHeaderFrame>
+        <AnimatePresence initial={false}>
+          {current === 'skills' ? (
+            <motion.div key="skills" exit={{ opacity: 0 }}>
+              <AnimatePresence propagate>
+                <motion.div key="skills-section" exit={{ opacity: 0 }}>
+                  <Suspense fallback={<span>Loading skills</span>}>
+                    <LateHeader />
+                  </Suspense>
+                </motion.div>
+              </AnimatePresence>
+            </motion.div>
+          ) : (
+            <motion.div key="connectors">
+              <ContentHeader persistent title="Connectors" />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </ContentHeaderFrame>
     );
-    const view = render(page('Skills', false));
+    const view = render(page('skills'));
     const frame = document.querySelector('[data-content-header-frame]');
-    expect(frame).toHaveClass('min-h-ds-layout-row-header');
-    expect(frame?.querySelector('[data-content-header-divider]')).toHaveClass(
-      'border-b'
-    );
-    view.rerender(page('Connectors', true));
+    view.rerender(page('connectors'));
     await act(async () =>
       resolveHeader({
         default: () => (
@@ -97,6 +98,57 @@ describe('ContentHeaderFrame', () => {
     expect(document.querySelector('[data-content-header-frame]')).toBe(frame);
     expect(frame).toContainElement(screen.getByText('Connectors'));
     expect(screen.queryByText('Stale skills controls')).not.toBeInTheDocument();
+  });
+
+  it('does not remount or refocus an outgoing persistent heading', () => {
+    const focusOutgoing = vi.fn();
+    const page = (current: 'detail' | 'home') => (
+      <ContentHeaderFrame>
+        <AnimatePresence initial={false}>
+          {current === 'detail' ? (
+            <motion.div key="detail" exit={{ opacity: 0 }}>
+              <ContentHeader
+                persistent
+                titleAsChild
+                title={
+                  <h1
+                    tabIndex={-1}
+                    ref={(node) => {
+                      if (node) focusOutgoing();
+                    }}
+                  >
+                    Detail
+                  </h1>
+                }
+              />
+            </motion.div>
+          ) : (
+            <motion.div key="home">
+              <ContentHeader persistent title="Home" />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </ContentHeaderFrame>
+    );
+    const view = render(page('detail'));
+    expect(focusOutgoing).toHaveBeenCalledOnce();
+
+    view.rerender(page('home'));
+
+    expect(focusOutgoing).toHaveBeenCalledOnce();
+    expect(screen.getByText('Home')).toBeInTheDocument();
+    expect(screen.queryByText('Detail')).not.toBeInTheDocument();
+  });
+
+  it('honors a borderless persistent header', () => {
+    render(
+      <ContentHeaderFrame>
+        <ContentHeader persistent border={false} title="Borderless" />
+      </ContentHeaderFrame>
+    );
+    expect(
+      document.querySelector('[data-content-header-divider]')
+    ).not.toBeInTheDocument();
   });
 
   it('keeps standalone headers inline when no frame is supplied', () => {

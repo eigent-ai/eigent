@@ -60,6 +60,7 @@ vi.mock('@/hooks/useIntegrationManagement', async (importOriginal) => ({
     installed: connectorMocks.installedBuiltIns,
     configs: connectorMocks.integrationConfigs,
     configsLoading: false,
+    configsHydrated: true,
     fetchInstalled: connectorMocks.refreshBuiltIns,
     saveEnvAndConfig: connectorMocks.saveBuiltInValue,
     handleUninstall: connectorMocks.uninstallBuiltIn,
@@ -445,7 +446,7 @@ describe('ConnectorGateway presentation', () => {
     expect(sidebar).toHaveTextContent('No matching connectors.');
   });
 
-  it('publishes Web search to the gateway sidebar before the built-in catalog loads', async () => {
+  it('keeps the gateway sidebar skeleton until the built-in catalog loads', () => {
     connectorMocks.proxyFetchGet.mockImplementation((path: string) =>
       path === '/api/v1/config/info'
         ? new Promise(() => {})
@@ -454,13 +455,11 @@ describe('ConnectorGateway presentation', () => {
     renderGatewayWithSidebar();
     const sidebar = screen.getByRole('complementary', { name: 'Connectors' });
     expect(
-      within(sidebar).getByRole('button', { name: 'Web search' })
-    ).toBeVisible();
+      within(sidebar).queryByRole('button', { name: 'Web search' })
+    ).not.toBeInTheDocument();
     expect(
-      await within(sidebar).findByRole('button', { name: 'Google Drive' })
-    ).toBeVisible();
-    expect(
-      within(sidebar).getAllByRole('button', { name: 'Web search' })
-    ).toHaveLength(1);
+      within(sidebar).queryByRole('button', { name: 'Google Drive' })
+    ).not.toBeInTheDocument();
+    expect(sidebar.querySelectorAll('.animate-pulse')).toHaveLength(5);
   });
 });

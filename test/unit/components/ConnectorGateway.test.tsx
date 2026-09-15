@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   modelType: 'custom',
   configs: [] as Array<Record<string, unknown>>,
   configsLoading: false,
+  configsHydrated: true,
   language: 'en',
   webSearchLabel: 'Web search',
   installed: {} as Record<string, boolean>,
@@ -84,6 +85,7 @@ vi.mock('@/hooks/useIntegrationManagement', () => ({
     installed: mocks.installed,
     configs: mocks.configs,
     configsLoading: mocks.configsLoading,
+    configsHydrated: mocks.configsHydrated,
     fetchInstalled: mocks.fetchInstalled,
     saveEnvAndConfig: mocks.saveEnvAndConfig,
     handleUninstall: mocks.handleUninstall,
@@ -131,6 +133,7 @@ describe('ConnectorGateway Web search visibility', () => {
     mocks.modelType = 'custom';
     mocks.configs = [];
     mocks.configsLoading = false;
+    mocks.configsHydrated = true;
     mocks.language = 'en';
     mocks.webSearchLabel = 'Web search';
     mocks.installed = {};
@@ -186,22 +189,22 @@ describe('ConnectorGateway Web search visibility', () => {
       );
       const { unmount } = renderGateway();
 
-      const row = screen
-        .getByRole('button', { name: 'Web search' })
-        .closest('tr');
-      expect(row).toBeVisible();
+      expect(
+        screen.queryByRole('button', { name: 'Web search' })
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent('Loading...');
       await act(async () => resolveCatalog(catalog));
       expect(
         screen.getAllByRole('button', { name: 'Web search' })
       ).toHaveLength(1);
-      expect(
-        screen.getByRole('button', { name: 'Web search' }).closest('tr')
-      ).toBe(row);
 
       unmount();
       mocks.get.mockImplementation(() => new Promise(() => {}));
       renderGateway();
-      expect(screen.getByRole('button', { name: 'Web search' })).toBeVisible();
+      expect(
+        screen.queryByRole('button', { name: 'Web search' })
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent('Loading...');
     }
   );
 
@@ -214,16 +217,16 @@ describe('ConnectorGateway Web search visibility', () => {
       url === '/api/v1/config/info' ? pendingCatalog : Promise.resolve([])
     );
     renderGateway();
-    const row = screen
-      .getByRole('button', { name: 'Web search' })
-      .closest('tr');
+    expect(
+      screen.queryByRole('button', { name: 'Web search' })
+    ).not.toBeInTheDocument();
 
     await act(async () => rejectCatalog(new Error('Catalog unavailable')));
 
     expect(screen.getByText('Catalog unavailable')).toBeVisible();
     expect(
       screen.getByRole('button', { name: 'Web search' }).closest('tr')
-    ).toBe(row);
+    ).toBeVisible();
   });
 
   it('refreshes the seeded Web search label after a locale change', async () => {
@@ -244,17 +247,17 @@ describe('ConnectorGateway Web search visibility', () => {
     expect(screen.queryByRole('button', { name: 'Web search' })).toBeNull();
   });
 
-  it('shows loading instead of disconnected while custom-model configs are unknown', () => {
+  it('keeps the initial list in its loading state until connector status is known', async () => {
     mocks.configsLoading = true;
-    mocks.get.mockImplementation(() => new Promise(() => {}));
+    mocks.configsHydrated = false;
     const view = renderGateway();
-    const row = screen
-      .getByRole('button', { name: 'Web search' })
-      .closest('tr')!;
-    expect(within(row).getByText('Loading...')).toBeVisible();
-    expect(within(row).queryByText('Not connected')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Web search' })
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Loading...');
 
     mocks.configsLoading = false;
+    mocks.configsHydrated = true;
     mocks.configs = [{ config_name: 'QUERIT_ENABLED', config_value: 'true' }];
     view.rerender(
       <MemoryRouter>
@@ -263,6 +266,30 @@ describe('ConnectorGateway Web search visibility', () => {
         </SettingsHeaderProvider>
       </MemoryRouter>
     );
+    const row = (
+      await screen.findByRole('button', { name: 'Web search' })
+    ).closest('tr')!;
     expect(within(row).getByText('Connected')).toBeVisible();
+  });
+
+  it('keeps a known Web search status stable during a background refresh', async () => {
+    mocks.configs = [{ config_name: 'QUERIT_ENABLED', config_value: 'true' }];
+    const view = renderGateway();
+    const row = (
+      await screen.findByRole('button', { name: 'Web search' })
+    ).closest('tr')!;
+    expect(within(row).getByText('Connected')).toBeVisible();
+
+    mocks.configsLoading = true;
+    view.rerender(
+      <MemoryRouter>
+        <SettingsHeaderProvider activeSection="connectors">
+          <ConnectorGateway />
+        </SettingsHeaderProvider>
+      </MemoryRouter>
+    );
+
+    expect(within(row).getByText('Connected')).toBeVisible();
+    expect(within(row).queryByText('Loading...')).not.toBeInTheDocument();
   });
 });

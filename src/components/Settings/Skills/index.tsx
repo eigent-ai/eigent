@@ -17,6 +17,7 @@ import CollectionToolbar, {
   COLLECTION_RAIL_CLASS,
   COLLECTION_TOOLBAR_SEARCH_CLASS,
 } from '@/components/Layout/CollectionToolbar';
+import { useFocusContentHeading } from '@/components/Layout/ContentHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -42,7 +43,7 @@ import {
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { shellDetailBackState } from '@/lib/shellRoutes';
 import { Bell, Folder, RefreshCw, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import SettingsContentShell from '../SettingsContentShell';
@@ -97,8 +98,7 @@ function rememberSkillsNoticeMinimized(): void {
 export default function Skills() {
   const { t } = useTranslation();
   const location = useLocation();
-  const headingRef = useRef<HTMLHeadingElement>(null);
-  useEffect(() => headingRef.current?.focus({ preventScroll: true }), []);
+  const headingRef = useFocusContentHeading();
   const {
     entries,
     spaces,

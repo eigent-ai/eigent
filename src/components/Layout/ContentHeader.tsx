@@ -16,8 +16,11 @@ import { cn } from '@/lib/utils';
 import { useIsPresent } from 'framer-motion';
 import {
   createContext,
+  useCallback,
   useContext,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -41,38 +44,42 @@ export const CONTENT_HEADER_TITLE_CLASS =
   'min-w-0 shrink truncate !text-ds-text-body-large font-semibold text-ds-ink-default-default';
 
 const ContentHeaderFrameContext = createContext<{
-  activeKey: string;
   element: HTMLElement | null;
+  setBorder: (border: boolean) => void;
 } | null>(null);
-const ContentHeaderOwnerContext = createContext<string | null>(null);
 
-export const ContentHeaderOwner = ContentHeaderOwnerContext.Provider;
-
-/** Capture this value on a keyed animation child, including its lazy content. */
-export function useContentHeaderOwner() {
-  return useContext(ContentHeaderOwnerContext);
+/** Focus a page heading when its DOM node or represented page changes. */
+export function useFocusContentHeading(pageKey?: unknown) {
+  const previousNode = useRef<HTMLHeadingElement | null>(null);
+  const previousPageKey = useRef<unknown>();
+  return useCallback(
+    (node: HTMLHeadingElement | null) => {
+      if (
+        node &&
+        (node !== previousNode.current || pageKey !== previousPageKey.current)
+      ) {
+        node.focus({ preventScroll: true });
+      }
+      previousNode.current = node;
+      previousPageKey.current = pageKey;
+    },
+    [pageKey]
+  );
 }
 
 /** Keep the page divider outside keyed content transitions and lazy loading. */
-export function ContentHeaderFrame({
-  activeKey,
-  enabled = true,
-  children,
-}: {
-  activeKey: string;
-  enabled?: boolean;
-  children: ReactNode;
-}) {
+export function ContentHeaderFrame({ children }: { children: ReactNode }) {
   const [element, setElement] = useState<HTMLElement | null>(null);
-  const value = useMemo(() => ({ activeKey, element }), [activeKey, element]);
+  const [border, setBorder] = useState(true);
+  const value = useMemo(() => ({ element, setBorder }), [element]);
   return (
-    <ContentHeaderFrameContext.Provider value={enabled ? value : null}>
-      {enabled && (
-        <header
-          ref={setElement}
-          data-content-header-frame
-          className="relative min-h-ds-layout-row-header w-full shrink-0"
-        >
+    <ContentHeaderFrameContext.Provider value={value}>
+      <header
+        ref={setElement}
+        data-content-header-frame
+        className="relative min-h-ds-layout-row-header w-full shrink-0"
+      >
+        {border ? (
           <div
             aria-hidden
             data-content-header-divider
@@ -81,8 +88,8 @@ export function ContentHeaderFrame({
               CONTENT_HEADER_BORDER_CLASS
             )}
           />
-        </header>
-      )}
+        ) : null}
+      </header>
       {children}
     </ContentHeaderFrameContext.Provider>
   );
@@ -133,10 +140,12 @@ export default function ContentHeader({
   persistent = false,
 }: ContentHeaderProps) {
   const frame = useContext(ContentHeaderFrameContext);
-  const ownerKey = useContentHeaderOwner();
   const isPresent = useIsPresent();
   const portaled = persistent && frame !== null;
   const Element = portaled ? 'div' : 'header';
+  useLayoutEffect(() => {
+    if (portaled && isPresent) frame.setBorder(border);
+  }, [border, frame, isPresent, portaled]);
   const content = (
     <Element
       className={cn(
@@ -166,7 +175,7 @@ export default function ContentHeader({
     </Element>
   );
   if (!portaled) return content;
-  return frame.element && ownerKey === frame.activeKey && isPresent
+  return frame.element && isPresent
     ? createPortal(content, frame.element)
     : null;
 }

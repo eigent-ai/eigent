@@ -12,12 +12,13 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import ContentHeader from '@/components/Layout/ContentHeader';
+import ContentHeader, {
+  useFocusContentHeading,
+} from '@/components/Layout/ContentHeader';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { SettingsSectionId } from '@/store/settingsStore';
 import { ArrowLeft } from 'lucide-react';
-import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSettingsHeader } from './SettingsHeaderContext';
 import { getSettingsNavigationItem } from './settingsNavigation';
@@ -33,9 +34,7 @@ interface SettingsHeaderProps {
 export default function SettingsHeader({ activeSection }: SettingsHeaderProps) {
   const { t } = useTranslation();
   const { headerOverride, setHeaderActionsElement } = useSettingsHeader();
-  const headingRef = useCallback((heading: HTMLHeadingElement | null) => {
-    heading?.focus();
-  }, []);
+  const headingRef = useFocusContentHeading(activeSection);
   const item = getSettingsNavigationItem(activeSection);
   const title =
     headerOverride?.title ??

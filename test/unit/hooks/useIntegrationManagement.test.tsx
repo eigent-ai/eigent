@@ -54,17 +54,26 @@ describe('integration configuration snapshot hydration', () => {
     await waitFor(() =>
       expect(initial.result.current.configsLoading).toBe(false)
     );
+    expect(initial.result.current.configsHydrated).toBe(true);
     initial.unmount();
     mocks.get.mockClear();
 
-    const frames: Array<{ configs: unknown[]; loading: boolean }> = [];
+    const frames: Array<{
+      configs: unknown[];
+      loading: boolean;
+      hydrated: boolean;
+    }> = [];
     renderHook(() => {
       const state = useIntegrationManagement(items);
-      frames.push({ configs: state.configs, loading: state.configsLoading });
+      frames.push({
+        configs: state.configs,
+        loading: state.configsLoading,
+        hydrated: state.configsHydrated,
+      });
       return state;
     });
 
-    expect(frames[0]).toEqual({ configs, loading: false });
+    expect(frames[0]).toEqual({ configs, loading: false, hydrated: true });
     expect(mocks.get).not.toHaveBeenCalled();
   });
 
@@ -77,13 +86,25 @@ describe('integration configuration snapshot hydration', () => {
     mocks.email = 'different-connector-user@example.com';
     mocks.get.mockImplementation(() => new Promise(() => {}));
 
-    const frames: Array<{ configs: unknown[]; loading: boolean }> = [];
+    const frames: Array<{
+      configs: unknown[];
+      loading: boolean;
+      hydrated: boolean;
+    }> = [];
     renderHook(() => {
       const state = useIntegrationManagement(items);
-      frames.push({ configs: state.configs, loading: state.configsLoading });
+      frames.push({
+        configs: state.configs,
+        loading: state.configsLoading,
+        hydrated: state.configsHydrated,
+      });
       return state;
     });
 
-    expect(frames[0]).toEqual({ configs: [], loading: true });
+    expect(frames[0]).toEqual({
+      configs: [],
+      loading: true,
+      hydrated: false,
+    });
   });
 });

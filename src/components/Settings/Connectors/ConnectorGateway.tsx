@@ -35,7 +35,9 @@ import CollectionToolbar, {
   COLLECTION_TOOLBAR_SEARCH_CLASS,
 } from '@/components/Layout/CollectionToolbar';
 import ContentBreadcrumb from '@/components/Layout/ContentBreadcrumb';
-import ContentHeader from '@/components/Layout/ContentHeader';
+import ContentHeader, {
+  useFocusContentHeading,
+} from '@/components/Layout/ContentHeader';
 import DocumentContentRail from '@/components/Layout/DocumentContentRail';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -421,6 +423,7 @@ export default function ConnectorGateway() {
   );
   const [builtInCatalogLoaded, setBuiltInCatalogLoaded] = useState(false);
   const [customMcps, setCustomMcps] = useState<MCPUserItem[]>([]);
+  const [customMcpsLoaded, setCustomMcpsLoaded] = useState(false);
   const [openConnections, setOpenConnections] = useState<ConnectorProvider[]>(
     []
   );
@@ -462,7 +465,6 @@ export default function ConnectorGateway() {
   const [actionsOverflow, setActionsOverflow] = useState(false);
   const preferredSelectionRef = useRef<ConnectorInstallHint | null>(null);
   const actionsListRef = useRef<HTMLDivElement | null>(null);
-  const detailHeadingRef = useRef<HTMLHeadingElement>(null);
   const translationRef = useRef(t);
   const locale = i18n.resolvedLanguage || i18n.language;
   const selectedId = searchParams.get('connectorId') || OVERVIEW_ID;
@@ -538,6 +540,7 @@ export default function ConnectorGateway() {
     installed: rawBuiltInInstalled,
     configs,
     configsLoading,
+    configsHydrated,
     fetchInstalled: refreshBuiltIns,
     saveEnvAndConfig,
     handleUninstall,
@@ -694,6 +697,7 @@ export default function ConnectorGateway() {
       );
       setCustomMcps([]);
     } finally {
+      setCustomMcpsLoaded(true);
       setLoadingCustom(false);
     }
   }, []);
@@ -705,7 +709,6 @@ export default function ConnectorGateway() {
       return;
     }
     setLoadingOpen(true);
-    setOpenConnectionsLoaded(false);
     try {
       setOpenConnections(await fetchConnectedProviders());
     } catch (error: any) {
@@ -859,12 +862,7 @@ export default function ConnectorGateway() {
     () => connectorItems.find((item) => item.id === selectedId) || null,
     [connectorItems, selectedId]
   );
-
-  useEffect(() => {
-    if (selected) {
-      detailHeadingRef.current?.focus({ preventScroll: true });
-    }
-  }, [selected]);
+  const setDetailHeading = useFocusContentHeading(selected?.id);
 
   const selectedOpenService =
     selected?.source === 'open' ? selected.provider.service : null;
@@ -1169,10 +1167,20 @@ export default function ConnectorGateway() {
     capabilityStatus === 'idle' ||
     capabilityStatus === 'loading' ||
     (connectorGatewayEnabled && !openConnectionsLoaded) ||
+    !configsHydrated ||
+    !customMcpsLoaded ||
+    !builtInCatalogLoaded ||
     configsLoading ||
     loadingOpen ||
     loadingCustom ||
     loadingBuiltIns;
+  const initialLoading =
+    capabilityStatus === 'idle' ||
+    capabilityStatus === 'loading' ||
+    (connectorGatewayEnabled && !openConnectionsLoaded) ||
+    !configsHydrated ||
+    !customMcpsLoaded ||
+    !builtInCatalogLoaded;
 
   useEffect(() => {
     const navigationItems = connectorItems.map((item) => ({
@@ -1208,12 +1216,12 @@ export default function ConnectorGateway() {
         });
       }
     }
-    publishItems(navigationItems, pageLoading);
+    publishItems(navigationItems, initialLoading);
   }, [
     browseTarget,
     builtInInstalled,
     connectorItems,
-    pageLoading,
+    initialLoading,
     publishItems,
   ]);
 
@@ -1537,7 +1545,7 @@ export default function ConnectorGateway() {
         titleAsChild
         title={
           <ContentBreadcrumb
-            headingRef={detailHeadingRef}
+            headingRef={setDetailHeading}
             ariaLabel={t('layout.breadcrumb', { defaultValue: 'Breadcrumb' })}
             segments={[
               {
@@ -1621,7 +1629,7 @@ export default function ConnectorGateway() {
   };
 
   const renderConnectorTable = () => {
-    if (pageLoading && connectorItems.length === 0) {
+    if (initialLoading) {
       return (
         <div className="flex w-full flex-col gap-ds-4" role="status">
           <span className="sr-only">{t('connectors.loading')}</span>
@@ -1683,15 +1691,9 @@ export default function ConnectorGateway() {
           </TableHeader>
           <TableBody>
             {visibleItems.map((item) => {
-              const statusLabel =
-                item.source === 'builtin' &&
-                item.item.key === 'Search' &&
-                searchRequiresApiKey &&
-                configsLoading
-                  ? t('connectors.loading')
-                  : item.active
-                    ? t('connectors.connected')
-                    : t('connectors.not-connected');
+              const statusLabel = item.active
+                ? t('connectors.connected')
+                : t('connectors.not-connected');
               return (
                 <TableRow key={item.id} className={CONNECTOR_TABLE_ROW_CLASS}>
                   <TableCell className="w-full max-w-0">
@@ -2074,9 +2076,11 @@ export default function ConnectorGateway() {
         width="wide"
         aria-label={t('connectors.connector-toolbar')}
         count={
-          <Badge variant="secondary" size="xs">
-            {visibleItems.length}
-          </Badge>
+          initialLoading ? null : (
+            <Badge variant="secondary" size="xs">
+              {visibleItems.length}
+            </Badge>
+          )
         }
       >
         <div className={COLLECTION_TOOLBAR_SEARCH_CLASS}>

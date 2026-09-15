@@ -23,10 +23,7 @@ import SpaceDetail, {
 } from '@/components/Home/SpaceDetail';
 import SpaceDetailSidebar from '@/components/Home/SpaceDetailSidebar';
 import AppShellLayout from '@/components/Layout/AppShellLayout';
-import {
-  ContentHeaderFrame,
-  ContentHeaderOwner,
-} from '@/components/Layout/ContentHeader';
+import { ContentHeaderFrame } from '@/components/Layout/ContentHeader';
 import {
   SettingsHeader,
   SettingsHeaderProvider,
@@ -585,10 +582,7 @@ function HomeSettingsPageContent() {
       <ConnectorsNavigationProvider>
         <AppShellLayout sidebar={sidebar} sidebarHidden={sidebarHidden}>
           <main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-            <ContentHeaderFrame
-              activeKey={`${contentPane}:${activeSection}`}
-              enabled={!isSpacesView}
-            >
+            <ContentHeaderFrame>
               <div className="relative min-h-0 flex-1">
                 <AnimatePresence
                   initial={false}
@@ -600,11 +594,7 @@ function HomeSettingsPageContent() {
                     pane={contentPane}
                     motionContext={navigationMotionContext}
                   >
-                    <ContentHeaderOwner
-                      value={`${contentPane}:${activeSection}`}
-                    >
-                      {content}
-                    </ContentHeaderOwner>
+                    {content}
                   </AnimatedContentPane>
                 </AnimatePresence>
               </div>
