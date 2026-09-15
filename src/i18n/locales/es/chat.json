@@ -393,5 +393,5 @@
   "workspace-queue-position": " Posición en la cola: {{position}}.",
   "workspace-waiting-description": "Otra tarea está actualizando este Espacio. Esta tarea se iniciará automáticamente cuando el Espacio esté disponible.{{position}}",
   "workspace-waiting-title": "Esperando al Espacio",
-  "files-list-incomplete": "La lista de archivos puede estar incompleta."
+  "files-list-incomplete": "Incompleto"
 }

@@ -405,5 +405,5 @@
   "workspace-queue-position": " موضع قائمة الانتظار: {{position}}.",
   "workspace-waiting-description": "تعمل مهمة أخرى على تحديث هذه المساحة. ستبدأ هذه المهمة تلقائيًا عندما تصبح المساحة متاحة.{{position}}",
   "workspace-waiting-title": "في انتظار المساحة",
-  "files-list-incomplete": "قد تكون قائمة الملفات غير مكتملة."
+  "files-list-incomplete": "غير مكتمل"
 }

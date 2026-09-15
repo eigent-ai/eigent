@@ -385,5 +385,5 @@
   "workspace-queue-position": " 佇列位置：{{position}}。",
   "workspace-waiting-description": "另一項任務正在更新此空間。空間可用後，此任務將自動開始。{{position}}",
   "workspace-waiting-title": "正在等待空間",
-  "files-list-incomplete": "檔案清單可能不完整。"
+  "files-list-incomplete": "不完整"
 }

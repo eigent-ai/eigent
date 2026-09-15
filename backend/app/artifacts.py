@@ -50,8 +50,9 @@ from app.workspace_git.path_policy import WorkspacePathPolicy
 
 logger = logging.getLogger("artifacts")
 
-MAX_ARTIFACTS_PER_RUN = 500
-MAX_ARTIFACT_SCAN_SECONDS = 3.0
+MAX_ARTIFACT_SCAN_SECONDS = 30.0
+# Bound traversal work, not the number of outputs at an arbitrary 500-file
+# prefix. Render tasks routinely produce more files than that.
 MAX_ARTIFACT_SCAN_ENTRIES = 100_000
 _ACTIVE_RUN_STATUSES = {"pending", "running", "waiting_for_user"}
 _AGENT_GENERATED_UPLOAD_POLICY = "agent_generated"
@@ -315,11 +316,14 @@ def _git_run_changed_artifacts(
     )
     try:
         include = _artifact_path_filter(visible_root)
-        allowed = include(
-            tuple(
-                str(visible_root / change.relative_path) for change in changes
-            )
+        paths = tuple(
+            str(visible_root / change.relative_path) for change in changes
         )
+        allowed: set[str] = set()
+        for offset in range(0, len(paths), WORKSPACE_PATH_LIMIT):
+            allowed.update(
+                include(paths[offset : offset + WORKSPACE_PATH_LIMIT])
+            )
     except (GitBackendError, OSError, ValueError):
         return ArtifactScanResult([], "classification_unavailable", True)
     for change in sorted(
@@ -357,10 +361,6 @@ def _git_run_changed_artifacts(
                 ),
             }
         )
-        if len(values) > MAX_ARTIFACTS_PER_RUN:
-            truncated = True
-            values.pop()
-            break
     return ArtifactScanResult(
         artifacts=values,
         scan_status="partial" if truncated else "complete",
@@ -370,7 +370,7 @@ def _git_run_changed_artifacts(
 
 def discover_task_changed_files(
     snapshot: TaskSnapshot,
-    max_entries: int = MAX_ARTIFACTS_PER_RUN,
+    max_entries: int = MAX_ARTIFACT_SCAN_ENTRIES,
     modification_windows: tuple[tuple[float, float | None], ...] | None = None,
     *,
     working_root_upload_policy: str = _METADATA_ONLY_UPLOAD_POLICY,
@@ -542,7 +542,7 @@ def discover_task_changed_files(
 
 def scan_task_changed_files(
     snapshot: TaskSnapshot,
-    max_entries: int = MAX_ARTIFACTS_PER_RUN,
+    max_entries: int = MAX_ARTIFACT_SCAN_ENTRIES,
     modification_windows: tuple[tuple[float, float | None], ...] | None = None,
     *,
     working_root_upload_policy: str = _METADATA_ONLY_UPLOAD_POLICY,
@@ -810,12 +810,8 @@ def finalize_run_artifacts(
             ordered = sorted(
                 git_by_path.values(), key=lambda item: item["relativePath"]
             ) + sorted(direct_only, key=lambda item: item["relativePath"])
-            artifacts = ordered[:MAX_ARTIFACTS_PER_RUN]
-            truncated = (
-                scan_result.truncated
-                or git_result.truncated
-                or len(ordered) > MAX_ARTIFACTS_PER_RUN
-            )
+            artifacts = ordered
+            truncated = scan_result.truncated or git_result.truncated
             scan_status = "partial" if truncated else "complete"
 
     manifest = record_artifact_manifest(

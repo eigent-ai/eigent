@@ -14,6 +14,7 @@
 
 import { ArtifactChangeList } from '@/components/ChatBox/MessageItem/ArtifactChangeList';
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 function file(name: string, artifactChange?: FileInfo['artifactChange']) {
@@ -70,7 +71,7 @@ describe('ArtifactChangeList', () => {
     ).toHaveAttribute('aria-expanded', 'true');
   });
 
-  it('renders an incomplete-manifest warning even when no files are available', () => {
+  it('keeps the incomplete indicator in the header and reveals its tooltip on focus', async () => {
     render(
       <ArtifactChangeList
         files={[]}
@@ -80,9 +81,25 @@ describe('ArtifactChangeList', () => {
     );
 
     expect(screen.getByText('Edited 0 files')).toBeInTheDocument();
-    expect(
-      screen.getByText('The file list may be incomplete.')
-    ).toBeInTheDocument();
+    const warning = screen.getByRole('button', { name: 'Incomplete' });
+    expect(warning.parentElement).toContainElement(
+      screen.getByText('Edited 0 files')
+    );
+    expect(screen.queryByText('Incomplete')).not.toBeInTheDocument();
+    fireEvent.focus(warning);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Incomplete');
+  });
+
+  it('shows the incomplete tooltip on hover', async () => {
+    render(
+      <ArtifactChangeList
+        files={[file('one.ts')]}
+        onOpen={() => {}}
+        truncated
+      />
+    );
+    await userEvent.hover(screen.getByRole('button', { name: 'Incomplete' }));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Incomplete');
   });
 
   it('renders unresolved Artifact identity without an open capability', () => {
@@ -102,6 +119,31 @@ describe('ArtifactChangeList', () => {
     expect(row.tagName).toBe('DIV');
     fireEvent.click(row);
     expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it('excludes empty legacy receipts and runtime logs from the count and rows', () => {
+    render(
+      <ArtifactChangeList
+        files={[
+          { name: '', path: '', type: 'File' },
+          file('one.ts'),
+          {
+            name: 'session.log',
+            path: '/workspace/terminal_logs/session.log',
+            type: 'log',
+          },
+        ]}
+        onOpen={() => {}}
+        totals={{ added: 2, removed: 1 }}
+      />
+    );
+    expect(screen.getByText('Edited 1 file')).toBeInTheDocument();
+    expect(
+      screen.getByText('+2').parentElement?.parentElement
+    ).toContainElement(screen.getByText('Edited 1 file'));
+    expect(
+      screen.queryByRole('button', { name: 'Incomplete' })
+    ).not.toBeInTheDocument();
   });
 
   it('renders nothing for an empty complete manifest', () => {

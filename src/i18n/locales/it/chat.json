@@ -393,5 +393,5 @@
   "workspace-queue-position": " Posizione della coda: {{position}}.",
   "workspace-waiting-description": "Un'altra attività è la mappatura di questo spazio. Questa attività si avvierà automaticamente quando lo spazio sarà disponibile.{{position}}",
   "workspace-waiting-title": "Attesa dello spazio",
-  "files-list-incomplete": "L’elenco dei file potrebbe essere incompleto."
+  "files-list-incomplete": "Incompleto"
 }

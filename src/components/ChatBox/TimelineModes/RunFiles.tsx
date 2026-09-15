@@ -12,7 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { ArtifactChangeList } from '@/components/ChatBox/MessageItem/ArtifactChangeList';
+import {
+  ArtifactChangeList,
+  type ArtifactChangeListProps,
+} from '@/components/ChatBox/MessageItem/ArtifactChangeList';
+import { isDisplayableOutputFile } from '@/lib/agentFileFilters';
 import {
   reconcileRunOutputFiles,
   type RunOutputSources,
@@ -225,9 +229,6 @@ export function useRunFileInfo({
 
 export function RunFilesGroup(props: RunFilesProps) {
   const files = useRunFileInfo(props);
-  const { active: loadDiffStats, rootRef } = useRunFileDiffStatsActivation(
-    files.length > 0
-  );
   const previewProjectId = usePageTabStore(
     (state) => state.sessionPreviewProjectId
   );
@@ -238,11 +239,41 @@ export function RunFilesGroup(props: RunFilesProps) {
   });
   const openFilePreview = usePageTabStore((state) => state.openFilePreview);
   const openReviewPreview = usePageTabStore((state) => state.openReviewPreview);
-  const diffStats = useRunFileDiffStats(
-    props.runId,
-    projectId ?? undefined,
-    loadDiffStats
+
+  return (
+    <RunArtifactChangeList
+      runId={props.runId}
+      projectId={projectId ?? undefined}
+      files={files}
+      scanStatus={props.artifactManifest?.scanStatus}
+      truncated={props.artifactManifest?.truncated}
+      onViewChanges={() => openReviewPreview({ runId: props.runId })}
+      onOpen={(file) => {
+        const preview = resolveRunFilePreview(file, workspaceRoot);
+        if (preview) openFilePreview(preview);
+      }}
+      canOpenFile={(file) =>
+        resolveRunFilePreview(file, workspaceRoot) !== null
+      }
+    />
   );
+}
+
+/** Shared by replay and legacy final messages so both receive scoped diff totals. */
+export function RunArtifactChangeList({
+  runId,
+  projectId,
+  files: sourceFiles,
+  ...props
+}: ArtifactChangeListProps & { runId: string; projectId?: string }) {
+  const files = useMemo(
+    () => (sourceFiles || []).filter(isDisplayableOutputFile),
+    [sourceFiles]
+  );
+  const { active: loadDiffStats, rootRef } = useRunFileDiffStatsActivation(
+    files.length > 0
+  );
+  const diffStats = useRunFileDiffStats(runId, projectId, loadDiffStats);
   const lineChangesForFile = useCallback(
     (file: FileInfo) => {
       const path = runFileReviewPath(file);
@@ -270,21 +301,12 @@ export function RunFilesGroup(props: RunFilesProps) {
   }, [diffStats, files]);
 
   return (
-    <div ref={rootRef} className="contents" data-run-files-group={props.runId}>
+    <div ref={rootRef} className="contents" data-run-files-group={runId}>
       <ArtifactChangeList
+        {...props}
         files={files}
-        scanStatus={props.artifactManifest?.scanStatus}
-        truncated={props.artifactManifest?.truncated}
         totals={totals}
         lineChangesForFile={lineChangesForFile}
-        onViewChanges={() => openReviewPreview({ runId: props.runId })}
-        onOpen={(file) => {
-          const preview = resolveRunFilePreview(file, workspaceRoot);
-          if (preview) openFilePreview(preview);
-        }}
-        canOpenFile={(file) =>
-          resolveRunFilePreview(file, workspaceRoot) !== null
-        }
       />
     </div>
   );

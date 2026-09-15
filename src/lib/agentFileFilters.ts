@@ -68,3 +68,12 @@ export function filterVisibleAgentFiles<T extends AgentFileLike>(
 ): T[] {
   return files.filter(isVisibleAgentFile);
 }
+
+/** Reject empty legacy file receipts while retaining named, unavailable outputs. */
+export function isDisplayableOutputFile(file: AgentFileLike): boolean {
+  return (
+    Boolean(
+      file.path?.trim() || file.relativePath?.trim() || file.name?.trim()
+    ) && isVisibleAgentFile(file)
+  );
+}

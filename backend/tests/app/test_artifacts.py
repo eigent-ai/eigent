@@ -399,3 +399,92 @@ def test_discovery_marks_exact_result_cap_as_partial(tmp_path):
     assert len(result.artifacts) == 1
     assert result.scan_status == "partial"
     assert result.truncated is True
+
+
+def test_render_task_retains_more_than_500_files_through_durable_manifest(
+    tmp_path,
+):
+    output_root = tmp_path / "output"
+    output_root.mkdir()
+    for index in range(620):
+        (output_root / f"frame-{index:04}.txt").write_text(
+            "frame", encoding="utf-8"
+        )
+    snapshot = SimpleNamespace(
+        task_output_root=str(output_root),
+        working_directory=str(output_root),
+        task_start_time=0,
+    )
+    result = artifacts.discover_task_changed_files(snapshot)
+    assert len(result.artifacts) == 620
+    assert result.scan_status == "complete"
+    assert result.truncated is False
+    journal = SQLiteRunJournal(tmp_path / "journal.sqlite3")
+    try:
+        journal.ensure_run(run_id="render", project_id="project")
+        manifest = artifacts.record_artifact_manifest(
+            journal,
+            run_id="render",
+            project_id="project",
+            artifacts=result.artifacts,
+            scan_status=result.scan_status,
+            truncated=result.truncated,
+        )
+        assert manifest.payload["artifact_count"] == 620
+        assert (
+            len(
+                journal.get_run_artifact_manifest_event("render").payload[
+                    "artifacts"
+                ]
+            )
+            == 620
+        )
+        assert manifest.payload["scan_status"] == "complete"
+    finally:
+        journal.close()
+
+
+def test_git_artifacts_keep_every_change_and_classify_in_batches(
+    monkeypatch, tmp_path
+):
+    changes = []
+    for index in range(620):
+        name = f"frame-{index:04}.txt"
+        (tmp_path / name).write_text("frame", encoding="utf-8")
+        changes.append(SimpleNamespace(relative_path=name, status="A"))
+    journal = MagicMock()
+    journal.get_run_git_materialization.return_value = SimpleNamespace(
+        workspace_base_commit="base",
+        promoted_commit="target",
+        materialization_state="promoted",
+        repository_id="repo",
+    )
+    journal.get_git_repository.return_value = SimpleNamespace(
+        root_path=str(tmp_path)
+    )
+    journal.get_project_git_state.return_value = SimpleNamespace(
+        pending_apply=False
+    )
+    monkeypatch.setattr(
+        artifacts.GitBackend,
+        "changed_paths_between",
+        lambda *args, **kwargs: changes,
+    )
+    batches = []
+
+    def classify(paths):
+        batches.append(len(paths))
+        assert len(paths) <= artifacts.WORKSPACE_PATH_LIMIT
+        return set(paths)
+
+    monkeypatch.setattr(
+        artifacts, "_artifact_path_filter", lambda root: classify
+    )
+    result = artifacts._git_run_changed_artifacts(
+        journal, SimpleNamespace(run_id="render", project_id="project")
+    )
+    assert result is not None
+    assert len(result.artifacts) == 620
+    assert batches == [500, 120]
+    assert result.scan_status == "complete"
+    assert result.truncated is False

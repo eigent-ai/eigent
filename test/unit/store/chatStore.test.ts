@@ -461,6 +461,22 @@ describe('ChatStore - Core Functionality', () => {
       expect(files).toEqual([]);
     });
 
+    it('drops empty write receipts from canonical output lists', () => {
+      const output = {
+        name: 'report.md',
+        path: '/workspace/report.md',
+        type: 'md',
+      };
+      expect(
+        resolveRunOutputFileList({
+          writeEventFiles: [{ name: '', path: '', type: 'File' }],
+          artifactFiles: [output],
+          canonicalArtifactsAvailable: true,
+          finalAnswerFiles: [],
+        })
+      ).toEqual([output]);
+    });
+
     it('keeps final-answer path extraction as a fallback without a canonical artifact index', () => {
       const finalAnswerFiles = [
         {

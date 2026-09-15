@@ -393,5 +393,5 @@
   "files-added_many": "{{count}} fichiers ajoutés",
   "show-more-files_many": "Afficher {{count}} fichiers supplémentaires",
   "timeline-action-count_many": "{{count}} actions",
-  "files-list-incomplete": "La liste des fichiers peut être incomplète."
+  "files-list-incomplete": "Incomplet"
 }

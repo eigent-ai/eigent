@@ -1,7 +1,8 @@
 # Session side panel: file results bug investigation and fix plan
 
 Date: 2026-09-14. Updated: 2026-09-15. Status: all three fixes implemented;
-198 focused tests passed, with Electron fixture verification completed.
+198 initial focused tests passed; the follow-up below adds backend and header
+regressions, with Electron fixture verification completed.
 A live model run interrupted with Cmd+Q remains unverified because the local
 account is out of credits.
 
@@ -26,7 +27,48 @@ below. Upstream changes listed above are not authored by this PR. The header
 action still uses shared initial-history hydration; older-page recovery remains
 owned by its existing runtime and UI.
 
-## Implementation and verification — 2026-09-15
+## Follow-up: incomplete file list and inline header — 2026-09-15
+
+The backend capped both filesystem and Git artifact discovery at 500 outputs,
+then capped their merged manifest again. Frame-heavy jobs could therefore
+finish successfully while their saved file list was partial. The filesystem
+scan also had a three-second deadline; a read-only workspace probe confirmed
+that removing the result cap alone did not resolve that separate limit.
+
+- Removed the 500-output cutoff from discovery, Git attribution, and merging.
+  Filesystem traversal retains its 100,000-entry safety budget and now has a
+  30-second deadline. Git classification uses batches within the existing
+  path-operation limit. Exhausted budgets and unavailable classification still
+  report partial results honestly.
+- Filtered empty legacy file receipts before saving or displaying the final
+  list. Existing cached messages receive the same presentation filter.
+- Replaced the full-width warning row with a ghost/warning/sm/icon-only Button
+  using DsIcon and TooltipSimple. The header reads **Edited N files +added
+  −removed [alert]**; the localized tooltip says **Incomplete** in all locales.
+  Complete results omit the alert. Success/error line-count tokens remain.
+- Shared lazy, task-scoped diff loading with legacy final-message cards.
+  Line counts appear when recorded diffs exist; unavailable baselines are not
+  represented as zero changes.
+
+Regression coverage includes 620 filesystem outputs surviving durable manifest
+storage, 620 Git outputs classified in bounded batches, empty legacy receipts,
+shared legacy/replay diff counts, and tooltip hover/keyboard focus. Frontend
+focused tests, backend artifact tests, type checking, focused ESLint, Ruff,
+locale checks, design-token checks, and whitespace validation passed.
+
+Electron displayed the actual updated components with local fixture inputs.
+Verified inline counts/totals/alert, tooltip on keyboard focus, no warning row,
+complete-state alert removal, and light/dark themes. Line totals in the visual
+fixture were synthetic; API-backed count loading is covered by unit tests.
+No design exceptions were introduced. The original Eigent page was restored.
+
+Previously finalized partial manifests remain immutable historical records;
+this change cannot recover omitted historical paths or missing before-images.
+A current filesystem scan is not proof of the exact historical change set.
+New discovery benefits from the larger budget and removed output cutoff.
+No user journal or task output was modified during investigation.
+
+## Initial implementation and verification — 2026-09-15
 
 - Added `sessionOutputFiles.ts` as the shared Chat/Summary selector. It merges
   path-only writes with canonical IDs within each Run, applies deletion and
