@@ -64,7 +64,6 @@ import { getProviderValid, toProviderValidStatus } from '@/lib/providerStatus';
 import { isSearchConfigured } from '@/lib/searchConfig';
 import { useAuthStore } from '@/store/authStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
-import { useSettingsStore } from '@/store/settingsStore';
 import { Provider } from '@/types';
 import {
   ChevronDown,
@@ -80,7 +79,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import eigentImage from '@/assets/model/eigent.svg';
@@ -264,13 +263,10 @@ export default function SettingModels() {
   // Local Model accordion state
   const [localCollapsed, setLocalCollapsed] = useState(false);
 
-  const settingsNavigationPending = useSettingsStore((state) => state.isOpen);
-  const modelProvider = useSettingsStore((state) => state.modelProvider);
-  const clearModelProvider = useSettingsStore(
-    (state) => state.clearModelProvider
-  );
+  const [searchParams, setSearchParams] = useSearchParams();
+  const modelProvider = searchParams.get('provider');
   useEffect(() => {
-    if (settingsNavigationPending || !modelProvider) return;
+    if (!modelProvider) return;
     const provider = items.find((item) => item.id === modelProvider);
     if (provider) {
       setSelectedTab(`byok-${provider.id}`);
@@ -283,8 +279,10 @@ export default function SettingModels() {
       setSelectedTab(`local-${modelProvider}` as SidebarTab);
       setLocalCollapsed(false);
     }
-    clearModelProvider();
-  }, [settingsNavigationPending, modelProvider, items, clearModelProvider]);
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.delete('provider');
+    setSearchParams(nextSearchParams, { replace: true });
+  }, [modelProvider, items, searchParams, setSearchParams]);
 
   // Cloud Model
   const [cloudPrefer, setCloudPrefer] = useState(false);

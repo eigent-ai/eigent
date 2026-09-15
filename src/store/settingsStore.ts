@@ -40,7 +40,6 @@ interface SettingsState {
     section?: SettingsSectionId,
     options?: SettingsOpenOptions
   ) => void;
-  clearModelProvider: () => void;
   finishSettingsNavigation: () => void;
   closeSettings: () => void;
   setActiveSection: (section: SettingsSectionId) => void;
@@ -50,7 +49,6 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   isOpen: false,
   activeSection: 'models',
   modelProvider: null,
-  clearModelProvider: () => set({ modelProvider: null }),
   openSettings: (section, options) =>
     set((state) => ({
       isOpen: true,
@@ -58,8 +56,8 @@ export const useSettingsStore = create<SettingsState>((set) => ({
         section === 'models' ? (options?.modelProvider ?? null) : null,
       activeSection: section ?? state.activeSection,
     })),
-  // The destination consumes modelProvider after the route has mounted.
-  finishSettingsNavigation: () => set({ isOpen: false }),
+  // The route bridge copies modelProvider into the destination URL.
+  finishSettingsNavigation: () => set({ isOpen: false, modelProvider: null }),
   closeSettings: () => set({ isOpen: false, modelProvider: null }),
   setActiveSection: (activeSection) => set({ activeSection }),
 }));

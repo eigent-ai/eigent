@@ -46,7 +46,7 @@ describe('SettingsRouteBridge', () => {
     });
   });
 
-  it('preserves the provider target until the destination consumes it', async () => {
+  it('moves the provider target into the destination URL', async () => {
     mocks.runAfterWorkspaceConfigurationSave.mockImplementation(
       async (action: () => void) => {
         action();
@@ -62,12 +62,12 @@ describe('SettingsRouteBridge', () => {
     act(() => openSettings('models', { modelProvider: 'ant-ling' }));
     await waitFor(() =>
       expect(screen.getByTestId('location')).toHaveTextContent(
-        '/home?section=settings&tab=models'
+        '/home?section=settings&tab=models&provider=ant-ling'
       )
     );
     expect(useSettingsStore.getState()).toMatchObject({
       isOpen: false,
-      modelProvider: 'ant-ling',
+      modelProvider: null,
     });
   });
 

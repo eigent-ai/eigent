@@ -43,10 +43,10 @@ describe('settingsStore', () => {
     });
   });
 
-  it('clears a consumed provider target and does not reuse it on a general open', () => {
+  it('clears a provider target after the route bridge consumes it', () => {
     openSettings('models', { modelProvider: 'ant-ling' });
     expect(useSettingsStore.getState().modelProvider).toBe('ant-ling');
-    useSettingsStore.getState().clearModelProvider();
+    useSettingsStore.getState().finishSettingsNavigation();
     expect(useSettingsStore.getState().modelProvider).toBeNull();
     openSettings('models', { modelProvider: 'openai' });
     useSettingsStore.getState().closeSettings();
