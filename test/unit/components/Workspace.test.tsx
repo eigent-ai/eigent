@@ -370,7 +370,7 @@ describe('Workspace', () => {
     });
 
     expect(screen.getByText('Cowork with')).toBeInTheDocument();
-    expect(screen.queryByText('Single Agent')).not.toBeInTheDocument();
+    expect(screen.getByText('Single Agent')).toHaveClass('sr-only');
     expect(screen.queryByText('Space switch')).not.toBeInTheDocument();
     expect(container.querySelector('#workspace-bottom-group')).toBeNull();
     expect(screen.getByLabelText('Workspace header')).toHaveClass(
@@ -397,11 +397,14 @@ describe('Workspace', () => {
     expect(workforceAgentList).toHaveClass('h-[46px]', 'min-h-[46px]');
   });
 
-  it('omits the mode label from the Cowork row in both modes', () => {
+  it('keeps the Single Agent mode accessible without restoring its heading', () => {
     const { unmount } = renderWorkspace({ sessionMode: 'single-agent' });
 
     expect(screen.getByText('Cowork with')).toBeInTheDocument();
-    expect(screen.queryByText('Single Agent')).not.toBeInTheDocument();
+    expect(screen.getByText('Single Agent')).toHaveClass('sr-only');
+    expect(
+      document.querySelector('[data-workspace-single-agent-label]')
+    ).not.toBeInTheDocument();
 
     unmount();
     renderWorkspace({ sessionMode: 'workforce' });
