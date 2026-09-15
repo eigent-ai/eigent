@@ -29,6 +29,7 @@ import { showCreditsToast } from '@/components/Toast/creditsToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
 import type { AppHost } from '@/host/types';
 import { generateUniqueId, uploadLog } from '@/lib';
+import { createBrowserPreviewHandoff } from '@/lib/browserPreviewHandoff';
 import {
   classifyError,
   classifyTaskCategory,
@@ -3058,6 +3059,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
         : undefined;
 
+      const handoffBrowserPreview = createBrowserPreviewHandoff(
+        type === 'replay' || !getHostIpcRenderer() ? null : project_id,
+        (url, ownerProjectId) =>
+          usePageTabStore.getState().openBrowserPreview(url, ownerProjectId)
+      );
       let resumeStreamOpened = false;
       let resolveResumeStreamOpen: (() => void) | undefined;
       let rejectResumeStreamOpen: ((error: unknown) => void) | undefined;
@@ -3537,7 +3543,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             setUpdateCount,
             addTokens,
             setStatus,
-            addWebViewUrl,
+            addWebViewUrl: recordWebViewUrl,
             setIsPending,
             addMessages,
             updateMessage,
@@ -3563,6 +3569,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             setAutoConfirmDeadline,
           } = getCurrentChatStore();
 
+          const addWebViewUrl = (
+            taskId: string,
+            url: string,
+            processTaskId: string
+          ) => {
+            recordWebViewUrl(taskId, url, processTaskId);
+            handoffBrowserPreview(url);
+          };
           currentTaskId = getCurrentTaskId();
           // if (tasks[currentTaskId].status === ChatTaskStatus.FINISHED) return
           if (agentMessages.step === AgentStep.DECOMPOSE_TEXT) {
@@ -4462,7 +4476,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
             if (
               agentMessages.data.toolkit_name === 'Browser Toolkit' &&
-              agentMessages.data.method_name === 'browser visit page'
+              ['browser visit page', 'browser_visit_page'].includes(
+                agentMessages.data.method_name ?? ''
+              )
             ) {
               addWebViewUrl(
                 currentTaskId,

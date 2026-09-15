@@ -1583,5 +1583,8 @@
     "reportBug": "الإبلاغ عن خلل…",
     "github": "Eigent على GitHub",
     "inspectElement": "فحص العنصر"
-  }
+  },
+  "browser-preview-failed": "الصفحة غير متاحة",
+  "browser-preview-local-unavailable": "ربما توقف الخادم المحلي. أعد المحاولة عندما يعمل، أو افتح ملف HTML الناتج من الملفات.",
+  "browser-preview-unavailable": "تحقق من العنوان والاتصال، ثم حاول مرة أخرى."
 }

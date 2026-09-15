@@ -1473,5 +1473,8 @@
   "workspace-task-version-agent-count_other": "{{count}} 個智能體",
   "workspace-technical-details": "技術詳情",
   "workspace-technical-details-description_other": "{{count}} 個內部 Git 引用及保留詳情",
-  "workspace-technical-tab": "技術"
+  "workspace-technical-tab": "技術",
+  "browser-preview-failed": "暫時無法開啟頁面",
+  "browser-preview-local-unavailable": "本機伺服器可能已停止。請在伺服器執行後重試，或從檔案中開啟已交付的 HTML 檔案。",
+  "browser-preview-unavailable": "請檢查位址和網路連線，然後重試。"
 }

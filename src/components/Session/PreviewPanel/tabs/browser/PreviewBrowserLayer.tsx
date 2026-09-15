@@ -137,7 +137,7 @@ function PreviewGuest({
   // last shown at so the fade-out happens in place even after the panel
   // stops publishing a viewport (tab switch / project switch unmounts the
   // publisher in the same commit that hides the guest).
-  const showing = visible && viewport !== null;
+  const showing = visible && viewport !== null && !tab.navigation.loadError;
   const [lastViewport, setLastViewport] =
     useState<PreviewBrowserViewport | null>(null);
   useEffect(() => {
@@ -176,21 +176,25 @@ function PreviewGuest({
     element.style.width = '100%';
     element.style.height = '100%';
 
+    let loadError: SessionBrowserNavigationState['loadError'];
+    let lastUrl = initialUrlRef.current;
     const notify = () => {
       // Guest methods throw until the webview is attached; treat as no state.
       let state: SessionBrowserNavigationState;
       try {
         state = {
-          url: element.getURL?.() ?? '',
+          url: loadError?.url ?? element.getURL?.() ?? '',
           title: element.getTitle?.() ?? '',
-          isLoading: element.isLoading?.() ?? false,
+          isLoading: !loadError && (element.isLoading?.() ?? false),
+          loadError,
           canGoBack: element.canGoBack?.() ?? false,
           canGoForward: element.canGoForward?.() ?? false,
         };
       } catch {
         return;
       }
-      const url = state.url.startsWith('about:') ? '' : state.url;
+      const url = /^https?:\/\//i.test(state.url) ? state.url : lastUrl;
+      lastUrl = url;
       usePageTabStore
         .getState()
         .updateBrowserPreviewTabIn(projectId, tabIdRef.current, {
@@ -205,6 +209,26 @@ function PreviewGuest({
         });
     };
 
+    const onStart = () => {
+      loadError = undefined;
+      notify();
+    };
+    const onFailure = (event: Event) => {
+      const failure = event as Event & {
+        isMainFrame: boolean;
+        errorCode: number;
+        validatedURL: string;
+      };
+      // Subresource failures and cancelled/superseded navigations are not page failures.
+      if (!failure.isMainFrame || failure.errorCode === -3) return;
+      loadError = {
+        code: failure.errorCode,
+        url: failure.validatedURL || initialUrlRef.current,
+      };
+      notify();
+    };
+    element.addEventListener('did-start-loading', onStart);
+    element.addEventListener('did-fail-load', onFailure);
     const notifyLanguageChanged = () => notify();
 
     GUEST_EVENTS.forEach((event) => element.addEventListener(event, notify));
@@ -216,6 +240,8 @@ function PreviewGuest({
       GUEST_EVENTS.forEach((event) =>
         element.removeEventListener(event, notify)
       );
+      element.removeEventListener('did-start-loading', onStart);
+      element.removeEventListener('did-fail-load', onFailure);
       i18n.off('languageChanged', notifyLanguageChanged);
       unregisterPreviewWebview(tab.webviewId);
       element.remove();
@@ -228,7 +254,7 @@ function PreviewGuest({
       ref={containerRef}
       data-preview-webview-id={tab.webviewId}
       style={
-        phase === 'parked' || !rect
+        tab.navigation.loadError || phase === 'parked' || !rect
           ? PARKED_STYLE
           : visibleStyle(rect, phase === 'shown')
       }

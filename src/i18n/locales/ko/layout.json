@@ -1473,5 +1473,8 @@
   "workspace-task-version-agent-count_other": "에이전트 {{count}}개",
   "workspace-technical-details": "기술 세부 정보",
   "workspace-technical-details-description_other": "내부 Git 참조 {{count}}개 및 보존 세부 정보",
-  "workspace-technical-tab": "기술"
+  "workspace-technical-tab": "기술",
+  "browser-preview-failed": "페이지를 사용할 수 없습니다",
+  "browser-preview-local-unavailable": "로컬 서버가 중지되었을 수 있습니다. 서버가 실행 중일 때 다시 시도하거나 파일에서 결과 HTML 파일을 여세요.",
+  "browser-preview-unavailable": "주소와 연결을 확인한 후 다시 시도하세요."
 }
