@@ -33,6 +33,7 @@ from app.run_journal import (
     get_default_run_journal,
 )
 from app.run_journal.memory_policy import assert_memory_entry_policy
+from app.tool_validation import ToolPreWriteValidationError
 
 try:
     import tiktoken
@@ -784,8 +785,19 @@ class LightweightMemoryService:
             and scope_type != "project"
             and not confirmed_by_user_action
         ):
-            raise PermissionError(
-                "Agent Space/User Memory mutations require HumanInteraction"
+            raise ToolPreWriteValidationError(
+                "Agent Space/User Memory mutations require HumanInteraction",
+                error_code="MEMORY_SCOPE_REJECTED",
+                field="scope",
+                recovery={
+                    "tool": "promote_project_memory",
+                    "instruction": (
+                        "Direct agent writes are limited to current Project "
+                        "Memory. Use promote_project_memory with an exact "
+                        "user review for Space/User Memory, or skip this "
+                        "Memory write and continue delivering the work."
+                    ),
+                },
             )
 
     def _require_entry(self, memory_id: str) -> MemoryEntryRecord:
@@ -806,9 +818,25 @@ class LightweightMemoryService:
 
         if source_trust != "user_asserted":
             return
+        recovery = {
+            "tool": "search_project_history",
+            "instruction": (
+                "Search current Project History for the user's statement. "
+                "Retry with source_event_ids containing the returned event_id "
+                "of matching user.message events, not citation_id or Run IDs. "
+                "Every event must belong to this Project. Never invent IDs "
+                "or label model/tool text user_asserted. If no matching user "
+                "statement exists, use model_inferred for your inference or "
+                "tool_observed for a tool observation only when accurate, "
+                "or skip this Memory write and continue delivering the work."
+            ),
+        }
         if scope_type != "project" or not source_refs:
-            raise PermissionError(
-                "Agent user_asserted Memory requires cited user History events"
+            raise ToolPreWriteValidationError(
+                "Agent user_asserted Memory requires cited user History events",
+                error_code="MEMORY_PROVENANCE_REJECTED",
+                field="source_event_ids",
+                recovery=recovery,
             )
         events = self._journal.get_events_by_id(source_refs)
         valid = len(events) == len(source_refs)
@@ -822,9 +850,12 @@ class LightweightMemoryService:
                 valid = False
                 break
         if not valid:
-            raise PermissionError(
+            raise ToolPreWriteValidationError(
                 "Agent user_asserted Memory citations must be user.message "
-                "events from the same Project"
+                "events from the same Project",
+                error_code="MEMORY_PROVENANCE_REJECTED",
+                field="source_event_ids",
+                recovery=recovery,
             )
 
 

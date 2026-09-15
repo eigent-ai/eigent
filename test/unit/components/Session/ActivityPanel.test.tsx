@@ -349,6 +349,101 @@ describe('SessionActivityPanel project scope', () => {
     );
   });
 
+  it('keeps Latest empty without registered output and shows only durable historical files in All', async () => {
+    const scopedOverview = overview('run-current');
+    const historical = {
+      ...overview('run-old').currentRun,
+      isCurrent: false,
+      createdAt: 500,
+      nodes: [
+        'output/final.mp4',
+        'output/scene.blend',
+        'output/frames/frame.png',
+      ].map((relativePath, index): ChatProjectionNode => ({
+        id: `artifact-${index}`,
+        eventId: `artifact-${index}`,
+        eventType: 'artifact.created',
+        projectId: 'project-1',
+        runId: 'run-old',
+        runSequence: index + 1,
+        cloudCursor: index + 1,
+        createdAt: new Date(500).toISOString(),
+        legacyStep: null,
+        kind: 'artifact',
+        operation: 'created',
+        artifactId: `artifact-${index}`,
+        path: relativePath,
+        relativePath,
+        name: relativePath.split('/').at(-1),
+      })),
+    };
+    mocks.overviews['project-1'] = {
+      ...scopedOverview,
+      historicalRuns: [historical],
+      runs: [scopedOverview.currentRun, historical],
+    };
+    // The replacement frame has the same basename, but no durable identity
+    // authorizes it to replace the historical frame or create a new row.
+    mocks.projectFiles = [
+      'output/final.mp4',
+      'output/scene.blend',
+      'output/resume_frames/frame.png',
+      'unregistered.txt',
+    ].map((relativePath) => ({
+      name: relativePath.split('/').at(-1),
+      type: relativePath.split('.').at(-1),
+      relativePath,
+      path: `/workspace/space-one/${relativePath}`,
+    }));
+    const snapshot = JSON.stringify(mocks.overviews);
+    const { rerender } = render(<SessionActivityPanel scope="latest" />);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    });
+    expect(screen.getByText('No output files yet.')).toBeInTheDocument();
+    expect(screen.queryByText('unregistered.txt')).toBeNull();
+    expect(mocks.projectOutputResolver).toHaveBeenLastCalledWith(
+      'project-1',
+      undefined,
+      null,
+      '/workspace/space-one',
+      []
+    );
+
+    rerender(<SessionActivityPanel scope="all" />);
+    const video = await screen.findByRole('button', { name: 'final.mp4' });
+    fireEvent.click(video);
+    expect(mocks.openFilePreview).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        path: '/workspace/space-one/output/final.mp4',
+        artifactId: 'artifact-0',
+      })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'scene.blend' }));
+    expect(mocks.openFilePreview).toHaveBeenLastCalledWith(
+      expect.objectContaining({ type: 'blend', artifactId: 'artifact-1' })
+    );
+    expect(screen.getByText('Preview unavailable')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /frame.png/ })).toBeNull();
+    expect(screen.queryByText('unregistered.txt')).toBeNull();
+    expect(mocks.projectOutputResolver).toHaveBeenLastCalledWith(
+      'project-1',
+      undefined,
+      null,
+      '/workspace/space-one',
+      expect.arrayContaining([
+        'output/final.mp4',
+        'output/scene.blend',
+        'output/frames/frame.png',
+      ])
+    );
+
+    rerender(<SessionActivityPanel scope="latest" />);
+    await waitFor(() => expect(screen.queryByText('final.mp4')).toBeNull());
+    expect(screen.getByText('No output files yet.')).toBeInTheDocument();
+    expect(JSON.stringify(mocks.overviews)).toBe(snapshot);
+  });
+
   it('shows durable subagent tool calls in their own panel category', async () => {
     mocks.chatStore = chatStore('run-1');
     const scopedOverview = overview('run-1');

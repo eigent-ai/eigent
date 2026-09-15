@@ -14,7 +14,7 @@ import pytest
 from app.agent.toolkit import terminal_toolkit as terminal_module
 from app.agent.toolkit.terminal_toolkit import TerminalToolkit
 from app.run_context import RunContext, run_context_scope
-from app.run_journal import SQLiteRunJournal
+from app.run_journal import OutboxLeaseLostError, SQLiteRunJournal
 from app.run_runtime import tool_checkpoint
 from app.run_runtime.coordinator import RunCoordinator
 from app.run_runtime.tool_checkpoint import (
@@ -33,7 +33,11 @@ from app.workspace_git import (
     WorkspaceGitLifecycle,
     WorkspaceMutationService,
 )
-from app.workspace_git.content import RepositoryStateChangedError
+from app.workspace_git.backend import WorkspaceDeltaLimitExceeded
+from app.workspace_git.content import (
+    ContentRepositoryError,
+    RepositoryStateChangedError,
+)
 
 
 @pytest.fixture
@@ -297,6 +301,207 @@ def test_command_success_checkpoint_failure_never_replays(
     assert journal.list_tool_calls("run-1")[0].status == "outcome_unknown"
     assert journal.list_git_mutation_intents()[0].status == "needs_attention"
     assert journal.list_git_change_sets()[0].state == "needs_attention"
+
+
+@pytest.fixture
+def quarantined_terminal_write(owned_workspace, monkeypatch):
+    journal, mutation, backend, context, make_toolkit, _ = owned_workspace
+    toolkit = make_toolkit()
+    preparations = []
+    original_prepare = mutation.prepare_broad_write
+
+    def prepare(**kwargs):
+        value = original_prepare(**kwargs)
+        preparations.append(value)
+        return value
+
+    monkeypatch.setattr(mutation, "prepare_broad_write", prepare)
+    with run_context_scope(context):
+        checkpoint = prepare_tool_checkpoint(
+            raw_tool_call_id="overflow",
+            tool_name="shell_exec",
+            arguments={},
+            journal=journal,
+        )
+        with tool_checkpoint_scope(checkpoint):
+            with pytest.raises(WorkspaceDeltaLimitExceeded) as failure:
+                toolkit.shell_exec(
+                    python_command(
+                        "from pathlib import Path\n"
+                        "root = Path('outputs'); root.mkdir(exist_ok=True)\n"
+                        "for index in range(501):\n"
+                        "    path = root / f'{index:04}.txt'\n"
+                        "    path.write_text((path.read_text() if path.exists() else '') + 'x')\n"
+                    ),
+                    id="overflow",
+                )
+        with pytest.raises(UnsafeToolOutcomeError):
+            finish_tool_checkpoint(
+                checkpoint, error=failure.value, journal=journal
+            )
+    assert len(preparations) == 1
+    prepared = preparations[0]
+    assert prepared.direct_binding is not None
+    assert journal.list_git_mutation_intents()[0].status == "needs_attention"
+    assert journal.list_git_change_sets()[0].state == "needs_attention"
+    session = toolkit.shell_sessions["overflow"]
+    assert session["process"].poll() == 0
+    assert not session["eigent_reader_thread"].is_alive()
+    assert session["process"].stdin.closed
+    return journal, mutation, backend, context, prepared
+
+
+def review_overflow_batch(journal, mutation, backend, context, prepared):
+    root = context.working_directory
+    paths = tuple(sorted((root / "outputs").iterdir())[:500])
+    mutation.content.checkpoint(
+        prepared.change_set.repository_id,
+        operation_request_id="review-output-batch",
+        expected_repo_state_digest=backend.repo_state_token(root).digest,
+        paths=paths,
+        path_sources={
+            path.relative_to(root).as_posix(): "user_selected"
+            for path in paths
+        },
+        target_role="run",
+        target_id=context.run_id,
+        actor_id="user",
+        trigger="workspace.recovery",
+        message="Reviewed output batch",
+        worktree_root=root,
+    )
+
+
+def test_quarantined_terminal_capture_recovers_without_replaying(
+    quarantined_terminal_write,
+):
+    journal, mutation, backend, context, prepared = quarantined_terminal_write
+    with pytest.raises(OutboxLeaseLostError):
+        mutation.prepare_broad_write(
+            context=context,
+            operation_request_id="blocked-writer",
+            actor_id="agent-2",
+            trigger="terminal.execute",
+        )
+    with pytest.raises(ContentRepositoryError, match="needs attention"):
+        mutation.complete_broad_write(
+            prepared,
+            operation_request_id=prepared.intent.operation_request_id,
+            actor_id=prepared.intent.actor_id,
+            trigger=prepared.intent.trigger,
+        )
+    review_overflow_batch(*quarantined_terminal_write)
+    commits = mutation.retry_broad_write_checkpoint(
+        prepared,
+        expected_repo_state_digest=backend.repo_state_token(
+            context.working_directory
+        ).digest,
+    )
+    assert commits
+    assert (
+        mutation.retry_broad_write_checkpoint(
+            prepared,
+            expected_repo_state_digest=backend.repo_state_token(
+                context.working_directory
+            ).digest,
+        )
+        == ()
+    )
+    intents = journal.list_git_mutation_intents()
+    assert len(intents) == 1
+    assert intents[0].intent_id == prepared.intent.intent_id
+    assert intents[0].status == "completed"
+    assert journal.list_git_change_sets()[0].state == "open"
+    assert backend.is_worktree_clean(context.working_directory)
+    paths = list((context.working_directory / "outputs").iterdir())
+    assert len(paths) == 501
+    assert all(path.read_text() == "x" for path in paths)
+    assert (
+        journal.list_tool_calls(context.run_id)[0].status == "outcome_unknown"
+    )
+    events = journal.list_events(context.run_id)
+    assert (
+        sum(
+            event.event_type == "workspace.path_budget.capture_recovered"
+            for event in events
+        )
+        == 1
+    )
+    assert not any(event.event_type == "run.completed" for event in events)
+
+
+@pytest.mark.parametrize(
+    ("failure", "message"),
+    [
+        ("missing_receipt", "No path-budget overflow receipt"),
+        ("tampered_receipt", "receipt is not verified"),
+        ("hidden_output", "uncheckpointed paths"),
+        ("stale_review", "changed after path-budget recovery review"),
+        ("active_tool", "Stop dispatched tools"),
+        ("writer_released", "does not own"),
+        ("binding_changed", "Recovery checkout binding changed"),
+        ("capture_failed", "capture failed again"),
+    ],
+)
+def test_capture_recovery_rejection_preserves_quarantine(
+    quarantined_terminal_write, monkeypatch, failure, message
+):
+    journal, mutation, backend, context, prepared = quarantined_terminal_write
+    review_overflow_batch(*quarantined_terminal_write)
+    root = context.working_directory
+    digest = backend.repo_state_token(root).digest
+    receipt = mutation._overflow_receipt_path(prepared)
+    if failure == "missing_receipt":
+        receipt.unlink()
+    elif failure == "tampered_receipt":
+        receipt.write_bytes(receipt.read_bytes() + b" ")
+    elif failure == "hidden_output":
+        (root / ".gitignore").write_text("outputs/\n")
+        digest = backend.repo_state_token(root).digest
+    elif failure == "stale_review":
+        (root / "changed-after-review.txt").write_text("new delta")
+    elif failure == "active_tool":
+        with run_context_scope(context):
+            prepare_tool_checkpoint(
+                raw_tool_call_id="still-dispatched",
+                tool_name="shell_exec",
+                arguments={},
+                journal=journal,
+            )
+    elif failure == "writer_released":
+        journal.release_workspace_writer(
+            request_id=f"workspace-writer:{context.run_id}",
+            task_id=context.task_id,
+        )
+    elif failure == "binding_changed":
+        binding = prepared.direct_binding
+        journal.update_project_workspace_binding(
+            project_id=context.project_id,
+            expected_version=binding.version,
+            checkout_id=binding.checkout_id,
+            checkout_mode=binding.checkout_mode,
+            target_ref="refs/heads/changed-binding",
+            worktree_path=binding.worktree_path,
+        )
+    else:
+
+        def fail_capture(*args, **kwargs):
+            raise RepositoryStateChangedError("capture failed again")
+
+        monkeypatch.setattr(mutation.content, "checkpoint", fail_capture)
+    with pytest.raises(ContentRepositoryError, match=message):
+        mutation.retry_broad_write_checkpoint(
+            prepared, expected_repo_state_digest=digest
+        )
+    assert journal.list_git_mutation_intents()[0].status == "needs_attention"
+    assert journal.list_git_change_sets()[0].state == "needs_attention"
+    assert (
+        journal.list_tool_calls(context.run_id)[0].status == "outcome_unknown"
+    )
+    assert not any(
+        event.event_type == "workspace.path_budget.capture_recovered"
+        for event in journal.list_events(context.run_id)
+    )
 
 
 def test_foreground_process_is_registered_and_stoppable(owned_workspace):

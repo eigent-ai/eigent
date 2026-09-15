@@ -15,6 +15,7 @@
 import { Button } from '@/components/ui/button';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
 import {
+  isConversationAnchor,
   selectRenderableChatNodes,
   type ChatMessageNode,
   type ChatProjectionNode,
@@ -40,7 +41,6 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
-  useState,
   type ReactNode,
   type RefObject,
 } from 'react';
@@ -54,8 +54,6 @@ import { presentChatSemanticEntities } from './EventTimeline/presentationPolicy'
 import { PlanTaskBox } from './TaskBox/PlanTaskBox';
 import { TimelineModeRenderer } from './TimelineModes';
 
-/** Temporary DOM window until the event timeline has variable-height virtualization. */
-const MAX_MOUNTED_EVENT_NODES = 250;
 /** Extra slack beyond the BottomBox inset so "last message visible" still counts as pinned. */
 const NEAR_BOTTOM_SLACK_PX = 48;
 
@@ -105,27 +103,40 @@ export function selectWindowedTimelineRuns(
 }
 
 /**
- * Resolve transcript/message/control entities before applying the temporary
- * DOM window. Late receipts can otherwise enter the window without the
- * semantic entity they complete.
+ * Resolve transcript/message/control entities before presentation. The normal
+ * timeline retains all nodes; an explicit window is available to callers that
+ * need one, without making a long Session lose its earlier execution details.
  */
 export function prepareEventNativeTimelineWindow(
   sourceNodes: readonly ChatProjectionNode[],
-  maxMountedNodes = MAX_MOUNTED_EVENT_NODES
+  maxMountedNodes = Number.POSITIVE_INFINITY
 ): EventNativeTimelineWindow {
   const presentedNodes = presentChatSemanticEntities(sourceNodes);
   const safeLimit = Number.isFinite(maxMountedNodes)
     ? Math.max(0, Math.floor(maxMountedNodes))
-    : MAX_MOUNTED_EVENT_NODES;
+    : Number.POSITIVE_INFINITY;
   const hiddenNodeCount = Math.max(0, presentedNodes.length - safeLimit);
+  const retained = new Set<string>();
+  // A long render can produce thousands of activity nodes in one turn. Keep
+  // dialogue visible in the DOM window as well as in the underlying store.
+  if (hiddenNodeCount > 0) {
+    for (const anchorsOnly of [true, false]) {
+      for (
+        let index = presentedNodes.length - 1;
+        index >= 0 && retained.size < safeLimit;
+        index -= 1
+      ) {
+        const node = presentedNodes[index];
+        if (isConversationAnchor(node) === anchorsOnly) retained.add(node.id);
+      }
+    }
+  }
 
   return {
     hiddenNodeCount,
     nodes:
       hiddenNodeCount > 0
-        ? safeLimit === 0
-          ? []
-          : presentedNodes.slice(-safeLimit)
+        ? presentedNodes.filter((node) => retained.has(node.id))
         : presentedNodes,
   };
 }
@@ -361,19 +372,11 @@ export function EventNativeProjectTimeline({
       optimisticUserQuery,
     ]
   );
-  const [timelineWindowState, setTimelineWindowState] = useState({
-    projectId,
-    maxNodes: MAX_MOUNTED_EVENT_NODES,
-  });
-  const maxMountedNodes =
-    timelineWindowState.projectId === projectId
-      ? timelineWindowState.maxNodes
-      : MAX_MOUNTED_EVENT_NODES;
   const timelineWindow = useMemo(
-    () => prepareEventNativeTimelineWindow(allNodes, maxMountedNodes),
-    [allNodes, maxMountedNodes]
+    () => prepareEventNativeTimelineWindow(allNodes),
+    [allNodes]
   );
-  const { hiddenNodeCount, nodes: visibleNodes } = timelineWindow;
+  const { nodes: visibleNodes } = timelineWindow;
   const projectedRunsById =
     runtime.projectId === projectId &&
     runtime.snapshot?.view.projectId === projectId
@@ -382,15 +385,12 @@ export function EventNativeProjectTimeline({
   const allRuns = useMemo(
     () =>
       reconcileTimelineRuns(
-        composeTimelineRuns(presentChatSemanticEntities(allNodes)),
+        composeTimelineRuns(visibleNodes),
         projectedRunsById
       ),
-    [allNodes, projectedRunsById]
+    [visibleNodes, projectedRunsById]
   );
-  const visibleRuns = useMemo(
-    () => selectWindowedTimelineRuns(allRuns, visibleNodes),
-    [allRuns, visibleNodes]
-  );
+  const visibleRuns = allRuns;
   const interactivePlansByRun = (() => {
     if (sessionMode !== SessionMode.WORKFORCE || !chatStore) return undefined;
     const state = chatStore.getState();
@@ -430,11 +430,13 @@ export function EventNativeProjectTimeline({
       ? runtime.snapshot.view.artifactsByRun
       : undefined;
   const previousScrollHeightRef = useRef(0);
-  const pendingOlderRevealRef = useRef<{
+  const readingAnchorRef = useRef<{
     projectId: string;
-    scrollHeight: number;
-    scrollTop: number;
+    runId: string;
+    element: HTMLElement;
+    top: number;
   } | null>(null);
+  const previousHistoryRef = useRef(runtime.snapshot?.history);
   const previousLatestUserQueryKeyRef = useRef<string | undefined>(undefined);
   const previousProjectIdRef = useRef(projectId);
   const pinToBottomRef = useRef(true);
@@ -457,23 +459,6 @@ export function EventNativeProjectTimeline({
       !node.interactionResponse
   );
   const latestUserQueryKey = userQueryNodes.at(-1)?.runId;
-  const showOlderMessages = () => {
-    const container = scrollContainerRef?.current;
-    if (container) {
-      pendingOlderRevealRef.current = {
-        projectId,
-        scrollHeight: container.scrollHeight,
-        scrollTop: container.scrollTop,
-      };
-    }
-    setTimelineWindowState((current) => ({
-      projectId,
-      maxNodes:
-        (current.projectId === projectId
-          ? current.maxNodes
-          : MAX_MOUNTED_EVENT_NODES) + MAX_MOUNTED_EVENT_NODES,
-    }));
-  };
 
   useLayoutEffect(() => {
     const container = scrollContainerRef?.current;
@@ -484,36 +469,65 @@ export function EventNativeProjectTimeline({
       previousLatestUserQueryKeyRef.current = undefined;
       pinToBottomRef.current = true;
       ignoreAnchorScrollRef.current = false;
+      readingAnchorRef.current = null;
       anchorAnimationRef.current?.stop();
       anchorAnimationRef.current = null;
       if (content) content.style.minHeight = '';
     }
 
+    const captureReadingAnchor = () => {
+      const containerTop = container.getBoundingClientRect().top;
+      const rows = Array.from(
+        content?.querySelectorAll<HTMLElement>(
+          '[data-event-node-id], [data-narrative-event-motion-id], [data-message-role]'
+        ) || []
+      );
+      // Prefer a receipt inside the visible Task. A Task-level anchor alone
+      // cannot hold position when older rows are inserted inside that same Task.
+      let row: HTMLElement | undefined;
+      for (const candidate of rows) {
+        if (candidate.getBoundingClientRect().bottom <= containerTop) continue;
+        if (row && !row.contains(candidate)) break;
+        row = candidate;
+      }
+      row ??= Array.from(
+        content?.querySelectorAll<HTMLElement>('[data-run-id]') || []
+      ).find(
+        (element) => element.getBoundingClientRect().bottom > containerTop
+      )!;
+      const runId = row?.closest<HTMLElement>('[data-run-id]')?.dataset.runId;
+      readingAnchorRef.current =
+        row && runId
+          ? {
+              projectId,
+              runId,
+              element: row,
+              top: row.getBoundingClientRect().top,
+            }
+          : null;
+    };
+    const restoreReadingAnchor = () => {
+      const anchor = readingAnchorRef.current;
+      if (anchor?.projectId !== projectId || !content?.contains(anchor.element))
+        return;
+      const delta = anchor.element.getBoundingClientRect().top - anchor.top;
+      if (delta !== 0)
+        container.scrollTo({
+          top: container.scrollTop + delta,
+          behavior: 'auto',
+        });
+    };
     const updatePinFromScroll = () => {
       if (ignoreAnchorScrollRef.current) return;
       pinToBottomRef.current = isChatTimelineNearBottom(
         container.scrollHeight - container.scrollTop - container.clientHeight,
         scrollBottomInsetPx
       );
+      captureReadingAnchor();
     };
     container.addEventListener('scroll', updatePinFromScroll, {
       passive: true,
     });
-
-    const pendingOlderReveal = pendingOlderRevealRef.current;
-    const revealedOlder = pendingOlderReveal?.projectId === projectId;
-    if (pendingOlderReveal && revealedOlder) {
-      pendingOlderRevealRef.current = null;
-      const heightDelta =
-        container.scrollHeight - pendingOlderReveal.scrollHeight;
-      container.scrollTo({
-        top: pendingOlderReveal.scrollTop + Math.max(0, heightDelta),
-        behavior: 'auto',
-      });
-      pinToBottomRef.current = false;
-    } else if (pendingOlderReveal) {
-      pendingOlderRevealRef.current = null;
-    }
 
     const previousHeight = previousScrollHeightRef.current;
     const wasNearBottom =
@@ -526,6 +540,11 @@ export function EventNativeProjectTimeline({
     const hadRenderedUserMessage =
       previousLatestUserQueryKeyRef.current !== undefined;
     const isNewUserMessage =
+      !(
+        previousHistoryRef.current &&
+        runtime.snapshot?.history &&
+        previousHistoryRef.current !== runtime.snapshot.history
+      ) &&
       latestUserQueryKey !== undefined &&
       latestUserQueryKey !== previousLatestUserQueryKeyRef.current;
     const shouldAnchorNewQuery =
@@ -534,7 +553,7 @@ export function EventNativeProjectTimeline({
     // A follow-up query starts a new reading viewport: its user row aligns just
     // below the Session header and streaming output grows beneath it. The first
     // query keeps the original bottom reveal behavior.
-    if (!revealedOlder && shouldAnchorNewQuery) {
+    if (shouldAnchorNewQuery) {
       const target = Array.from(
         contentRef.current?.querySelectorAll<HTMLElement>(
           '[data-message-role="user"]'
@@ -558,19 +577,25 @@ export function EventNativeProjectTimeline({
           }
         );
       }
-    } else if (!revealedOlder && (isNewUserMessage || wasNearBottom)) {
+    } else if (isNewUserMessage || wasNearBottom) {
       pinToBottomRef.current = true;
       container.scrollTo({ top: container.scrollHeight, behavior: 'auto' });
+    } else if (readingAnchorRef.current?.projectId === projectId) {
+      restoreReadingAnchor();
     }
+    previousHistoryRef.current = runtime.snapshot?.history;
     previousLatestUserQueryKeyRef.current = latestUserQueryKey;
     previousScrollHeightRef.current = container.scrollHeight;
+    captureReadingAnchor();
 
     const resizeObserver =
       content &&
       new ResizeObserver(() => {
-        if (!pinToBottomRef.current) return;
-        container.scrollTo({ top: container.scrollHeight, behavior: 'auto' });
+        if (pinToBottomRef.current) {
+          container.scrollTo({ top: container.scrollHeight, behavior: 'auto' });
+        } else restoreReadingAnchor();
         previousScrollHeightRef.current = container.scrollHeight;
+        captureReadingAnchor();
       });
     if (content) resizeObserver?.observe(content);
 
@@ -583,9 +608,11 @@ export function EventNativeProjectTimeline({
     latestUserQueryKey,
     latestNode?.runSequence,
     projectId,
+    runtime.snapshot?.history,
     scrollBottomInsetPx,
     scrollContainerRef,
     userQueryNodes.length,
+    visibleNodes,
   ]);
 
   useEffect(
@@ -611,8 +638,7 @@ export function EventNativeProjectTimeline({
         element.getAttribute('data-run-id') === scrollToTurnRequest.taskId
     );
     // A request is a one-shot command. Clear it even when the requested Run
-    // is outside the bounded DOM window so it cannot fire unexpectedly after
-    // later timeline updates mount that Run.
+    // has not loaded yet so it cannot fire unexpectedly on a later update.
     setScrollToTurnRequest(null);
     if (!target) return;
 
@@ -644,20 +670,16 @@ export function EventNativeProjectTimeline({
         data-chat-timeline-content
         style={{ paddingBottom: scrollBottomInsetPx }}
       >
-        {hiddenNodeCount > 0 ? (
-          <div className="flex justify-center px-4 py-2">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              buttonRadius="full"
-              onClick={showOlderMessages}
-            >
-              {t('chat.timeline-show-older')}
-            </Button>
-          </div>
+        {hydration.isLoadingOlder ? (
+          <span
+            className="block px-ds-16 py-ds-8 text-center text-ds-text-base font-normal text-ds-ink-muted-default"
+            role="status"
+            aria-busy
+          >
+            {t('chat.timeline-history-loading')}
+          </span>
         ) : null}
-        {hydration.eventsTruncated ? (
+        {hydration.eventsTruncated && !hydration.hasOlderHistory ? (
           <span
             className="block px-4 py-2 text-center text-ds-text-base font-normal text-ds-ink-muted-default"
             role="status"
@@ -665,7 +687,8 @@ export function EventNativeProjectTimeline({
             {t('chat.timeline-history-window')}
           </span>
         ) : null}
-        {hydration.status === 'error' && allNodes.length > 0 ? (
+        {(hydration.status === 'error' && allNodes.length > 0) ||
+        hydration.olderHistoryError ? (
           <div
             className="flex flex-col items-center gap-2 px-4 py-2"
             role="alert"
@@ -678,7 +701,11 @@ export function EventNativeProjectTimeline({
               variant="secondary"
               size="sm"
               buttonRadius="full"
-              onClick={hydration.retry}
+              onClick={
+                hydration.olderHistoryError
+                  ? hydration.loadOlder
+                  : hydration.retry
+              }
             >
               {t('chat.timeline-history-retry')}
             </Button>
@@ -711,7 +738,8 @@ export function EventNativeProjectTimeline({
               {t('chat.timeline-history-retry')}
             </Button>
           </div>
-        ) : hydration.status === 'ready' || hydration.status === 'idle' ? (
+        ) : hydration.olderHistoryError ? null : !hydration.hasOlderHistory &&
+          (hydration.status === 'ready' || hydration.status === 'idle') ? (
           <span
             className="block px-4 py-6 text-center text-ds-text-base font-normal text-ds-ink-muted-default"
             role="status"

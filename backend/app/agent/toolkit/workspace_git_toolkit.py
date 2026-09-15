@@ -86,13 +86,19 @@ class WorkspaceGitToolkit(BaseToolkit, AbstractToolkit):
     def git_status(self) -> str:
         """Return repository health and pending managed-file counts."""
 
-        _, service, repository = self._scope()
+        context, service, repository = self._scope()
         if repository is None:
             return json.dumps({"available": False})
+        budget = service.git.path_budget(context.working_directory)
+        if not budget["count_is_exact"]:
+            return json.dumps(
+                {"available": True, "path_budget": budget}, sort_keys=True
+            )
         status = service.content.status(repository.repository_id)
         return json.dumps(
             {
                 "available": True,
+                "path_budget": budget,
                 "state": status.repository.state,
                 "healthy": status.diagnostics.healthy,
                 "issues": list(status.diagnostics.issues),

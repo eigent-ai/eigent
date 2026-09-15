@@ -32,6 +32,7 @@ from app.run_context import RunContext, run_context_scope
 from app.run_journal import OutboxLeaseLostError
 from app.run_runtime.tool_checkpoint import ToolInvocationNotDispatchedError
 from app.utils.listen import toolkit_listen
+from app.workspace_git.backend import WorkspaceDeltaLimitExceeded
 
 
 def _context(root: Path) -> RunContext:
@@ -49,6 +50,146 @@ def _context(root: Path) -> RunContext:
         workdir_mode="direct-write",
         browser_port=9222,
     )
+
+
+@pytest.mark.parametrize("command", ["pwd", "pwd -P"])
+def test_code_owned_pwd_survives_workspace_overflow(
+    tmp_path, monkeypatch, command
+):
+    toolkit = TerminalToolkit.__new__(TerminalToolkit)
+    toolkit.api_task_id = "project-1"
+    toolkit.working_dir = str(tmp_path / "previous-run")
+    calls = []
+
+    def forbidden(*args, **kwargs):
+        calls.append("unexpected dispatch")
+        raise AssertionError(
+            "A pwd probe must not dispatch or prepare a mutation"
+        )
+
+    monkeypatch.setattr(
+        terminal_toolkit, "get_default_workspace_mutation_service", forbidden
+    )
+    monkeypatch.setattr(BaseTerminalToolkit, "shell_exec", forbidden)
+    with run_context_scope(_context(tmp_path)):
+        assert toolkit._shell_exec_with_workspace_checkpoint(command) == str(
+            tmp_path
+        )
+    assert calls == []
+
+
+def test_code_owned_pwd_keeps_current_runs_materialized_directory(tmp_path):
+    toolkit = TerminalToolkit.__new__(TerminalToolkit)
+    toolkit.api_task_id = "project-1"
+    toolkit.working_dir = str(tmp_path / "agent-checkout")
+    toolkit._workspace_run_id = "run-1"
+    with run_context_scope(_context(tmp_path)):
+        assert (
+            toolkit._shell_exec_with_workspace_checkpoint("pwd")
+            == toolkit.working_dir
+        )
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "pwd > changed.txt",
+        "pwd; touch changed.txt",
+        "pwd $(touch changed.txt)",
+    ],
+)
+def test_shell_syntax_cannot_claim_read_only_exemption(
+    tmp_path, monkeypatch, command
+):
+    toolkit = TerminalToolkit.__new__(TerminalToolkit)
+    toolkit.api_task_id = "project-1"
+    toolkit.agent_name = "agent"
+    toolkit.working_dir = str(tmp_path)
+
+    class Mutations:
+        def prepare_broad_write(self, **kwargs):
+            raise WorkspaceDeltaLimitExceeded(
+                {f"file-{i}": "??" for i in range(501)}
+            )
+
+    monkeypatch.setattr(
+        terminal_toolkit, "get_default_workspace_mutation_service", Mutations
+    )
+    with (
+        run_context_scope(_context(tmp_path)),
+        pytest.raises(ToolInvocationNotDispatchedError),
+    ):
+        toolkit._shell_exec_with_workspace_checkpoint(command)
+    assert not (tmp_path / "changed.txt").exists()
+
+
+def test_terminal_exports_run_storage_without_global_environment_mutation(
+    tmp_path, monkeypatch
+):
+    import os
+
+    from app.utils.runtime_storage import runtime_storage
+
+    test_home = tmp_path / "owner"
+    test_home.mkdir()
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: test_home))
+    root = tmp_path / "space"
+    root.mkdir()
+    toolkit = TerminalToolkit.__new__(TerminalToolkit)
+    toolkit.api_task_id = "project-1"
+    toolkit.working_dir = str(root)
+    toolkit._runtime_env_provider = None
+    monkeypatch.setattr(
+        BaseTerminalToolkit,
+        "_get_env_vars",
+        lambda self: {"PATH": "/mock/bin"},
+    )
+    before = dict(os.environ)
+    context = _context(root)
+    with run_context_scope(context):
+        environment = toolkit._get_env_vars()
+    assert environment["PATH"] == "/mock/bin"
+    assert environment["EIGENT_INTERMEDIATE_DIR"] == str(
+        runtime_storage(context).intermediates
+    )
+    assert environment["PIP_CACHE_DIR"].startswith(
+        str(runtime_storage(context).cache)
+    )
+    assert dict(os.environ) == before
+
+
+@pytest.mark.parametrize(
+    "system,lib_name", [("Darwin", "lib"), ("Windows", "Lib")]
+)
+def test_cloned_packages_do_not_write_through_to_shared_base(
+    tmp_path, monkeypatch, system, lib_name
+):
+    source = tmp_path / "installed-base"
+    target = tmp_path / "task-runtime"
+    source.mkdir()
+    target.mkdir()
+    (source / lib_name).mkdir()
+    (source / lib_name / "package.py").write_text("installed")
+    (source / "pyvenv.cfg").write_text(f"home = {source}\n")
+    (source / "Scripts").mkdir()
+    monkeypatch.setattr(terminal_toolkit.platform, "system", lambda: system)
+    toolkit = TerminalToolkit.__new__(TerminalToolkit)
+    toolkit._clone_venv_with_symlinks(str(source), str(target))
+    assert not (target / lib_name).is_symlink()
+    (target / lib_name / "package.py").write_text("task-installed")
+    assert (source / lib_name / "package.py").read_text() == "installed"
+
+
+def test_terminal_tool_schema_exposes_storage_guidance():
+    toolkit = TerminalToolkit.__new__(TerminalToolkit)
+    tools = toolkit.get_tools()
+    shell = next(
+        tool for tool in tools if tool.get_function_name() == "shell_exec"
+    )
+    description = shell.get_openai_tool_schema()["function"]["description"]
+    assert "EIGENT_RUNTIME_DIR" in description
+    assert "EIGENT_INTERMEDIATE_DIR" in description
+    assert "do not bypass command permissions" in description
 
 
 def test_terminal_materializes_run_workspace_before_process_spawn(

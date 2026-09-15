@@ -927,7 +927,17 @@ export function mergeProjectFiles(
     if (idMatch && pathMatch && idMatch.path !== pathMatch.path) return item;
 
     const match = idMatch || pathMatch;
-    if (!match) return item;
+    if (!match?.path.trim()) return item;
+    const matchRelativePath = normalizeWorkspaceRelativePath(
+      match.relativePath
+    );
+    if (
+      (match.relativePath !== undefined && !matchRelativePath) ||
+      (relativePath && matchRelativePath && relativePath !== matchRelativePath)
+    ) {
+      // An artifact id must not relabel a moved file as its old relative path.
+      return item;
+    }
     if (
       artifactId &&
       match.artifactId &&
@@ -945,10 +955,7 @@ export function mergeProjectFiles(
         name: item.file.name || match.name,
         type: item.file.type || match.type,
         path: match.path || item.file.path,
-        relativePath:
-          relativePath ||
-          normalizeWorkspaceRelativePath(match.relativePath) ||
-          undefined,
+        relativePath: relativePath || matchRelativePath || undefined,
         artifactId: artifactId || match.artifactId,
         artifactChange: item.file.artifactChange,
         mimeType: item.file.mimeType || match.mimeType,
