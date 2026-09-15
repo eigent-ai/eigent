@@ -28,6 +28,7 @@ import {
   reduceProjectedRun,
   reduceProjectView,
 } from './reduce';
+import { TERMINAL_RUN_STATUSES } from './runSummary';
 import type {
   ProjectedRun,
   ProjectorEffect,
@@ -117,12 +118,15 @@ export function projectSnapshot(
   ).state;
   const runs = { ...projected.runs };
   const aggregateOriginAuthorities = new Set<string>();
+  const aggregateRunVersions = new Map<string, number>();
   for (const aggregate of snapshot.runs || []) {
     if (Object.prototype.hasOwnProperty.call(aggregate, 'origin')) {
       aggregateOriginAuthorities.add(aggregate.run_id);
     }
     const recent = runs[aggregate.run_id];
     const aggregateRunVersion = snapshotRunVersion(aggregate);
+    if (aggregateRunVersion !== null)
+      aggregateRunVersions.set(aggregate.run_id, aggregateRunVersion);
     // GET /runs is read before the event pages. If the Run changes while the
     // pages are loading, replay is the newer status authority; otherwise the
     // older aggregate could overwrite a terminal or decision event.
@@ -181,16 +185,20 @@ export function projectSnapshot(
         checkpoint &&
         event.source === 'canonical' &&
         projected.seenEventIds[event.eventId] &&
+        (aggregateRunVersions.get(event.runId) ?? 0) <= checkpoint.runVersion &&
         event.runSequence > checkpoint.lastSequence &&
+        (event.runSequence === checkpoint.lastSequence + 1 ||
+          TERMINAL_RUN_STATUSES.has(checkpoint.status)) &&
         !(
           checkpoint.origin &&
           event.origin &&
           checkpoint.origin !== event.origin
         )
       ) {
-        // New observation receipts advance history while retaining a GET's
-        // status/elapsed facts. Reuse live Run rules without replaying controls
-        // or replacing the independently rebuilt semantic history above.
+        // A newer aggregate supersedes the retained checkpoint. Resumable
+        // states need a continuous prefix, since a tail can omit recovery.
+        // Final Runs cannot resume; keep their status/elapsed facts across
+        // post-terminal observation tails, as the live reducer does.
         checkpointRuns[event.runId] = reduceProjectedRun(checkpoint, event);
       }
     }

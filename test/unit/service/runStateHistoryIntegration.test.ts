@@ -18,7 +18,11 @@ import { normalizeLocalRunEvent, projectSnapshot } from '@/lib/projector';
 import { selectPendingHumanControls } from '@/lib/projector/control';
 import type { DurableRunSummaryInput } from '@/lib/projector/runSummary';
 import { runProjectionStore } from '@/lib/runEvents/projectionStore';
-import { hydrateProjectEventStore } from '@/service/projectEventStoreHydration';
+import {
+  hydrateProjectEventStore,
+  loadOlderProjectChatHistory,
+} from '@/service/projectEventStoreHydration';
+import { selectCanonicalLiveRuns } from '@/service/projectRunEventStream';
 import { RunStateReconciler } from '@/service/runStateReconciliation';
 import { ProjectEventStore } from '@/store/projectEventStore';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -408,6 +412,193 @@ describe('Run checkpoints with semantic history refresh', () => {
       expect(after.view.eventsTruncated).toBe(false);
       expect(value.getControlReplayCursor()).toBeNull();
       expect(selectEventNativeActiveRunId(after, null)).toBe(activeId);
+    }
+  );
+
+  it.each([
+    { previousStatus: 'waiting_for_user', count: 7, maxEvents: 1 },
+    { previousStatus: 'interrupted', count: 7, maxEvents: 1 },
+    { previousStatus: 'interrupted', count: 2_004, maxEvents: undefined },
+  ])(
+    'accepts a newer running aggregate when the recovery receipt is outside the refresh tail: $previousStatus / $count',
+    async ({ previousStatus, count, maxEvents }) => {
+      const value = store();
+      const events = [
+        receipt(1, runId, 'run.attempt_started'),
+        {
+          ...receipt(
+            2,
+            runId,
+            previousStatus === 'interrupted'
+              ? 'run.interrupted'
+              : 'interaction.requested'
+          ),
+          payload: { interaction_id: 'question', prompt: 'Continue?' },
+        },
+        {
+          ...receipt(
+            3,
+            runId,
+            previousStatus === 'interrupted'
+              ? 'run.attempt_started'
+              : 'interaction.resolved'
+          ),
+          payload: { interaction_id: 'question', continued_attempt: true },
+        },
+        ...Array.from({ length: count - 3 }, (_, index) => ({
+          ...receipt(index + 4, runId, 'tool.completed'),
+          payload: { tool_call_id: `call-${index}`, tool_name: 'read_file' },
+        })),
+      ];
+      let visible = 2;
+      get.mockImplementation(async (url, params) => {
+        if (url === '/runs')
+          return {
+            project_id: projectId,
+            runs: [
+              {
+                ...summary(visible === 2 ? previousStatus : 'running', visible),
+                total_attempt_elapsed_ms: 1_000,
+              },
+            ],
+          };
+        if (url !== `/runs/${runId}/events`)
+          throw new Error('Unexpected fixture request');
+        const after = Number(params?.after_sequence ?? 0);
+        const page = events
+          .filter(
+            (event) => event.sequence > after && event.sequence <= visible
+          )
+          .slice(0, Number(params?.limit));
+        const next = page.at(-1)?.sequence ?? after;
+        return {
+          project_id: projectId,
+          run_id: runId,
+          after_sequence: after,
+          next_sequence: next,
+          has_more: next < visible,
+          events: page,
+        };
+      });
+      await hydrateProjectEventStore({ projectId, store: value });
+      expect(value.getSnapshot().view.runs[runId].status).toBe(previousStatus);
+      visible = count;
+      await hydrateProjectEventStore({ projectId, store: value, maxEvents });
+      const tail = value.getSnapshot();
+      expect(tail.view.eventsTruncated).toBe(true);
+      expect(value.getControlReplayCursor()).not.toBeNull();
+      expect(selectEventNativeActiveRunId(tail, null)).toBeNull();
+
+      await loadOlderProjectChatHistory({ projectId, store: value });
+      const complete = value.getSnapshot();
+      expect(complete.view.eventsTruncated).toBe(false);
+      expect(value.getControlReplayCursor()).toBeNull();
+      expect(complete.chat.nodes).toHaveLength(count);
+      expect(complete.chat.nodeById[`${runId}:3`]).toBeDefined();
+      expect(selectPendingHumanControls(complete.control)).toEqual([]);
+      for (const snapshot of [tail, complete])
+        expect(snapshot.view.runs[runId]).toMatchObject({
+          status: 'running',
+          runVersion: count,
+          lastSequence: count,
+        });
+      expect(
+        selectCanonicalLiveRuns(complete).map((run) => run.runId)
+      ).toContain(runId);
+
+      await reconcile(value, 'running', count);
+      const afterGet = value.getSnapshot();
+      expect(get).toHaveBeenLastCalledWith(
+        `/runs/${runId}`,
+        undefined,
+        undefined,
+        { signal: expect.any(AbortSignal) }
+      );
+      expect(
+        get.mock.calls.filter(([url]) => url === `/runs/${runId}`)
+      ).toHaveLength(1);
+      expect(afterGet.view.runs[runId]).toMatchObject({
+        status: 'running',
+        runVersion: count,
+        lastSequence: count,
+        totalAttemptElapsedMs: 5_000,
+      });
+      expect(afterGet.chat).toBe(complete.chat);
+      expect(afterGet.control).toBe(complete.control);
+      expect(afterGet.history).toBe(complete.history);
+      expect(afterGet.view.currentCursor).toBe(complete.view.currentCursor);
+    }
+  );
+
+  it.each(['waiting_for_user', 'interrupted'])(
+    'uses a newer aggregate before folding a contiguous observation onto an old %s checkpoint',
+    (previousStatus) => {
+      const previous = projectSnapshot({
+        project_id: projectId,
+        current_cursor: 0,
+        runs: [
+          { ...summary(previousStatus, 2), expected_next_run_sequence: 3 },
+        ],
+        recent_events: [],
+      });
+      const refreshed = projectSnapshot(
+        {
+          project_id: projectId,
+          current_cursor: 0,
+          runs: [
+            {
+              ...summary('running', 3),
+              expected_next_run_sequence: 4,
+              total_attempt_elapsed_ms: 1_000,
+              totalAttemptElapsedAt: at,
+            },
+          ],
+          recent_events: [receipt(3, runId, 'tool.completed')],
+        },
+        previous
+      );
+      expect(refreshed.runs[runId]).toMatchObject({
+        status: 'running',
+        runVersion: 3,
+        lastSequence: 3,
+        totalAttemptElapsedMs: 1_000,
+        totalAttemptElapsedAt: at,
+      });
+    }
+  );
+
+  it.each(['failed', 'completed', 'cancelled'])(
+    'retains a final %s checkpoint and elapsed time across a sparse observation tail',
+    async (status) => {
+      const value = store();
+      seed(value);
+      await reconcile(value, status, 5);
+      const previous = value.getSnapshot().view;
+      const refreshed = projectSnapshot(
+        {
+          project_id: projectId,
+          current_cursor: 0,
+          runs: [
+            {
+              ...summary('waiting_for_user', 2),
+              expected_next_run_sequence: 3,
+            },
+          ],
+          recent_events: [receipt(7, runId, 'assistant.final')],
+          events_truncated: true,
+        },
+        previous
+      );
+      expect(refreshed.runs[runId]).toMatchObject({
+        status,
+        runVersion: 7,
+        lastSequence: 7,
+        totalAttemptElapsedMs: 5_000,
+        totalAttemptElapsedAt: previous.runs[runId].totalAttemptElapsedAt,
+        latestAttempt: previous.runs[runId].latestAttempt,
+      });
+      expect(refreshed.eventsTruncated).toBe(true);
+      expect(refreshed.currentCursor).toBe(previous.currentCursor);
     }
   );
 });
