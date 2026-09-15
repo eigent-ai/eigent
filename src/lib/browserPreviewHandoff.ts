@@ -12,17 +12,25 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { isLoopbackBrowserUrl } from '@/lib/browserUrl';
+
 /** Local generated sites need a visible handoff from the agent browser. */
-export function isLocalPreviewUrl(value: string): boolean {
+export const isLocalPreviewUrl = isLoopbackBrowserUrl;
+
+function browserVisitSucceeded(message: string | undefined): boolean {
+  if (!message?.trim()) return false;
+
+  let result = message;
   try {
-    const url = new URL(value);
-    return (
-      ['http:', 'https:'].includes(url.protocol) &&
-      /^(localhost|127(?:\.\d{1,3}){3}|\[::1\]|0\.0\.0\.0)$/i.test(url.hostname)
-    );
+    const parsed = JSON.parse(message) as { result?: unknown };
+    if (typeof parsed.result === 'string') result = parsed.result;
   } catch {
-    return false;
+    // Older toolkit responses are plain text rather than JSON.
   }
+
+  return !/error|failed|failure|refused|unreachable|timed?\s*out|net::err_/i.test(
+    result
+  );
 }
 
 /** One reveal per live request, without changing the user's active Session. */
@@ -31,9 +39,21 @@ export function createBrowserPreviewHandoff(
   open: (url: string, projectId: string) => void
 ) {
   let revealed = false;
-  return (url: string) => {
-    if (revealed || !projectId || !isLocalPreviewUrl(url)) return;
-    revealed = true;
-    open(url, projectId);
+  const pending = new Map<string, string>();
+
+  return {
+    recordVisit(url: string, toolCallId = 'current') {
+      if (revealed || !projectId || !isLocalPreviewUrl(url)) return;
+      pending.set(toolCallId, url);
+    },
+    completeVisit(message: string | undefined, toolCallId = 'current') {
+      const url = pending.get(toolCallId);
+      pending.delete(toolCallId);
+      if (revealed || !url || !projectId || !browserVisitSucceeded(message))
+        return;
+      revealed = true;
+      pending.clear();
+      open(url, projectId);
+    },
   };
 }

@@ -47,8 +47,10 @@ export interface SessionBrowserNavigationState {
   isLoading: boolean;
   canGoBack: boolean;
   canGoForward: boolean;
-  /** Transient main-frame failure; cleared on the next navigation. */
+  /** Main-frame failure; retained until a later navigation finishes. */
   loadError?: { code: number; url: string };
+  /** Incremented when reopening a failed URL should retry its existing guest. */
+  retryRequestId?: number;
 }
 
 export interface SessionBrowserTab {
@@ -1195,13 +1197,32 @@ export const usePageTabStore = create<PageTabState>()(
 
             // A tab already showing this URL (live page or pending load) — focus it.
             const existing = slice.tabs.find(
-              (tab) =>
+              (tab): tab is SessionBrowserTab =>
                 tab.type === 'browser' &&
                 canonicalizeBrowserUrl(tab.navigation.url || tab.url) ===
                   canonical
             );
             if (existing) {
-              return { ...slice, open: true, activeTabId: existing.id };
+              const tabs = existing.navigation.loadError
+                ? slice.tabs.map((tab) =>
+                    tab.id === existing.id && tab.type === 'browser'
+                      ? {
+                          ...tab,
+                          navigation: {
+                            ...tab.navigation,
+                            retryRequestId:
+                              (tab.navigation.retryRequestId ?? 0) + 1,
+                          },
+                        }
+                      : tab
+                  )
+                : slice.tabs;
+              return {
+                ...slice,
+                tabs,
+                open: true,
+                activeTabId: existing.id,
+              };
             }
 
             const title = browserTabTitleForUrl(normalized.url);

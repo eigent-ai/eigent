@@ -154,6 +154,10 @@ try {
     'local server may have stopped'
   );
   await expect(page.locator('[data-preview-webview-id]')).toBeHidden();
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Page unavailable');
+  await expect(page.locator('[data-preview-webview-id]')).toBeHidden();
+  await expect(page.getByText(/ERR_CONNECTION_REFUSED/)).toHaveCount(0);
   await page.screenshot({ path: path.join(out, '02-stopped-light.png') });
   await page.evaluate(() => window.previewTest.setMode('dark'));
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
@@ -192,6 +196,25 @@ try {
   await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(1200);
   await page.evaluate(() => window.previewTest.setMode('light'));
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await serveSite(port);
+  await page.getByRole('button', { name: 'Reload', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect.poll(guestText).toContain('Preview survives delivery');
+  await expect(page.getByText(/ERR_CONNECTION_REFUSED/)).toHaveCount(0);
+
+  await new Promise((resolve) => siteServer.close(resolve));
+  await page.getByRole('button', { name: 'Reload', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Page unavailable');
+  await serveSite(port);
+  await page
+    .getByRole('button', { name: 'Reopen preview', exact: true })
+    .click();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect.poll(guestText).toContain('Preview survives delivery');
+
+  await new Promise((resolve) => siteServer.close(resolve));
+  await page.getByRole('button', { name: 'Reload', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Page unavailable');
   await serveSite(port);
   await page.getByRole('button', { name: 'Retry', exact: true }).focus();
   await expect(
@@ -252,6 +275,9 @@ try {
           'Session switching',
           'initial-load failure and Files recovery callback',
           'server exit and visible error',
+          'retry while server remains down',
+          'toolbar reload clears retry errors',
+          'same-link retry after server restart',
           'light/dark',
           'narrow window at 200% zoom',
           'keyboard retry after restart',

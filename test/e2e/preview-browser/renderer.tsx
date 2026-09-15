@@ -33,9 +33,13 @@ usePageTabStore.setState({
   sessionPreviewProjectId: 'session-a',
   sessionPreviewByProject: {},
 });
-const visit = createBrowserPreviewHandoff('session-a', (url, owner) =>
+const handoff = createBrowserPreviewHandoff('session-a', (url, owner) =>
   usePageTabStore.getState().openBrowserPreview(url, owner)
 );
+const visit = (url: string) => {
+  handoff.recordVisit(url);
+  handoff.completeVisit('{"result":"Navigation completed"}');
+};
 // Test-only driver calls the same handoff used by the live event stream.
 Object.assign(window, {
   previewTest: {

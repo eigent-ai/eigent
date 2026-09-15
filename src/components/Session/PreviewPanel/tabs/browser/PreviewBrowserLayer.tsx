@@ -22,6 +22,7 @@ import {
 } from '@/store/pageTabStore';
 import { useEffect, useRef, useState } from 'react';
 import {
+  getPreviewWebview,
   type PreviewWebviewElement,
   registerPreviewWebview,
   unregisterPreviewWebview,
@@ -178,6 +179,7 @@ function PreviewGuest({
 
     let loadError: SessionBrowserNavigationState['loadError'];
     let lastUrl = initialUrlRef.current;
+    let navigationFailed = false;
     const notify = () => {
       // Guest methods throw until the webview is attached; treat as no state.
       let state: SessionBrowserNavigationState;
@@ -210,6 +212,10 @@ function PreviewGuest({
     };
 
     const onStart = () => {
+      navigationFailed = false;
+    };
+    const onSuccess = () => {
+      if (navigationFailed) return;
       loadError = undefined;
       notify();
     };
@@ -221,13 +227,15 @@ function PreviewGuest({
       };
       // Subresource failures and cancelled/superseded navigations are not page failures.
       if (!failure.isMainFrame || failure.errorCode === -3) return;
+      navigationFailed = true;
       loadError = {
         code: failure.errorCode,
-        url: failure.validatedURL || initialUrlRef.current,
+        url: failure.validatedURL || lastUrl,
       };
       notify();
     };
     element.addEventListener('did-start-loading', onStart);
+    element.addEventListener('did-finish-load', onSuccess);
     element.addEventListener('did-fail-load', onFailure);
     const notifyLanguageChanged = () => notify();
 
@@ -241,12 +249,29 @@ function PreviewGuest({
         element.removeEventListener(event, notify)
       );
       element.removeEventListener('did-start-loading', onStart);
+      element.removeEventListener('did-finish-load', onSuccess);
       element.removeEventListener('did-fail-load', onFailure);
       i18n.off('languageChanged', notifyLanguageChanged);
       unregisterPreviewWebview(tab.webviewId);
       element.remove();
     };
   }, [projectId, tab.webviewId]);
+
+  const handledRetryRequest = useRef(tab.navigation.retryRequestId ?? 0);
+  useEffect(() => {
+    const requestId = tab.navigation.retryRequestId ?? 0;
+    if (!requestId || requestId === handledRetryRequest.current) return;
+    handledRetryRequest.current = requestId;
+    const element = getPreviewWebview(tab.webviewId);
+    const retryUrl = tab.navigation.loadError?.url || tab.url;
+    if (element?.loadURL && retryUrl)
+      void element.loadURL(retryUrl).catch(() => {});
+  }, [
+    tab.navigation.loadError?.url,
+    tab.navigation.retryRequestId,
+    tab.url,
+    tab.webviewId,
+  ]);
 
   const rect = viewport ?? lastViewport;
   return (

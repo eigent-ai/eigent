@@ -3060,7 +3060,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         : undefined;
 
       const handoffBrowserPreview = createBrowserPreviewHandoff(
-        type === 'replay' || !getHostIpcRenderer() ? null : project_id,
+        !isLiveTask || !getHostIpcRenderer() ? null : project_id,
         (url, ownerProjectId) =>
           usePageTabStore.getState().openBrowserPreview(url, ownerProjectId)
       );
@@ -3572,10 +3572,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           const addWebViewUrl = (
             taskId: string,
             url: string,
-            processTaskId: string
+            processTaskId: string,
+            toolCallId?: string
           ) => {
             recordWebViewUrl(taskId, url, processTaskId);
-            handoffBrowserPreview(url);
+            handoffBrowserPreview.recordVisit(url, toolCallId);
           };
           currentTaskId = getCurrentTaskId();
           // if (tasks[currentTaskId].status === ChatTaskStatus.FINISHED) return
@@ -4476,16 +4477,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
             if (
               agentMessages.data.toolkit_name === 'Browser Toolkit' &&
-              ['browser visit page', 'browser_visit_page'].includes(
-                agentMessages.data.method_name ?? ''
-              )
+              agentMessages.data.method_name === 'browser visit page'
             ) {
               addWebViewUrl(
                 currentTaskId,
                 normalizeToolkitMessage(agentMessages.data.message)
                   .replace(/url=/g, '')
                   .replace(/'/g, '') as string,
-                resolvedProcessTaskId
+                resolvedProcessTaskId,
+                agentMessages.data.tool_call_id
               );
             }
             if (
@@ -4496,7 +4496,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               addWebViewUrl(
                 currentTaskId,
                 normalizeToolkitMessage(agentMessages.data.message) as string,
-                resolvedProcessTaskId
+                resolvedProcessTaskId,
+                agentMessages.data.tool_call_id
               );
             }
             if (
@@ -4506,7 +4507,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               addWebViewUrl(
                 currentTaskId,
                 normalizeToolkitMessage(agentMessages.data.message) as string,
-                resolvedProcessTaskId
+                resolvedProcessTaskId,
+                agentMessages.data.tool_call_id
               );
             }
             if (
@@ -4521,7 +4523,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   addWebViewUrl(
                     currentTaskId,
                     urlData.url as string,
-                    resolvedProcessTaskId
+                    resolvedProcessTaskId,
+                    agentMessages.data.tool_call_id
                   );
                 }
               } catch (error) {
@@ -4573,6 +4576,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
           // Deactivate Toolkit
           if (agentMessages.step === AgentStep.DEACTIVATE_TOOLKIT) {
+            handoffBrowserPreview.completeVisit(
+              normalizeToolkitMessage(agentMessages.data.message),
+              agentMessages.data.tool_call_id
+            );
             // add log
             let taskAssigning = [...tasks[currentTaskId].taskAssigning];
             const resolvedProcessTaskId = resolveProcessTaskIdForToolkitEvent(

@@ -241,4 +241,44 @@ describe('inlineLocalHtmlStylesheets', () => {
     expect(html).toContain('href="https://example.com/site.css"');
     expect(html).toContain('href="missing.css"');
   });
+  it('rebases quoted URLs with spaces and quoted imports from the stylesheet directory', async () => {
+    const read = vi
+      .fn()
+      .mockResolvedValue(
+        '@import "theme/base.css"; .hero { background: url("../images/hero image.png") }'
+      );
+    const html = await inlineLocalHtmlStylesheets(
+      '<link rel="stylesheet" href="css/site.css">',
+      '/workspace/site',
+      read
+    );
+
+    expect(html).toContain(
+      '@import url("localfile://preview/workspace/site/css/theme/base.css")'
+    );
+    expect(html).toContain(
+      'url("localfile://preview/workspace/site/images/hero%20image.png")'
+    );
+  });
+  it('uses the preview root when the HTML path has no directory', async () => {
+    const html = await inlineLocalHtmlStylesheets(
+      '<link rel="stylesheet" href="site.css">',
+      '',
+      vi.fn().mockResolvedValue('.icon { background: url(icon.png) }')
+    );
+
+    expect(html).toContain('url("localfile://preview/icon.png")');
+  });
+  it('keeps alternate stylesheets inactive', async () => {
+    const read = vi.fn();
+    const html = await inlineLocalHtmlStylesheets(
+      '<link rel="alternate stylesheet" title="Optional" href="alternate.css">',
+      '/workspace/site',
+      read
+    );
+
+    expect(read).not.toHaveBeenCalled();
+    expect(html).toContain('rel="alternate stylesheet"');
+    expect(html).toContain('href="alternate.css"');
+  });
 });

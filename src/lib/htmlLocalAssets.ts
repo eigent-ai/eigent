@@ -308,40 +308,54 @@ export async function inlineLocalHtmlStylesheets(
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const doctype = html.match(/<!doctype[^>]*>/i)?.[0] || '';
   await Promise.all(
-    Array.from(doc.querySelectorAll('link[rel~="stylesheet"][href]')).map(
-      async (link) => {
-        const href = link.getAttribute('href') || '';
-        if (!isLocalScriptSrc(href)) return;
-        const resolvedPath = joinPath(htmlDir, href.split(/[?#]/, 1)[0]);
-        try {
-          const css = await readTextFile(resolvedPath);
-          const base = toLocalFileUrl(
-            resolvedPath.slice(0, resolvedPath.lastIndexOf('/'))
-          );
-          const style = doc.createElement('style');
-          style.setAttribute('data-source', href);
-          if (link.hasAttribute('media'))
-            style.setAttribute('media', link.getAttribute('media')!);
-          // Once inlined, CSS URLs must still resolve relative to the stylesheet.
-          style.textContent = css
-            .replace(
-              /url\(\s*(['"]?)([^)'"\s]+)\1\s*\)/gi,
-              (match, _quote, value: string) =>
-                isLocalScriptSrc(value)
-                  ? `url("${new URL(value, base).href}")`
-                  : match
-            )
-            .replace(/<\/style/gi, '<\\/style');
-          link.replaceWith(style);
-        } catch (error) {
-          console.warn(
-            '[HtmlRenderer] Failed to inline local stylesheet:',
-            resolvedPath,
-            error
-          );
-        }
+    Array.from(
+      doc.querySelectorAll(
+        'link[rel~="stylesheet"][href]:not([rel~="alternate"])'
+      )
+    ).map(async (link) => {
+      const href = link.getAttribute('href') || '';
+      if (!isLocalScriptSrc(href)) return;
+      const resolvedPath = joinPath(htmlDir, href.split(/[?#]/, 1)[0]);
+      try {
+        const css = await readTextFile(resolvedPath);
+        const lastSlash = resolvedPath.lastIndexOf('/');
+        const stylesheetDir =
+          lastSlash >= 0 ? resolvedPath.slice(0, lastSlash) : htmlDir;
+        const base = toLocalFileUrl(stylesheetDir);
+        const rebase = (value: string) =>
+          isLocalScriptSrc(value.trim())
+            ? new URL(value.trim(), base).href
+            : null;
+        const style = doc.createElement('style');
+        style.setAttribute('data-source', href);
+        if (link.hasAttribute('media'))
+          style.setAttribute('media', link.getAttribute('media')!);
+        // Once inlined, CSS URLs must still resolve relative to the stylesheet.
+        style.textContent = css
+          .replace(
+            /url\(\s*(?:(['"])(.*?)\1|([^)'"\s][^)]*?))\s*\)/gi,
+            (match, _quote, quotedValue: string, unquotedValue: string) => {
+              const rebased = rebase(quotedValue ?? unquotedValue);
+              return rebased ? `url("${rebased}")` : match;
+            }
+          )
+          .replace(
+            /@import\s+(['"])(.*?)\1/gi,
+            (match, _quote, value: string) => {
+              const rebased = rebase(value);
+              return rebased ? `@import url("${rebased}")` : match;
+            }
+          )
+          .replace(/<\/style/gi, '<\\/style');
+        link.replaceWith(style);
+      } catch (error) {
+        console.warn(
+          '[HtmlRenderer] Failed to inline local stylesheet:',
+          resolvedPath,
+          error
+        );
       }
-    )
+    })
   );
   return `${doctype}${doc.documentElement.outerHTML}`;
 }

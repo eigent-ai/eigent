@@ -532,6 +532,31 @@ describe('pageTabStore session preview', () => {
     expect(slice().activeTabId).toBe(slice().tabs[1].id);
   });
 
+  it('requests a retry when the same URL reopens a failed browser tab', () => {
+    const store = usePageTabStore.getState();
+    store.openBrowserPreview('http://localhost:8080/');
+    const tab = slice().tabs[0];
+    if (tab.type !== 'browser') throw new Error('missing browser tab');
+    store.updateBrowserPreviewTab(tab.id, {
+      navigation: {
+        ...tab.navigation,
+        loadError: { code: -102, url: tab.url },
+      },
+    });
+
+    store.openBrowserPreview('http://localhost:8080/');
+
+    const retried = slice().tabs[0];
+    expect(retried.type).toBe('browser');
+    if (retried.type === 'browser') {
+      expect(retried.navigation.retryRequestId).toBe(1);
+      expect(retried.navigation.loadError).toEqual({
+        code: -102,
+        url: 'http://localhost:8080/',
+      });
+    }
+  });
+
   it('selects a neighboring tab and closes the panel after the final tab', () => {
     const store = usePageTabStore.getState();
     store.toggleSessionPreview();

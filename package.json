@@ -45,6 +45,7 @@
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
     "test:e2e": "vitest run --config vitest.config.ts",
+    "test:preview-browser": "node test/e2e/preview-browser/verify.mjs",
     "test:coverage": "vitest run --config vitest.config.ts --coverage",
     "check:i18n": "node scripts/check-i18n-locale-parity.js && node scripts/check-i18n-source-usage.mjs",
     "check:design-token-usage": "node scripts/check-design-token-usage.mjs",

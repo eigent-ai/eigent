@@ -21,12 +21,14 @@ import { describe, expect, it, vi } from 'vitest';
 describe('local browser handoff', () => {
   it('reveals the first local visit once, without focusing background research', () => {
     const open = vi.fn();
-    const visit = createBrowserPreviewHandoff('session-a', open);
-    visit('https://example.com');
-    visit('not a url');
+    const handoff = createBrowserPreviewHandoff('session-a', open);
+    handoff.recordVisit('https://example.com');
+    handoff.recordVisit('not a url');
     expect(open).not.toHaveBeenCalled();
-    visit('http://localhost:8080/index.html');
-    visit('http://localhost:8080/another.html');
+    handoff.recordVisit('http://localhost:8080/index.html');
+    handoff.completeVisit('{"result":"Navigation completed"}');
+    handoff.recordVisit('http://localhost:8080/another.html');
+    handoff.completeVisit('{"result":"Navigation completed"}');
     expect(open).toHaveBeenCalledTimes(1);
     expect(open).toHaveBeenCalledWith(
       'http://localhost:8080/index.html',
@@ -35,8 +37,29 @@ describe('local browser handoff', () => {
   });
   it('does not reveal replay or unowned work', () => {
     const open = vi.fn();
-    createBrowserPreviewHandoff(null, open)('http://localhost:8080');
+    const handoff = createBrowserPreviewHandoff(null, open);
+    handoff.recordVisit('http://localhost:8080');
+    handoff.completeVisit('{"result":"Navigation completed"}');
     expect(open).not.toHaveBeenCalled();
+  });
+  it('waits for a successful visit and keeps a failed first visit from consuming the reveal', () => {
+    const open = vi.fn();
+    const handoff = createBrowserPreviewHandoff('session-a', open);
+
+    handoff.recordVisit('http://localhost:8080/first', 'visit-1');
+    handoff.completeVisit(
+      '{"result":"Error: net::ERR_CONNECTION_REFUSED"}',
+      'visit-1'
+    );
+    expect(open).not.toHaveBeenCalled();
+
+    handoff.recordVisit('http://localhost:8080/ready', 'visit-2');
+    handoff.completeVisit('{"result":"Navigation completed"}', 'visit-2');
+    expect(open).toHaveBeenCalledOnce();
+    expect(open).toHaveBeenCalledWith(
+      'http://localhost:8080/ready',
+      'session-a'
+    );
   });
   it('accepts loopback addresses but not lookalike domains or other schemes', () => {
     for (const url of [

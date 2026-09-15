@@ -75,6 +75,10 @@ export function BrowserTab({
     setAddressError(null);
   }, [tab.url, addressFocused]);
 
+  useEffect(() => {
+    if (!nav.loadError && !nav.isLoading) setAddressError(null);
+  }, [nav.isLoading, nav.loadError]);
+
   const navigateTo = useCallback(
     async (rawUrl: string) => {
       const normalized = normalizeBrowserUrl(rawUrl);
@@ -97,13 +101,11 @@ export function BrowserTab({
         // Guest already mounted: navigate it in place (keeps history).
         try {
           await element.loadURL(normalized.url);
-        } catch (error) {
+        } catch {
           setAddressError(
-            error instanceof Error
-              ? error.message
-              : t('layout.browser-unable-to-open-url', {
-                  defaultValue: 'Unable to open this URL',
-                })
+            t('layout.browser-unable-to-open-url', {
+              defaultValue: 'Unable to open this URL',
+            })
           );
         }
         return;
@@ -216,7 +218,10 @@ export function BrowserTab({
             size="sm"
             buttonContent="icon-only"
             disabled={!isDesktop || !tab.url}
-            onClick={() => getPreviewWebview(tab.webviewId)?.reload?.()}
+            onClick={() => {
+              setAddressError(null);
+              getPreviewWebview(tab.webviewId)?.reload?.();
+            }}
             aria-label={t('layout.browser-reload', { defaultValue: 'Reload' })}
           >
             <RefreshCw
