@@ -36,6 +36,7 @@ export default function CollectionToolbar({
   width = 'standard',
   children,
   className,
+  persistentHeader = false,
   ...props
 }: Omit<ComponentPropsWithoutRef<'section'>, 'title'> & {
   title: ReactNode;
@@ -43,10 +44,11 @@ export default function CollectionToolbar({
   headingLevel?: 1 | 2;
   headingRef?: Ref<HTMLHeadingElement>;
   width?: keyof typeof COLLECTION_RAIL_CLASS;
+  persistentHeader?: boolean;
 }) {
   const Heading = headingLevel === 1 ? 'h1' : 'h2';
   return (
-    <ContentHeader height="adaptive" inset="none">
+    <ContentHeader height="adaptive" inset="none" persistent={persistentHeader}>
       <section
         role="region"
         className={cn(

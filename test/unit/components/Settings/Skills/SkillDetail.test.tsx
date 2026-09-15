@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { ContentHeaderFrame } from '@/components/Layout/ContentHeader';
 import SkillDetail from '@/components/Settings/Skills/components/SkillDetail';
 import type { SkillLibraryEntry } from '@/components/Settings/Skills/skillLibrary';
 import { render, screen, within } from '@testing-library/react';
@@ -65,6 +66,18 @@ vi.mock('@/components/Settings/Skills/components/SkillFiles', () => ({
 }));
 
 describe('Skill detail layout', () => {
+  it('focuses the heading when it mounts into the persistent header frame', () => {
+    const focus = vi.spyOn(HTMLHeadingElement.prototype, 'focus');
+    render(
+      <ContentHeaderFrame>
+        <SkillDetail skillId={entry.id} />
+      </ContentHeaderFrame>
+    );
+    expect(screen.getByRole('heading', { name: 'research' })).toHaveFocus();
+    expect(focus).toHaveBeenCalledOnce();
+    focus.mockRestore();
+  });
+
   it('keeps type and access in the header and constrains the document content', () => {
     const { container } = render(<SkillDetail skillId={entry.id} />);
     expect(container.querySelector('header')).toHaveClass('px-ds-16');
