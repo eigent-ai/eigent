@@ -39,10 +39,5 @@
   "show-in-finder": "Afficher dans le Finder",
   "show-in-explorer": "Afficher dans l’Explorateur de fichiers",
   "show-in-folder": "Afficher dans le dossier",
-  "preview-load-failed": "Impossible d’afficher ce fichier. Réessayez ou ouvrez-le dans une application externe.",
-  "pdf-loading": "Chargement du PDF…",
-  "pdf-password-required": "Ce PDF nécessite un mot de passe. Ouvrez-le dans une application externe pour le déverrouiller.",
-  "pdf-previous": "Page précédente",
-  "pdf-next": "Page suivante",
-  "pdf-page": "Page {{page}} sur {{total}}"
+  "preview-load-failed": "Impossible d’afficher ce fichier. Réessayez ou ouvrez-le dans une application externe."
 }

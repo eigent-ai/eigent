@@ -37,10 +37,5 @@
   "show-in-finder": "Finderで表示",
   "show-in-explorer": "エクスプローラーで表示",
   "show-in-folder": "フォルダーで表示",
-  "preview-load-failed": "このファイルをプレビューできませんでした。再試行するか、外部アプリで開いてください。",
-  "pdf-loading": "PDFを読み込み中…",
-  "pdf-password-required": "このPDFにはパスワードが必要です。外部アプリで開いてロックを解除してください。",
-  "pdf-previous": "前のページ",
-  "pdf-next": "次のページ",
-  "pdf-page": "{{page}} / {{total}} ページ"
+  "preview-load-failed": "このファイルをプレビューできませんでした。再試行するか、外部アプリで開いてください。"
 }

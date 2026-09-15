@@ -39,10 +39,5 @@
   "show-in-finder": "Mostrar en Finder",
   "show-in-explorer": "Mostrar en el Explorador de archivos",
   "show-in-folder": "Mostrar en la carpeta",
-  "preview-load-failed": "No se pudo previsualizar este archivo. Inténtalo de nuevo o ábrelo en una aplicación externa.",
-  "pdf-loading": "Cargando PDF…",
-  "pdf-password-required": "Este PDF necesita una contraseña. Ábrelo en una aplicación externa para desbloquearlo.",
-  "pdf-previous": "Página anterior",
-  "pdf-next": "Página siguiente",
-  "pdf-page": "Página {{page}} de {{total}}"
+  "preview-load-failed": "No se pudo previsualizar este archivo. Inténtalo de nuevo o ábrelo en una aplicación externa."
 }

@@ -37,10 +37,5 @@
   "show-in-finder": "在访达中显示",
   "show-in-explorer": "在文件资源管理器中显示",
   "show-in-folder": "在文件夹中显示",
-  "preview-load-failed": "无法预览此文件。请重试或使用外部应用打开。",
-  "pdf-loading": "正在加载 PDF…",
-  "pdf-password-required": "此 PDF 需要密码。请使用外部应用打开并解锁。",
-  "pdf-previous": "上一页",
-  "pdf-next": "下一页",
-  "pdf-page": "第 {{page}} 页，共 {{total}} 页"
+  "preview-load-failed": "无法预览此文件。请重试或使用外部应用打开。"
 }

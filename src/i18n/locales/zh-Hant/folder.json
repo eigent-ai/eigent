@@ -37,10 +37,5 @@
   "show-in-finder": "在 Finder 中顯示",
   "show-in-explorer": "在檔案總管中顯示",
   "show-in-folder": "在資料夾中顯示",
-  "preview-load-failed": "無法預覽此檔案。請重試或使用外部應用程式開啟。",
-  "pdf-loading": "正在載入 PDF…",
-  "pdf-password-required": "此 PDF 需要密碼。請使用外部應用程式開啟並解鎖。",
-  "pdf-previous": "上一頁",
-  "pdf-next": "下一頁",
-  "pdf-page": "第 {{page}} 頁，共 {{total}} 頁"
+  "preview-load-failed": "無法預覽此檔案。請重試或使用外部應用程式開啟。"
 }

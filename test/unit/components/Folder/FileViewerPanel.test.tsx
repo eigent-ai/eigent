@@ -335,6 +335,51 @@ describe('FileViewerPanel toolbar', () => {
     expect(callbacks.onOpenExternalFile).toHaveBeenCalledTimes(1);
   });
 
+  it('embeds the authorized PDF URL with native viewer controls in both layouts', () => {
+    const name = 'Report 中文 with spaces.pdf';
+    const url =
+      'localfile://preview/?path=' + encodeURIComponent(`/workspace/${name}`);
+    const file = textFile({
+      name,
+      type: 'pdf',
+      content: url,
+      size: 1024,
+      preview: { kind: 'range-pdf', size: 1024 },
+    });
+    for (const embedded of [true, false]) {
+      const { container, unmount } = renderViewer(file, { embedded });
+      const frame = container.querySelector('iframe');
+      expect(frame).toHaveAttribute('title', name);
+      expect(frame).toHaveAttribute('src', url);
+      // A sandbox or toolbar-hiding fragment would disable native PDF actions.
+      expect(frame).not.toHaveAttribute('sandbox');
+      expect(container.querySelector('canvas, [data-pdf-controls]')).toBeNull();
+      expect(screen.queryByText('Loading PDF…')).toBeNull();
+      expect(
+        screen.getByRole('button', { name: 'Open externally' })
+      ).toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it('keeps oversized PDFs in recovery instead of mounting the browser viewer', () => {
+    const { container } = renderViewer(
+      textFile({
+        name: 'large.pdf',
+        type: 'pdf',
+        content: undefined,
+        preview: {
+          kind: 'blocked',
+          reason: 'too-large',
+          size: 200_000_000,
+          limit: 104_857_600,
+        },
+      })
+    );
+    expect(container.querySelector('iframe')).toBeNull();
+    expect(screen.getByText('Preview not loaded')).toBeInTheDocument();
+  });
+
   it('renders an authorized MP4 with the existing native video controls', () => {
     const { container } = renderViewer(
       textFile({

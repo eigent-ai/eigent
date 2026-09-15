@@ -3106,8 +3106,6 @@ export function FileViewerPanel({
 }: FileViewerPanelProps) {
   const { t } = useTranslation();
   const appearance = useAuthStore((state) => state.appearance);
-  const [pdfToolbarContainer, setPdfToolbarContainer] =
-    useState<HTMLDivElement | null>(null);
   const segmentsClickable = Boolean(onBreadcrumbSegmentClick);
   const selectedType = selectedFile ? getFileType(selectedFile) : '';
   const supportsRichView =
@@ -3209,14 +3207,6 @@ export function FileViewerPanel({
             {selectedFile && !loading && !loadFailed && (
               <PreviewSizeNotice file={selectedFile} />
             )}
-            {selectedType === 'pdf' &&
-              !loadFailed &&
-              selectedFile?.preview?.kind !== 'blocked' && (
-                <div
-                  ref={setPdfToolbarContainer}
-                  className="flex shrink-0 items-center"
-                />
-              )}
             {loadFailed && onRetry && (
               <Button
                 type="button"
@@ -3390,9 +3380,7 @@ export function FileViewerPanel({
                 <PdfPreview
                   key={`${selectedFile.path}:${selectedFile.modifiedAt ?? ''}`}
                   url={selectedFile.content as string}
-                  size={selectedFile.size ?? 0}
-                  toolbarContainer={pdfToolbarContainer}
-                  onRetry={onRetry}
+                  name={selectedFile.name}
                 />
               ) : ['doc', 'docx', 'pptx', 'xlsx'].includes(selectedType) ? (
                 <FolderComponent selectedFile={selectedFile} />

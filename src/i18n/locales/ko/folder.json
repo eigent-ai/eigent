@@ -37,10 +37,5 @@
   "show-in-finder": "Finder에서 보기",
   "show-in-explorer": "파일 탐색기에서 보기",
   "show-in-folder": "폴더에서 보기",
-  "preview-load-failed": "이 파일을 미리 볼 수 없습니다. 다시 시도하거나 외부 앱에서 여세요.",
-  "pdf-loading": "PDF 불러오는 중…",
-  "pdf-password-required": "이 PDF에는 비밀번호가 필요합니다. 외부 앱에서 열어 잠금을 해제하세요.",
-  "pdf-previous": "이전 페이지",
-  "pdf-next": "다음 페이지",
-  "pdf-page": "{{total}}페이지 중 {{page}}페이지"
+  "preview-load-failed": "이 파일을 미리 볼 수 없습니다. 다시 시도하거나 외부 앱에서 여세요."
 }

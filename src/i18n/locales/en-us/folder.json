@@ -38,10 +38,5 @@
   "show-in-finder": "Show in Finder",
   "show-in-explorer": "Show in File Explorer",
   "show-in-folder": "Show in folder",
-  "preview-load-failed": "This file could not be previewed. Try again or open it externally.",
-  "pdf-loading": "Loading PDF…",
-  "pdf-password-required": "This PDF needs a password. Open it externally to unlock it.",
-  "pdf-previous": "Previous page",
-  "pdf-next": "Next page",
-  "pdf-page": "Page {{page}} of {{total}}"
+  "preview-load-failed": "This file could not be previewed. Try again or open it externally."
 }

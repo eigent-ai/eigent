@@ -38,10 +38,5 @@
   "show-in-finder": "Im Finder anzeigen",
   "show-in-explorer": "Im Datei-Explorer anzeigen",
   "show-in-folder": "Im Ordner anzeigen",
-  "preview-load-failed": "Diese Datei konnte nicht angezeigt werden. Versuchen Sie es erneut oder öffnen Sie sie extern.",
-  "pdf-loading": "PDF wird geladen…",
-  "pdf-password-required": "Diese PDF benötigt ein Passwort. Öffnen Sie sie extern, um sie zu entsperren.",
-  "pdf-previous": "Vorherige Seite",
-  "pdf-next": "Nächste Seite",
-  "pdf-page": "Seite {{page}} von {{total}}"
+  "preview-load-failed": "Diese Datei konnte nicht angezeigt werden. Versuchen Sie es erneut oder öffnen Sie sie extern."
 }

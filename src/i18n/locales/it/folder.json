@@ -39,10 +39,5 @@
   "show-in-finder": "Mostra nel Finder",
   "show-in-explorer": "Mostra in Esplora file",
   "show-in-folder": "Mostra nella cartella",
-  "preview-load-failed": "Impossibile visualizzare questo file. Riprova o aprilo in un’applicazione esterna.",
-  "pdf-loading": "Caricamento PDF…",
-  "pdf-password-required": "Questo PDF richiede una password. Aprilo in un’applicazione esterna per sbloccarlo.",
-  "pdf-previous": "Pagina precedente",
-  "pdf-next": "Pagina successiva",
-  "pdf-page": "Pagina {{page}} di {{total}}"
+  "preview-load-failed": "Impossibile visualizzare questo file. Riprova o aprilo in un’applicazione esterna."
 }
