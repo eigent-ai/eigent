@@ -49,6 +49,7 @@ const WEB_UNSUPPORTED_OFFICE_TYPES = new Set([
   'xls',
   'xlsx',
 ]);
+const REMOTE_OPENXML_TYPES = new Set(['docx', 'pptx', 'xlsx']);
 
 function finiteSize(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
@@ -418,6 +419,41 @@ export async function loadFilePreview(
     };
   }
 
+  const normalizedType = normalizePreviewFileType(file.type);
+  if (
+    isRemote &&
+    options.ipcRenderer &&
+    REMOTE_OPENXML_TYPES.has(normalizedType)
+  ) {
+    const limit = decision.limit || FILE_PREVIEW_LIMITS.officeBytes;
+    const result = await readRemotePrefix(file.path, limit + 1, options.signal);
+    const totalBytes = result.totalBytes ?? metadata.size;
+    if (
+      result.bytesRead > limit ||
+      totalBytes === null ||
+      totalBytes > limit ||
+      result.bytesRead < totalBytes
+    ) {
+      return {
+        ...baseFile,
+        content: undefined,
+        preview: {
+          kind: 'blocked',
+          reason: totalBytes === null ? 'metadata-unavailable' : 'too-large',
+          size: totalBytes,
+          limit,
+        },
+      };
+    }
+    const content = (await options.ipcRenderer.invoke(
+      'preview-office-buffer',
+      normalizedType,
+      result.bytes
+    )) as string;
+    throwIfAborted(options.signal);
+    return { ...baseFile, content };
+  }
+
   if (!isRemote && options.ipcRenderer) {
     const content = (await options.ipcRenderer.invoke(
       'open-file',
@@ -429,7 +465,7 @@ export async function loadFilePreview(
     return { ...baseFile, content };
   }
 
-  if (WEB_UNSUPPORTED_OFFICE_TYPES.has(file.type.toLowerCase())) {
+  if (WEB_UNSUPPORTED_OFFICE_TYPES.has(normalizedType)) {
     return {
       ...baseFile,
       preview: {

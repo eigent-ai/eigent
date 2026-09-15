@@ -124,6 +124,11 @@ describe('local file security', () => {
       true
     );
     expect(isExecutableExternalOpenPath('/workspace/report.pdf')).toBe(false);
+    for (const extension of ['py', 'pyw', 'rb', 'pl', 'wsh', 'scptd']) {
+      expect(
+        isExecutableExternalOpenPath(`/workspace/agent-output.${extension}`)
+      ).toBe(true);
+    }
   });
 
   it('accepts IPC only from the main renderer', () => {

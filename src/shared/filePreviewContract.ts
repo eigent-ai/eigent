@@ -175,32 +175,95 @@ const BINARY_MIME_TYPES = new Set([
   'application/wasm',
 ]);
 
+const ANSI_ESCAPE_PATTERN =
+  /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007]*(?:\u0007|\u001b\\)?)/g;
+
+function hasUnsupportedControlCharacters(value: string): boolean {
+  // ESC is handled as ANSI below. Tabs, newlines, form feeds and carriage
+  // returns remain valid text controls.
+  return /[\u0000-\u0008\u000e-\u001a\u001c-\u001f]/.test(value);
+}
+
+function decodeCandidate(
+  bytes: Uint8Array,
+  encoding: string,
+  allowTrailingPartial: boolean
+): string | null {
+  try {
+    const value = new TextDecoder(encoding, { fatal: true }).decode(bytes, {
+      // A file can end while a writer is between bytes of one character. Keep
+      // the complete text rather than misclassifying the entire file as binary.
+      stream: allowTrailingPartial,
+    });
+    const withoutAnsi = value.replace(ANSI_ESCAPE_PATTERN, '');
+    return hasUnsupportedControlCharacters(withoutAnsi) ? null : withoutAnsi;
+  } catch {
+    return null;
+  }
+}
+
+function endsWithPartialUtf8Sequence(bytes: Uint8Array): boolean {
+  let continuationBytes = 0;
+  for (
+    let index = bytes.length - 1;
+    index >= 0 && (bytes[index] & 0xc0) === 0x80;
+    index -= 1
+  ) {
+    continuationBytes += 1;
+  }
+  if (continuationBytes === 0) return false;
+  const leadIndex = bytes.length - continuationBytes - 1;
+  if (leadIndex < 0) return false;
+  const lead = bytes[leadIndex];
+  const expectedContinuationBytes =
+    (lead & 0xe0) === 0xc0
+      ? 1
+      : (lead & 0xf0) === 0xe0
+        ? 2
+        : (lead & 0xf8) === 0xf0
+          ? 3
+          : 0;
+  return (
+    expectedContinuationBytes > 0 &&
+    continuationBytes < expectedContinuationBytes
+  );
+}
+
 /** Probe bounded bytes before decoding unknown files. BOMs distinguish UTF-16
  * text from binary NULs; streaming avoids rejecting a cut multibyte character. */
 export function decodePreviewText(
   bytes: Uint8Array,
   truncated = false
 ): string | null {
-  const encoding =
+  const bomEncoding =
     bytes[0] === 0xff && bytes[1] === 0xfe
       ? 'utf-16le'
       : bytes[0] === 0xfe && bytes[1] === 0xff
         ? 'utf-16be'
-        : 'utf-8';
-  try {
-    const sample = new TextDecoder(encoding, { fatal: true }).decode(
-      bytes.subarray(0, 8192),
-      { stream: truncated || bytes.length > 8192 }
-    );
-    // Tabs, newlines and form feeds are valid text. NUL and other binary
-    // controls are not useful source previews, even when valid UTF-8.
-    if (/[\u0000-\u0008\u000e-\u001f]/.test(sample)) return null;
-    return new TextDecoder(encoding, { fatal: true }).decode(bytes, {
-      stream: truncated,
-    });
-  } catch {
-    return null;
+        : null;
+  const allowTrailingPartial = truncated || bytes.length > 8192;
+  const candidates = bomEncoding
+    ? [bomEncoding]
+    : ['utf-8', 'gb18030', 'windows-1252'];
+
+  if (!bomEncoding && endsWithPartialUtf8Sequence(bytes)) {
+    const utf8Prefix = decodeCandidate(bytes, 'utf-8', true);
+    if (utf8Prefix !== null) return utf8Prefix;
   }
+
+  for (const encoding of candidates) {
+    const sample = decodeCandidate(
+      bytes.subarray(0, 8192),
+      encoding,
+      allowTrailingPartial
+    );
+    if (sample === null) continue;
+    // Prefer GB18030 only when it decodes actual CJK text. This avoids turning
+    // ordinary Latin-1 byte pairs into unrelated CJK characters.
+    if (encoding === 'gb18030' && !/[\u3400-\u9fff]/u.test(sample)) continue;
+    return decodeCandidate(bytes, encoding, true);
+  }
+  return null;
 }
 
 export function normalizePreviewFileType(type: string): string {
@@ -224,7 +287,9 @@ export function decideFilePreview(
   if (
     BINARY_TYPES.has(normalized) ||
     BINARY_MIME_TYPES.has(normalized) ||
-    (mimeType && BINARY_MIME_TYPES.has(mimeType))
+    (mimeType &&
+      BINARY_MIME_TYPES.has(mimeType) &&
+      !OFFICE_TYPES.has(normalized))
   ) {
     return { mode: 'blocked', limit: null, reason: 'unsupported' };
   }

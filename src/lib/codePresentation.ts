@@ -130,6 +130,7 @@ export function registerCodeThemes(monaco: MonacoApi): void {
     colors: {
       'editor.background': '#FFFFFF',
       'editor.foreground': '#1F2328',
+      'editorGutter.background': '#F6F8FA',
       'editorLineNumber.foreground': '#8C959F',
       'editorLineNumber.activeForeground': '#59636E',
       'editor.selectionBackground': '#0969DA33',
@@ -173,6 +174,7 @@ export function registerCodeThemes(monaco: MonacoApi): void {
     colors: {
       'editor.background': '#0D1117',
       'editor.foreground': '#E6EDF3',
+      'editorGutter.background': '#161B22',
       'editorLineNumber.foreground': '#6E7681',
       'editorLineNumber.activeForeground': '#8B949E',
       'editor.selectionBackground': '#58A6FF33',

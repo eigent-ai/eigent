@@ -96,6 +96,7 @@ describe('FileViewerPanel toolbar', () => {
     );
 
     const breadcrumb = screen.getByRole('navigation', { name: 'File path' });
+    expect(breadcrumb.closest('header')).toHaveClass('flex-wrap');
     expect(breadcrumb).toHaveClass('overflow-hidden');
     expect(breadcrumb).not.toHaveClass('scrollbar-always-visible');
     expect(breadcrumb).not.toHaveClass('overflow-x-auto');
@@ -144,19 +145,18 @@ describe('FileViewerPanel toolbar', () => {
   });
 
   it.each([386, 1000])(
-    'shows the byte notice only in the header for a %s byte file',
+    'keeps the complete-file warning visibly beside the preview for a %s byte file',
     (totalBytes) => {
       renderViewer(
         textFile({
           preview: { kind: 'truncated-text', bytesRead: 386, totalBytes },
         })
       );
-      const notice = screen.getByText(`Previewing 386 B of ${totalBytes} B`);
-      expect(notice.closest('header')).not.toBeNull();
-      expect(notice.title.includes('complete file was not loaded')).toBe(
-        totalBytes > 386
+      const notice = screen.getByText(
+        `Previewing 386 B of ${totalBytes} B. The complete file was not loaded.`
       );
-      expect(screen.queryByText(/complete file was not loaded/)).toBeNull();
+      expect(notice.closest('header')).toBeNull();
+      expect(notice).toHaveAttribute('aria-live', 'polite');
     }
   );
 
@@ -356,8 +356,8 @@ describe('FileViewerPanel toolbar', () => {
       expect(container.querySelector('canvas, [data-pdf-controls]')).toBeNull();
       expect(screen.queryByText('Loading PDF…')).toBeNull();
       expect(
-        screen.getByRole('button', { name: 'Open externally' })
-      ).toBeInTheDocument();
+        screen.queryByRole('button', { name: 'Open externally' })
+      ).toBeNull();
       unmount();
     }
   });

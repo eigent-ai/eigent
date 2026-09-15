@@ -32,11 +32,14 @@
   "truncated-preview-summary": "Vorschau von {{bytesRead}}{{totalBytes}}. Die vollständige Datei wurde nicht geladen.",
   "video-playback-unsupported": "Ihr Browser unterstützt die Videowiedergabe nicht.",
   "view-mode": "Anzeigemodus",
-  "folder-selected-open-in-description": "Mit „Öffnen in“ können Sie genau diesen Ordner im Finder oder in einem Editor öffnen.",
+  "folder-selected-open-in-description": "Mit den Aktionen oben können Sie diesen Ordner im Dateimanager oder in einem Editor öffnen.",
   "folder-selected-preview-description": "Wählen Sie eine Datei in diesem Ordner aus, um ihren Inhalt in der Vorschau anzuzeigen.",
   "zip-file-is-not-supported-yet": "ZIP-Dateien werden noch nicht unterstützt.",
   "show-in-finder": "Im Finder anzeigen",
   "show-in-explorer": "Im Datei-Explorer anzeigen",
   "show-in-folder": "Im Ordner anzeigen",
+  "open-in-finder": "Im Finder öffnen",
+  "open-in-explorer": "Im Datei-Explorer öffnen",
+  "open-in-folder": "Im Dateimanager öffnen",
   "preview-load-failed": "Diese Datei konnte nicht angezeigt werden. Versuchen Sie es erneut oder öffnen Sie sie extern."
 }

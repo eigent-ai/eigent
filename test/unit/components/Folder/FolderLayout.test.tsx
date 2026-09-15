@@ -249,7 +249,6 @@ describe('Folder page layout', () => {
       'Show in Finder',
       'Cursor',
       'VS Code',
-      'Open externally',
     ]);
     expect(
       screen.queryByRole('menuitem', { name: 'Open in browser' })

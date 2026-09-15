@@ -50,6 +50,41 @@ describe('parseBoundedCsvPreview', () => {
 });
 
 describe('loadFilePreview', () => {
+  it.each(['docx', 'xlsx', 'pptx'])(
+    'parses a bounded remote %s archive through the Electron host',
+    async (type) => {
+      const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(bytes, {
+            headers: {
+              'Content-Length': String(bytes.byteLength),
+              'Content-Type': 'application/zip',
+            },
+          })
+        )
+      );
+      const invoke = vi.fn().mockResolvedValue('<p>Office preview</p>');
+
+      const result = await loadFilePreview(
+        {
+          name: `report.${type}`,
+          type,
+          path: `https://files.example/report.${type}`,
+          size: bytes.byteLength,
+          mimeType: 'application/zip',
+          isRemote: true,
+        },
+        { ipcRenderer: { invoke } }
+      );
+
+      expect(result.content).toBe('<p>Office preview</p>');
+      expect(result.preview).toBeUndefined();
+      expect(invoke).toHaveBeenCalledWith('preview-office-buffer', type, bytes);
+    }
+  );
+
   it.each([4, 10])('fully loads a %i MiB remote HTML document', async (mib) => {
     const size = mib * 1024 * 1024;
     const content = `<html>${' '.repeat(size - 13)}</html>`;

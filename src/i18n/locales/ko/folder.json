@@ -31,11 +31,14 @@
   "truncated-preview-summary": "{{bytesRead}}{{totalBytes}}만 미리 보는 중입니다. 전체 파일은 불러오지 않았습니다.",
   "video-playback-unsupported": "브라우저에서 동영상을 재생할 수 없습니다.",
   "view-mode": "보기 모드",
-  "folder-selected-open-in-description": "‘다음에서 열기’를 사용하여 Finder 또는 편집기에서 이 폴더를 여세요.",
+  "folder-selected-open-in-description": "위의 작업을 사용해 파일 관리자 또는 편집기에서 이 폴더를 여세요.",
   "folder-selected-preview-description": "내용을 미리 보려면 이 폴더 안의 파일을 선택하세요.",
   "zip-file-is-not-supported-yet": "ZIP 파일은 아직 지원되지 않습니다.",
   "show-in-finder": "Finder에서 보기",
   "show-in-explorer": "파일 탐색기에서 보기",
   "show-in-folder": "폴더에서 보기",
+  "open-in-finder": "Finder에서 열기",
+  "open-in-explorer": "파일 탐색기에서 열기",
+  "open-in-folder": "파일 관리자에서 열기",
   "preview-load-failed": "이 파일을 미리 볼 수 없습니다. 다시 시도하거나 외부 앱에서 여세요."
 }

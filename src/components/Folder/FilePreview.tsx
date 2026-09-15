@@ -12,8 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import cursorIcon from '@/assets/icon/cursor.svg';
-import vsCodeIcon from '@/assets/icon/vs-code.svg';
 import { Button } from '@/components/ui/button';
 import { useHost } from '@/host';
 import {
@@ -25,8 +23,8 @@ import { FileText, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import type { FileViewerOpenAction } from './index';
 import { downloadFromUrl, downloadOpenedFile, FileViewerPanel } from './index';
+import { useIdeOpenActions } from './useIdeOpenActions';
 
 export interface FilePreviewProps {
   /** File to preview, or null to show the empty "select a file" placeholder. */
@@ -214,37 +212,11 @@ export function FilePreview({
     }
   }, [selectedFile, ipcRenderer, t]);
 
-  const openInActions = useMemo<FileViewerOpenAction[]>(() => {
-    if (
-      !selectedFile ||
-      isRemotePreviewSource(selectedFile) ||
-      !host?.electronAPI?.openInIDE
-    )
-      return [];
-    return (['cursor', 'vscode'] as const).map((ide) => ({
-      id: ide,
-      label: t(
-        ide === 'cursor' ? 'chat.open-in-cursor' : 'chat.open-in-vscode'
-      ),
-      icon: (
-        <img
-          src={ide === 'cursor' ? cursorIcon : vsCodeIcon}
-          alt=""
-          className="size-ds-icon-md"
-          aria-hidden
-        />
-      ),
-      onSelect: () => {
-        void host.electronAPI
-          .openInIDE(selectedFile.path, ide)
-          .then((result: { success: boolean; error?: string }) => {
-            if (!result.success)
-              toast.error(result.error || t('chat.failed-to-open-folder'));
-          })
-          .catch(() => toast.error(t('chat.failed-to-open-folder')));
-      },
-    }));
-  }, [host, selectedFile, t]);
+  const openInActions = useIdeOpenActions(
+    selectedFile && !isRemotePreviewSource(selectedFile)
+      ? selectedFile.path
+      : ''
+  );
 
   return (
     <FileViewerPanel
@@ -264,7 +236,12 @@ export function FilePreview({
       surfaceClassName={surfaceClassName}
       embedded={embedded}
       onRevealFile={handleRevealFile}
-      onOpenExternalFile={handleOpenExternalFile}
+      onOpenExternalFile={
+        selectedFile &&
+        (isRemotePreviewSource(selectedFile) || Boolean(ipcRenderer))
+          ? handleOpenExternalFile
+          : undefined
+      }
       openInActions={openInActions}
       onDownloadFile={handleDownloadFile}
       onToggleSourceCode={handleToggleSourceCode}

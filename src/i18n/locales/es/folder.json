@@ -33,11 +33,14 @@
   "truncated-preview-summary": "Vista previa de {{bytesRead}}{{totalBytes}}. No se cargó el archivo completo.",
   "video-playback-unsupported": "Tu navegador no admite la reproducción de vídeo.",
   "view-mode": "Modo de vista",
-  "folder-selected-open-in-description": "Usa Abrir en para abrir esta carpeta exacta en Finder o en un editor.",
+  "folder-selected-open-in-description": "Usa las acciones de arriba para abrir esta carpeta en el gestor de archivos o en un editor.",
   "folder-selected-preview-description": "Selecciona un archivo de esta carpeta para previsualizar su contenido.",
   "zip-file-is-not-supported-yet": "Los archivos ZIP aún no son compatibles.",
   "show-in-finder": "Mostrar en Finder",
   "show-in-explorer": "Mostrar en el Explorador de archivos",
   "show-in-folder": "Mostrar en la carpeta",
+  "open-in-finder": "Abrir en Finder",
+  "open-in-explorer": "Abrir en el Explorador de archivos",
+  "open-in-folder": "Abrir en el gestor de archivos",
   "preview-load-failed": "No se pudo previsualizar este archivo. Inténtalo de nuevo o ábrelo en una aplicación externa."
 }

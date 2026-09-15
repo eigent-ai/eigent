@@ -77,7 +77,8 @@ describe('FileReader bounded preview', () => {
     );
     const preview = await reader.previewTextFile(filePath, 10 * 1024 * 1024);
     expect(preview.bytesRead).toBe(1024 * 1024);
-    expect(preview.content).toHaveLength(1024 * 1024);
+    expect(preview.content).toBe('');
+    expect(preview.binary).toBe(true);
     expect(preview.totalBytes).toBe(size);
   });
 

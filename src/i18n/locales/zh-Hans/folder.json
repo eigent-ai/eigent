@@ -31,11 +31,14 @@
   "truncated-preview-summary": "正在预览 {{bytesRead}}{{totalBytes}}，未加载完整文件。",
   "video-playback-unsupported": "你的浏览器不支持视频播放。",
   "view-mode": "查看模式",
-  "folder-selected-open-in-description": "使用“打开方式”可在访达或编辑器中打开此文件夹。",
+  "folder-selected-open-in-description": "使用上方操作可在文件管理器或编辑器中打开此文件夹。",
   "folder-selected-preview-description": "选择此文件夹中的文件以预览其内容。",
   "zip-file-is-not-supported-yet": "暂不支持 Zip 文件。",
   "show-in-finder": "在访达中显示",
   "show-in-explorer": "在文件资源管理器中显示",
   "show-in-folder": "在文件夹中显示",
+  "open-in-finder": "在访达中打开",
+  "open-in-explorer": "在文件资源管理器中打开",
+  "open-in-folder": "在文件管理器中打开",
   "preview-load-failed": "无法预览此文件。请重试或使用外部应用打开。"
 }
