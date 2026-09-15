@@ -210,6 +210,8 @@
   "proxy-placeholder": "http://127.0.0.1:7890",
   "proxy-saved-restart-required": "Proxy configuration saved. Restart the app to apply changes.",
   "proxy-save-failed": "Failed to save proxy configuration.",
+  "proxy-cleared-restart-required": "Proxy configuration cleared. Restart the app to apply changes.",
+  "proxy-reset-failed": "Failed to reset proxy configuration.",
   "proxy-invalid-url": "Invalid proxy URL. Must start with http://, https://, socks4://, or socks5://.",
   "proxy-restart-hint": "Restart required to apply proxy changes.",
   "cloud-not-available-in-local-proxy": "Cloud version is not available in local proxy mode",
