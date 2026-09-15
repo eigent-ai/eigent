@@ -1167,7 +1167,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 self._terminal_session_runs[id] = (
                     run_context.run_id if run_context is not None else None
                 )
-                previous = self.shell_sessions.get(id)
+                previous = getattr(self, "shell_sessions", {}).get(id)
                 if previous:
                     getattr(self, "_preview_log_processes", {}).pop(
                         previous.get("log_file"), None
