@@ -296,7 +296,9 @@ async def test_600_second_attempts_stop_at_1800_second_watchdog(
                     model="gpt-6-astra", input="fixture"
                 )
         await clock.sleep(1000)
-    assert [c["read"] for c in calls] == [600, 600, 598.5]
+    assert [c["read"] for c in calls] == pytest.approx(
+        [600, 600, 598.5], rel=0, abs=1e-9
+    )
     assert peak == 1 and active == 0
     terminal = events(caplog)[-1]
     assert terminal["phase"] == "timeout"

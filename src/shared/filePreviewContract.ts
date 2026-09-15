@@ -21,7 +21,7 @@ export const FILE_PREVIEW_LIMITS = {
   csvColumns: 50,
   csvCellCharacters: 4096,
   textBytes: 1024 * 1024,
-  richHtmlBytes: 1024 * 1024,
+  richHtmlBytes: 10 * 1024 * 1024,
   officeBytes: 20 * 1024 * 1024,
   pdfBytes: 100 * 1024 * 1024,
   imageBytes: 25 * 1024 * 1024,
@@ -219,7 +219,8 @@ export function decideFilePreview(
         ? FILE_PREVIEW_LIMITS.richHtmlBytes
         : FILE_PREVIEW_LIMITS.textBytes;
     if (size === null || size > limit) {
-      return { mode: 'bounded-text', limit };
+      // Source excerpts keep the smaller text budget, including for HTML.
+      return { mode: 'bounded-text', limit: FILE_PREVIEW_LIMITS.textBytes };
     }
     return { mode: 'full', limit };
   }

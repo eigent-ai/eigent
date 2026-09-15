@@ -55,6 +55,32 @@ async function temporaryFile(name: string, content: string): Promise<string> {
 }
 
 describe('FileReader bounded preview', () => {
+  it.each([4, 10])('fully reads a %i MiB HTML document', async (mib) => {
+    const size = mib * 1024 * 1024;
+    const content = `<html>${' '.repeat(size - 13)}</html>`;
+    const filePath = await temporaryFile('index.html', content);
+    const reader = new FileReader(null as never);
+
+    const result = await reader.openFile('html', filePath, false);
+    expect(result).toHaveLength(size);
+    expect(result === content).toBe(true);
+  });
+
+  it('rejects full HTML reads above 10 MiB and clamps source reads to 1 MiB', async () => {
+    const filePath = await temporaryFile('large.html', '');
+    const size = 10 * 1024 * 1024 + 1;
+    await truncate(filePath, size);
+    const reader = new FileReader(null as never);
+
+    await expect(reader.openFile('html', filePath, false)).rejects.toThrow(
+      'FILE_PREVIEW_REQUIRES_BOUNDED_READER'
+    );
+    const preview = await reader.previewTextFile(filePath, 10 * 1024 * 1024);
+    expect(preview.bytesRead).toBe(1024 * 1024);
+    expect(preview.content).toHaveLength(1024 * 1024);
+    expect(preview.totalBytes).toBe(size);
+  });
+
   it('returns at most the configured CSV row count', async () => {
     const rows = Array.from({ length: 700 }, (_, index) => `${index},value`);
     const filePath = await temporaryFile(
