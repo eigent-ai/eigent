@@ -19,6 +19,40 @@ import {
 import { describe, expect, it } from 'vitest';
 
 describe('file preview policy', () => {
+  it.each([1024 * 1024 + 1, 4 * 1024 * 1024, 10 * 1024 * 1024])(
+    'fully previews HTML of %i bytes within the 10 MiB limit',
+    (size) => {
+      expect(decideFilePreview('html', { size })).toEqual({
+        mode: 'full',
+        limit: 10 * 1024 * 1024,
+      });
+    }
+  );
+
+  it.each([10 * 1024 * 1024 + 1, null])(
+    'limits HTML source excerpts to 1 MiB when size is %s',
+    (size) => {
+      expect(decideFilePreview('html', { size })).toEqual({
+        mode: 'bounded-text',
+        limit: 1024 * 1024,
+      });
+    }
+  );
+
+  it.each(['txt', 'md', 'json'])(
+    'preserves the 1 MiB full-preview boundary for %s',
+    (type) => {
+      expect(decideFilePreview(type, { size: 1024 * 1024 })).toEqual({
+        mode: 'full',
+        limit: 1024 * 1024,
+      });
+      expect(decideFilePreview(type, { size: 1024 * 1024 + 1 })).toEqual({
+        mode: 'bounded-text',
+        limit: 1024 * 1024,
+      });
+    }
+  );
+
   it('streams MP4 media but blocks native Blender projects as unsupported', () => {
     expect(decideFilePreview('mp4', { size: 30_000_000 })).toEqual({
       mode: 'stream-media',
