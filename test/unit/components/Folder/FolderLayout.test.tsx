@@ -103,8 +103,19 @@ vi.mock('@/store/spaceStore', () => ({
 }));
 
 describe('Folder page layout', () => {
+  let matchesSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    // Floating UI checks whether a menu anchor is in the native top layer.
+    // jsdom's :modal selector can recurse indefinitely on GitHub's Node 20
+    // runner; these Radix menus use ordinary DOM, so isolate that query.
+    const matches = Element.prototype.matches;
+    matchesSpy = vi
+      .spyOn(Element.prototype, 'matches')
+      .mockImplementation(function (selector) {
+        return selector === ':modal' ? false : matches.call(this, selector);
+      });
     mocks.chatStore = null;
     mocks.getElectronAPI.mockReturnValue(null);
     mocks.getIpcRenderer.mockReturnValue(null);
@@ -137,6 +148,7 @@ describe('Folder page layout', () => {
 
   afterEach(() => {
     cleanup();
+    matchesSpy.mockRestore();
   });
 
   it('removes the far-right rail completely and reopens it from the viewer toolbar', async () => {
