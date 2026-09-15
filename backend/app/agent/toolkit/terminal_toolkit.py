@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import hashlib
+import json
 import logging
 import os
 import platform
@@ -31,6 +32,7 @@ from inspect import getdoc
 from pathlib import Path
 from queue import Full
 
+from camel.toolkits.function_tool import FunctionTool
 from camel.toolkits.terminal_toolkit import (
     TerminalToolkit as BaseTerminalToolkit,
 )
@@ -39,9 +41,11 @@ from camel.toolkits.terminal_toolkit.terminal_toolkit import _to_plain
 from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.component.environment import env
 from app.run_journal import OutboxLeaseLostError
+from app.run_policy import ToolSafetyClass
 from app.run_runtime.tool_checkpoint import (
     BackgroundToolResult,
     ToolInvocationNotDispatchedError,
+    declare_tool_safety,
     finish_tool_checkpoint,
     get_current_tool_checkpoint,
 )
@@ -59,6 +63,7 @@ from app.utils.listen.toolkit_listen import (
 )
 from app.utils.runtime_storage import runtime_storage
 from app.utils.space_overlay_client import run_context_for_task
+from app.utils.toolchain_preflight import inspect_toolchain
 from app.workspace_git import (
     get_default_workspace_git_lifecycle,
     get_default_workspace_mutation_service,
@@ -378,6 +383,126 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             return False, sanitized
         return True, _isolated_local_command(sanitized)
 
+    @listen_toolkit()
+    def terminal_preflight(
+        self,
+        commands: list[str],
+        directory: str | None = None,
+        filename_pattern: str | None = None,
+        start_number: int = 1,
+        end_number: int | None = None,
+    ) -> str:
+        """Inspect toolchain and recovery-file metadata without executing commands.
+
+        Call before dependency-dependent work or resuming numbered output files.
+        This never installs, downloads, copies, renders, starts a login shell,
+        or grants execution/access permission. External recovery locations and
+        symlinks return guidance only. A complete sequence should be reused
+        after confirming provenance/settings and validating its contents with
+        authorized tools. Ask for explicit user confirmation for installation,
+        copying, PATH changes or new access roots; do not bypass a refusal.
+
+        Args:
+            commands: Executable names to find on the worker PATH, or explicit
+                in-workspace executable paths. Each item is a whole name/path,
+                not shell syntax; paths with spaces do not need shell quotes.
+                Use an empty list for directory/sequence inspection only.
+            directory: Existing real recovery directory in the current workspace,
+                absolute or relative to working_directory. Defaults to cwd.
+            filename_pattern: Optional numbered filename, e.g. frame_%04d.png.
+                One %d or %0Nd placeholder (N=1..9); no directory components.
+            start_number: First expected file number, inclusive. Defaults to 1.
+            end_number: Last expected file number, inclusive. Required with a
+                filename_pattern; at most 10000 files may be checked.
+
+        Returns:
+            str: JSON diagnostics, bounded gap samples and next-step guidance.
+        """
+        if self.use_docker_backend:
+            return json.dumps(
+                {
+                    "status": "unavailable",
+                    "execution_authorized": False,
+                    "reason": "Container metadata cannot be inferred from the host.",
+                }
+            )
+        # Opening a Bundle environment provider retrieves protected values and
+        # is reserved for authorized spawn. Never do it for discovery or fall
+        # back to host PATH while claiming to have inspected that environment.
+        environment = None
+        venv = None
+        if self._runtime_env_provider is None:
+            # Spawn getters may materialize runtime storage or clone a venv.
+            # Read only the configured keys this metadata probe consumes.
+            environment = {}
+            runtime_environment = self._runtime_env_vars
+            for key in (
+                "PATH",
+                "EIGENT_RUNTIME_DIR",
+                "EIGENT_CACHE_DIR",
+                "EIGENT_INTERMEDIATE_DIR",
+            ):
+                if key in runtime_environment:
+                    environment[key] = runtime_environment[key]
+                elif key in os.environ:
+                    environment[key] = os.environ[key]
+            selection = getattr(self, "_preflight_venv_selection", None)
+            if selection is not None:
+                context = run_context_for_task(self.api_task_id)
+                owner = (
+                    (context.project_id, context.run_id) if context else None
+                )
+                candidate, selected_owner = selection
+                if (
+                    selected_owner == owner
+                    and candidate == self.cloned_env_path
+                    and Path(candidate).is_dir()
+                ):
+                    venv = candidate
+            if venv:
+                bin_dir = "Scripts" if self.os_type == "Windows" else "bin"
+                environment["PATH"] = os.pathsep.join(
+                    [str(Path(venv) / bin_dir)]
+                    + ([environment["PATH"]] if "PATH" in environment else [])
+                )
+        report = inspect_toolchain(
+            working_directory=Path(self.working_dir),
+            worker_environment=environment,
+            commands=commands,
+            directory=directory,
+            filename_pattern=filename_pattern,
+            start_number=start_number,
+            end_number=end_number,
+        )
+        if environment is None:
+            report["environment_source"] = (
+                "protected_spawn_environment_unavailable"
+            )
+        elif venv:
+            report["environment_source"] = (
+                "worker_environment_with_selected_venv_bin"
+            )
+        report["venv_selection"] = {
+            "status": "confirmed" if venv else "unconfirmed"
+        }
+        if not venv:
+            report["venv_selection"]["reason"] = (
+                "The virtual environment for the current Task has not been "
+                "confirmed; no environment setup was attempted."
+            )
+        report["activation_scripts_evaluated"] = False
+        return json.dumps(report, sort_keys=True)
+
+    # CAMEL message integration re-creates FunctionTool instances. Keep the
+    # declaration on this code-owned callable too so wraps preserves it.
+    declare_tool_safety(terminal_preflight, ToolSafetyClass.SAFE_READ)
+
+    def get_tools(self) -> list[FunctionTool]:
+        preflight = declare_tool_safety(
+            FunctionTool(self.terminal_preflight), ToolSafetyClass.SAFE_READ
+        )
+        return [*super().get_tools(), preflight]
+
     def _scrub_runtime_output(self, content: str) -> str:
         scrubbed = content
         for value in getattr(self, "_active_runtime_secret_values", ()):
@@ -603,7 +728,17 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
 
         Copies writable packages from terminal_base into Task-owned storage.
         """
+        # A cwd/Run rebind is not proof of which venv was selected. Publish
+        # only after this existing setup path successfully selects an environment.
+        self._preflight_venv_selection: (
+            tuple[str, tuple[str, str] | None] | None
+        ) = None
         self.cloned_env_path = os.path.join(self._agent_venv_dir, ".venv")
+        context = run_context_for_task(self.api_task_id)
+        selection = (
+            self.cloned_env_path,
+            (context.project_id, context.run_id) if context else None,
+        )
         terminal_base_path = get_terminal_base_venv_path()
 
         # Check if terminal_base exists
@@ -634,6 +769,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 f"Using existing cloned environment: {self.cloned_env_path}"
             )
             self.python_executable = cloned_python
+            self._preflight_venv_selection = selection
             return
 
         logger.info(f"Cloning terminal_base venv to: {self.cloned_env_path}")
@@ -648,6 +784,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             )
 
             self.python_executable = cloned_python
+            self._preflight_venv_selection = selection
             logger.info(
                 f"Successfully cloned environment to: {self.cloned_env_path}"
             )
