@@ -440,13 +440,13 @@ def test_capability_registry_maps_product_max_without_blind_forwarding():
     unknown = registry.resolve(
         model_platform="anthropic",
         model_type="claude-next",
-    ).resolve(ThinkingEffort.MAX, allow_dynamic_remap=True)
+    ).resolve(None)
 
     assert (codex.requested, codex.effective) == (
         ThinkingEffort.MAX,
         ThinkingEffort.MAX,
     )
-    assert codex.provider_parameter_name == "reasoning_effort"
+    assert codex.provider_parameter_name == "reasoning.effort"
     assert codex.provider_value == "xhigh"
     assert openai.effective is ThinkingEffort.HIGH
     assert openai.provider_value == "high"

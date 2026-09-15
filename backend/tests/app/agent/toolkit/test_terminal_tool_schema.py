@@ -43,8 +43,10 @@ def test_terminal_preserves_complete_camel_parameter_contract():
     base = BaseTerminalToolkit.__new__(BaseTerminalToolkit)
     tools = toolkit.get_tools()
     names = [tool.get_function_name() for tool in tools]
-    assert len(names) == len(SHELL_TOOL_NAMES)
-    assert set(names) == SHELL_TOOL_NAMES
+    assert names.count("terminal_preflight") == 1
+    shell_names = [name for name in names if name != "terminal_preflight"]
+    assert len(shell_names) == len(SHELL_TOOL_NAMES)
+    assert set(shell_names) == SHELL_TOOL_NAMES
     shell = next(
         tool for tool in tools if tool.get_function_name() == "shell_exec"
     )
@@ -82,8 +84,10 @@ def test_runtime_guidance_survives_camel_export_and_reconstruction(rebuild):
         toolkit = integration.register_toolkits(toolkit)
     tools = toolkit.get_tools()
     names = [tool.get_function_name() for tool in tools]
-    assert len(names) == len(SHELL_TOOL_NAMES)
-    assert set(names) == SHELL_TOOL_NAMES
+    assert names.count("terminal_preflight") == 1
+    shell_names = [name for name in names if name != "terminal_preflight"]
+    assert len(shell_names) == len(SHELL_TOOL_NAMES)
+    assert set(shell_names) == SHELL_TOOL_NAMES
     shell = next(
         tool for tool in tools if tool.get_function_name() == "shell_exec"
     )

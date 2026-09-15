@@ -32,10 +32,12 @@ from urllib.parse import urlsplit, urlunsplit
 from app.run_context import get_current_run_context
 from app.run_journal import SQLiteRunJournal, get_default_run_journal
 from app.run_policy import ToolSafetyClass
+from app.run_runtime.execution_observation import execution_activity
 from app.run_runtime.step_coordinator import (
     RunStepCoordinator,
     get_current_step_id,
 )
+from app.tool_validation import prewrite_validation_result
 
 # This allowlist is trusted code, unlike model-generated names and arguments.
 # Unknown tools default to UNSAFE_WRITE. Browser actions are deliberately
@@ -117,7 +119,11 @@ def tool_checkpoint_scope(
 ) -> Iterator[None]:
     token = current_tool_checkpoint.set(checkpoint)
     try:
-        yield
+        with execution_activity(
+            "tool",
+            tool_call_id=checkpoint.tool_call_id if checkpoint else None,
+        ):
+            yield
     finally:
         current_tool_checkpoint.reset(token)
 
@@ -145,6 +151,15 @@ class ToolCheckpointPersistenceError(ToolCheckpointError):
 
 class UnsafeToolOutcomeError(ToolCheckpointError):
     pass
+
+
+class BackgroundToolResult(str):
+    """Trusted dispatch acknowledgement; the process owner finishes the tool.
+
+    Plain strings or model-supplied result fields cannot defer a checkpoint.
+    The watcher retains the original ToolCheckpointContext and persists its
+    terminal outcome only after process exit and workspace capture.
+    """
 
 
 def _redact(value: Any) -> Any:
@@ -884,7 +899,13 @@ def finish_tool_checkpoint(
 ) -> None:
     if checkpoint is None:
         return
+    if error is None and isinstance(result, BackgroundToolResult):
+        return
     store = journal or get_default_run_journal()
+    rejection = prewrite_validation_result(error)
+    if rejection is not None:
+        result = rejection
+        outcome_known = True
     if error is None:
         status = "completed"
         outcome = "completed"

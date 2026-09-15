@@ -33,6 +33,8 @@ from app.run_journal import (
     get_default_run_journal,
 )
 from app.run_journal.memory_policy import assert_memory_entry_policy
+from app.run_journal.models import MemoryExtractionEventRecord
+from app.tool_validation import ToolPreWriteValidationError
 
 try:
     import tiktoken
@@ -147,6 +149,16 @@ class MemoryConsolidationResult:
     removed_memory_ids: tuple[str, ...]
     retained_memory_ids: tuple[str, ...]
     tokens_released: int
+
+
+@dataclass(frozen=True)
+class MemoryExtractionPage:
+    """Internal maintenance page, separate from the Agent History contract."""
+
+    items: tuple[HistoryQueryResult, ...]
+    receipts: tuple[tuple[MemoryExtractionEventRecord, str, str | None], ...]
+    next_cursor: str
+    complete: bool
 
 
 class LightweightMemoryService:
@@ -655,6 +667,114 @@ class LightweightMemoryService:
             used += entry.token_count
         return tuple(selected)
 
+    def read_memory_extraction_page(
+        self,
+        *,
+        project_id: str,
+        scope_type: str,
+        scope_id: str,
+        after_cursor: str | None,
+        through_cursor: int,
+        include_deferred: bool = True,
+        byte_budget: int = 256 * 1024,
+        token_budget: int = 16384,
+    ) -> MemoryExtractionPage:
+        """Read at most 100 metadata rows / three explicit-user candidates.
+
+        The current extractor only accepts user.message. Other event types
+        get an explicit exclusion receipt without loading their payloads.
+        Oversized user events are deferred whole; no truncated statement is
+        allowed to become durable Memory. The caller persists these outcomes
+        after extraction and maintains a separate contiguous success frontier.
+        """
+
+        if not 256 <= byte_budget <= 256 * 1024:
+            raise ValueError("Extraction byte budget is out of bounds")
+        if not 64 <= token_budget <= 16384:
+            raise ValueError("Extraction token budget is out of bounds")
+        cursor = parse_project_cursor(after_cursor)
+        events = self._journal.list_memory_extraction_events(
+            source_project_id=project_id,
+            target_scope_type=scope_type,
+            target_scope_id=scope_id,
+            after_cursor=cursor,
+            through_cursor=through_cursor,
+            include_deferred=include_deferred,
+            prioritize_fewer_attempts=include_deferred,
+        )
+        items: list[HistoryQueryResult] = []
+        receipts: list[
+            tuple[MemoryExtractionEventRecord, str, str | None]
+        ] = []
+        used_bytes = used_projected_bytes = used_tokens = 0
+        for event in events:
+            disposition = "excluded"
+            error = None
+            if event.event_type == "user.message":
+                if len(items) == 3:
+                    break
+                if event.payload_bytes > byte_budget:
+                    error = "payload_bytes"
+                else:
+                    if used_bytes + event.payload_bytes > byte_budget:
+                        break
+                    source = self._journal.get_events_by_id((event.event_id,))
+                    if len(source) != 1:
+                        raise RuntimeError("Extraction source disappeared")
+                    used_bytes += event.payload_bytes
+                    payload = _history_payload_projection(
+                        event.event_type, source[0].payload
+                    )
+                    encoded = json.dumps(
+                        payload, ensure_ascii=False, separators=(",", ":")
+                    )
+                    projected_bytes = len(encoded.encode("utf-8"))
+                    tokens = count_tokens(encoded)
+                    if projected_bytes > byte_budget:
+                        error = "projected_bytes"
+                    elif tokens > token_budget:
+                        error = "payload_tokens"
+                    elif (
+                        used_tokens + tokens > token_budget
+                        or used_projected_bytes + projected_bytes > byte_budget
+                    ):
+                        break
+                    else:
+                        used_tokens += tokens
+                        used_projected_bytes += projected_bytes
+                        disposition = "processed"
+                        items.append(
+                            HistoryQueryResult(
+                                citation_id=f"history:{project_id}:{event.journal_cursor}",
+                                journal_cursor=event.journal_cursor,
+                                event_id=event.event_id,
+                                run_id=event.run_id,
+                                event_type=event.event_type,
+                                content=payload,
+                                source_trust=event_source_trust(
+                                    event.event_type
+                                ),
+                                created_at=event.created_at,
+                            )
+                        )
+                if error:
+                    disposition = "deferred_budget"
+                    error = (
+                        f"extraction budget deferred event={event.event_id} "
+                        f"cursor={event.journal_cursor} reason={error} "
+                        f"byte_budget={byte_budget} token_budget={token_budget}"
+                    )
+            receipts.append((event, disposition, error))
+            cursor = event.journal_cursor
+        if not events:
+            cursor = through_cursor
+        return MemoryExtractionPage(
+            items=tuple(items),
+            receipts=tuple(receipts),
+            next_cursor=format_project_cursor(cursor),
+            complete=cursor >= through_cursor,
+        )
+
     def search_history(
         self,
         *,
@@ -784,8 +904,19 @@ class LightweightMemoryService:
             and scope_type != "project"
             and not confirmed_by_user_action
         ):
-            raise PermissionError(
-                "Agent Space/User Memory mutations require HumanInteraction"
+            raise ToolPreWriteValidationError(
+                "Agent Space/User Memory mutations require HumanInteraction",
+                error_code="MEMORY_SCOPE_REJECTED",
+                field="scope",
+                recovery={
+                    "tool": "promote_project_memory",
+                    "instruction": (
+                        "Direct agent writes are limited to current Project "
+                        "Memory. Use promote_project_memory with an exact "
+                        "user review for Space/User Memory, or skip this "
+                        "Memory write and continue delivering the work."
+                    ),
+                },
             )
 
     def _require_entry(self, memory_id: str) -> MemoryEntryRecord:
@@ -806,9 +937,25 @@ class LightweightMemoryService:
 
         if source_trust != "user_asserted":
             return
+        recovery = {
+            "tool": "search_project_history",
+            "instruction": (
+                "Search current Project History for the user's statement. "
+                "Retry with source_event_ids containing the returned event_id "
+                "of matching user.message events, not citation_id or Run IDs. "
+                "Every event must belong to this Project. Never invent IDs "
+                "or label model/tool text user_asserted. If no matching user "
+                "statement exists, use model_inferred for your inference or "
+                "tool_observed for a tool observation only when accurate, "
+                "or skip this Memory write and continue delivering the work."
+            ),
+        }
         if scope_type != "project" or not source_refs:
-            raise PermissionError(
-                "Agent user_asserted Memory requires cited user History events"
+            raise ToolPreWriteValidationError(
+                "Agent user_asserted Memory requires cited user History events",
+                error_code="MEMORY_PROVENANCE_REJECTED",
+                field="source_event_ids",
+                recovery=recovery,
             )
         events = self._journal.get_events_by_id(source_refs)
         valid = len(events) == len(source_refs)
@@ -822,9 +969,12 @@ class LightweightMemoryService:
                 valid = False
                 break
         if not valid:
-            raise PermissionError(
+            raise ToolPreWriteValidationError(
                 "Agent user_asserted Memory citations must be user.message "
-                "events from the same Project"
+                "events from the same Project",
+                error_code="MEMORY_PROVENANCE_REJECTED",
+                field="source_event_ids",
+                recovery=recovery,
             )
 
 
