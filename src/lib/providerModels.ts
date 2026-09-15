@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { fetchPost } from '@/api/http';
 import i18next from 'i18next';
 
 /**
@@ -77,9 +78,10 @@ function splitProviderPrefix(id: string): [string, string] {
 }
 
 /**
- * Hit `${apiHost}${modelsEndpoint}` with a Bearer token and return chat-capable
- * models grouped by provider prefix, sorted alphabetically by provider, with
- * models within each group sorted alphabetically by id.
+ * Ask the local backend to fetch the provider's model list, then return
+ * chat-capable models grouped by provider prefix, sorted alphabetically by
+ * provider, with models within each group sorted alphabetically by id. Keeping
+ * the third-party request out of the renderer avoids provider CORS policies.
  *
  * Throws on network failure or non-2xx response with a user-readable message.
  */
@@ -95,54 +97,44 @@ export async function fetchProviderModels(
       })
     );
   }
-  const trimmedHost = apiHost.replace(/\/+$/, '');
-  const url = `${trimmedHost}${modelsEndpoint}`;
-
-  let response: Response;
+  let payload: { data?: RawModel[] };
   try {
-    response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        Accept: 'application/json',
-      },
+    payload = await fetchPost('/model/list', {
+      api_host: apiHost,
+      models_endpoint: modelsEndpoint,
+      api_key: apiKey,
     });
-  } catch {
+  } catch (error: unknown) {
+    const status =
+      typeof error === 'object' && error !== null && 'status' in error
+        ? Number(error.status)
+        : undefined;
+    if (status === 401) {
+      throw new ProviderModelsError(
+        i18next.t('setting.models-api-key-invalid', {
+          defaultValue:
+            'Invalid API key. Check your API key and click Refresh again.',
+        }),
+        status
+      );
+    }
+    if (status === 403) {
+      throw new ProviderModelsError(
+        i18next.t('setting.models-access-denied', {
+          defaultValue:
+            'Access denied. Check your API key permissions and account access, then click Refresh again.',
+        }),
+        status
+      );
+    }
     throw new ProviderModelsError(
       i18next.t('setting.models-connection-failed', {
         defaultValue:
           'Could not load models. Check your connection and API host, then click Refresh again.',
-      })
-    );
-  }
-
-  if (response.status === 401) {
-    throw new ProviderModelsError(
-      i18next.t('setting.models-api-key-invalid', {
-        defaultValue:
-          'Invalid API key. Check your API key and click Refresh again.',
       }),
-      response.status
+      status
     );
   }
-  if (response.status === 403) {
-    throw new Error(
-      i18next.t('setting.models-access-denied', {
-        defaultValue:
-          'Access denied. Check your API key permissions and account access, then click Refresh again.',
-      })
-    );
-  }
-  if (!response.ok) {
-    throw new Error(
-      i18next.t('setting.models-fetch-failed', {
-        defaultValue: 'Failed to fetch models: {{status}} {{statusText}}',
-        status: response.status,
-        statusText: response.statusText,
-      })
-    );
-  }
-  const payload = await response.json();
   const data: RawModel[] = Array.isArray(payload?.data) ? payload.data : [];
 
   const grouped = new Map<string, ProviderModelInfo[]>();

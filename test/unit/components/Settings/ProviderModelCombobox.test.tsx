@@ -56,10 +56,13 @@ describe('ProviderModelCombobox', () => {
     const user = userEvent.setup();
     const { rerender } = render(<ProviderModelCombobox {...props} />);
     await user.hover(
-      screen.getByRole('group', { name: 'Ant Ling model type' })
+      screen.getByRole('group', { name: 'Add API key to load model type' })
     );
     expect(await screen.findByRole('tooltip')).toHaveTextContent(
       'Add API key to load model type'
+    );
+    expect(await screen.findByRole('tooltip')).not.toHaveClass(
+      'text-ds-text-error-default-default'
     );
     await user.unhover(screen.getByRole('group'));
     await user.tab();
@@ -147,5 +150,6 @@ describe('ProviderModelCombobox', () => {
     );
     expect(screen.getByRole('combobox')).toBeEnabled();
     expect(screen.getByRole('combobox')).toHaveTextContent('saved-model');
+    expect(screen.getByRole('combobox')).not.toHaveAccessibleDescription(hint);
   });
 });

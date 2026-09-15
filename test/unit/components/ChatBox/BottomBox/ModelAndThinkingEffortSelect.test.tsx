@@ -416,6 +416,36 @@ describe('ModelAndThinkingEffortSelect', () => {
     expect(mocks.setProjectModel).not.toHaveBeenCalled();
   });
 
+  it('opens the selected unconfigured local model directly from the home menu', async () => {
+    mocks.proxyFetchGet.mockResolvedValue({ items: [] });
+    useSettingsStore.setState({ isOpen: false, modelProvider: null });
+    const user = userEvent.setup();
+    render(
+      <ModelAndThinkingEffortSelect thinkingEffort={ThinkingEffort.HIGH} />
+    );
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Model: Select Default Model; Thinking effort: High',
+      })
+    );
+    await user.hover(screen.getByRole('menuitem', { name: 'Local model' }));
+    const group = await screen.findByRole('group', { name: 'Local model' });
+    const item = within(group).getByRole('menuitemradio', {
+      name: 'Not configured Ollama',
+    });
+    act(() => {
+      fireEvent.pointerMove(item);
+      item.focus();
+    });
+    await user.keyboard('{Enter}');
+    expect(useSettingsStore.getState()).toMatchObject({
+      isOpen: true,
+      activeSection: 'models',
+      modelProvider: 'ollama',
+    });
+    expect(mocks.setProjectModel).not.toHaveBeenCalled();
+  });
+
   it('shows a green leading dot for configured custom models', async () => {
     mocks.proxyFetchGet.mockResolvedValue({
       items: [

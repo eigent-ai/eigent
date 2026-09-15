@@ -22,12 +22,22 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   toastError: vi.fn(),
   toastDismiss: vi.fn(),
+  fetchPost: vi.fn(),
   auth: {
     modelType: 'cloud',
     cloud_model_type: 'gpt-5.5',
@@ -41,6 +51,11 @@ const mocks = vi.hoisted(() => ({
     getEffectiveModelId: (id: string) => id,
   },
 }));
+
+beforeAll(() => {
+  HTMLElement.prototype.hasPointerCapture = vi.fn(() => false);
+  HTMLElement.prototype.scrollIntoView = vi.fn();
+});
 // Keep t stable like react-i18next so provider hydration does not rerun on each keystroke.
 vi.mock('react-i18next', async () => {
   const actual =
@@ -78,7 +93,7 @@ vi.mock('@/hooks/useInstallationSetup', () => ({
 }));
 vi.mock('@/api/http', () => ({
   proxyFetchGet: vi.fn().mockResolvedValue([]),
-  fetchPost: vi.fn(),
+  fetchPost: mocks.fetchPost,
   proxyFetchPost: vi.fn(),
   proxyFetchPut: vi.fn(),
   proxyFetchDelete: vi.fn(),
@@ -99,6 +114,7 @@ describe('Models provider navigation', () => {
     localStorage.clear();
     mocks.toastError.mockReset().mockReturnValue('model-error-toast');
     mocks.toastDismiss.mockReset();
+    mocks.fetchPost.mockReset();
     useSettingsStore.setState({ modelProvider: null });
   });
   afterEach(() => vi.unstubAllGlobals());
@@ -127,6 +143,32 @@ describe('Models provider navigation', () => {
     );
     expect(document.getElementById('apiKey-ant-ling')).not.toBeInTheDocument();
   });
+
+  it('opens an unconfigured local model on its settings tab', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ models: [] }),
+      })
+    );
+    openSettings('models', { modelProvider: 'ollama' });
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <SettingsRouteBridge />
+        <Routes>
+          <Route path="/" element={<div>Home input</div>} />
+          <Route path="/home" element={<SettingModels />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    expect(
+      await screen.findByDisplayValue('http://localhost:11434/v1')
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(useSettingsStore.getState().modelProvider).toBeNull()
+    );
+  });
   async function renderAntLing() {
     openSettings('models', { modelProvider: 'ant-ling' });
     render(
@@ -144,16 +186,11 @@ describe('Models provider navigation', () => {
   }
 
   it('notifies the full authentication error, marks the key and recovers after editing', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi
-        .fn()
-        .mockResolvedValueOnce({ ok: false, status: 401 })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ data: [{ id: 'ling-chat' }] }),
-        })
-    );
+    mocks.fetchPost
+      .mockRejectedValueOnce(
+        Object.assign(new Error('backend error'), { status: 401 })
+      )
+      .mockResolvedValueOnce({ data: [{ id: 'ling-chat' }] });
     const input = await renderAntLing();
     fireEvent.click(
       screen.getByRole('button', { name: 'Refresh Ant Ling models' })
@@ -162,12 +199,15 @@ describe('Models provider navigation', () => {
       'Invalid API key. Check your API key and click Refresh again.';
     await waitFor(() => expect(mocks.toastError).toHaveBeenCalledWith(message));
     expect(input).toHaveAttribute('aria-invalid', 'true');
-    expect(screen.getByRole('combobox')).toHaveAccessibleDescription(message);
+    expect(screen.getByRole('combobox')).not.toHaveAccessibleDescription(
+      message
+    );
+    expect(screen.getAllByText(message)).toHaveLength(1);
     expect(
       screen.queryByText(
         'Enter your API key, click Refresh, then select a model from the dropdown.'
       )
-    ).not.toBeInTheDocument();
+    ).toBeInTheDocument();
     expect(screen.getByRole('combobox')).toHaveAttribute(
       'aria-invalid',
       'false'
@@ -182,14 +222,78 @@ describe('Models provider navigation', () => {
     expect(mocks.toastError).toHaveBeenCalledTimes(1);
   });
 
+  it('dismisses a failed Refresh toast after a successful retry', async () => {
+    mocks.fetchPost
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce({ data: [{ id: 'ling-chat' }] });
+    await renderAntLing();
+    const refresh = screen.getByRole('button', {
+      name: 'Refresh Ant Ling models',
+    });
+    fireEvent.click(refresh);
+    await waitFor(() => expect(mocks.toastError).toHaveBeenCalledTimes(1));
+    mocks.toastDismiss.mockClear();
+    fireEvent.click(refresh);
+    await waitFor(() => expect(screen.getByRole('combobox')).toBeEnabled());
+    expect(mocks.toastDismiss).toHaveBeenCalledWith('model-error-toast');
+  });
+
+  it('keeps a Save validation error while the model list refreshes', async () => {
+    localStorage.setItem(
+      'eigent-provider-models-v1:ant-ling',
+      JSON.stringify([{ provider: 'other', models: [{ id: 'ling-chat' }] }])
+    );
+    mocks.fetchPost.mockImplementation((url: string) =>
+      url === '/model/validate'
+        ? Promise.resolve({
+            is_valid: false,
+            is_tool_calls: false,
+            message: 'Model does not support tools',
+          })
+        : Promise.resolve({ data: [{ id: 'ling-chat' }] })
+    );
+    const input = await renderAntLing();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('combobox'));
+    await user.click(await screen.findByRole('option', { name: 'ling-chat' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(input).toHaveAttribute('aria-invalid', 'true'));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Refresh Ant Ling models' })
+    );
+    await waitFor(() =>
+      expect(mocks.fetchPost).toHaveBeenCalledWith(
+        '/model/list',
+        expect.any(Object)
+      )
+    );
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    expect(
+      screen.getByText('Model does not support tools')
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the required API-key error when only the API host changes', async () => {
+    const input = await renderAntLing();
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    fireEvent.change(document.getElementById('apiHost-ant-ling')!, {
+      target: { value: 'https://example.com/v1' },
+    });
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+  });
+
   it.each([403, 'network'])(
     'notifies %s failures without marking the key invalid',
     async (failure) => {
-      const fetchMock = vi.fn();
+      const fetchMock = mocks.fetchPost;
       if (failure === 'network')
         fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
-      else fetchMock.mockResolvedValue({ ok: false, status: failure });
-      vi.stubGlobal('fetch', fetchMock);
+      else
+        fetchMock.mockRejectedValue(
+          Object.assign(new Error('backend error'), { status: failure })
+        );
       const input = await renderAntLing();
       fireEvent.click(
         screen.getByRole('button', { name: 'Refresh Ant Ling models' })
@@ -210,29 +314,27 @@ describe('Models provider navigation', () => {
   );
 
   it('ignores an old authentication failure after the key is edited', async () => {
-    let finish!: (response: unknown) => void;
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(
-        () =>
-          new Promise((resolve) => {
-            finish = resolve;
-          })
-      )
+    let fail!: (error: unknown) => void;
+    mocks.fetchPost.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        })
     );
     const input = await renderAntLing();
     fireEvent.click(
       screen.getByRole('button', { name: 'Refresh Ant Ling models' })
     );
     fireEvent.change(input, { target: { value: 'new-key' } });
-    await act(async () => finish({ ok: false, status: 401 }));
+    await act(async () =>
+      fail(Object.assign(new Error('backend error'), { status: 401 }))
+    );
     expect(input).toHaveAttribute('aria-invalid', 'false');
     expect(mocks.toastError).not.toHaveBeenCalled();
   });
   it('clears failed Refresh feedback and notifications on Reset', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ ok: false, status: 401 })
+    mocks.fetchPost.mockRejectedValue(
+      Object.assign(new Error('backend error'), { status: 401 })
     );
     const input = await renderAntLing();
     fireEvent.click(
@@ -249,13 +351,7 @@ describe('Models provider navigation', () => {
   });
 
   it('clears loaded models and their cache on Reset', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ data: [{ id: 'ling-chat' }] }),
-      })
-    );
+    mocks.fetchPost.mockResolvedValue({ data: [{ id: 'ling-chat' }] });
     const input = await renderAntLing();
     fireEvent.click(
       screen.getByRole('button', { name: 'Refresh Ant Ling models' })
@@ -274,14 +370,13 @@ describe('Models provider navigation', () => {
     'ignores a pending Refresh returning %s after Reset',
     async (status) => {
       let finish!: (response: unknown) => void;
-      vi.stubGlobal(
-        'fetch',
-        vi.fn(
-          () =>
-            new Promise((resolve) => {
-              finish = resolve;
-            })
-        )
+      let fail!: (error: unknown) => void;
+      mocks.fetchPost.mockImplementation(
+        () =>
+          new Promise((resolve, reject) => {
+            finish = resolve;
+            fail = reject;
+          })
       );
       const input = await renderAntLing();
       fireEvent.click(
@@ -289,13 +384,10 @@ describe('Models provider navigation', () => {
       );
       fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
       await waitFor(() => expect(input).toHaveValue(''));
-      await act(async () =>
-        finish({
-          ok: status === 200,
-          status,
-          json: async () => ({ data: [{ id: 'ling-chat' }] }),
-        })
-      );
+      await act(async () => {
+        if (status === 200) finish({ data: [{ id: 'ling-chat' }] });
+        else fail(Object.assign(new Error('backend error'), { status }));
+      });
       expect(screen.getByRole('combobox')).toHaveAttribute(
         'aria-busy',
         'false'

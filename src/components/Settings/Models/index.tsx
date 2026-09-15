@@ -218,6 +218,7 @@ export default function SettingModels() {
   const [loading, setLoading] = useState<number | null>(null);
   const [configCardRing, setConfigCardRing] =
     useState<ConfigCardRingStatus>('idle');
+  const [configCardRingSequence, setConfigCardRingSequence] = useState(0);
   const configCardRingResetRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
@@ -226,6 +227,7 @@ export default function SettingModels() {
       clearTimeout(configCardRingResetRef.current);
       configCardRingResetRef.current = null;
     }
+    setConfigCardRingSequence((sequence) => sequence + 1);
     setConfigCardRing(status);
     if (status === 'success' || status === 'error') {
       configCardRingResetRef.current = setTimeout(() => {
@@ -259,6 +261,9 @@ export default function SettingModels() {
   // BYOK (API key) sub-accordion state (nested inside Custom Model)
   const [byokGroupCollapsed, setByokGroupCollapsed] = useState(false);
 
+  // Local Model accordion state
+  const [localCollapsed, setLocalCollapsed] = useState(false);
+
   const settingsNavigationPending = useSettingsStore((state) => state.isOpen);
   const modelProvider = useSettingsStore((state) => state.modelProvider);
   const clearModelProvider = useSettingsStore(
@@ -274,12 +279,12 @@ export default function SettingModels() {
       } else {
         setByokGroupCollapsed(false);
       }
+    } else if (LOCAL_MODEL_OPTIONS.some((item) => item.id === modelProvider)) {
+      setSelectedTab(`local-${modelProvider}` as SidebarTab);
+      setLocalCollapsed(false);
     }
     clearModelProvider();
   }, [settingsNavigationPending, modelProvider, items, clearModelProvider]);
-
-  // Local Model accordion state
-  const [localCollapsed, setLocalCollapsed] = useState(false);
 
   // Cloud Model
   const [cloudPrefer, setCloudPrefer] = useState(false);
@@ -321,18 +326,33 @@ export default function SettingModels() {
   const [cloudModelsState, setCloudModelsState] = useState<
     Record<
       string,
-      { groups: ProviderModelGroup[]; loading: boolean; error: string | null }
+      {
+        groups: ProviderModelGroup[];
+        loading: boolean;
+        error: string | null;
+        apiKeyError: string | null;
+      }
     >
   >(() => {
     const initial: Record<
       string,
-      { groups: ProviderModelGroup[]; loading: boolean; error: string | null }
+      {
+        groups: ProviderModelGroup[];
+        loading: boolean;
+        error: string | null;
+        apiKeyError: string | null;
+      }
     > = {};
     for (const p of INIT_PROVODERS) {
       if (!p.modelsEndpoint) continue;
       const cached = loadCachedModels(p.id);
       if (cached) {
-        initial[p.id] = { groups: cached, loading: false, error: null };
+        initial[p.id] = {
+          groups: cached,
+          loading: false,
+          error: null,
+          apiKeyError: null,
+        };
       }
     }
     return initial;
@@ -355,6 +375,7 @@ export default function SettingModels() {
         groups: prev[providerId]?.groups ?? [],
         loading: false,
         error: null,
+        apiKeyError: null,
       },
     }));
   };
@@ -368,15 +389,13 @@ export default function SettingModels() {
       if (!apiKey) return;
       const requestId = (cloudModelsRequestIds.current[item.id] ?? 0) + 1;
       cloudModelsRequestIds.current[item.id] = requestId;
-      setErrors((errs) =>
-        errs.map((error, i) => (i === idx ? { ...error, apiKey: '' } : error))
-      );
       setCloudModelsState((prev) => ({
         ...prev,
         [item.id]: {
           groups: prev[item.id]?.groups || [],
           loading: true,
           error: null,
+          apiKeyError: null,
         },
       }));
       try {
@@ -388,22 +407,27 @@ export default function SettingModels() {
         if (cloudModelsRequestIds.current[item.id] !== requestId) return;
         setCloudModelsState((prev) => ({
           ...prev,
-          [item.id]: { groups, loading: false, error: null },
+          [item.id]: {
+            groups,
+            loading: false,
+            error: null,
+            apiKeyError: null,
+          },
         }));
         saveCachedModels(item.id, groups);
+        const previousToast = cloudModelsErrorToasts.current[item.id];
+        if (previousToast !== undefined) {
+          toast.dismiss(previousToast);
+          delete cloudModelsErrorToasts.current[item.id];
+        }
       } catch (err: unknown) {
         if (cloudModelsRequestIds.current[item.id] !== requestId) return;
         const message =
           err instanceof Error
             ? err.message
             : t('setting.failed-to-fetch-models');
-        if (err instanceof ProviderModelsError && err.status === 401) {
-          setErrors((errs) =>
-            errs.map((error, i) =>
-              i === idx ? { ...error, apiKey: message } : error
-            )
-          );
-        }
+        const isAuthenticationError =
+          err instanceof ProviderModelsError && err.status === 401;
         const previousToast = cloudModelsErrorToasts.current[item.id];
         if (previousToast !== undefined) toast.dismiss(previousToast);
         cloudModelsErrorToasts.current[item.id] = toast.error(message);
@@ -412,7 +436,8 @@ export default function SettingModels() {
           [item.id]: {
             groups: prev[item.id]?.groups || [],
             loading: false,
-            error: message,
+            error: isAuthenticationError ? null : message,
+            apiKeyError: isAuthenticationError ? message : null,
           },
         }));
       }
@@ -1322,7 +1347,12 @@ export default function SettingModels() {
       clearCachedModels(item.id);
       setCloudModelsState((prev) => ({
         ...prev,
-        [item.id]: { groups: [], loading: false, error: null },
+        [item.id]: {
+          groups: [],
+          loading: false,
+          error: null,
+          apiKeyError: null,
+        },
       }));
       setShowApiKey((prev) =>
         prev.map((shown, i) => (i === idx ? false : shown))
@@ -1958,7 +1988,10 @@ export default function SettingModels() {
         const isDefault = modelType === 'codex_subscription';
 
         return (
-          <ConfigModelCard status={configCardRing}>
+          <ConfigModelCard
+            status={configCardRing}
+            feedbackKey={configCardRingSequence}
+          >
             <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid border-ds-hairline-default-default pt-2 pb-4">
               <div className="inline-flex items-center justify-between gap-2 self-stretch">
                 <div className="my-2 text-ds-text-base font-bold text-ds-ink-default-default">
@@ -2084,7 +2117,10 @@ export default function SettingModels() {
       }
 
       return (
-        <ConfigModelCard status={configCardRing}>
+        <ConfigModelCard
+          status={configCardRing}
+          feedbackKey={configCardRingSequence}
+        >
           <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid border-ds-hairline-default-default pt-2 pb-4">
             <div className="inline-flex items-center justify-between gap-2 self-stretch">
               <div className="my-2 text-ds-text-base font-bold text-ds-ink-default-default">
@@ -2160,9 +2196,21 @@ export default function SettingModels() {
               type={showApiKey[idx] ? 'text' : 'password'}
               size="default"
               title={t('setting.api-key-setting')}
-              state={errors[idx]?.apiKey ? 'error' : 'default'}
-              aria-invalid={!!errors[idx]?.apiKey}
-              note={errors[idx]?.apiKey ?? undefined}
+              state={
+                errors[idx]?.apiKey || cloudModelsState[item.id]?.apiKeyError
+                  ? 'error'
+                  : 'default'
+              }
+              aria-invalid={
+                !!(
+                  errors[idx]?.apiKey || cloudModelsState[item.id]?.apiKeyError
+                )
+              }
+              note={
+                errors[idx]?.apiKey ||
+                cloudModelsState[item.id]?.apiKeyError ||
+                undefined
+              }
               placeholder={` ${t('setting.enter-your-api-key')} ${
                 item.name
               } ${t('setting.key')}`}
@@ -2206,9 +2254,7 @@ export default function SettingModels() {
                   f.map((fi, i) => (i === idx ? { ...fi, apiHost: v } : fi))
                 );
                 setErrors((errs) =>
-                  errs.map((er, i) =>
-                    i === idx ? { ...er, apiHost: '', apiKey: '' } : er
-                  )
+                  errs.map((er, i) => (i === idx ? { ...er, apiHost: '' } : er))
                 );
               }}
             />
@@ -2462,7 +2508,10 @@ export default function SettingModels() {
       const platformModelsError = platformState?.error || null;
 
       return (
-        <ConfigModelCard status={configCardRing}>
+        <ConfigModelCard
+          status={configCardRing}
+          feedbackKey={configCardRingSequence}
+        >
           <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid border-ds-hairline-default-default pt-2 pb-4">
             <div className="inline-flex items-center justify-between gap-2 self-stretch">
               <div className="flex items-center gap-2">

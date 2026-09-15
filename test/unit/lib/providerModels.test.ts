@@ -15,7 +15,11 @@
 import { fetchProviderModels } from '@/lib/providerModels';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-afterEach(() => vi.unstubAllGlobals());
+const mocks = vi.hoisted(() => ({ fetchPost: vi.fn() }));
+
+vi.mock('@/api/http', () => ({ fetchPost: mocks.fetchPost }));
+
+afterEach(() => mocks.fetchPost.mockReset());
 
 describe('fetchProviderModels errors', () => {
   it.each([
@@ -24,15 +28,15 @@ describe('fetchProviderModels errors', () => {
       403,
       'Access denied. Check your API key permissions and account access, then click Refresh again.',
     ],
-    [500, 'Failed to fetch models: 500 Server Error'],
+    [
+      500,
+      'Could not load models. Check your connection and API host, then click Refresh again.',
+    ],
   ])(
     'explains HTTP %s without exposing credentials',
     async (status, message) => {
-      vi.stubGlobal(
-        'fetch',
-        vi
-          .fn()
-          .mockResolvedValue({ ok: false, status, statusText: 'Server Error' })
+      mocks.fetchPost.mockRejectedValue(
+        Object.assign(new Error('backend error'), { status })
       );
       await expect(
         fetchProviderModels('https://example.com/v1', '/models', 'bad-key')
@@ -41,22 +45,21 @@ describe('fetchProviderModels errors', () => {
   );
 
   it('can fetch models after a rejected key is corrected', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce({ ok: false, status: 401 })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: [{ id: 'ling-chat' }] }),
-      });
-    vi.stubGlobal('fetch', fetchMock);
+    mocks.fetchPost
+      .mockRejectedValueOnce(
+        Object.assign(new Error('backend error'), { status: 401 })
+      )
+      .mockResolvedValueOnce({ data: [{ id: 'ling-chat' }] });
     await expect(
       fetchProviderModels('https://example.com/v1', '/models', 'bad-key')
     ).rejects.toThrow('Invalid API key');
     await expect(
       fetchProviderModels('https://example.com/v1', '/models', 'new-key')
     ).resolves.toMatchObject([{ models: [{ id: 'ling-chat' }] }]);
-    expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe(
-      'Bearer new-key'
-    );
+    expect(mocks.fetchPost).toHaveBeenLastCalledWith('/model/list', {
+      api_host: 'https://example.com/v1',
+      models_endpoint: '/models',
+      api_key: 'new-key',
+    });
   });
 });

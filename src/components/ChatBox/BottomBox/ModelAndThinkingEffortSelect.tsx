@@ -482,7 +482,7 @@ export function ModelAndThinkingEffortSelect({
         })
       ) {
         openSettings('models', {
-          modelProvider: category === 'custom' ? modelId : undefined,
+          modelProvider: category === 'cloud' ? undefined : modelId,
         });
         return;
       }

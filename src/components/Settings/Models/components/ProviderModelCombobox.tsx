@@ -110,9 +110,12 @@ export function ProviderModelCombobox({
     feedbackError ||
     (loading
       ? t('setting.loading-models')
-      : disabled || !hasAnyModels
+      : disabled || (!hasAnyModels && !orphanValue)
         ? t('setting.models-setup-hint')
         : null);
+  const disabledTooltip =
+    feedbackError ||
+    (disabled ? t('setting.models-add-api-key-tooltip') : emptyMessage);
 
   return (
     <div className="flex w-full flex-col">
@@ -130,25 +133,16 @@ export function ProviderModelCombobox({
         >
           <TooltipSimple
             enabled={selectDisabled}
-            className="text-ds-text-error-default-default"
-            content={
-              feedbackError ||
-              (disabled
-                ? t('setting.models-add-api-key-tooltip')
-                : emptyMessage)
+            className={
+              feedbackError ? 'text-ds-text-error-default-default' : undefined
             }
+            content={disabledTooltip}
           >
             <div
               className={`min-w-0 flex-1 rounded-ds-field ${selectDisabled ? DS_FOCUS_RING : ''}`}
               tabIndex={selectDisabled ? 0 : undefined}
               role={selectDisabled ? 'group' : undefined}
-              aria-label={
-                selectDisabled
-                  ? t('setting.provider-model-type-label', {
-                      provider: providerName,
-                    })
-                  : undefined
-              }
+              aria-label={selectDisabled ? disabledTooltip : undefined}
             >
               <SelectTrigger
                 wrapperClassName="w-full"

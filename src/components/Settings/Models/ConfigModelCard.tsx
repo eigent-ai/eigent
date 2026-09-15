@@ -29,10 +29,12 @@ const BORDER_COLOR: Record<Exclude<ConfigCardRingStatus, 'idle'>, string> = {
 
 export function ConfigModelCard({
   status,
+  feedbackKey,
   children,
   className,
 }: {
   status: ConfigCardRingStatus;
+  feedbackKey?: number;
   children: ReactNode;
   className?: string;
 }) {
@@ -47,7 +49,7 @@ export function ConfigModelCard({
       <AnimatePresence>
         {showRing && (
           <motion.div
-            key="config-card-ring"
+            key={`config-card-ring-${feedbackKey ?? 0}`}
             className="pointer-events-none absolute z-0 rounded-2xl border-2 border-x-2 border-y-2 border-solid"
             style={{ inset: RING_INSET, borderColor: ringColor }}
             aria-hidden="true"
