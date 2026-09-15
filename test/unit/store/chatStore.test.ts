@@ -1273,6 +1273,104 @@ describe('ChatStore - Core Functionality', () => {
     });
   });
 
+  describe('Cloud key fetching', () => {
+    it('retries the cloud user key while billing budget sync is pending', async () => {
+      vi.useFakeTimers();
+      const { result } = renderHook(() => useChatStore());
+      const appendInitChatStore = vi.fn(
+        (_projectId: string, customTaskId?: string) => {
+          const optimisticTaskId = result.current
+            .getState()
+            .create(customTaskId || 'cloud-key-task');
+          result.current.getState().setActiveTaskId(optimisticTaskId);
+          return {
+            taskId: optimisticTaskId,
+            chatStore: result.current,
+          };
+        }
+      );
+      const setHistoryId = vi.fn();
+      const getProjectStoreState = vi.mocked(useProjectStore.getState);
+      const previousProjectStoreImplementation =
+        getProjectStoreState.getMockImplementation();
+
+      try {
+        getProjectStoreState.mockReturnValue({
+          activeProjectId: 'project-1',
+          appendInitChatStore,
+          getProjectById: () => ({
+            id: 'project-1',
+            mode: 'single-agent',
+          }),
+          getProjectModel: () => null,
+          setProjectModel: vi.fn(),
+          getHistoryId: () => null,
+          getAllChatStores: () => [{ chatStore: result.current }],
+          setHistoryId,
+        } as any);
+
+        let userKeyCalls = 0;
+        vi.mocked(proxyFetchGet).mockImplementation((url: string) => {
+          if (url === '/api/v1/user/key') {
+            userKeyCalls += 1;
+            if (userKeyCalls < 3) {
+              return Promise.resolve({
+                value: '',
+                text: 'Billing budget sync is still pending. Please retry in a moment.',
+              });
+            }
+            return Promise.resolve({
+              value: 'cloud-key',
+              api_url: 'https://cloud.example',
+            });
+          }
+          if (url === '/api/v1/remote-sub-agent-providers') {
+            return Promise.resolve({ items: [] });
+          }
+          return Promise.resolve({ items: [] });
+        });
+
+        const initialTaskId = result.current
+          .getState()
+          .create('initial-cloud-key-task');
+        let startPromise!: Promise<void>;
+        act(() => {
+          startPromise = result.current
+            .getState()
+            .startTask(
+              initialTaskId,
+              undefined,
+              undefined,
+              undefined,
+              'Start from remote control',
+              [],
+              undefined,
+              'project-1',
+              'single-agent' as any
+            );
+        });
+
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(10_000);
+          await startPromise;
+        });
+
+        expect(userKeyCalls).toBe(3);
+        expect(fetchEventSource).toHaveBeenCalled();
+        expect(
+          String(vi.mocked(fetchEventSource).mock.calls[0]?.[1]?.body)
+        ).toContain('"api_key":"cloud-key"');
+      } finally {
+        vi.useRealTimers();
+        if (previousProjectStoreImplementation) {
+          getProjectStoreState.mockImplementation(
+            previousProjectStoreImplementation
+          );
+        }
+      }
+    });
+  });
+
   describe('Cross-store task safety', () => {
     it('does not create phantom tasks through task-scoped setters', () => {
       const { result } = renderHook(() => useChatStore());
