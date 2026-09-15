@@ -169,6 +169,39 @@ describe('PreviewBrowserLayer', () => {
     ).toContainEqual(updated);
   });
 
+  it('shows a main-frame failure, preserves it through stop, and clears it on retry', () => {
+    renderLayer();
+    act(() =>
+      usePageTabStore.getState().openBrowserPreview('http://localhost:8080/')
+    );
+    const tab = getBrowserTab();
+    const guest = getPreviewWebview(tab.webviewId)!;
+    guest.getURL = () => 'chrome-error://chromewebdata/';
+    guest.isLoading = () => false;
+    const fail = (code: number, main = true) => {
+      const event = Object.assign(new Event('did-fail-load'), {
+        errorCode: code,
+        isMainFrame: main,
+        validatedURL: 'http://localhost:8080/',
+      });
+      act(() => guest.dispatchEvent(event));
+    };
+    fail(-105, false);
+    fail(-3);
+    expect(getBrowserTab().navigation.loadError).toBeUndefined();
+    fail(-102);
+    act(() => guest.dispatchEvent(new Event('did-stop-loading')));
+    expect(getBrowserTab().navigation).toMatchObject({
+      isLoading: false,
+      loadError: { code: -102, url: 'http://localhost:8080/' },
+    });
+    expect(getBrowserTab().url).toBe('http://localhost:8080/');
+    expect(guestContainer(tab.webviewId)!.style.visibility).toBe('hidden');
+    guest.getURL = () => 'http://localhost:8080/';
+    act(() => guest.dispatchEvent(new Event('did-start-loading')));
+    expect(getBrowserTab().navigation.loadError).toBeUndefined();
+  });
+
   it('keeps the current guest mounted when the language changes', async () => {
     renderLayer();
     const tab = getBrowserTab();

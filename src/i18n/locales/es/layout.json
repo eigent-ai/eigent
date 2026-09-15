@@ -1517,5 +1517,8 @@
   "workspace-resource-mcp-servers": "Servidores MCP",
   "workspace-resource-skills": "Habilidades",
   "workspace-resource-slack": "Slack",
-  "workspace-technical-tab": "Técnica"
+  "workspace-technical-tab": "Técnica",
+  "browser-preview-failed": "Página no disponible",
+  "browser-preview-local-unavailable": "Es posible que el servidor local se haya detenido. Reinténtalo cuando esté en marcha o abre el archivo HTML entregado desde Archivos.",
+  "browser-preview-unavailable": "Comprueba la dirección y la conexión e inténtalo de nuevo."
 }

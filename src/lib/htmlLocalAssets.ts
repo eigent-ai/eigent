@@ -297,3 +297,51 @@ export async function inlineLocalHtmlScriptElements(
   const serialized = doc.documentElement?.outerHTML || html;
   return `${doctype}${serialized}`;
 }
+
+/** Resolve linked stylesheets even when a Session opens just the HTML file. */
+export async function inlineLocalHtmlStylesheets(
+  html: string,
+  htmlDir: string,
+  readTextFile: (filePath: string) => Promise<string>
+): Promise<string> {
+  if (typeof DOMParser === 'undefined') return html;
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const doctype = html.match(/<!doctype[^>]*>/i)?.[0] || '';
+  await Promise.all(
+    Array.from(doc.querySelectorAll('link[rel~="stylesheet"][href]')).map(
+      async (link) => {
+        const href = link.getAttribute('href') || '';
+        if (!isLocalScriptSrc(href)) return;
+        const resolvedPath = joinPath(htmlDir, href.split(/[?#]/, 1)[0]);
+        try {
+          const css = await readTextFile(resolvedPath);
+          const base = toLocalFileUrl(
+            resolvedPath.slice(0, resolvedPath.lastIndexOf('/'))
+          );
+          const style = doc.createElement('style');
+          style.setAttribute('data-source', href);
+          if (link.hasAttribute('media'))
+            style.setAttribute('media', link.getAttribute('media')!);
+          // Once inlined, CSS URLs must still resolve relative to the stylesheet.
+          style.textContent = css
+            .replace(
+              /url\(\s*(['"]?)([^)'"\s]+)\1\s*\)/gi,
+              (match, _quote, value: string) =>
+                isLocalScriptSrc(value)
+                  ? `url("${new URL(value, base).href}")`
+                  : match
+            )
+            .replace(/<\/style/gi, '<\\/style');
+          link.replaceWith(style);
+        } catch (error) {
+          console.warn(
+            '[HtmlRenderer] Failed to inline local stylesheet:',
+            resolvedPath,
+            error
+          );
+        }
+      }
+    )
+  );
+  return `${doctype}${doc.documentElement.outerHTML}`;
+}

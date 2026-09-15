@@ -1517,5 +1517,8 @@
   "workspace-show-all-commits_many": "Afficher les {{count}} événements",
   "workspace-show-all-task-versions_many": "Afficher les {{count}} versions de tâche",
   "workspace-task-version-agent-count_many": "{{count}} agents",
-  "workspace-technical-details-description_many": "{{count}} références Git internes et détails de conservation"
+  "workspace-technical-details-description_many": "{{count}} références Git internes et détails de conservation",
+  "browser-preview-failed": "Page indisponible",
+  "browser-preview-local-unavailable": "Le serveur local est peut-être arrêté. Réessayez lorsqu’il fonctionne ou ouvrez le fichier HTML livré depuis Fichiers.",
+  "browser-preview-unavailable": "Vérifiez l’adresse et la connexion, puis réessayez."
 }

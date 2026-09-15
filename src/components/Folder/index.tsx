@@ -79,6 +79,7 @@ import {
 import {
   inlineLocalHtmlImgElements,
   inlineLocalHtmlScriptElements,
+  inlineLocalHtmlStylesheets,
   inlineLocalProjectImagePaths,
   toLocalFileUrl,
 } from '@/lib/htmlLocalAssets';
@@ -2623,9 +2624,6 @@ function HtmlRenderer({
       const jsFiles = relatedFiles.filter(
         (f) => f.type?.toLowerCase() === 'js'
       );
-      const cssFiles = relatedFiles.filter(
-        (f) => f.type?.toLowerCase() === 'css'
-      );
 
       // Check for dangerous Electron/Node.js patterns as defense-in-depth
       if (containsDangerousContent(html)) {
@@ -2672,48 +2670,16 @@ function HtmlRenderer({
       }
 
       if (ipcRenderer) {
+        processedHtmlContent = await inlineLocalHtmlStylesheets(
+          processedHtmlContent,
+          htmlDir,
+          (filePath) => ipcRenderer.invoke('open-file', 'css', filePath, false)
+        );
         processedHtmlContent = await inlineLocalHtmlScriptElements(
           processedHtmlContent,
           htmlDir,
           (filePath) => ipcRenderer.invoke('open-file', 'js', filePath, false)
         );
-      }
-
-      // Load and inject CSS files, replacing external link tags
-      for (const cssFile of cssFiles) {
-        try {
-          const cssContent = ipcRenderer
-            ? await ipcRenderer.invoke('open-file', 'css', cssFile.path, false)
-            : null;
-          if (cssContent) {
-            const styleTag = `<style data-source="${cssFile.name}">${cssContent}</style>`;
-
-            // Try to replace the external link tag with inline style
-            const linkRegex = new RegExp(
-              `<link[^>]*href=["'](?:[^"']*[/\\\\])?${cssFile.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>`,
-              'gi'
-            );
-            const replacedCss = processedHtmlContent.replace(
-              linkRegex,
-              styleTag
-            );
-            if (replacedCss !== processedHtmlContent) {
-              processedHtmlContent = replacedCss;
-            } else {
-              // Fallback: inject CSS at the beginning of the HTML
-              if (processedHtmlContent.includes('<head>')) {
-                processedHtmlContent = processedHtmlContent.replace(
-                  '<head>',
-                  `<head>${styleTag}`
-                );
-              } else {
-                processedHtmlContent = styleTag + processedHtmlContent;
-              }
-            }
-          }
-        } catch (error) {
-          console.error(`Failed to load CSS file: ${cssFile.path}`, error);
-        }
       }
 
       // Load JS files content and replace external script tags

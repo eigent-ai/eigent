@@ -625,3 +625,31 @@ describe('pageTabStore session preview', () => {
     expect(slice().open).toBe(true);
   });
 });
+
+describe('explicit browser handoff ownership', () => {
+  it('opens the owning Session without switching the active Session', () => {
+    usePageTabStore.setState({
+      sessionPreviewProjectId: 'other-session',
+      sessionPreviewByProject: {},
+    });
+    usePageTabStore
+      .getState()
+      .openBrowserPreview('http://localhost:8080', 'owner-session');
+    const state = usePageTabStore.getState();
+    expect(state.sessionPreviewProjectId).toBe('other-session');
+    expect(state.sessionPreviewByProject['other-session']).toBeUndefined();
+    const owner = state.sessionPreviewByProject['owner-session'];
+    expect(owner.open).toBe(true);
+    expect(owner.tabs[0]).toMatchObject({
+      type: 'browser',
+      url: 'http://localhost:8080/',
+    });
+    expect(owner.activeTabId).toBe(owner.tabs[0].id);
+    usePageTabStore
+      .getState()
+      .openBrowserPreview('http://localhost:8080/', 'owner-session');
+    expect(
+      usePageTabStore.getState().sessionPreviewByProject['owner-session'].tabs
+    ).toHaveLength(1);
+  });
+});
