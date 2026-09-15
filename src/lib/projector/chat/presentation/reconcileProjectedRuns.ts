@@ -83,7 +83,7 @@ export function reconcileTimelineRun(
         accumulatedMs: totalAttemptElapsedMs ?? 0,
         anchoredAt:
           (totalAttemptElapsedMs !== null
-            ? authoritativeUpdatedAt
+            ? projectedRun.totalAttemptElapsedAt || authoritativeUpdatedAt
             : run.timestamps.startedAt || run.timestamps.createdAt) || null,
       }
     : {

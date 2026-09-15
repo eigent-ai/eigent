@@ -37,6 +37,7 @@ from app.run_runtime.step_coordinator import (
     RunStepCoordinator,
     get_current_step_id,
 )
+from app.tool_validation import prewrite_validation_result
 
 # This allowlist is trusted code, unlike model-generated names and arguments.
 # Unknown tools default to UNSAFE_WRITE. Browser actions are deliberately
@@ -890,6 +891,10 @@ def finish_tool_checkpoint(
     if checkpoint is None:
         return
     store = journal or get_default_run_journal()
+    rejection = prewrite_validation_result(error)
+    if rejection is not None:
+        result = rejection
+        outcome_known = True
     if error is None:
         status = "completed"
         outcome = "completed"
@@ -928,6 +933,19 @@ def finish_tool_checkpoint(
         status = "failed"
         outcome = "failed"
         result_payload = _bounded_record({"error": str(error)})
+    if error is not None:
+        from app.workspace_git.backend import WorkspaceDeltaLimitExceeded
+
+        cause: BaseException | None = error
+        seen: set[int] = set()
+        while cause is not None and id(cause) not in seen:
+            seen.add(id(cause))
+            if isinstance(cause, WorkspaceDeltaLimitExceeded):
+                result_payload["workspace_path_budget"] = _bounded_record(
+                    cause.diagnostic
+                )
+                break
+            cause = cause.__cause__ or cause.__context__
     duration_ms = max(
         0,
         round((time.monotonic() - checkpoint.started_monotonic) * 1000),

@@ -143,6 +143,19 @@ export function projectSnapshot(
       origin: authoritativeSnapshotRunOrigin(aggregate, recent),
       resumeBlockedReason:
         aggregate.resume_blocked_reason ?? recent?.resumeBlockedReason ?? null,
+      totalAttemptElapsedMs:
+        typeof aggregate.total_attempt_elapsed_ms === 'number' &&
+        Number.isFinite(aggregate.total_attempt_elapsed_ms) &&
+        aggregate.total_attempt_elapsed_ms >= 0 &&
+        (!recent ||
+          (aggregateRunVersion !== null &&
+            recent.runVersion <= aggregateRunVersion))
+          ? aggregate.total_attempt_elapsed_ms
+          : null,
+      ...(typeof aggregate.totalAttemptElapsedAt === 'string' &&
+      Number.isFinite(Date.parse(aggregate.totalAttemptElapsedAt))
+        ? { totalAttemptElapsedAt: aggregate.totalAttemptElapsedAt }
+        : {}),
     };
   }
   const mergeExistingState =

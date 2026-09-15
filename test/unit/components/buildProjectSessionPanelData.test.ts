@@ -670,6 +670,91 @@ describe('buildProjectSessionPanelData', () => {
     ).toEqual([]);
   });
 
+  it.each([
+    {
+      relativePath: 'output/resume_frames/frame.png',
+      path: '/workspace/output/resume_frames/frame.png',
+    },
+    { relativePath: '../frame.png', path: '/outside/frame.png' },
+    { relativePath: 'output/frames/frame.png', path: '' },
+  ])(
+    'does not revive a stale artifact using conflicting resolver identity %j',
+    (location) => {
+      const runs = [
+        makeRun('run-old', false, [
+          {
+            ...baseNode('run-old', 'artifact-old', 1),
+            kind: 'artifact',
+            operation: 'created',
+            artifactId: 'artifact-frame',
+            relativePath: 'output/frames/frame.png',
+            path: 'output/frames/frame.png',
+            name: 'frame.png',
+          },
+        ]),
+      ];
+      const snapshot = JSON.stringify(runs);
+      const items = buildProjectSessionPanelData(runs, []).files;
+      const merged = mergeProjectFiles(items, [
+        {
+          name: 'frame.png',
+          type: 'png',
+          artifactId: 'artifact-frame',
+          ...location,
+        },
+      ]);
+      expect(merged).toEqual(items);
+      expect(merged[0].previewable).toBe(false);
+      expect(JSON.stringify(runs)).toBe(snapshot);
+    }
+  );
+
+  it('leaves ambiguous resolver matches unavailable without changing artifact rows', () => {
+    const items = buildProjectSessionPanelData(
+      [
+        makeRun('run-current', true, [
+          {
+            ...baseNode('run-current', 'artifact', 1),
+            kind: 'artifact',
+            operation: 'created',
+            artifactId: 'artifact-report',
+            relativePath: 'report.md',
+            path: 'report.md',
+            name: 'report.md',
+          },
+        ]),
+      ],
+      []
+    ).files;
+    expect(
+      mergeProjectFiles(items, [
+        {
+          name: 'report.md',
+          type: 'md',
+          path: '/workspace/report.md',
+          relativePath: 'report.md',
+        },
+        {
+          name: 'report.md',
+          type: 'md',
+          path: '/other/report.md',
+          relativePath: 'report.md',
+        },
+      ])
+    ).toEqual(items);
+    expect(
+      mergeProjectFiles(items, [
+        {
+          name: 'report.md',
+          type: 'md',
+          path: '/workspace/report.md',
+          relativePath: 'report.md',
+          artifactId: 'another-artifact',
+        },
+      ])
+    ).toEqual(items);
+  });
+
   it('shows a trusted realtime write and converges on its terminal artifact', () => {
     const liveDecision = adaptChatProjectionEvent(
       normalizeLegacyChatStep(
