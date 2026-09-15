@@ -493,6 +493,7 @@ class TaskLock:
     provider_effort_parameter_name: str | None
     provider_effort_parameter_value: str | None
     provider_capability_revision: str | None
+    provider_model_transport: str | None
 
     def __init__(
         self, id: str, queue: asyncio.Queue, human_input: dict
@@ -540,6 +541,7 @@ class TaskLock:
         self.provider_effort_parameter_name = None
         self.provider_effort_parameter_value = None
         self.provider_capability_revision = None
+        self.provider_model_transport = None
         self.local_history_degraded = False
         self.local_history_last_error = None
         self._memory_finalized_runs = set()
