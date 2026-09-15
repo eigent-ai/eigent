@@ -22,16 +22,15 @@ from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlmodel import paginate
 from loguru import logger
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import Session, case, delete, desc, func, select
+from sqlmodel import Session, case, desc, func, select
 from fastapi_babel import _
 
 from app.core.database import session
 from app.domains.space.service import SpaceService
+from app.domains.space.service.deletion_service import SpaceDeletionService
 from app.model.chat.chat_history import ChatHistory, ChatHistoryIn, ChatHistoryOut, ChatHistoryUpdate, ChatStatus
 from app.model.project import Project
 from app.model.chat.chat_history_grouped import GroupedHistoryResponse, ProjectGroup
-from app.model.trigger.trigger import Trigger
-from app.model.trigger.trigger_execution import TriggerExecution
 from app.model.user.key import Key
 from app.shared.auth import auth_must
 from app.shared.auth.user_auth import V1UserAuth
@@ -171,11 +170,24 @@ def delete_chat_history(history_id: int, db_session: Session = Depends(session),
         raise HTTPException(status_code=403, detail="You are not allowed to delete this chat history")
 
     project_id = history.project_id if history.project_id else history.task_id
+    canonical_user_id = SpaceService.canonical_user_id(auth.id)
+
+    # Project deletion fans history deletes out in parallel. Serialize them on
+    # the durable Project row so exactly one request observes the final history.
+    db_session.exec(
+        select(Project)
+        .where(
+            Project.id == project_id,
+            Project.user_id == canonical_user_id,
+        )
+        .with_for_update()
+    ).first()
 
     sibling_count = (
         db_session.exec(
             select(func.count(ChatHistory.id)).where(
                 ChatHistory.id != history_id,
+                ChatHistory.user_id == auth.id,
                 ChatHistory.project_id == project_id if history.project_id else ChatHistory.task_id == project_id,
             )
         ).first()
@@ -185,13 +197,15 @@ def delete_chat_history(history_id: int, db_session: Session = Depends(session),
     db_session.delete(history)
 
     if sibling_count == 0:
-        triggers = db_session.exec(select(Trigger).where(Trigger.project_id == project_id)).all()
-        for trigger in triggers:
-            db_session.exec(delete(TriggerExecution).where(TriggerExecution.trigger_id == trigger.id))
-            db_session.delete(trigger)
-        logger.info(
-            "Deleted triggers for removed project", extra={"project_id": project_id, "trigger_count": len(triggers)}
+        SpaceDeletionService.delete_project(
+            project_id,
+            auth.id,
+            db_session,
+            delete_histories=False,
+            missing_ok=True,
+            commit=False,
         )
+        logger.info("Removed durable Project after deleting its final history", extra={"project_id": project_id})
 
     db_session.commit()
     return Response(status_code=204)
