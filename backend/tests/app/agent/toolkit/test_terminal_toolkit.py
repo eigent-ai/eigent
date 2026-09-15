@@ -15,6 +15,7 @@
 import asyncio
 import os
 import signal
+import subprocess
 import threading
 import time
 from unittest.mock import MagicMock
@@ -52,6 +53,19 @@ class TestTerminalToolkit:
             "get_terminal_base_venv_path",
             lambda: str(tmp_path / "unavailable-base-venv"),
         )
+
+    def test_failed_force_kill_does_not_claim_session_stopped(self):
+        toolkit = TerminalToolkit.__new__(TerminalToolkit)
+        toolkit._session_lock = threading.RLock()
+        toolkit._output_condition = threading.Condition(toolkit._session_lock)
+        process = MagicMock()
+        process.poll.return_value = None
+        process.wait.side_effect = subprocess.TimeoutExpired("fixture", 0)
+        session = {"running": True, "backend": "local", "process": process}
+        toolkit.shell_sessions = {"stuck": session}
+        assert toolkit._kill_registered_process("stuck").startswith("Error")
+        assert session["running"] is True
+        assert not session.get("eigent_group_stopped", False)
 
     def test_no_runtime_error_in_sync_context(self, tmp_path):
         """Test  no running event loop."""

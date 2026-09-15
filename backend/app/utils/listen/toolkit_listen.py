@@ -443,6 +443,7 @@ T = TypeVar("T")
 # Methods that should not be wrapped by auto_listen_toolkit
 # These are utility/helper methods that don't perform actual tool operations
 EXCLUDED_METHODS = {
+    "cleanup",  # Runtime teardown must work after TaskLock delivery ends
     "get_tools",  # Tool enumeration
     "get_can_use_tools",  # Tool filtering
     "toolkit_name",  # Metadata getter

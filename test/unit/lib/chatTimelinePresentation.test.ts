@@ -864,4 +864,23 @@ describe('event-native Timeline Run presentation', () => {
     expect(reconciled[0]?.status).toBe('interrupted');
     expect(reconciled[1]).toBe(second);
   });
+  it('anchors a canonical active elapsed total to measurement time, not the last journal event', () => {
+    const composed = composeTimelineRun(
+      [tool('running', 'run-1', 1)],
+      'run-1'
+    )!;
+    const reconciled = reconcileTimelineRun(composed, {
+      runId: 'run-1',
+      status: 'running',
+      lastSequence: 1,
+      runVersion: 1,
+      updatedAt: '2026-08-19T00:00:00.000Z',
+      totalAttemptElapsedMs: 60_000,
+      totalAttemptElapsedAt: '2026-08-19T00:01:00.000Z',
+    });
+    expect(reconciled.timestamps.elapsedAnchor).toEqual({
+      accumulatedMs: 60_000,
+      anchoredAt: '2026-08-19T00:01:00.000Z',
+    });
+  });
 });

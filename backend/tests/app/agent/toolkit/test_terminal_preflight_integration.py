@@ -2,6 +2,7 @@
 
 import json
 from dataclasses import replace
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
@@ -20,12 +21,17 @@ from app.permission_policy.models import (
 )
 from app.permission_policy.tool_actions import build_tool_action_descriptor
 from app.run_context import RunContext, run_context_scope
+from app.run_journal import SQLiteRunJournal
 from app.run_policy import ToolSafetyClass
 from app.run_runtime.tool_checkpoint import (
+    BackgroundToolResult,
     classify_tool_safety,
     declared_tool_safety,
+    finish_tool_checkpoint,
+    prepare_tool_checkpoint,
 )
 from app.utils.listen import toolkit_listen
+from app.utils.runtime_storage import runtime_storage
 
 
 @pytest.fixture
@@ -105,6 +111,212 @@ def selected_venv(toolkit, tmp_path, monkeypatch):
     # setup/getter guards remain in place for every subsequent preflight call.
     TerminalToolkit._setup_cloned_environment(toolkit)
     return selected
+
+
+@pytest.fixture
+def current_runtime(toolkit, tmp_path, monkeypatch, run_context):
+    home = tmp_path / "home"
+    workspace = tmp_path / "workspace"
+    home.mkdir()
+    workspace.mkdir()
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    # Restore the actual integrated getters, not source fragments or substitutes.
+    monkeypatch.delattr(toolkit, "_get_env_vars")
+    monkeypatch.delattr(toolkit, "_get_venv_path")
+    toolkit.working_dir = str(workspace)
+    context = replace(
+        run_context,
+        working_directory=workspace,
+        task_output_root=workspace / "output",
+    )
+    with run_context_scope(context):
+        yield context
+
+
+def test_registered_preflight_keeps_runtime_unmaterialized_across_messages(
+    toolkit, current_runtime, monkeypatch
+):
+    storage = runtime_storage(current_runtime)
+    assert not storage.root.exists()
+    messages = []
+    events = []
+    monkeypatch.setattr(
+        toolkit_listen,
+        "_safe_put_queue",
+        lambda _, event: events.append(event),
+    )
+    enhanced = ToolkitMessageIntegration(
+        message_handler=lambda message_title="", message_description="": (
+            messages.append((message_title, message_description))
+        ),
+        extract_params_callback=lambda kwargs: (
+            kwargs.pop("message_title", ""),
+            kwargs.pop("message_description", ""),
+        ),
+    ).register_toolkits(toolkit)
+    tools = enhanced.get_tools()
+    assert (
+        sum(t.get_function_name() == "terminal_preflight" for t in tools) == 1
+    )
+    preflight = next(
+        t for t in tools if t.get_function_name() == "terminal_preflight"
+    )
+    with monkeypatch.context() as guard:
+        guard.setattr(
+            terminal_toolkit.os,
+            "mkdir",
+            Mock(side_effect=AssertionError("read cannot materialize")),
+        )
+        guard.setattr(
+            terminal_toolkit.shutil,
+            "rmtree",
+            Mock(side_effect=AssertionError("read cannot clean up")),
+        )
+        for title in ("First check", "Second check"):
+            result = json.loads(
+                preflight(
+                    commands=[],
+                    message_title=title,
+                    message_description="Metadata only",
+                )
+            )
+            assert result["execution_authorized"] is False
+            assert result["venv_selection"]["status"] == "unconfirmed"
+            assert all(
+                entry["status"] == "not_supplied"
+                for entry in result["storage"].values()
+            )
+    assert not storage.root.exists()
+    assert messages == [
+        ("First check", "Metadata only"),
+        ("Second check", "Metadata only"),
+    ]
+    assert [type(event).__name__ for event in events] == [
+        "ActionActivateToolkitData",
+        "ActionDeactivateToolkitData",
+    ] * 2
+    # The real execution getter retains its authorized materialization path.
+    environment = toolkit._get_env_vars()
+    assert environment["EIGENT_RUNTIME_DIR"] == str(storage.runtime)
+    assert storage.runtime.is_dir()
+    assert storage.cache.is_dir()
+
+
+def test_preflight_does_not_reselect_integrated_runtime_after_run_change(
+    toolkit, current_runtime, tmp_path, monkeypatch
+):
+    directory = Path(toolkit._run_agent_environment_dir(current_runtime))
+    selected = directory / ".venv"
+    base = tmp_path / "base"
+    for root in (selected, base):
+        (root / "bin").mkdir(parents=True)
+        (root / "bin" / "python").write_text("fixture, never executed")
+    binary = selected / "bin" / "blender"
+    binary.write_text("fixture, never executed")
+    binary.chmod(0o755)
+    monkeypatch.setattr(
+        terminal_toolkit, "get_terminal_base_venv_path", lambda: str(base)
+    )
+    toolkit._agent_venv_dir = str(directory)
+    TerminalToolkit._setup_cloned_environment(toolkit)
+    assert toolkit._get_venv_path() == str(selected)
+    preflight = next(
+        t
+        for t in toolkit.get_tools()
+        if t.get_function_name() == "terminal_preflight"
+    )
+    assert json.loads(preflight(commands=["blender"]))["commands"][0][
+        "path"
+    ] == str(binary)
+    current = replace(current_runtime, run_id="run-2")
+    toolkit._workspace_run_id = current.run_id
+    storage = runtime_storage(current)
+    assert not storage.root.exists()
+    with run_context_scope(current):
+        with monkeypatch.context() as guard:
+            guard.setattr(
+                terminal_toolkit.os,
+                "mkdir",
+                Mock(side_effect=AssertionError("read cannot materialize")),
+            )
+            result = json.loads(preflight(commands=["blender"]))
+        assert result["venv_selection"]["status"] == "unconfirmed"
+        assert result["commands"][0]["status"] == "not_found"
+        assert str(selected) not in json.dumps(result)
+        assert not storage.root.exists()
+        setup = Mock()
+        monkeypatch.setattr(toolkit, "_setup_cloned_environment", setup)
+        toolkit._get_venv_path()
+        setup.assert_called_once_with()
+        assert storage.runtime.is_dir()
+    toolkit._clone_venv_with_symlinks.assert_not_called()
+
+
+def test_preflight_completion_does_not_settle_a_background_tool(
+    toolkit, current_runtime, tmp_path, monkeypatch
+):
+    tools = {t.get_function_name(): t for t in toolkit.get_tools()}
+    monkeypatch.setattr(
+        toolkit,
+        "_shell_exec_with_workspace_checkpoint",
+        lambda **kwargs: BackgroundToolResult("Dispatch accepted"),
+    )
+    with SQLiteRunJournal(tmp_path / "checkpoint.sqlite3") as journal:
+        journal.ensure_run(
+            run_id=current_runtime.run_id,
+            project_id=current_runtime.project_id,
+        )
+        journal.create_run_attempt(
+            current_runtime.run_id,
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+        )
+        background = prepare_tool_checkpoint(
+            raw_tool_call_id="background",
+            tool_name="shell_exec",
+            arguments={},
+            journal=journal,
+        )
+        acknowledgement = tools["shell_exec"](command="fixture", block=False)
+        assert isinstance(acknowledgement, BackgroundToolResult)
+        finish_tool_checkpoint(
+            background, result=acknowledgement, journal=journal
+        )
+        preflight = tools["terminal_preflight"]
+        for index in range(2):
+            checkpoint = prepare_tool_checkpoint(
+                raw_tool_call_id=f"preflight-{index}",
+                tool_name="terminal_preflight",
+                arguments={"commands": []},
+                declared_safety=declared_tool_safety(
+                    preflight, "terminal_preflight", {}
+                ),
+                journal=journal,
+            )
+            result = preflight(commands=[])
+            assert json.loads(result)["execution_authorized"] is False
+            finish_tool_checkpoint(checkpoint, result=result, journal=journal)
+        calls = {
+            call.tool_name: call
+            for call in journal.list_tool_calls(current_runtime.run_id)
+        }
+        assert calls["shell_exec"].status == "dispatched"
+        assert calls["terminal_preflight"].status == "completed"
+        assert not any(
+            e.event_type == "run.completed"
+            for e in journal.list_events(current_runtime.run_id)
+        )
+        finish_tool_checkpoint(
+            background,
+            result={"exit_code": 0, "workspace_checkpointed": True},
+            journal=journal,
+        )
+        finish_tool_checkpoint(
+            background, result=acknowledgement, journal=journal
+        )
+        events = journal.list_events(current_runtime.run_id)
+        assert sum(e.event_type == "tool.completed" for e in events) == 3
 
 
 def test_exported_camel_probe_has_a_narrow_read_declaration(toolkit):

@@ -343,6 +343,48 @@ async def test_completed_run_quiesces_background_terminal_mutations(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", ["failed", "cancelled", "warm_cancel"])
+async def test_unsuccessful_run_quiesces_before_terminal(
+    tmp_path, monkeypatch, outcome
+):
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        coordinator = RunCoordinator(journal)
+        journal.ensure_run(run_id="run-1", project_id="project-1")
+        calls = []
+
+        class Terminal:
+            def quiesce_run_background_sessions(self, run_id):
+                assert journal.get_run(run_id).status not in {
+                    "failed",
+                    "cancelled",
+                }
+                calls.append(run_id)
+                return ()
+
+        task_lock = type("Lock", (), {"registered_toolkits": [Terminal()]})()
+        monkeypatch.setattr(
+            "app.service.task.get_task_lock_if_exists", lambda _: task_lock
+        )
+        if outcome == "failed":
+            await coordinator._commit_run_terminal(
+                run_id="run-1",
+                started_at=1.0,
+                event_type="run.failed",
+                payload={},
+            )
+        elif outcome == "cancelled":
+            await coordinator.cancel_durable("run-1", request_id="cancel")
+        else:
+            await coordinator.complete_cancelled_turn(
+                "run-1", request_id="cancel"
+            )
+        assert calls == ["run-1"]
+        assert journal.get_run("run-1").status == (
+            "failed" if outcome == "failed" else "cancelled"
+        )
+
+
+@pytest.mark.asyncio
 async def test_warm_turn_cancel_never_becomes_success_on_legacy_end(tmp_path):
     journal = SQLiteRunJournal(tmp_path / "journal.sqlite3")
     coordinator = RunCoordinator(journal)
