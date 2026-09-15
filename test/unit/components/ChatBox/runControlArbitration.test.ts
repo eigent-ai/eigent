@@ -83,15 +83,60 @@ describe('queue execution ownership', () => {
     ).toEqual({ busy: true, runId: 'executing' });
   });
 
-  it('fails closed when the runtime projection needs resynchronization', () => {
+  it.each([
+    ['needs resynchronization', { needsResync: true }],
+    ['overflowed', { overflowed: true }],
+  ])(
+    'falls back to an idle legacy task lock when the snapshot %s',
+    (_, flags) => {
+      expect(
+        selectQueueExecution({
+          snapshot: snapshot({ runs: [], ...flags }),
+          legacyRunId: 'old',
+          legacyBusy: false,
+          queuedRunIds: [],
+        })
+      ).toEqual({ busy: false, runId: undefined });
+    }
+  );
+
+  it.each([
+    ['needs resynchronization', { needsResync: true }],
+    ['overflowed', { overflowed: true }],
+  ])(
+    'keeps dispatch blocked when the snapshot %s and the legacy task is busy',
+    (_, flags) => {
+      expect(
+        selectQueueExecution({
+          snapshot: snapshot({ runs: [], ...flags }),
+          legacyRunId: 'executing',
+          legacyBusy: true,
+          queuedRunIds: [],
+        })
+      ).toEqual({ busy: true, runId: undefined });
+    }
+  );
+
+  it('uses a truncated snapshot for execution state without authorizing controls', () => {
     expect(
       selectQueueExecution({
-        snapshot: snapshot({ runs: [], needsResync: true }),
-        legacyRunId: 'old',
-        legacyBusy: false,
+        snapshot: snapshot({
+          runs: [run('executing', 'running')],
+          eventsTruncated: true,
+        }),
+        legacyRunId: 'executing',
+        legacyBusy: true,
         queuedRunIds: [],
       })
     ).toEqual({ busy: true, runId: undefined });
+    expect(
+      selectQueueExecution({
+        snapshot: snapshot({ runs: [], eventsTruncated: true }),
+        legacyRunId: 'finished',
+        legacyBusy: false,
+        queuedRunIds: [],
+      })
+    ).toEqual({ busy: false, runId: undefined });
   });
 });
 

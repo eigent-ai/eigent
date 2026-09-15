@@ -389,7 +389,6 @@
   "workspace-queue-position": " Queue position: {{position}}.",
   "workspace-waiting-description": "Another task is updating this Space. This task will start automatically when the Space is available.{{position}}",
   "workspace-waiting-title": "Waiting for Space",
-  "queue-auto-start": "Tasks start automatically, one at a time.",
   "queue-stop-and-start": "Stop and start this",
   "queue-start-next": "Start next",
   "queue-stopping": "Stopping current task…",

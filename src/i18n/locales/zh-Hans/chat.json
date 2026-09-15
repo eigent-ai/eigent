@@ -385,7 +385,6 @@
   "workspace-queue-position": " 队列位置：{{position}}。",
   "workspace-waiting-description": "另一项任务正在更新此空间。空间可用后，此任务将自动开始。{{position}}",
   "workspace-waiting-title": "正在等待空间",
-  "queue-auto-start": "任务会按顺序自动开始。",
   "queue-stop-and-start": "停止当前任务并开始此任务",
   "queue-start-next": "接下来开始此任务",
   "queue-stopping": "正在停止当前任务…",

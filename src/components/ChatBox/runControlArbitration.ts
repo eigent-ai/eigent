@@ -73,11 +73,7 @@ export function selectQueueExecution({
   legacyBusy: boolean;
   queuedRunIds: string[];
 }): { busy: boolean; runId: string | undefined } {
-  if (snapshot) {
-    // An incomplete projection cannot prove that it is safe to admit work.
-    if (!snapshotCanIssueControls(snapshot)) {
-      return { busy: true, runId: undefined };
-    }
+  if (snapshot && snapshotCanDetermineQueueExecution(snapshot)) {
     const executing = Object.values(snapshot.view.runs).filter(
       (run) =>
         LIVE_RUN_STATUSES.has(run.status) || run.status === 'waiting_for_user'
@@ -87,7 +83,9 @@ export function selectQueueExecution({
       return {
         busy: true,
         runId:
-          executing.length === 1 && isEventNativeRunActionable(run)
+          snapshotCanIssueControls(snapshot) &&
+          executing.length === 1 &&
+          isEventNativeRunActionable(run)
             ? run.runId
             : undefined,
       };
@@ -102,7 +100,21 @@ export function selectQueueExecution({
   const busy = Boolean(
     legacyBusy && legacyRunId && !queuedRunIds.includes(legacyRunId)
   );
-  return { busy, runId: busy ? (legacyRunId ?? undefined) : undefined };
+  return {
+    busy,
+    runId: busy && !snapshot ? (legacyRunId ?? undefined) : undefined,
+  };
+}
+
+/**
+ * Missing historical events do not make the current Run summary ambiguous.
+ * Overflow and resync do, so use the legacy task lock until hydration repairs
+ * them instead of treating every Session as permanently busy.
+ */
+function snapshotCanDetermineQueueExecution(
+  snapshot: ProjectEventStoreSnapshot
+): boolean {
+  return !snapshot.overflowed && !snapshot.view.needsResync;
 }
 
 const TYPED_HUMAN_REQUEST_EVENT_TYPES = new Set([

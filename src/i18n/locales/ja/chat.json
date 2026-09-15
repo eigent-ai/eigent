@@ -385,7 +385,6 @@
   "workspace-queue-position": " キュー内の位置：{{position}}。",
   "workspace-waiting-description": "別のタスクがこのスペースを更新しています。利用可能になると、このタスクは自動的に開始します。{{position}}",
   "workspace-waiting-title": "スペースを待機中",
-  "queue-auto-start": "タスクは順番に自動で開始されます。",
   "queue-stop-and-start": "現在のタスクを停止して開始",
   "queue-start-next": "次に開始",
   "queue-stopping": "現在のタスクを停止中…",

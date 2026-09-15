@@ -393,7 +393,6 @@
   "files-added_many": "{{count}} fichiers ajoutés",
   "show-more-files_many": "Afficher {{count}} fichiers supplémentaires",
   "timeline-action-count_many": "{{count}} actions",
-  "queue-auto-start": "Les tâches démarrent automatiquement, une par une.",
   "queue-stop-and-start": "Arrêter et lancer celle-ci",
   "queue-start-next": "Lancer ensuite",
   "queue-stopping": "Arrêt de la tâche en cours…",

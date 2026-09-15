@@ -389,7 +389,6 @@
   "workspace-queue-position": " Warteschlangenposition: {{position}}.",
   "workspace-waiting-description": "Eine weitere Aufgabe aktualisiert diesen Arbeitsbereich. Diese Aufgabe wird automatisch starten, sobald der Arbeitsbereich verfügbar ist.{{position}}",
   "workspace-waiting-title": "Warten auf den Arbeitsplatz",
-  "queue-auto-start": "Aufgaben starten automatisch nacheinander.",
   "queue-stop-and-start": "Stoppen und diese starten",
   "queue-start-next": "Als Nächstes starten",
   "queue-stopping": "Aktuelle Aufgabe wird gestoppt…",

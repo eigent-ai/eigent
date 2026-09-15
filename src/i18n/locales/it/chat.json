@@ -393,7 +393,6 @@
   "workspace-queue-position": " Posizione della coda: {{position}}.",
   "workspace-waiting-description": "Un'altra attività è la mappatura di questo spazio. Questa attività si avvierà automaticamente quando lo spazio sarà disponibile.{{position}}",
   "workspace-waiting-title": "Attesa dello spazio",
-  "queue-auto-start": "Le attività si avviano automaticamente, una alla volta.",
   "queue-stop-and-start": "Interrompi e avvia questa",
   "queue-start-next": "Avvia per prossima",
   "queue-stopping": "Interruzione dell’attività corrente…",

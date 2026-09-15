@@ -75,23 +75,27 @@
 }
 @media (pointer: coarse) {
   .queued-task-row {
-    height: 52px;
+    height: calc(
+      var(--ds-touch-target-minimum) + var(--ds-space-stack-related)
+    );
     /* Keep the expanded touch targets inside the scrolling tray. */
     padding-inline: var(--ds-row-default-padding-inline);
   }
   .queued-task-actions {
-    gap: 20px;
+    gap: calc(var(--ds-touch-target-minimum) - var(--ds-button-xs-height));
   }
   .queued-task-drag-handle,
   .queued-task-actions button {
     position: relative;
   }
-  /* Non-overlapping 44px hit areas retain the primitive's 24px visual control. */
+  /* Non-overlapping minimum touch targets retain the compact visual control. */
   .queued-task-drag-handle::after,
   .queued-task-actions button::after {
     content: '';
     position: absolute;
-    inset: -10px;
+    inset: calc(
+      (var(--ds-button-xs-height) - var(--ds-touch-target-minimum)) / 2
+    );
   }
 }
 

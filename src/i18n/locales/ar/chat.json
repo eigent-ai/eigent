@@ -405,7 +405,6 @@
   "workspace-queue-position": " موضع قائمة الانتظار: {{position}}.",
   "workspace-waiting-description": "تعمل مهمة أخرى على تحديث هذه المساحة. ستبدأ هذه المهمة تلقائيًا عندما تصبح المساحة متاحة.{{position}}",
   "workspace-waiting-title": "في انتظار المساحة",
-  "queue-auto-start": "تبدأ المهام تلقائيًا، واحدة تلو الأخرى.",
   "queue-stop-and-start": "إيقاف الحالية وبدء هذه",
   "queue-start-next": "البدء تاليًا",
   "queue-stopping": "جارٍ إيقاف المهمة الحالية…",
