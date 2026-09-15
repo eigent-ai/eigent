@@ -856,8 +856,98 @@ describe('projector pipeline', () => {
       updatedAt: '2026-08-05T09:00:00Z',
       origin: null,
       resumeBlockedReason: null,
+      totalAttemptElapsedMs: null,
     });
     expect(snapshot.lastSyncedAt).toBeNull();
+  });
+
+  it.each([108_200, 0, null, -1, Number.NaN])(
+    'validates canonical execution time %s',
+    (elapsed) => {
+      const snapshot = projectSnapshot({
+        project_id: 'project-1',
+        current_cursor: 0,
+        runs: [
+          {
+            run_id: 'run-1',
+            status: 'completed',
+            run_version: 1,
+            expected_next_run_sequence: 2,
+            updated_at: '2026-08-05T10:00:00Z',
+            total_attempt_elapsed_ms: elapsed,
+          },
+        ],
+        recent_events: [],
+      });
+      expect(snapshot.runs['run-1'].totalAttemptElapsedMs).toBe(
+        typeof elapsed === 'number' && Number.isFinite(elapsed) && elapsed >= 0
+          ? elapsed
+          : null
+      );
+    }
+  );
+
+  it('does not use a stale elapsed total when replay advanced past the Run aggregate', () => {
+    const snapshot = projectSnapshot({
+      project_id: 'project-1',
+      current_cursor: 2,
+      runs: [
+        {
+          run_id: 'run-1',
+          status: 'running',
+          run_version: 1,
+          expected_next_run_sequence: 3,
+          updated_at: '2026-08-05T10:00:00Z',
+          total_attempt_elapsed_ms: 5_000,
+        },
+      ],
+      recent_events: [
+        event(),
+        event({
+          event_id: 'event-2',
+          run_sequence: 2,
+          run_version: 2,
+          cloud_cursor: 2,
+          event_type: 'run.completed',
+          created_at: '2026-08-05T10:01:00Z',
+        }),
+      ],
+    });
+    expect(snapshot.runs['run-1'].status).toBe('completed');
+    expect(snapshot.runs['run-1'].totalAttemptElapsedMs).toBeNull();
+  });
+
+  it('invalidates an active elapsed checkpoint when live execution advances', () => {
+    const snapshot = projectSnapshot({
+      project_id: 'project-1',
+      current_cursor: 1,
+      runs: [
+        {
+          run_id: 'run-1',
+          status: 'running',
+          run_version: 1,
+          expected_next_run_sequence: 2,
+          updated_at: '2026-08-05T10:00:00Z',
+          total_attempt_elapsed_ms: 5_000,
+        },
+      ],
+      recent_events: [event()],
+    });
+    expect(snapshot.runs['run-1'].totalAttemptElapsedMs).toBe(5_000);
+    const live = reduceProjectView(
+      snapshot,
+      normalizeEvent(
+        event({
+          event_id: 'event-2',
+          run_sequence: 2,
+          run_version: 2,
+          cloud_cursor: 2,
+          event_type: 'run.completed',
+          created_at: '2026-08-05T10:01:00Z',
+        })
+      )
+    );
+    expect(live.runs['run-1'].totalAttemptElapsedMs).toBeNull();
   });
 
   it('preserves legacy raw payload across all V1 importers', () => {

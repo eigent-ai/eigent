@@ -17,7 +17,7 @@
 import asyncio
 import json
 import sys
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from copy import deepcopy
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -25,7 +25,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 from fastapi import HTTPException
-from openai import AzureOpenAI, OpenAI
+from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
 
 from app.agent.agent_model import agent_model
 from app.controller import chat_controller as controller
@@ -220,7 +220,7 @@ async def live_follow_up(tmp_path, monkeypatch, options):
                 await subscription.handle.wait()
 
 
-def capture_wire(state, options, monkeypatch):
+async def capture_wire(state, options, monkeypatch):
     requests = []
 
     def handle(request):
@@ -242,18 +242,34 @@ def capture_wire(state, options, monkeypatch):
         and options.api_url != "https://proxy.eigent.ai"
     )
     sdk_type = AzureOpenAI if direct_azure else OpenAI
+    async_sdk_type = AsyncAzureOpenAI if direct_azure else AsyncOpenAI
     sdk_options = (
         {"azure_endpoint": options.api_url, "api_version": "2024-10-21"}
         if direct_azure
         else {"base_url": options.api_url}
     )
-    with sdk_type(
-        api_key="fixture-key",
-        max_retries=0,
-        **sdk_options,
-        http_client=httpx.Client(transport=httpx.MockTransport(handle)),
-    ) as client:
-        options.extra_params.update(client=client, async_client=object())
+    async with AsyncExitStack() as stack:
+        client = stack.enter_context(
+            sdk_type(
+                api_key="fixture-key",
+                max_retries=0,
+                **sdk_options,
+                http_client=httpx.Client(
+                    transport=httpx.MockTransport(handle)
+                ),
+            )
+        )
+        async_client = await stack.enter_async_context(
+            async_sdk_type(
+                api_key="fixture-key",
+                max_retries=0,
+                **sdk_options,
+                http_client=httpx.AsyncClient(
+                    transport=httpx.MockTransport(handle)
+                ),
+            )
+        )
+        options.extra_params.update(client=client, async_client=async_client)
         if direct_azure:
             options.extra_params["api_version"] = "2024-10-21"
         module = sys.modules["app.agent.agent_model"]
@@ -356,7 +372,7 @@ async def test_follow_up_uses_current_capability_and_preserves_selection(
         )
         assert spec.provider_value == expected
         assert spec.provider_parameter_name == "reasoning.effort"
-        body = capture_wire(state, options, monkeypatch)
+        body = await capture_wire(state, options, monkeypatch)
         assert body["model"] == "fixture-deployment"
         assert body["reasoning"] == {"effort": expected}
         assert "reasoning_effort" not in body

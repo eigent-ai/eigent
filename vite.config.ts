@@ -14,7 +14,7 @@
 
 import react from '@vitejs/plugin-react';
 import { execSync } from 'node:child_process';
-import { readFileSync, rmSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { defineConfig, loadEnv } from 'vite';
 import electron from 'vite-plugin-electron/simple';
@@ -34,8 +34,6 @@ try {
 
 // https://vitejs.dev/config/
 export default defineConfig(({ command, mode }) => {
-  rmSync('dist-electron', { recursive: true, force: true });
-
   const isServe = command === 'serve';
   const isBuild = command === 'build';
   const sourcemap = isServe || !!process.env.VSCODE_DEBUG;
@@ -52,6 +50,29 @@ export default defineConfig(({ command, mode }) => {
     },
     plugins: [
       react(),
+      {
+        name: 'eigent-backend-shutdown',
+        apply: 'serve',
+        configureServer(server) {
+          if (!server.httpServer) return;
+          // Only an active dev server owns backend shutdown. Reading the config
+          // for validation must not install a process-wide signal handler.
+          const onSigint = () => {
+            try {
+              const backend = path.join(__dirname, 'backend');
+              const pid = readFileSync(backend + '/runtime/run.pid', 'utf-8');
+              process.kill(parseInt(pid), 'SIGINT');
+            } catch (e) {
+              console.log('no pid file');
+              console.log(e);
+            }
+          };
+          process.on('SIGINT', onSigint);
+          server.httpServer?.once('close', () => {
+            process.off('SIGINT', onSigint);
+          });
+        },
+      },
       electron({
         main: {
           // Shortcut of `build.lib.entry`
@@ -70,6 +91,9 @@ export default defineConfig(({ command, mode }) => {
               sourcemap,
               minify: isBuild,
               outDir: 'dist-electron/main',
+              // Clean only this target when Vite writes a build, never when
+              // this config is evaluated by tests or other validation tools.
+              emptyOutDir: true,
               rollupOptions: {
                 external: Object.keys(
                   'dependencies' in pkg ? pkg.dependencies : {}
@@ -87,6 +111,7 @@ export default defineConfig(({ command, mode }) => {
               sourcemap: sourcemap ? 'inline' : undefined, // #332
               minify: isBuild,
               outDir: 'dist-electron/preload',
+              emptyOutDir: true,
               rollupOptions: {
                 external: Object.keys(
                   'dependencies' in pkg ? pkg.dependencies : {}
@@ -123,15 +148,4 @@ export default defineConfig(({ command, mode }) => {
       clearScreen: false,
     },
   };
-});
-
-process.on('SIGINT', () => {
-  try {
-    const backend = path.join(__dirname, 'backend');
-    const pid = readFileSync(backend + '/runtime/run.pid', 'utf-8');
-    process.kill(parseInt(pid), 'SIGINT');
-  } catch (e) {
-    console.log('no pid file');
-    console.log(e);
-  }
 });

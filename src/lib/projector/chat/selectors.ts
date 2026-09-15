@@ -20,6 +20,14 @@ import type {
   SelectChatNodesOptions,
 } from './types';
 
+/** Conversation anchors must not compete with verbose tool/terminal receipts. */
+export function isConversationAnchor(node: ChatProjectionNode): boolean {
+  return (
+    node.kind === 'message' &&
+    (node.role === 'user' || node.purpose === 'final')
+  );
+}
+
 export function selectChatNodes(
   state: ChatProjectionState,
   options: SelectChatNodesOptions = {}

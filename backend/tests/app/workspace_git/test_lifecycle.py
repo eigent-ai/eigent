@@ -22,7 +22,11 @@ import pytest
 
 from app import artifacts
 from app.run_context import RunContext
-from app.run_journal import RunEventDraft, SQLiteRunJournal
+from app.run_journal import (
+    InvalidRunTransitionError,
+    RunEventDraft,
+    SQLiteRunJournal,
+)
 from app.workspace_git import (
     ContentRepositoryService,
     GitBackend,
@@ -355,11 +359,20 @@ def test_terminal_run_waits_for_unfinished_change_set_item(tmp_path, journal):
         trigger="filesystem.write",
     )
     assert prepared is not None
+    with pytest.raises(InvalidRunTransitionError, match="workspace mutation"):
+        journal.append_event(
+            "run-1",
+            RunEventDraft(
+                event_id="run-1-completed",
+                event_type="run.completed",
+                payload={},
+            ),
+        )
     journal.append_event(
         "run-1",
         RunEventDraft(
-            event_id="run-1-completed",
-            event_type="run.completed",
+            event_id="run-1-failed",
+            event_type="run.failed",
             payload={},
         ),
     )

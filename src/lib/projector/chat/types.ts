@@ -332,6 +332,8 @@ export type ChatProjectionDecision =
   | { kind: 'unsupported'; node: ChatUnknownNode };
 
 export interface ChatProjectionState {
+  /** Explicit custom retention/unsupported-event limits must remain visible. */
+  historyTruncated?: boolean;
   projectId: string;
   nodes: ChatProjectionNode[];
   /** Direct event-ID lookup for retained immutable Timeline nodes. */

@@ -341,6 +341,21 @@ class TestAgentFactoryFunctions:
         assert "max_retries" not in kwargs["model_config_dict"]
         assert "model_config_dict" not in kwargs["model_config_dict"]
 
+    def test_explicit_provider_timeout_is_forwarded_once(
+        self, sample_chat_data
+    ):
+        options = Chat(**{**sample_chat_data, "extra_params": {"timeout": 45}})
+        _m = sys.modules["app.agent.agent_model"]
+        task_lock = MagicMock()
+        with (
+            patch.object(_m, "ListenChatAgent"),
+            patch.object(_m, "ModelFactory") as factory,
+            patch.object(_m, "get_task_lock", return_value=task_lock),
+            patch.object(_m, "_schedule_async_task"),
+        ):
+            agent_model("TestAgent", "fixture", options, [])
+        assert factory.create.call_args.kwargs["timeout"] == 45
+
     def test_runtime_owned_agent_model_values_override_user_config(
         self, sample_chat_data
     ):

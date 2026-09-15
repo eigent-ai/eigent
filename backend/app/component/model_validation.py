@@ -25,6 +25,7 @@ from app.model.model_platform import (
     is_eigent_cloud_model_endpoint,
     resolve_cloud_model_runtime_platform,
 )
+from app.model.responses_input import configure_responses_input
 from app.workspace_config.models import (
     ModelCapabilityConfigError,
     UnsupportedThinkingEffortError,
@@ -303,6 +304,7 @@ def create_agent(
         model_config_dict=model_config_dict,
         **kwargs,
     )
+    configure_responses_input(model)
     agent = ChatAgent(
         system_message="You are a helpful assistant that must use the tool get_website_content to get the content of a website.",
         model=model,
@@ -417,6 +419,7 @@ def validate_model_with_details(
             model_config_dict=model_config_dict,
             **kwargs,
         )
+        configure_responses_input(model)
         result.validation_stages[ValidationStage.MODEL_CREATION] = True
         result.successful_stages.append(ValidationStage.MODEL_CREATION)
         result.diagnostic_info["model_creation"] = {

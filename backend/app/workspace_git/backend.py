@@ -22,8 +22,13 @@ import re
 import shutil
 import subprocess
 import threading
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+
+from app.workspace_git.path_policy import WorkspacePathPolicy
+
+WORKSPACE_PATH_LIMIT = 500
 
 _UNSAFE_INHERITED_GIT_ENV = {
     "GIT_ALTERNATE_OBJECT_DIRECTORIES",
@@ -49,6 +54,59 @@ _ADVANCED_COMMAND_SLOTS = threading.BoundedSemaphore(4)
 
 class GitBackendError(RuntimeError):
     """Base error for typed local Git operations."""
+
+
+class WorkspaceDeltaLimitExceeded(GitBackendError):
+    """A complete or explicitly partial observation, never a truncated success."""
+
+    def __init__(
+        self,
+        records: dict[str, str],
+        *,
+        limit: int = WORKSPACE_PATH_LIMIT,
+        count_is_exact: bool = True,
+    ) -> None:
+        self.observed_paths = tuple(sorted(records))
+        counts = Counter(
+            "/".join(PurePosixPath(path).parts[:-1][:2]) or "."
+            for path in records
+        )
+        self.diagnostic = {
+            "code": "workspace_delta_limit_exceeded",
+            "limit": limit,
+            "observed_count": len(records),
+            "count_is_exact": count_is_exact,
+            "count_scope": "checkpoint_content"
+            if count_is_exact
+            else "raw_status",
+            "reason": "path_count"
+            if count_is_exact
+            else "status_output_truncated",
+            "top_directories": [
+                {"path": path, "count": count}
+                for path, count in sorted(
+                    counts.items(), key=lambda v: (-v[1], v[0])
+                )[:10]
+            ],
+            "recovery_actions": [
+                "Stop active workspace writers before recovery.",
+                "Use EIGENT_RUNTIME_DIR for environments/installers and EIGENT_CACHE_DIR for caches.",
+                "Keep recoverable frames in EIGENT_INTERMEDIATE_DIR; save final MP4 and .blend files in the workspace.",
+                "Review existing content and checkpoint explicitly selected batches of at most 500 paths; never move or ignore user files automatically.",
+                "Retry checkpoint capture after review; do not replay a command with an unknown outcome or mark its Run successful.",
+            ],
+        }
+        qualifier = "" if count_is_exact else "at least "
+        summary = (
+            f"worktree delta exceeds the {limit}-path limit"
+            if count_is_exact
+            else f"truncated Git status cannot verify the {limit}-path limit"
+        )
+        super().__init__(
+            f"{summary} "
+            f"({qualifier}{len(records)} observed paths; "
+            "inspect workspace path budget before retrying)"
+        )
 
 
 class GitCommandError(GitBackendError):
@@ -184,6 +242,7 @@ class GitBackend:
         *,
         timeout_seconds: float = 30.0,
         max_output_chars: int = 64_000,
+        max_status_output_chars: int = 8_000_000,
         hooks_path: Path | None = None,
     ) -> None:
         executable = (
@@ -201,6 +260,7 @@ class GitBackend:
         self.git_executable = str(executable_path)
         self.timeout_seconds = timeout_seconds
         self.max_output_chars = max_output_chars
+        self.max_status_output_chars = max_status_output_chars
         self.hooks_path = hooks_path or Path(os.devnull)
 
     def run_advanced_argv(
@@ -239,6 +299,7 @@ class GitBackend:
         command: tuple[str, ...],
         args: tuple[str, ...],
         identity: tuple[str, str] | None,
+        output_limit: int | None = None,
     ) -> GitCommandResult:
         try:
             process = subprocess.Popen(
@@ -262,7 +323,11 @@ class GitBackend:
                 chunk = pipe.read(16 * 1024)
                 if not chunk:
                     return
-                remaining = self.max_output_chars - len(destination)
+                remaining = (
+                    output_limit
+                    if output_limit is not None
+                    else self.max_output_chars
+                ) - len(destination)
                 if remaining > 0:
                     destination.extend(chunk[:remaining])
                 if len(chunk) > remaining:
@@ -761,6 +826,8 @@ class GitBackend:
                 "--",
             ),
         )
+        if result.stdout_truncated:
+            raise GitBackendError("Git path changes were truncated")
         fields = result.stdout.split("\0")
         if fields and fields[-1] == "":
             fields.pop()
@@ -1125,22 +1192,35 @@ class GitBackend:
         return tuple(records)
 
     def is_worktree_clean(self, worktree_root: Path) -> bool:
-        result = self._run(
-            worktree_root,
-            ("status", "--porcelain=v1", "-z", "--untracked-files=all"),
+        root = worktree_root.expanduser().resolve()
+        policy = WorkspacePathPolicy(root)
+        records = self._status_records(self._raw_worktree_status_output(root))
+        # Merge cleanliness shares operational exclusions with checkpoints.
+        # Independent nested repositories still prevent physical merge/refresh.
+        return not any(
+            state != "??" or not policy.is_operational(path)
+            for path, state in records.items()
         )
-        return not result.stdout
 
     def worktree_status(
         self,
         worktree_root: Path,
         *,
-        limit: int = 500,
+        limit: int = WORKSPACE_PATH_LIMIT,
     ) -> dict[str, str]:
         if limit < 1:
             raise ValueError("status limit must be positive")
         root = worktree_root.expanduser().resolve()
-        values = self._content_worktree_status_output(root).split("\0")
+        records = self._status_records(
+            self._content_worktree_status_output(root)
+        )
+        if len(records) > limit:
+            raise WorkspaceDeltaLimitExceeded(records, limit=limit)
+        return records
+
+    @staticmethod
+    def _status_records(output: str) -> dict[str, str]:
+        values = output.split("\0")
         records: dict[str, str] = {}
         index = 0
         while index < len(values):
@@ -1153,11 +1233,52 @@ class GitBackend:
             records[relative_path] = state
             if "R" in state or "C" in state:
                 index += 1
-            if len(records) > limit:
-                raise GitBackendError(
-                    f"worktree delta exceeds the {limit}-path limit"
-                )
         return records
+
+    def path_budget(self, worktree_root: Path) -> dict:
+        """Read-only diagnostic; overflowing status cannot poison this probe."""
+        try:
+            records = self.worktree_status(worktree_root)
+        except WorkspaceDeltaLimitExceeded as error:
+            return {
+                "exceeded": True
+                if error.diagnostic["count_is_exact"]
+                else None,
+                "blocked": True,
+                **error.diagnostic,
+            }
+        return {
+            "exceeded": False,
+            "limit": WORKSPACE_PATH_LIMIT,
+            "observed_count": len(records),
+            "count_is_exact": True,
+        }
+
+    def ignored_paths(
+        self, repository_root: Path, paths: tuple[str, ...]
+    ) -> set[str]:
+        """Use Git's own nested/negation/info-exclude rules; tracked paths win."""
+        ignored: set[str] = set()
+        for offset in range(0, len(paths), WORKSPACE_PATH_LIMIT):
+            batch = paths[offset : offset + WORKSPACE_PATH_LIMIT]
+            for path in batch:
+                self._normalize_relative_git_path(path.rstrip("/"))
+            result = self._run(
+                repository_root,
+                ("check-ignore", "-z", "--stdin"),
+                input_text="\0".join("./" + path for path in batch) + "\0",
+                check=False,
+            )
+            if result.returncode not in {0, 1} or result.stdout_truncated:
+                raise GitBackendError(
+                    "Git ignore classification is unavailable or truncated"
+                )
+            ignored.update(
+                value.removeprefix("./")
+                for value in result.stdout.split("\0")
+                if value
+            )
+        return ignored
 
     def restore_owned_worktree_path(
         self,
@@ -1473,22 +1594,41 @@ class GitBackend:
             pathspecs.append(relative.as_posix())
         return tuple(pathspecs)
 
+    def _raw_worktree_status_output(self, repository_root: Path) -> str:
+        args = ("status", "--porcelain=v1", "-z", "--untracked-files=all")
+        # Status is machine-readable evidence. Drain it with bounded memory,
+        # and never treat the generic display-output truncation as success.
+        if not _ADVANCED_COMMAND_SLOTS.acquire(timeout=self.timeout_seconds):
+            raise GitBackendError("Git status concurrency limit reached")
+        try:
+            result = self._run_advanced_argv_acquired(
+                command=self._command(repository_root, args),
+                args=args,
+                identity=None,
+                output_limit=self.max_status_output_chars,
+            )
+        finally:
+            _ADVANCED_COMMAND_SLOTS.release()
+        if result.returncode != 0:
+            raise GitCommandError(
+                args=args, returncode=result.returncode, stderr=result.stderr
+            )
+        if result.stdout_truncated:
+            complete = result.stdout.rsplit("\0", 1)[0] + "\0"
+            raise WorkspaceDeltaLimitExceeded(
+                self._status_records(complete), count_is_exact=False
+            )
+        return result.stdout
+
     def _content_worktree_status_output(self, repository_root: Path) -> str:
         """Return changes owned by the parent Content Repository.
 
-        Git deliberately reports an untracked nested repository as one
-        directory entry (for example ``?? child/``), even when
-        ``--untracked-files=all`` is used. A Space can contain multiple
-        independent repositories, so that entry is a repository boundary,
-        not a path that the parent repository may checkpoint as a file or an
-        implicit gitlink.
+        Git reports an untracked nested repository as one directory entry.
+        It remains an independent repository boundary, not a parent file or
+        implicit gitlink. Operational untracked files are not content either.
         """
-
-        result = self._run(
-            repository_root,
-            ("status", "--porcelain=v1", "-z", "--untracked-files=all"),
-        )
-        values = result.stdout.split("\0")
+        policy = WorkspacePathPolicy(repository_root)
+        values = self._raw_worktree_status_output(repository_root).split("\0")
         filtered: list[str] = []
         index = 0
         while index < len(values):
@@ -1501,6 +1641,12 @@ class GitBackend:
                 if index < len(values):
                     rename_source = values[index]
                     index += 1
+            if (
+                len(record) >= 4
+                and record[:2] == "??"
+                and policy.is_operational(record[3:])
+            ):
+                continue
             if not self._is_untracked_repository_boundary(
                 repository_root,
                 record,
@@ -1518,10 +1664,12 @@ class GitBackend:
         untracked_output: str,
     ) -> str:
         paths = [path for path in untracked_output.split("\0") if path]
+        policy = WorkspacePathPolicy(repository_root)
         filtered = [
             path
             for path in paths
-            if not self._is_untracked_repository_boundary(
+            if not policy.is_operational(path)
+            and not self._is_untracked_repository_boundary(
                 repository_root,
                 f"?? {path}",
             )
@@ -1619,6 +1767,10 @@ class GitBackend:
         input_text: str | None = None,
     ) -> GitCommandResult:
         environment = self._environment(identity=identity)
+        if args[0] == "check-ignore":
+            # check-ignore takes literal filenames on stdin, not pathspecs;
+            # Git rejects even implicit :(literal) magic for this command.
+            environment["GIT_LITERAL_PATHSPECS"] = "0"
         command = self._command(cwd, args)
         try:
             completed = subprocess.run(
@@ -1646,6 +1798,8 @@ class GitBackend:
             stdout=stdout,
             stderr=stderr,
             returncode=completed.returncode,
+            stdout_truncated=len(completed.stdout) > self.max_output_chars,
+            stderr_truncated=len(completed.stderr) > self.max_output_chars,
         )
 
     def _environment(

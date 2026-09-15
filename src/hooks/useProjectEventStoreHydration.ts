@@ -14,10 +14,11 @@
 
 import {
   hydrateProjectEventStore,
+  loadOlderProjectChatHistory,
   ProjectEventStoreHydrationError,
 } from '@/service/projectEventStoreHydration';
 import { getProjectEventStore } from '@/store/projectEventStore';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 const RETRY_DELAY_MS = 1_000;
 /**
@@ -39,6 +40,10 @@ export type ProjectEventStoreHydrationState = {
     | 'unsupported'
     | null;
   eventsTruncated: boolean;
+  hasOlderHistory: boolean;
+  isLoadingOlder: boolean;
+  olderHistoryError: boolean;
+  loadOlder: () => Promise<void>;
   /**
    * Starts a fresh attempt, including after a non-retryable failure that has
    * disabled automatic backoff. Safe to call while an attempt is running.
@@ -92,12 +97,90 @@ export function useProjectEventStoreHydration({
 }: UseProjectEventStoreHydrationOptions): ProjectEventStoreHydrationState {
   const [retryToken, setRetryToken] = useState(0);
   const [hydrationState, setHydrationState] = useState<
-    Omit<ProjectEventStoreHydrationState, 'retry'>
+    Pick<
+      ProjectEventStoreHydrationState,
+      'status' | 'errorCode' | 'eventsTruncated'
+    >
   >({
     status: 'idle',
     errorCode: null,
     eventsTruncated: false,
   });
+  const olderRequestRef = useRef<AbortController | null>(null);
+  const consumedRetryTokenRef = useRef(0);
+  const [olderState, setOlderState] = useState({
+    projectId,
+    loading: false,
+    error: false,
+  });
+
+  useEffect(() => {
+    setOlderState({ projectId, loading: false, error: false });
+    return () => {
+      olderRequestRef.current?.abort();
+      olderRequestRef.current = null;
+    };
+  }, [projectId, enabled]);
+
+  const loadOlder = useCallback(async () => {
+    if (!enabled || !projectId || olderRequestRef.current) return;
+    const controller = new AbortController();
+    olderRequestRef.current = controller;
+    setOlderState({ projectId, loading: true, error: false });
+    try {
+      const store = getProjectEventStore(projectId);
+      // Bounded reads keep live ingestion responsive; they are not a limit on
+      // how much of the Session the user can see. Drain every historical page.
+      do {
+        const previous = store.getSnapshot().history;
+        await loadOlderProjectChatHistory({
+          projectId,
+          signal: controller.signal,
+          store,
+        });
+        if (controller.signal.aborted) return;
+        const history = store.getSnapshot().history;
+        if (
+          !Object.values(history?.beforeByRun ?? {}).some((value) => value > 0)
+        )
+          break;
+        if (
+          !Object.entries(previous?.beforeByRun ?? {}).some(
+            ([runId, before]) =>
+              (history?.beforeByRun[runId] ?? before) < before
+          )
+        ) {
+          throw new ProjectEventStoreHydrationError(
+            'Historical replay did not advance',
+            'invalid_response'
+          );
+        }
+        // Give paint/input a turn between batches, not only promise microtasks.
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      } while (!controller.signal.aborted);
+      if (!controller.signal.aborted) {
+        setOlderState({ projectId, loading: false, error: false });
+        setHydrationState((state) => ({
+          ...state,
+          eventsTruncated:
+            getProjectEventStore(projectId).getSnapshot().view.eventsTruncated,
+        }));
+      }
+    } catch (error) {
+      if (!controller.signal.aborted && !isAbortError(error)) {
+        // Overflow requires a fresh checkpoint, not another read against the
+        // rejected cursor. The hydration owner exposes its explicit retry.
+        setOlderState({
+          projectId,
+          loading: false,
+          error: !getProjectEventStore(projectId).getSnapshot().overflowed,
+        });
+      }
+    } finally {
+      if (olderRequestRef.current === controller)
+        olderRequestRef.current = null;
+    }
+  }, [enabled, projectId]);
 
   const retry = useCallback(() => setRetryToken((token) => token + 1), []);
 
@@ -118,6 +201,9 @@ export function useProjectEventStoreHydration({
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let blockedIncarnation: number | null = null;
     let consecutiveFailures = 0;
+    // A retry belongs to this invocation, not to every future Session visit.
+    let forceHydration = retryToken !== consumedRetryTokenRef.current;
+    consumedRetryTokenRef.current = retryToken;
 
     const isBlockedByContract = () =>
       blockedIncarnation === store.getIncarnation();
@@ -125,6 +211,7 @@ export function useProjectEventStoreHydration({
     const needsHydration = () => {
       const snapshot = store.getSnapshot();
       return (
+        forceHydration ||
         !snapshot.hasHydratedSnapshot ||
         snapshot.overflowed ||
         snapshot.view.needsResync
@@ -156,8 +243,32 @@ export function useProjectEventStoreHydration({
       ) {
         return;
       }
+      const snapshot = store.getSnapshot();
+      if (
+        !forceHydration &&
+        snapshot.overflowed &&
+        store.getControlReplayCursor() &&
+        (snapshot.view.resyncReason?.startsWith('frontend_pending_control_') ||
+          snapshot.view.resyncReason === 'frontend_control_replay_overflow')
+      ) {
+        // A successful tail read cannot repair an oversized control prefix.
+        // Avoid repeatedly clearing backoff with that same partial snapshot.
+        blockedIncarnation = store.getIncarnation();
+        setHydrationState({
+          status: 'error',
+          errorCode: 'limit_exceeded',
+          eventsTruncated: true,
+        });
+        return;
+      }
       const requestIncarnation = store.getIncarnation();
+      forceHydration = false;
       running = true;
+      // A replacement owns a new replay boundary. Cancel the older-page pass
+      // so it cannot race the replacement or leave automatic backfill stuck.
+      olderRequestRef.current?.abort();
+      olderRequestRef.current = null;
+      setOlderState({ projectId, loading: false, error: false });
       setHydrationState({
         status: 'loading',
         errorCode: null,
@@ -170,7 +281,7 @@ export function useProjectEventStoreHydration({
       })
         .then((result) => {
           consecutiveFailures = 0;
-          if (mounted) {
+          if (mounted && store.getIncarnation() === requestIncarnation) {
             setHydrationState({
               status: 'ready',
               errorCode: null,
@@ -180,6 +291,8 @@ export function useProjectEventStoreHydration({
         })
         .catch((error: unknown) => {
           if (!mounted || isAbortError(error)) return;
+          if (store.getIncarnation() !== requestIncarnation) return;
+          forceHydration = true;
           consecutiveFailures += 1;
           const nonRetryableCode = nonRetryableErrorCode(error);
           if (nonRetryableCode) {
@@ -225,6 +338,8 @@ export function useProjectEventStoreHydration({
     return () => {
       mounted = false;
       controller.abort();
+      olderRequestRef.current?.abort();
+      olderRequestRef.current = null;
       unsubscribe();
       if (retryTimer) clearTimeout(retryTimer);
     };
@@ -232,5 +347,43 @@ export function useProjectEventStoreHydration({
     // and any pending backoff so a manual retry always gets a fresh attempt.
   }, [enabled, projectId, retryToken]);
 
-  return { ...hydrationState, retry };
+  useEffect(() => {
+    if (!enabled || !projectId || hydrationState.status !== 'ready') return;
+    const snapshot = getProjectEventStore(projectId).getSnapshot();
+    if (
+      snapshot.hasHydratedSnapshot &&
+      (Object.values(snapshot.history?.beforeByRun ?? {}).some(
+        (value) => value > 0
+      ) ||
+        getProjectEventStore(projectId).getControlReplayCursor())
+    ) {
+      // One automatic pass per successful hydration. A failed page remains
+      // visible and manually retryable instead of entering a hot retry loop.
+      void loadOlder();
+    }
+  }, [enabled, projectId, hydrationState.status, loadOlder]);
+
+  const snapshot =
+    enabled && projectId
+      ? getProjectEventStore(projectId).getSnapshot()
+      : undefined;
+  const history = snapshot?.history;
+  return {
+    ...hydrationState,
+    eventsTruncated:
+      snapshot?.view.eventsTruncated ?? hydrationState.eventsTruncated,
+    retry,
+    hasOlderHistory:
+      Object.values(history?.beforeByRun ?? {}).some((value) => value > 0) ||
+      Boolean(
+        enabled &&
+        projectId &&
+        getProjectEventStore(projectId).getControlReplayCursor()
+      ),
+    isLoadingOlder:
+      enabled && olderState.projectId === projectId && olderState.loading,
+    olderHistoryError:
+      enabled && olderState.projectId === projectId && olderState.error,
+    loadOlder,
+  };
 }

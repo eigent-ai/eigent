@@ -27,10 +27,12 @@ import {
 } from '@/lib/projector';
 import {
   createChatProjectionState,
+  isConversationAnchor,
   projectChatEvents,
   type ChatProjectionState,
 } from '@/lib/projector/chat';
 import {
+  adaptHumanControlEvent,
   createHumanControlProjectionState,
   projectHumanControlEvents,
   type HumanControlProjectionState,
@@ -45,8 +47,10 @@ const DEFAULT_MAX_SEEN_EVENT_IDS = 5_000;
 const DEFAULT_MAX_UNKNOWN_EVENTS = 200;
 const DEFAULT_MAX_LEGACY_STEPS = 2_000;
 const DEFAULT_MAX_LEGACY_BYTES = 8 * 1024 * 1024;
-const DEFAULT_MAX_CHAT_NODES = 2_000;
-const DEFAULT_MAX_CHAT_BYTES = 8 * 1024 * 1024;
+// The transcript is loaded in bounded batches, but retained in full. A total
+// tail/heap cap silently drops earlier work logs and their lifecycle receipts.
+const DEFAULT_MAX_CHAT_NODES = Number.POSITIVE_INFINITY;
+const DEFAULT_MAX_CHAT_BYTES = Number.POSITIVE_INFINITY;
 const DEFAULT_MAX_RESOLVED_CONTROLS = 200;
 const DEFAULT_MAX_CONTROL_SEEN_EVENT_IDS = 5_000;
 const DEFAULT_MAX_PENDING_CONTROLS = 128;
@@ -72,6 +76,27 @@ export type ProjectEventStoreSnapshot = {
   hasHydratedSnapshot: boolean;
   overflowed: boolean;
   lastEffects: readonly ProjectorEffect[];
+  /** Display-only replay cursors; never used by live streams or Run controls. */
+  history?: ProjectChatHistory;
+};
+
+export type ProjectChatHistory = {
+  /** Inclusive last sequence not yet read, in newest-Run-first order. */
+  beforeByRun: Readonly<Record<string, number>>;
+  runsTruncated: boolean;
+};
+
+/** A forward-only control checkpoint, separate from display and live cursors. */
+export type ProjectControlReplayCursor = Readonly<{
+  afterByRun: Readonly<Record<string, number>>;
+  throughByRun: Readonly<Record<string, number>>;
+}>;
+
+type ProjectControlReplay = {
+  cursor: ProjectControlReplayCursor;
+  control: HumanControlProjectionState;
+  liveEvents: CanonicalProjectEvent[];
+  liveBytes: number;
 };
 
 /**
@@ -349,10 +374,12 @@ function compactChatProjection(
     (count, node) => count + (node.kind === 'unknown' ? 1 : 0),
     0
   );
-  const estimatedNodeBytes = state.nodes.reduce(
-    (total, node) => total + estimateChatNodeBytes(node),
-    0
-  );
+  const estimatedNodeBytes = Number.isFinite(maxChatBytes)
+    ? state.nodes.reduce(
+        (total, node) => total + estimateChatNodeBytes(node),
+        0
+      )
+    : 0;
   const nodesNeedCompaction =
     state.nodes.length > maxChatNodes ||
     unknownCount > maxUnknownEvents ||
@@ -368,30 +395,46 @@ function compactChatProjection(
     const retainedReversed = [] as ChatProjectionState['nodes'];
     let retainedUnknownCount = 0;
     let retainedBytes = 0;
-    for (
-      let index = state.nodes.length - 1;
-      index >= 0 && retainedReversed.length < maxChatNodes;
-      index -= 1
-    ) {
-      const node = state.nodes[index];
-      if (node.kind === 'unknown') {
-        if (retainedUnknownCount >= maxUnknownEvents) continue;
-      }
-      const nodeBytes = estimateChatNodeBytes(node);
-      if (nodeBytes > maxChatBytes - retainedBytes) continue;
+    const retainedIds = new Set<string>();
+    // Keep the same hard count/heap ceilings, but reserve capacity for user
+    // queries and final replies before filling it with recent activity.
+    for (const anchorsOnly of [true, false]) {
+      for (
+        let index = state.nodes.length - 1;
+        index >= 0 && retainedReversed.length < maxChatNodes;
+        index -= 1
+      ) {
+        const node = state.nodes[index];
+        if (isConversationAnchor(node) !== anchorsOnly) continue;
+        if (node.kind === 'unknown' && retainedUnknownCount >= maxUnknownEvents)
+          continue;
+        const nodeBytes = Number.isFinite(maxChatBytes)
+          ? estimateChatNodeBytes(node)
+          : 0;
+        if (nodeBytes > maxChatBytes - retainedBytes) continue;
 
-      if (node.kind === 'unknown') retainedUnknownCount += 1;
-      retainedBytes += nodeBytes;
-      retainedReversed.push(node);
+        if (node.kind === 'unknown') retainedUnknownCount += 1;
+        retainedBytes += nodeBytes;
+        retainedReversed.push(node);
+        retainedIds.add(node.id);
+      }
     }
-    nodes = retainedReversed.reverse();
+    nodes = state.nodes.filter((node) => retainedIds.has(node.id));
     nodeById = Object.fromEntries(nodes.map((node) => [node.id, node]));
     nodeIndexById = Object.fromEntries(
       nodes.map((node, index) => [node.id, index])
     );
   }
 
-  return { ...state, nodes, nodeById, nodeIndexById, seenEventIds };
+  return {
+    ...state,
+    nodes,
+    nodeById,
+    nodeIndexById,
+    seenEventIds,
+    historyTruncated:
+      state.historyTruncated || nodes.length < state.nodes.length,
+  };
 }
 
 /** Keep every actionable request, while bounding historical command receipts. */
@@ -498,6 +541,19 @@ function pendingControlCapacityReason(
   return null;
 }
 
+function samePendingControls(
+  left: HumanControlProjectionState,
+  right: HumanControlProjectionState
+): boolean {
+  const pending = (state: HumanControlProjectionState) =>
+    state.orderedInteractionIds
+      .map((id) => state.interactionById[id])
+      .filter((interaction) => interaction.status === 'requested');
+  // Pending state is already count/byte bounded. Historical terminal receipts
+  // need not replace an equivalent current checkpoint or notify its consumers.
+  return JSON.stringify(pending(left)) === JSON.stringify(pending(right));
+}
+
 function isCanonicalProjectEvent(
   value: unknown
 ): value is CanonicalProjectEvent {
@@ -571,6 +627,7 @@ export class ProjectEventStore {
     invalidated: boolean;
   } | null = null;
   private snapshot: ProjectEventStoreSnapshot;
+  private controlReplay: ProjectControlReplay | null = null;
 
   constructor(projectId: string, options: ProjectEventStoreOptions = {}) {
     if (!projectId) throw new Error('ProjectEventStore requires a project id');
@@ -653,6 +710,9 @@ export class ProjectEventStore {
   getChatSnapshot = (): ChatProjectionState => this.snapshot.chat;
 
   getControlSnapshot = (): HumanControlProjectionState => this.snapshot.control;
+
+  getControlReplayCursor = (): ProjectControlReplayCursor | null =>
+    this.controlReplay?.cursor ?? null;
 
   getIncarnation(): number {
     return this.incarnation;
@@ -785,6 +845,26 @@ export class ProjectEventStore {
       this.rejectQueuedBatch(pendingControlOverflowReason);
       return;
     }
+    if (this.controlReplay) {
+      // A forward rebuild has not seen the prefix yet. Retain newer lifecycle
+      // evidence until it catches up; compacted terminal receipts cannot prove
+      // that an older request was resolved. This buffer is bounded like ingress.
+      const liveEvents = acceptedBatch.filter(adaptHumanControlEvent);
+      const liveBytes = liveEvents.reduce(
+        (bytes, event) => bytes + estimateEventBytes(event),
+        0
+      );
+      if (
+        this.controlReplay.liveEvents.length + liveEvents.length >
+          this.maxQueueEvents ||
+        this.controlReplay.liveBytes + liveBytes > this.maxQueueBytes
+      ) {
+        this.rejectQueuedBatch('frontend_control_replay_overflow');
+        return;
+      }
+      this.controlReplay.liveEvents.push(...liveEvents);
+      this.controlReplay.liveBytes += liveBytes;
+    }
     this.publish(
       compactView(
         result.state,
@@ -843,7 +923,8 @@ export class ProjectEventStore {
    */
   commitSnapshotReplacement(
     replacement: ProjectEventStoreSnapshotReplacement,
-    snapshot: ProjectSnapshotInput
+    snapshot: ProjectSnapshotInput,
+    history?: ProjectChatHistory
   ): boolean {
     if (!this.ownsSnapshotReplacement(replacement)) return false;
     if (this.activeSnapshotReplacement?.invalidated) {
@@ -852,7 +933,7 @@ export class ProjectEventStore {
     }
 
     try {
-      if (!this.applySnapshot(snapshot)) {
+      if (!this.applySnapshot(snapshot, history)) {
         this.activeSnapshotReplacement = null;
         return false;
       }
@@ -879,13 +960,19 @@ export class ProjectEventStore {
     }
   }
 
-  private applySnapshot(snapshot: ProjectSnapshotInput): boolean {
+  private applySnapshot(
+    snapshot: ProjectSnapshotInput,
+    history?: ProjectChatHistory
+  ): boolean {
     if (snapshot.project_id !== this.projectId) {
       throw new Error('Project snapshot does not match event store scope');
     }
     this.cancelScheduledFlush?.();
     this.cancelScheduledFlush = null;
-    const projectedView = { ...projectSnapshot(snapshot), mode: this.mode };
+    const projectedView = {
+      ...projectSnapshot(snapshot, history ? this.snapshot.view : undefined),
+      mode: this.mode,
+    };
     const view = compactView(
       projectedView,
       this.maxSeenEventIds,
@@ -897,17 +984,68 @@ export class ProjectEventStore {
       snapshot.recent_events
     ).filter((event) => eventEnteredSemanticLane(event, projectedView));
     const chat = compactChatProjection(
-      projectChatEvents(this.projectId, snapshotEvents),
+      // A bounded refresh is a new control checkpoint, not permission to erase
+      // already read receipts. Same-id replacement/import must call reset().
+      projectChatEvents(
+        this.projectId,
+        snapshotEvents,
+        history ? this.snapshot.chat : undefined
+      ),
       this.maxChatNodes,
       this.maxChatBytes,
       this.maxSeenEventIds,
       this.maxUnknownEvents
     );
-    const control = compactHumanControlProjection(
-      projectHumanControlEvents(this.projectId, snapshotEvents),
+    const canExtendControl = Boolean(
+      history &&
+      this.snapshot.hasHydratedSnapshot &&
+      !this.controlReplay &&
+      !this.snapshot.overflowed &&
+      !this.snapshot.view.needsResync &&
+      !this.snapshot.view.eventsTruncated &&
+      Object.entries(history.beforeByRun).every(
+        ([runId, before]) =>
+          before <= (this.snapshot.view.runs[runId]?.lastSequence ?? 0)
+      )
+    );
+    const incomingThrough = Object.fromEntries(
+      (snapshot.runs ?? []).map((run) => [
+        run.run_id,
+        run.expected_next_run_sequence - 1,
+      ])
+    );
+    for (const event of snapshotEvents) {
+      incomingThrough[event.runId] = Math.max(
+        incomingThrough[event.runId] ?? 0,
+        event.runSequence
+      );
+    }
+    const needsControlReplay = Boolean(
+      history &&
+      !canExtendControl &&
+      Object.entries(view.runs).some(
+        ([runId, run]) =>
+          (history.beforeByRun[runId] ?? 0) > 0 ||
+          run.lastSequence > (incomingThrough[runId] ?? 0)
+      )
+    );
+    const snapshotControl = compactHumanControlProjection(
+      projectHumanControlEvents(
+        this.projectId,
+        canExtendControl
+          ? snapshotEvents.filter(
+              (event) => !this.isCoveredByCurrentWatermark(event)
+            )
+          : snapshotEvents,
+        canExtendControl ? this.snapshot.control : undefined
+      ),
       this.maxResolvedControls,
       this.maxControlSeenEventIds
     );
+    const control =
+      needsControlReplay && this.snapshot.hasHydratedSnapshot
+        ? this.snapshot.control
+        : snapshotControl;
     const pendingControlOverflowReason = pendingControlCapacityReason(
       control,
       this.maxPendingControls,
@@ -919,10 +1057,199 @@ export class ProjectEventStore {
       this.rejectQueuedBatch(pendingControlOverflowReason);
       return false;
     }
-    this.publish(view, chat, control, [], false, true);
+    this.controlReplay = needsControlReplay
+      ? {
+          cursor: {
+            afterByRun: Object.fromEntries(
+              Object.keys(view.runs).map((runId) => [runId, 0])
+            ),
+            throughByRun: Object.fromEntries(
+              Object.entries(view.runs).map(([runId, run]) => [
+                runId,
+                run.lastSequence,
+              ])
+            ),
+          },
+          control:
+            Object.keys(control.seenEventIds).length === 0
+              ? control
+              : createHumanControlProjectionState(this.projectId),
+          liveEvents: [],
+          liveBytes: 0,
+        }
+      : null;
+    this.publish(view, chat, control, [], false, true, history ?? null);
     this.discardQueuedEventsCoveredBySnapshot();
     if (this.queue.length > 0) this.ensureScheduled();
     return true;
+  }
+
+  /** Commit validated forward evidence without changing execution watermarks. */
+  appendControlHistory(
+    expected: ProjectControlReplayCursor,
+    events: readonly CanonicalProjectEvent[],
+    afterByRun: Readonly<Record<string, number>>
+  ): boolean {
+    const replay = this.controlReplay;
+    if (
+      !replay ||
+      replay.cursor !== expected ||
+      this.disposed ||
+      this.activeSnapshotReplacement ||
+      this.snapshot.overflowed
+    )
+      return false;
+    const advanced = { ...expected.afterByRun };
+    for (const event of events) {
+      if (
+        event.projectId !== this.projectId ||
+        event.source !== 'canonical' ||
+        event.runSequence !== (advanced[event.runId] ?? -1) + 1 ||
+        event.runSequence > (expected.throughByRun[event.runId] ?? -1)
+      )
+        return false;
+      advanced[event.runId] = event.runSequence;
+    }
+    if (
+      Object.keys(afterByRun).length !== Object.keys(advanced).length ||
+      Object.entries(advanced).some(
+        ([runId, after]) => afterByRun[runId] !== after
+      )
+    )
+      return false;
+    const complete = Object.entries(expected.throughByRun).every(
+      ([runId, through]) => advanced[runId] === through
+    );
+    const control = compactHumanControlProjection(
+      projectHumanControlEvents(
+        this.projectId,
+        complete ? [...events, ...replay.liveEvents] : events,
+        replay.control
+      ),
+      this.maxResolvedControls,
+      this.maxControlSeenEventIds
+    );
+    const overflow = pendingControlCapacityReason(
+      control,
+      this.maxPendingControls,
+      this.maxPendingControlBytes
+    );
+    if (overflow) {
+      this.rejectQueuedBatch(overflow);
+      return false;
+    }
+    this.controlReplay = complete
+      ? null
+      : {
+          ...replay,
+          cursor: { ...expected, afterByRun: advanced },
+          control,
+        };
+    const history = this.snapshot.history;
+    this.publish(
+      {
+        ...this.snapshot.view,
+        eventsTruncated: Boolean(
+          !complete ||
+          history?.runsTruncated ||
+          Object.values(history?.beforeByRun ?? {}).some((before) => before > 0)
+        ),
+      },
+      this.snapshot.chat,
+      complete && !samePendingControls(control, this.snapshot.control)
+        ? control
+        : this.snapshot.control,
+      [],
+      this.snapshot.overflowed
+    );
+    return true;
+  }
+
+  /**
+   * Add validated historical display receipts without replaying old commands,
+   * rewinding live watermarks, or replacing events received during the fetch.
+   */
+  prependChatHistory(
+    events: readonly CanonicalProjectEvent[],
+    expectedHistory: ProjectChatHistory,
+    history: ProjectChatHistory
+  ): boolean {
+    if (
+      !this.isChatHistoryCurrent(expectedHistory) ||
+      history.runsTruncated !== expectedHistory.runsTruncated ||
+      Object.keys(history.beforeByRun).length !==
+        Object.keys(expectedHistory.beforeByRun).length ||
+      Object.entries(expectedHistory.beforeByRun).some(([runId, before]) => {
+        const next = history.beforeByRun[runId];
+        return !Number.isSafeInteger(next) || next < 0 || next > before;
+      }) ||
+      events.some((event) => {
+        const existing = this.snapshot.chat.nodeById[event.eventId];
+        return (
+          event.projectId !== this.projectId ||
+          !Number.isSafeInteger(event.runSequence) ||
+          event.runSequence < 1 ||
+          event.runSequence > (expectedHistory.beforeByRun[event.runId] ?? 0) ||
+          Boolean(
+            existing &&
+            (existing.runId !== event.runId ||
+              existing.runSequence !== event.runSequence)
+          )
+        );
+      })
+    ) {
+      return false;
+    }
+    const projected = projectChatEvents(
+      this.projectId,
+      events,
+      this.snapshot.chat
+    );
+    const nodes = [...projected.nodes].sort((left, right) => {
+      if (left.runId === right.runId)
+        return left.runSequence - right.runSequence;
+      return (
+        (left.createdAt ?? '').localeCompare(right.createdAt ?? '') ||
+        left.runId.localeCompare(right.runId)
+      );
+    });
+    const chat = compactChatProjection(
+      {
+        ...projected,
+        nodes,
+        nodeIndexById: Object.fromEntries(
+          nodes.map((node, index) => [node.id, index])
+        ),
+      },
+      this.maxChatNodes,
+      this.maxChatBytes,
+      this.maxSeenEventIds,
+      this.maxUnknownEvents
+    );
+    this.publish(
+      {
+        ...this.snapshot.view,
+        eventsTruncated:
+          history.runsTruncated ||
+          Object.values(history.beforeByRun).some((value) => value > 0),
+      },
+      chat,
+      this.snapshot.control,
+      [],
+      this.snapshot.overflowed,
+      this.snapshot.hasHydratedSnapshot,
+      history
+    );
+    return true;
+  }
+
+  /** Page owners recheck this after every await, not just before publishing. */
+  isChatHistoryCurrent(history: ProjectChatHistory): boolean {
+    return (
+      !this.disposed &&
+      !this.activeSnapshotReplacement &&
+      this.snapshot.history === history
+    );
   }
 
   setMode(mode: ProjectorMode): void {
@@ -943,6 +1270,7 @@ export class ProjectEventStore {
     this.cancelScheduledFlush?.();
     this.cancelScheduledFlush = null;
     this.activeSnapshotReplacement = null;
+    this.controlReplay = null;
     this.clearQueue();
     this.incarnation += 1;
     this.publish(
@@ -951,7 +1279,8 @@ export class ProjectEventStore {
       createHumanControlProjectionState(this.projectId),
       [],
       false,
-      false
+      false,
+      undefined
     );
   }
 
@@ -961,6 +1290,7 @@ export class ProjectEventStore {
     this.cancelScheduledFlush?.();
     this.cancelScheduledFlush = null;
     this.activeSnapshotReplacement = null;
+    this.controlReplay = null;
     this.clearQueue();
     this.listeners.clear();
   }
@@ -1060,16 +1390,21 @@ export class ProjectEventStore {
     control: HumanControlProjectionState,
     effects: readonly ProjectorEffect[],
     overflowed: boolean,
-    hasHydratedSnapshot = this.snapshot.hasHydratedSnapshot
+    hasHydratedSnapshot = this.snapshot.hasHydratedSnapshot,
+    history: ProjectChatHistory | null | undefined = this.snapshot.history
   ): void {
     this.snapshot = {
-      view,
+      view:
+        chat.historyTruncated || this.controlReplay
+          ? { ...view, eventsTruncated: true }
+          : view,
       chat,
       control,
       revision: this.snapshot.revision + 1,
       hasHydratedSnapshot,
       overflowed,
       lastEffects: effects,
+      history: hasHydratedSnapshot ? (history ?? undefined) : undefined,
     };
     if (effects.length > 0) this.onEffects?.(effects);
     for (const listener of this.listeners) listener();

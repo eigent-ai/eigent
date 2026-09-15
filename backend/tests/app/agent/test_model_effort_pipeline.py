@@ -39,9 +39,18 @@ from app.workspace_config.models import ThinkingEffort
 @pytest.mark.parametrize("effort", tuple(ThinkingEffort))
 @pytest.mark.parametrize("platform", ["azure", "openai", "cloud_azure"])
 @pytest.mark.parametrize("source", ["builtin", "catalog", "provider_override"])
+@pytest.mark.parametrize("with_image", [False, True])
 async def test_admitted_effort_matches_sdk_body_and_invocation(
-    tmp_path, monkeypatch, sample_chat_data, effort, platform, source
+    tmp_path,
+    monkeypatch,
+    sample_chat_data,
+    caplog,
+    effort,
+    platform,
+    source,
+    with_image,
 ):
+    caplog.set_level("INFO", logger="provider_wait")
     model_type = "gpt-6-astra" if source == "builtin" else "nebula-2027"
     model_platform = "openai" if platform == "openai" else "azure"
     metadata = {
@@ -223,13 +232,25 @@ async def test_admitted_effort_matches_sdk_body_and_invocation(
                 },
             }
         ]
+
+        def messages(text):
+            content = text
+            if with_image:
+                content = [
+                    {"type": "text", "text": text},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": "https://images.invalid/fixture.png",
+                            "detail": "high",
+                        },
+                    },
+                ]
+            return [{"role": "user", "content": content}]
+
         with run_context_scope(context):
-            agent.model.run(
-                [{"role": "user", "content": "fixture"}], tools=tools
-            )
-            await agent.model.arun(
-                [{"role": "user", "content": "async fixture"}], tools=tools
-            )
+            agent.model.run(messages("fixture"), tools=tools)
+            await agent.model.arun(messages("async fixture"), tools=tools)
         assert len(requests) == 2
         for path, body in requests:
             assert (
@@ -248,6 +269,12 @@ async def test_admitted_effort_matches_sdk_body_and_invocation(
             assert "reasoning.effort" not in body
             assert "model_capability" not in body
             assert "stream_options" not in body
+            if with_image:
+                assert body["input"][0]["content"][1] == {
+                    "type": "input_image",
+                    "image_url": "https://images.invalid/fixture.png",
+                    "detail": "high",
+                }
         assert template.provider_capability.source == (
             "catalog" if source == "builtin" else source
         )
@@ -259,6 +286,14 @@ async def test_admitted_effort_matches_sdk_body_and_invocation(
         assert attempt.thinking_effort_effective == effort.value
         records = journal.list_model_invocations("run-1")
         assert len(records) == 2
+        observations = [
+            item.provider_wait
+            for item in caplog.records
+            if hasattr(item, "provider_wait")
+        ]
+        assert {item["invocation_id"] for item in observations} == {
+            record.invocation_id for record in records
+        }
         for record in records:
             assert record.transport == "responses"
             assert record.thinking_effort == effort.value
@@ -266,6 +301,27 @@ async def test_admitted_effort_matches_sdk_body_and_invocation(
             assert (
                 record.request["model_config_dict"]["reasoning"]["effort"]
                 == effort.value
+            )
+            correlated = [
+                item
+                for item in observations
+                if item["invocation_id"] == record.invocation_id
+            ]
+            assert (
+                len(
+                    [
+                        item
+                        for item in correlated
+                        if item.get("stage") == "dispatch"
+                    ]
+                )
+                == 1
+            )
+            assert correlated[-1]["phase"] == "completed"
+            assert all(item["run_id"] == "run-1" for item in correlated)
+            assert all(
+                item["run_attempt_id"] == attempt.attempt_id
+                for item in correlated
             )
     sync_client.close()
     await async_client.close()
