@@ -418,13 +418,14 @@ def agent_model(
             if isinstance(stream_options, dict):
                 stream_options.setdefault("include_usage", True)
 
+        # Preserve the existing default without duplicating explicit options.
+        init_params.setdefault("timeout", 600)
         model_backend = ModelFactory.create(
             model_platform=runtime_model_platform,
             model_type=effective_config["model_type"],
             api_key=effective_config["api_key"],
             url=effective_config["api_url"],
             model_config_dict=model_config or None,
-            timeout=600,  # 10 minutes
             **init_params,
         )
         # Install SDK observers before the Responses adapter wraps clients.

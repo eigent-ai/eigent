@@ -39,6 +39,11 @@ from camel.types import ModelPlatformType, ModelType
 from camel.types.agents import ToolCallingRecord
 from pydantic import BaseModel
 
+from app.model.provider_wait import (
+    provider_stream_scope,
+    provider_sync_stream_scope,
+    sdk_owns_model_retries,
+)
 from app.permission_policy import (
     ToolPermissionRejectedError,
     authorize_tool_checkpoint,
@@ -242,6 +247,10 @@ class ListenChatAgent(ChatAgent):
             step_timeout=step_timeout,
             **kwargs,
         )
+        if sdk_owns_model_retries(self.model_backend):
+            # CAMEL's extra RateLimitError loop ignores Retry-After and can
+            # multiply the SDK's configured attempt budget. Keep one owner.
+            self.retry_attempts = 1
         self._tool_checkpoint_error_lock = threading.Lock()
         self._tool_checkpoint_error: ToolCheckpointError | None = None
         self._model_reload_callback = model_reload_callback
@@ -383,14 +392,13 @@ class ListenChatAgent(ChatAgent):
         stream = self.model_backend.model_config_dict.get("stream", False)
         if stream:
             return await super().astep(input_message, response_format)
-        if self.step_timeout is None and self.stall_timeout is None:
-            return await super()._astep_non_streaming_task(
-                input_message, response_format
-            )
         hard_timeout: ActiveExecutionTimeout | None = None
         stall_timeout: ActiveExecutionTimeout | None = None
         try:
             async with AsyncExitStack() as stack:
+                await stack.enter_async_context(
+                    provider_stream_scope(self._mark_provider_progress)
+                )
                 if self.step_timeout is not None:
                     hard_timeout = await stack.enter_async_context(
                         ActiveExecutionTimeout(self.step_timeout)
@@ -416,6 +424,21 @@ class ListenChatAgent(ChatAgent):
                     f"{self.stall_timeout}s"
                 ) from error
             raise
+
+    def _mark_provider_progress(self) -> None:
+        """Let the outer Workforce watchdog see actual SDK output deltas."""
+        task_id = getattr(self, "api_task_id", None)
+        task_lock = get_task_lock_if_exists(task_id) if task_id else None
+        if task_lock is not None:
+            task_lock.execution_progress_revision += 1
+
+    @staticmethod
+    def _chunk_has_progress(chunk: Any) -> bool:
+        message = getattr(chunk, "msg", None)
+        return bool(
+            getattr(message, "content", None)
+            or getattr(message, "reasoning_content", None)
+        )
 
     def _reset_tool_checkpoint_error(self) -> None:
         with self._tool_checkpoint_error_lock:
@@ -636,36 +659,37 @@ class ListenChatAgent(ChatAgent):
         terminal_status = "failed"
 
         try:
-            try:
-                for chunk in response_gen:
-                    last_chunk = chunk
-                    if chunk.msg and chunk.msg.content:
-                        accumulated_content += chunk.msg.content
-                    yield chunk
-            except ModelProcessingError as error:
-                can_retry = (
-                    auth_retry_available
-                    and input_message is not None
-                    and not accumulated_content
-                    and self._reload_model_after_auth_error(error)
-                )
-                if not can_retry:
-                    raise
-
-                retry_response = ChatAgent.step(
-                    self, input_message, response_format
-                )
-                if isinstance(retry_response, StreamingChatAgentResponse):
-                    for chunk in retry_response:
+            with provider_sync_stream_scope(self._mark_provider_progress):
+                try:
+                    for chunk in response_gen:
                         last_chunk = chunk
                         if chunk.msg and chunk.msg.content:
                             accumulated_content += chunk.msg.content
                         yield chunk
-                else:
-                    last_chunk = retry_response
-                    if retry_response.msg and retry_response.msg.content:
-                        accumulated_content += retry_response.msg.content
-                    yield retry_response
+                except ModelProcessingError as error:
+                    can_retry = (
+                        auth_retry_available
+                        and input_message is not None
+                        and not accumulated_content
+                        and self._reload_model_after_auth_error(error)
+                    )
+                    if not can_retry:
+                        raise
+
+                    retry_response = ChatAgent.step(
+                        self, input_message, response_format
+                    )
+                    if isinstance(retry_response, StreamingChatAgentResponse):
+                        for chunk in retry_response:
+                            last_chunk = chunk
+                            if chunk.msg and chunk.msg.content:
+                                accumulated_content += chunk.msg.content
+                            yield chunk
+                    else:
+                        last_chunk = retry_response
+                        if retry_response.msg and retry_response.msg.content:
+                            accumulated_content += retry_response.msg.content
+                        yield retry_response
             terminal_status = "completed"
         except GeneratorExit:
             terminal_status = "cancelled"
@@ -706,6 +730,9 @@ class ListenChatAgent(ChatAgent):
 
         try:
             async with AsyncExitStack() as stack:
+                await stack.enter_async_context(
+                    provider_stream_scope(self._mark_provider_progress)
+                )
                 if self.step_timeout is not None:
                     hard_timeout = await stack.enter_async_context(
                         ActiveExecutionTimeout(self.step_timeout)
@@ -723,7 +750,8 @@ class ListenChatAgent(ChatAgent):
                         if chunk.msg and chunk.msg.content:
                             delta_content = chunk.msg.content
                             accumulated_content += delta_content
-                        refresh_active_execution_timeout()
+                        if self._chunk_has_progress(chunk):
+                            refresh_active_execution_timeout()
                         yield chunk
                 except ModelProcessingError as error:
                     can_retry = (
@@ -746,7 +774,8 @@ class ListenChatAgent(ChatAgent):
                             if chunk.msg and chunk.msg.content:
                                 delta_content = chunk.msg.content
                                 accumulated_content += delta_content
-                            refresh_active_execution_timeout()
+                            if self._chunk_has_progress(chunk):
+                                refresh_active_execution_timeout()
                             yield chunk
                     else:
                         last_chunk = retry_response
