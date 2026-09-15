@@ -7523,6 +7523,7 @@ class SQLiteRunJournal:
         preimage_digest: str | None,
         actor_id: str,
         trigger: str,
+        exclusive_worktree: bool = False,
         now: float | None = None,
     ) -> GitMutationIntentRecord:
         if mutation_scope not in {"exact_path", "broad_process"}:
@@ -7546,6 +7547,25 @@ class SQLiteRunJournal:
             trigger,
         )
         with self._write_transaction() as connection:
+            if exclusive_worktree:
+                # A Run lease admits a task, not every operation within it.
+                # This transaction also fences separate service instances.
+                owner = connection.execute(
+                    """
+                    SELECT intents.intent_id FROM git_mutation_intents intents
+                    JOIN git_change_sets active USING (change_set_id)
+                    JOIN git_change_sets target ON target.change_set_id = ?
+                    WHERE active.repository_id = target.repository_id
+                      AND active.worktree_ref = target.worktree_ref
+                      AND intents.status IN ('prepared', 'needs_attention')
+                    LIMIT 1
+                    """,
+                    (change_set_id,),
+                ).fetchone()
+                if owner is not None:
+                    raise OutboxLeaseLostError(
+                        "Workspace operation is still active or needs attention"
+                    )
             row = connection.execute(
                 """
                 SELECT * FROM git_mutation_intents

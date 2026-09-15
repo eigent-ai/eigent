@@ -153,6 +153,15 @@ class UnsafeToolOutcomeError(ToolCheckpointError):
     pass
 
 
+class BackgroundToolResult(str):
+    """Trusted dispatch acknowledgement; the process owner finishes the tool.
+
+    Plain strings or model-supplied result fields cannot defer a checkpoint.
+    The watcher retains the original ToolCheckpointContext and persists its
+    terminal outcome only after process exit and workspace capture.
+    """
+
+
 def _redact(value: Any) -> Any:
     if isinstance(value, dict):
         # Imported lazily because permission_policy.runtime depends on this
@@ -889,6 +898,8 @@ def finish_tool_checkpoint(
     journal: SQLiteRunJournal | None = None,
 ) -> None:
     if checkpoint is None:
+        return
+    if error is None and isinstance(result, BackgroundToolResult):
         return
     store = journal or get_default_run_journal()
     rejection = prewrite_validation_result(error)

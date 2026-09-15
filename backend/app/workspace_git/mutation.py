@@ -23,12 +23,14 @@ import os
 import time
 import uuid
 from dataclasses import dataclass
+from functools import wraps
 from pathlib import Path
 
 from app.run_context import RunContext
 from app.run_journal import (
     GitChangeSetRecord,
     GitMutationIntentRecord,
+    OutboxLeaseLostError,
     ProjectWorkspaceBindingRecord,
     RunEventDraft,
     SQLiteRunJournal,
@@ -105,6 +107,49 @@ class WorkspaceMutationReconciliation:
 
 
 logger = logging.getLogger(__name__)
+
+
+def _serialize_direct_admission(method):
+    """Hold only admission under a lock; the durable intent owns execution.
+
+    Use a separate lock file from checkpoint/merge so preserving the initial
+    user delta can acquire the existing repository checkpoint lock safely.
+    """
+
+    @wraps(method)
+    def admitted(self, *, binding, **kwargs):
+        lock_id = canonical_digest({"checkout_id": binding.checkout_id})
+        with self.content.repository_lock(
+            self.state_root / "writer-admission-locks" / f"{lock_id}.lock"
+        ):
+            change_sets = {
+                item.change_set_id
+                for item in self.journal.list_git_change_sets()
+                if item.repository_id == binding.repository_id
+                and item.worktree_ref == binding.target_ref
+            }
+            if any(
+                intent.change_set_id in change_sets
+                and intent.operation_request_id
+                == kwargs["operation_request_id"]
+                and intent.status == "completed"
+                for intent in self.journal.list_git_mutation_intents()
+            ):
+                raise ContentRepositoryError(
+                    "Workspace operation already completed; do not redispatch it"
+                )
+            if any(
+                intent.change_set_id in change_sets
+                for intent in self.journal.list_git_mutation_intents(
+                    statuses=("prepared", "needs_attention")
+                )
+            ):
+                raise OutboxLeaseLostError(
+                    "Workspace operation is still active or needs attention"
+                )
+            return method(self, binding=binding, **kwargs)
+
+    return admitted
 
 
 class WorkspaceMutationService:
@@ -586,6 +631,35 @@ class WorkspaceMutationService:
             commits = [outcome.merged_commit]
         return tuple(commits)
 
+    def mark_broad_write_needs_attention(
+        self, prepared: PreparedWorkspaceExecution
+    ) -> None:
+        """Quarantine failed capture after the owned process has stopped.
+
+        Keep pending item digests and the original intent for explicit
+        reconciliation. This never retries a command, marks an unknown tool
+        completed, or discards an uncaptured output.
+        """
+        intent = next(
+            item
+            for item in self.journal.list_git_mutation_intents()
+            if item.intent_id == prepared.intent.intent_id
+        )
+        if intent.status == "completed":
+            return
+        self.journal.update_git_mutation_intent_status(
+            intent_id=intent.intent_id,
+            expected_status="prepared",
+            status="needs_attention",
+        )
+        self.journal.update_git_change_set_state(
+            change_set_id=prepared.change_set.change_set_id,
+            expected_state="open",
+            state="needs_attention",
+        )
+        if prepared.agent_workspace is not None:
+            self.workforce.release_workspace(prepared.agent_workspace)
+
     def _overflow_receipt_path(
         self, prepared: PreparedWorkspaceExecution
     ) -> Path:
@@ -745,12 +819,37 @@ class WorkspaceMutationService:
             raise ContentRepositoryError(
                 "Workspace changed after path-budget recovery review"
             )
-        commits = self.complete_broad_write(
-            prepared,
-            operation_request_id=prepared.intent.operation_request_id,
-            actor_id=prepared.intent.actor_id,
-            trigger=prepared.intent.trigger,
+        self._check_overflow_recovery_coverage(prepared)
+        intent = next(
+            item
+            for item in self.journal.list_git_mutation_intents()
+            if item.intent_id == prepared.intent.intent_id
         )
+        quarantined = intent.status == "needs_attention"
+        try:
+            if quarantined:
+                # Only this reviewed capture path can reopen the original
+                # operation. A prepared intent still blocks new writers.
+                self.journal.update_git_change_set_state(
+                    change_set_id=prepared.change_set.change_set_id,
+                    expected_state="needs_attention",
+                    state="open",
+                )
+                self.journal.update_git_mutation_intent_status(
+                    intent_id=intent.intent_id,
+                    expected_status="needs_attention",
+                    status="prepared",
+                )
+            commits = self.complete_broad_write(
+                prepared,
+                operation_request_id=prepared.intent.operation_request_id,
+                actor_id=prepared.intent.actor_id,
+                trigger=prepared.intent.trigger,
+            )
+        except Exception:
+            if quarantined:
+                self.mark_broad_write_needs_attention(prepared)
+            raise
         self.journal.append_event(
             prepared.context.run_id,
             RunEventDraft(
@@ -963,6 +1062,7 @@ class WorkspaceMutationService:
         )
         return outcome.merged_commit or checkpoint.commit_oid
 
+    @_serialize_direct_admission
     def _prepare_direct_file_write(
         self,
         *,
@@ -1018,6 +1118,7 @@ class WorkspaceMutationService:
             preimage_digest=preimage_digest,
             actor_id=actor_id,
             trigger=trigger,
+            exclusive_worktree=True,
         )
         return PreparedWorkspaceWrite(
             context=context,
@@ -1032,6 +1133,7 @@ class WorkspaceMutationService:
             direct_binding=binding,
         )
 
+    @_serialize_direct_admission
     def _prepare_direct_broad_write(
         self,
         *,
@@ -1076,6 +1178,7 @@ class WorkspaceMutationService:
             preimage_digest=None,
             actor_id=actor_id,
             trigger=trigger,
+            exclusive_worktree=True,
         )
         return PreparedWorkspaceExecution(
             context=context,
@@ -1299,6 +1402,15 @@ class WorkspaceMutationService:
         actor_id: str,
         trigger: str,
     ) -> tuple[str, ...]:
+        intent = next(
+            item
+            for item in self.journal.list_git_mutation_intents()
+            if item.intent_id == prepared.intent.intent_id
+        )
+        if intent.status == "completed":
+            return ()
+        if intent.status != "prepared":
+            raise ContentRepositoryError("Workspace mutation needs attention")
         root = prepared.mutation_root
         status = self.git.worktree_status(root)
         if not status:

@@ -15,12 +15,17 @@
 from __future__ import annotations
 
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
 from app.run_context import RunContext
-from app.run_journal import RunEventDraft, SQLiteRunJournal
+from app.run_journal import (
+    OutboxLeaseLostError,
+    RunEventDraft,
+    SQLiteRunJournal,
+)
 from app.workspace_git import (
     ContentRepositoryService,
     GitBackend,
@@ -120,6 +125,136 @@ def _git(repository: Path, *args: str) -> str:
             "GIT_TERMINAL_PROMPT": "0",
         },
     ).stdout
+
+
+@pytest.mark.parametrize("second_actor", ["agent-1", "agent-2"])
+@pytest.mark.parametrize("second_path", ["download.bin", "references.json"])
+def test_direct_writer_operation_admission_serializes_paths(
+    tmp_path, journal, second_actor, second_path
+):
+    content, coordinator, _, backend = _services(tmp_path, journal)
+    direct = WorkspaceMutationService(
+        journal, state_root=tmp_path / "state", coordinator=coordinator
+    )
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(space_id="space-1", space_root=space, allow_init=True)
+    _admit(journal, coordinator)
+    first = direct.prepare_broad_write(
+        context=_context(space),
+        operation_request_id="first",
+        actor_id="agent-1",
+        trigger="terminal.execute",
+    )
+    (space / "download.bin").write_text("still downloading")
+    with ThreadPoolExecutor() as pool:
+        future = pool.submit(
+            direct.prepare_broad_write,
+            context=_context(space),
+            operation_request_id="second",
+            actor_id=second_actor,
+            trigger="terminal.execute",
+        )
+        with pytest.raises(OutboxLeaseLostError):
+            future.result(timeout=5)
+    assert len(journal.list_git_mutation_intents()) == 1
+    direct.complete_broad_write(
+        first,
+        operation_request_id="first",
+        actor_id="agent-1",
+        trigger="terminal.execute",
+    )
+    second = direct.prepare_broad_write(
+        context=_context(space),
+        operation_request_id="second",
+        actor_id=second_actor,
+        trigger="terminal.execute",
+    )
+    (space / second_path).write_text("second result")
+    direct.complete_broad_write(
+        second,
+        operation_request_id="second",
+        actor_id=second_actor,
+        trigger="terminal.execute",
+    )
+    assert backend.is_worktree_clean(space)
+    assert not journal.list_git_mutation_intents(statuses=("prepared",))
+
+
+def test_direct_file_writer_cannot_overlap_broad_writer(tmp_path, journal):
+    content, coordinator, _, _ = _services(tmp_path, journal)
+    direct = WorkspaceMutationService(
+        journal, state_root=tmp_path / "state", coordinator=coordinator
+    )
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(space_id="space-1", space_root=space, allow_init=True)
+    _admit(journal, coordinator)
+    direct.prepare_broad_write(
+        context=_context(space),
+        operation_request_id="first",
+        actor_id="agent-1",
+        trigger="terminal.execute",
+    )
+    with pytest.raises(OutboxLeaseLostError):
+        direct.prepare_file_write(
+            context=_context(space),
+            filename="other.txt",
+            operation_request_id="second",
+            actor_id="agent-2",
+            trigger="filesystem.write",
+        )
+
+
+def test_direct_completion_replay_cannot_capture_a_later_writer(
+    tmp_path, journal
+):
+    content, coordinator, _, _ = _services(tmp_path, journal)
+    direct = WorkspaceMutationService(
+        journal, state_root=tmp_path / "state", coordinator=coordinator
+    )
+    space = tmp_path / "space"
+    space.mkdir()
+    content.bootstrap(space_id="space-1", space_root=space, allow_init=True)
+    _admit(journal, coordinator)
+
+    def prepare(operation):
+        return direct.prepare_broad_write(
+            context=_context(space),
+            operation_request_id=operation,
+            actor_id="agent-1",
+            trigger="terminal.execute",
+        )
+
+    first = prepare("first")
+    (space / "file.txt").write_text("first")
+    direct.complete_broad_write(
+        first,
+        operation_request_id="first",
+        actor_id="agent-1",
+        trigger="terminal.execute",
+    )
+    with pytest.raises(Exception, match="already completed"):
+        prepare("first")
+    second = prepare("second")
+    (space / "file.txt").write_text("second")
+    assert (
+        direct.complete_broad_write(
+            first,
+            operation_request_id="first",
+            actor_id="agent-1",
+            trigger="terminal.execute",
+        )
+        == ()
+    )
+    assert _git(space, "show", "HEAD:file.txt") == "first"
+    direct.complete_broad_write(
+        second,
+        operation_request_id="second",
+        actor_id="agent-1",
+        trigger="terminal.execute",
+    )
+    assert _git(space, "show", "HEAD:file.txt") == "second"
 
 
 def test_file_write_materializes_before_target_is_available(tmp_path, journal):

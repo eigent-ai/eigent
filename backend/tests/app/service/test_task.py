@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import asyncio
+import threading
 import weakref
 from datetime import datetime, timedelta
 from unittest.mock import patch
@@ -46,6 +47,34 @@ from app.service.task import (
     task_index,
     task_locks,
 )
+
+
+@pytest.mark.asyncio
+async def test_cleanup_failure_keeps_resource_owner_and_retry_is_idempotent():
+    task_id = "test-toolkit-cleanup"
+    lock = create_task_lock(task_id)
+    calls = []
+    loop_thread = threading.get_ident()
+
+    class Resource:
+        def cleanup(self):
+            assert threading.get_ident() != loop_thread
+            calls.append("cleanup")
+            if len(calls) == 1:
+                raise RuntimeError("process group still alive")
+
+    resource = Resource()
+    lock.register_toolkit(resource)
+    try:
+        with pytest.raises(RuntimeError, match="did not finish"):
+            await delete_task_lock(task_id)
+        assert task_locks[task_id] is lock
+        assert lock.registered_toolkits == [resource]
+        await delete_task_lock(task_id)
+        assert task_id not in task_locks
+        assert calls == ["cleanup", "cleanup"]
+    finally:
+        task_locks.pop(task_id, None)
 
 
 @pytest.mark.unit
