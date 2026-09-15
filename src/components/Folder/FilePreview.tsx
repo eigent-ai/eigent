@@ -227,7 +227,7 @@ export function FilePreview({
               onClick={() => onJumpToFiles(null)}
             >
               {t('layout.jump-to-files', {
-                defaultValue: 'See all files in your workspace',
+                defaultValue: 'View all in your workspace files',
               })}
             </Button>
           ) : null}

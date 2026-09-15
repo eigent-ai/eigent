@@ -54,8 +54,8 @@ export const PREVIEW_TAB_KINDS: PreviewKindMeta[] = [
   {
     kind: 'file',
     icon: FileText,
-    labelKey: 'layout.preview-kind-file',
-    defaultLabel: 'Files',
+    labelKey: 'layout.preview-file',
+    defaultLabel: 'File',
     descriptionKey: 'layout.preview-kind-file-desc',
     defaultDescription: 'Preview files produced or referenced in this session.',
   },

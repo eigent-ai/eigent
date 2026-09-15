@@ -830,6 +830,7 @@
   "pinned": "Закреплено",
   "preview": "Предпросмотр",
   "preview-canvas": "Холст",
+  "preview-file": "Файл",
   "preview-chooser-project-title": "Из этого сеанса",
   "preview-chooser-stream-desc": "Вывод команд из этого сеанса.",
   "preview-chooser-title": "Открыть новое представление",
@@ -1539,5 +1540,16 @@
   "workspace-technical-details-description_few": "{{count}} внутренние ссылки Git и сведения о хранении",
   "workspace-technical-details-description_many": "{{count}} внутренних ссылок Git и сведения о хранении",
   "workspace-technical-details-description_other": "{{count}} внутренней ссылки Git и сведения о хранении",
-  "workspace-technical-tab": "Технические"
+  "workspace-technical-tab": "Технические",
+  "terminal-process-stop": "Остановить {{name}}",
+  "terminal-process-running": "Выполняется",
+  "terminal-process-stopping": "Остановка…",
+  "terminal-process-stopped": "Остановлен",
+  "terminal-process-completed": "Завершён",
+  "terminal-process-failed": "Ошибка",
+  "terminal-process-unavailable": "Недоступен",
+  "terminal-process-stop-failed": "Не удалось остановить процесс. Повторите попытку.",
+  "terminal-process-open-server": "Открыть сервер",
+  "terminal-process-open-output": "Открыть терминал",
+  "terminal-process-local-shell": "Локальная оболочка"
 }

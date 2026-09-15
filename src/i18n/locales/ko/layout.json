@@ -818,6 +818,7 @@
   "pinned": "고정됨",
   "preview": "미리보기",
   "preview-canvas": "캔버스",
+  "preview-file": "파일",
   "preview-chooser-project-title": "이 세션에서",
   "preview-chooser-stream-desc": "이 세션의 명령 출력입니다.",
   "preview-chooser-title": "새 보기 열기",
@@ -1473,5 +1474,16 @@
   "workspace-task-version-agent-count_other": "에이전트 {{count}}개",
   "workspace-technical-details": "기술 세부 정보",
   "workspace-technical-details-description_other": "내부 Git 참조 {{count}}개 및 보존 세부 정보",
-  "workspace-technical-tab": "기술"
+  "workspace-technical-tab": "기술",
+  "terminal-process-stop": "{{name}} 중지",
+  "terminal-process-running": "실행 중",
+  "terminal-process-stopping": "중지 중…",
+  "terminal-process-stopped": "중지됨",
+  "terminal-process-completed": "완료",
+  "terminal-process-failed": "실패",
+  "terminal-process-unavailable": "사용 불가",
+  "terminal-process-stop-failed": "이 프로세스를 중지할 수 없습니다. 다시 시도하세요.",
+  "terminal-process-open-server": "서버 열기",
+  "terminal-process-open-output": "터미널 열기",
+  "terminal-process-local-shell": "로컬 셸"
 }

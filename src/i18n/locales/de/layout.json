@@ -822,6 +822,7 @@
   "pinned": "Festgelegt",
   "preview": "Vorschau",
   "preview-canvas": "Kunststoff",
+  "preview-file": "Datei",
   "preview-chooser-project-title": "Aus dieser Sitzung",
   "preview-chooser-stream-desc": "Befehlsausgabe aus dieser Sitzung.",
   "preview-chooser-title": "Ein neues Fenster öffnen",
@@ -1495,5 +1496,16 @@
   "workspace-technical-details": "Technische Details",
   "workspace-technical-details-description_one": "{{count}} interne Git-Referenz und Aufbewahrungsdaten",
   "workspace-technical-details-description_other": "{{count}} interne Git-Referenzen und Aufbewahrungsdaten",
-  "workspace-technical-tab": "Technisch"
+  "workspace-technical-tab": "Technisch",
+  "terminal-process-stop": "{{name}} stoppen",
+  "terminal-process-running": "Wird ausgeführt",
+  "terminal-process-stopping": "Wird gestoppt…",
+  "terminal-process-stopped": "Gestoppt",
+  "terminal-process-completed": "Abgeschlossen",
+  "terminal-process-failed": "Fehlgeschlagen",
+  "terminal-process-unavailable": "Nicht verfügbar",
+  "terminal-process-stop-failed": "Dieser Prozess konnte nicht gestoppt werden. Bitte erneut versuchen.",
+  "terminal-process-open-server": "Server öffnen",
+  "terminal-process-open-output": "Terminal öffnen",
+  "terminal-process-local-shell": "Lokale Shell"
 }

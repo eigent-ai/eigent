@@ -83,7 +83,9 @@ export function useSessionTerminalSources(
   );
 
   const [sources, setSources] = useState<TerminalSource[]>(computeSources);
+  const [sourceProject, setSourceProject] = useState(projectId);
   useEffect(() => {
+    setSourceProject(projectId);
     setSources(computeSources());
     const unsubscribes = chatEntries.map(({ chatStore }) =>
       chatStore.subscribe(() => {
@@ -94,7 +96,7 @@ export function useSessionTerminalSources(
       })
     );
     return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
-  }, [chatEntries, computeSources, trackOutput]);
+  }, [chatEntries, computeSources, trackOutput, projectId]);
 
-  return sources;
+  return sourceProject === projectId ? sources : computeSources();
 }

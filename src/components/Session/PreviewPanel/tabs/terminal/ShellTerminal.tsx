@@ -16,10 +16,10 @@ import { Button } from '@/components/ui/button';
 import { useHost } from '@/host';
 import {
   ensureShellSession,
-  getShellBuffer,
   getShellSessionState,
   resetShellSession,
   resizeShell,
+  retainShellView,
   subscribeShellData,
   subscribeShellState,
   writeToShell,
@@ -40,6 +40,14 @@ import {
   TERMINAL_LINE_HEIGHT,
   TERMINAL_SCREEN_BACKGROUND,
 } from './terminalTheme';
+
+type ShellView = {
+  element: HTMLDivElement;
+  terminal: Terminal;
+  fit: FitAddon;
+  openLink?: (url: string) => void;
+};
+const shellViews = new Map<string, ShellView>();
 
 export interface ShellTerminalProps {
   /** Stable PTY id (from the tab); the shell survives tab switches under it. */
@@ -81,55 +89,67 @@ export function ShellTerminal({
     const api = electronAPI;
     if (!container || !api?.terminalCreate) return;
 
-    const terminal = new Terminal({
-      cursorBlink: true,
-      fontSize: TERMINAL_FONT_SIZE,
-      lineHeight: TERMINAL_LINE_HEIGHT,
-      fontFamily: TERMINAL_FONT_FAMILY,
-      scrollback: 5000,
-      theme: {
-        ...TERMINAL_BASE_THEME,
-        cursor: TERMINAL_BASE_THEME.foreground,
-        cursorAccent: TERMINAL_SCREEN_BACKGROUND,
-      },
-    });
-    const fitAddon = new FitAddon();
-    terminal.loadAddon(fitAddon);
-    terminal.loadAddon(
-      new WebLinksAddon((event, uri) => {
-        event.preventDefault();
-        onOpenLinkRef.current?.(uri);
-      })
-    );
-    terminal.open(container);
+    let view = shellViews.get(shellId);
+    if (!view) {
+      const element = document.createElement('div');
+      element.className = 'h-full w-full';
+      const terminal = new Terminal({
+        cursorBlink: true,
+        fontSize: TERMINAL_FONT_SIZE,
+        lineHeight: TERMINAL_LINE_HEIGHT,
+        fontFamily: TERMINAL_FONT_FAMILY,
+        scrollback: 5000,
+        theme: {
+          ...TERMINAL_BASE_THEME,
+          cursor: TERMINAL_BASE_THEME.foreground,
+          cursorAccent: TERMINAL_SCREEN_BACKGROUND,
+        },
+      });
+      const fit = new FitAddon();
+      terminal.loadAddon(fit);
+      const created: ShellView = { element, terminal, fit };
+      terminal.loadAddon(
+        new WebLinksAddon((event, uri) => {
+          event.preventDefault();
+          created.openLink?.(uri);
+        })
+      );
+      container.appendChild(element);
+      terminal.open(element);
+      terminal.attachCustomKeyEventHandler((event) => {
+        if (
+          (event.ctrlKey || event.metaKey) &&
+          event.key === 'c' &&
+          terminal.hasSelection()
+        ) {
+          void navigator.clipboard?.writeText(terminal.getSelection());
+          return false;
+        }
+        return true;
+      });
+      // The parser and its bounded scrollback outlive the React view. Output
+      // continues to be parsed while detached; never replay raw cursor commands.
+      const unsubscribeData = subscribeShellData(shellId, (chunk) =>
+        terminal.write(chunk)
+      );
+      const input = terminal.onData((data) => writeToShell(api, shellId, data));
+      retainShellView(shellId, () => {
+        unsubscribeData();
+        input.dispose();
+        terminal.dispose();
+        element.remove();
+        shellViews.delete(shellId);
+      });
+      shellViews.set(shellId, created);
+      view = created;
+    }
+    view.openLink = (url) => onOpenLinkRef.current?.(url);
+    container.appendChild(view.element);
+    const { terminal, fit: fitAddon } = view;
     terminalRef.current = terminal;
-
-    // Cmd/Ctrl+C copies when there is a selection (otherwise it stays the
-    // shell interrupt); Cmd/Ctrl+V pastes through xterm's textarea natively.
-    terminal.attachCustomKeyEventHandler((event) => {
-      if (
-        (event.ctrlKey || event.metaKey) &&
-        event.key === 'c' &&
-        terminal.hasSelection()
-      ) {
-        void navigator.clipboard?.writeText(terminal.getSelection());
-        return false;
-      }
-      return true;
-    });
-
-    // Replay buffered scrollback, then attach to the live stream.
-    const buffered = getShellBuffer(shellId);
-    if (buffered) terminal.write(buffered);
-    const unsubscribeData = subscribeShellData(shellId, (chunk) =>
-      terminal.write(chunk)
-    );
+    setSession(getShellSessionState(shellId));
     const unsubscribeState = subscribeShellState(shellId, () =>
       setSession(getShellSessionState(shellId))
-    );
-
-    const inputDisposable = terminal.onData((data) =>
-      writeToShell(api, shellId, data)
     );
 
     const safeFit = () => {
@@ -144,16 +164,20 @@ export function ShellTerminal({
 
     // Fit once layout settles, spawn the shell at that size, then track
     // container resizes (panel drag, window resize, side panel fold).
-    let frame = requestAnimationFrame(() => {
+    let disposed = false;
+    const initialFrame = requestAnimationFrame(() => {
       safeFit();
       void ensureShellSession(api, {
         id: shellId,
         cwd,
         cols: terminal.cols,
         rows: terminal.rows,
-      }).then(setSession);
+      }).then((next) => {
+        if (!disposed) setSession(next);
+      });
       terminal.focus();
     });
+    let frame = 0;
     const observer = new ResizeObserver(() => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(safeFit);
@@ -161,12 +185,12 @@ export function ShellTerminal({
     observer.observe(container);
 
     return () => {
+      disposed = true;
+      cancelAnimationFrame(initialFrame);
       cancelAnimationFrame(frame);
       observer.disconnect();
-      inputDisposable.dispose();
-      unsubscribeData();
       unsubscribeState();
-      terminal.dispose();
+      view.element.remove();
       terminalRef.current = null;
     };
     // cwd only matters at spawn time; a change never restarts a live shell.

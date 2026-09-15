@@ -12,6 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { useTerminalProcesses } from '@/components/Session/PreviewPanel/tabs/terminal/useTerminalProcesses';
+import { Button } from '@/components/ui/button';
+import { openTerminalProcessPreview } from '@/lib/terminalPreview';
+import { usePageTabStore } from '@/store/pageTabStore';
+
 import { formatSplittingElapsed } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
 import ShinyText from '@/components/ui/ShinyText/ShinyText';
@@ -78,6 +83,16 @@ export function CallRow({
   reducedMotion,
 }: CallRowProps) {
   const { t } = useTranslation();
+  const projectId = usePageTabStore((state) => state.sessionPreviewProjectId);
+  const processes = useTerminalProcesses(
+    call.actionKind === 'command' ? projectId : null
+  );
+  const process = processes.find(
+    (p) =>
+      p.run_id === call.runId &&
+      p.tool_call_id === call.toolCallId &&
+      Boolean(call.toolCallId)
+  );
   const running = runActive && isCallActiveStatus(call.status);
   const highlighted = running && call.id === latestRunningCallId;
   const failed = isCallErrorStatus(call.status);
@@ -231,6 +246,19 @@ export function CallRow({
           data-timeline-call-chevron
         />
       </button>
+      {process ? (
+        <Button
+          variant="text"
+          size="sm"
+          onClick={() => openTerminalProcessPreview(process)}
+        >
+          {t(
+            process.url && process.status === 'running'
+              ? 'layout.terminal-process-open-server'
+              : 'layout.terminal-process-open-output'
+          )}
+        </Button>
+      ) : null}
       <AnimatePresence initial={false}>
         {open ? (
           <motion.div

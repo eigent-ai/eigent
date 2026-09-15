@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   handles: new Map<string, (...args: any[]) => any>(),
   listeners: new Map<string, (...args: any[]) => any>(),
   spawn: vi.fn(),
+  killTree: vi.fn(),
 }));
 
 vi.mock('electron', () => ({
@@ -39,6 +40,8 @@ vi.mock('electron-log', () => ({
   },
 }));
 
+vi.mock('tree-kill', () => ({ default: mocks.killTree }));
+
 vi.mock('node-pty', () => ({
   spawn: mocks.spawn,
 }));
@@ -59,18 +62,21 @@ interface FakePty {
 
 function fakePty(): FakePty {
   let onData: (data: string) => void = () => {};
-  let onExit: (event: { exitCode: number }) => void = () => {};
+  const exitListeners = new Set<(event: { exitCode: number }) => void>();
   return {
+    pid: 12345,
     kill: vi.fn(),
     resize: vi.fn(),
     write: vi.fn(),
     emitData: (data) => onData(data),
-    emitExit: (exitCode) => onExit({ exitCode }),
+    emitExit: (exitCode) =>
+      [...exitListeners].forEach((callback) => callback({ exitCode })),
     onData: vi.fn((callback: (data: string) => void) => {
       onData = callback;
     }),
     onExit: vi.fn((callback: (event: { exitCode: number }) => void) => {
-      onExit = callback;
+      exitListeners.add(callback);
+      return { dispose: () => exitListeners.delete(callback) };
     }),
   } as FakePty;
 }
@@ -92,7 +98,61 @@ describe('terminal IPC lifecycle', () => {
     mocks.handles.clear();
     mocks.listeners.clear();
     mocks.spawn.mockReset();
+    mocks.killTree.mockReset();
     registerTerminalIpcHandlers();
+  });
+
+  it('stops only the owning renderer terminal tree and waits for exit', async () => {
+    const pty = fakePty();
+    mocks.spawn.mockReturnValue(pty);
+    const owner = sender();
+    await createHandler()({ sender: owner }, { id: 'stop-test' });
+    const stop = mocks.handles.get('terminal-stop')!;
+    expect(await stop({ sender: sender() }, 'stop-test')).toMatchObject({
+      success: false,
+    });
+    expect(mocks.killTree).not.toHaveBeenCalled();
+    mocks.killTree.mockImplementation((_pid, _signal, callback) =>
+      callback(null)
+    );
+    let settled = false;
+    const first = stop({ sender: owner }, 'stop-test').then((value) => {
+      settled = true;
+      return value;
+    });
+    const second = stop({ sender: owner }, 'stop-test');
+    await Promise.resolve();
+    expect(mocks.killTree).toHaveBeenCalledTimes(1);
+    expect(mocks.killTree).toHaveBeenCalledWith(
+      12345,
+      'SIGKILL',
+      expect.any(Function)
+    );
+    expect(settled).toBe(false);
+    pty.emitExit(137);
+    expect(await first).toEqual({ success: true });
+    expect(await second).toEqual({ success: true });
+    expect(await stop({ sender: owner }, 'stop-test')).toEqual({
+      success: true,
+    });
+  });
+
+  it('reports stop failures and permits another stop attempt', async () => {
+    const pty = fakePty();
+    mocks.spawn.mockReturnValue(pty);
+    const owner = sender();
+    await createHandler()({ sender: owner }, { id: 'stop-failure' });
+    mocks.killTree.mockImplementation((_pid, _signal, callback) =>
+      callback(new Error('denied'))
+    );
+    const stop = mocks.handles.get('terminal-stop')!;
+    expect(await stop({ sender: owner }, 'stop-failure')).toMatchObject({
+      success: false,
+    });
+    expect(await stop({ sender: owner }, 'stop-failure')).toMatchObject({
+      success: false,
+    });
+    expect(mocks.killTree).toHaveBeenCalledTimes(2);
   });
 
   it('refreshes the output sender when a persisted shell id is reattached', async () => {
