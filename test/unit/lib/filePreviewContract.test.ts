@@ -14,6 +14,7 @@
 
 import {
   decideFilePreview,
+  decodePreviewText,
   FILE_PREVIEW_LIMITS,
 } from '@/shared/filePreviewContract';
 import { describe, expect, it } from 'vitest';
@@ -114,5 +115,62 @@ describe('file preview policy', () => {
         size: FILE_PREVIEW_LIMITS.defaultBytes,
       })
     ).toMatchObject({ mode: 'bounded-text' });
+  });
+});
+
+describe('binary preview detection', () => {
+  it.each(['zip', '.GZ', 'tar.gz', '7z', 'rar', 'tar', 'application/zip'])(
+    'blocks %s without decoding',
+    (type) => {
+      expect(decideFilePreview(type, { size: 48_000_000 })).toMatchObject({
+        mode: 'blocked',
+        reason: 'unsupported',
+      });
+    }
+  );
+  it('uses archive MIME even when the extension is unknown', () => {
+    expect(
+      decideFilePreview('download', {
+        size: 10,
+        mimeType: 'application/gzip; charset=binary',
+      })
+    ).toMatchObject({ mode: 'blocked' });
+  });
+
+  it.each(['docx', 'xlsx', 'pptx'])(
+    'keeps the %s extension previewable when a server reports application/zip',
+    (type) => {
+      expect(
+        decideFilePreview(type, {
+          size: 1024,
+          mimeType: 'application/zip',
+        })
+      ).toMatchObject({ mode: 'full', limit: FILE_PREVIEW_LIMITS.officeBytes });
+    }
+  );
+});
+
+describe('text preview decoding', () => {
+  it('strips ANSI color sequences without classifying logs as binary', () => {
+    expect(
+      decodePreviewText(new TextEncoder().encode('\u001b[31mERROR\u001b[0m\n'))
+    ).toBe('ERROR\n');
+  });
+
+  it('decodes common GBK and Latin-1 text', () => {
+    expect(decodePreviewText(new Uint8Array([0xd6, 0xd0, 0xce, 0xc4]))).toBe(
+      '中文'
+    );
+    expect(decodePreviewText(new Uint8Array([0x63, 0x61, 0x66, 0xe9]))).toBe(
+      'café'
+    );
+  });
+
+  it('keeps complete text when the file ends mid-character', () => {
+    expect(decodePreviewText(new Uint8Array([0x41, 0xe4, 0xb8]))).toBe('A');
+  });
+
+  it('still rejects binary control bytes', () => {
+    expect(decodePreviewText(new Uint8Array([0x00, 0x01, 0x02]))).toBeNull();
   });
 });

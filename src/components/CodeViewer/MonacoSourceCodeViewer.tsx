@@ -47,7 +47,7 @@ export default function MonacoSourceCodeViewer({
 
   return (
     <div
-      className="code-editor-surface h-full min-h-0 w-full"
+      className="code-editor-surface file-source-surface h-full min-h-0 w-full"
       style={
         {
           '--code-font-family': CODE_FONT_FAMILY,

@@ -50,6 +50,41 @@ describe('parseBoundedCsvPreview', () => {
 });
 
 describe('loadFilePreview', () => {
+  it.each(['docx', 'xlsx', 'pptx'])(
+    'parses a bounded remote %s archive through the Electron host',
+    async (type) => {
+      const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(bytes, {
+            headers: {
+              'Content-Length': String(bytes.byteLength),
+              'Content-Type': 'application/zip',
+            },
+          })
+        )
+      );
+      const invoke = vi.fn().mockResolvedValue('<p>Office preview</p>');
+
+      const result = await loadFilePreview(
+        {
+          name: `report.${type}`,
+          type,
+          path: `https://files.example/report.${type}`,
+          size: bytes.byteLength,
+          mimeType: 'application/zip',
+          isRemote: true,
+        },
+        { ipcRenderer: { invoke } }
+      );
+
+      expect(result.content).toBe('<p>Office preview</p>');
+      expect(result.preview).toBeUndefined();
+      expect(invoke).toHaveBeenCalledWith('preview-office-buffer', type, bytes);
+    }
+  );
+
   it.each([4, 10])('fully loads a %i MiB remote HTML document', async (mib) => {
     const size = mib * 1024 * 1024;
     const content = `<html>${' '.repeat(size - 13)}</html>`;
@@ -517,4 +552,64 @@ describe('loadFilePreview', () => {
     );
     expect(result.content).toBe('# preview');
   });
+});
+
+describe('unsupported file recovery', () => {
+  it.each(['zip', 'gz', 'tar', 'rar', '7z'])(
+    'never reads a local %s archive',
+    async (type) => {
+      const invoke = vi.fn().mockResolvedValue({ size: 1024 });
+      const file = await loadFilePreview(
+        { name: `file.${type}`, type, path: `/workspace/file.${type}` },
+        { ipcRenderer: { invoke } }
+      );
+      expect(invoke).toHaveBeenCalledTimes(1);
+      expect(file.preview).toMatchObject({
+        kind: 'blocked',
+        reason: 'unsupported',
+      });
+    }
+  );
+  it('blocks binary content returned by the desktop bounded reader', async () => {
+    const invoke = vi
+      .fn()
+      .mockResolvedValueOnce({ size: 100 })
+      .mockResolvedValueOnce({
+        binary: true,
+        content: '',
+        bytesRead: 100,
+        totalBytes: 100,
+      });
+    const file = await loadFilePreview(
+      {
+        name: 'data.unknown',
+        type: 'unknown',
+        path: '/workspace/data.unknown',
+      },
+      { ipcRenderer: { invoke } }
+    );
+    expect(file.content).toBeUndefined();
+    expect(file.preview?.kind).toBe('blocked');
+  });
+  it.each([
+    { bytes: new Uint8Array([31, 139, 8, 0, 0, 1]), blocked: true },
+    { bytes: new TextEncoder().encode('Hello 世界\n'), blocked: false },
+    { bytes: new Uint8Array([255, 254, 72, 0, 105, 0]), blocked: false },
+  ])(
+    'probes unknown remote bytes before decoding ($blocked)',
+    async ({ bytes, blocked }) => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(bytes)));
+      const file = await loadFilePreview(
+        {
+          name: 'download',
+          path: 'https://files.example/download',
+          type: '',
+          size: bytes.length,
+        },
+        {}
+      );
+      expect(file.preview?.kind).toBe(blocked ? 'blocked' : 'truncated-text');
+      if (!blocked) expect(file.content).toMatch(/Hello|Hi/);
+    }
+  );
 });
