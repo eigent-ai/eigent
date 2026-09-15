@@ -12,7 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { proxyFetchGet } from '@/api/http';
 import InviteCodeDialog from '@/components/Dialog/InviteCodeDialog';
 import { useAppCommand } from '@/components/Layout/AppCommandProvider';
 import {
@@ -42,6 +41,7 @@ import { APP_COMMAND } from '@/shared/appCommands';
 import { getKeyboardShortcutsHint } from '@/shared/keyboardShortcuts';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationStore } from '@/store/installationStore';
+import { refreshUsage, useUsageNoticeStore } from '@/store/usageNoticeStore';
 import {
   ArrowUpRight,
   Check,
@@ -108,9 +108,12 @@ export function UserMenu() {
   const [open, setOpen] = useState(false);
   const [languageSubOpen, setLanguageSubOpen] = useState(false);
   const [inviteCodeDialogOpen, setInviteCodeDialogOpen] = useState(false);
-  const [planName, setPlanName] = useState('Free');
-  const [credits, setCredits] = useState(0);
-  const [planLoading, setPlanLoading] = useState(!IS_LOCAL_PROXY);
+  const usage = useUsageNoticeStore();
+  const planName = usage.subscription
+    ? formatPlanName(usage.subscription.plan_key)
+    : '—';
+  const credits = usage.credits;
+  const planLoading = usage.refreshing;
   const { chatStore } = useChatStoreAdapter();
   const email = useAuthStore((s) => s.email);
   const username = useAuthStore((s) => s.username);
@@ -130,37 +133,7 @@ export function UserMenu() {
   useEffect(() => {
     if (IS_LOCAL_PROXY || !open) return;
 
-    let cancelled = false;
-    const loadPlanAndCredits = async () => {
-      setPlanLoading(true);
-      const [subscriptionResult, creditsResult] = await Promise.allSettled([
-        proxyFetchGet('/api/v1/subscription'),
-        proxyFetchGet('/api/v1/user/current_credits'),
-      ]);
-      if (cancelled) return;
-
-      if (subscriptionResult.status === 'fulfilled') {
-        setPlanName(formatPlanName(subscriptionResult.value?.plan_key));
-      } else {
-        console.error(
-          'Failed to load subscription:',
-          subscriptionResult.reason
-        );
-      }
-
-      if (creditsResult.status === 'fulfilled') {
-        setCredits(Number(creditsResult.value?.credits) || 0);
-      } else {
-        console.error('Failed to load credits:', creditsResult.reason);
-      }
-
-      setPlanLoading(false);
-    };
-
-    void loadPlanAndCredits();
-    return () => {
-      cancelled = true;
-    };
+    void refreshUsage();
   }, [open]);
 
   const colorModeOptions = useMemo(
@@ -274,7 +247,9 @@ export function UserMenu() {
                   <span className="font-bold">{planName}</span>
                   <span className="font-normal">
                     {' · '}
-                    {formatCredits(credits)}
+                    {credits === null
+                      ? t('chat.notice-credits-unavailable')
+                      : formatCredits(credits)}
                   </span>
                 </span>
               )}
