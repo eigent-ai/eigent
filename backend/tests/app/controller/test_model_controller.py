@@ -12,9 +12,11 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.component.model_validation import (
@@ -24,10 +26,110 @@ from app.component.model_validation import (
     ValidationStage,
 )
 from app.controller.model_controller import (
+    ListProviderModelsRequest,
     ValidateModelRequest,
     ValidateModelResponse,
+    _provider_models_url,
+    list_provider_models,
     validate_model,
 )
+
+
+@pytest.mark.unit
+class TestListProviderModels:
+    def test_builds_public_https_model_url(self):
+        assert (
+            _provider_models_url("https://api.ant-ling.com/v1/", "/models")
+            == "https://api.ant-ling.com/v1/models"
+        )
+
+    @pytest.mark.parametrize(
+        ("host", "endpoint"),
+        [
+            ("http://api.example.com/v1", "/models"),
+            ("https://127.0.0.1/v1", "/models"),
+            ("https://api.example.com/v1", "https://other.example/models"),
+        ],
+    )
+    def test_rejects_unsafe_model_urls(self, host: str, endpoint: str):
+        with pytest.raises(HTTPException) as exc_info:
+            _provider_models_url(host, endpoint)
+        assert exc_info.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_fetches_model_list_with_provider_credentials(self):
+        client = AsyncMock()
+        client.__aenter__.return_value = client
+        client.get.return_value = httpx.Response(
+            200, json={"data": [{"id": "ling-chat"}]}
+        )
+        request = ListProviderModelsRequest(
+            api_host="https://api.ant-ling.com/v1",
+            models_endpoint="/models",
+            api_key="secret-key",
+        )
+        with patch(
+            "app.controller.model_controller.httpx.AsyncClient",
+            return_value=client,
+        ):
+            result = await list_provider_models(request)
+        assert result == {"data": [{"id": "ling-chat"}]}
+        client.get.assert_awaited_once_with(
+            "https://api.ant-ling.com/v1/models",
+            headers={
+                "Authorization": "Bearer secret-key",
+                "Accept": "application/json",
+            },
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(("status", "expected"), [(401, 401), (404, 404)])
+    async def test_preserves_provider_http_status_without_raw_body(
+        self, status: int, expected: int
+    ):
+        client = AsyncMock()
+        client.__aenter__.return_value = client
+        client.get.return_value = httpx.Response(
+            status, text="upstream secret"
+        )
+        request = ListProviderModelsRequest(
+            api_host="https://api.example.com/v1",
+            models_endpoint="/models",
+            api_key="secret-key",
+        )
+        with (
+            patch(
+                "app.controller.model_controller.httpx.AsyncClient",
+                return_value=client,
+            ),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await list_provider_models(request)
+        assert exc_info.value.status_code == expected
+        assert "upstream secret" not in str(exc_info.value.detail)
+
+    @pytest.mark.asyncio
+    async def test_rejects_non_json_provider_response(self):
+        client = AsyncMock()
+        client.__aenter__.return_value = client
+        client.get.return_value = httpx.Response(200, text="not json")
+        request = ListProviderModelsRequest(
+            api_host="https://api.example.com/v1",
+            models_endpoint="/models",
+            api_key="secret-key",
+        )
+        with (
+            patch(
+                "app.controller.model_controller.httpx.AsyncClient",
+                return_value=client,
+            ),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await list_provider_models(request)
+        assert exc_info.value.status_code == 502
+        assert exc_info.value.detail == (
+            "Provider model endpoint returned an invalid response."
+        )
 
 
 @pytest.mark.unit
