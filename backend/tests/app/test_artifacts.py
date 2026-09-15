@@ -444,6 +444,88 @@ def test_render_task_retains_more_than_500_files_through_durable_manifest(
         journal.close()
 
 
+def test_artifact_manifest_is_bounded_below_frontend_event_limit(tmp_path):
+    journal = SQLiteRunJournal(tmp_path / "journal.sqlite3")
+    try:
+        journal.ensure_run(run_id="large-render", project_id="project")
+        values = [
+            {
+                "filename": f"frame-{index:04}.txt",
+                "relativePath": (
+                    f"frames/{index:04}-" + ("long-name-" * 20) + ".txt"
+                ),
+                "path": str(tmp_path / f"frame-{index:04}.txt"),
+                "changeType": "generated",
+                "size": 5,
+                "modifiedAt": 1_000,
+                "uploadPolicy": "agent_generated",
+            }
+            for index in range(2_000)
+        ]
+        manifest = artifacts.record_artifact_manifest(
+            journal,
+            run_id="large-render",
+            project_id="project",
+            artifacts=values,
+        )
+
+        assert manifest.payload["artifact_count"] < len(values)
+        assert manifest.payload["scan_status"] == "partial"
+        assert manifest.payload["truncated"] is True
+        assert artifacts._canonical_size(manifest.payload) < 245 * 1024
+    finally:
+        journal.close()
+
+
+def test_finalize_shares_one_deadline_across_direct_and_git_scans(
+    monkeypatch, tmp_path
+):
+    run = SimpleNamespace(
+        run_id="run-1", project_id="project-1", status="running"
+    )
+    snapshot = SimpleNamespace(
+        task_id="run-1",
+        project_id="project-1",
+        task_output_root=str(tmp_path),
+        working_directory=str(tmp_path),
+        task_start_time=0,
+        artifact_manifest=None,
+        user_id="user-1",
+    )
+    journal = MagicMock()
+    journal.get_run_artifact_manifest_event.return_value = None
+    journal.get_run.return_value = run
+    resolver = MagicMock()
+    resolver.store.find_snapshot.return_value = ("user_user-1", snapshot)
+    monkeypatch.setattr(artifacts, "get_workspace_resolver", lambda: resolver)
+    monkeypatch.setattr(
+        artifacts,
+        "task_modification_windows",
+        lambda *args: (((0.0, None),), False),
+    )
+    deadlines = []
+
+    def discover(*args, deadline=None, **kwargs):
+        deadlines.append(deadline)
+        return artifacts.ArtifactScanResult([], "complete", False)
+
+    def git_scan(*args, deadline=None, **kwargs):
+        deadlines.append(deadline)
+        return None
+
+    monkeypatch.setattr(artifacts, "discover_task_changed_files", discover)
+    monkeypatch.setattr(artifacts, "_git_run_changed_artifacts", git_scan)
+    manifest = SimpleNamespace(event_id="manifest")
+    monkeypatch.setattr(
+        artifacts, "record_artifact_manifest", lambda *args, **kwargs: manifest
+    )
+
+    assert artifacts.finalize_run_artifacts(journal, run) is manifest
+    assert len(deadlines) == 2
+    assert deadlines[0] is not None
+    assert deadlines[0] == deadlines[1]
+
+
 def test_git_artifacts_keep_every_change_and_classify_in_batches(
     monkeypatch, tmp_path
 ):
@@ -478,7 +560,7 @@ def test_git_artifacts_keep_every_change_and_classify_in_batches(
         return set(paths)
 
     monkeypatch.setattr(
-        artifacts, "_artifact_path_filter", lambda root: classify
+        artifacts, "_artifact_path_filter", lambda root, **kwargs: classify
     )
     result = artifacts._git_run_changed_artifacts(
         journal, SimpleNamespace(run_id="render", project_id="project")

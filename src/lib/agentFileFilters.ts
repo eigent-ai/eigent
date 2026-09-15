@@ -20,7 +20,7 @@ type AgentFileLike = {
   isFolder?: boolean;
 };
 
-const RUNTIME_ONLY_DIRS = new Set(['camel_logs', 'terminal_logs']);
+const RUNTIME_ONLY_DIRS = new Set(['camel_logs']);
 const TASK_ROOT_NAME_PATTERN =
   /^task_(?:task_)?(?:\d{10,}(?:-\d+)?|[0-9a-f]{12,}(?:-[0-9a-f]{4,})*)$/i;
 
@@ -36,13 +36,19 @@ function basename(value: string | undefined): string {
 export function isRuntimeOnlyAgentFile(file: AgentFileLike): boolean {
   if (file.source === 'camel_log') return true;
 
-  const segments = [
-    ...pathSegments(file.relativePath),
-    ...pathSegments(file.path),
-    file.name || '',
-  ];
+  const paths = file.relativePath ? [file.relativePath] : [file.path];
+  const segments = [...paths.flatMap(pathSegments), file.name || ''];
 
-  return segments.some((segment) => RUNTIME_ONLY_DIRS.has(segment));
+  if (segments.some((segment) => RUNTIME_ONLY_DIRS.has(segment))) return true;
+
+  return paths.some((value) => {
+    const path = pathSegments(value);
+    const index = path.indexOf('terminal_logs');
+    return (
+      index === 0 ||
+      (index > 0 && (/^task_/i.test(path[index - 1]) || !file.relativePath))
+    );
+  });
 }
 
 export function isAgentTaskRootEntry(file: AgentFileLike): boolean {

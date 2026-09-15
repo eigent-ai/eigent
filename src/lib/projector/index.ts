@@ -365,13 +365,26 @@ export function projectSnapshot(
     )) {
       const manifest = source.artifactManifestsByRun?.[runId];
       const existing = artifactManifestsByRun[runId];
+      const sourceRunSequence = source.runs[runId]?.lastSequence ?? 0;
+      const previousRunSequence = previous?.runs[runId]?.lastSequence ?? 0;
+      const newerRunClearsFreeze = Boolean(
+        existing?.frozenAfterInterruption &&
+        manifest &&
+        !manifest.frozenAfterInterruption &&
+        ['pending', 'running'].includes(source.runs[runId]?.status || '') &&
+        sourceRunSequence > previousRunSequence
+      );
       if (
         existing &&
         (!manifest ||
           existing.runSequence > manifest.runSequence ||
           (existing.runSequence === manifest.runSequence &&
             existing.frozenAfterInterruption &&
-            !manifest.frozenAfterInterruption))
+            !manifest.frozenAfterInterruption &&
+            !newerRunClearsFreeze) ||
+          (existing.runSequence === manifest.runSequence &&
+            existing.frozenAfterInterruption !== undefined &&
+            manifest.frozenAfterInterruption === undefined))
       )
         continue;
       const previousById = new Map(

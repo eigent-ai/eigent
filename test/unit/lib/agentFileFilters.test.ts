@@ -64,4 +64,13 @@ describe('filterVisibleAgentFiles', () => {
 
     expect(filterVisibleAgentFiles(files)).toEqual([files[0]]);
   });
+
+  it('keeps user output in a nested directory named terminal_logs', () => {
+    const file = {
+      name: 'example.txt',
+      path: '/workspace/docs/examples/terminal_logs/example.txt',
+      relativePath: 'docs/examples/terminal_logs/example.txt',
+    };
+    expect(filterVisibleAgentFiles([file])).toEqual([file]);
+  });
 });

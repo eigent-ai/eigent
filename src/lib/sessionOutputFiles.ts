@@ -121,9 +121,8 @@ export function reconcileRunOutputFiles({
 }: RunOutputSources): RunOutputFile[] {
   const completeManifest =
     projectedArtifacts !== undefined &&
-    (!artifactManifest ||
-      (artifactManifest.scanStatus === 'complete' &&
-        !artifactManifest.truncated));
+    artifactManifest?.scanStatus === 'complete' &&
+    !artifactManifest.truncated;
   const events = artifactNodes
     .filter(
       (node) =>

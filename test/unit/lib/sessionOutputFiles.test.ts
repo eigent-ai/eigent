@@ -101,6 +101,13 @@ describe('Session output reconciliation', () => {
     });
     expect(result.map((row) => row.file.name)).toEqual(['new.md']);
   });
+  it('does not treat an upload-only empty projection as an authoritative manifest', () => {
+    const result = reconcileRunOutputFiles({
+      artifactNodes: recoveredWrites,
+      projectedArtifacts: [],
+    });
+    expect(result.map((row) => row.file.relativePath)).toEqual(paths);
+  });
   it.each([
     { scanStatus: 'partial', truncated: false },
     { scanStatus: 'unavailable', truncated: false },
@@ -188,6 +195,7 @@ describe('Session output reconciliation', () => {
       artifactManifest: { ...manifest, scanStatus: 'partial' },
     });
     expect(result.map((row) => row.file.name)).toEqual([
+      'old.log',
       'authored.log',
       'empty.md',
       'terminal_logs_report.log',

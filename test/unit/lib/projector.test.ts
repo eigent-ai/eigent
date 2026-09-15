@@ -332,6 +332,64 @@ describe('projector pipeline', () => {
     expect(selectRunArtifacts(resumed, 'run-1')).toEqual([]);
   });
 
+  it('clears a frozen recovery manifest when a newer snapshot includes Resume', () => {
+    const make = (seq: number, type: string, payload = {}) =>
+      event({
+        event_id: `resume-${seq}`,
+        run_sequence: seq,
+        run_version: seq,
+        cloud_cursor: seq,
+        event_type: type,
+        legacy_step: null,
+        payload,
+      });
+    const original = make(1, 'artifact.manifest.finalized', {
+      artifacts: [
+        { artifact_id: 'old', relativePath: 'old.md', filename: 'old.md' },
+      ],
+      scan_status: 'complete',
+      truncated: false,
+    });
+    const interrupted = make(2, 'runtime.interrupted');
+    const previous = projectRawEvents(
+      'project-1',
+      [original, interrupted],
+      'rehydrate'
+    ).state;
+    const resumed = projectSnapshot(
+      {
+        project_id: 'project-1',
+        current_cursor: 3,
+        recent_events: [original, interrupted, make(3, 'run.attempt_started')],
+        artifact_events: [original],
+      },
+      previous
+    );
+    expect(
+      resumed.artifactManifestsByRun?.['run-1'].frozenAfterInterruption
+    ).toBe(false);
+    const cancelled = projectRawEvents(
+      'project-1',
+      [
+        make(4, 'run.cancel_requested'),
+        make(5, 'artifact.manifest.finalized', {
+          artifacts: [
+            { artifact_id: 'old', relativePath: 'old.md', filename: 'old.md' },
+            { artifact_id: 'new', relativePath: 'new.md', filename: 'new.md' },
+          ],
+          scan_status: 'complete',
+          truncated: false,
+        }),
+        make(6, 'run.cancelled'),
+      ],
+      'live',
+      resumed
+    ).state;
+    expect(
+      selectRunArtifacts(cancelled, 'run-1').map((item) => item.name)
+    ).toEqual(['old.md', 'new.md']);
+  });
+
   it('keeps a newer empty manifest when an older snapshot is replayed', () => {
     const finalized = (
       seq: number,

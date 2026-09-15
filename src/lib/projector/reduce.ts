@@ -367,13 +367,13 @@ export function reduceProjectView(
       ...artifactManifestsByRun,
       [event.runId]: {
         ...previousManifest,
-        frozenAfterInterruption: status === 'interrupted',
+        frozenAfterInterruption: run.status === 'interrupted',
       },
     };
   }
   const retainsRecoveryManifest =
     previousManifest?.frozenAfterInterruption &&
-    ['interrupted', 'cancelling', 'cancelled'].includes(status);
+    ['interrupted', 'cancelling', 'cancelled'].includes(run.status);
   const isNewArtifactManifest =
     event.eventType === 'artifact.manifest.finalized' &&
     event.runSequence > (previousManifest?.runSequence ?? -1);

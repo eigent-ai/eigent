@@ -718,13 +718,37 @@ function collectResources(runs: ProjectSessionRun[]): SessionResourceItem[] {
 }
 
 function collectFiles(runs: ProjectSessionRun[]): SessionFileItem[] {
-  return runs
-    .flatMap((run) =>
-      reconcileRunOutputFiles({
-        artifactNodes: run.nodes.filter((node) => node.kind === 'artifact'),
-        projectedArtifacts: run.projectedArtifacts,
-        artifactManifest: run.artifactManifest,
-      }).map(({ file, createdAt, updatedAt }) => ({
+  const files = new Map<string, SessionFileItem>();
+  const identity = (file: FileInfo): string | null => {
+    const artifactId = file.artifactId?.trim();
+    if (artifactId) return `artifact:${artifactId}`;
+    const relativePath = normalizeWorkspaceRelativePath(file.relativePath);
+    return relativePath ? `relative:${relativePath}` : null;
+  };
+
+  // Runs arrive newest-first. Apply older outputs first so a later path-only
+  // update replaces the row and a later deletion removes it from Summary.
+  for (const run of [...runs].reverse()) {
+    for (const node of run.nodes) {
+      if (node.kind !== 'artifact' || node.operation !== 'deleted') continue;
+      const key = identity({
+        name: node.name || '',
+        type: '',
+        path: '',
+        relativePath: node.relativePath,
+        artifactId: node.artifactId,
+      });
+      if (key) files.delete(key);
+    }
+
+    for (const { file, createdAt, updatedAt } of reconcileRunOutputFiles({
+      artifactNodes: run.nodes.filter((node) => node.kind === 'artifact'),
+      projectedArtifacts: run.projectedArtifacts,
+      artifactManifest: run.artifactManifest,
+    })) {
+      const key = identity(file);
+      if (!key) continue;
+      files.set(key, {
         id: `${run.runId}:${file.artifactId || file.relativePath}`,
         file,
         previewable: false,
@@ -732,13 +756,15 @@ function collectFiles(runs: ProjectSessionRun[]): SessionFileItem[] {
         historical: !run.isCurrent,
         createdAt: (createdAt && Date.parse(createdAt)) || run.createdAt,
         updatedAt: (updatedAt && Date.parse(updatedAt)) || run.updatedAt,
-      }))
-    )
-    .sort(
-      (left, right) =>
-        Number(left.historical) - Number(right.historical) ||
-        right.updatedAt - left.updatedAt
-    );
+      });
+    }
+  }
+
+  return [...files.values()].sort(
+    (left, right) =>
+      Number(left.historical) - Number(right.historical) ||
+      right.updatedAt - left.updatedAt
+  );
 }
 
 function collectEnvironments(
