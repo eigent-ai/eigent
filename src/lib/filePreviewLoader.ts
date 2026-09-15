@@ -413,7 +413,8 @@ export async function loadFilePreview(
 
   const limit = decision.limit || FILE_PREVIEW_LIMITS.defaultBytes;
   const result = await readRemotePrefix(file.path, limit + 1, options.signal);
-  const totalBytes = metadata.size ?? result.totalBytes;
+  // The current response may describe a newer file than the listing metadata.
+  const totalBytes = result.totalBytes ?? metadata.size;
   const truncated =
     result.bytesRead > limit ||
     (totalBytes !== null && result.bytesRead < totalBytes);

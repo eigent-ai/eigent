@@ -79,6 +79,68 @@ describe('loadFilePreview', () => {
     );
   });
 
+  it.each([6, 12])(
+    'uses the response total for partial HTML with stale 4 MiB metadata and a %i MiB total',
+    async (totalMib) => {
+      const bodySize = 4 * 1024 * 1024;
+      const totalBytes = totalMib * 1024 * 1024;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response('x'.repeat(bodySize), {
+            status: 206,
+            headers: {
+              'Content-Range': `bytes 0-${bodySize - 1}/${totalBytes}`,
+              'Content-Length': String(bodySize),
+            },
+          })
+        )
+      );
+
+      const result = await loadFilePreview(
+        {
+          name: 'index.html',
+          type: 'html',
+          path: 'https://files.example/index.html',
+          size: bodySize,
+        },
+        {}
+      );
+
+      expect(result.content).toHaveLength(1024 * 1024);
+      expect(result.preview).toEqual({
+        kind: 'truncated-text',
+        bytesRead: 1024 * 1024,
+        totalBytes,
+      });
+    }
+  );
+
+  it('fully previews a complete response when older metadata overstates its size', async () => {
+    const content = '<html>complete</html>';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(content, {
+          headers: { 'Content-Length': String(content.length) },
+        })
+      )
+    );
+
+    const result = await loadFilePreview(
+      {
+        name: 'index.html',
+        type: 'html',
+        path: 'https://files.example/index.html',
+        size: 4 * 1024 * 1024,
+      },
+      {}
+    );
+
+    expect(result.content).toBe(content);
+    expect(result.preview).toBeUndefined();
+  });
+
   it.each([4 * 1024 * 1024, 10 * 1024 * 1024, 10 * 1024 * 1024 + 1, null])(
     'routes local HTML of size %s through the appropriate authorized reader',
     async (size) => {
