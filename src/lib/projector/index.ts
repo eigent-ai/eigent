@@ -30,6 +30,7 @@ import {
 } from './reduce';
 import { TERMINAL_RUN_STATUSES } from './runSummary';
 import type {
+  CanonicalProjectEvent,
   ProjectedRun,
   ProjectorEffect,
   ProjectorMode,
@@ -102,9 +103,14 @@ export function projectSnapshot(
   snapshot: ProjectSnapshotInput,
   previous?: ProjectViewState | null
 ): ProjectViewState {
+  const snapshotEvents = snapshot.recent_events.map((raw) =>
+    raw && typeof raw === 'object' && 'eventId' in raw && 'runSequence' in raw
+      ? (raw as CanonicalProjectEvent)
+      : normalizeEvent(raw)
+  );
   const projected = projectRawEvents(
     snapshot.project_id,
-    snapshot.recent_events,
+    snapshotEvents,
     'rehydrate'
   ).state;
   const artifactProjection = projectRawEvents(
@@ -119,6 +125,18 @@ export function projectSnapshot(
   const runs = { ...projected.runs };
   const aggregateOriginAuthorities = new Set<string>();
   const aggregateRunVersions = new Map<string, number>();
+  const acceptedRunEvents = new Map<string, CanonicalProjectEvent[]>();
+  for (const event of snapshotEvents) {
+    if (
+      event.source === 'canonical' &&
+      event.projectId === snapshot.project_id &&
+      projected.seenEventIds[event.eventId]
+    ) {
+      const events = acceptedRunEvents.get(event.runId) ?? [];
+      events.push(event);
+      acceptedRunEvents.set(event.runId, events);
+    }
+  }
   for (const aggregate of snapshot.runs || []) {
     if (Object.prototype.hasOwnProperty.call(aggregate, 'origin')) {
       aggregateOriginAuthorities.add(aggregate.run_id);
@@ -127,44 +145,82 @@ export function projectSnapshot(
     const aggregateRunVersion = snapshotRunVersion(aggregate);
     if (aggregateRunVersion !== null)
       aggregateRunVersions.set(aggregate.run_id, aggregateRunVersion);
-    // GET /runs is read before the event pages. If the Run changes while the
-    // pages are loading, replay is the newer status authority; otherwise the
-    // older aggregate could overwrite a terminal or decision event.
-    const replayIsAtLeastAsFresh = Boolean(
-      recent &&
-      aggregateRunVersion !== null &&
-      recent.runVersion >= aggregateRunVersion
-    );
-    runs[aggregate.run_id] = {
+    const status = snapshotRunStatus(aggregate.status);
+    const previousRun =
+      previous?.projectId === snapshot.project_id
+        ? previous.runs[aggregate.run_id]
+        : undefined;
+    // Start with the aggregate's explicit state. An observation-only tail's
+    // default running projection is not evidence of a lifecycle transition.
+    let run: ProjectedRun = {
       runId: aggregate.run_id,
-      status: replayIsAtLeastAsFresh
-        ? recent!.status
-        : snapshotRunStatus(aggregate.status),
+      status,
       lastSequence: Math.max(
         recent?.lastSequence || 0,
         aggregate.expected_next_run_sequence - 1
       ),
-      runVersion: Math.max(recent?.runVersion || 0, aggregateRunVersion || 0),
-      updatedAt: replayIsAtLeastAsFresh
-        ? recent!.updatedAt
-        : aggregate.updated_at,
+      runVersion: aggregateRunVersion ?? recent?.runVersion ?? 0,
+      updatedAt: aggregate.updated_at,
       origin: authoritativeSnapshotRunOrigin(aggregate, recent),
       resumeBlockedReason:
         aggregate.resume_blocked_reason ?? recent?.resumeBlockedReason ?? null,
       totalAttemptElapsedMs:
         typeof aggregate.total_attempt_elapsed_ms === 'number' &&
         Number.isFinite(aggregate.total_attempt_elapsed_ms) &&
-        aggregate.total_attempt_elapsed_ms >= 0 &&
-        (!recent ||
-          (aggregateRunVersion !== null &&
-            recent.runVersion <= aggregateRunVersion))
+        aggregate.total_attempt_elapsed_ms >= 0
           ? aggregate.total_attempt_elapsed_ms
           : null,
       ...(typeof aggregate.totalAttemptElapsedAt === 'string' &&
       Number.isFinite(Date.parse(aggregate.totalAttemptElapsedAt))
         ? { totalAttemptElapsedAt: aggregate.totalAttemptElapsedAt }
         : {}),
+      ...(TERMINAL_RUN_STATUSES.has(status) && previousRun?.status === status
+        ? { latestAttempt: previousRun.latestAttempt }
+        : {}),
     };
+    if (aggregateRunVersion !== null) {
+      let throughSequence: number | null = null;
+      for (const event of acceptedRunEvents.get(aggregate.run_id) ?? []) {
+        if (
+          event.runVersion < aggregateRunVersion ||
+          (run.origin && event.origin && run.origin !== event.origin)
+        )
+          continue;
+        // Project from unknown only to recognize explicit state receipts using
+        // the live reducer's existing event and continued-attempt rules.
+        const explicitStatus = reduceProjectedRun(
+          {
+            runId: event.runId,
+            status: 'unknown',
+            runVersion: 0,
+            lastSequence: 0,
+            updatedAt: event.createdAt,
+          },
+          event
+        ).status;
+        const next = reduceProjectedRun(run, event);
+        if (
+          event.runVersion === aggregateRunVersion ||
+          explicitStatus !== 'unknown' ||
+          (throughSequence !== null &&
+            event.runSequence === throughSequence + 1) ||
+          TERMINAL_RUN_STATUSES.has(run.status)
+        ) {
+          run = { ...next, origin: run.origin };
+          throughSequence = event.runSequence;
+        } else {
+          // A gap can hide recovery. Keep the last proven state/version so a
+          // later GET can settle it, while invalidating stale active elapsed.
+          run = {
+            ...run,
+            totalAttemptElapsedMs: next.totalAttemptElapsedMs,
+            totalAttemptElapsedAt: next.totalAttemptElapsedAt,
+          };
+          throughSequence = null;
+        }
+      }
+    }
+    runs[aggregate.run_id] = run;
   }
   const mergeExistingState =
     previous !== null &&
@@ -172,14 +228,7 @@ export function projectSnapshot(
     previous.projectId === snapshot.project_id;
   if (mergeExistingState) {
     const checkpointRuns = { ...previous.runs };
-    for (const raw of snapshot.recent_events) {
-      const event =
-        raw &&
-        typeof raw === 'object' &&
-        'eventId' in raw &&
-        'runSequence' in raw
-          ? (raw as import('./types').CanonicalProjectEvent)
-          : normalizeEvent(raw);
+    for (const event of snapshotEvents) {
       const checkpoint = checkpointRuns[event.runId];
       if (
         checkpoint &&
