@@ -257,8 +257,13 @@ export function reduceProjectedRun(
       event.source === 'canonical'
         ? Math.max(previousRun?.runVersion || 0, event.runVersion)
         : previousRun?.runVersion || 0,
+    // Legacy global step IDs are not execution versions. Once canonical
+    // lifecycle facts exist, their timestamp has the same authority as status.
     updatedAt:
-      previousRun && event.runVersion < previousRun.runVersion
+      previousRun &&
+      (event.source === 'canonical'
+        ? event.runVersion < previousRun.runVersion
+        : previousRun.runVersion > 0)
         ? previousRun.updatedAt
         : event.createdAt,
     origin: previousRun?.origin ?? event.origin ?? null,
