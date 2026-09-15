@@ -19,6 +19,20 @@ import {
 import { describe, expect, it } from 'vitest';
 
 describe('file preview policy', () => {
+  it('streams MP4 media but blocks native Blender projects as unsupported', () => {
+    expect(decideFilePreview('mp4', { size: 30_000_000 })).toEqual({
+      mode: 'stream-media',
+      limit: null,
+    });
+    for (const type of ['blend', '.BLEND']) {
+      expect(decideFilePreview(type, { size: 30_000_000 })).toEqual({
+        mode: 'blocked',
+        reason: 'unsupported',
+        limit: null,
+      });
+    }
+  });
+
   it('always routes CSV through the bounded reader', () => {
     expect(decideFilePreview('csv', { size: 2_000_000_000 })).toMatchObject({
       mode: 'bounded-csv',

@@ -19,6 +19,7 @@ from app.lightweight_memory import (
 )
 from app.lightweight_memory.maintainer import ProposedMemoryMutation
 from app.run_journal import RunEventDraft, SQLiteRunJournal
+from app.tool_validation import ToolPreWriteValidationError
 
 
 @pytest.fixture
@@ -957,3 +958,150 @@ def test_metadata_scope_bindings_preserve_literal_project_ids(
             prioritize_fewer_attempts=prioritize_fewer_attempts,
         )
         assert [event.event_id for event in selected] == expected
+
+
+@pytest.mark.parametrize(
+    ("scope_type", "source_refs", "error_code"),
+    [
+        ("project", (), "MEMORY_PROVENANCE_REJECTED"),
+        ("project", ("assistant-only",), "MEMORY_PROVENANCE_REJECTED"),
+        ("project", ("other-user",), "MEMORY_PROVENANCE_REJECTED"),
+        ("space", ("safe-project",), "MEMORY_SCOPE_REJECTED"),
+        ("user", ("safe-project",), "MEMORY_SCOPE_REJECTED"),
+    ],
+)
+def test_recoverable_rejection_preserves_extraction_gaps_and_scope_cursors(
+    service, monkeypatch, scope_type, source_refs, error_code
+):
+    journal = service.journal
+    journal.bind_memory_project_scopes(
+        project_id="project-1", space_id="space-1", user_id="user-1"
+    )
+    append(service, "gap", "Remember that deferred evidence.")
+    append(service, "safe-project", "Remember that reports use ISO dates.")
+    append(service, "safe-space", "For this Space, use UTC timestamps.")
+    append(service, "safe-user", "My preference is concise status updates.")
+    append(
+        service,
+        "assistant-only",
+        "Remember that untrusted.",
+        "assistant.delta",
+    )
+    journal.ensure_run(run_id="other-run", project_id="other-project")
+    journal.append_event(
+        "other-run",
+        RunEventDraft(
+            event_id="other-user",
+            event_type="user.message",
+            payload={"content": "Remember that another Project's fact."},
+        ),
+    )
+    tokens = memory_service.count_tokens
+    monkeypatch.setattr(
+        memory_service,
+        "count_tokens",
+        lambda value: 17000 if "deferred evidence" in value else tokens(value),
+    )
+    maintainer = IncrementalMemoryMaintainer(service)
+    with pytest.raises(RuntimeError, match="budget"):
+        maintainer.process_project("project-1")
+
+    scopes = ("project", "space", "user")
+
+    def watermarks():
+        return (
+            service.scope("project", "project-1").processed_through_watermark,
+            *(
+                journal.get_memory_extraction_watermark(
+                    target_scope_type=target,
+                    target_scope_id=f"{target}-1",
+                    source_project_id="project-1",
+                )
+                for target in ("space", "user")
+            ),
+        )
+
+    entries_before = {
+        target: service.list_entries(target, f"{target}-1")
+        for target in scopes
+    }
+    assert all(len(entries) == 1 for entries in entries_before.values())
+    receipts_before = receipt_rows(service)
+    assert (
+        sum(r["disposition"] == "deferred_budget" for r in receipts_before)
+        == 3
+    )
+    cursors_before = watermarks()
+    assert [
+        memory_service.parse_project_cursor(c) for c in cursors_before
+    ] == [
+        0,
+        0,
+        0,
+    ]
+    request = {
+        "kind": "todo",
+        "content": "reports use ISO dates.",
+        "reason": "Preserve the user's reporting requirement.",
+        "actor_type": "agent",
+        "source_trust": "user_asserted",
+        "request_id": "joint-agent-memory",
+    }
+    with pytest.raises(ToolPreWriteValidationError) as rejected:
+        service.create_entry(
+            **request,
+            scope_type=scope_type,
+            scope_id=f"{scope_type}-1",
+            source_refs=source_refs,
+        )
+    result = rejected.value.to_tool_result()
+    assert result["error_code"] == error_code
+    assert result["outcome_known"] is True
+    assert result["write_performed"] is False
+    assert result["retryable"] is True
+    assert receipt_rows(service) == receipts_before
+    assert watermarks() == cursors_before
+    assert {
+        target: service.list_entries(target, f"{target}-1")
+        for target in scopes
+    } == entries_before
+
+    history = service.search_history(
+        project_id="project-1", query="reports use ISO dates"
+    )
+    assert [item.event_id for item in history.items] == ["safe-project"]
+    recovered = service.create_entry(
+        **request,
+        scope_type="project",
+        scope_id="project-1",
+        source_refs=(history.items[0].event_id,),
+    )
+    assert recovered.entry.source_refs == ("safe-project",)
+    assert recovered.entry.source_trust == "user_asserted"
+    assert recovered.entry.created_by == "agent"
+    assert receipt_rows(service) == receipts_before
+    assert watermarks() == cursors_before
+
+    monkeypatch.setattr(memory_service, "count_tokens", tokens)
+    maintainer.process_project("project-1")
+    assert watermarks() == ("sqlite-project-v1:5",) * 3
+    assert all(
+        r["disposition"] != "deferred_budget" for r in receipt_rows(service)
+    )
+    entries_after = {
+        target: service.list_entries(target, f"{target}-1")
+        for target in scopes
+    }
+    assert len(entries_after["project"]) == 3
+    assert entries_after["space"] == entries_before["space"]
+    assert entries_after["user"] == entries_before["user"]
+    maintainer.process_project("project-1")
+    assert {
+        target: service.list_entries(target, f"{target}-1")
+        for target in scopes
+    } == entries_after
+    assert journal.get_project_history_cursor("project-1") == 5
+    assert not any(
+        event.event_type == "run.failed"
+        for event in journal.list_events("run-1")
+    )

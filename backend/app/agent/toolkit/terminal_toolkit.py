@@ -12,6 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import hashlib
 import logging
 import os
 import platform
@@ -26,6 +27,7 @@ import time
 import uuid
 from collections.abc import Callable
 from contextlib import AbstractContextManager
+from inspect import getdoc
 from pathlib import Path
 
 from camel.toolkits.terminal_toolkit import (
@@ -50,7 +52,9 @@ from app.service.task import (
 from app.utils.listen.toolkit_listen import (
     _safe_put_queue,
     auto_listen_toolkit,
+    listen_toolkit,
 )
+from app.utils.runtime_storage import runtime_storage
 from app.utils.space_overlay_client import run_context_for_task
 from app.workspace_git import (
     get_default_workspace_git_lifecycle,
@@ -267,6 +271,12 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         if working_directory is None:
             working_directory = base_dir
         self._agent_venv_dir = os.path.join(base_dir, self.agent_name)
+        context = run_context_for_task(api_task_id)
+        self._workspace_run_id = (
+            context.run_id if context is not None else None
+        )
+        if context is not None:
+            self._agent_venv_dir = self._run_agent_environment_dir(context)
 
         logger.debug(
             f"Initializing TerminalToolkit for agent={self.agent_name}",
@@ -331,6 +341,11 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         # script cannot escape isolation through a stale visible-Space path.
         environment["CAMEL_WORKDIR"] = str(self.working_dir)
         environment["file_save_path"] = str(self.working_dir)
+        context = run_context_for_task(self.api_task_id)
+        if context is not None:
+            environment.update(
+                runtime_storage(context, create=True).environment()
+            )
         return environment
 
     def _sanitize_command(self, command: str) -> tuple[bool, str]:
@@ -547,8 +562,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
     def _setup_cloned_environment(self):
         """Override to clone from terminal_base venv instead of current process venv.
 
-        Creates a lightweight clone using symlinks to the terminal_base venv,
-        which contains pre-installed packages (pandas, numpy, matplotlib, etc.).
+        Copies writable packages from terminal_base into Task-owned storage.
         """
         self.cloned_env_path = os.path.join(self._agent_venv_dir, ".venv")
         terminal_base_path = get_terminal_base_venv_path()
@@ -589,8 +603,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             # Create the cloned venv directory
             os.makedirs(self.cloned_env_path, exist_ok=True)
 
-            # Clone using symlinks for efficiency
-            # We need to create proper venv structure with symlinks to terminal_base
+            # Interpreter references are read-only; writable packages are copied.
             self._clone_venv_with_symlinks(
                 terminal_base_path, self.cloned_env_path
             )
@@ -609,17 +622,44 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 shutil.rmtree(self.cloned_env_path, ignore_errors=True)
             logger.warning("Falling back to system Python")
 
+    def _run_agent_environment_dir(self, context) -> str:
+        storage = runtime_storage(context, create=True)
+        agent_key = hashlib.sha256(self.agent_name.encode()).hexdigest()[:24]
+        directory = storage.runtime / "agents" / agent_key
+        for path in (
+            directory.parent,
+            directory,
+            directory / ".venv",
+            directory / ".venv" / "lib",
+            directory / ".venv" / "Lib",
+        ):
+            if path.is_symlink() or not path.resolve().is_relative_to(
+                storage.runtime
+            ):
+                raise ValueError(
+                    "Task environment may not redirect to another root"
+                )
+        return str(directory)
+
     def _get_venv_path(self):
         """Return the cloned venv path for shell activation."""
+        context = run_context_for_task(self.api_task_id)
+        if context is not None and hasattr(self, "_agent_venv_dir"):
+            directory = self._run_agent_environment_dir(context)
+            if directory != self._agent_venv_dir:
+                self._agent_venv_dir = directory
+                self._setup_cloned_environment()
         cloned_env_path = getattr(self, "cloned_env_path", None)
         if cloned_env_path and os.path.exists(cloned_env_path):
             return cloned_env_path
         return None
 
     def _clone_venv_with_symlinks(self, source_venv: str, target_venv: str):
-        """Clone a venv using symlinks for efficiency.
+        """Reference installed interpreters, copy writable package directories.
 
-        Creates the structure needed: pyvenv.cfg, bin/python, lib symlink, and activate scripts.
+        Package installs must not follow a lib symlink/junction back into the
+        shared terminal_base environment. Existing source packages are read
+        only during this copy; runtime/intermediate roots are never symlinked.
         """
         is_windows = platform.system() == "Windows"
 
@@ -660,16 +700,12 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                     dst = os.path.join(target_bin, script)
                     with open(dst, "w", encoding="utf-8") as f:
                         f.write(content)
-            # Use directory junction for Lib (no admin rights needed, unlike symlink)
+            # Each Task owns its writable package tree.
             source_lib = os.path.join(source_venv, "Lib")
             target_lib = os.path.join(target_venv, "Lib")
-            subprocess.run(
-                ["cmd", "/c", "mklink", "/J", target_lib, source_lib],
-                check=True,
-                capture_output=True,
-            )
+            shutil.copytree(source_lib, target_lib, symlinks=False)
         else:
-            # Unix: symlink python executable and lib directory
+            # Unix: reference the installed interpreter, copy package files.
             target_bin = os.path.join(target_venv, "bin")
             os.makedirs(target_bin, exist_ok=True)
 
@@ -693,9 +729,11 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                     with open(dst, "w") as f:
                         f.write(content)
 
-            # Symlink lib directory
+            # Package writes stay inside the Task's runtime directory.
             source_lib = os.path.join(source_venv, "lib")
-            os.symlink(source_lib, os.path.join(target_venv, "lib"))
+            shutil.copytree(
+                source_lib, os.path.join(target_venv, "lib"), symlinks=False
+            )
 
     def _write_to_log(self, log_file: str, content: str) -> None:
         r"""Write content to log file with optional ANSI stripping.
@@ -731,6 +769,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             ),
         )
 
+    @listen_toolkit(BaseTerminalToolkit.shell_exec)
     def shell_exec(
         self,
         command: str,
@@ -739,6 +778,15 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         timeout: float = 20.0,
     ) -> str:
         r"""Executes a shell command in blocking or non-blocking mode.
+
+        Use $EIGENT_RUNTIME_DIR for venvs, installers and toolchains,
+        $EIGENT_CACHE_DIR for caches, and $EIGENT_INTERMEDIATE_DIR for
+        recoverable render frames. These Run-scoped directories survive
+        commands and are excluded from workspace checkpoints and Artifacts.
+        Write final MP4/.blend deliverables in the working directory. Never
+        move existing user files or create escape symlinks to reduce a budget.
+        Command execution remains subject to the existing permission policy.
+        Install Python packages with the selected venv's python -m pip.
 
         Args:
             command (str): The shell command to execute.
@@ -765,6 +813,20 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 timeout=timeout,
             )
 
+    # Preserve CAMEL's parameter contract while documenting Run storage.
+    shell_exec.__doc__ = (
+        "Use $EIGENT_RUNTIME_DIR for venvs, installers and toolchains, "
+        "$EIGENT_CACHE_DIR for caches, and $EIGENT_INTERMEDIATE_DIR for "
+        "recoverable render frames. These Run-scoped directories survive "
+        "commands and are excluded from workspace checkpoints and Artifacts. "
+        "Write final MP4/.blend deliverables in the working directory. Never "
+        "move existing user files or create escape symlinks to reduce a budget. "
+        "These paths do not bypass command permissions or the 500-path "
+        "workspace checkpoint budget. Install Python packages with the "
+        "selected venv's python -m pip.\n\n"
+        f"{getdoc(BaseTerminalToolkit.shell_exec)}"
+    )
+
     def _shell_exec_with_workspace_checkpoint(
         self,
         command: str,
@@ -787,6 +849,17 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             id = f"auto_{int(time.time() * 1000)}"
 
         run_context = run_context_for_task(self.api_task_id)
+        # A code-owned pwd response cannot launch a shell, source a profile,
+        # redirect output or mutate files. Do not exempt arbitrary commands
+        # based on an LLM-provided read-only claim or a shell prefix.
+        if run_context is not None and command.strip() in {"pwd", "pwd -P"}:
+            root = (
+                Path(self.working_dir)
+                if getattr(self, "_workspace_run_id", None)
+                == run_context.run_id
+                else run_context.working_directory
+            )
+            return str(root.resolve())
         mutation_service = None
         prepared = None
         request_id = None
@@ -828,11 +901,17 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                     # still expose only the legacy Agent workspace shape.
                     mutation_root = prepared.agent_workspace.agent_worktree
                 self.working_dir = str(mutation_root)
+                self._workspace_run_id = run_context.run_id
                 command = _remap_workspace_command(
                     command,
                     visible_root=str(run_context.working_directory),
                     mutation_root=str(mutation_root),
                 )
+            elif (
+                getattr(self, "_workspace_run_id", None) != run_context.run_id
+            ):
+                self.working_dir = str(run_context.working_directory)
+                self._workspace_run_id = run_context.run_id
 
         isolate_local_session = (
             runtime_env_provider is None
