@@ -826,6 +826,7 @@
   "pinned": "Fijado",
   "preview": "Vista previa",
   "preview-canvas": "Lienzo",
+  "preview-file": "Archivo",
   "preview-chooser-project-title": "De esta sesión",
   "preview-chooser-stream-desc": "Salida de comandos de esta sesión.",
   "preview-chooser-title": "Abrir una vista nueva",
@@ -1517,5 +1518,16 @@
   "workspace-resource-mcp-servers": "Servidores MCP",
   "workspace-resource-skills": "Habilidades",
   "workspace-resource-slack": "Slack",
-  "workspace-technical-tab": "Técnica"
+  "workspace-technical-tab": "Técnica",
+  "terminal-process-stop": "Detener {{name}}",
+  "terminal-process-running": "En ejecución",
+  "terminal-process-stopping": "Deteniendo…",
+  "terminal-process-stopped": "Detenido",
+  "terminal-process-completed": "Completado",
+  "terminal-process-failed": "Error",
+  "terminal-process-unavailable": "No disponible",
+  "terminal-process-stop-failed": "No se pudo detener este proceso. Inténtalo de nuevo.",
+  "terminal-process-open-server": "Abrir servidor",
+  "terminal-process-open-output": "Abrir terminal",
+  "terminal-process-local-shell": "Shell local"
 }

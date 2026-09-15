@@ -866,3 +866,28 @@ async def signal_run(run_id: str, body: RunSignalBody):
     except Exception as exc:
         raise _control_error(exc) from exc
     return {"signal_id": body.signal_id, "result": asdict(result)}
+
+
+@router.get("/projects/{project_id}/terminal-processes")
+def list_terminal_processes(project_id: str, versions: str = "{}"):
+    from app.service.terminal_processes import terminal_processes
+
+    try:
+        known = json.loads(versions)
+        if not isinstance(known, dict) or len(known) > 1000:
+            raise ValueError()
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail="Invalid output versions")
+    return {"processes": terminal_processes.list(project_id, known)}
+
+
+@router.post("/projects/{project_id}/terminal-processes/{process_id}/stop")
+def stop_terminal_process(project_id: str, process_id: str):
+    from app.service.terminal_processes import terminal_processes
+
+    try:
+        return terminal_processes.stop(project_id, process_id)
+    except KeyError:
+        raise HTTPException(
+            status_code=404, detail="Terminal process unavailable"
+        )

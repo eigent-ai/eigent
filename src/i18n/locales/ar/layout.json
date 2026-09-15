@@ -828,6 +828,7 @@
   "pinned": "مثبّت",
   "preview": "معاينة",
   "preview-canvas": "اللوحة",
+  "preview-file": "ملف",
   "preview-chooser-project-title": "من هذه الجلسة",
   "preview-chooser-stream-desc": "مخرجات الأوامر من هذه الجلسة.",
   "preview-chooser-title": "فتح عرض جديد",
@@ -1583,5 +1584,16 @@
     "reportBug": "الإبلاغ عن خلل…",
     "github": "Eigent على GitHub",
     "inspectElement": "فحص العنصر"
-  }
+  },
+  "terminal-process-stop": "إيقاف {{name}}",
+  "terminal-process-running": "قيد التشغيل",
+  "terminal-process-stopping": "جارٍ الإيقاف…",
+  "terminal-process-stopped": "متوقف",
+  "terminal-process-completed": "مكتمل",
+  "terminal-process-failed": "فشل",
+  "terminal-process-unavailable": "غير متاح",
+  "terminal-process-stop-failed": "تعذر إيقاف هذه العملية. حاول مرة أخرى.",
+  "terminal-process-open-server": "فتح الخادم",
+  "terminal-process-open-output": "فتح الطرفية",
+  "terminal-process-local-shell": "الطرفية المحلية"
 }

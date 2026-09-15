@@ -826,6 +826,7 @@
   "pinned": "Collegato",
   "preview": "Previsualizzazione",
   "preview-canvas": "Cannella",
+  "preview-file": "File",
   "preview-chooser-project-title": "Dal presente sessione",
   "preview-chooser-stream-desc": "Output comando dal presente sessione.",
   "preview-chooser-title": "Apri una nuova vista",
@@ -1517,5 +1518,16 @@
   "workspace-technical-details-description_one": "{{count}} riferimento Git interno e dettagli sulla conservazione",
   "workspace-technical-details-description_other": "{{count}} riferimenti Git interni e dettagli sulla conservazione",
   "workspace-technical-details-description_many": "{{count}} riferimenti Git interni e dettagli sulla conservazione",
-  "workspace-technical-tab": "Tecnico"
+  "workspace-technical-tab": "Tecnico",
+  "terminal-process-stop": "Arresta {{name}}",
+  "terminal-process-running": "In esecuzione",
+  "terminal-process-stopping": "Arresto…",
+  "terminal-process-stopped": "Arrestato",
+  "terminal-process-completed": "Completato",
+  "terminal-process-failed": "Non riuscito",
+  "terminal-process-unavailable": "Non disponibile",
+  "terminal-process-stop-failed": "Impossibile arrestare questo processo. Riprova.",
+  "terminal-process-open-server": "Apri server",
+  "terminal-process-open-output": "Apri terminale",
+  "terminal-process-local-shell": "Shell locale"
 }

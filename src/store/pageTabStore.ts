@@ -274,8 +274,8 @@ function createFilePreviewTab(file: FileInfo | null = null): SessionFileTab {
     type: 'file',
     title:
       file?.name ||
-      i18next.t('layout.preview-open-file', {
-        defaultValue: 'Open file',
+      i18next.t('layout.preview-file', {
+        defaultValue: 'File',
       }),
     file,
   };

@@ -17,6 +17,7 @@ import log from 'electron-log';
 import type { IPty } from 'node-pty';
 import fs from 'node:fs';
 import os from 'node:os';
+import kill from 'tree-kill';
 
 /**
  * Interactive shell sessions for the session page's terminal tabs. Each
@@ -42,6 +43,7 @@ interface TerminalSession {
   disposed: boolean;
   /** Shared by concurrent creates so only one PTY can be spawned per id. */
   creation: Promise<TerminalCreateResult>;
+  stop?: Promise<{ success: boolean; error?: string }>;
 }
 
 const sessions = new Map<string, TerminalSession>();
@@ -210,6 +212,49 @@ export function registerTerminalIpcHandlers() {
       }
     }
   );
+
+  ipcMain.handle('terminal-stop', async (event, id: string) => {
+    const session = sessions.get(id);
+    if (!session) return { success: true };
+    if (session.sender !== event.sender)
+      return { success: false, error: 'Terminal owner mismatch' };
+    if (session.stop) return session.stop;
+    session.stop = (async () => {
+      await session.creation;
+      if (sessions.get(id) !== session || !session.pty)
+        return { success: true };
+      const terminal = session.pty;
+      return new Promise<{ success: boolean; error?: string }>((resolve) => {
+        const timer = setTimeout(() => {
+          subscription.dispose();
+          resolve({
+            success: false,
+            error: 'Terminal did not exit. Try stopping it again.',
+          });
+        }, 5000);
+        const subscription = terminal.onExit(() => {
+          clearTimeout(timer);
+          subscription.dispose();
+          resolve({ success: true });
+        });
+        // Kill the owned tree while the PTY parent still identifies its children.
+        // Killing only the shell can leave a background server listening.
+        kill(terminal.pid, 'SIGKILL', (error) => {
+          if (error && sessions.get(id) === session) {
+            clearTimeout(timer);
+            subscription.dispose();
+            resolve({
+              success: false,
+              error: 'Could not stop terminal. Try again.',
+            });
+          }
+        });
+      });
+    })();
+    const result = await session.stop;
+    if (!result.success) session.stop = undefined;
+    return result;
+  });
 
   ipcMain.handle('terminal-dispose', (_event, id: string) => {
     const session = sessions.get(id);

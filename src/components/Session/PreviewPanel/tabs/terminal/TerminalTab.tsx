@@ -25,6 +25,7 @@ import { useTranslation } from 'react-i18next';
 import { ShellTerminal } from './ShellTerminal';
 import type { TerminalSource } from './terminalSources';
 import { useSessionTerminalSources } from './useSessionTerminalSources';
+import { useTerminalProcesses } from './useTerminalProcesses';
 import { XtermViewer } from './XtermViewer';
 
 export interface TerminalTabProps {
@@ -138,7 +139,23 @@ function AgentStreamTerminal({ sourceId }: { sourceId: string }) {
   const openBrowserPreview = usePageTabStore(
     (state) => state.openBrowserPreview
   );
-  const source = sources.find((candidate) => candidate.id === sourceId);
+  const projectId = usePageTabStore((state) => state.sessionPreviewProjectId);
+  const processes = useTerminalProcesses(projectId);
+  const process = processes.find(
+    (candidate) => `process:${candidate.id}` === sourceId
+  );
+  const source = process
+    ? {
+        id: sourceId,
+        agentName: process.agent_name,
+        taskLabel: process.label,
+        lines: [process.output],
+        status:
+          process.status === 'running'
+            ? ('running' as const)
+            : ('idle' as const),
+      }
+    : sources.find((candidate) => candidate.id === sourceId);
 
   const [copied, setCopied] = useState(false);
   const copiedTimerRef = useRef<number | null>(null);
@@ -168,7 +185,7 @@ function AgentStreamTerminal({ sourceId }: { sourceId: string }) {
   }
 
   const handleCopyAll = () => {
-    void navigator.clipboard?.writeText(source.lines.join('\n'));
+    void navigator.clipboard?.writeText(source.lines.join(''));
     setCopied(true);
     if (copiedTimerRef.current !== null) {
       window.clearTimeout(copiedTimerRef.current);
@@ -190,6 +207,9 @@ function AgentStreamTerminal({ sourceId }: { sourceId: string }) {
         />
         <span className="truncate text-sm text-ds-ink-muted-default">
           {terminalSourceLabel(source)}
+          {process
+            ? ` · ${t(`layout.terminal-process-${process.status}`)}`
+            : null}
         </span>
         <div className="min-w-0 flex-1" />
         <TooltipSimple
@@ -219,6 +239,8 @@ function AgentStreamTerminal({ sourceId }: { sourceId: string }) {
         <XtermViewer
           sourceId={source.id}
           lines={source.lines}
+          text={process?.output}
+          offset={process?.offset}
           onOpenLink={openBrowserPreview}
         />
       </div>

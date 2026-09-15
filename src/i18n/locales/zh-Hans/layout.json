@@ -818,6 +818,7 @@
   "pinned": "已固定",
   "preview": "预览",
   "preview-canvas": "画布",
+  "preview-file": "文件",
   "preview-chooser-project-title": "来自此会话",
   "preview-chooser-stream-desc": "此会话的命令输出。",
   "preview-chooser-title": "打开新视图",
@@ -1473,5 +1474,16 @@
   "workspace-task-version-agent-count_other": "{{count}} 个智能体",
   "workspace-technical-details": "技术详情",
   "workspace-technical-details-description_other": "{{count}} 个内部 Git 引用及保留详情",
-  "workspace-technical-tab": "技术"
+  "workspace-technical-tab": "技术",
+  "terminal-process-stop": "停止 {{name}}",
+  "terminal-process-running": "运行中",
+  "terminal-process-stopping": "正在停止…",
+  "terminal-process-stopped": "已停止",
+  "terminal-process-completed": "已完成",
+  "terminal-process-failed": "失败",
+  "terminal-process-unavailable": "不可用",
+  "terminal-process-stop-failed": "无法停止此进程，请重试。",
+  "terminal-process-open-server": "打开服务器",
+  "terminal-process-open-output": "打开终端",
+  "terminal-process-local-shell": "本地终端"
 }

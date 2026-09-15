@@ -12,6 +12,8 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import codecs
+import contextvars
 import hashlib
 import json
 import logging
@@ -56,6 +58,7 @@ from app.service.task import (
     get_task_lock_if_exists,
     process_task,
 )
+from app.service.terminal_processes import terminal_processes
 from app.utils.listen.toolkit_listen import (
     _safe_put_queue,
     auto_listen_toolkit,
@@ -932,6 +935,9 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             },
         )
         self._update_terminal_output(content)
+        process_id = getattr(self, "_preview_log_processes", {}).get(log_file)
+        if process_id:
+            terminal_processes.append(process_id, content)
 
     def _update_terminal_output(self, output: str):
         task_lock = get_task_lock_if_exists(self.api_task_id)
@@ -1161,6 +1167,11 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 self._terminal_session_runs[id] = (
                     run_context.run_id if run_context is not None else None
                 )
+                previous = getattr(self, "shell_sessions", {}).get(id)
+                if previous:
+                    getattr(self, "_preview_log_processes", {}).pop(
+                        previous.get("log_file"), None
+                    )
                 result = super().shell_exec(
                     id=id,
                     command=command_for_spawn,
@@ -1298,17 +1309,74 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 # Like communicate(), tolerate a child that closed its input.
                 pass
 
+    def _stop_preview_process(self, session_id, session):
+        # Serialize against dispatch so a reused CAMEL id cannot change owners
+        # between identity validation and termination.
+        with getattr(self, "_terminal_lifecycle_lock", self._session_lock):
+            with self._session_lock:
+                if self.shell_sessions.get(session_id) is not session:
+                    return "Process ended"
+            return self._kill_registered_process(session_id)
+
     def _start_output_reader_thread(self, session_id):
         """Retain reader ownership; stdout EOF alone is not process exit."""
         with self._session_lock:
             session = self.shell_sessions[session_id]
+        context = run_context_for_task(self.api_task_id)
+        if context is not None:
+
+            def observe():
+                return (
+                    self.shell_sessions.get(session_id) is session
+                    and (
+                        session["process"].poll() is None
+                        or bool(session.get("running"))
+                    )
+                    if session.get("backend") == "local"
+                    else bool(session.get("running")),
+                    self._session_exit_code(session),
+                    bool(session.get("eigent_stop_requested")),
+                )
+
+            checkpoint = get_current_tool_checkpoint()
+            process_id = terminal_processes.register(
+                project_id=context.project_id,
+                run_id=context.run_id,
+                tool_call_id=checkpoint.tool_call_id if checkpoint else "",
+                session_id=session_id,
+                agent_name=self.agent_name,
+                label=f"{self.agent_name} · {session_id}",
+                observe=observe,
+                terminate=lambda: self._stop_preview_process(
+                    session_id, session
+                ),
+            )
+            if not hasattr(self, "_preview_log_processes"):
+                self._preview_log_processes = {}
+            self._preview_log_processes[session["log_file"]] = process_id
         if session.get("backend") != "local":
             return super()._start_output_reader_thread(session_id)
 
         def read_output():
             try:
                 process = session["process"]
-                for line in iter(process.stdout.readline, ""):
+
+                def chunks():
+                    # read1 returns available bytes without waiting for newline
+                    # or a full buffer. Decode across reads to preserve Unicode.
+                    if not hasattr(process.stdout, "buffer"):
+                        yield from iter(process.stdout.readline, "")
+                        return
+                    decoder = codecs.getincrementaldecoder("utf-8")("replace")
+                    for data in iter(
+                        lambda: process.stdout.buffer.read1(4096), b""
+                    ):
+                        yield decoder.decode(data)
+                    tail = decoder.decode(b"", final=True)
+                    if tail:
+                        yield tail
+
+                for line in chunks():
                     self._write_to_log(session["log_file"], line)
                     try:
                         session["output_stream"].put_nowait(line)
@@ -1331,7 +1399,12 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 if wakeup is not None:
                     wakeup.set()
 
-        reader = threading.Thread(target=read_output, daemon=True)
+        # ContextVars do not propagate into Python threads. Keep the Task/Run
+        # identity captured at dispatch so live output reaches its owning stream.
+        reader_context = contextvars.copy_context()
+        reader = threading.Thread(
+            target=lambda: reader_context.run(read_output), daemon=True
+        )
         session["eigent_reader_thread"] = reader
         reader.start()
 
