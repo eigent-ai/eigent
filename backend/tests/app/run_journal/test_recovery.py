@@ -345,6 +345,19 @@ def test_dispatched_unsafe_tool_is_fail_closed_after_restart(tmp_path):
                 now=5,
             )
         assert error.value.tool_call_ids == ("tool-1",)
+        # A separate user instruction can run without cancelling or resuming
+        # the interrupted task; its unknown side effect remains unresolved.
+        journal.ensure_run(run_id="run-new", project_id="project-1")
+        journal.create_run_attempt(
+            "run-new",
+            request_id="new-instruction",
+            reason="initial_execution",
+            activate=True,
+            now=6,
+        )
+        assert journal.get_active_project_run("project-1").run_id == "run-new"
+        assert journal.get_run("run-1").status == "interrupted"
+        assert journal.list_tool_calls("run-1")[0].status == "outcome_unknown"
 
 
 def test_dispatched_internal_control_is_recoverable_after_restart(tmp_path):

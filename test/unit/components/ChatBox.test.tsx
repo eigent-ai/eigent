@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 // Comprehensive unit tests for ChatBox component
+import { runProjectionStore } from '@/lib/runEvents';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
@@ -412,6 +413,8 @@ describe('ChatBox Component', async () => {
   beforeEach(() => {
     // Reset all mocks
     vi.clearAllMocks();
+    runProjectionStore.clear();
+    defaultChatStoreState.startTask.mockReset();
     window.sessionStorage.clear();
     eventNativeHarness.enabled = false;
     eventNativeHarness.snapshot = null;
@@ -1073,6 +1076,99 @@ describe('ChatBox Component', async () => {
         );
       });
     });
+
+    it.each([false, true])(
+      'starts a new task after interruption and preserves recovery on admission failure=%s',
+      async (fails) => {
+        const user = userEvent.setup();
+        const interruptedChat = {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'running',
+              hasMessages: true,
+              messages: [
+                { id: 'old-prompt', role: 'user', content: 'Old task' },
+              ],
+            },
+          },
+        };
+        mockUseChatStoreAdapter.mockReturnValue({
+          projectStore: defaultProjectStoreState as any,
+          chatStore: interruptedChat as any,
+        });
+        if (fails)
+          defaultChatStoreState.startTask.mockRejectedValueOnce(
+            new Error('Admission unavailable')
+          );
+        else defaultChatStoreState.startTask.mockResolvedValueOnce(undefined);
+        renderChatBox();
+        await act(async () => {
+          await Promise.resolve();
+        });
+        act(() =>
+          runProjectionStore.upsertRunSummaries('test-project-id', [
+            {
+              run_id: 'test-task-id',
+              project_id: 'test-project-id',
+              status: 'interrupted',
+              updated_at: 100,
+              origin: 'local',
+              latest_attempt: { attempt_number: 1, status: 'interrupted' },
+            },
+          ])
+        );
+        expect(
+          screen.getByText('chat.run-interrupted-title')
+        ).toBeInTheDocument();
+        await user.type(
+          screen.getByTestId('message-input'),
+          'Create three new notes'
+        );
+        await user.click(screen.getByTestId('send-button'));
+        await waitFor(() =>
+          expect(defaultChatStoreState.startTask).toHaveBeenCalledWith(
+            'test-unique-id',
+            undefined,
+            undefined,
+            undefined,
+            'Create three new notes',
+            [],
+            undefined,
+            'test-project-id',
+            expect.any(String),
+            expect.objectContaining({
+              preserveTaskId: true,
+              awaitAdmission: true,
+            })
+          )
+        );
+        expect(_mockFetchPost).not.toHaveBeenCalledWith(
+          expect.stringContaining('/cancel'),
+          expect.anything()
+        );
+        expect(
+          defaultProjectStoreState.restoreQueuedMessage
+        ).not.toHaveBeenCalled();
+        expect(
+          runProjectionStore.getProject('test-project-id')?.runs['test-task-id']
+            .status
+        ).toBe('interrupted');
+        if (fails) {
+          expect(
+            screen.getByText('chat.run-interrupted-title')
+          ).toBeInTheDocument();
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'Create three new notes'
+          );
+        } else {
+          await waitFor(() =>
+            expect(screen.queryByText('chat.run-interrupted-title')).toBeNull()
+          );
+        }
+      }
+    );
 
     it('admits queued follow-ups one at a time without writing into the completed Run', async () => {
       const queuedMessages = [

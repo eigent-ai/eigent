@@ -350,6 +350,57 @@ export function projectSnapshot(
     !previous.needsResync ||
     previous.resyncTargetCursor === null ||
     snapshot.current_cursor >= previous.resyncTargetCursor;
+  const artifactsByRun: ProjectViewState['artifactsByRun'] = {};
+  const artifactManifestsByRun: NonNullable<
+    ProjectViewState['artifactManifestsByRun']
+  > = {};
+  for (const source of [
+    mergeExistingState ? previous : null,
+    projected,
+    artifactProjection,
+  ]) {
+    if (!source) continue;
+    for (const [runId, artifacts] of Object.entries(
+      source.artifactsByRun || {}
+    )) {
+      const manifest = source.artifactManifestsByRun?.[runId];
+      const existing = artifactManifestsByRun[runId];
+      const sourceRunSequence = source.runs[runId]?.lastSequence ?? 0;
+      const previousRunSequence = previous?.runs[runId]?.lastSequence ?? 0;
+      const newerRunClearsFreeze = Boolean(
+        existing?.frozenAfterInterruption &&
+        manifest &&
+        !manifest.frozenAfterInterruption &&
+        ['pending', 'running'].includes(source.runs[runId]?.status || '') &&
+        sourceRunSequence > previousRunSequence
+      );
+      if (
+        existing &&
+        (!manifest ||
+          existing.runSequence > manifest.runSequence ||
+          (existing.runSequence === manifest.runSequence &&
+            existing.frozenAfterInterruption &&
+            !manifest.frozenAfterInterruption &&
+            !newerRunClearsFreeze) ||
+          (existing.runSequence === manifest.runSequence &&
+            existing.frozenAfterInterruption !== undefined &&
+            manifest.frozenAfterInterruption === undefined))
+      )
+        continue;
+      const previousById = new Map(
+        (artifactsByRun[runId] || []).map((artifact) => [
+          artifact.artifactId,
+          artifact,
+        ])
+      );
+      artifactsByRun[runId] = artifacts.map((artifact) => ({
+        ...artifact,
+        assetRef:
+          artifact.assetRef ?? previousById.get(artifact.artifactId)?.assetRef,
+      }));
+      if (manifest) artifactManifestsByRun[runId] = manifest;
+    }
+  }
   return {
     ...projected,
     seenEventIds: mergeExistingState
@@ -366,16 +417,8 @@ export function projectSnapshot(
       ? null
       : previous.resyncTargetCursor,
     runs,
-    artifactsByRun: mergeExistingState
-      ? {
-          ...(previous.artifactsByRun || {}),
-          ...projected.artifactsByRun,
-          ...artifactProjection.artifactsByRun,
-        }
-      : {
-          ...projected.artifactsByRun,
-          ...artifactProjection.artifactsByRun,
-        },
+    artifactsByRun,
+    artifactManifestsByRun,
     legacySteps,
     unknownEvents,
   };

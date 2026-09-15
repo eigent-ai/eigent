@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { useHost } from '@/host';
+import { isVisibleAgentFile } from '@/lib/agentFileFilters';
 import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import {
   proxyFetchSpaceProjectOverlays,
@@ -383,6 +384,7 @@ export function useReviewChanges(
         const overlays = response.overlays.filter(
           (overlay) =>
             isReviewStatus(overlay.status) &&
+            isVisibleAgentFile({ relativePath: overlay.path }) &&
             (!runId || overlay.run_id === runId)
         );
         const sourcePaths = Array.from(
@@ -533,7 +535,20 @@ export function useReviewChanges(
               stale: true,
             };
           }
-          const files = response.files.map((file): ReviewFile => {
+          const visibleFiles = response.files.filter((file) =>
+            isVisibleAgentFile({ relativePath: file.path })
+          );
+          const visibleTotals =
+            visibleFiles.length === response.files.length
+              ? response.totals
+              : visibleFiles.reduce(
+                  (total, file) => ({
+                    added: total.added + (file.added_lines ?? 0),
+                    removed: total.removed + (file.removed_lines ?? 0),
+                  }),
+                  { added: 0, removed: 0 }
+                );
+          const files = visibleFiles.map((file): ReviewFile => {
             const baseCommit = response.base_commit;
             const targetCommit = response.target_commit;
             const largestSide = Math.max(
@@ -612,7 +627,7 @@ export function useReviewChanges(
           });
           return {
             files,
-            totals: response.totals,
+            totals: visibleTotals,
             truncated: response.truncated,
             desktopOnly: false,
             reviewIdentity: currentIdentity,
@@ -644,7 +659,9 @@ export function useReviewChanges(
     loadFiles()
       .then((result) => {
         if (cancelled) return;
-        const next = result.files;
+        const next = result.files.filter((file) =>
+          isVisibleAgentFile({ relativePath: file.path })
+        );
         next.sort(
           (a: ReviewFile, b: ReviewFile) =>
             a.path.localeCompare(b.path) || a.id.localeCompare(b.id)

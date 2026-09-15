@@ -1001,6 +1001,7 @@ function NarrativeRunWorkLog({
 export function NarrativeTimeline({
   runs,
   projectedArtifactsByRun = {},
+  artifactManifestsByRun = {},
   interactivePlansByRun = {},
   paused = false,
   sessionMode,
@@ -1009,7 +1010,8 @@ export function NarrativeTimeline({
   return (
     <div className="flex w-full flex-col gap-3" data-timeline-mode="narrative">
       {runs.map((run) => {
-        const projectedArtifacts = projectedArtifactsByRun[run.runId] || [];
+        const projectedArtifacts = projectedArtifactsByRun[run.runId];
+        const artifactManifest = artifactManifestsByRun[run.runId];
         const interactivePlan = interactivePlansByRun[run.runId];
         const narrativeItems = segmentTimelineRun(
           run,
@@ -1017,7 +1019,9 @@ export function NarrativeTimeline({
         );
         const hasWorkBand = narrativeItems.length > 0;
         const hasFiles =
-          run.artifacts.length > 0 || projectedArtifacts.length > 0;
+          run.artifacts.length > 0 ||
+          projectedArtifacts !== undefined ||
+          artifactManifest !== undefined;
         const showFiles = isTerminalRunStatus(run.status) && hasFiles;
         return (
           <section
@@ -1050,6 +1054,7 @@ export function NarrativeTimeline({
                     <RunFilesGroup
                       artifactNodes={run.artifacts}
                       projectedArtifacts={projectedArtifacts}
+                      artifactManifest={artifactManifest}
                       projectId={run.projectId}
                       runId={run.runId}
                     />
@@ -1063,6 +1068,7 @@ export function NarrativeTimeline({
               <RunFilesGroup
                 artifactNodes={run.artifacts}
                 projectedArtifacts={projectedArtifacts}
+                artifactManifest={artifactManifest}
                 projectId={run.projectId}
                 runId={run.runId}
               />
