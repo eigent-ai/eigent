@@ -463,7 +463,8 @@ async function proxyFetchRequest(
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   url: string,
   data?: Record<string, any>,
-  customHeaders: Record<string, string> = {}
+  customHeaders: Record<string, string> = {},
+  requestOptions: FetchRequestOptions = {}
 ): Promise<any> {
   const baseURL = await getProxyBaseURL();
   const fullUrl = `${baseURL}${url}`;
@@ -488,6 +489,7 @@ async function proxyFetchRequest(
   const options: RequestInit = {
     method,
     headers,
+    signal: requestOptions.signal,
   };
 
   if (method === 'GET') {
@@ -516,8 +518,12 @@ export const proxyFetchGet = (url: string, params?: any, headers?: any) =>
 export const proxyFetchPost = (url: string, data?: any, headers?: any) =>
   proxyFetchRequest('POST', url, data, headers);
 
-export const proxyFetchPut = (url: string, data?: any, headers?: any) =>
-  proxyFetchRequest('PUT', url, data, headers);
+export const proxyFetchPut = (
+  url: string,
+  data?: any,
+  headers?: any,
+  options?: FetchRequestOptions
+) => proxyFetchRequest('PUT', url, data, headers, options);
 
 export const proxyFetchPatch = (url: string, data?: any, headers?: any) =>
   proxyFetchRequest('PATCH', url, data, headers);

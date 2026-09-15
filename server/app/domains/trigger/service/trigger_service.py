@@ -28,6 +28,15 @@ from app.model.trigger.app_configs import ScheduleTriggerConfig, WebhookTriggerC
 from app.model.trigger.app_configs.base_config import BaseTriggerConfig
 
 
+TERMINAL_EXECUTION_STATUSES = frozenset(
+    {
+        ExecutionStatus.completed,
+        ExecutionStatus.failed,
+        ExecutionStatus.cancelled,
+        ExecutionStatus.missed,
+    }
+)
+
 
 class TriggerService:
     """Service for managing trigger operations and scheduling."""
@@ -82,6 +91,18 @@ class TriggerService:
         tools_executed: Optional[Dict[str, Any]] = None
     ) -> TriggerExecution:
         """Update execution status and metadata."""
+        current_status = execution.status
+        if current_status in TERMINAL_EXECUTION_STATUSES:
+            logger.info(
+                "Ignored trigger execution update after terminal outcome",
+                extra={
+                    "execution_id": execution.execution_id,
+                    "current_status": current_status.value,
+                    "requested_status": status.value,
+                },
+            )
+            return execution
+
         execution.status = status
         
         # Set completed_at and duration for terminal statuses
@@ -142,6 +163,48 @@ class TriggerService:
         })
         
         return execution
+
+    def transition_execution_status_by_id(
+        self,
+        execution_id: str,
+        status: ExecutionStatus,
+        *,
+        expected_statuses: set[ExecutionStatus],
+        output_data: dict[str, Any] | None = None,
+        error_message: str | None = None,
+        tokens_used: int | None = None,
+        tools_executed: dict[str, Any] | None = None,
+    ) -> tuple[TriggerExecution | None, bool]:
+        """Lock and conditionally apply one execution status transition.
+
+        Timeout workers may hold stale ORM instances from their scan while a
+        renderer commits a terminal receipt. Re-read the row under a lock and
+        refresh the identity map so only the first terminal writer can win.
+        The method owns this short transaction and always releases its lock.
+        """
+        execution = self.session.exec(
+            select(TriggerExecution)
+            .where(TriggerExecution.execution_id == execution_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).first()
+        if (
+            execution is None
+            or execution.status in TERMINAL_EXECUTION_STATUSES
+            or execution.status not in expected_statuses
+        ):
+            self.session.commit()
+            return execution, False
+
+        updated = self.update_execution_status(
+            execution=execution,
+            status=status,
+            output_data=output_data,
+            error_message=error_message,
+            tokens_used=tokens_used,
+            tools_executed=tools_executed,
+        )
+        return updated, True
     
     def _check_auto_disable(self, trigger: Trigger) -> bool:
         """

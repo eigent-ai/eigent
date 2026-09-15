@@ -274,6 +274,10 @@ class FollowUpRequestAdmitted(BaseModel):
     run_id: str = Field(min_length=1, max_length=128)
 
 
+class RetireIdleRuntimeRequest(BaseModel):
+    run_id: str = Field(min_length=1, max_length=128)
+
+
 class HumanReply(BaseModel):
     agent: str
     reply: str

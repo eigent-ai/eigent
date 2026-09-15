@@ -39,7 +39,10 @@ from app.shared.types.trigger_types import TriggerType, TriggerStatus
 from app.core.redis_utils import get_redis_manager
 from app.domains.space.service import SpaceService
 from app.domains.trigger.service.trigger_schedule_service import TriggerScheduleService
-from app.domains.trigger.service.trigger_service import TriggerService
+from app.domains.trigger.service.trigger_service import (
+    TERMINAL_EXECUTION_STATUSES,
+    TriggerService,
+)
 
 
 ACTIVE_STATUSES = (TriggerStatus.active, TriggerStatus.pending_verification)
@@ -510,9 +513,23 @@ class TriggerCrudService:
             select(TriggerExecution)
             .join(Trigger)
             .where(and_(TriggerExecution.execution_id == execution_id, Trigger.user_id == str(user_id)))
+            .with_for_update()
         ).first()
         if not execution:
             return {"success": False, "error": "Execution not found", "status_code": 404}
+
+        # Terminal executions are immutable as a complete receipt, not only as
+        # a status value. Otherwise a late competing request could preserve the
+        # status while still overwriting completed_at, duration, or output.
+        if execution.status in TERMINAL_EXECUTION_STATUSES:
+            logger.info(
+                "Ignored trigger execution update after terminal outcome",
+                extra={
+                    "execution_id": execution.execution_id,
+                    "current_status": execution.status.value,
+                },
+            )
+            return {"success": True, "execution": execution}
 
         update_data = data.model_dump(exclude_unset=True)
 
