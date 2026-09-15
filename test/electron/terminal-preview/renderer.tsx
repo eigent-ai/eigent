@@ -97,7 +97,7 @@ function App() {
               {process?.url && (
                 <MarkDown
                   enableTypewriter={false}
-                  content={`[Server link](${process.url})\n\n[Terminal link](#terminal/terminal-smoke/${process.id})`}
+                  content={`[Server link](${process.url})`}
                 />
               )}
             </section>

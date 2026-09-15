@@ -28,6 +28,7 @@ import sys
 import threading
 import time
 import uuid
+import weakref
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from inspect import getdoc
@@ -914,7 +915,9 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 source_lib, os.path.join(target_venv, "lib"), symlinks=False
             )
 
-    def _write_to_log(self, log_file: str, content: str) -> None:
+    def _write_to_log(
+        self, log_file: str, content: str, *, preserve_chunk: bool = False
+    ) -> None:
         r"""Write content to log file with optional ANSI stripping.
 
         Args:
@@ -925,7 +928,11 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         # then scrub the exact runtime values before logging or SSE emission.
         content = _restore_isolated_commands_for_log(content)
         content = self._scrub_runtime_output(_to_plain(content))
-        super()._write_to_log(log_file, content)
+        # CAMEL's line-oriented writer appends a newline for every call. Local
+        # readers now deliver arbitrary chunks, so write the normalized chunk
+        # exactly or partial writes become separate lines.
+        with Path(log_file).open("a", encoding="utf-8") as log:
+            log.write(content if preserve_chunk else f"{content}\n")
         logger.debug(
             "Terminal output logged",
             extra={
@@ -934,24 +941,53 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 "content_length": len(content),
             },
         )
-        self._update_terminal_output(content)
+        self._update_terminal_output(content, log_file=log_file)
         process_id = getattr(self, "_preview_log_processes", {}).get(log_file)
         if process_id:
             terminal_processes.append(process_id, content)
 
-    def _update_terminal_output(self, output: str):
+    def _update_terminal_output(
+        self,
+        output: str,
+        *,
+        log_file: str | None = None,
+        final: bool = False,
+    ):
         task_lock = get_task_lock_if_exists(self.api_task_id)
         if task_lock is None:
             return
+        events = [output]
+        if log_file is not None:
+            if not hasattr(self, "_legacy_terminal_output_buffers"):
+                self._legacy_terminal_output_buffers = {}
+            pending = self._legacy_terminal_output_buffers.get(log_file, "")
+            combined = pending + output
+            if final:
+                events = [combined] if combined else []
+                self._legacy_terminal_output_buffers.pop(log_file, None)
+            else:
+                boundary = combined.rfind("\n")
+                if boundary < 0:
+                    self._legacy_terminal_output_buffers[log_file] = combined
+                    events = []
+                else:
+                    complete = combined[: boundary + 1]
+                    self._legacy_terminal_output_buffers[log_file] = combined[
+                        boundary + 1 :
+                    ]
+                    events = [
+                        f"{line}\n" for line in complete[:-1].split("\n")
+                    ]
         process_task_id = process_task.get("")
-        _safe_put_queue(
-            task_lock,
-            ActionTerminalData(
-                action=Action.terminal,
-                process_task_id=process_task_id,
-                data=output,
-            ),
-        )
+        for event in events:
+            _safe_put_queue(
+                task_lock,
+                ActionTerminalData(
+                    action=Action.terminal,
+                    process_task_id=process_task_id,
+                    data=event,
+                ),
+            )
 
     @listen_toolkit(BaseTerminalToolkit.shell_exec)
     def shell_exec(
@@ -1167,6 +1203,12 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 self._terminal_session_runs[id] = (
                     run_context.run_id if run_context is not None else None
                 )
+                if not hasattr(self, "_preview_background_sessions"):
+                    self._preview_background_sessions = set()
+                if block:
+                    self._preview_background_sessions.discard(id)
+                else:
+                    self._preview_background_sessions.add(id)
                 previous = getattr(self, "shell_sessions", {}).get(id)
                 if previous:
                     getattr(self, "_preview_log_processes", {}).pop(
@@ -1323,33 +1365,48 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         with self._session_lock:
             session = self.shell_sessions[session_id]
         context = run_context_for_task(self.api_task_id)
-        if context is not None:
+        process_id = None
+        if context is not None and session_id in getattr(
+            self, "_preview_background_sessions", ()
+        ):
+            owner_ref = weakref.ref(self)
 
             def observe():
+                owner = owner_ref()
+                if owner is None:
+                    raise RuntimeError("Terminal owner unavailable")
                 return (
-                    self.shell_sessions.get(session_id) is session
+                    owner.shell_sessions.get(session_id) is session
                     and (
                         session["process"].poll() is None
                         or bool(session.get("running"))
                     )
                     if session.get("backend") == "local"
                     else bool(session.get("running")),
-                    self._session_exit_code(session),
+                    owner._session_exit_code(session),
                     bool(session.get("eigent_stop_requested")),
                 )
 
+            def terminate():
+                owner = owner_ref()
+                if owner is None:
+                    return "Process owner unavailable"
+                return owner._stop_preview_process(session_id, session)
+
             checkpoint = get_current_tool_checkpoint()
+            history = session.get("command_history") or []
+            command = history[0] if history else ""
+            command = _original_isolated_local_command(command) or command
+            command = " ".join(command.strip().split())
             process_id = terminal_processes.register(
                 project_id=context.project_id,
                 run_id=context.run_id,
                 tool_call_id=checkpoint.tool_call_id if checkpoint else "",
                 session_id=session_id,
                 agent_name=self.agent_name,
-                label=f"{self.agent_name} · {session_id}",
+                label=f"{self.agent_name} · {command or 'Background command'}",
                 observe=observe,
-                terminate=lambda: self._stop_preview_process(
-                    session_id, session
-                ),
+                terminate=terminate,
             )
             if not hasattr(self, "_preview_log_processes"):
                 self._preview_log_processes = {}
@@ -1377,7 +1434,9 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                         yield tail
 
                 for line in chunks():
-                    self._write_to_log(session["log_file"], line)
+                    self._write_to_log(
+                        session["log_file"], line, preserve_chunk=True
+                    )
                     try:
                         session["output_stream"].put_nowait(line)
                     except Full:
@@ -1389,10 +1448,18 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             except Exception as error:
                 session["error"] = str(error)
             finally:
+                self._update_terminal_output(
+                    "", log_file=session["log_file"], final=True
+                )
+                getattr(self, "_preview_background_sessions", set()).discard(
+                    session_id
+                )
                 session["process"].stdout.close()
                 with self._output_condition:
                     session["running"] = False
                     self._output_condition.notify_all()
+                if process_id is not None:
+                    terminal_processes.refresh(process_id)
                 wakeup = getattr(
                     self, "_workspace_checkpoint_wakeups", {}
                 ).get(session_id)

@@ -12,8 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { openTerminalReference } from '@/lib/terminalPreview';
-
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useHost } from '@/host';
 import { fileInfoFromPath } from '@/lib/fileInfo';
@@ -603,10 +601,6 @@ export const MarkDown = memo(
         const link = target.closest('a[href]');
         if (link) {
           const href = link.getAttribute('href') ?? '';
-          if (openTerminalReference(href)) {
-            e.preventDefault();
-            return;
-          }
           if (/^https?:\/\//i.test(href)) {
             e.preventDefault();
             if (electronAPI) {

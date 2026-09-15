@@ -149,15 +149,18 @@ export function XtermViewer({
     if (!terminal) return;
     if (text !== undefined) {
       const previous = snapshotRef.current;
-      const append =
+      const previousEnd = previous.offset + previous.text.length;
+      const nextEnd = offset + text.length;
+      const canContinue =
         previous.sourceId === sourceId &&
-        previous.offset === offset &&
-        text.startsWith(previous.text);
-      if (!append) {
+        offset <= previousEnd &&
+        nextEnd >= previousEnd;
+      if (!canContinue) {
         terminal.reset();
         terminal.write(HIDE_CURSOR);
       }
-      terminal.write(append ? text.slice(previous.text.length) : text);
+      const appended = canContinue ? text.slice(previousEnd - offset) : text;
+      if (appended) terminal.write(appended);
       snapshotRef.current = { sourceId, text, offset };
       return;
     }

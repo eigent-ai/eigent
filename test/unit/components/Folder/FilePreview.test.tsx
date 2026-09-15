@@ -95,7 +95,7 @@ describe('FilePreview', () => {
 
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'View all in your workspace files',
+        name: 'View all files in your workspace',
       })
     );
     expect(onJumpToFiles).toHaveBeenCalledWith(null);

@@ -225,29 +225,46 @@ export function registerTerminalIpcHandlers() {
         return { success: true };
       const terminal = session.pty;
       return new Promise<{ success: boolean; error?: string }>((resolve) => {
-        const timer = setTimeout(() => {
+        let finished = false;
+        let forceTimer: ReturnType<typeof setTimeout> | undefined;
+        const complete = (result: { success: boolean; error?: string }) => {
+          if (finished) return;
+          finished = true;
+          clearTimeout(timer);
+          if (forceTimer) clearTimeout(forceTimer);
           subscription.dispose();
-          resolve({
+          resolve(result);
+        };
+        const timer = setTimeout(() => {
+          complete({
             success: false,
             error: 'Terminal did not exit. Try stopping it again.',
           });
         }, 5000);
         const subscription = terminal.onExit(() => {
-          clearTimeout(timer);
-          subscription.dispose();
-          resolve({ success: true });
+          complete({ success: true });
         });
-        // Kill the owned tree while the PTY parent still identifies its children.
-        // Killing only the shell can leave a background server listening.
-        kill(terminal.pid, 'SIGKILL', (error) => {
+        // Give the owned tree a chance to flush and release resources, then
+        // force it down if it ignores the graceful signal.
+        kill(terminal.pid, 'SIGTERM', (error) => {
           if (error && sessions.get(id) === session) {
-            clearTimeout(timer);
-            subscription.dispose();
-            resolve({
+            complete({
               success: false,
               error: 'Could not stop terminal. Try again.',
             });
+            return;
           }
+          if (finished) return;
+          forceTimer = setTimeout(() => {
+            kill(terminal.pid, 'SIGKILL', (forceError) => {
+              if (forceError && sessions.get(id) === session) {
+                complete({
+                  success: false,
+                  error: 'Could not stop terminal. Try again.',
+                });
+              }
+            });
+          }, 1500);
         });
       });
     })();

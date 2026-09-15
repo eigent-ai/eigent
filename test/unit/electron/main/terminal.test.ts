@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   handles: new Map<string, (...args: any[]) => any>(),
@@ -93,6 +93,10 @@ function createHandler() {
 }
 
 describe('terminal IPC lifecycle', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   beforeEach(() => {
     disposeAllTerminals();
     mocks.handles.clear();
@@ -103,6 +107,7 @@ describe('terminal IPC lifecycle', () => {
   });
 
   it('stops only the owning renderer terminal tree and waits for exit', async () => {
+    vi.useFakeTimers();
     const pty = fakePty();
     mocks.spawn.mockReturnValue(pty);
     const owner = sender();
@@ -125,10 +130,18 @@ describe('terminal IPC lifecycle', () => {
     expect(mocks.killTree).toHaveBeenCalledTimes(1);
     expect(mocks.killTree).toHaveBeenCalledWith(
       12345,
-      'SIGKILL',
+      'SIGTERM',
       expect.any(Function)
     );
     expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1499);
+    expect(mocks.killTree).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mocks.killTree).toHaveBeenLastCalledWith(
+      12345,
+      'SIGKILL',
+      expect.any(Function)
+    );
     pty.emitExit(137);
     expect(await first).toEqual({ success: true });
     expect(await second).toEqual({ success: true });

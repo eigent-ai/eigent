@@ -40,6 +40,41 @@ interface State {
 }
 const fetching = new Set<string>();
 const generations = new Map<string, number>();
+function sameProcess(left: TerminalProcess, right: TerminalProcess) {
+  const keys = Object.keys(right) as (keyof TerminalProcess)[];
+  return (
+    keys.length === Object.keys(left).length &&
+    keys.every((key) => left[key] === right[key])
+  );
+}
+
+function reconcileProcesses(
+  previous: TerminalProcess[],
+  incoming: TerminalProcess[]
+) {
+  const previousById = new Map(
+    previous.map((process) => [process.id, process])
+  );
+  const next = incoming.map((process) => {
+    const old = previousById.get(process.id);
+    const candidate = {
+      ...process,
+      output: process.output ?? old?.output ?? '',
+    };
+    return old && sameProcess(old, candidate) ? old : candidate;
+  });
+  for (const process of previous) {
+    if (incoming.some((candidate) => candidate.id === process.id)) continue;
+    const unavailable = {
+      ...process,
+      status: 'unavailable' as const,
+      can_stop: false,
+    };
+    next.push(sameProcess(process, unavailable) ? process : unavailable);
+  }
+  return next.slice(0, incoming.length + 100);
+}
+
 export const useTerminalProcessStore = create<State>((set, get) => ({
   projects: {},
   async refresh(projectId) {
@@ -56,30 +91,17 @@ export const useTerminalProcessStore = create<State>((set, get) => ({
         { signal: AbortSignal.timeout(5000) }
       );
       if ((generations.get(projectId) ?? 0) !== generation) return;
-      set((state) => ({
-        projects: {
-          ...state.projects,
-          [projectId]: [
-            ...response.processes.map((p) => ({
-              ...p,
-              output:
-                p.output ??
-                previous.find((old) => old.id === p.id)?.output ??
-                '',
-            })),
-            ...previous
-              .filter(
-                (p) => !response.processes.some((next) => next.id === p.id)
-              )
-              .slice(-100)
-              .map((p) => ({
-                ...p,
-                status: 'unavailable' as const,
-                can_stop: false,
-              })),
-          ],
-        },
-      }));
+      set((state) => {
+        const next = reconcileProcesses(previous, response.processes);
+        if (
+          next.length === previous.length &&
+          next.every((process, index) => process === previous[index])
+        )
+          return state;
+        return {
+          projects: { ...state.projects, [projectId]: next },
+        };
+      });
     } catch {
       if ((generations.get(projectId) ?? 0) !== generation) return;
       // Retained output is still useful, but an unreachable owner is not live.

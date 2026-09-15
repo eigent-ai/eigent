@@ -131,7 +131,7 @@ try {
     page.getByRole('tab', { name: 'File', exact: true })
   ).toBeVisible();
   const workspaceFilesButton = page.getByRole('button', {
-    name: 'View all in your workspace files',
+    name: 'View all files in your workspace',
     exact: true,
   });
   await expect(workspaceFilesButton).toBeVisible();

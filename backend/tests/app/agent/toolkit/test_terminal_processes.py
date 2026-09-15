@@ -16,6 +16,7 @@ import subprocess
 import sys
 import threading
 import time
+import weakref
 from queue import Queue
 from types import SimpleNamespace
 
@@ -91,6 +92,53 @@ def test_failed_stop_keeps_running_and_does_not_expose_exception():
     assert "private" not in result["stop_error"]
 
 
+def test_broken_owner_isolated_and_completed_callbacks_released():
+    registry = TerminalProcessRegistry()
+
+    class Owner:
+        def observe(self):
+            return False, 0, False
+
+        def terminate(self):
+            return ""
+
+    owner = Owner()
+    owner_ref = weakref.ref(owner)
+    completed = registry.register(
+        project_id="one",
+        run_id="r",
+        session_id="complete",
+        agent_name="a",
+        label="complete",
+        observe=owner.observe,
+        terminate=owner.terminate,
+    )
+    del owner
+    assert owner_ref() is None
+    assert registry._records[completed].observe is None
+
+    broken = registry.register(
+        project_id="one",
+        run_id="r",
+        session_id="broken",
+        agent_name="a",
+        label="broken",
+        observe=lambda: (_ for _ in ()).throw(RuntimeError("owner gone")),
+        terminate=lambda: "",
+    )
+    assert registry.list("one")[-1]["id"] == broken
+    assert registry.list("one")[-1]["status"] == "unavailable"
+
+
+def test_completed_history_limit_is_scoped_per_project():
+    registry = TerminalProcessRegistry()
+    first = register(registry, [False, 0, False], project="one")
+    for _ in range(101):
+        register(registry, [False, 0, False], project="two")
+    assert registry.list("one")[0]["id"] == first
+    assert len(registry.list("two")) == 100
+
+
 def test_reader_streams_partial_unicode_and_keeps_task_context(
     tmp_path, monkeypatch
 ):
@@ -105,6 +153,7 @@ def test_reader_streams_partial_unicode_and_keeps_task_context(
     toolkit.api_task_id, toolkit.agent_name = "one", "agent"
     toolkit._session_lock = threading.RLock()
     toolkit._output_condition = threading.Condition(toolkit._session_lock)
+    toolkit._preview_background_sessions = {"s"}
     child = subprocess.Popen(
         [
             sys.executable,
@@ -122,27 +171,37 @@ def test_reader_streams_partial_unicode_and_keeps_task_context(
         running=True,
         log_file=str(tmp_path / "log"),
         output_stream=Queue(),
+        command_history=["python -m http.server 8000"],
     )
     toolkit.shell_sessions = {"s": session}
     seen = []
-
-    def emit(log, text):
-        seen.append((process_task.get(""), text))
-        registry.append(toolkit._preview_log_processes[log], text)
-
-    monkeypatch.setattr(toolkit, "_write_to_log", emit)
+    monkeypatch.setattr(module, "get_task_lock_if_exists", lambda _: object())
+    monkeypatch.setattr(
+        module,
+        "_safe_put_queue",
+        lambda _lock, event: seen.append((process_task.get(""), event.data)),
+    )
     token = process_task.set("subtask-1")
     try:
         toolkit._start_output_reader_thread("s")
         deadline = time.monotonic() + 1
-        while not seen and time.monotonic() < deadline:
+        while (
+            not registry.list("one")[0]["output"]
+            and time.monotonic() < deadline
+        ):
             time.sleep(0.01)
-        assert seen and seen[0] == ("subtask-1", "hello 世界")
+        assert registry.list("one")[0]["output"] == "hello 世界"
+        assert seen == []
         assert child.poll() is None
         process_id = registry.list("one")[0]["id"]
+        assert registry.list("one")[0]["label"] == (
+            "agent · python -m http.server 8000"
+        )
         child.wait(timeout=3)
         session["eigent_reader_thread"].join(timeout=2)
         assert registry.list("one")[0]["output"] == "hello 世界 done\n"
+        assert seen == [("subtask-1", "hello 世界 done\n")]
+        assert (tmp_path / "log").read_text() == "hello 世界 done\n"
         # Reusing CAMEL's session id cannot give an old row control of its successor.
         toolkit.shell_sessions["s"] = dict(session, running=True)
         assert registry.stop("one", process_id)["can_stop"] is False
@@ -151,6 +210,46 @@ def test_reader_streams_partial_unicode_and_keeps_task_context(
         if child.poll() is None:
             child.kill()
         child.wait()
+
+
+def test_foreground_reader_does_not_fill_process_history(
+    tmp_path, monkeypatch
+):
+    registry = TerminalProcessRegistry()
+    monkeypatch.setattr(module, "terminal_processes", registry)
+    monkeypatch.setattr(
+        module,
+        "run_context_for_task",
+        lambda _: SimpleNamespace(project_id="one", run_id="run"),
+    )
+    toolkit = object.__new__(TerminalToolkit)
+    toolkit.api_task_id, toolkit.agent_name = "one", "agent"
+    toolkit._session_lock = threading.RLock()
+    toolkit._output_condition = threading.Condition(toolkit._session_lock)
+    child = subprocess.Popen(
+        [sys.executable, "-u", "-c", "print('quick command')"],
+        stdout=subprocess.PIPE,
+        stdin=subprocess.PIPE,
+        text=True,
+    )
+    toolkit.shell_sessions = {
+        "foreground": {
+            "process": child,
+            "backend": "local",
+            "running": True,
+            "log_file": str(tmp_path / "foreground.log"),
+            "output_stream": Queue(),
+            "command_history": ["printf quick"],
+        }
+    }
+
+    toolkit._start_output_reader_thread("foreground")
+    toolkit.shell_sessions["foreground"]["eigent_reader_thread"].join(
+        timeout=2
+    )
+
+    assert registry.list("one") == []
+    assert (tmp_path / "foreground.log").read_text() == "quick command\n"
 
 
 def test_version_and_output_snapshot_are_atomic():

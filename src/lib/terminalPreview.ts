@@ -13,10 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { usePageTabStore } from '@/store/pageTabStore';
-import {
-  useTerminalProcessStore,
-  type TerminalProcess,
-} from '@/store/terminalProcessStore';
+import type { TerminalProcess } from '@/store/terminalProcessStore';
 
 /** Both Summary and timeline references use the same Session-scoped opener. */
 export function openTerminalProcessPreview(
@@ -30,20 +27,4 @@ export function openTerminalProcessPreview(
   if (process.url && !outputOnly && process.status === 'running')
     store.openBrowserPreview(process.url);
   else store.openAgentTerminalPreview(`process:${process.id}`, process.label);
-}
-
-export function openTerminalReference(href: string): boolean {
-  const match = /^#terminal\/([^/]+)\/([a-f0-9]+)$/.exec(href);
-  if (!match) return false;
-  let projectId: string;
-  try {
-    projectId = decodeURIComponent(match[1]);
-  } catch {
-    return true;
-  }
-  const process = useTerminalProcessStore
-    .getState()
-    .projects[projectId]?.find((p) => p.id === match[2]);
-  if (process) openTerminalProcessPreview(process, true);
-  return true;
 }

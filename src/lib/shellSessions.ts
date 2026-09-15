@@ -54,6 +54,11 @@ interface ShellSessionEntry extends ShellSessionState {
 
 /** Keep roughly this many UTF-16 code units per shell for replay on remount. */
 const MAX_BUFFER_CODE_UNITS = 1_000_000;
+// Covers CSI styling used by uvicorn/Vite and OSC hyperlinks emitted by shells.
+const ANSI_SEQUENCE =
+  /\u001b(?:\][^\u0007]*(?:\u0007|\u001b\\)|\[[0-?]*[ -/]*[@-~])/g;
+const LOCAL_SERVER_URL =
+  /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]):\d+[^\s<>]*/;
 
 const sessions = new Map<string, ShellSessionEntry>();
 let ipcBound = false;
@@ -121,9 +126,8 @@ function bindIpc(api: TerminalHostApi) {
     const url = entry.buffer
       .slice(-8)
       .join('')
-      .match(
-        /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]):\d+[^\s<>]*/
-      )?.[0];
+      .replace(ANSI_SEQUENCE, '')
+      .match(LOCAL_SERVER_URL)?.[0];
     if (url && url !== entry.url) {
       entry.url = url.replace('0.0.0.0', '127.0.0.1').replace(/[),.;]+$/, '');
       notifyState(entry);
@@ -135,6 +139,7 @@ function bindIpc(api: TerminalHostApi) {
     if (!entry) return;
     entry.exited = true;
     entry.exitCode = exitCode;
+    entry.url = undefined;
     notifyState(entry);
   });
 }
@@ -242,6 +247,11 @@ export async function resetShellSession(
 }
 
 export function writeToShell(api: TerminalHostApi, id: string, data: string) {
+  const entry = sessions.get(id);
+  if (entry?.url && /[\r\n]/.test(data)) {
+    entry.url = undefined;
+    notifyState(entry);
+  }
   api.terminalInput(id, data);
 }
 

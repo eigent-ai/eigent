@@ -12,10 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import {
-  openTerminalProcessPreview,
-  openTerminalReference,
-} from '@/lib/terminalPreview';
+import { openTerminalProcessPreview } from '@/lib/terminalPreview';
 import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
 import {
   useTerminalProcessStore,
@@ -51,6 +48,7 @@ beforeEach(() => {
 });
 describe('terminal processes', () => {
   it('keeps output when an unchanged version omits it; a missing owner becomes unavailable', async () => {
+    const previous = useTerminalProcessStore.getState().projects.one;
     http.get.mockResolvedValueOnce({
       processes: [{ ...process, output: undefined }],
     });
@@ -58,6 +56,7 @@ describe('terminal processes', () => {
     expect(useTerminalProcessStore.getState().projects.one[0].output).toBe(
       'ready\n'
     );
+    expect(useTerminalProcessStore.getState().projects.one).toBe(previous);
     http.get.mockResolvedValueOnce({ processes: [] });
     await useTerminalProcessStore.getState().refresh('one');
     expect(useTerminalProcessStore.getState().projects.one[0]).toMatchObject({
@@ -118,14 +117,8 @@ describe('terminal processes', () => {
     expect(
       getSessionPreviewSlice(usePageTabStore.getState()).tabs
     ).toHaveLength(1);
-    expect(openTerminalReference('#terminal/one/abcd1234')).toBe(true);
-    openTerminalReference('#terminal/one/abcd1234');
-    expect(
-      getSessionPreviewSlice(usePageTabStore.getState()).tabs
-    ).toHaveLength(2);
     usePageTabStore.getState().setSessionPreviewProject('two');
     openTerminalProcessPreview(process);
-    openTerminalReference('#terminal/one/abcd1234');
     expect(
       getSessionPreviewSlice(usePageTabStore.getState()).tabs
     ).toHaveLength(0);
