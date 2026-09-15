@@ -413,22 +413,24 @@ export async function loadFilePreview(
 
   const limit = decision.limit || FILE_PREVIEW_LIMITS.defaultBytes;
   const result = await readRemotePrefix(file.path, limit + 1, options.signal);
-  const contentBytes =
-    result.bytesRead > limit ? result.bytes.slice(0, limit) : result.bytes;
-  const content = new TextDecoder().decode(contentBytes);
   const totalBytes = metadata.size ?? result.totalBytes;
+  const truncated =
+    result.bytesRead > limit ||
+    (totalBytes !== null && result.bytesRead < totalBytes);
+  const contentBytes = truncated
+    ? result.bytes.slice(0, FILE_PREVIEW_LIMITS.textBytes)
+    : result.bytes;
+  const content = new TextDecoder().decode(contentBytes);
   throwIfAborted(options.signal);
   return {
     ...baseFile,
     content,
-    preview:
-      result.bytesRead > limit ||
-      (totalBytes !== null && contentBytes.byteLength < totalBytes)
-        ? {
-            kind: 'truncated-text',
-            bytesRead: contentBytes.byteLength,
-            totalBytes,
-          }
-        : undefined,
+    preview: truncated
+      ? {
+          kind: 'truncated-text',
+          bytesRead: contentBytes.byteLength,
+          totalBytes,
+        }
+      : undefined,
   };
 }
