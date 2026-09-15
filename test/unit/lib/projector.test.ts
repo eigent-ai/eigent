@@ -45,6 +45,89 @@ function event(overrides: Record<string, unknown> = {}) {
 }
 
 describe('projector pipeline', () => {
+  it.each(['canonical-first', 'legacy-first'] as const)(
+    'preserves the canonical completion timestamp with a large legacy step id (%s)',
+    (order) => {
+      const canonical = normalizeEvent(
+        event({
+          event_type: 'run.completed',
+          legacy_step: null,
+          created_at: '2026-08-05T11:00:00Z',
+        })
+      );
+      const legacy = normalizeEvent(
+        {
+          project_id: 'project-1',
+          task_id: 'run-1',
+          step_id: 10_000,
+          step: 'end',
+          data: { content: 'Saved historical result' },
+          timestamp: '2026-08-05T10:30:00Z',
+        },
+        'chat_step_v1'
+      );
+      const inputs =
+        order === 'canonical-first' ? [canonical, legacy] : [legacy, canonical];
+      const state = inputs.reduce(
+        reduceProjectView,
+        createProjectViewState('project-1', 'rehydrate')
+      );
+
+      expect(state.runs['run-1']).toMatchObject({
+        status: 'completed',
+        runVersion: 1,
+        lastSequence: 1,
+        updatedAt: '2026-08-05T11:00:00.000Z',
+      });
+    }
+  );
+
+  it('continues updating canonical lifecycle timestamps after legacy replay', () => {
+    const running = normalizeEvent(
+      event({ event_type: 'run.running', legacy_step: null })
+    );
+    const legacy = normalizeEvent(
+      {
+        project_id: 'project-1',
+        task_id: 'run-1',
+        step_id: 10_000,
+        step: 'end',
+        data: { content: 'Saved historical result' },
+        timestamp: '2026-08-05T10:30:00Z',
+      },
+      'chat_step_v1'
+    );
+    const replayed = [running, legacy].reduce(
+      reduceProjectView,
+      createProjectViewState('project-1', 'rehydrate')
+    );
+    expect(replayed.runs['run-1']).toMatchObject({
+      status: 'running',
+      updatedAt: '2026-08-05T10:00:00.000Z',
+    });
+
+    const completed = reduceProjectView(
+      replayed,
+      normalizeEvent(
+        event({
+          event_id: 'event-2',
+          event_type: 'run.completed',
+          legacy_step: null,
+          run_sequence: 2,
+          run_version: 2,
+          cloud_cursor: 2,
+          created_at: '2026-08-05T11:00:00Z',
+        })
+      )
+    );
+    expect(completed.runs['run-1']).toMatchObject({
+      status: 'completed',
+      runVersion: 2,
+      lastSequence: 2,
+      updatedAt: '2026-08-05T11:00:00.000Z',
+    });
+  });
+
   it('keeps established Run origin immutable and fails closed on conflicts', () => {
     const cloud = reduceProjectView(
       createProjectViewState('project-1', 'live'),

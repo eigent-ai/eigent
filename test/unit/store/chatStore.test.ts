@@ -132,6 +132,15 @@ import {
   proxyFetchGet,
   waitForBackendReady,
 } from '@/api/http';
+import { selectRenderableChatNodes } from '@/lib/projector/chat';
+import {
+  composeTimelineRuns,
+  reconcileTimelineRuns,
+} from '@/lib/projector/chat/presentation';
+import {
+  getProjectEventStore,
+  releaseProjectEventStore,
+} from '@/store/projectEventStore';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { generateUniqueId } from '../../../src/lib';
 import {
@@ -1466,6 +1475,66 @@ describe('ChatStore - Core Functionality', () => {
               warning_code: null,
             })
       );
+    });
+
+    it('keeps completed legacy history terminal in the event timeline', async () => {
+      vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'true');
+      releaseProjectEventStore('proj-replay');
+      const eventStore = getProjectEventStore('proj-replay', {
+        scheduleFlush: () => () => {},
+      });
+      const startedAt = Date.parse('2026-08-18T00:00:00Z') / 1000;
+      const taskId = 'legacy-completed-history';
+      vi.mocked(fetchEventSource).mockImplementation(async (_url, opts) => {
+        for (const [index, event] of [
+          {
+            step: 'confirmed',
+            data: { task_id: taskId, question: 'Build a report' },
+            timestamp: startedAt,
+          },
+          {
+            step: 'todo_state',
+            data: { agent_id: 'single-agent', todos: [] },
+            timestamp: startedAt + 1,
+          },
+          {
+            step: 'end',
+            data: { result: 'Report complete' },
+            timestamp: startedAt + 600,
+          },
+        ].entries()) {
+          await opts.onmessage?.({
+            data: JSON.stringify({ id: index + 1, task_id: taskId, ...event }),
+          } as any);
+        }
+        opts.onclose?.();
+      });
+
+      try {
+        const { result } = renderHook(() => useChatStore());
+        await act(async () => {
+          await result.current.getState().replay(taskId, 'Build a report', 0);
+        });
+        const task = result.current.getState().tasks[taskId];
+        expect(task.status).toBe(ChatTaskStatus.FINISHED);
+        expect(task.elapsed).toBe(600_000);
+
+        eventStore.flushAll();
+        const snapshot = eventStore.getSnapshot();
+        const runs = reconcileTimelineRuns(
+          composeTimelineRuns(selectRenderableChatNodes(snapshot.chat)),
+          snapshot.view.runs
+        );
+        expect(runs).toHaveLength(1);
+        expect(runs[0].status).toBe('completed');
+        expect(runs[0].userQuery?.content).toBe('Build a report');
+        expect(runs[0].finalAssistantResponse?.content).toBe('Report complete');
+        expect(runs[0].timestamps.durationMs).toBe(600_000);
+        expect(runs[0].timestamps.elapsedAnchor?.anchoredAt).toBeNull();
+      } finally {
+        vi.unstubAllEnvs();
+        releaseProjectEventStore('proj-replay');
+      }
     });
 
     it('replay() creates task and starts SSE', async () => {

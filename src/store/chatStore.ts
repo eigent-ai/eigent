@@ -3187,6 +3187,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 sequence: shadowProjectionCursor.sequence,
                 sourceId: shadowProjectionCursor.sourceId,
                 transport: 'legacy_chat',
+                // Old cloud/share histories may have no canonical Run at
+                // all. Their original start/result/end events are the only
+                // transcript and clock boundaries available during replay.
+                historical: type === 'replay' || type === 'share',
               });
               agentMessages = stampAgentMessageTimeline(
                 parsed,
