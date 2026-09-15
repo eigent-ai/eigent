@@ -35,6 +35,7 @@ interface PrefixReadResult {
   bytes: Uint8Array;
   bytesRead: number;
   totalBytes: number | null;
+  isPartialResponse: boolean;
   contentType?: string;
   supportsRanges?: boolean;
 }
@@ -72,6 +73,8 @@ function remoteTotalBytes(response: Response): number | null {
   const contentRange = response.headers.get('content-range');
   const rangeTotal = contentRange?.match(/\/(\d+)$/)?.[1];
   if (rangeTotal) return finiteSize(Number(rangeTotal));
+  // For 206, Content-Length measures the fragment, not the entire file.
+  if (response.status === 206) return null;
   return headerSize(response.headers.get('content-length'));
 }
 
@@ -150,6 +153,7 @@ async function readRemotePrefix(
       bytes: new Uint8Array(),
       bytesRead: 0,
       totalBytes: remoteTotalBytes(response),
+      isPartialResponse: response.status === 206,
       contentType: response.headers.get('content-type') || undefined,
       supportsRanges:
         response.status === 206 ||
@@ -185,6 +189,7 @@ async function readRemotePrefix(
     bytes,
     bytesRead,
     totalBytes: remoteTotalBytes(response),
+    isPartialResponse: response.status === 206,
     contentType: response.headers.get('content-type') || undefined,
     supportsRanges:
       response.status === 206 ||
@@ -417,6 +422,7 @@ export async function loadFilePreview(
   const totalBytes = result.totalBytes ?? metadata.size;
   const truncated =
     result.bytesRead > limit ||
+    (result.isPartialResponse && result.totalBytes === null) ||
     (totalBytes !== null && result.bytesRead < totalBytes);
   const contentBytes = truncated
     ? result.bytes.slice(0, FILE_PREVIEW_LIMITS.textBytes)
