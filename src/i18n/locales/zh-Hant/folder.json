@@ -27,10 +27,20 @@
   "search-files": "搜尋檔案",
   "source-for-file": "{{name}} 的源程式碼",
   "source-view": "源程式碼",
+  "preview-byte-summary": "正在預覽 {{bytesRead}}{{totalBytes}}",
   "truncated-preview-summary": "正在預覽 {{bytesRead}}{{totalBytes}}，未載入完整檔案。",
   "video-playback-unsupported": "你的瀏覽器不支援影片播放。",
   "view-mode": "檢視模式",
   "folder-selected-open-in-description": "使用“打開方式”可在訪達或編輯器中打開此資料夾。",
   "folder-selected-preview-description": "選擇此資料夾中的檔案以預覽其內容。",
-  "zip-file-is-not-supported-yet": "暫不支援 Zip 檔案。"
+  "zip-file-is-not-supported-yet": "暫不支援 Zip 檔案。",
+  "show-in-finder": "在 Finder 中顯示",
+  "show-in-explorer": "在檔案總管中顯示",
+  "show-in-folder": "在資料夾中顯示",
+  "preview-load-failed": "無法預覽此檔案。請重試或使用外部應用程式開啟。",
+  "pdf-loading": "正在載入 PDF…",
+  "pdf-password-required": "此 PDF 需要密碼。請使用外部應用程式開啟並解鎖。",
+  "pdf-previous": "上一頁",
+  "pdf-next": "下一頁",
+  "pdf-page": "第 {{page}} 頁，共 {{total}} 頁"
 }

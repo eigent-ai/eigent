@@ -14,15 +14,11 @@
 
 import cursorIcon from '@/assets/icon/cursor.svg';
 import vsCodeIcon from '@/assets/icon/vs-code.svg';
+import ContentHeader from '@/components/Layout/ContentHeader';
 import { RIGHT_RAIL_CONTENT_WIDTH_CLASS } from '@/components/Layout/rightRail';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { DsIcon } from '@/components/ui/ds-icon';
+import { DsText } from '@/components/ui/ds-text';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import type { LucideIcon } from 'lucide-react';
@@ -46,6 +42,7 @@ import {
   Music,
   PanelRight,
   PanelRightClose,
+  RotateCcw,
   Search,
   Table2,
   Video,
@@ -61,7 +58,10 @@ import {
   useState,
 } from 'react';
 import { CsvPreviewTable } from './CsvPreviewTable';
+import { FileOpenActions } from './FileOpenActions';
 import FolderComponent from './FolderComponent';
+import { PdfPreview } from './PdfPreview';
+import { PreviewFailure } from './PreviewRecovery';
 
 import { fetchGet, getBaseURL } from '@/api/http';
 import { MarkDown } from '@/components/ChatBox/MessageItem/MarkDown';
@@ -71,7 +71,11 @@ import { getSidePanelOutputFilesRevision } from '@/components/Session/SidePanel/
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useHost } from '@/host';
 import { filterVisibleAgentFiles } from '@/lib/agentFileFilters';
-import { loadFilePreview, toLocalPreviewUrl } from '@/lib/filePreviewLoader';
+import {
+  isRemotePreviewSource,
+  loadFilePreview,
+  toLocalPreviewUrl,
+} from '@/lib/filePreviewLoader';
 import {
   deferInlineScriptsUntilLoad,
   injectFontStyles,
@@ -983,7 +987,7 @@ export async function downloadOpenedFile(file: FileInfo): Promise<void> {
   // would reintroduce an unbounded renderer allocation for the exact files the
   // preview policy rejected. Let the browser/OS own the transfer instead.
   if (file.preview?.kind === 'blocked') {
-    if (file.isRemote && file.path) {
+    if (isRemotePreviewSource(file) && file.path) {
       window.open(file.path, '_blank', 'noopener,noreferrer');
     }
     return;
@@ -1061,6 +1065,7 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
   const { t } = useTranslation();
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [filesLoading, setFilesLoading] = useState(false);
   const [isShowSourceCode, setIsShowSourceCode] = useState(false);
   const [fileSearchQuery, setFileSearchQuery] = useState('');
@@ -1119,7 +1124,8 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
   );
 
   const selectedFileChange = (file: FileInfo, isShowSourceCode?: boolean) => {
-    if (file.isFolder || getFileType(file) === 'zip') {
+    setLoadFailed(false);
+    if (file.isFolder) {
       previewRequestRef.current?.abort();
       setSelectedFile(file);
       setLoading(false);
@@ -1150,6 +1156,7 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
+          setLoadFailed(true);
           console.error('Failed to load file preview:', error);
         }
       })
@@ -1234,6 +1241,9 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
   // Reset state when the file context changes.
   useEffect(() => {
     hasFetchedRemote.current = false;
+    previewRequestRef.current?.abort();
+    setLoading(false);
+    setLoadFailed(false);
     setSelectedFile(null);
     setFileTree({ name: 'root', path: '', children: [], isFolder: true });
     setFileGroups([{ folder: 'Reports', files: [] }]);
@@ -1552,6 +1562,9 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
         }
       }
     } else if (!chatStoreSelectedFile && selectedFile) {
+      previewRequestRef.current?.abort();
+      setLoading(false);
+      setLoadFailed(false);
       setSelectedFile(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1713,11 +1726,22 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
   const handleOpenExternalFile = async () => {
     try {
       if (!selectedFile) return;
-      if (!isDesktopHost && selectedBrowserTargetUrl) {
-        window.open(selectedBrowserTargetUrl, '_blank', 'noopener,noreferrer');
+      if (!selectedLocalTargetPath && isRemotePreviewSource(selectedFile)) {
+        window.open(selectedFile.path, '_blank', 'noopener,noreferrer');
         return;
       }
-      await handleLocalFileAction('reveal');
+      if (!selectedLocalTargetPath) return;
+      if (selectedLocalWorkspaceRoot) {
+        await ipcRenderer?.invoke('set-local-file-preview-roots', [
+          selectedLocalWorkspaceRoot,
+        ]);
+      }
+      const result = await ipcRenderer?.invoke(
+        'open-local-file',
+        selectedLocalTargetPath
+      );
+      if (!result?.success)
+        toast.error(result?.error || t('chat.failed-to-open-folder'));
     } catch (error) {
       console.error('Failed to open file externally:', error);
       toast.error(t('chat.failed-to-open-folder'));
@@ -1735,6 +1759,11 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
       <FileViewerPanel
         selectedFile={selectedFile}
         loading={loading}
+        loadFailed={loadFailed}
+        onRetry={() =>
+          selectedFile && selectedFileChange(selectedFile, isShowSourceCode)
+        }
+        canRevealFile={Boolean(selectedLocalTargetPath)}
         isShowSourceCode={isShowSourceCode}
         breadcrumbSegments={fileBreadcrumbSegments}
         projectFiles={fileGroups[0]?.files || []}
@@ -1771,7 +1800,7 @@ export default function Folder({ data: _data, spaceId }: FolderProps) {
         onDownloadFile={() => {
           if (!selectedFile || selectedFile.isFolder) return;
           if (selectedFile.preview?.kind === 'blocked') {
-            if (selectedFile.isRemote) {
+            if (isRemotePreviewSource(selectedFile)) {
               window.open(selectedFile.path, '_blank', 'noopener,noreferrer');
             }
             return;
@@ -2907,6 +2936,9 @@ export interface FileViewerPanelProps {
   selectedFile: FileInfo | null;
   /** Whether content is currently being fetched. */
   loading: boolean;
+  loadFailed?: boolean;
+  onRetry?: () => void;
+  canRevealFile?: boolean;
   /** Render raw source instead of the rich view (md/html). */
   isShowSourceCode: boolean;
   /** Breadcrumb labels for the file path header. */
@@ -2924,7 +2956,7 @@ export interface FileViewerPanelProps {
   /** When set, breadcrumb segments are individually clickable (e.g. a "Context"
    * root that navigates elsewhere). Receives the clicked segment index. */
   onBreadcrumbSegmentClick?: (index: number) => void;
-  /** Remote fallback used only inside the blocked-preview empty state. */
+  /** Download destination offered for remote files in the header menu. */
   onDownloadFile: () => void;
   /** Open an oversized or unsupported file with the host system. */
   onOpenExternalFile?: () => void;
@@ -2944,24 +2976,31 @@ export interface FileViewerPanelProps {
   emptyState?: React.ReactNode;
 }
 
-function TruncatedPreviewNotice({ file }: { file: FileInfo }) {
+function PreviewSizeNotice({ file }: { file: FileInfo }) {
   const { t } = useTranslation();
   if (file.preview?.kind !== 'truncated-text') return null;
+  const { bytesRead, totalBytes } = file.preview;
+  const values = {
+    bytesRead: formatFileSize(bytesRead),
+    totalBytes:
+      totalBytes !== null
+        ? t('folder.preview-total-size', { size: formatFileSize(totalBytes) })
+        : '',
+  };
+  const summary = t('folder.preview-byte-summary', values);
+  const title =
+    totalBytes === null || bytesRead < totalBytes
+      ? t('folder.truncated-preview-summary', values)
+      : summary;
   return (
-    <div className="mb-2 rounded-lg bg-ds-neutral-subtle-default px-3 py-2 text-ds-text-meta text-ds-ink-muted-default">
-      {t('folder.truncated-preview-summary', {
-        bytesRead: formatFileSize(file.preview.bytesRead),
-        totalBytes:
-          file.preview.totalBytes !== null
-            ? t('folder.preview-total-size', {
-                size: formatFileSize(file.preview.totalBytes),
-                defaultValue: ' of {{size}}',
-              })
-            : '',
-        defaultValue:
-          'Previewing {{bytesRead}}{{totalBytes}}. The complete file was not loaded.',
-      })}
-    </div>
+    <DsText
+      as="span"
+      role="meta"
+      title={title}
+      className="min-w-0 truncate text-ds-ink-muted-default"
+    >
+      {summary}
+    </DsText>
   );
 }
 
@@ -2976,8 +3015,7 @@ function SourceFilePreview({
   const sourcePath = file.relativePath || file.path || file.name;
   return (
     <div className="flex h-full min-h-0 w-full flex-col p-2">
-      <TruncatedPreviewNotice file={file} />
-      <div className="min-h-0 flex-1 overflow-hidden rounded-[6px] border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-default-default">
+      <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-default-default">
         <SourceCodeViewer
           value={file.content || ''}
           path={sourcePath}
@@ -2992,15 +3030,7 @@ function SourceFilePreview({
   );
 }
 
-function BlockedPreviewPlaceholder({
-  file,
-  onRevealFile,
-  onDownloadFile,
-}: {
-  file: FileInfo;
-  onRevealFile: () => void;
-  onDownloadFile: () => void;
-}) {
+function BlockedPreviewPlaceholder({ file }: { file: FileInfo }) {
   const { t } = useTranslation();
   if (file.preview?.kind !== 'blocked') return null;
   const reason =
@@ -3018,45 +3048,29 @@ function BlockedPreviewPlaceholder({
               'This file type cannot be safely previewed in this environment.',
           });
   return (
-    <div className="flex h-full min-h-64 w-full items-center justify-center px-6 py-10">
-      <div className="flex max-w-md flex-col items-center gap-3 text-center">
-        <AlertTriangle className="size-10 text-ds-ink-muted-default" />
-        <div>
-          <p className="m-0 text-ds-text-body-large font-semibold text-ds-ink-default-default">
-            {t('folder.preview-not-loaded', {
-              defaultValue: 'Preview not loaded',
-            })}
-          </p>
-          <p className="mt-1 text-ds-text-base text-ds-ink-muted-default">
-            {reason}
-          </p>
-        </div>
-        <div className="text-ds-text-meta text-ds-ink-muted-default">
-          {t('folder.preview-file-size', {
-            size: formatFileSize(file.preview.size),
-            limit:
-              file.preview.limit !== null
-                ? t('folder.preview-limit', {
-                    size: formatFileSize(file.preview.limit),
-                    defaultValue: ' · Preview limit: {{size}}',
-                  })
-                : '',
-            defaultValue: 'File size: {{size}}{{limit}}',
-          })}
-        </div>
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          <Button type="button" variant="secondary" onClick={onRevealFile}>
-            {t('folder.open-externally', {
-              defaultValue: 'Open externally',
-            })}
-          </Button>
-          {file.isRemote ? (
-            <Button type="button" variant="ghost" onClick={onDownloadFile}>
-              {t('folder.download', { defaultValue: 'Download' })}
-            </Button>
-          ) : null}
-        </div>
-      </div>
+    <div className="flex flex-1 flex-col items-center justify-center gap-ds-stack-related p-ds-panel-inset text-center text-ds-ink-muted-default">
+      <DsIcon icon={AlertTriangle} recipe="detailed" />
+      <DsText
+        role="body-large"
+        weight="semibold"
+        className="text-ds-ink-default-default"
+      >
+        {t('folder.preview-not-loaded', { defaultValue: 'Preview not loaded' })}
+      </DsText>
+      <DsText>{reason}</DsText>
+      <DsText role="meta">
+        {t('folder.preview-file-size', {
+          size: formatFileSize(file.preview.size),
+          limit:
+            file.preview.limit !== null
+              ? t('folder.preview-limit', {
+                  size: formatFileSize(file.preview.limit),
+                  defaultValue: ' · Preview limit: {{size}}',
+                })
+              : '',
+          defaultValue: 'File size: {{size}}{{limit}}',
+        })}
+      </DsText>
     </div>
   );
 }
@@ -3070,6 +3084,9 @@ function BlockedPreviewPlaceholder({
 export function FileViewerPanel({
   selectedFile,
   loading,
+  loadFailed = false,
+  onRetry,
+  canRevealFile = false,
   isShowSourceCode,
   breadcrumbSegments,
   projectFiles,
@@ -3089,6 +3106,8 @@ export function FileViewerPanel({
 }: FileViewerPanelProps) {
   const { t } = useTranslation();
   const appearance = useAuthStore((state) => state.appearance);
+  const [pdfToolbarContainer, setPdfToolbarContainer] =
+    useState<HTMLDivElement | null>(null);
   const segmentsClickable = Boolean(onBreadcrumbSegmentClick);
   const selectedType = selectedFile ? getFileType(selectedFile) : '';
   const supportsRichView =
@@ -3129,11 +3148,11 @@ export function FileViewerPanel({
     >
       {/* head */}
       {(selectedFile || onToggleFileTree) && (
-        <div className="flex min-h-ds-layout-row-header shrink-0 flex-wrap items-center justify-between gap-2 border-y-0 border-r-0 border-l-0 border-solid border-ds-hairline-subtle-default pr-2 pl-4">
+        <ContentHeader border={false}>
           {selectedFile ? (
             <div
               onClick={segmentsClickable ? undefined : onRevealFile}
-              className={`flex min-w-0 flex-1 basis-32 items-center overflow-hidden ${
+              className={`flex min-w-0 flex-1 items-center overflow-hidden ${
                 segmentsClickable ? '' : 'cursor-pointer'
               }`}
             >
@@ -3186,14 +3205,38 @@ export function FileViewerPanel({
           ) : (
             <div className="min-w-0 flex-1" />
           )}
-          <div className="scrollbar-hide ml-auto flex max-w-full shrink-0 items-center gap-1 overflow-x-auto">
+          <div className="scrollbar-hide ml-auto flex max-w-full min-w-0 items-center gap-ds-control-gap overflow-x-auto p-ds-4">
+            {selectedFile && !loading && !loadFailed && (
+              <PreviewSizeNotice file={selectedFile} />
+            )}
+            {selectedType === 'pdf' &&
+              !loadFailed &&
+              selectedFile?.preview?.kind !== 'blocked' && (
+                <div
+                  ref={setPdfToolbarContainer}
+                  className="flex shrink-0 items-center"
+                />
+              )}
+            {loadFailed && onRetry && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                buttonContent="icon-only"
+                onClick={onRetry}
+                aria-label={t('layout.retry')}
+                title={t('layout.retry')}
+              >
+                <RotateCcw aria-hidden />
+              </Button>
+            )}
             {supportsRichView ? (
               <div
                 role="group"
                 aria-label={t('folder.view-mode', {
                   defaultValue: 'View mode',
                 })}
-                className="flex h-8 items-center rounded-[6px] bg-ds-neutral-subtle-default p-0.5"
+                className="flex h-8 shrink-0 items-center rounded-[6px] bg-ds-neutral-subtle-default p-0.5"
               >
                 <button
                   type="button"
@@ -3226,36 +3269,21 @@ export function FileViewerPanel({
               </div>
             ) : null}
 
-            {openInActions.length ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="sm"
-                    buttonContent="text"
-                  >
-                    {t('folder.open-in', { defaultValue: 'Open in' })}
-                    <ChevronDown className="size-ds-icon-md" aria-hidden />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="end"
-                  className="z-50 min-w-[12rem] border-ds-hairline-default-default bg-ds-neutral-strong-default"
-                >
-                  {openInActions.map((action) => (
-                    <DropdownMenuItem
-                      key={action.id}
-                      onClick={action.onSelect}
-                      className="cursor-pointer gap-2 bg-dropdown-item-bg-default hover:bg-dropdown-item-bg-hover"
-                    >
-                      {action.icon}
-                      {action.label}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : null}
+            {selectedFile && (
+              <FileOpenActions
+                canReveal={canRevealFile}
+                onReveal={onRevealFile}
+                onOpen={selectedFile.isFolder ? undefined : onOpenExternalFile}
+                onDownload={
+                  isRemotePreviewSource(selectedFile) &&
+                  !canRevealFile &&
+                  !selectedFile.isFolder
+                    ? onDownloadFile
+                    : undefined
+                }
+                destinations={openInActions}
+              />
+            )}
 
             {onToggleFileTree ? (
               <TooltipSimple
@@ -3271,7 +3299,8 @@ export function FileViewerPanel({
                 variant="instant"
               >
                 <Button
-                  size="icon"
+                  size="sm"
+                  buttonContent="icon-only"
                   variant="ghost"
                   type="button"
                   aria-label={
@@ -3297,27 +3326,29 @@ export function FileViewerPanel({
             ) : null}
             {headerActionsExtra}
           </div>
-        </div>
+        </ContentHeader>
       )}
 
       {/* content */}
       <div
         className={`flex min-h-0 flex-1 flex-col ${
-          showsHtmlPreview || showsCodeSource
+          showsHtmlPreview || showsCodeSource || selectedType === 'pdf'
             ? 'overflow-hidden'
             : 'scrollbar-always-visible overflow-y-auto'
         }`}
       >
         <div
           className={`flex flex-col ${
-            showsHtmlPreview || showsCodeSource
+            showsHtmlPreview || showsCodeSource || selectedType === 'pdf'
               ? 'h-full min-h-0'
               : 'min-h-full py-2 pr-2 pl-4'
           } file-viewer-content`}
         >
           {selectedFile ? (
             !loading ? (
-              selectedFile.isFolder ? (
+              loadFailed ? (
+                <PreviewFailure />
+              ) : selectedFile.isFolder ? (
                 <div className="flex h-full min-h-64 w-full items-center justify-center px-6 py-10">
                   <div className="flex max-w-md flex-col items-center gap-2 text-center">
                     <FolderOpen className="size-10 text-ds-ink-muted-default" />
@@ -3338,17 +3369,12 @@ export function FileViewerPanel({
                   </div>
                 </div>
               ) : selectedFile.preview?.kind === 'blocked' ? (
-                <BlockedPreviewPlaceholder
-                  file={selectedFile}
-                  onRevealFile={onOpenExternalFile || onRevealFile}
-                  onDownloadFile={onDownloadFile}
-                />
+                <BlockedPreviewPlaceholder file={selectedFile} />
               ) : selectedFile.preview?.kind === 'csv' ? (
                 <CsvPreviewTable preview={selectedFile.preview} />
               ) : ['md', 'markdown'].includes(selectedType) &&
                 !isShowSourceCode ? (
                 <DocumentContentRail>
-                  <TruncatedPreviewNotice file={selectedFile} />
                   <MarkDown
                     content={selectedFile.content || ''}
                     enableTypewriter={false}
@@ -3361,10 +3387,12 @@ export function FileViewerPanel({
                   />
                 </DocumentContentRail>
               ) : selectedType === 'pdf' ? (
-                <iframe
-                  src={selectedFile.content as string}
-                  className="h-full w-full border-0 border-x-0 border-y-0"
-                  title={selectedFile.name}
+                <PdfPreview
+                  key={`${selectedFile.path}:${selectedFile.modifiedAt ?? ''}`}
+                  url={selectedFile.content as string}
+                  size={selectedFile.size ?? 0}
+                  toolbarContainer={pdfToolbarContainer}
+                  onRetry={onRetry}
                 />
               ) : ['doc', 'docx', 'pptx', 'xlsx'].includes(selectedType) ? (
                 <FolderComponent selectedFile={selectedFile} />

@@ -280,3 +280,42 @@ describe('FileReader bounded preview', () => {
     );
   });
 });
+
+describe('bounded text byte classification', () => {
+  it('blocks binary bytes instead of returning control characters', async () => {
+    const filePath = await temporaryFile('data.unknown', '');
+    await writeFile(filePath, Buffer.from([31, 139, 8, 0, 255, 1]));
+    const result = await new FileReader(null as never).previewTextFile(
+      filePath
+    );
+    expect(result.binary).toBe(true);
+    expect(result.content).toBe('');
+  });
+  it.each(['utf16le', 'utf8'] as const)(
+    'preserves %s text',
+    async (encoding) => {
+      const filePath = await temporaryFile('data.unknown', '');
+      await writeFile(
+        filePath,
+        Buffer.from(
+          (encoding === 'utf16le' ? '\ufeff' : '') + 'Hello 世界',
+          encoding
+        )
+      );
+      const result = await new FileReader(null as never).previewTextFile(
+        filePath
+      );
+      expect(result.binary).toBe(false);
+      expect(result.content).toBe('Hello 世界');
+    }
+  );
+  it('does not mistake a UTF-8 character cut by the byte cap for binary', async () => {
+    const filePath = await temporaryFile('data.unknown', 'a世');
+    const result = await new FileReader(null as never).previewTextFile(
+      filePath,
+      2
+    );
+    expect(result.binary).toBe(false);
+    expect(result.content).toBe('a');
+  });
+});

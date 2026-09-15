@@ -82,3 +82,23 @@ describe('file preview policy', () => {
     ).toMatchObject({ mode: 'bounded-text' });
   });
 });
+
+describe('binary preview detection', () => {
+  it.each(['zip', '.GZ', 'tar.gz', '7z', 'rar', 'tar', 'application/zip'])(
+    'blocks %s without decoding',
+    (type) => {
+      expect(decideFilePreview(type, { size: 48_000_000 })).toMatchObject({
+        mode: 'blocked',
+        reason: 'unsupported',
+      });
+    }
+  );
+  it('uses archive MIME even when the extension is unknown', () => {
+    expect(
+      decideFilePreview('download', {
+        size: 10,
+        mimeType: 'application/gzip; charset=binary',
+      })
+    ).toMatchObject({ mode: 'blocked' });
+  });
+});

@@ -14,6 +14,7 @@
 
 import {
   decideFilePreview,
+  decodePreviewText,
   FILE_PREVIEW_LIMITS,
   normalizePreviewFileType,
   type CsvFilePreview,
@@ -54,7 +55,7 @@ function finiteSize(value: unknown): number | null {
     : null;
 }
 
-function isRemotePreviewSource(file: FileInfo): boolean {
+export function isRemotePreviewSource(file: FileInfo): boolean {
   return file.isRemote === true || /^https?:\/\//i.test(file.path);
 }
 
@@ -365,22 +366,46 @@ export async function loadFilePreview(
     let content = '';
     let bytesRead = 0;
     let totalBytes = metadata.size;
+    let binary = false;
     if (!isRemote && options.ipcRenderer) {
       const result = (await options.ipcRenderer.invoke(
         'preview-text-file',
         file.path,
         limit
-      )) as { content: string; bytesRead: number; totalBytes: number };
+      )) as {
+        content: string;
+        bytesRead: number;
+        totalBytes: number;
+        binary?: boolean;
+      };
+      binary = result.binary === true;
       content = result.content;
       bytesRead = result.bytesRead;
       totalBytes = result.totalBytes;
     } else {
       const prefix = await readRemotePrefix(file.path, limit, options.signal);
-      content = new TextDecoder().decode(prefix.bytes);
       bytesRead = prefix.bytesRead;
       totalBytes = metadata.size ?? prefix.totalBytes;
+      const decoded = decodePreviewText(
+        prefix.bytes,
+        totalBytes === null || bytesRead < totalBytes
+      );
+      binary = decoded === null;
+      content = decoded ?? '';
     }
     throwIfAborted(options.signal);
+    if (binary) {
+      return {
+        ...baseFile,
+        content: undefined,
+        preview: {
+          kind: 'blocked',
+          reason: 'unsupported',
+          size: totalBytes,
+          limit: null,
+        },
+      };
+    }
     return {
       ...baseFile,
       content,

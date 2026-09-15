@@ -32,8 +32,18 @@
   "search-files": "Поиск файлов",
   "source-for-file": "Исходный код {{name}}",
   "source-view": "Исходный код",
+  "preview-byte-summary": "Предпросмотр: {{bytesRead}}{{totalBytes}}",
   "truncated-preview-summary": "Предпросмотр {{bytesRead}}{{totalBytes}}. Файл загружен не полностью.",
   "video-playback-unsupported": "Ваш браузер не поддерживает воспроизведение видео.",
   "view-mode": "Режим просмотра",
-  "zip-file-is-not-supported-yet": "ZIP-файлы пока не поддерживаются."
+  "zip-file-is-not-supported-yet": "ZIP-файлы пока не поддерживаются.",
+  "show-in-finder": "Показать в Finder",
+  "show-in-explorer": "Показать в Проводнике",
+  "show-in-folder": "Показать в папке",
+  "preview-load-failed": "Не удалось просмотреть файл. Повторите попытку или откройте его во внешнем приложении.",
+  "pdf-loading": "Загрузка PDF…",
+  "pdf-password-required": "Для этого PDF нужен пароль. Откройте его во внешнем приложении, чтобы разблокировать.",
+  "pdf-previous": "Предыдущая страница",
+  "pdf-next": "Следующая страница",
+  "pdf-page": "Страница {{page}} из {{total}}"
 }

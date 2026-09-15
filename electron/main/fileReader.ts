@@ -26,6 +26,7 @@ import { parseStringPromise } from 'xml2js';
 import { normalizeWorkspaceRelativePath } from '../../src/lib/workspaceRelativePath';
 import {
   decideFilePreview,
+  decodePreviewText,
   FILE_PREVIEW_LIMITS,
   normalizePreviewFileType,
   type CsvFilePreview,
@@ -518,8 +519,13 @@ export class FileReader {
     try {
       const buffer = Buffer.alloc(bytesRead);
       const result = await handle.read(buffer, 0, bytesRead, 0);
+      const content = decodePreviewText(
+        buffer.subarray(0, result.bytesRead),
+        result.bytesRead < stats.size
+      );
       return {
-        content: buffer.subarray(0, result.bytesRead).toString('utf-8'),
+        content: content ?? '',
+        binary: content === null,
         bytesRead: result.bytesRead,
         totalBytes: stats.size,
       };

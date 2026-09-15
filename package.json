@@ -121,6 +121,7 @@
     "next-themes": "^0.4.6",
     "node-pty": "^1.1.0",
     "papaparse": "^5.5.3",
+    "pdfjs-dist": "5.6.205",
     "postprocessing": "^6.37.8",
     "react-day-picker": "^9.13.0",
     "react-markdown": "^10.1.0",

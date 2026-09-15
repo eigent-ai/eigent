@@ -27,10 +27,20 @@
   "search-files": "ファイルを検索",
   "source-for-file": "{{name}} のソース",
   "source-view": "ソース",
+  "preview-byte-summary": "プレビュー: {{bytesRead}}{{totalBytes}}",
   "truncated-preview-summary": "{{bytesRead}}{{totalBytes}} をプレビュー中です。ファイル全体は読み込まれていません。",
   "video-playback-unsupported": "このブラウザーは動画再生に対応していません。",
   "view-mode": "表示モード",
   "folder-selected-open-in-description": "「別のアプリで開く」から、このフォルダーを Finder またはエディターで直接開けます。",
   "folder-selected-preview-description": "このフォルダー内のファイルを選択すると、内容をプレビューできます。",
-  "zip-file-is-not-supported-yet": "Zip ファイルにはまだ対応していません。"
+  "zip-file-is-not-supported-yet": "Zip ファイルにはまだ対応していません。",
+  "show-in-finder": "Finderで表示",
+  "show-in-explorer": "エクスプローラーで表示",
+  "show-in-folder": "フォルダーで表示",
+  "preview-load-failed": "このファイルをプレビューできませんでした。再試行するか、外部アプリで開いてください。",
+  "pdf-loading": "PDFを読み込み中…",
+  "pdf-password-required": "このPDFにはパスワードが必要です。外部アプリで開いてロックを解除してください。",
+  "pdf-previous": "前のページ",
+  "pdf-next": "次のページ",
+  "pdf-page": "{{page}} / {{total}} ページ"
 }

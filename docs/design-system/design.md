@@ -330,6 +330,16 @@ Use one primary action per decision context. Destructive meaning is
 `tone="error"`; do not create different destructive geometry. Deprecated
 one-word variants and `inverse` emphasis are compatibility only.
 
+#### Split button
+
+Use `SplitButton` from `src/components/ui/split-button.tsx` for a fixed primary
+action beside a menu of related actions. It composes secondary `Button` controls
+and `DropdownMenu`, inherits the supported button sizes, and defaults to `sm` in
+headers. The outer corners follow the button radius; the joined inner corners are
+square with a semantic hairline divider. Each half has its own focus and disabled
+state. Pressing either half must not scale it away from the shared seam. Choosing
+a menu action does not change the primary action.
+
 ### Forms
 
 Use `Input`, `Textarea`, `Select`, or `InputSelect`. Their shared field recipes

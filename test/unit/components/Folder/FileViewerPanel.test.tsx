@@ -117,7 +117,7 @@ describe('FileViewerPanel toolbar', () => {
     expect(screen.queryByRole('button', { name: 'Download file' })).toBeNull();
   });
 
-  it('shows Open in as the only text-file action', () => {
+  it('shows Finder as the primary action beside a separate Open in menu', () => {
     renderViewer(textFile(), {
       openInActions: [
         {
@@ -130,8 +130,10 @@ describe('FileViewerPanel toolbar', () => {
     });
 
     const openInButton = screen.getByRole('button', { name: 'Open in' });
-    expect(openInButton).toHaveClass('bg-ds-accent-strong-default');
-    expect(openInButton.firstChild?.nodeName).toBe('#text');
+    expect(
+      screen.getByRole('button', { name: 'Show in Finder' })
+    ).toBeInTheDocument();
+    expect(openInButton).toHaveAttribute('aria-haspopup', 'menu');
     expect(openInButton.querySelectorAll('svg')).toHaveLength(1);
     expect(
       screen.queryByRole('button', { name: 'Copy file content' })
@@ -140,6 +142,23 @@ describe('FileViewerPanel toolbar', () => {
     expect(screen.queryByRole('button', { name: 'Preview' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Download file' })).toBeNull();
   });
+
+  it.each([386, 1000])(
+    'shows the byte notice only in the header for a %s byte file',
+    (totalBytes) => {
+      renderViewer(
+        textFile({
+          preview: { kind: 'truncated-text', bytesRead: 386, totalBytes },
+        })
+      );
+      const notice = screen.getByText(`Previewing 386 B of ${totalBytes} B`);
+      expect(notice.closest('header')).not.toBeNull();
+      expect(notice.title.includes('complete file was not loaded')).toBe(
+        totalBytes > 386
+      );
+      expect(screen.queryByText(/complete file was not loaded/)).toBeNull();
+    }
+  );
 
   it('renders ordinary text through the shared source viewer', () => {
     renderViewer(textFile());
@@ -402,5 +421,39 @@ describe('FileViewerPanel toolbar', () => {
         expect(Element.prototype.matches).toBe(originalMatches);
       }
     }
+  });
+  it('keeps revealing and external opening separate for an archive', async () => {
+    renderViewer(
+      textFile({
+        type: 'gz',
+        name: 'archive.tar.gz',
+        preview: {
+          kind: 'blocked',
+          reason: 'unsupported',
+          size: 100,
+          limit: null,
+        },
+      }),
+      { canRevealFile: true }
+    );
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: 'Show in folder' }));
+    expect(callbacks.onRevealFile).toHaveBeenCalledOnce();
+    expect(callbacks.onOpenExternalFile).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('source-code-viewer')).toBeNull();
+  });
+  it('offers retry for a failed load without mounting the file renderer', async () => {
+    const onRetry = vi.fn();
+    renderViewer(textFile(), { loadFailed: true, onRetry });
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Retry' }).closest('header')
+    ).not.toBeNull();
+    expect(screen.queryByTestId('source-code-viewer')).toBeNull();
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: 'Retry' }));
+    expect(onRetry).toHaveBeenCalledOnce();
   });
 });

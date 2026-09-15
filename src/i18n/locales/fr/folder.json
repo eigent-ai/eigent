@@ -30,9 +30,19 @@
   "search-files": "Rechercher des fichiers",
   "source-for-file": "Source de {{name}}",
   "source-view": "Source",
+  "preview-byte-summary": "Aperçu de {{bytesRead}}{{totalBytes}}",
   "truncated-preview-summary": "Aperçu de {{bytesRead}}{{totalBytes}}. Le fichier complet n’a pas été chargé.",
   "video-playback-unsupported": "Votre navigateur ne prend pas en charge la lecture vidéo.",
   "view-mode": "Mode d’affichage",
   "zip-file-is-not-supported-yet": "Les fichiers ZIP ne sont pas encore pris en charge.",
-  "review-comment-count_many": "{{count}} commentaires de révision"
+  "review-comment-count_many": "{{count}} commentaires de révision",
+  "show-in-finder": "Afficher dans le Finder",
+  "show-in-explorer": "Afficher dans l’Explorateur de fichiers",
+  "show-in-folder": "Afficher dans le dossier",
+  "preview-load-failed": "Impossible d’afficher ce fichier. Réessayez ou ouvrez-le dans une application externe.",
+  "pdf-loading": "Chargement du PDF…",
+  "pdf-password-required": "Ce PDF nécessite un mot de passe. Ouvrez-le dans une application externe pour le déverrouiller.",
+  "pdf-previous": "Page précédente",
+  "pdf-next": "Page suivante",
+  "pdf-page": "Page {{page}} sur {{total}}"
 }

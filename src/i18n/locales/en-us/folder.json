@@ -28,10 +28,20 @@
   "search-files": "Search files",
   "source-for-file": "Source for {{name}}",
   "source-view": "Source",
+  "preview-byte-summary": "Previewing {{bytesRead}}{{totalBytes}}",
   "truncated-preview-summary": "Previewing {{bytesRead}}{{totalBytes}}. The complete file was not loaded.",
   "video-playback-unsupported": "Your browser does not support video playback.",
   "view-mode": "View mode",
   "folder-selected-open-in-description": "Use Open in to open this exact folder in Finder or an editor.",
   "folder-selected-preview-description": "Select a file inside this folder to preview its contents.",
-  "zip-file-is-not-supported-yet": "Zip file is not supported yet."
+  "zip-file-is-not-supported-yet": "Zip file is not supported yet.",
+  "show-in-finder": "Show in Finder",
+  "show-in-explorer": "Show in File Explorer",
+  "show-in-folder": "Show in folder",
+  "preview-load-failed": "This file could not be previewed. Try again or open it externally.",
+  "pdf-loading": "Loading PDF…",
+  "pdf-password-required": "This PDF needs a password. Open it externally to unlock it.",
+  "pdf-previous": "Previous page",
+  "pdf-next": "Next page",
+  "pdf-page": "Page {{page}} of {{total}}"
 }

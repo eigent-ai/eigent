@@ -139,8 +139,72 @@ const STREAM_MEDIA_TYPES = new Set([
   'mkv',
 ]);
 
+const BINARY_TYPES = new Set([
+  'blend',
+  'zip',
+  'tar',
+  'gz',
+  'tar.gz',
+  'tgz',
+  'bz2',
+  'xz',
+  '7z',
+  'rar',
+  'zst',
+  'dmg',
+  'iso',
+  'exe',
+  'dll',
+  'so',
+  'wasm',
+  'sqlite',
+  'db',
+]);
+const BINARY_MIME_TYPES = new Set([
+  'application/zip',
+  'application/x-zip-compressed',
+  'application/gzip',
+  'application/x-gzip',
+  'application/x-tar',
+  'application/x-7z-compressed',
+  'application/vnd.rar',
+  'application/x-rar-compressed',
+  'application/x-bzip2',
+  'application/x-xz',
+  'application/zstd',
+  'application/wasm',
+]);
+
+/** Probe bounded bytes before decoding unknown files. BOMs distinguish UTF-16
+ * text from binary NULs; streaming avoids rejecting a cut multibyte character. */
+export function decodePreviewText(
+  bytes: Uint8Array,
+  truncated = false
+): string | null {
+  const encoding =
+    bytes[0] === 0xff && bytes[1] === 0xfe
+      ? 'utf-16le'
+      : bytes[0] === 0xfe && bytes[1] === 0xff
+        ? 'utf-16be'
+        : 'utf-8';
+  try {
+    const sample = new TextDecoder(encoding, { fatal: true }).decode(
+      bytes.subarray(0, 8192),
+      { stream: truncated || bytes.length > 8192 }
+    );
+    // Tabs, newlines and form feeds are valid text. NUL and other binary
+    // controls are not useful source previews, even when valid UTF-8.
+    if (/[\u0000-\u0008\u000e-\u001f]/.test(sample)) return null;
+    return new TextDecoder(encoding, { fatal: true }).decode(bytes, {
+      stream: truncated,
+    });
+  } catch {
+    return null;
+  }
+}
+
 export function normalizePreviewFileType(type: string): string {
-  const normalized = type.trim().toLowerCase();
+  const normalized = type.trim().toLowerCase().split(';')[0].trim();
   if (normalized.includes('/')) {
     if (normalized === 'application/pdf') return 'pdf';
     if (normalized.includes('csv')) return 'csv';
@@ -156,9 +220,12 @@ export function decideFilePreview(
   const normalized = normalizePreviewFileType(type);
   const size = metadata.size;
 
-  // Native Blender projects are binary assets, not text or browser media.
-  // Keep the existing external-open action without decoding them as text.
-  if (normalized === 'blend') {
+  const mimeType = metadata.mimeType?.split(';')[0].trim().toLowerCase();
+  if (
+    BINARY_TYPES.has(normalized) ||
+    BINARY_MIME_TYPES.has(normalized) ||
+    (mimeType && BINARY_MIME_TYPES.has(mimeType))
+  ) {
     return { mode: 'blocked', limit: null, reason: 'unsupported' };
   }
 

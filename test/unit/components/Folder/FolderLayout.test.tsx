@@ -249,6 +249,7 @@ describe('Folder page layout', () => {
       'Show in Finder',
       'Cursor',
       'VS Code',
+      'Open externally',
     ]);
     expect(
       screen.queryByRole('menuitem', { name: 'Open in browser' })
@@ -310,7 +311,7 @@ describe('Folder page layout', () => {
     );
   });
 
-  it('offers only Open in browser for a remote file on the web', async () => {
+  it('offers browser and download actions for a remote file on the web', async () => {
     const user = userEvent.setup();
     render(<Folder spaceId="space-1" />);
 
@@ -326,6 +327,7 @@ describe('Folder page layout', () => {
     const menuItems = await screen.findAllByRole('menuitem');
     expect(menuItems.map((item) => item.textContent?.trim())).toEqual([
       'Open in browser',
+      'Download',
     ]);
     expect(screen.queryByRole('menuitem', { name: 'Cursor' })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'VS Code' })).toBeNull();

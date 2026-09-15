@@ -32,10 +32,20 @@
   "search-files": "البحث في الملفات",
   "source-for-file": "مصدر {{name}}",
   "source-view": "المصدر",
+  "preview-byte-summary": "معاينة {{bytesRead}}{{totalBytes}}",
   "truncated-preview-summary": "تجري معاينة {{bytesRead}}{{totalBytes}}. لم يُحمّل الملف كاملًا.",
   "video-playback-unsupported": "لا يدعم متصفحك تشغيل الفيديو.",
   "view-mode": "وضع العرض",
   "folder-selected-open-in-description": "استخدم «فتح باستخدام» لفتح هذا المجلد نفسه في Finder أو في محرر.",
   "folder-selected-preview-description": "حدّد ملفًا داخل هذا المجلد لمعاينة محتواه.",
-  "zip-file-is-not-supported-yet": "ملفات ZIP غير مدعومة حتى الآن."
+  "zip-file-is-not-supported-yet": "ملفات ZIP غير مدعومة حتى الآن.",
+  "show-in-finder": "إظهار في Finder",
+  "show-in-explorer": "إظهار في مستكشف الملفات",
+  "show-in-folder": "إظهار في المجلد",
+  "preview-load-failed": "تعذرت معاينة هذا الملف. حاول مجددًا أو افتحه في تطبيق خارجي.",
+  "pdf-loading": "جارٍ تحميل PDF…",
+  "pdf-password-required": "يتطلب ملف PDF هذا كلمة مرور. افتحه في تطبيق خارجي لإلغاء قفله.",
+  "pdf-previous": "الصفحة السابقة",
+  "pdf-next": "الصفحة التالية",
+  "pdf-page": "الصفحة {{page}} من {{total}}"
 }

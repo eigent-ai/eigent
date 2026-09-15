@@ -12,14 +12,20 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import cursorIcon from '@/assets/icon/cursor.svg';
+import vsCodeIcon from '@/assets/icon/vs-code.svg';
 import { Button } from '@/components/ui/button';
 import { useHost } from '@/host';
-import { loadFilePreview } from '@/lib/filePreviewLoader';
+import {
+  isRemotePreviewSource,
+  loadFilePreview,
+} from '@/lib/filePreviewLoader';
 import { resolveArtifactAssetFile } from '@/service/artifactAssetApi';
 import { FileText, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import type { FileViewerOpenAction } from './index';
 import { downloadFromUrl, downloadOpenedFile, FileViewerPanel } from './index';
 
 export interface FilePreviewProps {
@@ -59,6 +65,7 @@ export function FilePreview({
 
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [isShowSourceCode, setIsShowSourceCode] = useState(false);
   const previewRequestRef = useRef<AbortController | null>(null);
 
@@ -66,8 +73,8 @@ export function FilePreview({
   // electron host (or remote fetch) and stash it on the file for the viewer.
   const loadFileContent = useCallback(
     (target: FileInfo, showSource?: boolean) => {
-      // Folders / archives are not previewable inline.
-      if (target.isFolder || target.type === 'zip') {
+      setLoadFailed(false);
+      if (target.isFolder) {
         previewRequestRef.current?.abort();
         setSelectedFile(null);
         setLoading(false);
@@ -92,6 +99,7 @@ export function FilePreview({
         })
         .catch((error: unknown) => {
           if (!controller.signal.aborted) {
+            setLoadFailed(true);
             console.error('Failed to load file preview:', error);
           }
         })
@@ -114,6 +122,8 @@ export function FilePreview({
   useEffect(() => {
     setIsShowSourceCode(false);
     if (!file) {
+      previewRequestRef.current?.abort();
+      setLoadFailed(false);
       setSelectedFile(null);
       setLoading(false);
       return;
@@ -153,7 +163,7 @@ export function FilePreview({
 
   const handleRevealFile = useCallback(async () => {
     if (!selectedFile) return;
-    if (selectedFile.isRemote) {
+    if (isRemotePreviewSource(selectedFile)) {
       if (selectedFile.preview?.kind === 'blocked') {
         window.open(selectedFile.path, '_blank', 'noopener,noreferrer');
         return;
@@ -178,7 +188,7 @@ export function FilePreview({
   const handleDownloadFile = useCallback(() => {
     if (!selectedFile || selectedFile.isFolder) return;
     if (selectedFile.preview?.kind === 'blocked') {
-      if (selectedFile.isRemote) {
+      if (isRemotePreviewSource(selectedFile)) {
         window.open(selectedFile.path, '_blank', 'noopener,noreferrer');
       }
       return;
@@ -186,19 +196,65 @@ export function FilePreview({
     void downloadOpenedFile(selectedFile);
   }, [selectedFile]);
 
-  const handleOpenExternalFile = useCallback(() => {
+  const handleOpenExternalFile = useCallback(async () => {
     if (!selectedFile) return;
-    if (selectedFile.isRemote) {
+    if (isRemotePreviewSource(selectedFile)) {
       window.open(selectedFile.path, '_blank', 'noopener,noreferrer');
       return;
     }
-    void ipcRenderer?.invoke('open-local-file', selectedFile.path);
-  }, [selectedFile, ipcRenderer]);
+    try {
+      const result = await ipcRenderer?.invoke(
+        'open-local-file',
+        selectedFile.path
+      );
+      if (!result?.success)
+        toast.error(result?.error || t('chat.failed-to-open-folder'));
+    } catch {
+      toast.error(t('chat.failed-to-open-folder'));
+    }
+  }, [selectedFile, ipcRenderer, t]);
+
+  const openInActions = useMemo<FileViewerOpenAction[]>(() => {
+    if (
+      !selectedFile ||
+      isRemotePreviewSource(selectedFile) ||
+      !host?.electronAPI?.openInIDE
+    )
+      return [];
+    return (['cursor', 'vscode'] as const).map((ide) => ({
+      id: ide,
+      label: t(
+        ide === 'cursor' ? 'chat.open-in-cursor' : 'chat.open-in-vscode'
+      ),
+      icon: (
+        <img
+          src={ide === 'cursor' ? cursorIcon : vsCodeIcon}
+          alt=""
+          className="size-ds-icon-md"
+          aria-hidden
+        />
+      ),
+      onSelect: () => {
+        void host.electronAPI
+          .openInIDE(selectedFile.path, ide)
+          .then((result: { success: boolean; error?: string }) => {
+            if (!result.success)
+              toast.error(result.error || t('chat.failed-to-open-folder'));
+          })
+          .catch(() => toast.error(t('chat.failed-to-open-folder')));
+      },
+    }));
+  }, [host, selectedFile, t]);
 
   return (
     <FileViewerPanel
       selectedFile={selectedFile}
       loading={loading}
+      loadFailed={loadFailed}
+      onRetry={() => file && loadFileContent(file, isShowSourceCode)}
+      canRevealFile={Boolean(
+        ipcRenderer && selectedFile && !isRemotePreviewSource(selectedFile)
+      )}
       isShowSourceCode={isShowSourceCode}
       breadcrumbSegments={breadcrumbSegments}
       onBreadcrumbSegmentClick={
@@ -209,6 +265,7 @@ export function FilePreview({
       embedded={embedded}
       onRevealFile={handleRevealFile}
       onOpenExternalFile={handleOpenExternalFile}
+      openInActions={openInActions}
       onDownloadFile={handleDownloadFile}
       onToggleSourceCode={handleToggleSourceCode}
       emptyState={
@@ -238,11 +295,12 @@ export function FilePreview({
           <Button
             type="button"
             variant="ghost"
-            size="icon"
+            size="sm"
+            buttonContent="icon-only"
             aria-label={t('common.close', { defaultValue: 'Close' })}
             onClick={onClose}
           >
-            <X className="h-4 w-4 text-ds-ink-muted-default" />
+            <X aria-hidden />
           </Button>
         ) : undefined
       }
