@@ -319,8 +319,18 @@ export function useProjectEventStoreHydration({
         })
         .finally(() => {
           running = false;
-          if (store.getIncarnation() !== requestIncarnation) {
-            requestHydration();
+          if (mounted && store.getIncarnation() !== requestIncarnation) {
+            if (needsHydration()) {
+              requestHydration();
+            } else {
+              // A replacement may already own a complete checkpoint. Ignore
+              // the old response and settle from that current snapshot.
+              setHydrationState({
+                status: 'ready',
+                errorCode: null,
+                eventsTruncated: store.getSnapshot().view.eventsTruncated,
+              });
+            }
           }
         });
     };

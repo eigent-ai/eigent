@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import hashlib
+import json
 import logging
 import os
 import platform
@@ -29,7 +30,9 @@ from collections.abc import Callable
 from contextlib import AbstractContextManager
 from inspect import getdoc
 from pathlib import Path
+from queue import Full
 
+from camel.toolkits.function_tool import FunctionTool
 from camel.toolkits.terminal_toolkit import (
     TerminalToolkit as BaseTerminalToolkit,
 )
@@ -38,15 +41,19 @@ from camel.toolkits.terminal_toolkit.terminal_toolkit import _to_plain
 from app.agent.toolkit.abstract_toolkit import AbstractToolkit
 from app.component.environment import env
 from app.run_journal import OutboxLeaseLostError
+from app.run_policy import ToolSafetyClass
 from app.run_runtime.tool_checkpoint import (
+    BackgroundToolResult,
     ToolInvocationNotDispatchedError,
+    declare_tool_safety,
+    finish_tool_checkpoint,
     get_current_tool_checkpoint,
 )
 from app.service.task import (
     Action,
     ActionTerminalData,
     Agents,
-    get_task_lock,
+    get_task_lock_if_exists,
     process_task,
 )
 from app.utils.listen.toolkit_listen import (
@@ -56,6 +63,7 @@ from app.utils.listen.toolkit_listen import (
 )
 from app.utils.runtime_storage import runtime_storage
 from app.utils.space_overlay_client import run_context_for_task
+from app.utils.toolchain_preflight import inspect_toolchain
 from app.workspace_git import (
     get_default_workspace_git_lifecycle,
     get_default_workspace_mutation_service,
@@ -260,6 +268,10 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         # compete for the same Git ChangeSet (including the shared terminal
         # log file).
         self._terminal_mutation_lock = threading.RLock()
+        self._terminal_lifecycle_lock = threading.RLock()
+        self._closing = False
+        self._quiescing_runs = set()
+        self._workspace_checkpoint_failures = {}
         if agent_name is not None:
             self.agent_name = agent_name
 
@@ -277,6 +289,18 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         )
         if context is not None:
             self._agent_venv_dir = self._run_agent_environment_dir(context)
+
+        if session_logs_dir is None:
+            # CAMEL creates and clears its log directory during construction.
+            # Toolkit construction must not mutate a checkout another writer
+            # owns, or delete another agent's live output log.
+            session_logs_dir = str(
+                Path.home()
+                / ".eigent"
+                / "terminal"
+                / "session-logs"
+                / uuid.uuid4().hex
+            )
 
         logger.debug(
             f"Initializing TerminalToolkit for agent={self.agent_name}",
@@ -359,6 +383,126 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             return False, sanitized
         return True, _isolated_local_command(sanitized)
 
+    @listen_toolkit()
+    def terminal_preflight(
+        self,
+        commands: list[str],
+        directory: str | None = None,
+        filename_pattern: str | None = None,
+        start_number: int = 1,
+        end_number: int | None = None,
+    ) -> str:
+        """Inspect toolchain and recovery-file metadata without executing commands.
+
+        Call before dependency-dependent work or resuming numbered output files.
+        This never installs, downloads, copies, renders, starts a login shell,
+        or grants execution/access permission. External recovery locations and
+        symlinks return guidance only. A complete sequence should be reused
+        after confirming provenance/settings and validating its contents with
+        authorized tools. Ask for explicit user confirmation for installation,
+        copying, PATH changes or new access roots; do not bypass a refusal.
+
+        Args:
+            commands: Executable names to find on the worker PATH, or explicit
+                in-workspace executable paths. Each item is a whole name/path,
+                not shell syntax; paths with spaces do not need shell quotes.
+                Use an empty list for directory/sequence inspection only.
+            directory: Existing real recovery directory in the current workspace,
+                absolute or relative to working_directory. Defaults to cwd.
+            filename_pattern: Optional numbered filename, e.g. frame_%04d.png.
+                One %d or %0Nd placeholder (N=1..9); no directory components.
+            start_number: First expected file number, inclusive. Defaults to 1.
+            end_number: Last expected file number, inclusive. Required with a
+                filename_pattern; at most 10000 files may be checked.
+
+        Returns:
+            str: JSON diagnostics, bounded gap samples and next-step guidance.
+        """
+        if self.use_docker_backend:
+            return json.dumps(
+                {
+                    "status": "unavailable",
+                    "execution_authorized": False,
+                    "reason": "Container metadata cannot be inferred from the host.",
+                }
+            )
+        # Opening a Bundle environment provider retrieves protected values and
+        # is reserved for authorized spawn. Never do it for discovery or fall
+        # back to host PATH while claiming to have inspected that environment.
+        environment = None
+        venv = None
+        if self._runtime_env_provider is None:
+            # Spawn getters may materialize runtime storage or clone a venv.
+            # Read only the configured keys this metadata probe consumes.
+            environment = {}
+            runtime_environment = self._runtime_env_vars
+            for key in (
+                "PATH",
+                "EIGENT_RUNTIME_DIR",
+                "EIGENT_CACHE_DIR",
+                "EIGENT_INTERMEDIATE_DIR",
+            ):
+                if key in runtime_environment:
+                    environment[key] = runtime_environment[key]
+                elif key in os.environ:
+                    environment[key] = os.environ[key]
+            selection = getattr(self, "_preflight_venv_selection", None)
+            if selection is not None:
+                context = run_context_for_task(self.api_task_id)
+                owner = (
+                    (context.project_id, context.run_id) if context else None
+                )
+                candidate, selected_owner = selection
+                if (
+                    selected_owner == owner
+                    and candidate == self.cloned_env_path
+                    and Path(candidate).is_dir()
+                ):
+                    venv = candidate
+            if venv:
+                bin_dir = "Scripts" if self.os_type == "Windows" else "bin"
+                environment["PATH"] = os.pathsep.join(
+                    [str(Path(venv) / bin_dir)]
+                    + ([environment["PATH"]] if "PATH" in environment else [])
+                )
+        report = inspect_toolchain(
+            working_directory=Path(self.working_dir),
+            worker_environment=environment,
+            commands=commands,
+            directory=directory,
+            filename_pattern=filename_pattern,
+            start_number=start_number,
+            end_number=end_number,
+        )
+        if environment is None:
+            report["environment_source"] = (
+                "protected_spawn_environment_unavailable"
+            )
+        elif venv:
+            report["environment_source"] = (
+                "worker_environment_with_selected_venv_bin"
+            )
+        report["venv_selection"] = {
+            "status": "confirmed" if venv else "unconfirmed"
+        }
+        if not venv:
+            report["venv_selection"]["reason"] = (
+                "The virtual environment for the current Task has not been "
+                "confirmed; no environment setup was attempted."
+            )
+        report["activation_scripts_evaluated"] = False
+        return json.dumps(report, sort_keys=True)
+
+    # CAMEL message integration re-creates FunctionTool instances. Keep the
+    # declaration on this code-owned callable too so wraps preserves it.
+    declare_tool_safety(terminal_preflight, ToolSafetyClass.SAFE_READ)
+
+    def get_tools(self) -> list[FunctionTool]:
+        preflight = declare_tool_safety(
+            FunctionTool(self.terminal_preflight), ToolSafetyClass.SAFE_READ
+        )
+        return [*super().get_tools(), preflight]
+
     def _scrub_runtime_output(self, content: str) -> str:
         scrubbed = content
         for value in getattr(self, "_active_runtime_secret_values", ()):
@@ -374,6 +518,8 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         command: str,
         block: bool,
         timeout: float,
+        session_id: str | None = None,
+        run_id: str | None = None,
     ) -> str:
         """Run one secret-bearing Bundle command without background sessions.
 
@@ -423,32 +569,44 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         process: subprocess.Popen[str] | None = None
         timed_out = False
         try:
-            popen_options: dict[str, object] = {}
-            if os.name == "nt":
-                create_group = getattr(
-                    subprocess,
-                    "CREATE_NEW_PROCESS_GROUP",
-                    0,
+            with self._terminal_lifecycle_lock:
+                if self._closing or run_id in self._quiescing_runs:
+                    raise ToolInvocationNotDispatchedError(
+                        "Terminal is closing"
+                    )
+                process = subprocess.Popen(
+                    _shell_command_argv(
+                        command,
+                        os_name=os.name,
+                        comspec=os.environ.get("COMSPEC"),
+                    ),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    stdin=subprocess.PIPE,
+                    text=True,
+                    cwd=self.working_dir,
+                    encoding="utf-8",
+                    env=self._get_env_vars(),
+                    start_new_session=os.name != "nt",
+                    creationflags=(
+                        getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                        if os.name == "nt"
+                        else 0
+                    ),
                 )
-                if create_group:
-                    popen_options["creationflags"] = create_group
-            else:
-                popen_options["start_new_session"] = True
-            process = subprocess.Popen(
-                _shell_command_argv(
-                    command,
-                    os_name=os.name,
-                    comspec=os.environ.get("COMSPEC"),
-                ),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                stdin=subprocess.PIPE,
-                text=True,
-                cwd=self.working_dir,
-                encoding="utf-8",
-                env=self._get_env_vars(),
-                **popen_options,
-            )
+                if session_id is not None:
+                    if not hasattr(self, "_terminal_session_runs"):
+                        self._terminal_session_runs = {}
+                    self._terminal_session_runs[session_id] = run_id
+                    with self._session_lock:
+                        self.shell_sessions[session_id] = {
+                            "process": process,
+                            "backend": "local",
+                            "running": True,
+                            "eigent_process_group": process.pid
+                            if os.name != "nt"
+                            else None,
+                        }
             try:
                 output, _ = process.communicate(timeout=timeout)
             except subprocess.TimeoutExpired:
@@ -490,6 +648,12 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                         "Failed to terminate protected Bundle process tree",
                         extra={"api_task_id": self.api_task_id},
                     )
+            if session_id is not None and cleanup_failure is None:
+                with self._session_lock:
+                    session = self.shell_sessions.get(session_id)
+                    if session is not None:
+                        session["running"] = False
+                        session["eigent_group_stopped"] = True
             self._write_to_log(self.blocking_log_file, log_entry + "\n")
             if cleanup_failure is not None:
                 raise RuntimeError(
@@ -564,7 +728,17 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
 
         Copies writable packages from terminal_base into Task-owned storage.
         """
+        # A cwd/Run rebind is not proof of which venv was selected. Publish
+        # only after this existing setup path successfully selects an environment.
+        self._preflight_venv_selection: (
+            tuple[str, tuple[str, str] | None] | None
+        ) = None
         self.cloned_env_path = os.path.join(self._agent_venv_dir, ".venv")
+        context = run_context_for_task(self.api_task_id)
+        selection = (
+            self.cloned_env_path,
+            (context.project_id, context.run_id) if context else None,
+        )
         terminal_base_path = get_terminal_base_venv_path()
 
         # Check if terminal_base exists
@@ -595,6 +769,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 f"Using existing cloned environment: {self.cloned_env_path}"
             )
             self.python_executable = cloned_python
+            self._preflight_venv_selection = selection
             return
 
         logger.info(f"Cloning terminal_base venv to: {self.cloned_env_path}")
@@ -609,6 +784,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             )
 
             self.python_executable = cloned_python
+            self._preflight_venv_selection = selection
             logger.info(
                 f"Successfully cloned environment to: {self.cloned_env_path}"
             )
@@ -758,7 +934,9 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         self._update_terminal_output(content)
 
     def _update_terminal_output(self, output: str):
-        task_lock = get_task_lock(self.api_task_id)
+        task_lock = get_task_lock_if_exists(self.api_task_id)
+        if task_lock is None:
+            return
         process_task_id = process_task.get("")
         _safe_put_queue(
             task_lock,
@@ -806,12 +984,36 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             mutation_lock = threading.RLock()
             self._terminal_mutation_lock = mutation_lock
         with mutation_lock:
-            return self._shell_exec_with_workspace_checkpoint(
-                command=command,
-                id=id,
-                block=block,
-                timeout=timeout,
-            )
+            if not hasattr(self, "_terminal_lifecycle_lock"):
+                self._terminal_lifecycle_lock = threading.RLock()
+                self._closing = False
+                self._quiescing_runs = set()
+                self._workspace_checkpoint_failures = {}
+            if self._closing:
+                raise ToolInvocationNotDispatchedError("Terminal is closing")
+            self._active_workspace_execution = None
+            try:
+                return self._shell_exec_with_workspace_checkpoint(
+                    command=command,
+                    id=id,
+                    block=block,
+                    timeout=timeout,
+                )
+            except Exception as error:
+                active = self._active_workspace_execution
+                if active is not None:
+                    session_id, service, prepared = active
+                    if self._workspace_session_running(session_id):
+                        self._kill_registered_process(session_id)
+                    self._workspace_checkpoint_failures[session_id] = (
+                        prepared.context.run_id,
+                        error,
+                    )
+                    if not self._workspace_session_running(session_id):
+                        service.mark_broad_write_needs_attention(prepared)
+                raise
+            finally:
+                self._active_workspace_execution = None
 
     # Preserve CAMEL's parameter contract while documenting Run storage.
     shell_exec.__doc__ = (
@@ -844,10 +1046,18 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
 
         # Auto-generate ID if not provided
         if id is None:
-            import time
+            id = f"auto_{uuid.uuid4().hex}"
 
-            id = f"auto_{int(time.time() * 1000)}"
-
+        if id in getattr(self, "_workspace_checkpoint_watchers", ()):
+            raise ToolInvocationNotDispatchedError(
+                "Terminal session is still checkpointing; use a new session ID"
+            )
+        if id in getattr(
+            self, "shell_sessions", {}
+        ) and self._workspace_session_running(id):
+            raise ToolInvocationNotDispatchedError(
+                "Terminal session is still active"
+            )
         run_context = run_context_for_task(self.api_task_id)
         # A code-owned pwd response cannot launch a shell, source a profile,
         # redirect output or mutate files. Do not exempt arbitrary commands
@@ -913,11 +1123,13 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 self.working_dir = str(run_context.working_directory)
                 self._workspace_run_id = run_context.run_id
 
-        isolate_local_session = (
-            runtime_env_provider is None
-            and not getattr(self, "use_docker_backend", False)
-            and os.name != "nt"
+        if prepared is not None:
+            self._active_workspace_execution = (id, mutation_service, prepared)
+
+        managed_local_session = runtime_env_provider is None and not getattr(
+            self, "use_docker_backend", False
         )
+        isolate_local_session = managed_local_session and os.name != "nt"
         command_for_spawn = (
             _isolated_local_command(command)
             if isolate_local_session
@@ -925,12 +1137,42 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         )
 
         if runtime_env_provider is None:
-            result = super().shell_exec(
-                id=id,
-                command=command_for_spawn,
-                block=block,
-                timeout=timeout,
-            )
+            with self._terminal_lifecycle_lock:
+                if self._closing or (
+                    run_context is not None
+                    and run_context.run_id in self._quiescing_runs
+                ):
+                    if (
+                        prepared is not None
+                        and mutation_service is not None
+                        and request_id is not None
+                    ):
+                        mutation_service.complete_broad_write(
+                            prepared,
+                            operation_request_id=request_id,
+                            actor_id=self.agent_name,
+                            trigger="terminal.execute",
+                        )
+                    raise ToolInvocationNotDispatchedError(
+                        "Terminal is closing"
+                    )
+                if not hasattr(self, "_terminal_session_runs"):
+                    self._terminal_session_runs = {}
+                self._terminal_session_runs[id] = (
+                    run_context.run_id if run_context is not None else None
+                )
+                result = super().shell_exec(
+                    id=id,
+                    command=command_for_spawn,
+                    block=False if managed_local_session else block,
+                    timeout=timeout,
+                )
+                if isolate_local_session:
+                    self._record_local_process_group(
+                        id, original_command=command
+                    )
+            if managed_local_session and block:
+                result = self._wait_local_command(id, result, timeout=timeout)
         else:
             with self._runtime_env_lock:
                 with runtime_env_provider() as runtime_environment:
@@ -951,14 +1193,13 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                             command=command,
                             block=block,
                             timeout=timeout,
+                            session_id=id,
+                            run_id=run_context.run_id if run_context else None,
                         )
                     finally:
                         self._runtime_env_overlay.clear()
                         self._runtime_env_overlay = None
                         self._active_runtime_secret_values = ()
-
-        if isolate_local_session:
-            self._record_local_process_group(id, original_command=command)
 
         process_continues = (
             not block
@@ -992,6 +1233,12 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 mutation_service=mutation_service,
                 prepared=prepared,
                 operation_request_id=request_id,
+                checkpoint=get_current_tool_checkpoint(),
+            )
+            return BackgroundToolResult(
+                str(result)
+                + "\nDispatch accepted; process exit and workspace "
+                "checkpoint are still pending."
             )
 
         # If the command executed successfully but returned empty output,
@@ -1001,6 +1248,92 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             return "Command executed successfully (no output)."
 
         return result
+
+    def _wait_local_command(self, session_id, dispatch_result, *, timeout):
+        """Wait on a registered process, keeping cancellation able to find it."""
+        session_lock = getattr(self, "_session_lock", None)
+        if session_lock is None:
+            return dispatch_result
+        with session_lock:
+            session = self.shell_sessions.get(session_id)
+        if session is None:  # Injected adapters may return a result directly.
+            return dispatch_result
+        # Match communicate()'s foreground EOF without sharing stdout with
+        # the reader. Only explicitly background calls keep interactive stdin.
+        self._close_local_stdin(session)
+        deadline = time.monotonic() + max(0.0, timeout)
+        while self._workspace_session_running(session_id):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return f"Process continues in background as session '{session_id}'."
+            with self._output_condition:
+                self._output_condition.wait(min(0.05, remaining))
+        reader = session.get("eigent_reader_thread")
+        if reader is not None:
+            reader.join(timeout=1.0)
+            if reader.is_alive():
+                return f"Process continues in background as session '{session_id}'."
+        output = []
+        stream = session.get("output_stream")
+        if stream is not None:
+            while not stream.empty():
+                output.append(stream.get_nowait())
+        if session.get("error"):
+            raise RuntimeError(session["error"])
+        exit_code = session["process"].poll()
+        text = _to_plain("".join(output))
+        if exit_code != 0:
+            return f"Error: Command exited with code {exit_code}.\n{text}"
+        return text
+
+    def _close_local_stdin(self, session: dict) -> None:
+        """Release our input pipe; stdout belongs exclusively to its reader."""
+        if session.get("backend") != "local":
+            return
+        stdin = getattr(session.get("process"), "stdin", None)
+        if stdin is not None and not stdin.closed:
+            try:
+                stdin.close()
+            except BrokenPipeError:
+                # Like communicate(), tolerate a child that closed its input.
+                pass
+
+    def _start_output_reader_thread(self, session_id):
+        """Retain reader ownership; stdout EOF alone is not process exit."""
+        with self._session_lock:
+            session = self.shell_sessions[session_id]
+        if session.get("backend") != "local":
+            return super()._start_output_reader_thread(session_id)
+
+        def read_output():
+            try:
+                process = session["process"]
+                for line in iter(process.stdout.readline, ""):
+                    self._write_to_log(session["log_file"], line)
+                    try:
+                        session["output_stream"].put_nowait(line)
+                    except Full:
+                        pass
+                    with self._output_condition:
+                        self._output_condition.notify_all()
+                process.wait()
+                self._close_local_stdin(session)
+            except Exception as error:
+                session["error"] = str(error)
+            finally:
+                session["process"].stdout.close()
+                with self._output_condition:
+                    session["running"] = False
+                    self._output_condition.notify_all()
+                wakeup = getattr(
+                    self, "_workspace_checkpoint_wakeups", {}
+                ).get(session_id)
+                if wakeup is not None:
+                    wakeup.set()
+
+        reader = threading.Thread(target=read_output, daemon=True)
+        session["eigent_reader_thread"] = reader
+        reader.start()
 
     def _prepare_terminal_workspace(
         self,
@@ -1019,6 +1352,10 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
 
         deadline = time.monotonic() + _WORKSPACE_LEASE_WAIT_MAX_SECONDS
         while True:
+            if getattr(
+                self, "_closing", False
+            ) or run_context.run_id in getattr(self, "_quiescing_runs", set()):
+                raise ToolInvocationNotDispatchedError("Terminal is closing")
             try:
                 return mutation_service.prepare_broad_write(
                     context=run_context,
@@ -1033,6 +1370,60 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 time.sleep(
                     min(_WORKSPACE_LEASE_RETRY_INTERVAL_SECONDS, remaining)
                 )
+
+    def shell_write_content_to_file(self, content: str, file_path: str) -> str:
+        """Write content through the same workspace admission as shell writers.
+
+        Args:
+            content: Text to write.
+            file_path: Destination relative to the workspace, or an absolute path.
+        """
+        with self._terminal_mutation_lock:
+            context = run_context_for_task(self.api_task_id)
+            if self._closing or (
+                context is not None and context.run_id in self._quiescing_runs
+            ):
+                raise ToolInvocationNotDispatchedError("Terminal is closing")
+            service = get_default_workspace_mutation_service()
+            checkpoint = get_current_tool_checkpoint()
+            request_id = (
+                checkpoint.tool_call_id
+                if checkpoint is not None
+                else f"local-terminal:{uuid.uuid4().hex}"
+            )
+            prepared = None
+            if context is not None:
+                try:
+                    prepared = service.prepare_file_write(
+                        context=context,
+                        filename=file_path,
+                        operation_request_id=request_id,
+                        actor_id=self.agent_name,
+                        trigger="terminal.write_file",
+                    )
+                except Exception as error:
+                    raise ToolInvocationNotDispatchedError(
+                        "Terminal file write was not started: " + str(error)
+                    ) from error
+            if prepared is not None:
+                self.working_dir = str(prepared.mutation_root)
+                file_path = str(prepared.target_path)
+            result = super().shell_write_content_to_file(content, file_path)
+            if prepared is not None:
+                try:
+                    service.complete_file_write(
+                        prepared,
+                        operation_request_id=request_id,
+                        actor_id=self.agent_name,
+                        trigger="terminal.write_file",
+                    )
+                except Exception as error:
+                    self._workspace_checkpoint_failures[request_id] = (
+                        prepared.context.run_id,
+                        error,
+                    )
+                    raise
+            return result
 
     def _record_local_process_group(
         self,
@@ -1152,13 +1543,16 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                     # successful killpg() alone is not complete cleanup.
                     process.wait(timeout=_LOCAL_PROCESS_GROUP_GRACE_SECONDS)
                 except subprocess.TimeoutExpired:
-                    logger.warning(
+                    logger.error(
                         "Terminal process-group leader was not reaped after "
                         "force kill",
                         extra={
                             "pid": process.pid,
                             "process_group": process_group,
                         },
+                    )
+                    raise RuntimeError(
+                        "Terminal process-group leader is still alive"
                     )
             return
 
@@ -1172,21 +1566,25 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             try:
                 process.wait(timeout=_LOCAL_PROCESS_GROUP_GRACE_SECONDS)
             except subprocess.TimeoutExpired:
-                logger.warning(
+                logger.error(
                     "Terminal session process did not exit after force kill",
                     extra={"pid": process.pid},
                 )
+                raise RuntimeError("Terminal session process is still alive")
 
     def _kill_registered_process(self, id: str) -> str:
         """Terminate a tracked process without emitting a Tool event."""
 
         with self._session_lock:
             session = self.shell_sessions.get(id)
-            if session is None or not session.get("running", False):
+            if session is None:
                 return f"Error: No active session found with ID '{id}'."
             if session.get("backend") != "local":
+                if session.get("running"):
+                    session["eigent_stop_requested"] = True
                 return super().shell_kill_process(id)
             session["stopping"] = True
+            session["eigent_stop_requested"] = True
 
         try:
             self._terminate_local_session(session)
@@ -1201,12 +1599,14 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             )
             return f"Error killing process in session '{id}': {exc}"
 
-        # Do not close stdin/stdout here.  The output reader owns stdout and
+        self._close_local_stdin(session)
+        # Do not close stdout here.  The output reader owns stdout and
         # closes it after every process in the isolated group has released the
         # pipe.  Cross-thread TextIOWrapper.close() is the deadlock fixed here.
         with self._output_condition:
             current = self.shell_sessions.get(id)
             if current is not None:
+                current["eigent_group_stopped"] = True
                 current["running"] = False
                 current["stopping"] = False
             self._output_condition.notify_all()
@@ -1217,6 +1617,26 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
 
         return self._kill_registered_process(id)
 
+    def _session_exit_code(self, session: dict) -> int | None:
+        """Read an observed exit from the existing local or Docker backend."""
+        if session.get("backend") == "docker":
+            exec_id = session.get("exec_id")
+            if exec_id is None:
+                return None
+            state = self.docker_api_client.exec_inspect(exec_id)
+            exit_code = (
+                state.get("ExitCode")
+                if state.get("Running") is False
+                else None
+            )
+        elif session.get("backend") == "local":
+            process = session.get("process")
+            exit_code = process.poll() if process is not None else None
+        else:
+            return None
+        # Missing/malformed state is not evidence of a completed command.
+        return exit_code if type(exit_code) is int else None
+
     def _watch_background_workspace_mutation(
         self,
         *,
@@ -1224,6 +1644,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         mutation_service,
         prepared,
         operation_request_id: str,
+        checkpoint=None,
     ) -> None:
         """Checkpoint a background process only after its session exits."""
 
@@ -1235,6 +1656,8 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             self._workspace_checkpoint_runs = {}
             self._workspace_checkpoint_wakeups = {}
             self._workspace_checkpoint_completions = {}
+        if not hasattr(self, "_workspace_checkpoint_failures"):
+            self._workspace_checkpoint_failures = {}
         wakeup = threading.Event()
         completion = threading.Event()
         with lock:
@@ -1257,27 +1680,97 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                     )
                 )
                 renew_interval = max(0.05, min(30.0, lease_seconds / 3.0))
+                next_renewal = time.monotonic() + renew_interval
                 while self._workspace_session_running(session_id):
-                    wakeup.wait(renew_interval)
+                    wakeup.wait(min(0.1, renew_interval))
                     wakeup.clear()
-                    if self._workspace_session_running(session_id):
+                    if (
+                        self._workspace_session_running(session_id)
+                        and time.monotonic() >= next_renewal
+                    ):
                         mutation_service.renew_broad_write(prepared)
+                        next_renewal = time.monotonic() + renew_interval
+                session = getattr(self, "shell_sessions", {}).get(
+                    session_id, {}
+                )
+                reader = session.get("eigent_reader_thread")
+                if reader is not None:
+                    reader.join(timeout=1.0)
+                    if reader.is_alive():
+                        raise RuntimeError(
+                            "Terminal output reader did not stop"
+                        )
                 mutation_service.complete_broad_write(
                     prepared,
                     operation_request_id=operation_request_id,
                     actor_id=self.agent_name,
                     trigger="terminal.execute",
                 )
-                get_default_workspace_git_lifecycle().finalize_run(
-                    prepared.context.run_id
+                store = getattr(mutation_service, "journal", None)
+                tool_is_pending = checkpoint is not None and (
+                    store is None
+                    or any(
+                        item.tool_call_id == checkpoint.tool_call_id
+                        and item.status == "dispatched"
+                        for item in store.list_tool_calls(checkpoint.run_id)
+                    )
                 )
-            except Exception:
+                if tool_is_pending:
+                    exit_code = self._session_exit_code(session)
+                    stopped = session.get("eigent_stop_requested", False)
+                    failure = stopped or exit_code != 0 or session.get("error")
+                    finish_tool_checkpoint(
+                        checkpoint,
+                        result={
+                            "session_id": session_id,
+                            "exit_code": exit_code,
+                            "stopped": stopped,
+                            "workspace_checkpointed": True,
+                        },
+                        error=RuntimeError(
+                            "Background command stopped or failed"
+                        )
+                        if failure
+                        else None,
+                        outcome_known=exit_code is not None,
+                        journal=getattr(mutation_service, "journal", None),
+                    )
+                try:
+                    get_default_workspace_git_lifecycle().finalize_run(
+                        prepared.context.run_id
+                    )
+                except Exception:
+                    logger.exception(
+                        "Background terminal Git finalization needs attention"
+                    )
+            except Exception as error:
+                with lock:
+                    self._workspace_checkpoint_failures[session_id] = (
+                        prepared.context.run_id,
+                        error,
+                    )
+                try:
+                    if self._workspace_session_running(session_id):
+                        self._kill_registered_process(session_id)
+                    if not self._workspace_session_running(session_id):
+                        mutation_service.mark_broad_write_needs_attention(
+                            prepared
+                        )
+                    if checkpoint is not None:
+                        finish_tool_checkpoint(
+                            checkpoint,
+                            error=error,
+                            journal=getattr(mutation_service, "journal", None),
+                        )
+                except Exception:
+                    logger.exception(
+                        "Background mutation needs explicit reconciliation"
+                    )
                 logger.exception(
                     "Background terminal workspace checkpoint failed",
                     extra={"session_id": session_id},
                 )
             finally:
-                completion.set()
                 with lock:
                     self._workspace_checkpoint_watchers.discard(session_id)
                     self._workspace_checkpoint_runs.pop(session_id, None)
@@ -1285,6 +1778,7 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                     self._workspace_checkpoint_completions.pop(
                         session_id, None
                     )
+                completion.set()
 
         threading.Thread(
             target=wait_and_checkpoint,
@@ -1307,9 +1801,21 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
         and wait for their checkpoint watchers to release the mutation.
         """
 
+        lingering = list(self._stop_owned_sessions(run_id, timeout=timeout))
         lock = getattr(self, "_workspace_checkpoint_watchers_lock", None)
         if lock is None:
-            return ()
+            return tuple(
+                sorted(
+                    set(lingering)
+                    | {
+                        session_id
+                        for session_id, (owner, _error) in getattr(
+                            self, "_workspace_checkpoint_failures", {}
+                        ).items()
+                        if owner == run_id
+                    }
+                )
+            )
         with lock:
             run_by_session = dict(
                 getattr(self, "_workspace_checkpoint_runs", {})
@@ -1331,12 +1837,61 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 wakeup.set()
 
         deadline = time.monotonic() + max(0.0, timeout)
-        lingering: list[str] = []
         for session_id in targets:
             completion = completions.get(session_id)
             remaining = deadline - time.monotonic()
             if completion is None or not completion.wait(max(0.0, remaining)):
                 lingering.append(session_id)
+        with lock:
+            lingering.extend(
+                session_id
+                for session_id, (owner, _error) in getattr(
+                    self, "_workspace_checkpoint_failures", {}
+                ).items()
+                if owner == run_id
+            )
+        return tuple(sorted(set(lingering)))
+
+    def _stop_owned_sessions(self, run_id, *, timeout):
+        """Fence new dispatch, stop process groups, then join foreground work."""
+        lifecycle_lock = getattr(self, "_terminal_lifecycle_lock", None)
+        if lifecycle_lock is not None:
+            with lifecycle_lock:
+                if run_id is None:
+                    self._closing = True
+                else:
+                    self._quiescing_runs.add(run_id)
+                owners = dict(getattr(self, "_terminal_session_runs", {}))
+        else:
+            owners = {}
+        targets = [
+            session_id
+            for session_id in getattr(self, "shell_sessions", {})
+            if run_id is None or owners.get(session_id) == run_id
+        ]
+        lingering = []
+        for session_id in targets:
+            if self._workspace_session_running(session_id):
+                result = self._kill_registered_process(session_id)
+                if result.startswith("Error"):
+                    lingering.append(session_id)
+        mutation_lock = getattr(self, "_terminal_mutation_lock", None)
+        if mutation_lock is not None:
+            if mutation_lock.acquire(timeout=max(0.0, timeout)):
+                mutation_lock.release()
+            else:
+                lingering.append("foreground-terminal")
+        for session_id in targets:
+            session = self.shell_sessions.get(session_id, {})
+            reader = session.get("eigent_reader_thread")
+            if reader is not None and reader is not threading.current_thread():
+                reader.join(timeout=1.0)
+                if reader.is_alive():
+                    lingering.append(session_id)
+            if session.get("backend") == "local":
+                process = session.get("process")
+                if process is not None and process.poll() is not None:
+                    self._close_local_stdin(session)
         return tuple(lingering)
 
     def _workspace_session_running(self, session_id: str) -> bool:
@@ -1348,9 +1903,20 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
                 .get("running", False)
             )
         with session_lock:
-            return bool(
-                self.shell_sessions.get(session_id, {}).get("running", False)
-            )
+            session = self.shell_sessions.get(session_id, {})
+            process = session.get("process")
+            if session.get("backend") == "local" and process is not None:
+                if process.poll() is None:
+                    return True
+                # An exited shell can leave a silent descendant writing files.
+                # Stop the group before capturing any workspace delta.
+                group = session.get("eigent_process_group")
+                if group is not None and not session.get(
+                    "eigent_group_stopped"
+                ):
+                    self._terminate_local_session(session)
+                    session["eigent_group_stopped"] = True
+            return bool(session.get("running", False))
 
     def cleanup(self, remove_venv: bool = True):
         """Clean up all active sessions and optionally remove the virtual environment.
@@ -1359,8 +1925,21 @@ class TerminalToolkit(BaseTerminalToolkit, AbstractToolkit):
             remove_venv: If True, removes the .venv or .initial_env folder created
                         by this toolkit. Defaults to True to prevent disk bloat.
         """
-        # First call parent cleanup to kill all shell sessions
-        super().cleanup()
+        lingering = self._stop_owned_sessions(
+            None, timeout=_RUN_BACKGROUND_QUIESCE_TIMEOUT_SECONDS
+        )
+        runs = set(getattr(self, "_workspace_checkpoint_runs", {}).values())
+        for run_id in runs:
+            self.quiesce_run_background_sessions(run_id)
+        with getattr(
+            self, "_workspace_checkpoint_watchers_lock", threading.Lock()
+        ):
+            active_watchers = tuple(
+                getattr(self, "_workspace_checkpoint_watchers", ())
+            )
+        lingering = tuple(lingering) + active_watchers
+        if lingering:
+            raise RuntimeError(f"Terminal sessions did not stop: {lingering}")
 
         if not remove_venv:
             return

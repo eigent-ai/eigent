@@ -37,7 +37,7 @@ from app.run_journal import MemoryScopeStateRecord
 logger = logging.getLogger("lightweight_memory")
 _EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="memory-v2")
 _FUTURES: set[Future] = set()
-_SCHEDULE_LOCK = threading.Lock()
+_SCHEDULE_LOCK = threading.RLock()
 _PROJECT_SCHEDULES: dict[str, _ProjectMaintenanceSchedule] = {}
 _MAX_FAILURE_RETRIES = 5
 _MAX_RETRY_DELAY_SECONDS = 60.0
@@ -114,6 +114,14 @@ class _ProjectMaintenanceSchedule:
     future: Future | None = None
     timer: threading.Timer | None = None
     failure_attempts: int = 0
+
+
+class DeferredMemoryExtractionError(RuntimeError):
+    """Unextracted evidence remains; later bounded pages may still progress."""
+
+    def __init__(self, message: str, *, has_more: bool) -> None:
+        super().__init__(message)
+        self.has_more = has_more
 
 
 class MemoryExtractor(Protocol):
@@ -230,15 +238,19 @@ class IncrementalMemoryMaintainer:
             targets.append(("user", user_id))
 
         failures: list[tuple[str, str, Exception]] = []
+        more_work = False
         for scope_type, scope_id in targets:
             state = self._service.scope(scope_type, scope_id)
             if not state.capture_enabled:
                 continue
             try:
-                self._process_target(
-                    source_project_id=project_id,
-                    scope_type=scope_type,
-                    scope_id=scope_id,
+                more_work = (
+                    self._process_target(
+                        source_project_id=project_id,
+                        scope_type=scope_type,
+                        scope_id=scope_id,
+                    )
+                    or more_work
                 )
             except Exception as exc:
                 self._record_failure(
@@ -251,6 +263,17 @@ class IncrementalMemoryMaintainer:
 
         if failures:
             scope_type, scope_id, error = failures[0]
+            deferred_failures = [
+                exc
+                for _, _, exc in failures
+                if isinstance(exc, DeferredMemoryExtractionError)
+            ]
+            if len(deferred_failures) == len(failures):
+                raise DeferredMemoryExtractionError(
+                    str(error),
+                    has_more=more_work
+                    or any(exc.has_more for exc in deferred_failures),
+                ) from error
             raise RuntimeError(
                 f"Memory extraction failed for {scope_type}:{scope_id}: {error}"
             ) from error
@@ -262,7 +285,7 @@ class IncrementalMemoryMaintainer:
         source_project_id: str,
         scope_type: str,
         scope_id: str,
-    ) -> None:
+    ) -> bool:
         state = self._service.scope(scope_type, scope_id)
         ratio = state.current_token_count / state.token_limit
         if ratio >= state.consolidate_threshold and (
@@ -279,72 +302,96 @@ class IncrementalMemoryMaintainer:
                 ),
             ).scope_state
 
-        # One terminal trigger may represent a very long Run. Process a
-        # bounded number of pages; the scheduler queues another pass whenever
-        # any enabled target scope remains behind this Project History.
-        for _ in range(10):
-            after = self._target_watermark(
+        # Each pass has a fixed source frontier and at most ten bounded pages.
+        # Receipts allow later events to progress past an oversized event,
+        # while the successful watermark remains before that unresolved gap.
+        scan_cursor = self._target_watermark(
+            source_project_id=source_project_id,
+            scope_type=scope_type,
+            scope_id=scope_id,
+            state=state,
+        )
+        available = self._service.journal.get_project_history_cursor(
+            source_project_id
+        )
+
+        def pending_events(*, include_deferred: bool = True):
+            return self._service.journal.list_memory_extraction_events(
                 source_project_id=source_project_id,
+                target_scope_type=scope_type,
+                target_scope_id=scope_id,
+                after_cursor=parse_project_cursor(scan_cursor_start),
+                through_cursor=available,
+                limit=1,
+                include_deferred=include_deferred,
+            )
+
+        scan_cursor_start = scan_cursor
+        # Give unseen events their first bounded pass before retrying old
+        # deferrals. Otherwise >1000 oversized events repeat the first ten
+        # pages forever, starving everything behind them.
+        include_deferred = not pending_events(include_deferred=False)
+        for _ in range(10):
+            page = self._service.read_memory_extraction_page(
+                project_id=source_project_id,
                 scope_type=scope_type,
                 scope_id=scope_id,
-                state=state,
+                after_cursor=scan_cursor,
+                through_cursor=available,
+                include_deferred=include_deferred,
             )
-            page = self._service.search_history(
-                project_id=source_project_id,
-                after_cursor=after,
-                limit=100,
-                byte_budget=256 * 1024,
-                token_budget=16384,
-            )
-            if parse_project_cursor(page.next_cursor) == parse_project_cursor(
-                after
+            if (
+                parse_project_cursor(page.next_cursor)
+                <= parse_project_cursor(scan_cursor)
+                and not page.complete
             ):
-                if page.complete:
-                    if scope_type == "project":
-                        if state.last_error is not None:
-                            state = self._service.journal.record_memory_maintenance_result(
-                                scope_type,
-                                scope_id,
-                                expected_revision=state.revision,
-                                processed_through_watermark=page.next_cursor,
-                                watermark_kind="journal_cursor",
-                                extractor_version=self._extractor.version,
-                            )
-                    else:
-                        self._service.journal.record_memory_extraction_watermark(
-                            target_scope_type=scope_type,
-                            target_scope_id=scope_id,
-                            source_project_id=source_project_id,
-                            processed_through_watermark=page.next_cursor,
-                            watermark_kind="journal_cursor",
-                            extractor_version=self._extractor.version,
-                        )
-                    return
-                raise RuntimeError(
-                    "History page exceeded the bounded extraction budget "
-                    "before its first event"
-                )
+                raise RuntimeError("Memory extraction page made no progress")
 
             active = self._service.list_entries(scope_type, scope_id)
-            proposals = self._extractor.extract(
-                active_memory=active,
-                history_delta=page.items,
-                target_scope=scope_type,
-            )[:3]
+            proposals = (
+                self._extractor.extract(
+                    active_memory=active,
+                    history_delta=page.items,
+                    target_scope=scope_type,
+                )
+                if page.items
+                else ()
+            )
+            # Never slice away proposals and then acknowledge their evidence.
+            if len(proposals) > 3:
+                raise RuntimeError("Extractor exceeded the mutation bound")
+            sources = {item.event_id: item for item in page.items}
             projected_tokens = state.current_token_count
-            bounded_proposals: list[ProposedMemoryMutation] = []
             for proposal in proposals:
-                proposal_tokens = count_tokens(proposal.content)
                 if (
-                    projected_tokens + proposal_tokens
-                    > state.token_limit * 0.9
+                    proposal.target_scope != scope_type
+                    or proposal.source_trust != "user_asserted"
+                    or not proposal.source_event_ids
+                    or any(
+                        event_id not in sources
+                        or sources[event_id].event_type != "user.message"
+                        for event_id in proposal.source_event_ids
+                    )
                 ):
-                    continue
-                bounded_proposals.append(proposal)
-                projected_tokens += proposal_tokens
-            proposals = tuple(bounded_proposals)
-            cursor_from = after or format_project_cursor(0)
-            if not proposals and scope_type == "project":
+                    raise PermissionError(
+                        "Extraction requires matching scope and cited user "
+                        "events from this Project's bounded page"
+                    )
+                projected_tokens += count_tokens(proposal.content)
+                if projected_tokens > state.token_limit * 0.9:
+                    raise RuntimeError(
+                        "Memory extraction deferred: target capacity"
+                    )
+
+            cursor_from = scan_cursor or format_project_cursor(0)
+            if (
+                not proposals
+                and scope_type == "project"
+                and any(
+                    status != "deferred_budget"
+                    for _, status, _ in page.receipts
+                )
+            ):
                 identity = hashlib.sha256(
                     (
                         f"{self._extractor.version}|{scope_type}|{scope_id}|"
@@ -361,20 +408,30 @@ class IncrementalMemoryMaintainer:
                     memory_id=None,
                     actor_type="extractor",
                     reason=(
-                        "incremental extraction found no durable Memory "
-                        f"in {cursor_from}..{page.next_cursor}"
+                        f"incremental extraction {cursor_from}..{page.next_cursor}: "
+                        "no new Memory from eligible evidence; non-user events "
+                        "excluded; budget-deferred events remain unextracted"
                     ),
                     source_refs=tuple(
-                        item.event_id for item in page.items[:32]
+                        event.event_id
+                        for event, status, _ in page.receipts[:32]
+                        if status != "deferred_budget"
                     ),
                 )
-            for index, proposal in enumerate(proposals):
+            for proposal in proposals:
+                # Page boundaries and proposal indexes can change on retry
+                # after an earlier mutation has already committed.
                 identity = hashlib.sha256(
-                    (
-                        f"{self._extractor.version}|{scope_type}|{scope_id}|"
-                        f"{source_project_id}|{cursor_from}|"
-                        f"{page.next_cursor}|{index}|{proposal.kind}|"
-                        f"{proposal.content}"
+                    repr(
+                        (
+                            self._extractor.version,
+                            scope_type,
+                            scope_id,
+                            source_project_id,
+                            tuple(sorted(set(proposal.source_event_ids))),
+                            proposal.kind,
+                            proposal.content,
+                        )
                     ).encode()
                 ).hexdigest()
                 self._service.create_entry(
@@ -383,37 +440,88 @@ class IncrementalMemoryMaintainer:
                     kind=proposal.kind,
                     content=proposal.content,
                     actor_type="extractor",
-                    reason=(
-                        "incremental extraction "
-                        f"{cursor_from}..{page.next_cursor}"
-                    ),
+                    reason=f"incremental extraction by {self._extractor.version}",
                     source_trust=proposal.source_trust,
-                    source_refs=proposal.source_event_ids,
+                    source_refs=tuple(sorted(set(proposal.source_event_ids))),
                     sensitivity=proposal.sensitivity,
                     request_id=f"memory-extract:{identity}",
                 )
 
+            self._service.journal.record_memory_extraction_receipts(
+                source_project_id=source_project_id,
+                target_scope_type=scope_type,
+                target_scope_id=scope_id,
+                extractor_version=self._extractor.version,
+                receipts=page.receipts,
+            )
             state = self._service.scope(scope_type, scope_id)
+            current = self._target_watermark(
+                source_project_id=source_project_id,
+                scope_type=scope_type,
+                scope_id=scope_id,
+                state=state,
+            )
+            frontier = self._service.journal.memory_extraction_frontier(
+                source_project_id=source_project_id,
+                target_scope_type=scope_type,
+                target_scope_id=scope_id,
+                after_cursor=parse_project_cursor(current),
+                through_cursor=max(
+                    parse_project_cursor(current),
+                    parse_project_cursor(page.next_cursor),
+                ),
+            )
+            watermark = format_project_cursor(frontier)
+            pending = pending_events()
+            last_error = pending[0].last_error if pending else None
             if scope_type == "project":
                 state = self._service.journal.record_memory_maintenance_result(
                     scope_type,
                     scope_id,
                     expected_revision=state.revision,
-                    processed_through_watermark=page.next_cursor,
+                    processed_through_watermark=watermark,
                     watermark_kind="journal_cursor",
                     extractor_version=self._extractor.version,
+                    last_error=last_error,
                 )
             else:
                 self._service.journal.record_memory_extraction_watermark(
                     target_scope_type=scope_type,
                     target_scope_id=scope_id,
                     source_project_id=source_project_id,
-                    processed_through_watermark=page.next_cursor,
+                    processed_through_watermark=watermark,
                     watermark_kind="journal_cursor",
                     extractor_version=self._extractor.version,
+                    last_error=last_error,
                 )
+            logger.info(
+                "Incremental Memory extraction page processed",
+                extra={
+                    "project_id": source_project_id,
+                    "scope_type": scope_type,
+                    "scope_id": scope_id,
+                    "scan_cursor": page.next_cursor,
+                    "processed_through_watermark": watermark,
+                    "candidate_count": len(page.items),
+                    "excluded_count": sum(
+                        s == "excluded" for _, s, _ in page.receipts
+                    ),
+                    "deferred_count": sum(
+                        s == "deferred_budget" for _, s, _ in page.receipts
+                    ),
+                },
+            )
+            scan_cursor = page.next_cursor
             if page.complete:
-                return
+                break
+        pending = pending_events()
+        if pending and pending[0].last_error:
+            raise DeferredMemoryExtractionError(
+                pending[0].last_error,
+                has_more=not include_deferred
+                and bool(pending_events(include_deferred=False)),
+            )
+        return not page.complete
 
     def _target_watermark(
         self,
@@ -527,7 +635,7 @@ def _submit_project_memory_maintenance(project_id: str) -> None:
         state.future = future
     _FUTURES.add(future)
 
-    def _done(completed: Future) -> None:
+    def _finish(completed: Future) -> None:
         _FUTURES.discard(completed)
         with _SCHEDULE_LOCK:
             current = _PROJECT_SCHEDULES.setdefault(
@@ -549,6 +657,7 @@ def _submit_project_memory_maintenance(project_id: str) -> None:
                             "project_id": project_id,
                             "failure_attempts": failure_attempts,
                             "last_error": scope_state.last_error,
+                            "retry_delay_seconds": delay,
                         },
                     )
                     _schedule_project_memory_maintenance_after(
@@ -562,6 +671,7 @@ def _submit_project_memory_maintenance(project_id: str) -> None:
                         extra={
                             "project_id": project_id,
                             "last_error": scope_state.last_error,
+                            "failure_attempts": failure_attempts,
                         },
                     )
                 return
@@ -577,7 +687,23 @@ def _submit_project_memory_maintenance(project_id: str) -> None:
             else:
                 with _SCHEDULE_LOCK:
                     _PROJECT_SCHEDULES.pop(project_id, None)
-        except Exception:
+        except Exception as error:
+            if (
+                isinstance(error, DeferredMemoryExtractionError)
+                and error.has_more
+            ):
+                # Continue only known bounded deferrals with later unread
+                # pages. Arbitrary extraction/write failures still exhaust
+                # the retry budget, even if History remains behind.
+                current.failure_attempts = 0
+                logger.warning(
+                    "Memory extraction deferred; continuing bounded scan",
+                    extra={"project_id": project_id, "last_error": str(error)},
+                )
+                _schedule_project_memory_maintenance_after(
+                    project_id, _CONTINUATION_DELAY_SECONDS
+                )
+                return
             with _SCHEDULE_LOCK:
                 current.failure_attempts += 1
                 failure_attempts = current.failure_attempts
@@ -590,14 +716,32 @@ def _submit_project_memory_maintenance(project_id: str) -> None:
             )
             delay = _maintenance_retry_delay(failure_attempts)
             if delay is not None:
+                logger.warning(
+                    "Incremental Memory maintenance retry scheduled",
+                    extra={
+                        "project_id": project_id,
+                        "failure_attempts": failure_attempts,
+                        "retry_delay_seconds": delay,
+                    },
+                )
                 _schedule_project_memory_maintenance_after(project_id, delay)
             else:
                 with _SCHEDULE_LOCK:
                     _PROJECT_SCHEDULES.pop(project_id, None)
                 logger.error(
                     "Incremental Memory maintenance retry budget exhausted",
-                    extra={"project_id": project_id},
+                    extra={
+                        "project_id": project_id,
+                        "failure_attempts": failure_attempts,
+                    },
                 )
+
+    def _done(completed: Future) -> None:
+        # Preserve lane ownership through result inspection and rescheduling.
+        # A simultaneous terminal trigger must not reset retries or start a
+        # second pass in the callback's former clear-future/submit gap.
+        with _SCHEDULE_LOCK:
+            _finish(completed)
 
     future.add_done_callback(_done)
 

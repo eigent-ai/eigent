@@ -18,7 +18,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import Response
+from fastapi import HTTPException, Response
 from fastapi.responses import StreamingResponse
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -1008,12 +1008,14 @@ class TestChatController:
             mock_task_lock.put_queue.assert_awaited_once()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("capability_rejected", [False, True])
     async def test_follow_up_admission_persists_and_rebinds_live_consumer(
         self,
         mock_task_lock,
         mock_request,
         controller_run_journal,
         tmp_path,
+        capability_rejected,
     ):
         coordinator = RunCoordinator()
         release = asyncio.Event()
@@ -1061,6 +1063,11 @@ class TestChatController:
         admission_service = MagicMock()
         follow_up_spec = SimpleNamespace(
             spec_id="envspec-follow-up",
+            semantic_spec={
+                "runtime_capability_manifest": {
+                    "model_capability": {"api_mode": "responses"}
+                }
+            },
             thinking_effort_requested=SimpleNamespace(value="medium"),
             thinking_effort_effective=SimpleNamespace(value="medium"),
             provider_parameter_name=None,
@@ -1071,6 +1078,12 @@ class TestChatController:
             spec=follow_up_spec,
             binding=object(),
         )
+        if capability_rejected:
+            from app.workspace_config import UnsupportedThinkingEffortError
+
+            admission_service.persist_for_run.side_effect = (
+                UnsupportedThinkingEffortError("unsupported fixture effort")
+            )
         data = SupplementChat(question="next turn", task_id="run-new")
 
         with (
@@ -1114,6 +1127,25 @@ class TestChatController:
                 "app.controller.chat_controller.apply_run_env_for_third_party"
             ),
         ):
+            if capability_rejected:
+                with pytest.raises(HTTPException) as error:
+                    await improve("project-1", data, mock_request)
+                assert error.value.status_code == 422
+                assert (
+                    error.value.detail["code"] == "unsupported_thinking_effort"
+                )
+                assert (
+                    await coordinator.get_handle("run-old")
+                    is subscription.handle
+                )
+                assert await coordinator.get_handle("run-new") is None
+                assert mock_task_lock.run_context.run_id == "run-old"
+                mock_task_lock.put_queue.assert_not_awaited()
+                controller_run_journal.create_run_attempt.assert_not_called()
+                await subscription.aclose()
+                release.set()
+                await subscription.handle.wait()
+                return
             response = await improve("project-1", data, mock_request)
 
         assert response.status_code == 201
@@ -1127,6 +1159,7 @@ class TestChatController:
         mock_task_lock.put_queue.assert_awaited_once()
         admission_service.persist_for_run.assert_called_once()
         assert mock_task_lock.run_context.attempt_id == "attempt-1"
+        assert mock_task_lock.provider_model_transport == "responses"
         queued = mock_task_lock.put_queue.await_args.args[0]
         assert queued.attempt_id == mock_task_lock.run_context.attempt_id
 
