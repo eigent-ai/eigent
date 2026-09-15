@@ -225,6 +225,10 @@ export type ProjectSnapshotInput = {
     status: string;
     expected_next_run_sequence: number;
     updated_at: string;
+    /** Canonical execution time; excludes gaps between attempts. */
+    total_attempt_elapsed_ms?: number | null;
+    /** Local measurement anchor; not a Run API/SQLite field. */
+    totalAttemptElapsedAt?: string | null;
     /** RunJournal aggregate version; aliases the latest event run_version. */
     run_version?: number;
     /** Accepted for direct snapshots shaped like the existing GET /runs API. */

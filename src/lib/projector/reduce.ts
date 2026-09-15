@@ -195,6 +195,77 @@ export function completeProjectViewResync(
   };
 }
 
+/** Update Run facts only; callers own event acceptance and history cursors. */
+export function reduceProjectedRun(
+  previousRun: ProjectedRun | undefined,
+  event: CanonicalProjectEvent
+): ProjectedRun {
+  const interactionDecisionContinued =
+    (event.eventType === 'interaction.resolved' ||
+      event.eventType === 'approval.decided') &&
+    event.payload.continued_attempt === true;
+  const candidateStatus =
+    (interactionDecisionContinued
+      ? 'running'
+      : RUN_STATUS_BY_EVENT[event.eventType]) ||
+    (event.source !== 'canonical' && event.legacyStep === 'end'
+      ? 'completed'
+      : previousRun?.status || 'running');
+  const status =
+    previousRun &&
+    ((TERMINAL_RUN_STATUSES.has(previousRun.status) &&
+      ['pending', 'running', 'waiting_for_user', 'cancelling'].includes(
+        candidateStatus
+      )) ||
+      (event.source === 'canonical'
+        ? event.runVersion < previousRun.runVersion
+        : previousRun.runVersion > 0))
+      ? previousRun.status
+      : !interactionDecisionContinued &&
+          !RUN_STATUS_BY_EVENT[event.eventType] &&
+          previousRun &&
+          previousRun.status !== 'running' &&
+          previousRun.status !== 'interrupted' &&
+          candidateStatus === 'running'
+        ? previousRun.status
+        : candidateStatus;
+  return {
+    ...previousRun,
+    // An active snapshot's elapsed total is measured at its checkpoint. Once
+    // live execution advances, do not keep re-anchoring that old value to new
+    // events (or freeze the final duration at the earlier snapshot value).
+    ...(previousRun?.totalAttemptElapsedMs != null &&
+    (['pending', 'running', 'waiting_for_user', 'cancelling'].includes(
+      previousRun.status
+    ) ||
+      ['pending', 'running', 'waiting_for_user', 'cancelling'].includes(
+        status
+      )) &&
+    event.source === 'canonical' &&
+    event.runVersion > previousRun.runVersion
+      ? { totalAttemptElapsedMs: null, totalAttemptElapsedAt: null }
+      : {}),
+    runId: event.runId,
+    status,
+    // Legacy ChatStep IDs are global database IDs, not Run-local sequences.
+    // They must never move the canonical Run gap-detection watermark.
+    lastSequence:
+      event.source === 'canonical'
+        ? Math.max(previousRun?.lastSequence || 0, event.runSequence)
+        : previousRun?.lastSequence || 0,
+    runVersion:
+      event.source === 'canonical'
+        ? Math.max(previousRun?.runVersion || 0, event.runVersion)
+        : previousRun?.runVersion || 0,
+    updatedAt:
+      previousRun && event.runVersion < previousRun.runVersion
+        ? previousRun.updatedAt
+        : event.createdAt,
+    origin: previousRun?.origin ?? event.origin ?? null,
+    resumeBlockedReason: previousRun?.resumeBlockedReason ?? null,
+  };
+}
+
 export function reduceProjectView(
   state: ProjectViewState,
   event: CanonicalProjectEvent
@@ -274,61 +345,7 @@ export function reduceProjectView(
     };
   }
 
-  const interactionDecisionContinued =
-    (event.eventType === 'interaction.resolved' ||
-      event.eventType === 'approval.decided') &&
-    event.payload.continued_attempt === true;
-  const candidateStatus =
-    (interactionDecisionContinued
-      ? 'running'
-      : RUN_STATUS_BY_EVENT[event.eventType]) ||
-    (event.source !== 'canonical' && event.legacyStep === 'end'
-      ? 'completed'
-      : previousRun?.status || 'running');
-  const status =
-    previousRun &&
-    ((TERMINAL_RUN_STATUSES.has(previousRun.status) &&
-      ['pending', 'running', 'waiting_for_user', 'cancelling'].includes(
-        candidateStatus
-      )) ||
-      (event.source === 'canonical'
-        ? event.runVersion < previousRun.runVersion
-        : previousRun.runVersion > 0))
-      ? previousRun.status
-      : !interactionDecisionContinued &&
-          !RUN_STATUS_BY_EVENT[event.eventType] &&
-          previousRun &&
-          previousRun.status !== 'running' &&
-          previousRun.status !== 'interrupted' &&
-          candidateStatus === 'running'
-        ? previousRun.status
-        : candidateStatus;
-  const run: ProjectedRun = {
-    ...previousRun,
-    ...(previousRun?.totalAttemptElapsedMs != null &&
-    event.source === 'canonical' &&
-    event.runVersion > previousRun.runVersion
-      ? { totalAttemptElapsedMs: null, totalAttemptElapsedAt: null }
-      : {}),
-    runId: event.runId,
-    status,
-    // Legacy ChatStep IDs are global database IDs, not Run-local sequences.
-    // They must never move the canonical Run gap-detection watermark.
-    lastSequence:
-      event.source === 'canonical'
-        ? Math.max(previousRun?.lastSequence || 0, event.runSequence)
-        : previousRun?.lastSequence || 0,
-    runVersion:
-      event.source === 'canonical'
-        ? Math.max(previousRun?.runVersion || 0, event.runVersion)
-        : previousRun?.runVersion || 0,
-    updatedAt:
-      previousRun && event.runVersion < previousRun.runVersion
-        ? previousRun.updatedAt
-        : event.createdAt,
-    origin: previousRun?.origin ?? event.origin ?? null,
-    resumeBlockedReason: previousRun?.resumeBlockedReason ?? null,
-  };
+  const run = reduceProjectedRun(previousRun, event);
   const legacyStepId =
     (event.payload.__legacy_step_id as number | string | undefined) ||
     event.eventId;

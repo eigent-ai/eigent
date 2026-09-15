@@ -24,6 +24,7 @@ import {
 } from '@/service/projectRunsApi';
 import {
   getProjectEventStore,
+  type ProjectChatHistory,
   type ProjectEventStore,
 } from '@/store/projectEventStore';
 
@@ -38,11 +39,15 @@ const DEFAULT_MAX_EVENT_PAGES = 200;
 const DEFAULT_MAX_EVENTS = 2_000;
 const DEFAULT_MAX_BYTES = 8 * 1024 * 1024;
 const DEFAULT_MAX_EVENT_BYTES = 256 * 1024;
+const RESPONSE_ENVELOPE_ALLOWANCE_BYTES = 4 * 1024;
 /** Prevent one busy RunJournal list read from pinning Session hydration. */
 const DEFAULT_RUN_LIST_TIMEOUT_MS = 5_000;
+const DEFAULT_EVENT_PAGE_TIMEOUT_MS = 5_000;
 
 type RunEventsResponse = {
   run_id?: unknown;
+  project_id?: unknown;
+  after_sequence?: unknown;
   next_sequence?: unknown;
   has_more?: unknown;
   events?: unknown;
@@ -53,6 +58,7 @@ type RunDescriptor = {
   status: string;
   version: number;
   updatedAt: string;
+  totalAttemptElapsedMs: number | null;
   origin: string | null;
   resumeBlockedReason: string | null;
 };
@@ -75,6 +81,7 @@ export type ProjectEventStoreHydrationOptions = {
   maxBytes?: number;
   maxEventBytes?: number;
   runListTimeoutMs?: number;
+  eventPageTimeoutMs?: number;
 };
 
 export type ProjectEventStoreHydrationResult = {
@@ -112,18 +119,64 @@ function boundedInteger(
   fallback: number,
   maximum = Number.MAX_SAFE_INTEGER
 ): number {
-  return typeof value === 'number' && Number.isInteger(value) && value > 0
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
     ? Math.min(value, maximum)
     : fallback;
 }
 
 function abortError(signal: AbortSignal): Error {
-  if (signal.reason instanceof Error) return signal.reason;
+  if (signal.reason instanceof Error || signal.reason instanceof DOMException)
+    return signal.reason;
   return new DOMException('Project event hydration was aborted', 'AbortError');
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw abortError(signal);
+}
+
+/** A cancelled owner must settle even if a transport adapter ignores abort. */
+function abortableRead<T>(
+  request: Promise<T>,
+  signal?: AbortSignal
+): Promise<T> {
+  if (!signal) return request;
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(abortError(signal));
+    signal.addEventListener('abort', onAbort, { once: true });
+    if (signal.aborted) onAbort();
+    void request.then(resolve, reject).finally(() => {
+      signal.removeEventListener('abort', onAbort);
+    });
+  });
+}
+
+// Only an aggregate byte limit is adaptive. Invalid envelopes, individual
+// oversize events, gaps, and non-advancing cursors remain hard failures.
+class ReplayBatchByteLimit extends Error {}
+
+async function fitReplayBatch<T>(
+  maxEvents: number,
+  read: (limit: number) => Promise<T>,
+  signal?: AbortSignal
+): Promise<T> {
+  let limit = maxEvents;
+  while (true) {
+    throwIfAborted(signal);
+    try {
+      return await read(limit);
+    } catch (error) {
+      if (!(error instanceof ReplayBatchByteLimit)) throw error;
+      if (limit <= 1)
+        limitExceeded('A replay batch could not fit its byte bound');
+      limit = Math.max(1, Math.floor(limit / 2));
+      // Retry a smaller contiguous tail. Never consume a cursor or discard
+      // receipts just to fit the renderer's per-batch heap budget.
+      await abortableRead(
+        new Promise<void>((resolve) => setTimeout(resolve, 0)),
+        signal
+      );
+    }
+  }
 }
 
 async function fetchProjectRunsWithDeadline(
@@ -155,9 +208,49 @@ async function fetchProjectRunsWithDeadline(
   }
 }
 
+async function fetchEventPage(
+  runId: string,
+  afterSequence: number,
+  limit: number,
+  signal: AbortSignal | undefined,
+  timeoutMs: number
+): Promise<RunEventsResponse> {
+  throwIfAborted(signal);
+  const controller = new AbortController();
+  const onAbort = () => controller.abort(signal?.reason);
+  signal?.addEventListener('abort', onAbort, { once: true });
+  const deadline = setTimeout(
+    () =>
+      controller.abort(
+        new DOMException(
+          'Run event page exceeded the hydration deadline',
+          'TimeoutError'
+        )
+      ),
+    timeoutMs
+  );
+  try {
+    return await abortableRead(
+      fetchGet(
+        `/runs/${encodeURIComponent(runId)}/events`,
+        { after_sequence: afterSequence, limit },
+        undefined,
+        { signal: controller.signal }
+      ),
+      controller.signal
+    );
+  } finally {
+    clearTimeout(deadline);
+    signal?.removeEventListener('abort', onAbort);
+  }
+}
+
 function validTimestamp(value: unknown): boolean {
   return (
-    (typeof value === 'number' && Number.isFinite(value)) ||
+    (typeof value === 'number' &&
+      Number.isFinite(
+        new Date(value < 10_000_000_000 ? value * 1_000 : value).getTime()
+      )) ||
     (typeof value === 'string' &&
       value.trim().length > 0 &&
       !Number.isNaN(Date.parse(value)))
@@ -226,7 +319,7 @@ function parseRunDescriptors(
     }
     if (
       typeof item.version !== 'number' ||
-      !Number.isInteger(item.version) ||
+      !Number.isSafeInteger(item.version) ||
       item.version < 0
     ) {
       invalidResponse('Project Run listing contained an invalid version');
@@ -254,6 +347,12 @@ function parseRunDescriptors(
       status: item.status,
       version: item.version,
       updatedAt: isoTimestamp(item.updated_at),
+      totalAttemptElapsedMs:
+        typeof item.total_attempt_elapsed_ms === 'number' &&
+        Number.isFinite(item.total_attempt_elapsed_ms) &&
+        item.total_attempt_elapsed_ms >= 0
+          ? item.total_attempt_elapsed_ms
+          : null,
       // Missing provenance is intentionally unknown. Command owners must only
       // treat the explicit local origin as actionable.
       origin: typeof item.origin === 'string' ? item.origin : null,
@@ -274,7 +373,7 @@ function parseRunDescriptors(
 }
 
 async function readRunEvents(
-  descriptor: RunDescriptor,
+  descriptor: Pick<RunDescriptor, 'runId'>,
   input: {
     projectId: string;
     signal?: AbortSignal;
@@ -289,6 +388,12 @@ async function readRunEvents(
     events: CanonicalProjectEvent[];
     afterSequence: number;
     retainLimit: number;
+    /** Stop at a fixed historical boundary even when the Run is still active. */
+    throughSequence?: number;
+    /** Initial replay may include one page of appends, then leaves delivery to SSE. */
+    stopAfterSequence?: number;
+    assertCurrent?: () => void;
+    eventPageTimeoutMs?: number;
   }
 ): Promise<{ lastSequence: number; truncated: boolean }> {
   let cursor = input.afterSequence;
@@ -302,6 +407,7 @@ async function readRunEvents(
 
   while (true) {
     throwIfAborted(input.signal);
+    input.assertCurrent?.();
     if (input.budget.pages >= input.maxEventPages) {
       limitExceeded(
         `Project event hydration exceeded ${input.maxEventPages} pages`
@@ -309,26 +415,60 @@ async function readRunEvents(
     }
     input.budget.pages += 1;
 
-    const response = (await fetchGet(
-      `/runs/${encodeURIComponent(descriptor.runId)}/events`,
-      { after_sequence: cursor, limit: input.eventPageSize },
-      undefined,
-      { signal: input.signal }
-    )) as RunEventsResponse;
+    // The API has a count limit, not a byte-limit parameter. Request at most
+    // one batch's worst-case bytes, leaving room for the response envelope
+    // (31 events at the default limits).
+    const boundedPageSize = Math.min(
+      input.eventPageSize,
+      Math.max(
+        1,
+        Math.floor(
+          (input.maxBytes - RESPONSE_ENVELOPE_ALLOWANCE_BYTES) /
+            input.maxEventBytes
+        )
+      )
+    );
+    const pageSize =
+      input.throughSequence === undefined
+        ? boundedPageSize
+        : Math.min(boundedPageSize, input.throughSequence - cursor);
+    const response = await fetchEventPage(
+      descriptor.runId,
+      cursor,
+      pageSize,
+      input.signal,
+      input.eventPageTimeoutMs ?? DEFAULT_EVENT_PAGE_TIMEOUT_MS
+    );
     throwIfAborted(input.signal);
+    input.assertCurrent?.();
+
+    if (!response || typeof response !== 'object')
+      invalidResponse('Run event replay did not return an object');
 
     if (response.run_id !== undefined && response.run_id !== descriptor.runId) {
       invalidResponse('Run event replay returned a different Run');
     }
+    if (
+      response.project_id !== undefined &&
+      response.project_id !== input.projectId
+    )
+      invalidResponse('Run event replay returned a different Project');
+    if (
+      response.after_sequence !== undefined &&
+      response.after_sequence !== cursor
+    )
+      invalidResponse('Run event replay returned a different starting cursor');
     if (!Array.isArray(response.events)) {
       invalidResponse('Run event replay did not return an events array');
     }
-    if (response.events.length > input.eventPageSize) {
+    if (response.events.length > pageSize) {
       invalidResponse('Run event replay exceeded the requested page size');
     }
     if (typeof response.has_more !== 'boolean') {
       invalidResponse('Run event replay returned an invalid has_more value');
     }
+    if (estimateJsonBytes(response) > input.maxBytes)
+      limitExceeded('Run event replay exceeded the response byte bound');
 
     let expectedSequence = cursor + 1;
     let lastSequence = cursor;
@@ -342,14 +482,14 @@ async function readRunEvents(
       }
       if (
         typeof envelope.sequence !== 'number' ||
-        !Number.isInteger(envelope.sequence) ||
+        !Number.isSafeInteger(envelope.sequence) ||
         envelope.sequence < 1
       ) {
         invalidResponse('Run event replay contained an invalid sequence');
       }
       if (
         typeof envelope.run_version !== 'number' ||
-        !Number.isInteger(envelope.run_version) ||
+        !Number.isSafeInteger(envelope.run_version) ||
         envelope.run_version < 1
       ) {
         invalidResponse('Run event replay contained an invalid run_version');
@@ -388,11 +528,6 @@ async function readRunEvents(
           `Project event hydration exceeded ${input.maxScannedEvents} scanned events`
         );
       }
-      if (input.budget.bytes + bytes > input.maxBytes) {
-        limitExceeded(
-          `Project event hydration exceeded the ${input.maxBytes}-byte bound`
-        );
-      }
 
       let event: CanonicalProjectEvent;
       try {
@@ -413,6 +548,9 @@ async function readRunEvents(
       }
       if (input.seenEventIds.has(event.eventId)) {
         invalidResponse('Run event replay contained a duplicate event id');
+      }
+      if (input.budget.bytes + bytes > input.maxBytes) {
+        throw new ReplayBatchByteLimit();
       }
 
       expectedSequence += 1;
@@ -435,12 +573,31 @@ async function readRunEvents(
     const nextSequence = response.next_sequence;
     if (
       typeof nextSequence !== 'number' ||
-      !Number.isInteger(nextSequence) ||
+      !Number.isSafeInteger(nextSequence) ||
       nextSequence !== lastSequence
     ) {
       invalidResponse('Run event replay returned an invalid next_sequence');
     }
-    if (response.has_more !== true) {
+    if (
+      response.has_more &&
+      (response.events.length === 0 || nextSequence <= cursor)
+    ) {
+      invalidResponse('Run event replay cursor did not advance');
+    }
+    if (
+      response.has_more !== true ||
+      lastSequence === input.throughSequence ||
+      (input.stopAfterSequence !== undefined &&
+        lastSequence >= input.stopAfterSequence)
+    ) {
+      if (
+        input.throughSequence !== undefined &&
+        lastSequence !== input.throughSequence
+      ) {
+        invalidResponse(
+          'Historical replay ended before its requested boundary'
+        );
+      }
       // Unroll the ring back into ascending sequence order before publishing.
       input.events.push(
         ...retainedEvents.slice(retainStart),
@@ -448,9 +605,6 @@ async function readRunEvents(
       );
       input.budget.events += retainedEvents.length;
       return { lastSequence, truncated };
-    }
-    if (response.events.length === 0 || nextSequence <= cursor) {
-      invalidResponse('Run event replay cursor did not advance');
     }
     cursor = nextSequence;
   }
@@ -468,12 +622,14 @@ async function loadProjectSnapshot(
       | 'maxBytes'
       | 'maxEventBytes'
       | 'runListTimeoutMs'
+      | 'eventPageTimeoutMs'
     >
   > & { signal?: AbortSignal }
 ): Promise<{
   snapshot: ProjectSnapshotInput;
   budget: HydrationBudget;
   runCount: number;
+  history: ProjectChatHistory;
 }> {
   throwIfAborted(options.signal);
   const response = await fetchProjectRunsWithDeadline(
@@ -483,6 +639,10 @@ async function loadProjectSnapshot(
     options.signal
   );
   throwIfAborted(options.signal);
+  if (!response || typeof response !== 'object')
+    invalidResponse('Project Run listing did not return an object');
+  if (estimateJsonBytes(response) > options.maxBytes)
+    limitExceeded('Project Run listing exceeded the response byte bound');
   if (
     response.cloud_restore_pending === true &&
     Array.isArray(response.runs) &&
@@ -495,6 +655,9 @@ async function loadProjectSnapshot(
   }
 
   const parsedRuns = parseRunDescriptors(response, projectId, options.maxRuns);
+  // /runs measures active attempts at read time, whereas updated_at is the
+  // last journal event. Anchoring to updated_at would count that gap twice.
+  const totalAttemptElapsedAt = new Date().toISOString();
   const { runs } = parsedRuns;
   let eventsTruncated = parsedRuns.eventsTruncated;
   const budget: HydrationBudget = {
@@ -506,10 +669,12 @@ async function loadProjectSnapshot(
   const events: CanonicalProjectEvent[] = [];
   const seenEventIds = new Set<string>();
   const runSequences = new Map<string, number>();
+  const beforeByRun: Record<string, number> = {};
 
   for (const run of runs) {
     const remainingEvents = options.maxEvents - budget.events;
     if (remainingEvents <= 0) {
+      beforeByRun[run.runId] = run.version;
       runSequences.set(run.runId, run.version);
       if (run.version > 0) eventsTruncated = true;
       continue;
@@ -526,6 +691,7 @@ async function loadProjectSnapshot(
       seenEventIds,
       events,
       afterSequence,
+      stopAfterSequence: run.version,
       retainLimit: remainingEvents,
       // A single response page of concurrent appends can extend beyond the
       // descriptor version. Validate and ring-retain that bounded race window.
@@ -535,6 +701,8 @@ async function loadProjectSnapshot(
       invalidResponse('Run event replay ended before the listed Run version');
     }
     if (replay.truncated) eventsTruncated = true;
+    const firstRetained = events.find((event) => event.runId === run.runId);
+    beforeByRun[run.runId] = Math.max(0, (firstRetained?.runSequence ?? 1) - 1);
     runSequences.set(run.runId, replay.lastSequence);
   }
 
@@ -556,6 +724,8 @@ async function loadProjectSnapshot(
         status: run.status,
         expected_next_run_sequence: (runSequences.get(run.runId) ?? 0) + 1,
         updated_at: run.updatedAt,
+        total_attempt_elapsed_ms: run.totalAttemptElapsedMs,
+        totalAttemptElapsedAt,
         run_version: run.version,
         origin: run.origin,
         resume_blocked_reason: run.resumeBlockedReason,
@@ -565,6 +735,7 @@ async function loadProjectSnapshot(
     },
     budget,
     runCount: runs.length,
+    history: { beforeByRun, runsTruncated: parsedRuns.eventsTruncated },
   };
 }
 
@@ -584,6 +755,7 @@ export async function hydrateProjectEventStore({
   maxBytes: maxBytesInput,
   maxEventBytes: maxEventBytesInput,
   runListTimeoutMs: runListTimeoutMsInput,
+  eventPageTimeoutMs: eventPageTimeoutMsInput,
 }: ProjectEventStoreHydrationOptions): Promise<ProjectEventStoreHydrationResult> {
   if (!projectId || store.projectId !== projectId) {
     throw new ProjectEventStoreHydrationError(
@@ -603,15 +775,31 @@ export async function hydrateProjectEventStore({
     maxEventPagesInput,
     DEFAULT_MAX_EVENT_PAGES
   );
-  const maxEvents = boundedInteger(maxEventsInput, DEFAULT_MAX_EVENTS);
-  const maxBytes = boundedInteger(maxBytesInput, DEFAULT_MAX_BYTES);
+  const maxEvents = boundedInteger(
+    maxEventsInput,
+    DEFAULT_MAX_EVENTS,
+    DEFAULT_MAX_EVENTS
+  );
+  const maxBytes = boundedInteger(
+    maxBytesInput,
+    DEFAULT_MAX_BYTES,
+    DEFAULT_MAX_BYTES
+  );
   const maxEventBytes = Math.min(
-    boundedInteger(maxEventBytesInput, DEFAULT_MAX_EVENT_BYTES),
+    boundedInteger(
+      maxEventBytesInput,
+      DEFAULT_MAX_EVENT_BYTES,
+      DEFAULT_MAX_EVENT_BYTES
+    ),
     maxBytes
   );
   const runListTimeoutMs = boundedInteger(
     runListTimeoutMsInput,
     DEFAULT_RUN_LIST_TIMEOUT_MS
+  );
+  const eventPageTimeoutMs = boundedInteger(
+    eventPageTimeoutMsInput,
+    DEFAULT_EVENT_PAGE_TIMEOUT_MS
   );
 
   const replacement = store.beginSnapshotReplacement();
@@ -622,21 +810,50 @@ export async function hydrateProjectEventStore({
     );
   }
 
+  const incarnation = store.getIncarnation();
+  const controller = new AbortController();
+  const abortFromCaller = () => controller.abort(signal?.reason);
+  signal?.addEventListener('abort', abortFromCaller, { once: true });
+  if (signal?.aborted) abortFromCaller();
+  const unsubscribe = store.subscribe(() => {
+    if (store.getIncarnation() !== incarnation) {
+      controller.abort(
+        new ProjectEventStoreHydrationError(
+          'Project event hydration was reset',
+          'replacement_invalidated'
+        )
+      );
+    }
+  });
   const cancelReplacement = () => store.cancelSnapshotReplacement(replacement);
-  signal?.addEventListener('abort', cancelReplacement, { once: true });
+  controller.signal.addEventListener('abort', cancelReplacement, {
+    once: true,
+  });
   try {
-    const loaded = await loadProjectSnapshot(projectId, {
-      signal,
-      maxRuns,
-      eventPageSize,
-      maxEventPages,
+    const loaded = await fitReplayBatch(
       maxEvents,
-      maxBytes,
-      maxEventBytes,
-      runListTimeoutMs,
-    });
-    throwIfAborted(signal);
-    if (!store.commitSnapshotReplacement(replacement, loaded.snapshot)) {
+      (limit) =>
+        loadProjectSnapshot(projectId, {
+          signal: controller.signal,
+          maxRuns,
+          eventPageSize,
+          maxEventPages,
+          maxEvents: limit,
+          maxBytes,
+          maxEventBytes,
+          runListTimeoutMs,
+          eventPageTimeoutMs,
+        }),
+      controller.signal
+    );
+    throwIfAborted(controller.signal);
+    if (
+      !store.commitSnapshotReplacement(
+        replacement,
+        loaded.snapshot,
+        loaded.history
+      )
+    ) {
       throw new ProjectEventStoreHydrationError(
         'Live delivery exceeded the bounded rebuild buffer; retry with a fresh snapshot',
         'replacement_invalidated'
@@ -648,12 +865,283 @@ export async function hydrateProjectEventStore({
       eventCount: loaded.budget.events,
       pageCount: loaded.budget.pages,
       byteCount: loaded.budget.bytes,
-      eventsTruncated: Boolean(loaded.snapshot.events_truncated),
+      eventsTruncated: store.getSnapshot().view.eventsTruncated,
     };
   } catch (error) {
     store.cancelSnapshotReplacement(replacement);
     throw error;
   } finally {
-    signal?.removeEventListener('abort', cancelReplacement);
+    unsubscribe();
+    signal?.removeEventListener('abort', abortFromCaller);
+    controller.signal.removeEventListener('abort', cancelReplacement);
+  }
+}
+
+type OlderHistoryOptions = Pick<
+  ProjectEventStoreHydrationOptions,
+  | 'projectId'
+  | 'signal'
+  | 'store'
+  | 'maxEvents'
+  | 'eventPageSize'
+  | 'eventPageTimeoutMs'
+>;
+
+/** One display batch, followed by bounded forward control batches at the end. */
+export async function loadOlderProjectChatHistory(
+  options: OlderHistoryOptions
+): Promise<void> {
+  const store = options.store ?? getProjectEventStore(options.projectId);
+  if (store.projectId !== options.projectId)
+    invalidResponse('History requires one matching Project scope');
+  throwIfAborted(options.signal);
+  let history = store.getSnapshot().history;
+  if (!history) return;
+  if (Object.values(history.beforeByRun).some((before) => before > 0)) {
+    history = await loadOlderChatBatch({ ...options, store });
+  }
+  if (!history) return;
+  const owner = history;
+  const assertCurrent = () => {
+    throwIfAborted(options.signal);
+    if (!store.isChatHistoryCurrent(owner)) {
+      throw new ProjectEventStoreHydrationError(
+        'History changed during control replay',
+        'replacement_invalidated'
+      );
+    }
+  };
+  assertCurrent();
+  if (Object.values(owner.beforeByRun).some((before) => before > 0)) return;
+
+  // Backward display pages cannot safely merge into compacted controls: a
+  // terminal receipt may already have been evicted. Rebuild in durable order,
+  // with a fresh count/byte budget and an input/paint yield for every batch.
+  while (store.getControlReplayCursor()) {
+    assertCurrent();
+    await loadControlHistoryBatch({ ...options, store }, assertCurrent);
+    assertCurrent();
+    await abortableRead(
+      new Promise<void>((resolve) => setTimeout(resolve, 0)),
+      options.signal
+    );
+    assertCurrent();
+  }
+}
+
+async function loadControlHistoryBatch(
+  {
+    projectId,
+    signal,
+    store = getProjectEventStore(projectId),
+    maxEvents,
+    eventPageSize,
+    eventPageTimeoutMs,
+  }: OlderHistoryOptions,
+  assertHistoryCurrent: () => void
+): Promise<void> {
+  const cursor = store.getControlReplayCursor();
+  if (!cursor) return;
+  const controller = new AbortController();
+  const abortFromCaller = () => controller.abort(signal?.reason);
+  signal?.addEventListener('abort', abortFromCaller, { once: true });
+  if (signal?.aborted) abortFromCaller();
+  const assertCurrent = () => {
+    assertHistoryCurrent();
+    if (
+      store.getControlReplayCursor() !== cursor ||
+      store.getSnapshot().overflowed
+    ) {
+      throw new ProjectEventStoreHydrationError(
+        'Control checkpoint changed during replay',
+        'replacement_invalidated'
+      );
+    }
+  };
+  const unsubscribe = store.subscribe(() => {
+    try {
+      assertCurrent();
+    } catch (error) {
+      controller.abort(error);
+    }
+  });
+  try {
+    const loaded = await fitReplayBatch(
+      boundedInteger(maxEvents, DEFAULT_MAX_EVENTS, DEFAULT_MAX_EVENTS),
+      async (limit) => {
+        assertCurrent();
+        const budget: HydrationBudget = {
+          pages: 0,
+          scannedEvents: 0,
+          events: 0,
+          bytes: 0,
+        };
+        const events: CanonicalProjectEvent[] = [];
+        const seenEventIds = new Set<string>();
+        const afterByRun = { ...cursor.afterByRun };
+        for (const [runId, target] of Object.entries(cursor.throughByRun)) {
+          const remaining = limit - budget.events;
+          if (remaining <= 0) break;
+          const afterSequence = afterByRun[runId];
+          if (afterSequence >= target) continue;
+          const throughSequence = Math.min(target, afterSequence + remaining);
+          await readRunEvents(
+            { runId },
+            {
+              projectId,
+              signal: controller.signal,
+              assertCurrent,
+              eventPageTimeoutMs: boundedInteger(
+                eventPageTimeoutMs,
+                DEFAULT_EVENT_PAGE_TIMEOUT_MS
+              ),
+              eventPageSize: boundedInteger(
+                eventPageSize,
+                DEFAULT_EVENT_PAGE_SIZE,
+                API_MAX_EVENT_PAGE_SIZE
+              ),
+              maxEventPages: DEFAULT_MAX_EVENT_PAGES,
+              maxEvents: limit,
+              maxBytes: DEFAULT_MAX_BYTES,
+              maxEventBytes: DEFAULT_MAX_EVENT_BYTES,
+              maxScannedEvents: limit,
+              budget,
+              seenEventIds,
+              events,
+              afterSequence,
+              throughSequence,
+              retainLimit: remaining,
+            }
+          );
+          afterByRun[runId] = throughSequence;
+        }
+        return { events, afterByRun };
+      },
+      controller.signal
+    );
+    throwIfAborted(controller.signal);
+    assertCurrent();
+    if (!store.appendControlHistory(cursor, loaded.events, loaded.afterByRun)) {
+      throw new ProjectEventStoreHydrationError(
+        'Control checkpoint could not be committed',
+        'replacement_invalidated'
+      );
+    }
+  } finally {
+    unsubscribe();
+    signal?.removeEventListener('abort', abortFromCaller);
+  }
+}
+
+/** Read one bounded older page using existing APIs, without pausing live ingest. */
+async function loadOlderChatBatch({
+  projectId,
+  signal,
+  store = getProjectEventStore(projectId),
+  maxEvents = DEFAULT_MAX_EVENTS,
+  eventPageSize = DEFAULT_EVENT_PAGE_SIZE,
+  eventPageTimeoutMs = DEFAULT_EVENT_PAGE_TIMEOUT_MS,
+}: OlderHistoryOptions): Promise<ProjectChatHistory | undefined> {
+  if (store.projectId !== projectId)
+    invalidResponse('History requires one matching Project scope');
+  throwIfAborted(signal);
+  const previous = store.getSnapshot().history;
+  if (!previous) return;
+  const controller = new AbortController();
+  const abortFromCaller = () => controller.abort(signal?.reason);
+  signal?.addEventListener('abort', abortFromCaller, { once: true });
+  if (signal?.aborted) abortFromCaller();
+  const assertCurrent = () => {
+    if (!store.isChatHistoryCurrent(previous)) {
+      throw new ProjectEventStoreHydrationError(
+        'History changed during replay; retry against the current snapshot',
+        'replacement_invalidated'
+      );
+    }
+  };
+  const unsubscribe = store.subscribe(() => {
+    if (!store.isChatHistoryCurrent(previous)) {
+      controller.abort(
+        new ProjectEventStoreHydrationError(
+          'History changed during replay',
+          'replacement_invalidated'
+        )
+      );
+    }
+  });
+  const eventLimit = boundedInteger(
+    maxEvents,
+    DEFAULT_MAX_EVENTS,
+    DEFAULT_MAX_EVENTS
+  );
+  const pageSize = boundedInteger(
+    eventPageSize,
+    DEFAULT_EVENT_PAGE_SIZE,
+    API_MAX_EVENT_PAGE_SIZE
+  );
+  try {
+    assertCurrent();
+    const loaded = await fitReplayBatch(
+      eventLimit,
+      async (limit) => {
+        assertCurrent();
+        const budget: HydrationBudget = {
+          pages: 0,
+          scannedEvents: 0,
+          events: 0,
+          bytes: 0,
+        };
+        const events: CanonicalProjectEvent[] = [];
+        const seenEventIds = new Set<string>();
+        const beforeByRun = { ...previous.beforeByRun };
+        for (const [runId, throughSequence] of Object.entries(
+          previous.beforeByRun
+        )) {
+          const remaining = limit - budget.events;
+          if (remaining <= 0) break;
+          if (throughSequence <= 0) continue;
+          const afterSequence = Math.max(0, throughSequence - remaining);
+          await readRunEvents(
+            { runId },
+            {
+              projectId,
+              signal: controller.signal,
+              assertCurrent,
+              eventPageTimeoutMs: boundedInteger(
+                eventPageTimeoutMs,
+                DEFAULT_EVENT_PAGE_TIMEOUT_MS
+              ),
+              eventPageSize: pageSize,
+              maxEventPages: DEFAULT_MAX_EVENT_PAGES,
+              maxEvents: limit,
+              maxBytes: DEFAULT_MAX_BYTES,
+              maxEventBytes: DEFAULT_MAX_EVENT_BYTES,
+              maxScannedEvents: limit,
+              budget,
+              seenEventIds,
+              events,
+              afterSequence,
+              throughSequence,
+              retainLimit: remaining,
+            }
+          );
+          beforeByRun[runId] = afterSequence;
+        }
+        return { events, beforeByRun };
+      },
+      controller.signal
+    );
+    throwIfAborted(controller.signal);
+    const history = { ...previous, beforeByRun: loaded.beforeByRun };
+    if (!store.prependChatHistory(loaded.events, previous, history)) {
+      throw new ProjectEventStoreHydrationError(
+        'History changed during replay; retry against the current snapshot',
+        'replacement_invalidated'
+      );
+    }
+    return history;
+  } finally {
+    unsubscribe();
+    signal?.removeEventListener('abort', abortFromCaller);
   }
 }

@@ -23,13 +23,17 @@ export * from './types';
 
 import { deriveLiveEffects } from './effects';
 import { normalizeEvent } from './normalize';
-import { createProjectViewState, reduceProjectView } from './reduce';
+import {
+  createProjectViewState,
+  reduceProjectedRun,
+  reduceProjectView,
+} from './reduce';
 import type {
-  ProjectSnapshotInput,
-  ProjectViewState,
   ProjectedRun,
   ProjectorEffect,
   ProjectorMode,
+  ProjectSnapshotInput,
+  ProjectViewState,
 } from './types';
 
 const SNAPSHOT_RUN_STATUSES = new Set<ProjectedRun['status']>([
@@ -143,6 +147,19 @@ export function projectSnapshot(
       origin: authoritativeSnapshotRunOrigin(aggregate, recent),
       resumeBlockedReason:
         aggregate.resume_blocked_reason ?? recent?.resumeBlockedReason ?? null,
+      totalAttemptElapsedMs:
+        typeof aggregate.total_attempt_elapsed_ms === 'number' &&
+        Number.isFinite(aggregate.total_attempt_elapsed_ms) &&
+        aggregate.total_attempt_elapsed_ms >= 0 &&
+        (!recent ||
+          (aggregateRunVersion !== null &&
+            recent.runVersion <= aggregateRunVersion))
+          ? aggregate.total_attempt_elapsed_ms
+          : null,
+      ...(typeof aggregate.totalAttemptElapsedAt === 'string' &&
+      Number.isFinite(Date.parse(aggregate.totalAttemptElapsedAt))
+        ? { totalAttemptElapsedAt: aggregate.totalAttemptElapsedAt }
+        : {}),
     };
   }
   const mergeExistingState =
@@ -150,17 +167,64 @@ export function projectSnapshot(
     previous !== undefined &&
     previous.projectId === snapshot.project_id;
   if (mergeExistingState) {
-    for (const [runId, existing] of Object.entries(previous.runs)) {
+    const checkpointRuns = { ...previous.runs };
+    for (const raw of snapshot.recent_events) {
+      const event =
+        raw &&
+        typeof raw === 'object' &&
+        'eventId' in raw &&
+        'runSequence' in raw
+          ? (raw as import('./types').CanonicalProjectEvent)
+          : normalizeEvent(raw);
+      const checkpoint = checkpointRuns[event.runId];
+      if (
+        checkpoint &&
+        event.source === 'canonical' &&
+        projected.seenEventIds[event.eventId] &&
+        event.runSequence > checkpoint.lastSequence &&
+        !(
+          checkpoint.origin &&
+          event.origin &&
+          checkpoint.origin !== event.origin
+        )
+      ) {
+        // New observation receipts advance history while retaining a GET's
+        // status/elapsed facts. Reuse live Run rules without replaying controls
+        // or replacing the independently rebuilt semantic history above.
+        checkpointRuns[event.runId] = reduceProjectedRun(checkpoint, event);
+      }
+    }
+    for (const [runId, existing] of Object.entries(checkpointRuns)) {
       const snapshotRun = runs[runId];
+      const existingElapsedAt = Date.parse(
+        existing.totalAttemptElapsedAt ?? ''
+      );
+      const snapshotElapsedAt = Date.parse(
+        snapshotRun?.totalAttemptElapsedAt ?? ''
+      );
+      // A status GET can lead the event cursor. Compare execution versions
+      // before cursor/time, and retain the fresher same-version elapsed read.
       if (
         !snapshotRun ||
-        existing.lastSequence > snapshotRun.lastSequence ||
-        (existing.lastSequence === snapshotRun.lastSequence &&
-          existing.updatedAt > snapshotRun.updatedAt)
+        existing.runVersion > snapshotRun.runVersion ||
+        (existing.runVersion === snapshotRun.runVersion &&
+          ((existing.status !== 'unknown' &&
+            existing.status !== snapshotRun.status) ||
+            existing.lastSequence > snapshotRun.lastSequence ||
+            (existing.lastSequence === snapshotRun.lastSequence &&
+              existing.updatedAt > snapshotRun.updatedAt) ||
+            (existing.totalAttemptElapsedMs != null &&
+              Number.isFinite(existingElapsedAt) &&
+              (!Number.isFinite(snapshotElapsedAt) ||
+                existingElapsedAt > snapshotElapsedAt))))
       ) {
         runs[runId] = snapshotRun
           ? {
               ...existing,
+              lastSequence: Math.max(
+                existing.lastSequence,
+                snapshotRun.lastSequence
+              ),
               // Snapshot Run aggregates are the provenance authority even when
               // buffered live delivery is newer for status/sequence purposes.
               origin: aggregateOriginAuthorities.has(runId)
@@ -168,6 +232,9 @@ export function projectSnapshot(
                 : (existing.origin ?? snapshotRun.origin ?? null),
             }
           : existing;
+      } else if (existing.lastSequence > snapshotRun.lastSequence) {
+        // A newer aggregate is not permission to rewind observed event history.
+        runs[runId] = { ...snapshotRun, lastSequence: existing.lastSequence };
       }
     }
   }

@@ -48,6 +48,10 @@ class UnsupportedThinkingEffortError(WorkspaceConfigError):
     """Raised when a provider cannot honor a requested effort."""
 
 
+class ModelCapabilityConfigError(WorkspaceConfigError):
+    """Raised for invalid capability metadata or transport configuration."""
+
+
 class UnsafeCloudProjectionError(WorkspaceConfigError):
     """Raised when a Cloud projection contains device-local identity."""
 
@@ -764,14 +768,17 @@ class ProviderModelCapability:
     capability_revision: str
     dynamic_model: bool = False
     provider_parameter_name: str | None = None
+    transport: str = "chat_completions"
+    source: str = "explicit"
+    diagnostic: str | None = None
 
     def __post_init__(self) -> None:
         supported = tuple(dict.fromkeys(self.supported_efforts))
-        if not supported:
+        if not supported and not self.diagnostic:
             raise WorkspaceConfigError(
                 "provider capability must support at least one effort"
             )
-        if self.default_effort not in supported:
+        if supported and self.default_effort not in supported:
             raise WorkspaceConfigError(
                 "provider default effort must be supported"
             )
@@ -798,6 +805,24 @@ class ProviderModelCapability:
         *,
         allow_dynamic_remap: bool = False,
     ) -> EffortResolution:
+        if not self.supported_efforts:
+            if requested is not None:
+                raise UnsupportedThinkingEffortError(
+                    f"{self.diagnostic}; cannot honor effort "
+                    f"{str(requested)!r}. Register model capabilities or "
+                    "omit thinking_effort to use the provider default."
+                )
+            # MEDIUM is retained only as the legacy persisted enum sentinel.
+            # The capability advertises no supported choices, no parameter,
+            # and an explicit unknown_model diagnostic in its snapshot.
+            return EffortResolution(
+                requested=self.default_effort,
+                effective=self.default_effort,
+                provider_parameter_name=None,
+                provider_value="provider_default",
+                capability_revision=self.capability_revision,
+                remapped=False,
+            )
         normalized = (
             normalize_thinking_effort(requested)
             if requested is not None
@@ -808,7 +833,8 @@ class ProviderModelCapability:
             if not (self.dynamic_model and allow_dynamic_remap):
                 raise UnsupportedThinkingEffortError(
                     f"effort {effective.value!r} is not supported by "
-                    f"capability {self.capability_revision!r}"
+                    f"capability {self.capability_revision!r}; supported: "
+                    + ", ".join(item.value for item in self.supported_efforts)
                 )
             requested_index = _EFFORT_ORDER.index(effective)
             effective = min(
@@ -826,6 +852,24 @@ class ProviderModelCapability:
             capability_revision=self.capability_revision,
             remapped=effective is not normalized,
         )
+
+    def snapshot(self) -> dict[str, Any]:
+        """Secret-free capability facts pinned with the admitted environment."""
+        return {
+            "revision": self.capability_revision,
+            "source": self.source,
+            "status": "known" if self.supported_efforts else "unknown_model",
+            "supported_efforts": [
+                item.value for item in self.supported_efforts
+            ],
+            "provider_mapping": {
+                item.value: value
+                for item, value in self.provider_mapping.items()
+            },
+            "api_mode": self.transport,
+            "provider_parameter_name": self.provider_parameter_name,
+            "diagnostic": self.diagnostic,
+        }
 
 
 class ResolvedContextSource(_StrictFrozenModel):

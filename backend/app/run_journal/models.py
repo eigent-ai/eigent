@@ -221,6 +221,19 @@ class ProjectHistoryEventRecord:
 
 
 @dataclass(frozen=True)
+class MemoryExtractionEventRecord:
+    """Payload-free metadata for bounded maintenance reads."""
+
+    journal_cursor: int
+    event_id: str
+    run_id: str
+    event_type: str
+    created_at: float
+    payload_bytes: int
+    last_error: str | None = None
+
+
+@dataclass(frozen=True)
 class MemoryScopeStateRecord:
     scope_type: str
     scope_id: str

@@ -38,6 +38,12 @@ export function reconcileHumanControlAvailability(
       .filter((run) => TERMINAL_RUN_STATUSES.has(run.status))
       .map((run) => [run.runId, true as const])
   );
+  if (
+    Object.keys(inactiveRunIds).length ===
+      Object.keys(state.inactiveRunIds ?? {}).length &&
+    Object.keys(inactiveRunIds).every((runId) => state.inactiveRunIds?.[runId])
+  )
+    return state;
   return { ...state, inactiveRunIds };
 }
 
