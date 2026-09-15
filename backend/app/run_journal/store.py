@@ -63,6 +63,7 @@ from app.run_journal.models import (
     HumanInteractionOptionRecord,
     HumanInteractionRecord,
     MemoryEntryRecord,
+    MemoryExtractionEventRecord,
     MemoryMutationRecord,
     MemoryMutationResult,
     MemoryMutationSyncBatch,
@@ -138,7 +139,7 @@ from app.workspace_config.models import (
     canonical_json,
 )
 
-SCHEMA_VERSION = 34
+SCHEMA_VERSION = 35
 logger = logging.getLogger("run_journal")
 # Per redacted request or response. Oversized documents retain a bounded JSON
 # prefix plus the byte count and digest of the full redacted projection.
@@ -2289,6 +2290,41 @@ INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
 VALUES (34, CAST(strftime('%s', 'now') AS REAL));
 
 PRAGMA user_version = 34;
+COMMIT;
+"""
+
+
+_MIGRATION_V35 = """
+BEGIN IMMEDIATE;
+
+-- Successful extraction can continue beyond a deferred oversized event.
+-- Receipts preserve that distinction while the contiguous success watermark
+-- stays before the gap. They contain identifiers/diagnostics, never payloads.
+CREATE TABLE IF NOT EXISTS memory_extraction_receipts(
+    target_scope_type TEXT NOT NULL CHECK(
+        target_scope_type IN ('project', 'space', 'user')
+    ),
+    target_scope_id TEXT NOT NULL,
+    source_project_id TEXT NOT NULL,
+    journal_cursor INTEGER NOT NULL CHECK(journal_cursor > 0),
+    event_id TEXT NOT NULL REFERENCES run_events(event_id) ON DELETE CASCADE,
+    disposition TEXT NOT NULL CHECK(
+        disposition IN ('processed', 'excluded', 'deferred_budget')
+    ),
+    extractor_version TEXT NOT NULL,
+    attempts INTEGER NOT NULL CHECK(attempts > 0),
+    last_error TEXT,
+    updated_at REAL NOT NULL,
+    PRIMARY KEY(target_scope_type, target_scope_id, source_project_id,
+                journal_cursor),
+    FOREIGN KEY(source_project_id, journal_cursor)
+        REFERENCES project_history_events(project_id, journal_cursor)
+        ON DELETE CASCADE
+);
+
+INSERT OR IGNORE INTO run_journal_migrations(version, applied_at)
+VALUES (35, CAST(strftime('%s', 'now') AS REAL));
+PRAGMA user_version = 35;
 COMMIT;
 """
 
@@ -10816,6 +10852,170 @@ class SQLiteRunJournal:
                 for row in rows
             ]
 
+    def list_memory_extraction_events(
+        self,
+        *,
+        source_project_id: str,
+        target_scope_type: str,
+        target_scope_id: str,
+        after_cursor: int,
+        through_cursor: int,
+        limit: int = 100,
+        include_deferred: bool = True,
+        prioritize_fewer_attempts: bool = False,
+    ) -> list[MemoryExtractionEventRecord]:
+        """Read metadata only, omitting already resolved extraction receipts.
+
+        Even one multi-megabyte terminal event must not be materialized just
+        to discover that the explicit-user extractor cannot use it.
+        """
+
+        self._validate_memory_scope(target_scope_type, target_scope_id)
+        self._validate_memory_scope("project", source_project_id)
+        if after_cursor < 0 or through_cursor < after_cursor:
+            raise ValueError("invalid extraction cursor range")
+        if not 1 <= limit <= 100:
+            raise ValueError("extraction metadata limit must be 1..100")
+        query = (
+            """
+            SELECT h.journal_cursor, e.event_id, e.run_id, e.event_type,
+                   e.created_at, r.last_error,
+                   length(CAST(e.payload_json AS BLOB)) AS payload_bytes
+            FROM project_history_events h
+            JOIN run_events e ON e.event_id = h.event_id
+            LEFT JOIN memory_extraction_receipts r
+                ON r.target_scope_type = ? AND r.target_scope_id = ?
+                AND r.source_project_id = h.project_id
+                AND r.journal_cursor = h.journal_cursor
+            WHERE h.project_id = ? AND h.journal_cursor > ?
+                AND h.journal_cursor <= ?
+                AND (r.disposition IS NULL
+                     OR (? AND r.disposition = 'deferred_budget'))
+            ORDER BY COALESCE(r.attempts, 0), h.journal_cursor LIMIT ?
+            """
+            if prioritize_fewer_attempts
+            else """
+            SELECT h.journal_cursor, e.event_id, e.run_id, e.event_type,
+                   e.created_at, r.last_error,
+                   length(CAST(e.payload_json AS BLOB)) AS payload_bytes
+            FROM project_history_events h
+            JOIN run_events e ON e.event_id = h.event_id
+            LEFT JOIN memory_extraction_receipts r
+                ON r.target_scope_type = ? AND r.target_scope_id = ?
+                AND r.source_project_id = h.project_id
+                AND r.journal_cursor = h.journal_cursor
+            WHERE h.project_id = ? AND h.journal_cursor > ?
+                AND h.journal_cursor <= ?
+                AND (r.disposition IS NULL
+                     OR (? AND r.disposition = 'deferred_budget'))
+            ORDER BY h.journal_cursor LIMIT ?
+            """
+        )
+        with self._lock:
+            rows = self._connection.execute(
+                query,
+                (
+                    target_scope_type,
+                    target_scope_id,
+                    source_project_id,
+                    after_cursor,
+                    through_cursor,
+                    include_deferred,
+                    limit,
+                ),
+            ).fetchall()
+        # Retry the least-attempted gaps, then deliver the selected bounded
+        # batch in canonical order. Frontier queries always use cursor order.
+        return sorted(
+            [MemoryExtractionEventRecord(**dict(row)) for row in rows],
+            key=lambda event: event.journal_cursor,
+        )
+
+    def record_memory_extraction_receipts(
+        self,
+        *,
+        source_project_id: str,
+        target_scope_type: str,
+        target_scope_id: str,
+        extractor_version: str,
+        receipts: tuple[
+            tuple[MemoryExtractionEventRecord, str, str | None], ...
+        ],
+    ) -> None:
+        """Acknowledge a bounded page only after its mutations return.
+
+        A failure after an unknown write cannot create a success receipt.
+        Replaying a resolved receipt cannot turn it back into a gap.
+        """
+
+        self._validate_memory_scope(target_scope_type, target_scope_id)
+        self._validate_memory_scope("project", source_project_id)
+        if not extractor_version or len(receipts) > 100:
+            raise ValueError("invalid extraction receipt batch")
+        with self._write_transaction() as connection:
+            for event, disposition, error in receipts:
+                canonical = connection.execute(
+                    """SELECT event_id FROM project_history_events
+                    WHERE project_id = ? AND journal_cursor = ?""",
+                    (source_project_id, event.journal_cursor),
+                ).fetchone()
+                if (
+                    canonical is None
+                    or canonical["event_id"] != event.event_id
+                ):
+                    raise PermissionError("Extraction receipt source mismatch")
+                if (disposition == "deferred_budget") != bool(error):
+                    raise ValueError("Deferred extraction needs an error")
+                connection.execute(
+                    """
+                    INSERT INTO memory_extraction_receipts(
+                        target_scope_type, target_scope_id, source_project_id,
+                        journal_cursor, event_id, disposition,
+                        extractor_version, attempts, last_error, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                    ON CONFLICT(target_scope_type, target_scope_id,
+                                source_project_id, journal_cursor)
+                    DO UPDATE SET disposition = excluded.disposition,
+                        extractor_version = excluded.extractor_version,
+                        attempts = memory_extraction_receipts.attempts + 1,
+                        last_error = excluded.last_error,
+                        updated_at = excluded.updated_at
+                    WHERE memory_extraction_receipts.disposition = 'deferred_budget'
+                    """,
+                    (
+                        target_scope_type,
+                        target_scope_id,
+                        source_project_id,
+                        event.journal_cursor,
+                        event.event_id,
+                        disposition,
+                        extractor_version,
+                        error,
+                        time.time(),
+                    ),
+                )
+
+    def memory_extraction_frontier(
+        self,
+        *,
+        source_project_id: str,
+        target_scope_type: str,
+        target_scope_id: str,
+        after_cursor: int,
+        through_cursor: int,
+    ) -> int:
+        """Never report success through an unprocessed or deferred event."""
+
+        pending = self.list_memory_extraction_events(
+            source_project_id=source_project_id,
+            target_scope_type=target_scope_type,
+            target_scope_id=target_scope_id,
+            after_cursor=after_cursor,
+            through_cursor=through_cursor,
+            limit=1,
+        )
+        return pending[0].journal_cursor - 1 if pending else through_cursor
+
     def ensure_memory_scope_state(
         self,
         scope_type: str,
@@ -11126,6 +11326,18 @@ class SQLiteRunJournal:
             raise ValueError("successful maintenance requires a watermark")
         timestamp = now if now is not None else time.time()
         with self._write_transaction() as connection:
+            current = connection.execute(
+                """SELECT processed_through_watermark
+                FROM memory_extraction_watermarks
+                WHERE target_scope_type = ? AND target_scope_id = ?
+                  AND source_project_id = ?""",
+                (target_scope_type, target_scope_id, source_project_id),
+            ).fetchone()
+            self._assert_memory_watermark_monotonic(
+                current["processed_through_watermark"] if current else None,
+                processed_through_watermark,
+                watermark_kind,
+            )
             connection.execute(
                 """
                 INSERT INTO memory_extraction_watermarks(
@@ -11329,6 +11541,11 @@ class SQLiteRunJournal:
                     f"Memory scope {scope_type}:{scope_id} expected revision "
                     f"{expected_revision}, found {row['revision']}"
                 )
+            self._assert_memory_watermark_monotonic(
+                row["processed_through_watermark"],
+                processed_through_watermark,
+                watermark_kind,
+            )
             updated = connection.execute(
                 """
                 UPDATE memory_scope_state
@@ -11364,6 +11581,23 @@ class SQLiteRunJournal:
             ).fetchone()
             assert result is not None
             return self._memory_scope_state_from_row(result)
+
+    @staticmethod
+    def _assert_memory_watermark_monotonic(
+        current: str | None, proposed: str | None, kind: str | None
+    ) -> None:
+        if proposed is None or current is None or kind != "journal_cursor":
+            return
+        prefix = "sqlite-project-v1:"
+        if not all(
+            value.startswith(prefix) and value[len(prefix) :].isdigit()
+            for value in (current, proposed)
+        ):
+            raise ValueError("Invalid Memory journal cursor")
+        if int(proposed[len(prefix) :]) < int(current[len(prefix) :]):
+            raise OptimisticConcurrencyError(
+                "Memory extraction watermark cannot move backwards"
+            )
 
     def record_memory_consolidation_result(
         self,
@@ -19311,6 +19545,9 @@ ADD COLUMN source TEXT NOT NULL DEFAULT 'local'
                     "",
                 )
             self._connection.executescript(migration)
+
+        if version < 35:
+            self._connection.executescript(_MIGRATION_V35)
 
     @contextmanager
     def _write_transaction(self) -> Iterator[sqlite3.Connection]:

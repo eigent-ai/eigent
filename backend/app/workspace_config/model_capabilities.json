@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "revision": "2026-09-11.1",
+  "models": [
+    {
+      "schema_version": 1,
+      "revision": "astra-api-2026-09-11",
+      "model_type": "gpt-6-astra",
+      "supported_efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "default_effort": "medium",
+      "provider_mapping": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      },
+      "transport_parameters": {
+        "chat_completions": "reasoning_effort",
+        "responses": "reasoning.effort"
+      },
+      "default_transport": "chat_completions",
+      "tools_transport": "responses",
+      "model_platform": "openai"
+    },
+    {
+      "schema_version": 1,
+      "revision": "astra-api-2026-09-11",
+      "model_type": "gpt-6-astra",
+      "supported_efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "default_effort": "medium",
+      "provider_mapping": {
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      },
+      "transport_parameters": {
+        "chat_completions": "reasoning_effort",
+        "responses": "reasoning.effort"
+      },
+      "default_transport": "chat_completions",
+      "tools_transport": "responses",
+      "model_platform": "azure"
+    }
+  ]
+}
