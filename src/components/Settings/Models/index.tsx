@@ -1658,27 +1658,24 @@ export default function SettingModels() {
           {/*Content Area*/}
           <div className="flex w-full flex-row items-center justify-between gap-4 px-6 pb-4">
             <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <div className="flex items-center gap-1 !text-ds-text-base text-ds-ink-default-default">
+              <div className="flex items-center gap-2 !text-ds-text-base text-ds-ink-default-default">
                 <span>{t('setting.credits')}:</span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={loadingCredits}
-                  onClick={() => void refreshUsage()}
-                >
-                  {t(
-                    loadingCredits
-                      ? 'chat.notice-refreshing'
-                      : 'chat.notice-refresh'
-                  )}
-                </Button>
                 {loadingCredits ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2
+                    className="h-4 w-4 animate-spin motion-reduce:animate-none"
+                    aria-hidden
+                  />
+                ) : credits === null ? (
+                  <span>{t('chat.notice-credits-unavailable')}</span>
                 ) : (
-                  <span>
-                    {credits === null
-                      ? t('chat.notice-credits-unavailable')
-                      : formatCredits(credits)}
+                  <span
+                    className={
+                      Number(credits) < 0
+                        ? 'text-ds-text-error-default-default'
+                        : undefined
+                    }
+                  >
+                    {formatCredits(credits)}
                   </span>
                 )}
               </div>
