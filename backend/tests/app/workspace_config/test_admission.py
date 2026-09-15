@@ -74,7 +74,7 @@ def test_legacy_admission_persists_redacted_spec_before_attempt(tmp_path):
         assert attempt.environment_spec_id == first.spec.spec_id
         assert attempt.thinking_effort_requested == "max"
         assert attempt.thinking_effort_effective == "max"
-        assert first.spec.provider_parameter_name == "reasoning_effort"
+        assert first.spec.provider_parameter_name == "reasoning.effort"
         assert first.spec.provider_value == "xhigh"
         assert tuple(
             item.id for item in template.manifest.spec.mcp_servers
@@ -99,7 +99,7 @@ def test_legacy_admission_persists_redacted_spec_before_attempt(tmp_path):
         ][0]["absolute_path"].endswith("private-workspace")
 
 
-def test_unknown_provider_remap_is_explicit_in_run_projection(tmp_path):
+def test_unknown_provider_default_has_explicit_diagnostic(tmp_path):
     with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
         journal.ensure_run(
             run_id="run-1",
@@ -110,7 +110,7 @@ def test_unknown_provider_remap_is_explicit_in_run_projection(tmp_path):
             model_platform="anthropic",
             model_type="claude-next",
             auth_source=None,
-            requested_effort=ThinkingEffort.MAX,
+            requested_effort=None,
             allow_local_system=False,
         )
 
@@ -122,7 +122,7 @@ def test_unknown_provider_remap_is_explicit_in_run_projection(tmp_path):
             template=template,
         )
 
-        assert result.spec.thinking_effort_requested is ThinkingEffort.MAX
+        assert result.spec.provider_value == "provider_default"
         assert result.spec.thinking_effort_effective is ThinkingEffort.MEDIUM
         assert result.spec.provider_parameter_name is None
         event = next(
@@ -130,8 +130,12 @@ def test_unknown_provider_remap_is_explicit_in_run_projection(tmp_path):
             for item in journal.list_events("run-1")
             if item.event_type == "run.environment_resolved"
         )
-        assert event.payload["thinking_effort_requested"] == "max"
-        assert event.payload["thinking_effort_effective"] == "medium"
+        capability = event.payload["semantic_spec"][
+            "runtime_capability_manifest"
+        ]["model_capability"]
+        assert capability["status"] == "unknown_model"
+        assert capability["supported_efforts"] == []
+        assert "not registered" in capability["diagnostic"]
 
 
 def test_personal_default_import_is_secret_free_and_checksum_rerunnable():
