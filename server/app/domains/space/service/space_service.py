@@ -16,7 +16,7 @@ import logging
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import or_
+from sqlalchemy import or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
@@ -60,6 +60,32 @@ class SpaceService:
         )
 
     @staticmethod
+    def initialize_project_name(project: Project, name: str, s: Session) -> None:
+        """Assign an automatic name once, without racing an explicit rename."""
+        if (project.metadata_json or {}).get("nameSource") or not SpaceService._project_name_is_placeholder(
+            project.name, project.id
+        ):
+            return
+        name = name.strip()
+        if not name or SpaceService._project_name_is_placeholder(name, project.id):
+            return
+        s.execute(
+            update(Project)
+            .where(
+                Project.id == project.id,
+                Project.name == project.name,
+                Project.updated_at == project.updated_at,
+            )
+            .values(
+                name=name[:255],
+                metadata_json={**(project.metadata_json or {}), "nameSource": "initial"},
+                updated_at=datetime.now(),
+            )
+            .execution_options(synchronize_session=False)
+        )
+        s.refresh(project)
+
+    @staticmethod
     def _history_project_display_name(history: ChatHistory) -> str | None:
         for value in (history.project_name, history.question):
             candidate = (value or "").strip()
@@ -80,7 +106,7 @@ class SpaceService:
         placeholder_projects = [
             project
             for project in projects
-            if SpaceService._project_name_is_placeholder(
+            if not (project.metadata_json or {}).get("nameSource") and SpaceService._project_name_is_placeholder(
                 project.name,
                 project.id,
             )
@@ -99,7 +125,7 @@ class SpaceService:
                     ChatHistory.task_id.in_(project_ids),
                 ),
             )
-            .order_by(ChatHistory.created_at.desc(), ChatHistory.id.desc())
+            .order_by(ChatHistory.created_at.asc(), ChatHistory.id.asc())
         ).all()
         name_by_project_id: dict[str, str] = {}
         for history in histories:
@@ -116,13 +142,11 @@ class SpaceService:
                 name_by_project_id[project_id] = display_name
 
         changed = False
-        now = datetime.now()
         for project in placeholder_projects:
             display_name = name_by_project_id.get(project.id)
             if not display_name:
                 continue
-            project.name = display_name
-            project.updated_at = now
+            SpaceService.initialize_project_name(project, display_name, s)
             s.add(project)
             changed = True
 
@@ -433,7 +457,7 @@ class SpaceService:
                 project.name,
                 project.id,
             ):
-                project.name = display_name[:255]
+                SpaceService.initialize_project_name(project, display_name, s)
                 changed = True
             # Persist mode the first time we learn it. We do NOT silently
             # overwrite an existing mode mid-Project -- mode switches must be
@@ -640,6 +664,9 @@ class SpaceService:
                 **(project.metadata_json or {}),
                 **metadata,
             }
+        if isinstance(update_data.get("name"), str) and update_data["name"].strip():
+            project.metadata_json = {**(project.metadata_json or {}), "nameSource": "manual"}
+        project.updated_at = datetime.now()
         s.add(project)
         s.commit()
         s.refresh(project)

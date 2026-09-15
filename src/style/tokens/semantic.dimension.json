@@ -37,6 +37,9 @@
     "lg": "{ref.controlHeight.lg}",
     "xl": "{ref.controlHeight.xl}"
   },
+  "touch-target": {
+    "minimum": "{ref.touchTarget.minimum}"
+  },
   "layout": {
     "row-header": "{ref.layoutRow.header}",
     "row-header-prominent": "{ref.layoutRow.header-prominent}"
