@@ -275,6 +275,63 @@ describe('projector pipeline', () => {
     ]);
   });
 
+  it('preserves recovery output through legacy cancellation rescans and unfreezes on a new Attempt', () => {
+    const make = (seq: number, type: string, payload = {}) =>
+      event({
+        event_id: `recovery-${seq}`,
+        run_sequence: seq,
+        run_version: seq,
+        cloud_cursor: seq,
+        event_type: type,
+        legacy_step: null,
+        payload,
+      });
+    const original = make(1, 'artifact.manifest.finalized', {
+      artifacts: [
+        { artifact_id: 'note', relativePath: 'note.md', filename: 'note.md' },
+      ],
+      scan_status: 'complete',
+      truncated: false,
+    });
+    const empty = make(4, 'artifact.manifest.finalized', {
+      artifacts: [],
+      scan_status: 'complete',
+      truncated: false,
+    });
+    const history = [
+      original,
+      make(2, 'runtime.interrupted'),
+      make(3, 'run.cancel_requested'),
+      empty,
+      make(5, 'run.cancelled'),
+    ];
+    const snapshot = projectSnapshot({
+      project_id: 'project-1',
+      current_cursor: 5,
+      recent_events: history,
+      artifact_events: [empty],
+    });
+    expect(
+      selectRunArtifacts(snapshot, 'run-1').map((item) => item.name)
+    ).toEqual(['note.md']);
+    expect(snapshot.artifactManifestsByRun?.['run-1'].runSequence).toBe(4);
+    const resumed = projectRawEvents(
+      'project-1',
+      [
+        original,
+        make(2, 'runtime.interrupted'),
+        make(3, 'run.attempt_created'),
+        make(4, 'run.attempt_started'),
+        make(5, 'artifact.manifest.finalized', {
+          artifacts: [],
+          scan_status: 'complete',
+        }),
+      ],
+      'rehydrate'
+    ).state;
+    expect(selectRunArtifacts(resumed, 'run-1')).toEqual([]);
+  });
+
   it('keeps a newer empty manifest when an older snapshot is replayed', () => {
     const finalized = (
       seq: number,

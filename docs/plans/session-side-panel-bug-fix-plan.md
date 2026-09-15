@@ -459,3 +459,53 @@ reduced motion after implementation. Those states have not been visually
 verified in this investigation. Keep visible wording **Space → Session → Task**
 and preserve backend `project_id`, `run_id`, routes, persisted identifiers, and
 translation keys.
+
+
+## Interrupted-task admission and complete All summary
+
+### Causes and fixes
+
+- Stale legacy running/planning flags and an unconditional interruption guard
+  queued new instructions behind a task whose Attempt had already stopped.
+  Admit a new instruction as a distinct task with an admission acknowledgement;
+  preserve its prompt on failure and dismiss recovery controls only on success.
+  Queued instructions use the same cold admission path after interruption.
+- The interruption selector searched all interrupted tasks, so an older one
+  could own the composer after newer work. Only the latest locally executed
+  task can supply the recovery card. Dismissal no longer deletes canonical
+  history from the projection.
+- All summary counted only current-task files and hid earlier rows behind a
+  collapsed group. It now displays and counts every file in the selected scope.
+- Cancelling an interrupted task could rescan after startup had closed its
+  Attempt at the last consumer heartbeat. That shortened mtime window excluded
+  files already captured by recovery, replacing the manifest with an empty
+  list. Reuse the recovery manifest when no new Attempt ran. Replay preserves
+  the recorded recovery list across affected legacy cancellation rescans;
+  starting another Attempt allows later manifests to replace it normally.
+  This reads existing evidence without modifying historical journal events.
+- Remove the interrupted card's leading warning icon. Right-align actions in
+  the order Cancel task, Resume.
+
+### Validation and limits
+
+- 121 frontend tests across six focused suites passed, covering successful and
+  rejected admission, preserved prompts/history, full-scope counts, recovery
+  manifest replay, resumed-manifest replacement, and card actions.
+- 44 backend tests passed across artifact discovery and restart recovery,
+  including cancellation after a stale heartbeat and a separate new task
+  admitted while an old task retains an unresolved tool outcome.
+- Type checking, focused ESLint, Ruff, design-token checks, and
+  `git diff --check` passed. No localized copy changed.
+- Electron: the affected local Session showed Files 3 in Latest only and
+  Files 5 in All after replay, including earlier outputs. Actual card components
+  in a local fixture verified no leading icon, right-aligned Cancel/Resume,
+  and disabled pending actions in light and dark themes. Task admission is
+  verified by component/backend tests, not a new live model execution.
+- Reused Button (small, warning primary/ghost), SidePanelAccordionBox,
+  CountPill, and existing file rows with existing warning surface/Ink tokens.
+  No tokens or exceptions were added. Narrow windows, 200% zoom, and long
+  localized labels were not visually checked in this follow-up.
+- Resume still fails closed for unresolved external tool outcomes; this fix
+  does not retry potentially completed side effects. Historical file recovery
+  requires the earlier manifest to be available in replay; it cannot invent
+  paths omitted from every saved record.

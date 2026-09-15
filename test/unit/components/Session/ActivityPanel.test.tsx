@@ -126,12 +126,14 @@ vi.mock('@/components/Session/SidePanel/components/AccordionBox', () => ({
   SidePanelAccordionBox: ({
     title,
     headerAction,
+    titleSuffix,
     children,
     open = true,
     onOpenChange,
   }: {
     title: string;
     headerAction?: ReactNode;
+    titleSuffix?: ReactNode;
     children: ReactNode | ((state: { open: boolean }) => ReactNode);
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
@@ -143,6 +145,7 @@ vi.mock('@/components/Session/SidePanel/components/AccordionBox', () => ({
         onClick={() => onOpenChange?.(!open)}
       >
         <h2>{title}</h2>
+        {titleSuffix}
       </button>
       {headerAction}
       {open
@@ -252,6 +255,45 @@ describe('SessionActivityPanel project scope', () => {
       'project-1': { currentRun: null, historicalRuns: [], runs: [] },
       'project-2': { currentRun: null, historicalRuns: [], runs: [] },
     };
+  });
+
+  it('counts and displays every task file in All summary', async () => {
+    const runs = [2, 3].map((count, index) => ({
+      runId: `run-${index}`,
+      taskId: `run-${index}`,
+      status: index ? 'completed' : 'interrupted',
+      nodes: [],
+      createdAt: index + 1,
+      updatedAt: index + 1,
+      isCurrent: index === 1,
+      projectedArtifacts: Array.from({ length: count }, (_, fileIndex) => ({
+        runId: `run-${index}`,
+        artifactId: `file-${index}-${fileIndex}`,
+        name: `notes-${index}-${fileIndex}.md`,
+        relativePath: `notes-${index}-${fileIndex}.md`,
+        changeType: 'generated',
+      })),
+    }));
+    mocks.overviews['project-1'] = {
+      currentRun: runs[1],
+      historicalRuns: [runs[0]],
+      runs,
+    } as any;
+    const { rerender } = render(<SessionActivityPanel scope="latest" />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Files 3' })
+      ).toBeInTheDocument()
+    );
+    expect(screen.queryByText('notes-0-0.md')).toBeNull();
+    rerender(<SessionActivityPanel scope="all" />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Files 5' })
+      ).toBeInTheDocument()
+    );
+    expect(screen.getByText('notes-0-0.md')).toBeInTheDocument();
+    expect(screen.getByText('notes-1-2.md')).toBeInTheDocument();
   });
 
   it('keeps an empty Files section visible and fails closed without a composer target', async () => {
@@ -543,7 +585,7 @@ describe('SessionActivityPanel project scope', () => {
       await new Promise((resolve) => setTimeout(resolve, 40));
     });
 
-    const agentsTrigger = () => screen.getByRole('button', { name: 'Agents' });
+    const agentsTrigger = () => screen.getByRole('button', { name: /^Agents/ });
     expect(agentsTrigger()).toHaveAttribute('aria-expanded', 'true');
 
     const completedRun = overview('run-1', true);

@@ -735,6 +735,25 @@ def finalize_run_artifacts(
     }:
         return existing
 
+    if existing is not None and current_run.status in {
+        "interrupted",
+        "cancelling",
+    }:
+        attempts = journal.list_run_attempts(run.run_id)
+        latest_attempt = max(
+            attempts, key=lambda item: item.attempt_number, default=None
+        )
+        if (
+            latest_attempt is not None
+            and latest_attempt.status == "interrupted"
+            and existing.created_at >= latest_attempt.started_at
+        ):
+            # Recovery scanned before closing the Attempt at its last consumer
+            # heartbeat. Rescanning that shorter mtime window on Cancel can
+            # erase outputs written after the heartbeat. No new Attempt ran,
+            # so retain the recovery manifest as the output authority.
+            return existing
+
     email: str | None = None
     user_id: str | int | None = None
     run_context = get_current_run_context()

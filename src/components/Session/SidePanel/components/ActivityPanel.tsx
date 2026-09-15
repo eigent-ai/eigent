@@ -525,7 +525,8 @@ function FilesSection({
   headerAction?: ReactNode;
 }) {
   const { t } = useTranslation();
-  const { primary, earlier } = arrangeSessionPanelItems(items, scope);
+  const { primary } = arrangeSessionPanelItems(items, scope);
+  const visibleFiles = scope === 'all' ? items : primary;
   const rows = (files: SessionFileItem[]) => (
     <SimpleRows
       items={files}
@@ -554,20 +555,17 @@ function FilesSection({
       title={t('layout.session-panel-files', {
         defaultValue: 'Files',
       })}
-      titleSuffix={<CountPill count={primary.length} />}
+      titleSuffix={<CountPill count={visibleFiles.length} />}
       headerAction={headerAction}
     >
-      {items.length === 0 ? (
+      {visibleFiles.length === 0 ? (
         <div className="px-3 py-3 text-ds-text-base text-ds-ink-muted-default">
           {t('layout.session-panel-files-empty', {
             defaultValue: 'No output files yet.',
           })}
         </div>
       ) : (
-        <>
-          {rows(primary)}
-          <EarlierItems count={earlier.length}>{rows(earlier)}</EarlierItems>
-        </>
+        rows(visibleFiles)
       )}
     </SidePanelAccordionBox>
   );

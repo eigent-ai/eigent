@@ -202,6 +202,8 @@ export type ProjectedArtifactManifest = {
   createdAt: string;
   scanStatus: string;
   truncated: boolean;
+  /** Recovery output remains authoritative until another Attempt starts. */
+  frozenAfterInterruption?: boolean;
 };
 
 export type ProjectViewState = {

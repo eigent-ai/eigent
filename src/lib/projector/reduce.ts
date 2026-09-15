@@ -353,10 +353,40 @@ export function reduceProjectView(
   const legacyData = event.payload.__legacy_data ?? event.payload;
   let artifactsByRun = state.artifactsByRun;
   let artifactManifestsByRun = state.artifactManifestsByRun || {};
+  const previousManifest = artifactManifestsByRun[event.runId];
   if (
-    event.eventType === 'artifact.manifest.finalized' &&
-    event.runSequence > (artifactManifestsByRun[event.runId]?.runSequence ?? -1)
+    previousManifest &&
+    [
+      'runtime.interrupted',
+      'run.interrupted',
+      'run.attempt_created',
+      'run.attempt_started',
+    ].includes(event.eventType)
   ) {
+    artifactManifestsByRun = {
+      ...artifactManifestsByRun,
+      [event.runId]: {
+        ...previousManifest,
+        frozenAfterInterruption: status === 'interrupted',
+      },
+    };
+  }
+  const retainsRecoveryManifest =
+    previousManifest?.frozenAfterInterruption &&
+    ['interrupted', 'cancelling', 'cancelled'].includes(status);
+  const isNewArtifactManifest =
+    event.eventType === 'artifact.manifest.finalized' &&
+    event.runSequence > (previousManifest?.runSequence ?? -1);
+  if (isNewArtifactManifest && retainsRecoveryManifest) {
+    // Older clients rescanned on Cancel after recovery shortened the Attempt
+    // to its last heartbeat. Replay that cancellation without erasing the
+    // already finalized output list; a new Attempt clears the freeze above.
+    artifactManifestsByRun = {
+      ...artifactManifestsByRun,
+      [event.runId]: { ...previousManifest, runSequence: event.runSequence },
+    };
+  }
+  if (isNewArtifactManifest && !retainsRecoveryManifest) {
     const rawArtifacts = Array.isArray(event.payload.artifacts)
       ? event.payload.artifacts
       : [];

@@ -488,3 +488,53 @@ def test_git_artifacts_keep_every_change_and_classify_in_batches(
     assert batches == [500, 120]
     assert result.scan_status == "complete"
     assert result.truncated is False
+
+
+def test_cancel_after_recovery_preserves_outputs_after_last_heartbeat(
+    monkeypatch, tmp_path
+):
+    output = tmp_path / "output"
+    workspace = tmp_path / "workspace"
+    output.mkdir()
+    workspace.mkdir()
+    note = workspace / "note.md"
+    note.write_text("saved output")
+    os.utime(note, (30, 30))
+    snapshot = SimpleNamespace(
+        task_id="run-1",
+        project_id="project-1",
+        task_output_root=str(output),
+        working_directory=str(workspace),
+        task_start_time=10,
+        artifact_manifest=None,
+        user_id="user-1",
+    )
+    resolver = MagicMock()
+    resolver.store.find_snapshot.return_value = ("user_user-1", snapshot)
+    monkeypatch.setattr(artifacts, "get_workspace_resolver", lambda: resolver)
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        run = journal.ensure_run(run_id="run-1", project_id="project-1")
+        attempt = journal.create_run_attempt(
+            run.run_id,
+            request_id="initial",
+            reason="initial_execution",
+            activate=True,
+            now=10,
+        )
+        journal.heartbeat_attempt(attempt.attempt_id, now=12)
+        recovery_manifest = artifacts.finalize_run_artifacts(journal, run)
+        assert recovery_manifest.payload["artifact_count"] == 1
+        journal.reconcile_startup(now=40)
+        assert journal.get_run_attempt(attempt.attempt_id).ended_at == 12
+        journal.request_cancel(
+            run.run_id, request_id="cancel", reason="explicit_cancel", now=50
+        )
+        cancelled_manifest = artifacts.finalize_run_artifacts(journal, run)
+        journal.complete_cancel(run.run_id, request_id="cancel", now=51)
+        assert cancelled_manifest.event_id == recovery_manifest.event_id
+        assert (
+            journal.get_run_artifact_manifest_event(run.run_id).payload[
+                "artifact_count"
+            ]
+            == 1
+        )
