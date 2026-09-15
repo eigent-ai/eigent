@@ -36,6 +36,24 @@ from app.service.task import TaskLock, task_locks
 class TestTerminalToolkit:
     """Test to verify the RuntimeError: no running event loop."""
 
+    @pytest.fixture(autouse=True)
+    def isolated_terminal_directories(self, tmp_path, monkeypatch):
+        original_env = terminal_toolkit_module.env
+        monkeypatch.setattr(
+            terminal_toolkit_module,
+            "env",
+            lambda key, default=None: (
+                str(tmp_path)
+                if key == "file_save_path"
+                else original_env(key, default)
+            ),
+        )
+        monkeypatch.setattr(
+            terminal_toolkit_module,
+            "get_terminal_base_venv_path",
+            lambda: str(tmp_path / "unavailable-base-venv"),
+        )
+
     def test_failed_force_kill_does_not_claim_session_stopped(self):
         toolkit = TerminalToolkit.__new__(TerminalToolkit)
         toolkit._session_lock = threading.RLock()

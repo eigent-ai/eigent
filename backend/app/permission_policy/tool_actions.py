@@ -171,6 +171,14 @@ def operation_for_tool(
     toolkit = (toolkit_name or "").strip().lower()
     if safety_class is ToolSafetyClass.INTERNAL_CONTROL:
         return "agent.control"
+    if (
+        toolkit in {"terminal toolkit", "terminaltoolkit"}
+        and name == "terminal_preflight"
+        and safety_class is ToolSafetyClass.SAFE_READ
+    ):
+        # Only the code-owned metadata probe is a read. A similarly named
+        # external tool or any shell execution keeps its existing policy.
+        return "filesystem.read"
     if "workspace git" in toolkit or "workspacegit" in toolkit:
         return (
             "git.read"
