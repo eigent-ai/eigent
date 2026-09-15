@@ -461,4 +461,81 @@ describe('useProjectEventStoreHydration', () => {
     await flushHydration();
     expect(mocks.hydrate).toHaveBeenCalledTimes(1);
   });
+
+  it.each(['resolve', 'reject'])(
+    'settles from a replacement checkpoint when the old hydration %s arrives',
+    async (outcome) => {
+      let resolve!: (value: typeof hydrated) => void;
+      let reject!: (error: Error) => void;
+      mocks.hydrate.mockImplementationOnce(
+        () =>
+          new Promise((done, fail) => {
+            resolve = done;
+            reject = fail;
+          })
+      );
+      const store = getProjectEventStore('project-1');
+      const { result } = renderHook(() =>
+        useProjectEventStoreHydration({ projectId: 'project-1', enabled: true })
+      );
+      expect(result.current.status).toBe('loading');
+      act(() =>
+        store.replaceSnapshot({
+          project_id: 'project-1',
+          current_cursor: 0,
+          recent_events: [],
+          events_truncated: true,
+        })
+      );
+      const replacement = store.getSnapshot();
+      await act(async () => {
+        if (outcome === 'resolve') resolve(hydrated);
+        else reject(new Error('Old request failed'));
+      });
+      expect(result.current).toMatchObject({
+        status: 'ready',
+        errorCode: null,
+        eventsTruncated: true,
+      });
+      expect(store.getSnapshot()).toBe(replacement);
+      expect(mocks.hydrate).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('starts fresh hydration after reset instead of accepting the old completion', async () => {
+    let resolveOld!: (value: typeof hydrated) => void;
+    let resolveNew!: (value: typeof hydrated) => void;
+    mocks.hydrate
+      .mockImplementationOnce(
+        () =>
+          new Promise((done) => {
+            resolveOld = done;
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((done) => {
+            resolveNew = done;
+          })
+      );
+    const store = getProjectEventStore('project-1');
+    const { result } = renderHook(() =>
+      useProjectEventStoreHydration({ projectId: 'project-1', enabled: true })
+    );
+    act(() => store.reset());
+    await act(async () => resolveOld(hydrated));
+    expect(result.current.status).toBe('loading');
+    expect(mocks.hydrate).toHaveBeenCalledTimes(2);
+    expect(store.getSnapshot().hasHydratedSnapshot).toBe(false);
+    await act(async () => {
+      store.commitSnapshotReplacement(store.beginSnapshotReplacement()!, {
+        project_id: 'project-1',
+        current_cursor: 0,
+        recent_events: [],
+      });
+      resolveNew(hydrated);
+    });
+    expect(result.current.status).toBe('ready');
+    expect(store.getSnapshot().hasHydratedSnapshot).toBe(true);
+  });
 });

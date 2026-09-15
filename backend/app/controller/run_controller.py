@@ -398,6 +398,12 @@ async def get_run(run_id: str):
     return {
         **asdict(run),
         "attempts": [asdict(attempt) for attempt in attempts],
+        "latest_attempt": asdict(attempts[-1]) if attempts else None,
+        "total_attempt_elapsed_ms": (
+            _total_attempt_elapsed_ms(attempts, now=time.time())
+            if attempts
+            else None
+        ),
         "approvals": [asdict(approval) for approval in approvals],
         "interactions": [asdict(interaction) for interaction in interactions],
         "tool_calls": [asdict(tool_call) for tool_call in tool_calls],

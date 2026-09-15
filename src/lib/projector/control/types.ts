@@ -98,6 +98,8 @@ export interface HumanControlInteraction {
 
 export interface HumanControlProjectionState {
   projectId: string;
+  /** Derived availability only. Original request/decision receipts remain intact. */
+  inactiveRunIds?: Readonly<Record<string, true>>;
   interactionById: Record<string, HumanControlInteraction>;
   /** Request order, independent from any bounded ChatTimeline collection. */
   orderedInteractionIds: string[];

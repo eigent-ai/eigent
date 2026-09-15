@@ -25,7 +25,7 @@ def test_terminal_output_uses_threadsafe_tasklock_queue(monkeypatch):
     safe_put_queue = MagicMock()
     monkeypatch.setattr(
         terminal_toolkit_module,
-        "get_task_lock",
+        "get_task_lock_if_exists",
         lambda _task_id: task_lock,
     )
     monkeypatch.setattr(
@@ -49,3 +49,12 @@ def test_terminal_output_uses_threadsafe_tasklock_queue(monkeypatch):
     assert event.process_task_id == "subtask-1"
     assert event.data == "hello"
     task_lock.put_queue.assert_not_called()
+
+
+def test_terminal_reader_after_task_removal_does_not_raise(monkeypatch):
+    monkeypatch.setattr(
+        terminal_toolkit_module, "get_task_lock_if_exists", lambda _: None
+    )
+    toolkit = object.__new__(TerminalToolkit)
+    toolkit.api_task_id = "removed-project"
+    toolkit._update_terminal_output("late output")

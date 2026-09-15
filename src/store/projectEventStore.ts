@@ -37,6 +37,12 @@ import {
   projectHumanControlEvents,
   type HumanControlProjectionState,
 } from '@/lib/projector/control';
+import { reconcileHumanControlAvailability } from '@/lib/projector/control/reduce';
+import {
+  mergeRunSummary,
+  type DurableRunSummaryInput,
+} from '@/lib/projector/runSummary';
+import { runProjectionStore } from '@/lib/runEvents/projectionStore';
 
 const DEFAULT_MAX_QUEUE_EVENTS = 1_000;
 const DEFAULT_MAX_QUEUE_BYTES = 8 * 1024 * 1024;
@@ -448,7 +454,11 @@ function compactHumanControlProjection(
   for (const id of state.orderedInteractionIds) {
     const interaction = state.interactionById[id];
     if (!interaction) continue;
-    if (interaction.status === 'requested') pendingIds.push(id);
+    if (
+      interaction.status === 'requested' &&
+      !state.inactiveRunIds?.[interaction.runId]
+    )
+      pendingIds.push(id);
     else terminalIds.push(id);
   }
 
@@ -528,7 +538,12 @@ function pendingControlCapacityReason(
   let bytes = 0;
   for (const id of state.orderedInteractionIds) {
     const interaction = state.interactionById[id];
-    if (!interaction || interaction.status !== 'requested') continue;
+    if (
+      !interaction ||
+      interaction.status !== 'requested' ||
+      state.inactiveRunIds?.[interaction.runId]
+    )
+      continue;
     count += 1;
     if (count > maxPendingControls) {
       return 'frontend_pending_control_count_overflow';
@@ -548,7 +563,11 @@ function samePendingControls(
   const pending = (state: HumanControlProjectionState) =>
     state.orderedInteractionIds
       .map((id) => state.interactionById[id])
-      .filter((interaction) => interaction.status === 'requested');
+      .filter(
+        (interaction) =>
+          interaction.status === 'requested' &&
+          !state.inactiveRunIds?.[interaction.runId]
+      );
   // Pending state is already count/byte bounded. Historical terminal receipts
   // need not replace an equivalent current checkpoint or notify its consumers.
   return JSON.stringify(pending(left)) === JSON.stringify(pending(right));
@@ -718,6 +737,45 @@ export class ProjectEventStore {
     return this.incarnation;
   }
 
+  isCurrentIncarnation(incarnation: number): boolean {
+    return !this.disposed && this.incarnation === incarnation;
+  }
+
+  isSnapshotReplacementActive(): boolean {
+    return Boolean(this.activeSnapshotReplacement);
+  }
+
+  /** Merge one GET checkpoint without replacing receipts or advancing replay. */
+  reconcileRunSummary(
+    summary: DurableRunSummaryInput,
+    incarnation: number
+  ): boolean {
+    if (
+      this.disposed ||
+      this.incarnation !== incarnation ||
+      summary.project_id !== this.projectId ||
+      this.activeSnapshotReplacement
+    )
+      return false;
+    // Publish already queued live facts before comparing versions with the GET.
+    this.flushAll();
+    const existing = this.snapshot.view.runs[summary.run_id];
+    const run = mergeRunSummary(existing, summary);
+    if (!run || run === existing) return false;
+    const view = {
+      ...this.snapshot.view,
+      runs: { ...this.snapshot.view.runs, [run.runId]: run },
+    };
+    this.publish(
+      view,
+      this.snapshot.chat,
+      this.snapshot.control,
+      [],
+      this.snapshot.overflowed
+    );
+    return true;
+  }
+
   getPendingEventCount(): number {
     return this.queue.length;
   }
@@ -826,10 +884,13 @@ export class ProjectEventStore {
     // Human controls consume the same accepted durable batch. Pending requests
     // are never evicted; only older terminal receipts and dedupe IDs are bounded.
     const control = compactHumanControlProjection(
-      projectHumanControlEvents(
-        this.projectId,
-        acceptedBatch,
-        this.snapshot.control
+      reconcileHumanControlAvailability(
+        projectHumanControlEvents(
+          this.projectId,
+          acceptedBatch,
+          this.snapshot.control
+        ),
+        result.state.runs
       ),
       this.maxResolvedControls,
       this.maxControlSeenEventIds
@@ -899,7 +960,10 @@ export class ProjectEventStore {
         'Project snapshot replacement is already owned by a rebuild generation'
       );
     }
-    this.applySnapshot(snapshot);
+    if (this.applySnapshot(snapshot)) {
+      this.incarnation += 1;
+      runProjectionStore.clearProject(this.projectId);
+    }
   }
 
   /**
@@ -1030,22 +1094,27 @@ export class ProjectEventStore {
       )
     );
     const snapshotControl = compactHumanControlProjection(
-      projectHumanControlEvents(
-        this.projectId,
-        canExtendControl
-          ? snapshotEvents.filter(
-              (event) => !this.isCoveredByCurrentWatermark(event)
-            )
-          : snapshotEvents,
-        canExtendControl ? this.snapshot.control : undefined
+      reconcileHumanControlAvailability(
+        projectHumanControlEvents(
+          this.projectId,
+          canExtendControl
+            ? snapshotEvents.filter(
+                (event) => !this.isCoveredByCurrentWatermark(event)
+              )
+            : snapshotEvents,
+          canExtendControl ? this.snapshot.control : undefined
+        ),
+        projectedView.runs
       ),
       this.maxResolvedControls,
       this.maxControlSeenEventIds
     );
-    const control =
+    const control = reconcileHumanControlAvailability(
       needsControlReplay && this.snapshot.hasHydratedSnapshot
         ? this.snapshot.control
-        : snapshotControl;
+        : snapshotControl,
+      view.runs
+    );
     const pendingControlOverflowReason = pendingControlCapacityReason(
       control,
       this.maxPendingControls,
@@ -1121,10 +1190,13 @@ export class ProjectEventStore {
       ([runId, through]) => advanced[runId] === through
     );
     const control = compactHumanControlProjection(
-      projectHumanControlEvents(
-        this.projectId,
-        complete ? [...events, ...replay.liveEvents] : events,
-        replay.control
+      reconcileHumanControlAvailability(
+        projectHumanControlEvents(
+          this.projectId,
+          complete ? [...events, ...replay.liveEvents] : events,
+          replay.control
+        ),
+        this.snapshot.view.runs
       ),
       this.maxResolvedControls,
       this.maxControlSeenEventIds
@@ -1273,6 +1345,7 @@ export class ProjectEventStore {
     this.controlReplay = null;
     this.clearQueue();
     this.incarnation += 1;
+    runProjectionStore.clearProject(this.projectId);
     this.publish(
       createProjectViewState(this.projectId, this.mode),
       createChatProjectionState(this.projectId),
@@ -1399,7 +1472,7 @@ export class ProjectEventStore {
           ? { ...view, eventsTruncated: true }
           : view,
       chat,
-      control,
+      control: reconcileHumanControlAvailability(control, view.runs),
       revision: this.snapshot.revision + 1,
       hasHydratedSnapshot,
       overflowed,

@@ -20,6 +20,11 @@ import {
 import { ProjectEventStore } from '@/store/projectEventStore';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('@/api/http', () => ({
+  fetchGet: vi.fn().mockRejectedValue(new Error('Mock offline canonical GET')),
+  sseTransport: vi.fn(),
+}));
+
 import {
   ProjectRunEventStreamOwner,
   selectCanonicalLiveRuns,
