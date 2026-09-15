@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { FileViewerPanel } from '@/components/Folder';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -87,6 +87,75 @@ describe('FileViewerPanel toolbar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
+
+  it('reveals the static path on keyboard focus and dismisses it with Escape', async () => {
+    const user = userEvent.setup();
+    const path = 'references/examples/a-very-long-document-name.md';
+    const onBreadcrumbSegmentClick = vi.fn();
+    renderViewer(textFile(), {
+      pathPresentation: 'file-path',
+      breadcrumbSegments: path.split('/'),
+      onBreadcrumbSegmentClick,
+    });
+
+    const pathText = screen.getByText(path);
+    expect(screen.queryByRole('navigation', { name: 'File path' })).toBeNull();
+    expect(screen.queryByRole('group', { name: 'File path' })).toBeNull();
+    await user.tab();
+    expect(pathText.parentElement).toHaveFocus();
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(path);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('tooltip')).toBeNull());
+    expect(pathText.parentElement).toHaveFocus();
+
+    await user.click(pathText);
+    expect(callbacks.onRevealFile).not.toHaveBeenCalled();
+    expect(onBreadcrumbSegmentClick).not.toHaveBeenCalled();
+  });
+
+  it('keeps source switching and file-tree controls working beside a static path', async () => {
+    const user = userEvent.setup();
+    const onToggleFileTree = vi.fn();
+    renderViewer(textFile({ name: 'SKILL.md', type: 'md' }), {
+      pathPresentation: 'file-path',
+      breadcrumbSegments: ['SKILL.md'],
+      isFileTreeOpen: true,
+      onToggleFileTree,
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Source' }));
+    expect(callbacks.onToggleSourceCode).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole('button', { name: 'Hide file tree' }));
+    expect(onToggleFileTree).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([true, false])(
+    'keeps the blocked-preview action working with a static path (remote: %s)',
+    async (isRemote) => {
+      renderViewer(
+        textFile({
+          isRemote,
+          content: undefined,
+          preview: {
+            kind: 'blocked',
+            reason: 'too-large',
+            size: 100,
+            limit: 50,
+          },
+        }),
+        { pathPresentation: 'file-path', onOpenExternalFile: undefined }
+      );
+
+      await userEvent.setup().click(
+        screen.getByRole('button', {
+          name: isRemote ? 'Download' : 'Open externally',
+        })
+      );
+      expect(
+        isRemote ? callbacks.onDownloadFile : callbacks.onRevealFile
+      ).toHaveBeenCalledTimes(1);
+    }
+  );
 
   it('truncates a long file path instead of showing a scrollbar', () => {
     renderViewer(
