@@ -20,7 +20,7 @@ type AgentFileLike = {
   isFolder?: boolean;
 };
 
-const RUNTIME_ONLY_DIRS = new Set(['camel_logs']);
+const RUNTIME_ONLY_DIRS = new Set(['camel_logs', 'terminal_logs']);
 const TASK_ROOT_NAME_PATTERN =
   /^task_(?:task_)?(?:\d{10,}(?:-\d+)?|[0-9a-f]{12,}(?:-[0-9a-f]{4,})*)$/i;
 

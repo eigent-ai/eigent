@@ -384,5 +384,6 @@
   "workspace-available-title": "スペースを利用できます",
   "workspace-queue-position": " キュー内の位置：{{position}}。",
   "workspace-waiting-description": "別のタスクがこのスペースを更新しています。利用可能になると、このタスクは自動的に開始します。{{position}}",
-  "workspace-waiting-title": "スペースを待機中"
+  "workspace-waiting-title": "スペースを待機中",
+  "files-list-incomplete": "ファイル一覧が不完全な可能性があります。"
 }

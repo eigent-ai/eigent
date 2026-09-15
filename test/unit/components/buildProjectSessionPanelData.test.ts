@@ -495,7 +495,7 @@ describe('buildProjectSessionPanelData', () => {
     ]);
     expect(data.files).toMatchObject([
       {
-        id: 'outputs/report.md',
+        id: 'run-current:outputs/report.md',
         previewable: false,
         taskId: 'run-current',
         historical: false,
@@ -574,7 +574,7 @@ describe('buildProjectSessionPanelData', () => {
 
     expect(merged).toHaveLength(1);
     expect(merged[0]).toMatchObject({
-      id: 'artifact-1',
+      id: 'run-current:artifact-1',
       previewable: true,
       taskId: 'run-current',
       file: {
@@ -792,7 +792,7 @@ describe('buildProjectSessionPanelData', () => {
     );
     expect(liveData.files).toMatchObject([
       {
-        id: 'reports/summary.md',
+        id: 'run-current:reports/summary.md',
         previewable: false,
         taskId: 'run-current',
         file: { relativePath: 'reports/summary.md' },
@@ -816,7 +816,7 @@ describe('buildProjectSessionPanelData', () => {
 
     expect(finalized.files).toHaveLength(1);
     expect(finalized.files[0]).toMatchObject({
-      id: 'artifact-summary',
+      id: 'run-current:artifact-summary',
       file: {
         artifactId: 'artifact-summary',
         relativePath: 'reports/summary.md',

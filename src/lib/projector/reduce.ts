@@ -166,6 +166,7 @@ export function createProjectViewState(
     resyncTargetCursor: null,
     runs: {},
     artifactsByRun: {},
+    artifactManifestsByRun: {},
     legacySteps: [],
     unknownEvents: [],
   };
@@ -351,7 +352,11 @@ export function reduceProjectView(
     event.eventId;
   const legacyData = event.payload.__legacy_data ?? event.payload;
   let artifactsByRun = state.artifactsByRun;
-  if (event.eventType === 'artifact.manifest.finalized') {
+  let artifactManifestsByRun = state.artifactManifestsByRun || {};
+  if (
+    event.eventType === 'artifact.manifest.finalized' &&
+    event.runSequence > (artifactManifestsByRun[event.runId]?.runSequence ?? -1)
+  ) {
     const rawArtifacts = Array.isArray(event.payload.artifacts)
       ? event.payload.artifacts
       : [];
@@ -395,6 +400,19 @@ export function reduceProjectView(
         ];
       }
     );
+    artifactManifestsByRun = {
+      ...artifactManifestsByRun,
+      [event.runId]: {
+        runSequence: event.runSequence,
+        createdAt: event.createdAt,
+        scanStatus: !Array.isArray(event.payload.artifacts)
+          ? 'unavailable'
+          : typeof event.payload.scan_status === 'string'
+            ? event.payload.scan_status
+            : 'complete',
+        truncated: event.payload.truncated === true,
+      },
+    };
     const previousArtifacts = artifactsByRun[event.runId] || [];
     const previousById = new Map(
       previousArtifacts.map((artifact) => [artifact.artifactId, artifact])
@@ -519,6 +537,11 @@ export function reduceProjectView(
     resyncReason: state.resyncReason,
     runs: { ...state.runs, [event.runId]: run },
     artifactsByRun,
+    artifactManifestsByRun: Object.fromEntries(
+      Object.entries(artifactManifestsByRun).filter(
+        ([runId]) => runId in artifactsByRun
+      )
+    ),
     legacySteps,
     unknownEvents:
       event.legacyStep ||

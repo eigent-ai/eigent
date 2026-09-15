@@ -50,15 +50,10 @@ export function ArtifactChangeList({
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
   const fileItems = files || [];
-  const scanWarning = truncated
-    ? 'This Run changed more files than the bounded scan could list. The files shown below are a partial durable manifest.'
-    : scanStatus === 'workspace_unavailable'
-      ? 'The original local workspace is unavailable. This durable file manifest may be incomplete.'
-      : scanStatus === 'workspace_mismatch'
-        ? 'The recorded workspace no longer matches this Run. File discovery was not completed.'
-        : scanStatus !== 'complete'
-          ? `File discovery completed with status: ${scanStatus}.`
-          : null;
+  const scanWarning =
+    truncated || scanStatus !== 'complete'
+      ? t('chat.files-list-incomplete')
+      : null;
   if (!fileItems.length && !scanWarning) return null;
 
   const collapsedCount = 3;

@@ -13,8 +13,10 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { ArtifactChangeList } from '@/components/ChatBox/MessageItem/ArtifactChangeList';
-import type { ChatArtifactNode } from '@/lib/projector/chat';
-import type { ProjectedArtifact } from '@/lib/projector/types';
+import {
+  reconcileRunOutputFiles,
+  type RunOutputSources,
+} from '@/lib/sessionOutputFiles';
 import { cn } from '@/lib/utils';
 import {
   normalizeWorkspaceRelativePath,
@@ -31,71 +33,10 @@ import { FileText } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-function extension(name: string): string {
-  return name.includes('.') ? name.split('.').at(-1) || '' : '';
-}
-
 export function normalizeRunReviewPath(
   value: string | undefined
 ): string | null {
   return normalizeWorkspaceRelativePath(value);
-}
-
-function fileInfoFromProjectedArtifact(artifact: ProjectedArtifact): FileInfo {
-  const localPathAvailable = artifact.localPathAvailable;
-  return {
-    name: artifact.name,
-    type: extension(artifact.name),
-    path: '',
-    relativePath: artifact.relativePath,
-    artifactId: artifact.artifactId,
-    artifactChange: artifact.changeType,
-    size: artifact.size ?? undefined,
-    modifiedAt: artifact.modifiedAt ?? undefined,
-    uploadPolicy:
-      artifact.uploadPolicy === 'agent_generated' ||
-      artifact.uploadPolicy === 'metadata_only'
-        ? artifact.uploadPolicy
-        : undefined,
-    localPathAvailable,
-    assetRef: artifact.assetRef,
-    isRemote: !localPathAvailable && Boolean(artifact.assetRef),
-  };
-}
-
-function fileInfoFromChatArtifact(artifact: ChatArtifactNode): FileInfo {
-  const relativePath =
-    normalizeRunReviewPath(artifact.relativePath) ??
-    normalizeRunReviewPath(artifact.path) ??
-    undefined;
-  const name =
-    artifact.name ||
-    relativePath?.split('/').filter(Boolean).at(-1) ||
-    artifact.path.split('/').filter(Boolean).at(-1) ||
-    artifact.path;
-  return {
-    name,
-    type: extension(name),
-    path: '',
-    relativePath,
-    artifactId: artifact.artifactId,
-    artifactChange:
-      artifact.operation === 'created'
-        ? 'generated'
-        : artifact.operation === 'updated'
-          ? 'changed'
-          : undefined,
-    mimeType: artifact.mimeType,
-  };
-}
-
-function uniqueFiles(files: readonly FileInfo[]): FileInfo[] {
-  const byIdentity = new Map<string, FileInfo>();
-  for (const file of files) {
-    const key = file.artifactId || file.relativePath || file.path || file.name;
-    byIdentity.set(key, file);
-  }
-  return [...byIdentity.values()];
 }
 
 export function runFileReviewPath(file: FileInfo): string | null {
@@ -128,10 +69,7 @@ export function resolveRunFilePreview(
   return null;
 }
 
-export interface RunFileSources {
-  artifactNodes?: readonly ChatArtifactNode[];
-  projectedArtifacts?: readonly ProjectedArtifact[];
-}
+export type RunFileSources = RunOutputSources;
 
 export interface RunFilesProps extends RunFileSources {
   runId: string;
@@ -270,19 +208,18 @@ export function useRunFileDiffStats(
 }
 
 export function useRunFileInfo({
-  artifactNodes = [],
-  projectedArtifacts = [],
+  artifactNodes,
+  projectedArtifacts,
+  artifactManifest,
 }: RunFileSources): FileInfo[] {
   return useMemo(
     () =>
-      uniqueFiles(
-        projectedArtifacts.length > 0
-          ? projectedArtifacts.map(fileInfoFromProjectedArtifact)
-          : artifactNodes
-              .filter((artifact) => artifact.operation !== 'deleted')
-              .map(fileInfoFromChatArtifact)
-      ),
-    [artifactNodes, projectedArtifacts]
+      reconcileRunOutputFiles({
+        artifactNodes,
+        projectedArtifacts,
+        artifactManifest,
+      }).map(({ file }) => file),
+    [artifactNodes, projectedArtifacts, artifactManifest]
   );
 }
 
@@ -336,6 +273,8 @@ export function RunFilesGroup(props: RunFilesProps) {
     <div ref={rootRef} className="contents" data-run-files-group={props.runId}>
       <ArtifactChangeList
         files={files}
+        scanStatus={props.artifactManifest?.scanStatus}
+        truncated={props.artifactManifest?.truncated}
         totals={totals}
         lineChangesForFile={lineChangesForFile}
         onViewChanges={() => openReviewPreview({ runId: props.runId })}

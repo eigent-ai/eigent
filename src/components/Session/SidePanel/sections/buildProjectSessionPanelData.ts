@@ -20,6 +20,7 @@ import type {
 } from '@/lib/projector/chat';
 import { resolveSubagentPresentationIdentity } from '@/lib/projector/chat/presentation';
 import { httpUrlOrNull } from '@/lib/richText';
+import { reconcileRunOutputFiles } from '@/lib/sessionOutputFiles';
 import { normalizeWorkspaceRelativePath } from '@/lib/workspaceRelativePath';
 import { TaskStatus, type TaskStatusType } from '@/types/constants';
 import {
@@ -716,108 +717,28 @@ function collectResources(runs: ProjectSessionRun[]): SessionResourceItem[] {
   );
 }
 
-function fileInfoFromArtifact(
-  node: Extract<ChatProjectionNode, { kind: 'artifact' }>
-): FileInfo {
-  const name =
-    node.name || node.path.split('/').filter(Boolean).at(-1) || node.path;
-  const relativePath = normalizeWorkspaceRelativePath(node.relativePath);
-  return {
-    name,
-    type: name.includes('.') ? name.split('.').at(-1) || '' : '',
-    path: node.path,
-    relativePath: relativePath || undefined,
-    artifactId: node.artifactId,
-    artifactChange:
-      node.operation === 'created'
-        ? 'generated'
-        : node.operation === 'updated'
-          ? 'changed'
-          : undefined,
-    mimeType: node.mimeType,
-  };
-}
-
-function artifactIdentity(
-  node: Extract<ChatProjectionNode, { kind: 'artifact' }>
-): string | null {
-  const artifactId = node.artifactId?.trim();
-  if (artifactId) return `artifact:${artifactId}`;
-  const relativePath = normalizeWorkspaceRelativePath(node.relativePath);
-  if (relativePath) return `relative:${relativePath}`;
-  return null;
-}
-
-function fileEntryForRunRelativePath(
-  files: Map<string, SessionFileItem>,
-  runId: string,
-  relativePath: string
-): [string, SessionFileItem] | null {
-  for (const entry of files.entries()) {
-    const [, item] = entry;
-    if (
-      item.taskId === runId &&
-      normalizeWorkspaceRelativePath(item.file.relativePath) === relativePath
-    ) {
-      return entry;
-    }
-  }
-  return null;
-}
-
 function collectFiles(runs: ProjectSessionRun[]): SessionFileItem[] {
-  const files = new Map<string, SessionFileItem>();
-  for (const run of [...runs].reverse()) {
-    for (const node of run.nodes) {
-      if (node.kind !== 'artifact' || !node.path || httpUrlOrNull(node.path)) {
-        continue;
-      }
-      let key = artifactIdentity(node);
-      // A display-only basename must never become Run identity or an openable
-      // workspace path. Wait for an artifact id or a trusted portable path.
-      if (!key) continue;
-      const relativePath = normalizeWorkspaceRelativePath(node.relativePath);
-      const matchingRunPath = relativePath
-        ? fileEntryForRunRelativePath(files, run.runId, relativePath)
-        : null;
-      if (node.operation === 'deleted') {
-        files.delete(key);
-        if (matchingRunPath) files.delete(matchingRunPath[0]);
-        continue;
-      }
-      const time = nodeTime(node, run.createdAt);
-      let existing = files.get(key);
-      if (matchingRunPath && matchingRunPath[0] !== key) {
-        existing ??= matchingRunPath[1];
-        if (node.artifactId?.trim()) {
-          // The terminal manifest upgrades the realtime relative identity to
-          // its canonical artifact id without creating a second visible row.
-          files.delete(matchingRunPath[0]);
-        } else {
-          // Preserve a canonical artifact key if an older realtime frame is
-          // replayed after terminal finalization.
-          key = matchingRunPath[0];
-        }
-      }
-      const file = fileInfoFromArtifact(node);
-      file.artifactId ??= existing?.file.artifactId;
-      const id = file.artifactId?.trim() || relativePath || node.eventId;
-      files.set(key, {
-        id,
+  return runs
+    .flatMap((run) =>
+      reconcileRunOutputFiles({
+        artifactNodes: run.nodes.filter((node) => node.kind === 'artifact'),
+        projectedArtifacts: run.projectedArtifacts,
+        artifactManifest: run.artifactManifest,
+      }).map(({ file, createdAt, updatedAt }) => ({
+        id: `${run.runId}:${file.artifactId || file.relativePath}`,
         file,
         previewable: false,
         taskId: run.runId,
-        historical: existing?.historical === false ? false : !run.isCurrent,
-        createdAt: existing?.createdAt ?? time,
-        updatedAt: time,
-      });
-    }
-  }
-  return [...files.values()].sort(
-    (left, right) =>
-      Number(left.historical) - Number(right.historical) ||
-      right.updatedAt - left.updatedAt
-  );
+        historical: !run.isCurrent,
+        createdAt: (createdAt && Date.parse(createdAt)) || run.createdAt,
+        updatedAt: (updatedAt && Date.parse(updatedAt)) || run.updatedAt,
+      }))
+    )
+    .sort(
+      (left, right) =>
+        Number(left.historical) - Number(right.historical) ||
+        right.updatedAt - left.updatedAt
+    );
 }
 
 function collectEnvironments(

@@ -81,9 +81,7 @@ describe('ArtifactChangeList', () => {
 
     expect(screen.getByText('Edited 0 files')).toBeInTheDocument();
     expect(
-      screen.getByText(
-        'The original local workspace is unavailable. This durable file manifest may be incomplete.'
-      )
+      screen.getByText('The file list may be incomplete.')
     ).toBeInTheDocument();
   });
 

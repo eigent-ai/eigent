@@ -1,7 +1,9 @@
 # Session side panel: file results bug investigation and fix plan
 
-Date: 2026-09-14. Status: Bugs 1–2 investigated with implementation pending;
-Bug 3 header recovery control implemented locally.
+Date: 2026-09-14. Updated: 2026-09-15. Status: all three fixes implemented;
+198 focused tests passed, with Electron fixture verification completed.
+A live model run interrupted with Cmd+Q remains unverified because the local
+account is out of credits.
 
 Local branch: `fix/session-side-panel-file-results`, created from `main` at
 `6bb55842f73766f7b219aa5ef5bcf5965f3acdaa` (the commit tagged `v1.0.4`).
@@ -19,12 +21,84 @@ branch was rebased onto main at `75fe964c` after these related changes landed:
 - [#1917](https://github.com/eigent-ai/eigent/pull/1917) batches workspace file
   preview resolution safely.
 
-Re-test Bugs 1–2 on this updated base before implementing the historical plan.
-These upstream changes may resolve part of the reported symptoms; they are not
-changes authored by this PR. Verify old saved manifests and replay identity
-reconciliation as well as newly produced artifacts. The header action in this
-draft still uses the shared initial-history hydration/retry state; upstream
-older-page recovery behavior remains owned by its existing runtime and UI.
+The remaining frontend gaps were reproduced on this updated base and fixed
+below. Upstream changes listed above are not authored by this PR. The header
+action still uses shared initial-history hydration; older-page recovery remains
+owned by its existing runtime and UI.
+
+## Implementation and verification — 2026-09-15
+
+- Added `sessionOutputFiles.ts` as the shared Chat/Summary selector. It merges
+  path-only writes with canonical IDs within each Run, applies deletion and
+  recreation in sequence order, excludes blank/unidentifiable entries, and
+  retains named unavailable files and richer uploaded metadata. Summary row
+  keys include the Run ID; backend artifact IDs remain unchanged.
+- Preserved manifest presence, sequence, scan status, and truncation through
+  the projector, snapshot merge, timeline, and Session overview. A complete
+  empty manifest clears older writes; partial/unavailable scans retain known
+  files, and writes newer than a complete manifest remain visible. Older
+  snapshots cannot replace a newer manifest. Missing artifact arrays are
+  treated as unavailable, not as a successful empty scan.
+- Applied the shared runtime-directory filter to Chat and Summary, legacy
+  local/remote file collections, and Review's Git/overlay/backup paths. Review
+  totals describe the visible files. Raw logs, journals, upload policy, valid
+  empty files, authored `.log` outputs, and user-file deletions are preserved.
+- Retained the compact header history retry from the initial draft, with the
+  existing automatic recovery policy. Replaced the existing partial-scan
+  warning's backend jargon with a localized message in all 11 locales.
+
+### Automated validation
+
+198 tests passed across 14 focused suites covering output reconciliation,
+projector recovery, Chat file cards, Summary data, Review, local/remote file
+resolution, header history action, ActivityPanel, and history hydration/runtime.
+The replay test includes sanitized payload shapes from the two recorded
+`file.written` receipts; subsequent events/envelopes/manifests are explicitly
+synthetic. It checks initial two files, duplicate delivery, recovered five,
+finalization, and repeated empty-manifest restore across both surfaces.
+
+`npm run type-check`, focused ESLint on changed TypeScript files,
+`npm run check:i18n`, `npm run check:design-tokens`, and `git diff --check`
+passed. No backend contract changes were needed.
+
+### Electron verification and limits
+
+Launched this checkout's Electron development app and opened an existing
+Session. Its loaded Summary had no history-error body section. The account
+reported no remaining credits, so a new paid model run and a true live
+Cmd+Q/resume reproduction were not possible.
+
+A temporary local fixture then rendered the actual `RunFilesGroup`,
+`SessionSidePanel`, header action, projector/store, and filesystem resolver
+inside the same Electron app. The fixture substituted runtime context and
+chat-store ownership; it did not test live network recovery. Verified:
+
+- Two pre-interruption files, five recovered files, and five final-manifest
+  files agree across Chat and Summary; expanding Chat reveals all five names.
+- Runtime logs and identity-only blank rows are absent.
+- A complete empty manifest removes the Chat card and shows **Files 0**.
+- A partial manifest retains five files and displays the localized warning;
+  finalization removes the warning.
+- Named unavailable files remain visible; after supplying the fixture's Space
+  metadata, real Electron IPC resolves local output paths. Selecting
+  `notes5.md` in Summary and `notes1.md` in Chat read their expected Markdown
+  bytes.
+- The history error is a single header action beside the scope selector.
+  Clicking it invokes retry once and removes the action on successful recovery.
+- Light and dark appearances, collapsed/expanded lists, and unavailable/empty
+  states were visually inspected. Reduced-motion classes and disabled pending
+  retry states have automated coverage. 200% zoom, long localized paths, full
+  preview rendering, and the complete live interrupt/resume flow remain manual
+  follow-ups. The exact original seven-row payload was not provided, so the
+  reporter's literal blank-row cause remains unconfirmed beyond the covered
+  malformed-record and duplicate-identity defects.
+
+Reused existing `ArtifactChangeList`, Summary Files rows, `SidePanelHeader`,
+`Button`, `DsIcon`, and `TooltipSimple`. The header uses ghost/sm/icon-only;
+existing semantic surface, Ink, Hairline, and warning tokens remain in use.
+No new geometry, token changes, or design exceptions were introduced. The
+neighboring scope selector's pre-existing size override remains as documented
+below.
 
 ## Summary
 
@@ -305,7 +379,7 @@ identity checks or increasing limits indiscriminately.
   is disabled while automatic recovery is pending.
 - Ready/idle/no Session: the history action is absent.
 - Automatic retry and response-validation behavior remain unchanged. The two
-  original file-result bugs remain planned, not fixed by this UI change.
+  original file-result bugs were subsequently implemented as recorded above.
 
 ### Bug 3 validation and design handoff
 

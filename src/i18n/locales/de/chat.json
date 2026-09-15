@@ -388,5 +388,6 @@
   "workspace-available-title": "Arbeitsplatz verfügbar",
   "workspace-queue-position": " Warteschlangenposition: {{position}}.",
   "workspace-waiting-description": "Eine weitere Aufgabe aktualisiert diesen Arbeitsbereich. Diese Aufgabe wird automatisch starten, sobald der Arbeitsbereich verfügbar ist.{{position}}",
-  "workspace-waiting-title": "Warten auf den Arbeitsplatz"
+  "workspace-waiting-title": "Warten auf den Arbeitsplatz",
+  "files-list-incomplete": "Die Dateiliste ist möglicherweise unvollständig."
 }

@@ -197,6 +197,13 @@ export type ProjectedArtifact = {
   };
 };
 
+export type ProjectedArtifactManifest = {
+  runSequence: number;
+  createdAt: string;
+  scanStatus: string;
+  truncated: boolean;
+};
+
 export type ProjectViewState = {
   projectId: string;
   mode: ProjectorMode;
@@ -209,6 +216,7 @@ export type ProjectViewState = {
   resyncTargetCursor: number | null;
   runs: Record<string, ProjectedRun>;
   artifactsByRun: Record<string, ProjectedArtifact[]>;
+  artifactManifestsByRun?: Record<string, ProjectedArtifactManifest>;
   legacySteps: ProjectedLegacyStep[];
   unknownEvents: CanonicalProjectEvent[];
 };

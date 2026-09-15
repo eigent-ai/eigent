@@ -396,5 +396,6 @@
   "workspace-available-title": "Пространство доступно",
   "workspace-queue-position": " Позиция в очереди: {{position}}.",
   "workspace-waiting-description": "Другая задача обновляет это Пространство. Задача запустится автоматически, когда Пространство станет доступно.{{position}}",
-  "workspace-waiting-title": "Ожидание Пространства"
+  "workspace-waiting-title": "Ожидание Пространства",
+  "files-list-incomplete": "Список файлов может быть неполным."
 }
