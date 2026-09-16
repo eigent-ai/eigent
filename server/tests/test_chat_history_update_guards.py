@@ -12,13 +12,18 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import asyncio
 from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+import pytest
 
 from app.domains.chat.api.history_controller import (
     _clamp_chat_history_string_fields,
     _drop_stale_ongoing_status,
+    update_chat_history,
 )
-from app.model.chat.chat_history import ChatHistory, ChatStatus
+from app.model.chat.chat_history import ChatHistory, ChatHistoryUpdate, ChatStatus
 
 
 def test_clamp_chat_history_string_fields_uses_column_limits():
@@ -33,6 +38,54 @@ def test_clamp_chat_history_string_fields_uses_column_limits():
     assert len(data["project_name"]) == ChatHistory.project_name.type.length
     assert len(data["summary"]) == ChatHistory.summary.type.length
     assert data["tokens"] == 42
+
+
+@pytest.mark.parametrize("name_length", [200, 255])
+def test_history_update_clamps_stable_name_without_losing_completion(name_length):
+    stable_name = "名" * name_length
+    project = SimpleNamespace(name=stable_name, metadata_json={"nameSource": "manual"})
+    history = SimpleNamespace(
+        user_id=20,
+        project_id="long-name",
+        task_id="run",
+        status=ChatStatus.ongoing,
+    )
+    history.update_fields = MagicMock(side_effect=lambda data: history.__dict__.update(data))
+
+    def save(db):
+        # Model PostgreSQL's bounded columns at the ORM persistence boundary.
+        assert len(history.project_name) <= ChatHistory.project_name.type.length
+        assert len(history.summary) <= ChatHistory.summary.type.length
+
+    history.save = MagicMock(side_effect=save)
+    db = MagicMock()
+    db.exec.side_effect = [
+        SimpleNamespace(first=lambda: history),
+        SimpleNamespace(first=lambda: project),
+    ]
+
+    result = asyncio.run(
+        update_chat_history(
+            1,
+            ChatHistoryUpdate(
+                project_name="Short task summary",
+                summary="s" * 1100,
+                status=ChatStatus.done.value,
+                tokens=42,
+            ),
+            db_session=db,
+            auth=SimpleNamespace(id=20),
+        )
+    )
+
+    assert result is history
+    assert history.project_name == stable_name[: ChatHistory.project_name.type.length]
+    assert history.summary == "s" * ChatHistory.summary.type.length
+    assert history.status == ChatStatus.done.value
+    assert history.tokens == 42
+    assert project.name == stable_name
+    history.save.assert_called_once_with(db)
+    db.refresh.assert_called_once_with(history)
 
 
 def test_drop_stale_ongoing_status_preserves_done_history():

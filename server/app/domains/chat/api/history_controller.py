@@ -228,6 +228,9 @@ async def update_chat_history(
         )
         if stable_name:
             update_data["project_name"] = stable_name
+    # Project names can exceed the history column limit. Bound the history
+    # projection after substituting the stable name, without changing Project.
+    _clamp_chat_history_string_fields(update_data)
     history.update_fields(update_data)
     history.save(db_session)
 
