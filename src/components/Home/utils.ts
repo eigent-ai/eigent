@@ -73,11 +73,14 @@ export function formatHubRelativeAgo(
   });
 }
 
-export function formatHubDate(value?: string | number | null): string {
+export function formatHubDate(
+  value: string | number | null | undefined,
+  locale: string
+): string {
   if (value === null || value === undefined || value === '') return '';
   const date = typeof value === 'number' ? new Date(value) : new Date(value);
   if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleDateString(undefined, {
+  return date.toLocaleDateString(locale, {
     month: 'short',
     day: '2-digit',
     year: 'numeric',
