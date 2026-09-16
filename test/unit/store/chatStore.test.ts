@@ -132,6 +132,16 @@ import {
   proxyFetchGet,
   waitForBackendReady,
 } from '@/api/http';
+import { presentChatSemanticEntities } from '@/components/ChatBox/EventTimeline/presentationPolicy';
+import { selectRenderableChatNodes } from '@/lib/projector/chat';
+import {
+  composeTimelineRuns,
+  reconcileTimelineRuns,
+} from '@/lib/projector/chat/presentation';
+import {
+  getProjectEventStore,
+  releaseProjectEventStore,
+} from '@/store/projectEventStore';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { generateUniqueId } from '../../../src/lib';
 import {
@@ -1466,6 +1476,251 @@ describe('ChatStore - Core Functionality', () => {
               warning_code: null,
             })
       );
+    });
+
+    it('keeps completed legacy history terminal in the event timeline', async () => {
+      vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'true');
+      releaseProjectEventStore('proj-replay');
+      const eventStore = getProjectEventStore('proj-replay', {
+        scheduleFlush: () => () => {},
+      });
+      const startedAt = Date.parse('2026-08-18T00:00:00Z') / 1000;
+      const taskId = 'legacy-completed-history';
+      vi.mocked(fetchEventSource).mockImplementation(async (_url, opts) => {
+        for (const [index, event] of [
+          {
+            step: 'confirmed',
+            data: { task_id: taskId, question: 'Build a report' },
+            timestamp: startedAt,
+          },
+          {
+            step: 'todo_state',
+            data: { agent_id: 'single-agent', todos: [] },
+            timestamp: startedAt + 1,
+          },
+          {
+            step: 'end',
+            data: { result: 'Report complete' },
+            timestamp: startedAt + 600,
+          },
+        ].entries()) {
+          await opts.onmessage?.({
+            data: JSON.stringify({ id: index + 1, task_id: taskId, ...event }),
+          } as any);
+        }
+        opts.onclose?.();
+      });
+
+      try {
+        const { result } = renderHook(() => useChatStore());
+        await act(async () => {
+          await result.current.getState().replay(taskId, 'Build a report', 0);
+        });
+        const task = result.current.getState().tasks[taskId];
+        expect(task.status).toBe(ChatTaskStatus.FINISHED);
+        expect(task.elapsed).toBe(600_000);
+
+        eventStore.flushAll();
+        const snapshot = eventStore.getSnapshot();
+        const runs = reconcileTimelineRuns(
+          composeTimelineRuns(selectRenderableChatNodes(snapshot.chat)),
+          snapshot.view.runs
+        );
+        expect(runs).toHaveLength(1);
+        expect(runs[0].status).toBe('completed');
+        expect(runs[0].userQuery?.content).toBe('Build a report');
+        expect(runs[0].finalAssistantResponse?.content).toBe('Report complete');
+        expect(runs[0].timestamps.durationMs).toBe(600_000);
+        expect(runs[0].timestamps.elapsedAnchor?.anchoredAt).toBeNull();
+      } finally {
+        vi.unstubAllEnvs();
+        releaseProjectEventStore('proj-replay');
+      }
+    });
+
+    it('keeps one narration and file receipt after partial canonical replay falls back to cloud', async () => {
+      vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'true');
+      releaseProjectEventStore('proj-replay');
+      const eventStore = getProjectEventStore('proj-replay', {
+        scheduleFlush: () => () => {},
+      });
+      const startedAt = Date.parse('2026-08-18T00:00:00Z') / 1000;
+      const taskId = 'partial-canonical-history';
+      const narration = 'Building the cathedral.';
+      const tailNarration = 'Finishing the stained glass.';
+      const filePath = 'models/cathedral.glb';
+      const tailFilePath = 'models/stained-glass.glb';
+      const canonicalEvents = [
+        {
+          event_id: 'canonical-narration',
+          event_type: 'activity.progress',
+          legacy_step: 'decompose_text',
+          // Exact display-safe producer shape from semantic_events.py.
+          payload: {
+            semantic_schema_version: 1,
+            display_schema_version: 1,
+            semantic: {
+              kind: 'narration',
+              subject: {
+                type: 'activity_stream',
+                id: `${taskId}:narration`,
+              },
+              lifecycle: { phase: 'progress', status: 'running' },
+              completeness: { state: 'complete', missing_fields: [] },
+              provenance: { source: 'legacy.decompose_text' },
+              actor: { type: 'agent' },
+              correlation: { run_id: taskId },
+            },
+            status: 'running',
+            display_title: narration,
+            display_fragment_exact: true,
+          },
+        },
+        {
+          event_id: 'canonical-file',
+          event_type: 'file.written',
+          legacy_step: 'write_file',
+          payload: {
+            semantic_schema_version: 1,
+            display_schema_version: 1,
+            semantic: {
+              kind: 'file_change',
+              subject: { type: 'file', id: filePath },
+              lifecycle: { phase: 'completed', status: 'completed' },
+              completeness: { state: 'complete', missing_fields: [] },
+              provenance: { source: 'legacy.write_file' },
+              correlation: { task_id: 'subtask-1' },
+            },
+            relative_path: filePath,
+            name: 'cathedral.glb',
+            process_task_id: 'subtask-1',
+            operation: 'written',
+            display_title: `Wrote ${filePath}`,
+          },
+        },
+      ];
+      vi.mocked(fetchEventSource).mockImplementation(async (url, opts) => {
+        if (String(url).includes(`/runs/${taskId}/stream`)) {
+          for (const [index, event] of canonicalEvents.entries()) {
+            await opts.onmessage?.({
+              id: event.event_id,
+              data: JSON.stringify({
+                project_id: 'proj-replay',
+                run_id: taskId,
+                sequence: index + 1,
+                run_version: index + 1,
+                created_at: startedAt + index + 1,
+                ...event,
+              }),
+            } as any);
+          }
+          const failure = new Error('Synthetic partial replay failure');
+          opts.onerror?.(failure);
+          throw failure;
+        }
+
+        for (const [index, event] of [
+          {
+            step: 'confirmed',
+            data: { task_id: taskId, question: 'Build a cathedral' },
+            timestamp: startedAt,
+          },
+          {
+            step: 'decompose_text',
+            data: { content: narration },
+            timestamp: startedAt + 1,
+          },
+          {
+            step: 'write_file',
+            data: {
+              file_path: `/workspace/${filePath}`,
+              relative_path: filePath,
+              process_task_id: 'subtask-1',
+            },
+            timestamp: startedAt + 2,
+          },
+          {
+            step: 'decompose_text',
+            data: { content: tailNarration },
+            timestamp: startedAt + 3,
+          },
+          {
+            step: 'write_file',
+            data: {
+              file_path: `/workspace/${tailFilePath}`,
+              relative_path: tailFilePath,
+              process_task_id: 'subtask-2',
+            },
+            timestamp: startedAt + 4,
+          },
+          {
+            step: 'end',
+            data: { result: 'Cathedral complete' },
+            timestamp: startedAt + 600,
+          },
+        ].entries()) {
+          await opts.onmessage?.({
+            data: JSON.stringify({
+              id: 10_000 + index,
+              task_id: taskId,
+              ...event,
+            }),
+          } as any);
+        }
+        opts.onclose?.();
+      });
+
+      try {
+        const { result } = renderHook(() => useChatStore());
+        await act(async () => {
+          await result.current
+            .getState()
+            .replay(
+              taskId,
+              'Build a cathedral',
+              0,
+              'proj-replay',
+              'local_durable'
+            );
+        });
+        expect(fetchEventSource).toHaveBeenCalledTimes(2);
+        expect(vi.mocked(fetchEventSource).mock.calls[1][0]).toContain(
+          `/chat/steps/playback/${taskId}`
+        );
+        expect(result.current.getState().tasks[taskId]).toMatchObject({
+          status: ChatTaskStatus.FINISHED,
+          elapsed: 600_000,
+        });
+
+        eventStore.flushAll();
+        const snapshot = eventStore.getSnapshot();
+        const runs = composeTimelineRuns(
+          presentChatSemanticEntities(selectRenderableChatNodes(snapshot.chat))
+        );
+        expect(runs).toHaveLength(1);
+        const run = runs[0];
+        expect(run.userQuery?.content).toBe('Build a cathedral');
+        expect(run.finalAssistantResponse?.content).toBe('Cathedral complete');
+        expect(
+          run.nodes
+            .filter((node) => node.kind === 'activity')
+            .map((node) => node.title)
+        ).toEqual([narration, tailNarration]);
+        expect(run.artifacts.map((artifact) => artifact.relativePath)).toEqual([
+          filePath,
+          tailFilePath,
+        ]);
+        expect(run.summary.artifactCount).toBe(2);
+        expect(
+          run.nodes.some((node) => node.eventId === 'canonical-narration')
+        ).toBe(true);
+        expect(
+          run.nodes.some((node) => node.eventId === 'canonical-file')
+        ).toBe(true);
+      } finally {
+        vi.unstubAllEnvs();
+        releaseProjectEventStore('proj-replay');
+      }
     });
 
     it('replay() creates task and starts SSE', async () => {
