@@ -14,7 +14,6 @@
 
 import ContentBreadcrumb from '@/components/Layout/ContentBreadcrumb';
 import ContentHeader from '@/components/Layout/ContentHeader';
-import DocumentContentRail from '@/components/Layout/DocumentContentRail';
 import { Button } from '@/components/ui/button';
 import { DsText } from '@/components/ui/ds-text';
 import { Switch } from '@/components/ui/switch';
@@ -144,13 +143,13 @@ export default function SkillDetail({
         )}
       </ContentHeader>
       {entry ? (
-        <DocumentContentRail className="flex min-h-0 flex-1 flex-col px-ds-16">
+        <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
           <SkillFiles
             key={`${entry.id}:${refreshKey}:${previewGeneration}`}
             entry={entry}
             revision={`${refreshKey}:${previewGeneration}`}
           />
-        </DocumentContentRail>
+        </div>
       ) : (
         <div
           className="flex flex-1 flex-col items-center justify-center gap-ds-12 p-ds-24"

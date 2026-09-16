@@ -65,7 +65,7 @@ vi.mock('@/components/Settings/Skills/components/SkillFiles', () => ({
 }));
 
 describe('Skill detail layout', () => {
-  it('keeps type and access in the header and constrains the document content', () => {
+  it('keeps type and access in the header and lets the file browser fill the available width', () => {
     const { container } = render(<SkillDetail skillId={entry.id} />);
     expect(container.querySelector('header')).toHaveClass('px-ds-16');
     const header = container.querySelector(
@@ -87,8 +87,10 @@ describe('Skill detail layout', () => {
     expect(
       screen.queryByText(entry.description, { exact: true })
     ).not.toBeInTheDocument();
-    expect(screen.getByTestId('skill-content').parentElement).toHaveClass(
-      'max-w-[76ch]'
-    );
+    const fileBrowserContainer =
+      screen.getByTestId('skill-content').parentElement;
+    expect(fileBrowserContainer).toHaveClass('w-full', 'min-w-0');
+    expect(fileBrowserContainer).not.toHaveClass('px-ds-16');
+    expect(fileBrowserContainer).not.toHaveClass('max-w-[76ch]');
   });
 });
