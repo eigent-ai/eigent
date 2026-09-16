@@ -373,10 +373,7 @@ export default function Workspace({
       >
         {renderAgentList()}
         {effectiveSessionMode === SessionMode.SINGLE_AGENT ? (
-          <span
-            data-workspace-single-agent-label
-            className={WORKSPACE_COWORK_TEXT_CLASS}
-          >
+          <span className="sr-only">
             {t('layout.workspace-session-single-agent', {
               defaultValue: 'Single Agent',
             })}
