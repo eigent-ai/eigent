@@ -115,7 +115,7 @@ export default function ConnectorDetailSidebar({
           className="pt-ds-4"
         >
           <SidebarNavGroup>
-            {loading && visible.length === 0
+            {loading
               ? Array.from({ length: 5 }).map((_, index) => (
                   <div
                     key={index}
@@ -124,18 +124,20 @@ export default function ConnectorDetailSidebar({
                   />
                 ))
               : null}
-            {visible.map((item) => (
-              <NavTab
-                key={item.id}
-                active={item.id === selectedConnectorId}
-                onClick={() => onSelectConnector(item.id)}
-                leading={leading(item)}
-                label={item.name}
-                tooltip={item.name}
-                ariaLabel={item.name}
-                ariaCurrentPage={item.id === selectedConnectorId}
-              />
-            ))}
+            {!loading
+              ? visible.map((item) => (
+                  <NavTab
+                    key={item.id}
+                    active={item.id === selectedConnectorId}
+                    onClick={() => onSelectConnector(item.id)}
+                    leading={leading(item)}
+                    label={item.name}
+                    tooltip={item.name}
+                    ariaLabel={item.name}
+                    ariaCurrentPage={item.id === selectedConnectorId}
+                  />
+                ))
+              : null}
             {!loading && visible.length === 0 ? (
               <DsText
                 as="p"

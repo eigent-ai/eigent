@@ -522,6 +522,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   typewriter={shouldUseLiveAgentTypewriter(task, message.id)}
                   id={message.id}
                   content={message.content}
+                  errorReason={message.errorReason}
                   onTyping={() => {}}
                   deferredFooter={
                     message.fileList?.length ||
@@ -593,6 +594,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   typewriter={shouldUseLiveAgentTypewriter(task, message.id)}
                   id={message.id}
                   content={message.content}
+                  errorReason={message.errorReason}
                   onTyping={() => {}}
                   attaches={message.attaches}
                 />

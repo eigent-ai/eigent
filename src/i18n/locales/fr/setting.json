@@ -463,5 +463,10 @@
   "memory-directory-sessions-with-memory_many": "{{count}} Sessions avec Mémoire",
   "memory-directory-session-count_many": "{{count}} Sessions",
   "memory-directory-spaces-with-memory_many": "{{count}} Espaces avec Mémoire",
-  "memory-note-count_many": "{{count}} notes"
+  "memory-note-count_many": "{{count}} notes",
+  "models-api-key-invalid": "Clé API non valide. Vérifiez votre clé API, puis cliquez à nouveau sur Actualiser.",
+  "models-access-denied": "Accès refusé. Vérifiez les autorisations de votre clé API et l’accès au compte, puis cliquez à nouveau sur Actualiser.",
+  "models-setup-hint": "Saisissez votre clé API, cliquez sur Actualiser, puis sélectionnez un modèle dans la liste déroulante.",
+  "models-add-api-key-tooltip": "Ajoutez une clé API pour charger le type de modèle",
+  "models-connection-failed": "Impossible de charger les modèles. Vérifiez votre connexion et l’hôte API, puis cliquez à nouveau sur Actualiser."
 }

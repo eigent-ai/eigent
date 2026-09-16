@@ -20,12 +20,15 @@ import type {
   TimelineToolInvocation,
   TimelineTraceRow,
 } from '@/lib/projector/chat/presentation';
+import { errorCopy } from '@/lib/usageErrors';
 import { cn } from '@/lib/utils';
 import { usePageTabStore } from '@/store/pageTabStore';
 import type { TFunction } from 'i18next';
 import { ChevronRight, FileText } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { TaskErrorNotice } from '../TaskErrorNotice';
+import { taskErrorReason } from '../taskErrorPresentation';
 
 import { normalizeRunReviewPath } from './RunFiles';
 import {
@@ -360,6 +363,8 @@ function nodeSummary(row: NodeTraceRow, t: TFunction): string {
     return node.detail ? `${node.title} · ${node.detail}` : node.title;
   }
   if (node.kind === 'notice') {
+    const reason = taskErrorReason(node);
+    if (reason) return errorCopy(reason);
     return node.title ? `${node.title} · ${node.content}` : node.content;
   }
   if (node.kind === 'plan')
@@ -454,6 +459,8 @@ function NodeTraceDetails({
     );
   }
   if (node.kind === 'notice') {
+    const reason = taskErrorReason(node);
+    if (reason) return <TaskErrorNotice reason={reason} />;
     return (
       <div className="flex min-w-0 flex-col gap-0.5">
         {node.title ? (
