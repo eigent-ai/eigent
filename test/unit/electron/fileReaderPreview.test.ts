@@ -309,6 +309,34 @@ describe('FileReader bounded preview', () => {
 });
 
 describe('bounded text byte classification', () => {
+  it.each([
+    {
+      content: `${'A'.repeat(9000)}\ncafé\n`,
+      expected: `${'A'.repeat(9000)}\ncafé\n`,
+    },
+    {
+      content:
+        'before\n\u001b]8;;https://example.com\u001b\\link\u001b]8;;\u001b\\\nERROR: job failed\n',
+      expected: 'before\nlink\nERROR: job failed\n',
+    },
+  ])(
+    'preserves decoded local subtitle content %#',
+    async ({ content, expected }) => {
+      const filePath = await temporaryFile('subtitles.srt', '');
+      const bytes = Buffer.from(content, 'latin1');
+      await writeFile(filePath, bytes);
+      const result = await new FileReader(null as never).previewTextFile(
+        filePath
+      );
+
+      expect(result).toEqual({
+        content: expected,
+        binary: false,
+        bytesRead: bytes.length,
+        totalBytes: bytes.length,
+      });
+    }
+  );
   it('blocks binary bytes instead of returning control characters', async () => {
     const filePath = await temporaryFile('data.unknown', '');
     await writeFile(filePath, Buffer.from([31, 139, 8, 0, 255, 1]));

@@ -157,6 +157,77 @@ describe('text preview decoding', () => {
     ).toBe('ERROR\n');
   });
 
+  it.each([
+    ['BEL', '\u0007', '\u0007'],
+    ['ST', '\u001b\\', '\u001b\\'],
+    ['ST then BEL', '\u001b\\', '\u0007'],
+    ['BEL then ST', '\u0007', '\u001b\\'],
+  ])(
+    'preserves OSC8 labels and following logs with %s terminators',
+    (_, open, close) => {
+      const input = `before\n\u001b]8;;https://example.com${open}link\u001b]8;;${close}\nafter\nERROR: job failed\n`;
+
+      expect(decodePreviewText(new TextEncoder().encode(input))).toBe(
+        'before\nlink\nafter\nERROR: job failed\n'
+      );
+    }
+  );
+
+  it.each(['\u0007', '\u001b\\'])(
+    'stops a title OSC at its first terminator %j',
+    (terminator) => {
+      const input = `before\u001b]0;title${terminator}after\n`;
+      expect(decodePreviewText(new TextEncoder().encode(input))).toBe(
+        'beforeafter\n'
+      );
+    }
+  );
+
+  it.each(['\n', ''])(
+    'falls back to Windows-1252 after a long ASCII prefix with trailing %j',
+    (ending) => {
+      const prefix = `${'A'.repeat(9000)}\ncaf`;
+      const bytes = new Uint8Array([
+        ...new TextEncoder().encode(prefix),
+        0xe9,
+        ...new TextEncoder().encode(ending),
+      ]);
+
+      expect(decodePreviewText(bytes)).toBe(`${prefix}é${ending}`);
+    }
+  );
+
+  it.each([8192, 9000])(
+    'recognizes GB18030 after %i ASCII bytes',
+    (prefixLength) => {
+      const prefix = 'A'.repeat(prefixLength);
+      const bytes = new Uint8Array([
+        ...new TextEncoder().encode(prefix),
+        0xd6,
+        0xd0,
+        0xce,
+        0xc4,
+        0x0a,
+      ]);
+
+      expect(decodePreviewText(bytes)).toBe(`${prefix}中文\n`);
+    }
+  );
+
+  it('preserves UTF-8 characters crossing the former sample boundary', () => {
+    const content = `${'A'.repeat(8191)}中文\n`;
+    expect(decodePreviewText(new TextEncoder().encode(content))).toBe(content);
+  });
+
+  it('still rejects binary controls after a long ASCII prefix', () => {
+    const bytes = new Uint8Array([
+      ...new TextEncoder().encode('A'.repeat(9000)),
+      0x00,
+      0x01,
+    ]);
+    expect(decodePreviewText(bytes)).toBeNull();
+  });
+
   it('decodes common GBK and Latin-1 text', () => {
     expect(decodePreviewText(new Uint8Array([0xd6, 0xd0, 0xce, 0xc4]))).toBe(
       '中文'

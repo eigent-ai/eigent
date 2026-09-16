@@ -175,8 +175,9 @@ const BINARY_MIME_TYPES = new Set([
   'application/wasm',
 ]);
 
+// OSC payloads must stop before either BEL or ST (ESC + backslash).
 const ANSI_ESCAPE_PATTERN =
-  /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007]*(?:\u0007|\u001b\\)?)/g;
+  /\u001b(?:\[[0-?]*[ -/]*[@-~]|\](?:[^\u0007\u001b]|\u001b(?!\\))*(?:\u0007|\u001b\\)?)/g;
 
 function hasUnsupportedControlCharacters(value: string): boolean {
   // ESC is handled as ANSI below. Tabs, newlines, form feeds and carriage
@@ -229,7 +230,7 @@ function endsWithPartialUtf8Sequence(bytes: Uint8Array): boolean {
   );
 }
 
-/** Probe bounded bytes before decoding unknown files. BOMs distinguish UTF-16
+/** Decode the bounded bytes already read. BOMs distinguish UTF-16
  * text from binary NULs; streaming avoids rejecting a cut multibyte character. */
 export function decodePreviewText(
   bytes: Uint8Array,
@@ -241,7 +242,6 @@ export function decodePreviewText(
       : bytes[0] === 0xfe && bytes[1] === 0xff
         ? 'utf-16be'
         : null;
-  const allowTrailingPartial = truncated || bytes.length > 8192;
   const candidates = bomEncoding
     ? [bomEncoding]
     : ['utf-8', 'gb18030', 'windows-1252'];
@@ -252,16 +252,12 @@ export function decodePreviewText(
   }
 
   for (const encoding of candidates) {
-    const sample = decodeCandidate(
-      bytes.subarray(0, 8192),
-      encoding,
-      allowTrailingPartial
-    );
-    if (sample === null) continue;
+    const decoded = decodeCandidate(bytes, encoding, truncated);
+    if (decoded === null) continue;
     // Prefer GB18030 only when it decodes actual CJK text. This avoids turning
     // ordinary Latin-1 byte pairs into unrelated CJK characters.
-    if (encoding === 'gb18030' && !/[\u3400-\u9fff]/u.test(sample)) continue;
-    return decodeCandidate(bytes, encoding, true);
+    if (encoding === 'gb18030' && !/[\u3400-\u9fff]/u.test(decoded)) continue;
+    return decoded;
   }
   return null;
 }

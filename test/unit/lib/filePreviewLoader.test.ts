@@ -592,6 +592,39 @@ describe('unsupported file recovery', () => {
     expect(file.preview?.kind).toBe('blocked');
   });
   it.each([
+    {
+      content: `${'A'.repeat(9000)}\ncafé\n`,
+      expected: `${'A'.repeat(9000)}\ncafé\n`,
+    },
+    {
+      content:
+        'before\n\u001b]8;;https://example.com\u001b\\link\u001b]8;;\u001b\\\nERROR: job failed\n',
+      expected: 'before\nlink\nERROR: job failed\n',
+    },
+  ])(
+    'preserves decoded remote subtitle content %#',
+    async ({ content, expected }) => {
+      const bytes = new Uint8Array(Buffer.from(content, 'latin1'));
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(bytes)));
+      const file = await loadFilePreview(
+        {
+          name: 'subtitles.srt',
+          path: 'https://files.example/subtitles.srt',
+          type: 'srt',
+          size: bytes.length,
+        },
+        {}
+      );
+
+      expect(file.content).toBe(expected);
+      expect(file.preview).toEqual({
+        kind: 'truncated-text',
+        bytesRead: bytes.length,
+        totalBytes: bytes.length,
+      });
+    }
+  );
+  it.each([
     { bytes: new Uint8Array([31, 139, 8, 0, 0, 1]), blocked: true },
     { bytes: new TextEncoder().encode('Hello 世界\n'), blocked: false },
     { bytes: new Uint8Array([255, 254, 72, 0, 105, 0]), blocked: false },
