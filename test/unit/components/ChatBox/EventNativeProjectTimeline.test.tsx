@@ -249,6 +249,45 @@ describe('EventNativeProjectTimeline', () => {
     }
   });
 
+  it.each(['narrative', 'trajectory'] as const)(
+    'hides raw budget errors in %s and its collapsed summary',
+    async (detailLevel) => {
+      mocks.projection = projection([
+        messageNode(0, 'user'),
+        {
+          ...messageNode(1),
+          kind: 'notice',
+          severity: 'error',
+          eventType: 'legacy.error',
+          legacyStep: 'error',
+          content:
+            "Error code: 400 - {'error': {'type': 'budget_exceeded', 'message': 'Budget has been exceeded!', 'param': None}}",
+        },
+        {
+          ...messageNode(2),
+          kind: 'run_status',
+          eventType: 'run.failed',
+          status: 'failed',
+        },
+      ]);
+      const { container } = render(
+        <EventNativeProjectTimeline
+          projectId="project-1"
+          detailLevel={detailLevel}
+          scrollBottomInsetPx={128}
+        />
+      );
+      expect(container.textContent).not.toContain('budget_exceeded');
+      expect(container.textContent).not.toContain('param');
+      if (detailLevel === 'narrative')
+        fireEvent.click(screen.getByRole('button', { name: /Failed after/ }));
+      await waitFor(() =>
+        expect(container.textContent).toContain('You’re out of Eigent credits.')
+      );
+      expect(container.textContent).not.toContain('budget_exceeded');
+    }
+  );
+
   it('never renders stale nodes from a previously selected Project', () => {
     const staleNode = {
       ...messageNode(1),

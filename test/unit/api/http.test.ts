@@ -22,7 +22,7 @@ const mocked = vi.hoisted(() => ({
   getLocalControlCapability: vi.fn(() =>
     Promise.resolve('renderer-capability')
   ),
-  showCreditsToast: vi.fn(),
+  reportError: vi.fn(() => 'task'),
   showStorageToast: vi.fn(),
   showTrafficToast: vi.fn(),
 }));
@@ -36,8 +36,8 @@ vi.mock('@/host/createHost', () => ({
   }),
 }));
 
-vi.mock('@/components/Toast/creditsToast', () => ({
-  showCreditsToast: mocked.showCreditsToast,
+vi.mock('@/lib/notifyError', () => ({
+  reportError: mocked.reportError,
 }));
 
 vi.mock('@/components/Toast/storageToast', () => ({
@@ -61,7 +61,7 @@ describe('api/http handleResponse', () => {
       brainEndpoint: 'http://brain.local',
       channel: 'web',
     });
-    mocked.showCreditsToast.mockClear();
+    mocked.reportError.mockClear();
     mocked.showStorageToast.mockClear();
     mocked.showTrafficToast.mockClear();
     vi.restoreAllMocks();
@@ -88,7 +88,7 @@ describe('api/http handleResponse', () => {
 
     const res = await fetchPost('/chat', { question: 'x' });
     expect(res.code).toBe(20);
-    expect(mocked.showCreditsToast).toHaveBeenCalledTimes(1);
+    expect(mocked.reportError).toHaveBeenCalledTimes(1);
   });
 
   it('attaches the ephemeral renderer capability to Brain requests', async () => {

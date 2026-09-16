@@ -28,13 +28,6 @@ import {
 } from '@/components/ui/accordion';
 import { Button } from '@/components/ui/button';
 import {
-  Dialog,
-  DialogContent,
-  DialogContentSection,
-  DialogFooter,
-  DialogHeader,
-} from '@/components/ui/dialog';
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuSub,
@@ -64,6 +57,7 @@ import { getProviderValid, toProviderValidStatus } from '@/lib/providerStatus';
 import { isSearchConfigured } from '@/lib/searchConfig';
 import { useAuthStore } from '@/store/authStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
+import { refreshUsage, useUsageNoticeStore } from '@/store/usageNoticeStore';
 import { Provider } from '@/types';
 import {
   ChevronDown,
@@ -549,8 +543,7 @@ export default function SettingModels() {
     })();
 
     if (import.meta.env.VITE_USE_LOCAL_PROXY !== 'true') {
-      fetchSubscription();
-      updateCredits();
+      void refreshUsage();
     }
     return () => {
       isActive = false;
@@ -1298,46 +1291,12 @@ export default function SettingModels() {
     return isSearchConfigured(configs);
   };
 
-  const [subscription, setSubscription] = useState<any>(null);
-  const [subscriptionLoading, setSubscriptionLoading] = useState(
-    import.meta.env.VITE_USE_LOCAL_PROXY !== 'true'
-  );
-  const [trialUpgradeDialogOpen, setTrialUpgradeDialogOpen] = useState(false);
-  const [upgradingTrial, setUpgradingTrial] = useState(false);
-  const fetchSubscription = async () => {
-    setSubscriptionLoading(true);
-    try {
-      const res = await proxyFetchGet('/api/v1/subscription');
-      console.log(res);
-      if (res) {
-        setSubscription(res);
-      }
-    } catch (error) {
-      console.error('Failed to load subscription:', error);
-    } finally {
-      setSubscriptionLoading(false);
-    }
-  };
-  const [credits, setCredits] = useState<any>(0);
-  const [loadingCredits, setLoadingCredits] = useState(
-    import.meta.env.VITE_USE_LOCAL_PROXY !== 'true'
-  );
-  // True when the credits request failed (treated as "server not connected").
-  const [creditsError, setCreditsError] = useState(false);
-  const updateCredits = async () => {
-    try {
-      setLoadingCredits(true);
-      const res = await proxyFetchGet(`/api/v1/user/current_credits`);
-      console.log(res?.credits);
-      setCredits(res?.credits);
-      setCreditsError(false);
-    } catch (error) {
-      console.error(error);
-      setCreditsError(true);
-    } finally {
-      setLoadingCredits(false);
-    }
-  };
+  const usage = useUsageNoticeStore();
+  const subscription = usage.subscription;
+  const subscriptionLoading = usage.refreshing;
+  const credits = usage.credits;
+  const loadingCredits = usage.refreshing;
+  const creditsError = credits === null;
 
   const formatCredits = (value: unknown): string => {
     const numericValue = Number(value);
@@ -1367,42 +1326,6 @@ export default function SettingModels() {
       PLAN_CREDITS_BY_KEY[planKey] ??
       (Number.isFinite(monthlyCredits) ? monthlyCredits : 0)
     );
-  };
-
-  const handleTrialUpgrade = async () => {
-    try {
-      setUpgradingTrial(true);
-      await proxyFetchPost('/api/v1/upgrade-trial-to-paid');
-      toast.success(
-        t('setting.trial-upgrade-success', {
-          defaultValue: 'Your full plan credits are unlocked.',
-        })
-      );
-      setTrialUpgradeDialogOpen(false);
-      await Promise.all([fetchSubscription(), updateCredits()]);
-    } catch (error: any) {
-      const detail = error?.response?.data?.detail;
-      const recoveryUrl =
-        detail && typeof detail === 'object' ? detail.recovery_url : undefined;
-      const message =
-        detail && typeof detail === 'object'
-          ? detail.message
-          : detail || error?.message;
-
-      if (recoveryUrl) {
-        window.location.href = recoveryUrl;
-        return;
-      }
-
-      toast.error(
-        message ||
-          t('setting.trial-upgrade-failed', {
-            defaultValue: 'Upgrade failed. Please try again.',
-          })
-      );
-    } finally {
-      setUpgradingTrial(false);
-    }
   };
 
   const needsInvert = (modelId: string | null): boolean =>
@@ -1735,12 +1658,25 @@ export default function SettingModels() {
           {/*Content Area*/}
           <div className="flex w-full flex-row items-center justify-between gap-4 px-6 pb-4">
             <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <div className="flex items-center gap-1 !text-ds-text-base text-ds-ink-default-default">
+              <div className="flex items-center gap-2 !text-ds-text-base text-ds-ink-default-default">
                 <span>{t('setting.credits')}:</span>
                 {loadingCredits ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2
+                    className="h-4 w-4 animate-spin motion-reduce:animate-none"
+                    aria-hidden
+                  />
+                ) : credits === null ? (
+                  <span>{t('chat.notice-credits-unavailable')}</span>
                 ) : (
-                  <span>{formatCredits(credits)}</span>
+                  <span
+                    className={
+                      Number(credits) < 0
+                        ? 'text-ds-text-error-default-default'
+                        : undefined
+                    }
+                  >
+                    {formatCredits(credits)}
+                  </span>
                 )}
               </div>
               {isTrialing && (
@@ -1755,7 +1691,9 @@ export default function SettingModels() {
                   })}{' '}
                   <button
                     type="button"
-                    onClick={() => setTrialUpgradeDialogOpen(true)}
+                    onClick={() => {
+                      window.location.href = `${SITE_URL}/pricing`;
+                    }}
                     className="cursor-pointer border-x-0 border-y-0 border-solid bg-transparent p-0 !text-ds-text-base font-medium text-ds-ink-default-default underline"
                   >
                     {t('setting.upgrade', { defaultValue: 'Upgrade' })}
@@ -1789,46 +1727,6 @@ export default function SettingModels() {
               <Settings />
             </Button>
           </div>
-          <Dialog
-            open={trialUpgradeDialogOpen}
-            onOpenChange={setTrialUpgradeDialogOpen}
-          >
-            <DialogContent
-              size="sm"
-              overlayVariant="dark"
-              onClose={() => setTrialUpgradeDialogOpen(false)}
-            >
-              <DialogHeader
-                title={t('setting.trial-upgrade-title', {
-                  defaultValue: 'Upgrade plan',
-                })}
-              />
-              <DialogContentSection className="px-4 py-4">
-                <span className="block !text-ds-text-base text-ds-ink-default-default">
-                  {t('setting.trial-upgrade-body', {
-                    defaultValue:
-                      'Upgrade now to unlock full credits instantly.',
-                  })}
-                </span>
-              </DialogContentSection>
-              <DialogFooter
-                showCancelButton
-                showConfirmButton
-                cancelButtonText={t('setting.not-now', {
-                  defaultValue: 'Not Now',
-                })}
-                confirmButtonText={
-                  upgradingTrial
-                    ? t('setting.upgrading', { defaultValue: 'Upgrading...' })
-                    : t('setting.upgrade', { defaultValue: 'Upgrade' })
-                }
-                onCancel={() => setTrialUpgradeDialogOpen(false)}
-                onConfirm={handleTrialUpgrade}
-                confirmButtonDisabled={upgradingTrial}
-                cancelButtonDisabled={upgradingTrial}
-              />
-            </DialogContent>
-          </Dialog>
           <div className="flex w-full flex-1 items-center justify-between px-6 pb-4">
             <div className="flex min-w-0 flex-1 items-center">
               <span className="overflow-hidden text-ds-text-base text-ellipsis whitespace-nowrap">
