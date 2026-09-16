@@ -22,6 +22,7 @@ import {
   DURABLE_RUN_STATUS_CHANGED_EVENT,
   notifyDurableRunStatusChanged,
 } from '@/lib/events/durableRunEvents';
+import { runProjectionStore } from '@/lib/runEvents';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -50,6 +51,7 @@ describe('useInterruptedRunStatus', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    runProjectionStore.clear();
     listeners.clear();
     fetchGetMock.mockResolvedValue({ runs: [] });
   });
@@ -138,6 +140,48 @@ describe('useInterruptedRunStatus', () => {
     expect(result.current.run).toBeNull();
 
     intervalSpy.mockRestore();
+  });
+
+  it('dismisses the control without deleting history and ignores an older interruption after a new task starts', async () => {
+    const { result } = renderHook(
+      () => useInterruptedRunStatus('project_one'),
+      { wrapper }
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const previous = {
+      run_id: 'old',
+      project_id: 'project_one',
+      status: 'interrupted',
+      updated_at: 100,
+      origin: 'local' as const,
+      latest_attempt: { attempt_number: 1, status: 'interrupted' },
+    };
+    act(() => runProjectionStore.upsertRunSummaries('project_one', [previous]));
+    expect(result.current.run?.run_id).toBe('old');
+    act(() => result.current.setRun(null));
+    expect(result.current.run).toBeNull();
+    expect(runProjectionStore.getProject('project_one')?.runs.old.status).toBe(
+      'interrupted'
+    );
+    act(() => result.current.setRun(previous));
+    expect(result.current.run?.run_id).toBe('old');
+    act(() =>
+      runProjectionStore.upsertRunSummaries('project_one', [
+        {
+          ...previous,
+          run_id: 'new',
+          updated_at: 200,
+          status: 'running',
+          latest_attempt: { attempt_number: 1, status: 'running' },
+        },
+      ])
+    );
+    expect(result.current.run).toBeNull();
+    expect(
+      runProjectionStore.getProject('project_one')?.runs.old
+    ).toBeDefined();
   });
 
   it('ignores durable status notifications for another Project', async () => {

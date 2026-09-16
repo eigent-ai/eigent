@@ -14,9 +14,11 @@
 
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
+import { TooltipSimple } from '@/components/ui/tooltip';
+import { isDisplayableOutputFile } from '@/lib/agentFileFilters';
 import { cn } from '@/lib/utils';
 import { getWorkspaceRelativeFilePath } from '@/lib/workspaceRelativePath';
-import { ChevronDown, FileDiff } from 'lucide-react';
+import { ChevronDown, FileDiff, TriangleAlert } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -49,16 +51,11 @@ export function ArtifactChangeList({
 }: ArtifactChangeListProps) {
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
-  const fileItems = files || [];
-  const scanWarning = truncated
-    ? 'This Run changed more files than the bounded scan could list. The files shown below are a partial durable manifest.'
-    : scanStatus === 'workspace_unavailable'
-      ? 'The original local workspace is unavailable. This durable file manifest may be incomplete.'
-      : scanStatus === 'workspace_mismatch'
-        ? 'The recorded workspace no longer matches this Run. File discovery was not completed.'
-        : scanStatus !== 'complete'
-          ? `File discovery completed with status: ${scanStatus}.`
-          : null;
+  const fileItems = (files || []).filter(isDisplayableOutputFile);
+  const scanWarning =
+    truncated || scanStatus !== 'complete'
+      ? t('chat.files-list-incomplete')
+      : null;
   if (!fileItems.length && !scanWarning) return null;
 
   const collapsedCount = 3;
@@ -73,7 +70,7 @@ export function ArtifactChangeList({
         <span className="flex size-ds-control-xl shrink-0 items-center justify-center rounded-ds-menu-row bg-ds-neutral-strong-default text-ds-ink-default-default">
           <DsIcon icon={FileDiff} recipe="detailed" />
         </span>
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
           <span className="truncate text-ds-text-base font-semibold text-ds-ink-default-default">
             {t('chat.files-edited', {
               count: fileItems.length,
@@ -91,6 +88,20 @@ export function ArtifactChangeList({
               </span>
             </span>
           ) : null}
+          {scanWarning ? (
+            <TooltipSimple content={scanWarning}>
+              <Button
+                type="button"
+                variant="ghost"
+                tone="warning"
+                size="sm"
+                buttonContent="icon-only"
+                aria-label={scanWarning}
+              >
+                <DsIcon icon={TriangleAlert} recipe="main" />
+              </Button>
+            </TooltipSimple>
+          ) : null}
         </div>
         {onViewChanges && fileItems.length > 0 ? (
           <Button
@@ -105,11 +116,6 @@ export function ArtifactChangeList({
           </Button>
         ) : null}
       </div>
-      {scanWarning ? (
-        <div className="border-x-0 border-t-0 border-b border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default px-4 py-2 text-ds-text-meta text-ds-text-warning-strong-default">
-          {scanWarning}
-        </div>
-      ) : null}
       <div className="flex flex-col">
         {visibleFiles.map((file, fileIndex) => {
           const detail = getWorkspaceRelativeFilePath(file);
