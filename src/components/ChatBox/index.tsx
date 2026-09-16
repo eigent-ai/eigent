@@ -26,7 +26,8 @@ import { useInterruptedRunStatus } from '@/hooks/useInterruptedRunStatus';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
 import { useHost } from '@/host';
-import { generateUniqueId, SITE_URL } from '@/lib';
+import { generateUniqueId } from '@/lib';
+import { notifyError } from '@/lib/notifyError';
 import {
   isProjectAchieved,
   setProjectAchievedState,
@@ -34,6 +35,7 @@ import {
 import { runEventIngressRegistry } from '@/lib/runEvents/registry';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { takeControlOfTask } from '@/lib/taskRuntimeControl';
+import { errorCopy } from '@/lib/usageErrors';
 import {
   cancelFollowUpRequest,
   createFollowUpRequest,
@@ -51,6 +53,13 @@ import { usePageTabStore } from '@/store/pageTabStore';
 import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
 import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
+import {
+  acknowledgeUsageNotice,
+  activeUsageIncident,
+  contactSupport,
+  refreshUsage,
+  useUsageNoticeStore,
+} from '@/store/usageNoticeStore';
 import { ExecutionStatus } from '@/types';
 import { DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL } from '@/types/chatTimeline';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
@@ -216,7 +225,7 @@ const buildUsageLimitBannerState = (
       {
         id: 'trial-daily',
         warningKey: 'chat.usage-limit-trial-daily-warning',
-        exhaustedKey: 'chat.usage-limit-trial-daily-exhausted',
+        exhaustedKey: 'chat.notice-trial-daily',
         limit: toFiniteNumber(subscription.trial_daily_credits_limit),
         used: toFiniteNumber(subscription.trial_daily_credits_used),
         remaining: toFiniteNumber(subscription.trial_daily_credits_remaining),
@@ -224,7 +233,7 @@ const buildUsageLimitBannerState = (
       {
         id: 'trial-total',
         warningKey: 'chat.usage-limit-trial-total-warning',
-        exhaustedKey: 'chat.usage-limit-trial-total-exhausted',
+        exhaustedKey: 'chat.notice-trial-total',
         limit: toFiniteNumber(subscription.trial_total_credits_limit),
         used: toFiniteNumber(subscription.trial_total_credits_used),
         remaining: toFiniteNumber(subscription.trial_total_credits_remaining),
@@ -281,16 +290,15 @@ const buildUsageLimitBannerState = (
     return {
       id: `credits-exhausted:${planKey}`,
       message: t(
-        planKey === 'free'
-          ? 'chat.usage-limit-free-exhausted'
-          : 'chat.usage-limit-monthly-exhausted'
+        planKey === 'free' ? 'chat.notice-free-credits' : 'chat.notice-credits'
       ),
       actionLabel,
       severity: 'danger',
     };
   }
 
-  const planKey = subscription?.plan_key?.toLowerCase() || 'free';
+  if (!subscription?.plan_key) return null;
+  const planKey = subscription.plan_key.toLowerCase();
   const limit =
     planKey === 'free'
       ? FREE_STARTING_CREDITS
@@ -409,10 +417,16 @@ export default function ChatBox(): JSX.Element {
     CHAT_SCROLL_BOTTOM_MIN_PX
   );
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const { modelType, token, user_id } = useAuthStore();
-  const [subscriptionUsage, setSubscriptionUsage] =
-    useState<SubscriptionLimitInfo | null>(null);
-  const [currentCredits, setCurrentCredits] = useState<number | null>(null);
+  const { modelType, user_id } = useAuthStore();
+  const composerModelType =
+    (activeProjectId
+      ? projectStore.projects[activeProjectId]?.metadata?.modelSelection
+          ?.modelType
+      : undefined) ?? modelType;
+  const usage = useUsageNoticeStore();
+  const subscriptionUsage = usage.subscription;
+  const currentCredits = usage.credits;
+  const incident = activeUsageIncident(usage);
   const [dismissedUsageLimitBannerId, setDismissedUsageLimitBannerId] =
     useState<string | null>(null);
   const {
@@ -424,88 +438,66 @@ export default function ChatBox(): JSX.Element {
     useState<InterruptedRunBannerAction>(null);
   const isCloudRestoredRun = interruptedRun?.origin === 'cloud_restore';
 
-  const refreshUsageLimits = useCallback(async () => {
-    if (modelType !== 'cloud' || !token) {
-      setSubscriptionUsage(null);
-      setCurrentCredits(null);
-      return;
-    }
-
-    const [subscriptionResult, creditsResult] = await Promise.allSettled([
-      proxyFetchGet('/api/v1/subscription'),
-      proxyFetchGet('/api/v1/user/current_credits'),
-    ]);
-
-    if (subscriptionResult.status === 'fulfilled') {
-      setSubscriptionUsage(subscriptionResult.value || null);
-    }
-
-    if (creditsResult.status === 'fulfilled') {
-      setCurrentCredits(toFiniteNumber(creditsResult.value?.credits));
-    }
-  }, [modelType, token]);
-
   const scheduleUsageRefresh = useCallback(() => {
-    window.setTimeout(refreshUsageLimits, 2000);
-    window.setTimeout(refreshUsageLimits, 15000);
-  }, [refreshUsageLimits]);
+    window.setTimeout(() => void refreshUsage(), 2000);
+    window.setTimeout(() => void refreshUsage(), 15000);
+  }, []);
 
   const usageLimitBannerState = useMemo(
     () => buildUsageLimitBannerState(subscriptionUsage, currentCredits, t),
     [subscriptionUsage, currentCredits, t]
   );
-
-  const cloudUsageLimitMessage = useMemo(() => {
-    if (modelType !== 'cloud' || !cloudUsageLimitReached) return null;
-    return [
-      usageLimitBannerState?.message ||
-        t('chat.usage-limit-trial-daily-exhausted'),
-      t('chat.usage-limit-switch-model-hint'),
-    ].join(' ');
-  }, [modelType, cloudUsageLimitReached, usageLimitBannerState, t]);
-
-  const effectiveUsageLimitBannerState = useMemo(() => {
-    if (!cloudUsageLimitMessage) return usageLimitBannerState;
-
-    return {
-      id: 'cloud-usage-limit-blocked',
-      message: cloudUsageLimitMessage,
-      actionLabel:
-        usageLimitBannerState?.actionLabel || t('chat.usage-limit-action'),
-      severity: 'danger' as const,
-    };
-  }, [cloudUsageLimitMessage, usageLimitBannerState, t]);
-
-  const usageLimitBanner = useMemo(() => {
-    if (
-      !effectiveUsageLimitBannerState ||
-      effectiveUsageLimitBannerState.id === dismissedUsageLimitBannerId
-    ) {
-      return null;
-    }
-
-    return {
-      ...effectiveUsageLimitBannerState,
-      onAction: () => {
-        window.location.href = `${SITE_URL}/pricing`;
-      },
-      onDismiss: () => {
-        setDismissedUsageLimitBannerId(effectiveUsageLimitBannerState.id);
-      },
-    };
-  }, [effectiveUsageLimitBannerState, dismissedUsageLimitBannerId]);
-
-  useEffect(() => {
-    refreshUsageLimits();
-
-    if (modelType !== 'cloud' || !token) return;
-
-    window.addEventListener('focus', refreshUsageLimits);
-
-    return () => {
-      window.removeEventListener('focus', refreshUsageLimits);
-    };
-  }, [modelType, token, refreshUsageLimits]);
+  const cloudUsageLimitMessage =
+    composerModelType === 'cloud' && cloudUsageLimitReached
+      ? errorCopy(incident?.reason ?? 'credits')
+      : null;
+  const bannerId = incident
+    ? `${incident.reason}:${incident.modelId ?? ''}`
+    : usageLimitBannerState?.id;
+  // Blockers remain discoverable after the toast is dismissed; warnings can be hidden.
+  const usageLimitBanner =
+    composerModelType !== 'cloud' ||
+    (!incident &&
+      (!usageLimitBannerState || bannerId === dismissedUsageLimitBannerId))
+      ? null
+      : {
+          message: incident
+            ? errorCopy(incident.reason)
+            : usageLimitBannerState!.message,
+          description: incident
+            ? t(
+                incident.reason === 'service'
+                  ? 'chat.notice-contact-description'
+                  : 'chat.notice-refresh-description'
+              )
+            : undefined,
+          actionLabel: t(
+            incident?.reason === 'service'
+              ? 'chat.notice-contact-support'
+              : usage.refreshing
+                ? 'chat.notice-refreshing'
+                : 'chat.notice-refresh'
+          ),
+          severity: incident
+            ? ('danger' as const)
+            : usageLimitBannerState!.severity,
+          refreshing: usage.refreshing,
+          refreshError: usage.refreshError ? t(usage.refreshError) : undefined,
+          onAction:
+            incident?.reason === 'service'
+              ? contactSupport
+              : () => void refreshUsage(),
+          onRefresh:
+            incident?.reason === 'service'
+              ? () => void refreshUsage()
+              : undefined,
+          onDismiss: incident
+            ? undefined
+            : () => {
+                setDismissedUsageLimitBannerId(bannerId ?? null);
+                acknowledgeUsageNotice();
+              },
+        };
 
   const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
 
@@ -706,7 +698,7 @@ export default function ChatBox(): JSX.Element {
         error?.response?.data?.detail ||
         error?.message ||
         t('chat.control-decision-failed');
-      toast.error(
+      notifyError(
         typeof message === 'string' ? message : JSON.stringify(message)
       );
     } finally {
@@ -915,7 +907,8 @@ export default function ChatBox(): JSX.Element {
     );
   }, [chatStore?.activeTaskId, chatStore?.tasks, interruptedRun?.run_id]);
 
-  const isCloudUsageLimited = modelType === 'cloud' && cloudUsageLimitReached;
+  const isCloudUsageLimited =
+    composerModelType === 'cloud' && cloudUsageLimitReached;
 
   const isInputDisabled = useMemo(() => {
     if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
@@ -953,13 +946,13 @@ export default function ChatBox(): JSX.Element {
       // Check model configuration before starting task
       if (!hasModel) {
         if (isCloudUsageLimited) {
-          toast.error(
+          notifyError(
             cloudUsageLimitMessage ||
               t('chat.usage-limit-trial-daily-exhausted')
           );
           return;
         }
-        toast.error(
+        notifyError(
           t('chat.select-model-first', {
             defaultValue: 'Please select a model first.',
           })
@@ -989,7 +982,7 @@ export default function ChatBox(): JSX.Element {
           );
         } catch (err: any) {
           console.error('Failed to start shared task:', err);
-          toast.error(
+          notifyError(
             err?.message ||
               'Failed to start task. Please check your model configuration.'
           );
@@ -1067,12 +1060,12 @@ export default function ChatBox(): JSX.Element {
 
     if (!hasModel) {
       if (isCloudUsageLimited) {
-        toast.error(
+        notifyError(
           cloudUsageLimitMessage || t('chat.usage-limit-trial-daily-exhausted')
         );
         return;
       }
-      toast.error(
+      notifyError(
         t('chat.select-model-first', {
           defaultValue: 'Please select a model first.',
         })
@@ -1083,7 +1076,7 @@ export default function ChatBox(): JSX.Element {
 
     const targetProjectId = projectStore.activeProjectId;
     if (!targetProjectId) {
-      toast.error(
+      notifyError(
         t('chat.no-active-session', {
           defaultValue: 'No active session selected.',
         })
@@ -1162,7 +1155,7 @@ export default function ChatBox(): JSX.Element {
       setPendingReviewHandoffIds(reviewHandoffIds);
     }
     if (requiresHumanReply && reviewHandoffIds.length > 0) {
-      toast.error(
+      notifyError(
         t('chat.answer-pending-before-review', {
           defaultValue:
             'Answer the pending question before sending review feedback.',
@@ -1211,7 +1204,7 @@ export default function ChatBox(): JSX.Element {
         });
       } catch (error: any) {
         console.error('[FollowUpQueue] Failed to persist message', error);
-        toast.error(error?.message || 'Failed to queue message.');
+        notifyError(error?.message || 'Failed to queue message.');
         return;
       }
       projectStore.restoreQueuedMessage(targetProjectId, {
@@ -1243,7 +1236,7 @@ export default function ChatBox(): JSX.Element {
         achieved: false,
       }).catch((error) => {
         console.error('[handleSend] Failed to resume achieved Project:', error);
-        toast.error(
+        notifyError(
           t('chat.resumed-session-save-failed', {
             defaultValue: "Couldn't save the resumed session. Try again.",
           })
@@ -1330,7 +1323,7 @@ export default function ChatBox(): JSX.Element {
         messageAccepted = true;
       } else if (requiresHumanReply) {
         if (requiresApprovalDecision) {
-          toast.error(
+          notifyError(
             t('chat.use-approval-card', {
               defaultValue:
                 'Use the approval card to approve or reject this action.',
@@ -1372,7 +1365,7 @@ export default function ChatBox(): JSX.Element {
           chatStore.removeMessage(_taskId, humanReplyMessageId);
           chatStore.setIsPending(_taskId, false);
           setMessage(tempMessageContent);
-          toast.error(error?.message || 'Failed to send your reply.');
+          notifyError(error?.message || 'Failed to send your reply.');
           return;
         }
         if (replyResult?.code === 1) {
@@ -1381,7 +1374,7 @@ export default function ChatBox(): JSX.Element {
           chatStore.setActiveAskList(_taskId, []);
           chatStore.setActiveAsk(_taskId, '');
           setMessage(tempMessageContent);
-          toast.error(
+          notifyError(
             replyResult.text || 'This task is no longer waiting for a reply.'
           );
           return;
@@ -1480,7 +1473,7 @@ export default function ChatBox(): JSX.Element {
               }
             } catch (err: any) {
               console.error('Failed to start task:', err);
-              toast.error(
+              notifyError(
                 err?.message ||
                   'Failed to start task. Please check your model configuration.'
               );
@@ -1518,7 +1511,7 @@ export default function ChatBox(): JSX.Element {
               const prepareError = new Error(
                 t('chat.follow-up-prepare-failed')
               );
-              toast.error(prepareError.message);
+              notifyError(prepareError.message);
               throw prepareError;
             }
 
@@ -1575,7 +1568,7 @@ export default function ChatBox(): JSX.Element {
                   error?.message ||
                   '❌ **Error**: Failed to start the follow-up task.',
               });
-              toast.error(error?.message || 'Failed to send follow-up.');
+              notifyError(error?.message || 'Failed to send follow-up.');
               if (preserveComposer) throw error;
             }
           }
@@ -1611,7 +1604,7 @@ export default function ChatBox(): JSX.Element {
             }
           } catch (err: any) {
             console.error('Failed to start task:', err);
-            toast.error(
+            notifyError(
               err?.message ||
                 'Failed to start task. Please check your model configuration.'
             );
@@ -1623,7 +1616,7 @@ export default function ChatBox(): JSX.Element {
     } catch (error) {
       console.error('error:', error);
       if (startsAfterInterruption)
-        toast.error(
+        notifyError(
           error instanceof Error ? error.message : t('chat.run-resume-failed')
         );
       if (preserveComposer) throw error;
@@ -1646,7 +1639,7 @@ export default function ChatBox(): JSX.Element {
   const handleResumeInterruptedRun = async () => {
     if (!interruptedRun || !activeProjectId || !chatStore) return;
     if (!hasModel) {
-      toast.error(
+      notifyError(
         t('chat.select-model-before-resume', {
           defaultValue: 'Select a model before resuming this task.',
         })
@@ -1685,7 +1678,7 @@ export default function ChatBox(): JSX.Element {
     } catch (error: any) {
       console.error('[RunControl] Failed to resume Run', error);
       clearRunActionRequestId('resume', run.run_id);
-      toast.error(error?.message || t('chat.run-resume-failed'));
+      notifyError(error?.message || t('chat.run-resume-failed'));
       await refreshInterruptedRun();
     } finally {
       setDurableRunAction(null);
@@ -1717,7 +1710,7 @@ export default function ChatBox(): JSX.Element {
       }
     } catch (error: any) {
       console.error('[RunControl] Failed to cancel Run', error);
-      toast.error(error?.message || t('chat.run-cancel-failed'));
+      notifyError(error?.message || t('chat.run-cancel-failed'));
       await refreshInterruptedRun();
     } finally {
       setDurableRunAction(null);
@@ -1868,11 +1861,11 @@ export default function ChatBox(): JSX.Element {
           // Brain has durably cancelled this queue row. Remove only the
           // renderer projection and leave the typed explanation visible.
           projectStore.removeQueuedMessage(projectId, next.task_id);
-          toast.error(rejection.message);
+          notifyError(rejection.message);
           return;
         }
         projectStore.setQueuedMessageProcessing(projectId, next.task_id, false);
-        toast.error(error?.message || 'Failed to send queued message.');
+        notifyError(error?.message || 'Failed to send queued message.');
       })
       .finally(() => {
         queuedDispatchRef.current = null;
@@ -1936,7 +1929,7 @@ export default function ChatBox(): JSX.Element {
               } as File);
             } catch (error) {
               console.error('Select File Upload Error:', error);
-              toast.error(
+              notifyError(
                 t('chat.file-upload-failed', {
                   name: selectedFile.name,
                   defaultValue: 'Failed to upload {{name}}',
@@ -2033,7 +2026,7 @@ export default function ChatBox(): JSX.Element {
           '[STOP-BUTTON] ❌ Failed to stop task locally:',
           localError
         );
-        toast.error(
+        notifyError(
           t('chat.task-stop-failed-refresh', {
             defaultValue:
               'Failed to stop task completely. Please refresh the page.',
@@ -2061,7 +2054,7 @@ export default function ChatBox(): JSX.Element {
         taskId,
       });
       if (!changed) {
-        toast.error(
+        notifyError(
           t(`chat.${action}-task-failed`, {
             defaultValue: `Failed to ${action} the task.`,
           })
@@ -2091,7 +2084,7 @@ export default function ChatBox(): JSX.Element {
       );
     } catch (error: any) {
       console.error('[FollowUpQueue] Failed to stop active Run', error);
-      toast.error(error?.message || 'Failed to send the queued message now.');
+      notifyError(error?.message || 'Failed to send the queued message now.');
     }
   };
 
@@ -2229,7 +2222,7 @@ export default function ChatBox(): JSX.Element {
       projectStore.removeQueuedMessage(project_id, task_id);
     } catch (error) {
       console.error(`[ChatBox] Failed to cancel task ${task_id}:`, error);
-      toast.error(
+      notifyError(
         t('chat.cancel-task-failed', {
           defaultValue: 'Failed to cancel task',
         }),
@@ -2283,7 +2276,7 @@ export default function ChatBox(): JSX.Element {
       });
     } catch (error: any) {
       console.error('[RunControl] Failed to stop Run', error);
-      toast.error(
+      notifyError(
         error?.message ||
           t('chat.run-stop-failed', {
             defaultValue: 'Failed to stop this Run.',

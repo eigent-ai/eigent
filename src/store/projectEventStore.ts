@@ -605,6 +605,34 @@ function eventEnteredSemanticLane(
   return view.legacySteps.some((step) => step.eventId === event.eventId);
 }
 
+/** Replace an already displayed legacy mirror when its canonical owner arrives. */
+function preferCanonicalMirrorNodes(
+  chat: ChatProjectionState,
+  view: ProjectViewState
+): ChatProjectionState {
+  const displacedIds = new Set(
+    view.legacySteps.flatMap((step) =>
+      step.source === 'canonical' &&
+      (step.step === 'decompose_text' || step.step === 'write_file') &&
+      chat.nodeById[step.eventId]
+        ? (step.crossLaneEventIds ?? [])
+        : []
+    )
+  );
+  if (displacedIds.size === 0) return chat;
+  const nodes = chat.nodes.filter((node) => !displacedIds.has(node.eventId));
+  if (nodes.length === chat.nodes.length) return chat;
+  // Keep seenEventIds: a duplicate delivery must not resurrect a replaced row.
+  return {
+    ...chat,
+    nodes,
+    nodeById: Object.fromEntries(nodes.map((node) => [node.id, node])),
+    nodeIndexById: Object.fromEntries(
+      nodes.map((node, index) => [node.id, index])
+    ),
+  };
+}
+
 /**
  * One bounded ingest owner for a Project. The durable backend remains the raw
  * journal; this store keeps only a disposable frontend projection.
@@ -875,7 +903,10 @@ export class ProjectEventStore {
         this.snapshot.view.runs[event.runId] === undefined
     );
     const chat = compactChatProjection(
-      projectChatEvents(this.projectId, acceptedBatch, this.snapshot.chat),
+      preferCanonicalMirrorNodes(
+        projectChatEvents(this.projectId, acceptedBatch, this.snapshot.chat),
+        result.state
+      ),
       this.maxChatNodes,
       this.maxChatBytes,
       this.maxSeenEventIds,
@@ -1050,10 +1081,13 @@ export class ProjectEventStore {
     const chat = compactChatProjection(
       // A bounded refresh is a new control checkpoint, not permission to erase
       // already read receipts. Same-id replacement/import must call reset().
-      projectChatEvents(
-        this.projectId,
-        snapshotEvents,
-        history ? this.snapshot.chat : undefined
+      preferCanonicalMirrorNodes(
+        projectChatEvents(
+          this.projectId,
+          snapshotEvents,
+          history ? this.snapshot.chat : undefined
+        ),
+        projectedView
       ),
       this.maxChatNodes,
       this.maxChatBytes,

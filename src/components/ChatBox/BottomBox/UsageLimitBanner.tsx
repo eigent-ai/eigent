@@ -12,62 +12,87 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { Button } from '@/components/ui/button';
+import { DsIcon } from '@/components/ui/ds-icon';
+import { DsText } from '@/components/ui/ds-text';
 import { cn } from '@/lib/utils';
 import { X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 export interface UsageLimitBannerProps {
   message: string;
+  description?: string;
   actionLabel: string;
   severity: 'warning' | 'danger';
+  refreshing?: boolean;
+  refreshError?: string;
   onAction: () => void;
-  onDismiss: () => void;
+  onRefresh?: () => void;
+  onDismiss?: () => void;
 }
 
 export function UsageLimitBanner({
   message,
+  description,
   actionLabel,
   severity,
+  refreshing,
+  refreshError,
   onAction,
+  onRefresh,
   onDismiss,
 }: UsageLimitBannerProps) {
   const { t } = useTranslation();
-  const isDanger = severity === 'danger';
-
   return (
-    <div
+    <aside
+      data-usage-notice
       className={cn(
-        'flex min-h-12 w-full items-center justify-between gap-3 rounded-xl border border-x border-y border-solid px-4 py-2 shadow-ds-elevation-control',
-        isDanger
-          ? 'border-ds-border-error-default-default bg-ds-bg-error-subtle-default !text-ds-text-error-strong-default'
-          : 'border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default !text-ds-text-warning-strong-default'
+        '@container w-full rounded-ds-card border border-x border-y px-ds-16 py-ds-12',
+        severity === 'danger'
+          ? 'border-ds-border-error-default-default bg-ds-bg-error-subtle-default text-ds-text-error-strong-default'
+          : 'border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default text-ds-text-warning-strong-default'
       )}
     >
-      <span className="min-w-0 flex-1 truncate text-ds-text-base font-medium">
-        {message}
-      </span>
-      <button
-        type="button"
-        onClick={onAction}
-        className={cn(
-          'shrink-0 text-ds-text-base font-semibold whitespace-nowrap underline underline-offset-4',
-          isDanger
-            ? '!text-ds-text-error-strong-default'
-            : '!text-ds-ink-default-default'
-        )}
-      >
-        <span className="text-ds-text-base font-semibold">{actionLabel}</span>
-      </button>
-      <button
-        type="button"
-        onClick={onDismiss}
-        aria-label={t('chat.dismiss-usage-notice', {
-          defaultValue: 'Dismiss usage notice',
-        })}
-        className="flex size-7 shrink-0 items-center justify-center rounded-md text-ds-ink-muted-default transition-colors hover:bg-ds-neutral-subtle-hover hover:text-ds-ink-default-default"
-      >
-        <X className="size-4" />
-      </button>
-    </div>
+      <div className="flex flex-col gap-ds-12 @lg:flex-row @lg:items-center">
+        <div className="min-w-0 flex-1 break-words">
+          <DsText role="base" weight="medium">
+            {message}
+          </DsText>
+          {description && <DsText role="base">{description}</DsText>}
+          {refreshError && <DsText role="meta">{refreshError}</DsText>}
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-ds-control-gap self-end @lg:self-center">
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={!onRefresh && refreshing}
+            onClick={onAction}
+          >
+            {actionLabel}
+          </Button>
+          {onRefresh && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={refreshing}
+              onClick={onRefresh}
+            >
+              {t(refreshing ? 'chat.notice-refreshing' : 'chat.notice-refresh')}
+            </Button>
+          )}
+          {onDismiss && (
+            <Button
+              size="sm"
+              variant="ghost"
+              buttonContent="icon-only"
+              onClick={onDismiss}
+              aria-label={t('chat.dismiss-usage-notice')}
+            >
+              <DsIcon icon={X} />
+            </Button>
+          )}
+        </div>
+      </div>
+    </aside>
   );
 }

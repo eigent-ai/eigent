@@ -124,6 +124,7 @@ declare global {
   interface Message {
     id: string;
     role: 'user' | 'agent';
+    errorReason?: import('@/lib/usageErrors').ErrorReason;
     content: string;
     step?: AgentStepType;
     agent_id?: string;

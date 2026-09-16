@@ -14,9 +14,18 @@
 
 // Comprehensive unit tests for ChatBox component
 import { runProjectionStore } from '@/lib/runEvents';
+import { errorCopy } from '@/lib/usageErrors';
+import {
+  acknowledgeUsageNotice,
+  reportUsageIncident,
+  setUsageAccount,
+  setUsageModelType,
+  useUsageNoticeStore,
+} from '@/store/usageNoticeStore';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
+import { toast } from 'sonner';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   fetchDelete,
@@ -413,6 +422,7 @@ describe('ChatBox Component', async () => {
   beforeEach(() => {
     // Reset all mocks
     vi.clearAllMocks();
+    setUsageAccount(null);
     runProjectionStore.clear();
     defaultChatStoreState.startTask.mockReset();
     window.sessionStorage.clear();
@@ -474,6 +484,7 @@ describe('ChatBox Component', async () => {
   });
 
   afterEach(() => {
+    if (vi.isMockFunction(toast.error)) toast.error.mockRestore();
     vi.clearAllMocks();
   });
 
@@ -1138,9 +1149,22 @@ describe('ChatBox Component', async () => {
       }
     );
 
-    it.each([false, true])(
+    it.each([null, 'independent', 'credits', 'service'] as const)(
       'starts a new task after interruption and preserves recovery on admission failure=%s',
-      async (fails) => {
+      async (failure) => {
+        const fails = failure !== null;
+        const failureMessage =
+          failure === 'credits' || failure === 'service'
+            ? errorCopy(failure)
+            : 'Admission unavailable';
+        const notice = vi.spyOn(toast, 'error').mockReturnValue('test-toast');
+        setUsageAccount('test-account');
+        setUsageModelType('cloud');
+        reportUsageIncident({
+          reason: failure === 'service' ? 'service' : 'credits',
+        });
+        acknowledgeUsageNotice();
+        notice.mockClear();
         const user = userEvent.setup();
         defaultProjectStoreState.getProjectById.mockImplementation(() => ({
           queuedMessages: [
@@ -1171,7 +1195,7 @@ describe('ChatBox Component', async () => {
         });
         if (fails)
           defaultChatStoreState.startTask.mockRejectedValueOnce(
-            new Error('Admission unavailable')
+            new Error(failureMessage)
           );
         else defaultChatStoreState.startTask.mockResolvedValueOnce(undefined);
         renderChatBox();
@@ -1237,6 +1261,15 @@ describe('ChatBox Component', async () => {
           expect(screen.getByTestId('message-input')).toHaveValue(
             'Create three new notes'
           );
+          if (failure === 'independent') {
+            expect(notice).toHaveBeenCalledTimes(1);
+            expect(notice.mock.calls[0][0]).toBe(failureMessage);
+          } else {
+            expect(notice).not.toHaveBeenCalled();
+            expect(useUsageNoticeStore.getState().incidents).toEqual([
+              { reason: failure },
+            ]);
+          }
         } else {
           await waitFor(() =>
             expect(screen.queryByText('chat.run-interrupted-title')).toBeNull()

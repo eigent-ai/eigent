@@ -373,10 +373,9 @@ describe('SettingsPage', () => {
     });
     expect(main).toContainElement(header);
     expect(heading).toHaveFocus();
-    expect(header).toHaveClass(
-      'h-ds-layout-row-header',
-      'min-h-ds-layout-row-header'
-    );
+    expect(header).toHaveClass('min-h-ds-layout-row-header');
+    expect(header.lastElementChild).toHaveClass('h-ds-layout-row-header');
+    expect(header.closest('[data-home-space-content-pane]')).toBeNull();
     expect(within(header).getByText('Models')).toHaveClass(
       'text-ds-text-body-large',
       'font-bold'
@@ -504,6 +503,7 @@ describe('SettingsPage', () => {
     const user = userEvent.setup();
 
     renderSettingsPage();
+    const settingsFrame = getSettingsHeader();
 
     const spacesTab = screen.getByRole('button', { name: 'Spaces' });
     const modelsTab = screen.getByRole('button', { name: 'Models' });
@@ -522,10 +522,11 @@ describe('SettingsPage', () => {
     ) as HTMLElement;
     const collectionHeader = toolbar.closest('header');
     const list = document.querySelector('[data-home-spaces-list]');
-    expect(collectionHeader).toHaveClass(
-      'min-h-ds-layout-row-header',
-      'border-ds-hairline-subtle-default'
-    );
+    expect(collectionHeader).toBe(settingsFrame);
+    expect(collectionHeader).toHaveClass('min-h-ds-layout-row-header');
+    expect(
+      collectionHeader?.querySelector('[data-content-header-divider]')
+    ).toHaveClass('border-ds-hairline-subtle-default');
     expect(toolbar).toHaveClass('max-w-[1100px]', 'px-ds-32');
     expect(collectionHeader?.nextElementSibling).toContainElement(overview);
     expect(collectionHeader).not.toContainElement(overview);
@@ -724,12 +725,15 @@ describe('SettingsPage', () => {
     expect(within(dashboard).getAllByRole('term')).toHaveLength(4);
     expect(collectionHeader).toHaveClass('min-h-ds-layout-row-header');
     expect(toolbar).toHaveClass('max-w-[1100px]', 'px-ds-32');
-    expect(collectionHeader?.nextElementSibling?.firstElementChild).toHaveClass(
-      'max-w-[1100px]',
-      'px-8'
-    );
+    expect(
+      dashboard.closest('.scrollbar-always-visible')?.firstElementChild
+    ).toHaveClass('max-w-[1100px]', 'px-8');
     expect(collectionHeader?.nextElementSibling).toContainElement(dashboard);
     expect(collectionHeader).not.toContainElement(dashboard);
+    expect(collectionHeader?.closest('[data-settings-section]')).toBeNull();
+    expect(
+      collectionHeader?.closest('[data-home-space-content-pane]')
+    ).toBeNull();
     expect(
       within(toolbar).getByRole('button', { name: 'Add skill' })
     ).toBeVisible();
@@ -745,6 +749,26 @@ describe('SettingsPage', () => {
     });
     await waitFor(() => expect(addSkillDialog).toBeVisible());
     sync.mockRestore();
+  });
+
+  it('focuses the Skills heading whenever its persistent header returns', async () => {
+    const user = userEvent.setup();
+    useSkillsStore.setState({ skills: [] });
+    vi.spyOn(useSkillsStore.getState(), 'syncFromDisk').mockResolvedValue();
+    renderSettingsPage();
+
+    await user.click(screen.getByRole('button', { name: 'Skills' }));
+    expect(
+      await screen.findByRole('heading', { name: 'Skills', level: 1 })
+    ).toHaveFocus();
+    await user.click(
+      screen.getByRole('button', { name: 'Spaces', exact: true })
+    );
+    await user.click(screen.getByRole('button', { name: 'Skills' }));
+
+    expect(
+      await screen.findByRole('heading', { name: 'Skills', level: 1 })
+    ).toHaveFocus();
   });
 
   it('navigates Skills with the same shell transition and preserves overview filters on return', async () => {
@@ -867,6 +891,7 @@ describe('SettingsPage', () => {
     const toolbar = await screen.findByRole('region', {
       name: 'Skills toolbar',
     });
+    const frame = toolbar.closest('header');
 
     expect(
       within(toolbar).getByRole('button', { name: 'Add skill' })
@@ -876,6 +901,7 @@ describe('SettingsPage', () => {
 
     await waitFor(() => {
       const header = getSettingsHeader();
+      expect(header).toBe(frame);
       expect(
         screen.queryByRole('region', { name: 'Skills toolbar' })
       ).not.toBeInTheDocument();
@@ -915,7 +941,7 @@ describe('SettingsPage', () => {
 
     const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
     expect(
-      within(breadcrumb).getByRole('button', { name: 'Connector' })
+      within(breadcrumb).getByRole('button', { name: 'Connectors' })
     ).toBeVisible();
     expect(breadcrumb.querySelector('ol')).not.toBeNull();
     expect(breadcrumb).not.toHaveAttribute('title');
@@ -1161,8 +1187,10 @@ describe('SettingsPage', () => {
     fireEvent.click(
       within(deleteDialog).getByRole('button', { name: 'Cancel' })
     );
-    const detailHeader = detailContent.querySelector('header') as HTMLElement;
-    expect(detailHeader).toHaveClass('px-ds-16');
+    const detailHeader = document.querySelector(
+      '[data-content-header-frame]'
+    ) as HTMLElement;
+    expect(detailHeader.querySelector('.px-ds-16')).toBeInTheDocument();
     const detailHeading = within(detailHeader).getByRole('heading', {
       name: 'Design Space',
       level: 1,

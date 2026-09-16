@@ -13,12 +13,18 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fileInfoFromPath } from '@/lib/fileInfo';
+import {
+  classifyError,
+  isLegacyTaskError,
+  type ErrorReason,
+} from '@/lib/usageErrors';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { Check, Copy, FileText, ThumbsDown, ThumbsUp } from 'lucide-react';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '../../ui/button';
+import { TaskErrorNotice } from '../TaskErrorNotice';
 import { MarkDown } from './MarkDown';
 
 const COPIED_RESET_MS = 2000;
@@ -28,6 +34,7 @@ type MessageFeedback = 'up' | 'down' | null;
 interface AgentMessageCardProps {
   id: string;
   content: string;
+  errorReason?: ErrorReason;
   className?: string;
   typewriter?: boolean;
   attaches?: File[];
@@ -43,6 +50,7 @@ const completedTypewriterByMessageId = new Map<string, boolean>();
 export function AgentMessageCard({
   id,
   content,
+  errorReason,
   typewriter = true,
   onTyping,
   onMarkdownRenderComplete,
@@ -114,6 +122,10 @@ export function AgentMessageCard({
       t('chat.feedback-thanks', { defaultValue: 'Thanks for your feedback' })
     );
   }, [feedback, t]);
+
+  if (errorReason || isLegacyTaskError(content)) {
+    return <TaskErrorNotice reason={errorReason ?? classifyError(content)} />;
+  }
 
   const showDeferredFileUi =
     markdownAndTypingComplete &&
