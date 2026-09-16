@@ -28,13 +28,6 @@ import {
 } from '@/components/ui/accordion';
 import { Button } from '@/components/ui/button';
 import {
-  Dialog,
-  DialogContent,
-  DialogContentSection,
-  DialogFooter,
-  DialogHeader,
-} from '@/components/ui/dialog';
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuSub,
@@ -64,6 +57,7 @@ import { getProviderValid, toProviderValidStatus } from '@/lib/providerStatus';
 import { isSearchConfigured } from '@/lib/searchConfig';
 import { useAuthStore } from '@/store/authStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
+import { refreshUsage, useUsageNoticeStore } from '@/store/usageNoticeStore';
 import { Provider } from '@/types';
 import {
   ChevronDown,
@@ -79,7 +73,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import eigentImage from '@/assets/model/eigent.svg';
@@ -89,8 +83,10 @@ import {
 } from '@/shared/modelProviderImages';
 
 import {
+  clearCachedModels,
   fetchProviderModels,
   loadCachedModels,
+  ProviderModelsError,
   saveCachedModels,
   type ProviderModelGroup,
 } from '@/lib/providerModels';
@@ -206,9 +202,16 @@ export default function SettingModels() {
     INIT_PROVODERS.filter((p) => p.id !== 'local').map(() => false)
   );
   const [showSecret, setShowSecret] = useState<Record<string, boolean>>({});
+  const [resettingProvider, setResettingProvider] = useState<number | null>(
+    null
+  );
+  const [providerResetVersions, setProviderResetVersions] = useState<
+    Record<string, number>
+  >({});
   const [loading, setLoading] = useState<number | null>(null);
   const [configCardRing, setConfigCardRing] =
     useState<ConfigCardRingStatus>('idle');
+  const [configCardRingSequence, setConfigCardRingSequence] = useState(0);
   const configCardRingResetRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
@@ -217,6 +220,7 @@ export default function SettingModels() {
       clearTimeout(configCardRingResetRef.current);
       configCardRingResetRef.current = null;
     }
+    setConfigCardRingSequence((sequence) => sequence + 1);
     setConfigCardRing(status);
     if (status === 'success' || status === 'error') {
       configCardRingResetRef.current = setTimeout(() => {
@@ -252,6 +256,27 @@ export default function SettingModels() {
 
   // Local Model accordion state
   const [localCollapsed, setLocalCollapsed] = useState(false);
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const modelProvider = searchParams.get('provider');
+  useEffect(() => {
+    if (!modelProvider) return;
+    const provider = items.find((item) => item.id === modelProvider);
+    if (provider) {
+      setSelectedTab(`byok-${provider.id}`);
+      if (provider.authMode === 'oauth_subscription') {
+        setSubscriptionCollapsed(false);
+      } else {
+        setByokGroupCollapsed(false);
+      }
+    } else if (LOCAL_MODEL_OPTIONS.some((item) => item.id === modelProvider)) {
+      setSelectedTab(`local-${modelProvider}` as SidebarTab);
+      setLocalCollapsed(false);
+    }
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.delete('provider');
+    setSearchParams(nextSearchParams, { replace: true });
+  }, [modelProvider, items, searchParams, setSearchParams]);
 
   // Cloud Model
   const [cloudPrefer, setCloudPrefer] = useState(false);
@@ -293,22 +318,59 @@ export default function SettingModels() {
   const [cloudModelsState, setCloudModelsState] = useState<
     Record<
       string,
-      { groups: ProviderModelGroup[]; loading: boolean; error: string | null }
+      {
+        groups: ProviderModelGroup[];
+        loading: boolean;
+        error: string | null;
+        apiKeyError: string | null;
+      }
     >
   >(() => {
     const initial: Record<
       string,
-      { groups: ProviderModelGroup[]; loading: boolean; error: string | null }
+      {
+        groups: ProviderModelGroup[];
+        loading: boolean;
+        error: string | null;
+        apiKeyError: string | null;
+      }
     > = {};
     for (const p of INIT_PROVODERS) {
       if (!p.modelsEndpoint) continue;
       const cached = loadCachedModels(p.id);
       if (cached) {
-        initial[p.id] = { groups: cached, loading: false, error: null };
+        initial[p.id] = {
+          groups: cached,
+          loading: false,
+          error: null,
+          apiKeyError: null,
+        };
       }
     }
     return initial;
   });
+
+  const cloudModelsErrorToasts = useRef<Record<string, string | number>>({});
+  const cloudModelsRequestIds = useRef<Record<string, number>>({});
+  const clearCloudModelsFeedback = (providerId: string) => {
+    const toastId = cloudModelsErrorToasts.current[providerId];
+    if (toastId !== undefined) {
+      toast.dismiss(toastId);
+      delete cloudModelsErrorToasts.current[providerId];
+    }
+    // An edited credential invalidates any result still in flight.
+    cloudModelsRequestIds.current[providerId] =
+      (cloudModelsRequestIds.current[providerId] ?? 0) + 1;
+    setCloudModelsState((prev) => ({
+      ...prev,
+      [providerId]: {
+        groups: prev[providerId]?.groups ?? [],
+        loading: false,
+        error: null,
+        apiKeyError: null,
+      },
+    }));
+  };
 
   const fetchCloudProviderModels = useCallback(
     async (idx: number) => {
@@ -317,12 +379,15 @@ export default function SettingModels() {
       const apiKey = form[idx]?.apiKey;
       const apiHost = form[idx]?.apiHost || item.apiHost;
       if (!apiKey) return;
+      const requestId = (cloudModelsRequestIds.current[item.id] ?? 0) + 1;
+      cloudModelsRequestIds.current[item.id] = requestId;
       setCloudModelsState((prev) => ({
         ...prev,
         [item.id]: {
           groups: prev[item.id]?.groups || [],
           loading: true,
           error: null,
+          apiKeyError: null,
         },
       }));
       try {
@@ -331,21 +396,40 @@ export default function SettingModels() {
           item.modelsEndpoint,
           apiKey
         );
+        if (cloudModelsRequestIds.current[item.id] !== requestId) return;
         setCloudModelsState((prev) => ({
           ...prev,
-          [item.id]: { groups, loading: false, error: null },
+          [item.id]: {
+            groups,
+            loading: false,
+            error: null,
+            apiKeyError: null,
+          },
         }));
         saveCachedModels(item.id, groups);
-      } catch (err: any) {
+        const previousToast = cloudModelsErrorToasts.current[item.id];
+        if (previousToast !== undefined) {
+          toast.dismiss(previousToast);
+          delete cloudModelsErrorToasts.current[item.id];
+        }
+      } catch (err: unknown) {
+        if (cloudModelsRequestIds.current[item.id] !== requestId) return;
+        const message =
+          err instanceof Error
+            ? err.message
+            : t('setting.failed-to-fetch-models');
+        const isAuthenticationError =
+          err instanceof ProviderModelsError && err.status === 401;
+        const previousToast = cloudModelsErrorToasts.current[item.id];
+        if (previousToast !== undefined) toast.dismiss(previousToast);
+        cloudModelsErrorToasts.current[item.id] = toast.error(message);
         setCloudModelsState((prev) => ({
           ...prev,
           [item.id]: {
             groups: prev[item.id]?.groups || [],
             loading: false,
-            error:
-              typeof err?.message === 'string'
-                ? err.message
-                : t('setting.failed-to-fetch-models'),
+            error: isAuthenticationError ? null : message,
+            apiKeyError: isAuthenticationError ? message : null,
           },
         }));
       }
@@ -549,8 +633,7 @@ export default function SettingModels() {
     })();
 
     if (import.meta.env.VITE_USE_LOCAL_PROXY !== 'true') {
-      fetchSubscription();
-      updateCredits();
+      void refreshUsage();
     }
     return () => {
       isActive = false;
@@ -1242,11 +1325,44 @@ export default function SettingModels() {
   };
 
   const handleDelete = async (idx: number) => {
+    if (providersLoading || loading === idx || resettingProvider !== null)
+      return;
+    setResettingProvider(idx);
     try {
       const { provider_id } = form[idx];
       if (provider_id) {
         await proxyFetchDelete(`/api/v1/provider/${provider_id}`);
       }
+      const item = items[idx];
+      clearCloudModelsFeedback(item.id);
+      clearCachedModels(item.id);
+      setCloudModelsState((prev) => ({
+        ...prev,
+        [item.id]: {
+          groups: [],
+          loading: false,
+          error: null,
+          apiKeyError: null,
+        },
+      }));
+      setShowApiKey((prev) =>
+        prev.map((shown, i) => (i === idx ? false : shown))
+      );
+      setShowSecret((prev) =>
+        Object.fromEntries(
+          Object.entries(prev).filter(([key]) => !key.startsWith(`${idx}-`))
+        )
+      );
+      setPendingDefaultModel((pending) =>
+        pending?.category === 'custom' && pending.modelId === item.id
+          ? null
+          : pending
+      );
+      showConfigCardRing('idle');
+      setProviderResetVersions((prev) => ({
+        ...prev,
+        [item.id]: (prev[item.id] ?? 0) + 1,
+      }));
       // reset single form entry to default empty values
       setForm((prev) =>
         prev.map((fi, i) => {
@@ -1260,25 +1376,14 @@ export default function SettingModels() {
             model_type: '',
             modelConfigJson: '',
             externalConfig: item.externalConfig
-              ? item.externalConfig.map((ec) => ({ ...ec, value: '' }))
+              ? item.externalConfig.map((ec) => ({ ...ec }))
               : undefined,
             provider_id: undefined,
             prefer: false,
           };
         })
       );
-      setErrors((prev) =>
-        prev.map((er, i) =>
-          i === idx
-            ? ({
-                apiKey: '',
-                apiHost: '',
-                model_type: '',
-                modelConfigJson: '',
-              } as any)
-            : er
-        )
-      );
+      setErrors((prev) => prev.map((er, i) => (i === idx ? {} : er)));
       if (activeModelIdx === idx) {
         setActiveModelIdx(null);
         setLocalEnabled(true);
@@ -1287,6 +1392,8 @@ export default function SettingModels() {
     } catch (e) {
       console.error('Error deleting model:', e);
       toast.error(t('setting.reset-failed'));
+    } finally {
+      setResettingProvider(null);
     }
   };
 
@@ -1298,46 +1405,12 @@ export default function SettingModels() {
     return isSearchConfigured(configs);
   };
 
-  const [subscription, setSubscription] = useState<any>(null);
-  const [subscriptionLoading, setSubscriptionLoading] = useState(
-    import.meta.env.VITE_USE_LOCAL_PROXY !== 'true'
-  );
-  const [trialUpgradeDialogOpen, setTrialUpgradeDialogOpen] = useState(false);
-  const [upgradingTrial, setUpgradingTrial] = useState(false);
-  const fetchSubscription = async () => {
-    setSubscriptionLoading(true);
-    try {
-      const res = await proxyFetchGet('/api/v1/subscription');
-      console.log(res);
-      if (res) {
-        setSubscription(res);
-      }
-    } catch (error) {
-      console.error('Failed to load subscription:', error);
-    } finally {
-      setSubscriptionLoading(false);
-    }
-  };
-  const [credits, setCredits] = useState<any>(0);
-  const [loadingCredits, setLoadingCredits] = useState(
-    import.meta.env.VITE_USE_LOCAL_PROXY !== 'true'
-  );
-  // True when the credits request failed (treated as "server not connected").
-  const [creditsError, setCreditsError] = useState(false);
-  const updateCredits = async () => {
-    try {
-      setLoadingCredits(true);
-      const res = await proxyFetchGet(`/api/v1/user/current_credits`);
-      console.log(res?.credits);
-      setCredits(res?.credits);
-      setCreditsError(false);
-    } catch (error) {
-      console.error(error);
-      setCreditsError(true);
-    } finally {
-      setLoadingCredits(false);
-    }
-  };
+  const usage = useUsageNoticeStore();
+  const subscription = usage.subscription;
+  const subscriptionLoading = usage.refreshing;
+  const credits = usage.credits;
+  const loadingCredits = usage.refreshing;
+  const creditsError = credits === null;
 
   const formatCredits = (value: unknown): string => {
     const numericValue = Number(value);
@@ -1367,42 +1440,6 @@ export default function SettingModels() {
       PLAN_CREDITS_BY_KEY[planKey] ??
       (Number.isFinite(monthlyCredits) ? monthlyCredits : 0)
     );
-  };
-
-  const handleTrialUpgrade = async () => {
-    try {
-      setUpgradingTrial(true);
-      await proxyFetchPost('/api/v1/upgrade-trial-to-paid');
-      toast.success(
-        t('setting.trial-upgrade-success', {
-          defaultValue: 'Your full plan credits are unlocked.',
-        })
-      );
-      setTrialUpgradeDialogOpen(false);
-      await Promise.all([fetchSubscription(), updateCredits()]);
-    } catch (error: any) {
-      const detail = error?.response?.data?.detail;
-      const recoveryUrl =
-        detail && typeof detail === 'object' ? detail.recovery_url : undefined;
-      const message =
-        detail && typeof detail === 'object'
-          ? detail.message
-          : detail || error?.message;
-
-      if (recoveryUrl) {
-        window.location.href = recoveryUrl;
-        return;
-      }
-
-      toast.error(
-        message ||
-          t('setting.trial-upgrade-failed', {
-            defaultValue: 'Upgrade failed. Please try again.',
-          })
-      );
-    } finally {
-      setUpgradingTrial(false);
-    }
   };
 
   const needsInvert = (modelId: string | null): boolean =>
@@ -1735,12 +1772,25 @@ export default function SettingModels() {
           {/*Content Area*/}
           <div className="flex w-full flex-row items-center justify-between gap-4 px-6 pb-4">
             <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <div className="flex items-center gap-1 !text-ds-text-base text-ds-ink-default-default">
+              <div className="flex items-center gap-2 !text-ds-text-base text-ds-ink-default-default">
                 <span>{t('setting.credits')}:</span>
                 {loadingCredits ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2
+                    className="h-4 w-4 animate-spin motion-reduce:animate-none"
+                    aria-hidden
+                  />
+                ) : credits === null ? (
+                  <span>{t('chat.notice-credits-unavailable')}</span>
                 ) : (
-                  <span>{formatCredits(credits)}</span>
+                  <span
+                    className={
+                      Number(credits) < 0
+                        ? 'text-ds-text-error-default-default'
+                        : undefined
+                    }
+                  >
+                    {formatCredits(credits)}
+                  </span>
                 )}
               </div>
               {isTrialing && (
@@ -1755,7 +1805,9 @@ export default function SettingModels() {
                   })}{' '}
                   <button
                     type="button"
-                    onClick={() => setTrialUpgradeDialogOpen(true)}
+                    onClick={() => {
+                      window.location.href = `${SITE_URL}/pricing`;
+                    }}
                     className="cursor-pointer border-x-0 border-y-0 border-solid bg-transparent p-0 !text-ds-text-base font-medium text-ds-ink-default-default underline"
                   >
                     {t('setting.upgrade', { defaultValue: 'Upgrade' })}
@@ -1789,46 +1841,6 @@ export default function SettingModels() {
               <Settings />
             </Button>
           </div>
-          <Dialog
-            open={trialUpgradeDialogOpen}
-            onOpenChange={setTrialUpgradeDialogOpen}
-          >
-            <DialogContent
-              size="sm"
-              overlayVariant="dark"
-              onClose={() => setTrialUpgradeDialogOpen(false)}
-            >
-              <DialogHeader
-                title={t('setting.trial-upgrade-title', {
-                  defaultValue: 'Upgrade plan',
-                })}
-              />
-              <DialogContentSection className="px-4 py-4">
-                <span className="block !text-ds-text-base text-ds-ink-default-default">
-                  {t('setting.trial-upgrade-body', {
-                    defaultValue:
-                      'Upgrade now to unlock full credits instantly.',
-                  })}
-                </span>
-              </DialogContentSection>
-              <DialogFooter
-                showCancelButton
-                showConfirmButton
-                cancelButtonText={t('setting.not-now', {
-                  defaultValue: 'Not Now',
-                })}
-                confirmButtonText={
-                  upgradingTrial
-                    ? t('setting.upgrading', { defaultValue: 'Upgrading...' })
-                    : t('setting.upgrade', { defaultValue: 'Upgrade' })
-                }
-                onCancel={() => setTrialUpgradeDialogOpen(false)}
-                onConfirm={handleTrialUpgrade}
-                confirmButtonDisabled={upgradingTrial}
-                cancelButtonDisabled={upgradingTrial}
-              />
-            </DialogContent>
-          </Dialog>
           <div className="flex w-full flex-1 items-center justify-between px-6 pb-4">
             <div className="flex min-w-0 flex-1 items-center">
               <span className="overflow-hidden text-ds-text-base text-ellipsis whitespace-nowrap">
@@ -1872,7 +1884,10 @@ export default function SettingModels() {
         const isDefault = modelType === 'codex_subscription';
 
         return (
-          <ConfigModelCard status={configCardRing}>
+          <ConfigModelCard
+            status={configCardRing}
+            feedbackKey={configCardRingSequence}
+          >
             <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid border-ds-hairline-default-default pt-2 pb-4">
               <div className="inline-flex items-center justify-between gap-2 self-stretch">
                 <div className="my-2 text-ds-text-base font-bold text-ds-ink-default-default">
@@ -1998,7 +2013,10 @@ export default function SettingModels() {
       }
 
       return (
-        <ConfigModelCard status={configCardRing}>
+        <ConfigModelCard
+          status={configCardRing}
+          feedbackKey={configCardRingSequence}
+        >
           <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid border-ds-hairline-default-default pt-2 pb-4">
             <div className="inline-flex items-center justify-between gap-2 self-stretch">
               <div className="my-2 text-ds-text-base font-bold text-ds-ink-default-default">
@@ -2024,7 +2042,7 @@ export default function SettingModels() {
                     size="xs"
                     buttonContent="text"
                     textWeight="bold"
-                    disabled={loading === idx}
+                    disabled={loading === idx || resettingProvider === idx}
                     buttonRadius="full"
                     onClick={() => handleSwitch(idx, true)}
                   >
@@ -2074,8 +2092,21 @@ export default function SettingModels() {
               type={showApiKey[idx] ? 'text' : 'password'}
               size="default"
               title={t('setting.api-key-setting')}
-              state={errors[idx]?.apiKey ? 'error' : 'default'}
-              note={errors[idx]?.apiKey ?? undefined}
+              state={
+                errors[idx]?.apiKey || cloudModelsState[item.id]?.apiKeyError
+                  ? 'error'
+                  : 'default'
+              }
+              aria-invalid={
+                !!(
+                  errors[idx]?.apiKey || cloudModelsState[item.id]?.apiKeyError
+                )
+              }
+              note={
+                errors[idx]?.apiKey ||
+                cloudModelsState[item.id]?.apiKeyError ||
+                undefined
+              }
               placeholder={` ${t('setting.enter-your-api-key')} ${
                 item.name
               } ${t('setting.key')}`}
@@ -2092,6 +2123,7 @@ export default function SettingModels() {
               value={form[idx].apiKey}
               onChange={(e) => {
                 const v = e.target.value;
+                clearCloudModelsFeedback(item.id);
                 setForm((f) =>
                   f.map((fi, i) => (i === idx ? { ...fi, apiKey: v } : fi))
                 );
@@ -2113,6 +2145,7 @@ export default function SettingModels() {
               value={form[idx].apiHost}
               onChange={(e) => {
                 const v = e.target.value;
+                clearCloudModelsFeedback(item.id);
                 setForm((f) =>
                   f.map((fi, i) => (i === idx ? { ...fi, apiHost: v } : fi))
                 );
@@ -2124,6 +2157,7 @@ export default function SettingModels() {
             {/* Model Type Setting */}
             {item.modelsEndpoint ? (
               <ProviderModelCombobox
+                key={`model-picker-${item.id}-${providerResetVersions[item.id] ?? 0}`}
                 providerName={item.name}
                 title={t('setting.model-type-setting')}
                 value={form[idx].model_type || ''}
@@ -2141,11 +2175,8 @@ export default function SettingModels() {
                 }}
                 groups={cloudModelsState[item.id]?.groups || []}
                 loading={cloudModelsState[item.id]?.loading || false}
-                error={
-                  cloudModelsState[item.id]?.error ??
-                  errors[idx]?.model_type ??
-                  null
-                }
+                error={errors[idx]?.model_type || null}
+                fetchError={cloudModelsState[item.id]?.error}
                 disabled={!form[idx].apiKey}
                 disabledReason={t('setting.enter-api-key-first')}
                 onRefresh={() => void fetchCloudProviderModels(idx)}
@@ -2179,7 +2210,12 @@ export default function SettingModels() {
                 }}
               />
             )}
-            <Accordion type="single" collapsible className="w-full">
+            <Accordion
+              key={`model-parameters-${item.id}-${providerResetVersions[item.id] ?? 0}`}
+              type="single"
+              collapsible
+              className="w-full"
+            >
               <AccordionItem value="model-parameters" className="border-none">
                 <AccordionTrigger className="bg-transparent px-0 py-2 hover:no-underline">
                   <span className="text-ds-text-base font-medium text-ds-ink-default-default">
@@ -2189,7 +2225,7 @@ export default function SettingModels() {
                 <AccordionContent>
                   <Textarea
                     id={`modelParameters-${item.id}`}
-                    variant="enhanced"
+                    variant="outlined"
                     state={errors[idx]?.modelConfigJson ? 'error' : 'default'}
                     note={errors[idx]?.modelConfigJson ?? undefined}
                     placeholder={t('setting.model-parameters-placeholder')}
@@ -2327,6 +2363,11 @@ export default function SettingModels() {
               textWeight="medium"
               buttonRadius="full"
               onClick={() => handleDelete(idx)}
+              disabled={
+                providersLoading ||
+                loading === idx ||
+                resettingProvider !== null
+              }
             >
               {t('setting.reset')}
             </Button>
@@ -2338,7 +2379,7 @@ export default function SettingModels() {
               textWeight="bold"
               buttonRadius="full"
               onClick={() => handleVerify(idx)}
-              disabled={loading === idx}
+              disabled={loading === idx || resettingProvider === idx}
             >
               {loading === idx ? t('setting.configuring') : t('setting.save')}
             </Button>
@@ -2363,7 +2404,10 @@ export default function SettingModels() {
       const platformModelsError = platformState?.error || null;
 
       return (
-        <ConfigModelCard status={configCardRing}>
+        <ConfigModelCard
+          status={configCardRing}
+          feedbackKey={configCardRingSequence}
+        >
           <div className="mx-6 mb-4 flex flex-col items-start justify-between border-x-0 border-t-0 border-b-[0.5px] border-solid border-ds-hairline-default-default pt-2 pb-4">
             <div className="inline-flex items-center justify-between gap-2 self-stretch">
               <div className="flex items-center gap-2">

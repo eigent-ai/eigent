@@ -155,7 +155,7 @@ export default function SettingsSectionContent({
   const shouldReduceMotion = useReducedMotion();
 
   const section = (
-    <AnimatePresence mode="wait" initial={false}>
+    <AnimatePresence mode="wait" initial={false} propagate>
       <AnimatedSettingsSection
         key={activeSection}
         section={activeSection}

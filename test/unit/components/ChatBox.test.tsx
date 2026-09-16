@@ -16,6 +16,7 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
+import { toast } from 'sonner';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   fetchDelete,
@@ -35,8 +36,25 @@ const eventNativeHarness = vi.hoisted(() => ({
   controlOptions: null as any,
 }));
 
+const modelConfigHarness = vi.hoisted(() => ({
+  hasModel: true,
+  isConfigLoaded: true,
+  cloudUsageLimitReached: false,
+}));
+
 import { runEventIngressRegistry } from '@/lib/runEvents/registry';
 import { invalidatePendingFollowUps } from '@/service/followUpQueueApi';
+import {
+  acknowledgeUsageNotice,
+  reportUsageIncident,
+  setUsageAccount,
+  setUsageModelType,
+  useUsageNoticeStore,
+} from '@/store/usageNoticeStore';
+
+vi.mock('sonner', () => ({
+  toast: { error: vi.fn(), success: vi.fn(), dismiss: vi.fn() },
+}));
 
 // Mock dependencies (use the same relative paths as the imports above)
 vi.mock('../../../src/store/authStore', () => ({
@@ -132,11 +150,7 @@ vi.mock('../../../src/hooks/useChatStoreAdapter', () => ({
 }));
 
 vi.mock('@/hooks/useModelConfigCheck', () => ({
-  useModelConfigCheck: () => ({
-    hasModel: true,
-    isConfigLoaded: true,
-    cloudUsageLimitReached: false,
-  }),
+  useModelConfigCheck: () => modelConfigHarness,
 }));
 
 // Mock i18next for translations
@@ -433,6 +447,9 @@ describe('ChatBox Component', async () => {
   });
 
   beforeEach(() => {
+    setUsageAccount(null);
+    setUsageModelType('cloud');
+    modelConfigHarness.cloudUsageLimitReached = false;
     // Reset all mocks
     vi.clearAllMocks();
     invalidatePendingFollowUps('test-project-id');
@@ -1096,6 +1113,168 @@ describe('ChatBox Component', async () => {
           })
         );
       });
+    });
+
+    it.each([
+      ['cloud', 'local', false],
+      ['cloud', 'custom', false],
+      ['local', 'cloud', true],
+      ['custom', 'cloud', true],
+    ] as const)(
+      'uses global %s and pinned %s models for queued admission (blocked: %s)',
+      async (globalModelType, pinnedModelType, blocked) => {
+        modelConfigHarness.cloudUsageLimitReached = true;
+        mockUseAuthStore.mockReturnValue({
+          modelType: globalModelType,
+        } as any);
+        defaultProjectStoreState.getProjectById.mockReturnValue({
+          queuedMessages: [
+            {
+              task_id: 'queued-model-boundary',
+              content: 'Continue with the Session model',
+              timestamp: 1,
+              attaches: [],
+            },
+          ],
+        } as any);
+        mockUseChatStoreAdapter.mockReturnValue({
+          projectStore: {
+            ...defaultProjectStoreState,
+            projects: {
+              'test-project-id': {
+                metadata: { modelSelection: { modelType: pinnedModelType } },
+              },
+            },
+          } as any,
+          chatStore: {
+            ...defaultChatStoreState,
+            tasks: {
+              'test-task-id': {
+                ...defaultChatStoreState.tasks['test-task-id'],
+                status: 'finished',
+              },
+            },
+          } as any,
+        });
+        eventNativeHarness.enabled = true;
+        eventNativeHarness.snapshot = runningEventNativeSnapshot();
+        eventNativeHarness.snapshot.view.runs['test-task-id'].status =
+          'completed';
+        mockFetchGet.mockImplementation((url: string) =>
+          Promise.resolve(
+            url.endsWith('/status')
+              ? { has_lock: true, status: 'done' }
+              : { items: [] }
+          )
+        );
+
+        renderChatBox();
+        await act(async () => {});
+
+        if (blocked) {
+          expect(_mockFetchPost).not.toHaveBeenCalled();
+          expect(
+            defaultProjectStoreState.setQueuedMessageProcessing
+          ).not.toHaveBeenCalled();
+          expect(
+            defaultProjectStoreState.removeQueuedMessage
+          ).not.toHaveBeenCalled();
+        } else {
+          await waitFor(() =>
+            expect(_mockFetchPost).toHaveBeenCalledWith(
+              '/chat/test-project-id',
+              expect.objectContaining({ task_id: 'queued-model-boundary' })
+            )
+          );
+          expect(
+            defaultProjectStoreState.removeQueuedMessage
+          ).toHaveBeenCalledWith('test-project-id', 'queued-model-boundary');
+        }
+      }
+    );
+
+    it('preserves a queued Stop conflict and its explanation after a usage reminder is dismissed', async () => {
+      const user = userEvent.setup();
+      setUsageAccount('queue-integration-account');
+      reportUsageIncident({ reason: 'credits' });
+      acknowledgeUsageNotice();
+      vi.mocked(toast.error).mockClear();
+      vi.spyOn(runEventIngressRegistry, 'replayRun').mockResolvedValue(
+        undefined
+      );
+      defaultProjectStoreState.getProjectById.mockReturnValue({
+        queuedMessages: [
+          {
+            task_id: 'queued-conflict',
+            content: 'Follow-up',
+            timestamp: 1,
+            attaches: [],
+          },
+        ],
+      } as any);
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'running',
+            },
+          },
+        } as any,
+      });
+      _mockFetchPost.mockImplementation((url: string) =>
+        url.endsWith('/send-now')
+          ? Promise.resolve({
+              request_id: 'queued-conflict',
+              content: 'Follow-up',
+            })
+          : Promise.reject(
+              Object.assign(new Error('Run changed'), { status: 409 })
+            )
+      );
+      mockFetchGet.mockResolvedValue({
+        items: [
+          {
+            request_id: 'queued-conflict',
+            content: 'Follow-up',
+            attachment_paths: [],
+            delivery_mode: 'send_now',
+            created_at: 1,
+          },
+        ],
+      });
+
+      renderChatBox();
+      await user.click(screen.getByTestId('queue-queued-conflict'));
+
+      await waitFor(() =>
+        expect(toast.error).toHaveBeenCalledWith(
+          'chat.queue-task-changed',
+          undefined
+        )
+      );
+      expect(toast.error).toHaveBeenCalledTimes(1);
+      expect(_mockFetchPost).toHaveBeenCalledWith(
+        '/chat/test-project-id/skip-task?expected_task_id=test-task-id',
+        { project_id: 'test-project-id' }
+      );
+      expect(_mockFetchPost).not.toHaveBeenCalledWith(
+        '/chat/test-project-id',
+        expect.anything()
+      );
+      expect(
+        defaultProjectStoreState.prioritizeQueuedMessage
+      ).toHaveBeenLastCalledWith('test-project-id', 'queued-conflict');
+      expect(
+        defaultProjectStoreState.removeQueuedMessage
+      ).not.toHaveBeenCalled();
+      expect(screen.getByTestId('queue-queued-conflict')).toBeEnabled();
+      expect(useUsageNoticeStore.getState().incidents).toEqual([
+        { reason: 'credits' },
+      ]);
+      expect(useUsageNoticeStore.getState().acknowledged).toEqual(['credits']);
     });
 
     it('locks duplicate queue interruptions and passes the expected task to Stop', async () => {

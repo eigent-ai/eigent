@@ -44,7 +44,291 @@ function event(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function semanticReplayPair(step: 'decompose_text' | 'write_file') {
+  const narration = step === 'decompose_text';
+  const data = narration
+    ? { content: 'Building the cathedral.\n' }
+    : { relative_path: 'cathedral.html', process_task_id: 'task-1' };
+  const canonical = normalizeEvent(
+    event({
+      event_type: narration ? 'activity.progress' : 'file.written',
+      legacy_step: step,
+      payload: {
+        semantic_schema_version: 1,
+        display_schema_version: 1,
+        semantic: {
+          kind: narration ? 'narration' : 'file_change',
+          provenance: { source: `legacy.${step}` },
+        },
+        ...(narration
+          ? {
+              display_title: data.content,
+              display_fragment_exact: true,
+              status: 'running',
+            }
+          : {
+              ...data,
+              name: 'cathedral.html',
+              operation: 'written',
+              display_title: 'Wrote cathedral.html',
+            }),
+      },
+    })
+  );
+  const legacy = normalizeEvent(
+    {
+      project_id: canonical.projectId,
+      task_id: canonical.runId,
+      id: 10_000,
+      step,
+      data,
+      timestamp: canonical.createdAt,
+    },
+    'chat_step_v1'
+  );
+  return { canonical, legacy };
+}
+
 describe('projector pipeline', () => {
+  it.each([
+    [false, 'failed'],
+    [true, 'interrupted'],
+  ] as const)(
+    'settles a legacy error without END as %s / %s and ignores cleanup time',
+    (retryable, status) => {
+      const steps = [
+        { step: 'confirmed', timestamp: '2026-08-18T00:00:00Z', data: {} },
+        {
+          step: 'error',
+          timestamp: '2026-08-18T00:10:00Z',
+          data: { message: 'Turn failed', retryable },
+        },
+        {
+          step: 'deactivate_agent',
+          timestamp: '2026-08-18T00:11:00Z',
+          data: { agent_id: 'agent-1' },
+        },
+      ].map((step, index) =>
+        normalizeEvent(
+          { ...step, id: index + 1, project_id: 'project-1', task_id: 'run-1' },
+          'chat_step_v1'
+        )
+      );
+      const state = steps.reduce(
+        reduceProjectView,
+        createProjectViewState('project-1', 'replay')
+      );
+      expect(state.runs['run-1']).toMatchObject({
+        status,
+        runVersion: 0,
+        lastSequence: 0,
+        updatedAt: '2026-08-18T00:10:00.000Z',
+      });
+      expect(state.legacySteps).toHaveLength(3);
+      if (retryable) {
+        const resumed = reduceProjectView(
+          state,
+          normalizeEvent(
+            event({
+              event_type: 'run.attempt_started',
+              created_at: '2026-08-18T00:12:00Z',
+            })
+          )
+        );
+        expect(resumed.runs['run-1']).toMatchObject({
+          status: 'running',
+          runVersion: 1,
+          lastSequence: 1,
+          updatedAt: '2026-08-18T00:12:00.000Z',
+        });
+      }
+    }
+  );
+
+  it('keeps canonical lifecycle authority over a legacy error and subtask failure', () => {
+    const running = reduceProjectView(
+      createProjectViewState('project-1', 'replay'),
+      normalizeEvent(event({ event_type: 'run.attempt_started' }))
+    );
+    const legacyError = normalizeEvent(
+      {
+        project_id: 'project-1',
+        task_id: 'run-1',
+        id: 10_000,
+        step: 'error',
+        timestamp: '2026-08-18T00:10:00Z',
+        data: { message: 'Old failure', retryable: false },
+      },
+      'chat_step_v1'
+    );
+    const state = reduceProjectView(running, legacyError);
+    expect(state.runs['run-1']).toEqual(running.runs['run-1']);
+    const subtaskFailure = reduceProjectView(
+      createProjectViewState('project-1', 'replay'),
+      { ...legacyError, legacyStep: 'failed' }
+    );
+    expect(subtaskFailure.runs['run-1'].status).toBe('running');
+  });
+
+  it.each(['decompose_text', 'write_file'] as const)(
+    'pairs semantic %s mirrors in either arrival order without dropping repeated steps',
+    (step) => {
+      const { canonical, legacy } = semanticReplayPair(step);
+      const secondCanonical = {
+        ...canonical,
+        eventId: 'event-2',
+        runSequence: 2,
+        runVersion: 2,
+        cloudCursor: 2,
+      };
+      const secondLegacy = {
+        ...legacy,
+        eventId: 'legacy-2',
+        payload: { ...legacy.payload, __legacy_step_id: 10_001 },
+      };
+      for (const inputs of [
+        [canonical, secondCanonical, legacy, secondLegacy],
+        [legacy, secondLegacy, canonical, secondCanonical],
+        [legacy, canonical, secondLegacy, secondCanonical],
+      ]) {
+        const state = inputs.reduce(
+          reduceProjectView,
+          createProjectViewState('project-1', 'live')
+        );
+        expect(state.legacySteps).toHaveLength(2);
+        expect(
+          state.legacySteps.map((item) => item.crossLaneEventIds?.length)
+        ).toEqual([1, 1]);
+        expect(
+          state.legacySteps.every((item) => item.source === 'canonical')
+        ).toBe(true);
+        expect(
+          state.legacySteps.map((item) => item.runSequence).sort()
+        ).toEqual([1, 2]);
+        expect(Object.keys(state.seenEventIds)).toHaveLength(4);
+        expect(state.runs['run-1'].lastSequence).toBe(2);
+      }
+    }
+  );
+
+  it.each([
+    'different content',
+    'different run',
+    'outside time window',
+    'different provenance',
+    'different path',
+    'missing path',
+    'different subtask',
+  ])('keeps unmatched semantic replay events: %s', (difference) => {
+    const { canonical, legacy } = semanticReplayPair(
+      ['different path', 'missing path', 'different subtask'].includes(
+        difference
+      )
+        ? 'write_file'
+        : 'decompose_text'
+    );
+    if (difference === 'different content')
+      canonical.payload.display_title = 'Finished.';
+    if (difference === 'different run') canonical.runId = 'other-run';
+    if (difference === 'outside time window')
+      canonical.createdAt = '2026-08-05T10:03:00Z';
+    if (difference === 'different provenance')
+      canonical.payload.semantic = { kind: 'narration' };
+    if (difference === 'different path')
+      canonical.payload.relative_path = 'other/cathedral.html';
+    if (difference === 'missing path') delete canonical.payload.relative_path;
+    if (difference === 'different subtask')
+      canonical.payload.process_task_id = 'task-2';
+    const state = [canonical, legacy].reduce(
+      reduceProjectView,
+      createProjectViewState('project-1', 'rehydrate')
+    );
+    expect(state.legacySteps).toHaveLength(2);
+  });
+
+  it.each(['canonical-first', 'legacy-first'] as const)(
+    'preserves the canonical completion timestamp with a large legacy step id (%s)',
+    (order) => {
+      const canonical = normalizeEvent(
+        event({
+          event_type: 'run.completed',
+          legacy_step: null,
+          created_at: '2026-08-05T11:00:00Z',
+        })
+      );
+      const legacy = normalizeEvent(
+        {
+          project_id: 'project-1',
+          task_id: 'run-1',
+          step_id: 10_000,
+          step: 'end',
+          data: { content: 'Saved historical result' },
+          timestamp: '2026-08-05T10:30:00Z',
+        },
+        'chat_step_v1'
+      );
+      const inputs =
+        order === 'canonical-first' ? [canonical, legacy] : [legacy, canonical];
+      const state = inputs.reduce(
+        reduceProjectView,
+        createProjectViewState('project-1', 'rehydrate')
+      );
+
+      expect(state.runs['run-1']).toMatchObject({
+        status: 'completed',
+        runVersion: 1,
+        lastSequence: 1,
+        updatedAt: '2026-08-05T11:00:00.000Z',
+      });
+    }
+  );
+
+  it('continues updating canonical lifecycle timestamps after legacy replay', () => {
+    const running = normalizeEvent(
+      event({ event_type: 'run.running', legacy_step: null })
+    );
+    const legacy = normalizeEvent(
+      {
+        project_id: 'project-1',
+        task_id: 'run-1',
+        step_id: 10_000,
+        step: 'end',
+        data: { content: 'Saved historical result' },
+        timestamp: '2026-08-05T10:30:00Z',
+      },
+      'chat_step_v1'
+    );
+    const replayed = [running, legacy].reduce(
+      reduceProjectView,
+      createProjectViewState('project-1', 'rehydrate')
+    );
+    expect(replayed.runs['run-1']).toMatchObject({
+      status: 'running',
+      updatedAt: '2026-08-05T10:00:00.000Z',
+    });
+
+    const completed = reduceProjectView(
+      replayed,
+      normalizeEvent(
+        event({
+          event_id: 'event-2',
+          event_type: 'run.completed',
+          legacy_step: null,
+          run_sequence: 2,
+          run_version: 2,
+          cloud_cursor: 2,
+          created_at: '2026-08-05T11:00:00Z',
+        })
+      )
+    );
+    expect(completed.runs['run-1']).toMatchObject({
+      status: 'completed',
+      runVersion: 2,
+      lastSequence: 2,
+      updatedAt: '2026-08-05T11:00:00.000Z',
+    });
+  });
+
   it('keeps established Run origin immutable and fails closed on conflicts', () => {
     const cloud = reduceProjectView(
       createProjectViewState('project-1', 'live'),

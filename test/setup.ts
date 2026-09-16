@@ -16,7 +16,23 @@
 import enUs from '@/i18n/locales/en-us/index';
 import '@testing-library/jest-dom';
 import i18next from 'i18next';
-import { vi } from 'vitest';
+import { afterAll, beforeAll, vi } from 'vitest';
+
+// Floating UI asks whether an element matches `:modal` while calculating
+// focus guards. jsdom's selector engine can recurse for that exact selector
+// under Node 20+ and make otherwise synchronous Radix interactions time out.
+// Keep every supported selector on the native implementation.
+const nativeElementMatches = Element.prototype.matches;
+beforeAll(() => {
+  Element.prototype.matches = function matches(selector: string) {
+    return selector === ':modal'
+      ? false
+      : nativeElementMatches.call(this, selector);
+  };
+});
+afterAll(() => {
+  Element.prototype.matches = nativeElementMatches;
+});
 
 void i18next.init({
   resources: { 'en-US': { translation: enUs } },

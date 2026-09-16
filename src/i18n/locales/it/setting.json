@@ -467,5 +467,10 @@
   "theme-description": "Seleziona il colore del tema dell'app.",
   "thinking-effort": "Sforzo di pensiero",
   "version": "Versione",
-  "version-description": "Versione corrente e aggiornamenti disponibili."
+  "version-description": "Versione corrente e aggiornamenti disponibili.",
+  "models-api-key-invalid": "Chiave API non valida. Controlla la chiave API e fai di nuovo clic su Aggiorna.",
+  "models-access-denied": "Accesso negato. Controlla le autorizzazioni della chiave API e l’accesso all’account, poi fai di nuovo clic su Aggiorna.",
+  "models-setup-hint": "Inserisci la chiave API, fai clic su Aggiorna e seleziona un modello dal menu a discesa.",
+  "models-add-api-key-tooltip": "Aggiungi una chiave API per caricare il tipo di modello",
+  "models-connection-failed": "Impossibile caricare i modelli. Controlla la connessione e l’host API, poi fai di nuovo clic su Aggiorna."
 }
