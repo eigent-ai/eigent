@@ -4799,7 +4799,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             if (!type)
               reportError(
                 { code: 20 },
-                { modelType: effectiveModelType },
+                { modelType: effectiveModelType, executionId },
                 requestAccount
               );
             setStatus(currentTaskId, ChatTaskStatus.PAUSE);
@@ -4862,6 +4862,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               const errorContext = {
                 modelType: effectiveModelType,
                 modelId: resolvedCloudModelId,
+                executionId,
               };
               const errorReason = type
                 ? classifyUsageError(agentMessages.data, errorContext)
@@ -5697,6 +5698,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                         {
                           modelType: effectiveModelType,
                           modelId: resolvedCloudModelId,
+                          executionId,
                         },
                         requestAccount
                       ),

@@ -32,6 +32,8 @@ export interface SubscriptionUsage {
 export interface UsageIncident {
   reason: UsageReason;
   modelId?: string;
+  /** Executions whose failure is already covered by this in-memory incident. */
+  executionIds?: string[];
 }
 interface UsageNoticeState {
   account: string | null;
@@ -60,6 +62,7 @@ export const useUsageNoticeStore = create<UsageNoticeState>(() => ({
 }));
 const isCreditIncident = (incident: UsageIncident) =>
   !['service', 'model-access'].includes(incident.reason);
+// Shared presentation/dismissal identity; service recovery is tracked per model.
 const key = (incident: UsageIncident) =>
   isCreditIncident(incident)
     ? 'credits'
@@ -163,19 +166,38 @@ export function reportUsageIncident(
   const state = useUsageNoticeStore.getState();
   if (!account || state.account !== account) return;
   incidentVersion += 1;
-  const previous = state.incidents.find((item) => key(item) === key(incident));
-  if (
-    previous?.reason === 'credits' &&
-    isCreditIncident(incident) &&
-    incident.reason !== 'credits'
-  ) {
-    useUsageNoticeStore.setState({
-      incidents: state.incidents.map((item) =>
-        item === previous ? incident : item
-      ),
-    });
-  }
-  if (!previous) {
+  const previous = state.incidents.find(
+    (item) =>
+      key(item) === key(incident) &&
+      (incident.reason !== 'service' || item.modelId === incident.modelId)
+  );
+  if (previous) {
+    const refinedCredits =
+      previous.reason === 'credits' &&
+      isCreditIncident(incident) &&
+      incident.reason !== 'credits';
+    const executionIds = [
+      ...new Set([
+        ...(previous.executionIds ?? []),
+        ...(incident.executionIds ?? []),
+      ]),
+    ];
+    if (
+      refinedCredits ||
+      executionIds.length !== (previous.executionIds?.length ?? 0)
+    ) {
+      useUsageNoticeStore.setState({
+        incidents: state.incidents.map((item) =>
+          item === previous
+            ? {
+                ...(refinedCredits ? incident : previous),
+                ...(executionIds.length ? { executionIds } : {}),
+              }
+            : item
+        ),
+      });
+    }
+  } else {
     useUsageNoticeStore.setState({
       incidents: [...state.incidents, incident],
       refreshError: null,

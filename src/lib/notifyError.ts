@@ -13,7 +13,6 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import {
-  activeUsageIncident,
   reportUsageIncident,
   useUsageNoticeStore,
 } from '@/store/usageNoticeStore';
@@ -27,27 +26,62 @@ import {
 
 export function reportError(
   value: unknown,
-  context: ErrorContext = {},
+  context: ErrorContext & { executionId?: string } = {},
   account?: string | null
 ) {
   const reason = classifyError(value, context);
+  const { executionId } = context;
+  // Catch handlers may only carry the sanitized message. Preserve the model
+  // already established by the same execution's SSE failure.
+  const modelId =
+    context.modelId ??
+    (executionId
+      ? useUsageNoticeStore
+          .getState()
+          .incidents.find(
+            (incident) =>
+              incident.reason === reason &&
+              incident.executionIds?.includes(executionId)
+          )?.modelId
+      : undefined);
   if (isUsageReason(reason))
-    reportUsageIncident({ reason, modelId: context.modelId }, account);
+    reportUsageIncident(
+      {
+        reason,
+        modelId,
+        ...(executionId ? { executionIds: [executionId] } : {}),
+      },
+      account
+    );
   return reason;
 }
 
 /** For interactive catch handlers. A classified incident already owns its reminder. */
 export function notifyError(
   message: Parameters<typeof toast.error>[0],
-  options?: Parameters<typeof toast.error>[1]
+  options?: Parameters<typeof toast.error>[1],
+  executionId?: string
 ) {
   const { account, modelType } = useUsageNoticeStore.getState();
   const reason = reportError(
     { message, detail: options?.description },
-    { modelType },
+    { modelType, executionId },
     account
   );
   if (isUsageReason(reason)) return;
+  // Only a status-only summary of an already reported execution is a duplicate.
+  // Detailed failures and listener errors must remain independently visible.
+  if (
+    reason === 'task' &&
+    !options?.description &&
+    executionId &&
+    useUsageNoticeStore
+      .getState()
+      .incidents.some((incident) =>
+        incident.executionIds?.includes(executionId)
+      )
+  )
+    return;
   const raw =
     typeof message === 'string' &&
     /error code:|\{'error'|"error"\s*:|HTTP \d{3}/i.test(message);
@@ -63,8 +97,8 @@ export function notifyError(
 /** Execution status can arrive again over WebSocket after the task SSE failure. */
 export function notifyExecutionError(
   message: Parameters<typeof toast.error>[0],
-  options?: Parameters<typeof toast.error>[1]
+  options?: Parameters<typeof toast.error>[1],
+  executionId?: string
 ) {
-  if (activeUsageIncident(useUsageNoticeStore.getState())) return;
-  return notifyError(message, options);
+  return notifyError(message, options, executionId);
 }

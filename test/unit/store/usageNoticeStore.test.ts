@@ -170,6 +170,65 @@ describe('account-scoped usage reminders', () => {
     expect(useUsageNoticeStore.getState().presented).toBeNull();
     expect(mocks.error).toHaveBeenCalledTimes(2);
   });
+  it.each(['model-a', 'model-b'])(
+    'keeps the shared service reminder until both models recover, starting with %s',
+    (recoveredModel) => {
+      const remainingModel =
+        recoveredModel === 'model-a' ? 'model-b' : 'model-a';
+      reportUsageIncident({ reason: 'service', modelId: 'model-a' });
+      reportUsageIncident({ reason: 'service', modelId: 'model-b' });
+      confirmCloudRecovery('account-a', recoveredModel);
+
+      expect(activeUsageIncident(useUsageNoticeStore.getState())).toMatchObject(
+        {
+          reason: 'service',
+          modelId: remainingModel,
+        }
+      );
+      expect(useUsageNoticeStore.getState().presented).toBe('service:');
+      expect(mocks.error).toHaveBeenCalledTimes(1);
+      expect(mocks.dismiss).not.toHaveBeenCalled();
+
+      confirmCloudRecovery('account-a', remainingModel);
+      expect(useUsageNoticeStore.getState().incidents).toEqual([]);
+      expect(mocks.dismiss).toHaveBeenCalledWith(
+        'usage-availability:account-a'
+      );
+    }
+  );
+  it('preserves dismissal for an unrecovered model, then announces a new incident after full recovery', () => {
+    reportUsageIncident({ reason: 'service', modelId: 'model-a' });
+    reportUsageIncident({ reason: 'service', modelId: 'model-b' });
+    acknowledgeUsageNotice();
+    confirmCloudRecovery('account-a', 'model-a');
+    reportUsageIncident({ reason: 'service', modelId: 'model-b' });
+    setUsageModelType('custom');
+    setUsageModelType('cloud');
+
+    expect(activeUsageIncident(useUsageNoticeStore.getState())?.modelId).toBe(
+      'model-b'
+    );
+    expect(useUsageNoticeStore.getState().presented).toBeNull();
+    expect(mocks.error).toHaveBeenCalledTimes(1);
+
+    confirmCloudRecovery('account-a', 'model-b');
+    reportUsageIncident({ reason: 'service', modelId: 'model-b' });
+    expect(mocks.error).toHaveBeenCalledTimes(2);
+  });
+  it('does not infer recovery for another model or an unknown model from one successful model', () => {
+    reportUsageIncident({ reason: 'service', modelId: 'model-a' });
+    reportUsageIncident({ reason: 'service' });
+    confirmCloudRecovery('account-b', 'model-a');
+    confirmCloudRecovery('account-a', 'model-c');
+    confirmCloudRecovery('account-a');
+    expect(useUsageNoticeStore.getState().incidents).toHaveLength(2);
+
+    confirmCloudRecovery('account-a', 'model-a');
+    expect(activeUsageIncident(useUsageNoticeStore.getState())).toEqual({
+      reason: 'service',
+    });
+    expect(mocks.dismiss).not.toHaveBeenCalled();
+  });
   it('does not interrupt local-model work with cloud reminders', () => {
     setUsageModelType('local');
     reportUsageIncident({ reason: 'credits' });

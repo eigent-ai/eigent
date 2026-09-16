@@ -287,7 +287,8 @@ export function useBackgroundTaskProcessor() {
                   i18n.t('layout.unknown-error', {
                     defaultValue: 'Unknown error',
                   }),
-              }
+              },
+              executionId
             );
             activeTasksRef.current.delete(executionId);
           });
@@ -334,7 +335,8 @@ export function useBackgroundTaskProcessor() {
               i18n.t('layout.unknown-error', {
                 defaultValue: 'Unknown error',
               }),
-          }
+          },
+          executionId
         );
         activeTasksRef.current.delete(executionId);
       }

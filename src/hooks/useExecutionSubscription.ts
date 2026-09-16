@@ -379,7 +379,9 @@ export function useExecutionSubscription(enabled: boolean = true) {
                   i18n.t('triggers.execution-failed-toast', {
                     defaultValue: 'Execution failed: {{name}}',
                     name: triggerName,
-                  })
+                  }),
+                  undefined,
+                  message.execution_id
                 );
               }
               break;
