@@ -1538,6 +1538,140 @@ describe('ChatStore - Core Functionality', () => {
       }
     });
 
+    it('freezes failed legacy replay at the persisted error time without an end event', async () => {
+      const taskId = 'legacy-failed-history';
+      const startedAt = Date.parse('2026-08-18T00:00:00Z') / 1000;
+      vi.mocked(fetchEventSource).mockImplementation(async (_url, opts) => {
+        for (const [index, event] of [
+          {
+            step: 'confirmed',
+            data: { task_id: taskId, question: 'Build a report' },
+            timestamp: startedAt,
+          },
+          {
+            step: 'error',
+            data: {
+              message:
+                "tool 'shell_exec' may have produced an external side effect",
+              retryable: false,
+            },
+            timestamp: startedAt + 600,
+          },
+          {
+            step: 'deactivate_agent',
+            data: { agent_id: 'single-agent', tokens: 0 },
+            timestamp: startedAt + 610,
+          },
+        ].entries()) {
+          await opts.onmessage?.({
+            data: JSON.stringify({
+              id: 26_870 + index,
+              task_id: taskId,
+              ...event,
+            }),
+          } as any);
+        }
+        opts.onclose?.();
+      });
+
+      try {
+        const { result } = renderHook(() => useChatStore());
+        await act(async () => {
+          await result.current.getState().replay(taskId, 'Build a report', 0);
+        });
+        expect(result.current.getState().tasks[taskId]).toMatchObject({
+          status: ChatTaskStatus.FINISHED,
+          durableRunStatus: 'failed',
+          elapsed: 600_000,
+          taskTime: 0,
+        });
+      } finally {
+        releaseProjectEventStore('proj-replay');
+      }
+    });
+
+    it.each([undefined, 'normal'] as const)(
+      'settles a live error from its active clock (type=%s)',
+      async (type) => {
+        const taskId = 'live-failed-task';
+        const now = Date.parse('2026-09-16T00:00:00Z');
+        const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(now);
+        const { result } = renderHook(() => useChatStore());
+        vi.mocked(useProjectStore.getState).mockReturnValue({
+          ...replayProjectState(),
+          appendInitChatStore: () => {
+            result.current.getState().create(taskId);
+            return { taskId, chatStore: result.current };
+          },
+          getAllChatStores: () => [],
+          getProjectModel: () => null,
+          setProjectModel: vi.fn(),
+          setProjectSpace: vi.fn(),
+          setHistoryId: vi.fn(),
+          getProjectThinkingEffortOverride: () => undefined,
+        } as any);
+        vi.mocked(proxyFetchGet).mockImplementation((url: string) =>
+          Promise.resolve(
+            url.includes('snapshots')
+              ? []
+              : {
+                  value: 'test-cloud-key',
+                  api_url: 'https://models.example.test',
+                  items: [],
+                  warning_code: null,
+                }
+          )
+        );
+        vi.mocked(fetchEventSource).mockImplementation(async (_url, opts) => {
+          await opts.onmessage?.({
+            data: JSON.stringify({
+              step: 'confirmed',
+              data: { task_id: taskId, question: 'Build a report' },
+              timestamp: 100,
+            }),
+          } as any);
+          result.current.getState().setTaskTime(taskId, now - 5_000);
+          result.current.getState().setElapsed(taskId, 2_000);
+          await opts.onmessage?.({
+            data: JSON.stringify({
+              step: 'error',
+              data: { message: 'Live execution failed', retryable: false },
+              timestamp: 700,
+            }),
+          } as any);
+          opts.onclose?.();
+        });
+
+        try {
+          await act(async () => {
+            await result.current
+              .getState()
+              .startTask(
+                taskId,
+                type,
+                undefined,
+                undefined,
+                'Build a report',
+                [],
+                undefined,
+                'proj-replay'
+              );
+          });
+          await vi.waitFor(() => {
+            expect(result.current.getState().tasks[taskId]).toMatchObject({
+              status: ChatTaskStatus.FINISHED,
+              durableRunStatus: 'failed',
+              elapsed: 7_000,
+              taskTime: 0,
+            });
+          });
+        } finally {
+          nowSpy.mockRestore();
+          releaseProjectEventStore('proj-replay');
+        }
+      }
+    );
+
     it('keeps one narration and file receipt after partial canonical replay falls back to cloud', async () => {
       vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'true');
       releaseProjectEventStore('proj-replay');

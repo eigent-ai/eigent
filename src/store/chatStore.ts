@@ -4863,14 +4863,21 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               const isRetryableRunError =
                 agentMessages.data?.retryable === true;
 
-              // Freeze the live clock before switching to FINISHED. The work
+              // Freeze the clock before switching to FINISHED. The work
               // log only advances taskTime while RUNNING; skipping this step
               // made every error path render "Worked for 0s".
               const failedTask = tasks[currentTaskId];
-              const settledElapsed = settleTaskElapsedMs(
-                failedTask,
-                Date.now()
-              );
+              const playbackElapsed =
+                (type === 'replay' || type === 'share') &&
+                playbackFirstStepTimeMs !== null &&
+                playbackLastStepTimeMs !== null
+                  ? Math.max(
+                      0,
+                      playbackLastStepTimeMs - playbackFirstStepTimeMs
+                    )
+                  : null;
+              const settledElapsed =
+                playbackElapsed ?? settleTaskElapsedMs(failedTask, Date.now());
               setTaskTime(currentTaskId, 0);
               setElapsed(currentTaskId, settledElapsed);
               get().setDurableRunStatus(currentTaskId, 'failed');
