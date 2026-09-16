@@ -661,6 +661,9 @@ def record_artifact_manifest(
         projected.append(
             _artifact_projection(run_id=run_id, artifact=attributed)
         )
+    # Preserve discovery's deliverable priority when applying the byte budget.
+    # Presentation order must not evict final outputs behind intermediate files.
+    projected.sort(key=lambda item: item.get("artifactRole") != "deliverable")
     retained: list[dict[str, Any]] = []
     # Use a conservative incremental allowance, then verify the exact canonical
     # body size below. This stays linear even for very large workspaces.
@@ -687,6 +690,7 @@ def record_artifact_manifest(
         projected.pop()
         truncated = True
         scan_status = "partial"
+    projected.sort(key=lambda item: str(item.get("relativePath") or ""))
     drafts: list[RunEventDraft] = []
     for artifact in projected:
         event_type = (

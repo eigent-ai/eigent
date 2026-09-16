@@ -1078,9 +1078,80 @@ describe('ChatBox Component', async () => {
     });
 
     it.each([false, true])(
+      'keeps restored follow-ups pending after interruption with event-native=%s',
+      async (eventNative) => {
+        eventNativeHarness.enabled = eventNative;
+        const queuedMessages = [
+          {
+            task_id: 'queued-run-b',
+            content: 'Task B depends on task A',
+            timestamp: 1,
+            attaches: [],
+          },
+        ];
+        defaultProjectStoreState.getProjectById.mockImplementation(() => ({
+          queuedMessages,
+        }));
+        const runningChat = {
+          ...defaultChatStoreState,
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              status: 'running',
+              hasMessages: true,
+              messages: [{ id: 'task-a', role: 'user', content: 'Task A' }],
+            },
+          },
+        };
+        mockUseChatStoreAdapter.mockReturnValue({
+          projectStore: defaultProjectStoreState as any,
+          chatStore: runningChat as any,
+        });
+        renderChatBox();
+        await act(async () => {
+          await Promise.resolve();
+        });
+        expect(defaultChatStoreState.startTask).not.toHaveBeenCalled();
+
+        // Restore the canonical interruption without any user action.
+        await act(async () => {
+          runProjectionStore.upsertRunSummaries('test-project-id', [
+            {
+              run_id: 'test-task-id',
+              project_id: 'test-project-id',
+              status: 'interrupted',
+              updated_at: 100,
+              origin: 'local',
+              latest_attempt: { attempt_number: 1, status: 'interrupted' },
+            },
+          ]);
+        });
+
+        expect(defaultChatStoreState.startTask).not.toHaveBeenCalled();
+        expect(_mockFetchPost).not.toHaveBeenCalled();
+        expect(
+          defaultProjectStoreState.setQueuedMessageProcessing
+        ).not.toHaveBeenCalled();
+        expect(
+          defaultProjectStoreState.removeQueuedMessage
+        ).not.toHaveBeenCalled();
+      }
+    );
+
+    it.each([false, true])(
       'starts a new task after interruption and preserves recovery on admission failure=%s',
       async (fails) => {
         const user = userEvent.setup();
+        defaultProjectStoreState.getProjectById.mockImplementation(() => ({
+          queuedMessages: [
+            {
+              task_id: 'queued-run-b',
+              content: 'Old queued task B',
+              timestamp: 1,
+              attaches: [],
+            },
+          ],
+        }));
         const interruptedChat = {
           ...defaultChatStoreState,
           tasks: {
@@ -1155,6 +1226,10 @@ describe('ChatBox Component', async () => {
           runProjectionStore.getProject('test-project-id')?.runs['test-task-id']
             .status
         ).toBe('interrupted');
+        expect(defaultChatStoreState.startTask).toHaveBeenCalledTimes(1);
+        expect(
+          defaultProjectStoreState.removeQueuedMessage
+        ).not.toHaveBeenCalled();
         if (fails) {
           expect(
             screen.getByText('chat.run-interrupted-title')

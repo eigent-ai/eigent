@@ -444,6 +444,61 @@ def test_render_task_retains_more_than_500_files_through_durable_manifest(
         journal.close()
 
 
+def test_manifest_byte_budget_retains_deliverables_before_frames(tmp_path):
+    output_root = tmp_path / "output"
+    frames = output_root / "a-frames"
+    finals = output_root / "z-final"
+    frames.mkdir(parents=True)
+    finals.mkdir()
+    for index in range(1000):
+        (frames / f"frame-{index:04}.txt").write_text("frame")
+    for name in ("movie.mp4", "scene.blend"):
+        (finals / name).write_bytes(b"synthetic deliverable")
+
+    result = artifacts.discover_task_changed_files(
+        SimpleNamespace(
+            task_output_root=str(output_root),
+            working_directory=str(output_root),
+            task_start_time=0,
+        )
+    )
+    assert len(result.artifacts) == 1002
+    assert result.scan_status == "complete"
+
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="render", project_id="project")
+        manifest = artifacts.record_artifact_manifest(
+            journal,
+            run_id="render",
+            project_id="project",
+            artifacts=result.artifacts,
+            scan_status=result.scan_status,
+            truncated=result.truncated,
+        )
+        paths = [
+            item["relativePath"] for item in manifest.payload["artifacts"]
+        ]
+        deliverables = {"z-final/movie.mp4", "z-final/scene.blend"}
+        assert deliverables <= set(paths)
+        assert paths == sorted(paths)
+        assert 2 < manifest.payload["artifact_count"] < 1002
+        assert manifest.payload["scan_status"] == "partial"
+        assert manifest.payload["truncated"] is True
+        assert (
+            artifacts._canonical_size(manifest.payload)
+            <= artifacts.MAX_ARTIFACT_MANIFEST_BYTES
+        )
+        assert deliverables == {
+            event.payload["relativePath"]
+            for event in journal.list_events("render")
+            if event.event_type in {"artifact.created", "artifact.modified"}
+            and event.payload.get("artifactRole") == "deliverable"
+        }
+        assert journal.get_run_artifact_manifest_event("render").payload == (
+            manifest.payload
+        )
+
+
 def test_artifact_manifest_is_bounded_below_frontend_event_limit(tmp_path):
     journal = SQLiteRunJournal(tmp_path / "journal.sqlite3")
     try:

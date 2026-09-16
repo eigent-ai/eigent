@@ -1822,7 +1822,8 @@ export default function ChatBox(): JSX.Element {
       !projectId ||
       !activeId ||
       isTaskBusy ||
-      (activeAsk && interruptedRun?.run_id !== activeId) ||
+      interruptedRun ||
+      activeAsk ||
       !hasModel ||
       isCloudUsageLimited
     )
