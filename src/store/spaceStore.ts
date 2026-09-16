@@ -267,6 +267,7 @@ const projectMetaWithDisplayName = (project: SpaceProjectMeta) => {
       : '';
   if (
     historyDisplayName &&
+    !project.metadata?.nameSource &&
     isPlaceholderProjectName(project.name, project.id)
   ) {
     return {
@@ -494,7 +495,11 @@ const withHistoryProjectNames = (
   projects.map((project) => {
     const historyMeta = historyMetaByProjectId.get(project.id);
     const historyName = historyMeta?.displayName;
-    if (!historyName || !isPlaceholderProjectName(project.name, project.id)) {
+    if (
+      !historyName ||
+      project.metadata?.nameSource ||
+      !isPlaceholderProjectName(project.name, project.id)
+    ) {
       return project;
     }
     return {
@@ -1084,6 +1089,7 @@ export const useSpaceStore = create<SpaceStore>()(
 
             const shouldKeepPreviousDisplayName =
               previousProject &&
+              !project.metadata?.nameSource &&
               isPlaceholderProjectName(project.name, project.id) &&
               !isPlaceholderProjectName(previousProject.name, project.id);
             const historyDisplayName =
@@ -1092,6 +1098,7 @@ export const useSpaceStore = create<SpaceStore>()(
                 : '';
             const shouldUseHistoryDisplayName =
               !shouldKeepPreviousDisplayName &&
+              !project.metadata?.nameSource &&
               historyDisplayName &&
               isPlaceholderProjectName(project.name, project.id);
 

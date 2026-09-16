@@ -34,6 +34,9 @@
     "lg": "2.25rem",
     "xl": "2.5rem"
   },
+  "touchTarget": {
+    "minimum": "2.75rem"
+  },
   "layoutRow": {
     "header": "2.5rem",
     "header-prominent": "3rem"

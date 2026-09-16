@@ -126,6 +126,14 @@ for (const [step, value] of Object.entries(referenceDimension.controlHeight)) {
     'reference'
   );
 }
+for (const [name, value] of Object.entries(referenceDimension.touchTarget)) {
+  defineToken(
+    `ref.touchTarget.${name}`,
+    `--ds-ref-touch-target-${name}`,
+    value,
+    'reference'
+  );
+}
 for (const [step, value] of Object.entries(referenceDimension.layoutRow)) {
   defineToken(
     `ref.layoutRow.${step}`,

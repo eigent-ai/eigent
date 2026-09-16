@@ -52,7 +52,10 @@ import {
 } from '@/lib/remoteSubAgent';
 import { runEventIngressRegistry } from '@/lib/runEvents';
 import { buildSearchRuntimeConfig } from '@/lib/searchConfig';
-import { isLocalWorkspaceSpace } from '@/lib/spaceLabel';
+import {
+  isLocalWorkspaceSpace,
+  isPlaceholderProjectName,
+} from '@/lib/spaceLabel';
 import { settleTaskElapsedMs } from '@/lib/taskDuration';
 import {
   classifyError as classifyUsageError,
@@ -861,14 +864,31 @@ export async function buildUploadRequestId(
     .join('')}`;
 }
 
-function syncProjectDisplayName(
+export function syncProjectDisplayName(
   projectId: string | null | undefined,
   name?: string
 ) {
   const displayName = (name ?? '').trim();
   if (!projectId || !displayName) return;
-  useSpaceStore.getState().updateProjectMeta(projectId, { name: displayName });
-  useProjectStore.getState().updateProject(projectId, { name: displayName });
+  const project = useProjectStore.getState().getProjectById(projectId);
+  const meta = useSpaceStore.getState().getProjectMeta(projectId);
+  if (
+    [meta, project].some(
+      (value) =>
+        value &&
+        (value.metadata?.nameSource ||
+          !isPlaceholderProjectName(value.name, projectId))
+    )
+  )
+    return;
+  useSpaceStore.getState().updateProjectMeta(projectId, {
+    name: displayName,
+    metadata: { ...meta?.metadata, nameSource: 'initial' },
+  });
+  useProjectStore.getState().updateProject(projectId, {
+    name: displayName,
+    metadata: { ...project?.metadata, nameSource: 'initial' },
+  });
 }
 
 const compactContextText = (value?: unknown) =>

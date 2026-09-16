@@ -245,6 +245,9 @@ Standard control heights:
 | `lg`       |   36px | Prominent desktop control or row   |
 | `xl`       |   40px | Form field or comfortable control  |
 
+Coarse-pointer controls keep their visual recipe and use
+`--ds-touch-target-minimum` to provide a minimum 44 × 44px hit area.
+
 Do not use control-height tokens for layout rows merely because the numeric
 value matches. Canonical headers are separate 40px and 48px pattern recipes.
 
