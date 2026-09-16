@@ -12,7 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { isLoopbackBrowserUrl } from '@/lib/browserUrl';
+import { isLoopbackBrowserUrl, normalizeBrowserUrl } from '@/lib/browserUrl';
 
 /** Local generated sites need a visible handoff from the agent browser. */
 export const isLocalPreviewUrl = isLoopbackBrowserUrl;
@@ -20,17 +20,48 @@ export const isLocalPreviewUrl = isLoopbackBrowserUrl;
 function browserVisitSucceeded(message: string | undefined): boolean {
   if (!message?.trim()) return false;
 
-  let result = message;
+  let result = message.trim();
   try {
-    const parsed = JSON.parse(message) as { result?: unknown };
-    if (typeof parsed.result === 'string') result = parsed.result;
+    const parsed = JSON.parse(result) as {
+      result?: unknown;
+      success?: unknown;
+      error?: unknown;
+    } | null;
+    if (!parsed || typeof parsed !== 'object') return false;
+    if (parsed.success === false || parsed.error) return false;
+    if (parsed.success === true) return true;
+    if (typeof parsed.result !== 'string') return false;
+    result = parsed.result;
   } catch {
-    // Older toolkit responses are plain text rather than JSON.
+    if (result.startsWith('{')) {
+      // toolkit_listen cuts receipts at 500 characters. The current toolkit
+      // puts result first, so recover only that complete JSON string when the
+      // later snapshot is truncated; never interpret page text as an outcome.
+      const leadingResult = result.match(
+        /^\{\s*"result"\s*:\s*("(?:[^"\\]|\\.)*")\s*[,}]/
+      );
+      if (
+        !leadingResult ||
+        !/\.\.\. \(truncated, total length: \d+ chars\)$/.test(result)
+      )
+        return false;
+      try {
+        result = JSON.parse(leadingResult[1]) as string;
+      } catch {
+        return false;
+      }
+    }
   }
 
-  return !/error|failed|failure|refused|unreachable|timed?\s*out|net::err_/i.test(
-    result
+  const receipt = result.trim();
+  if (/^Navigation completed[.!]?$/i.test(receipt)) return true;
+
+  // The toolkit echoes the original URL, including spaces the browser encodes.
+  // Extract it from a successful receipt and use the existing URL validation.
+  const navigation = receipt.match(
+    /^(?:Navigated to (https?:\/\/[\s\S]+)|Opened (https?:\/\/[\s\S]+) in new tab)$/i
   );
+  return !!navigation && normalizeBrowserUrl(navigation[1] || navigation[2]).ok;
 }
 
 /** One reveal per live request, without changing the user's active Session. */

@@ -17,12 +17,14 @@ import { BrowserTab } from '@/components/Session/PreviewPanel/tabs/browser/Brows
 import { PreviewBrowserLayer } from '@/components/Session/PreviewPanel/tabs/browser/PreviewBrowserLayer';
 import { FileTab } from '@/components/Session/PreviewPanel/tabs/FileTab';
 import { HostProvider, createHost } from '@/host';
-import '@/i18n';
+import i18n, { LocaleEnum } from '@/i18n';
 import { createBrowserPreviewHandoff } from '@/lib/browserPreviewHandoff';
 import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
 import '@/style/index.css';
 import { createRoot } from 'react-dom/client';
 
+// This fixture's selectors use English regardless of the host system locale.
+await i18n.changeLanguage(LocaleEnum.English);
 const { ThemeProvider } = await import('@/components/Layout/ThemeProvider');
 const { useAuthStore } = await import('@/store/authStore');
 useAuthStore.setState({ appearanceMode: 'light' });

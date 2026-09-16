@@ -61,6 +61,8 @@ const fixtureHtml = originalHtml.replace(
 const vite = await createViteServer({
   configFile: false,
   root,
+  envDir: out,
+  cacheDir: path.join(out, 'vite-cache'),
   plugins: [
     react(),
     {
