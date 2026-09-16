@@ -31,9 +31,12 @@ import { hasStackKeys } from './lib';
 import { useAuthStore } from './store/authStore';
 import { useInstallationStore } from './store/installationStore';
 
+import { useUsageNotices } from '@/hooks/useUsageNotices';
+
 const HAS_STACK_KEYS = hasStackKeys();
 
 function App() {
+  useUsageNotices();
   const host = useHost();
   const navigate = useNavigate();
   const { setInitState } = useAuthStore();

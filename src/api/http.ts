@@ -12,15 +12,16 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { showCreditsToast } from '@/components/Toast/creditsToast';
 import { showStorageToast } from '@/components/Toast/storageToast';
-import { showTrafficToast } from '@/components/Toast/trafficToast';
 import { createHost } from '@/host/createHost';
+import { reportError } from '@/lib/notifyError';
+import { errorCopy, isUsageReason } from '@/lib/usageErrors';
 import { getAuthStore } from '@/store/authStore';
 import {
   getConnectionConfig,
   setConnectionConfig,
 } from '@/store/connectionStore';
+import { setUsageAccount } from '@/store/usageNoticeStore';
 import {
   EventSourceMessage,
   fetchEventSource,
@@ -189,6 +190,10 @@ async function handleResponse(
   responsePromise: Promise<Response>,
   requestData?: Record<string, any>
 ): Promise<any> {
+  const auth = getAuthStore();
+  const requestAccount =
+    auth.token && auth.user_id != null ? String(auth.user_id) : null;
+  setUsageAccount(requestAccount);
   try {
     const res = await responsePromise;
     persistSessionIdFromResponse(res);
@@ -228,8 +233,8 @@ async function handleResponse(
       return resData;
     }
 
-    if (code === 20) {
-      showCreditsToast();
+    if (String(code) === '20' || String(code) === '22') {
+      reportError(resData, { modelType: 'cloud' }, requestAccount);
       return resData;
     }
 
@@ -275,10 +280,15 @@ async function handleResponse(
       throw err;
     }
 
-    // Only show traffic toast for cloud model requests
-    const isCloudRequest = requestData?.api_url === 'cloud';
-    if (isCloudRequest) {
-      showTrafficToast();
+    const reason = reportError(
+      err,
+      { modelType: requestData?.api_url === 'cloud' ? 'cloud' : undefined },
+      requestAccount
+    );
+    if (isUsageReason(reason)) {
+      // Keep the response for diagnostics/classification, but sanitize catch-handler copy.
+      err.message = errorCopy(reason);
+      err.usageReason = reason;
     }
 
     console.error('[fetch error]:', err);

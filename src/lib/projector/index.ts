@@ -25,6 +25,7 @@ import { deriveLiveEffects } from './effects';
 import { normalizeEvent } from './normalize';
 import {
   createProjectViewState,
+  mergeLegacyMirrorSteps,
   reduceProjectedRun,
   reduceProjectView,
 } from './reduce';
@@ -296,7 +297,7 @@ export function projectSnapshot(
     }
   }
   const legacySteps = mergeExistingState
-    ? [...projected.legacySteps, ...previous.legacySteps]
+    ? mergeLegacyMirrorSteps(previous.legacySteps, projected.legacySteps)
     : [...projected.legacySteps];
   if (mergeExistingState) {
     for (let index = legacySteps.length - 1; index >= 0; index -= 1) {

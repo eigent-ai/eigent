@@ -12,13 +12,21 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { presentChatSemanticEntities } from '@/components/ChatBox/EventTimeline/presentationPolicy';
 import { TimelineModeRenderer } from '@/components/ChatBox/TimelineModes';
+import { selectRenderableChatNodes } from '@/lib/projector/chat';
 import {
   composeTimelineRuns,
   reconcileTimelineRun,
+  reconcileTimelineRuns,
 } from '@/lib/projector/chat/presentation';
 import type { ChatProjectionNode } from '@/lib/projector/chat/types';
+import { enqueueChatEventProjection } from '@/store/chatEventProjectionBridge';
 import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
+import {
+  getProjectEventStore,
+  releaseProjectEventStore,
+} from '@/store/projectEventStore';
 import { SessionMode } from '@/types/constants';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -2112,6 +2120,106 @@ describe('ChatBox timeline modes', () => {
     act(() => vi.advanceTimersByTime(2_000));
     expect(screen.getByText('10s')).toBeInTheDocument();
   });
+
+  it.each([
+    [false, 'failed', 'Failed after 10m 00s'],
+    [true, 'interrupted', 'Interrupted after 10m 00s'],
+  ] as const)(
+    'freezes legacy error history without END (retryable: %s)',
+    (retryable, expectedStatus, summary) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-09-15T00:00:00Z'));
+      const projectId = 'legacy-error-history';
+      const runId = 'legacy-error-run';
+      const startedAt = Date.parse('2026-08-18T00:00:00Z') / 1000;
+      releaseProjectEventStore(projectId);
+      const store = getProjectEventStore(projectId, {
+        scheduleFlush: () => () => {},
+      });
+      const history = [
+        {
+          step: 'confirmed',
+          data: { question: 'Build a satellite model' },
+          timestamp: startedAt,
+        },
+        {
+          step: 'ask',
+          data: { question: 'Allow the shell operation?', agent_name: 'Agent' },
+          timestamp: startedAt + 1,
+        },
+        {
+          step: 'activate_toolkit',
+          data: {
+            agent_name: 'Agent',
+            toolkit_name: 'terminal',
+            method_name: 'shell_exec',
+            message: 'Build the model',
+          },
+          timestamp: startedAt + 2,
+        },
+        {
+          step: 'error',
+          data: { message: 'The model build failed.', retryable },
+          timestamp: startedAt + 600,
+        },
+        {
+          step: 'deactivate_agent',
+          data: { agent_name: 'Agent' },
+          timestamp: startedAt + 660,
+        },
+      ];
+
+      try {
+        for (const [index, event] of history.entries()) {
+          expect(
+            enqueueChatEventProjection(
+              {
+                raw: { id: 26_870 + index, task_id: runId, ...event },
+                projectId,
+                runId,
+                sequence: index + 1,
+                sourceId: 'cloud-error-playback',
+                transport: 'legacy_chat',
+                historical: true,
+              },
+              true,
+              true
+            )
+          ).toBe('accepted');
+          store.flushAll();
+        }
+        const snapshot = store.getSnapshot();
+        const runs = reconcileTimelineRuns(
+          composeTimelineRuns(
+            presentChatSemanticEntities(
+              selectRenderableChatNodes(snapshot.chat)
+            )
+          ),
+          snapshot.view.runs
+        );
+        const { container } = render(
+          <TimelineModeRenderer detailLevel="narrative" runs={runs} />
+        );
+
+        expect(runs).toHaveLength(1);
+        expect(runs[0].status).toBe(expectedStatus);
+        expect(runs[0].timestamps.durationMs).toBe(600_000);
+        expect(runs[0].timestamps.elapsedAnchor?.anchoredAt).toBeNull();
+        const trigger = screen.getByRole('button', { name: summary });
+        fireEvent.click(trigger);
+        expect(container.querySelectorAll('.shiny-text')).toHaveLength(0);
+        expect(
+          screen.queryByText(/Working on tasks for/)
+        ).not.toBeInTheDocument();
+
+        act(() => vi.advanceTimersByTime(60_000));
+        expect(screen.getByRole('button', { name: summary })).toBe(trigger);
+        expect(container.querySelectorAll('.shiny-text')).toHaveLength(0);
+      } finally {
+        releaseProjectEventStore(projectId);
+      }
+    }
+  );
 
   it('renders the completed work-log duration without translation markup', () => {
     render(

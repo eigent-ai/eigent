@@ -35,7 +35,9 @@ import CollectionToolbar, {
   COLLECTION_TOOLBAR_SEARCH_CLASS,
 } from '@/components/Layout/CollectionToolbar';
 import ContentBreadcrumb from '@/components/Layout/ContentBreadcrumb';
-import ContentHeader from '@/components/Layout/ContentHeader';
+import ContentHeader, {
+  useFocusContentHeading,
+} from '@/components/Layout/ContentHeader';
 import DocumentContentRail from '@/components/Layout/DocumentContentRail';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -131,6 +133,7 @@ import { arrayToArgsJson, parseArgsToArray } from './components/utils';
 
 const IS_LOCAL_MODE = import.meta.env.VITE_USE_LOCAL_PROXY === 'true';
 const OVERVIEW_ID = '__overview__';
+const PENDING_BUILT_IN_ITEMS: IntegrationItem[] = [];
 type AddConnectorTab = 'browse' | 'local' | 'remote';
 const RECOMMENDATIONS_DISMISSED_KEY =
   'eigent.connectors.recommendations-dismissed.v1';
@@ -414,8 +417,13 @@ export default function ConnectorGateway() {
     (state) => state.fetchCapabilities
   );
 
-  const [builtInItems, setBuiltInItems] = useState<IntegrationItem[]>([]);
+  // Web search is available before the remote catalog arrives.
+  const [builtInItems, setBuiltInItems] = useState<IntegrationItem[]>(() =>
+    buildBuiltInItems({}, t)
+  );
+  const [builtInCatalogLoaded, setBuiltInCatalogLoaded] = useState(false);
   const [customMcps, setCustomMcps] = useState<MCPUserItem[]>([]);
+  const [customMcpsLoaded, setCustomMcpsLoaded] = useState(false);
   const [openConnections, setOpenConnections] = useState<ConnectorProvider[]>(
     []
   );
@@ -457,7 +465,6 @@ export default function ConnectorGateway() {
   const [actionsOverflow, setActionsOverflow] = useState(false);
   const preferredSelectionRef = useRef<ConnectorInstallHint | null>(null);
   const actionsListRef = useRef<HTMLDivElement | null>(null);
-  const detailHeadingRef = useRef<HTMLHeadingElement>(null);
   const translationRef = useRef(t);
   const locale = i18n.resolvedLanguage || i18n.language;
   const selectedId = searchParams.get('connectorId') || OVERVIEW_ID;
@@ -533,10 +540,14 @@ export default function ConnectorGateway() {
     installed: rawBuiltInInstalled,
     configs,
     configsLoading,
+    configsHydrated,
     fetchInstalled: refreshBuiltIns,
     saveEnvAndConfig,
     handleUninstall,
-  } = useIntegrationManagement(builtInItems);
+  } = useIntegrationManagement(
+    // OAuth callbacks must still wait for the full catalog's provider metadata.
+    builtInCatalogLoaded ? builtInItems : PENDING_BUILT_IN_ITEMS
+  );
 
   // Managed models retain the existing cloud Google fallback. Custom models
   // are connected when Querit is enabled or both Google values are present.
@@ -663,6 +674,7 @@ export default function ConnectorGateway() {
       );
       setBuiltInItems(buildBuiltInItems({}, translationRef.current));
     } finally {
+      setBuiltInCatalogLoaded(true);
       setLoadingBuiltIns(false);
     }
   }, [locale]);
@@ -685,6 +697,7 @@ export default function ConnectorGateway() {
       );
       setCustomMcps([]);
     } finally {
+      setCustomMcpsLoaded(true);
       setLoadingCustom(false);
     }
   }, []);
@@ -696,7 +709,6 @@ export default function ConnectorGateway() {
       return;
     }
     setLoadingOpen(true);
-    setOpenConnectionsLoaded(false);
     try {
       setOpenConnections(await fetchConnectedProviders());
     } catch (error: any) {
@@ -850,12 +862,7 @@ export default function ConnectorGateway() {
     () => connectorItems.find((item) => item.id === selectedId) || null,
     [connectorItems, selectedId]
   );
-
-  useEffect(() => {
-    if (selected) {
-      detailHeadingRef.current?.focus({ preventScroll: true });
-    }
-  }, [selected]);
+  const setDetailHeading = useFocusContentHeading(selected?.id);
 
   const selectedOpenService =
     selected?.source === 'open' ? selected.provider.service : null;
@@ -1160,10 +1167,20 @@ export default function ConnectorGateway() {
     capabilityStatus === 'idle' ||
     capabilityStatus === 'loading' ||
     (connectorGatewayEnabled && !openConnectionsLoaded) ||
+    !configsHydrated ||
+    !customMcpsLoaded ||
+    !builtInCatalogLoaded ||
     configsLoading ||
     loadingOpen ||
     loadingCustom ||
     loadingBuiltIns;
+  const initialLoading =
+    capabilityStatus === 'idle' ||
+    capabilityStatus === 'loading' ||
+    (connectorGatewayEnabled && !openConnectionsLoaded) ||
+    !configsHydrated ||
+    !customMcpsLoaded ||
+    !builtInCatalogLoaded;
 
   useEffect(() => {
     const navigationItems = connectorItems.map((item) => ({
@@ -1199,12 +1216,12 @@ export default function ConnectorGateway() {
         });
       }
     }
-    publishItems(navigationItems, pageLoading);
+    publishItems(navigationItems, initialLoading);
   }, [
     browseTarget,
     builtInInstalled,
     connectorItems,
-    pageLoading,
+    initialLoading,
     publishItems,
   ]);
 
@@ -1523,11 +1540,12 @@ export default function ConnectorGateway() {
   const renderDetailPanel = (item: ConnectorListItem) => (
     <div className="flex min-h-full min-w-0 flex-col" data-connector-detail>
       <ContentHeader
+        persistent
         className="gap-ds-12 px-ds-16"
         titleAsChild
         title={
           <ContentBreadcrumb
-            headingRef={detailHeadingRef}
+            headingRef={setDetailHeading}
             ariaLabel={t('layout.breadcrumb', { defaultValue: 'Breadcrumb' })}
             segments={[
               {
@@ -1535,7 +1553,7 @@ export default function ConnectorGateway() {
                 onClick: navigateHome,
               },
               {
-                label: t('connectors.connector'),
+                label: t('layout.connectors'),
                 onClick: closeConnectorSubpage,
               },
               { label: item.name },
@@ -1611,7 +1629,7 @@ export default function ConnectorGateway() {
   };
 
   const renderConnectorTable = () => {
-    if (pageLoading && connectorItems.length === 0) {
+    if (initialLoading) {
       return (
         <div className="flex w-full flex-col gap-ds-4" role="status">
           <span className="sr-only">{t('connectors.loading')}</span>
@@ -1826,6 +1844,7 @@ export default function ConnectorGateway() {
           data-connector-browser-detail
         >
           <ContentHeader
+            persistent
             className="gap-ds-12 px-ds-16"
             titleAsChild
             title={
@@ -1840,7 +1859,7 @@ export default function ConnectorGateway() {
                     onClick: navigateHome,
                   },
                   {
-                    label: t('connectors.connector'),
+                    label: t('layout.connectors'),
                     onClick: closeConnectorSubpage,
                   },
                   {
@@ -1893,6 +1912,7 @@ export default function ConnectorGateway() {
     return (
       <div className="flex min-h-full min-w-0 flex-col" data-add-connector>
         <ContentHeader
+          persistent
           className="gap-ds-12 px-ds-16"
           titleAsChild
           title={
@@ -1904,7 +1924,7 @@ export default function ConnectorGateway() {
                   onClick: navigateHome,
                 },
                 {
-                  label: t('connectors.connector'),
+                  label: t('layout.connectors'),
                   onClick: closeConnectorSubpage,
                 },
                 { label: t('connectors.add-connector') },
@@ -2029,7 +2049,11 @@ export default function ConnectorGateway() {
   if (selectedId !== OVERVIEW_ID) {
     return (
       <div className="flex min-h-full flex-col" role="status">
-        <ContentHeader className="px-ds-16" title={t('connectors.loading')} />
+        <ContentHeader
+          persistent
+          className="px-ds-16"
+          title={t('connectors.loading')}
+        />
         <DocumentContentRail className="flex flex-col gap-ds-8 px-ds-24 py-ds-24">
           {Array.from({ length: 4 }).map((_, index) => (
             <div
@@ -2046,14 +2070,17 @@ export default function ConnectorGateway() {
   return (
     <>
       <CollectionToolbar
+        persistentHeader
         title={t('connectors.title')}
         headingLevel={1}
         width="wide"
         aria-label={t('connectors.connector-toolbar')}
         count={
-          <Badge variant="secondary" size="xs">
-            {visibleItems.length}
-          </Badge>
+          initialLoading ? null : (
+            <Badge variant="secondary" size="xs">
+              {visibleItems.length}
+            </Badge>
+          )
         }
       >
         <div className={COLLECTION_TOOLBAR_SEARCH_CLASS}>
