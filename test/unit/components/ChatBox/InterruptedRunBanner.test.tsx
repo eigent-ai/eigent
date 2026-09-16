@@ -44,6 +44,13 @@ describe('InterruptedRunBanner', () => {
 
     expect(screen.getByText('Run interrupted')).toBeInTheDocument();
     expect(screen.getByText('#1')).toBeInTheDocument();
+    const buttons = screen.getAllByRole('button');
+    expect(buttons.map((button) => button.textContent)).toEqual([
+      'Cancel Run',
+      'Resume',
+    ]);
+    expect(buttons[0].parentElement).toHaveClass('justify-end');
+    expect(document.querySelector('.lucide-triangle-alert')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
     fireEvent.click(screen.getByRole('button', { name: 'Cancel Run' }));
     expect(onResume).toHaveBeenCalledOnce();

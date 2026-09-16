@@ -559,6 +559,340 @@ describe('projector pipeline', () => {
     ]);
   });
 
+  it('preserves recovery output through legacy cancellation rescans and unfreezes on a new Attempt', () => {
+    const make = (seq: number, type: string, payload = {}) =>
+      event({
+        event_id: `recovery-${seq}`,
+        run_sequence: seq,
+        run_version: seq,
+        cloud_cursor: seq,
+        event_type: type,
+        legacy_step: null,
+        payload,
+      });
+    const original = make(1, 'artifact.manifest.finalized', {
+      artifacts: [
+        { artifact_id: 'note', relativePath: 'note.md', filename: 'note.md' },
+      ],
+      scan_status: 'complete',
+      truncated: false,
+    });
+    const empty = make(4, 'artifact.manifest.finalized', {
+      artifacts: [],
+      scan_status: 'complete',
+      truncated: false,
+    });
+    const history = [
+      original,
+      make(2, 'runtime.interrupted'),
+      make(3, 'run.cancel_requested'),
+      empty,
+      make(5, 'run.cancelled'),
+    ];
+    const snapshot = projectSnapshot({
+      project_id: 'project-1',
+      current_cursor: 5,
+      recent_events: history,
+      artifact_events: [empty],
+    });
+    expect(
+      selectRunArtifacts(snapshot, 'run-1').map((item) => item.name)
+    ).toEqual(['note.md']);
+    expect(snapshot.artifactManifestsByRun?.['run-1'].runSequence).toBe(4);
+    const resumed = projectRawEvents(
+      'project-1',
+      [
+        original,
+        make(2, 'runtime.interrupted'),
+        make(3, 'run.attempt_created'),
+        make(4, 'run.attempt_started'),
+        make(5, 'artifact.manifest.finalized', {
+          artifacts: [],
+          scan_status: 'complete',
+        }),
+      ],
+      'rehydrate'
+    ).state;
+    expect(selectRunArtifacts(resumed, 'run-1')).toEqual([]);
+  });
+
+  it.each(['complete', 'partial', 'unavailable'] as const)(
+    'retains a frozen %s manifest and interruption clock across legacy replay and hydration',
+    (scanStatus) => {
+      const { canonical, legacy } = semanticReplayPair('write_file');
+      const manifest = event({
+        event_id: 'manifest-2',
+        run_sequence: 2,
+        run_version: 2,
+        cloud_cursor: 2,
+        event_type: 'artifact.manifest.finalized',
+        legacy_step: null,
+        created_at: '2026-08-05T10:00:01Z',
+        payload:
+          scanStatus === 'unavailable'
+            ? {}
+            : {
+                artifacts:
+                  scanStatus === 'partial'
+                    ? [
+                        {
+                          artifact_id: 'file-1',
+                          relativePath: 'cathedral.html',
+                        },
+                      ]
+                    : [],
+                scan_status: scanStatus,
+                truncated: scanStatus === 'partial',
+              },
+      });
+      const interrupted = event({
+        event_id: 'interrupted-3',
+        run_sequence: 3,
+        run_version: 3,
+        cloud_cursor: 3,
+        event_type: 'runtime.interrupted',
+        legacy_step: null,
+        created_at: '2026-08-05T10:00:02Z',
+        payload: {},
+      });
+      const history = [canonical, manifest, interrupted];
+      const previous = projectRawEvents(
+        'project-1',
+        history,
+        'rehydrate'
+      ).state;
+      const replayed = projectRawEvents(
+        'project-1',
+        [
+          { ...legacy, createdAt: '2026-08-05T10:00:03Z' },
+          normalizeEvent(
+            {
+              project_id: 'project-1',
+              task_id: 'run-1',
+              id: 20_000,
+              step: 'error',
+              data: { message: 'Late legacy failure' },
+              timestamp: '2026-08-05T10:00:04Z',
+            },
+            'chat_step_v1'
+          ),
+        ],
+        'rehydrate',
+        previous
+      ).state;
+      const hydrated = projectSnapshot(
+        {
+          project_id: 'project-1',
+          current_cursor: 3,
+          recent_events: history,
+          artifact_events: [manifest],
+        },
+        replayed
+      );
+      for (const state of [replayed, hydrated]) {
+        expect(state.runs['run-1']).toMatchObject({
+          status: 'interrupted',
+          runVersion: 3,
+          lastSequence: 3,
+          updatedAt: '2026-08-05T10:00:02.000Z',
+        });
+        expect(state.artifactManifestsByRun?.['run-1']).toMatchObject({
+          scanStatus,
+          truncated: scanStatus === 'partial',
+          frozenAfterInterruption: true,
+        });
+        expect(selectRunArtifacts(state, 'run-1')).toHaveLength(
+          scanStatus === 'partial' ? 1 : 0
+        );
+        const fileSteps = state.legacySteps.filter(
+          (step) => step.step === 'write_file'
+        );
+        expect(fileSteps).toHaveLength(1);
+        expect(fileSteps[0]).toMatchObject({
+          source: 'canonical',
+          crossLaneEventIds: [legacy.eventId],
+        });
+      }
+    }
+  );
+
+  it('clears a frozen recovery manifest when a newer snapshot includes Resume', () => {
+    const make = (seq: number, type: string, payload = {}) =>
+      event({
+        event_id: `resume-${seq}`,
+        run_sequence: seq,
+        run_version: seq,
+        cloud_cursor: seq,
+        event_type: type,
+        legacy_step: null,
+        payload,
+      });
+    const original = make(1, 'artifact.manifest.finalized', {
+      artifacts: [
+        { artifact_id: 'old', relativePath: 'old.md', filename: 'old.md' },
+      ],
+      scan_status: 'complete',
+      truncated: false,
+    });
+    const interrupted = make(2, 'runtime.interrupted');
+    const previous = projectRawEvents(
+      'project-1',
+      [original, interrupted],
+      'rehydrate'
+    ).state;
+    const resumed = projectSnapshot(
+      {
+        project_id: 'project-1',
+        current_cursor: 3,
+        recent_events: [original, interrupted, make(3, 'run.attempt_started')],
+        artifact_events: [original],
+      },
+      previous
+    );
+    expect(
+      resumed.artifactManifestsByRun?.['run-1'].frozenAfterInterruption
+    ).toBe(false);
+    const cancelled = projectRawEvents(
+      'project-1',
+      [
+        make(4, 'run.cancel_requested'),
+        make(5, 'artifact.manifest.finalized', {
+          artifacts: [
+            { artifact_id: 'old', relativePath: 'old.md', filename: 'old.md' },
+            { artifact_id: 'new', relativePath: 'new.md', filename: 'new.md' },
+          ],
+          scan_status: 'complete',
+          truncated: false,
+        }),
+        make(6, 'run.cancelled'),
+      ],
+      'live',
+      resumed
+    ).state;
+    expect(
+      selectRunArtifacts(cancelled, 'run-1').map((item) => item.name)
+    ).toEqual(['old.md', 'new.md']);
+  });
+
+  it('keeps a newer empty manifest when an older snapshot is replayed', () => {
+    const finalized = (
+      seq: number,
+      artifacts: unknown[],
+      status = 'complete'
+    ) =>
+      event({
+        event_id: `manifest-${seq}`,
+        run_sequence: seq,
+        run_version: seq,
+        cloud_cursor: seq,
+        event_type: 'artifact.manifest.finalized',
+        legacy_step: null,
+        payload: { artifacts, scan_status: status, truncated: false },
+      });
+    const previous = projectRawEvents(
+      'project-1',
+      [finalized(20, [])],
+      'rehydrate'
+    ).state;
+    const snapshot = projectSnapshot(
+      {
+        project_id: 'project-1',
+        current_cursor: 10,
+        recent_events: [],
+        artifact_events: [
+          finalized(10, [
+            { artifact_id: 'old', relativePath: 'old.md', filename: 'old.md' },
+          ]),
+        ],
+      },
+      previous
+    );
+    expect(snapshot.artifactsByRun['run-1']).toEqual([]);
+    expect(snapshot.artifactManifestsByRun?.['run-1']).toMatchObject({
+      runSequence: 20,
+      scanStatus: 'complete',
+      truncated: false,
+    });
+  });
+
+  it('retains scan completeness separately from an empty artifact list', () => {
+    const state = projectRawEvents(
+      'project-1',
+      [
+        event({
+          event_type: 'artifact.manifest.finalized',
+          legacy_step: null,
+          payload: {
+            artifacts: [],
+            scan_status: 'unavailable',
+            truncated: true,
+          },
+        }),
+      ],
+      'rehydrate'
+    ).state;
+    expect(state.artifactsByRun['run-1']).toEqual([]);
+    expect(state.artifactManifestsByRun?.['run-1']).toMatchObject({
+      scanStatus: 'unavailable',
+      truncated: true,
+    });
+  });
+
+  it('does not treat a malformed missing artifact list as authoritative empty', () => {
+    const state = projectRawEvents(
+      'project-1',
+      [event({ event_type: 'artifact.manifest.finalized', payload: {} })],
+      'rehydrate'
+    ).state;
+    expect(state.artifactManifestsByRun?.['run-1'].scanStatus).toBe(
+      'unavailable'
+    );
+  });
+
+  it('retains uploaded asset metadata when the same manifest is restored again', () => {
+    const finalized = event({
+      event_type: 'artifact.manifest.finalized',
+      legacy_step: null,
+      payload: {
+        artifacts: [
+          {
+            artifact_id: 'file-1',
+            relativePath: 'report.md',
+            filename: 'report.md',
+          },
+        ],
+      },
+    });
+    const previous = projectRawEvents(
+      'project-1',
+      [
+        finalized,
+        event({
+          event_id: 'upload',
+          run_sequence: 2,
+          run_version: 2,
+          cloud_cursor: 2,
+          event_type: 'artifact.uploaded',
+          payload: {
+            artifact_id: 'file-1',
+            asset_ref: { chat_file_id: 7, bucket: 'assets', key: 'report.md' },
+          },
+        }),
+      ],
+      'rehydrate'
+    ).state;
+    const snapshot = projectSnapshot(
+      {
+        project_id: 'project-1',
+        current_cursor: 1,
+        recent_events: [],
+        artifact_events: [finalized],
+      },
+      previous
+    );
+    expect(snapshot.artifactsByRun['run-1'][0].assetRef?.chatFileId).toBe(7);
+  });
+
   it('detects both Project cursor and Run sequence gaps', () => {
     const first = reduceProjectView(
       createProjectViewState('project-1', 'live'),

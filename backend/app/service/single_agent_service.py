@@ -593,6 +593,11 @@ async def single_agent_solve(
                     continue
 
                 if item.action == Action.skip_task:
+                    if (
+                        item.expected_task_id
+                        and item.expected_task_id != task_lock.current_task_id
+                    ):
+                        continue
                     pause_event.clear()
                     cancel_running_summary()
                     pending_turn_result = None

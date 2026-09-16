@@ -17,6 +17,7 @@ import {
   selectActionableInterruptedRun,
   selectComposerTaskControlState,
   selectEventNativeActiveRunId,
+  selectQueueExecution,
 } from '@/components/ChatBox/runControlArbitration';
 import { createProjectViewState, type ProjectedRun } from '@/lib/projector';
 import {
@@ -30,6 +31,114 @@ import {
 import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
 import { ChatTaskStatus } from '@/types/constants';
 import { describe, expect, it } from 'vitest';
+
+describe('queue execution ownership', () => {
+  it('targets the running Run even when a pending queue row is selected', () => {
+    expect(
+      selectQueueExecution({
+        snapshot: snapshot({
+          runs: [run('executing', 'running'), run('queued', 'pending')],
+        }),
+        legacyRunId: 'queued',
+        legacyBusy: true,
+        queuedRunIds: ['queued'],
+      })
+    ).toEqual({ busy: true, runId: 'executing' });
+  });
+
+  it('blocks dispatch when the selected history row is already finished', () => {
+    expect(
+      selectQueueExecution({
+        snapshot: snapshot({
+          runs: [run('executing', 'running'), run('old', 'completed')],
+        }),
+        legacyRunId: 'old',
+        legacyBusy: false,
+        queuedRunIds: ['queued'],
+      })
+    ).toEqual({ busy: true, runId: 'executing' });
+  });
+
+  it('releases the queue after cancellation despite stale local busy state', () => {
+    expect(
+      selectQueueExecution({
+        snapshot: snapshot({
+          runs: [run('executing', 'cancelled'), run('queued', 'pending')],
+        }),
+        legacyRunId: 'queued',
+        legacyBusy: true,
+        queuedRunIds: ['queued'],
+      })
+    ).toEqual({ busy: false, runId: undefined });
+  });
+
+  it('keeps dispatch blocked while cancellation is in progress', () => {
+    expect(
+      selectQueueExecution({
+        snapshot: snapshot({ runs: [run('executing', 'cancelling')] }),
+        legacyRunId: 'old',
+        legacyBusy: false,
+        queuedRunIds: [],
+      })
+    ).toEqual({ busy: true, runId: 'executing' });
+  });
+
+  it.each([
+    ['needs resynchronization', { needsResync: true }],
+    ['overflowed', { overflowed: true }],
+  ])(
+    'falls back to an idle legacy task lock when the snapshot %s',
+    (_, flags) => {
+      expect(
+        selectQueueExecution({
+          snapshot: snapshot({ runs: [], ...flags }),
+          legacyRunId: 'old',
+          legacyBusy: false,
+          queuedRunIds: [],
+        })
+      ).toEqual({ busy: false, runId: undefined });
+    }
+  );
+
+  it.each([
+    ['needs resynchronization', { needsResync: true }],
+    ['overflowed', { overflowed: true }],
+  ])(
+    'keeps dispatch blocked when the snapshot %s and the legacy task is busy',
+    (_, flags) => {
+      expect(
+        selectQueueExecution({
+          snapshot: snapshot({ runs: [], ...flags }),
+          legacyRunId: 'executing',
+          legacyBusy: true,
+          queuedRunIds: [],
+        })
+      ).toEqual({ busy: true, runId: undefined });
+    }
+  );
+
+  it('uses a truncated snapshot for execution state without authorizing controls', () => {
+    expect(
+      selectQueueExecution({
+        snapshot: snapshot({
+          runs: [run('executing', 'running')],
+          eventsTruncated: true,
+        }),
+        legacyRunId: 'executing',
+        legacyBusy: true,
+        queuedRunIds: [],
+      })
+    ).toEqual({ busy: true, runId: undefined });
+    expect(
+      selectQueueExecution({
+        snapshot: snapshot({ runs: [], eventsTruncated: true }),
+        legacyRunId: 'finished',
+        legacyBusy: false,
+        queuedRunIds: [],
+      })
+    ).toEqual({ busy: false, runId: undefined });
+  });
+});
 
 function run(
   runId: string,

@@ -13,8 +13,63 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { SidePanelFoldButton } from '@/components/Session/SidePanel/components/FoldButton';
+import { Button } from '@/components/ui/button';
+import { TooltipSimple } from '@/components/ui/tooltip';
+import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
 import type { SessionModeType } from '@/types/constants';
+import { LoaderCircle, RotateCw } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
+
+/** Consumes the shared Session runtime; never starts another history loader. */
+export function SessionHistoryAction() {
+  const { t } = useTranslation();
+  const { hydration, projectId } = useProjectEventRuntime();
+  const pending =
+    hydration.status === 'loading' || hydration.status === 'retrying';
+  if (!projectId || (!pending && hydration.status !== 'error')) return null;
+
+  const statusLabel = pending
+    ? t(
+        hydration.status === 'retrying'
+          ? 'chat.timeline-history-reconnecting'
+          : 'chat.timeline-history-loading'
+      )
+    : t(
+        hydration.errorCode === 'unsupported'
+          ? 'layout.session-panel-history-unsupported'
+          : 'layout.session-panel-history-unavailable'
+      );
+  const label = pending
+    ? statusLabel
+    : `${statusLabel} ${t('chat.timeline-history-retry')}`;
+
+  return (
+    <TooltipSimple content={label} side="bottom">
+      <span className="inline-flex">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          buttonContent="icon-only"
+          aria-label={label}
+          aria-busy={pending}
+          disabled={pending}
+          onClick={hydration.retry}
+        >
+          {pending ? (
+            <LoaderCircle aria-hidden className="motion-safe:animate-spin" />
+          ) : (
+            <RotateCw aria-hidden />
+          )}
+        </Button>
+        <span className="sr-only" role="status">
+          {statusLabel}
+        </span>
+      </span>
+    </TooltipSimple>
+  );
+}
 
 export interface SidePanelHeaderProps {
   title: string;
