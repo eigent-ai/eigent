@@ -7,7 +7,7 @@
   "open-in-browser": "Ouvrir dans le navigateur",
   "review-comment-count_one": "{{count}} commentaire de révision",
   "review-comment-count_other": "{{count}} commentaires de révision",
-  "folder-selected-open-in-description": "Utilisez Ouvrir dans pour ouvrir ce dossier précis dans le Finder ou un éditeur.",
+  "folder-selected-open-in-description": "Utilisez les actions ci-dessus pour ouvrir ce dossier dans le gestionnaire de fichiers ou un éditeur.",
   "folder-selected-preview-description": "Sélectionnez un fichier de ce dossier pour prévisualiser son contenu.",
   "audio-playback-unsupported": "Votre navigateur ne prend pas en charge la lecture audio.",
   "collapse-folder": "Réduire {{name}}",
@@ -30,9 +30,17 @@
   "search-files": "Rechercher des fichiers",
   "source-for-file": "Source de {{name}}",
   "source-view": "Source",
+  "preview-byte-summary": "Aperçu de {{bytesRead}}{{totalBytes}}",
   "truncated-preview-summary": "Aperçu de {{bytesRead}}{{totalBytes}}. Le fichier complet n’a pas été chargé.",
   "video-playback-unsupported": "Votre navigateur ne prend pas en charge la lecture vidéo.",
   "view-mode": "Mode d’affichage",
   "zip-file-is-not-supported-yet": "Les fichiers ZIP ne sont pas encore pris en charge.",
-  "review-comment-count_many": "{{count}} commentaires de révision"
+  "review-comment-count_many": "{{count}} commentaires de révision",
+  "show-in-finder": "Afficher dans le Finder",
+  "show-in-explorer": "Afficher dans l’Explorateur de fichiers",
+  "show-in-folder": "Afficher dans le dossier",
+  "open-in-finder": "Ouvrir dans le Finder",
+  "open-in-explorer": "Ouvrir dans l’Explorateur de fichiers",
+  "open-in-folder": "Ouvrir dans le gestionnaire de fichiers",
+  "preview-load-failed": "Impossible d’afficher ce fichier. Réessayez ou ouvrez-le dans une application externe."
 }

@@ -173,14 +173,18 @@ describe('FileViewerPanel toolbar', () => {
             limit: 50,
           },
         }),
-        { pathPresentation: 'file-path', onOpenExternalFile: undefined }
+        {
+          pathPresentation: 'file-path',
+          canRevealFile: !isRemote,
+          onOpenExternalFile: undefined,
+        }
       );
 
-      await userEvent.setup().click(
-        screen.getByRole('button', {
-          name: isRemote ? 'Download' : 'Open externally',
-        })
-      );
+      const recoveryAction = screen.getByRole('button', {
+        name: isRemote ? 'Download' : 'Show in folder',
+      });
+      expect(recoveryAction.closest('header')).not.toBeNull();
+      await userEvent.setup().click(recoveryAction);
       expect(
         isRemote ? callbacks.onDownloadFile : callbacks.onRevealFile
       ).toHaveBeenCalledTimes(1);
@@ -195,6 +199,7 @@ describe('FileViewerPanel toolbar', () => {
     );
 
     const breadcrumb = screen.getByRole('navigation', { name: 'File path' });
+    expect(breadcrumb.closest('header')).toHaveClass('flex-wrap');
     expect(breadcrumb).toHaveClass('overflow-hidden');
     expect(breadcrumb).not.toHaveClass('scrollbar-always-visible');
     expect(breadcrumb).not.toHaveClass('overflow-x-auto');
@@ -216,7 +221,7 @@ describe('FileViewerPanel toolbar', () => {
     expect(screen.queryByRole('button', { name: 'Download file' })).toBeNull();
   });
 
-  it('shows Open in as the only text-file action', () => {
+  it('shows Finder as the primary action beside a separate Open in menu', () => {
     renderViewer(textFile(), {
       openInActions: [
         {
@@ -229,8 +234,10 @@ describe('FileViewerPanel toolbar', () => {
     });
 
     const openInButton = screen.getByRole('button', { name: 'Open in' });
-    expect(openInButton).toHaveClass('bg-ds-accent-strong-default');
-    expect(openInButton.firstChild?.nodeName).toBe('#text');
+    expect(
+      screen.getByRole('button', { name: 'Show in Finder' })
+    ).toBeInTheDocument();
+    expect(openInButton).toHaveAttribute('aria-haspopup', 'menu');
     expect(openInButton.querySelectorAll('svg')).toHaveLength(1);
     expect(
       screen.queryByRole('button', { name: 'Copy file content' })
@@ -239,6 +246,22 @@ describe('FileViewerPanel toolbar', () => {
     expect(screen.queryByRole('button', { name: 'Preview' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Download file' })).toBeNull();
   });
+
+  it.each([386, 1000])(
+    'keeps the complete-file warning visibly beside the preview for a %s byte file',
+    (totalBytes) => {
+      renderViewer(
+        textFile({
+          preview: { kind: 'truncated-text', bytesRead: 386, totalBytes },
+        })
+      );
+      const notice = screen.getByText(
+        `Previewing 386 B of ${totalBytes} B. The complete file was not loaded.`
+      );
+      expect(notice.closest('header')).toBeNull();
+      expect(notice).toHaveAttribute('aria-live', 'polite');
+    }
+  );
 
   it('renders ordinary text through the shared source viewer', () => {
     renderViewer(textFile());
@@ -415,6 +438,51 @@ describe('FileViewerPanel toolbar', () => {
     expect(callbacks.onOpenExternalFile).toHaveBeenCalledTimes(1);
   });
 
+  it('embeds the authorized PDF URL with native viewer controls in both layouts', () => {
+    const name = 'Report 中文 with spaces.pdf';
+    const url =
+      'localfile://preview/?path=' + encodeURIComponent(`/workspace/${name}`);
+    const file = textFile({
+      name,
+      type: 'pdf',
+      content: url,
+      size: 1024,
+      preview: { kind: 'range-pdf', size: 1024 },
+    });
+    for (const embedded of [true, false]) {
+      const { container, unmount } = renderViewer(file, { embedded });
+      const frame = container.querySelector('iframe');
+      expect(frame).toHaveAttribute('title', name);
+      expect(frame).toHaveAttribute('src', url);
+      // A sandbox or toolbar-hiding fragment would disable native PDF actions.
+      expect(frame).not.toHaveAttribute('sandbox');
+      expect(container.querySelector('canvas, [data-pdf-controls]')).toBeNull();
+      expect(screen.queryByText('Loading PDF…')).toBeNull();
+      expect(
+        screen.queryByRole('button', { name: 'Open externally' })
+      ).toBeNull();
+      unmount();
+    }
+  });
+
+  it('keeps oversized PDFs in recovery instead of mounting the browser viewer', () => {
+    const { container } = renderViewer(
+      textFile({
+        name: 'large.pdf',
+        type: 'pdf',
+        content: undefined,
+        preview: {
+          kind: 'blocked',
+          reason: 'too-large',
+          size: 200_000_000,
+          limit: 104_857_600,
+        },
+      })
+    );
+    expect(container.querySelector('iframe')).toBeNull();
+    expect(screen.getByText('Preview not loaded')).toBeInTheDocument();
+  });
+
   it('renders an authorized MP4 with the existing native video controls', () => {
     const { container } = renderViewer(
       textFile({
@@ -501,5 +569,39 @@ describe('FileViewerPanel toolbar', () => {
         expect(Element.prototype.matches).toBe(originalMatches);
       }
     }
+  });
+  it('keeps revealing and external opening separate for an archive', async () => {
+    renderViewer(
+      textFile({
+        type: 'gz',
+        name: 'archive.tar.gz',
+        preview: {
+          kind: 'blocked',
+          reason: 'unsupported',
+          size: 100,
+          limit: null,
+        },
+      }),
+      { canRevealFile: true }
+    );
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: 'Show in folder' }));
+    expect(callbacks.onRevealFile).toHaveBeenCalledOnce();
+    expect(callbacks.onOpenExternalFile).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('source-code-viewer')).toBeNull();
+  });
+  it('offers retry for a failed load without mounting the file renderer', async () => {
+    const onRetry = vi.fn();
+    renderViewer(textFile(), { loadFailed: true, onRetry });
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Retry' }).closest('header')
+    ).not.toBeNull();
+    expect(screen.queryByTestId('source-code-viewer')).toBeNull();
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: 'Retry' }));
+    expect(onRetry).toHaveBeenCalledOnce();
   });
 });

@@ -5,7 +5,7 @@
   "expand-folder": "Развернуть {{name}}",
   "file-path-breadcrumb": "Путь к файлу",
   "file-path-remote-root": "Удалённо",
-  "folder-selected-open-in-description": "Используйте «Открыть в», чтобы открыть эту папку в Finder или редакторе.",
+  "folder-selected-open-in-description": "Используйте действия выше, чтобы открыть эту папку в файловом менеджере или редакторе.",
   "folder-selected-preview-description": "Выберите файл в этой папке, чтобы просмотреть его содержимое.",
   "html-external-content-description": "После загрузки удалённый код сможет получить доступ к отображаемому содержимому этого отчёта. Доступ действует только в рамках этого сеанса предпросмотра.",
   "html-external-content-title": "Загрузить внешнее содержимое?",
@@ -32,8 +32,16 @@
   "search-files": "Поиск файлов",
   "source-for-file": "Исходный код {{name}}",
   "source-view": "Исходный код",
+  "preview-byte-summary": "Предпросмотр: {{bytesRead}}{{totalBytes}}",
   "truncated-preview-summary": "Предпросмотр {{bytesRead}}{{totalBytes}}. Файл загружен не полностью.",
   "video-playback-unsupported": "Ваш браузер не поддерживает воспроизведение видео.",
   "view-mode": "Режим просмотра",
-  "zip-file-is-not-supported-yet": "ZIP-файлы пока не поддерживаются."
+  "zip-file-is-not-supported-yet": "ZIP-файлы пока не поддерживаются.",
+  "show-in-finder": "Показать в Finder",
+  "show-in-explorer": "Показать в Проводнике",
+  "show-in-folder": "Показать в папке",
+  "open-in-finder": "Открыть в Finder",
+  "open-in-explorer": "Открыть в Проводнике",
+  "open-in-folder": "Открыть в файловом менеджере",
+  "preview-load-failed": "Не удалось просмотреть файл. Повторите попытку или откройте его во внешнем приложении."
 }

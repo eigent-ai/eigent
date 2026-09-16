@@ -50,9 +50,13 @@ from app.workspace_git.path_policy import WorkspacePathPolicy
 
 logger = logging.getLogger("artifacts")
 
-MAX_ARTIFACTS_PER_RUN = 500
 MAX_ARTIFACT_SCAN_SECONDS = 3.0
+# Bound traversal work, not the number of outputs at an arbitrary 500-file
+# prefix. Render tasks routinely produce more files than that.
 MAX_ARTIFACT_SCAN_ENTRIES = 100_000
+# ProjectEventStore rejects a single event above 256 KiB. Leave room for the
+# canonical event envelope while retaining hundreds of ordinary output rows.
+MAX_ARTIFACT_MANIFEST_BYTES = 244 * 1024
 _ACTIVE_RUN_STATUSES = {"pending", "running", "waiting_for_user"}
 _AGENT_GENERATED_UPLOAD_POLICY = "agent_generated"
 _METADATA_ONLY_UPLOAD_POLICY = "metadata_only"
@@ -75,6 +79,17 @@ def _canonical_digest(value: Any) -> str:
         sort_keys=True,
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _canonical_size(value: Any) -> int:
+    return len(
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    )
 
 
 @dataclass(frozen=True)
@@ -268,6 +283,8 @@ def _deliverable_fields(path: Path) -> dict[str, str]:
 def _git_run_changed_artifacts(
     journal: SQLiteRunJournal,
     run: RunRecord,
+    *,
+    deadline: float | None = None,
 ) -> ArtifactScanResult | None:
     """Project exact committed Run changes from Git into Artifact metadata."""
 
@@ -288,7 +305,14 @@ def _git_run_changed_artifacts(
     try:
         from app.workspace_git.backend import GitBackend
 
-        git = GitBackend()
+        seconds_left = (
+            MAX_ARTIFACT_SCAN_SECONDS
+            if deadline is None
+            else deadline - time.perf_counter()
+        )
+        if seconds_left <= 0:
+            return ArtifactScanResult([], "partial", True)
+        git = GitBackend(timeout_seconds=seconds_left)
         changes = git.changed_paths_between(
             Path(repository.root_path),
             base_commit=materialization.workspace_base_commit,
@@ -314,12 +338,15 @@ def _git_run_changed_artifacts(
         upload_policy=_AGENT_GENERATED_UPLOAD_POLICY,
     )
     try:
-        include = _artifact_path_filter(visible_root)
-        allowed = include(
-            tuple(
-                str(visible_root / change.relative_path) for change in changes
-            )
+        include = _artifact_path_filter(visible_root, deadline=deadline)
+        paths = tuple(
+            str(visible_root / change.relative_path) for change in changes
         )
+        allowed: set[str] = set()
+        for offset in range(0, len(paths), WORKSPACE_PATH_LIMIT):
+            allowed.update(
+                include(paths[offset : offset + WORKSPACE_PATH_LIMIT])
+            )
     except (GitBackendError, OSError, ValueError):
         return ArtifactScanResult([], "classification_unavailable", True)
     for change in sorted(
@@ -357,10 +384,6 @@ def _git_run_changed_artifacts(
                 ),
             }
         )
-        if len(values) > MAX_ARTIFACTS_PER_RUN:
-            truncated = True
-            values.pop()
-            break
     return ArtifactScanResult(
         artifacts=values,
         scan_status="partial" if truncated else "complete",
@@ -370,11 +393,12 @@ def _git_run_changed_artifacts(
 
 def discover_task_changed_files(
     snapshot: TaskSnapshot,
-    max_entries: int = MAX_ARTIFACTS_PER_RUN,
+    max_entries: int = MAX_ARTIFACT_SCAN_ENTRIES,
     modification_windows: tuple[tuple[float, float | None], ...] | None = None,
     *,
     working_root_upload_policy: str = _METADATA_ONLY_UPLOAD_POLICY,
     list_files_fn: Callable[..., list[str]] = list_files,
+    deadline: float | None = None,
 ) -> ArtifactScanResult:
     """Discover files generated or modified by one Run within hard budgets."""
 
@@ -382,7 +406,11 @@ def discover_task_changed_files(
     seen_paths: set[str] = set()
     remaining = max_entries
     windows = modification_windows or ((snapshot.task_start_time - 1.0, None),)
-    deadline = time.perf_counter() + MAX_ARTIFACT_SCAN_SECONDS
+    deadline = (
+        deadline
+        if deadline is not None
+        else time.perf_counter() + MAX_ARTIFACT_SCAN_SECONDS
+    )
     scanned_entries = 0
     scan_limited = False
 
@@ -542,7 +570,7 @@ def discover_task_changed_files(
 
 def scan_task_changed_files(
     snapshot: TaskSnapshot,
-    max_entries: int = MAX_ARTIFACTS_PER_RUN,
+    max_entries: int = MAX_ARTIFACT_SCAN_ENTRIES,
     modification_windows: tuple[tuple[float, float | None], ...] | None = None,
     *,
     working_root_upload_policy: str = _METADATA_ONLY_UPLOAD_POLICY,
@@ -633,6 +661,36 @@ def record_artifact_manifest(
         projected.append(
             _artifact_projection(run_id=run_id, artifact=attributed)
         )
+    # Preserve discovery's deliverable priority when applying the byte budget.
+    # Presentation order must not evict final outputs behind intermediate files.
+    projected.sort(key=lambda item: item.get("artifactRole") != "deliverable")
+    retained: list[dict[str, Any]] = []
+    # Use a conservative incremental allowance, then verify the exact canonical
+    # body size below. This stays linear even for very large workspaces.
+    retained_bytes = 512
+    for artifact in projected:
+        artifact_bytes = _canonical_size(artifact) + 1
+        if retained_bytes + artifact_bytes > MAX_ARTIFACT_MANIFEST_BYTES:
+            break
+        retained.append(artifact)
+        retained_bytes += artifact_bytes
+    if len(retained) < len(projected):
+        projected = retained
+        truncated = True
+        scan_status = "partial"
+    while projected:
+        candidate_body = {
+            "artifacts": projected,
+            "artifact_count": len(projected),
+            "scan_status": scan_status,
+            "truncated": truncated,
+        }
+        if _canonical_size(candidate_body) <= MAX_ARTIFACT_MANIFEST_BYTES:
+            break
+        projected.pop()
+        truncated = True
+        scan_status = "partial"
+    projected.sort(key=lambda item: str(item.get("relativePath") or ""))
     drafts: list[RunEventDraft] = []
     for artifact in projected:
         event_type = (
@@ -735,6 +793,25 @@ def finalize_run_artifacts(
     }:
         return existing
 
+    if existing is not None and current_run.status in {
+        "interrupted",
+        "cancelling",
+    }:
+        attempts = journal.list_run_attempts(run.run_id)
+        latest_attempt = max(
+            attempts, key=lambda item: item.attempt_number, default=None
+        )
+        if (
+            latest_attempt is not None
+            and latest_attempt.status == "interrupted"
+            and existing.created_at >= latest_attempt.started_at
+        ):
+            # Recovery scanned before closing the Attempt at its last consumer
+            # heartbeat. Rescanning that shorter mtime window on Cancel can
+            # erase outputs written after the heartbeat. No new Attempt ran,
+            # so retain the recovery manifest as the output authority.
+            return existing
+
     email: str | None = None
     user_id: str | int | None = None
     run_context = get_current_run_context()
@@ -781,6 +858,7 @@ def finalize_run_artifacts(
         windows, _ = task_modification_windows(
             journal, run.run_id, run.project_id
         )
+        scan_deadline = time.perf_counter() + MAX_ARTIFACT_SCAN_SECONDS
         scan_result = discover_task_changed_files(
             snapshot,
             modification_windows=windows,
@@ -789,8 +867,11 @@ def finalize_run_artifacts(
                 email=email,
                 user_id=user_id,
             ),
+            deadline=scan_deadline,
         )
-        git_result = _git_run_changed_artifacts(journal, run)
+        git_result = _git_run_changed_artifacts(
+            journal, run, deadline=scan_deadline
+        )
         if git_result is None:
             artifacts = scan_result.artifacts
             scan_status = scan_result.scan_status
@@ -810,12 +891,8 @@ def finalize_run_artifacts(
             ordered = sorted(
                 git_by_path.values(), key=lambda item: item["relativePath"]
             ) + sorted(direct_only, key=lambda item: item["relativePath"])
-            artifacts = ordered[:MAX_ARTIFACTS_PER_RUN]
-            truncated = (
-                scan_result.truncated
-                or git_result.truncated
-                or len(ordered) > MAX_ARTIFACTS_PER_RUN
-            )
+            artifacts = ordered
+            truncated = scan_result.truncated or git_result.truncated
             scan_status = "partial" if truncated else "complete"
 
     manifest = record_artifact_manifest(

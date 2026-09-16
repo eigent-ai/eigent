@@ -717,6 +717,12 @@ export function EventNativeProjectTimeline({
             interactivePlansByRun={interactivePlansByRun}
             paused={paused}
             projectedArtifactsByRun={projectedArtifactsByRun}
+            artifactManifestsByRun={
+              runtime.projectId === projectId &&
+              runtime.snapshot?.view.projectId === projectId
+                ? runtime.snapshot.view.artifactManifestsByRun
+                : undefined
+            }
             runs={visibleRuns}
             sessionMode={sessionMode}
           />

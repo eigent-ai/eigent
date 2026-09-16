@@ -61,6 +61,62 @@ const PENDING_CONTROL_RUN_STATUSES = new Set([
 
 const LIVE_RUN_STATUSES = new Set(['running', 'cancelling']);
 
+/** Queue controls belong to the executing Run, not the selected history row. */
+export function selectQueueExecution({
+  snapshot,
+  legacyRunId,
+  legacyBusy,
+  queuedRunIds,
+}: {
+  snapshot: ProjectEventStoreSnapshot | null;
+  legacyRunId: string | null | undefined;
+  legacyBusy: boolean;
+  queuedRunIds: string[];
+}): { busy: boolean; runId: string | undefined } {
+  if (snapshot && snapshotCanDetermineQueueExecution(snapshot)) {
+    const executing = Object.values(snapshot.view.runs).filter(
+      (run) =>
+        LIVE_RUN_STATUSES.has(run.status) || run.status === 'waiting_for_user'
+    );
+    if (executing.length) {
+      const run = executing[0];
+      return {
+        busy: true,
+        runId:
+          snapshotCanIssueControls(snapshot) &&
+          executing.length === 1 &&
+          isEventNativeRunActionable(run)
+            ? run.runId
+            : undefined,
+      };
+    }
+    const selected = legacyRunId ? snapshot.view.runs[legacyRunId] : null;
+    if (selected && selected.status !== 'pending') {
+      return { busy: false, runId: undefined };
+    }
+  }
+  // Failed admission can leave the queued Run selected and locally "running".
+  // Its pending receipt is not execution ownership.
+  const busy = Boolean(
+    legacyBusy && legacyRunId && !queuedRunIds.includes(legacyRunId)
+  );
+  return {
+    busy,
+    runId: busy && !snapshot ? (legacyRunId ?? undefined) : undefined,
+  };
+}
+
+/**
+ * Missing historical events do not make the current Run summary ambiguous.
+ * Overflow and resync do, so use the legacy task lock until hydration repairs
+ * them instead of treating every Session as permanently busy.
+ */
+function snapshotCanDetermineQueueExecution(
+  snapshot: ProjectEventStoreSnapshot
+): boolean {
+  return !snapshot.overflowed && !snapshot.view.needsResync;
+}
+
 const TYPED_HUMAN_REQUEST_EVENT_TYPES = new Set([
   'interaction.requested',
   'approval.requested',

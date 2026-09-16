@@ -294,6 +294,7 @@ export function createProjectViewState(
     resyncTargetCursor: null,
     runs: {},
     artifactsByRun: {},
+    artifactManifestsByRun: {},
     legacySteps: [],
     unknownEvents: [],
   };
@@ -505,7 +506,41 @@ export function reduceProjectView(
     source: event.source,
   };
   let artifactsByRun = state.artifactsByRun;
-  if (event.eventType === 'artifact.manifest.finalized') {
+  let artifactManifestsByRun = state.artifactManifestsByRun || {};
+  const previousManifest = artifactManifestsByRun[event.runId];
+  if (
+    previousManifest &&
+    [
+      'runtime.interrupted',
+      'run.interrupted',
+      'run.attempt_created',
+      'run.attempt_started',
+    ].includes(event.eventType)
+  ) {
+    artifactManifestsByRun = {
+      ...artifactManifestsByRun,
+      [event.runId]: {
+        ...previousManifest,
+        frozenAfterInterruption: run.status === 'interrupted',
+      },
+    };
+  }
+  const retainsRecoveryManifest =
+    previousManifest?.frozenAfterInterruption &&
+    ['interrupted', 'cancelling', 'cancelled'].includes(run.status);
+  const isNewArtifactManifest =
+    event.eventType === 'artifact.manifest.finalized' &&
+    event.runSequence > (previousManifest?.runSequence ?? -1);
+  if (isNewArtifactManifest && retainsRecoveryManifest) {
+    // Older clients rescanned on Cancel after recovery shortened the Attempt
+    // to its last heartbeat. Replay that cancellation without erasing the
+    // already finalized output list; a new Attempt clears the freeze above.
+    artifactManifestsByRun = {
+      ...artifactManifestsByRun,
+      [event.runId]: { ...previousManifest, runSequence: event.runSequence },
+    };
+  }
+  if (isNewArtifactManifest && !retainsRecoveryManifest) {
     const rawArtifacts = Array.isArray(event.payload.artifacts)
       ? event.payload.artifacts
       : [];
@@ -549,6 +584,19 @@ export function reduceProjectView(
         ];
       }
     );
+    artifactManifestsByRun = {
+      ...artifactManifestsByRun,
+      [event.runId]: {
+        runSequence: event.runSequence,
+        createdAt: event.createdAt,
+        scanStatus: !Array.isArray(event.payload.artifacts)
+          ? 'unavailable'
+          : typeof event.payload.scan_status === 'string'
+            ? event.payload.scan_status
+            : 'complete',
+        truncated: event.payload.truncated === true,
+      },
+    };
     const previousArtifacts = artifactsByRun[event.runId] || [];
     const previousById = new Map(
       previousArtifacts.map((artifact) => [artifact.artifactId, artifact])
@@ -662,6 +710,11 @@ export function reduceProjectView(
     resyncReason: state.resyncReason,
     runs: { ...state.runs, [event.runId]: run },
     artifactsByRun,
+    artifactManifestsByRun: Object.fromEntries(
+      Object.entries(artifactManifestsByRun).filter(
+        ([runId]) => runId in artifactsByRun
+      )
+    ),
     legacySteps,
     unknownEvents:
       event.legacyStep ||

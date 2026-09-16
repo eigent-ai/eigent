@@ -227,6 +227,7 @@ interface ProjectModelSelection {
 }
 
 interface ProjectMetadata {
+  nameSource?: 'initial' | 'manual';
   tags?: string[];
   priority?: 'low' | 'medium' | 'high';
   status?: 'active' | 'completed' | 'archived';
@@ -322,6 +323,7 @@ const mergeProjectMeta = (
   const shell = projectShellFromMeta(meta);
   if (!existing) return shell;
   const shouldKeepExistingName =
+    !meta.metadata?.nameSource &&
     isPlaceholderProjectName(meta.name, meta.id) &&
     !isPlaceholderProjectName(existing.name, existing.id);
   return {
@@ -538,6 +540,11 @@ interface ProjectStore {
     processing: boolean
   ) => void;
   prioritizeQueuedMessage: (projectId: string, taskId: string) => void;
+  reorderQueuedMessage: (
+    projectId: string,
+    taskId: string,
+    targetId: string
+  ) => void;
 
   // Chat store state management
   createChatStore: (projectId: string, chatName?: string) => string | null;
@@ -992,6 +999,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
 
         if (existing) {
           const shouldKeepExistingName =
+            !serverMetadata.nameSource &&
             isPlaceholderProjectName(serverProject.name, serverProject.id) &&
             !isPlaceholderProjectName(existing.name, existing.id);
           nextProjects[serverProject.id] = {
@@ -1572,16 +1580,15 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     const existingMetaName = (existingMeta?.name ?? '').trim();
     const existingProjectName = (existingProject?.name ?? '').trim();
     const displayName =
-      projectNameCandidate &&
-      !isPlaceholderProjectName(projectNameCandidate, projectId)
-        ? projectNameCandidate
-        : existingMetaName &&
-            !isPlaceholderProjectName(existingMetaName, projectId)
-          ? existingMetaName
-          : existingProjectName &&
-              !isPlaceholderProjectName(existingProjectName, projectId)
-            ? existingProjectName
-            : question.slice(0, 50) || 'Project';
+      existingMetaName &&
+      (existingMeta?.metadata?.nameSource ||
+        !isPlaceholderProjectName(existingMetaName, projectId))
+        ? existingMetaName
+        : existingProjectName &&
+            (existingProject?.metadata?.nameSource ||
+              !isPlaceholderProjectName(existingProjectName, projectId))
+          ? existingProjectName
+          : projectNameCandidate || question.slice(0, 50) || 'Project';
 
     if (projects[projectId]) {
       console.log(
@@ -2527,6 +2534,35 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           queuedMessages: state.projects[projectId].queuedMessages.map(
             (item) => (item.task_id === taskId ? { ...item, processing } : item)
           ),
+          updatedAt: Date.now(),
+        },
+      },
+    }));
+  },
+
+  // The renderer dispatcher consumes this same array. Move by IDs against the
+  // latest state so a stale gesture cannot resurrect removed or admitted rows.
+  reorderQueuedMessage: (projectId, taskId, targetId) => {
+    const project = get().projects[projectId];
+    if (!project || taskId === targetId) return;
+    const queue = project.queuedMessages;
+    if (queue.some((item) => item.processing || item.sendNow)) return;
+    const from = queue.findIndex((item) => item.task_id === taskId);
+    const to = queue.findIndex((item) => item.task_id === targetId);
+    const movable = (item: TaskQueue | undefined) =>
+      item &&
+      !item.executionId &&
+      item.source !== 'scheduled' &&
+      item.source !== 'remote_control';
+    if (!movable(queue[from]) || !movable(queue[to])) return;
+    const reordered = [...queue];
+    reordered.splice(to, 0, reordered.splice(from, 1)[0]);
+    set((state) => ({
+      projects: {
+        ...state.projects,
+        [projectId]: {
+          ...state.projects[projectId],
+          queuedMessages: reordered,
           updatedAt: Date.now(),
         },
       },

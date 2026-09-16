@@ -77,7 +77,8 @@ describe('FileReader bounded preview', () => {
     );
     const preview = await reader.previewTextFile(filePath, 10 * 1024 * 1024);
     expect(preview.bytesRead).toBe(1024 * 1024);
-    expect(preview.content).toHaveLength(1024 * 1024);
+    expect(preview.content).toBe('');
+    expect(preview.binary).toBe(true);
     expect(preview.totalBytes).toBe(size);
   });
 
@@ -304,5 +305,72 @@ describe('FileReader bounded preview', () => {
     await expect(reader.openFile('md', filePath, false)).rejects.toThrow(
       'FILE_PREVIEW_REQUIRES_BOUNDED_READER'
     );
+  });
+});
+
+describe('bounded text byte classification', () => {
+  it.each([
+    {
+      content: `${'A'.repeat(9000)}\ncafé\n`,
+      expected: `${'A'.repeat(9000)}\ncafé\n`,
+    },
+    {
+      content:
+        'before\n\u001b]8;;https://example.com\u001b\\link\u001b]8;;\u001b\\\nERROR: job failed\n',
+      expected: 'before\nlink\nERROR: job failed\n',
+    },
+  ])(
+    'preserves decoded local subtitle content %#',
+    async ({ content, expected }) => {
+      const filePath = await temporaryFile('subtitles.srt', '');
+      const bytes = Buffer.from(content, 'latin1');
+      await writeFile(filePath, bytes);
+      const result = await new FileReader(null as never).previewTextFile(
+        filePath
+      );
+
+      expect(result).toEqual({
+        content: expected,
+        binary: false,
+        bytesRead: bytes.length,
+        totalBytes: bytes.length,
+      });
+    }
+  );
+  it('blocks binary bytes instead of returning control characters', async () => {
+    const filePath = await temporaryFile('data.unknown', '');
+    await writeFile(filePath, Buffer.from([31, 139, 8, 0, 255, 1]));
+    const result = await new FileReader(null as never).previewTextFile(
+      filePath
+    );
+    expect(result.binary).toBe(true);
+    expect(result.content).toBe('');
+  });
+  it.each(['utf16le', 'utf8'] as const)(
+    'preserves %s text',
+    async (encoding) => {
+      const filePath = await temporaryFile('data.unknown', '');
+      await writeFile(
+        filePath,
+        Buffer.from(
+          (encoding === 'utf16le' ? '\ufeff' : '') + 'Hello 世界',
+          encoding
+        )
+      );
+      const result = await new FileReader(null as never).previewTextFile(
+        filePath
+      );
+      expect(result.binary).toBe(false);
+      expect(result.content).toBe('Hello 世界');
+    }
+  );
+  it('does not mistake a UTF-8 character cut by the byte cap for binary', async () => {
+    const filePath = await temporaryFile('data.unknown', 'a世');
+    const result = await new FileReader(null as never).previewTextFile(
+      filePath,
+      2
+    );
+    expect(result.binary).toBe(false);
+    expect(result.content).toBe('a');
   });
 });
