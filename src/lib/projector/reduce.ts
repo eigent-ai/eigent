@@ -332,13 +332,19 @@ export function reduceProjectedRun(
     (event.eventType === 'interaction.resolved' ||
       event.eventType === 'approval.decided') &&
     event.payload.continued_attempt === true;
+  let lifecycleStatus = RUN_STATUS_BY_EVENT[event.eventType];
+  if (!lifecycleStatus && event.source !== 'canonical') {
+    if (event.legacyStep === 'end') lifecycleStatus = 'completed';
+    // Failed legacy turns emit ERROR and close without an END frame.
+    if (event.legacyStep === 'error') {
+      lifecycleStatus =
+        event.payload.retryable === true ? 'interrupted' : 'failed';
+    }
+  }
   const candidateStatus =
-    (interactionDecisionContinued
-      ? 'running'
-      : RUN_STATUS_BY_EVENT[event.eventType]) ||
-    (event.source !== 'canonical' && event.legacyStep === 'end'
-      ? 'completed'
-      : previousRun?.status || 'running');
+    (interactionDecisionContinued ? 'running' : lifecycleStatus) ||
+    previousRun?.status ||
+    'running';
   const status =
     previousRun &&
     ((TERMINAL_RUN_STATUSES.has(previousRun.status) &&
@@ -350,7 +356,7 @@ export function reduceProjectedRun(
         : previousRun.runVersion > 0))
       ? previousRun.status
       : !interactionDecisionContinued &&
-          !RUN_STATUS_BY_EVENT[event.eventType] &&
+          !lifecycleStatus &&
           previousRun &&
           previousRun.status !== 'running' &&
           previousRun.status !== 'interrupted' &&
@@ -391,7 +397,10 @@ export function reduceProjectedRun(
       previousRun &&
       (event.source === 'canonical'
         ? event.runVersion < previousRun.runVersion
-        : previousRun.runVersion > 0)
+        : previousRun.runVersion > 0 ||
+          // Cleanup receipts cannot extend a settled legacy turn's duration.
+          (status === previousRun.status &&
+            (TERMINAL_RUN_STATUSES.has(status) || status === 'interrupted')))
         ? previousRun.updatedAt
         : event.createdAt,
     origin: previousRun?.origin ?? event.origin ?? null,
