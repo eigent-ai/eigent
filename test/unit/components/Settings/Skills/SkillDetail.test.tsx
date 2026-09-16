@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { ContentHeaderFrame } from '@/components/Layout/ContentHeader';
 import SkillDetail from '@/components/Settings/Skills/components/SkillDetail';
 import type { SkillLibraryEntry } from '@/components/Settings/Skills/skillLibrary';
 import { render, screen, within } from '@testing-library/react';
@@ -65,6 +66,31 @@ vi.mock('@/components/Settings/Skills/components/SkillFiles', () => ({
 }));
 
 describe('Skill detail layout', () => {
+  it('focuses the persistent heading while the file browser fills the content area', () => {
+    const focus = vi.spyOn(HTMLHeadingElement.prototype, 'focus');
+    const { container } = render(
+      <ContentHeaderFrame>
+        <SkillDetail skillId={entry.id} />
+      </ContentHeaderFrame>
+    );
+    const heading = screen.getByRole('heading', { name: 'research' });
+    const frame = container.querySelector('[data-content-header-frame]');
+    expect(frame).toContainElement(heading);
+    expect(container.querySelector('[data-skill-detail]')).not.toContainElement(
+      frame
+    );
+    expect(screen.getByTestId('skill-content').parentElement).toHaveClass(
+      'flex-1',
+      'min-h-0',
+      'w-full',
+      'min-w-0'
+    );
+    expect(heading).toHaveFocus();
+    expect(focus).toHaveBeenCalledOnce();
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+    focus.mockRestore();
+  });
+
   it('keeps type and access in the header and lets the file browser fill the available width', () => {
     const { container } = render(<SkillDetail skillId={entry.id} />);
     expect(container.querySelector('header')).toHaveClass('px-ds-16');

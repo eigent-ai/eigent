@@ -80,6 +80,7 @@ export default function HomeHeader() {
 
   return (
     <CollectionToolbar
+      persistentHeader
       data-home-spaces-toolbar
       aria-label={t('layout.spaces-toolbar', {
         defaultValue: 'Spaces toolbar',

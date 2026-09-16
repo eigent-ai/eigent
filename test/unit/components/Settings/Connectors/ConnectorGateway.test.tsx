@@ -60,6 +60,7 @@ vi.mock('@/hooks/useIntegrationManagement', async (importOriginal) => ({
     installed: connectorMocks.installedBuiltIns,
     configs: connectorMocks.integrationConfigs,
     configsLoading: false,
+    configsHydrated: true,
     fetchInstalled: connectorMocks.refreshBuiltIns,
     saveEnvAndConfig: connectorMocks.saveBuiltInValue,
     handleUninstall: connectorMocks.uninstallBuiltIn,
@@ -255,6 +256,11 @@ describe('ConnectorGateway presentation', () => {
     const browseTab = within(addPage).getByRole('tab', {
       name: 'Browse connectors',
     });
+    expect(
+      within(
+        within(addPage).getByRole('navigation', { name: 'Breadcrumb' })
+      ).getByRole('button', { name: 'Connectors' })
+    ).toBeVisible();
     expect(browseTab).toBeVisible();
     expect(browseTab).toHaveClass('flex-1', '!text-ds-text-base');
     expect(
@@ -283,7 +289,7 @@ describe('ConnectorGateway presentation', () => {
       name: 'Breadcrumb',
     });
     expect(
-      within(breadcrumb).getByRole('button', { name: 'Connector' })
+      within(breadcrumb).getByRole('button', { name: 'Connectors' })
     ).toBeVisible();
     expect(
       within(breadcrumb).getByRole('button', { name: 'Add connector' })
@@ -375,6 +381,7 @@ describe('ConnectorGateway presentation', () => {
   });
 
   it('renders the installed connector breadcrumb from a URL selection', async () => {
+    const user = userEvent.setup();
     renderGateway(
       '/home?section=settings&tab=connectors&connectorId=open%3Agoogle_drive'
     );
@@ -392,7 +399,7 @@ describe('ConnectorGateway presentation', () => {
       within(breadcrumb).getByRole('button', { name: 'Home' })
     ).toBeVisible();
     expect(
-      within(breadcrumb).getByRole('button', { name: 'Connector' })
+      within(breadcrumb).getByRole('button', { name: 'Connectors' })
     ).toBeVisible();
     expect(breadcrumb.querySelector('ol')).not.toBeNull();
     expect(
@@ -402,6 +409,13 @@ describe('ConnectorGateway presentation', () => {
       })
     ).toBeVisible();
     expect(within(breadcrumb).queryByRole('heading')).toBeNull();
+    await user.click(
+      within(breadcrumb).getByRole('button', { name: 'Connectors' })
+    );
+    expect(
+      await screen.findByRole('table', { name: 'Connectors' })
+    ).toBeVisible();
+    expect(document.querySelector('[data-connector-detail]')).toBeNull();
   });
 
   it('uses the shared detail-sidebar pattern for the full installed list', async () => {
@@ -430,5 +444,22 @@ describe('ConnectorGateway presentation', () => {
       within(sidebar).queryByRole('button', { name: 'Google Drive' })
     ).not.toBeInTheDocument();
     expect(sidebar).toHaveTextContent('No matching connectors.');
+  });
+
+  it('keeps the gateway sidebar skeleton until the built-in catalog loads', () => {
+    connectorMocks.proxyFetchGet.mockImplementation((path: string) =>
+      path === '/api/v1/config/info'
+        ? new Promise(() => {})
+        : Promise.resolve([])
+    );
+    renderGatewayWithSidebar();
+    const sidebar = screen.getByRole('complementary', { name: 'Connectors' });
+    expect(
+      within(sidebar).queryByRole('button', { name: 'Web search' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(sidebar).queryByRole('button', { name: 'Google Drive' })
+    ).not.toBeInTheDocument();
+    expect(sidebar.querySelectorAll('.animate-pulse')).toHaveLength(5);
   });
 });

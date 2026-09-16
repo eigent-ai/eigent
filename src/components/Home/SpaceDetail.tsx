@@ -15,7 +15,9 @@
 
 import { resolveSpaceDetailMemoryTarget } from '@/components/Home/memoryRoute';
 import ContentBreadcrumb from '@/components/Layout/ContentBreadcrumb';
-import ContentHeader from '@/components/Layout/ContentHeader';
+import ContentHeader, {
+  useFocusContentHeading,
+} from '@/components/Layout/ContentHeader';
 import OverviewIconFrame from '@/components/Layout/OverviewIconFrame';
 import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
@@ -44,7 +46,6 @@ import {
   Suspense,
   useCallback,
   useEffect,
-  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -233,10 +234,7 @@ export default function SpaceDetail({
     data.projects
   );
 
-  const heading = useRef<HTMLHeadingElement>(null);
-  useEffect(() => {
-    heading.current?.focus({ preventScroll: true });
-  }, [spaceId]);
+  const heading = useFocusContentHeading(spaceId);
 
   const handleOpenWorkspace = useCallback(() => {
     setActiveSpace(spaceId);
@@ -257,6 +255,7 @@ export default function SpaceDetail({
     return (
       <div className="flex h-full min-h-0 min-w-0 flex-col">
         <ContentHeader
+          persistent
           className="px-ds-16"
           titleAsChild
           title={
@@ -352,6 +351,7 @@ export default function SpaceDetail({
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
       <ContentHeader
+        persistent
         className="px-ds-16"
         titleAsChild
         title={
