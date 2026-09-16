@@ -397,6 +397,7 @@
   "workspace-queue-position": " Позиция в очереди: {{position}}.",
   "workspace-waiting-description": "Другая задача обновляет это Пространство. Задача запустится автоматически, когда Пространство станет доступно.{{position}}",
   "workspace-waiting-title": "Ожидание Пространства",
+  "files-list-incomplete": "Неполный список",
   "queue-stop-and-start": "Остановить и запустить эту",
   "queue-start-next": "Запустить следующей",
   "queue-stopping": "Остановка текущей задачи…",

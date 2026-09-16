@@ -393,6 +393,7 @@
   "workspace-queue-position": " Posición en la cola: {{position}}.",
   "workspace-waiting-description": "Otra tarea está actualizando este Espacio. Esta tarea se iniciará automáticamente cuando el Espacio esté disponible.{{position}}",
   "workspace-waiting-title": "Esperando al Espacio",
+  "files-list-incomplete": "Incompleto",
   "queue-stop-and-start": "Detener e iniciar esta",
   "queue-start-next": "Iniciar a continuación",
   "queue-stopping": "Deteniendo la tarea actual…",

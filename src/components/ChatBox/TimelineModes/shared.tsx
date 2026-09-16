@@ -15,7 +15,10 @@
 import { formatSplittingElapsed } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { itemFadeMotion } from '@/components/ui/motion';
 import type { TimelineRunView } from '@/lib/projector/chat/presentation';
-import type { ProjectedArtifact } from '@/lib/projector/types';
+import type {
+  ProjectedArtifact,
+  ProjectedArtifactManifest,
+} from '@/lib/projector/types';
 import { cn } from '@/lib/utils';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -263,6 +266,7 @@ export interface InteractiveTimelinePlan {
 
 export interface TimelineModeProps {
   runs: readonly TimelineRunView[];
+  artifactManifestsByRun?: Readonly<Record<string, ProjectedArtifactManifest>>;
   projectedArtifactsByRun?: Readonly<Record<string, ProjectedArtifact[]>>;
   /**
    * The active workforce plan keeps its legacy view/edit surface while its

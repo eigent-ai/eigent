@@ -166,6 +166,45 @@ function makeRun(
 }
 
 describe('buildProjectSessionPanelData', () => {
+  it('applies path-only updates and deletions across Runs in Summary', () => {
+    const artifactNode = (
+      runId: string,
+      operation: 'created' | 'updated' | 'deleted'
+    ): ChatArtifactNode => ({
+      ...baseNode(runId, `${runId}-${operation}`, 1),
+      kind: 'artifact',
+      operation,
+      path: 'report.md',
+      relativePath: 'report.md',
+      name: 'report.md',
+    });
+    const oldRun = makeRun('run-old', false, [
+      artifactNode('run-old', 'created'),
+    ]);
+    const updated = buildProjectSessionPanelData(
+      [
+        makeRun('run-current', true, [artifactNode('run-current', 'updated')]),
+        oldRun,
+      ],
+      []
+    );
+    expect(updated.files).toHaveLength(1);
+    expect(updated.files[0]).toMatchObject({
+      taskId: 'run-current',
+      historical: false,
+      file: { relativePath: 'report.md' },
+    });
+
+    const deleted = buildProjectSessionPanelData(
+      [
+        makeRun('run-current', true, [artifactNode('run-current', 'deleted')]),
+        oldRun,
+      ],
+      []
+    );
+    expect(deleted.files).toEqual([]);
+  });
+
   it('deduplicates logical agents across Runs and skips anonymous tool frames', () => {
     const oldRun = makeRun('run-old', false, [
       agentNode(
@@ -495,7 +534,7 @@ describe('buildProjectSessionPanelData', () => {
     ]);
     expect(data.files).toMatchObject([
       {
-        id: 'outputs/report.md',
+        id: 'run-current:outputs/report.md',
         previewable: false,
         taskId: 'run-current',
         historical: false,
@@ -574,7 +613,7 @@ describe('buildProjectSessionPanelData', () => {
 
     expect(merged).toHaveLength(1);
     expect(merged[0]).toMatchObject({
-      id: 'artifact-1',
+      id: 'run-current:artifact-1',
       previewable: true,
       taskId: 'run-current',
       file: {
@@ -792,7 +831,7 @@ describe('buildProjectSessionPanelData', () => {
     );
     expect(liveData.files).toMatchObject([
       {
-        id: 'reports/summary.md',
+        id: 'run-current:reports/summary.md',
         previewable: false,
         taskId: 'run-current',
         file: { relativePath: 'reports/summary.md' },
@@ -816,7 +855,7 @@ describe('buildProjectSessionPanelData', () => {
 
     expect(finalized.files).toHaveLength(1);
     expect(finalized.files[0]).toMatchObject({
-      id: 'artifact-summary',
+      id: 'run-current:artifact-summary',
       file: {
         artifactId: 'artifact-summary',
         relativePath: 'reports/summary.md',

@@ -264,6 +264,46 @@ describe('useReviewChanges', () => {
     );
   });
 
+  it('filters runtime changes and recomputes totals without hiding authored logs or deletions', async () => {
+    mockFetchGitChanges.mockResolvedValue({
+      repository_id: 'repo-1',
+      project_id: 'project-1',
+      base_commit: 'a'.repeat(40),
+      target_commit: 'b'.repeat(40),
+      files: [
+        {
+          path: 'terminal_logs/blocking_commands.log',
+          status: 'added',
+          added_lines: 100,
+          removed_lines: 0,
+        },
+        {
+          path: 'camel_logs/debug.log',
+          status: 'deleted',
+          added_lines: 0,
+          removed_lines: 50,
+        },
+        {
+          path: 'reports/authored.log',
+          status: 'modified',
+          added_lines: 2,
+          removed_lines: 1,
+        },
+        { path: 'old.md', status: 'deleted', added_lines: 0, removed_lines: 3 },
+      ],
+      totals: { added: 102, removed: 54 },
+      truncated: true,
+    });
+    const { result } = renderHook(() => useReviewChanges());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.files.map((file) => file.path)).toEqual([
+      'old.md',
+      'reports/authored.log',
+    ]);
+    expect(result.current.totals).toEqual({ added: 2, removed: 4 });
+    expect(result.current.truncated).toBe(true);
+  });
+
   it('lazily reads a Git-backed binary image from a pinned side', async () => {
     const image = new Blob(['png'], { type: 'image/png' });
     mockFetchGitChanges.mockResolvedValue({

@@ -385,6 +385,7 @@
   "workspace-queue-position": " 대기열 위치: {{position}}.",
   "workspace-waiting-description": "다른 작업이 이 스페이스를 업데이트하고 있습니다. 스페이스를 사용할 수 있게 되면 이 작업이 자동으로 시작됩니다.{{position}}",
   "workspace-waiting-title": "스페이스 대기 중",
+  "files-list-incomplete": "불완전",
   "queue-stop-and-start": "현재 작업을 중지하고 시작",
   "queue-start-next": "다음으로 시작",
   "queue-stopping": "현재 작업 중지 중…",

@@ -28,6 +28,7 @@ import {
 import { showStorageToast } from '@/components/Toast/storageToast';
 import type { AppHost } from '@/host/types';
 import { generateUniqueId, uploadLog } from '@/lib';
+import { isDisplayableOutputFile } from '@/lib/agentFileFilters';
 import {
   classifyError,
   classifyTaskCategory,
@@ -1797,7 +1798,7 @@ export function resolveRunOutputFileList({
   return mergeFileInfoLists(
     writeEventFiles,
     canonicalArtifactsAvailable ? artifactFiles : finalAnswerFiles
-  );
+  ).filter(isDisplayableOutputFile);
 }
 
 const normalizeToolkitMessage = (value: unknown) => {

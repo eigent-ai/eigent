@@ -571,6 +571,7 @@ export default function ChatBox(): JSX.Element {
     | null
   >(null);
   const queuedDispatchRef = useRef<string | null>(null);
+  const interruptedAdmissionRef = useRef<string | null>(null);
   // Admission is monotonic. Late pending-list responses must never restore a
   // request already accepted by HTTP or observed starting in the event stream.
   const acknowledgedQueuedRequests = useRef(new Set<string>());
@@ -898,6 +899,7 @@ export default function ChatBox(): JSX.Element {
     if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
       return false;
     const task = chatStore.tasks[chatStore.activeTaskId];
+    if (interruptedRun?.run_id === chatStore.activeTaskId) return false;
 
     return (
       // running or paused
@@ -915,7 +917,7 @@ export default function ChatBox(): JSX.Element {
         task.messages.length > 0) ||
       task.isTakeControl
     );
-  }, [chatStore?.activeTaskId, chatStore?.tasks]);
+  }, [chatStore?.activeTaskId, chatStore?.tasks, interruptedRun?.run_id]);
 
   const queueExecution = selectQueueExecution({
     snapshot: eventNativeTimelineEnabled ? eventNativeProjectSnapshot : null,
@@ -1140,7 +1142,16 @@ export default function ChatBox(): JSX.Element {
 
     // Multi-turn support: Check if task is running or planning (splitting/confirm)
     const task = chatStore.tasks[_taskId];
-    const requiresHumanReply = Boolean(task?.activeAsk);
+    const startsAfterInterruption =
+      interruptedRun?.project_id === targetProjectId;
+    if (
+      startsAfterInterruption &&
+      (interruptedAdmissionRef.current === targetProjectId ||
+        (!queuedRequestId && queuedDispatchRef.current !== null))
+    )
+      return;
+    const requiresHumanReply =
+      !startsAfterInterruption && Boolean(task?.activeAsk);
     const reviewHandoffIds = queuedReviewHandoffIds
       ? requestedReviewHandoffIds
       : requestedReviewHandoffIds.filter((handoffId) => {
@@ -1198,6 +1209,7 @@ export default function ChatBox(): JSX.Element {
     const _isTaskInProgress = ['running', 'pause'].includes(task?.status || '');
     const isReplayChatStore = task?.type === 'replay';
     if (
+      !startsAfterInterruption &&
       !queuedRequestId &&
       !requiresHumanReply &&
       (queueExecution.busy || (isTaskBusy && !isReplayChatStore))
@@ -1259,13 +1271,46 @@ export default function ChatBox(): JSX.Element {
     if (textareaRef.current) textareaRef.current.style.height = '60px';
     let messageAccepted = false;
     try {
-      if (queuedRequestId) {
+      if (startsAfterInterruption && !queuedRequestId) {
+        // A new instruction is a new task, never an implicit Resume. Keep the
+        // interrupted task and its tool outcomes intact for history/review.
+        interruptedAdmissionRef.current = targetProjectId;
+        const nextTaskId = generateUniqueId();
+        const attachesToSend = composerAttachments || [];
+        ensureActiveProjectMode();
+        await chatStore.startTask(
+          nextTaskId,
+          undefined,
+          undefined,
+          undefined,
+          tempMessageContent,
+          attachesToSend,
+          executionId,
+          targetProjectId,
+          effectiveSessionMode,
+          {
+            preserveTaskId: true,
+            awaitAdmission: true,
+            ...(reviewHandoffIds.length ? { reviewHandoffIds } : {}),
+          }
+        );
+        // Admission can lead the Project projection. Keep older queued work
+        // behind this exact new Run until its terminal state is observed.
+        setAdmittedQueuedRun({ projectId: targetProjectId, runId: nextTaskId });
+        messageAccepted = true;
+        if (!preserveComposer) {
+          setMessage('');
+          chatStore.setAttaches(_taskId, []);
+        }
+      } else if (queuedRequestId) {
         chatStore.setNextTaskId(queuedRequestId);
         chatStore.setNextExecutionId(_taskId, undefined);
         const queuedFiles = queuedAttaches || [];
-        const backendStatus = await fetchGet(
-          `/chat/${encodeURIComponent(targetProjectId)}/status`
-        );
+        const backendStatus = startsAfterInterruption
+          ? { has_lock: false }
+          : await fetchGet(
+              `/chat/${encodeURIComponent(targetProjectId)}/status`
+            );
         if (backendStatus?.has_lock) {
           await fetchPost(`/chat/${targetProjectId}`, {
             question: tempMessageContent,
@@ -1597,9 +1642,16 @@ export default function ChatBox(): JSX.Element {
       }
     } catch (error) {
       console.error('error:', error);
+      if (startsAfterInterruption)
+        notifyError(
+          error instanceof Error ? error.message : t('chat.run-resume-failed')
+        );
       if (preserveComposer) throw error;
     } finally {
+      if (interruptedAdmissionRef.current === targetProjectId)
+        interruptedAdmissionRef.current = null;
       if (messageAccepted && !requiresHumanReply) {
+        if (startsAfterInterruption) setInterruptedRun(null);
         acknowledgeWorkspaceReviewHandoffs(targetProjectId, reviewHandoffIds);
         setPendingReviewHandoffIds([]);
       }
@@ -1641,6 +1693,7 @@ export default function ChatBox(): JSX.Element {
           skipHistoryCreate: true,
           historyId: projectStore.getHistoryId(activeProjectId),
           resumeRequestId: requestId,
+          awaitAdmission: true,
         }
       );
       // Admission is now owned by the existing task card/SSE. Hide the stale
@@ -1909,8 +1962,8 @@ export default function ChatBox(): JSX.Element {
       !projectId ||
       !activeId ||
       queueExecution.busy ||
-      activeAsk ||
       interruptedRun ||
+      activeAsk ||
       !hasModel ||
       isCloudUsageLimited
     )
@@ -1921,6 +1974,7 @@ export default function ChatBox(): JSX.Element {
     if (admittedQueuedRun?.projectId === projectId) return;
     if (
       queuedDispatchRef.current ||
+      interruptedAdmissionRef.current === projectId ||
       queueActionRef.current?.projectId === projectId
     )
       return;

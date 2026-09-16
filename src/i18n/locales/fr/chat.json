@@ -393,6 +393,7 @@
   "files-added_many": "{{count}} fichiers ajoutés",
   "show-more-files_many": "Afficher {{count}} fichiers supplémentaires",
   "timeline-action-count_many": "{{count}} actions",
+  "files-list-incomplete": "Incomplet",
   "queue-stop-and-start": "Arrêter et lancer celle-ci",
   "queue-start-next": "Lancer ensuite",
   "queue-stopping": "Arrêt de la tâche en cours…",
