@@ -96,8 +96,8 @@ function deferred<T>() {
 }
 
 describe('projectStore runtime shape', () => {
-  it('uses the cache schema that rejects incomplete message projections', () => {
-    expect(PROJECT_CACHE_SCHEMA_VERSION).toBe(9);
+  it('uses the cache schema that rebuilds stale legacy failure durations', () => {
+    expect(PROJECT_CACHE_SCHEMA_VERSION).toBe(10);
   });
 
   beforeEach(() => {

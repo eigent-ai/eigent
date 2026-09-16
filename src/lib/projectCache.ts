@@ -31,12 +31,11 @@ const STORE_NAME = 'projectCache';
 const DB_VERSION = 1;
 
 /**
- * Bump when CachedProject shape or projection semantics change. Version 9
- * rejects incomplete task projections (for example hasMessages=true with an
- * empty messages array) so a disposable cache can never suppress canonical
- * SQLite replay and leave a Project permanently blank.
+ * Bump when CachedProject shape or projection semantics change. Version 10
+ * rebuilds legacy failures previously cached with zero elapsed time, so they
+ * use persisted playback timestamps even when the history has no END event.
  */
-export const PROJECT_CACHE_SCHEMA_VERSION = 9;
+export const PROJECT_CACHE_SCHEMA_VERSION = 10;
 
 export interface CachedTask {
   /** Anything stored on `chatStore.tasks[taskId]` that's safe to serialize. */
