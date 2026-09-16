@@ -25,6 +25,8 @@ export type ChatEventProjectionInput = {
   sequence: number;
   sourceId: string;
   transport: 'legacy_chat' | 'local_run';
+  /** Finite cloud/share playback; live canonical catch-up keeps its own lane. */
+  historical?: boolean;
 };
 
 /**
@@ -73,9 +75,11 @@ const CANONICAL_OWNED_LIVE_LEGACY_STEPS = new Set([
 
 export function shouldProjectLegacyChatStep(
   step: string,
-  timelineEnabled = isChatEventTimelineEnabled()
+  timelineEnabled = isChatEventTimelineEnabled(),
+  historical = false
 ): boolean {
   return (
+    historical ||
     !timelineEnabled ||
     !CANONICAL_OWNED_LIVE_LEGACY_STEPS.has(step.trim().toLowerCase())
   );
@@ -100,7 +104,8 @@ export function enqueueChatEventProjection(
     input.transport === 'legacy_chat' &&
     !shouldProjectLegacyChatStep(
       (input.raw as { step: string }).step,
-      timelineEnabled
+      timelineEnabled,
+      input.historical
     )
   ) {
     return 'filtered';

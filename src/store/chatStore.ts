@@ -3187,6 +3187,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 sequence: shadowProjectionCursor.sequence,
                 sourceId: shadowProjectionCursor.sourceId,
                 transport: 'legacy_chat',
+                // Old cloud/share histories may have no canonical Run at
+                // all. Their original start/result/end events are the only
+                // transcript and clock boundaries available during replay.
+                historical: type === 'replay' || type === 'share',
               });
               agentMessages = stampAgentMessageTimeline(
                 parsed,
@@ -4859,14 +4863,21 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               const isRetryableRunError =
                 agentMessages.data?.retryable === true;
 
-              // Freeze the live clock before switching to FINISHED. The work
+              // Freeze the clock before switching to FINISHED. The work
               // log only advances taskTime while RUNNING; skipping this step
               // made every error path render "Worked for 0s".
               const failedTask = tasks[currentTaskId];
-              const settledElapsed = settleTaskElapsedMs(
-                failedTask,
-                Date.now()
-              );
+              const playbackElapsed =
+                (type === 'replay' || type === 'share') &&
+                playbackFirstStepTimeMs !== null &&
+                playbackLastStepTimeMs !== null
+                  ? Math.max(
+                      0,
+                      playbackLastStepTimeMs - playbackFirstStepTimeMs
+                    )
+                  : null;
+              const settledElapsed =
+                playbackElapsed ?? settleTaskElapsedMs(failedTask, Date.now());
               setTaskTime(currentTaskId, 0);
               setElapsed(currentTaskId, settledElapsed);
               get().setDurableRunStatus(currentTaskId, 'failed');
