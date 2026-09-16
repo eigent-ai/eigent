@@ -12,8 +12,13 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import asyncio
+import ipaddress
 import logging
+import socket
+from urllib.parse import urlsplit
 
+import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -23,6 +28,7 @@ from app.component.model_validation import (
     ValidationStage,
     validate_model_with_details,
 )
+from app.component.provider_model_transport import ProviderModelTransport
 from app.model.model_platform import NormalizedModelPlatform
 
 logger = logging.getLogger("model_controller")
@@ -74,6 +80,166 @@ class ValidateModelResponse(BaseModel):
     validation_stages: dict[str, bool] | None = Field(
         None, description="Validation stages status"
     )
+
+
+class ListProviderModelsRequest(BaseModel):
+    api_host: str = Field(..., min_length=1, description="Provider API host")
+    models_endpoint: str = Field(
+        ..., min_length=1, description="Provider model-list path"
+    )
+    api_key: str = Field(..., min_length=1, description="Provider API key")
+
+
+def _provider_models_url(api_host: str, models_endpoint: str) -> str:
+    """Build a bounded public HTTPS URL for the model-list proxy."""
+    host = api_host.strip().rstrip("/")
+    try:
+        parsed_host = urlsplit(host)
+        parsed_endpoint = urlsplit(models_endpoint)
+        port = parsed_host.port
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400, detail="API host is invalid."
+        ) from exc
+
+    if (
+        parsed_host.scheme != "https"
+        or not parsed_host.hostname
+        or parsed_host.username is not None
+        or parsed_host.password is not None
+        or parsed_host.query
+        or parsed_host.fragment
+        or port is not None
+        and not 1 <= port <= 65535
+    ):
+        raise HTTPException(
+            status_code=400, detail="API host must be a public HTTPS URL."
+        )
+
+    try:
+        address = ipaddress.ip_address(parsed_host.hostname)
+    except ValueError:
+        address = None
+    if address is not None and (not address.is_global or address.is_multicast):
+        raise HTTPException(
+            status_code=400, detail="API host must be a public HTTPS URL."
+        )
+
+    if (
+        not models_endpoint.startswith("/")
+        or models_endpoint.startswith("//")
+        or "\\" in models_endpoint
+        or parsed_endpoint.scheme
+        or parsed_endpoint.netloc
+        or parsed_endpoint.fragment
+    ):
+        raise HTTPException(
+            status_code=400, detail="Model-list path is invalid."
+        )
+    return f"{host}{models_endpoint}"
+
+
+async def _provider_model_addresses(url: httpx.URL) -> list[str]:
+    """Resolve once and reject the whole result if any address is nonpublic."""
+    hostname = url.raw_host.decode("ascii")
+    try:
+        candidates = [ipaddress.ip_address(hostname)]
+    except ValueError:
+        records = await asyncio.get_running_loop().getaddrinfo(
+            hostname,
+            url.port or 443,
+            family=socket.AF_UNSPEC,
+            type=socket.SOCK_STREAM,
+            proto=socket.IPPROTO_TCP,
+        )
+        candidates = [ipaddress.ip_address(record[4][0]) for record in records]
+
+    if not candidates:
+        raise httpx.ConnectError("No provider addresses found")
+    if any(
+        not address.is_global or address.is_multicast for address in candidates
+    ):
+        raise HTTPException(
+            status_code=400, detail="API host must be a public HTTPS URL."
+        )
+    return list(dict.fromkeys(str(address) for address in candidates))
+
+
+@router.post("/model/list")
+async def list_provider_models(request: ListProviderModelsRequest):
+    """Fetch an OpenAI-compatible model list without renderer CORS limits."""
+    url = _provider_models_url(request.api_host, request.models_endpoint)
+    try:
+        target = httpx.URL(url)
+    except httpx.InvalidURL as exc:
+        raise HTTPException(
+            status_code=400, detail="API host is invalid."
+        ) from exc
+    try:
+        # Bound DNS and all candidate attempts as well as HTTP I/O.
+        async with asyncio.timeout(15.0):
+            addresses = await _provider_model_addresses(target)
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(15.0),
+                follow_redirects=False,
+                # Explicit direct transport prevents ambient proxy routing,
+                # while retaining the default TLS trust/certificate checks.
+                transport=ProviderModelTransport(),
+            ) as client:
+                for index, address in enumerate(addresses):
+                    try:
+                        response = await client.get(
+                            target.copy_with(host=address),
+                            headers={
+                                "Host": target.netloc.decode("ascii"),
+                                "Authorization": f"Bearer {request.api_key}",
+                                "Accept": "application/json",
+                            },
+                            # Dial only a validated literal; TLS still checks
+                            # the original hostname, without resolving again.
+                            extensions={
+                                "sni_hostname": target.raw_host.decode("ascii")
+                            },
+                        )
+                        break
+                    except (httpx.ConnectError, httpx.ConnectTimeout):
+                        if index == len(addresses) - 1:
+                            raise
+    except (httpx.RequestError, OSError) as exc:
+        logger.warning(
+            "Provider model-list request failed",
+            extra={"provider_host": urlsplit(url).hostname},
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Could not reach the provider model endpoint.",
+        ) from exc
+
+    if response.status_code in {401, 403}:
+        raise HTTPException(
+            status_code=response.status_code,
+            detail="Provider rejected the supplied credentials.",
+        )
+    if response.is_error:
+        raise HTTPException(
+            status_code=response.status_code,
+            detail=f"Provider model endpoint returned HTTP {response.status_code}.",
+        )
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Provider model endpoint returned an invalid response.",
+        ) from exc
+    if not isinstance(payload, dict) or not isinstance(
+        payload.get("data"), list
+    ):
+        raise HTTPException(
+            status_code=502,
+            detail="Provider model endpoint returned an invalid model list.",
+        )
+    return {"data": payload["data"]}
 
 
 @router.post("/model/validate")

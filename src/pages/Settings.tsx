@@ -23,6 +23,7 @@ import SpaceDetail, {
 } from '@/components/Home/SpaceDetail';
 import SpaceDetailSidebar from '@/components/Home/SpaceDetailSidebar';
 import AppShellLayout from '@/components/Layout/AppShellLayout';
+import { ContentHeaderFrame } from '@/components/Layout/ContentHeader';
 import {
   SettingsHeader,
   SettingsHeaderProvider,
@@ -232,11 +233,11 @@ function AnimatedContentPane({
   motionContext: SpaceNavigationMotionContext;
   pane: 'home' | 'detail' | 'skill-detail' | 'connector-detail';
 }) {
-  const paneRef = useRef<HTMLElement>(null);
+  const paneRef = useRef<HTMLDivElement>(null);
   const isPresent = useExitingPaneGuard(paneRef);
 
   return (
-    <motion.main
+    <motion.div
       ref={paneRef}
       data-home-space-content-pane={pane}
       data-space-navigation-direction={
@@ -253,7 +254,7 @@ function AnimatedContentPane({
       style={{ pointerEvents: isPresent ? 'auto' : 'none' }}
     >
       {children}
-    </motion.main>
+    </motion.div>
   );
 }
 
@@ -580,21 +581,25 @@ function HomeSettingsPageContent() {
     <SkillsProvider active={!isSpacesView && activeSection === 'skills'}>
       <ConnectorsNavigationProvider>
         <AppShellLayout sidebar={sidebar} sidebarHidden={sidebarHidden}>
-          <div className="relative h-full min-h-0 min-w-0 overflow-hidden">
-            <AnimatePresence
-              initial={false}
-              mode="sync"
-              custom={navigationMotionContext}
-            >
-              <AnimatedContentPane
-                key={contentPane}
-                pane={contentPane}
-                motionContext={navigationMotionContext}
-              >
-                {content}
-              </AnimatedContentPane>
-            </AnimatePresence>
-          </div>
+          <main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+            <ContentHeaderFrame>
+              <div className="relative min-h-0 flex-1">
+                <AnimatePresence
+                  initial={false}
+                  mode="sync"
+                  custom={navigationMotionContext}
+                >
+                  <AnimatedContentPane
+                    key={contentPane}
+                    pane={contentPane}
+                    motionContext={navigationMotionContext}
+                  >
+                    {content}
+                  </AnimatedContentPane>
+                </AnimatePresence>
+              </div>
+            </ContentHeaderFrame>
+          </main>
         </AppShellLayout>
       </ConnectorsNavigationProvider>
     </SkillsProvider>

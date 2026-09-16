@@ -13,7 +13,18 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { cn } from '@/lib/utils';
-import type { ReactNode } from 'react';
+import { useIsPresent } from 'framer-motion';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import { createPortal } from 'react-dom';
 
 /**
  * Canonical layout header row: 40px, 8px inline inset, overflow visible so
@@ -31,6 +42,58 @@ export const CONTENT_HEADER_BORDER_CLASS =
 /** Title typography, exported for `titleAsChild` callers to reapply. */
 export const CONTENT_HEADER_TITLE_CLASS =
   'min-w-0 shrink truncate !text-ds-text-body-large font-semibold text-ds-ink-default-default';
+
+const ContentHeaderFrameContext = createContext<{
+  element: HTMLElement | null;
+  setBorder: (border: boolean) => void;
+} | null>(null);
+
+/** Focus a page heading when its DOM node or represented page changes. */
+export function useFocusContentHeading(pageKey?: unknown) {
+  const previousNode = useRef<HTMLHeadingElement | null>(null);
+  const previousPageKey = useRef<unknown>();
+  return useCallback(
+    (node: HTMLHeadingElement | null) => {
+      if (
+        node &&
+        (node !== previousNode.current || pageKey !== previousPageKey.current)
+      ) {
+        node.focus({ preventScroll: true });
+      }
+      previousNode.current = node;
+      previousPageKey.current = pageKey;
+    },
+    [pageKey]
+  );
+}
+
+/** Keep the page divider outside keyed content transitions and lazy loading. */
+export function ContentHeaderFrame({ children }: { children: ReactNode }) {
+  const [element, setElement] = useState<HTMLElement | null>(null);
+  const [border, setBorder] = useState(true);
+  const value = useMemo(() => ({ element, setBorder }), [element]);
+  return (
+    <ContentHeaderFrameContext.Provider value={value}>
+      <header
+        ref={setElement}
+        data-content-header-frame
+        className="relative min-h-ds-layout-row-header w-full shrink-0"
+      >
+        {border ? (
+          <div
+            aria-hidden
+            data-content-header-divider
+            className={cn(
+              'pointer-events-none absolute inset-x-0 bottom-0',
+              CONTENT_HEADER_BORDER_CLASS
+            )}
+          />
+        ) : null}
+      </header>
+      {children}
+    </ContentHeaderFrameContext.Provider>
+  );
+}
 
 /**
  * Controls placed in a `ContentHeader` share one size so their heights match
@@ -60,6 +123,8 @@ export interface ContentHeaderProps {
   /** Remove the outer inset when a child pattern owns its aligned content rail. */
   inset?: 'default' | 'none';
   className?: string;
+  /** Render in the nearest stable page frame, outside content animations. */
+  persistent?: boolean;
 }
 
 export default function ContentHeader({
@@ -72,16 +137,24 @@ export default function ContentHeader({
   height = 'routine',
   inset = 'default',
   className,
+  persistent = false,
 }: ContentHeaderProps) {
-  return (
-    <header
+  const frame = useContext(ContentHeaderFrameContext);
+  const isPresent = useIsPresent();
+  const portaled = persistent && frame !== null;
+  const Element = portaled ? 'div' : 'header';
+  useLayoutEffect(() => {
+    if (portaled && isPresent) frame.setBorder(border);
+  }, [border, frame, isPresent, portaled]);
+  const content = (
+    <Element
       className={cn(
         CONTENT_HEADER_BASE_CLASS,
         height === 'routine'
           ? 'h-ds-layout-row-header min-h-ds-layout-row-header'
           : 'min-h-ds-layout-row-header',
         inset === 'default' && 'px-ds-8',
-        border && CONTENT_HEADER_BORDER_CLASS,
+        border && !portaled && CONTENT_HEADER_BORDER_CLASS,
         className
       )}
     >
@@ -99,6 +172,10 @@ export default function ContentHeader({
           {actions}
         </div>
       ) : null}
-    </header>
+    </Element>
   );
+  if (!portaled) return content;
+  return frame.element && isPresent
+    ? createPortal(content, frame.element)
+    : null;
 }

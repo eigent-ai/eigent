@@ -23,6 +23,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { DsIcon } from '@/components/ui/ds-icon';
+import { DsText } from '@/components/ui/ds-text';
+import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import type { LucideIcon } from 'lucide-react';
@@ -2769,18 +2771,22 @@ export interface FileViewerPanelProps {
   isShowSourceCode: boolean;
   /** Breadcrumb labels for the file path header. */
   breadcrumbSegments: string[];
+  /** `file-path` shows static contextual text with a focus/hover tooltip.
+   * It does not invoke either breadcrumb click handler. */
+  pathPresentation?: 'breadcrumb' | 'file-path';
   /** Sibling project files, used by the HTML renderer to resolve local assets. */
   projectFiles: FileInfo[];
   /** Outer surface background class. */
   surfaceClassName?: string;
   /** Remove standalone spacing/radius when rendered inside another panel shell. */
   embedded?: boolean;
-  /** Clicking the breadcrumb (reveal in folder / download remote). Ignored when
-   * {@link onBreadcrumbSegmentClick} is provided (segments become individually
-   * clickable instead). */
+  /** Clicking the breadcrumb (reveal in folder / download remote). The header
+   * does not invoke this in `file-path` mode or when segment clicks are supplied.
+   * Also used as the blocked-preview external-open fallback in either mode. */
   onRevealFile: () => void;
-  /** When set, breadcrumb segments are individually clickable (e.g. a "Context"
-   * root that navigates elsewhere). Receives the clicked segment index. */
+  /** In `breadcrumb` mode, makes ancestor segments individually clickable
+   * (e.g. a "Context" root). Receives the clicked segment index.
+   * Not invoked in `file-path` mode. */
   onBreadcrumbSegmentClick?: (index: number) => void;
   /** Remote fallback used only inside the blocked-preview empty state. */
   onDownloadFile: () => void;
@@ -2930,6 +2936,7 @@ export function FileViewerPanel({
   loading,
   isShowSourceCode,
   breadcrumbSegments,
+  pathPresentation = 'breadcrumb',
   projectFiles,
   surfaceClassName = 'bg-ds-neutral-subtle-default',
   embedded = false,
@@ -2988,7 +2995,25 @@ export function FileViewerPanel({
       {/* head */}
       {(selectedFile || onToggleFileTree) && (
         <div className="flex min-h-ds-layout-row-header shrink-0 flex-wrap items-center justify-between gap-2 border-y-0 border-r-0 border-l-0 border-solid border-ds-hairline-subtle-default pr-2 pl-4">
-          {selectedFile ? (
+          {selectedFile && pathPresentation === 'file-path' ? (
+            <TooltipSimple
+              content={breadcrumbSegments.join('/')}
+              className="max-w-(--radix-tooltip-content-available-width) break-all"
+            >
+              <div
+                tabIndex={0}
+                className={cn('min-w-0 flex-1 basis-32', DS_FOCUS_RING)}
+              >
+                <DsText
+                  as="p"
+                  role="meta"
+                  className="truncate text-ds-ink-muted-default"
+                >
+                  {breadcrumbSegments.join('/')}
+                </DsText>
+              </div>
+            </TooltipSimple>
+          ) : selectedFile ? (
             <div
               onClick={segmentsClickable ? undefined : onRevealFile}
               className={`flex min-w-0 flex-1 basis-32 items-center overflow-hidden ${

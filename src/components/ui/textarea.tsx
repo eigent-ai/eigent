@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { CircleAlert } from 'lucide-react';
 import { Button } from './button';
 import {
+  formFieldInputStateClasses,
   formFieldNoteTextClassName,
   formFieldTextareaSizeClasses,
   formFieldTextareaStateClasses,
@@ -26,7 +27,7 @@ import {
 import { formControlTokenAliases, mergeAliasStyles } from './tokenAliases';
 import { TooltipSimple } from './tooltip';
 
-export type TextareaVariant = 'none' | 'enhanced';
+export type TextareaVariant = 'none' | 'enhanced' | 'outlined';
 export type TextareaSize = 'default' | 'sm';
 export type TextareaState =
   'default' | 'hover' | 'input' | 'error' | 'success' | 'disabled';
@@ -161,6 +162,8 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, BaseTextareaProps>(
             className={cn(
               'relative flex items-start rounded-lg border border-x border-y border-solid shadow-sm transition-[background-color,border-color,box-shadow,opacity]',
               stateCls.field,
+              variant === 'outlined' &&
+                formFieldInputStateClasses(disabled ? 'disabled' : state).field,
               formFieldTextareaSizeClasses[size],
               state !== 'error' &&
                 state !== 'success' && [

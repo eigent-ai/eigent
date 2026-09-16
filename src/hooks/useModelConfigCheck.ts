@@ -16,15 +16,9 @@ import { proxyFetchGet } from '@/api/http';
 import { createHost } from '@/host/createHost';
 import { getAuthStore, useAuthStore } from '@/store/authStore';
 import { getCloudModelStore } from '@/store/cloudModelStore';
+import { refreshUsage, useUsageNoticeStore } from '@/store/usageNoticeStore';
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-
-const API_CODE_TRIAL_LIMIT = '22';
-
-const hasApiCode = (value: unknown, code: string) =>
-  typeof value === 'object' &&
-  value !== null &&
-  String((value as { code?: unknown }).code) === code;
 
 /**
  * Centralized model-configuration check.
@@ -49,14 +43,19 @@ export function useModelConfigCheck(): {
   // used by callers that need to wait for a fresh validation (e.g. share
   // token handling) rather than trusting the persisted optimistic value.
   const [isConfigLoaded, setIsConfigLoaded] = useState(false);
-  const [cloudUsageLimitReached, setCloudUsageLimitReached] = useState(false);
+  const cloudUsageLimitReached = useUsageNoticeStore((state) =>
+    state.incidents.some((item) =>
+      ['credits', 'trial-daily', 'trial-total', 'free-credits'].includes(
+        item.reason
+      )
+    )
+  );
 
   const checkModelConfig = useCallback(async () => {
     try {
       if (modelType === 'cloud') {
         const { token, cloud_model_type } = getAuthStore();
         if (!token) {
-          setCloudUsageLimitReached(false);
           setHasModelConfigured(false);
           return;
         }
@@ -66,45 +65,22 @@ export function useModelConfigCheck(): {
           getCloudModelStore().resolveCloudModel(cloud_model_type);
         setHasModelConfigured(Boolean(resolvedCloudModel));
 
-        try {
-          const res = await proxyFetchGet('/api/v1/user/key');
-          setCloudUsageLimitReached(hasApiCode(res, API_CODE_TRIAL_LIMIT));
-        } catch (err: any) {
-          if (
-            hasApiCode(err?.response?.data, API_CODE_TRIAL_LIMIT) ||
-            hasApiCode(err, API_CODE_TRIAL_LIMIT)
-          ) {
-            setCloudUsageLimitReached(true);
-          } else {
-            console.error('Failed to check cloud usage limit:', err);
-          }
-        }
+        await refreshUsage();
       } else if (modelType === 'codex_subscription') {
-        setCloudUsageLimitReached(false);
         const { email } = getAuthStore();
         const status = email
           ? await createHost().electronAPI?.codexSubscriptionStatus?.(email)
           : null;
         setHasModelConfigured(Boolean(status?.connected));
       } else if (modelType === 'local' || modelType === 'custom') {
-        setCloudUsageLimitReached(false);
         const res = await proxyFetchGet('/api/v1/providers', { prefer: true });
         const providerList = res.items || [];
         setHasModelConfigured(providerList.length > 0);
       } else {
-        setCloudUsageLimitReached(false);
         setHasModelConfigured(false);
       }
     } catch (err: any) {
       console.error('Failed to check model config:', err);
-      if (
-        modelType === 'cloud' &&
-        (hasApiCode(err?.response?.data, API_CODE_TRIAL_LIMIT) ||
-          hasApiCode(err, API_CODE_TRIAL_LIMIT))
-      ) {
-        setCloudUsageLimitReached(true);
-        setHasModelConfigured(false);
-      }
     } finally {
       setIsConfigLoaded(true);
     }
