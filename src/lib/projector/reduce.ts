@@ -16,6 +16,7 @@ import { TERMINAL_RUN_STATUSES } from './runSummary';
 import type {
   CanonicalProjectEvent,
   ProjectedArtifact,
+  ProjectedLegacyStep,
   ProjectedRun,
   ProjectorMode,
   ProjectViewState,
@@ -60,6 +61,50 @@ function sameAskData(left: unknown, right: unknown): boolean {
   );
 }
 
+function sameCrossLaneData(
+  step: string,
+  canonicalData: unknown,
+  legacyData: unknown
+): boolean {
+  if (sameAskData(canonicalData, legacyData)) return true;
+  if (
+    !canonicalData ||
+    typeof canonicalData !== 'object' ||
+    !legacyData ||
+    typeof legacyData !== 'object'
+  ) {
+    return false;
+  }
+  const canonical = canonicalData as Record<string, unknown>;
+  const legacy = legacyData as Record<string, unknown>;
+  const semantic = canonical.semantic as
+    { kind?: string; provenance?: { source?: string } } | undefined;
+  // These migrated producers replace raw content with display-safe fields.
+  // Compare only explicit mirrors; the caller retains scope, time, and
+  // one-for-one matching so repeated events and legacy-only tails survive.
+  if (semantic?.provenance?.source !== `legacy.${step}`) return false;
+  if (step === 'decompose_text') {
+    return (
+      semantic.kind === 'narration' &&
+      canonical.display_fragment_exact === true &&
+      typeof legacy.content === 'string' &&
+      legacy.content.length > 0 &&
+      canonical.display_title === legacy.content
+    );
+  }
+  if (step === 'write_file') {
+    return (
+      semantic.kind === 'file_change' &&
+      canonical.operation === 'written' &&
+      typeof legacy.relative_path === 'string' &&
+      legacy.relative_path.length > 0 &&
+      canonical.relative_path === legacy.relative_path &&
+      (canonical.process_task_id || '') === (legacy.process_task_id || '')
+    );
+  }
+  return false;
+}
+
 const CROSS_LANE_MATCH_WINDOW_SECONDS = 120;
 const MAX_SEEN_EVENT_IDS = 10000;
 const MAX_LEGACY_STEPS = 5000;
@@ -101,33 +146,116 @@ function retainRecentArtifactRuns(
 }
 
 function findEquivalentCrossLaneStep(
-  state: ProjectViewState,
-  event: CanonicalProjectEvent,
-  data: unknown
+  steps: readonly ProjectedLegacyStep[],
+  incoming: ProjectedLegacyStep
 ): number {
-  if (!event.legacyStep) return -1;
-  const eventIsCanonical = event.source === 'canonical';
-  const eventTimestamp = Date.parse(event.createdAt) / 1000;
-  if (!Number.isFinite(eventTimestamp)) return -1;
+  if (
+    !incoming.step ||
+    incoming.timestamp === null ||
+    !Number.isFinite(incoming.timestamp) ||
+    incoming.crossLaneEventIds?.length
+  )
+    return -1;
+  const eventIsCanonical = incoming.source === 'canonical';
 
-  for (let index = state.legacySteps.length - 1; index >= 0; index -= 1) {
-    const step = state.legacySteps[index];
+  for (let index = steps.length - 1; index >= 0; index -= 1) {
+    const step = steps[index];
     if (
-      step.projectId !== event.projectId ||
-      step.taskId !== event.runId ||
-      step.step !== event.legacyStep ||
+      step.projectId !== incoming.projectId ||
+      step.taskId !== incoming.taskId ||
+      step.step !== incoming.step ||
       (step.source === 'canonical') === eventIsCanonical ||
       (step.crossLaneEventIds?.length || 0) > 0 ||
       step.timestamp === null ||
-      Math.abs(step.timestamp - eventTimestamp) >
+      Math.abs(step.timestamp - incoming.timestamp) >
         CROSS_LANE_MATCH_WINDOW_SECONDS ||
-      !sameAskData(step.data, data)
+      !sameCrossLaneData(
+        incoming.step,
+        eventIsCanonical ? incoming.data : step.data,
+        eventIsCanonical ? step.data : incoming.data
+      )
     ) {
       continue;
     }
     return index;
   }
   return -1;
+}
+
+function isCanonicalMirrorStep(step: ProjectedLegacyStep): boolean {
+  return step.step === 'decompose_text' || step.step === 'write_file';
+}
+
+function canonicalMirrorOwner(
+  canonical: ProjectedLegacyStep,
+  legacy: ProjectedLegacyStep
+): ProjectedLegacyStep {
+  return {
+    ...canonical,
+    // Cloud replay keeps this ID across connections; its eventId is synthetic.
+    stepId: legacy.stepId,
+    crossLaneEventIds: [
+      ...new Set([...(canonical.crossLaneEventIds ?? []), legacy.eventId]),
+    ],
+  };
+}
+
+/** Merge only migrated mirrors; Run and sync facts are reduced separately. */
+export function mergeLegacyMirrorSteps(
+  retained: readonly ProjectedLegacyStep[],
+  incoming: readonly ProjectedLegacyStep[]
+): ProjectedLegacyStep[] {
+  // Restore all existing identities before matching new snapshot receipts, so
+  // a previously paired canonical event cannot consume a legacy-only tail.
+  const merged = [...retained];
+  for (const next of incoming) {
+    if (!isCanonicalMirrorStep(next)) continue;
+    const identityIndex = merged.findIndex(
+      (step) =>
+        step.projectId === next.projectId &&
+        step.taskId === next.taskId &&
+        step.step === next.step &&
+        (step.eventId === next.eventId ||
+          ((step.source !== 'canonical' || next.source !== 'canonical') &&
+            String(step.stepId) === String(next.stepId)))
+    );
+    const index =
+      identityIndex >= 0
+        ? identityIndex
+        : findEquivalentCrossLaneStep(merged, next);
+    if (index < 0) {
+      merged.push(next);
+      continue;
+    }
+    const previous = merged[index];
+    if (previous.source === 'canonical' && next.source === 'canonical') {
+      const paired = previous.crossLaneEventIds?.length ? previous : next;
+      merged[index] = {
+        ...next,
+        stepId: paired.stepId,
+        crossLaneEventIds: [
+          ...new Set([
+            ...(previous.crossLaneEventIds ?? []),
+            ...(next.crossLaneEventIds ?? []),
+          ]),
+        ],
+      };
+    } else if (next.source === 'canonical') {
+      merged[index] = canonicalMirrorOwner(next, previous);
+    } else if (
+      previous.source === 'canonical' &&
+      (identityIndex < 0 || !previous.crossLaneEventIds?.length)
+    ) {
+      merged[index] = canonicalMirrorOwner(previous, next);
+    }
+    // Stable cloud-ID retries keep the owner; synthetic reconnect IDs must not
+    // grow the alias proof. Same-lane retries also remain available for pairing.
+  }
+  // Other families retain the snapshot's existing incoming-first merge policy.
+  return [
+    ...incoming.filter((step) => !isCanonicalMirrorStep(step)),
+    ...merged,
+  ];
 }
 
 function hasEquivalentOpenAsk(
@@ -355,6 +483,18 @@ export function reduceProjectView(
     (event.payload.__legacy_step_id as number | string | undefined) ||
     event.eventId;
   const legacyData = event.payload.__legacy_data ?? event.payload;
+  const legacyReceipt: ProjectedLegacyStep = {
+    eventId: event.eventId,
+    stepId: legacyStepId,
+    taskId: event.runId,
+    projectId: event.projectId,
+    step: event.legacyStep ?? '',
+    data: legacyData,
+    timestamp: Date.parse(event.createdAt) / 1000 || null,
+    runSequence: event.runSequence,
+    cloudCursor: event.cloudCursor,
+    source: event.source,
+  };
   let artifactsByRun = state.artifactsByRun;
   if (event.eventType === 'artifact.manifest.finalized') {
     const rawArtifacts = Array.isArray(event.payload.artifacts)
@@ -474,40 +614,29 @@ export function reduceProjectView(
     );
   const equivalentCrossLaneStep = hasLegacyStepId
     ? -1
-    : findEquivalentCrossLaneStep(state, event, legacyData);
+    : findEquivalentCrossLaneStep(state.legacySteps, legacyReceipt);
   const hasLegacyStep =
     hasLegacyStepId ||
     equivalentCrossLaneStep >= 0 ||
     (event.legacyStep === 'ask' &&
       hasEquivalentOpenAsk(state, event, legacyData));
   let legacySteps = state.legacySteps;
-  if (equivalentCrossLaneStep >= 0) {
-    legacySteps = state.legacySteps.map((step, index) =>
-      index === equivalentCrossLaneStep
-        ? {
-            ...step,
-            crossLaneEventIds: [
-              ...(step.crossLaneEventIds || []),
-              event.eventId,
-            ],
-          }
-        : step
-    );
+  if (isCanonicalMirrorStep(legacyReceipt)) {
+    legacySteps = mergeLegacyMirrorSteps(state.legacySteps, [legacyReceipt]);
+    if (legacySteps.length > MAX_LEGACY_STEPS)
+      legacySteps = legacySteps.slice(-MAX_LEGACY_STEPS);
+  } else if (equivalentCrossLaneStep >= 0) {
+    legacySteps = state.legacySteps.map((step, index) => {
+      if (index !== equivalentCrossLaneStep) return step;
+      return {
+        ...step,
+        crossLaneEventIds: [...(step.crossLaneEventIds || []), event.eventId],
+      };
+    });
   } else if (event.legacyStep && !hasLegacyStep) {
     legacySteps = appendBounded(
       state.legacySteps,
-      {
-        eventId: event.eventId,
-        stepId: legacyStepId,
-        taskId: event.runId,
-        projectId: event.projectId,
-        step: event.legacyStep,
-        data: legacyData,
-        timestamp: Date.parse(event.createdAt) / 1000 || null,
-        runSequence: event.runSequence,
-        cloudCursor: event.cloudCursor,
-        source: event.source,
-      },
+      legacyReceipt,
       MAX_LEGACY_STEPS
     );
   }

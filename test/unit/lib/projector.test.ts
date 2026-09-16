@@ -44,7 +44,128 @@ function event(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function semanticReplayPair(step: 'decompose_text' | 'write_file') {
+  const narration = step === 'decompose_text';
+  const data = narration
+    ? { content: 'Building the cathedral.\n' }
+    : { relative_path: 'cathedral.html', process_task_id: 'task-1' };
+  const canonical = normalizeEvent(
+    event({
+      event_type: narration ? 'activity.progress' : 'file.written',
+      legacy_step: step,
+      payload: {
+        semantic_schema_version: 1,
+        display_schema_version: 1,
+        semantic: {
+          kind: narration ? 'narration' : 'file_change',
+          provenance: { source: `legacy.${step}` },
+        },
+        ...(narration
+          ? {
+              display_title: data.content,
+              display_fragment_exact: true,
+              status: 'running',
+            }
+          : {
+              ...data,
+              name: 'cathedral.html',
+              operation: 'written',
+              display_title: 'Wrote cathedral.html',
+            }),
+      },
+    })
+  );
+  const legacy = normalizeEvent(
+    {
+      project_id: canonical.projectId,
+      task_id: canonical.runId,
+      id: 10_000,
+      step,
+      data,
+      timestamp: canonical.createdAt,
+    },
+    'chat_step_v1'
+  );
+  return { canonical, legacy };
+}
+
 describe('projector pipeline', () => {
+  it.each(['decompose_text', 'write_file'] as const)(
+    'pairs semantic %s mirrors in either arrival order without dropping repeated steps',
+    (step) => {
+      const { canonical, legacy } = semanticReplayPair(step);
+      const secondCanonical = {
+        ...canonical,
+        eventId: 'event-2',
+        runSequence: 2,
+        runVersion: 2,
+        cloudCursor: 2,
+      };
+      const secondLegacy = {
+        ...legacy,
+        eventId: 'legacy-2',
+        payload: { ...legacy.payload, __legacy_step_id: 10_001 },
+      };
+      for (const inputs of [
+        [canonical, secondCanonical, legacy, secondLegacy],
+        [legacy, secondLegacy, canonical, secondCanonical],
+        [legacy, canonical, secondLegacy, secondCanonical],
+      ]) {
+        const state = inputs.reduce(
+          reduceProjectView,
+          createProjectViewState('project-1', 'live')
+        );
+        expect(state.legacySteps).toHaveLength(2);
+        expect(
+          state.legacySteps.map((item) => item.crossLaneEventIds?.length)
+        ).toEqual([1, 1]);
+        expect(
+          state.legacySteps.every((item) => item.source === 'canonical')
+        ).toBe(true);
+        expect(
+          state.legacySteps.map((item) => item.runSequence).sort()
+        ).toEqual([1, 2]);
+        expect(Object.keys(state.seenEventIds)).toHaveLength(4);
+        expect(state.runs['run-1'].lastSequence).toBe(2);
+      }
+    }
+  );
+
+  it.each([
+    'different content',
+    'different run',
+    'outside time window',
+    'different provenance',
+    'different path',
+    'missing path',
+    'different subtask',
+  ])('keeps unmatched semantic replay events: %s', (difference) => {
+    const { canonical, legacy } = semanticReplayPair(
+      ['different path', 'missing path', 'different subtask'].includes(
+        difference
+      )
+        ? 'write_file'
+        : 'decompose_text'
+    );
+    if (difference === 'different content')
+      canonical.payload.display_title = 'Finished.';
+    if (difference === 'different run') canonical.runId = 'other-run';
+    if (difference === 'outside time window')
+      canonical.createdAt = '2026-08-05T10:03:00Z';
+    if (difference === 'different provenance')
+      canonical.payload.semantic = { kind: 'narration' };
+    if (difference === 'different path')
+      canonical.payload.relative_path = 'other/cathedral.html';
+    if (difference === 'missing path') delete canonical.payload.relative_path;
+    if (difference === 'different subtask')
+      canonical.payload.process_task_id = 'task-2';
+    const state = [canonical, legacy].reduce(
+      reduceProjectView,
+      createProjectViewState('project-1', 'rehydrate')
+    );
+    expect(state.legacySteps).toHaveLength(2);
+  });
+
   it.each(['canonical-first', 'legacy-first'] as const)(
     'preserves the canonical completion timestamp with a large legacy step id (%s)',
     (order) => {
