@@ -344,6 +344,9 @@ are:
 The primitive owns label, placeholder, validation, disabled, focus, radius,
 and inset behavior. Validation tone is independent from interaction state.
 
+Use `Textarea variant="outlined"` for a multiline field with the same visible
+border and validation colors as `Input`.
+
 ### Tags, badges, rows, menus, and overlays
 
 - Tags and badges are pills using `text.meta`; tone conveys meaning.

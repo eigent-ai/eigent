@@ -13,13 +13,13 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import ContentBreadcrumb from '@/components/Layout/ContentBreadcrumb';
-import ContentHeader from '@/components/Layout/ContentHeader';
-import DocumentContentRail from '@/components/Layout/DocumentContentRail';
+import ContentHeader, {
+  useFocusContentHeading,
+} from '@/components/Layout/ContentHeader';
 import { Button } from '@/components/ui/button';
 import { DsText } from '@/components/ui/ds-text';
 import { Switch } from '@/components/ui/switch';
 import { Tag } from '@/components/ui/tag';
-import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSkillsLibrary } from '../SkillsProvider';
 import SkillAccessMenu from './SkillAccessMenu';
@@ -53,18 +53,16 @@ export default function SkillDetail({
     previewGeneration,
   } = useSkillsLibrary();
   const entry = entries.find((item) => item.id === skillId);
-  const heading = useRef<HTMLHeadingElement>(null);
-  useEffect(() => {
-    heading.current?.focus({ preventScroll: true });
-  }, [entry?.id]);
+  const setHeading = useFocusContentHeading(entry?.id);
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col" data-skill-detail>
       <ContentHeader
+        persistent
         className="gap-ds-12 px-ds-16"
         titleAsChild
         title={
           <ContentBreadcrumb
-            headingRef={heading}
+            headingRef={setHeading}
             ariaLabel={t('layout.breadcrumb', { defaultValue: 'Breadcrumb' })}
             segments={[
               {
@@ -144,13 +142,13 @@ export default function SkillDetail({
         )}
       </ContentHeader>
       {entry ? (
-        <DocumentContentRail className="flex min-h-0 flex-1 flex-col px-ds-16">
+        <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
           <SkillFiles
             key={`${entry.id}:${refreshKey}:${previewGeneration}`}
             entry={entry}
             revision={`${refreshKey}:${previewGeneration}`}
           />
-        </DocumentContentRail>
+        </div>
       ) : (
         <div
           className="flex flex-1 flex-col items-center justify-center gap-ds-12 p-ds-24"
