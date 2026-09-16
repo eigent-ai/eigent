@@ -45,6 +45,7 @@ export interface XtermViewerProps {
    */
   lines: string[];
   text?: string;
+  /** Python output-window position, measured in Unicode code points. */
   offset?: number;
   /** Invoked with the URL when a link in the output is clicked. */
   onOpenLink?: (url: string) => void;
@@ -69,7 +70,7 @@ export function XtermViewer({
     sourceId: null,
     count: 0,
   });
-  const snapshotRef = useRef({ sourceId: '', text: '', offset: 0 });
+  const snapshotRef = useRef({ sourceId: '', end: 0 });
   const onOpenLinkRef = useRef(onOpenLink);
   useEffect(() => {
     onOpenLinkRef.current = onOpenLink;
@@ -149,8 +150,10 @@ export function XtermViewer({
     if (!terminal) return;
     if (text !== undefined) {
       const previous = snapshotRef.current;
-      const previousEnd = previous.offset + previous.text.length;
-      const nextEnd = offset + text.length;
+      // Python len/slices count code points; JS length/slice count UTF-16 units.
+      const characters = Array.from(text);
+      const previousEnd = previous.end;
+      const nextEnd = offset + characters.length;
       const canContinue =
         previous.sourceId === sourceId &&
         offset <= previousEnd &&
@@ -159,9 +162,11 @@ export function XtermViewer({
         terminal.reset();
         terminal.write(HIDE_CURSOR);
       }
-      const appended = canContinue ? text.slice(previousEnd - offset) : text;
+      const appended = canContinue
+        ? characters.slice(previousEnd - offset).join('')
+        : text;
       if (appended) terminal.write(appended);
-      snapshotRef.current = { sourceId, text, offset };
+      snapshotRef.current = { sourceId, end: nextEnd };
       return;
     }
     const written = writtenRef.current;

@@ -46,6 +46,8 @@ export interface ShellSessionState {
 interface ShellSessionEntry extends ShellSessionState {
   buffer: string[];
   bufferCodeUnits: number;
+  /** Only output since the latest submitted command participates in discovery. */
+  urlChunks: string[];
   dataListeners: Set<(chunk: string) => void>;
   stateListeners: Set<() => void>;
   createPromise: Promise<ShellSessionState> | null;
@@ -89,6 +91,7 @@ function entryFor(id: string): ShellSessionEntry {
       error: null,
       buffer: [],
       bufferCodeUnits: 0,
+      urlChunks: [],
       dataListeners: new Set(),
       stateListeners: new Set(),
       createPromise: null,
@@ -123,8 +126,9 @@ function bindIpc(api: TerminalHostApi) {
     const entry = sessions.get(id);
     if (!entry) return;
     appendToBuffer(entry, data);
-    const url = entry.buffer
-      .slice(-8)
+    entry.urlChunks.push(data);
+    entry.urlChunks = entry.urlChunks.slice(-8);
+    const url = entry.urlChunks
       .join('')
       .replace(ANSI_SEQUENCE, '')
       .match(LOCAL_SERVER_URL)?.[0];
@@ -140,6 +144,7 @@ function bindIpc(api: TerminalHostApi) {
     entry.exited = true;
     entry.exitCode = exitCode;
     entry.url = undefined;
+    entry.urlChunks = [];
     notifyState(entry);
   });
 }
@@ -226,7 +231,7 @@ export async function resetShellSession(
   id: string
 ): Promise<boolean> {
   try {
-    await api.terminalDispose(id);
+    if (!(await api.terminalDispose(id)).success) return false;
   } catch {
     return false;
   }
@@ -234,6 +239,7 @@ export async function resetShellSession(
   entry.disposeView?.();
   entry.disposeView = undefined;
   entry.url = undefined;
+  entry.urlChunks = [];
   entry.stopError = null;
   entry.createPromise = null;
   entry.created = false;
@@ -248,9 +254,12 @@ export async function resetShellSession(
 
 export function writeToShell(api: TerminalHostApi, id: string, data: string) {
   const entry = sessions.get(id);
-  if (entry?.url && /[\r\n]/.test(data)) {
-    entry.url = undefined;
-    notifyState(entry);
+  if (entry && /[\r\n]/.test(data)) {
+    entry.urlChunks = [];
+    if (entry.url) {
+      entry.url = undefined;
+      notifyState(entry);
+    }
   }
   api.terminalInput(id, data);
 }

@@ -61,3 +61,54 @@ it('appends across a rolling output-window shift without resetting scrollback', 
   expect(terminal.write).toHaveBeenCalledOnce();
   expect(terminal.write).toHaveBeenCalledWith('y');
 });
+
+it('appends after a non-BMP character leaves the Python output window', () => {
+  const tail = 'a'.repeat(131_071);
+  const view = render(
+    <XtermViewer sourceId="process" lines={[]} text={`😀${tail}`} offset={0} />
+  );
+  terminal.reset.mockClear();
+  terminal.write.mockClear();
+
+  view.rerender(
+    <XtermViewer sourceId="process" lines={[]} text={`${tail}Z`} offset={1} />
+  );
+  expect(terminal.reset).not.toHaveBeenCalled();
+  expect(terminal.write.mock.calls).toEqual([['Z']]);
+});
+
+it('slices incremental Unicode snapshots in code points without splitting pairs', () => {
+  const view = render(
+    <XtermViewer sourceId="process" lines={[]} text="A😀B" offset={0} />
+  );
+  terminal.reset.mockClear();
+  terminal.write.mockClear();
+  view.rerender(
+    <XtermViewer sourceId="process" lines={[]} text="😀BZ🦄" offset={1} />
+  );
+  view.rerender(
+    <XtermViewer sourceId="process" lines={[]} text="Z🦄終" offset={3} />
+  );
+  expect(terminal.reset).not.toHaveBeenCalled();
+  expect(terminal.write.mock.calls).toEqual([['Z🦄'], ['終']]);
+});
+
+it('resets for a gap, a new source or a truncated snapshot', () => {
+  const view = render(
+    <XtermViewer sourceId="process" lines={[]} text="😀A" offset={0} />
+  );
+  terminal.reset.mockClear();
+  terminal.write.mockClear();
+  view.rerender(
+    <XtermViewer sourceId="process" lines={[]} text="🦄B" offset={3} />
+  );
+  view.rerender(
+    <XtermViewer sourceId="other" lines={[]} text="🦄B" offset={3} />
+  );
+  view.rerender(
+    <XtermViewer sourceId="other" lines={[]} text="🦄" offset={3} />
+  );
+  expect(terminal.reset).toHaveBeenCalledTimes(3);
+  expect(terminal.write).toHaveBeenCalledWith('🦄B');
+  expect(terminal.write).toHaveBeenLastCalledWith('🦄');
+});

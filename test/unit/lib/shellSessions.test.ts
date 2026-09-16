@@ -14,6 +14,7 @@
 
 import {
   ensureShellSession,
+  getShellBuffer,
   getShellSessionState,
   writeToShell,
 } from '@/lib/shellSessions';
@@ -53,6 +54,56 @@ it('normalizes colored server URLs and clears stale discoveries', async () => {
   expect(getShellSessionState('vite').url).toBeUndefined();
   expect(api.terminalInput).toHaveBeenCalledWith('vite', 'next-command\r');
 
+  emitData({ id: 'vite', data: 'building new command...\n' });
+  expect(getShellSessionState('vite').url).toBeUndefined();
+  expect(getShellBuffer('vite')).toContain('Local: http://localhost:');
+
+  // A URL may straddle output chunks, but never a command boundary.
+  emitData({ id: 'vite', data: 'Local: http://localhost:' });
+  writeToShell(api as never, 'vite', 'another-command\n');
+  emitData({ id: 'vite', data: '6000/\n' });
+  expect(getShellSessionState('vite').url).toBeUndefined();
+  emitData({ id: 'vite', data: 'Local: http://0.0.0.0:' });
+  emitData({ id: 'vite', data: '7000/\n' });
+  expect(getShellSessionState('vite').url).toBe('http://127.0.0.1:7000/');
+
   emitExit({ id: 'uvicorn', exitCode: 0 });
   expect(getShellSessionState('uvicorn').url).toBeUndefined();
+});
+
+it('preserves the shell view and scrollback until disposal succeeds on reset', async () => {
+  vi.resetModules();
+  const shell = await import('@/lib/shellSessions');
+  let emitData: (payload: { id: string; data: string }) => void = () => {};
+  const api = {
+    terminalCreate: vi.fn().mockResolvedValue({ success: true }),
+    terminalInput: vi.fn(),
+    terminalResize: vi.fn(),
+    terminalDispose: vi.fn().mockResolvedValue({ success: false }),
+    onTerminalData: vi.fn((listener) => {
+      emitData = listener;
+    }),
+    onTerminalExit: vi.fn(),
+  };
+  const disposeView = vi.fn();
+  await shell.ensureShellSession(api as never, { id: 'reset-failure' });
+  shell.retainShellView('reset-failure', disposeView);
+  emitData({ id: 'reset-failure', data: 'existing scrollback\n' });
+  const before = shell.getShellSessionState('reset-failure');
+  expect(await shell.resetShellSession(api as never, 'reset-failure')).toBe(
+    false
+  );
+  expect(shell.getShellSessionState('reset-failure')).toEqual(before);
+  expect(shell.getShellBuffer('reset-failure')).toBe('existing scrollback\n');
+  expect(disposeView).not.toHaveBeenCalled();
+  expect(api.terminalCreate).toHaveBeenCalledTimes(1);
+
+  api.terminalDispose.mockResolvedValue({ success: true });
+  expect(await shell.resetShellSession(api as never, 'reset-failure')).toBe(
+    true
+  );
+  expect(disposeView).toHaveBeenCalledTimes(1);
+  expect(shell.getShellBuffer('reset-failure')).toBe('');
+  await shell.ensureShellSession(api as never, { id: 'reset-failure' });
+  expect(api.terminalCreate).toHaveBeenCalledTimes(2);
 });
