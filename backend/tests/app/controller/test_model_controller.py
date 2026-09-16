@@ -12,6 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import socket
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -37,6 +38,22 @@ from app.controller.model_controller import (
 
 @pytest.mark.unit
 class TestListProviderModels:
+    @pytest.fixture(autouse=True)
+    def public_provider_dns(self):
+        with patch(
+            "socket.getaddrinfo",
+            return_value=[
+                (
+                    socket.AF_INET,
+                    socket.SOCK_STREAM,
+                    socket.IPPROTO_TCP,
+                    "",
+                    ("8.8.8.8", 443),
+                )
+            ],
+        ):
+            yield
+
     def test_builds_public_https_model_url(self):
         assert (
             _provider_models_url("https://api.ant-ling.com/v1/", "/models")
@@ -75,11 +92,13 @@ class TestListProviderModels:
             result = await list_provider_models(request)
         assert result == {"data": [{"id": "ling-chat"}]}
         client.get.assert_awaited_once_with(
-            "https://api.ant-ling.com/v1/models",
+            httpx.URL("https://8.8.8.8/v1/models"),
             headers={
+                "Host": "api.ant-ling.com",
                 "Authorization": "Bearer secret-key",
                 "Accept": "application/json",
             },
+            extensions={"sni_hostname": "api.ant-ling.com"},
         )
 
     @pytest.mark.asyncio

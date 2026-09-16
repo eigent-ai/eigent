@@ -12,8 +12,10 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import asyncio
 import ipaddress
 import logging
+import socket
 from urllib.parse import urlsplit
 
 import httpx
@@ -26,6 +28,7 @@ from app.component.model_validation import (
     ValidationStage,
     validate_model_with_details,
 )
+from app.component.provider_model_transport import ProviderModelTransport
 from app.model.model_platform import NormalizedModelPlatform
 
 logger = logging.getLogger("model_controller")
@@ -117,7 +120,7 @@ def _provider_models_url(api_host: str, models_endpoint: str) -> str:
         address = ipaddress.ip_address(parsed_host.hostname)
     except ValueError:
         address = None
-    if address is not None and not address.is_global:
+    if address is not None and (not address.is_global or address.is_multicast):
         raise HTTPException(
             status_code=400, detail="API host must be a public HTTPS URL."
         )
@@ -136,22 +139,73 @@ def _provider_models_url(api_host: str, models_endpoint: str) -> str:
     return f"{host}{models_endpoint}"
 
 
+async def _provider_model_addresses(url: httpx.URL) -> list[str]:
+    """Resolve once and reject the whole result if any address is nonpublic."""
+    hostname = url.raw_host.decode("ascii")
+    try:
+        candidates = [ipaddress.ip_address(hostname)]
+    except ValueError:
+        records = await asyncio.get_running_loop().getaddrinfo(
+            hostname,
+            url.port or 443,
+            family=socket.AF_UNSPEC,
+            type=socket.SOCK_STREAM,
+            proto=socket.IPPROTO_TCP,
+        )
+        candidates = [ipaddress.ip_address(record[4][0]) for record in records]
+
+    if not candidates:
+        raise httpx.ConnectError("No provider addresses found")
+    if any(
+        not address.is_global or address.is_multicast for address in candidates
+    ):
+        raise HTTPException(
+            status_code=400, detail="API host must be a public HTTPS URL."
+        )
+    return list(dict.fromkeys(str(address) for address in candidates))
+
+
 @router.post("/model/list")
 async def list_provider_models(request: ListProviderModelsRequest):
     """Fetch an OpenAI-compatible model list without renderer CORS limits."""
     url = _provider_models_url(request.api_host, request.models_endpoint)
     try:
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(15.0), follow_redirects=False
-        ) as client:
-            response = await client.get(
-                url,
-                headers={
-                    "Authorization": f"Bearer {request.api_key}",
-                    "Accept": "application/json",
-                },
-            )
-    except httpx.RequestError as exc:
+        target = httpx.URL(url)
+    except httpx.InvalidURL as exc:
+        raise HTTPException(
+            status_code=400, detail="API host is invalid."
+        ) from exc
+    try:
+        # Bound DNS and all candidate attempts as well as HTTP I/O.
+        async with asyncio.timeout(15.0):
+            addresses = await _provider_model_addresses(target)
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(15.0),
+                follow_redirects=False,
+                # Explicit direct transport prevents ambient proxy routing,
+                # while retaining the default TLS trust/certificate checks.
+                transport=ProviderModelTransport(),
+            ) as client:
+                for index, address in enumerate(addresses):
+                    try:
+                        response = await client.get(
+                            target.copy_with(host=address),
+                            headers={
+                                "Host": target.netloc.decode("ascii"),
+                                "Authorization": f"Bearer {request.api_key}",
+                                "Accept": "application/json",
+                            },
+                            # Dial only a validated literal; TLS still checks
+                            # the original hostname, without resolving again.
+                            extensions={
+                                "sni_hostname": target.raw_host.decode("ascii")
+                            },
+                        )
+                        break
+                    except (httpx.ConnectError, httpx.ConnectTimeout):
+                        if index == len(addresses) - 1:
+                            raise
+    except (httpx.RequestError, OSError) as exc:
         logger.warning(
             "Provider model-list request failed",
             extra={"provider_host": urlsplit(url).hostname},
