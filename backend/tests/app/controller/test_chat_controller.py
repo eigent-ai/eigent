@@ -1964,3 +1964,49 @@ class TestChatControllerErrorCases:
         solve.assert_not_called()
         assemble_toolkits.assert_not_awaited()
         journal.close()
+
+
+@pytest.mark.parametrize("current_task_id", ["run-new", None])
+def test_queued_stop_rejects_a_replaced_task(current_task_id):
+    from fastapi import HTTPException
+
+    from app.controller.chat_controller import skip_task
+
+    lock = SimpleNamespace(current_task_id=current_task_id)
+    with (
+        patch(
+            "app.controller.chat_controller.get_task_lock_if_exists",
+            return_value=lock,
+        ),
+        patch(
+            "app.controller.chat_controller._queue_action_from_worker"
+        ) as enqueue,
+    ):
+        with pytest.raises(HTTPException) as error:
+            skip_task("project-1", expected_task_id="run-original")
+        assert error.value.status_code == 409
+        enqueue.assert_not_called()
+
+
+def test_queued_stop_carries_expected_task_to_the_consumer():
+    from app.controller.chat_controller import skip_task
+
+    lock = SimpleNamespace(
+        current_task_id="run-original",
+        id="project-1",
+        status=Status.processing,
+    )
+    with (
+        patch(
+            "app.controller.chat_controller.get_task_lock_if_exists",
+            return_value=lock,
+        ),
+        patch(
+            "app.controller.chat_controller._queue_action_from_worker"
+        ) as enqueue,
+    ):
+        assert (
+            skip_task("project-1", expected_task_id="run-original").status_code
+            == 201
+        )
+        assert enqueue.call_args.args[1].expected_task_id == "run-original"
