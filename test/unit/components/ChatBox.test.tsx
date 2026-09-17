@@ -1321,6 +1321,15 @@ describe('ChatBox Component', async () => {
         acknowledgeUsageNotice();
         notice.mockClear();
         const user = userEvent.setup();
+        // This fixture has no warm consumer after the independent Run ends.
+        // A surviving TaskLock alone must not route B into a dead queue.
+        mockFetchGet.mockImplementation((url: string) =>
+          Promise.resolve(
+            url.endsWith('/status')
+              ? { has_lock: true, status: 'done', consumer_alive: false }
+              : { runs: [] }
+          )
+        );
         defaultProjectStoreState.getProjectById.mockImplementation(() => ({
           queuedMessages: [
             {
@@ -1554,7 +1563,7 @@ describe('ChatBox Component', async () => {
         mockFetchGet.mockImplementation((url: string) =>
           Promise.resolve(
             url.endsWith('/status')
-              ? { has_lock: true, status: 'done' }
+              ? { has_lock: true, status: 'done', consumer_alive: true }
               : { items: [] }
           )
         );
@@ -1780,7 +1789,7 @@ describe('ChatBox Component', async () => {
         mockFetchGet.mockImplementation((url: string) =>
           Promise.resolve(
             url === '/chat/test-project-id/status'
-              ? { has_lock: true, status: 'done' }
+              ? { has_lock: true, status: 'done', consumer_alive: true }
               : { items: [] }
           )
         );
@@ -1920,7 +1929,7 @@ describe('ChatBox Component', async () => {
             });
           return Promise.resolve(
             url.endsWith('/status')
-              ? { has_lock: true, status: 'done' }
+              ? { has_lock: true, status: 'done', consumer_alive: true }
               : { items: [] }
           );
         });
@@ -2026,7 +2035,7 @@ describe('ChatBox Component', async () => {
       mockFetchGet.mockImplementation((url: string) =>
         Promise.resolve(
           url.endsWith('/status')
-            ? { has_lock: true, status: 'done' }
+            ? { has_lock: true, status: 'done', consumer_alive: true }
             : { items: [] }
         )
       );

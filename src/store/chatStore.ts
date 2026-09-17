@@ -3142,6 +3142,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         disposeCanonicalTerminalObserver();
         let active = true;
         let unsubscribe: () => void = () => {};
+        let unsubscribeProjection: () => void = () => {};
+        let projectionCheckScheduled = false;
         const binding = {
           taskId: observedTaskId,
           chatStore: observedChatStore,
@@ -3149,6 +3151,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             if (!active) return;
             active = false;
             unsubscribe();
+            unsubscribeProjection();
             unregisterCanonicalTerminalObserverCleanup(binding.dispose);
             if (canonicalTerminalBinding?.dispose === binding.dispose) {
               canonicalTerminalBinding = null;
@@ -3225,19 +3228,41 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           binding.dispose
         );
 
-        // Subscribe first, then read the projection. RunDomainEventHub has no
-        // replay buffer, while RunEventIngress always commits the projection
-        // before publishing. This ordering covers both sides of the race.
-        const projectedStatus = runProjectionStore.getRun(
+        const settleProjectedTerminal = () => {
+          if (!active) return;
+          const run = runProjectionStore.getRun(project_id, observedTaskId);
+          const eventType = run
+            ? CANONICAL_TERMINAL_EVENT_BY_RUN_STATUS[run.status]
+            : undefined;
+          if (!eventType) return;
+          settleTerminal({ eventType, payload: {} });
+          if (
+            !active &&
+            run?.totalAttemptElapsedMs != null &&
+            observedChatStore.getState().tasks[observedTaskId]
+          ) {
+            observedChatStore
+              .getState()
+              .setElapsed(observedTaskId, run.totalAttemptElapsedMs);
+          }
+        };
+        // Reconciliation GETs update the projection without publishing a
+        // domain event. Defer their check by one microtask so a live terminal
+        // event (Store first, Hub second) retains its payload and wins once.
+        unsubscribeProjection = runProjectionStore.subscribeProject(
           project_id,
-          observedTaskId
-        )?.status;
-        const projectedEventType = projectedStatus
-          ? CANONICAL_TERMINAL_EVENT_BY_RUN_STATUS[projectedStatus]
-          : undefined;
-        if (projectedEventType) {
-          settleTerminal({ eventType: projectedEventType, payload: {} });
-        }
+          () => {
+            if (!active || projectionCheckScheduled) return;
+            projectionCheckScheduled = true;
+            queueMicrotask(() => {
+              projectionCheckScheduled = false;
+              settleProjectedTerminal();
+            });
+          }
+        );
+        // Subscribe first, then read: neither events nor GET snapshots can
+        // strand an observer installed just after the terminal transition.
+        settleProjectedTerminal();
 
         if (active) {
           runEventIngressRegistry.ensureLocal(project_id, observedTaskId);

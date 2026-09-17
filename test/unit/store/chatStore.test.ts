@@ -132,6 +132,7 @@ vi.mock('../../../src/store/projectStore', () => ({
 
 import {
   fetchDelete,
+  fetchGet,
   fetchPost,
   fetchPut,
   proxyFetchGet,
@@ -1503,6 +1504,110 @@ describe('ChatStore - Core Functionality', () => {
           durableRunStatus: 'failed',
           isPending: false,
         });
+      });
+
+      it.each([
+        ['completed', ExecutionStatus.Completed],
+        ['failed', ExecutionStatus.Failed],
+        ['cancelled', ExecutionStatus.Cancelled],
+        ['interrupted', ExecutionStatus.Failed],
+      ] as const)(
+        'settles a reconciled %s snapshot without a terminal event',
+        async (status, executionStatus) => {
+          const runId = `reconciled-${status}`;
+          const executionId = `execution-${runId}`;
+          const { store, streamContaining } = await startObservedLiveTask({
+            initialRunId: runId,
+            executionId,
+          });
+          const signal = streamContaining('/chat').signal as AbortSignal;
+          vi.mocked(fetchGet).mockResolvedValueOnce({
+            project_id: 'project-1',
+            run_id: runId,
+            status,
+            version: 2,
+            origin: 'local',
+            updated_at: Date.now() / 1000,
+            latest_attempt: { attempt_number: 1, status },
+            total_attempt_elapsed_ms: 1200,
+          });
+
+          await streamContaining(`/runs/${runId}/stream`).onmessage?.({
+            event: 'runtime_detached',
+            data: '{}',
+          });
+
+          await vi.waitFor(() =>
+            expect(store.getState().tasks[runId]).toMatchObject({
+              status: ChatTaskStatus.FINISHED,
+              durableRunStatus: status,
+              isPending: false,
+              elapsed: 1200,
+            })
+          );
+          expect(hasActiveSSEConnection([runId])).toBe(false);
+          expect(hasSSETransportForTasks([runId])).toBe(status === 'completed');
+          expect(signal.aborted).toBe(status !== 'completed');
+          expect(runDomainEventHub.listenerCount()).toBe(0);
+          expect(proxyUpdateTriggerExecution).toHaveBeenCalledWith(
+            executionId,
+            expect.objectContaining({ status: executionStatus }),
+            { projectId: 'project-1' }
+          );
+
+          runEventIngressRegistry.ingest(
+            'project-1',
+            runId,
+            canonicalEvent(runId, `run.${status}`),
+            'live'
+          );
+          expect(
+            vi
+              .mocked(proxyUpdateTriggerExecution)
+              .mock.calls.filter(
+                ([id, update]) =>
+                  id === executionId && update.status === executionStatus
+              )
+          ).toHaveLength(1);
+        }
+      );
+
+      it('ignores the previous Run snapshot after rebinding to a follow-up', async () => {
+        const { store, streamContaining } = await startObservedLiveTask();
+        const signal = await switchLegacyStreamToFollowUp({
+          store,
+          streamContaining,
+        });
+        runProjectionStore.upsertRunSummaries('project-1', [
+          {
+            project_id: 'project-1',
+            run_id: 'live-run',
+            status: 'failed',
+            version: 3,
+            updated_at: Date.now(),
+          },
+        ]);
+        await Promise.resolve();
+        expect(hasActiveSSEConnection(['follow-up-run'])).toBe(true);
+        expect(signal.aborted).toBe(false);
+        expect(runDomainEventHub.listenerCount()).toBe(1);
+
+        runProjectionStore.upsertRunSummaries('project-1', [
+          {
+            project_id: 'project-1',
+            run_id: 'follow-up-run',
+            status: 'failed',
+            version: 3,
+            updated_at: Date.now(),
+          },
+        ]);
+        await vi.waitFor(() =>
+          expect(store.getState().tasks['follow-up-run'].status).toBe(
+            ChatTaskStatus.FINISHED
+          )
+        );
+        expect(signal.aborted).toBe(true);
+        expect(runDomainEventHub.listenerCount()).toBe(0);
       });
 
       it('delegates one canonical terminal receipt without enqueueing a competing legacy outcome', async () => {
