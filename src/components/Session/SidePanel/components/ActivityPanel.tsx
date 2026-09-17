@@ -891,7 +891,7 @@ export function SessionActivityPanel({
                 scope={scope}
                 onSelect={(item) => {
                   if (item.kind === 'url' && item.url) {
-                    openBrowserPreview(item.url);
+                    if (projectId) openBrowserPreview(item.url, projectId);
                   } else if (item.file) {
                     openFilePreview(item.file);
                   }

@@ -532,6 +532,31 @@ describe('pageTabStore session preview', () => {
     expect(slice().activeTabId).toBe(slice().tabs[1].id);
   });
 
+  it('requests a retry when the same URL reopens a failed browser tab', () => {
+    const store = usePageTabStore.getState();
+    store.openBrowserPreview('http://localhost:8080/');
+    const tab = slice().tabs[0];
+    if (tab.type !== 'browser') throw new Error('missing browser tab');
+    store.updateBrowserPreviewTab(tab.id, {
+      navigation: {
+        ...tab.navigation,
+        loadError: { code: -102, url: tab.url },
+      },
+    });
+
+    store.openBrowserPreview('http://localhost:8080/');
+
+    const retried = slice().tabs[0];
+    expect(retried.type).toBe('browser');
+    if (retried.type === 'browser') {
+      expect(retried.navigation.retryRequestId).toBe(1);
+      expect(retried.navigation.loadError).toEqual({
+        code: -102,
+        url: 'http://localhost:8080/',
+      });
+    }
+  });
+
   it('selects a neighboring tab and closes the panel after the final tab', () => {
     const store = usePageTabStore.getState();
     store.toggleSessionPreview();
@@ -623,5 +648,33 @@ describe('pageTabStore session preview', () => {
       'project-b'
     );
     expect(slice().open).toBe(true);
+  });
+});
+
+describe('explicit browser handoff ownership', () => {
+  it('opens the owning Session without switching the active Session', () => {
+    usePageTabStore.setState({
+      sessionPreviewProjectId: 'other-session',
+      sessionPreviewByProject: {},
+    });
+    usePageTabStore
+      .getState()
+      .openBrowserPreview('http://localhost:8080', 'owner-session');
+    const state = usePageTabStore.getState();
+    expect(state.sessionPreviewProjectId).toBe('other-session');
+    expect(state.sessionPreviewByProject['other-session']).toBeUndefined();
+    const owner = state.sessionPreviewByProject['owner-session'];
+    expect(owner.open).toBe(true);
+    expect(owner.tabs[0]).toMatchObject({
+      type: 'browser',
+      url: 'http://localhost:8080/',
+    });
+    expect(owner.activeTabId).toBe(owner.tabs[0].id);
+    usePageTabStore
+      .getState()
+      .openBrowserPreview('http://localhost:8080/', 'owner-session');
+    expect(
+      usePageTabStore.getState().sessionPreviewByProject['owner-session'].tabs
+    ).toHaveLength(1);
   });
 });

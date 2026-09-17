@@ -1539,5 +1539,8 @@
   "workspace-technical-details-description_few": "{{count}} внутренние ссылки Git и сведения о хранении",
   "workspace-technical-details-description_many": "{{count}} внутренних ссылок Git и сведения о хранении",
   "workspace-technical-details-description_other": "{{count}} внутренней ссылки Git и сведения о хранении",
-  "workspace-technical-tab": "Технические"
+  "workspace-technical-tab": "Технические",
+  "browser-preview-failed": "Страница недоступна",
+  "browser-preview-local-unavailable": "Возможно, локальный сервер остановлен. Повторите попытку после его запуска или откройте готовый HTML-файл в разделе «Файлы».",
+  "browser-preview-unavailable": "Проверьте адрес и подключение, затем повторите попытку."
 }

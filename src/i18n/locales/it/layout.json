@@ -1517,5 +1517,8 @@
   "workspace-technical-details-description_one": "{{count}} riferimento Git interno e dettagli sulla conservazione",
   "workspace-technical-details-description_other": "{{count}} riferimenti Git interni e dettagli sulla conservazione",
   "workspace-technical-details-description_many": "{{count}} riferimenti Git interni e dettagli sulla conservazione",
-  "workspace-technical-tab": "Tecnico"
+  "workspace-technical-tab": "Tecnico",
+  "browser-preview-failed": "Pagina non disponibile",
+  "browser-preview-local-unavailable": "Il server locale potrebbe essersi arrestato. Riprova quando è in esecuzione oppure apri il file HTML consegnato da File.",
+  "browser-preview-unavailable": "Controlla l’indirizzo e la connessione, poi riprova."
 }

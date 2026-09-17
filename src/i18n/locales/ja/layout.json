@@ -1473,5 +1473,8 @@
   "workspace-task-version-agent-count_other": "{{count}} エージェント",
   "workspace-technical-details": "技術情報",
   "workspace-technical-details-description_other": "{{count}} 件の内部 Git 参照と保持情報",
-  "workspace-technical-tab": "技術情報"
+  "workspace-technical-tab": "技術情報",
+  "browser-preview-failed": "ページを表示できません",
+  "browser-preview-local-unavailable": "ローカルサーバーが停止している可能性があります。起動後に再試行するか、ファイルから納品されたHTMLファイルを開いてください。",
+  "browser-preview-unavailable": "アドレスと接続を確認して、もう一度お試しください。"
 }

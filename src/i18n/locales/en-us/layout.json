@@ -1495,5 +1495,8 @@
   "workspace-technical-details": "Technical details",
   "workspace-technical-details-description_one": "{{count}} internal Git reference and retention details",
   "workspace-technical-details-description_other": "{{count}} internal Git references and retention details",
-  "workspace-technical-tab": "Technical"
+  "workspace-technical-tab": "Technical",
+  "browser-preview-failed": "Page unavailable",
+  "browser-preview-local-unavailable": "The local server may have stopped. Retry when it is running, or open the delivered HTML file from Files.",
+  "browser-preview-unavailable": "Check the address and connection, then try again."
 }

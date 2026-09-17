@@ -1495,5 +1495,8 @@
   "workspace-technical-details": "Technische Details",
   "workspace-technical-details-description_one": "{{count}} interne Git-Referenz und Aufbewahrungsdaten",
   "workspace-technical-details-description_other": "{{count}} interne Git-Referenzen und Aufbewahrungsdaten",
-  "workspace-technical-tab": "Technisch"
+  "workspace-technical-tab": "Technisch",
+  "browser-preview-failed": "Seite nicht verfügbar",
+  "browser-preview-local-unavailable": "Der lokale Server wurde möglicherweise beendet. Versuche es erneut, sobald er läuft, oder öffne die bereitgestellte HTML-Datei unter Dateien.",
+  "browser-preview-unavailable": "Prüfe die Adresse und die Verbindung und versuche es erneut."
 }
