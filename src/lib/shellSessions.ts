@@ -35,6 +35,9 @@ type TerminalHostApi = Pick<
 export interface ShellSessionState {
   /** The PTY was spawned (or confirmed alive) at least once. */
   created: boolean;
+  stopping?: boolean;
+  stopError?: string | null;
+  url?: string;
   exited: boolean;
   exitCode: number | null;
   error: string | null;
@@ -43,16 +46,40 @@ export interface ShellSessionState {
 interface ShellSessionEntry extends ShellSessionState {
   buffer: string[];
   bufferCodeUnits: number;
+  /** Only output since the latest submitted command participates in discovery. */
+  urlChunks: string[];
   dataListeners: Set<(chunk: string) => void>;
   stateListeners: Set<() => void>;
   createPromise: Promise<ShellSessionState> | null;
+  disposeView?: () => void;
 }
 
 /** Keep roughly this many UTF-16 code units per shell for replay on remount. */
 const MAX_BUFFER_CODE_UNITS = 1_000_000;
+// Covers CSI styling used by uvicorn/Vite and OSC hyperlinks emitted by shells.
+const ANSI_SEQUENCE =
+  /\u001b(?:\][^\u0007]*(?:\u0007|\u001b\\)|\[[0-?]*[ -/]*[@-~])/g;
+const LOCAL_SERVER_URL =
+  /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]):\d+[^\s<>]*/;
 
 const sessions = new Map<string, ShellSessionEntry>();
 let ipcBound = false;
+let revision = 0;
+const registryListeners = new Set<() => void>();
+export const subscribeShellRegistry = (listener: () => void) => {
+  registryListeners.add(listener);
+  return () => {
+    registryListeners.delete(listener);
+  };
+};
+export const getShellRegistryRevision = () => revision;
+function notifyRegistry() {
+  revision += 1;
+  registryListeners.forEach((listener) => listener());
+}
+export function retainShellView(id: string, dispose: () => void) {
+  entryFor(id).disposeView = dispose;
+}
 
 function entryFor(id: string): ShellSessionEntry {
   let entry = sessions.get(id);
@@ -64,6 +91,7 @@ function entryFor(id: string): ShellSessionEntry {
       error: null,
       buffer: [],
       bufferCodeUnits: 0,
+      urlChunks: [],
       dataListeners: new Set(),
       stateListeners: new Set(),
       createPromise: null,
@@ -87,6 +115,7 @@ function appendToBuffer(entry: ShellSessionEntry, chunk: string) {
 
 function notifyState(entry: ShellSessionEntry) {
   entry.stateListeners.forEach((listener) => listener());
+  notifyRegistry();
 }
 
 /** Attach the global IPC listeners once; they dispatch by shell id. */
@@ -97,6 +126,16 @@ function bindIpc(api: TerminalHostApi) {
     const entry = sessions.get(id);
     if (!entry) return;
     appendToBuffer(entry, data);
+    entry.urlChunks.push(data);
+    entry.urlChunks = entry.urlChunks.slice(-8);
+    const url = entry.urlChunks
+      .join('')
+      .replace(ANSI_SEQUENCE, '')
+      .match(LOCAL_SERVER_URL)?.[0];
+    if (url && url !== entry.url) {
+      entry.url = url.replace('0.0.0.0', '127.0.0.1').replace(/[),.;]+$/, '');
+      notifyState(entry);
+    }
     entry.dataListeners.forEach((listener) => listener(data));
   });
   api.onTerminalExit(({ id, exitCode }: { id: string; exitCode: number }) => {
@@ -104,6 +143,8 @@ function bindIpc(api: TerminalHostApi) {
     if (!entry) return;
     entry.exited = true;
     entry.exitCode = exitCode;
+    entry.url = undefined;
+    entry.urlChunks = [];
     notifyState(entry);
   });
 }
@@ -125,7 +166,7 @@ export async function ensureShellSession(
 ): Promise<ShellSessionState> {
   bindIpc(api);
   const entry = entryFor(options.id);
-  if (entry.created && !entry.exited) return snapshot(entry);
+  if (entry.created || entry.exited) return snapshot(entry);
   if (entry.createPromise) return entry.createPromise;
 
   const createPromise = api
@@ -174,7 +215,9 @@ export function disposeShellSession(
   api: TerminalHostApi | undefined,
   id: string
 ) {
+  sessions.get(id)?.disposeView?.();
   sessions.delete(id);
+  notifyRegistry();
   void api?.terminalDispose(id);
 }
 
@@ -188,11 +231,16 @@ export async function resetShellSession(
   id: string
 ): Promise<boolean> {
   try {
-    await api.terminalDispose(id);
+    if (!(await api.terminalDispose(id)).success) return false;
   } catch {
     return false;
   }
   const entry = entryFor(id);
+  entry.disposeView?.();
+  entry.disposeView = undefined;
+  entry.url = undefined;
+  entry.urlChunks = [];
+  entry.stopError = null;
   entry.createPromise = null;
   entry.created = false;
   entry.exited = false;
@@ -205,6 +253,14 @@ export async function resetShellSession(
 }
 
 export function writeToShell(api: TerminalHostApi, id: string, data: string) {
+  const entry = sessions.get(id);
+  if (entry && /[\r\n]/.test(data)) {
+    entry.urlChunks = [];
+    if (entry.url) {
+      entry.url = undefined;
+      notifyState(entry);
+    }
+  }
   api.terminalInput(id, data);
 }
 
@@ -228,6 +284,9 @@ function snapshot(entry: ShellSessionEntry): ShellSessionState {
     exited: entry.exited,
     exitCode: entry.exitCode,
     error: entry.error,
+    stopping: entry.stopping,
+    stopError: entry.stopError,
+    url: entry.url,
   };
 }
 
@@ -256,4 +315,24 @@ export function subscribeShellState(
   const entry = entryFor(id);
   entry.stateListeners.add(listener);
   return () => entry.stateListeners.delete(listener);
+}
+
+/** Stop preserves both the parsed screen and output; closing a tab disposes them. */
+export async function stopShellSession(api: Window['electronAPI'], id: string) {
+  const entry = sessions.get(id);
+  if (!entry || entry.exited || entry.stopping) return;
+  entry.stopping = true;
+  entry.stopError = null;
+  notifyState(entry);
+  try {
+    const result = await api.terminalStop(id);
+    if (!result.success)
+      throw new Error(result.error || 'Could not stop shell');
+    entry.exited = true;
+  } catch (error) {
+    entry.stopError = error instanceof Error ? error.message : String(error);
+  } finally {
+    entry.stopping = false;
+    notifyState(entry);
+  }
 }

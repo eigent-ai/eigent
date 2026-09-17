@@ -111,6 +111,18 @@ describe('pageTabStore session preview', () => {
     });
   });
 
+  it('uses the singular File title for an empty file tab', () => {
+    const store = usePageTabStore.getState();
+    store.toggleSessionPreview();
+    store.choosePreviewTabType(slice().tabs[0].id, 'file');
+
+    expect(slice().tabs[0]).toMatchObject({
+      type: 'file',
+      title: 'File',
+      file: null,
+    });
+  });
+
   it('gives a fresh terminal tab a project-scoped shell id', () => {
     const store = usePageTabStore.getState();
     store.toggleSessionPreview();

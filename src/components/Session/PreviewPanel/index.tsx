@@ -76,9 +76,6 @@ export function PreviewPanel({
   const closeSessionPreviewTab = usePageTabStore(
     (state) => state.closeSessionPreviewTab
   );
-  const openAgentTerminalPreview = usePageTabStore(
-    (state) => state.openAgentTerminalPreview
-  );
 
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? null,
@@ -157,13 +154,6 @@ export function PreviewPanel({
         return (
           <ChooserTab
             onChoose={(kind) => choosePreviewTabType(activeTab.id, kind)}
-            onChooseAgentStream={(source) =>
-              openAgentTerminalPreview(
-                source.id,
-                source.agentName,
-                activeTab.id
-              )
-            }
           />
         );
       case 'browser':

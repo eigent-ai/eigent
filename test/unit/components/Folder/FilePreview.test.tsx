@@ -14,6 +14,7 @@
 
 import { FilePreview } from '@/components/Folder/FilePreview';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
@@ -55,6 +56,7 @@ vi.mock('@/components/Folder/index', () => ({
   downloadOpenedFile: vi.fn(),
   FileViewerPanel: ({
     selectedFile,
+    emptyState,
     onRevealFile,
     onOpenExternalFile,
     loadFailed,
@@ -63,6 +65,7 @@ vi.mock('@/components/Folder/index', () => ({
     loadFailed?: boolean;
     onRetry?: () => void;
     selectedFile: FileInfo | null;
+    emptyState?: ReactNode;
     onRevealFile: () => void;
     onOpenExternalFile: () => void;
   }) => (
@@ -81,6 +84,7 @@ vi.mock('@/components/Folder/index', () => ({
           Open externally
         </button>
       )}
+      {!selectedFile ? emptyState : null}
     </>
   ),
 }));
@@ -94,6 +98,18 @@ describe('FilePreview', () => {
       content: 'preview content',
     }));
     invokeMock.mockResolvedValue({ success: true });
+  });
+
+  it('opens Workspace Files from the empty preview with the requested label', () => {
+    const onJumpToFiles = vi.fn();
+    render(<FilePreview file={null} onJumpToFiles={onJumpToFiles} embedded />);
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'View all files in your workspace',
+      })
+    );
+    expect(onJumpToFiles).toHaveBeenCalledWith(null);
   });
 
   it('shows feedback when a local file cannot be revealed', async () => {

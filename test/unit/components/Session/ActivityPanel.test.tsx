@@ -30,6 +30,7 @@ const mocks = vi.hoisted(() => ({
   hydration: {} as any,
   projectId: 'project-1' as string | null,
   projectFiles: [] as any[],
+  processRows: [] as any[],
   projectOutputResolver: vi.fn(),
   spaceState: {
     projectIdIndex: {
@@ -245,6 +246,7 @@ describe('SessionActivityPanel project scope', () => {
     mocks.activeProjectId = 'project-1';
     mocks.chatStore = chatStore(null);
     mocks.projectFiles = [];
+    mocks.processRows = [];
     mocks.hydration = {
       status: 'ready',
       errorCode: null,
@@ -305,6 +307,25 @@ describe('SessionActivityPanel project scope', () => {
     expect(screen.getByRole('heading', { name: 'Files' })).toBeInTheDocument();
     expect(screen.getByText('No output files yet.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Attach files/ })).toBeDisabled();
+    expect(
+      screen.queryByRole('heading', { name: 'Environments' })
+    ).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('separator')).toHaveLength(0);
+  });
+
+  it('adds one section divider when a process appears after the empty render', async () => {
+    const { rerender } = render(<SessionActivityPanel scope="latest" />);
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Files' })).toBeInTheDocument()
+    );
+    expect(screen.queryAllByRole('separator')).toHaveLength(0);
+
+    mocks.processRows = [{ id: 'process-1' }];
+    rerender(<SessionActivityPanel scope="latest" />);
+    expect(
+      screen.getByRole('heading', { name: 'Environments' })
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole('separator')).toHaveLength(1);
   });
 
   it('resolves SidePanel files against the Space that owns the Project', async () => {
@@ -672,3 +693,12 @@ describe('SessionActivityPanel project scope', () => {
     );
   });
 });
+
+// Background processes have their own integration suite and real Electron smoke test.
+vi.mock(
+  '@/components/Session/SidePanel/components/TerminalProcessRows',
+  () => ({
+    TerminalProcessList: () => null,
+    useTerminalProcessRows: () => mocks.processRows,
+  })
+);

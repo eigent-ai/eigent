@@ -4070,7 +4070,7 @@ app.on('before-quit', async (event) => {
     // No need to sync between different profile directories
 
     // Clean up resources
-    disposeAllTerminals();
+    await disposeAllTerminals();
 
     if (webViewManager) {
       webViewManager.destroy();

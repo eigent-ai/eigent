@@ -167,7 +167,9 @@ describe('TerminalTab', () => {
   });
 
   it('renders the read-only viewer for an agent stream tab', () => {
-    mockSources = [source('a', 'Developer Agent', ['echo one', 'echo two'])];
+    mockSources = [
+      source('a', 'Developer Agent', ['echo one\n', 'echo ', 'two']),
+    ];
     renderTab(agentTab('a'));
     expect(screen.getByTestId('xterm-viewer')).toHaveAttribute(
       'data-source-id',
@@ -191,7 +193,9 @@ describe('TerminalTab', () => {
       value: { writeText },
       configurable: true,
     });
-    mockSources = [source('a', 'Developer Agent', ['echo one', 'echo two'])];
+    mockSources = [
+      source('a', 'Developer Agent', ['echo one\n', 'echo ', 'two']),
+    ];
     renderTab(agentTab('a'));
 
     fireEvent.click(screen.getByRole('button', { name: 'Copy output' }));
@@ -273,3 +277,8 @@ describe('collectTerminalSources', () => {
     expect(collectTerminalSources([])).toEqual([]);
   });
 });
+
+vi.mock(
+  '@/components/Session/PreviewPanel/tabs/terminal/useTerminalProcesses',
+  () => ({ useTerminalProcesses: () => [] })
+);
