@@ -15,7 +15,7 @@
 import { useBackgroundTaskProcessor } from '@/hooks/useBackgroundTaskProcessor';
 import { ExecutionStatus } from '@/types';
 import { AgentStep, ChatTaskStatus } from '@/types/constants';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
@@ -138,6 +138,15 @@ describe('useBackgroundTaskProcessor SSE admission', () => {
     mocks.projectRuntimeStore.getAllProjects.mockReturnValue([project]);
     mocks.projectRuntimeStore.getProjectById.mockReturnValue(project);
     mocks.projectRuntimeStore.getChatStore.mockReturnValue(chatStore);
+    mocks.projectRuntimeStore.markQueuedMessageAsProcessing.mockImplementation(
+      (_projectId: string, taskId: string) => {
+        project.queuedMessages = project.queuedMessages.map((message) =>
+          message.task_id === taskId
+            ? { ...message, processing: true }
+            : message
+        );
+      }
+    );
     Object.assign(mocks.projectRuntimeStore, {
       projects: { 'project-1': project },
     });
@@ -198,6 +207,167 @@ describe('useBackgroundTaskProcessor SSE admission', () => {
     await Promise.resolve();
     expect(mocks.fetchPost).toHaveBeenCalledTimes(1);
 
+    unmount();
+  });
+
+  describe.each(['status', 'retirement'] as const)(
+    'queue changes while awaiting %s',
+    (stage) => {
+      const suspendOwnershipRequest = () => {
+        let resolveRequest!: (value: unknown) => void;
+        const request = new Promise((resolve) => {
+          resolveRequest = resolve;
+        });
+        const fetch = stage === 'status' ? mocks.fetchGet : mocks.fetchPost;
+        fetch.mockReturnValueOnce(request);
+        return {
+          fetch,
+          finish: () => resolveRequest({ consumer_alive: false }),
+        };
+      };
+
+      it('does not start an execution removed by queue cancellation', async () => {
+        const { fetch, finish } = suspendOwnershipRequest();
+        const project = mocks.projectRuntimeStore.getProjectById('project-1');
+        const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+        await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+
+        project.queuedMessages = [];
+        await act(async () => finish());
+
+        expect(mocks.startTask).not.toHaveBeenCalled();
+        expect(mocks.proxyUpdateTriggerExecution).not.toHaveBeenCalled();
+        expect(
+          mocks.projectRuntimeStore.markQueuedMessageAsProcessing
+        ).not.toHaveBeenCalled();
+        expect(mocks.closeIdleSSEConnectionsForTasks).not.toHaveBeenCalled();
+        if (stage === 'status') expect(mocks.fetchPost).not.toHaveBeenCalled();
+        unmount();
+      });
+
+      it.each(['running', 'pending', 'logical SSE'])(
+        'defers to a new foreground Run with %s state',
+        async (state) => {
+          const { fetch, finish } = suspendOwnershipRequest();
+          const project = mocks.projectRuntimeStore.getProjectById('project-1');
+          const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+          await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+
+          // A foreground start creates a new chat store before its async
+          // preparation registers a backend consumer or an SSE controller.
+          project.chatStores = {
+            ...project.chatStores,
+            foreground: {
+              getState: () => ({
+                tasks: {
+                  'new-foreground-run': {
+                    status:
+                      state === 'running'
+                        ? ChatTaskStatus.RUNNING
+                        : state === 'pending'
+                          ? ChatTaskStatus.PENDING
+                          : ChatTaskStatus.FINISHED,
+                    messages: [{ role: 'user', content: 'Foreground task' }],
+                    hasWaitComfirm: false,
+                    isTakeControl: false,
+                  },
+                },
+              }),
+            },
+          };
+          if (state === 'logical SSE') {
+            mocks.hasActiveSSEConnection.mockImplementation((taskIds) =>
+              taskIds.includes('new-foreground-run')
+            );
+          }
+          await act(async () => finish());
+
+          expect(mocks.startTask).not.toHaveBeenCalled();
+          expect(mocks.proxyUpdateTriggerExecution).not.toHaveBeenCalled();
+          expect(
+            mocks.projectRuntimeStore.markQueuedMessageAsProcessing
+          ).not.toHaveBeenCalled();
+          expect(mocks.closeIdleSSEConnectionsForTasks).not.toHaveBeenCalled();
+          if (stage === 'status')
+            expect(mocks.fetchPost).not.toHaveBeenCalled();
+          expect(project.queuedMessages).toHaveLength(1);
+          unmount();
+        }
+      );
+
+      it.each([
+        { task_id: 'replacement-task' },
+        { executionId: 'replacement-execution' },
+        { timestamp: 2 },
+      ])(
+        'does not claim a replacement queue identity %j',
+        async (replacement) => {
+          const { fetch, finish } = suspendOwnershipRequest();
+          const project = mocks.projectRuntimeStore.getProjectById('project-1');
+          const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+          await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+
+          project.queuedMessages = [
+            { ...project.queuedMessages[0], ...replacement },
+          ];
+          await act(async () => finish());
+
+          expect(mocks.startTask).not.toHaveBeenCalled();
+          expect(mocks.proxyUpdateTriggerExecution).not.toHaveBeenCalled();
+          expect(
+            mocks.projectRuntimeStore.markQueuedMessageAsProcessing
+          ).not.toHaveBeenCalled();
+          unmount();
+        }
+      );
+
+      it('does not claim an execution already taken by another processor', async () => {
+        const { fetch, finish } = suspendOwnershipRequest();
+        const project = mocks.projectRuntimeStore.getProjectById('project-1');
+        const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+        await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+
+        project.queuedMessages[0].processing = true;
+        await act(async () => finish());
+
+        expect(mocks.startTask).not.toHaveBeenCalled();
+        expect(
+          mocks.projectRuntimeStore.markQueuedMessageAsProcessing
+        ).not.toHaveBeenCalled();
+        unmount();
+      });
+
+      it('does not start an execution after its project was removed', async () => {
+        const { fetch, finish } = suspendOwnershipRequest();
+        const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+        await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+
+        mocks.projectRuntimeStore.getProjectById.mockReturnValue(undefined);
+        await act(async () => finish());
+
+        expect(mocks.startTask).not.toHaveBeenCalled();
+        unmount();
+      });
+    }
+  );
+
+  it('verifies the claim after a synchronous queue subscriber removes it', async () => {
+    const project = mocks.projectRuntimeStore.getProjectById('project-1');
+    mocks.projectRuntimeStore.markQueuedMessageAsProcessing.mockImplementation(
+      () => {
+        project.queuedMessages = [];
+      }
+    );
+    const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+
+    await waitFor(() =>
+      expect(
+        mocks.projectRuntimeStore.markQueuedMessageAsProcessing
+      ).toHaveBeenCalledTimes(1)
+    );
+
+    expect(mocks.startTask).not.toHaveBeenCalled();
+    expect(mocks.proxyUpdateTriggerExecution).not.toHaveBeenCalled();
     unmount();
   });
 
