@@ -17,6 +17,8 @@ import log from 'electron-log';
 import type { IPty } from 'node-pty';
 import fs from 'node:fs';
 import os from 'node:os';
+import kill from 'tree-kill';
+import { TerminalProcessTree } from './terminalProcessTree';
 
 /**
  * Interactive shell sessions for the session page's terminal tabs. Each
@@ -42,9 +44,23 @@ interface TerminalSession {
   disposed: boolean;
   /** Shared by concurrent creates so only one PTY can be spawned per id. */
   creation: Promise<TerminalCreateResult>;
+  stop?: Promise<{ success: boolean; error?: string }>;
+  disposal?: Promise<{ success: boolean; error?: string }>;
+  stopRequested?: boolean;
+  processTree?: TerminalProcessTree;
+  exitCode?: number;
 }
 
 const sessions = new Map<string, TerminalSession>();
+let shuttingDown = false;
+
+function publishTerminalExit(id: string, session: TerminalSession) {
+  if (sessions.get(id) !== session || session.exitCode === undefined) return;
+  sessions.delete(id);
+  if (!session.disposed && !session.sender.isDestroyed()) {
+    session.sender.send('terminal-exit', { id, exitCode: session.exitCode });
+  }
+}
 
 /**
  * node-pty is a native module; load it lazily so a missing/broken binary
@@ -123,22 +139,30 @@ async function createTerminalSession(
       env: terminalEnvironment(),
     });
     session.pty = terminal;
+    if (process.platform !== 'win32') {
+      try {
+        session.processTree = new TerminalProcessTree(terminal.pid);
+      } catch {
+        // Shell use remains available, but Stop must fail closed if ownership
+        // could not be established at spawn (never guess from a later PID).
+        log.warn('[TERMINAL] Could not capture shell process identity');
+      }
+    }
     terminal.onData((data) => {
-      if (sessions.get(id) !== session) return;
+      if (session.disposed || sessions.get(id) !== session) return;
       const sender = session.sender;
       if (!sender.isDestroyed()) {
         sender.send('terminal-data', { id, data });
       }
     });
     terminal.onExit(({ exitCode }) => {
+      session.exitCode = exitCode;
       // A disposed/restarted PTY can report its exit after a replacement with
       // the same id is already live. Do not mark that replacement as exited.
       if (sessions.get(id) !== session) return;
-      sessions.delete(id);
-      const sender = session.sender;
-      if (!sender.isDestroyed()) {
-        sender.send('terminal-exit', { id, exitCode });
-      }
+      // Stop owns completion until the captured descendants have also exited.
+      // Keep failed cleanup addressable even if the PTY parent is gone.
+      if (!session.stopRequested) publishTerminalExit(id, session);
     });
     log.info(`[TERMINAL] Created session ${id} (${file}) in ${workingDir}`);
     return { success: true };
@@ -152,15 +176,104 @@ async function createTerminalSession(
   }
 }
 
+async function stopTerminalSession(id: string, session: TerminalSession) {
+  if (session.stop) return session.stop;
+  session.stopRequested = true;
+  const stopping = (async () => {
+    await session.creation;
+    if (sessions.get(id) !== session || !session.pty) return { success: true };
+    const terminal = session.pty;
+    const deadline = Date.now() + 5000;
+    // Disposal does not need the interactive Stop grace period. An ongoing
+    // Stop also observes disposed on its next poll and escalates immediately.
+    let forced = session.disposed;
+    try {
+      if (process.platform === 'win32') {
+        // tree-kill already uses taskkill /T /F on Windows. Wait for that
+        // tree operation, not only the PTY exit, and never retry a dead PID.
+        if (session.exitCode !== undefined) throw new Error('Parent exited');
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(
+            () => reject(new Error('Stop timed out')),
+            5000
+          );
+          kill(terminal.pid, 'SIGTERM', (error) => {
+            clearTimeout(timer);
+            if (error) reject(error);
+            else resolve();
+          });
+        });
+      } else {
+        if (!session.processTree) throw new Error('Missing process identity');
+        await session.processTree.signal(forced ? 'SIGKILL' : 'SIGTERM');
+      }
+      const forceAt = Date.now() + 1500;
+      while (Date.now() < deadline) {
+        const running = session.processTree
+          ? await session.processTree.isRunning()
+          : session.exitCode === undefined;
+        if (!running && session.exitCode !== undefined) {
+          publishTerminalExit(id, session);
+          return { success: true };
+        }
+        if (!forced && (session.disposed || Date.now() >= forceAt)) {
+          forced = true;
+          await session.processTree?.signal('SIGKILL');
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      return {
+        success: false,
+        error: 'Terminal did not exit. Try stopping it again.',
+      };
+    } catch {
+      return { success: false, error: 'Could not stop terminal. Try again.' };
+    }
+  })();
+  session.stop = stopping;
+  const result = await stopping;
+  if (!result.success && session.stop === stopping) session.stop = undefined;
+  return result;
+}
+
+async function disposeTerminalSession(id: string, session: TerminalSession) {
+  if (session.disposal) return session.disposal;
+  session.disposed = true;
+  const pendingStop = session.stop;
+  const disposal = (async () => {
+    let result = await stopTerminalSession(id, session);
+    // A Stop already in flight may fail while disposal is joining it. Retry
+    // once through the same captured identities; never fall back to pty.kill.
+    if (!result.success && pendingStop)
+      result = await stopTerminalSession(id, session);
+    if (result.success) {
+      if (sessions.get(id) === session) sessions.delete(id);
+    } else {
+      // Retain ownership for another dispose or app-quit cleanup attempt.
+      log.warn(`[TERMINAL] Cleanup failed for ${id}: ${result.error}`);
+    }
+    return result;
+  })();
+  session.disposal = disposal;
+  const result = await disposal;
+  if (!result.success && session.disposal === disposal)
+    session.disposal = undefined;
+  return result;
+}
+
 export function registerTerminalIpcHandlers() {
   ipcMain.handle(
     'terminal-create',
     async (event, options: TerminalCreateOptions) => {
       const { id, cwd, cols, rows } = options ?? {};
       if (!id) return { success: false, error: 'Missing terminal id' };
+      if (shuttingDown)
+        return { success: false, error: 'Terminal creation was cancelled' };
 
       const existing = sessions.get(id);
       if (existing) {
+        if (existing.disposed)
+          return { success: false, error: 'Terminal cleanup is incomplete' };
         // A restored renderer becomes the owner of all subsequent output.
         existing.sender = event.sender;
         const result = await existing.creation;
@@ -192,14 +305,16 @@ export function registerTerminalIpcHandlers() {
   ipcMain.on(
     'terminal-input',
     (_event, payload: { id: string; data: string }) => {
-      sessions.get(payload?.id)?.pty?.write(payload.data);
+      const session = sessions.get(payload?.id);
+      if (!session?.disposed) session?.pty?.write(payload.data);
     }
   );
 
   ipcMain.on(
     'terminal-resize',
     (_event, payload: { id: string; cols: number; rows: number }) => {
-      const terminal = sessions.get(payload?.id)?.pty;
+      const session = sessions.get(payload?.id);
+      const terminal = session?.disposed ? null : session?.pty;
       if (!terminal) return;
       const cols = Math.max(2, Math.floor(payload.cols || 0));
       const rows = Math.max(1, Math.floor(payload.rows || 0));
@@ -211,29 +326,26 @@ export function registerTerminalIpcHandlers() {
     }
   );
 
+  ipcMain.handle('terminal-stop', async (event, id: string) => {
+    const session = sessions.get(id);
+    if (!session) return { success: true };
+    if (session.sender !== event.sender)
+      return { success: false, error: 'Terminal owner mismatch' };
+    return stopTerminalSession(id, session);
+  });
+
   ipcMain.handle('terminal-dispose', (_event, id: string) => {
     const session = sessions.get(id);
     if (!session) return { success: true };
-    sessions.delete(id);
-    session.disposed = true;
-    try {
-      session.pty?.kill();
-    } catch (error) {
-      log.warn(`[TERMINAL] Kill failed for ${id}:`, error);
-    }
-    return { success: true };
+    return disposeTerminalSession(id, session);
   });
 }
 
 /** Kill every live shell (app quit). */
-export function disposeAllTerminals() {
-  for (const [id, session] of sessions) {
-    session.disposed = true;
-    try {
-      session.pty?.kill();
-    } catch (error) {
-      log.warn(`[TERMINAL] Kill failed for ${id} during shutdown:`, error);
-    }
-  }
-  sessions.clear();
+export async function disposeAllTerminals() {
+  shuttingDown = true;
+  const results = await Promise.all(
+    [...sessions].map(([id, session]) => disposeTerminalSession(id, session))
+  );
+  return { success: results.every((result) => result.success) };
 }

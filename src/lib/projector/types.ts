@@ -173,6 +173,8 @@ export type ProjectedRun = {
     status: string;
   } | null;
   totalAttemptElapsedMs?: number | null;
+  /** Renderer receipt time for a canonical elapsed checkpoint; never persisted. */
+  totalAttemptElapsedAt?: string | null;
 };
 
 export type ProjectedArtifact = {
@@ -195,6 +197,15 @@ export type ProjectedArtifact = {
   };
 };
 
+export type ProjectedArtifactManifest = {
+  runSequence: number;
+  createdAt: string;
+  scanStatus: string;
+  truncated: boolean;
+  /** Recovery output remains authoritative until another Attempt starts. */
+  frozenAfterInterruption?: boolean;
+};
+
 export type ProjectViewState = {
   projectId: string;
   mode: ProjectorMode;
@@ -207,6 +218,7 @@ export type ProjectViewState = {
   resyncTargetCursor: number | null;
   runs: Record<string, ProjectedRun>;
   artifactsByRun: Record<string, ProjectedArtifact[]>;
+  artifactManifestsByRun?: Record<string, ProjectedArtifactManifest>;
   legacySteps: ProjectedLegacyStep[];
   unknownEvents: CanonicalProjectEvent[];
 };
@@ -223,6 +235,10 @@ export type ProjectSnapshotInput = {
     status: string;
     expected_next_run_sequence: number;
     updated_at: string;
+    /** Canonical execution time; excludes gaps between attempts. */
+    total_attempt_elapsed_ms?: number | null;
+    /** Local measurement anchor; not a Run API/SQLite field. */
+    totalAttemptElapsedAt?: string | null;
     /** RunJournal aggregate version; aliases the latest event run_version. */
     run_version?: number;
     /** Accepted for direct snapshots shaped like the existing GET /runs API. */

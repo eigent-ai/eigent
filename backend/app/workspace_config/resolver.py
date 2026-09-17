@@ -43,6 +43,7 @@ class EnvironmentConfigResolver:
         thinking_effort_override: str | ThinkingEffort | None = None,
         permission_profile_revision_override: str | None = None,
         allow_dynamic_effort_remap: bool = False,
+        allow_provider_default: bool = False,
         runtime_capability_manifest: dict[str, Any] | None = None,
     ) -> EffectiveEnvironmentSpec:
         try:
@@ -57,7 +58,13 @@ class EnvironmentConfigResolver:
             else profile.thinking_effort
         )
         effort = provider_capability.resolve(
-            requested_effort,
+            (
+                None
+                if allow_provider_default
+                and not provider_capability.supported_efforts
+                and requested_effort == provider_capability.default_effort
+                else requested_effort
+            ),
             allow_dynamic_remap=allow_dynamic_effort_remap,
         )
         permission_payload = manifest.spec.permissions.model_dump(

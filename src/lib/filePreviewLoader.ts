@@ -14,6 +14,7 @@
 
 import {
   decideFilePreview,
+  decodePreviewText,
   FILE_PREVIEW_LIMITS,
   normalizePreviewFileType,
   type CsvFilePreview,
@@ -35,6 +36,7 @@ interface PrefixReadResult {
   bytes: Uint8Array;
   bytesRead: number;
   totalBytes: number | null;
+  isPartialResponse: boolean;
   contentType?: string;
   supportsRanges?: boolean;
 }
@@ -47,6 +49,7 @@ const WEB_UNSUPPORTED_OFFICE_TYPES = new Set([
   'xls',
   'xlsx',
 ]);
+const REMOTE_OPENXML_TYPES = new Set(['docx', 'pptx', 'xlsx']);
 
 function finiteSize(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
@@ -54,7 +57,7 @@ function finiteSize(value: unknown): number | null {
     : null;
 }
 
-function isRemotePreviewSource(file: FileInfo): boolean {
+export function isRemotePreviewSource(file: FileInfo): boolean {
   return file.isRemote === true || /^https?:\/\//i.test(file.path);
 }
 
@@ -72,6 +75,8 @@ function remoteTotalBytes(response: Response): number | null {
   const contentRange = response.headers.get('content-range');
   const rangeTotal = contentRange?.match(/\/(\d+)$/)?.[1];
   if (rangeTotal) return finiteSize(Number(rangeTotal));
+  // For 206, Content-Length measures the fragment, not the entire file.
+  if (response.status === 206) return null;
   return headerSize(response.headers.get('content-length'));
 }
 
@@ -150,6 +155,7 @@ async function readRemotePrefix(
       bytes: new Uint8Array(),
       bytesRead: 0,
       totalBytes: remoteTotalBytes(response),
+      isPartialResponse: response.status === 206,
       contentType: response.headers.get('content-type') || undefined,
       supportsRanges:
         response.status === 206 ||
@@ -185,6 +191,7 @@ async function readRemotePrefix(
     bytes,
     bytesRead,
     totalBytes: remoteTotalBytes(response),
+    isPartialResponse: response.status === 206,
     contentType: response.headers.get('content-type') || undefined,
     supportsRanges:
       response.status === 206 ||
@@ -365,27 +372,86 @@ export async function loadFilePreview(
     let content = '';
     let bytesRead = 0;
     let totalBytes = metadata.size;
+    let binary = false;
     if (!isRemote && options.ipcRenderer) {
       const result = (await options.ipcRenderer.invoke(
         'preview-text-file',
         file.path,
         limit
-      )) as { content: string; bytesRead: number; totalBytes: number };
+      )) as {
+        content: string;
+        bytesRead: number;
+        totalBytes: number;
+        binary?: boolean;
+      };
+      binary = result.binary === true;
       content = result.content;
       bytesRead = result.bytesRead;
       totalBytes = result.totalBytes;
     } else {
       const prefix = await readRemotePrefix(file.path, limit, options.signal);
-      content = new TextDecoder().decode(prefix.bytes);
       bytesRead = prefix.bytesRead;
       totalBytes = metadata.size ?? prefix.totalBytes;
+      const decoded = decodePreviewText(
+        prefix.bytes,
+        totalBytes === null || bytesRead < totalBytes
+      );
+      binary = decoded === null;
+      content = decoded ?? '';
     }
     throwIfAborted(options.signal);
+    if (binary) {
+      return {
+        ...baseFile,
+        content: undefined,
+        preview: {
+          kind: 'blocked',
+          reason: 'unsupported',
+          size: totalBytes,
+          limit: null,
+        },
+      };
+    }
     return {
       ...baseFile,
       content,
       preview: { kind: 'truncated-text', bytesRead, totalBytes },
     };
+  }
+
+  const normalizedType = normalizePreviewFileType(file.type);
+  if (
+    isRemote &&
+    options.ipcRenderer &&
+    REMOTE_OPENXML_TYPES.has(normalizedType)
+  ) {
+    const limit = decision.limit || FILE_PREVIEW_LIMITS.officeBytes;
+    const result = await readRemotePrefix(file.path, limit + 1, options.signal);
+    const totalBytes = result.totalBytes ?? metadata.size;
+    if (
+      result.bytesRead > limit ||
+      totalBytes === null ||
+      totalBytes > limit ||
+      result.bytesRead < totalBytes
+    ) {
+      return {
+        ...baseFile,
+        content: undefined,
+        preview: {
+          kind: 'blocked',
+          reason: totalBytes === null ? 'metadata-unavailable' : 'too-large',
+          size: totalBytes,
+          limit,
+        },
+      };
+    }
+    const content = (await options.ipcRenderer.invoke(
+      'preview-office-buffer',
+      normalizedType,
+      result.bytes
+    )) as string;
+    throwIfAborted(options.signal);
+    return { ...baseFile, content };
   }
 
   if (!isRemote && options.ipcRenderer) {
@@ -399,7 +465,7 @@ export async function loadFilePreview(
     return { ...baseFile, content };
   }
 
-  if (WEB_UNSUPPORTED_OFFICE_TYPES.has(file.type.toLowerCase())) {
+  if (WEB_UNSUPPORTED_OFFICE_TYPES.has(normalizedType)) {
     return {
       ...baseFile,
       preview: {
@@ -413,22 +479,26 @@ export async function loadFilePreview(
 
   const limit = decision.limit || FILE_PREVIEW_LIMITS.defaultBytes;
   const result = await readRemotePrefix(file.path, limit + 1, options.signal);
-  const contentBytes =
-    result.bytesRead > limit ? result.bytes.slice(0, limit) : result.bytes;
+  // The current response may describe a newer file than the listing metadata.
+  const totalBytes = result.totalBytes ?? metadata.size;
+  const truncated =
+    result.bytesRead > limit ||
+    (result.isPartialResponse && result.totalBytes === null) ||
+    (totalBytes !== null && result.bytesRead < totalBytes);
+  const contentBytes = truncated
+    ? result.bytes.slice(0, FILE_PREVIEW_LIMITS.textBytes)
+    : result.bytes;
   const content = new TextDecoder().decode(contentBytes);
-  const totalBytes = metadata.size ?? result.totalBytes;
   throwIfAborted(options.signal);
   return {
     ...baseFile,
     content,
-    preview:
-      result.bytesRead > limit ||
-      (totalBytes !== null && contentBytes.byteLength < totalBytes)
-        ? {
-            kind: 'truncated-text',
-            bytesRead: contentBytes.byteLength,
-            totalBytes,
-          }
-        : undefined,
+    preview: truncated
+      ? {
+          kind: 'truncated-text',
+          bytesRead: contentBytes.byteLength,
+          totalBytes,
+        }
+      : undefined,
   };
 }

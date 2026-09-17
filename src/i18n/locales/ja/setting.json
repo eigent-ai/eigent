@@ -453,5 +453,10 @@
   "theme-description": "アプリのカラーテーマを選択します。",
   "thinking-effort": "思考の深さ",
   "version": "バージョン",
-  "version-description": "現在のバージョンと利用可能な更新です。"
+  "version-description": "現在のバージョンと利用可能な更新です。",
+  "models-api-key-invalid": "APIキーが無効です。APIキーを確認して、もう一度「更新」をクリックしてください。",
+  "models-access-denied": "アクセスが拒否されました。APIキーの権限とアカウントのアクセス権を確認して、もう一度「更新」をクリックしてください。",
+  "models-setup-hint": "APIキーを入力し、「更新」をクリックしてから、ドロップダウンリストでモデルを選択してください。",
+  "models-add-api-key-tooltip": "APIキーを追加してモデルタイプを読み込む",
+  "models-connection-failed": "モデルを読み込めませんでした。接続とAPIホストを確認して、もう一度「更新」をクリックしてください。"
 }

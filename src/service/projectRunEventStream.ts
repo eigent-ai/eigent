@@ -21,6 +21,11 @@ import {
   type ProjectEventStore,
   type ProjectEventStoreSnapshot,
 } from '@/store/projectEventStore';
+import {
+  RUN_RECONCILIATION_MARKERS,
+  RunStateReconciler,
+  TERMINAL_RUN_EVENTS,
+} from './runStateReconciliation';
 
 const DEFAULT_MAX_LIVE_RUN_STREAMS = 4;
 const DEFAULT_RECONNECT_DELAY_MS = 1_000;
@@ -47,15 +52,6 @@ const LIVE_RUN_STATUS_PRIORITY: Partial<
   pending: 3,
 };
 
-const TERMINAL_RUN_EVENT_TYPES = new Set([
-  'run.completed',
-  'run.failed',
-  'run.deadline_reached',
-  'run.cancelled',
-  'run.interrupted',
-  'runtime.interrupted',
-]);
-
 type EventStreamTransport = (options: SSETransportOptions) => Promise<void>;
 
 type LiveRunStream = {
@@ -63,6 +59,8 @@ type LiveRunStream = {
   cursor: number;
   runId: string;
   stopRequested: boolean;
+  finalizing: boolean;
+  reconciler: RunStateReconciler;
 };
 
 export type ProjectRunEventStreamOwnerOptions = {
@@ -241,7 +239,11 @@ export class ProjectRunEventStreamOwner {
     const eligibleIds = new Set(eligibleRuns.map((run) => run.runId));
 
     for (const [runId, stream] of this.streams) {
-      if (!eligibleIds.has(runId)) this.stopStream(runId, stream);
+      if (
+        (!eligibleIds.has(runId) && !stream.finalizing) ||
+        !stream.reconciler.isCurrent()
+      )
+        this.stopStream(runId, stream);
     }
 
     for (const run of eligibleRuns) {
@@ -250,6 +252,7 @@ export class ProjectRunEventStreamOwner {
         existing.cursor = Math.max(existing.cursor, run.lastSequence);
         continue;
       }
+      if (this.streams.size >= this.maxStreams) break;
       this.startStream(run.runId, run.lastSequence);
     }
   }
@@ -266,15 +269,26 @@ export class ProjectRunEventStreamOwner {
 
   private startStream(runId: string, cursor: number): void {
     if (this.disposed || this.streams.has(runId)) return;
+    const reconciler: RunStateReconciler = new RunStateReconciler(
+      this.projectId,
+      runId,
+      this.store,
+      () => !this.disposed && this.streams.get(runId)?.reconciler === reconciler
+    );
     const stream: LiveRunStream = {
       controller: new AbortController(),
       cursor: Math.max(0, cursor),
       runId,
       stopRequested: false,
+      finalizing: false,
+      reconciler,
     };
     this.streams.set(runId, stream);
     void this.consumeStream(stream).finally(() => {
+      reconciler.dispose();
       if (this.streams.get(runId) === stream) this.streams.delete(runId);
+      if (stream.finalizing && !this.disposed)
+        this.updateSnapshot(this.store.getSnapshot());
     });
   }
 
@@ -286,6 +300,7 @@ export class ProjectRunEventStreamOwner {
       !stream.stopRequested &&
       this.streams.get(stream.runId) === stream
     ) {
+      if (!stream.reconciler.isCurrent()) break;
       const url = `/runs/${encodeURIComponent(stream.runId)}/stream?after_sequence=${stream.cursor}`;
       const cursorBeforeAttempt = stream.cursor;
       try {
@@ -302,6 +317,7 @@ export class ProjectRunEventStreamOwner {
           },
           onmessage: (message) => this.handleMessage(stream, message),
           onerror: (error) => {
+            void stream.reconciler.request();
             throw error instanceof Error
               ? error
               : new Error('Canonical Run stream failed');
@@ -320,6 +336,8 @@ export class ProjectRunEventStreamOwner {
           });
         }
       }
+
+      if (!stream.finalizing) await stream.reconciler.request();
 
       if (
         this.disposed ||
@@ -347,6 +365,11 @@ export class ProjectRunEventStreamOwner {
     stream: LiveRunStream,
     message: { event: string; data: string }
   ): void {
+    if (!stream.reconciler.isCurrent() || stream.stopRequested) return;
+    if (RUN_RECONCILIATION_MARKERS.has(message.event)) {
+      void stream.reconciler.request();
+      return;
+    }
     if (message.event !== 'run_event') return;
 
     try {
@@ -384,12 +407,16 @@ export class ProjectRunEventStreamOwner {
       }
 
       stream.cursor = event.runSequence;
-      if (
-        TERMINAL_RUN_EVENT_TYPES.has(event.eventType) ||
-        event.legacyStep === 'end'
-      ) {
-        stream.stopRequested = true;
-        stream.controller.abort();
+      if (TERMINAL_RUN_EVENTS.has(event.eventType)) {
+        // React will retire this Run from the live selection immediately.
+        // Keep its final GET alive until elapsed/attempt facts arrive, bounded
+        // by the reconciler deadline and the enclosing Session lifetime.
+        stream.finalizing = true;
+        this.store.flushAll();
+        void stream.reconciler.request().finally(() => {
+          stream.stopRequested = true;
+          stream.controller.abort();
+        });
       }
     } catch (error) {
       if (import.meta.env.DEV) {
@@ -405,6 +432,7 @@ export class ProjectRunEventStreamOwner {
   private stopStream(runId: string, stream: LiveRunStream): void {
     if (this.streams.get(runId) !== stream) return;
     this.streams.delete(runId);
+    stream.reconciler.dispose();
     stream.stopRequested = true;
     stream.controller.abort();
   }

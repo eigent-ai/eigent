@@ -165,6 +165,39 @@ class WorkspaceGitLifecycle:
                     run.promoted_commit,
                     task_ref,
                 )
+            change_sets = [
+                item
+                for item in self.journal.list_git_change_sets()
+                if item.run_id == run_id
+            ]
+            change_set_ids = {item.change_set_id for item in change_sets}
+            if any(
+                item.change_set_id in change_set_ids
+                for item in self.journal.list_git_mutation_intents(
+                    statuses=("prepared", "needs_attention")
+                )
+            ):
+                return GitRunFinalization(
+                    run_id, "deferred_mutation", None, None
+                )
+            for change_set in change_sets:
+                if (
+                    change_set.state == "needs_attention"
+                    or self.journal.list_git_change_set_items(
+                        change_set.change_set_id,
+                        states=("pending", "preimage_checkpointed"),
+                    )
+                ):
+                    return GitRunFinalization(
+                        run_id, "deferred_mutation", None, None
+                    )
+            for change_set in change_sets:
+                if change_set.state == "open":
+                    self.journal.update_git_change_set_state(
+                        change_set_id=change_set.change_set_id,
+                        expected_state="open",
+                        state="checkpointed",
+                    )
             terminal_commit = self.git.current_head(root)
             if terminal_commit is None:
                 return GitRunFinalization(

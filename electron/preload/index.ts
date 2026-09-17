@@ -326,6 +326,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   terminalResize: (id: string, cols: number, rows: number) =>
     ipcRenderer.send('terminal-resize', { id, cols, rows }),
   terminalDispose: (id: string) => ipcRenderer.invoke('terminal-dispose', id),
+  terminalStop: (id: string) => ipcRenderer.invoke('terminal-stop', id),
   onTerminalData: (
     callback: (payload: { id: string; data: string }) => void
   ) => {

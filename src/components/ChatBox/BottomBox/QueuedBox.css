@@ -1,0 +1,124 @@
+/* Connected queue/composer pattern. Viewport measurement follows the existing
+   chat-scroll-anchor exception; controls retain their shared primitive recipes. */
+.queued-task-tray {
+  padding-bottom: var(--ds-space-panel-inset);
+  margin-bottom: calc(-1 * var(--ds-space-panel-inset));
+}
+.queued-task-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: inherit;
+  max-height: calc(var(--ds-row-default-min-height) * 9);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding-block: var(--ds-space-stack-related);
+}
+.queued-task-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: var(--ds-row-default-min-height);
+}
+/* Entrance owns the inner layer; the outer row's transform belongs to drag. */
+.queued-task-row-content {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-control-gap);
+  width: 100%;
+  min-width: 0;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 180ms cubic-bezier(0.32, 0.72, 0, 1),
+    transform 180ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+@starting-style {
+  .queued-task-row-content {
+    opacity: 0;
+    transform: translateY(var(--ds-space-control-gap));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .queued-task-row-content {
+    transform: none;
+    transition: opacity 120ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  @starting-style {
+    .queued-task-row-content {
+      transform: none;
+    }
+  }
+}
+.queued-task-preview {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.queued-task-progress {
+  max-width: 35%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.queued-task-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+.queued-task-status {
+  padding: var(--ds-space-stack-related) var(--ds-space-control-inline);
+  border-bottom-width: var(--ds-border-thin);
+  border-bottom-style: solid;
+}
+@media (pointer: coarse) {
+  .queued-task-row {
+    height: calc(
+      var(--ds-touch-target-minimum) + var(--ds-space-stack-related)
+    );
+    /* Keep the expanded touch targets inside the scrolling tray. */
+    padding-inline: var(--ds-row-default-padding-inline);
+  }
+  .queued-task-actions {
+    gap: calc(var(--ds-touch-target-minimum) - var(--ds-button-xs-height));
+  }
+  .queued-task-drag-handle,
+  .queued-task-actions button {
+    position: relative;
+  }
+  /* Non-overlapping minimum touch targets retain the compact visual control. */
+  .queued-task-drag-handle::after,
+  .queued-task-actions button::after {
+    content: '';
+    position: absolute;
+    inset: calc(
+      (var(--ds-button-xs-height) - var(--ds-touch-target-minimum)) / 2
+    );
+  }
+}
+
+/* The grip captures pointer gestures; the rest of the row stays selectable. */
+.queued-task-drag-handle {
+  touch-action: none;
+  cursor: grab;
+}
+.queued-task-drag-handle:disabled {
+  cursor: default;
+}
+.queued-task-row[data-lifted] {
+  z-index: 1;
+  background: inherit;
+  border-radius: var(--ds-radius-field);
+}
+.queued-task-row[data-dragging] {
+  background: var(--ds-neutral-subtle-default);
+}
+.queued-task-row[data-dragging] .queued-task-drag-handle {
+  cursor: grabbing;
+}
+/* InputBox's border + inset, then RichChatInput's placeholder text inset. */
+.queued-task-composer-inset {
+  margin-inline: calc(var(--ds-border-thin) + var(--ds-space-panel-inset));
+}

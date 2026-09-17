@@ -44,6 +44,9 @@ export interface XtermViewerProps {
    * are tracked by count — a shrink (or a new sourceId) resets the buffer.
    */
   lines: string[];
+  text?: string;
+  /** Python output-window position, measured in Unicode code points. */
+  offset?: number;
   /** Invoked with the URL when a link in the output is clicked. */
   onOpenLink?: (url: string) => void;
 }
@@ -53,7 +56,13 @@ export interface XtermViewerProps {
  * container-resize refitting, scrollback, selection copy (Cmd/Ctrl+C), and
  * incremental appends without re-writing the whole buffer.
  */
-export function XtermViewer({ sourceId, lines, onOpenLink }: XtermViewerProps) {
+export function XtermViewer({
+  sourceId,
+  lines,
+  text,
+  offset = 0,
+  onOpenLink,
+}: XtermViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -61,6 +70,7 @@ export function XtermViewer({ sourceId, lines, onOpenLink }: XtermViewerProps) {
     sourceId: null,
     count: 0,
   });
+  const snapshotRef = useRef({ sourceId: '', end: 0 });
   const onOpenLinkRef = useRef(onOpenLink);
   useEffect(() => {
     onOpenLinkRef.current = onOpenLink;
@@ -138,6 +148,27 @@ export function XtermViewer({ sourceId, lines, onOpenLink }: XtermViewerProps) {
   useEffect(() => {
     const terminal = terminalRef.current;
     if (!terminal) return;
+    if (text !== undefined) {
+      const previous = snapshotRef.current;
+      // Python len/slices count code points; JS length/slice count UTF-16 units.
+      const characters = Array.from(text);
+      const previousEnd = previous.end;
+      const nextEnd = offset + characters.length;
+      const canContinue =
+        previous.sourceId === sourceId &&
+        offset <= previousEnd &&
+        nextEnd >= previousEnd;
+      if (!canContinue) {
+        terminal.reset();
+        terminal.write(HIDE_CURSOR);
+      }
+      const appended = canContinue
+        ? characters.slice(previousEnd - offset).join('')
+        : text;
+      if (appended) terminal.write(appended);
+      snapshotRef.current = { sourceId, end: nextEnd };
+      return;
+    }
     const written = writtenRef.current;
 
     if (written.sourceId !== sourceId || lines.length < written.count) {
@@ -148,13 +179,13 @@ export function XtermViewer({ sourceId, lines, onOpenLink }: XtermViewerProps) {
     }
     if (lines.length > written.count) {
       for (const entry of lines.slice(written.count)) {
-        // Entries may carry a trailing newline; writeln adds its own.
-        terminal.writeln(entry.replace(/\r?\n$/, ''));
+        // Transport entries are chunks, not lines. Preserve partial writes.
+        terminal.write(entry);
       }
       written.count = lines.length;
     }
     // `lines` mutates in place upstream, so depend on its length too.
-  }, [sourceId, lines, lines.length]);
+  }, [sourceId, lines, lines.length, text, offset]);
 
   return (
     <div

@@ -30,6 +30,7 @@ const mocks = vi.hoisted(() => ({
   hydration: {} as any,
   projectId: 'project-1' as string | null,
   projectFiles: [] as any[],
+  processRows: [] as any[],
   projectOutputResolver: vi.fn(),
   spaceState: {
     projectIdIndex: {
@@ -126,12 +127,14 @@ vi.mock('@/components/Session/SidePanel/components/AccordionBox', () => ({
   SidePanelAccordionBox: ({
     title,
     headerAction,
+    titleSuffix,
     children,
     open = true,
     onOpenChange,
   }: {
     title: string;
     headerAction?: ReactNode;
+    titleSuffix?: ReactNode;
     children: ReactNode | ((state: { open: boolean }) => ReactNode);
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
@@ -143,6 +146,7 @@ vi.mock('@/components/Session/SidePanel/components/AccordionBox', () => ({
         onClick={() => onOpenChange?.(!open)}
       >
         <h2>{title}</h2>
+        {titleSuffix}
       </button>
       {headerAction}
       {open
@@ -242,6 +246,7 @@ describe('SessionActivityPanel project scope', () => {
     mocks.activeProjectId = 'project-1';
     mocks.chatStore = chatStore(null);
     mocks.projectFiles = [];
+    mocks.processRows = [];
     mocks.hydration = {
       status: 'ready',
       errorCode: null,
@@ -254,6 +259,45 @@ describe('SessionActivityPanel project scope', () => {
     };
   });
 
+  it('counts and displays every task file in All summary', async () => {
+    const runs = [2, 3].map((count, index) => ({
+      runId: `run-${index}`,
+      taskId: `run-${index}`,
+      status: index ? 'completed' : 'interrupted',
+      nodes: [],
+      createdAt: index + 1,
+      updatedAt: index + 1,
+      isCurrent: index === 1,
+      projectedArtifacts: Array.from({ length: count }, (_, fileIndex) => ({
+        runId: `run-${index}`,
+        artifactId: `file-${index}-${fileIndex}`,
+        name: `notes-${index}-${fileIndex}.md`,
+        relativePath: `notes-${index}-${fileIndex}.md`,
+        changeType: 'generated',
+      })),
+    }));
+    mocks.overviews['project-1'] = {
+      currentRun: runs[1],
+      historicalRuns: [runs[0]],
+      runs,
+    } as any;
+    const { rerender } = render(<SessionActivityPanel scope="latest" />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Files 3' })
+      ).toBeInTheDocument()
+    );
+    expect(screen.queryByText('notes-0-0.md')).toBeNull();
+    rerender(<SessionActivityPanel scope="all" />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Files 5' })
+      ).toBeInTheDocument()
+    );
+    expect(screen.getByText('notes-0-0.md')).toBeInTheDocument();
+    expect(screen.getByText('notes-1-2.md')).toBeInTheDocument();
+  });
+
   it('keeps an empty Files section visible and fails closed without a composer target', async () => {
     render(<SessionActivityPanel scope="latest" />);
     await act(async () => {
@@ -263,6 +307,25 @@ describe('SessionActivityPanel project scope', () => {
     expect(screen.getByRole('heading', { name: 'Files' })).toBeInTheDocument();
     expect(screen.getByText('No output files yet.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Attach files/ })).toBeDisabled();
+    expect(
+      screen.queryByRole('heading', { name: 'Environments' })
+    ).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('separator')).toHaveLength(0);
+  });
+
+  it('adds one section divider when a process appears after the empty render', async () => {
+    const { rerender } = render(<SessionActivityPanel scope="latest" />);
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Files' })).toBeInTheDocument()
+    );
+    expect(screen.queryAllByRole('separator')).toHaveLength(0);
+
+    mocks.processRows = [{ id: 'process-1' }];
+    rerender(<SessionActivityPanel scope="latest" />);
+    expect(
+      screen.getByRole('heading', { name: 'Environments' })
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole('separator')).toHaveLength(1);
   });
 
   it('resolves SidePanel files against the Space that owns the Project', async () => {
@@ -280,7 +343,7 @@ describe('SessionActivityPanel project scope', () => {
     );
   });
 
-  it('shows unsupported history as degraded and exposes manual retry', async () => {
+  it('leaves history recovery controls to the panel header', async () => {
     mocks.hydration = {
       status: 'error',
       errorCode: 'unsupported',
@@ -293,11 +356,10 @@ describe('SessionActivityPanel project scope', () => {
       await new Promise((resolve) => setTimeout(resolve, 40));
     });
 
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      "This version of Eigent can't show session history yet."
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(mocks.hydration.retry).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Try again/ })
+    ).not.toBeInTheDocument();
   });
 
   it('keeps an artifact noninteractive until the workspace resolver matches it', async () => {
@@ -347,6 +409,101 @@ describe('SessionActivityPanel project scope', () => {
     expect(mocks.openFilePreview).toHaveBeenCalledWith(
       expect.objectContaining({ path: '/workspace/outputs/report.md' })
     );
+  });
+
+  it('keeps Latest empty without registered output and shows only durable historical files in All', async () => {
+    const scopedOverview = overview('run-current');
+    const historical = {
+      ...overview('run-old').currentRun,
+      isCurrent: false,
+      createdAt: 500,
+      nodes: [
+        'output/final.mp4',
+        'output/scene.blend',
+        'output/frames/frame.png',
+      ].map((relativePath, index): ChatProjectionNode => ({
+        id: `artifact-${index}`,
+        eventId: `artifact-${index}`,
+        eventType: 'artifact.created',
+        projectId: 'project-1',
+        runId: 'run-old',
+        runSequence: index + 1,
+        cloudCursor: index + 1,
+        createdAt: new Date(500).toISOString(),
+        legacyStep: null,
+        kind: 'artifact',
+        operation: 'created',
+        artifactId: `artifact-${index}`,
+        path: relativePath,
+        relativePath,
+        name: relativePath.split('/').at(-1),
+      })),
+    };
+    mocks.overviews['project-1'] = {
+      ...scopedOverview,
+      historicalRuns: [historical],
+      runs: [scopedOverview.currentRun, historical],
+    };
+    // The replacement frame has the same basename, but no durable identity
+    // authorizes it to replace the historical frame or create a new row.
+    mocks.projectFiles = [
+      'output/final.mp4',
+      'output/scene.blend',
+      'output/resume_frames/frame.png',
+      'unregistered.txt',
+    ].map((relativePath) => ({
+      name: relativePath.split('/').at(-1),
+      type: relativePath.split('.').at(-1),
+      relativePath,
+      path: `/workspace/space-one/${relativePath}`,
+    }));
+    const snapshot = JSON.stringify(mocks.overviews);
+    const { rerender } = render(<SessionActivityPanel scope="latest" />);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    });
+    expect(screen.getByText('No output files yet.')).toBeInTheDocument();
+    expect(screen.queryByText('unregistered.txt')).toBeNull();
+    expect(mocks.projectOutputResolver).toHaveBeenLastCalledWith(
+      'project-1',
+      undefined,
+      null,
+      '/workspace/space-one',
+      []
+    );
+
+    rerender(<SessionActivityPanel scope="all" />);
+    const video = await screen.findByRole('button', { name: 'final.mp4' });
+    fireEvent.click(video);
+    expect(mocks.openFilePreview).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        path: '/workspace/space-one/output/final.mp4',
+        artifactId: 'artifact-0',
+      })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'scene.blend' }));
+    expect(mocks.openFilePreview).toHaveBeenLastCalledWith(
+      expect.objectContaining({ type: 'blend', artifactId: 'artifact-1' })
+    );
+    expect(screen.getByText('Preview unavailable')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /frame.png/ })).toBeNull();
+    expect(screen.queryByText('unregistered.txt')).toBeNull();
+    expect(mocks.projectOutputResolver).toHaveBeenLastCalledWith(
+      'project-1',
+      undefined,
+      null,
+      '/workspace/space-one',
+      expect.arrayContaining([
+        'output/final.mp4',
+        'output/scene.blend',
+        'output/frames/frame.png',
+      ])
+    );
+
+    rerender(<SessionActivityPanel scope="latest" />);
+    await waitFor(() => expect(screen.queryByText('final.mp4')).toBeNull());
+    expect(screen.getByText('No output files yet.')).toBeInTheDocument();
+    expect(JSON.stringify(mocks.overviews)).toBe(snapshot);
   });
 
   it('shows durable subagent tool calls in their own panel category', async () => {
@@ -449,7 +606,7 @@ describe('SessionActivityPanel project scope', () => {
       await new Promise((resolve) => setTimeout(resolve, 40));
     });
 
-    const agentsTrigger = () => screen.getByRole('button', { name: 'Agents' });
+    const agentsTrigger = () => screen.getByRole('button', { name: /^Agents/ });
     expect(agentsTrigger()).toHaveAttribute('aria-expanded', 'true');
 
     const completedRun = overview('run-1', true);
@@ -536,3 +693,12 @@ describe('SessionActivityPanel project scope', () => {
     );
   });
 });
+
+// Background processes have their own integration suite and real Electron smoke test.
+vi.mock(
+  '@/components/Session/SidePanel/components/TerminalProcessRows',
+  () => ({
+    TerminalProcessList: () => null,
+    useTerminalProcessRows: () => mocks.processRows,
+  })
+);

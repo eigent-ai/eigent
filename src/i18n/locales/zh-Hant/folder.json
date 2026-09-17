@@ -27,10 +27,18 @@
   "search-files": "搜尋檔案",
   "source-for-file": "{{name}} 的源程式碼",
   "source-view": "源程式碼",
+  "preview-byte-summary": "正在預覽 {{bytesRead}}{{totalBytes}}",
   "truncated-preview-summary": "正在預覽 {{bytesRead}}{{totalBytes}}，未載入完整檔案。",
   "video-playback-unsupported": "你的瀏覽器不支援影片播放。",
   "view-mode": "檢視模式",
-  "folder-selected-open-in-description": "使用“打開方式”可在訪達或編輯器中打開此資料夾。",
+  "folder-selected-open-in-description": "使用上方操作可在檔案管理器或編輯器中開啟此資料夾。",
   "folder-selected-preview-description": "選擇此資料夾中的檔案以預覽其內容。",
-  "zip-file-is-not-supported-yet": "暫不支援 Zip 檔案。"
+  "zip-file-is-not-supported-yet": "暫不支援 Zip 檔案。",
+  "show-in-finder": "在 Finder 中顯示",
+  "show-in-explorer": "在檔案總管中顯示",
+  "show-in-folder": "在資料夾中顯示",
+  "open-in-finder": "在 Finder 中開啟",
+  "open-in-explorer": "在檔案總管中開啟",
+  "open-in-folder": "在檔案管理器中開啟",
+  "preview-load-failed": "無法預覽此檔案。請重試或使用外部應用程式開啟。"
 }

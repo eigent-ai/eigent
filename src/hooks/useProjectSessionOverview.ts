@@ -13,7 +13,11 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
-import type { ProjectedRun } from '@/lib/projector';
+import type {
+  ProjectedArtifact,
+  ProjectedArtifactManifest,
+  ProjectedRun,
+} from '@/lib/projector';
 import type { ChatProjectionNode } from '@/lib/projector/chat';
 import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
 import { useMemo } from 'react';
@@ -37,6 +41,8 @@ export interface ProjectSessionRun {
   taskId: string;
   status: ProjectedRun['status'];
   nodes: ChatProjectionNode[];
+  projectedArtifacts?: ProjectedArtifact[];
+  artifactManifest?: ProjectedArtifactManifest;
   createdAt: number;
   updatedAt: number;
   isCurrent: boolean;
@@ -108,6 +114,8 @@ export function buildProjectSessionOverview(
       taskId: runId,
       status: projectedRun?.status ?? 'unknown',
       nodes,
+      projectedArtifacts: snapshot.view.artifactsByRun?.[runId],
+      artifactManifest: snapshot.view.artifactManifestsByRun?.[runId],
       createdAt,
       updatedAt,
       isCurrent: false,

@@ -47,6 +47,10 @@ export interface SessionBrowserNavigationState {
   isLoading: boolean;
   canGoBack: boolean;
   canGoForward: boolean;
+  /** Main-frame failure; retained until a later navigation finishes. */
+  loadError?: { code: number; url: string };
+  /** Incremented when reopening a failed URL should retry its existing guest. */
+  retryRequestId?: number;
 }
 
 export interface SessionBrowserTab {
@@ -274,8 +278,8 @@ function createFilePreviewTab(file: FileInfo | null = null): SessionFileTab {
     type: 'file',
     title:
       file?.name ||
-      i18next.t('layout.preview-open-file', {
-        defaultValue: 'Open file',
+      i18next.t('layout.preview-file', {
+        defaultValue: 'File',
       }),
     file,
   };
@@ -622,7 +626,7 @@ interface PageTabState {
    * of jumping to the system browser. Reuses a tab already on that URL, then
    * a blank starter tab (chooser or empty browser); otherwise appends.
    */
-  openBrowserPreview: (url: string) => void;
+  openBrowserPreview: (url: string, projectId?: string) => void;
   /**
    * Open an agent terminal stream (read-only) in a terminal tab. Reuses a tab
    * already showing that stream; otherwise converts `fromTabId` (the chooser
@@ -674,12 +678,14 @@ function setSessionPreviewSlice(
   updater: (
     slice: SessionPreviewSlice,
     state: PageTabState
-  ) => SessionPreviewSlice | null
+  ) => SessionPreviewSlice | null,
+  targetProjectId?: string
 ) {
   set((state) => {
-    const projectId = state.sessionPreviewProjectId;
+    const projectId = targetProjectId ?? state.sessionPreviewProjectId;
     if (!projectId) return state;
-    const slice = updater(getSessionPreviewSlice(state), state);
+    const scopedState = { ...state, sessionPreviewProjectId: projectId };
+    const slice = updater(getSessionPreviewSlice(scopedState), scopedState);
     if (!slice) return state;
     return {
       sessionPreviewByProject: {
@@ -1181,69 +1187,92 @@ export const usePageTabStore = create<PageTabState>()(
           };
           return { ...slice, tabs };
         }),
-      openBrowserPreview: (url) =>
-        setSessionPreviewSlice(set, (slice, state) => {
-          const normalized = normalizeBrowserUrl(url);
-          if (!normalized.ok) return null;
-          const canonical = canonicalizeBrowserUrl(normalized.url);
+      openBrowserPreview: (url, projectId) =>
+        setSessionPreviewSlice(
+          set,
+          (slice, state) => {
+            const normalized = normalizeBrowserUrl(url);
+            if (!normalized.ok) return null;
+            const canonical = canonicalizeBrowserUrl(normalized.url);
 
-          // A tab already showing this URL (live page or pending load) — focus it.
-          const existing = slice.tabs.find(
-            (tab) =>
-              tab.type === 'browser' &&
-              canonicalizeBrowserUrl(tab.navigation.url || tab.url) ===
-                canonical
-          );
-          if (existing) {
-            return { ...slice, open: true, activeTabId: existing.id };
-          }
-
-          const title = browserTabTitleForUrl(normalized.url);
-
-          // Reuse a blank starter tab (empty browser, or the chooser) in
-          // place — preferring the active one — so links don't pile up tabs.
-          const isReusable = (tab: SessionPreviewTab) =>
-            tab.type === 'chooser' || (tab.type === 'browser' && !tab.url);
-          const reuseIndex = (() => {
-            const activeIndex = slice.tabs.findIndex(
-              (tab) => tab.id === slice.activeTabId && isReusable(tab)
+            // A tab already showing this URL (live page or pending load) — focus it.
+            const existing = slice.tabs.find(
+              (tab): tab is SessionBrowserTab =>
+                tab.type === 'browser' &&
+                canonicalizeBrowserUrl(tab.navigation.url || tab.url) ===
+                  canonical
             );
-            return activeIndex >= 0
-              ? activeIndex
-              : slice.tabs.findIndex(isReusable);
-          })();
-          if (reuseIndex >= 0) {
-            const reused = slice.tabs[reuseIndex];
-            const tabs = [...slice.tabs];
-            tabs[reuseIndex] =
-              reused.type === 'browser'
-                ? // Keep the tab (and its webviewId): setting the URL mounts
-                  // its guest in the browser layer.
-                  {
-                    ...reused,
-                    url: normalized.url,
-                    title,
-                    navigation: { ...reused.navigation, url: normalized.url },
-                  }
-                : {
-                    ...createBrowserPreviewTab(state.sessionPreviewProjectId),
-                    url: normalized.url,
-                    title,
-                  };
-            return { open: true, tabs, activeTabId: tabs[reuseIndex].id };
-          }
+            if (existing) {
+              const tabs = existing.navigation.loadError
+                ? slice.tabs.map((tab) =>
+                    tab.id === existing.id && tab.type === 'browser'
+                      ? {
+                          ...tab,
+                          navigation: {
+                            ...tab.navigation,
+                            retryRequestId:
+                              (tab.navigation.retryRequestId ?? 0) + 1,
+                          },
+                        }
+                      : tab
+                  )
+                : slice.tabs;
+              return {
+                ...slice,
+                tabs,
+                open: true,
+                activeTabId: existing.id,
+              };
+            }
 
-          const tab: SessionBrowserTab = {
-            ...createBrowserPreviewTab(state.sessionPreviewProjectId),
-            url: normalized.url,
-            title,
-          };
-          return {
-            open: true,
-            tabs: [...slice.tabs, tab],
-            activeTabId: tab.id,
-          };
-        }),
+            const title = browserTabTitleForUrl(normalized.url);
+
+            // Reuse a blank starter tab (empty browser, or the chooser) in
+            // place — preferring the active one — so links don't pile up tabs.
+            const isReusable = (tab: SessionPreviewTab) =>
+              tab.type === 'chooser' || (tab.type === 'browser' && !tab.url);
+            const reuseIndex = (() => {
+              const activeIndex = slice.tabs.findIndex(
+                (tab) => tab.id === slice.activeTabId && isReusable(tab)
+              );
+              return activeIndex >= 0
+                ? activeIndex
+                : slice.tabs.findIndex(isReusable);
+            })();
+            if (reuseIndex >= 0) {
+              const reused = slice.tabs[reuseIndex];
+              const tabs = [...slice.tabs];
+              tabs[reuseIndex] =
+                reused.type === 'browser'
+                  ? // Keep the tab (and its webviewId): setting the URL mounts
+                    // its guest in the browser layer.
+                    {
+                      ...reused,
+                      url: normalized.url,
+                      title,
+                      navigation: { ...reused.navigation, url: normalized.url },
+                    }
+                  : {
+                      ...createBrowserPreviewTab(state.sessionPreviewProjectId),
+                      url: normalized.url,
+                      title,
+                    };
+              return { open: true, tabs, activeTabId: tabs[reuseIndex].id };
+            }
+
+            const tab: SessionBrowserTab = {
+              ...createBrowserPreviewTab(state.sessionPreviewProjectId),
+              url: normalized.url,
+              title,
+            };
+            return {
+              open: true,
+              tabs: [...slice.tabs, tab],
+              activeTabId: tab.id,
+            };
+          },
+          projectId
+        ),
       openAgentTerminalPreview: (sourceId, title, fromTabId) =>
         setSessionPreviewSlice(set, (slice) => {
           const existing = slice.tabs.find(
