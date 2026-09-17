@@ -1359,6 +1359,19 @@ export type VanillaChatStore = {
 // Track auto-confirm timers per task to avoid reusing stale timers across rounds
 const autoConfirmTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 const AUTO_CONFIRM_TIMEOUT_MS = 30000;
+// Invalidate in-flight confirmations as well as timers when a Run settles.
+// A status check alone is insufficient if Resume has already reopened the Run.
+const activePlanConfirmations = new Map<string, symbol>();
+const activePlanSaves = new Map<string, symbol>();
+
+function cancelPlanConfirmation(taskId: string) {
+  if (autoConfirmTimers[taskId]) {
+    clearTimeout(autoConfirmTimers[taskId]);
+    delete autoConfirmTimers[taskId];
+  }
+  activePlanConfirmations.delete(taskId);
+  activePlanSaves.delete(taskId);
+}
 
 // Track active SSE connections for proper cleanup. A live `/chat` transport
 // can outlive one Run and be reused by a follow-up Run, so ownership must move
@@ -1511,7 +1524,8 @@ const CANONICAL_TERMINAL_EVENT_BY_RUN_STATUS: Partial<Record<string, string>> =
 export function settleLegacyTaskFromCanonicalTerminal(
   chatStore: Pick<VanillaChatStore, 'getState'>,
   taskId: string,
-  event: Pick<RunDomainEvent, 'eventType' | 'payload'>
+  event: Pick<RunDomainEvent, 'eventType' | 'payload'>,
+  failureReason: ReturnType<typeof classifyUsageError> = 'task'
 ): boolean {
   const durableRunStatus = CANONICAL_TERMINAL_RUN_STATUSES[event.eventType];
   if (!durableRunStatus) return false;
@@ -1574,6 +1588,7 @@ export function settleLegacyTaskFromCanonicalTerminal(
         role: 'agent',
         content,
         step: AgentStep.ERROR,
+        errorReason: failureReason,
       });
     }
   }
@@ -2311,10 +2326,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
     removeTask(taskId: string) {
       // Clean up any pending auto-confirm timers when removing a task
       try {
-        if (autoConfirmTimers[taskId]) {
-          clearTimeout(autoConfirmTimers[taskId]);
-          delete autoConfirmTimers[taskId];
-        }
+        cancelPlanConfirmation(taskId);
         get().setAutoConfirmDeadline(taskId, null);
       } catch (error) {
         console.warn('Error clearing auto-confirm timer in removeTask:', error);
@@ -2358,6 +2370,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       });
     },
     stopTask(taskId: string) {
+      // Prevent a pending confirmation from continuing after stop/Resume.
+      cancelPlanConfirmation(taskId);
       // Abort the SSE connection for this task
       try {
         if (activeSSEControllers[taskId]) {
@@ -2380,10 +2394,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
       // Clean up any pending auto-confirm timers
       try {
-        if (autoConfirmTimers[taskId]) {
-          clearTimeout(autoConfirmTimers[taskId]);
-          delete autoConfirmTimers[taskId];
-        }
         get().setAutoConfirmDeadline(taskId, null);
       } catch (error) {
         console.warn('Error clearing auto-confirm timer in stopTask:', error);
@@ -3193,11 +3203,27 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               CANONICAL_TERMINAL_RUN_STATUSES[event.eventType]
           )
             return;
+          const observedTask =
+            observedChatStore.getState().tasks[observedTaskId];
+          const failureReason =
+            observedTask &&
+            CANONICAL_TERMINAL_RUN_STATUSES[event.eventType] === 'failed'
+              ? reportError(
+                  event.payload,
+                  {
+                    modelType: effectiveModelType,
+                    modelId: resolvedCloudModelId,
+                    executionId: observedTask.executionId,
+                  },
+                  requestAccount
+                )
+              : undefined;
           if (
             !settleLegacyTaskFromCanonicalTerminal(
               observedChatStore,
               observedTaskId,
-              event
+              event,
+              failureReason
             )
           ) {
             // A deleted task cannot ever consume a later terminal event. Drop
@@ -3704,6 +3730,65 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
           if (
             currentTask.status === ChatTaskStatus.FINISHED &&
+            currentTask.durableRunStatus === 'failed' &&
+            agentMessages.step === AgentStep.ERROR
+          ) {
+            // A status GET can settle the Run before error details arrive.
+            // Enrich that receipt only: no lifecycle, Trigger, or cleanup
+            // side effects may run again for an already terminal Run.
+            const payload = agentMessages.data;
+            const message =
+              typeof payload === 'string' ? payload : payload?.message;
+            if (typeof message !== 'string' || !message.trim()) return;
+            const context = {
+              modelType: effectiveModelType,
+              modelId: resolvedCloudModelId,
+              executionId: currentTask.executionId,
+            };
+            const reason = classifyUsageError(payload, context);
+            const existingError = currentTask.messages.find(
+              (item) => item.step === AgentStep.ERROR
+            );
+            const genericContent = i18next.t('chat.error-message', {
+              defaultValue: '❌ **Error**: {{message}}',
+              message: i18next.t('chat.run-no-final-response', {
+                defaultValue:
+                  'This task failed before it produced a final response.',
+              }),
+            });
+            if (
+              existingError?.errorReason &&
+              existingError.content !== genericContent &&
+              (existingError.errorReason !== 'task' || reason === 'task')
+            ) {
+              return;
+            }
+            const errorMessage: Message = {
+              id: existingError?.id ?? generateUniqueId(),
+              role: 'agent',
+              content: i18next.t('chat.error-message', {
+                defaultValue: '❌ **Error**: {{message}}',
+                message,
+              }),
+              step: AgentStep.ERROR,
+              errorReason: type
+                ? reason
+                : reportError(payload, context, requestAccount),
+            };
+            if (existingError) {
+              getCurrentChatStore().updateMessage(
+                lockedTaskId,
+                existingError.id,
+                { ...existingError, ...errorMessage }
+              );
+            } else {
+              getCurrentChatStore().addMessages(lockedTaskId, errorMessage);
+            }
+            return;
+          }
+
+          if (
+            currentTask.status === ChatTaskStatus.FINISHED &&
             !isTaskSwitchingEvent &&
             !isMultiTurnSimpleAnswer &&
             !isPostCompletionProjectionEvent
@@ -4145,7 +4230,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                       setAutoConfirmDeadline,
                     } = currentStore;
                     const latestTask = tasks[scheduledTaskId];
-                    if (!latestTask) {
+                    if (
+                      !latestTask ||
+                      latestTask.status === ChatTaskStatus.FINISHED
+                    ) {
                       delete autoConfirmTimers[scheduledTaskId];
                       return;
                     }
@@ -4155,29 +4243,29 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                     const isConfirm = message?.isConfirm || false;
                     const isTakeControl = latestTask.isTakeControl;
 
-                    if (
+                    const shouldConfirm =
                       scheduledProjectId &&
                       !isConfirm &&
                       !isTakeControl &&
-                      !latestTask.planDirty
-                    ) {
+                      !latestTask.planDirty;
+                    // Finish timer bookkeeping before confirmation yields.
+                    // A terminal/Resume transition may install a new plan
+                    // while that request is in flight.
+                    setPlanDirty(scheduledTaskId, false);
+                    setAutoConfirmDeadline(scheduledTaskId, null);
+                    delete autoConfirmTimers[scheduledTaskId];
+                    if (shouldConfirm) {
                       await handleConfirmTask(
                         scheduledProjectId,
                         scheduledTaskId,
                         scheduledType
                       );
                     }
-                    setPlanDirty(scheduledTaskId, false);
-                    setAutoConfirmDeadline(scheduledTaskId, null);
-                    delete autoConfirmTimers[scheduledTaskId];
                   } catch (error) {
                     console.error(
                       'Error in auto-confirm timeout handler:',
                       error
                     );
-                    // Clean up the timer reference even if there's an error
-                    setAutoConfirmDeadline(scheduledTaskId, null);
-                    delete autoConfirmTimers[scheduledTaskId];
                   }
                 }, AUTO_CONFIRM_TIMEOUT_MS);
               } catch (error) {
@@ -5305,7 +5393,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               const errorContext = {
                 modelType: effectiveModelType,
                 modelId: resolvedCloudModelId,
-                executionId,
+                executionId: tasks[currentTaskId]?.executionId,
               };
               const errorReason = type
                 ? classifyUsageError(agentMessages.data, errorContext)
@@ -6713,6 +6801,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }));
     },
     setStatus(taskId: string, status: ChatTaskStatusType) {
+      if (status === ChatTaskStatus.FINISHED) {
+        cancelPlanConfirmation(taskId);
+      }
       set((state) => ({
         ...state,
         tasks: {
@@ -6720,6 +6811,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           [taskId]: {
             ...state.tasks[taskId],
             status,
+            ...(status === ChatTaskStatus.FINISHED
+              ? { autoConfirmDeadline: null }
+              : {}),
           },
         },
       }));
@@ -6762,6 +6856,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       if (!taskId) return;
       const task = tasks[taskId];
       if (!task) return;
+
+      if (!type && task.status === ChatTaskStatus.FINISHED) return;
 
       const setLatestPlanConfirmed = (isConfirm: boolean) => {
         const latestTask = get().tasks[taskId];
@@ -6814,15 +6910,24 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       setLatestPlanConfirmed(true);
 
       if (!type) {
+        const confirmation = Symbol(taskId);
+        activePlanConfirmations.set(taskId, confirmation);
+        const isCurrentConfirmation = () =>
+          activePlanConfirmations.get(taskId) === confirmation &&
+          !!get().tasks[taskId] &&
+          get().tasks[taskId].status !== ChatTaskStatus.FINISHED;
         try {
           await fetchPut(`/task/${project_id}`, {
             task: taskInfo,
           });
+          if (!isCurrentConfirmation()) return;
           await fetchPost(`/task/${project_id}/start`, {});
+          if (!isCurrentConfirmation()) return;
 
           setActiveWorkspace(taskId, 'workflow');
           setStatus(taskId, ChatTaskStatus.RUNNING);
         } catch (error) {
+          if (!isCurrentConfirmation()) return;
           console.error('Failed to confirm and start task:', error);
           setLatestPlanConfirmed(false);
           setStatus(taskId, ChatTaskStatus.PENDING);
@@ -6833,6 +6938,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             })
           );
           return;
+        } finally {
+          if (activePlanConfirmations.get(taskId) === confirmation) {
+            activePlanConfirmations.delete(taskId);
+          }
         }
       }
 
@@ -7214,25 +7323,39 @@ const chatStore = (initial?: Partial<ChatStore>) =>
     async savePlan(taskId: string) {
       const { tasks, setPlanDirty, setAutoConfirmDeadline } = get();
       const task = tasks[taskId];
-      if (!task) return;
+      if (!task || task.status === ChatTaskStatus.FINISHED) return;
+      const save = Symbol(taskId);
+      activePlanSaves.set(taskId, save);
       try {
         await persistSubtaskEdits(task.taskInfo);
+        // Status may already be PENDING again after terminal -> Resume.
+        if (activePlanSaves.get(taskId) !== save) return;
+        const currentTask = get().tasks[taskId];
+        if (!currentTask || currentTask.status === ChatTaskStatus.FINISHED)
+          return;
         setPlanDirty(taskId, false);
       } catch (err) {
         console.error('Failed to persist subtask edits:', err);
         return;
+      } finally {
+        if (activePlanSaves.get(taskId) === save) {
+          activePlanSaves.delete(taskId);
+        }
       }
 
       // After Save, restart the 30-second auto-confirm timer for predictable UX.
       const projectId = useProjectStore.getState().activeProjectId;
-      const lastToSubTasks = task.messages.findLast(
+      const currentTask = get().tasks[taskId];
+      if (!currentTask || currentTask.status === ChatTaskStatus.FINISHED)
+        return;
+      const lastToSubTasks = currentTask.messages.findLast(
         (m: Message) => m.step === AgentStep.TO_SUB_TASKS
       );
       if (
         !projectId ||
         !lastToSubTasks ||
         lastToSubTasks.isConfirm ||
-        task.isTakeControl
+        currentTask.isTakeControl
       ) {
         return;
       }
@@ -7252,7 +7375,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         try {
           const latestState = get();
           const latest = latestState.tasks[taskId];
-          if (!latest) {
+          if (!latest || latest.status === ChatTaskStatus.FINISHED) {
             delete autoConfirmTimers[taskId];
             return;
           }
@@ -7278,6 +7401,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
     clearTasks: () => {
       const { create } = get();
       console.log('clearTasks');
+      activePlanConfirmations.clear();
+      activePlanSaves.clear();
 
       // Clean up all pending auto-confirm timers when clearing tasks
       try {

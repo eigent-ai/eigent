@@ -145,11 +145,14 @@ import {
   reconcileTimelineRuns,
 } from '@/lib/projector/chat/presentation';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
+import { getAuthStore } from '@/store/authStore';
 import {
   getProjectEventStore,
   releaseProjectEventStore,
 } from '@/store/projectEventStore';
+import { setUsageAccount, useUsageNoticeStore } from '@/store/usageNoticeStore';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
+import { toast } from 'sonner';
 import { generateUniqueId } from '../../../src/lib';
 import {
   runDomainEventHub,
@@ -1516,6 +1519,249 @@ describe('ChatStore - Core Functionality', () => {
         });
       });
 
+      it.each(['run.failed', 'run.cancelled', 'run.interrupted'])(
+        'cancels plan auto-confirm when %s settles the Run',
+        async (eventType) => {
+          const { store, streamContaining } = await startObservedLiveTask();
+          vi.useFakeTimers();
+          try {
+            await streamContaining('/chat').onmessage?.({
+              data: JSON.stringify({
+                step: AgentStep.TO_SUB_TASKS,
+                data: {
+                  sub_tasks: [{ id: 'sub1', content: 'Build the page' }],
+                },
+              }),
+            });
+            expect(
+              store.getState().tasks['live-run'].autoConfirmDeadline
+            ).not.toBeNull();
+            runEventIngressRegistry.ingest(
+              'project-1',
+              'live-run',
+              canonicalEvent('live-run', eventType),
+              'live'
+            );
+            expect(
+              store.getState().tasks['live-run'].autoConfirmDeadline
+            ).toBeNull();
+            vi.mocked(fetchPost).mockClear();
+            await vi.advanceTimersByTimeAsync(30001);
+            expect(store.getState().tasks['live-run'].status).toBe(
+              ChatTaskStatus.FINISHED
+            );
+            expect(fetchPost).not.toHaveBeenCalledWith(
+              '/task/project-1/start',
+              {}
+            );
+          } finally {
+            vi.useRealTimers();
+          }
+        }
+      );
+
+      it.each([
+        ['edit', false],
+        ['edit', true],
+        ['start', false],
+        ['start', true],
+      ] as const)(
+        'does not revive a terminal Run after plan %s resolves (rejected=%s)',
+        async (phase, rejected) => {
+          const { store, streamContaining } = await startObservedLiveTask();
+          await streamContaining('/chat').onmessage?.({
+            data: JSON.stringify({
+              step: AgentStep.TO_SUB_TASKS,
+              data: { sub_tasks: [{ id: 'sub1', content: 'Build the page' }] },
+            }),
+          });
+          let resolveRequest!: () => void;
+          let rejectRequest!: (error: Error) => void;
+          const pending = new Promise<void>((resolve, reject) => {
+            resolveRequest = resolve;
+            rejectRequest = reject;
+          });
+          const request = vi.mocked(phase === 'edit' ? fetchPut : fetchPost);
+          request.mockImplementationOnce(() => pending);
+          const confirming = store
+            .getState()
+            .handleConfirmTask('project-1', 'live-run');
+          await vi.waitFor(() => expect(request).toHaveBeenCalled());
+          runEventIngressRegistry.ingest(
+            'project-1',
+            'live-run',
+            canonicalEvent('live-run', 'run.failed'),
+            'live'
+          );
+          if (rejected) rejectRequest(new Error('late request failure'));
+          else resolveRequest();
+          await confirming;
+          expect(store.getState().tasks['live-run']).toMatchObject({
+            status: ChatTaskStatus.FINISHED,
+            taskTime: 0,
+            autoConfirmDeadline: null,
+          });
+          if (phase === 'edit')
+            expect(fetchPost).not.toHaveBeenCalledWith(
+              '/task/project-1/start',
+              {}
+            );
+        }
+      );
+
+      it('does not rearm auto-confirm when saving finishes after a terminal event', async () => {
+        const { store, streamContaining } = await startObservedLiveTask();
+        await streamContaining('/chat').onmessage?.({
+          data: JSON.stringify({
+            step: AgentStep.TO_SUB_TASKS,
+            data: { sub_tasks: [{ id: 'sub1', content: 'Build the page' }] },
+          }),
+        });
+        let resolveSave!: () => void;
+        vi.mocked(fetchPut).mockImplementationOnce(
+          () =>
+            new Promise<void>((resolve) => {
+              resolveSave = resolve;
+            })
+        );
+        const saving = store.getState().savePlan('live-run');
+        runEventIngressRegistry.ingest(
+          'project-1',
+          'live-run',
+          canonicalEvent('live-run', 'run.failed'),
+          'live'
+        );
+        resolveSave();
+        await saving;
+        expect(store.getState().tasks['live-run']).toMatchObject({
+          status: ChatTaskStatus.FINISHED,
+          autoConfirmDeadline: null,
+        });
+        expect(fetchPost).not.toHaveBeenCalledWith('/task/project-1/start', {});
+      });
+
+      it('does not let an old save overwrite plan edits after terminal and Resume', async () => {
+        const { store, streamContaining } = await startObservedLiveTask();
+        await streamContaining('/chat').onmessage?.({
+          data: JSON.stringify({
+            step: AgentStep.TO_SUB_TASKS,
+            data: { sub_tasks: [{ id: 'sub1', content: 'Build the page' }] },
+          }),
+        });
+        let resolveSave!: () => void;
+        vi.mocked(fetchPut).mockImplementationOnce(
+          () =>
+            new Promise<void>((resolve) => {
+              resolveSave = resolve;
+            })
+        );
+        const saving = store.getState().savePlan('live-run');
+        runEventIngressRegistry.ingest(
+          'project-1',
+          'live-run',
+          canonicalEvent('live-run', 'run.interrupted'),
+          'live'
+        );
+        store.getState().setStatus('live-run', ChatTaskStatus.PENDING);
+        store.getState().setPlanDirty('live-run', true);
+        const resumedDeadline = Date.now() + 45_000;
+        store.getState().setAutoConfirmDeadline('live-run', resumedDeadline);
+
+        resolveSave();
+        await saving;
+
+        expect(store.getState().tasks['live-run']).toMatchObject({
+          status: ChatTaskStatus.PENDING,
+          planDirty: true,
+          autoConfirmDeadline: resumedDeadline,
+        });
+        expect(fetchPost).not.toHaveBeenCalledWith('/task/project-1/start', {});
+      });
+
+      it('does not let an old auto-confirm callback clear the resumed plan state', async () => {
+        const { store, streamContaining } = await startObservedLiveTask();
+        vi.useFakeTimers();
+        try {
+          await streamContaining('/chat').onmessage?.({
+            data: JSON.stringify({
+              step: AgentStep.TO_SUB_TASKS,
+              data: { sub_tasks: [{ id: 'sub1', content: 'Build the page' }] },
+            }),
+          });
+          let resolveEdit!: () => void;
+          vi.mocked(fetchPut).mockImplementationOnce(
+            () =>
+              new Promise<void>((resolve) => {
+                resolveEdit = resolve;
+              })
+          );
+          vi.advanceTimersByTime(30_000);
+          expect(fetchPut).toHaveBeenCalledWith(
+            '/task/project-1',
+            expect.anything()
+          );
+
+          runEventIngressRegistry.ingest(
+            'project-1',
+            'live-run',
+            canonicalEvent('live-run', 'run.interrupted'),
+            'live'
+          );
+          store.getState().setStatus('live-run', ChatTaskStatus.PENDING);
+          store.getState().setPlanDirty('live-run', true);
+          const resumedDeadline = Date.now() + 45_000;
+          store.getState().setAutoConfirmDeadline('live-run', resumedDeadline);
+
+          resolveEdit();
+          await vi.advanceTimersByTimeAsync(0);
+
+          expect(store.getState().tasks['live-run']).toMatchObject({
+            status: ChatTaskStatus.PENDING,
+            planDirty: true,
+            autoConfirmDeadline: resumedDeadline,
+          });
+          expect(fetchPost).not.toHaveBeenCalledWith(
+            '/task/project-1/start',
+            {}
+          );
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it('invalidates a pending plan confirmation across terminal and Resume', async () => {
+        const { store, streamContaining } = await startObservedLiveTask();
+        await streamContaining('/chat').onmessage?.({
+          data: JSON.stringify({
+            step: AgentStep.TO_SUB_TASKS,
+            data: { sub_tasks: [{ id: 'sub1', content: 'Build the page' }] },
+          }),
+        });
+        let resolveEdit!: () => void;
+        vi.mocked(fetchPut).mockImplementationOnce(
+          () =>
+            new Promise<void>((resolve) => {
+              resolveEdit = resolve;
+            })
+        );
+        const confirming = store
+          .getState()
+          .handleConfirmTask('project-1', 'live-run');
+        runEventIngressRegistry.ingest(
+          'project-1',
+          'live-run',
+          canonicalEvent('live-run', 'run.interrupted'),
+          'live'
+        );
+        store.getState().setStatus('live-run', ChatTaskStatus.PENDING);
+        resolveEdit();
+        await confirming;
+        expect(store.getState().tasks['live-run'].status).toBe(
+          ChatTaskStatus.PENDING
+        );
+        expect(fetchPost).not.toHaveBeenCalledWith('/task/project-1/start', {});
+      });
+
       it.each([
         ['completed', ExecutionStatus.Completed],
         ['failed', ExecutionStatus.Failed],
@@ -2236,6 +2482,201 @@ describe('ChatStore - Core Functionality', () => {
         expect(errors[0].content).toContain(message);
         expect(fetchDelete).not.toHaveBeenCalled();
         expect(runDomainEventHub.listenerCount()).toBe(0);
+      });
+
+      describe('canonical failure error context', () => {
+        let originalAuthState: ReturnType<typeof getAuthStore>;
+        let originalAuthImplementation = vi
+          .mocked(getAuthStore)
+          .getMockImplementation();
+        let errorToast: ReturnType<typeof vi.spyOn>;
+
+        beforeEach(() => {
+          originalAuthImplementation = vi
+            .mocked(getAuthStore)
+            .getMockImplementation();
+          originalAuthState = getAuthStore();
+          vi.mocked(getAuthStore).mockReturnValue({
+            ...originalAuthState,
+            user_id: 'account-a',
+          });
+          setUsageAccount('account-a');
+          useUsageNoticeStore.setState({ modelType: 'cloud' });
+          errorToast = vi.spyOn(toast, 'error').mockReturnValue('usage-toast');
+        });
+
+        afterEach(() => {
+          if (originalAuthImplementation)
+            vi.mocked(getAuthStore).mockImplementation(
+              originalAuthImplementation
+            );
+          setUsageAccount(null);
+          errorToast.mockRestore();
+        });
+
+        const quotaMessage = 'Error code: 429 insufficient_quota';
+        const errorCards = (
+          store: ReturnType<typeof createChatStoreInstance>,
+          runId = 'live-run'
+        ) =>
+          store
+            .getState()
+            .tasks[runId].messages.filter(
+              (message) => message.step === AgentStep.ERROR
+            );
+
+        it('classifies canonical cloud quota once with its request model and execution', async () => {
+          const { store, streamContaining } = await startObservedLiveTask({
+            executionId: 'quota-execution',
+          });
+          runEventIngressRegistry.ingest(
+            'project-1',
+            'live-run',
+            canonicalEvent('live-run', 'run.failed', quotaMessage),
+            'live'
+          );
+          await streamContaining('/chat').onmessage?.({
+            data: JSON.stringify({
+              step: AgentStep.ERROR,
+              data: { message: quotaMessage },
+            }),
+          });
+
+          expect(errorCards(store)).toHaveLength(1);
+          expect(errorCards(store)[0].errorReason).toBe('service');
+          expect(useUsageNoticeStore.getState().incidents).toEqual([
+            {
+              reason: 'service',
+              modelId: 'gpt-5.4',
+              executionIds: ['quota-execution'],
+            },
+          ]);
+          expect(errorToast).toHaveBeenCalledTimes(1);
+          expect(proxyUpdateTriggerExecution).toHaveBeenCalledTimes(1);
+          expect(fetchDelete).not.toHaveBeenCalled();
+        });
+
+        it('enriches a projected failure without resettling it or duplicating the receipt', async () => {
+          const { store, streamContaining } = await startObservedLiveTask({
+            executionId: 'projected-failure-execution',
+          });
+          runProjectionStore.upsertRunSummaries('project-1', [
+            {
+              run_id: 'live-run',
+              project_id: 'project-1',
+              status: 'failed',
+              version: 1,
+              latest_attempt: { attempt_number: 1, status: 'failed' },
+              updated_at: Date.now(),
+            },
+          ]);
+          await vi.waitFor(() =>
+            expect(store.getState().tasks['live-run'].status).toBe(
+              ChatTaskStatus.FINISHED
+            )
+          );
+          expect(errorCards(store)[0].errorReason).toBe('task');
+          expect(useUsageNoticeStore.getState().incidents).toEqual([]);
+          const { elapsed, taskTime } = store.getState().tasks['live-run'];
+          const originalErrorId = errorCards(store)[0].id;
+
+          for (let index = 0; index < 2; index++) {
+            await streamContaining('/chat').onmessage?.({
+              data: JSON.stringify({
+                step: AgentStep.ERROR,
+                data: { message: quotaMessage },
+              }),
+            });
+          }
+
+          expect(errorCards(store)).toHaveLength(1);
+          expect(errorCards(store)[0]).toMatchObject({
+            id: originalErrorId,
+            errorReason: 'service',
+          });
+          expect(errorCards(store)[0].content).toContain(quotaMessage);
+          expect(store.getState().tasks['live-run']).toMatchObject({
+            status: ChatTaskStatus.FINISHED,
+            durableRunStatus: 'failed',
+            elapsed,
+            taskTime,
+          });
+          expect(errorToast).toHaveBeenCalledTimes(1);
+          expect(proxyUpdateTriggerExecution).toHaveBeenCalledTimes(1);
+          expect(fetchDelete).not.toHaveBeenCalled();
+        });
+
+        it('keeps specific canonical failure details when a generic legacy error arrives', async () => {
+          const { store, streamContaining } = await startObservedLiveTask();
+          runEventIngressRegistry.ingest(
+            'project-1',
+            'live-run',
+            canonicalEvent('live-run', 'run.failed', quotaMessage),
+            'live'
+          );
+          const originalError = errorCards(store)[0];
+          await streamContaining('/chat').onmessage?.({
+            data: JSON.stringify({
+              step: AgentStep.ERROR,
+              data: { message: 'Task failed' },
+            }),
+          });
+          expect(errorCards(store)).toEqual([originalError]);
+          expect(errorToast).toHaveBeenCalledTimes(1);
+        });
+
+        it('associates a follow-up failure with the current execution', async () => {
+          const { store, streamContaining } = await startObservedLiveTask({
+            executionId: 'initial-execution',
+          });
+          await switchLegacyStreamToFollowUp({ store, streamContaining });
+          store
+            .getState()
+            .setExecutionId('follow-up-run', 'follow-up-execution');
+          runEventIngressRegistry.ingest(
+            'project-1',
+            'follow-up-run',
+            canonicalEvent('follow-up-run', 'run.failed', quotaMessage),
+            'live'
+          );
+          expect(errorCards(store, 'follow-up-run')[0].errorReason).toBe(
+            'service'
+          );
+          expect(
+            useUsageNoticeStore.getState().incidents[0].executionIds
+          ).toEqual(['follow-up-execution']);
+          expect(errorToast).toHaveBeenCalledTimes(1);
+        });
+
+        it.each(['canonical', 'legacy enrichment'])(
+          'does not attach an old request incident to a new account during %s',
+          async (source) => {
+            const { store, streamContaining } = await startObservedLiveTask();
+            setUsageAccount('account-b');
+            runEventIngressRegistry.ingest(
+              'project-1',
+              'live-run',
+              canonicalEvent(
+                'live-run',
+                'run.failed',
+                source === 'canonical' ? quotaMessage : ''
+              ),
+              'live'
+            );
+            if (source === 'legacy enrichment') {
+              await streamContaining('/chat').onmessage?.({
+                data: JSON.stringify({
+                  step: AgentStep.ERROR,
+                  data: { message: quotaMessage },
+                }),
+              });
+            }
+            expect(errorCards(store)[0].errorReason).toBe('service');
+            expect(useUsageNoticeStore.getState().account).toBe('account-b');
+            expect(useUsageNoticeStore.getState().incidents).toEqual([]);
+            expect(errorToast).not.toHaveBeenCalled();
+          }
+        );
       });
     });
 
