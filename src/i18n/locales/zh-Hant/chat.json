@@ -413,6 +413,7 @@
   "notice-trial-total": "所有試用額度已用完。",
   "notice-free-credits": "免費額度已用完。",
   "notice-model-access": "此模型需要 Eigent Plus 或 Pro 方案。",
+  "notice-model-restricted": "目前剩餘額度僅支援 Eigent，請切換至 Eigent 模型後繼續。",
   "notice-service": "Eigent 雲端服務暫時無法使用。",
   "notice-provider-credits": "模型供應商的額度已用完。請檢查您的供應商帳戶。",
   "notice-api-key": "API 金鑰未被接受。請在模型設定中檢查金鑰。",

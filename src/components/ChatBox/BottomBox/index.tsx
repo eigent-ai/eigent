@@ -123,6 +123,8 @@ interface BottomBoxCommonProps {
   sessionModeSelectInteractive?: boolean;
   /** Project whose pinned model and thinking effort the footer selectors read and write. */
   modelSelectProjectId?: string | null;
+  /** Override input disablement for model recovery; controlled variants stay locked. */
+  modelSelectDisabled?: boolean;
 
   // Loading states
   loading?: boolean;
@@ -158,6 +160,7 @@ export default function BottomBox({
   onSessionModeChange,
   sessionModeSelectInteractive = false,
   modelSelectProjectId,
+  modelSelectDisabled,
   loading = false,
   noModelOverlay = false,
   onSelectModel,
@@ -428,6 +431,11 @@ export default function BottomBox({
               projectId={modelSelectProjectId}
               interactive={sessionModeSelectInteractive}
               disabled={variantDisabled}
+              modelSelectDisabled={
+                normalizedVariant.kind === 'input'
+                  ? modelSelectDisabled
+                  : undefined
+              }
             />
           </div>
         ) : null}

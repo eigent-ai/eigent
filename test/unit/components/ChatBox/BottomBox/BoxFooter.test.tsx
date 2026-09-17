@@ -28,7 +28,9 @@ vi.mock('@/components/Workspace/ProjectModeToggle', () => ({
 }));
 
 vi.mock('@/components/ChatBox/BottomBox/ApprovalModeSelect', () => ({
-  ApprovalModeSelect: () => <div data-testid="approval-mode-select" />,
+  ApprovalModeSelect: ({ disabled }: { disabled?: boolean }) => (
+    <button data-testid="approval-mode-select" disabled={disabled} />
+  ),
 }));
 
 vi.mock('@/components/ChatBox/BottomBox/ModelAndThinkingEffortSelect', () => ({
@@ -154,5 +156,23 @@ describe('BoxFooter', () => {
 
     expect(screen.getAllByTestId('model-thinking-select')).toHaveLength(1);
     expect(screen.getByTestId('model-thinking-select')).toBeDisabled();
+  });
+
+  it('keeps the model selector available for recovery while other controls stay disabled', () => {
+    render(
+      <BoxFooter
+        sessionMode={SessionMode.SINGLE_AGENT}
+        projectId="restricted-project"
+        disabled
+        modelSelectDisabled={false}
+      />
+    );
+
+    expect(screen.getByTestId('model-thinking-select')).not.toBeDisabled();
+    expect(screen.getByTestId('model-thinking-select')).toHaveAttribute(
+      'data-readonly',
+      'false'
+    );
+    expect(screen.getByTestId('approval-mode-select')).toBeDisabled();
   });
 });

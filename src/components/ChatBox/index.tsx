@@ -25,6 +25,7 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useInterruptedRunStatus } from '@/hooks/useInterruptedRunStatus';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
+import { useUsageIncidentBanner } from '@/hooks/useUsageIncidentBanner';
 import { useHost } from '@/host';
 import { generateUniqueId } from '@/lib';
 import { notifyError } from '@/lib/notifyError';
@@ -57,7 +58,6 @@ import { useSpaceStore } from '@/store/spaceStore';
 import {
   acknowledgeUsageNotice,
   activeUsageIncident,
-  contactSupport,
   refreshUsage,
   useUsageNoticeStore,
 } from '@/store/usageNoticeStore';
@@ -453,53 +453,29 @@ export default function ChatBox(): JSX.Element {
     composerModelType === 'cloud' && cloudUsageLimitReached
       ? errorCopy(incident?.reason ?? 'credits')
       : null;
-  const bannerId = incident
-    ? `${incident.reason}:${incident.modelId ?? ''}`
-    : usageLimitBannerState?.id;
+  const incidentBanner = useUsageIncidentBanner(composerModelType);
+  const bannerId = usageLimitBannerState?.id;
   // Blockers remain discoverable after the toast is dismissed; warnings can be hidden.
   const usageLimitBanner =
-    composerModelType !== 'cloud' ||
-    (!incident &&
-      (!usageLimitBannerState || bannerId === dismissedUsageLimitBannerId))
+    incidentBanner ??
+    (composerModelType !== 'cloud' ||
+    !usageLimitBannerState ||
+    bannerId === dismissedUsageLimitBannerId
       ? null
       : {
-          message: incident
-            ? errorCopy(incident.reason)
-            : usageLimitBannerState!.message,
-          description: incident
-            ? t(
-                incident.reason === 'service'
-                  ? 'chat.notice-contact-description'
-                  : 'chat.notice-refresh-description'
-              )
-            : undefined,
+          message: usageLimitBannerState.message,
           actionLabel: t(
-            incident?.reason === 'service'
-              ? 'chat.notice-contact-support'
-              : usage.refreshing
-                ? 'chat.notice-refreshing'
-                : 'chat.notice-refresh'
+            usage.refreshing ? 'chat.notice-refreshing' : 'chat.notice-refresh'
           ),
-          severity: incident
-            ? ('danger' as const)
-            : usageLimitBannerState!.severity,
+          severity: usageLimitBannerState.severity,
           refreshing: usage.refreshing,
           refreshError: usage.refreshError ? t(usage.refreshError) : undefined,
-          onAction:
-            incident?.reason === 'service'
-              ? contactSupport
-              : () => void refreshUsage(),
-          onRefresh:
-            incident?.reason === 'service'
-              ? () => void refreshUsage()
-              : undefined,
-          onDismiss: incident
-            ? undefined
-            : () => {
-                setDismissedUsageLimitBannerId(bannerId ?? null);
-                acknowledgeUsageNotice();
-              },
-        };
+          onAction: () => void refreshUsage(),
+          onDismiss: () => {
+            setDismissedUsageLimitBannerId(bannerId ?? null);
+            acknowledgeUsageNotice();
+          },
+        });
 
   const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
 
@@ -2707,6 +2683,7 @@ export default function ChatBox(): JSX.Element {
                   sessionMode={effectiveSessionMode}
                   sessionModeSelectInteractive={false}
                   modelSelectProjectId={activeProjectId}
+                  modelSelectDisabled={isCloudUsageLimited ? false : undefined}
                 />
               )}
             </div>
@@ -2831,6 +2808,7 @@ export default function ChatBox(): JSX.Element {
                 sessionMode={displaySessionMode}
                 sessionModeSelectInteractive={false}
                 modelSelectProjectId={activeProjectId}
+                modelSelectDisabled={isCloudUsageLimited ? false : undefined}
               />
             </div>
           </div>

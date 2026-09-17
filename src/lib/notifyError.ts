@@ -91,7 +91,10 @@ export function notifyError(
     /error code:|\{'error'|"error"\s*:|HTTP \d{3}/i.test(options.description)
       ? { ...options, description: errorCopy(reason) }
       : options;
-  return toast.error(raw ? errorCopy(reason) : message, safeOptions);
+  return toast.error(
+    raw || reason === 'model-restricted' ? errorCopy(reason) : message,
+    safeOptions
+  );
 }
 
 /** Execution status can arrive again over WebSocket after the task SSE failure. */

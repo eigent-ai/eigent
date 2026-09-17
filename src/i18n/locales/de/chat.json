@@ -417,6 +417,7 @@
   "notice-trial-total": "Alle deine Test-Credits sind aufgebraucht.",
   "notice-free-credits": "Deine kostenlosen Credits sind aufgebraucht.",
   "notice-model-access": "Dieses Modell erfordert Eigent Plus oder Pro.",
+  "notice-model-restricted": "Deine verbleibenden Credits sind für Eigent reserviert. Wähle das Eigent-Modell, um fortzufahren.",
   "notice-service": "Eigent Cloud ist nicht verfügbar.",
   "notice-provider-credits": "Die Credits deines Modellanbieters sind aufgebraucht. Prüfe dein Anbieterkonto.",
   "notice-api-key": "Dieser API-Schlüssel wurde nicht akzeptiert. Prüfe ihn in den Modelleinstellungen.",

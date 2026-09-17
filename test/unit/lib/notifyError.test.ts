@@ -71,6 +71,22 @@ describe('execution error notification scope', () => {
     expect(mocks.error).toHaveBeenCalledTimes(2);
   });
 
+  it.each([
+    "Error code: 403 - {'error': {'message': \"403: {'code': 'eigent_low_balance_model_restricted', 'remaining_credits': 172}\"}}",
+    'Run admission did not return an event stream: {"code":"eigent_low_balance_model_restricted","remaining_credits":172}',
+  ])(
+    'offers model recovery without raising an account-wide credit incident',
+    (message) => {
+      notifyExecutionError(message, undefined, 'execution-restricted');
+
+      expect(mocks.error).toHaveBeenCalledWith(
+        'chat.notice-model-restricted',
+        undefined
+      );
+      expect(useUsageNoticeStore.getState().incidents).toEqual([]);
+    }
+  );
+
   it('deduplicates classified repeats and summaries of the same executions', () => {
     reportError({ code: 20 }, { executionId: 'execution-a' });
     reportError({ code: 20 }, { executionId: 'execution-b' });

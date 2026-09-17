@@ -13,8 +13,16 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import Workspace from '@/components/Workspace';
+import { notifyError } from '@/lib/notifyError';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { useUsageNoticeStore } from '@/store/usageNoticeStore';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -86,6 +94,8 @@ const mocks = vi.hoisted(() => {
   };
 
   return {
+    modelType: 'local',
+    modelConfig: { hasModel: true, cloudUsageLimitReached: false },
     newChatState,
     newStartTask,
     newSetAttaches,
@@ -105,8 +115,10 @@ vi.mock('@/hooks/useChatStoreAdapter', () => ({
 }));
 
 vi.mock('@/hooks/useModelConfigCheck', () => ({
-  useModelConfigCheck: () => ({ hasModel: true }),
+  useModelConfigCheck: () => mocks.modelConfig,
 }));
+
+vi.mock('@/lib/notifyError', () => ({ notifyError: vi.fn() }));
 
 vi.mock('@/host', () => ({
   useHost: () => ({ electronAPI: {} }),
@@ -118,7 +130,7 @@ vi.mock('@/store/authStore', () => ({
     setLanguage: vi.fn(),
   }),
   useAuthStore: () => ({
-    modelType: 'local',
+    modelType: mocks.modelType,
     setWorkerList: vi.fn(),
   }),
   useWorkerList: () => [],
@@ -164,19 +176,29 @@ vi.mock('@/components/ChatBox/BottomBox', () => ({
     inputProps,
     sessionModeSelectInteractive,
     modelSelectProjectId,
+    modelSelectDisabled,
+    usageLimitBanner,
   }: {
     inputProps: any;
     sessionModeSelectInteractive?: boolean;
     modelSelectProjectId?: string | null;
+    modelSelectDisabled?: boolean;
+    usageLimitBanner?: { message: string } | null;
   }) => (
     <div>
       <div
         data-testid="workspace-bottom-box-footer-props"
         data-interactive={String(Boolean(sessionModeSelectInteractive))}
         data-project-id={modelSelectProjectId ?? ''}
+        data-model-disabled={String(Boolean(modelSelectDisabled))}
       />
+      {usageLimitBanner && <div role="alert">{usageLimitBanner.message}</div>}
+      {inputProps.files.map((file: { filePath: string; fileName: string }) => (
+        <span key={file.filePath}>{file.fileName}</span>
+      ))}
       <input
         aria-label="workspace-message"
+        disabled={inputProps.disabled}
         value={inputProps.value}
         onChange={(event) => inputProps.onChange(event.target.value)}
       />
@@ -190,7 +212,11 @@ vi.mock('@/components/ChatBox/BottomBox', () => ({
       >
         Attach draft
       </button>
-      <button type="button" onClick={inputProps.onSend}>
+      <button
+        type="button"
+        onClick={inputProps.onSend}
+        disabled={inputProps.disabled}
+      >
         Send
       </button>
     </div>
@@ -219,6 +245,15 @@ const renderWorkspace = (props: ComponentProps<typeof Workspace> = {}) =>
 describe('Workspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.modelType = 'local';
+    mocks.modelConfig = { hasModel: true, cloudUsageLimitReached: false };
+    mocks.spaceState.activeSpaceId = 'space-1';
+    mocks.pageState.activeWorkspaceTab = 'workforce';
+    useUsageNoticeStore.setState({
+      incidents: [],
+      refreshing: false,
+      refreshError: null,
+    });
     mocks.spaceState.projectsBySpaceId = {};
     vi.mocked(createSyncedProjectInSpace).mockResolvedValue({
       projectId: 'new-project',
@@ -259,9 +294,121 @@ describe('Workspace', () => {
       [{ fileName: 'draft.txt', filePath: '/draft.txt' }],
       undefined,
       'new-project',
-      'single-agent'
+      'single-agent',
+      { awaitAdmission: true }
     );
     expect(mocks.oldSetAttaches).not.toHaveBeenCalled();
+  });
+
+  it('keeps the draft until startup is accepted, then opens the Session', async () => {
+    let accept!: () => void;
+    mocks.newStartTask.mockReturnValue(
+      new Promise<void>((resolve) => {
+        accept = resolve;
+      })
+    );
+    renderWorkspace();
+    fireEvent.change(screen.getByLabelText('workspace-message'), {
+      target: { value: 'Keep this draft' },
+    });
+    fireEvent.click(screen.getByText('Attach draft'));
+    fireEvent.click(screen.getByText('Send'));
+
+    await waitFor(() => expect(mocks.newStartTask).toHaveBeenCalledTimes(1));
+    expect(mocks.pageState.setActiveWorkspaceTab).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('workspace-message')).toHaveValue(
+      'Keep this draft'
+    );
+    expect(screen.getByText('draft.txt')).toBeInTheDocument();
+    expect(
+      screen.getByTestId('workspace-bottom-box-footer-props')
+    ).toHaveAttribute('data-model-disabled', 'true');
+
+    await act(async () => accept());
+    expect(mocks.pageState.setActiveWorkspaceTab).toHaveBeenCalledWith(
+      'project'
+    );
+    expect(screen.getByLabelText('workspace-message')).toHaveValue('');
+    expect(screen.queryByText('draft.txt')).not.toBeInTheDocument();
+  });
+
+  it.each(['workforce', 'new-project'])(
+    'preserves text, attachments and the %s page on startup failure',
+    async (tab) => {
+      mocks.pageState.activeWorkspaceTab = tab;
+      mocks.newStartTask.mockRejectedValue(new Error('Usage limit reached'));
+      const consoleError = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+      renderWorkspace({
+        variant: tab === 'new-project' ? 'new-project' : 'workspace',
+      });
+      fireEvent.change(screen.getByLabelText('workspace-message'), {
+        target: { value: 'Retry this work' },
+      });
+      fireEvent.click(screen.getByText('Attach draft'));
+      fireEvent.click(screen.getByText('Send'));
+
+      await waitFor(() =>
+        expect(notifyError).toHaveBeenCalledWith('Usage limit reached')
+      );
+      expect(mocks.pageState.setActiveWorkspaceTab).not.toHaveBeenCalled();
+      expect(screen.getByLabelText('workspace-message')).toHaveValue(
+        'Retry this work'
+      );
+      expect(screen.getByText('draft.txt')).toBeInTheDocument();
+      expect(screen.getByText('Send')).not.toBeDisabled();
+      expect(
+        screen.getByTestId('workspace-bottom-box-footer-props')
+      ).toHaveAttribute('data-model-disabled', 'false');
+      consoleError.mockRestore();
+    }
+  );
+
+  it('does not redirect a user who leaves while startup is pending', async () => {
+    let accept!: () => void;
+    mocks.newStartTask.mockReturnValue(
+      new Promise<void>((resolve) => {
+        accept = resolve;
+      })
+    );
+    const view = renderWorkspace();
+    fireEvent.change(screen.getByLabelText('workspace-message'), {
+      target: { value: 'Start in background' },
+    });
+    fireEvent.click(screen.getByText('Send'));
+    await waitFor(() => expect(mocks.newStartTask).toHaveBeenCalledTimes(1));
+    view.unmount();
+    await act(async () => accept());
+    expect(mocks.pageState.setActiveWorkspaceTab).not.toHaveBeenCalled();
+  });
+
+  it('blocks known cloud limits before creating a Session and allows switching to a custom model', async () => {
+    mocks.modelType = 'cloud';
+    mocks.modelConfig.cloudUsageLimitReached = true;
+    useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
+    const view = renderWorkspace({ variant: 'new-project' });
+    expect(screen.getByLabelText('workspace-message')).toBeDisabled();
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(
+      screen.getByTestId('workspace-bottom-box-footer-props')
+    ).toHaveAttribute('data-model-disabled', 'false');
+    fireEvent.click(screen.getByText('Send'));
+    expect(createSyncedProjectInSpace).not.toHaveBeenCalled();
+
+    mocks.modelType = 'custom';
+    view.rerender(
+      <MemoryRouter>
+        <Workspace variant="new-project" />
+      </MemoryRouter>
+    );
+    expect(screen.getByLabelText('workspace-message')).not.toBeDisabled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('workspace-message'), {
+      target: { value: 'Use my custom model' },
+    });
+    fireEvent.click(screen.getByText('Send'));
+    await waitFor(() => expect(mocks.newStartTask).toHaveBeenCalledTimes(1));
   });
 
   it('shares the projectless interactive footer across Workspace and New session', () => {

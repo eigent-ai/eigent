@@ -33,10 +33,17 @@ afterEach(() => {
 });
 
 vi.mock('@/components/ChatBox/BottomBox/BoxFooter', () => ({
-  BoxFooter: ({ disabled }: { disabled?: boolean }) => (
+  BoxFooter: ({
+    disabled,
+    modelSelectDisabled = disabled,
+  }: {
+    disabled?: boolean;
+    modelSelectDisabled?: boolean;
+  }) => (
     <div
       data-testid="project-setup-footer"
       data-disabled={String(!!disabled)}
+      data-model-disabled={String(!!modelSelectDisabled)}
     />
   ),
 }));
@@ -95,6 +102,44 @@ const footerProps = {
 };
 
 describe('BottomBox structure', () => {
+  it('allows model recovery from a disabled composer but respects controlled locks', () => {
+    const { rerender } = render(
+      <BottomBox
+        state="input"
+        inputProps={{ disabled: true }}
+        modelSelectDisabled={false}
+        {...footerProps}
+      />
+    );
+    expect(screen.getByTestId('project-setup-footer')).toHaveAttribute(
+      'data-disabled',
+      'true'
+    );
+    expect(screen.getByTestId('project-setup-footer')).toHaveAttribute(
+      'data-model-disabled',
+      'false'
+    );
+
+    rerender(
+      <BottomBox
+        state="running"
+        variant={{
+          kind: 'run_control',
+          header: { title: 'Run interrupted' },
+          runId: 'run-1',
+          state: 'interrupted',
+          disabled: true,
+        }}
+        modelSelectDisabled={false}
+        {...footerProps}
+      />
+    );
+    expect(screen.getByTestId('project-setup-footer')).toHaveAttribute(
+      'data-model-disabled',
+      'true'
+    );
+  });
+
   it('removes the tray immediately when its last task leaves the queue', () => {
     const { container, rerender } = render(
       <BottomBox

@@ -12,11 +12,40 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { classifyError, isLegacyTaskError } from '@/lib/usageErrors';
+import {
+  classifyError,
+  isLegacyTaskError,
+  isUsageReason,
+} from '@/lib/usageErrors';
 import { describe, expect, it, vi } from 'vitest';
 vi.mock('i18next', () => ({ default: { t: (key: string) => key } }));
 
 describe('usage error classification', () => {
+  it.each([
+    { code: 'eigent_low_balance_model_restricted', remaining_credits: 172 },
+    {
+      response: {
+        status: 403,
+        data: {
+          detail: {
+            code: 'eigent_low_balance_model_restricted',
+            allowed_models: ['eigent'],
+          },
+        },
+      },
+    },
+    { error: { code: 'eigent_low_balance_model_restricted' } },
+    { code: 403, error: { code: 'eigent_low_balance_model_restricted' } },
+    `Error code: 403 - {'error': {'message': "403: {'code': 'eigent_low_balance_model_restricted', 'message': 'Your remaining credits are reserved for Eigent. Switch to the Eigent model to continue.', 'allowed_models': ['eigent'], 'threshold_credits': 200, 'remaining_credits': 172}", 'type': 'None', 'param': 'None', 'code': '403'}}`,
+  ])(
+    'recognizes the low-balance model restriction without blocking all cloud models',
+    (error) => {
+      const reason = classifyError(error, { modelType: 'cloud' });
+      expect(reason).toBe('model-restricted');
+      expect(isUsageReason(reason)).toBe(false);
+    }
+  );
+
   it('recognizes the reported Python-style budget response without evaluating it', () => {
     expect(
       classifyError(
