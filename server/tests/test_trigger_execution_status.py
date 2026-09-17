@@ -12,12 +12,14 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 from sqlmodel import Session, SQLModel, create_engine, select
 
+from app.domains.trigger.service import trigger_schedule_task
 from app.domains.trigger.service.trigger_crud_service import TriggerCrudService
 from app.domains.trigger.service.trigger_service import TriggerService
 from app.model.trigger.trigger import Trigger
@@ -196,3 +198,143 @@ def test_timeout_transition_refreshes_stale_execution_before_write(
         assert persisted.status == ExecutionStatus.completed
         assert persisted.error_message is None
         assert persisted.output_data == {"result": "accepted"}
+
+
+def test_long_running_execution_waits_for_authoritative_terminal_receipt(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'long-running-trigger.db'}")
+    SQLModel.metadata.create_all(
+        engine,
+        tables=[Trigger.__table__, TriggerExecution.__table__],
+    )
+    with Session(engine) as setup:
+        trigger = Trigger(
+            user_id="1",
+            project_id="project-1",
+            name="Healthy long task",
+            trigger_type=TriggerType.webhook,
+            status=TriggerStatus.active,
+            consecutive_failures=2,
+            config={"max_failure_count": 3},
+        )
+        setup.add(trigger)
+        setup.flush()
+        setup.add(
+            TriggerExecution(
+                trigger_id=trigger.id,
+                execution_id="execution-long-running",
+                execution_type=ExecutionType.scheduled,
+                status=ExecutionStatus.running,
+                started_at=datetime.now(UTC) - timedelta(minutes=11),
+            )
+        )
+        setup.commit()
+
+    redis_manager = Mock()
+    monkeypatch.setattr(trigger_schedule_task, "session_make", lambda: Session(engine))
+    monkeypatch.setattr(trigger_schedule_task, "get_redis_manager", lambda: redis_manager)
+    monkeypatch.setattr(trigger_schedule_task, "EXECUTION_RUNNING_TIMEOUT_SECONDS", 600)
+    monkeypatch.setattr(TriggerCrudService, "_publish_execution_event", Mock())
+
+    # Repeated sweeps have no failure-counter or auto-disable side effects.
+    trigger_schedule_task.check_execution_timeouts.run()
+    trigger_schedule_task.check_execution_timeouts.run()
+    with Session(engine) as verify:
+        execution = verify.exec(select(TriggerExecution)).one()
+        trigger = verify.exec(select(Trigger)).one()
+        assert execution.status == ExecutionStatus.running
+        assert execution.completed_at is None
+        assert execution.error_message is None
+        assert trigger.consecutive_failures == 2
+        assert trigger.status == TriggerStatus.active
+        assert trigger.auto_disabled_at is None
+    redis_manager.get_user_sessions.assert_not_called()
+    redis_manager.remove_pending_execution.assert_not_called()
+
+    with Session(engine) as terminal_session:
+        TriggerCrudService.update_execution(
+            "execution-long-running",
+            TriggerExecutionUpdate(
+                status=ExecutionStatus.completed,
+                output_data={"result": "healthy long task completed"},
+            ),
+            user_id=1,
+            s=terminal_session,
+        )
+
+    # Once the real terminal receipt has arrived, late competing terminal and
+    # running writes still cannot replace it or its output.
+    for late_status in (ExecutionStatus.failed, ExecutionStatus.running):
+        with Session(engine) as late_session:
+            TriggerCrudService.update_execution(
+                "execution-long-running",
+                TriggerExecutionUpdate(
+                    status=late_status,
+                    output_data={"result": "late competing write"},
+                    error_message="late error",
+                ),
+                user_id=1,
+                s=late_session,
+            )
+    with Session(engine) as verify:
+        execution = verify.exec(select(TriggerExecution)).one()
+        trigger = verify.exec(select(Trigger)).one()
+        assert execution.status == ExecutionStatus.completed
+        assert execution.output_data == {"result": "healthy long task completed"}
+        assert execution.error_message is None
+        assert execution.duration_seconds >= 600
+        assert trigger.last_execution_status == "completed"
+        assert trigger.consecutive_failures == 0
+        assert trigger.status == TriggerStatus.active
+
+
+def test_pending_acknowledgment_timeout_still_expires_once(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'pending-trigger.db'}")
+    SQLModel.metadata.create_all(
+        engine,
+        tables=[Trigger.__table__, TriggerExecution.__table__],
+    )
+    with Session(engine) as setup:
+        trigger = Trigger(
+            user_id="1",
+            project_id="project-1",
+            name="Unacknowledged task",
+            trigger_type=TriggerType.schedule,
+            status=TriggerStatus.active,
+        )
+        setup.add(trigger)
+        setup.flush()
+        setup.add(
+            TriggerExecution(
+                trigger_id=trigger.id,
+                execution_id="execution-pending",
+                execution_type=ExecutionType.scheduled,
+                status=ExecutionStatus.pending,
+                created_at=datetime.now(UTC) - timedelta(minutes=2),
+            )
+        )
+        setup.commit()
+
+    redis_manager = Mock()
+    redis_manager.get_user_sessions.return_value = {"session-1"}
+    monkeypatch.setattr(trigger_schedule_task, "session_make", lambda: Session(engine))
+    monkeypatch.setattr(trigger_schedule_task, "get_redis_manager", lambda: redis_manager)
+    monkeypatch.setattr(trigger_schedule_task, "EXECUTION_PENDING_TIMEOUT_SECONDS", 60)
+
+    trigger_schedule_task.check_execution_timeouts.run()
+    trigger_schedule_task.check_execution_timeouts.run()
+
+    with Session(engine) as verify:
+        execution = verify.exec(select(TriggerExecution)).one()
+        trigger = verify.exec(select(Trigger)).one()
+        assert execution.status == ExecutionStatus.missed
+        assert execution.error_message == "Execution acknowledgment timeout (60 seconds)"
+        assert trigger.consecutive_failures == 1
+    redis_manager.remove_pending_execution.assert_called_once_with(
+        "session-1", "execution-pending"
+    )
