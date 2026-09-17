@@ -254,38 +254,47 @@ class RunCoordinator:
         *,
         project_id: str | None = None,
     ) -> AsyncIterator[None]:
-        """Serialize admission side effects for one Run or legacy Project.
+        """Serialize admission with Run controls and legacy Project writers.
 
         The controller must enter this scope before creating durable memory,
         mutating compatibility TaskLock state, or queueing the initial command.
-        A Project key is required for legacy ``/chat`` because different Run
-        ids still share one mutable TaskLock queue. A concurrent retry can then
-        attach to the first consumer without repeating any of those effects.
+        Legacy ``/chat`` also needs a Project gate because different Run ids
+        share one mutable TaskLock queue. Always acquire that gate before the
+        Run gate; canonical controls acquire only the Run gate, so admission
+        cannot race cancellation/resume or introduce a reverse lock order.
+        A concurrent retry can attach without repeating admission effects.
         """
 
-        gate_key = f"project:{project_id}" if project_id else f"run:{run_id}"
+        gate_keys = [f"run:{run_id}"]
+        if project_id:
+            gate_keys.insert(0, f"project:{project_id}")
+        gates: list[tuple[str, _AdmissionGate]] = []
         async with self._lock:
-            gate = self._admission_gates.get(gate_key)
-            if gate is None:
-                gate = _AdmissionGate()
-                self._admission_gates[gate_key] = gate
-            gate.users += 1
+            for gate_key in gate_keys:
+                gate = self._admission_gates.get(gate_key)
+                if gate is None:
+                    gate = _AdmissionGate()
+                    self._admission_gates[gate_key] = gate
+                gate.users += 1
+                gates.append((gate_key, gate))
 
-        acquired = False
+        acquired: list[_AdmissionGate] = []
         try:
-            await gate.lock.acquire()
-            acquired = True
+            for _, gate in gates:
+                await gate.lock.acquire()
+                acquired.append(gate)
             yield
         finally:
-            if acquired:
+            for gate in reversed(acquired):
                 gate.lock.release()
             async with self._lock:
-                gate.users -= 1
-                if (
-                    gate.users == 0
-                    and self._admission_gates.get(gate_key) is gate
-                ):
-                    self._admission_gates.pop(gate_key, None)
+                for gate_key, gate in gates:
+                    gate.users -= 1
+                    if (
+                        gate.users == 0
+                        and self._admission_gates.get(gate_key) is gate
+                    ):
+                        self._admission_gates.pop(gate_key, None)
 
     async def attach_if_running(
         self,
@@ -387,7 +396,14 @@ class RunCoordinator:
 
         async with self._lock:
             handle = self._handles.get(previous_run_id)
-            if handle is None or not handle.consumer_alive or handle.retiring:
+            if (
+                handle is None
+                or not handle.consumer_alive
+                or handle.retiring
+                or handle.cancel_event.is_set()
+            ):
+                # Cancellation leaves the task alive during generator/tool
+                # teardown. It can no longer own a newly admitted follow-up.
                 return False
             if previous_run_id == run_id:
                 return True
