@@ -114,11 +114,18 @@ export async function admitDurableRunResume(
   runId: string,
   requestId: string,
   post: typeof fetchPost = fetchPost
-): Promise<void> {
-  await post(`/runs/${encodeURIComponent(runId)}/resume`, {
+): Promise<number> {
+  const response = await post(`/runs/${encodeURIComponent(runId)}/resume`, {
     request_id: requestId,
     reason: 'explicit_resume',
   });
+  const attemptNumber = response?.attempt?.attempt_number;
+  if (!Number.isSafeInteger(attemptNumber) || attemptNumber < 1) {
+    throw new Error(
+      'Run Resume response did not identify the admitted attempt.'
+    );
+  }
+  return attemptNumber;
 }
 
 /** Adapt a canonical RunEvent to the legacy message reducer during migration. */
@@ -3076,9 +3083,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       // It returns real 404/409 errors for terminal, cancelled, cloud-restored,
       // or unsafe-to-replay Runs. Only after all local model/workspace preflight
       // has succeeded do we create the durable pending Attempt.
+      let resumedAttemptNumber: number | undefined;
       if (startOptions.resumeRequestId) {
         try {
-          await admitDurableRunResume(newTaskId, startOptions.resumeRequestId);
+          resumedAttemptNumber = await admitDurableRunResume(
+            newTaskId,
+            startOptions.resumeRequestId
+          );
         } catch (error) {
           finishStartupFailure();
           throw error;
@@ -3090,6 +3101,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       let lockedChatStore: VanillaChatStore =
         targetChatStore as VanillaChatStore;
       let lockedTaskId = newTaskId;
+      // Resume keeps its Run ID. Until this admitted Attempt reaches either
+      // the stream or a GET snapshot, older terminal receipts are history only.
+      let resumedAttemptObserved = false;
+      const isAdmittedAttemptCurrent = (runId: string) =>
+        runId !== newTaskId ||
+        resumedAttemptNumber === undefined ||
+        resumedAttemptObserved ||
+        (runProjectionStore.getRun(project_id!, runId)?.latestAttempt
+          ?.attemptNumber ?? 0) >= resumedAttemptNumber;
 
       // Create AbortController for this task's SSE connection
       // First check if there's already an active SSE connection for this task
@@ -3162,7 +3182,17 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         const settleTerminal = (
           event: Pick<RunDomainEvent, 'eventType' | 'payload'>
         ) => {
-          if (!active) return;
+          if (!active || !isAdmittedAttemptCurrent(observedTaskId)) return;
+          const projectedRun = runProjectionStore.getRun(
+            project_id,
+            observedTaskId
+          );
+          if (
+            projectedRun &&
+            projectedRun.status !==
+              CANONICAL_TERMINAL_RUN_STATUSES[event.eventType]
+          )
+            return;
           if (
             !settleLegacyTaskFromCanonicalTerminal(
               observedChatStore,
@@ -3218,9 +3248,29 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           {
             projectId: project_id,
             runId: observedTaskId,
-            eventTypes: Object.keys(CANONICAL_TERMINAL_RUN_STATUSES),
+            eventTypes: [
+              ...Object.keys(CANONICAL_TERMINAL_RUN_STATUSES),
+              'run.attempt_created',
+              'run.attempt_started',
+            ],
           },
-          settleTerminal
+          (event) => {
+            if (
+              ['run.attempt_created', 'run.attempt_started'].includes(
+                event.eventType
+              )
+            ) {
+              if (
+                observedTaskId === newTaskId &&
+                resumedAttemptNumber !== undefined &&
+                typeof event.payload.attempt_number === 'number' &&
+                event.payload.attempt_number >= resumedAttemptNumber
+              )
+                resumedAttemptObserved = true;
+              return;
+            }
+            settleTerminal(event);
+          }
         );
         canonicalTerminalBinding = binding;
         registerCanonicalTerminalObserverCleanup(
@@ -3290,6 +3340,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           isCurrent: () =>
             lockedTaskId === runId &&
             lockedChatStore === runStore &&
+            isAdmittedAttemptCurrent(runId) &&
             (!activeSSEControllers[newTaskId] ||
               activeSSEControllers[newTaskId].controller === abortController),
         });

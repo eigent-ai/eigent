@@ -1309,10 +1309,12 @@ describe('ChatStore - Core Functionality', () => {
         initialRunId = 'live-run',
         projectedStatus,
         executionId,
+        resumeRequestId,
       }: {
         initialRunId?: string;
         projectedStatus?: 'failed' | 'completed' | 'cancelled' | 'interrupted';
         executionId?: string;
+        resumeRequestId?: string;
       } = {}) => {
         vi.mocked(proxyFetchGet).mockResolvedValue({
           value: 'test-cloud-key',
@@ -1371,24 +1373,32 @@ describe('ChatStore - Core Functionality', () => {
               run_id: initialRunId,
               project_id: 'project-1',
               status: projectedStatus,
+              version: 1,
+              latest_attempt: { attempt_number: 1, status: projectedStatus },
               updated_at: Date.now(),
             },
           ]);
         }
 
-        await store
-          .getState()
-          .startTask(
-            'initial-task',
-            undefined,
-            undefined,
-            undefined,
-            'Create a game',
-            [],
-            executionId,
-            'project-1',
-            'single' as any
-          );
+        await store.getState().startTask(
+          resumeRequestId ? initialRunId : 'initial-task',
+          undefined,
+          undefined,
+          undefined,
+          'Create a game',
+          [],
+          executionId,
+          'project-1',
+          'single' as any,
+          resumeRequestId
+            ? {
+                resumeRequestId,
+                preserveTaskId: true,
+                skipHistoryCreate: true,
+                awaitAdmission: true,
+              }
+            : undefined
+        );
         await vi.waitFor(() =>
           expect([...streams.keys()].some((url) => url.endsWith('/chat'))).toBe(
             true
@@ -1605,6 +1615,152 @@ describe('ChatStore - Core Functionality', () => {
           expect(store.getState().tasks['follow-up-run'].status).toBe(
             ChatTaskStatus.FINISHED
           )
+        );
+        expect(signal.aborted).toBe(true);
+        expect(runDomainEventHub.listenerCount()).toBe(0);
+      });
+
+      it.each(['event', 'snapshot'] as const)(
+        'settles only the admitted Resume attempt from a terminal %s',
+        async (terminalSource) => {
+          const runId = `resumed-run-${terminalSource}`;
+          vi.mocked(fetchPost).mockResolvedValueOnce({
+            run_id: runId,
+            attempt: { attempt_number: 2 },
+          });
+          const { store, streamContaining } = await startObservedLiveTask({
+            initialRunId: runId,
+            projectedStatus: 'interrupted',
+            resumeRequestId: 'resume-request',
+          });
+          const signal = streamContaining('/chat').signal as AbortSignal;
+          expect(signal.aborted).toBe(false);
+          expect(hasActiveSSEConnection([runId])).toBe(true);
+          expect(store.getState().tasks[runId].status).toBe(
+            ChatTaskStatus.PENDING
+          );
+
+          // Canonical catch-up can replay the preceding Attempt's terminal
+          // receipt before the admitted Attempt's start reaches this renderer.
+          runEventIngressRegistry.ingest(
+            'project-1',
+            runId,
+            canonicalEvent(runId, 'run.interrupted'),
+            'reconnect_catch_up'
+          );
+          const eventStore = getProjectEventStore('project-1');
+          eventStore.reconcileRunSummary(
+            {
+              project_id: 'project-1',
+              run_id: runId,
+              status: 'interrupted',
+              version: 1,
+              updated_at: Date.now(),
+              latest_attempt: { attempt_number: 1, status: 'interrupted' },
+            },
+            eventStore.getIncarnation()
+          );
+          vi.mocked(fetchGet).mockRejectedValueOnce(
+            new TypeError('NetworkError')
+          );
+          await streamContaining('/chat').onmessage?.({
+            event: 'runtime_detached',
+            data: '{}',
+          });
+          for (let i = 0; i < 20; i++) await Promise.resolve();
+          expect(store.getState().tasks[runId].status).toBe(
+            ChatTaskStatus.PENDING
+          );
+          expect(signal.aborted).toBe(false);
+          expect(runDomainEventHub.listenerCount()).toBe(1);
+
+          runEventIngressRegistry.ingest(
+            'project-1',
+            runId,
+            {
+              ...canonicalEvent(runId, 'run.attempt_started'),
+              sequence: 2,
+              run_version: 3,
+              payload: { attempt_number: 2 },
+            },
+            'live'
+          );
+          if (terminalSource === 'event') {
+            runEventIngressRegistry.ingest(
+              'project-1',
+              runId,
+              {
+                ...canonicalEvent(runId, 'run.failed'),
+                sequence: 3,
+                run_version: 4,
+              },
+              'live'
+            );
+          } else {
+            runProjectionStore.upsertRunSummaries('project-1', [
+              {
+                project_id: 'project-1',
+                run_id: runId,
+                status: 'failed',
+                version: 4,
+                updated_at: Date.now(),
+                latest_attempt: { attempt_number: 2, status: 'failed' },
+              },
+            ]);
+          }
+          await vi.waitFor(() =>
+            expect(store.getState().tasks[runId]).toMatchObject({
+              status: ChatTaskStatus.FINISHED,
+              durableRunStatus: 'failed',
+            })
+          );
+          expect(signal.aborted).toBe(true);
+          expect(runDomainEventHub.listenerCount()).toBe(0);
+        }
+      );
+
+      it('ignores a replayed terminal behind a newer running snapshot', async () => {
+        const runId = 'newer-running-attempt';
+        const { store, streamContaining } = await startObservedLiveTask({
+          initialRunId: runId,
+        });
+        const signal = streamContaining('/chat').signal as AbortSignal;
+        runProjectionStore.upsertRunSummaries('project-1', [
+          {
+            project_id: 'project-1',
+            run_id: runId,
+            status: 'running',
+            version: 3,
+            updated_at: Date.now(),
+            latest_attempt: { attempt_number: 2, status: 'running' },
+          },
+        ]);
+        runEventIngressRegistry.ingest(
+          'project-1',
+          runId,
+          canonicalEvent(runId, 'run.failed'),
+          'reconnect_catch_up'
+        );
+        await Promise.resolve();
+        expect(store.getState().tasks[runId].status).not.toBe(
+          ChatTaskStatus.FINISHED
+        );
+        expect(signal.aborted).toBe(false);
+        expect(runDomainEventHub.listenerCount()).toBe(1);
+
+        runEventIngressRegistry.ingest(
+          'project-1',
+          runId,
+          {
+            ...canonicalEvent(runId, 'run.failed'),
+            event_id: 'current-attempt-terminal',
+            sequence: 2,
+            run_version: 4,
+          },
+          'live'
+        );
+        expect(store.getState().tasks[runId].status).toBe(
+          ChatTaskStatus.FINISHED
         );
         expect(signal.aborted).toBe(true);
         expect(runDomainEventHub.listenerCount()).toBe(0);
