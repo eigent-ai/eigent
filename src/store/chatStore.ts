@@ -3341,8 +3341,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             lockedTaskId === runId &&
             lockedChatStore === runStore &&
             isAdmittedAttemptCurrent(runId) &&
-            (!activeSSEControllers[newTaskId] ||
-              activeSSEControllers[newTaskId].controller === abortController),
+            (!activeSSEControllers[runId] ||
+              activeSSEControllers[runId].controller === abortController),
         });
       };
 
@@ -6096,7 +6096,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           resumeStreamOpened = true;
           resolveResumeStreamOpen?.();
           if (!type && project_id) {
-            observeCanonicalTerminal(targetChatStore, newTaskId);
+            observeCanonicalTerminal(lockedChatStore, lockedTaskId);
           }
           const { setAttaches, activeTaskId } = get();
           setAttaches(activeTaskId as string, []);

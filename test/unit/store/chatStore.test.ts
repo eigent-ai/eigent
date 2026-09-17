@@ -1620,6 +1620,31 @@ describe('ChatStore - Core Functionality', () => {
         expect(runDomainEventHub.listenerCount()).toBe(0);
       });
 
+      it('keeps follow-up terminal ownership when the legacy stream reopens', async () => {
+        const { store, streamContaining } = await startObservedLiveTask();
+        const signal = await switchLegacyStreamToFollowUp({
+          store,
+          streamContaining,
+        });
+        await streamContaining('/chat').onopen?.(
+          new Response('', {
+            status: 200,
+            headers: { 'content-type': 'text/event-stream' },
+          })
+        );
+        runEventIngressRegistry.ingest(
+          'project-1',
+          'follow-up-run',
+          canonicalEvent('follow-up-run', 'run.failed'),
+          'live'
+        );
+        expect(store.getState().tasks['follow-up-run'].status).toBe(
+          ChatTaskStatus.FINISHED
+        );
+        expect(signal.aborted).toBe(true);
+        expect(runDomainEventHub.listenerCount()).toBe(0);
+      });
+
       it.each(['event', 'snapshot'] as const)(
         'settles only the admitted Resume attempt from a terminal %s',
         async (terminalSource) => {
