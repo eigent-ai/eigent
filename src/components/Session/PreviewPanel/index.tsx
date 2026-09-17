@@ -164,6 +164,7 @@ export function PreviewPanel({
             tab={activeTab}
             isDesktop={isDesktop}
             viewportSettled={displaySettled}
+            onJumpToFiles={onJumpToFiles}
           />
         );
       case 'file':

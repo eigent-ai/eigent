@@ -1481,5 +1481,8 @@
   "terminal-process-stop-failed": "无法停止此进程，请重试。",
   "terminal-process-open-server": "打开服务器",
   "terminal-process-open-output": "打开终端",
-  "terminal-process-local-shell": "本地终端"
+  "terminal-process-local-shell": "本地终端",
+  "browser-preview-failed": "页面暂时无法打开",
+  "browser-preview-local-unavailable": "本地服务器可能已停止。请在服务器运行后重试，或从文件中打开已交付的 HTML 文件。",
+  "browser-preview-unavailable": "请检查地址和网络连接，然后重试。"
 }

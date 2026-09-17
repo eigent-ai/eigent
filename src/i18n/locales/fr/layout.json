@@ -1525,5 +1525,8 @@
   "terminal-process-stop-failed": "Impossible d’arrêter ce processus. Réessayez.",
   "terminal-process-open-server": "Ouvrir le serveur",
   "terminal-process-open-output": "Ouvrir le terminal",
-  "terminal-process-local-shell": "Shell local"
+  "terminal-process-local-shell": "Shell local",
+  "browser-preview-failed": "Page indisponible",
+  "browser-preview-local-unavailable": "Le serveur local est peut-être arrêté. Réessayez lorsqu’il fonctionne ou ouvrez le fichier HTML livré depuis Fichiers.",
+  "browser-preview-unavailable": "Vérifiez l’adresse et la connexion, puis réessayez."
 }

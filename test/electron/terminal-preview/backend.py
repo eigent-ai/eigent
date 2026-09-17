@@ -20,12 +20,13 @@ under a TemporaryDirectory. No credentials, model calls or user projects are use
 
 import atexit
 import contextvars
+import logging
 import os
-from pathlib import Path
 import shlex
 import sys
 import tempfile
 import uuid
+from pathlib import Path
 from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "backend"))
@@ -35,14 +36,16 @@ os.environ["EIGENT_RUN_JOURNAL_PATH"] = str(state_path / "journal.sqlite3")
 os.environ["EIGENT_LOCAL_CONTROL_CAPABILITY"] = "terminal-smoke-fixture"
 os.environ["EIGENT_RUNTIME"] = "electron"
 
+import app.agent.toolkit.terminal_toolkit as module
+import uvicorn
+from app.agent.toolkit.terminal_toolkit import TerminalToolkit
+from app.controller.run_controller import router
+from app.run_context import RunContext
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.controller.run_controller import router
-from app.agent.toolkit.terminal_toolkit import TerminalToolkit
-import app.agent.toolkit.terminal_toolkit as module
-from app.run_context import RunContext
-import uvicorn
+from fastapi.responses import JSONResponse
 
+logger = logging.getLogger(__name__)
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -98,12 +101,20 @@ def start(kind: str):
     )
     cp_token = checkpoint.set(SimpleNamespace(tool_call_id="smoke-" + kind))
     try:
-        command = f"{shlex.quote(sys.executable)} -u -c {shlex.quote(scripts[kind])}"
-        return {
-            "result": toolkit._shell_exec_with_workspace_checkpoint(
-                command, id=kind, block=kind == "stream"
-            )
-        }
+        command = (
+            f"{shlex.quote(sys.executable)} -u -c {shlex.quote(scripts[kind])}"
+        )
+        toolkit._shell_exec_with_workspace_checkpoint(
+            command, id=kind, block=kind == "stream"
+        )
+        # Callers only need dispatch acknowledgement. Tool output can contain
+        # internal exception details; process state/output has its own routes.
+        return {"accepted": True}
+    except Exception:
+        logger.exception("Terminal preview fixture dispatch failed")
+        return JSONResponse(
+            status_code=500, content={"error": "Could not start fixture"}
+        )
     finally:
         current.reset(token)
         checkpoint.reset(cp_token)

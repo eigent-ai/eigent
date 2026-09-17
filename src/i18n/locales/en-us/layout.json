@@ -1503,5 +1503,8 @@
   "terminal-process-stop-failed": "Could not stop this process. Try again.",
   "terminal-process-open-server": "Open server",
   "terminal-process-open-output": "Open terminal",
-  "terminal-process-local-shell": "Local shell"
+  "terminal-process-local-shell": "Local shell",
+  "browser-preview-failed": "Page unavailable",
+  "browser-preview-local-unavailable": "The local server may have stopped. Retry when it is running, or open the delivered HTML file from Files.",
+  "browser-preview-unavailable": "Check the address and connection, then try again."
 }

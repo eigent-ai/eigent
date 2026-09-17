@@ -1481,5 +1481,8 @@
   "terminal-process-stop-failed": "無法停止此程序，請重試。",
   "terminal-process-open-server": "開啟伺服器",
   "terminal-process-open-output": "開啟終端機",
-  "terminal-process-local-shell": "本機終端機"
+  "terminal-process-local-shell": "本機終端機",
+  "browser-preview-failed": "暫時無法開啟頁面",
+  "browser-preview-local-unavailable": "本機伺服器可能已停止。請在伺服器執行後重試，或從檔案中開啟已交付的 HTML 檔案。",
+  "browser-preview-unavailable": "請檢查位址和網路連線，然後重試。"
 }

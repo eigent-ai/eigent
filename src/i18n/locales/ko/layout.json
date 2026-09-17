@@ -1481,5 +1481,8 @@
   "terminal-process-stop-failed": "이 프로세스를 중지할 수 없습니다. 다시 시도하세요.",
   "terminal-process-open-server": "서버 열기",
   "terminal-process-open-output": "터미널 열기",
-  "terminal-process-local-shell": "로컬 셸"
+  "terminal-process-local-shell": "로컬 셸",
+  "browser-preview-failed": "페이지를 사용할 수 없습니다",
+  "browser-preview-local-unavailable": "로컬 서버가 중지되었을 수 있습니다. 서버가 실행 중일 때 다시 시도하거나 파일에서 결과 HTML 파일을 여세요.",
+  "browser-preview-unavailable": "주소와 연결을 확인한 후 다시 시도하세요."
 }

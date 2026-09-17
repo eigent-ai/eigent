@@ -83,6 +83,7 @@ import {
 import {
   inlineLocalHtmlImgElements,
   inlineLocalHtmlScriptElements,
+  inlineLocalHtmlStylesheets,
   inlineLocalProjectImagePaths,
   toLocalFileUrl,
 } from '@/lib/htmlLocalAssets';
@@ -2075,79 +2076,6 @@ function resolveRelativePath(basePath: string, relativePath: string): string {
   return baseParts.join('/');
 }
 
-function getUrlBasename(url: string): string {
-  const pathWithoutQuery = url.split(/[?#]/, 1)[0] ?? '';
-  return pathWithoutQuery.replace(/\\/g, '/').split('/').pop() ?? '';
-}
-
-function inlineExternalScriptByName(
-  html: string,
-  fileName: string,
-  jsContent: string
-): string {
-  if (typeof DOMParser === 'undefined') {
-    return html;
-  }
-
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, 'text/html');
-  const doctype = html.match(/<!doctype[^>]*>/i)?.[0] || '';
-  let replaced = false;
-
-  doc.querySelectorAll('script[src]').forEach((script) => {
-    const src = script.getAttribute('src') ?? '';
-    if (getUrlBasename(src) !== fileName) {
-      return;
-    }
-
-    script.removeAttribute('src');
-    script.setAttribute('data-source', fileName);
-    script.textContent = jsContent;
-    replaced = true;
-  });
-
-  return replaced
-    ? `${doctype}${doc.documentElement?.outerHTML || html}`
-    : html;
-}
-
-function collectReferencedAssetPaths(
-  html: string,
-  htmlDir: string
-): Set<string> {
-  const referencedPaths: Set<string> = new Set();
-  const template = document.createElement('template');
-  template.innerHTML = html;
-
-  const addReferencedPath = (url: string) => {
-    if (
-      !url.startsWith('http://') &&
-      !url.startsWith('https://') &&
-      !url.startsWith('//')
-    ) {
-      const resolvedPath = resolveRelativePath(htmlDir, url);
-      referencedPaths.add(resolvedPath.toLowerCase());
-    }
-  };
-
-  template.content.querySelectorAll('script[src]').forEach((script) => {
-    const src = script.getAttribute('src');
-    if (src) {
-      addReferencedPath(src);
-    }
-  });
-
-  template.content.querySelectorAll('link[href]').forEach((link) => {
-    const href = link.getAttribute('href');
-    const hrefPath = href?.split(/[?#]/, 1)[0].toLowerCase();
-    if (href && hrefPath?.endsWith('.css')) {
-      addReferencedPath(href);
-    }
-  });
-
-  return referencedPaths;
-}
-
 function normalizeLookupPath(path: string): string {
   return path
     .replace(/\\/g, '/')
@@ -2627,26 +2555,6 @@ function HtmlRenderer({
       // Get the directory of the HTML file
       const htmlDir = getDirPath(selectedFile.path);
 
-      const referencedPaths = collectReferencedAssetPaths(html, htmlDir);
-
-      // Find matching files (exact path match only)
-      const relatedFiles = projectFiles.filter((file) => {
-        if (
-          file.isFolder ||
-          !['js', 'css'].includes(file.type?.toLowerCase() || '')
-        )
-          return false;
-        const normalizedFilePath = file.path.replace(/\\/g, '/').toLowerCase();
-        return referencedPaths.has(normalizedFilePath);
-      });
-
-      const jsFiles = relatedFiles.filter(
-        (f) => f.type?.toLowerCase() === 'js'
-      );
-      const cssFiles = relatedFiles.filter(
-        (f) => f.type?.toLowerCase() === 'css'
-      );
-
       // Check for dangerous Electron/Node.js patterns as defense-in-depth
       if (containsDangerousContent(html)) {
         setProcessedHtml('');
@@ -2692,66 +2600,16 @@ function HtmlRenderer({
       }
 
       if (ipcRenderer) {
+        processedHtmlContent = await inlineLocalHtmlStylesheets(
+          processedHtmlContent,
+          htmlDir,
+          (filePath) => ipcRenderer.invoke('open-file', 'css', filePath, false)
+        );
         processedHtmlContent = await inlineLocalHtmlScriptElements(
           processedHtmlContent,
           htmlDir,
           (filePath) => ipcRenderer.invoke('open-file', 'js', filePath, false)
         );
-      }
-
-      // Load and inject CSS files, replacing external link tags
-      for (const cssFile of cssFiles) {
-        try {
-          const cssContent = ipcRenderer
-            ? await ipcRenderer.invoke('open-file', 'css', cssFile.path, false)
-            : null;
-          if (cssContent) {
-            const styleTag = `<style data-source="${cssFile.name}">${cssContent}</style>`;
-
-            // Try to replace the external link tag with inline style
-            const linkRegex = new RegExp(
-              `<link[^>]*href=["'](?:[^"']*[/\\\\])?${cssFile.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>`,
-              'gi'
-            );
-            const replacedCss = processedHtmlContent.replace(
-              linkRegex,
-              styleTag
-            );
-            if (replacedCss !== processedHtmlContent) {
-              processedHtmlContent = replacedCss;
-            } else {
-              // Fallback: inject CSS at the beginning of the HTML
-              if (processedHtmlContent.includes('<head>')) {
-                processedHtmlContent = processedHtmlContent.replace(
-                  '<head>',
-                  `<head>${styleTag}`
-                );
-              } else {
-                processedHtmlContent = styleTag + processedHtmlContent;
-              }
-            }
-          }
-        } catch (error) {
-          console.error(`Failed to load CSS file: ${cssFile.path}`, error);
-        }
-      }
-
-      // Load JS files content and replace external script tags
-      for (const jsFile of jsFiles) {
-        try {
-          const jsContent = ipcRenderer
-            ? await ipcRenderer.invoke('open-file', 'js', jsFile.path, false)
-            : null;
-          if (jsContent) {
-            processedHtmlContent = inlineExternalScriptByName(
-              processedHtmlContent,
-              jsFile.name,
-              jsContent
-            );
-          }
-        } catch (error) {
-          console.error(`Failed to load JS file: ${jsFile.path}`, error);
-        }
       }
 
       if (electronAPI?.readFileAsDataUrl) {

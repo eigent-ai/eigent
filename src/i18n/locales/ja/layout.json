@@ -1481,5 +1481,8 @@
   "terminal-process-stop-failed": "このプロセスを停止できませんでした。もう一度お試しください。",
   "terminal-process-open-server": "サーバーを開く",
   "terminal-process-open-output": "ターミナルを開く",
-  "terminal-process-local-shell": "ローカルシェル"
+  "terminal-process-local-shell": "ローカルシェル",
+  "browser-preview-failed": "ページを表示できません",
+  "browser-preview-local-unavailable": "ローカルサーバーが停止している可能性があります。起動後に再試行するか、ファイルから納品されたHTMLファイルを開いてください。",
+  "browser-preview-unavailable": "アドレスと接続を確認して、もう一度お試しください。"
 }

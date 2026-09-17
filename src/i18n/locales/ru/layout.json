@@ -1547,5 +1547,8 @@
   "terminal-process-stop-failed": "Не удалось остановить процесс. Повторите попытку.",
   "terminal-process-open-server": "Открыть сервер",
   "terminal-process-open-output": "Открыть терминал",
-  "terminal-process-local-shell": "Локальная оболочка"
+  "terminal-process-local-shell": "Локальная оболочка",
+  "browser-preview-failed": "Страница недоступна",
+  "browser-preview-local-unavailable": "Возможно, локальный сервер остановлен. Повторите попытку после его запуска или откройте готовый HTML-файл в разделе «Файлы».",
+  "browser-preview-unavailable": "Проверьте адрес и подключение, затем повторите попытку."
 }

@@ -1503,5 +1503,8 @@
   "terminal-process-stop-failed": "Dieser Prozess konnte nicht gestoppt werden. Bitte erneut versuchen.",
   "terminal-process-open-server": "Server öffnen",
   "terminal-process-open-output": "Terminal öffnen",
-  "terminal-process-local-shell": "Lokale Shell"
+  "terminal-process-local-shell": "Lokale Shell",
+  "browser-preview-failed": "Seite nicht verfügbar",
+  "browser-preview-local-unavailable": "Der lokale Server wurde möglicherweise beendet. Versuche es erneut, sobald er läuft, oder öffne die bereitgestellte HTML-Datei unter Dateien.",
+  "browser-preview-unavailable": "Prüfe die Adresse und die Verbindung und versuche es erneut."
 }

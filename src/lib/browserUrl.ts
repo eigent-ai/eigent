@@ -25,8 +25,24 @@ export type BrowserUrlValidationResult =
 const LOOPBACK_OR_PRIVATE_HOST_PATTERN =
   /^(localhost|127(?:\.\d{1,3}){3}|\[::1\]|0\.0\.0\.0|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2})(?::\d+)?(?:\/|$)/i;
 
+const LOOPBACK_HOST_PATTERN =
+  /^(localhost|127(?:\.\d{1,3}){3}|\[::1\]|0\.0\.0\.0)$/i;
+
 /** Where non-URL input is sent as a search query. */
 const WEB_SEARCH_URL = 'https://www.google.com/search?q=';
+
+/** Whether a complete HTTP(S) URL targets this machine's loopback interface. */
+export function isLoopbackBrowserUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      ['http:', 'https:'].includes(url.protocol) &&
+      LOOPBACK_HOST_PATTERN.test(url.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Scheme-less input we can navigate to directly: a dotted hostname or IP,

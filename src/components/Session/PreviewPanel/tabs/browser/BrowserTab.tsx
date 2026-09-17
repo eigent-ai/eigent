@@ -13,8 +13,10 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsText } from '@/components/ui/ds-text';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { useHost } from '@/host';
+import { isLocalPreviewUrl } from '@/lib/browserPreviewHandoff';
 import { normalizeBrowserUrl } from '@/lib/browserUrl';
 import { cn } from '@/lib/utils';
 import { type SessionBrowserTab, usePageTabStore } from '@/store/pageTabStore';
@@ -33,6 +35,7 @@ export interface BrowserTabProps {
    * clip-path can't clip) doesn't appear over the chat mid-animation.
    */
   viewportSettled?: boolean;
+  onJumpToFiles?: (file: FileInfo | null) => void;
 }
 
 /**
@@ -46,6 +49,7 @@ export function BrowserTab({
   tab,
   isDesktop,
   viewportSettled = true,
+  onJumpToFiles,
 }: BrowserTabProps) {
   const { t } = useTranslation();
   const host = useHost();
@@ -71,6 +75,10 @@ export function BrowserTab({
     setAddressError(null);
   }, [tab.url, addressFocused]);
 
+  useEffect(() => {
+    if (!nav.loadError && !nav.isLoading) setAddressError(null);
+  }, [nav.isLoading, nav.loadError]);
+
   const navigateTo = useCallback(
     async (rawUrl: string) => {
       const normalized = normalizeBrowserUrl(rawUrl);
@@ -93,13 +101,11 @@ export function BrowserTab({
         // Guest already mounted: navigate it in place (keeps history).
         try {
           await element.loadURL(normalized.url);
-        } catch (error) {
+        } catch {
           setAddressError(
-            error instanceof Error
-              ? error.message
-              : t('layout.browser-unable-to-open-url', {
-                  defaultValue: 'Unable to open this URL',
-                })
+            t('layout.browser-unable-to-open-url', {
+              defaultValue: 'Unable to open this URL',
+            })
           );
         }
         return;
@@ -212,7 +218,10 @@ export function BrowserTab({
             size="sm"
             buttonContent="icon-only"
             disabled={!isDesktop || !tab.url}
-            onClick={() => getPreviewWebview(tab.webviewId)?.reload?.()}
+            onClick={() => {
+              setAddressError(null);
+              getPreviewWebview(tab.webviewId)?.reload?.();
+            }}
             aria-label={t('layout.browser-reload', { defaultValue: 'Reload' })}
           >
             <RefreshCw
@@ -285,7 +294,43 @@ export function BrowserTab({
         ref={containerRef}
         className="relative min-h-0 flex-1 overflow-hidden bg-ds-neutral-strong-default"
       >
-        {!tab.url ? (
+        {isDesktop && nav.loadError ? (
+          <div
+            role="alert"
+            className="scrollbar-always-visible flex h-full flex-col overflow-y-auto bg-ds-neutral-default-default p-ds-panel-inset text-center text-ds-ink-default-default"
+          >
+            <div className="my-auto flex w-full shrink-0 flex-col items-center gap-ds-stack-related">
+              <DsText role="body-large" weight="semibold">
+                {t('layout.browser-preview-failed')}
+              </DsText>
+              <DsText className="text-ds-ink-muted-default">
+                {t(
+                  isLocalPreviewUrl(nav.loadError.url)
+                    ? 'layout.browser-preview-local-unavailable'
+                    : 'layout.browser-preview-unavailable'
+                )}
+              </DsText>
+              <div className="flex flex-wrap justify-center gap-ds-control-gap">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void navigateTo(nav.loadError?.url || tab.url)}
+                >
+                  {t('layout.retry')}
+                </Button>
+                {onJumpToFiles && isLocalPreviewUrl(nav.loadError.url) ? (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => onJumpToFiles(null)}
+                  >
+                    {t('layout.files-tab')}
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : !tab.url ? (
           <div className="flex h-full items-center justify-center px-6 text-center text-sm text-ds-ink-muted-default">
             {t('layout.browser-blank', {
               defaultValue: 'Enter a URL to start browsing.',

@@ -1591,5 +1591,8 @@
   "terminal-process-stop-failed": "تعذر إيقاف هذه العملية. حاول مرة أخرى.",
   "terminal-process-open-server": "فتح الخادم",
   "terminal-process-open-output": "فتح الطرفية",
-  "terminal-process-local-shell": "الطرفية المحلية"
+  "terminal-process-local-shell": "الطرفية المحلية",
+  "browser-preview-failed": "الصفحة غير متاحة",
+  "browser-preview-local-unavailable": "ربما توقف الخادم المحلي. أعد المحاولة عندما يعمل، أو افتح ملف HTML الناتج من الملفات.",
+  "browser-preview-unavailable": "تحقق من العنوان والاتصال، ثم حاول مرة أخرى."
 }
