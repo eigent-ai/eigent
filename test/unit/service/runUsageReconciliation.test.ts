@@ -1,0 +1,637 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import { fetchGet } from '@/api/http';
+import {
+  readTerminalRunResult,
+  reconcileRunUsage,
+} from '@/service/runUsageReconciliation';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import completedDisplayFixture from '../../fixtures/completed-run-display.json';
+import completedSingleAgentDisplay from '../../fixtures/completed-single-agent-display.json';
+
+vi.mock('@/api/http', () => ({ fetchGet: vi.fn() }));
+const fetchGetMock = vi.mocked(fetchGet);
+const input = {
+  projectId: 'project-1',
+  runId: 'run-1',
+  terminalEventTypes: ['run.failed', 'run.deadline_reached'],
+};
+
+function event(
+  sequence: number,
+  eventType = 'legacy.request_usage',
+  payload: Record<string, unknown> = { agent_id: 'agent-1', tokens: 10 }
+) {
+  return {
+    event_id: `event-${sequence}`,
+    project_id: 'project-1',
+    run_id: 'run-1',
+    sequence,
+    run_sequence: sequence,
+    // Aggregate version is deliberately not equal to sequence.
+    run_version: sequence + 100,
+    event_type: eventType,
+    legacy_step: eventType.startsWith('legacy.')
+      ? eventType.slice('legacy.'.length)
+      : null,
+    payload,
+  };
+}
+
+function page(events: ReturnType<typeof event>[], hasMore = false) {
+  return {
+    run_id: 'run-1',
+    after_sequence: events.length ? events[0].sequence - 1 : 0,
+    next_sequence: events.at(-1)?.sequence ?? 0,
+    has_more: hasMore,
+    events,
+  };
+}
+
+describe('reconcileRunUsage', () => {
+  beforeEach(() => {
+    fetchGetMock.mockReset();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('recovers only the known usage through the irreversible terminal, not its later tail', async () => {
+    fetchGetMock.mockResolvedValue(
+      page([
+        event(1),
+        event(2, 'run.failed', {}),
+        event(3, 'legacy.request_usage', { tokens: 999 }),
+      ])
+    );
+    await expect(reconcileRunUsage(input)).resolves.toBe(10);
+    expect(fetchGetMock).toHaveBeenCalledOnce();
+    expect(fetchGetMock).toHaveBeenCalledWith(
+      '/runs/run-1/events',
+      { after_sequence: 0, limit: 500 },
+      undefined,
+      { signal: expect.any(AbortSignal) }
+    );
+  });
+
+  it('reads a second page and truncates its requested count at the exact sequence boundary', async () => {
+    fetchGetMock
+      .mockResolvedValueOnce(
+        page(
+          Array.from({ length: 500 }, (_, index) => event(index + 1)),
+          true
+        )
+      )
+      .mockResolvedValueOnce(
+        page([event(501), event(502, 'run.failed', {})], true)
+      );
+    await expect(
+      reconcileRunUsage({ ...input, throughSequence: 502 })
+    ).resolves.toBe(5010);
+    expect(fetchGetMock.mock.calls[1][1]).toEqual({
+      after_sequence: 500,
+      limit: 2,
+    });
+  });
+
+  it('deduplicates model invocation identities and takes the maximum of overlapping usage sources', async () => {
+    const invocation = {
+      invocation_id: 'invocation-1',
+      attempt_id: 'attempt-1',
+      usage: {
+        prompt_tokens: 80,
+        completion_tokens: 20,
+        cache_read_tokens: 80,
+      },
+    };
+    fetchGetMock.mockResolvedValue(
+      page([
+        event(1, 'model.invocation.completed', invocation),
+        event(2, 'model.invocation.completed', invocation),
+        event(3, 'legacy.request_usage', { agent_id: 'agent-1', tokens: 100 }),
+        event(4, 'legacy.deactivate_agent', {
+          agent_id: 'agent-1',
+          tokens: 100,
+        }),
+        event(5, 'run.failed', {}),
+      ])
+    );
+    await expect(reconcileRunUsage(input)).resolves.toBe(100);
+  });
+
+  it('preserves separate legacy agent turns and usage accumulated before Resume', async () => {
+    fetchGetMock.mockResolvedValue(
+      page([
+        event(1, 'legacy.request_usage', { agent_id: 'a', tokens: 30 }),
+        event(2, 'legacy.deactivate_agent', { agent_id: 'a', tokens: 0 }),
+        event(3, 'runtime.interrupted', {}),
+        event(4, 'run.attempt_created', { attempt_number: 2 }),
+        event(5, 'legacy.activate_agent', { agent_id: 'a' }),
+        event(6, 'legacy.deactivate_agent', { agent_id: 'a', tokens: 70 }),
+        event(7, 'legacy.request_usage', { agent_id: 'b', tokens: 20 }),
+        event(8, 'run.failed', {}),
+      ])
+    );
+    await expect(reconcileRunUsage(input)).resolves.toBe(120);
+  });
+
+  it('uses known model counts without inventing missing usage or counting incomplete invocations', async () => {
+    fetchGetMock.mockResolvedValue(
+      page([
+        event(1, 'model.invocation.completed', {
+          invocation_id: 'call-1',
+          usage: { prompt_tokens: 50, completion_tokens: null },
+        }),
+        event(2, 'model.invocation.dispatched', {
+          invocation_id: 'call-2',
+          usage: { prompt_tokens: 999, completion_tokens: 999 },
+        }),
+        event(3, 'run.deadline_reached', {}),
+      ])
+    );
+    await expect(reconcileRunUsage(input)).resolves.toBe(50);
+  });
+
+  it('returns zero only for a complete matching terminal with no known usage', async () => {
+    fetchGetMock.mockResolvedValue(page([event(1, 'run.cancelled', {})]));
+    await expect(
+      reconcileRunUsage({ ...input, terminalEventTypes: ['run.cancelled'] })
+    ).resolves.toBe(0);
+  });
+
+  it.each([
+    [
+      'page Run',
+      (value: any) => {
+        value.run_id = 'another-run';
+      },
+    ],
+    [
+      'page Project',
+      (value: any) => {
+        value.project_id = 'another-project';
+      },
+    ],
+    [
+      'starting cursor',
+      (value: any) => {
+        value.after_sequence = 2;
+      },
+    ],
+    [
+      'next cursor',
+      (value: any) => {
+        value.next_sequence = 10;
+      },
+    ],
+    [
+      'event Project',
+      (value: any) => {
+        value.events[0].project_id = 'another-project';
+      },
+    ],
+    [
+      'event Run',
+      (value: any) => {
+        value.events[0].run_id = 'another-run';
+      },
+    ],
+    [
+      'sequence gap',
+      (value: any) => {
+        value.events[0].sequence = 5;
+      },
+    ],
+    [
+      'duplicate event id',
+      (value: any) => {
+        value.events[1].event_id = value.events[0].event_id;
+      },
+    ],
+    [
+      'missing payload',
+      (value: any) => {
+        value.events[0].payload = null;
+      },
+    ],
+    [
+      'negative tokens',
+      (value: any) => {
+        value.events[0].payload.tokens = -10;
+      },
+    ],
+  ])(
+    'rejects %s mismatches rather than reporting an incorrect zero',
+    async (_name, corrupt) => {
+      const response = page([event(1), event(2, 'run.failed', {})]);
+      corrupt(response);
+      fetchGetMock.mockResolvedValue(response);
+      await expect(reconcileRunUsage(input)).rejects.toThrow();
+    }
+  );
+
+  it('rejects a fixed boundary whose event is not the requested terminal', async () => {
+    fetchGetMock.mockResolvedValue(page([event(1)], true));
+    await expect(
+      reconcileRunUsage({ ...input, throughSequence: 1 })
+    ).rejects.toThrow('matching terminal boundary');
+  });
+
+  it('rejects incomplete history and transport failures instead of returning partial usage', async () => {
+    fetchGetMock.mockResolvedValueOnce(page([event(1)]));
+    await expect(reconcileRunUsage(input)).rejects.toThrow(
+      'matching terminal boundary'
+    );
+    fetchGetMock.mockRejectedValueOnce(new Error('offline'));
+    await expect(reconcileRunUsage(input)).rejects.toThrow('offline');
+  });
+
+  it('rejects interrupted recovery because another Attempt can Resume', async () => {
+    await expect(
+      reconcileRunUsage({
+        ...input,
+        terminalEventTypes: ['runtime.interrupted'],
+      })
+    ).rejects.toThrow('exact terminal Run');
+    expect(fetchGetMock).not.toHaveBeenCalled();
+  });
+
+  it('can recover an already-detached completed Run', async () => {
+    fetchGetMock.mockResolvedValue(
+      page([event(1), event(2, 'run.completed', {})])
+    );
+    await expect(
+      reconcileRunUsage({ ...input, terminalEventTypes: ['run.completed'] })
+    ).resolves.toBe(10);
+  });
+
+  it('bounds the total scan to 10000 events', async () => {
+    fetchGetMock.mockImplementation(async (_url, params) => {
+      const cursor = params.after_sequence as number;
+      return page(
+        Array.from({ length: 500 }, (_, i) => event(cursor + i + 1)),
+        true
+      );
+    });
+    await expect(reconcileRunUsage(input)).rejects.toThrow(
+      '10000-event scan bound'
+    );
+    expect(fetchGetMock).toHaveBeenCalledTimes(20);
+  });
+
+  it('applies one overall deadline across pages even if fetch ignores abort', async () => {
+    vi.useFakeTimers();
+    let finishFirst!: (value: unknown) => void;
+    let finishSecond!: (value: unknown) => void;
+    fetchGetMock
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishFirst = resolve;
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishSecond = resolve;
+          })
+      );
+    const result = reconcileRunUsage(input).catch((error) => error);
+    await vi.advanceTimersByTimeAsync(4_000);
+    finishFirst(page([event(1)], true));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchGetMock).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(await result).toMatchObject({ name: 'TimeoutError' });
+    expect(fetchGetMock.mock.calls[1][3]?.signal?.aborted).toBe(true);
+    finishSecond(page([event(2, 'run.failed', {})]));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchGetMock).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('honors caller abort before and during reads and removes its deadline', async () => {
+    vi.useFakeTimers();
+    const alreadyAborted = new AbortController();
+    alreadyAborted.abort();
+    await expect(
+      reconcileRunUsage({ ...input, signal: alreadyAborted.signal })
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(fetchGetMock).not.toHaveBeenCalled();
+    const controller = new AbortController();
+    fetchGetMock.mockImplementation(() => new Promise(() => {}));
+    const result = reconcileRunUsage({
+      ...input,
+      signal: controller.signal,
+    }).catch((error) => error);
+    controller.abort();
+    expect(await result).toMatchObject({ name: 'AbortError' });
+    expect(fetchGetMock.mock.calls[0][3]?.signal?.aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe('readTerminalRunResult', () => {
+  const completedInput = {
+    ...input,
+    terminalEventTypes: ['run.completed'],
+  };
+
+  beforeEach(() => fetchGetMock.mockReset());
+  afterEach(() => vi.useRealTimers());
+
+  it('returns bounded display facts from an actual typed Journal receipt, without replaying controls', async () => {
+    fetchGetMock.mockResolvedValue(completedDisplayFixture);
+    const result = await readTerminalRunResult({
+      ...completedInput,
+      runId: completedDisplayFixture.run_id,
+    });
+    expect(result.tokens).toBe(123);
+    expect(result.displayEvents.map((item) => item.step)).toEqual([
+      'create_agent',
+      'assign_task',
+      'step.created',
+      'step.started',
+      'deactivate_toolkit',
+      'task_state',
+    ]);
+    expect(
+      result.displayEvents.find((item) => item.step === 'task_state')
+    ).toMatchObject({
+      eventId: 'fixture:task_state',
+      payload: {
+        task_id: 'sub-1',
+        status: 'completed',
+        failure_count: 1,
+        display_output:
+          'Report ready\n  Validation passed.\nSaved <device-home>/private/report.md\ntoken=[REDACTED]',
+        display_output_truncated: false,
+      },
+    });
+    expect(result.assistantFinal?.payload.content).toBe('The report is ready.');
+    expect(fetchGetMock).toHaveBeenCalledOnce();
+  });
+
+  it('retains authored Step context and typed tool output without legacy steps', async () => {
+    const step = {
+      step_id: 'step-1',
+      plan_item_id: 'todo-1',
+      owner: { agent_id: 'agent-1' },
+    };
+    const output = {
+      step_id: 'step-1',
+      process_task_id: 'run-1',
+      tool_name: 'shell_exec',
+      toolkit_name: 'terminal',
+      display_output: 'Safe result',
+      semantic: {},
+    };
+    fetchGetMock.mockResolvedValue(
+      page([
+        event(1, 'step.created', { step }),
+        event(2, 'step.started', { step }),
+        event(3, 'tool.started', { ...output, display_output: 'Never replay' }),
+        event(4, 'tool.completed', output),
+        event(5, 'run.completed', {}),
+        event(6, 'tool.completed', { ...output, display_output: 'Too late' }),
+      ])
+    );
+    const result = await readTerminalRunResult(completedInput);
+    expect(result.displayEvents.map((receipt) => receipt.step)).toEqual([
+      'step.created',
+      'step.started',
+      'deactivate_toolkit',
+    ]);
+    expect(result.displayEvents[2].payload).toEqual(output);
+  });
+
+  it('reads real Single Agent typed checkpoint completions and their original Step identities', async () => {
+    fetchGetMock.mockResolvedValue(completedSingleAgentDisplay);
+    const result = await readTerminalRunResult({
+      ...completedInput,
+      runId: 'live-run',
+    });
+    const tools = result.displayEvents.filter(
+      (receipt) => receipt.step === 'deactivate_toolkit'
+    );
+    expect(tools).toHaveLength(2);
+    expect(tools.map((receipt) => receipt.payload.tool_call_id)).toEqual([
+      'tool-1',
+      'tool-2',
+    ]);
+    expect(tools[0].payload.step_id).not.toBe(tools[1].payload.step_id);
+    expect(
+      tools.every((receipt) => receipt.payload.process_task_id === 'live-run')
+    ).toBe(true);
+    expect(result.tokens).toBe(123);
+    expect(result.assistantFinal?.payload.message).toBe(
+      'The inputs and report are verified.'
+    );
+  });
+
+  it('allows only display steps before the completed boundary, never execution controls', async () => {
+    const steps = [
+      'create_agent',
+      'assign_task',
+      'task_state',
+      'todo_state',
+      'deactivate_toolkit',
+      'terminal',
+      'write_file',
+      'notice',
+      'activate_agent',
+      'activate_toolkit',
+      'new_task_state',
+      'wait_confirm',
+      'to_sub_tasks',
+      'error',
+    ];
+    fetchGetMock.mockResolvedValue(
+      page([
+        ...steps.map((step, index) =>
+          event(index + 1, `legacy.${step}`, { task_id: 'sub-1' })
+        ),
+        event(steps.length + 1, 'run.completed', {}),
+        event(steps.length + 2, 'legacy.task_state', { task_id: 'too-late' }),
+      ])
+    );
+    const result = await readTerminalRunResult(completedInput);
+    expect(result.displayEvents.map((item) => item.step)).toEqual(
+      steps.slice(0, 8)
+    );
+    expect(result.displayEvents).not.toContainEqual(
+      expect.objectContaining({ payload: { task_id: 'too-late' } })
+    );
+  });
+
+  it('rejects oversized accumulated display data rather than returning partial recovery', async () => {
+    const payload = { task_id: 'sub-1', result: 'x'.repeat(2 * 1024 * 1024) };
+    fetchGetMock
+      .mockResolvedValueOnce(
+        page([event(1, 'legacy.task_state', payload)], true)
+      )
+      .mockResolvedValueOnce(
+        page([
+          event(2, 'legacy.task_state', payload),
+          event(3, 'run.completed', {}),
+        ])
+      );
+    await expect(readTerminalRunResult(completedInput)).rejects.toThrow(
+      'display byte bound'
+    );
+    expect(fetchGetMock).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['end', null])(
+    'returns the complete assistant.final payload with legacy_step=%s in the existing usage scan',
+    async (legacyStep) => {
+      const payload = {
+        content: 'Complete final response '.repeat(300),
+        tokens: 900,
+        metadata: { files: [{ path: '/workspace/result.html' }] },
+      };
+      const final = {
+        ...event(2, 'assistant.final', payload),
+        legacy_step: legacyStep,
+      };
+      fetchGetMock.mockResolvedValue(
+        page([event(1), final, event(3, 'run.completed', {})])
+      );
+
+      await expect(readTerminalRunResult(completedInput)).resolves.toEqual({
+        tokens: 10,
+        displayEvents: [],
+        assistantFinal: { eventId: final.event_id, payload },
+      });
+      // assistant.final's token total is not a second provider-usage delta.
+      expect(fetchGetMock).toHaveBeenCalledOnce();
+    }
+  );
+
+  it('returns no invented final when a completed boundary precedes the answer', async () => {
+    fetchGetMock.mockResolvedValue(
+      page([
+        event(1),
+        event(2, 'run.completed', {}),
+        event(3, 'assistant.final', { content: 'Too late' }),
+      ])
+    );
+    await expect(readTerminalRunResult(completedInput)).resolves.toEqual({
+      tokens: 10,
+      displayEvents: [],
+    });
+  });
+
+  it('retains a final across pages but waits for the exact completed boundary', async () => {
+    const payload = { message: 'Final result' };
+    fetchGetMock
+      .mockResolvedValueOnce(
+        page([event(1), event(2, 'assistant.final', payload)], true)
+      )
+      .mockResolvedValueOnce(page([event(3, 'run.completed', {})]));
+    await expect(
+      readTerminalRunResult({ ...completedInput, throughSequence: 3 })
+    ).resolves.toEqual({
+      tokens: 10,
+      displayEvents: [],
+      assistantFinal: { eventId: 'event-2', payload },
+    });
+    expect(fetchGetMock).toHaveBeenCalledTimes(2);
+    expect(fetchGetMock.mock.calls[1][1]).toEqual({
+      after_sequence: 2,
+      limit: 1,
+    });
+  });
+
+  it.each(['run.failed', 'run.cancelled', 'run.deadline_reached'])(
+    'does not return an earlier final for %s',
+    async (terminal) => {
+      fetchGetMock.mockResolvedValue(
+        page([
+          event(1),
+          event(2, 'assistant.final', { content: 'Not a successful result' }),
+          event(3, 'legacy.task_state', {
+            task_id: 'sub-1',
+            result: 'Not successful',
+          }),
+          event(4, terminal, {}),
+        ])
+      );
+      await expect(
+        readTerminalRunResult({
+          ...input,
+          terminalEventTypes: ['run.completed', terminal],
+        })
+      ).resolves.toEqual({ tokens: 10, displayEvents: [] });
+    }
+  );
+
+  it.each(['same event id', 'distinct final events'])(
+    'rejects %s rather than choosing an ambiguous final',
+    async (duplicate) => {
+      const first = event(1, 'assistant.final', { content: 'First' });
+      const second = event(2, 'assistant.final', { content: 'Second' });
+      if (duplicate === 'same event id') second.event_id = first.event_id;
+      fetchGetMock.mockResolvedValue(
+        page([first, second, event(3, 'run.completed', {})])
+      );
+      await expect(readTerminalRunResult(completedInput)).rejects.toThrow();
+    }
+  );
+
+  it('does not expose a partial final without the matching terminal boundary', async () => {
+    fetchGetMock.mockResolvedValue(
+      page([
+        event(1, 'assistant.final', { content: 'Not committed as completed' }),
+      ])
+    );
+    await expect(readTerminalRunResult(completedInput)).rejects.toThrow(
+      'matching terminal boundary'
+    );
+  });
+
+  it('discards the captured final when the remaining scan times out, including late success', async () => {
+    vi.useFakeTimers();
+    let resolveTerminal!: (value: unknown) => void;
+    fetchGetMock
+      .mockResolvedValueOnce(
+        page(
+          [event(1, 'assistant.final', { content: 'Pending validation' })],
+          true
+        )
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveTerminal = resolve;
+          })
+      );
+    const result = readTerminalRunResult(completedInput);
+    const resolved = vi.fn();
+    const rejected = vi.fn();
+    const settled = result.then(resolved, rejected);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchGetMock).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await settled;
+    expect(resolved).not.toHaveBeenCalled();
+    expect(rejected).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'TimeoutError' })
+    );
+    expect(fetchGetMock.mock.calls[1][3]?.signal?.aborted).toBe(true);
+    resolveTerminal(page([event(2, 'run.completed', {})]));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(resolved).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});

@@ -245,31 +245,164 @@ export const proxyFetchTriggerExecutions = async (
   }
 };
 
-export const proxyUpdateTriggerExecution = async (
-  executionId: string,
-  updateData: Partial<{
-    status?: string;
-    started_at?: string;
-    completed_at?: string;
-    duration_seconds?: number;
-    output_data?: Record<string, any>;
-    error_message?: string;
-    skip_reason?: SkipReason;
-    attempts?: number;
-    tokens_used?: number;
-    tools_executed?: Record<string, any>;
-  }>,
-  triggerInfo?: {
-    triggerId?: number;
-    triggerName?: string;
-    projectId?: string;
-  }
-) => {
+type TriggerExecutionUpdateData = Partial<{
+  status?: string;
+  started_at?: string;
+  completed_at?: string;
+  duration_seconds?: number;
+  output_data?: Record<string, any>;
+  error_message?: string;
+  skip_reason?: SkipReason;
+  attempts?: number;
+  tokens_used?: number;
+  tools_executed?: Record<string, any>;
+}>;
+
+type TriggerExecutionInfo = {
+  triggerId?: number;
+  triggerName?: string;
+  projectId?: string;
+};
+
+type PendingTerminalExecutionUpdate = {
+  executionId: string;
+  updateData: TriggerExecutionUpdateData;
+  triggerInfo?: TriggerExecutionInfo;
+  queuedAt: number;
+};
+
+const TERMINAL_EXECUTION_OUTBOX_KEY = 'eigent.trigger-terminal-outbox.v1';
+const TERMINAL_EXECUTION_RETRY_DELAYS_MS = [250, 1_000] as const;
+const TRIGGER_EXECUTION_REQUEST_TIMEOUT_MS = 10_000;
+const terminalExecutionStatuses = new Set<string>([
+  ExecutionStatus.Completed,
+  ExecutionStatus.Failed,
+  ExecutionStatus.Cancelled,
+  ExecutionStatus.Missed,
+]);
+const acceptedTerminalUpdatesByExecutionId = new Map<
+  string,
+  PendingTerminalExecutionUpdate
+>();
+const pendingTerminalExecutionUpdates = new Map<
+  string,
+  PendingTerminalExecutionUpdate
+>();
+const triggerExecutionUpdateChains = new Map<string, Promise<void>>();
+const terminalDeliveryChains = new Map<
+  string,
+  { record: PendingTerminalExecutionUpdate; promise: Promise<void> }
+>();
+let terminalOutboxLoaded = false;
+let recoveryListenersInstalled = false;
+
+const waitForTriggerExecutionRetry = (delayMs: number) =>
+  new Promise<void>((resolve) => globalThis.setTimeout(resolve, delayMs));
+
+const isTerminalExecutionStatus = (status?: string): status is string =>
+  Boolean(status && terminalExecutionStatuses.has(status));
+
+const executionTokens = (data: TriggerExecutionUpdateData): number =>
+  Number.isSafeInteger(data.tokens_used) && (data.tokens_used ?? 0) >= 0
+    ? (data.tokens_used ?? 0)
+    : 0;
+
+const loadTerminalExecutionOutbox = () => {
+  if (terminalOutboxLoaded) return;
+  terminalOutboxLoaded = true;
+  if (typeof window === 'undefined') return;
+
   try {
-    const res = await proxyFetchPut(
-      `/api/v1/execution/${executionId}`,
-      updateData
+    const raw = window.localStorage.getItem(TERMINAL_EXECUTION_OUTBOX_KEY);
+    if (!raw) return;
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return;
+    for (const candidate of parsed) {
+      if (!candidate || typeof candidate !== 'object') continue;
+      const record = candidate as PendingTerminalExecutionUpdate;
+      const status = record.updateData?.status;
+      if (
+        typeof record.executionId !== 'string' ||
+        !record.executionId ||
+        !isTerminalExecutionStatus(status)
+      ) {
+        continue;
+      }
+      pendingTerminalExecutionUpdates.set(record.executionId, record);
+      acceptedTerminalUpdatesByExecutionId.set(record.executionId, record);
+    }
+  } catch (error) {
+    console.warn(
+      '[TriggerExecution] Failed to restore terminal delivery outbox:',
+      error
     );
+  }
+};
+
+const persistTerminalExecutionOutbox = () => {
+  if (typeof window === 'undefined') return;
+  try {
+    const records = [...pendingTerminalExecutionUpdates.values()];
+    if (records.length === 0) {
+      window.localStorage.removeItem(TERMINAL_EXECUTION_OUTBOX_KEY);
+      return;
+    }
+    window.localStorage.setItem(
+      TERMINAL_EXECUTION_OUTBOX_KEY,
+      JSON.stringify(records)
+    );
+  } catch (error) {
+    console.warn(
+      '[TriggerExecution] Failed to persist terminal delivery outbox:',
+      error
+    );
+  }
+};
+
+const enqueueTriggerExecutionUpdate = (
+  executionId: string,
+  operation: () => Promise<void>
+): Promise<void> => {
+  const previous =
+    triggerExecutionUpdateChains.get(executionId) ?? Promise.resolve();
+  let queuedUpdate: Promise<void>;
+  queuedUpdate = previous
+    .catch(() => undefined)
+    .then(operation)
+    .finally(() => {
+      if (triggerExecutionUpdateChains.get(executionId) === queuedUpdate) {
+        triggerExecutionUpdateChains.delete(executionId);
+      }
+    });
+  triggerExecutionUpdateChains.set(executionId, queuedUpdate);
+  return queuedUpdate;
+};
+
+const sendTriggerExecutionUpdate = async (
+  executionId: string,
+  updateData: TriggerExecutionUpdateData,
+  triggerInfo?: TriggerExecutionInfo
+) => {
+  const controller = new AbortController();
+  let timeoutId: ReturnType<typeof globalThis.setTimeout> | undefined;
+  try {
+    const request = proxyFetchPut(
+      `/api/v1/execution/${executionId}`,
+      updateData,
+      undefined,
+      { signal: controller.signal }
+    );
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timeoutId = globalThis.setTimeout(() => {
+        controller.abort();
+        reject(
+          new Error(
+            `Trigger execution update timed out after ${TRIGGER_EXECUTION_REQUEST_TIMEOUT_MS}ms`
+          )
+        );
+      }, TRIGGER_EXECUTION_REQUEST_TIMEOUT_MS);
+    });
+    const res = await Promise.race([request, timeout]);
 
     // Log activity when execution status is updated
     if (updateData.status) {
@@ -321,7 +454,165 @@ export const proxyUpdateTriggerExecution = async (
   } catch (error) {
     console.error('Failed to update trigger execution:', error);
     throw error;
+  } finally {
+    if (timeoutId !== undefined) {
+      globalThis.clearTimeout(timeoutId);
+    }
   }
+};
+
+const deliverPendingTerminalExecutionUpdate = async (
+  record: PendingTerminalExecutionUpdate
+) => {
+  const maxAttempts = TERMINAL_EXECUTION_RETRY_DELAYS_MS.length + 1;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    // A richer receipt is already queued behind this delivery. Do not retry
+    // an obsolete total or let it remove the newer durable outbox record.
+    if (pendingTerminalExecutionUpdates.get(record.executionId) !== record)
+      return;
+    try {
+      await sendTriggerExecutionUpdate(
+        record.executionId,
+        record.updateData,
+        record.triggerInfo
+      );
+      if (pendingTerminalExecutionUpdates.get(record.executionId) === record) {
+        pendingTerminalExecutionUpdates.delete(record.executionId);
+        persistTerminalExecutionOutbox();
+      }
+      return;
+    } catch (error) {
+      console.warn(
+        `[TriggerExecution] Failed to deliver terminal status (attempt ${attempt + 1}/${maxAttempts}):`,
+        error
+      );
+      if (attempt + 1 < maxAttempts) {
+        await waitForTriggerExecutionRetry(
+          TERMINAL_EXECUTION_RETRY_DELAYS_MS[attempt]
+        );
+      }
+    }
+  }
+
+  // Keep the terminal receipt durable. A later app start, online/focus event,
+  // or duplicate terminal receipt will replay another bounded delivery round.
+  persistTerminalExecutionOutbox();
+};
+
+const enqueuePendingTerminalExecutionUpdate = (
+  record: PendingTerminalExecutionUpdate
+): Promise<void> => {
+  const existingDelivery = terminalDeliveryChains.get(record.executionId);
+  if (existingDelivery?.record === record) return existingDelivery.promise;
+
+  let delivery: Promise<void>;
+  delivery = enqueueTriggerExecutionUpdate(record.executionId, () =>
+    deliverPendingTerminalExecutionUpdate(record)
+  ).finally(() => {
+    if (terminalDeliveryChains.get(record.executionId)?.promise === delivery) {
+      terminalDeliveryChains.delete(record.executionId);
+    }
+  });
+  terminalDeliveryChains.set(record.executionId, { record, promise: delivery });
+  return delivery;
+};
+
+const installTerminalExecutionRecoveryListeners = () => {
+  if (recoveryListenersInstalled || typeof window === 'undefined') return;
+  recoveryListenersInstalled = true;
+  const flush = () => void flushPendingTriggerExecutionUpdates();
+  window.addEventListener('online', flush);
+  window.addEventListener('focus', flush);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') flush();
+  });
+};
+
+/** Replay durable terminal receipts without depending on Run observers. */
+export async function flushPendingTriggerExecutionUpdates(): Promise<void> {
+  loadTerminalExecutionOutbox();
+  installTerminalExecutionRecoveryListeners();
+  const deliveries = [...pendingTerminalExecutionUpdates.values()].map(
+    (record) => enqueuePendingTerminalExecutionUpdate(record)
+  );
+  await Promise.all(deliveries);
+}
+
+/**
+ * Serialize all execution status writes and durably retain terminal outcomes.
+ * A terminal outcome is first-writer-wins. Only a larger same-outcome token
+ * total may enrich its receipt; late Running cannot resurrect a finished Run.
+ */
+export const proxyUpdateTriggerExecution = async (
+  executionId: string,
+  updateData: TriggerExecutionUpdateData,
+  triggerInfo?: TriggerExecutionInfo
+) => {
+  loadTerminalExecutionOutbox();
+  installTerminalExecutionRecoveryListeners();
+
+  const status = updateData.status;
+  const acceptedTerminalUpdate =
+    acceptedTerminalUpdatesByExecutionId.get(executionId);
+  const acceptedTerminalStatus = acceptedTerminalUpdate?.updateData.status;
+
+  if (status === ExecutionStatus.Running && acceptedTerminalStatus) {
+    console.log(
+      '[TriggerExecution] Ignoring Running after terminal outcome:',
+      executionId
+    );
+    return;
+  }
+
+  if (isTerminalExecutionStatus(status)) {
+    if (acceptedTerminalStatus && acceptedTerminalStatus !== status) {
+      console.log(
+        '[TriggerExecution] Ignoring competing terminal outcome:',
+        executionId,
+        status
+      );
+      return;
+    }
+
+    let record = pendingTerminalExecutionUpdates.get(executionId);
+    if (acceptedTerminalUpdate) {
+      const tokens = executionTokens(updateData);
+      if (tokens > executionTokens(acceptedTerminalUpdate.updateData)) {
+        // Keep the first receipt's outcome, timing, error and output. A late
+        // legacy END may supply the final token total after canonical settle.
+        record = {
+          ...acceptedTerminalUpdate,
+          updateData: {
+            ...acceptedTerminalUpdate.updateData,
+            tokens_used: tokens,
+          },
+        };
+      } else if (!record) {
+        return;
+      }
+    } else {
+      record = {
+        executionId,
+        updateData: { ...updateData },
+        triggerInfo,
+        queuedAt: Date.now(),
+      };
+    }
+    if (!record) return;
+    if (pendingTerminalExecutionUpdates.get(executionId) !== record) {
+      acceptedTerminalUpdatesByExecutionId.set(executionId, record);
+      pendingTerminalExecutionUpdates.set(executionId, record);
+      // Persist before the first network await so app shutdown cannot lose the
+      // only canonical terminal receipt.
+      persistTerminalExecutionOutbox();
+    }
+
+    return enqueuePendingTerminalExecutionUpdate(record);
+  }
+
+  return enqueueTriggerExecutionUpdate(executionId, async () => {
+    await sendTriggerExecutionUpdate(executionId, updateData, triggerInfo);
+  });
 };
 
 export const proxyRetryTriggerExecution = async (

@@ -53,6 +53,7 @@ import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import { buildProjectContinuationContext } from '@/store/chatStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
+import { waitForPendingStaleRuntimeEviction } from '@/store/projectStore';
 import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import {
@@ -325,7 +326,12 @@ const buildUsageLimitBannerState = (
   };
 };
 export default function ChatBox(): JSX.Element {
-  const [message, setMessage] = useState<string>('');
+  const [message, setMessageState] = useState<string>('');
+  const composerRevisionRef = useRef(0);
+  const setMessage = useCallback<typeof setMessageState>((value) => {
+    composerRevisionRef.current += 1;
+    setMessageState(value);
+  }, []);
   const [pendingReviewHandoffIds, setPendingReviewHandoffIds] = useState<
     string[]
   >([]);
@@ -356,6 +362,8 @@ export default function ChatBox(): JSX.Element {
     (s) => s.chatTimelineDetailLevel ?? DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL
   );
   const activeProjectId = projectStore.activeProjectId;
+  const composerProjectRef = useRef(activeProjectId);
+  composerProjectRef.current = activeProjectId;
   const eventNativeTimelineEnabled = isChatEventTimelineEnabled();
   const {
     projectId: projectEventRuntimeProjectId,
@@ -524,7 +532,12 @@ export default function ChatBox(): JSX.Element {
       ]),
     ]);
     consumeWorkspaceChatDraft(workspaceChatDraftRequest.requestId);
-  }, [activeProjectId, consumeWorkspaceChatDraft, workspaceChatDraftRequest]);
+  }, [
+    activeProjectId,
+    consumeWorkspaceChatDraft,
+    workspaceChatDraftRequest,
+    setMessage,
+  ]);
 
   useEffect(() => {
     proxyFetchGet('/api/v1/configs').catch((err) =>
@@ -547,6 +560,8 @@ export default function ChatBox(): JSX.Element {
     | null
   >(null);
   const queuedDispatchRef = useRef<string | null>(null);
+  const followUpAdmissionsRef = useRef(new Map<string, symbol>());
+  const [followUpAdmissionRevision, setFollowUpAdmissionRevision] = useState(0);
   const interruptedAdmissionRef = useRef<string | null>(null);
   // Admission is monotonic. Late pending-list responses must never restore a
   // request already accepted by HTTP or observed starting in the event stream.
@@ -1008,7 +1023,7 @@ export default function ChatBox(): JSX.Element {
       newSearchParams.delete('skill_prompt');
       setSearchParams(newSearchParams, { replace: true });
     }
-  }, [skill_prompt, searchParams, setSearchParams]);
+  }, [skill_prompt, searchParams, setSearchParams, setMessage]);
 
   // Handle scrollbar visibility on scroll
   useEffect(() => {
@@ -1083,6 +1098,17 @@ export default function ChatBox(): JSX.Element {
       );
       return;
     }
+    if (
+      !queuedRequestId &&
+      (followUpAdmissionsRef.current.has(targetProjectId) ||
+        (queuedDispatchRef.current !== null &&
+          projectStore
+            .getProjectById(targetProjectId)
+            ?.queuedMessages.some(
+              (item) => item.task_id === queuedDispatchRef.current
+            )))
+    )
+      return;
 
     const targetProjectMeta = useSpaceStore
       .getState()
@@ -1246,11 +1272,13 @@ export default function ChatBox(): JSX.Element {
 
     if (textareaRef.current) textareaRef.current.style.height = '60px';
     let messageAccepted = false;
+    let followUpAdmission: symbol | undefined;
     try {
       if (startsAfterInterruption && !queuedRequestId) {
         // A new instruction is a new task, never an implicit Resume. Keep the
         // interrupted task and its tool outcomes intact for history/review.
         interruptedAdmissionRef.current = targetProjectId;
+        await waitForPendingStaleRuntimeEviction(targetProjectId);
         const nextTaskId = generateUniqueId();
         const attachesToSend = composerAttachments || [];
         ensureActiveProjectMode();
@@ -1279,15 +1307,17 @@ export default function ChatBox(): JSX.Element {
           chatStore.setAttaches(_taskId, []);
         }
       } else if (queuedRequestId) {
-        chatStore.setNextTaskId(queuedRequestId);
-        chatStore.setNextExecutionId(_taskId, undefined);
         const queuedFiles = queuedAttaches || [];
+        const draftStore = projectStore.getActiveChatStore();
+        await waitForPendingStaleRuntimeEviction(targetProjectId);
         const backendStatus = startsAfterInterruption
-          ? { has_lock: false }
+          ? { consumer_alive: false }
           : await fetchGet(
               `/chat/${encodeURIComponent(targetProjectId)}/status`
             );
-        if (backendStatus?.has_lock) {
+        if (backendStatus?.consumer_alive) {
+          chatStore.setNextTaskId(queuedRequestId);
+          chatStore.setNextExecutionId(_taskId, undefined);
           await fetchPost(`/chat/${targetProjectId}`, {
             question: tempMessageContent,
             task_id: queuedRequestId,
@@ -1306,7 +1336,7 @@ export default function ChatBox(): JSX.Element {
           // instruction is still a normal new Run, so start it through the
           // cold admission path with its durable request id instead of
           // retrying /chat/{project} forever.
-          await chatStore.startTask(
+          const admission = chatStore.startTask(
             queuedRequestId,
             undefined,
             undefined,
@@ -1322,6 +1352,32 @@ export default function ChatBox(): JSX.Element {
               ...(reviewHandoffIds.length ? { reviewHandoffIds } : {}),
             }
           );
+          // Queued payloads do not own the user's current composer. Move
+          // that draft when cold startup synchronously selects its new Run.
+          const draftTask = draftStore?.getState().tasks[_taskId];
+          const nextState = projectStore
+            .getChatStore(targetProjectId)
+            ?.getState();
+          const nextTask = nextState?.tasks[queuedRequestId];
+          if (
+            draftStore &&
+            draftTask?.attaches.length &&
+            nextState?.activeTaskId === queuedRequestId &&
+            nextTask &&
+            queuedRequestId !== _taskId
+          ) {
+            const draftFiles = draftTask.attaches;
+            const existingPaths = new Set(
+              nextTask.attaches.map((file) => file.filePath)
+            );
+            nextState.setAttaches(queuedRequestId, [
+              ...nextTask.attaches,
+              ...draftFiles.filter((file) => !existingPaths.has(file.filePath)),
+            ]);
+            if (draftStore.getState().tasks[_taskId]?.attaches === draftFiles)
+              draftStore.getState().setAttaches(_taskId, []);
+          }
+          await admission;
         }
         messageAccepted = true;
       } else if (requiresHumanReply) {
@@ -1486,94 +1542,199 @@ export default function ChatBox(): JSX.Element {
             // keep hasWaitComfirm as true so that follow-up improves work as usual
           } else {
             // Continue conversation: simple response, complex task, or finished task
+            // Claim synchronously: runtime lookup must not allow another user
+            // event (or the queued dispatcher) to submit the same turn.
+            followUpAdmission = Symbol(targetProjectId);
+            followUpAdmissionsRef.current.set(
+              targetProjectId,
+              followUpAdmission
+            );
+            const composerRevision = composerRevisionRef.current;
+            const sourceStore = projectStore.getActiveChatStore();
+            const sourceAttaches =
+              sourceStore?.getState().tasks[_taskId]?.attaches;
             const attachesForThisTurn =
               queuedAttaches ||
               JSON.parse(
-                JSON.stringify(chatStore.tasks[_taskId]?.attaches || [])
+                JSON.stringify(
+                  sourceAttaches || chatStore.tasks[_taskId]?.attaches || []
+                )
               );
             const improveAttaches =
               attachesForThisTurn.map(
                 (f: { filePath: string }) => f.filePath
               ) || [];
+            const clearOwnedComposer = () => {
+              if (
+                preserveComposer ||
+                composerProjectRef.current !== targetProjectId
+              )
+                return;
+              if (composerRevisionRef.current === composerRevision)
+                setMessage('');
+              const sourceTask = sourceStore?.getState().tasks[_taskId];
+              if (
+                sourceStore &&
+                sourceTask &&
+                sourceTask.attaches === sourceAttaches
+              )
+                sourceStore.getState().setAttaches(_taskId, []);
+            };
 
-            // A normal follow-up is a new durable Run. Seed it before the
-            // admission request completes so the reply and its pending work
-            // log are visible immediately, while the completed Run remains a
-            // stable history section above it.
             const nextTaskId = generateUniqueId();
-            chatStore.setNextTaskId(nextTaskId);
-            chatStore.setNextExecutionId(_taskId as string, executionId);
-            const nextChatResult = projectStore.appendInitChatStore(
-              targetProjectId,
-              nextTaskId
-            );
-            if (!nextChatResult) {
-              // Every other failure path in this handler surfaces a toast. The
-              // outer catch only logs, so without this the user would click
-              // Send and observe nothing at all.
-              const prepareError = new Error(
-                t('chat.follow-up-prepare-failed')
+            const transferEditedAttachments = (
+              nextStore: typeof sourceStore
+            ) => {
+              if (
+                preserveComposer ||
+                !sourceStore ||
+                !nextStore ||
+                nextTaskId === _taskId
+              )
+                return;
+              const sourceTask = sourceStore.getState().tasks[_taskId];
+              if (!sourceTask || sourceTask.attaches === sourceAttaches) return;
+              const nextState = nextStore.getState();
+              const nextTask = nextState.tasks[nextTaskId];
+              if (
+                nextState.activeTaskId !== nextTaskId ||
+                !nextTask ||
+                nextTask.attaches.length > 0
+              )
+                return;
+              // The composer now reads the prepared Run, not the previous
+              // one. Move only additions made during lookup; sent files
+              // already belong to the submitted message, not the next draft.
+              const editedAttachments = sourceTask.attaches;
+              const sentPaths = new Set<string>(improveAttaches);
+              nextState.setAttaches(
+                nextTaskId,
+                editedAttachments.filter(
+                  (file) => !sentPaths.has(file.filePath)
+                )
               );
-              notifyError(prepareError.message);
-              throw prepareError;
-            }
-
-            const nextChatState = nextChatResult.chatStore.getState();
-            // During the remaining multi-store migration window the prepared
-            // Run can live in a different store from the completed Run. Keep
-            // the boundary token on both sides so CONFIRMED reuses this exact
-            // task instead of creating a duplicate.
-            nextChatState.setNextTaskId(nextTaskId);
-            nextChatState.setTaskSessionMode(nextTaskId, effectiveSessionMode);
-            nextChatState.setTaskSource(
-              nextTaskId,
-              executionId ? 'trigger' : 'user'
+              if (
+                sourceStore.getState().tasks[_taskId]?.attaches ===
+                editedAttachments
+              )
+                sourceStore.getState().setAttaches(_taskId, []);
+            };
+            await waitForPendingStaleRuntimeEviction(targetProjectId);
+            const backendStatus = await fetchGet(
+              `/chat/${encodeURIComponent(targetProjectId)}/status`
             );
-            nextChatState.setExecutionId(nextTaskId, executionId);
-            nextChatState.setIsPending(nextTaskId, true);
-            nextChatState.setHasMessages(nextTaskId, true);
-            nextChatState.addMessages(nextTaskId, {
-              id: generateUniqueId(),
-              role: 'user',
-              content: displayContent,
-              attaches: attachesForThisTurn,
-            });
-            if (!preserveComposer) {
-              chatStore.setAttaches(_taskId, []);
-              setMessage('');
-            }
 
-            try {
-              // Use improve endpoint (POST /chat/{id}) - {id} is project_id.
-              await fetchPost(`/chat/${targetProjectId}`, {
-                question: tempMessageContent,
-                task_id: nextTaskId,
-                attaches: improveAttaches,
-                project_context: buildProjectContinuationContext(
-                  targetProjectId,
-                  nextTaskId
-                ),
-                ...(reviewHandoffIds.length
-                  ? { review_handoff_ids: reviewHandoffIds }
-                  : {}),
-                target: undefined,
-              });
+            if (!backendStatus?.consumer_alive) {
+              // A stale-runtime transition may have retired the completed warm
+              // consumer while this Project was being reactivated. Admit the
+              // follow-up as a cold Run instead of posting to a dead queue.
+              ensureActiveProjectMode();
+              const admission = chatStore.startTask(
+                nextTaskId,
+                undefined,
+                undefined,
+                undefined,
+                tempMessageContent,
+                attachesForThisTurn,
+                executionId,
+                targetProjectId,
+                effectiveSessionMode,
+                {
+                  preserveTaskId: true,
+                  awaitAdmission: true,
+                  ...(reviewHandoffIds.length ? { reviewHandoffIds } : {}),
+                }
+              );
+              // startTask prepares/selects its Run synchronously before its
+              // first await. Transfer now, before the user can edit that new
+              // task; never overwrite its later edits when admission settles.
+              transferEditedAttachments(
+                projectStore.getChatStore(targetProjectId)
+              );
+              await admission;
               messageAccepted = true;
-            } catch (error: any) {
-              // Keep the failed turn as a traceable receipt instead of moving
-              // the reply back into (or mutating) the completed history Run.
-              nextChatState.setIsPending(nextTaskId, false);
-              nextChatState.setStatus(nextTaskId, ChatTaskStatus.FINISHED);
+              clearOwnedComposer();
+            } else {
+              // A normal warm follow-up is a new durable Run. Seed it before
+              // admission so its pending work is visible immediately.
+              chatStore.setNextTaskId(nextTaskId);
+              chatStore.setNextExecutionId(_taskId as string, executionId);
+              const nextChatResult = projectStore.appendInitChatStore(
+                targetProjectId,
+                nextTaskId
+              );
+              if (!nextChatResult) {
+                const prepareError = new Error(
+                  t('chat.follow-up-prepare-failed')
+                );
+                throw prepareError;
+              }
+
+              const nextChatState = nextChatResult.chatStore.getState();
+              transferEditedAttachments(nextChatResult.chatStore);
+              // During the remaining multi-store migration window the
+              // prepared Run can live in a different store. Keep the boundary
+              // token on both sides so CONFIRMED reuses this exact task.
+              nextChatState.setNextTaskId(nextTaskId);
+              nextChatState.setTaskSessionMode(
+                nextTaskId,
+                effectiveSessionMode
+              );
+              nextChatState.setTaskSource(
+                nextTaskId,
+                executionId ? 'trigger' : 'user'
+              );
+              nextChatState.setExecutionId(nextTaskId, executionId);
+              nextChatState.setIsPending(nextTaskId, true);
+              nextChatState.setHasMessages(nextTaskId, true);
               nextChatState.addMessages(nextTaskId, {
                 id: generateUniqueId(),
-                role: 'agent',
-                content:
-                  error?.message ||
-                  '❌ **Error**: Failed to start the follow-up task.',
+                role: 'user',
+                content: displayContent,
+                attaches: attachesForThisTurn,
               });
-              notifyError(error?.message || 'Failed to send follow-up.');
-              if (preserveComposer) throw error;
+              clearOwnedComposer();
+
+              try {
+                // Use improve endpoint (POST /chat/{id}) - {id} is project_id.
+                await fetchPost(`/chat/${targetProjectId}`, {
+                  question: tempMessageContent,
+                  task_id: nextTaskId,
+                  attaches: improveAttaches,
+                  project_context: buildProjectContinuationContext(
+                    targetProjectId,
+                    nextTaskId
+                  ),
+                  ...(reviewHandoffIds.length
+                    ? { review_handoff_ids: reviewHandoffIds }
+                    : {}),
+                  target: undefined,
+                });
+                messageAccepted = true;
+              } catch (error: any) {
+                // Keep the failed turn as a traceable receipt instead of
+                // mutating the completed history Run.
+                nextChatState.setIsPending(nextTaskId, false);
+                nextChatState.setStatus(nextTaskId, ChatTaskStatus.FINISHED);
+                nextChatState.addMessages(nextTaskId, {
+                  id: generateUniqueId(),
+                  role: 'agent',
+                  content:
+                    error?.message ||
+                    '❌ **Error**: Failed to start the follow-up task.',
+                });
+                notifyError(error?.message || 'Failed to send follow-up.');
+                if (preserveComposer) throw error;
+              }
             }
+            if (messageAccepted)
+              setAdmittedQueuedRun((current) =>
+                current &&
+                current.projectId !== targetProjectId &&
+                current.projectId === composerProjectRef.current
+                  ? current
+                  : { projectId: targetProjectId, runId: nextTaskId }
+              );
           }
         } else {
           // For the very first message, add it to the current chatStore first, then call startTask
@@ -1618,18 +1779,31 @@ export default function ChatBox(): JSX.Element {
       }
     } catch (error) {
       console.error('error:', error);
-      if (startsAfterInterruption)
+      if (startsAfterInterruption || followUpAdmission)
         notifyError(
           error instanceof Error ? error.message : t('chat.run-resume-failed')
         );
       if (preserveComposer) throw error;
     } finally {
+      if (
+        followUpAdmission &&
+        followUpAdmissionsRef.current.get(targetProjectId) === followUpAdmission
+      ) {
+        followUpAdmissionsRef.current.delete(targetProjectId);
+        // Wake a queued dispatch that yielded to this admission, including
+        // when the lookup failed without producing a Run/store update.
+        setFollowUpAdmissionRevision((revision) => revision + 1);
+      }
       if (interruptedAdmissionRef.current === targetProjectId)
         interruptedAdmissionRef.current = null;
       if (messageAccepted && !requiresHumanReply) {
         if (startsAfterInterruption) setInterruptedRun(null);
         acknowledgeWorkspaceReviewHandoffs(targetProjectId, reviewHandoffIds);
-        setPendingReviewHandoffIds([]);
+        if (!followUpAdmission) setPendingReviewHandoffIds([]);
+        else if (composerProjectRef.current === targetProjectId)
+          setPendingReviewHandoffIds((current) =>
+            current.filter((id) => !reviewHandoffIds.includes(id))
+          );
       }
       scheduleUsageRefresh();
     }
@@ -1950,6 +2124,7 @@ export default function ChatBox(): JSX.Element {
     if (admittedQueuedRun?.projectId === projectId) return;
     if (
       queuedDispatchRef.current ||
+      followUpAdmissionsRef.current.has(projectId) ||
       interruptedAdmissionRef.current === projectId ||
       queueActionRef.current?.projectId === projectId
     )
@@ -2013,6 +2188,7 @@ export default function ChatBox(): JSX.Element {
     projectStore,
     queuedMessages,
     queueAction,
+    followUpAdmissionRevision,
   ]);
 
   useEffect(() => {

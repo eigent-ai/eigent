@@ -12,15 +12,24 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { fetchGet, fetchPost } from '@/api/http';
 import i18n from '@/i18n';
 import { generateUniqueId } from '@/lib';
 import { notifyExecutionError } from '@/lib/notifyError';
-import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import {
-  closeSSEConnectionsForTasks,
+  flushPendingTriggerExecutionUpdates,
+  proxyUpdateTriggerExecution,
+} from '@/service/triggerApi';
+import {
+  closeIdleSSEConnectionsForTasks,
   hasActiveSSEConnection,
+  hasSSETransportForTasks,
+  waitForIdleSSEDisplayTail,
 } from '@/store/chatStore';
-import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import {
+  type TaskQueue,
+  useProjectRuntimeStore,
+} from '@/store/projectRuntimeStore';
 import { useTriggerTaskStore } from '@/store/triggerTaskStore';
 import { ExecutionStatus } from '@/types';
 import { AgentStep, ChatTaskStatus } from '@/types/constants';
@@ -28,6 +37,7 @@ import { useCallback, useEffect, useRef } from 'react';
 
 /** Poll interval in ms */
 const POLL_INTERVAL_MS = 2000;
+const RUNTIME_OWNERSHIP_TIMEOUT_MS = 10_000;
 
 interface ActiveBackgroundTask {
   projectId: string;
@@ -36,12 +46,29 @@ interface ActiveBackgroundTask {
   triggerTaskId?: string;
 }
 
+interface LegacyChatRuntimeStatus {
+  status?: string;
+  run_id?: string | null;
+  consumer_alive?: boolean;
+}
+
+const RETRYABLE_BACKGROUND_ADMISSION_ERROR_CODES = new Set([
+  'project_consumer_active',
+]);
+
+const isRetryableBackgroundAdmissionError = (error: unknown): boolean =>
+  typeof error === 'object' &&
+  error !== null &&
+  'code' in error &&
+  typeof error.code === 'string' &&
+  RETRYABLE_BACKGROUND_ADMISSION_ERROR_CODES.has(error.code);
+
 /**
  * Hook that processes background tasks from project queuedMessages.
  * Supports trigger tasks (with executionId) and can be extended for other task types.
  *
  * - Polls all projects' queuedMessages for messages with executionId
- * - Uses appendInitChatStore + startTask for execution (supports same-project parallelism)
+ * - Retires an idle Project consumer before cold start
  */
 export function useBackgroundTaskProcessor() {
   const projectStore = useProjectRuntimeStore();
@@ -50,11 +77,100 @@ export function useBackgroundTaskProcessor() {
   const activeTasksRef = useRef<Map<string, ActiveBackgroundTask>>(new Map());
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isProcessingRef = useRef(false);
+  const runtimeRequestRef = useRef<AbortController | null>(null);
+  const lifetimeRef = useRef({ active: false });
+
+  useEffect(() => {
+    const lifetime = { active: true };
+    lifetimeRef.current = lifetime;
+    return () => {
+      lifetime.active = false;
+      runtimeRequestRef.current?.abort();
+    };
+  }, []);
 
   const processOneTask = useCallback(async () => {
-    if (isProcessingRef.current) return;
+    const lifetime = lifetimeRef.current;
+    if (!lifetime.active || isProcessingRef.current) return;
     isProcessingRef.current = true;
     try {
+      const requestRuntime = async (
+        request: (signal: AbortSignal) => Promise<LegacyChatRuntimeStatus>
+      ): Promise<LegacyChatRuntimeStatus> => {
+        const controller = new AbortController();
+        runtimeRequestRef.current = controller;
+        let onAbort!: () => void;
+        const aborted = new Promise<never>((_resolve, reject) => {
+          onAbort = () => reject(controller.signal.reason);
+          controller.signal.addEventListener('abort', onAbort, { once: true });
+        });
+        const timeout = setTimeout(
+          () =>
+            controller.abort(
+              new DOMException(
+                'Runtime ownership request timed out',
+                'AbortError'
+              )
+            ),
+          RUNTIME_OWNERSHIP_TIMEOUT_MS
+        );
+        try {
+          // Bound the whole helper, including readiness/header resolution.
+          // A late response cannot continue this timed-out admission attempt.
+          return await Promise.race([request(controller.signal), aborted]);
+        } finally {
+          clearTimeout(timeout);
+          controller.signal.removeEventListener('abort', onAbort);
+          if (runtimeRequestRef.current === controller)
+            runtimeRequestRef.current = null;
+        }
+      };
+      const findQueuedExecution = (
+        projectId: string,
+        identity: Pick<TaskQueue, 'task_id' | 'executionId' | 'timestamp'>
+      ) =>
+        projectStore
+          .getProjectById(projectId)
+          ?.queuedMessages.find(
+            (queued) =>
+              queued.task_id === identity.task_id &&
+              queued.executionId === identity.executionId &&
+              queued.timestamp === identity.timestamp
+          );
+      const getIdleProjectTaskIds = (projectId: string): string[] | null => {
+        const project = projectStore.getProjectById(projectId);
+        if (!project) return null;
+        const chatStates = Object.values(project.chatStores || {}).map((cs) =>
+          cs.getState()
+        );
+        const hasRunningChatTask = chatStates.some((state) =>
+          Object.values(state.tasks).some((task) => {
+            // Admission/Resume claims ownership before it registers SSE or
+            // changes the previous terminal display status.
+            if (task.isPending) return true;
+            // Terminal direct/single-agent tasks may retain skeleton markers.
+            // They must not block the next queued trigger.
+            if (task.status === ChatTaskStatus.FINISHED) return false;
+            return (
+              task.status === ChatTaskStatus.RUNNING ||
+              task.status === ChatTaskStatus.PAUSE ||
+              task.messages.some(
+                (message) =>
+                  message.step === AgentStep.TO_SUB_TASKS && !message.isConfirm
+              ) ||
+              (!task.messages.find(
+                (message) => message.step === AgentStep.TO_SUB_TASKS
+              ) &&
+                !task.hasWaitComfirm &&
+                task.messages.length > 0) ||
+              task.isTakeControl
+            );
+          })
+        );
+        if (hasRunningChatTask) return null;
+        const taskIds = chatStates.flatMap((state) => Object.keys(state.tasks));
+        return hasActiveSSEConnection(taskIds) ? null : taskIds;
+      };
       const projects = projectStore.getAllProjects();
       let messageToProcess: {
         projectId: string;
@@ -69,8 +185,21 @@ export function useBackgroundTaskProcessor() {
       } | null = null;
 
       for (const project of projects) {
+        if (!lifetime.active) return;
         const projectData = projectStore.getProjectById(project.id);
         if (!projectData?.queuedMessages?.length) continue;
+        const msg = projectData.queuedMessages.find(
+          (queuedMessage) =>
+            queuedMessage.executionId && !queuedMessage.processing
+        );
+        if (!msg?.executionId) continue;
+        // Ownership requests below yield to queue cancellation, replacement,
+        // and other processors. Keep an immutable identity for revalidation.
+        const queuedIdentity = {
+          task_id: msg.task_id,
+          executionId: msg.executionId,
+          timestamp: msg.timestamp,
+        };
 
         // Per-project concurrency: skip if this project already has an active background task
         const hasActiveBackgroundTask = Array.from(
@@ -85,89 +214,157 @@ export function useBackgroundTaskProcessor() {
           continue;
         }
 
-        // Also check if any chat in this project has a running/paused task
-        const hasRunningChatTask = Object.values(
-          projectData.chatStores || {}
-        ).some((cs) => {
-          const state = cs.getState();
-          return Object.values(state.tasks).some(
-            (t) =>
-              t.status === ChatTaskStatus.RUNNING ||
-              t.status === ChatTaskStatus.PAUSE ||
-              // splitting phase
-              t.messages.some(
-                (m) => m.step === AgentStep.TO_SUB_TASKS && !m.isConfirm
-              ) ||
-              // skeleton/computing phase
-              (!t.messages.find((m) => m.step === AgentStep.TO_SUB_TASKS) &&
-                !t.hasWaitComfirm &&
-                t.messages.length > 0) ||
-              t.isTakeControl
-          );
-        });
-
-        if (hasRunningChatTask) {
+        // A logically active Run blocks queued trigger processing. Browser SSE
+        // ownership and the backend TaskLock consumer have separate lifetimes,
+        // so both must be resolved before admitting a scheduled Run.
+        if (getIdleProjectTaskIds(project.id) === null) {
           console.log(
             '[BackgroundTaskProcessor] Skipping project',
             project.id,
-            '- has a running/paused chat task',
-            hasRunningChatTask
+            '- has an active Run'
           );
           continue;
         }
 
-        // If SSE is active, starting a new task would duplicate trigger processing.
-        // Wait for the active task to finish; if task is done but SSE lingers, close it
-        // so the trigger can start fresh on the next poll.
-        const allTaskIds = Object.values(projectData.chatStores || {}).flatMap(
-          (cs) => Object.keys(cs.getState().tasks)
+        let runtimeStatus: LegacyChatRuntimeStatus;
+        try {
+          runtimeStatus = await requestRuntime((signal) =>
+            fetchGet(
+              `/chat/${encodeURIComponent(project.id)}/status`,
+              undefined,
+              undefined,
+              { signal }
+            )
+          );
+        } catch (error) {
+          console.warn(
+            '[BackgroundTaskProcessor] Skipping project',
+            project.id,
+            '- could not verify legacy runtime ownership',
+            error
+          );
+          continue;
+        }
+        if (!lifetime.active) return;
+
+        const pendingAfterStatus = findQueuedExecution(
+          project.id,
+          queuedIdentity
         );
-        if (hasActiveSSEConnection(allTaskIds)) {
-          const activeChatStore = projectStore.getChatStore(project.id);
-          const activeState = activeChatStore?.getState();
-          const activeTaskId = activeState?.activeTaskId;
-          const activeTask = activeTaskId
-            ? activeState?.tasks[activeTaskId]
-            : null;
+        if (!pendingAfterStatus || pendingAfterStatus.processing) continue;
+        // Foreground startup can add a Run while ownership requests are in
+        // flight, before Brain has registered its consumer. Re-read the local
+        // task stores and SSE ownership at each boundary as well.
+        if (getIdleProjectTaskIds(project.id) === null) continue;
 
-          const isActiveTaskDone =
-            activeTask?.status === ChatTaskStatus.FINISHED ||
-            activeTask?.hasWaitComfirm;
-
-          if (isActiveTaskDone) {
-            console.log(
-              '[BackgroundTaskProcessor] Closing stale SSE for project',
-              project.id,
-              '- active task done, trigger waiting in queue'
-            );
-            closeSSEConnectionsForTasks(allTaskIds);
-          } else {
-            console.log(
-              '[BackgroundTaskProcessor] Skipping project',
-              project.id,
-              '- SSE active, task still in progress'
-            );
-          }
+        if (
+          runtimeStatus.consumer_alive &&
+          (runtimeStatus.status !== 'done' || !runtimeStatus.run_id)
+        ) {
+          console.log(
+            '[BackgroundTaskProcessor] Skipping project',
+            project.id,
+            '- backend legacy Run is not idle'
+          );
           continue;
         }
 
-        const msg = projectData.queuedMessages.find(
-          (m) => m.executionId && !m.processing
+        const displayTaskIds = getIdleProjectTaskIds(project.id);
+        if (displayTaskIds === null) continue;
+        // Canonical completion can overtake the legacy display tail. The
+        // connection owns a bounded drain window; it is not an active Run.
+        await waitForIdleSSEDisplayTail(displayTaskIds);
+        if (!lifetime.active) return;
+        const pendingAfterDisplay = findQueuedExecution(
+          project.id,
+          queuedIdentity
         );
-        if (msg && msg.executionId) {
-          messageToProcess = {
-            projectId: project.id,
-            task_id: msg.task_id,
-            content: msg.content,
-            attaches: msg.attaches || [],
-            executionId: msg.executionId,
-            triggerTaskId: msg.triggerTaskId,
-            triggerId: msg.triggerId,
-            triggerName: msg.triggerName,
-            timestamp: msg.timestamp,
-          };
-          break;
+        if (!pendingAfterDisplay || pendingAfterDisplay.processing) continue;
+        const drainedTaskIds = getIdleProjectTaskIds(project.id);
+        if (
+          drainedTaskIds === null ||
+          drainedTaskIds.length !== displayTaskIds.length ||
+          drainedTaskIds.some((taskId) => !displayTaskIds.includes(taskId))
+        )
+          continue;
+
+        if (runtimeStatus.consumer_alive) {
+          // subscriber_count is only a point-in-time observation. Reusing a
+          // warm consumer would race a renderer disconnect between this read
+          // and follow-up admission, leaving the new Run without either the
+          // legacy stream or a canonical terminal observer. Scheduled work
+          // therefore retires the idle consumer before opening a fresh stream.
+          let retired: LegacyChatRuntimeStatus;
+          try {
+            retired = await requestRuntime((signal) =>
+              fetchPost(
+                `/chat/${encodeURIComponent(project.id)}/runtime/retire-idle`,
+                { run_id: runtimeStatus.run_id },
+                undefined,
+                { signal }
+              )
+            );
+          } catch (error) {
+            console.warn(
+              '[BackgroundTaskProcessor] Skipping project',
+              project.id,
+              '- could not retire the backend idle consumer',
+              error
+            );
+            continue;
+          }
+          if (!lifetime.active) return;
+          if (retired?.consumer_alive) {
+            console.warn(
+              '[BackgroundTaskProcessor] Skipping project',
+              project.id,
+              '- backend idle consumer did not retire'
+            );
+            continue;
+          }
         }
+
+        const pendingAfterRetirement = findQueuedExecution(
+          project.id,
+          queuedIdentity
+        );
+        if (!pendingAfterRetirement || pendingAfterRetirement.processing)
+          continue;
+        const allTaskIds = getIdleProjectTaskIds(project.id);
+        if (
+          allTaskIds === null ||
+          allTaskIds.length !== displayTaskIds.length ||
+          allTaskIds.some((taskId) => !displayTaskIds.includes(taskId))
+        )
+          continue;
+
+        if (hasSSETransportForTasks(allTaskIds)) {
+          console.log(
+            '[BackgroundTaskProcessor] Closing idle SSE for project',
+            project.id,
+            '- backend consumer is retired'
+          );
+          closeIdleSSEConnectionsForTasks(allTaskIds);
+          if (hasSSETransportForTasks(allTaskIds)) {
+            console.warn(
+              '[BackgroundTaskProcessor] Skipping project',
+              project.id,
+              '- idle SSE cleanup did not release the transport'
+            );
+            continue;
+          }
+        }
+
+        messageToProcess = {
+          projectId: project.id,
+          ...queuedIdentity,
+          content: pendingAfterRetirement.content,
+          attaches: pendingAfterRetirement.attaches || [],
+          triggerTaskId: pendingAfterRetirement.triggerTaskId,
+          triggerId: pendingAfterRetirement.triggerId,
+          triggerName: pendingAfterRetirement.triggerName,
+        };
+        break;
       }
 
       if (!messageToProcess) return;
@@ -183,6 +380,10 @@ export function useBackgroundTaskProcessor() {
         triggerName,
       } = messageToProcess;
 
+      const pendingMessage = findQueuedExecution(projectId, messageToProcess);
+      if (!pendingMessage || pendingMessage.processing) return;
+      if (getIdleProjectTaskIds(projectId) === null) return;
+
       const newTaskId = generateUniqueId();
 
       // Track BEFORE markQueuedMessageAsProcessing — that call triggers
@@ -197,6 +398,14 @@ export function useBackgroundTaskProcessor() {
       });
 
       projectStore.markQueuedMessageAsProcessing(projectId, task_id);
+
+      // Marking emits synchronous store notifications. A subscriber may remove
+      // or replace the row, so confirm the claim before admitting any Run.
+      // There must be no await between the eligibility check, claim and start.
+      if (!findQueuedExecution(projectId, messageToProcess)?.processing) {
+        activeTasksRef.current.delete(executionId);
+        return;
+      }
 
       console.log(
         '[BackgroundTaskProcessor] Marked message as processing:',
@@ -234,8 +443,7 @@ export function useBackgroundTaskProcessor() {
           )
         );
 
-        // Fire and forget - startTask streams until completion
-        chatStore
+        const admissionPromise = chatStore
           .getState()
           .startTask(
             newTaskId,
@@ -245,14 +453,23 @@ export function useBackgroundTaskProcessor() {
             content,
             attaches,
             executionId,
-            projectId
-          )
+            projectId,
+            undefined,
+            {
+              preserveTaskId: true,
+              awaitAdmission: true,
+            }
+          );
+
+        // The Promise resolves after Brain admits this exact Run. Runtime
+        // completion remains owned by task state and canonical ingress.
+        admissionPromise
           .then(() => {
             console.log(
-              '[BackgroundTaskProcessor] Background task completed:',
+              '[BackgroundTaskProcessor] Background task admitted:',
               executionId
             );
-            // Remove from queue after successful completion
+            // Only remove the durable queue item after the server owns it.
             projectStore.removeQueuedMessage(projectId, task_id);
             activeTasksRef.current.delete(executionId);
           })
@@ -261,6 +478,18 @@ export function useBackgroundTaskProcessor() {
               '[BackgroundTaskProcessor] Background task error:',
               err
             );
+            if (isRetryableBackgroundAdmissionError(err)) {
+              // Status/retirement checks and admission are separate requests.
+              // If another Run wins that race, retain this trigger and let a
+              // later poll repeat the full ownership check.
+              projectStore.setQueuedMessageProcessing(
+                projectId,
+                task_id,
+                false
+              );
+              activeTasksRef.current.delete(executionId);
+              return;
+            }
             // Remove from queue on error as well
             projectStore.removeQueuedMessage(projectId, task_id);
             // Report failure to backend
@@ -378,6 +607,15 @@ export function useBackgroundTaskProcessor() {
   }, [checkCompletedTasks, processOneTask]);
 
   useEffect(() => {
+    // Recover terminal receipts persisted by a previous renderer session.
+    // This is independent from canonical/legacy observer lifetime.
+    void flushPendingTriggerExecutionUpdates().catch((error) => {
+      console.warn(
+        '[BackgroundTaskProcessor] Failed to flush terminal execution updates:',
+        error
+      );
+    });
+
     // Run poll immediately on mount - don't wait for first interval
     poll();
 

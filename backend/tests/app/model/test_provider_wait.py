@@ -641,8 +641,12 @@ async def test_tool_and_hitl_boundaries_preserve_pause_accounting(
         with tool_checkpoint_scope(checkpoint):
             async with pause_active_execution_timeout():
                 await clock.sleep(3600)
-                assert remaining_active_execution_seconds() == 8
-        assert remaining_active_execution_seconds() == 8
+                assert remaining_active_execution_seconds() == pytest.approx(
+                    8, rel=0, abs=1e-9
+                )
+        assert remaining_active_execution_seconds() == pytest.approx(
+            8, rel=0, abs=1e-9
+        )
     observed = events(caplog)
     assert [(e["phase"], e["boundary"]) for e in observed] == [
         ("tool", "enter"),

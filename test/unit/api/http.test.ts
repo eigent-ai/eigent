@@ -133,6 +133,32 @@ describe('api/http handleResponse', () => {
       expect.objectContaining({ method: 'GET' })
     );
   });
+
+  it('forwards an optional POST abort signal without reporting cancellation as an error', async () => {
+    const controller = new AbortController();
+    const request = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new DOMException('Request aborted', 'AbortError'));
+
+    await expect(
+      fetchPost(
+        '/chat/project-1/runtime/retire-idle',
+        { run_id: 'ended-run' },
+        undefined,
+        { signal: controller.signal }
+      )
+    ).rejects.toMatchObject({ name: 'AbortError' });
+
+    expect(request).toHaveBeenCalledWith(
+      'http://brain.local/chat/project-1/runtime/retire-idle',
+      expect.objectContaining({
+        method: 'POST',
+        signal: controller.signal,
+        body: JSON.stringify({ run_id: 'ended-run' }),
+      })
+    );
+    expect(mocked.reportError).not.toHaveBeenCalled();
+  });
 });
 
 describe('api/http getBaseURL', () => {
