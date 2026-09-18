@@ -215,6 +215,141 @@ describe('Space default through the real Chat start path', () => {
         }
       );
   const request = () => mocks.sse.mock.calls.at(-1)![0].body;
+  const acceptedSelection = {
+    modelType: 'cloud',
+    cloud_model_type: 'space-model',
+    model_platform: 'azure',
+    model_type: 'gpt-6-astra',
+    model_ref: 'provider://cloud/space-model',
+  };
+  const restoreAdmissionReceipt = () => {
+    project.metadata = {
+      serverSynced: true,
+      historyId: 'history-accepted',
+      spaceModelAdmissionRunId: 'accepted-run-1',
+    };
+    mocks.projectStore.getHistoryId = () => 'history-accepted';
+  };
+  const acceptedResponse = () => ({
+    space_id: 'space-1',
+    project_id: 'session-1',
+    accepted: { run_id: 'accepted-run-1', selection: acceptedSelection },
+    restore_pending: false,
+  });
+
+  it.each([false, true])(
+    'recovers a server-restored receipt without local eligibility before retry or Resume (%s)',
+    async (resume) => {
+      restoreAdmissionReceipt();
+      mocks.localGet.mockResolvedValue(acceptedResponse());
+      await start(resume);
+      expect(mocks.localGet).toHaveBeenCalledWith(
+        '/spaces/space-1/workspace-configuration/session-model',
+        {
+          project_id: 'session-1',
+          email: 'a@example.test',
+          user_id: 'account-a',
+        }
+      );
+      expect(request().model_type).toBe('gpt-6-astra');
+      expect(request().workspace_model_selection).toBeUndefined();
+      expect(project.metadata.modelSelection).toMatchObject(acceptedSelection);
+      expect(project.metadata.spaceModelAdmissionRunId).toBeNull();
+      expect(project.metadata.spaceModelDefaultPending).toBe(false);
+      expect(
+        mocks.localGet.mock.calls.some(([url]) =>
+          url.includes('/model-selection')
+        )
+      ).toBe(false);
+    }
+  );
+
+  it.each(['missing', 'restoring', 'rejected'])(
+    'does not send or adopt a default for a restored receipt with %s recovery',
+    async (result) => {
+      restoreAdmissionReceipt();
+      mocks.localGet.mockImplementation(async () => {
+        if (result === 'rejected') throw new Error('Recovery unavailable');
+        return {
+          ...acceptedResponse(),
+          accepted: null,
+          restore_pending: result === 'restoring',
+        };
+      });
+      await expect(start()).rejects.toThrow();
+      expect(
+        mocks.localGet.mock.calls.every(([url]) =>
+          url.includes('/session-model')
+        )
+      ).toBe(true);
+      expect(mocks.sse).not.toHaveBeenCalled();
+      expect(mocks.projectStore.setProjectModel).not.toHaveBeenCalled();
+      expect(project.metadata.spaceModelAdmissionRunId).toBe('accepted-run-1');
+      expect(project.metadata.spaceModelDefaultPending).toBeUndefined();
+    }
+  );
+
+  it('keeps a manual model ahead of a restored receipt', async () => {
+    restoreAdmissionReceipt();
+    project.metadata.modelSelection = {
+      modelType: 'cloud',
+      cloud_model_type: 'manual',
+    };
+    await start();
+    expect(
+      mocks.localGet.mock.calls.some(([url]) => url.includes('/session-model'))
+    ).toBe(false);
+    expect(project.metadata.modelSelection.cloud_model_type).toBe('manual');
+    expect(request().workspace_model_selection).toBeUndefined();
+  });
+
+  it.each(['manual', 'account', 'space', 'missing-space'])(
+    'does not commit a restored receipt recovery after %s changes',
+    async (change) => {
+      restoreAdmissionReceipt();
+      mocks.localGet.mockImplementation(async () => {
+        if (change === 'manual')
+          project.metadata.modelSelection = {
+            modelType: 'cloud',
+            cloud_model_type: 'manual',
+          };
+        if (change === 'account')
+          mocks.auth = {
+            ...mocks.auth,
+            user_id: 'account-b',
+            token: 'changed-token',
+          };
+        if (change === 'space') project.spaceId = 'space-2';
+        if (change === 'missing-space') project.spaceId = undefined;
+        return acceptedResponse();
+      });
+      await expect(start()).rejects.toThrow('changed');
+      expect(mocks.sse).not.toHaveBeenCalled();
+      expect(mocks.projectStore.setProjectModel).not.toHaveBeenCalled();
+      expect(project.metadata.modelSelection?.cloud_model_type).toBe(
+        change === 'manual' ? 'manual' : undefined
+      );
+    }
+  );
+
+  it.each(
+    [false, true].flatMap((resume) =>
+      ['account', 'missing', 'unknown'].map((scope) => ({ resume, scope }))
+    )
+  )(
+    'rejects a restored receipt with $scope scope before retry or Resume ($resume)',
+    async ({ resume, scope }) => {
+      restoreAdmissionReceipt();
+      if (scope === 'account')
+        mocks.auth = { ...mocks.auth, user_id: 'account-b' };
+      if (scope === 'missing') project.spaceId = undefined;
+      if (scope === 'unknown') project.spaceId = 'space-2';
+      await expect(start(resume)).rejects.toThrow('unavailable');
+      expect(mocks.localGet).not.toHaveBeenCalled();
+      expect(mocks.sse).not.toHaveBeenCalled();
+      expect(mocks.projectStore.setProjectModel).not.toHaveBeenCalled();
+    }
+  );
 
   it.each(['cloud', 'custom', 'local'] as const)(
     'sends and pins the complete %s binding for a new Session',
@@ -305,8 +440,9 @@ describe('Space default through the real Chat start path', () => {
     await start();
     expect(request().model_type).toBe('gpt-5.5');
     expect(
-      mocks.localGet.mock.calls.some(([url]) =>
-        url.includes('/model-selection')
+      mocks.localGet.mock.calls.some(
+        ([url]) =>
+          url.includes('/model-selection') || url.includes('/session-model')
       )
     ).toBe(false);
   });
