@@ -1,0 +1,1346 @@
+{
+  "run_id": "live-run",
+  "after_sequence": 0,
+  "next_sequence": 27,
+  "has_more": false,
+  "events": [
+    {
+      "schema_version": 1,
+      "event_id": "attempt:attempt-1:created",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 1,
+      "run_sequence": 1,
+      "run_version": 1,
+      "event_type": "run.attempt_created",
+      "legacy_step": null,
+      "payload": {
+        "attempt_id": "attempt-1",
+        "attempt_number": 1,
+        "policy_version": "v1",
+        "reason": "initial_execution",
+        "status": "running",
+        "workload_profile": {
+          "budget_policy_ref": "budget.product-default.v1",
+          "capture_policy_ref": "capture.best-effort.v1",
+          "isolation_policy_ref": "isolation.product-default.v1",
+          "network_policy_ref": "network.product-default.v1",
+          "profile_version": "1",
+          "retention_policy_ref": "retention.product-default.v1",
+          "schema_version": 1,
+          "verifier_policy_ref": "verifier.noop.v1",
+          "workload_kind": "production"
+        },
+        "workload_profile_digest": "4786bb51388abddfbbe18decc88ada3e3e896b4aa9967970c2b99865d4999302"
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    },
+    {
+      "schema_version": 1,
+      "event_id": "single:action:1",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 2,
+      "run_sequence": 2,
+      "run_version": 2,
+      "event_type": "agent.registered",
+      "legacy_step": "create_agent",
+      "payload": {
+        "agent_id": "agent-1",
+        "agent_name": "single_agent",
+        "display_schema_version": 1,
+        "display_summary": "Registered with 1 tools",
+        "display_title": "single_agent",
+        "semantic": {
+          "actor": {
+            "type": "system"
+          },
+          "completeness": {
+            "missing_fields": [],
+            "state": "complete"
+          },
+          "kind": "agent",
+          "lifecycle": {
+            "phase": "completed",
+            "status": "completed"
+          },
+          "provenance": {
+            "source": "legacy.create_agent"
+          },
+          "subject": {
+            "id": "agent-1",
+            "type": "agent"
+          }
+        },
+        "semantic_schema_version": 1,
+        "status": "completed",
+        "tools": ["shell_exec"]
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    },
+    {
+      "schema_version": 1,
+      "event_id": "step:stp_e5ee51cec731d17a22073f6c:created:d8ba0047ae531e79",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 3,
+      "run_sequence": 3,
+      "run_version": 3,
+      "event_type": "step.created",
+      "legacy_step": null,
+      "payload": {
+        "attempt_id": "attempt-1",
+        "display_schema_version": 1,
+        "evidence_refs": [],
+        "reason_code": null,
+        "semantic": {
+          "actor": {
+            "id": "agent-1",
+            "type": "agent"
+          },
+          "completeness": {
+            "missing_fields": [],
+            "state": "complete"
+          },
+          "correlation": {
+            "attempt_id": "attempt-1",
+            "plan_item_id": "todo-1"
+          },
+          "kind": "step",
+          "lifecycle": {
+            "phase": "requested",
+            "status": "pending"
+          },
+          "provenance": {
+            "source": "run_step_coordinator"
+          },
+          "subject": {
+            "id": "stp_e5ee51cec731d17a22073f6c",
+            "type": "step"
+          }
+        },
+        "semantic_schema_version": 2,
+        "step": {
+          "authored_by": "agent",
+          "ordinal": 1,
+          "owner": {
+            "agent_id": "agent-1",
+            "kind": "single_agent"
+          },
+          "parent_step_id": null,
+          "plan_id": "plan:live-run",
+          "plan_item_id": "todo-1",
+          "source": "plan",
+          "status": "pending",
+          "step_id": "stp_e5ee51cec731d17a22073f6c",
+          "summary": null,
+          "title": "Inspect the inputs",
+          "visibility": "summary"
+        },
+        "step_schema_version": 1
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    },
+    {
+      "schema_version": 1,
+      "event_id": "step:stp_e5ee51cec731d17a22073f6c:started:d8f6563e94a93660",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 4,
+      "run_sequence": 4,
+      "run_version": 4,
+      "event_type": "step.started",
+      "legacy_step": null,
+      "payload": {
+        "attempt_id": "attempt-1",
+        "display_schema_version": 1,
+        "evidence_refs": [],
+        "reason_code": null,
+        "semantic": {
+          "actor": {
+            "id": "agent-1",
+            "type": "agent"
+          },
+          "completeness": {
+            "missing_fields": [],
+            "state": "complete"
+          },
+          "correlation": {
+            "attempt_id": "attempt-1",
+            "plan_item_id": "todo-1"
+          },
+          "kind": "step",
+          "lifecycle": {
+            "phase": "started",
+            "status": "running"
+          },
+          "provenance": {
+            "source": "run_step_coordinator"
+          },
+          "subject": {
+            "id": "stp_e5ee51cec731d17a22073f6c",
+            "type": "step"
+          }
+        },
+        "semantic_schema_version": 2,
+        "step": {
+          "authored_by": "agent",
+          "ordinal": 1,
+          "owner": {
+            "agent_id": "agent-1",
+            "kind": "single_agent"
+          },
+          "parent_step_id": null,
+          "plan_id": "plan:live-run",
+          "plan_item_id": "todo-1",
+          "source": "plan",
+          "status": "running",
+          "step_id": "stp_e5ee51cec731d17a22073f6c",
+          "summary": "Inspecting the inputs",
+          "title": "Inspect the inputs",
+          "visibility": "summary"
+        },
+        "step_schema_version": 1
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    },
+    {
+      "schema_version": 1,
+      "event_id": "step:stp_8b18f309b4df272babf87ece:created:e773af93b2fe6930",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 5,
+      "run_sequence": 5,
+      "run_version": 5,
+      "event_type": "step.created",
+      "legacy_step": null,
+      "payload": {
+        "attempt_id": "attempt-1",
+        "display_schema_version": 1,
+        "evidence_refs": [],
+        "reason_code": null,
+        "semantic": {
+          "actor": {
+            "id": "agent-1",
+            "type": "agent"
+          },
+          "completeness": {
+            "missing_fields": [],
+            "state": "complete"
+          },
+          "correlation": {
+            "attempt_id": "attempt-1",
+            "plan_item_id": "todo-2"
+          },
+          "kind": "step",
+          "lifecycle": {
+            "phase": "requested",
+            "status": "pending"
+          },
+          "provenance": {
+            "source": "run_step_coordinator"
+          },
+          "subject": {
+            "id": "stp_8b18f309b4df272babf87ece",
+            "type": "step"
+          }
+        },
+        "semantic_schema_version": 2,
+        "step": {
+          "authored_by": "agent",
+          "ordinal": 2,
+          "owner": {
+            "agent_id": "agent-1",
+            "kind": "single_agent"
+          },
+          "parent_step_id": null,
+          "plan_id": "plan:live-run",
+          "plan_item_id": "todo-2",
+          "source": "plan",
+          "status": "pending",
+          "step_id": "stp_8b18f309b4df272babf87ece",
+          "summary": null,
+          "title": "Verify the report",
+          "visibility": "summary"
+        },
+        "step_schema_version": 1
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    },
+    {
+      "schema_version": 1,
+      "event_id": "single:action:2",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 6,
+      "run_sequence": 6,
+      "run_version": 6,
+      "event_type": "plan.updated",
+      "legacy_step": "todo_state",
+      "payload": {
+        "agent_id": "agent-1",
+        "display_schema_version": 1,
+        "display_summary": "0 of 2 steps completed",
+        "display_title": "Plan",
+        "semantic": {
+          "actor": {
+            "id": "agent-1",
+            "type": "agent"
+          },
+          "completeness": {
+            "missing_fields": [],
+            "state": "complete"
+          },
+          "correlation": {
+            "project_id": "project-1",
+            "run_id": "live-run",
+            "step_id": "stp_e5ee51cec731d17a22073f6c",
+            "task_id": "live-run"
+          },
+          "kind": "plan",
+          "lifecycle": {
+            "phase": "progress",
+            "status": "running"
+          },
+          "provenance": {
+            "source": "legacy.todo_state"
+          },
+          "subject": {
+            "id": "live-run",
+            "type": "plan"
+          }
+        },
+        "semantic_schema_version": 1,
+        "step_id": "stp_e5ee51cec731d17a22073f6c",
+        "task_id": "live-run",
+        "todos": [
+          {
+            "active_form": "Inspecting the inputs",
+            "content": "Inspect the inputs",
+            "id": "todo-1",
+            "status": "running"
+          },
+          {
+            "active_form": "Verifying the report",
+            "content": "Verify the report",
+            "id": "todo-2",
+            "status": "pending"
+          }
+        ]
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    },
+    {
+      "schema_version": 1,
+      "event_id": "tool:tool-1:prepared",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 7,
+      "run_sequence": 7,
+      "run_version": 7,
+      "event_type": "tool.prepared",
+      "legacy_step": null,
+      "payload": {
+        "agent_name": "single_agent",
+        "attempt_id": "attempt-1",
+        "display_input": "Command: inspect tool-1",
+        "display_schema_version": 1,
+        "display_summary": "Prepared",
+        "display_title": "Ran command",
+        "outcome": null,
+        "process_task_id": "live-run",
+        "request": {
+          "command": "inspect tool-1"
+        },
+        "result": null,
+        "safety_class": "safe_read",
+        "semantic": {
+          "actor": {
+            "name": "single_agent",
+            "type": "agent"
+          },
+          "completeness": {
+            "missing_fields": [],
+            "state": "complete"
+          },
+          "correlation": {
+            "attempt_id": "attempt-1",
+            "step_id": "stp_e5ee51cec731d17a22073f6c",
+            "task_id": "live-run"
+          },
+          "kind": "command_execution",
+          "lifecycle": {
+            "phase": "requested",
+            "status": "pending"
+          },
+          "provenance": {
+            "source": "tool_checkpoint"
+          },
+          "subject": {
+            "id": "tool-1",
+            "type": "tool_call"
+          }
+        },
+        "semantic_schema_version": 1,
+        "status": "prepared",
+        "step_id": "stp_e5ee51cec731d17a22073f6c",
+        "timeout_reason": null,
+        "tool_call_id": "tool-1",
+        "tool_name": "shell_exec",
+        "toolkit_name": "terminal"
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    },
+    {
+      "schema_version": 1,
+      "event_id": "tool:tool-1:dispatched",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 8,
+      "run_sequence": 8,
+      "run_version": 8,
+      "event_type": "tool.dispatched",
+      "legacy_step": null,
+      "payload": {
+        "agent_name": "single_agent",
+        "attempt_id": "attempt-1",
+        "display_input": "Command: inspect tool-1",
+        "display_schema_version": 1,
+        "display_summary": "Running",
+        "display_title": "Ran command",
+        "outcome": null,
+        "process_task_id": "live-run",
+        "request": {
+          "command": "inspect tool-1"
+        },
+        "result": null,
+        "safety_class": "safe_read",
+        "semantic": {
+          "actor": {
+            "name": "single_agent",
+            "type": "agent"
+          },
+          "completeness": {
+            "missing_fields": [],
+            "state": "complete"
+          },
+          "correlation": {
+            "attempt_id": "attempt-1",
+            "step_id": "stp_e5ee51cec731d17a22073f6c",
+            "task_id": "live-run"
+          },
+          "kind": "command_execution",
+          "lifecycle": {
+            "phase": "started",
+            "status": "running"
+          },
+          "provenance": {
+            "source": "tool_checkpoint"
+          },
+          "subject": {
+            "id": "tool-1",
+            "type": "tool_call"
+          }
+        },
+        "semantic_schema_version": 1,
+        "status": "dispatched",
+        "step_id": "stp_e5ee51cec731d17a22073f6c",
+        "timeout_reason": null,
+        "tool_call_id": "tool-1",
+        "tool_name": "shell_exec",
+        "toolkit_name": "terminal"
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    },
+    {
+      "schema_version": 1,
+      "event_id": "single:action:3",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 9,
+      "run_sequence": 9,
+      "run_version": 9,
+      "event_type": "legacy.terminal",
+      "legacy_step": "terminal",
+      "payload": {
+        "output": "Inputs inspected.\n",
+        "process_task_id": "live-run",
+        "step_id": "stp_e5ee51cec731d17a22073f6c"
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    },
+    {
+      "schema_version": 1,
+      "event_id": "single:action:4",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 10,
+      "run_sequence": 10,
+      "run_version": 10,
+      "event_type": "file.written",
+      "legacy_step": "write_file",
+      "payload": {
+        "display_schema_version": 1,
+        "display_title": "Wrote reports/inputs.txt",
+        "name": "inputs.txt",
+        "operation": "written",
+        "process_task_id": "live-run",
+        "relative_path": "reports/inputs.txt",
+        "semantic": {
+          "completeness": {
+            "missing_fields": [],
+            "state": "complete"
+          },
+          "correlation": {
+            "step_id": "stp_e5ee51cec731d17a22073f6c",
+            "task_id": "live-run"
+          },
+          "kind": "file_change",
+          "lifecycle": {
+            "phase": "completed",
+            "status": "completed"
+          },
+          "provenance": {
+            "source": "legacy.write_file"
+          },
+          "subject": {
+            "id": "reports/inputs.txt",
+            "type": "file"
+          }
+        },
+        "semantic_schema_version": 1,
+        "step_id": "stp_e5ee51cec731d17a22073f6c"
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    },
+    {
+      "schema_version": 1,
+      "event_id": "single:action:5",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 11,
+      "run_sequence": 11,
+      "run_version": 11,
+      "event_type": "legacy.request_usage",
+      "legacy_step": "request_usage",
+      "payload": {
+        "agent_id": "agent-1",
+        "agent_name": "single_agent",
+        "process_task_id": "live-run",
+        "request_index": 1,
+        "response_id": "response-1",
+        "step_id": "stp_e5ee51cec731d17a22073f6c",
+        "step_total_tokens": 40,
+        "tokens": 40
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    },
+    {
+      "schema_version": 1,
+      "event_id": "step:stp_e5ee51cec731d17a22073f6c:completed:f2e8f8b1bf980617",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 12,
+      "run_sequence": 12,
+      "run_version": 12,
+      "event_type": "step.completed",
+      "legacy_step": null,
+      "payload": {
+        "attempt_id": "attempt-1",
+        "display_schema_version": 1,
+        "evidence_refs": [],
+        "reason_code": null,
+        "semantic": {
+          "actor": {
+            "id": "agent-1",
+            "type": "agent"
+          },
+          "completeness": {
+            "missing_fields": [],
+            "state": "complete"
+          },
+          "correlation": {
+            "attempt_id": "attempt-1",
+            "plan_item_id": "todo-1"
+          },
+          "kind": "step",
+          "lifecycle": {
+            "phase": "completed",
+            "status": "completed"
+          },
+          "provenance": {
+            "source": "run_step_coordinator"
+          },
+          "subject": {
+            "id": "stp_e5ee51cec731d17a22073f6c",
+            "type": "step"
+          }
+        },
+        "semantic_schema_version": 2,
+        "step": {
+          "authored_by": "agent",
+          "ordinal": 1,
+          "owner": {
+            "agent_id": "agent-1",
+            "kind": "single_agent"
+          },
+          "parent_step_id": null,
+          "plan_id": "plan:live-run",
+          "plan_item_id": "todo-1",
+          "source": "plan",
+          "status": "completed",
+          "step_id": "stp_e5ee51cec731d17a22073f6c",
+          "summary": "Inspecting the inputs",
+          "title": "Inspect the inputs",
+          "visibility": "summary"
+        },
+        "step_schema_version": 1
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    },
+    {
+      "schema_version": 1,
+      "event_id": "step:stp_8b18f309b4df272babf87ece:started:48b767a087b95114",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 13,
+      "run_sequence": 13,
+      "run_version": 13,
+      "event_type": "step.started",
+      "legacy_step": null,
+      "payload": {
+        "attempt_id": "attempt-1",
+        "display_schema_version": 1,
+        "evidence_refs": [],
+        "reason_code": null,
+        "semantic": {
+          "actor": {
+            "id": "agent-1",
+            "type": "agent"
+          },
+          "completeness": {
+            "missing_fields": [],
+            "state": "complete"
+          },
+          "correlation": {
+            "attempt_id": "attempt-1",
+            "plan_item_id": "todo-2"
+          },
+          "kind": "step",
+          "lifecycle": {
+            "phase": "started",
+            "status": "running"
+          },
+          "provenance": {
+            "source": "run_step_coordinator"
+          },
+          "subject": {
+            "id": "stp_8b18f309b4df272babf87ece",
+            "type": "step"
+          }
+        },
+        "semantic_schema_version": 2,
+        "step": {
+          "authored_by": "agent",
+          "ordinal": 2,
+          "owner": {
+            "agent_id": "agent-1",
+            "kind": "single_agent"
+          },
+          "parent_step_id": null,
+          "plan_id": "plan:live-run",
+          "plan_item_id": "todo-2",
+          "source": "plan",
+          "status": "running",
+          "step_id": "stp_8b18f309b4df272babf87ece",
+          "summary": "Verifying the report",
+          "title": "Verify the report",
+          "visibility": "summary"
+        },
+        "step_schema_version": 1
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    },
+    {
+      "schema_version": 1,
+      "event_id": "single:action:6",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 14,
+      "run_sequence": 14,
+      "run_version": 14,
+      "event_type": "plan.updated",
+      "legacy_step": "todo_state",
+      "payload": {
+        "agent_id": "agent-1",
+        "display_schema_version": 1,
+        "display_summary": "1 of 2 steps completed",
+        "display_title": "Plan",
+        "semantic": {
+          "actor": {
+            "id": "agent-1",
+            "type": "agent"
+          },
+          "completeness": {
+            "missing_fields": [],
+            "state": "complete"
+          },
+          "correlation": {
+            "project_id": "project-1",
+            "run_id": "live-run",
+            "step_id": "stp_8b18f309b4df272babf87ece",
+            "task_id": "live-run"
+          },
+          "kind": "plan",
+          "lifecycle": {
+            "phase": "progress",
+            "status": "running"
+          },
+          "provenance": {
+            "source": "legacy.todo_state"
+          },
+          "subject": {
+            "id": "live-run",
+            "type": "plan"
+          }
+        },
+        "semantic_schema_version": 1,
+        "step_id": "stp_8b18f309b4df272babf87ece",
+        "task_id": "live-run",
+        "todos": [
+          {
+            "active_form": "Inspecting the inputs",
+            "content": "Inspect the inputs",
+            "id": "todo-1",
+            "status": "completed"
+          },
+          {
+            "active_form": "Verifying the report",
+            "content": "Verify the report",
+            "id": "todo-2",
+            "status": "running"
+          }
+        ]
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    },
+    {
+      "schema_version": 1,
+      "event_id": "tool:tool-1:completed",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 15,
+      "run_sequence": 15,
+      "run_version": 15,
+      "event_type": "tool.completed",
+      "legacy_step": null,
+      "payload": {
+        "agent_name": "single_agent",
+        "attempt_id": "attempt-1",
+        "display_duration_ms": 10,
+        "display_input": "Command: inspect tool-1",
+        "display_output": "Completed successfully",
+        "display_schema_version": 1,
+        "display_summary": "Completed in 10 ms",
+        "display_title": "Ran command",
+        "outcome": "completed",
+        "process_task_id": "live-run",
+        "request": {
+          "command": "inspect tool-1"
+        },
+        "result": {
+          "success": true
+        },
+        "safety_class": "safe_read",
+        "semantic": {
+          "actor": {
+            "name": "single_agent",
+            "type": "agent"
+          },
+          "completeness": {
+            "missing_fields": [],
+            "state": "complete"
+          },
+          "correlation": {
+            "attempt_id": "attempt-1",
+            "step_id": "stp_e5ee51cec731d17a22073f6c",
+            "task_id": "live-run"
+          },
+          "kind": "command_execution",
+          "lifecycle": {
+            "phase": "completed",
+            "status": "completed"
+          },
+          "provenance": {
+            "source": "tool_checkpoint"
+          },
+          "subject": {
+            "id": "tool-1",
+            "type": "tool_call"
+          }
+        },
+        "semantic_schema_version": 1,
+        "status": "completed",
+        "step_id": "stp_e5ee51cec731d17a22073f6c",
+        "timeout_reason": null,
+        "tool_call_id": "tool-1",
+        "tool_name": "shell_exec",
+        "toolkit_name": "terminal"
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    },
+    {
+      "schema_version": 1,
+      "event_id": "tool:tool-2:prepared",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 16,
+      "run_sequence": 16,
+      "run_version": 16,
+      "event_type": "tool.prepared",
+      "legacy_step": null,
+      "payload": {
+        "agent_name": "single_agent",
+        "attempt_id": "attempt-1",
+        "display_input": "Command: inspect tool-2",
+        "display_schema_version": 1,
+        "display_summary": "Prepared",
+        "display_title": "Ran command",
+        "outcome": null,
+        "process_task_id": "live-run",
+        "request": {
+          "command": "inspect tool-2"
+        },
+        "result": null,
+        "safety_class": "safe_read",
+        "semantic": {
+          "actor": {
+            "name": "single_agent",
+            "type": "agent"
+          },
+          "completeness": {
+            "missing_fields": [],
+            "state": "complete"
+          },
+          "correlation": {
+            "attempt_id": "attempt-1",
+            "step_id": "stp_8b18f309b4df272babf87ece",
+            "task_id": "live-run"
+          },
+          "kind": "command_execution",
+          "lifecycle": {
+            "phase": "requested",
+            "status": "pending"
+          },
+          "provenance": {
+            "source": "tool_checkpoint"
+          },
+          "subject": {
+            "id": "tool-2",
+            "type": "tool_call"
+          }
+        },
+        "semantic_schema_version": 1,
+        "status": "prepared",
+        "step_id": "stp_8b18f309b4df272babf87ece",
+        "timeout_reason": null,
+        "tool_call_id": "tool-2",
+        "tool_name": "shell_exec",
+        "toolkit_name": "terminal"
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    },
+    {
+      "schema_version": 1,
+      "event_id": "tool:tool-2:dispatched",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 17,
+      "run_sequence": 17,
+      "run_version": 17,
+      "event_type": "tool.dispatched",
+      "legacy_step": null,
+      "payload": {
+        "agent_name": "single_agent",
+        "attempt_id": "attempt-1",
+        "display_input": "Command: inspect tool-2",
+        "display_schema_version": 1,
+        "display_summary": "Running",
+        "display_title": "Ran command",
+        "outcome": null,
+        "process_task_id": "live-run",
+        "request": {
+          "command": "inspect tool-2"
+        },
+        "result": null,
+        "safety_class": "safe_read",
+        "semantic": {
+          "actor": {
+            "name": "single_agent",
+            "type": "agent"
+          },
+          "completeness": {
+            "missing_fields": [],
+            "state": "complete"
+          },
+          "correlation": {
+            "attempt_id": "attempt-1",
+            "step_id": "stp_8b18f309b4df272babf87ece",
+            "task_id": "live-run"
+          },
+          "kind": "command_execution",
+          "lifecycle": {
+            "phase": "started",
+            "status": "running"
+          },
+          "provenance": {
+            "source": "tool_checkpoint"
+          },
+          "subject": {
+            "id": "tool-2",
+            "type": "tool_call"
+          }
+        },
+        "semantic_schema_version": 1,
+        "status": "dispatched",
+        "step_id": "stp_8b18f309b4df272babf87ece",
+        "timeout_reason": null,
+        "tool_call_id": "tool-2",
+        "tool_name": "shell_exec",
+        "toolkit_name": "terminal"
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    },
+    {
+      "schema_version": 1,
+      "event_id": "tool:tool-2:completed",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 18,
+      "run_sequence": 18,
+      "run_version": 18,
+      "event_type": "tool.completed",
+      "legacy_step": null,
+      "payload": {
+        "agent_name": "single_agent",
+        "attempt_id": "attempt-1",
+        "display_duration_ms": 10,
+        "display_input": "Command: inspect tool-2",
+        "display_output": "Completed successfully",
+        "display_schema_version": 1,
+        "display_summary": "Completed in 10 ms",
+        "display_title": "Ran command",
+        "outcome": "completed",
+        "process_task_id": "live-run",
+        "request": {
+          "command": "inspect tool-2"
+        },
+        "result": {
+          "success": true
+        },
+        "safety_class": "safe_read",
+        "semantic": {
+          "actor": {
+            "name": "single_agent",
+            "type": "agent"
+          },
+          "completeness": {
+            "missing_fields": [],
+            "state": "complete"
+          },
+          "correlation": {
+            "attempt_id": "attempt-1",
+            "step_id": "stp_8b18f309b4df272babf87ece",
+            "task_id": "live-run"
+          },
+          "kind": "command_execution",
+          "lifecycle": {
+            "phase": "completed",
+            "status": "completed"
+          },
+          "provenance": {
+            "source": "tool_checkpoint"
+          },
+          "subject": {
+            "id": "tool-2",
+            "type": "tool_call"
+          }
+        },
+        "semantic_schema_version": 1,
+        "status": "completed",
+        "step_id": "stp_8b18f309b4df272babf87ece",
+        "timeout_reason": null,
+        "tool_call_id": "tool-2",
+        "tool_name": "shell_exec",
+        "toolkit_name": "terminal"
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    },
+    {
+      "schema_version": 1,
+      "event_id": "single:action:7",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 19,
+      "run_sequence": 19,
+      "run_version": 19,
+      "event_type": "legacy.terminal",
+      "legacy_step": "terminal",
+      "payload": {
+        "output": "Report verified.\n",
+        "process_task_id": "live-run",
+        "step_id": "stp_8b18f309b4df272babf87ece"
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    },
+    {
+      "schema_version": 1,
+      "event_id": "single:action:8",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 20,
+      "run_sequence": 20,
+      "run_version": 20,
+      "event_type": "file.written",
+      "legacy_step": "write_file",
+      "payload": {
+        "display_schema_version": 1,
+        "display_title": "Wrote reports/verified.txt",
+        "name": "verified.txt",
+        "operation": "written",
+        "process_task_id": "live-run",
+        "relative_path": "reports/verified.txt",
+        "semantic": {
+          "completeness": {
+            "missing_fields": [],
+            "state": "complete"
+          },
+          "correlation": {
+            "step_id": "stp_8b18f309b4df272babf87ece",
+            "task_id": "live-run"
+          },
+          "kind": "file_change",
+          "lifecycle": {
+            "phase": "completed",
+            "status": "completed"
+          },
+          "provenance": {
+            "source": "legacy.write_file"
+          },
+          "subject": {
+            "id": "reports/verified.txt",
+            "type": "file"
+          }
+        },
+        "semantic_schema_version": 1,
+        "step_id": "stp_8b18f309b4df272babf87ece"
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    },
+    {
+      "schema_version": 1,
+      "event_id": "single:action:9",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 21,
+      "run_sequence": 21,
+      "run_version": 21,
+      "event_type": "notice.progress",
+      "legacy_step": "notice",
+      "payload": {
+        "content": "Report validation passed.",
+        "display_schema_version": 1,
+        "display_summary": "Report validation passed.",
+        "display_title": "Validation complete",
+        "notice": "Report validation passed.",
+        "notice_id": "notice-1",
+        "process_task_id": "live-run",
+        "purpose": "result",
+        "semantic": {
+          "actor": {
+            "type": "agent"
+          },
+          "completeness": {
+            "missing_fields": [],
+            "state": "complete"
+          },
+          "correlation": {
+            "notice_id": "notice-1",
+            "run_id": "live-run",
+            "step_id": "stp_8b18f309b4df272babf87ece",
+            "task_id": "live-run",
+            "tool_call_id": "tool-2"
+          },
+          "kind": "narration",
+          "lifecycle": {
+            "phase": "progress",
+            "status": "running"
+          },
+          "provenance": {
+            "source": "legacy.notice"
+          },
+          "subject": {
+            "id": "notice-1",
+            "type": "activity_stream"
+          }
+        },
+        "semantic_schema_version": 1,
+        "severity": "success",
+        "step_id": "stp_8b18f309b4df272babf87ece",
+        "title": "Validation complete",
+        "tool_call_id": "tool-2"
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    },
+    {
+      "schema_version": 1,
+      "event_id": "single:action:10",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 22,
+      "run_sequence": 22,
+      "run_version": 22,
+      "event_type": "legacy.request_usage",
+      "legacy_step": "request_usage",
+      "payload": {
+        "agent_id": "agent-1",
+        "agent_name": "single_agent",
+        "process_task_id": "live-run",
+        "request_index": 2,
+        "response_id": "response-2",
+        "step_id": "stp_8b18f309b4df272babf87ece",
+        "step_total_tokens": 123,
+        "tokens": 83
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    },
+    {
+      "schema_version": 1,
+      "event_id": "step:stp_8b18f309b4df272babf87ece:completed:57283ecb0c8c75bd",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 23,
+      "run_sequence": 23,
+      "run_version": 23,
+      "event_type": "step.completed",
+      "legacy_step": null,
+      "payload": {
+        "attempt_id": "attempt-1",
+        "display_schema_version": 1,
+        "evidence_refs": [],
+        "reason_code": null,
+        "semantic": {
+          "actor": {
+            "id": "agent-1",
+            "type": "agent"
+          },
+          "completeness": {
+            "missing_fields": [],
+            "state": "complete"
+          },
+          "correlation": {
+            "attempt_id": "attempt-1",
+            "plan_item_id": "todo-2"
+          },
+          "kind": "step",
+          "lifecycle": {
+            "phase": "completed",
+            "status": "completed"
+          },
+          "provenance": {
+            "source": "run_step_coordinator"
+          },
+          "subject": {
+            "id": "stp_8b18f309b4df272babf87ece",
+            "type": "step"
+          }
+        },
+        "semantic_schema_version": 2,
+        "step": {
+          "authored_by": "agent",
+          "ordinal": 2,
+          "owner": {
+            "agent_id": "agent-1",
+            "kind": "single_agent"
+          },
+          "parent_step_id": null,
+          "plan_id": "plan:live-run",
+          "plan_item_id": "todo-2",
+          "source": "plan",
+          "status": "completed",
+          "step_id": "stp_8b18f309b4df272babf87ece",
+          "summary": "Verifying the report",
+          "title": "Verify the report",
+          "visibility": "summary"
+        },
+        "step_schema_version": 1
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    },
+    {
+      "schema_version": 1,
+      "event_id": "single:action:11",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 24,
+      "run_sequence": 24,
+      "run_version": 24,
+      "event_type": "plan.completed",
+      "legacy_step": "todo_state",
+      "payload": {
+        "agent_id": "agent-1",
+        "display_schema_version": 1,
+        "display_summary": "2 of 2 steps completed",
+        "display_title": "Plan",
+        "semantic": {
+          "actor": {
+            "id": "agent-1",
+            "type": "agent"
+          },
+          "completeness": {
+            "missing_fields": [],
+            "state": "complete"
+          },
+          "correlation": {
+            "project_id": "project-1",
+            "run_id": "live-run",
+            "task_id": "live-run"
+          },
+          "kind": "plan",
+          "lifecycle": {
+            "phase": "completed",
+            "status": "completed"
+          },
+          "provenance": {
+            "source": "legacy.todo_state"
+          },
+          "subject": {
+            "id": "live-run",
+            "type": "plan"
+          }
+        },
+        "semantic_schema_version": 1,
+        "task_id": "live-run",
+        "todos": [
+          {
+            "active_form": "Inspecting the inputs",
+            "content": "Inspect the inputs",
+            "id": "todo-1",
+            "status": "completed"
+          },
+          {
+            "active_form": "Verifying the report",
+            "content": "Verify the report",
+            "id": "todo-2",
+            "status": "completed"
+          }
+        ]
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    },
+    {
+      "schema_version": 1,
+      "event_id": "single:manifest",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 25,
+      "run_sequence": 25,
+      "run_version": 25,
+      "event_type": "artifact.manifest.finalized",
+      "legacy_step": null,
+      "payload": {
+        "artifact_count": 0,
+        "artifacts": [],
+        "scan_status": "complete"
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    },
+    {
+      "schema_version": 1,
+      "event_id": "single:final",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 26,
+      "run_sequence": 26,
+      "run_version": 26,
+      "event_type": "assistant.final",
+      "legacy_step": "end",
+      "payload": {
+        "message": "The inputs and report are verified.",
+        "tokens": 123
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    },
+    {
+      "schema_version": 1,
+      "event_id": "single:completed",
+      "project_id": "project-1",
+      "run_id": "live-run",
+      "sequence": 27,
+      "run_sequence": 27,
+      "run_version": 27,
+      "event_type": "run.completed",
+      "legacy_step": null,
+      "payload": {
+        "artifact_count": 0,
+        "artifact_manifest_event_id": "single:manifest",
+        "result_event_id": "single:final"
+      },
+      "created_at": 1700000000.0,
+      "occurred_at": 1700000000.0,
+      "origin": "local"
+    }
+  ]
+}
