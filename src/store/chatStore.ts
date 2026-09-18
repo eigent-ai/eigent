@@ -2321,7 +2321,11 @@ function recoverClosedTerminalResult(
       )
         return;
       if (outcome === 'completed' && displayEvents.length) {
-        const recovered = recoverCompletedRunDisplay(current, displayEvents);
+        const recovered = recoverCompletedRunDisplay(
+          current,
+          displayEvents,
+          taskId
+        );
         state.setTaskInfo(taskId, recovered.taskInfo);
         state.setTaskRunning(taskId, recovered.taskRunning);
         state.setTaskAssigning(taskId, recovered.taskAssigning);

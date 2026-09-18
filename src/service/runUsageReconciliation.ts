@@ -28,6 +28,7 @@ const DISPLAY_STEPS = new Set([
   'write_file',
   'notice',
 ]);
+const DISPLAY_STEP_CONTEXT = new Set(['step.created', 'step.started']);
 const TERMINAL_EVENTS = new Set([
   'run.completed',
   'run.failed',
@@ -241,13 +242,19 @@ export async function readTerminalRunResult({
           };
           retainDisplay(assistantFinal);
         }
-        if (
-          terminalEventTypes.includes('run.completed') &&
-          DISPLAY_STEPS.has(String(event.legacy_step))
-        ) {
+        // Durable tool checkpoints have no legacy_step. Retain their safe
+        // output and authored Step identity, never their execution controls.
+        const displayStep = DISPLAY_STEPS.has(String(event.legacy_step))
+          ? (event.legacy_step as string)
+          : ['tool.completed', 'tool.failed'].includes(String(event.event_type))
+            ? 'deactivate_toolkit'
+            : DISPLAY_STEP_CONTEXT.has(String(event.event_type))
+              ? (event.event_type as string)
+              : undefined;
+        if (terminalEventTypes.includes('run.completed') && displayStep) {
           const displayEvent = {
             eventId: event.event_id as string,
-            step: event.legacy_step as string,
+            step: displayStep,
             payload,
           };
           retainDisplay(displayEvent);

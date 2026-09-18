@@ -57,6 +57,468 @@ const allTasks = (state: DisplayState) => [
 ];
 
 describe('recoverCompletedRunDisplay', () => {
+  describe('Single Agent event-time ownership', () => {
+    const plan = (
+      first: string,
+      second: string,
+      eventId: string,
+      agent = 'single-1'
+    ) =>
+      receipt(
+        'todo_state',
+        {
+          task_id: 'run-1',
+          agent_id: agent,
+          todos: [
+            { id: `${agent}:one`, content: 'First task', status: first },
+            { id: `${agent}:two`, content: 'Second task', status: second },
+          ],
+        },
+        eventId
+      );
+    const result = (
+      step: string,
+      payload: Record<string, unknown>,
+      id: string
+    ) => receipt(step, { process_task_id: 'run-1', ...payload }, id);
+
+    it('routes legacy results from each raw Todo snapshot without displaying running tasks', () => {
+      const events = [
+        plan('in_progress', 'pending', 'one'),
+        result(
+          'deactivate_toolkit',
+          {
+            agent_name: 'Agents.single_agent',
+            toolkit_name: 'terminal',
+            method_name: 'shell_exec',
+            message: 'First output',
+          },
+          'tool-one'
+        ),
+        result('terminal', { output: 'First terminal' }, 'terminal-one'),
+        plan('completed', 'running', 'two'),
+        result('write_file', { relative_path: 'second.txt' }, 'file-two'),
+        result('notice', { notice: 'Second notice' }, 'notice-two'),
+        result(
+          'deactivate_toolkit',
+          {
+            semantic: {},
+            toolkit_name: 'terminal',
+            tool_name: 'shell_exec',
+            display_output: 'Second output',
+          },
+          'tool-two'
+        ),
+        plan('completed', 'completed', 'done'),
+      ];
+      const recovered = recoverCompletedRunDisplay(empty(), events, 'run-1');
+      expect(recovered.taskRunning.map((item) => item.id)).toEqual([
+        'single-1:one',
+        'single-1:two',
+      ]);
+      expect(recovered.taskRunning[0]).toMatchObject({
+        status: 'completed',
+        terminal: ['First terminal'],
+        toolkits: [{ message: 'First output' }],
+      });
+      expect(recovered.taskRunning[1]).toMatchObject({
+        status: 'completed',
+        fileList: [{ path: 'second.txt' }],
+        toolkits: [{ message: 'Second notice' }, { message: 'Second output' }],
+      });
+      expect(recoverCompletedRunDisplay(recovered, events, 'run-1')).toEqual(
+        recovered
+      );
+    });
+
+    it('uses authored Step for a late typed completion and does not replay its legacy echo into the next Todo', () => {
+      const events = [
+        plan('running', 'pending', 'one'),
+        receipt(
+          'step.created',
+          {
+            step: {
+              step_id: 'step-one',
+              plan_item_id: 'single-1:one',
+              owner: { kind: 'single_agent', agent_id: 'single-1' },
+            },
+          },
+          'step'
+        ),
+        plan('completed', 'in_progress', 'two'),
+        result(
+          'deactivate_toolkit',
+          {
+            step_id: 'step-one',
+            tool_call_id: 'call-one',
+            semantic: {},
+            toolkit_name: 'terminal',
+            tool_name: 'shell_exec',
+            display_output: 'Safe checkpoint',
+          },
+          'checkpoint'
+        ),
+        result(
+          'deactivate_toolkit',
+          {
+            tool_call_id: 'call-one',
+            agent_name: 'single_agent',
+            toolkit_name: 'terminal',
+            method_name: 'shell_exec',
+            message: 'Raw legacy echo',
+          },
+          'echo'
+        ),
+        plan('completed', 'completed', 'done'),
+      ];
+      const recovered = recoverCompletedRunDisplay(empty(), events, 'run-1');
+      expect(recovered.taskRunning[0].toolkits).toEqual([
+        {
+          toolkitName: 'terminal',
+          toolkitMethods: 'shell_exec',
+          toolkitStatus: 'completed',
+          message: 'Safe checkpoint',
+        },
+      ]);
+      expect(recovered.taskRunning[1].toolkits).toBeUndefined();
+      expect(JSON.stringify(recovered)).not.toContain('Raw legacy echo');
+      expect(recoverCompletedRunDisplay(recovered, events, 'run-1')).toEqual(
+        recovered
+      );
+    });
+
+    it('does not guess ownership before a plan, for foreign Run/Agent, or when no unique active Todo exists', () => {
+      const tool = (payload: Record<string, unknown>, id: string) =>
+        result(
+          'deactivate_toolkit',
+          {
+            toolkit_name: 'terminal',
+            method_name: 'shell_exec',
+            message: 'Must not attach',
+            ...payload,
+          },
+          id
+        );
+      const events = [
+        tool({}, 'before-plan'),
+        plan('running', 'pending', 'one'),
+        tool({ agent_id: 'foreign-agent' }, 'foreign-agent'),
+        tool(
+          { process_task_id: 'foreign-run', agent_name: 'single_agent' },
+          'foreign-run'
+        ),
+        tool(
+          { run_id: 'foreign-run', process_task_id: 'single-1:one' },
+          'foreign-direct'
+        ),
+        tool({ step_id: 'unknown-step' }, 'unknown-step'),
+        plan('running', 'running', 'ambiguous'),
+        tool({}, 'two-active'),
+        plan('completed', 'completed', 'done'),
+        tool({}, 'none-active'),
+      ];
+      const recovered = recoverCompletedRunDisplay(empty(), events, 'run-1');
+      expect(recovered.taskRunning).toHaveLength(2);
+      expect(allTasks(recovered).every((item) => !item.toolkits?.length)).toBe(
+        true
+      );
+      expect(recoverCompletedRunDisplay(recovered, events, 'run-1')).toEqual(
+        recovered
+      );
+    });
+
+    it('requires an explicit matching owner when several Single Agents share a Run', () => {
+      const events = [
+        plan('running', 'pending', 'plan-a', 'single-a'),
+        plan('running', 'pending', 'plan-b', 'single-b'),
+        result('terminal', { output: 'Ambiguous' }, 'ambiguous'),
+        result('terminal', { agent_id: 'single-b', output: 'B only' }, 'owned'),
+        result(
+          'notice',
+          {
+            process_task_id: 'single-a:one',
+            agent_id: 'single-b',
+            notice: 'Wrong owner',
+          },
+          'wrong-direct'
+        ),
+      ];
+      const recovered = recoverCompletedRunDisplay(empty(), events, 'run-1');
+      expect(
+        recovered.taskRunning.find((item) => item.id === 'single-b:one')
+          ?.terminal
+      ).toEqual(['B only']);
+      expect(
+        recovered.taskRunning.find((item) => item.id === 'single-a:one')
+          ?.terminal
+      ).toBeUndefined();
+      expect(JSON.stringify(recovered)).not.toContain('Wrong owner');
+      expect(JSON.stringify(recovered)).not.toContain('Ambiguous');
+    });
+  });
+  describe('retry and reassignment display ownership', () => {
+    const retryEvents = (owner = 'agent-1', withOutput = true) => [
+      receipt(
+        'create_agent',
+        { agent_id: 'agent-1', agent_name: 'developer_agent' },
+        'created-a'
+      ),
+      receipt(
+        'create_agent',
+        { agent_id: 'agent-2', agent_name: 'browser_agent' },
+        'created-b'
+      ),
+      receipt(
+        'assign_task',
+        {
+          task_id: 'sub-1',
+          assignee_id: 'agent-1',
+          status: 'running',
+          failure_count: 0,
+        },
+        'assigned-a'
+      ),
+      receipt(
+        'deactivate_toolkit',
+        {
+          process_task_id: 'sub-1',
+          toolkit_name: 'terminal',
+          method_name: 'shell_exec',
+          message: 'First attempt failed',
+        },
+        'old-tool'
+      ),
+      receipt(
+        'task_state',
+        {
+          task_id: 'sub-1',
+          status: 'failed',
+          failure_count: 1,
+          semantic: {},
+          display_output: 'Failure excerpt',
+        },
+        'failed-a'
+      ),
+      receipt(
+        'assign_task',
+        {
+          task_id: 'sub-1',
+          assignee_id: owner,
+          status: 'running',
+          failure_count: 1,
+        },
+        'assigned-retry'
+      ),
+      receipt(
+        'deactivate_toolkit',
+        {
+          process_task_id: 'sub-1',
+          toolkit_name: 'terminal',
+          method_name: 'shell_exec',
+          message: 'Retry passed',
+        },
+        'new-tool'
+      ),
+      receipt(
+        'task_state',
+        {
+          task_id: 'sub-1',
+          status: 'completed',
+          failure_count: 1,
+          semantic: {},
+          ...(withOutput
+            ? {
+                display_output: 'Successful retry',
+                display_output_truncated: true,
+              }
+            : {}),
+        },
+        'completed-retry'
+      ),
+    ];
+    const failedCurrent = () => {
+      const current = stateWith(
+        task({
+          status: TaskStatus.FAILED,
+          failure_count: 1,
+          report: 'Full previous failure report',
+          reportTruncated: false,
+        })
+      );
+      const agent = {
+        ...current.taskAssigning[0],
+        status: 'failed' as const,
+        tasks: [],
+      };
+      for (const item of allTasks(current)) item.agent = agent;
+      current.taskAssigning[0].status = 'failed';
+      return current;
+    };
+
+    it.each(['agent-1', 'agent-2'])(
+      'replaces an old failure report and owner after retry on %s',
+      (owner) => {
+        const current = failedCurrent();
+        const before = structuredClone(current);
+        const events = retryEvents(owner);
+        const result = recoverCompletedRunDisplay(current, events);
+        expect(current).toEqual(before);
+        for (const item of [...result.taskInfo, ...result.taskRunning]) {
+          expect(item).toMatchObject({
+            status: TaskStatus.COMPLETED,
+            report: 'Successful retry…',
+            reportTruncated: true,
+            failure_count: 1,
+            agent: { agent_id: owner, tasks: [] },
+          });
+          expect(item.reAssignTo).toBeUndefined();
+        }
+        const latestAgent = result.taskAssigning.find(
+          (agent) => agent.agent_id === owner
+        )!;
+        expect(latestAgent.status).toBe('completed');
+        expect(latestAgent.tasks[0]).toMatchObject({
+          status: TaskStatus.COMPLETED,
+          report: 'Successful retry…',
+          agent: { agent_id: owner },
+        });
+        expect(latestAgent.tasks[0].toolkits).toEqual([
+          {
+            toolkitName: 'terminal',
+            toolkitMethods: 'shell_exec',
+            toolkitStatus: 'completed',
+            message: 'Retry passed',
+          },
+        ]);
+        if (owner === 'agent-2') {
+          expect(result.taskAssigning[0].tasks[0]).toMatchObject({
+            status: TaskStatus.FAILED,
+            report: 'Full previous failure report',
+            reAssignTo: latestAgent.name,
+            agent: { agent_id: 'agent-1' },
+          });
+        }
+        expect(() => JSON.stringify(result)).not.toThrow();
+        expect(recoverCompletedRunDisplay(result, events)).toEqual(result);
+      }
+    );
+
+    it('retains per-agent historical failure when reconstructing a reassignment from empty state', () => {
+      const result = recoverCompletedRunDisplay(
+        empty(),
+        retryEvents('agent-2')
+      );
+      const [first, second] = result.taskAssigning;
+      expect(first.tasks[0]).toMatchObject({
+        status: TaskStatus.FAILED,
+        report: 'Failure excerpt',
+        reAssignTo: second.name,
+        agent: { agent_id: 'agent-1' },
+      });
+      expect(second.tasks[0]).toMatchObject({
+        status: TaskStatus.COMPLETED,
+        report: 'Successful retry…',
+        agent: { agent_id: 'agent-2' },
+      });
+      expect(first.tasks[0]).not.toBe(second.tasks[0]);
+    });
+
+    it.each([0, 1])(
+      'uses failure_count to replace old success but preserve this successful attempt (existing count %s)',
+      (count) => {
+        const current = failedCurrent();
+        for (const item of allTasks(current)) {
+          item.status = TaskStatus.COMPLETED;
+          item.failure_count = count;
+          item.report = 'Full successful report';
+        }
+        const result = recoverCompletedRunDisplay(current, retryEvents());
+        for (const item of allTasks(result)) {
+          expect(item.report).toBe(
+            count === 0 ? 'Successful retry…' : 'Full successful report'
+          );
+          expect(item.reportTruncated).toBe(count === 0);
+        }
+      }
+    );
+
+    it('clears the old failure rather than inventing a successful report for typed history without output', () => {
+      const result = recoverCompletedRunDisplay(
+        failedCurrent(),
+        retryEvents('agent-1', false)
+      );
+      for (const item of allTasks(result)) {
+        expect(item.status).toBe(TaskStatus.COMPLETED);
+        expect(item.report).toBeUndefined();
+        expect(item.reportTruncated).toBeUndefined();
+      }
+    });
+
+    it.each([TaskStatus.RUNNING, TaskStatus.SKIPPED])(
+      'replaces a retained failure report while the same-count retry is %s',
+      (status) => {
+        const current = failedCurrent();
+        for (const item of allTasks(current)) item.status = status;
+        const result = recoverCompletedRunDisplay(current, retryEvents());
+        for (const item of allTasks(result))
+          expect(item).toMatchObject({
+            status: TaskStatus.COMPLETED,
+            failure_count: 1,
+            report: 'Successful retry…',
+            reportTruncated: true,
+          });
+      }
+    );
+
+    it('restores the current owner when reassignment returns to an earlier agent', () => {
+      const events = retryEvents('agent-2');
+      events[events.length - 1].payload = {
+        task_id: 'sub-1',
+        status: 'failed',
+        failure_count: 2,
+        semantic: {},
+        display_output: 'Second failure',
+      };
+      events.push(
+        receipt(
+          'assign_task',
+          {
+            task_id: 'sub-1',
+            assignee_id: 'agent-1',
+            failure_count: 2,
+            status: 'running',
+          },
+          'back-to-a'
+        ),
+        receipt(
+          'task_state',
+          {
+            task_id: 'sub-1',
+            failure_count: 2,
+            status: 'completed',
+            semantic: {},
+            display_output: 'Final A report',
+          },
+          'final-a'
+        )
+      );
+      const result = recoverCompletedRunDisplay(empty(), events);
+      expect(result.taskAssigning[0].tasks).toHaveLength(1);
+      expect(result.taskAssigning[0].tasks[0]).toMatchObject({
+        status: TaskStatus.COMPLETED,
+        report: 'Final A report',
+        agent: { agent_id: 'agent-1' },
+      });
+      expect(result.taskAssigning[0].tasks[0].reAssignTo).toBeUndefined();
+      expect(result.taskAssigning[1].tasks[0]).toMatchObject({
+        status: TaskStatus.FAILED,
+        report: 'Second failure',
+        reAssignTo: result.taskAssigning[0].name,
+        agent: { agent_id: 'agent-2' },
+      });
+      expect(recoverCompletedRunDisplay(result, events)).toEqual(result);
+    });
+  });
   it('keeps internal workers hidden even when a later assignment refers to their id', () => {
     const hidden = [
       'mcp_agent',
@@ -170,6 +632,7 @@ describe('recoverCompletedRunDisplay', () => {
     'preserves existing complete reports and their own truncation flag (flag present: %s)',
     (withFlag) => {
       const existing = task({
+        status: TaskStatus.COMPLETED,
         report: 'Complete multiline report\nAll verification evidence',
         ...(withFlag ? { reportTruncated: false } : {}),
       });

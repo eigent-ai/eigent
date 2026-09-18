@@ -184,6 +184,7 @@ import { useProjectStore } from '../../../src/store/projectStore';
 import { ExecutionStatus } from '../../../src/types';
 import { AgentStep, ChatTaskStatus } from '../../../src/types/constants';
 import completedRunDisplay from '../../fixtures/completed-run-display.json';
+import completedSingleAgentDisplay from '../../fixtures/completed-single-agent-display.json';
 
 // Mock electron IPC
 (global as any).ipcRenderer = {
@@ -2172,6 +2173,317 @@ describe('ChatStore - Core Functionality', () => {
                 store.getState().tasks['live-run'].taskRunning[0]
                   .reportTruncated
               ).not.toBe(true);
+            }
+          );
+
+          it.each([
+            ['agent-1', false],
+            ['agent-2', false],
+            ['agent-1', true],
+            ['agent-2', true],
+          ] as const)(
+            'recovers retries with final assignee %s (full success already delivered=%s)',
+            async (finalAgent, deliveredSuccess) => {
+              const { store, streamContaining } = await startObservedLiveTask();
+              const legacy = streamContaining('/chat');
+              const finalReport = `Final successful report\n${'Verified detail. '.repeat(60)}`;
+              const excerpt = `${finalReport.slice(0, 599)}…`;
+              const rows: Array<{
+                step: string;
+                data: Record<string, unknown>;
+              }> = [
+                {
+                  step: AgentStep.CREATE_AGENT,
+                  data: { agent_id: 'agent-1', agent_name: 'developer_agent' },
+                },
+                {
+                  step: AgentStep.CREATE_AGENT,
+                  data: { agent_id: 'agent-2', agent_name: 'browser_agent' },
+                },
+                {
+                  step: AgentStep.ASSIGN_TASK,
+                  data: {
+                    task_id: 'sub-1',
+                    assignee_id: 'agent-1',
+                    content: 'Verify the result',
+                    state: 'running',
+                    failure_count: 0,
+                  },
+                },
+                {
+                  step: AgentStep.TASK_STATE,
+                  data: {
+                    task_id: 'sub-1',
+                    state: 'FAILED',
+                    result: 'First attempt failed',
+                    failure_count: 1,
+                  },
+                },
+                {
+                  step: AgentStep.ASSIGN_TASK,
+                  data: {
+                    task_id: 'sub-1',
+                    assignee_id: 'agent-1',
+                    content: 'Verify the result',
+                    state: 'running',
+                    failure_count: 1,
+                  },
+                },
+                {
+                  step: AgentStep.TASK_STATE,
+                  data: {
+                    task_id: 'sub-1',
+                    state: 'FAILED',
+                    result: 'Second attempt failed',
+                    failure_count: 2,
+                  },
+                },
+                {
+                  step: AgentStep.ASSIGN_TASK,
+                  data: {
+                    task_id: 'sub-1',
+                    assignee_id: finalAgent,
+                    content: 'Verify the result',
+                    state: 'running',
+                    failure_count: 2,
+                  },
+                },
+                {
+                  step: AgentStep.TASK_STATE,
+                  data: {
+                    task_id: 'sub-1',
+                    state: 'DONE',
+                    result: finalReport,
+                    failure_count: 2,
+                  },
+                },
+              ];
+              for (const row of rows.slice(
+                0,
+                deliveredSuccess ? rows.length : 4
+              ))
+                await legacy.onmessage({ data: JSON.stringify(row) });
+              expect(
+                store.getState().tasks['live-run'].taskAssigning[0].tasks[0]
+                  .report
+              ).toBe(
+                deliveredSuccess
+                  ? finalAgent === 'agent-1'
+                    ? finalReport
+                    : 'Second attempt failed'
+                  : 'First attempt failed'
+              );
+              const events = rows.map((row, index) => {
+                const data = row.data;
+                const payload =
+                  row.step === AgentStep.TASK_STATE
+                    ? {
+                        task_id: 'sub-1',
+                        status: data.state === 'DONE' ? 'completed' : 'failed',
+                        failure_count: data.failure_count,
+                        semantic: {},
+                        display_output:
+                          data.state === 'DONE' ? excerpt : data.result,
+                        display_output_truncated: data.state === 'DONE',
+                      }
+                    : row.step === AgentStep.ASSIGN_TASK
+                      ? {
+                          task_id: 'sub-1',
+                          assignee_id: data.assignee_id,
+                          status: 'running',
+                          failure_count: data.failure_count,
+                          display_input: data.content,
+                          semantic: {},
+                        }
+                      : data;
+                return {
+                  ...canonicalEvent('live-run', `legacy.${row.step}`),
+                  event_id: `retry:${index}`,
+                  sequence: index + 1,
+                  run_sequence: index + 1,
+                  legacy_step: row.step,
+                  payload,
+                };
+              });
+              events.push(
+                {
+                  ...canonicalEvent('live-run', 'assistant.final'),
+                  event_id: 'retry:final',
+                  sequence: 9,
+                  run_sequence: 9,
+                  legacy_step: 'end',
+                  payload: { content: 'Succeeded after retries' },
+                },
+                {
+                  ...canonicalEvent('live-run', 'run.completed'),
+                  event_id: 'retry:completed',
+                  sequence: 10,
+                  run_sequence: 10,
+                  legacy_step: null as any,
+                  payload: {},
+                }
+              );
+              vi.mocked(fetchGet).mockImplementation((path) =>
+                Promise.resolve(
+                  path === '/runs/live-run/events'
+                    ? page(events as any)
+                    : undefined
+                )
+              );
+              publish(events as any);
+              legacy.onclose();
+              await vi.waitFor(() =>
+                expect(
+                  store
+                    .getState()
+                    .tasks['live-run'].messages.some(
+                      (message) => message.content === 'Succeeded after retries'
+                    )
+                ).toBe(true)
+              );
+              const recovered = store.getState().tasks['live-run'];
+              const owner = recovered.taskAssigning.find(
+                (agent) => agent.agent_id === finalAgent
+              )!;
+              expect(owner.tasks[0]).toMatchObject({
+                status: 'completed',
+                failure_count: 2,
+                report: deliveredSuccess ? finalReport : excerpt,
+              });
+              expect(recovered.taskRunning[0].agent?.agent_id).toBe(finalAgent);
+              if (finalAgent === 'agent-2') {
+                const previous = recovered.taskAssigning.find(
+                  (agent) => agent.agent_id === 'agent-1'
+                )!.tasks[0];
+                expect(previous.reAssignTo).toBe(owner.name);
+                expect(previous.status).toBe('failed');
+                expect(previous.report).toBe('Second attempt failed');
+              }
+              const before = structuredClone(recovered);
+              await Promise.resolve();
+              legacy.onclose();
+              await vi.waitFor(() =>
+                expect(
+                  vi
+                    .mocked(fetchGet)
+                    .mock.calls.filter(
+                      ([path]) => path === '/runs/live-run/events'
+                    )
+                ).toHaveLength(2)
+              );
+              await Promise.resolve();
+              expect(store.getState().tasks['live-run']).toEqual(before);
+            }
+          );
+
+          it.each([false, true])(
+            'recovers actual Single Agent receipts by event-time Todo and authored Step (partial live structure=%s)',
+            async (partial) => {
+              const { store, streamContaining } = await startObservedLiveTask();
+              const legacy = streamContaining('/chat');
+              if (partial) {
+                const firstTodo = completedSingleAgentDisplay.events.find(
+                  (event) => event.legacy_step === 'todo_state'
+                )!.payload;
+                await legacy.onmessage({
+                  data: JSON.stringify({
+                    step: AgentStep.TODO_STATE,
+                    data: {
+                      ...firstTodo,
+                      todos: firstTodo.todos!.map((todo) => ({
+                        ...todo,
+                        status:
+                          todo.status === 'running'
+                            ? 'in_progress'
+                            : todo.status,
+                      })),
+                    },
+                  }),
+                });
+              }
+              vi.mocked(fetchGet).mockImplementation((path) =>
+                Promise.resolve(
+                  path === '/runs/live-run/events'
+                    ? completedSingleAgentDisplay
+                    : undefined
+                )
+              );
+              publish(completedSingleAgentDisplay.events as any);
+              legacy.onclose();
+              await vi.waitFor(() =>
+                expect(
+                  store
+                    .getState()
+                    .tasks['live-run'].messages.some(
+                      (message) =>
+                        message.content ===
+                        'The inputs and report are verified.'
+                    )
+                ).toBe(true)
+              );
+              const task = store.getState().tasks['live-run'];
+              expect(task.tokens).toBe(123);
+              for (const collection of [
+                task.taskRunning,
+                task.taskInfo,
+                task.taskAssigning[0].tasks,
+              ]) {
+                expect(collection.map((todo) => todo.id)).toEqual([
+                  'todo-1',
+                  'todo-2',
+                ]);
+                const [first, second] = collection;
+                expect(first).toMatchObject({
+                  status: 'completed',
+                  terminal: ['Inputs inspected.\n'],
+                });
+                expect(second).toMatchObject({
+                  status: 'completed',
+                  terminal: ['Report verified.\n'],
+                });
+                expect(first.toolkits).toEqual([
+                  {
+                    toolkitName: 'terminal',
+                    toolkitMethods: 'shell_exec',
+                    toolkitStatus: 'completed',
+                    message: 'Completed successfully',
+                  },
+                ]);
+                expect(second.toolkits).toEqual([
+                  {
+                    toolkitName: 'terminal',
+                    toolkitMethods: 'shell_exec',
+                    toolkitStatus: 'completed',
+                    message: 'Completed successfully',
+                  },
+                  {
+                    toolkitName: 'notice',
+                    toolkitMethods: '',
+                    toolkitStatus: 'completed',
+                    message: 'Report validation passed.',
+                  },
+                ]);
+                expect(
+                  first.fileList?.map((file) => file.relativePath)
+                ).toEqual(['reports/inputs.txt']);
+                expect(
+                  second.fileList?.map((file) => file.relativePath)
+                ).toEqual(['reports/verified.txt']);
+              }
+              const before = structuredClone(task);
+              await Promise.resolve();
+              legacy.onclose();
+              await vi.waitFor(() =>
+                expect(
+                  vi
+                    .mocked(fetchGet)
+                    .mock.calls.filter(
+                      ([path]) => path === '/runs/live-run/events'
+                    )
+                ).toHaveLength(2)
+              );
+              await Promise.resolve();
+              expect(store.getState().tasks['live-run']).toEqual(before);
             }
           );
 

@@ -19,6 +19,7 @@ import {
 } from '@/service/runUsageReconciliation';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import completedDisplayFixture from '../../fixtures/completed-run-display.json';
+import completedSingleAgentDisplay from '../../fixtures/completed-single-agent-display.json';
 
 vi.mock('@/api/http', () => ({ fetchGet: vi.fn() }));
 const fetchGetMock = vi.mocked(fetchGet);
@@ -359,6 +360,8 @@ describe('readTerminalRunResult', () => {
     expect(result.displayEvents.map((item) => item.step)).toEqual([
       'create_agent',
       'assign_task',
+      'step.created',
+      'step.started',
       'deactivate_toolkit',
       'task_state',
     ]);
@@ -377,6 +380,63 @@ describe('readTerminalRunResult', () => {
     });
     expect(result.assistantFinal?.payload.content).toBe('The report is ready.');
     expect(fetchGetMock).toHaveBeenCalledOnce();
+  });
+
+  it('retains authored Step context and typed tool output without legacy steps', async () => {
+    const step = {
+      step_id: 'step-1',
+      plan_item_id: 'todo-1',
+      owner: { agent_id: 'agent-1' },
+    };
+    const output = {
+      step_id: 'step-1',
+      process_task_id: 'run-1',
+      tool_name: 'shell_exec',
+      toolkit_name: 'terminal',
+      display_output: 'Safe result',
+      semantic: {},
+    };
+    fetchGetMock.mockResolvedValue(
+      page([
+        event(1, 'step.created', { step }),
+        event(2, 'step.started', { step }),
+        event(3, 'tool.started', { ...output, display_output: 'Never replay' }),
+        event(4, 'tool.completed', output),
+        event(5, 'run.completed', {}),
+        event(6, 'tool.completed', { ...output, display_output: 'Too late' }),
+      ])
+    );
+    const result = await readTerminalRunResult(completedInput);
+    expect(result.displayEvents.map((receipt) => receipt.step)).toEqual([
+      'step.created',
+      'step.started',
+      'deactivate_toolkit',
+    ]);
+    expect(result.displayEvents[2].payload).toEqual(output);
+  });
+
+  it('reads real Single Agent typed checkpoint completions and their original Step identities', async () => {
+    fetchGetMock.mockResolvedValue(completedSingleAgentDisplay);
+    const result = await readTerminalRunResult({
+      ...completedInput,
+      runId: 'live-run',
+    });
+    const tools = result.displayEvents.filter(
+      (receipt) => receipt.step === 'deactivate_toolkit'
+    );
+    expect(tools).toHaveLength(2);
+    expect(tools.map((receipt) => receipt.payload.tool_call_id)).toEqual([
+      'tool-1',
+      'tool-2',
+    ]);
+    expect(tools[0].payload.step_id).not.toBe(tools[1].payload.step_id);
+    expect(
+      tools.every((receipt) => receipt.payload.process_task_id === 'live-run')
+    ).toBe(true);
+    expect(result.tokens).toBe(123);
+    expect(result.assistantFinal?.payload.message).toBe(
+      'The inputs and report are verified.'
+    );
   });
 
   it('allows only display steps before the completed boundary, never execution controls', async () => {

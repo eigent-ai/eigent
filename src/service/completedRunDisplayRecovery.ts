@@ -89,9 +89,36 @@ function mergeTask(
   existing: TaskInfo | undefined,
   recovered: TaskInfo
 ): TaskInfo {
+  const changedOwner =
+    existing?.agent &&
+    recovered.agent &&
+    existing.agent.agent_id !== recovered.agent.agent_id;
+  const changedOutcome =
+    existing?.status &&
+    recovered.status &&
+    (recovered.status === TaskStatus.COMPLETED ||
+      recovered.status === TaskStatus.FAILED) &&
+    existing.status !== recovered.status;
+  const newerAttempt =
+    typeof existing?.failure_count === 'number' &&
+    typeof recovered.failure_count === 'number' &&
+    recovered.failure_count > existing.failure_count;
+  // Keep a full live report only when the available facts still identify the
+  // same execution. A failed/older attempt must not become a successful report.
+  if (existing && (changedOwner || changedOutcome || newerAttempt)) {
+    existing = { ...existing };
+    delete existing.report;
+    delete existing.reportTruncated;
+    delete existing.toolkits;
+  }
   const merged = { ...recovered, ...existing };
   merged.content ||= recovered.content;
-  merged.agent ||= recovered.agent;
+  if (changedOwner) merged.agent = recovered.agent;
+  else merged.agent ||= recovered.agent;
+  if (recovered.agent) {
+    if (recovered.reAssignTo) merged.reAssignTo = recovered.reAssignTo;
+    else delete merged.reAssignTo;
+  }
   merged.status =
     recovered.status === TaskStatus.COMPLETED ||
     recovered.status === TaskStatus.FAILED
@@ -134,10 +161,26 @@ function mergeTask(
 /** Merge validated completed-Run display facts; never replay live reducers. */
 export function recoverCompletedRunDisplay(
   current: DisplayState,
-  events: readonly TerminalDisplayEvent[]
+  events: readonly TerminalDisplayEvent[],
+  runId?: string
 ): DisplayState {
   if (!events.length) return current;
   const tasks = new Map<string, TaskInfo>();
+  const steps = new Map<string, { todoId: string; agentId: string }>();
+  const todoScopes = new Map<
+    string,
+    { runId: string; ids: Set<string>; activeId?: string }
+  >();
+  // Only identity is read ahead. Routing uses the snapshot at receipt time,
+  // never the final all-completed Todo list or terminal-safe UI statuses.
+  const runIds = new Set(
+    [
+      ...(runId ? [runId] : []),
+      ...events
+        .filter((event) => event.step === 'todo_state')
+        .map((event) => text(event.payload.task_id)),
+    ].filter(Boolean)
+  );
   const hiddenAgents = new Set(
     events
       .filter(
@@ -154,6 +197,17 @@ export function recoverCompletedRunDisplay(
     ])
   );
   const seen = new Set<string>();
+  const checkpointToolIds = new Set(
+    events
+      .filter(
+        (event) =>
+          event.step === 'deactivate_toolkit' &&
+          event.payload.semantic &&
+          typeof event.payload.display_output === 'string'
+      )
+      .map((event) => text(event.payload.tool_call_id))
+      .filter(Boolean)
+  );
   const ensureTask = (id: string, content = '') => {
     if (!tasks.has(id))
       tasks.set(id, { id, content, status: TaskStatus.SKIPPED });
@@ -179,21 +233,102 @@ export function recoverCompletedRunDisplay(
       });
     return agents.get(id)!;
   };
+  const resolveReceiptTaskId = (data: Record<string, unknown>): string => {
+    const semantic = object(data.semantic);
+    const correlation = object(semantic.correlation);
+    const actor = object(semantic.actor);
+    const explicitRun = text(data.run_id) || text(correlation.run_id);
+    if (runId && explicitRun && explicitRun !== runId) return '';
+    const direct = text(data.process_task_id) || text(data.task_id);
+    const actorId =
+      text(data.agent_id) || text(data.assignee_id) || text(actor.id);
+    const actorName = (text(data.agent_name) || text(actor.name))
+      .split('.')
+      .at(-1);
+    const matchesAgent = (agentId?: string) => {
+      if (actorId && actorId !== agentId) return false;
+      const agent = agentId ? agents.get(agentId) : undefined;
+      return (
+        !actorName ||
+        !agent ||
+        actorName === agent.type ||
+        actorName === agent.name
+      );
+    };
+    const known =
+      tasks.get(direct) ||
+      current.taskRunning.find((task) => task.id === direct) ||
+      current.taskInfo.find((task) => task.id === direct);
+    if (known && !runIds.has(direct))
+      return matchesAgent(known.agent?.agent_id) ? direct : '';
+
+    const stepId = text(data.step_id) || text(correlation.step_id);
+    if (stepId) {
+      const step = steps.get(stepId);
+      const scope = step && todoScopes.get(step.agentId);
+      return step &&
+        scope &&
+        scope.ids.has(step.todoId) &&
+        (!direct || direct === scope.runId || direct === step.todoId) &&
+        (!explicitRun || explicitRun === scope.runId) &&
+        matchesAgent(step.agentId)
+        ? step.todoId
+        : '';
+    }
+    const candidates = [...todoScopes.entries()].filter(
+      ([agentId, scope]) =>
+        (!direct || direct === scope.runId) &&
+        (!explicitRun || explicitRun === scope.runId) &&
+        matchesAgent(agentId)
+    );
+    if (candidates.length === 1) return candidates[0][1].activeId || '';
+    if (todoScopes.size || runIds.has(direct) || actorName === 'single_agent')
+      return '';
+    // Legacy Workforce can deliver a result before its assignment frame.
+    return direct;
+  };
   for (const event of events) {
     if (seen.has(event.eventId)) continue;
     seen.add(event.eventId);
     const data = event.payload;
+    if (event.step === 'step.created' || event.step === 'step.started') {
+      const step = object(data.step);
+      const owner = object(step.owner);
+      if (
+        owner.kind === 'single_agent' &&
+        text(step.step_id) &&
+        text(step.plan_item_id)
+      )
+        steps.set(text(step.step_id), {
+          todoId: text(step.plan_item_id),
+          agentId: text(owner.agent_id),
+        });
+      continue;
+    }
     if (event.step === 'create_agent') {
       ensureAgent(text(data.agent_id), data);
       continue;
     }
     if (event.step === 'todo_state') {
-      const agent = ensureAgent(text(data.agent_id), {
+      const scopeRunId = text(data.task_id) || runId || '';
+      if (runId && scopeRunId !== runId) continue;
+      const agentId =
+        text(data.agent_id) || (scopeRunId ? `${scopeRunId}-single-agent` : '');
+      const agent = ensureAgent(agentId, {
         ...data,
         agent_name: 'single_agent',
       });
-      for (const raw of Array.isArray(data.todos) ? data.todos : []) {
-        const todo = object(raw);
+      const todos = (Array.isArray(data.todos) ? data.todos : []).map(object);
+      const active = todos.filter((todo) =>
+        ['running', 'in_progress'].includes(text(todo.status))
+      );
+      if (agent)
+        todoScopes.set(agentId, {
+          runId: scopeRunId,
+          ids: new Set(todos.map((todo) => text(todo.id)).filter(Boolean)),
+          activeId: active.length === 1 ? text(active[0].id) : undefined,
+        });
+      for (const todo of todos) {
         const id = text(todo.id);
         if (!id) continue;
         const task = ensureTask(id, text(todo.content));
@@ -204,26 +339,56 @@ export function recoverCompletedRunDisplay(
       }
       continue;
     }
-    const id = text(data.task_id) || text(data.process_task_id);
-    if (!id) continue;
     if (event.step === 'assign_task' || event.step === 'task_state') {
-      const task = ensureTask(
-        id,
-        text(data.display_input) || text(data.content)
-      );
-      task.status = terminalStatus(data.status ?? data.state);
-      if (
+      const id = text(data.task_id);
+      if (!id) continue;
+      let task = ensureTask(id, text(data.display_input) || text(data.content));
+      const nextStatus = terminalStatus(data.status ?? data.state);
+      const failureCount =
         typeof data.failure_count === 'number' &&
         Number.isSafeInteger(data.failure_count) &&
         data.failure_count >= 0
-      )
-        task.failure_count = data.failure_count;
+          ? data.failure_count
+          : undefined;
       if (event.step === 'assign_task') {
         const agent = ensureAgent(text(data.assignee_id), data);
+        if (
+          task.status === TaskStatus.FAILED ||
+          (agent && task.agent && agent.agent_id !== task.agent.agent_id) ||
+          (failureCount !== undefined &&
+            task.failure_count !== undefined &&
+            failureCount > task.failure_count)
+        ) {
+          // Detach the previous assignee's snapshot before recording the retry.
+          task = { ...task };
+          delete task.report;
+          delete task.reportTruncated;
+          delete task.toolkits;
+          delete task.reAssignTo;
+          tasks.set(id, task);
+        }
         if (agent) task.agent = { ...agent, tasks: [], status: 'completed' };
-        if (agent && !agent.tasks.some((item) => item.id === id))
-          agent.tasks.push(task);
+        if (agent) {
+          for (const previous of agents.values()) {
+            if (previous.agent_id === agent.agent_id) continue;
+            previous.tasks = previous.tasks.map((item) =>
+              item.id === id && !item.reAssignTo
+                ? { ...item, reAssignTo: agent.name }
+                : item
+            );
+          }
+          const index = agent.tasks.findIndex((item) => item.id === id);
+          if (index < 0) agent.tasks.push(task);
+          else agent.tasks[index] = task;
+        }
       } else {
+        if (
+          task.status === TaskStatus.FAILED &&
+          nextStatus === TaskStatus.COMPLETED
+        ) {
+          delete task.report;
+          delete task.reportTruncated;
+        }
         const report =
           typeof data.display_output === 'string'
             ? data.display_output
@@ -238,6 +403,8 @@ export function recoverCompletedRunDisplay(
           task.reportTruncated = data.display_output_truncated === true;
         }
       }
+      task.status = nextStatus;
+      if (failureCount !== undefined) task.failure_count = failureCount;
       continue;
     }
     if (
@@ -246,6 +413,16 @@ export function recoverCompletedRunDisplay(
       )
     )
       continue;
+    // The typed checkpoint already identifies the authored Step. Its legacy
+    // echo can arrive after a Todo transition and is not another tool call.
+    if (
+      event.step === 'deactivate_toolkit' &&
+      !data.semantic &&
+      checkpointToolIds.has(text(data.tool_call_id))
+    )
+      continue;
+    const id = resolveReceiptTaskId(data);
+    if (!id) continue;
     const task = ensureTask(id);
     if (event.step === 'terminal') {
       const output = text(data.output);
@@ -297,15 +474,35 @@ export function recoverCompletedRunDisplay(
   return {
     taskInfo: mergeCollection(current.taskInfo),
     taskRunning: mergeCollection(current.taskRunning),
-    taskAssigning: [...agents.values()].map((agent) => ({
-      ...agent,
-      status: agent.status === 'failed' ? 'failed' : 'completed',
-      tasks: agent.tasks.map((task) => {
-        const recovered = tasks.get(task.id);
-        return recovered
-          ? mergeTask(task === recovered ? undefined : task, recovered)
-          : task;
-      }),
-    })),
+    taskAssigning: [...agents.values()].map((agent) => {
+      const existingAgent = current.taskAssigning.find(
+        (item) => item.agent_id === agent.agent_id
+      );
+      const assignedTasks = agent.tasks.map((task) => {
+        const latest = tasks.get(task.id);
+        if (!latest) return task;
+        // A previous assignee keeps its own outcome, not the latest owner's.
+        const recovered =
+          task.reAssignTo ||
+          (latest.agent && latest.agent.agent_id !== agent.agent_id)
+            ? task
+            : latest;
+        return mergeTask(
+          existingAgent?.tasks.find((item) => item.id === task.id),
+          recovered
+        );
+      });
+      return {
+        ...agent,
+        status: assignedTasks.some(
+          (task) => !task.reAssignTo && task.status === TaskStatus.COMPLETED
+        )
+          ? 'completed'
+          : agent.status === 'failed'
+            ? 'failed'
+            : 'completed',
+        tasks: assignedTasks,
+      };
+    }),
   };
 }
