@@ -61,6 +61,11 @@ from app.workspace_config import (
     assert_bundle_asset_safe,
     canonical_digest,
 )
+from app.workspace_config.discovery import WorkspaceResourceDiscovery
+from app.workspace_config.model_selection import (
+    accepted_session_model,
+    installed_model_selection,
+)
 
 router = APIRouter(dependencies=[Depends(require_local_control_principal)])
 _MAX_BUNDLE_ASSET_BYTES = 16 * 1024 * 1024
@@ -598,6 +603,96 @@ async def get_workspace_configuration(
         )
     except Exception as exc:
         raise _configuration_error(exc) from exc
+
+
+@router.get("/spaces/{space_id}/workspace-configuration/model-selection")
+async def get_workspace_model_selection(
+    space_id: str,
+    email: Annotated[str, Query(min_length=1, max_length=512)],
+    user_id: str | None = Query(default=None),
+) -> dict[str, Any]:
+    _assert_space_binding(space_id=space_id, email=email, user_id=user_id)
+    try:
+        selection = installed_model_selection(
+            get_default_run_journal(), space_id
+        )
+        return {
+            "space_id": space_id,
+            "selection": selection.model_dump(mode="json")
+            if selection
+            else None,
+        }
+    except Exception as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "workspace_model_selection_unavailable"},
+        ) from exc
+
+
+@router.get("/spaces/{space_id}/workspace-configuration/session-model")
+async def get_workspace_session_model(
+    space_id: str,
+    project_id: Annotated[str, Query(min_length=1, max_length=256)],
+    email: Annotated[str, Query(min_length=1, max_length=512)],
+    user_id: str | None = Query(default=None),
+) -> dict[str, Any]:
+    _assert_space_binding(space_id=space_id, email=email, user_id=user_id)
+    try:
+        from app.run_sync.runtime import (
+            is_default_cloud_history_bootstrap_pending,
+        )
+
+        accepted = accepted_session_model(
+            get_default_run_journal(), space_id=space_id, project_id=project_id
+        )
+        return {
+            "space_id": space_id,
+            "project_id": project_id,
+            "accepted": accepted,
+            "restore_pending": is_default_cloud_history_bootstrap_pending(),
+        }
+    except Exception as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "workspace_model_selection_unavailable"},
+        ) from exc
+
+
+@router.get("/spaces/{space_id}/workspace-configuration/discovery")
+async def discover_workspace_configuration_resources(
+    space_id: str,
+    email: Annotated[str, Query(min_length=1, max_length=512)],
+    user_id: str | None = Query(default=None),
+) -> dict[str, Any]:
+    _assert_space_binding(space_id=space_id, email=email, user_id=user_id)
+    binding = get_workspace_resolver().store.get_binding(
+        email, space_id, user_id
+    )
+    if binding is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "workspace_binding_not_found"},
+        )
+    try:
+        journal = get_default_run_journal()
+        discovery = WorkspaceResourceDiscovery(
+            journal,
+            state_root=journal.path.parent / "workspace-git",
+        )
+        return await asyncio.to_thread(
+            discovery.discover,
+            space_id=space_id,
+            space_root=Path(binding.workspace_root),
+        )
+    except Exception as exc:
+        if isinstance(exc, OptimisticConcurrencyError):
+            raise _configuration_error(exc) from exc
+        # Discovery errors must not echo asset contents, physical paths, or
+        # validation inputs back to the renderer.
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "workspace_configuration_discovery_failed"},
+        ) from exc
 
 
 @router.put("/spaces/{space_id}/workspace-configuration")

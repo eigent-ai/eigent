@@ -39,6 +39,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { SpaceDiscoveryField } from '@/components/WorkspaceConfiguration/SpaceDiscoveryField';
 import { WorkspaceBundleSaveDialog } from '@/components/WorkspaceConfiguration/WorkspaceBundleSaveDialog';
 import {
   contextDraftForKind,
@@ -46,6 +47,7 @@ import {
   type WorkspaceResourceEditorState,
 } from '@/components/WorkspaceConfiguration/WorkspaceResourceEditorPanel';
 import { WorkspaceResourceListItem } from '@/components/WorkspaceConfiguration/WorkspaceResourceListItem';
+import { useSpaceSettingsDiscovery } from '@/hooks/useSpaceSettingsDiscovery';
 import { useWorkspaceConfiguration } from '@/hooks/useWorkspaceConfiguration';
 import { cn } from '@/lib/utils';
 import { registerWorkspaceConfigurationNavigationGuard } from '@/lib/workspaceConfigurationNavigationGuard';
@@ -72,6 +74,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -482,8 +485,18 @@ export function WorkspaceConfigurationEditor({
   };
   const reduceMotion = Boolean(useReducedMotion());
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
-  const [resourceEditor, setResourceEditor] =
+  const [resourceEditor, setResourceEditorState] =
     useState<WorkspaceResourceEditorState | null>(null);
+  const [editorEpoch, setEditorEpoch] = useState(0);
+  const editorEpochRef = useRef(0);
+  const setResourceEditor = useCallback(
+    (next: WorkspaceResourceEditorState | null) => {
+      editorEpochRef.current += 1;
+      setEditorEpoch(editorEpochRef.current);
+      setResourceEditorState(next);
+    },
+    []
+  );
   const [activeSectionId, setActiveSectionId] =
     useState<WorkspaceSettingSectionId>('space-settings-identity');
   const settingsContentRef = useRef<HTMLDivElement>(null);
@@ -513,6 +526,19 @@ export function WorkspaceConfigurationEditor({
     spaceName: targetSpace?.name,
     identity,
   });
+  const discoveryScope = JSON.stringify([targetSpaceId, email, userId]);
+  const discoveryScopeRef = useRef(discoveryScope);
+  useLayoutEffect(() => {
+    discoveryScopeRef.current = discoveryScope;
+  }, [discoveryScope]);
+  const discovery = useSpaceSettingsDiscovery({
+    spaceId: targetSpaceId,
+    identity,
+    editorKey: resourceEditor ? String(editorEpoch) : undefined,
+  });
+  const ownsEditor = () =>
+    discoveryScopeRef.current === discoveryScope &&
+    editorEpochRef.current === editorEpoch;
   const hasPendingChangesRef = useRef(hasPendingChanges);
 
   useEffect(() => {
@@ -546,11 +572,14 @@ export function WorkspaceConfigurationEditor({
     },
     [setDocument]
   );
-  const closeResourceEditor = useCallback(() => setResourceEditor(null), []);
+  const closeResourceEditor = useCallback(
+    () => setResourceEditor(null),
+    [setResourceEditor]
+  );
 
   useEffect(() => {
     setResourceEditor(null);
-  }, [targetSpaceId]);
+  }, [targetSpaceId, email, userId, setResourceEditor]);
 
   const syncActiveSection = useCallback(() => {
     const content = settingsContentRef.current;
@@ -788,8 +817,9 @@ export function WorkspaceConfigurationEditor({
   const handleResourceEditorChange = (
     nextEditor: WorkspaceResourceEditorState
   ) => {
+    if (!ownsEditor()) return;
     const previousEditor = resourceEditor;
-    setResourceEditor(nextEditor);
+    setResourceEditorState(nextEditor);
     if (
       !previousEditor ||
       previousEditor.kind !== nextEditor.kind ||
@@ -867,7 +897,8 @@ export function WorkspaceConfigurationEditor({
   };
 
   const commitNewResource = () => {
-    if (!resourceEditor || resourceEditor.mode !== 'create') return;
+    if (!ownsEditor() || !resourceEditor || resourceEditor.mode !== 'create')
+      return;
     update((next) => {
       if (resourceEditor.kind === 'environment') {
         next.spec.environment = {
@@ -895,6 +926,7 @@ export function WorkspaceConfigurationEditor({
   };
 
   const deleteEditedResource = () => {
+    if (!ownsEditor()) return;
     if (!resourceEditor || resourceEditor.mode !== 'edit') {
       closeResourceEditor();
       return;
@@ -1043,7 +1075,7 @@ export function WorkspaceConfigurationEditor({
             <AnimatePresence initial={false}>
               {resourceEditor ? (
                 <div
-                  key="workspace-resource-panel"
+                  key={`${discoveryScope}-${editorEpoch}`}
                   data-workspace-resource-panel-anchor
                   className={cn(
                     'pointer-events-none sticky z-40 h-0 min-w-0',
@@ -1051,11 +1083,14 @@ export function WorkspaceConfigurationEditor({
                   )}
                 >
                   <WorkspaceResourceEditorPanel
+                    discovery={discovery}
                     editor={resourceEditor}
                     document={document}
                     saveState={saveState}
                     onChange={handleResourceEditorChange}
-                    onClose={closeResourceEditor}
+                    onClose={() => {
+                      if (ownsEditor()) closeResourceEditor();
+                    }}
                     onCommit={commitNewResource}
                     onDelete={deleteEditedResource}
                   />
@@ -1343,13 +1378,7 @@ export function WorkspaceConfigurationEditor({
               title={t('layout.workspace-configuration-model-title', {
                 defaultValue: 'Model',
               })}
-              description={t(
-                'layout.workspace-configuration-model-description',
-                {
-                  defaultValue:
-                    'Define reusable model profiles for the agents in this Space.',
-                }
-              )}
+              description={t('layout.space-discovery-model-runtime-scope')}
               action={
                 <AddSectionButton
                   label={t('layout.workspace-configuration-add-model-profile', {
@@ -1416,23 +1445,24 @@ export function WorkspaceConfigurationEditor({
                           });
                         }}
                       />
-                      <Input
+                      <SpaceDiscoveryField
                         title={t(
-                          'layout.workspace-configuration-model-reference',
-                          { defaultValue: 'Model reference' }
-                        )}
-                        value={profile.modelRef}
-                        aria-label={t(
                           'layout.workspace-configuration-model-reference-label',
                           {
                             defaultValue: '{{profile}} model reference',
                             profile: profileName,
                           }
                         )}
-                        onChange={(event) =>
+                        value={profile.modelRef}
+                        catalog={discovery.models}
+                        note={
+                          profile.modelRef === 'provider://default'
+                            ? t('layout.space-discovery-inherited-model')
+                            : t('layout.space-discovery-model-policy')
+                        }
+                        onChange={(value) =>
                           update((next) => {
-                            next.spec.models[profileName].modelRef =
-                              event.target.value;
+                            next.spec.models[profileName].modelRef = value;
                           })
                         }
                       />

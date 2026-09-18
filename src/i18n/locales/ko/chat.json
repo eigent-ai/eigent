@@ -432,5 +432,9 @@
   "notice-refresh-failed": "크레딧을 새로고침하지 못했습니다. 다시 시도하세요.",
   "notice-availability-unverified": "서비스 상태를 확인하지 못했습니다. 문제가 계속되면 지원팀에 문의하세요.",
   "notice-access-unverified": "플랜이 새로고침되었습니다. 모델을 다시 시도하여 접근 권한을 확인하세요.",
-  "notice-credits-unavailable": "크레딧을 확인할 수 없음"
+  "notice-credits-unavailable": "크레딧을 확인할 수 없음",
+  "space-model-unconfirmed": "세션의 첫 요청이 아직 확인되지 않았습니다. 다시 연결해 재시도하거나 세션 모델을 선택하세요.",
+  "space-model-unavailable": "현재 계정에서 이 모델을 사용할 수 없습니다. 모델 설정을 확인하거나 세션 모델을 선택하세요.",
+  "space-model-ambiguous": "일치하는 제공업체가 여러 개입니다. 모델 설정을 확인하거나 세션 모델을 선택하세요.",
+  "space-model-changed": "로드 중 계정 또는 세션 모델이 변경되었습니다. 메시지를 다시 보내세요."
 }

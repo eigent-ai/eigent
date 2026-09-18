@@ -211,6 +211,7 @@ class EventRecorder:
         source: str,
         attachment_names: list[str] | None = None,
         review_handoff_ids: list[str] | None = None,
+        session_model_selection: dict[str, Any] | None = None,
         created_at: float | None = None,
     ) -> CommittedRunEvent:
         """Commit the Run's canonical user instruction before execution."""
@@ -221,6 +222,8 @@ class EventRecorder:
             "attachment_names": list(attachment_names or []),
             "review_handoff_ids": list(review_handoff_ids or []),
         }
+        if session_model_selection is not None:
+            payload["session_model_selection"] = session_model_selection
         values: dict[str, Any] = {
             "event_id": f"user-message:{request_id}",
             "event_type": "user.message",

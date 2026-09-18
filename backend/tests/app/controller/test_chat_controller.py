@@ -1031,6 +1031,9 @@ class TestChatController:
         mock_task_lock.status = Status.processing
         mock_task_lock.runtime_session_mode = "single-agent"
         mock_task_lock.environment_admission_template = MagicMock()
+        refreshed_template = mock_task_lock.environment_admission_template.refresh_model_capability.return_value
+        refreshed_template.workspace_model_selection = None
+        refreshed_template.workspace_model_selection_checked = False
         mock_task_lock.email = "u@example.com"
         mock_task_lock.user_id = "42"
         mock_task_lock.space_id = "space-1"

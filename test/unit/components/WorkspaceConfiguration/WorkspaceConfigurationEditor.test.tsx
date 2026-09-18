@@ -68,6 +68,14 @@ const mocks = vi.hoisted(() => {
     flushSave: vi.fn(),
     reload: vi.fn(),
     retrySave: vi.fn(),
+    modelItems: [] as Array<{
+      value: string;
+      label: string;
+      source: string;
+      availability: string;
+      disabled?: boolean;
+      reason?: string;
+    }>,
   };
 });
 
@@ -106,6 +114,28 @@ vi.mock('@/store/authStore', () => ({
   useWorkerList: () => [],
 }));
 
+vi.mock('@/hooks/useSpaceSettingsDiscovery', () => {
+  const empty = { items: [], status: 'empty', error: null, retry: vi.fn() };
+  const connectors = {
+    ...empty,
+    query: '',
+    hasMore: false,
+    loadingMore: false,
+    loadMore: vi.fn(),
+    fetchDetails: vi.fn(),
+    detailError: null,
+  };
+  return {
+    useSpaceSettingsDiscovery: () => ({
+      models: { ...empty, status: 'ready', items: mocks.modelItems },
+      skills: empty,
+      mcpServers: empty,
+      connectors,
+      setConnectorQuery: vi.fn(),
+    }),
+  };
+});
+
 vi.mock('@/hooks/useWorkspaceConfiguration', () => ({
   useWorkspaceConfiguration: () => ({
     draft: {
@@ -135,6 +165,7 @@ vi.mock(
 
 describe('WorkspaceConfigurationEditor', () => {
   beforeEach(() => {
+    HTMLElement.prototype.scrollIntoView = vi.fn();
     mocks.reducedMotion = false;
     mocks.saveState = 'saved';
     mocks.hasPendingChanges = false;
@@ -143,7 +174,64 @@ describe('WorkspaceConfigurationEditor', () => {
     mocks.flushSave.mockResolvedValue(true);
     mocks.reload.mockClear();
     mocks.retrySave.mockClear();
+    mocks.modelItems = [];
     mocks.document.spec.environment.variables.splice(0);
+  });
+
+  it('selects a concrete model reference through the model dropdown and preserves manual values', async () => {
+    mocks.modelItems = [
+      {
+        value: 'provider://cloud/fixture',
+        label: 'Fixture Cloud',
+        source: 'cloud_catalog',
+        availability: 'available',
+      },
+      {
+        value: 'provider://custom/azure/missing',
+        label: 'Missing custom model',
+        source: 'custom_catalog',
+        availability: 'requires_setup',
+        disabled: true,
+        reason: 'model_unavailable',
+      },
+    ];
+    const { container } = render(
+      <WorkspaceConfigurationEditor presentation="settings" spaceId="space-1" />
+    );
+    const section = within(
+      container.querySelector('#space-settings-model') as HTMLElement
+    );
+    fireEvent.click(
+      section.getByRole('button', { name: 'Browse available options' })
+    );
+    const trigger = section.getByRole('combobox', {
+      name: 'Select default model reference',
+    });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    const missing = await screen.findByRole('option', {
+      name: /Missing custom model/,
+    });
+    expect(missing).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(screen.getByRole('option', { name: /Fixture Cloud/ }));
+    expect(
+      mocks.setDocument.mock.calls.at(-1)?.[0](mocks.document).spec.models
+        .default.modelRef
+    ).toBe('provider://cloud/fixture');
+    expect(
+      mocks.setDocument.mock.calls.at(-1)?.[0](mocks.document).spec.models
+        .default.thinkingEffort
+    ).toBe('medium');
+    fireEvent.change(section.getByLabelText('default model reference'), {
+      target: { value: 'provider://unknown/manual' },
+    });
+    expect(
+      mocks.setDocument.mock.calls.at(-1)?.[0](mocks.document).spec.models
+        .default.modelRef
+    ).toBe('provider://unknown/manual');
+    expect(
+      section.getByText(/Multiple bundle agents are not supported/)
+    ).toBeInTheDocument();
   });
 
   it('registers pending changes with the shared navigation guard', async () => {
@@ -603,7 +691,9 @@ describe('WorkspaceConfigurationEditor', () => {
     panel = screen.getByRole('complementary', {
       name: 'Add environment variable',
     });
-    expect(within(panel).getByDisplayValue('ENV_VAR_1')).toBeVisible();
+    await waitFor(() =>
+      expect(within(panel).getByDisplayValue('ENV_VAR_1')).toBeVisible()
+    );
     expect(
       within(panel).getByRole('switch', { name: 'Required ENV_VAR_1' })
     ).toBeChecked();
@@ -651,9 +741,8 @@ describe('WorkspaceConfigurationEditor', () => {
     fireEvent.click(
       within(panel).getByRole('button', { name: 'Close editor' })
     );
-    expect(
-      screen.getByRole('complementary', { name: 'Edit instruction' })
-    ).toBeInTheDocument();
+    expect(panel).toBeInTheDocument();
+    expect(panel).toHaveAttribute('aria-hidden', 'true');
     await waitFor(() =>
       expect(
         screen.queryByRole('complementary', { name: 'Edit instruction' })
@@ -678,7 +767,7 @@ describe('WorkspaceConfigurationEditor', () => {
     expect(panel).toHaveStyle({ transform: 'translate3d(0, 0, 0)' });
 
     fireEvent.click(
-      within(panel).getByRole('button', { name: 'Browse registry' })
+      within(panel).getByRole('button', { name: 'Enter manually' })
     );
     expect(
       panel.querySelector('[data-workspace-resource-content-step="editor"]')
@@ -794,11 +883,11 @@ describe('WorkspaceConfigurationEditor', () => {
     );
     let panel = screen.getByRole('complementary', { name: 'Add skill' });
     fireEvent.click(
-      within(panel).getByRole('button', { name: 'Browse registry' })
+      within(panel).getByRole('button', { name: 'Enter manually' })
     );
     await waitFor(() =>
       expect(
-        within(panel).getByDisplayValue('registry://skills/new-skill@1.0.0')
+        within(panel).getByRole('textbox', { name: 'Skill reference' })
       ).toBeVisible()
     );
     fireEvent.click(within(panel).getByRole('button', { name: 'Back' }));
@@ -807,7 +896,11 @@ describe('WorkspaceConfigurationEditor', () => {
     ).toBeInTheDocument();
     expect(within(panel).queryByRole('button', { name: 'Back' })).toBeNull();
     fireEvent.click(
-      within(panel).getByRole('button', { name: 'Browse registry' })
+      within(panel).getByRole('button', { name: 'Enter manually' })
+    );
+    fireEvent.change(
+      within(panel).getByRole('textbox', { name: 'Skill reference' }),
+      { target: { value: 'bundle://skills/fixture/SKILL.md' } }
     );
     fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
     const addSkillUpdater = mocks.setDocument.mock.calls.at(-1)?.[0] as (
@@ -815,7 +908,7 @@ describe('WorkspaceConfigurationEditor', () => {
     ) => typeof mocks.document;
     expect(addSkillUpdater(mocks.document).spec.skills).toEqual([
       {
-        ref: 'registry://skills/new-skill@1.0.0',
+        ref: 'bundle://skills/fixture/SKILL.md',
         assignTo: [],
       },
     ]);

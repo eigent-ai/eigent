@@ -436,5 +436,9 @@
   "notice-refresh-failed": "Deine Credits konnten nicht aktualisiert werden. Versuche es erneut.",
   "notice-availability-unverified": "Verfügbarkeit konnte nicht geprüft werden. Kontaktiere den Support, wenn das Problem anhält.",
   "notice-access-unverified": "Dein Tarif wurde aktualisiert. Versuche das Modell erneut, um den Zugriff zu prüfen.",
-  "notice-credits-unavailable": "Credits nicht verfügbar"
+  "notice-credits-unavailable": "Credits nicht verfügbar",
+  "space-model-unconfirmed": "Die erste Sitzungsanfrage ist noch nicht bestätigt. Verbinde dich erneut und versuche es noch einmal, oder wähle ein Sitzungsmodell.",
+  "space-model-unavailable": "Dieses Modell ist für das aktuelle Konto nicht verfügbar. Prüfen Sie die Modelleinstellungen oder wählen Sie ein Sitzungsmodell.",
+  "space-model-ambiguous": "Mehrere Anbieter passen zu diesem Modell. Prüfen Sie die Modelleinstellungen oder wählen Sie ein Sitzungsmodell.",
+  "space-model-changed": "Das Konto oder Sitzungsmodell hat sich beim Laden geändert. Senden Sie Ihre Nachricht erneut."
 }

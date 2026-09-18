@@ -432,5 +432,9 @@
   "notice-refresh-failed": "无法刷新额度，请重试。",
   "notice-availability-unverified": "无法检查服务状态。如问题持续，请联系支持。",
   "notice-access-unverified": "套餐已刷新。请再次尝试此模型以检查访问权限。",
-  "notice-credits-unavailable": "额度暂不可用"
+  "notice-credits-unavailable": "额度暂不可用",
+  "space-model-unconfirmed": "首次会话请求尚未确认。请重新连接后重试，或手动选择会话模型。",
+  "space-model-unavailable": "当前账号无法使用此模型。请检查模型设置，或为会话选择模型。",
+  "space-model-ambiguous": "多个提供商与此模型匹配。请检查模型设置，或为会话选择模型。",
+  "space-model-changed": "加载期间账号或会话模型发生变化，请重新发送消息。"
 }
