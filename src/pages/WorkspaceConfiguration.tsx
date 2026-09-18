@@ -1378,13 +1378,7 @@ export function WorkspaceConfigurationEditor({
               title={t('layout.workspace-configuration-model-title', {
                 defaultValue: 'Model',
               })}
-              description={t(
-                'layout.workspace-configuration-model-description',
-                {
-                  defaultValue:
-                    'Define reusable model profiles for the agents in this Space.',
-                }
-              )}
+              description={t('layout.space-discovery-model-runtime-scope')}
               action={
                 <AddSectionButton
                   label={t('layout.workspace-configuration-add-model-profile', {
@@ -1461,11 +1455,10 @@ export function WorkspaceConfigurationEditor({
                         )}
                         value={profile.modelRef}
                         catalog={discovery.models}
-                        readOnlyCatalog
                         note={
                           profile.modelRef === 'provider://default'
                             ? t('layout.space-discovery-inherited-model')
-                            : t('layout.space-discovery-model-gap')
+                            : t('layout.space-discovery-model-policy')
                         }
                         onChange={(value) =>
                           update((next) => {

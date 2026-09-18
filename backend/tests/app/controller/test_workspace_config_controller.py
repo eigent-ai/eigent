@@ -98,6 +98,118 @@ def _headers() -> dict[str, str]:
     return {LOCAL_CONTROL_CAPABILITY_HEADER: "test-secret"}
 
 
+def test_session_model_recovery_uses_local_control_scope_and_preserves_unknown_restore(
+    workspace_config_api, monkeypatch
+):
+    from app.run_sync import runtime
+
+    client, journal = workspace_config_api
+    path = "/api/v1/spaces/space-1/workspace-configuration/session-model"
+    params = {"email": "user@example.com", "project_id": "session-1"}
+    assert client.get(path, params=params).status_code == 401
+    journal.ensure_run(
+        run_id="unaccepted", project_id="session-1", status="pending"
+    )
+    monkeypatch.setattr(
+        runtime, "is_default_cloud_history_bootstrap_pending", lambda: True
+    )
+    before = journal._connection.total_changes
+    response = client.get(path, params=params, headers=_headers())
+    assert response.status_code == 200
+    assert response.json() == {
+        "space_id": "space-1",
+        "project_id": "session-1",
+        "accepted": None,
+        "restore_pending": True,
+    }
+    assert journal._connection.total_changes == before
+    monkeypatch.setattr(
+        workspace_config_controller,
+        "accepted_session_model",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            ValueError("private diagnostic")
+        ),
+    )
+    failure = client.get(path, params=params, headers=_headers())
+    assert failure.status_code == 409
+    assert "private diagnostic" not in failure.text
+
+
+def test_model_selection_is_protected_and_uses_only_materialized_policy(
+    workspace_config_api,
+):
+    client, journal = workspace_config_api
+    url = "/api/v1/spaces/space-1/workspace-configuration/model-selection"
+    assert (
+        client.get(url, params={"email": "user@example.com"}).status_code
+        == 401
+    )
+    params = {"email": "user@example.com"}
+    assert client.get(url, params=params, headers=_headers()).json() == {
+        "space_id": "space-1",
+        "selection": None,
+    }
+    manifest = WorkspaceBundleManifest.model_validate(
+        _get(client).json()["document"]
+    )
+    journal.put_workspace_config_revision(
+        revision_id=manifest.revision_id,
+        bundle_id=manifest.metadata.id,
+        revision_number=1,
+        manifest=manifest.canonical_payload(),
+        created_by="fixture",
+    )
+    journal.put_workspace_config_materialization(
+        materialization_id="models-fixture",
+        space_id="space-1",
+        revision_id=manifest.revision_id,
+        config_placement="sidecar",
+    )
+    draft = manifest.canonical_payload()
+    draft["spec"]["models"]["default"]["modelRef"] = (
+        "provider://cloud/unpublished"
+    )
+    journal.put_workspace_config_draft(
+        space_id="space-1",
+        expected_version=0,
+        document=draft,
+        updated_by="fixture",
+    )
+    before = journal._connection.total_changes
+    response = client.get(url, params=params, headers=_headers())
+    assert response.status_code == 200
+    assert response.json()["selection"] == {
+        "materialization_id": "models-fixture",
+        "revision_id": manifest.revision_id,
+        "model_profile": "default",
+        "model_ref": "provider://default",
+        "thinking_effort": "medium",
+    }
+    assert journal._connection.total_changes == before
+
+
+def test_model_selection_failure_does_not_echo_private_details(
+    workspace_config_api, monkeypatch
+):
+    client, _ = workspace_config_api
+
+    def fail(*_args):
+        raise ValueError("synthetic-private-content /private/fixture")
+
+    monkeypatch.setattr(
+        workspace_config_controller, "installed_model_selection", fail
+    )
+    response = client.get(
+        "/api/v1/spaces/space-1/workspace-configuration/model-selection",
+        params={"email": "user@example.com"},
+        headers=_headers(),
+    )
+    assert response.status_code == 409
+    assert response.json() == {
+        "detail": {"code": "workspace_model_selection_unavailable"}
+    }
+
+
 def test_discovery_is_capability_protected_and_does_not_save(
     workspace_config_api, monkeypatch
 ):
