@@ -1484,5 +1484,22 @@
   "terminal-process-local-shell": "로컬 셸",
   "browser-preview-failed": "페이지를 사용할 수 없습니다",
   "browser-preview-local-unavailable": "로컬 서버가 중지되었을 수 있습니다. 서버가 실행 중일 때 다시 시도하거나 파일에서 결과 HTML 파일을 여세요.",
-  "browser-preview-unavailable": "주소와 연결을 확인한 후 다시 시도하세요."
+  "browser-preview-unavailable": "주소와 연결을 확인한 후 다시 시도하세요.",
+  "space-discovery-installed-source": "설치된 스페이스 프로필",
+  "space-discovery-draft-source": "현재 스페이스 초안",
+  "space-discovery-provider-source": "커넥터 제공업체",
+  "space-discovery-model-source": "모델 카탈로그",
+  "space-discovery-error": "사용 가능한 옵션을 불러오지 못했습니다. 다시 시도하거나 직접 입력하세요.",
+  "space-discovery-empty": "일치하는 옵션이 없습니다. 직접 입력할 수도 있습니다.",
+  "space-discovery-setup": "게시 및 설정 필요",
+  "space-discovery-unknown": "현재 값이 검색된 옵션에 없습니다. 직접 수정할 수 있도록 유지됩니다.",
+  "space-discovery-browse": "사용 가능한 옵션 보기",
+  "space-discovery-model-gap": "모델 메타데이터를 확인할 수 있습니다. 스페이스 설정에서 실행할 모델을 지정하는 기능은 아직 지원되지 않습니다. 세션의 모델 선택기에서 설정하세요.",
+  "space-discovery-load-more": "더 불러오기",
+  "space-discovery-draft-prefill": "현재 스페이스 프로필을 바탕으로 제안한 내용입니다. 수정 가능한 초안을 검토하고 저장하여 확인하세요.",
+  "space-discovery-inherited-model": "provider://default는 세션 모델을 상속합니다. 초안을 저장해도 실행 중인 세션은 변경되지 않습니다.",
+  "space-discovery-manual": "직접 입력",
+  "space-discovery-connector-note": "제공업체를 선택하면 필요한 서비스만 지정됩니다. 연결과 권한은 별도로 설정해야 합니다.",
+  "space-discovery-grants-empty": "지원되는 권한 정보가 없습니다. 기존 권한은 유지됩니다. 필요한 권한을 직접 입력하세요.",
+  "space-discovery-available-options": "사용 가능한 옵션"
 }
