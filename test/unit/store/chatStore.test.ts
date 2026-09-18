@@ -136,6 +136,7 @@ import {
   fetchPost,
   fetchPut,
   proxyFetchGet,
+  proxyFetchPut,
   waitForBackendReady,
 } from '@/api/http';
 import { presentChatSemanticEntities } from '@/components/ChatBox/EventTimeline/presentationPolicy';
@@ -1761,6 +1762,234 @@ describe('ChatStore - Core Functionality', () => {
         }
       });
 
+      describe('durable Trigger delivery integration', () => {
+        beforeEach(async () => {
+          // Exercise the real outbox and terminal receipt arbitration; only
+          // HTTP is mocked, so an early immutable outcome cannot hide here.
+          const actual = await vi.importActual<
+            typeof import('@/service/triggerApi')
+          >('@/service/triggerApi');
+          vi.mocked(proxyUpdateTriggerExecution).mockImplementation(
+            actual.proxyUpdateTriggerExecution
+          );
+          vi.mocked(proxyFetchPut).mockResolvedValue({});
+        });
+
+        afterEach(() => {
+          vi.mocked(proxyUpdateTriggerExecution).mockImplementation(() =>
+            Promise.resolve()
+          );
+        });
+
+        const receipts = (executionId: string) =>
+          vi
+            .mocked(proxyFetchPut)
+            .mock.calls.filter(
+              ([path]) => path === `/api/v1/execution/${executionId}`
+            )
+            .map(([, body]) => body as { status: string; tokens_used: number });
+
+        it.each([
+          ['runtime.interrupted', false],
+          ['run.interrupted', false],
+          ['runtime.interrupted', true],
+        ] as const)(
+          'allows Resume after %s to complete the same execution (legacy error first=%s)',
+          async (eventType, legacyErrorFirst) => {
+            const executionId = `resume-${eventType}-${legacyErrorFirst}`;
+            const { store, streamContaining } = await startObservedLiveTask({
+              executionId,
+            });
+            if (legacyErrorFirst) {
+              await streamContaining('/chat').onmessage({
+                data: JSON.stringify({
+                  step: AgentStep.ERROR,
+                  data: {
+                    message: 'Provider temporarily unavailable',
+                    retryable: true,
+                  },
+                }),
+              });
+              expect(store.getState().tasks['live-run'].durableRunStatus).toBe(
+                'interrupted'
+              );
+              expect(fetchDelete).not.toHaveBeenCalledWith('/chat/project-1');
+            }
+            runEventIngressRegistry.ingest(
+              'project-1',
+              'live-run',
+              canonicalEvent('live-run', eventType),
+              'live'
+            );
+            await Promise.resolve();
+            expect(receipts(executionId)).toEqual([]);
+            expect(store.getState().tasks['live-run']).toMatchObject({
+              status: ChatTaskStatus.FINISHED,
+              durableRunStatus: 'interrupted',
+              executionId,
+            });
+
+            projectStoreState.mockReturnValue({
+              ...projectStoreState(),
+              getAllChatStores: () => [{ chatId: 'primary', chatStore: store }],
+              setActiveChatStore: vi.fn(),
+            } as any);
+            vi.mocked(fetchPost).mockResolvedValueOnce({
+              attempt: { attempt_number: 2 },
+            });
+            await store
+              .getState()
+              .startTask(
+                'live-run',
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                'project-1',
+                'single' as any,
+                {
+                  resumeRequestId: `resume-${executionId}`,
+                  preserveTaskId: true,
+                  skipHistoryCreate: true,
+                  awaitAdmission: true,
+                }
+              );
+            runEventIngressRegistry.ingest(
+              'project-1',
+              'live-run',
+              {
+                ...canonicalEvent('live-run', 'run.attempt_started'),
+                sequence: 2,
+                run_version: 2,
+                payload: { attempt_number: 2 },
+              },
+              'live'
+            );
+            runEventIngressRegistry.ingest(
+              'project-1',
+              'live-run',
+              {
+                ...canonicalEvent('live-run', 'run.completed'),
+                sequence: 3,
+                run_version: 3,
+              },
+              'live'
+            );
+            await streamContaining('/chat').onmessage({
+              data: JSON.stringify({
+                step: AgentStep.END,
+                data: { message: 'Resumed successfully', tokens: 321 },
+              }),
+            });
+            await vi.waitFor(() =>
+              expect(receipts(executionId).at(-1)).toMatchObject({
+                status: ExecutionStatus.Completed,
+                tokens_used: 321,
+              })
+            );
+            expect(
+              receipts(executionId).every(
+                (receipt) => receipt.status === ExecutionStatus.Completed
+              )
+            ).toBe(true);
+            expect(store.getState().tasks['live-run']).toMatchObject({
+              durableRunStatus: 'completed',
+              executionId,
+            });
+          }
+        );
+
+        it.each(['run.failed', 'run.cancelled'])(
+          'keeps a true %s execution outcome immutable',
+          async (eventType) => {
+            const executionId = `immutable-${eventType}`;
+            const { streamContaining } = await startObservedLiveTask({
+              executionId,
+            });
+            runEventIngressRegistry.ingest(
+              'project-1',
+              'live-run',
+              canonicalEvent('live-run', eventType),
+              'live'
+            );
+            const status =
+              eventType === 'run.failed'
+                ? ExecutionStatus.Failed
+                : ExecutionStatus.Cancelled;
+            await vi.waitFor(() =>
+              expect(receipts(executionId).at(-1)?.status).toBe(status)
+            );
+            await streamContaining('/chat').onmessage({
+              data: JSON.stringify({
+                step: AgentStep.END,
+                data: { tokens: 123 },
+              }),
+            });
+            await proxyUpdateTriggerExecution(executionId, {
+              status: ExecutionStatus.Completed,
+              tokens_used: 123,
+            });
+            expect(receipts(executionId)).toHaveLength(1);
+            expect(receipts(executionId)[0].status).toBe(status);
+          }
+        );
+
+        it.each([
+          [true, 0],
+          [false, 0],
+          [true, 17],
+          [false, 17],
+        ] as const)(
+          'preserves final usage with independent terminal streams (canonical first=%s, partial tokens=%s)',
+          async (canonicalFirst, partialTokens) => {
+            const executionId = `terminal-usage-${canonicalFirst}-${partialTokens}`;
+            const { store, streamContaining } = await startObservedLiveTask({
+              executionId,
+            });
+            store.getState().addTokens('live-run', partialTokens);
+            const complete = () =>
+              runEventIngressRegistry.ingest(
+                'project-1',
+                'live-run',
+                canonicalEvent('live-run', 'run.completed'),
+                'live'
+              );
+            if (canonicalFirst) {
+              complete();
+              await vi.waitFor(() =>
+                expect(receipts(executionId).at(-1)).toMatchObject({
+                  status: ExecutionStatus.Completed,
+                  tokens_used: partialTokens,
+                })
+              );
+            }
+            await streamContaining('/chat').onmessage({
+              data: JSON.stringify({
+                step: AgentStep.END,
+                data: { message: 'Done', tokens: 123 },
+              }),
+            });
+            if (!canonicalFirst) complete();
+            await vi.waitFor(() =>
+              expect(receipts(executionId).at(-1)).toMatchObject({
+                status: ExecutionStatus.Completed,
+                tokens_used: 123,
+              })
+            );
+            expect(store.getState().tasks['live-run'].tokens).toBe(123);
+            const sentCount = receipts(executionId).length;
+            await proxyUpdateTriggerExecution(executionId, {
+              status: ExecutionStatus.Completed,
+              tokens_used: 0,
+            });
+            expect(receipts(executionId)).toHaveLength(sentCount);
+            expect(receipts(executionId).at(-1)?.tokens_used).toBe(123);
+          }
+        );
+      });
+
       it('reports a canonical-only trigger failure without waiting for the legacy ERROR frame', async () => {
         const { store } = await startObservedLiveTask({
           initialRunId: 'trigger-run',
@@ -2045,7 +2274,7 @@ describe('ChatStore - Core Functionality', () => {
         ['completed', ExecutionStatus.Completed],
         ['failed', ExecutionStatus.Failed],
         ['cancelled', ExecutionStatus.Cancelled],
-        ['interrupted', ExecutionStatus.Failed],
+        ['interrupted', undefined],
       ] as const)(
         'settles a reconciled %s snapshot without a terminal event',
         async (status, executionStatus) => {
@@ -2084,11 +2313,15 @@ describe('ChatStore - Core Functionality', () => {
           expect(hasSSETransportForTasks([runId])).toBe(status === 'completed');
           expect(signal.aborted).toBe(status !== 'completed');
           expect(runDomainEventHub.listenerCount()).toBe(0);
-          expect(proxyUpdateTriggerExecution).toHaveBeenCalledWith(
-            executionId,
-            expect.objectContaining({ status: executionStatus }),
-            { projectId: 'project-1' }
-          );
+          if (executionStatus) {
+            expect(proxyUpdateTriggerExecution).toHaveBeenCalledWith(
+              executionId,
+              expect.objectContaining({ status: executionStatus }),
+              { projectId: 'project-1' }
+            );
+          } else {
+            expect(proxyUpdateTriggerExecution).not.toHaveBeenCalled();
+          }
 
           runEventIngressRegistry.ingest(
             'project-1',
@@ -2101,9 +2334,10 @@ describe('ChatStore - Core Functionality', () => {
               .mocked(proxyUpdateTriggerExecution)
               .mock.calls.filter(
                 ([id, update]) =>
-                  id === executionId && update.status === executionStatus
+                  id === executionId &&
+                  update.status !== ExecutionStatus.Running
               )
-          ).toHaveLength(1);
+          ).toHaveLength(executionStatus ? 1 : 0);
         }
       );
 
@@ -2558,6 +2792,283 @@ describe('ChatStore - Core Functionality', () => {
         expect(hasActiveSSEConnection(['idle-run'])).toBe(false);
         expect(hasSSETransportForTasks(['idle-run'])).toBe(false);
         expect(getIdleSSETransportTaskId(['idle-run'])).toBeNull();
+      });
+
+      describe('successful canonical legacy tails', () => {
+        const seedWorkforce = (
+          store: ReturnType<typeof createChatStoreInstance>,
+          runId = 'live-run'
+        ) => {
+          const task = {
+            id: 'sub-1',
+            content: 'Create game',
+            status: 'running',
+            fileList: [],
+          };
+          store.getState().setTaskRunning(runId, [task] as any);
+          store.getState().setTaskAssigning(runId, [
+            {
+              agent_id: 'developer-1',
+              name: 'Developer',
+              type: 'developer_agent',
+              tasks: [task],
+              log: [],
+              img: [],
+              tools: [],
+            },
+          ] as any);
+          store.getState().setStatus(runId, ChatTaskStatus.RUNNING);
+          store.getState().setTaskTime(runId, Date.now() - 1000);
+        };
+        const send = (
+          legacy: any,
+          step: string,
+          data: Record<string, unknown>,
+          runId?: string
+        ) =>
+          legacy.onmessage({
+            data: JSON.stringify({
+              step,
+              data,
+              ...(runId ? { run_id: runId } : {}),
+            }),
+          });
+        const complete = (runId = 'live-run') =>
+          runEventIngressRegistry.ingest(
+            'project-1',
+            runId,
+            canonicalEvent(runId, 'run.completed', 'Done'),
+            'live'
+          );
+
+        it('retains the final task result and usage before END without restarting the clock', async () => {
+          const { store, streamContaining } = await startObservedLiveTask();
+          const legacy = streamContaining('/chat');
+          seedWorkforce(store);
+          complete();
+          const elapsed = store.getState().tasks['live-run'].elapsed;
+
+          await send(legacy, AgentStep.TASK_STATE, {
+            task_id: 'sub-1',
+            state: 'DONE',
+            result: 'Game created',
+          });
+          await send(legacy, AgentStep.REQUEST_USAGE, {
+            agent_id: 'developer-1',
+            tokens: 125,
+            step_total_tokens: 125,
+          });
+          expect(store.getState().tasks['live-run']).toMatchObject({
+            status: ChatTaskStatus.FINISHED,
+            durableRunStatus: 'completed',
+            taskTime: 0,
+            elapsed,
+            tokens: 125,
+            taskRunning: [{ id: 'sub-1', status: 'completed' }],
+            taskAssigning: [
+              {
+                tasks: [
+                  { id: 'sub-1', status: 'completed', report: 'Game created' },
+                ],
+              },
+            ],
+          });
+          await send(legacy, AgentStep.END, { content: 'Done', tokens: 125 });
+          expect(
+            store.getState().tasks['live-run'].taskAssigning[0].tasks[0].report
+          ).toBe('Game created');
+          expect(store.getState().tasks['live-run'].tokens).toBe(125);
+          expect(legacy.signal.aborted).toBe(false);
+        });
+
+        it('finishes the todo display but ignores execution and auto-confirm frames after completion', async () => {
+          const { store, streamContaining } = await startObservedLiveTask();
+          const legacy = streamContaining('/chat');
+          await send(legacy, AgentStep.TODO_STATE, {
+            agent_id: 'single-1',
+            todos: [
+              { id: 'todo-1', content: 'Make game', status: 'in_progress' },
+              { id: 'todo-2', content: 'Optional work', status: 'in_progress' },
+              { id: 'todo-3', content: 'Existing result', status: 'completed' },
+            ],
+          });
+          complete();
+          const elapsed = store.getState().tasks['live-run'].elapsed;
+          await send(legacy, AgentStep.TODO_STATE, {
+            agent_id: 'single-1',
+            todos: [
+              { id: 'todo-1', content: 'Make game', status: 'completed' },
+              { id: 'todo-2', content: 'Optional work', status: 'in_progress' },
+              { id: 'todo-3', content: 'Existing result', status: 'pending' },
+              { id: 'late-todo', content: 'Late work', status: 'in_progress' },
+            ],
+          });
+          await send(legacy, AgentStep.TO_SUB_TASKS, {
+            sub_tasks: [{ id: 'unexpected-plan', content: 'Restart' }],
+          });
+          await send(legacy, AgentStep.ACTIVATE_AGENT, {
+            agent_id: 'single-1',
+            process_task_id: 'todo-1',
+            state: 'RUNNING',
+          });
+          await send(legacy, AgentStep.TASK_STATE, {
+            task_id: 'todo-1',
+            state: 'RUNNING',
+          });
+          expect(store.getState().tasks['live-run']).toMatchObject({
+            status: ChatTaskStatus.FINISHED,
+            durableRunStatus: 'completed',
+            taskTime: 0,
+            elapsed,
+            autoConfirmDeadline: null,
+            isPending: false,
+            taskInfo: [
+              { id: 'todo-1', status: 'completed' },
+              { id: 'todo-2', status: 'skipped' },
+              { id: 'todo-3', status: 'completed' },
+              { id: 'late-todo', status: 'skipped' },
+            ],
+            taskRunning: [
+              { id: 'todo-1', status: 'completed' },
+              { id: 'todo-2', status: 'skipped' },
+              { id: 'todo-3', status: 'completed' },
+              { id: 'late-todo', status: 'skipped' },
+            ],
+          });
+          expect(
+            store
+              .getState()
+              .tasks['live-run'].messages.some(
+                (message) => message.step === AgentStep.TO_SUB_TASKS
+              )
+          ).toBe(false);
+        });
+
+        it('closes the display-only tail at legacy END', async () => {
+          const { store, streamContaining } = await startObservedLiveTask();
+          const legacy = streamContaining('/chat');
+          seedWorkforce(store);
+          complete();
+          await send(legacy, AgentStep.TASK_STATE, {
+            task_id: 'sub-1',
+            state: 'DONE',
+            result: 'Final result',
+          });
+          await send(legacy, AgentStep.END, { content: 'Done', tokens: 100 });
+          await send(legacy, AgentStep.TASK_STATE, {
+            task_id: 'sub-1',
+            state: 'FAILED',
+            result: 'Late obsolete failure',
+          });
+          await send(legacy, AgentStep.REQUEST_USAGE, {
+            agent_id: 'developer-1',
+            tokens: 999,
+          });
+          await send(legacy, AgentStep.TODO_STATE, {
+            todos: [{ id: 'obsolete', content: 'Late', status: 'in_progress' }],
+          });
+          expect(store.getState().tasks['live-run']).toMatchObject({
+            tokens: 100,
+            status: ChatTaskStatus.FINISHED,
+            durableRunStatus: 'completed',
+            taskRunning: [{ id: 'sub-1', status: 'completed' }],
+            taskAssigning: [{ tasks: [{ report: 'Final result' }] }],
+          });
+        });
+
+        it('accepts the current follow-up tail without applying explicitly old Run frames', async () => {
+          const { store, streamContaining } = await startObservedLiveTask();
+          const legacy = streamContaining('/chat');
+          await switchLegacyStreamToFollowUp({ store, streamContaining });
+          seedWorkforce(store, 'follow-up-run');
+          complete('follow-up-run');
+          await send(
+            legacy,
+            AgentStep.REQUEST_USAGE,
+            { agent_id: 'developer-1', tokens: 999 },
+            'live-run'
+          );
+          await send(
+            legacy,
+            AgentStep.TODO_STATE,
+            {
+              todos: [
+                { id: 'obsolete', content: 'Late', status: 'in_progress' },
+              ],
+            },
+            'live-run'
+          );
+          await send(
+            legacy,
+            AgentStep.TASK_STATE,
+            { task_id: 'sub-1', state: 'DONE', result: 'Improved game' },
+            'follow-up-run'
+          );
+          await send(
+            legacy,
+            AgentStep.REQUEST_USAGE,
+            { agent_id: 'developer-1', tokens: 75 },
+            'follow-up-run'
+          );
+          expect(store.getState().tasks['live-run'].tokens).toBe(0);
+          expect(store.getState().tasks['follow-up-run']).toMatchObject({
+            status: ChatTaskStatus.FINISHED,
+            durableRunStatus: 'completed',
+            tokens: 75,
+            taskRunning: [{ id: 'sub-1', status: 'completed' }],
+            taskAssigning: [{ tasks: [{ report: 'Improved game' }] }],
+          });
+        });
+
+        it.each(['failed', 'cancelled', 'interrupted'] as const)(
+          'does not accept a success tail for a %s Run',
+          async (status) => {
+            const { store, streamContaining } = await startObservedLiveTask();
+            const legacy = streamContaining('/chat');
+            seedWorkforce(store);
+            runEventIngressRegistry.ingest(
+              'project-1',
+              'live-run',
+              canonicalEvent('live-run', `run.${status}`),
+              'live'
+            );
+            const snapshot = store.getState().tasks['live-run'];
+            await send(legacy, AgentStep.TASK_STATE, {
+              task_id: 'sub-1',
+              state: 'DONE',
+              result: 'Wrong success',
+            });
+            await send(legacy, AgentStep.REQUEST_USAGE, { tokens: 999 });
+            await send(legacy, AgentStep.TODO_STATE, {
+              todos: [
+                {
+                  id: 'unexpected',
+                  content: 'Unexpected',
+                  status: 'completed',
+                },
+              ],
+            });
+            expect(store.getState().tasks['live-run']).toEqual(snapshot);
+          }
+        );
+
+        it('ignores a tail delivered by a transport closed before the final frames', async () => {
+          const { store, streamContaining } = await startObservedLiveTask();
+          const legacy = streamContaining('/chat');
+          seedWorkforce(store);
+          complete();
+          closeSSEConnectionsForTasks(['live-run']);
+          await send(legacy, AgentStep.TASK_STATE, {
+            task_id: 'sub-1',
+            state: 'DONE',
+            result: 'Late closed result',
+          });
+          await send(legacy, AgentStep.REQUEST_USAGE, { tokens: 999 });
+          expect(store.getState().tasks['live-run'].tokens).toBe(0);
+          expect(
+            store.getState().tasks['live-run'].taskAssigning[0].tasks[0].report
+          ).toBeUndefined();
+        });
       });
 
       it('marks a canonical-only completed Run idle while preserving its warm transport', async () => {

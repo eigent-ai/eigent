@@ -3257,14 +3257,21 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             typeof event.payload?.message === 'string'
               ? event.payload.message
               : undefined;
-          void updateTriggerExecutionStatus(
-            settledState,
-            project_id,
-            observedTaskId,
-            triggerStatus,
-            settledState.tasks[observedTaskId]?.tokens || 0,
-            terminalMessage
-          );
+          // An interrupted Attempt can Resume the same Run/execution. Stop
+          // its UI/transport, but do not freeze the Trigger's final outcome
+          // before the resumed Attempt completes, fails, or is cancelled.
+          if (
+            CANONICAL_TERMINAL_RUN_STATUSES[event.eventType] !== 'interrupted'
+          ) {
+            void updateTriggerExecutionStatus(
+              settledState,
+              project_id,
+              observedTaskId,
+              triggerStatus,
+              settledState.tasks[observedTaskId]?.tokens || 0,
+              terminalMessage
+            );
+          }
 
           // Failed/cancelled/interrupted executions cannot produce another
           // useful legacy frame. Stop any retry loop left by the broken
@@ -3540,6 +3547,16 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             })
           : null;
 
+      // A canonical completion can precede the final compatibility result and
+      // usage frames. END closes that Run's display-only tail, independently
+      // of the physical transport being reused for a following Run.
+      const completionTailSteps = new Set<AgentMessage['step']>([
+        AgentStep.TASK_STATE,
+        AgentStep.TODO_STATE,
+        AgentStep.REQUEST_USAGE,
+      ]);
+      let legacyEndRunId: string | null = null;
+
       const ssePromise = sseTransport({
         url: api,
         method: !type ? 'POST' : 'GET',
@@ -3564,6 +3581,20 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
           try {
             const parsed = JSON.parse(event.data);
+            if (!type && completionTailSteps.has(parsed?.step)) {
+              const ownerRunId = getCurrentTaskId();
+              const explicitRunId = parsed?.run_id ?? parsed?.data?.run_id;
+              if (
+                abortController.signal.aborted ||
+                sseConnection.taskId !== ownerRunId ||
+                activeSSEControllers[ownerRunId] !== sseConnection ||
+                legacyEndRunId === ownerRunId ||
+                (typeof explicitRunId === 'string' &&
+                  explicitRunId !== ownerRunId)
+              ) {
+                return;
+              }
+            }
             if (startOptions.replaySource === 'local_durable') {
               shadowProjectionCursor = advanceLegacyChatProjectionCursor(
                 shadowProjectionCursor,
@@ -3733,6 +3764,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             agentMessages.step === AgentStep.ARTIFACT_UPLOADED ||
             agentMessages.step === AgentStep.PROJECT_METADATA;
 
+          const isSuccessfulCompletionTail =
+            !type &&
+            currentTask?.durableRunStatus === 'completed' &&
+            completionTailSteps.has(agentMessages.step) &&
+            (agentMessages.step !== AgentStep.TASK_STATE ||
+              agentMessages.data.state === 'DONE' ||
+              agentMessages.data.state === 'FAILED');
+
           if (!currentTask) {
             console.log(
               `Task ${lockedTaskId} not found, ignoring SSE message for step: ${agentMessages.step}`
@@ -3803,7 +3842,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             currentTask.status === ChatTaskStatus.FINISHED &&
             !isTaskSwitchingEvent &&
             !isMultiTurnSimpleAnswer &&
-            !isPostCompletionProjectionEvent
+            !isPostCompletionProjectionEvent &&
+            !isSuccessfulCompletionTail
           ) {
             // Ignore messages for finished tasks except:
             // 1. Task switching events (create new chatStore)
@@ -4483,6 +4523,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             const todoTasks: TaskInfo[] = todos.map((todo, index) => {
               const id = todo.id || `todo_${index + 1}`;
               const previous = previousTaskById.get(id);
+              // Late snapshots can complete a todo, but cannot make a
+              // terminal Run display active work again.
+              const terminalTodoStatus =
+                previous?.status === TaskStatus.COMPLETED ||
+                previous?.status === TaskStatus.FAILED ||
+                previous?.status === TaskStatus.SKIPPED
+                  ? previous.status
+                  : TaskStatus.SKIPPED;
               return {
                 ...previous,
                 id,
@@ -4493,9 +4541,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 status:
                   todo.status === 'completed'
                     ? TaskStatus.COMPLETED
-                    : todo.status === 'in_progress'
-                      ? TaskStatus.RUNNING
-                      : TaskStatus.EMPTY,
+                    : isSuccessfulCompletionTail
+                      ? terminalTodoStatus
+                      : todo.status === 'in_progress'
+                        ? TaskStatus.RUNNING
+                        : TaskStatus.EMPTY,
                 toolkits: previous?.toolkits,
                 terminal: previous?.terminal,
                 fileList: previous?.fileList,
@@ -5439,7 +5489,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 playbackElapsed ?? settleTaskElapsedMs(failedTask, Date.now());
               setTaskTime(currentTaskId, 0);
               setElapsed(currentTaskId, settledElapsed);
-              get().setDurableRunStatus(currentTaskId, 'failed');
+              get().setDurableRunStatus(
+                currentTaskId,
+                isRetryableRunError ? 'interrupted' : 'failed'
+              );
 
               // Mark all incomplete tasks as failed
               let taskRunning = [...tasks[currentTaskId].taskRunning];
@@ -5539,15 +5592,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                   session_mode: tasks[currentTaskId]?.sessionMode,
                 });
               }
-              // Update trigger execution status to Failed on error
-              updateTriggerExecutionStatus(
-                getCurrentChatStore(),
-                project_id,
-                currentTaskId,
-                ExecutionStatus.Failed,
-                tasks[currentTaskId]?.tokens || 0,
-                errorMessage
-              );
+              // A retryable legacy error can precede runtime.interrupted.
+              // It ends an Attempt, not the resumable Trigger execution.
+              if (!isRetryableRunError) {
+                updateTriggerExecutionStatus(
+                  getCurrentChatStore(),
+                  project_id,
+                  currentTaskId,
+                  ExecutionStatus.Failed,
+                  tasks[currentTaskId]?.tokens || 0,
+                  errorMessage
+                );
+              }
 
               // A busy Project means another run in the same long conversation
               // is still active. Do not stop that active Project while marking
@@ -5555,6 +5611,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               if (
                 !wasAlreadySettledByCanonical &&
                 !isProjectBusyError &&
+                !isRetryableRunError &&
                 type !== 'replay'
               ) {
                 try {
@@ -5687,6 +5744,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
 
           if (agentMessages.step === AgentStep.END) {
+            legacyEndRunId = currentTaskId;
             const endData: unknown = agentMessages.data;
             const endMessageText = extractEndPayloadText(endData);
             const endTokens =
@@ -5695,8 +5753,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               typeof (endData as { tokens?: unknown }).tokens === 'number'
                 ? (endData as { tokens: number }).tokens
                 : 0;
-            if (endTokens > 0 && getTokens(currentTaskId) === 0) {
-              addTokens(currentTaskId, endTokens);
+            // END carries a final cumulative total for direct turns. Fill
+            // missing usage without adding that total twice or decreasing a
+            // larger total already projected from request-level receipts.
+            const projectedTokens = getTokens(currentTaskId);
+            if (Number.isFinite(endTokens) && endTokens > projectedTokens) {
+              addTokens(currentTaskId, endTokens - projectedTokens);
             }
             clearRequestUsageStepTokens(currentTaskId);
             if (!currentTaskId || !tasks[currentTaskId]) return;
