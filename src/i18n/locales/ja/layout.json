@@ -1484,5 +1484,22 @@
   "terminal-process-local-shell": "ローカルシェル",
   "browser-preview-failed": "ページを表示できません",
   "browser-preview-local-unavailable": "ローカルサーバーが停止している可能性があります。起動後に再試行するか、ファイルから納品されたHTMLファイルを開いてください。",
-  "browser-preview-unavailable": "アドレスと接続を確認して、もう一度お試しください。"
+  "browser-preview-unavailable": "アドレスと接続を確認して、もう一度お試しください。",
+  "space-discovery-installed-source": "インストール済みのスペースプロファイル",
+  "space-discovery-draft-source": "現在のスペースの下書き",
+  "space-discovery-provider-source": "コネクタープロバイダー",
+  "space-discovery-model-source": "モデルカタログ",
+  "space-discovery-error": "利用可能な候補を読み込めませんでした。再試行するか、手動で入力してください。",
+  "space-discovery-empty": "一致する候補はありません。手動で入力することもできます。",
+  "space-discovery-setup": "公開と設定が必要です",
+  "space-discovery-unknown": "現在の値は検出された候補にありません。手動で編集できるよう保持されています。",
+  "space-discovery-browse": "利用可能な候補を表示",
+  "space-discovery-model-gap": "モデルのメタデータを確認できます。スペース設定から実行時のモデルを指定する機能は未対応です。セッションのモデル選択で設定してください。",
+  "space-discovery-load-more": "さらに読み込む",
+  "space-discovery-draft-prefill": "現在のスペースプロファイルに基づく提案です。編集可能な下書きを確認し、保存して確定してください。",
+  "space-discovery-inherited-model": "provider://default はセッションのモデルを継承します。下書きを保存しても、実行中のセッションは変更されません。",
+  "space-discovery-manual": "手動で入力",
+  "space-discovery-connector-note": "プロバイダーの選択は、必要なサービスの指定のみです。接続と権限は別途設定してください。",
+  "space-discovery-grants-empty": "対応している権限の情報がありません。既存の権限は保持されます。必要な権限は手動で入力してください。",
+  "space-discovery-available-options": "利用可能な候補"
 }

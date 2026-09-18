@@ -1528,5 +1528,22 @@
   "terminal-process-local-shell": "Shell locale",
   "browser-preview-failed": "Pagina non disponibile",
   "browser-preview-local-unavailable": "Il server locale potrebbe essersi arrestato. Riprova quando è in esecuzione oppure apri il file HTML consegnato da File.",
-  "browser-preview-unavailable": "Controlla l’indirizzo e la connessione, poi riprova."
+  "browser-preview-unavailable": "Controlla l’indirizzo e la connessione, poi riprova.",
+  "space-discovery-installed-source": "Profilo dello Spazio installato",
+  "space-discovery-draft-source": "Bozza dello Spazio corrente",
+  "space-discovery-provider-source": "Fornitore del connettore",
+  "space-discovery-model-source": "Catalogo dei modelli",
+  "space-discovery-error": "Impossibile caricare le opzioni disponibili. Riprova o inserisci un valore manualmente.",
+  "space-discovery-empty": "Nessuna opzione corrispondente. Puoi comunque inserire un valore manualmente.",
+  "space-discovery-setup": "Richiede pubblicazione e configurazione",
+  "space-discovery-unknown": "Il valore attuale non è tra le opzioni trovate. Viene conservato per consentire la modifica manuale.",
+  "space-discovery-browse": "Sfoglia le opzioni disponibili",
+  "space-discovery-model-gap": "I metadati dei modelli sono disponibili. La scelta di un modello di esecuzione specifico dalle impostazioni dello Spazio non è ancora supportata. Configuralo nel selettore del modello della sessione.",
+  "space-discovery-load-more": "Carica altro",
+  "space-discovery-draft-prefill": "Suggerimento basato sul profilo dello Spazio corrente. Rivedi questa bozza modificabile e salvala per confermare.",
+  "space-discovery-inherited-model": "provider://default eredita il modello della sessione. Salvare una bozza non modifica una sessione in corso.",
+  "space-discovery-manual": "Inserisci manualmente",
+  "space-discovery-connector-note": "Selezionare un fornitore dichiara solo un requisito. Le connessioni e le autorizzazioni si configurano separatamente.",
+  "space-discovery-grants-empty": "Non sono state indicate autorizzazioni supportate. Le autorizzazioni esistenti vengono conservate. Inserisci manualmente quelle necessarie.",
+  "space-discovery-available-options": "Opzioni disponibili"
 }

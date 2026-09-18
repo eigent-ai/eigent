@@ -1506,5 +1506,22 @@
   "terminal-process-local-shell": "Lokale Shell",
   "browser-preview-failed": "Seite nicht verfügbar",
   "browser-preview-local-unavailable": "Der lokale Server wurde möglicherweise beendet. Versuche es erneut, sobald er läuft, oder öffne die bereitgestellte HTML-Datei unter Dateien.",
-  "browser-preview-unavailable": "Prüfe die Adresse und die Verbindung und versuche es erneut."
+  "browser-preview-unavailable": "Prüfe die Adresse und die Verbindung und versuche es erneut.",
+  "space-discovery-installed-source": "Installiertes Space-Profil",
+  "space-discovery-draft-source": "Aktueller Space-Entwurf",
+  "space-discovery-provider-source": "Connector-Anbieter",
+  "space-discovery-model-source": "Modellkatalog",
+  "space-discovery-error": "Verfügbare Optionen konnten nicht geladen werden. Versuche es erneut oder gib einen Wert manuell ein.",
+  "space-discovery-empty": "Keine passenden Optionen. Du kannst weiterhin einen Wert manuell eingeben.",
+  "space-discovery-setup": "Veröffentlichung und Einrichtung erforderlich",
+  "space-discovery-unknown": "Der aktuelle Wert ist nicht unter den gefundenen Optionen. Er bleibt zur manuellen Bearbeitung erhalten.",
+  "space-discovery-browse": "Verfügbare Optionen ansehen",
+  "space-discovery-model-gap": "Modellmetadaten sind verfügbar. Ein bestimmtes Laufzeitmodell lässt sich noch nicht in den Space-Einstellungen wählen. Konfiguriere es in der Modellauswahl der Sitzung.",
+  "space-discovery-load-more": "Mehr laden",
+  "space-discovery-draft-prefill": "Vorschlag aus dem aktuellen Space-Profil. Prüfe diesen bearbeitbaren Entwurf und speichere ihn zur Bestätigung.",
+  "space-discovery-inherited-model": "provider://default übernimmt das Modell der Sitzung. Das Speichern eines Entwurfs ändert keine laufende Sitzung.",
+  "space-discovery-manual": "Manuell eingeben",
+  "space-discovery-connector-note": "Die Auswahl eines Anbieters legt nur eine Anforderung fest. Verbindungen und Berechtigungen werden separat eingerichtet.",
+  "space-discovery-grants-empty": "Es wurden keine unterstützten Berechtigungen gemeldet. Bestehende Berechtigungen bleiben erhalten. Gib benötigte Berechtigungen manuell ein.",
+  "space-discovery-available-options": "Verfügbare Optionen"
 }
