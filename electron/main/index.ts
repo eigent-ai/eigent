@@ -2537,6 +2537,18 @@ function registerIpcHandlers() {
     }
   );
 
+  ipcMain.handle(
+    'preview-office-buffer',
+    async (event, type: string, bytes: Uint8Array) => {
+      assertMainRendererSender(event);
+      if (!(bytes instanceof Uint8Array)) {
+        throw new Error('Invalid remote Office preview payload');
+      }
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      return manager.previewOfficeBuffer(type, bytes);
+    }
+  );
+
   ipcMain.handle('preview-csv-file', async (event, filePath: string) => {
     const manager = checkManagerInstance(fileReader, 'FileReader');
     const authorizedPath = await requireAuthorizedPreviewFile(event, filePath);
@@ -4058,7 +4070,7 @@ app.on('before-quit', async (event) => {
     // No need to sync between different profile directories
 
     // Clean up resources
-    disposeAllTerminals();
+    await disposeAllTerminals();
 
     if (webViewManager) {
       webViewManager.destroy();

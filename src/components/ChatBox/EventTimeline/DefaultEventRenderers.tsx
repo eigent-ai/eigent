@@ -23,6 +23,8 @@ import {
   Loader,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { TaskErrorNotice } from '../TaskErrorNotice';
+import { taskErrorReason } from '../taskErrorPresentation';
 
 import type {
   ChatProjectionNodeOfKind,
@@ -128,6 +130,8 @@ function noticeTone(severity: string): string {
 export function NoticeEventRenderer({
   node,
 }: EventRendererProps<ChatProjectionNodeOfKind<'notice'>>) {
+  const reason = taskErrorReason(node);
+  if (reason) return <TaskErrorNotice reason={reason} />;
   return (
     <aside
       className={cn(
@@ -135,7 +139,7 @@ export function NoticeEventRenderer({
         noticeTone(node.severity)
       )}
       data-notice-severity={node.severity}
-      role={node.severity === 'error' ? 'alert' : 'status'}
+      role={node.severity === 'error' ? undefined : 'status'}
     >
       {node.title ? (
         <strong className="block font-medium">{node.title}</strong>

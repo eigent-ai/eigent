@@ -17,6 +17,7 @@ import { useHost } from '@/host';
 import { fetchGroupedHistoryTasks } from '@/service/historyApi';
 import { getAuthStore, useAuthStore } from '@/store/authStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
+import { useProjectStore } from '@/store/projectStore';
 import {
   getVisibleProjectMetasForSpace,
   useSpaceStore,
@@ -126,8 +127,18 @@ export function useHomeHubProjects() {
           `/api/v1/chat/project/${projectId}/name?new_name=${encodeURIComponent(newName)}`
         );
         if (response && response.code !== undefined && response.code !== 0) {
-          console.error(`Failed to update project name: ${response.code}`);
+          throw new Error(`Failed to update session name: ${response.code}`);
         }
+        const project = useProjectStore.getState().getProjectById(projectId);
+        const meta = useSpaceStore.getState().getProjectMeta(projectId);
+        useProjectStore.getState().updateProject(projectId, {
+          name: newName,
+          metadata: { ...project?.metadata, nameSource: 'manual' },
+        });
+        useSpaceStore.getState().updateProjectMeta(projectId, {
+          name: newName,
+          metadata: { ...meta?.metadata, nameSource: 'manual' },
+        });
       } catch (error) {
         console.error('Error updating project name:', error);
       }

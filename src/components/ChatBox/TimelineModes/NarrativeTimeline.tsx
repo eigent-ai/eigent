@@ -30,12 +30,15 @@ import {
   type TimelineRunView,
   type TimelineSegment,
 } from '@/lib/projector/chat/presentation';
+import { errorCopy } from '@/lib/usageErrors';
 import { cn } from '@/lib/utils';
 import { SessionMode, type SessionModeType } from '@/types/constants';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
+import { TaskErrorNotice } from '../TaskErrorNotice';
+import { taskErrorReason } from '../taskErrorPresentation';
 
 import { actionIcon } from './actionIcon';
 import { CallRow, isCallActiveStatus, isCallErrorStatus } from './CallRow';
@@ -430,8 +433,11 @@ function NarrativeSubagentRow({
     item.summary?.trim() || item.authoredStepTitle?.trim() || '';
   const reasoning =
     reasoningText && reasoningText !== agentName ? reasoningText : undefined;
+  const noticeErrorReason = call.notice ? taskErrorReason(call.notice) : null;
   const description =
-    call.notice?.content.trim() ||
+    (noticeErrorReason
+      ? errorCopy(noticeErrorReason)
+      : call.notice?.content.trim()) ||
     call.detail ||
     (failed
       ? t('chat.no-failure-details', {
@@ -655,6 +661,8 @@ function NarrativeNotice({
   item: Extract<TimelineNarrativeItem, { kind: 'notice' }>;
 }) {
   const { node } = item;
+  const reason = taskErrorReason(node);
+  if (reason) return <TaskErrorNotice reason={reason} />;
   return (
     <span
       className={cn(
@@ -1001,6 +1009,7 @@ function NarrativeRunWorkLog({
 export function NarrativeTimeline({
   runs,
   projectedArtifactsByRun = {},
+  artifactManifestsByRun = {},
   interactivePlansByRun = {},
   paused = false,
   sessionMode,
@@ -1009,7 +1018,8 @@ export function NarrativeTimeline({
   return (
     <div className="flex w-full flex-col gap-3" data-timeline-mode="narrative">
       {runs.map((run) => {
-        const projectedArtifacts = projectedArtifactsByRun[run.runId] || [];
+        const projectedArtifacts = projectedArtifactsByRun[run.runId];
+        const artifactManifest = artifactManifestsByRun[run.runId];
         const interactivePlan = interactivePlansByRun[run.runId];
         const narrativeItems = segmentTimelineRun(
           run,
@@ -1017,7 +1027,9 @@ export function NarrativeTimeline({
         );
         const hasWorkBand = narrativeItems.length > 0;
         const hasFiles =
-          run.artifacts.length > 0 || projectedArtifacts.length > 0;
+          run.artifacts.length > 0 ||
+          projectedArtifacts !== undefined ||
+          artifactManifest !== undefined;
         const showFiles = isTerminalRunStatus(run.status) && hasFiles;
         return (
           <section
@@ -1050,6 +1062,7 @@ export function NarrativeTimeline({
                     <RunFilesGroup
                       artifactNodes={run.artifacts}
                       projectedArtifacts={projectedArtifacts}
+                      artifactManifest={artifactManifest}
                       projectId={run.projectId}
                       runId={run.runId}
                     />
@@ -1063,6 +1076,7 @@ export function NarrativeTimeline({
               <RunFilesGroup
                 artifactNodes={run.artifacts}
                 projectedArtifacts={projectedArtifacts}
+                artifactManifest={artifactManifest}
                 projectId={run.projectId}
                 runId={run.runId}
               />

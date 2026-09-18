@@ -132,6 +132,16 @@ import {
   proxyFetchGet,
   waitForBackendReady,
 } from '@/api/http';
+import { presentChatSemanticEntities } from '@/components/ChatBox/EventTimeline/presentationPolicy';
+import { selectRenderableChatNodes } from '@/lib/projector/chat';
+import {
+  composeTimelineRuns,
+  reconcileTimelineRuns,
+} from '@/lib/projector/chat/presentation';
+import {
+  getProjectEventStore,
+  releaseProjectEventStore,
+} from '@/store/projectEventStore';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { generateUniqueId } from '../../../src/lib';
 import {
@@ -459,6 +469,22 @@ describe('ChatStore - Core Functionality', () => {
       });
 
       expect(files).toEqual([]);
+    });
+
+    it('drops empty write receipts from canonical output lists', () => {
+      const output = {
+        name: 'report.md',
+        path: '/workspace/report.md',
+        type: 'md',
+      };
+      expect(
+        resolveRunOutputFileList({
+          writeEventFiles: [{ name: '', path: '', type: 'File' }],
+          artifactFiles: [output],
+          canonicalArtifactsAvailable: true,
+          finalAnswerFiles: [],
+        })
+      ).toEqual([output]);
     });
 
     it('keeps final-answer path extraction as a fallback without a canonical artifact index', () => {
@@ -1096,7 +1122,7 @@ describe('ChatStore - Core Functionality', () => {
     });
   });
 
-  describe('Task startup', () => {
+  describe.each([false, true])('Task startup: %s', (awaitAdmission) => {
     it('renders the pending user turn before backend readiness resolves', async () => {
       let resolveBackendReady!: (ready: boolean) => void;
       vi.mocked(waitForBackendReady).mockReturnValueOnce(
@@ -1144,7 +1170,8 @@ describe('ChatStore - Core Functionality', () => {
             [],
             undefined,
             'project-1',
-            'single' as any
+            'single' as any,
+            { awaitAdmission }
           );
       });
 
@@ -1162,7 +1189,11 @@ describe('ChatStore - Core Functionality', () => {
 
       resolveBackendReady(false);
       await act(async () => {
-        await startPromise;
+        if (awaitAdmission) {
+          await expect(startPromise).rejects.toThrow(/backend|Backend/);
+        } else {
+          await startPromise;
+        }
       });
 
       expect(result.current.getState().tasks['optimistic-task']).toMatchObject({
@@ -1238,7 +1269,7 @@ describe('ChatStore - Core Functionality', () => {
 
       await act(async () => {
         const initialTaskId = result.current.getState().create('initial-task');
-        await result.current
+        const startPromise = result.current
           .getState()
           .startTask(
             initialTaskId,
@@ -1249,8 +1280,16 @@ describe('ChatStore - Core Functionality', () => {
             [],
             undefined,
             'project-1',
-            'single' as any
+            'single' as any,
+            { awaitAdmission }
           );
+        if (awaitAdmission) {
+          await expect(startPromise).rejects.toMatchObject({
+            code: 'continuation_clarification_required',
+          });
+        } else {
+          await startPromise;
+        }
         await Promise.resolve();
       });
 
@@ -1466,6 +1505,385 @@ describe('ChatStore - Core Functionality', () => {
               warning_code: null,
             })
       );
+    });
+
+    it('keeps completed legacy history terminal in the event timeline', async () => {
+      vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'true');
+      releaseProjectEventStore('proj-replay');
+      const eventStore = getProjectEventStore('proj-replay', {
+        scheduleFlush: () => () => {},
+      });
+      const startedAt = Date.parse('2026-08-18T00:00:00Z') / 1000;
+      const taskId = 'legacy-completed-history';
+      vi.mocked(fetchEventSource).mockImplementation(async (_url, opts) => {
+        for (const [index, event] of [
+          {
+            step: 'confirmed',
+            data: { task_id: taskId, question: 'Build a report' },
+            timestamp: startedAt,
+          },
+          {
+            step: 'todo_state',
+            data: { agent_id: 'single-agent', todos: [] },
+            timestamp: startedAt + 1,
+          },
+          {
+            step: 'end',
+            data: { result: 'Report complete' },
+            timestamp: startedAt + 600,
+          },
+        ].entries()) {
+          await opts.onmessage?.({
+            data: JSON.stringify({ id: index + 1, task_id: taskId, ...event }),
+          } as any);
+        }
+        opts.onclose?.();
+      });
+
+      try {
+        const { result } = renderHook(() => useChatStore());
+        await act(async () => {
+          await result.current.getState().replay(taskId, 'Build a report', 0);
+        });
+        const task = result.current.getState().tasks[taskId];
+        expect(task.status).toBe(ChatTaskStatus.FINISHED);
+        expect(task.elapsed).toBe(600_000);
+
+        eventStore.flushAll();
+        const snapshot = eventStore.getSnapshot();
+        const runs = reconcileTimelineRuns(
+          composeTimelineRuns(selectRenderableChatNodes(snapshot.chat)),
+          snapshot.view.runs
+        );
+        expect(runs).toHaveLength(1);
+        expect(runs[0].status).toBe('completed');
+        expect(runs[0].userQuery?.content).toBe('Build a report');
+        expect(runs[0].finalAssistantResponse?.content).toBe('Report complete');
+        expect(runs[0].timestamps.durationMs).toBe(600_000);
+        expect(runs[0].timestamps.elapsedAnchor?.anchoredAt).toBeNull();
+      } finally {
+        vi.unstubAllEnvs();
+        releaseProjectEventStore('proj-replay');
+      }
+    });
+
+    it('freezes failed legacy replay at the persisted error time without an end event', async () => {
+      const taskId = 'legacy-failed-history';
+      const startedAt = Date.parse('2026-08-18T00:00:00Z') / 1000;
+      vi.mocked(fetchEventSource).mockImplementation(async (_url, opts) => {
+        for (const [index, event] of [
+          {
+            step: 'confirmed',
+            data: { task_id: taskId, question: 'Build a report' },
+            timestamp: startedAt,
+          },
+          {
+            step: 'error',
+            data: {
+              message:
+                "tool 'shell_exec' may have produced an external side effect",
+              retryable: false,
+            },
+            timestamp: startedAt + 600,
+          },
+          {
+            step: 'deactivate_agent',
+            data: { agent_id: 'single-agent', tokens: 0 },
+            timestamp: startedAt + 610,
+          },
+        ].entries()) {
+          await opts.onmessage?.({
+            data: JSON.stringify({
+              id: 26_870 + index,
+              task_id: taskId,
+              ...event,
+            }),
+          } as any);
+        }
+        opts.onclose?.();
+      });
+
+      try {
+        const { result } = renderHook(() => useChatStore());
+        await act(async () => {
+          await result.current.getState().replay(taskId, 'Build a report', 0);
+        });
+        expect(result.current.getState().tasks[taskId]).toMatchObject({
+          status: ChatTaskStatus.FINISHED,
+          durableRunStatus: 'failed',
+          elapsed: 600_000,
+          taskTime: 0,
+        });
+      } finally {
+        releaseProjectEventStore('proj-replay');
+      }
+    });
+
+    it.each([undefined, 'normal'] as const)(
+      'settles a live error from its active clock (type=%s)',
+      async (type) => {
+        const taskId = 'live-failed-task';
+        const now = Date.parse('2026-09-16T00:00:00Z');
+        const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(now);
+        const { result } = renderHook(() => useChatStore());
+        vi.mocked(useProjectStore.getState).mockReturnValue({
+          ...replayProjectState(),
+          appendInitChatStore: () => {
+            result.current.getState().create(taskId);
+            return { taskId, chatStore: result.current };
+          },
+          getAllChatStores: () => [],
+          getProjectModel: () => null,
+          setProjectModel: vi.fn(),
+          setProjectSpace: vi.fn(),
+          setHistoryId: vi.fn(),
+          getProjectThinkingEffortOverride: () => undefined,
+        } as any);
+        vi.mocked(proxyFetchGet).mockImplementation((url: string) =>
+          Promise.resolve(
+            url.includes('snapshots')
+              ? []
+              : {
+                  value: 'test-cloud-key',
+                  api_url: 'https://models.example.test',
+                  items: [],
+                  warning_code: null,
+                }
+          )
+        );
+        vi.mocked(fetchEventSource).mockImplementation(async (_url, opts) => {
+          await opts.onmessage?.({
+            data: JSON.stringify({
+              step: 'confirmed',
+              data: { task_id: taskId, question: 'Build a report' },
+              timestamp: 100,
+            }),
+          } as any);
+          result.current.getState().setTaskTime(taskId, now - 5_000);
+          result.current.getState().setElapsed(taskId, 2_000);
+          await opts.onmessage?.({
+            data: JSON.stringify({
+              step: 'error',
+              data: { message: 'Live execution failed', retryable: false },
+              timestamp: 700,
+            }),
+          } as any);
+          opts.onclose?.();
+        });
+
+        try {
+          await act(async () => {
+            await result.current
+              .getState()
+              .startTask(
+                taskId,
+                type,
+                undefined,
+                undefined,
+                'Build a report',
+                [],
+                undefined,
+                'proj-replay'
+              );
+          });
+          await vi.waitFor(() => {
+            expect(result.current.getState().tasks[taskId]).toMatchObject({
+              status: ChatTaskStatus.FINISHED,
+              durableRunStatus: 'failed',
+              elapsed: 7_000,
+              taskTime: 0,
+            });
+          });
+        } finally {
+          nowSpy.mockRestore();
+          releaseProjectEventStore('proj-replay');
+        }
+      }
+    );
+
+    it('keeps one narration and file receipt after partial canonical replay falls back to cloud', async () => {
+      vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'true');
+      releaseProjectEventStore('proj-replay');
+      const eventStore = getProjectEventStore('proj-replay', {
+        scheduleFlush: () => () => {},
+      });
+      const startedAt = Date.parse('2026-08-18T00:00:00Z') / 1000;
+      const taskId = 'partial-canonical-history';
+      const narration = 'Building the cathedral.';
+      const tailNarration = 'Finishing the stained glass.';
+      const filePath = 'models/cathedral.glb';
+      const tailFilePath = 'models/stained-glass.glb';
+      const canonicalEvents = [
+        {
+          event_id: 'canonical-narration',
+          event_type: 'activity.progress',
+          legacy_step: 'decompose_text',
+          // Exact display-safe producer shape from semantic_events.py.
+          payload: {
+            semantic_schema_version: 1,
+            display_schema_version: 1,
+            semantic: {
+              kind: 'narration',
+              subject: {
+                type: 'activity_stream',
+                id: `${taskId}:narration`,
+              },
+              lifecycle: { phase: 'progress', status: 'running' },
+              completeness: { state: 'complete', missing_fields: [] },
+              provenance: { source: 'legacy.decompose_text' },
+              actor: { type: 'agent' },
+              correlation: { run_id: taskId },
+            },
+            status: 'running',
+            display_title: narration,
+            display_fragment_exact: true,
+          },
+        },
+        {
+          event_id: 'canonical-file',
+          event_type: 'file.written',
+          legacy_step: 'write_file',
+          payload: {
+            semantic_schema_version: 1,
+            display_schema_version: 1,
+            semantic: {
+              kind: 'file_change',
+              subject: { type: 'file', id: filePath },
+              lifecycle: { phase: 'completed', status: 'completed' },
+              completeness: { state: 'complete', missing_fields: [] },
+              provenance: { source: 'legacy.write_file' },
+              correlation: { task_id: 'subtask-1' },
+            },
+            relative_path: filePath,
+            name: 'cathedral.glb',
+            process_task_id: 'subtask-1',
+            operation: 'written',
+            display_title: `Wrote ${filePath}`,
+          },
+        },
+      ];
+      vi.mocked(fetchEventSource).mockImplementation(async (url, opts) => {
+        if (String(url).includes(`/runs/${taskId}/stream`)) {
+          for (const [index, event] of canonicalEvents.entries()) {
+            await opts.onmessage?.({
+              id: event.event_id,
+              data: JSON.stringify({
+                project_id: 'proj-replay',
+                run_id: taskId,
+                sequence: index + 1,
+                run_version: index + 1,
+                created_at: startedAt + index + 1,
+                ...event,
+              }),
+            } as any);
+          }
+          const failure = new Error('Synthetic partial replay failure');
+          opts.onerror?.(failure);
+          throw failure;
+        }
+
+        for (const [index, event] of [
+          {
+            step: 'confirmed',
+            data: { task_id: taskId, question: 'Build a cathedral' },
+            timestamp: startedAt,
+          },
+          {
+            step: 'decompose_text',
+            data: { content: narration },
+            timestamp: startedAt + 1,
+          },
+          {
+            step: 'write_file',
+            data: {
+              file_path: `/workspace/${filePath}`,
+              relative_path: filePath,
+              process_task_id: 'subtask-1',
+            },
+            timestamp: startedAt + 2,
+          },
+          {
+            step: 'decompose_text',
+            data: { content: tailNarration },
+            timestamp: startedAt + 3,
+          },
+          {
+            step: 'write_file',
+            data: {
+              file_path: `/workspace/${tailFilePath}`,
+              relative_path: tailFilePath,
+              process_task_id: 'subtask-2',
+            },
+            timestamp: startedAt + 4,
+          },
+          {
+            step: 'end',
+            data: { result: 'Cathedral complete' },
+            timestamp: startedAt + 600,
+          },
+        ].entries()) {
+          await opts.onmessage?.({
+            data: JSON.stringify({
+              id: 10_000 + index,
+              task_id: taskId,
+              ...event,
+            }),
+          } as any);
+        }
+        opts.onclose?.();
+      });
+
+      try {
+        const { result } = renderHook(() => useChatStore());
+        await act(async () => {
+          await result.current
+            .getState()
+            .replay(
+              taskId,
+              'Build a cathedral',
+              0,
+              'proj-replay',
+              'local_durable'
+            );
+        });
+        expect(fetchEventSource).toHaveBeenCalledTimes(2);
+        expect(vi.mocked(fetchEventSource).mock.calls[1][0]).toContain(
+          `/chat/steps/playback/${taskId}`
+        );
+        expect(result.current.getState().tasks[taskId]).toMatchObject({
+          status: ChatTaskStatus.FINISHED,
+          elapsed: 600_000,
+        });
+
+        eventStore.flushAll();
+        const snapshot = eventStore.getSnapshot();
+        const runs = composeTimelineRuns(
+          presentChatSemanticEntities(selectRenderableChatNodes(snapshot.chat))
+        );
+        expect(runs).toHaveLength(1);
+        const run = runs[0];
+        expect(run.userQuery?.content).toBe('Build a cathedral');
+        expect(run.finalAssistantResponse?.content).toBe('Cathedral complete');
+        expect(
+          run.nodes
+            .filter((node) => node.kind === 'activity')
+            .map((node) => node.title)
+        ).toEqual([narration, tailNarration]);
+        expect(run.artifacts.map((artifact) => artifact.relativePath)).toEqual([
+          filePath,
+          tailFilePath,
+        ]);
+        expect(run.summary.artifactCount).toBe(2);
+        expect(
+          run.nodes.some((node) => node.eventId === 'canonical-narration')
+        ).toBe(true);
+        expect(
+          run.nodes.some((node) => node.eventId === 'canonical-file')
+        ).toBe(true);
+      } finally {
+        vi.unstubAllEnvs();
+        releaseProjectEventStore('proj-replay');
+      }
     });
 
     it('replay() creates task and starts SSE', async () => {

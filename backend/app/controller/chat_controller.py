@@ -2605,7 +2605,7 @@ def remove_task(project_id: str, task_id: str):
     name="skip task in workforce",
     dependencies=_CHAT_CONTROL_DEPENDENCIES,
 )
-def skip_task(project_id: str):
+def skip_task(project_id: str, expected_task_id: str | None = None):
     """
     Skip/Stop current task execution while preserving context.
     This endpoint is called when user clicks the Stop button.
@@ -2632,6 +2632,11 @@ def skip_task(project_id: str):
             extra={"project_id": project_id},
         )
         return Response(status_code=204)
+    if expected_task_id and task_lock.current_task_id != expected_task_id:
+        raise HTTPException(
+            status_code=409,
+            detail="The current task has changed. Review it before stopping.",
+        )
     chat_logger.info(
         "[STOP-BUTTON] Task lock retrieved,"
         f" task_lock.id: {task_lock.id},"
@@ -2642,7 +2647,9 @@ def skip_task(project_id: str):
     try:
         # Queue the skip task action - this will
         # preserve context for multi-turn
-        skip_task_action = ActionSkipTaskData(project_id=project_id)
+        skip_task_action = ActionSkipTaskData(
+            project_id=project_id, expected_task_id=expected_task_id
+        )
         chat_logger.info(
             "[STOP-BUTTON] Queueing"
             " ActionSkipTaskData"

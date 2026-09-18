@@ -14,6 +14,7 @@
 
 import { useProjectEventStoreHydration } from '@/hooks/useProjectEventStoreHydration';
 import { normalizeLocalRunEvent } from '@/lib/projector';
+import { ProjectEventStoreHydrationError } from '@/service/projectEventStoreHydration';
 import {
   getProjectEventStore,
   resetProjectEventStoresForTests,
@@ -538,4 +539,31 @@ describe('useProjectEventStoreHydration', () => {
     expect(result.current.status).toBe('ready');
     expect(store.getSnapshot().hasHydratedSnapshot).toBe(true);
   });
+  it.each(['invalid_response', 'limit_exceeded'] as const)(
+    'stops automatic retries for %s but permits a fresh manual attempt',
+    async (code) => {
+      vi.useFakeTimers();
+      mocks.hydrate
+        .mockRejectedValueOnce(
+          new ProjectEventStoreHydrationError('Invalid history', code)
+        )
+        .mockResolvedValueOnce(hydrated);
+      const { result } = renderHook(() =>
+        useProjectEventStoreHydration({ projectId: 'project-1', enabled: true })
+      );
+      await flushHydration();
+      expect(result.current).toMatchObject({
+        status: 'error',
+        errorCode: code,
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(120_000);
+      });
+      expect(mocks.hydrate).toHaveBeenCalledTimes(1);
+      act(() => result.current.retry());
+      await flushHydration();
+      expect(mocks.hydrate).toHaveBeenCalledTimes(2);
+      expect(result.current.status).toBe('ready');
+    }
+  );
 });

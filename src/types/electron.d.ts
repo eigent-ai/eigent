@@ -331,6 +331,7 @@ interface ElectronAPI {
   terminalInput: (id: string, data: string) => void;
   terminalResize: (id: string, cols: number, rows: number) => void;
   terminalDispose: (id: string) => Promise<{ success: boolean }>;
+  terminalStop: (id: string) => Promise<{ success: boolean; error?: string }>;
   onTerminalData: (
     callback: (payload: { id: string; data: string }) => void
   ) => () => void;

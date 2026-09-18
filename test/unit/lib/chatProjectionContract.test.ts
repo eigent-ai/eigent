@@ -847,6 +847,7 @@ describe('chat projection presentation contract', () => {
     for (const step of ['confirmed', 'end', 'decompose_text', 'write_file']) {
       expect(shouldProjectLegacyChatStep(step, true)).toBe(false);
       expect(shouldProjectLegacyChatStep(step, false)).toBe(true);
+      expect(shouldProjectLegacyChatStep(step, true, true)).toBe(true);
     }
     expect(shouldProjectLegacyChatStep('ask', true)).toBe(true);
   });

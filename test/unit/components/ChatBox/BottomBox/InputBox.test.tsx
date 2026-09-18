@@ -40,6 +40,18 @@ function primaryAction(container: HTMLElement) {
 }
 
 describe('Inputbox primary action', () => {
+  it('distinguishes adding a follow-up to the queue from sending', () => {
+    const { container, rerender } = render(
+      <Inputbox value="Follow up" queuesFollowUp />
+    );
+    expect(primaryAction(container)).toHaveAttribute(
+      'aria-label',
+      'Add to queue'
+    );
+    rerender(<Inputbox value="First request" />);
+    expect(primaryAction(container)).toHaveAttribute('aria-label', 'Send');
+  });
+
   it('rotates the default arrow upward when text becomes sendable', () => {
     const onSend = vi.fn();
     const { container, rerender } = render(

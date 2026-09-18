@@ -25,8 +25,10 @@ import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useInterruptedRunStatus } from '@/hooks/useInterruptedRunStatus';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
 import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
+import { useUsageIncidentBanner } from '@/hooks/useUsageIncidentBanner';
 import { useHost } from '@/host';
-import { generateUniqueId, SITE_URL } from '@/lib';
+import { generateUniqueId } from '@/lib';
+import { notifyError } from '@/lib/notifyError';
 import {
   isProjectAchieved,
   setProjectAchievedState,
@@ -34,9 +36,11 @@ import {
 import { runEventIngressRegistry } from '@/lib/runEvents/registry';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { takeControlOfTask } from '@/lib/taskRuntimeControl';
+import { errorCopy } from '@/lib/usageErrors';
 import {
   cancelFollowUpRequest,
   createFollowUpRequest,
+  invalidatePendingFollowUps,
   listPendingFollowUpRequests,
   prioritizeFollowUpRequest,
   terminalContinuationAdmissionRejection,
@@ -51,6 +55,12 @@ import { usePageTabStore } from '@/store/pageTabStore';
 import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
 import { openSettings } from '@/store/settingsStore';
 import { useSpaceStore } from '@/store/spaceStore';
+import {
+  acknowledgeUsageNotice,
+  activeUsageIncident,
+  refreshUsage,
+  useUsageNoticeStore,
+} from '@/store/usageNoticeStore';
 import { ExecutionStatus } from '@/types';
 import { DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL } from '@/types/chatTimeline';
 import { AgentStep, ChatTaskStatus, SessionMode } from '@/types/constants';
@@ -87,6 +97,7 @@ import {
   selectActionableInterruptedRun,
   selectComposerTaskControlState,
   selectEventNativeActiveRunId,
+  selectQueueExecution,
 } from './runControlArbitration';
 import { PLAN_OVERLAY_SLOT_ID } from './TaskBox/PlanTaskBox';
 
@@ -216,7 +227,7 @@ const buildUsageLimitBannerState = (
       {
         id: 'trial-daily',
         warningKey: 'chat.usage-limit-trial-daily-warning',
-        exhaustedKey: 'chat.usage-limit-trial-daily-exhausted',
+        exhaustedKey: 'chat.notice-trial-daily',
         limit: toFiniteNumber(subscription.trial_daily_credits_limit),
         used: toFiniteNumber(subscription.trial_daily_credits_used),
         remaining: toFiniteNumber(subscription.trial_daily_credits_remaining),
@@ -224,7 +235,7 @@ const buildUsageLimitBannerState = (
       {
         id: 'trial-total',
         warningKey: 'chat.usage-limit-trial-total-warning',
-        exhaustedKey: 'chat.usage-limit-trial-total-exhausted',
+        exhaustedKey: 'chat.notice-trial-total',
         limit: toFiniteNumber(subscription.trial_total_credits_limit),
         used: toFiniteNumber(subscription.trial_total_credits_used),
         remaining: toFiniteNumber(subscription.trial_total_credits_remaining),
@@ -281,16 +292,15 @@ const buildUsageLimitBannerState = (
     return {
       id: `credits-exhausted:${planKey}`,
       message: t(
-        planKey === 'free'
-          ? 'chat.usage-limit-free-exhausted'
-          : 'chat.usage-limit-monthly-exhausted'
+        planKey === 'free' ? 'chat.notice-free-credits' : 'chat.notice-credits'
       ),
       actionLabel,
       severity: 'danger',
     };
   }
 
-  const planKey = subscription?.plan_key?.toLowerCase() || 'free';
+  if (!subscription?.plan_key) return null;
+  const planKey = subscription.plan_key.toLowerCase();
   const limit =
     planKey === 'free'
       ? FREE_STARTING_CREDITS
@@ -409,10 +419,16 @@ export default function ChatBox(): JSX.Element {
     CHAT_SCROLL_BOTTOM_MIN_PX
   );
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const { modelType, token, user_id } = useAuthStore();
-  const [subscriptionUsage, setSubscriptionUsage] =
-    useState<SubscriptionLimitInfo | null>(null);
-  const [currentCredits, setCurrentCredits] = useState<number | null>(null);
+  const { modelType, user_id } = useAuthStore();
+  const composerModelType =
+    (activeProjectId
+      ? projectStore.projects[activeProjectId]?.metadata?.modelSelection
+          ?.modelType
+      : undefined) ?? modelType;
+  const usage = useUsageNoticeStore();
+  const subscriptionUsage = usage.subscription;
+  const currentCredits = usage.credits;
+  const incident = activeUsageIncident(usage);
   const [dismissedUsageLimitBannerId, setDismissedUsageLimitBannerId] =
     useState<string | null>(null);
   const {
@@ -424,88 +440,42 @@ export default function ChatBox(): JSX.Element {
     useState<InterruptedRunBannerAction>(null);
   const isCloudRestoredRun = interruptedRun?.origin === 'cloud_restore';
 
-  const refreshUsageLimits = useCallback(async () => {
-    if (modelType !== 'cloud' || !token) {
-      setSubscriptionUsage(null);
-      setCurrentCredits(null);
-      return;
-    }
-
-    const [subscriptionResult, creditsResult] = await Promise.allSettled([
-      proxyFetchGet('/api/v1/subscription'),
-      proxyFetchGet('/api/v1/user/current_credits'),
-    ]);
-
-    if (subscriptionResult.status === 'fulfilled') {
-      setSubscriptionUsage(subscriptionResult.value || null);
-    }
-
-    if (creditsResult.status === 'fulfilled') {
-      setCurrentCredits(toFiniteNumber(creditsResult.value?.credits));
-    }
-  }, [modelType, token]);
-
   const scheduleUsageRefresh = useCallback(() => {
-    window.setTimeout(refreshUsageLimits, 2000);
-    window.setTimeout(refreshUsageLimits, 15000);
-  }, [refreshUsageLimits]);
+    window.setTimeout(() => void refreshUsage(), 2000);
+    window.setTimeout(() => void refreshUsage(), 15000);
+  }, []);
 
   const usageLimitBannerState = useMemo(
     () => buildUsageLimitBannerState(subscriptionUsage, currentCredits, t),
     [subscriptionUsage, currentCredits, t]
   );
-
-  const cloudUsageLimitMessage = useMemo(() => {
-    if (modelType !== 'cloud' || !cloudUsageLimitReached) return null;
-    return [
-      usageLimitBannerState?.message ||
-        t('chat.usage-limit-trial-daily-exhausted'),
-      t('chat.usage-limit-switch-model-hint'),
-    ].join(' ');
-  }, [modelType, cloudUsageLimitReached, usageLimitBannerState, t]);
-
-  const effectiveUsageLimitBannerState = useMemo(() => {
-    if (!cloudUsageLimitMessage) return usageLimitBannerState;
-
-    return {
-      id: 'cloud-usage-limit-blocked',
-      message: cloudUsageLimitMessage,
-      actionLabel:
-        usageLimitBannerState?.actionLabel || t('chat.usage-limit-action'),
-      severity: 'danger' as const,
-    };
-  }, [cloudUsageLimitMessage, usageLimitBannerState, t]);
-
-  const usageLimitBanner = useMemo(() => {
-    if (
-      !effectiveUsageLimitBannerState ||
-      effectiveUsageLimitBannerState.id === dismissedUsageLimitBannerId
-    ) {
-      return null;
-    }
-
-    return {
-      ...effectiveUsageLimitBannerState,
-      onAction: () => {
-        window.location.href = `${SITE_URL}/pricing`;
-      },
-      onDismiss: () => {
-        setDismissedUsageLimitBannerId(effectiveUsageLimitBannerState.id);
-      },
-    };
-  }, [effectiveUsageLimitBannerState, dismissedUsageLimitBannerId]);
-
-  useEffect(() => {
-    refreshUsageLimits();
-
-    if (modelType !== 'cloud' || !token) return;
-
-    window.addEventListener('focus', refreshUsageLimits);
-
-    return () => {
-      window.removeEventListener('focus', refreshUsageLimits);
-    };
-  }, [modelType, token, refreshUsageLimits]);
+  const cloudUsageLimitMessage =
+    composerModelType === 'cloud' && cloudUsageLimitReached
+      ? errorCopy(incident?.reason ?? 'credits')
+      : null;
+  const incidentBanner = useUsageIncidentBanner(composerModelType);
+  const bannerId = usageLimitBannerState?.id;
+  // Blockers remain discoverable after the toast is dismissed; warnings can be hidden.
+  const usageLimitBanner =
+    incidentBanner ??
+    (composerModelType !== 'cloud' ||
+    !usageLimitBannerState ||
+    bannerId === dismissedUsageLimitBannerId
+      ? null
+      : {
+          message: usageLimitBannerState.message,
+          actionLabel: t(
+            usage.refreshing ? 'chat.notice-refreshing' : 'chat.notice-refresh'
+          ),
+          severity: usageLimitBannerState.severity,
+          refreshing: usage.refreshing,
+          refreshError: usage.refreshError ? t(usage.refreshError) : undefined,
+          onAction: () => void refreshUsage(),
+          onDismiss: () => {
+            setDismissedUsageLimitBannerId(bannerId ?? null);
+            acknowledgeUsageNotice();
+          },
+        });
 
   const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
 
@@ -577,6 +547,17 @@ export default function ChatBox(): JSX.Element {
     | null
   >(null);
   const queuedDispatchRef = useRef<string | null>(null);
+  const interruptedAdmissionRef = useRef<string | null>(null);
+  // Admission is monotonic. Late pending-list responses must never restore a
+  // request already accepted by HTTP or observed starting in the event stream.
+  const acknowledgedQueuedRequests = useRef(new Set<string>());
+  const queueActionRef = useRef<{
+    projectId: string;
+    taskId: string;
+    runId?: string;
+  } | null>(null);
+  const [queueAction, setQueueAction] =
+    useState<typeof queueActionRef.current>(null);
   const [admittedQueuedRun, setAdmittedQueuedRun] = useState<{
     projectId: string;
     runId: string;
@@ -705,7 +686,7 @@ export default function ChatBox(): JSX.Element {
         error?.response?.data?.detail ||
         error?.message ||
         t('chat.control-decision-failed');
-      toast.error(
+      notifyError(
         typeof message === 'string' ? message : JSON.stringify(message)
       );
     } finally {
@@ -894,6 +875,7 @@ export default function ChatBox(): JSX.Element {
     if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
       return false;
     const task = chatStore.tasks[chatStore.activeTaskId];
+    if (interruptedRun?.run_id === chatStore.activeTaskId) return false;
 
     return (
       // running or paused
@@ -911,9 +893,22 @@ export default function ChatBox(): JSX.Element {
         task.messages.length > 0) ||
       task.isTakeControl
     );
-  }, [chatStore?.activeTaskId, chatStore?.tasks]);
+  }, [chatStore?.activeTaskId, chatStore?.tasks, interruptedRun?.run_id]);
 
-  const isCloudUsageLimited = modelType === 'cloud' && cloudUsageLimitReached;
+  const queueExecution = selectQueueExecution({
+    snapshot: eventNativeTimelineEnabled ? eventNativeProjectSnapshot : null,
+    legacyRunId: chatStore?.activeTaskId,
+    legacyBusy: isTaskBusy,
+    queuedRunIds:
+      (activeProjectId &&
+        projectStore
+          .getProjectById(activeProjectId)
+          ?.queuedMessages.map((item) => item.task_id)) ||
+      [],
+  });
+
+  const isCloudUsageLimited =
+    composerModelType === 'cloud' && cloudUsageLimitReached;
 
   const isInputDisabled = useMemo(() => {
     if (!chatStore?.activeTaskId || !chatStore.tasks[chatStore.activeTaskId])
@@ -951,13 +946,13 @@ export default function ChatBox(): JSX.Element {
       // Check model configuration before starting task
       if (!hasModel) {
         if (isCloudUsageLimited) {
-          toast.error(
+          notifyError(
             cloudUsageLimitMessage ||
               t('chat.usage-limit-trial-daily-exhausted')
           );
           return;
         }
-        toast.error(
+        notifyError(
           t('chat.select-model-first', {
             defaultValue: 'Please select a model first.',
           })
@@ -987,7 +982,7 @@ export default function ChatBox(): JSX.Element {
           );
         } catch (err: any) {
           console.error('Failed to start shared task:', err);
-          toast.error(
+          notifyError(
             err?.message ||
               'Failed to start task. Please check your model configuration.'
           );
@@ -1065,12 +1060,12 @@ export default function ChatBox(): JSX.Element {
 
     if (!hasModel) {
       if (isCloudUsageLimited) {
-        toast.error(
+        notifyError(
           cloudUsageLimitMessage || t('chat.usage-limit-trial-daily-exhausted')
         );
         return;
       }
-      toast.error(
+      notifyError(
         t('chat.select-model-first', {
           defaultValue: 'Please select a model first.',
         })
@@ -1081,7 +1076,7 @@ export default function ChatBox(): JSX.Element {
 
     const targetProjectId = projectStore.activeProjectId;
     if (!targetProjectId) {
-      toast.error(
+      notifyError(
         t('chat.no-active-session', {
           defaultValue: 'No active session selected.',
         })
@@ -1123,7 +1118,16 @@ export default function ChatBox(): JSX.Element {
 
     // Multi-turn support: Check if task is running or planning (splitting/confirm)
     const task = chatStore.tasks[_taskId];
-    const requiresHumanReply = Boolean(task?.activeAsk);
+    const startsAfterInterruption =
+      interruptedRun?.project_id === targetProjectId;
+    if (
+      startsAfterInterruption &&
+      (interruptedAdmissionRef.current === targetProjectId ||
+        (!queuedRequestId && queuedDispatchRef.current !== null))
+    )
+      return;
+    const requiresHumanReply =
+      !startsAfterInterruption && Boolean(task?.activeAsk);
     const reviewHandoffIds = queuedReviewHandoffIds
       ? requestedReviewHandoffIds
       : requestedReviewHandoffIds.filter((handoffId) => {
@@ -1151,7 +1155,7 @@ export default function ChatBox(): JSX.Element {
       setPendingReviewHandoffIds(reviewHandoffIds);
     }
     if (requiresHumanReply && reviewHandoffIds.length > 0) {
-      toast.error(
+      notifyError(
         t('chat.answer-pending-before-review', {
           defaultValue:
             'Answer the pending question before sending review feedback.',
@@ -1180,7 +1184,12 @@ export default function ChatBox(): JSX.Element {
         task.status === ChatTaskStatus.PENDING);
     const _isTaskInProgress = ['running', 'pause'].includes(task?.status || '');
     const isReplayChatStore = task?.type === 'replay';
-    if (!requiresHumanReply && isTaskBusy && !isReplayChatStore) {
+    if (
+      !startsAfterInterruption &&
+      !queuedRequestId &&
+      !requiresHumanReply &&
+      (queueExecution.busy || (isTaskBusy && !isReplayChatStore))
+    ) {
       const queuedFiles = JSON.parse(
         JSON.stringify(chatStore.tasks[_taskId]?.attaches || [])
       );
@@ -1195,7 +1204,7 @@ export default function ChatBox(): JSX.Element {
         });
       } catch (error: any) {
         console.error('[FollowUpQueue] Failed to persist message', error);
-        toast.error(error?.message || 'Failed to queue message.');
+        notifyError(error?.message || 'Failed to queue message.');
         return;
       }
       projectStore.restoreQueuedMessage(targetProjectId, {
@@ -1227,7 +1236,7 @@ export default function ChatBox(): JSX.Element {
         achieved: false,
       }).catch((error) => {
         console.error('[handleSend] Failed to resume achieved Project:', error);
-        toast.error(
+        notifyError(
           t('chat.resumed-session-save-failed', {
             defaultValue: "Couldn't save the resumed session. Try again.",
           })
@@ -1238,13 +1247,46 @@ export default function ChatBox(): JSX.Element {
     if (textareaRef.current) textareaRef.current.style.height = '60px';
     let messageAccepted = false;
     try {
-      if (queuedRequestId) {
+      if (startsAfterInterruption && !queuedRequestId) {
+        // A new instruction is a new task, never an implicit Resume. Keep the
+        // interrupted task and its tool outcomes intact for history/review.
+        interruptedAdmissionRef.current = targetProjectId;
+        const nextTaskId = generateUniqueId();
+        const attachesToSend = composerAttachments || [];
+        ensureActiveProjectMode();
+        await chatStore.startTask(
+          nextTaskId,
+          undefined,
+          undefined,
+          undefined,
+          tempMessageContent,
+          attachesToSend,
+          executionId,
+          targetProjectId,
+          effectiveSessionMode,
+          {
+            preserveTaskId: true,
+            awaitAdmission: true,
+            ...(reviewHandoffIds.length ? { reviewHandoffIds } : {}),
+          }
+        );
+        // Admission can lead the Project projection. Keep older queued work
+        // behind this exact new Run until its terminal state is observed.
+        setAdmittedQueuedRun({ projectId: targetProjectId, runId: nextTaskId });
+        messageAccepted = true;
+        if (!preserveComposer) {
+          setMessage('');
+          chatStore.setAttaches(_taskId, []);
+        }
+      } else if (queuedRequestId) {
         chatStore.setNextTaskId(queuedRequestId);
         chatStore.setNextExecutionId(_taskId, undefined);
         const queuedFiles = queuedAttaches || [];
-        const backendStatus = await fetchGet(
-          `/chat/${encodeURIComponent(targetProjectId)}/status`
-        );
+        const backendStatus = startsAfterInterruption
+          ? { has_lock: false }
+          : await fetchGet(
+              `/chat/${encodeURIComponent(targetProjectId)}/status`
+            );
         if (backendStatus?.has_lock) {
           await fetchPost(`/chat/${targetProjectId}`, {
             question: tempMessageContent,
@@ -1284,7 +1326,7 @@ export default function ChatBox(): JSX.Element {
         messageAccepted = true;
       } else if (requiresHumanReply) {
         if (requiresApprovalDecision) {
-          toast.error(
+          notifyError(
             t('chat.use-approval-card', {
               defaultValue:
                 'Use the approval card to approve or reject this action.',
@@ -1326,7 +1368,7 @@ export default function ChatBox(): JSX.Element {
           chatStore.removeMessage(_taskId, humanReplyMessageId);
           chatStore.setIsPending(_taskId, false);
           setMessage(tempMessageContent);
-          toast.error(error?.message || 'Failed to send your reply.');
+          notifyError(error?.message || 'Failed to send your reply.');
           return;
         }
         if (replyResult?.code === 1) {
@@ -1335,7 +1377,7 @@ export default function ChatBox(): JSX.Element {
           chatStore.setActiveAskList(_taskId, []);
           chatStore.setActiveAsk(_taskId, '');
           setMessage(tempMessageContent);
-          toast.error(
+          notifyError(
             replyResult.text || 'This task is no longer waiting for a reply.'
           );
           return;
@@ -1434,7 +1476,7 @@ export default function ChatBox(): JSX.Element {
               }
             } catch (err: any) {
               console.error('Failed to start task:', err);
-              toast.error(
+              notifyError(
                 err?.message ||
                   'Failed to start task. Please check your model configuration.'
               );
@@ -1472,7 +1514,7 @@ export default function ChatBox(): JSX.Element {
               const prepareError = new Error(
                 t('chat.follow-up-prepare-failed')
               );
-              toast.error(prepareError.message);
+              notifyError(prepareError.message);
               throw prepareError;
             }
 
@@ -1529,7 +1571,7 @@ export default function ChatBox(): JSX.Element {
                   error?.message ||
                   '❌ **Error**: Failed to start the follow-up task.',
               });
-              toast.error(error?.message || 'Failed to send follow-up.');
+              notifyError(error?.message || 'Failed to send follow-up.');
               if (preserveComposer) throw error;
             }
           }
@@ -1565,7 +1607,7 @@ export default function ChatBox(): JSX.Element {
             }
           } catch (err: any) {
             console.error('Failed to start task:', err);
-            toast.error(
+            notifyError(
               err?.message ||
                 'Failed to start task. Please check your model configuration.'
             );
@@ -1576,9 +1618,16 @@ export default function ChatBox(): JSX.Element {
       }
     } catch (error) {
       console.error('error:', error);
+      if (startsAfterInterruption)
+        notifyError(
+          error instanceof Error ? error.message : t('chat.run-resume-failed')
+        );
       if (preserveComposer) throw error;
     } finally {
+      if (interruptedAdmissionRef.current === targetProjectId)
+        interruptedAdmissionRef.current = null;
       if (messageAccepted && !requiresHumanReply) {
+        if (startsAfterInterruption) setInterruptedRun(null);
         acknowledgeWorkspaceReviewHandoffs(targetProjectId, reviewHandoffIds);
         setPendingReviewHandoffIds([]);
       }
@@ -1593,7 +1642,7 @@ export default function ChatBox(): JSX.Element {
   const handleResumeInterruptedRun = async () => {
     if (!interruptedRun || !activeProjectId || !chatStore) return;
     if (!hasModel) {
-      toast.error(
+      notifyError(
         t('chat.select-model-before-resume', {
           defaultValue: 'Select a model before resuming this task.',
         })
@@ -1620,6 +1669,7 @@ export default function ChatBox(): JSX.Element {
           skipHistoryCreate: true,
           historyId: projectStore.getHistoryId(activeProjectId),
           resumeRequestId: requestId,
+          awaitAdmission: true,
         }
       );
       // Admission is now owned by the existing task card/SSE. Hide the stale
@@ -1631,7 +1681,7 @@ export default function ChatBox(): JSX.Element {
     } catch (error: any) {
       console.error('[RunControl] Failed to resume Run', error);
       clearRunActionRequestId('resume', run.run_id);
-      toast.error(error?.message || t('chat.run-resume-failed'));
+      notifyError(error?.message || t('chat.run-resume-failed'));
       await refreshInterruptedRun();
     } finally {
       setDurableRunAction(null);
@@ -1663,36 +1713,145 @@ export default function ChatBox(): JSX.Element {
       }
     } catch (error: any) {
       console.error('[RunControl] Failed to cancel Run', error);
-      toast.error(error?.message || t('chat.run-cancel-failed'));
+      notifyError(error?.message || t('chat.run-cancel-failed'));
       await refreshInterruptedRun();
     } finally {
       setDurableRunAction(null);
     }
   };
 
-  // Reactive queuedMessages for the active project
+  const queueWaitingReason = interruptedRun
+    ? t('chat.queue-wait-interrupted')
+    : activeAsk
+      ? t('chat.queue-wait-reply')
+      : !hasModel
+        ? t('chat.queue-wait-model')
+        : isCloudUsageLimited
+          ? t('chat.queue-wait-usage')
+          : undefined;
+  const queueLocked = queueAction?.projectId === activeProjectId;
+  const queueContext = {
+    sessionId: activeProjectId ?? undefined,
+    activeTaskId: queueExecution.runId,
+    busy: queueExecution.busy,
+    locked: queueLocked,
+    waitingReason: queueWaitingReason,
+  };
+
+  useEffect(() => {
+    if (!queueAction?.runId) return;
+    const projected = eventNativeProjectSnapshot?.view.runs[queueAction.runId];
+    const task = projectStore
+      .getAllChatStores(queueAction.projectId)
+      .map(({ chatStore: store }) => store.getState().tasks[queueAction.runId!])
+      .find(Boolean);
+    const stopped = projected
+      ? TERMINAL_QUEUED_RUN_STATUSES.has(projected.status)
+      : task?.status === ChatTaskStatus.FINISHED;
+    if (stopped && queueActionRef.current === queueAction) {
+      queueActionRef.current = null;
+      setQueueAction(null);
+    }
+  }, [queueAction, eventNativeProjectSnapshot, projectStore, chatStore?.tasks]);
+
+  useEffect(() => {
+    if (!queueAction?.runId) return;
+    const timeout = window.setTimeout(() => {
+      if (queueActionRef.current !== queueAction) return;
+      void runEventIngressRegistry.replayRun(
+        queueAction.projectId,
+        queueAction.runId!
+      );
+      queueActionRef.current = null;
+      setQueueAction(null);
+      notifyError(t('chat.queue-stop-failed-next'));
+    }, 20000);
+    return () => window.clearTimeout(timeout);
+  }, [queueAction, t]);
+
+  const startedQueueRunIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (!eventNativeProjectSnapshot) return ids;
+    for (const run of Object.values(eventNativeProjectSnapshot.view.runs)) {
+      if (
+        ['running', 'waiting_for_user', 'cancelling', 'completed'].includes(
+          run.status
+        )
+      )
+        ids.add(run.runId);
+    }
+    // Retain evidence for Runs which already ended before this render.
+    for (const node of eventNativeProjectSnapshot.chat.nodes) {
+      if (node.eventType === 'run.attempt_started') ids.add(node.runId);
+    }
+    return ids;
+  }, [eventNativeProjectSnapshot]);
+
+  const acknowledgeQueuedRequest = useCallback(
+    (projectId: string, runId: string) => {
+      acknowledgedQueuedRequests.current.add(
+        JSON.stringify([projectId, runId])
+      );
+      invalidatePendingFollowUps(projectId);
+      if (
+        projectStore
+          .getProjectById(projectId)
+          ?.queuedMessages.some((item) => item.task_id === runId)
+      )
+        projectStore.removeQueuedMessage(projectId, runId);
+    },
+    [projectStore]
+  );
+
+  // Hide a started row in the same render as its timeline event. Waiting for
+  // the admission HTTP response can leave "Starting" visible behind the chat.
   const queuedMessages = useMemo(() => {
     const pid = projectStore.activeProjectId;
     if (!pid) return [];
     const project = projectStore.getProjectById(pid);
-    return (project?.queuedMessages || []).map((m) => ({
-      id: m.task_id,
-      content: m.content,
-      timestamp: m.timestamp,
-      processing: m.processing,
-      canSendNow:
-        !m.executionId &&
-        m.source !== 'scheduled' &&
-        m.source !== 'remote_control' &&
-        !interruptedRun,
-    }));
-  }, [interruptedRun, projectStore]);
+    return (project?.queuedMessages || [])
+      .filter((m) => !startedQueueRunIds.has(m.task_id))
+      .map((m) => ({
+        id: m.task_id,
+        content: m.content,
+        timestamp: m.timestamp,
+        processing: m.processing,
+        next: m.sendNow,
+        stopping:
+          queueAction?.projectId === pid && queueAction.taskId === m.task_id,
+        canReorder:
+          !m.executionId &&
+          m.source !== 'scheduled' &&
+          m.source !== 'remote_control',
+        canSendNow:
+          !m.executionId &&
+          m.source !== 'scheduled' &&
+          m.source !== 'remote_control' &&
+          !interruptedRun,
+      }));
+  }, [interruptedRun, projectStore, queueAction, startedQueueRunIds]);
+
+  useEffect(() => {
+    if (!activeProjectId) return;
+    for (const item of projectStore.getProjectById(activeProjectId)
+      ?.queuedMessages || []) {
+      if (startedQueueRunIds.has(item.task_id))
+        acknowledgeQueuedRequest(activeProjectId, item.task_id);
+    }
+  }, [
+    activeProjectId,
+    projectStore,
+    startedQueueRunIds,
+    acknowledgeQueuedRequest,
+  ]);
 
   useEffect(() => {
     const projectId = projectStore.activeProjectId;
     if (!projectId) return;
+    let cancelled = false;
     void listPendingFollowUpRequests(projectId)
       .then((items) => {
+        if (cancelled) return;
         const durableIds = new Set(items.map((item) => item.request_id));
         const current =
           projectStore.getProjectById(projectId)?.queuedMessages || [];
@@ -1702,6 +1861,12 @@ export default function ChatBox(): JSX.Element {
           }
         }
         for (const item of items) {
+          if (
+            acknowledgedQueuedRequests.current.has(
+              JSON.stringify([projectId, item.request_id])
+            )
+          )
+            continue;
           projectStore.restoreQueuedMessage(projectId, {
             task_id: item.request_id,
             run_id: item.request_id,
@@ -1719,11 +1884,15 @@ export default function ChatBox(): JSX.Element {
         }
       })
       .catch((error) => {
+        if (cancelled) return;
         console.warn(
           '[FollowUpQueue] Failed to restore pending messages',
           error
         );
       });
+    return () => {
+      cancelled = true;
+    };
   }, [projectStore, projectStore.activeProjectId]);
 
   useEffect(() => {
@@ -1768,9 +1937,9 @@ export default function ChatBox(): JSX.Element {
     if (
       !projectId ||
       !activeId ||
-      isTaskBusy ||
-      activeAsk ||
+      queueExecution.busy ||
       interruptedRun ||
+      activeAsk ||
       !hasModel ||
       isCloudUsageLimited
     )
@@ -1779,7 +1948,12 @@ export default function ChatBox(): JSX.Element {
     // renderer projection. Keep a Project-scoped barrier until that exact Run
     // is terminal so React batching cannot drain the next FIFO row early.
     if (admittedQueuedRun?.projectId === projectId) return;
-    if (queuedDispatchRef.current) return;
+    if (
+      queuedDispatchRef.current ||
+      interruptedAdmissionRef.current === projectId ||
+      queueActionRef.current?.projectId === projectId
+    )
+      return;
 
     const project = projectStore.getProjectById(projectId);
     const candidates = (project?.queuedMessages || []).filter(
@@ -1802,34 +1976,43 @@ export default function ChatBox(): JSX.Element {
     )
       .then(() => {
         setAdmittedQueuedRun({ projectId, runId: next.task_id });
-        projectStore.removeQueuedMessage(projectId, next.task_id);
+        acknowledgeQueuedRequest(projectId, next.task_id);
       })
       .catch((error) => {
+        // A delayed/lost HTTP response cannot undo an observed Run start.
+        if (
+          acknowledgedQueuedRequests.current.has(
+            JSON.stringify([projectId, next.task_id])
+          )
+        )
+          return;
         console.error('[FollowUpQueue] Failed to admit queued message', error);
         const rejection = terminalContinuationAdmissionRejection(error);
         if (rejection) {
           // Brain has durably cancelled this queue row. Remove only the
           // renderer projection and leave the typed explanation visible.
           projectStore.removeQueuedMessage(projectId, next.task_id);
-          toast.error(rejection.message);
+          notifyError(rejection.message);
           return;
         }
         projectStore.setQueuedMessageProcessing(projectId, next.task_id, false);
-        toast.error(error?.message || 'Failed to send queued message.');
+        notifyError(error?.message || 'Failed to send queued message.');
       })
       .finally(() => {
         queuedDispatchRef.current = null;
       });
   }, [
+    acknowledgeQueuedRequest,
     activeAsk,
     admittedQueuedRun,
     chatStore?.activeTaskId,
     hasModel,
     isCloudUsageLimited,
-    isTaskBusy,
+    queueExecution.busy,
     interruptedRun,
     projectStore,
     queuedMessages,
+    queueAction,
   ]);
 
   useEffect(() => {
@@ -1879,7 +2062,7 @@ export default function ChatBox(): JSX.Element {
               } as File);
             } catch (error) {
               console.error('Select File Upload Error:', error);
-              toast.error(
+              notifyError(
                 t('chat.file-upload-failed', {
                   name: selectedFile.name,
                   defaultValue: 'Failed to upload {{name}}',
@@ -1976,7 +2159,7 @@ export default function ChatBox(): JSX.Element {
           '[STOP-BUTTON] ❌ Failed to stop task locally:',
           localError
         );
-        toast.error(
+        notifyError(
           t('chat.task-stop-failed-refresh', {
             defaultValue:
               'Failed to stop task completely. Please refresh the page.',
@@ -2004,7 +2187,7 @@ export default function ChatBox(): JSX.Element {
         taskId,
       });
       if (!changed) {
-        toast.error(
+        notifyError(
           t(`chat.${action}-task-failed`, {
             defaultValue: `Failed to ${action} the task.`,
           })
@@ -2015,26 +2198,83 @@ export default function ChatBox(): JSX.Element {
     }
   };
 
-  const handleSendQueuedMessageNow = async (taskId: string) => {
-    const projectId = projectStore.activeProjectId;
-    if (!projectId) return;
-
+  const handleSendQueuedMessageNow = async (
+    taskId: string,
+    expectedTaskId?: string
+  ) => {
+    const state = projectStore;
+    const projectId = state.activeProjectId;
+    if (!projectId || queueActionRef.current || queueWaitingReason) return;
+    const queued = state
+      .getProjectById(projectId)
+      ?.queuedMessages.find((item) => item.task_id === taskId);
+    if (
+      !queued ||
+      queued.processing ||
+      queued.executionId ||
+      queued.source === 'scheduled' ||
+      queued.source === 'remote_control'
+    )
+      return;
+    const runId = queueExecution.runId;
+    // Opening a dialog is not permission to stop a replacement task.
+    if (queueExecution.busy && (!expectedTaskId || runId !== expectedTaskId)) {
+      notifyError(t('chat.queue-task-changed'));
+      return;
+    }
+    const action = {
+      projectId,
+      taskId,
+      runId: queueExecution.busy ? runId : undefined,
+    };
+    queueActionRef.current = action;
+    setQueueAction(action);
+    let prioritySaved = false;
     try {
       await prioritizeFollowUpRequest(projectId, taskId);
-      projectStore.prioritizeQueuedMessage(projectId, taskId);
-      if (!isTaskBusy) return;
-      await fetchPost(`/chat/${projectId}/skip-task`, {
-        project_id: projectId,
-      });
-      toast.success(
-        t('chat.stopping-current-task-queued-next', {
-          defaultValue:
-            'Stopping the current task. Your queued message will start next.',
-        })
+      prioritySaved = true;
+      state.prioritizeQueuedMessage(projectId, taskId);
+      if (queueActionRef.current !== action) return;
+      if (!action.runId) {
+        queueActionRef.current = null;
+        setQueueAction(null);
+        return;
+      }
+      await fetchPost(
+        `/chat/${encodeURIComponent(projectId)}/skip-task?expected_task_id=${encodeURIComponent(action.runId)}`,
+        {
+          project_id: projectId,
+        }
       );
-    } catch (error: any) {
-      console.error('[FollowUpQueue] Failed to stop active Run', error);
-      toast.error(error?.message || 'Failed to send the queued message now.');
+      // Keep the queue locked until the exact task's terminal event is observed.
+      void runEventIngressRegistry.replayRun(projectId, action.runId);
+    } catch (error) {
+      console.error('[FollowUpQueue] Failed to prioritize or stop task', error);
+      try {
+        const pending = await listPendingFollowUpRequests(projectId);
+        const next = pending.find((item) => item.delivery_mode === 'send_now');
+        state.prioritizeQueuedMessage(projectId, next?.request_id ?? '');
+        prioritySaved = next?.request_id === taskId;
+      } catch {
+        // Keep the last observed queue priority when reconciliation is unavailable.
+      }
+      notifyError(
+        t(
+          prioritySaved
+            ? (error as { status?: number })?.status === 409
+              ? 'chat.queue-task-changed'
+              : 'chat.queue-stop-failed-next'
+            : 'chat.queue-priority-failed'
+        )
+      );
+      if (action.runId)
+        void runEventIngressRegistry.replayRun(projectId, action.runId);
+      // The persisted priority remains visible as Next. Automatic dispatch still
+      // requires the current task to become terminal; never fake a stopped state.
+      if (queueActionRef.current === action) {
+        queueActionRef.current = null;
+        setQueueAction(null);
+      }
     }
   };
 
@@ -2137,8 +2377,16 @@ export default function ChatBox(): JSX.Element {
     return 'input';
   };
 
+  const handleReorderTaskQueue = (id: string, targetId: string) => {
+    const projectId = projectStore.activeProjectId;
+    if (!projectId || queueActionRef.current || queuedDispatchRef.current)
+      return;
+    projectStore.reorderQueuedMessage(projectId, id, targetId);
+  };
+
   const handleRemoveTaskQueue = async (task_id: string) => {
     const project_id = projectStore.activeProjectId;
+    if (queueActionRef.current?.projectId === project_id) return;
     if (!project_id) {
       console.error('No active project ID found');
       return;
@@ -2172,7 +2420,7 @@ export default function ChatBox(): JSX.Element {
       projectStore.removeQueuedMessage(project_id, task_id);
     } catch (error) {
       console.error(`[ChatBox] Failed to cancel task ${task_id}:`, error);
-      toast.error(
+      notifyError(
         t('chat.cancel-task-failed', {
           defaultValue: 'Failed to cancel task',
         }),
@@ -2226,7 +2474,7 @@ export default function ChatBox(): JSX.Element {
       });
     } catch (error: any) {
       console.error('[RunControl] Failed to stop Run', error);
-      toast.error(
+      notifyError(
         error?.message ||
           t('chat.run-stop-failed', {
             defaultValue: 'Failed to stop this Run.',
@@ -2398,8 +2646,10 @@ export default function ChatBox(): JSX.Element {
                 <BottomBox
                   state="input"
                   queuedMessages={queuedMessages}
+                  queueContext={queueContext}
                   onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
                   onSendQueuedMessageNow={handleSendQueuedMessageNow}
+                  onReorderQueuedMessage={handleReorderTaskQueue}
                   usageLimitBanner={usageLimitBanner}
                   noModelOverlay={!hasModel && !isCloudUsageLimited}
                   onSelectModel={handleSelectModel}
@@ -2407,6 +2657,7 @@ export default function ChatBox(): JSX.Element {
                     value: message,
                     onChange: setMessage,
                     onSend: handleSend,
+                    queuesFollowUp: isTaskBusy && !activeAsk,
                     taskControlState: composerTaskControlState,
                     onPauseTask: () => void handleTaskControl('pause'),
                     onResumeTask: () => void handleTaskControl('resume'),
@@ -2432,6 +2683,7 @@ export default function ChatBox(): JSX.Element {
                   sessionMode={effectiveSessionMode}
                   sessionModeSelectInteractive={false}
                   modelSelectProjectId={activeProjectId}
+                  modelSelectDisabled={isCloudUsageLimited ? false : undefined}
                 />
               )}
             </div>
@@ -2495,8 +2747,10 @@ export default function ChatBox(): JSX.Element {
                 }
                 variant={bottomBoxVariant}
                 queuedMessages={queuedMessages}
+                queueContext={queueContext}
                 onRemoveQueuedMessage={(id) => handleRemoveTaskQueue(id)}
                 onSendQueuedMessageNow={handleSendQueuedMessageNow}
+                onReorderQueuedMessage={handleReorderTaskQueue}
                 usageLimitBanner={usageLimitBanner}
                 noModelOverlay={!hasModel && !isCloudUsageLimited}
                 onSelectModel={handleSelectModel}
@@ -2530,6 +2784,7 @@ export default function ChatBox(): JSX.Element {
                   value: message,
                   onChange: setMessage,
                   onSend: handleSend,
+                  queuesFollowUp: isTaskBusy && !activeAsk,
                   taskControlState: composerTaskControlState,
                   onPauseTask: () => void handleTaskControl('pause'),
                   onResumeTask: () => void handleTaskControl('resume'),
@@ -2553,6 +2808,7 @@ export default function ChatBox(): JSX.Element {
                 sessionMode={displaySessionMode}
                 sessionModeSelectInteractive={false}
                 modelSelectProjectId={activeProjectId}
+                modelSelectDisabled={isCloudUsageLimited ? false : undefined}
               />
             </div>
           </div>

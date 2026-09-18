@@ -15,7 +15,10 @@
 import { RIGHT_RAIL_CONTENT_WIDTH_CLASS } from '@/components/Layout/rightRail';
 import { SessionActivityPanel } from '@/components/Session/SidePanel/components/ActivityPanel';
 import ExpandedOverlay from '@/components/Session/SidePanel/components/ExpandedOverlay';
-import { SidePanelHeader } from '@/components/Session/SidePanel/components/Header';
+import {
+  SessionHistoryAction,
+  SidePanelHeader,
+} from '@/components/Session/SidePanel/components/Header';
 import { WorkforceHeaderAction } from '@/components/Session/SidePanel/components/WorkforceHeaderAction';
 import type { SessionPanelScope } from '@/components/Session/SidePanel/sections/sessionPanelScope';
 import {
@@ -90,26 +93,29 @@ export function SessionSidePanel({
           isSidePanelVisible={isSidePanelVisible}
           onToggle={onToggleSidePanel}
           end={
-            <Select
-              value={scope}
-              onValueChange={(value) => {
-                if (value === 'latest' || value === 'all') setScope(value);
-              }}
-            >
-              <SelectTrigger
-                size="sm"
-                variant="secondary"
-                aria-label={scopeLabel}
-                wrapperClassName="w-fit max-w-full"
-                className="h-7 w-auto justify-center gap-0 rounded-lg border-transparent px-2 !text-ds-text-meta [&>svg]:hidden"
+            <>
+              <SessionHistoryAction />
+              <Select
+                value={scope}
+                onValueChange={(value) => {
+                  if (value === 'latest' || value === 'all') setScope(value);
+                }}
               >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent align="end">
-                <SelectItem value="latest">{latestOnlyLabel}</SelectItem>
-                <SelectItem value="all">{allLabel}</SelectItem>
-              </SelectContent>
-            </Select>
+                <SelectTrigger
+                  size="sm"
+                  variant="secondary"
+                  aria-label={scopeLabel}
+                  wrapperClassName="w-fit max-w-full"
+                  className="h-7 w-auto justify-center gap-0 rounded-lg border-transparent px-2 !text-ds-text-meta [&>svg]:hidden"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent align="end">
+                  <SelectItem value="latest">{latestOnlyLabel}</SelectItem>
+                  <SelectItem value="all">{allLabel}</SelectItem>
+                </SelectContent>
+              </Select>
+            </>
           }
         />
 

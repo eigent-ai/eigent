@@ -30,7 +30,6 @@ import React, {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AgentMessageCard } from './MessageItem/AgentMessageCard';
-import { ArtifactChangeList } from './MessageItem/ArtifactChangeList';
 import {
   HumanInteractionCard,
   isHumanInteractionReadOnly,
@@ -45,6 +44,7 @@ import { UserMessageCard } from './MessageItem/UserMessageCard';
 import { PlanTaskBox } from './TaskBox/PlanTaskBox';
 import { isPlanSplittingPhase } from './TaskBox/PlanTaskBox/utils';
 import { TaskCard } from './TaskBox/TaskCard';
+import { RunArtifactChangeList } from './TimelineModes/RunFiles';
 
 /** Collapsible card that shows a single agent's result (workforce / non–single-agent turns). */
 const AgentResultCard: React.FC<{
@@ -522,6 +522,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   typewriter={shouldUseLiveAgentTypewriter(task, message.id)}
                   id={message.id}
                   content={message.content}
+                  errorReason={message.errorReason}
                   onTyping={() => {}}
                   deferredFooter={
                     message.fileList?.length ||
@@ -529,7 +530,8 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                     (task?.artifactManifestScanStatus &&
                       task.artifactManifestScanStatus !== 'complete') ? (
                       <div className="flex flex-col gap-2">
-                        <ArtifactChangeList
+                        <RunArtifactChangeList
+                          runId={activeTaskId || ''}
                           files={message.fileList || []}
                           onOpen={openFilePreview}
                           onViewChanges={viewChanges}
@@ -593,6 +595,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   typewriter={shouldUseLiveAgentTypewriter(task, message.id)}
                   id={message.id}
                   content={message.content}
+                  errorReason={message.errorReason}
                   onTyping={() => {}}
                   attaches={message.attaches}
                 />
@@ -608,7 +611,8 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
               transition={{ delay: 0.2 }}
               className="flex flex-col"
             >
-              <ArtifactChangeList
+              <RunArtifactChangeList
+                runId={activeTaskId || ''}
                 files={message.fileList}
                 onOpen={openFilePreview}
                 onViewChanges={viewChanges}

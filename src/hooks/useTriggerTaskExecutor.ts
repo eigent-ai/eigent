@@ -14,6 +14,7 @@
 
 import { proxyFetchGet } from '@/api/http';
 import i18n from '@/i18n';
+import { notifyExecutionError } from '@/lib/notifyError';
 import { createFollowUpRequest } from '@/service/followUpQueueApi';
 import {
   ProjectType,
@@ -254,7 +255,7 @@ export function useTriggerTaskExecutor() {
         );
       } catch (error: any) {
         console.error('[TriggerTaskExecutor] Task queueing failed:', error);
-        toast.error(
+        notifyExecutionError(
           i18n.t('triggers.execution-failed-toast', { name: task.triggerName }),
           {
             description:
