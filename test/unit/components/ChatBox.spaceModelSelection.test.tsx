@@ -197,6 +197,7 @@ describe('ChatBox after an accepted Space model selection', () => {
   let chat: ReturnType<typeof useChatStore>;
   let project: any;
   let installed: any;
+  let canonicalRecovery: any;
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubGlobal(
@@ -258,6 +259,12 @@ describe('ChatBox after an accepted Space model selection', () => {
       model_ref: 'provider://cloud/space-model',
       thinking_effort: 'high',
     };
+    canonicalRecovery = {
+      space_id: 'space-1',
+      project_id: 'session-1',
+      accepted: null,
+      restore_pending: false,
+    };
     mocks.projectStore = {
       activeProjectId: 'session-1',
       projects: { 'session-1': project },
@@ -301,12 +308,7 @@ describe('ChatBox after an accepted Space model selection', () => {
     };
     mocks.localGet.mockImplementation(async (url) =>
       url.includes('/session-model')
-        ? {
-            space_id: 'space-1',
-            project_id: 'session-1',
-            accepted: null,
-            restore_pending: false,
-          }
+        ? canonicalRecovery
         : url.includes('/model-selection')
           ? { space_id: 'space-1', selection: installed }
           : url.endsWith('/status')
@@ -433,6 +435,401 @@ describe('ChatBox after an accepted Space model selection', () => {
       ).not.toBeInTheDocument()
     );
   }
+  async function acceptInitialRunWithoutAck() {
+    mocks.sse.mockImplementationOnce(async () => {
+      throw new Error('Synthetic ACK lost after canonical acceptance');
+    });
+    await expect(start()).rejects.toThrow('Synthetic ACK lost');
+    const acceptedRequest = request();
+    expect(acceptedRequest.session_model_selection).toMatchObject({
+      model_ref: installed.model_ref,
+      model_type: acceptedRequest.model_type,
+      model_platform: acceptedRequest.model_platform,
+    });
+    expect(project.metadata.spaceModelAdmissionRunId).toBe(
+      acceptedRequest.run_id
+    );
+    expect(project.metadata.modelSelection).toBeUndefined();
+    expect(mocks.projectStore.setProjectModel).not.toHaveBeenCalled();
+    expect(mocks.sse).toHaveBeenCalledOnce();
+    // The synthetic canonical fact comes from the actual first request. The
+    // renderer never receives onopen, so no initial pin is manually removed.
+    canonicalRecovery.accepted = {
+      run_id: acceptedRequest.run_id,
+      selection: acceptedRequest.session_model_selection,
+    };
+    interruptRun(acceptedRequest.run_id);
+    installed = {
+      ...installed,
+      revision_id: 'bundle@2',
+      model_ref: 'provider://cloud/different',
+    };
+    mocks.localGet.mockClear();
+    mocks.get.mockClear();
+    return acceptedRequest;
+  }
+  it('recovers an accepted receipt through actual cold Resume after its initial ACK was lost', async () => {
+    const acceptedRequest = await acceptInitialRunWithoutAck();
+    await renderChat();
+    expect(screen.getByRole('button', { name: 'Follow up' })).toBeDisabled();
+    await resumeInterruptedRun();
+    await waitFor(() => expect(mocks.sse).toHaveBeenCalledTimes(2));
+    expect(mocks.localGet).toHaveBeenCalledWith(
+      '/spaces/space-1/workspace-configuration/session-model',
+      expect.objectContaining({
+        project_id: 'session-1',
+        user_id: 'account-a',
+        email: 'a@example.test',
+      })
+    );
+    expect(
+      mocks.localGet.mock.calls.filter(([url]) =>
+        url.includes('/model-selection')
+      )
+    ).toHaveLength(0);
+    expect(mocks.post).toHaveBeenCalledWith(
+      `/runs/${acceptedRequest.run_id}/resume`,
+      expect.objectContaining({
+        request_id: expect.any(String),
+        reason: 'explicit_resume',
+      })
+    );
+    expect(request()).toMatchObject({
+      run_id: acceptedRequest.run_id,
+      task_id: acceptedRequest.run_id,
+      model_type: 'gpt-6-astra',
+      model_platform: 'azure',
+      api_key: acceptedRequest.api_key,
+      api_url: acceptedRequest.api_url,
+      extra_params: acceptedRequest.extra_params,
+    });
+    expect(JSON.parse(JSON.stringify(request()))).not.toHaveProperty(
+      'workspace_model_selection'
+    );
+    expect(project.metadata.modelSelection).toEqual(
+      acceptedRequest.session_model_selection
+    );
+    expect(project.metadata.spaceModelAdmissionRunId).toBeNull();
+    expect(mocks.auth).toMatchObject({
+      modelType: 'custom',
+      hasModelConfigured: false,
+    });
+    expect(notifyError).not.toHaveBeenCalled();
+  });
+  it('allows cold receipt recovery when server sync omitted the pending marker', async () => {
+    const acceptedRequest = await acceptInitialRunWithoutAck();
+    delete project.metadata.spaceModelDefaultPending;
+    await renderChat();
+    await resumeInterruptedRun();
+    await waitFor(() => expect(mocks.sse).toHaveBeenCalledTimes(2));
+    expect(request().run_id).toBe(acceptedRequest.run_id);
+    expect(project.metadata.modelSelection).toEqual(
+      acceptedRequest.session_model_selection
+    );
+  });
+  it('allows pending-only cold recovery only through the canonical accepted selection', async () => {
+    const acceptedRequest = await acceptInitialRunWithoutAck();
+    delete project.metadata.spaceModelAdmissionRunId;
+    await renderChat();
+    await resumeInterruptedRun();
+    await waitFor(() => expect(mocks.sse).toHaveBeenCalledTimes(2));
+    expect(project.metadata.modelSelection).toEqual(
+      acceptedRequest.session_model_selection
+    );
+    expect(
+      mocks.localGet.mock.calls.filter(([url]) =>
+        url.includes('/model-selection')
+      )
+    ).toHaveLength(0);
+  });
+  it.each([
+    'unconfirmed receipt',
+    'restore pending',
+    'unconfirmed pending marker',
+    'revoked access',
+    'foreign canonical Space',
+    'foreign canonical Session',
+  ])('fails cold recovery closed for %s', async (reason) => {
+    await acceptInitialRunWithoutAck();
+    if (
+      reason === 'unconfirmed receipt' ||
+      reason === 'restore pending' ||
+      reason === 'unconfirmed pending marker'
+    )
+      canonicalRecovery.accepted = null;
+    if (reason === 'restore pending') canonicalRecovery.restore_pending = true;
+    if (reason === 'unconfirmed pending marker')
+      delete project.metadata.spaceModelAdmissionRunId;
+    if (reason === 'foreign canonical Space')
+      canonicalRecovery.space_id = 'foreign-space';
+    if (reason === 'foreign canonical Session')
+      canonicalRecovery.project_id = 'foreign-session';
+    if (reason === 'revoked access') {
+      const localGet = mocks.localGet.getMockImplementation()!;
+      mocks.localGet.mockImplementation(async (...args) => {
+        if (args[0].includes('/session-model'))
+          throw Object.assign(new Error('Synthetic access revoked'), {
+            response: { status: 403 },
+          });
+        return localGet(...args);
+      });
+    }
+    await renderChat();
+    await resumeInterruptedRun();
+    await waitFor(() =>
+      expect(mocks.refreshInterrupted).toHaveBeenCalledOnce()
+    );
+    expect(
+      mocks.localGet.mock.calls.filter(([url]) =>
+        url.includes('/session-model')
+      )
+    ).toHaveLength(1);
+    expect(
+      mocks.localGet.mock.calls.filter(([url]) =>
+        url.includes('/model-selection')
+      )
+    ).toHaveLength(0);
+    expect(mocks.sse).toHaveBeenCalledTimes(1);
+    expect(mocks.post).not.toHaveBeenCalled();
+    expect(project.metadata.modelSelection).toBeUndefined();
+    expect(mocks.projectStore.setProjectModel).not.toHaveBeenCalled();
+    expect(notifyError).toHaveBeenCalled();
+  });
+  const coldReceiptRefusals: Array<[string, () => void]> = [
+    [
+      'missing token',
+      () => {
+        mocks.auth.token = null;
+      },
+    ],
+    [
+      'unresolved account',
+      () => {
+        mocks.auth.user_id = null;
+      },
+    ],
+    [
+      'foreign Space account',
+      () => {
+        mocks.space.userId = 'account-b';
+      },
+    ],
+    [
+      'missing Session Space',
+      () => {
+        project.spaceId = undefined;
+      },
+    ],
+    [
+      'legacy Space',
+      () => {
+        mocks.space.sourceType = 'legacy';
+      },
+    ],
+    [
+      'receipt for a different Run despite pending marker',
+      () => {
+        project.metadata.spaceModelAdmissionRunId = 'another-run';
+      },
+    ],
+    [
+      'interrupted Run from a different Session',
+      () => {
+        mocks.interrupted.project_id = 'another-session';
+      },
+    ],
+    [
+      'missing initial Attempt',
+      () => {
+        mocks.interrupted.latest_attempt = null;
+      },
+    ],
+    [
+      'Run that is no longer interrupted',
+      () => {
+        mocks.interrupted.status = 'finished';
+      },
+    ],
+    [
+      'missing recovery markers',
+      () => {
+        delete project.metadata.spaceModelAdmissionRunId;
+        delete project.metadata.spaceModelDefaultPending;
+      },
+    ],
+    [
+      'ordinary manual selection',
+      () => {
+        project.metadata.modelSelection = { modelType: 'custom' };
+      },
+    ],
+  ];
+  it.each(coldReceiptRefusals)(
+    'does not enter cold receipt recovery for %s',
+    async (_name, change) => {
+      await acceptInitialRunWithoutAck();
+      change();
+      await renderChat();
+      await resumeInterruptedRun();
+      expect(
+        mocks.localGet.mock.calls.filter(([url]) =>
+          url.includes('/session-model')
+        )
+      ).toHaveLength(0);
+      expect(mocks.sse).toHaveBeenCalledTimes(1);
+      expect(mocks.post).not.toHaveBeenCalled();
+      expect(mocks.projectStore.setProjectModel).not.toHaveBeenCalled();
+      expect(mocks.setInterrupted).not.toHaveBeenCalled();
+      expect(notifyError).toHaveBeenCalled();
+    }
+  );
+  it('does not offer cold receipt Resume for a cloud-restored Run', async () => {
+    await acceptInitialRunWithoutAck();
+    mocks.interrupted.origin = 'cloud_restore';
+    await renderChat();
+    expect(
+      screen.queryByRole('button', { name: /^Resume$/i })
+    ).not.toBeInTheDocument();
+    expect(mocks.sse).toHaveBeenCalledTimes(1);
+    expect(mocks.post).not.toHaveBeenCalled();
+    expect(mocks.projectStore.setProjectModel).not.toHaveBeenCalled();
+  });
+  it('rejects cold receipt admission when its recovered model is unavailable', async () => {
+    const acceptedRequest = await acceptInitialRunWithoutAck();
+    mocks.cloudAvailable = false;
+    await renderChat();
+    await resumeInterruptedRun();
+    await waitFor(() =>
+      expect(mocks.refreshInterrupted).toHaveBeenCalledOnce()
+    );
+    expect(project.metadata.modelSelection).toEqual(
+      acceptedRequest.session_model_selection
+    );
+    expect(mocks.sse).toHaveBeenCalledTimes(1);
+    expect(mocks.post).not.toHaveBeenCalled();
+    expect(
+      mocks.localGet.mock.calls.filter(([url]) =>
+        url.includes('/model-selection')
+      )
+    ).toHaveLength(0);
+    expect(notifyError).toHaveBeenCalled();
+  });
+  it.each([
+    { cachedIncident: false, name: 'fresh Cloud key quota rejection' },
+    {
+      cachedIncident: true,
+      name: 'cached Cloud quota despite an otherwise usable key',
+    },
+  ])('blocks cold receipt admission for $name', async ({ cachedIncident }) => {
+    const acceptedRequest = await acceptInitialRunWithoutAck();
+    if (cachedIncident)
+      useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
+    const get = mocks.get.getMockImplementation()!;
+    if (!cachedIncident)
+      mocks.get.mockImplementation(async (...args) =>
+        args[0] === '/api/v1/user/key'
+          ? { code: '20', text: 'Synthetic credits exhausted' }
+          : get(...args)
+      );
+    await renderChat();
+    await resumeInterruptedRun();
+    await waitFor(() =>
+      expect(mocks.refreshInterrupted).toHaveBeenCalledOnce()
+    );
+    if (cachedIncident)
+      expect(mocks.get).not.toHaveBeenCalledWith('/api/v1/user/key');
+    else expect(mocks.get).toHaveBeenCalledWith('/api/v1/user/key');
+    expect(project.metadata.modelSelection).toEqual(
+      acceptedRequest.session_model_selection
+    );
+    expect(mocks.sse).toHaveBeenCalledTimes(1);
+    expect(mocks.post).not.toHaveBeenCalled();
+    expect(notifyError).toHaveBeenCalled();
+  });
+  it('recovers a custom receipt despite an unrelated cached cloud usage incident', async () => {
+    installed.model_ref = 'provider://custom/azure/deployment';
+    const provider = {
+      id: 42,
+      provider_name: 'azure',
+      model_type: 'deployment',
+      api_key: 'synthetic-custom-key',
+      endpoint_url: 'https://custom.example.test',
+      is_valid: 2,
+      encrypted_config: {
+        api_mode: 'responses',
+        model_config_dict: { temperature: 0.2 },
+      },
+    };
+    const get = mocks.get.getMockImplementation()!;
+    mocks.get.mockImplementation(async (...args) =>
+      args[0] === '/api/v1/providers'
+        ? { items: args[1]?.prefer ? [] : [provider], pages: 1 }
+        : get(...args)
+    );
+    const acceptedRequest = await acceptInitialRunWithoutAck();
+    expect(acceptedRequest.session_model_selection).toMatchObject({
+      modelType: 'custom',
+      provider_id: 42,
+      model_type: 'deployment',
+    });
+    useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
+    await renderChat();
+    await resumeInterruptedRun();
+    await waitFor(() => expect(mocks.sse).toHaveBeenCalledTimes(2));
+    expect(request()).toMatchObject({
+      run_id: acceptedRequest.run_id,
+      model_type: 'deployment',
+      api_key: 'synthetic-custom-key',
+      api_url: 'https://custom.example.test',
+      extra_params: { api_mode: 'responses' },
+    });
+    expect(project.metadata.modelSelection).toEqual(
+      acceptedRequest.session_model_selection
+    );
+    expect(mocks.post).toHaveBeenCalledWith(
+      `/runs/${acceptedRequest.run_id}/resume`,
+      expect.any(Object)
+    );
+    expect(mocks.auth.hasModelConfigured).toBe(false);
+    expect(notifyError).not.toHaveBeenCalled();
+  });
+  it('does not give an accepted receipt warm-send or queued admission before cold recovery', async () => {
+    await acceptInitialRunWithoutAck();
+    // Remove the Interrupted banner so the queue is blocked by model readiness,
+    // rather than merely by the presence of an interrupted Run.
+    mocks.interrupted = null;
+    const taskId = chat.getState().activeTaskId!;
+    chat.getState().setStatus(taskId, 'finished');
+    chat.getState().setIsPending(taskId, false);
+    project.queuedMessages = [
+      {
+        task_id: 'queued-with-receipt',
+        content: 'Queued while unconfirmed',
+        attaches: [],
+        timestamp: 1,
+        processing: false,
+      },
+    ];
+    await renderChat();
+    expect(screen.getByRole('button', { name: 'Follow up' })).toBeDisabled();
+    expect(screen.getByTestId('chat-composer')).toHaveAttribute(
+      'data-no-model-overlay',
+      'true'
+    );
+    await sendFollowup();
+    expect(mocks.sse).toHaveBeenCalledTimes(1);
+    expect(mocks.post).not.toHaveBeenCalled();
+    expect(
+      mocks.localGet.mock.calls.filter(([url]) =>
+        url.includes('/session-model')
+      )
+    ).toHaveLength(0);
+    expect(
+      mocks.projectStore.setQueuedMessageProcessing
+    ).not.toHaveBeenCalled();
+    expect(mocks.projectStore.removeQueuedMessage).not.toHaveBeenCalled();
+    expect(project.metadata.modelSelection).toBeUndefined();
+  });
   it('keeps the automatically pinned Space model usable for a real ChatBox follow-up', async () => {
     await acceptInitialSpaceRun();
     const pin = { ...project.metadata.modelSelection };
@@ -635,20 +1032,21 @@ describe('ChatBox after an accepted Space model selection', () => {
     expect(mocks.sse).toHaveBeenCalledTimes(1);
     expect(mocks.post).not.toHaveBeenCalled();
   });
-  it.each(refusals.slice(0, 9))(
-    'does not admit Resume for %s',
-    async (_name, change) => {
-      await acceptInitialSpaceRun();
-      interruptRun(chat.getState().activeTaskId!);
-      change();
-      await renderChat();
-      await resumeInterruptedRun();
-      expect(notifyError).toHaveBeenCalled();
-      expect(mocks.sse).toHaveBeenCalledTimes(1);
-      expect(mocks.post).not.toHaveBeenCalled();
-      expect(mocks.setInterrupted).not.toHaveBeenCalled();
-    }
-  );
+  it.each(
+    refusals
+      .slice(0, 9)
+      .filter(([name]) => name !== 'pending default without a pin')
+  )('does not admit Resume for %s', async (_name, change) => {
+    await acceptInitialSpaceRun();
+    interruptRun(chat.getState().activeTaskId!);
+    change();
+    await renderChat();
+    await resumeInterruptedRun();
+    expect(notifyError).toHaveBeenCalled();
+    expect(mocks.sse).toHaveBeenCalledTimes(1);
+    expect(mocks.post).not.toHaveBeenCalled();
+    expect(mocks.setInterrupted).not.toHaveBeenCalled();
+  });
   it.each(['follow-up', 'Resume'])(
     'retains independent cloud usage rejection for %s',
     async (action) => {

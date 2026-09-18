@@ -439,19 +439,22 @@ export default function ChatBox(): JSX.Element {
   const sessionSpace = useSpaceStore((s) =>
     s.getSpaceById(activeProject?.spaceId)
   );
+  const canUseSessionSpace = Boolean(
+    token &&
+    user_id != null &&
+    sessionSpace &&
+    sessionSpace.id === activeProject?.spaceId &&
+    sessionSpace.sourceType !== 'legacy' &&
+    !sessionSpace.id.startsWith('legacy_') &&
+    (!sessionSpace.userId || sessionSpace.userId === String(user_id))
+  );
   // An accepted portable Session pin is independent of the global preference.
   // A pending flag or receipt alone must still pass launch-time recovery; it
   // cannot enable warm follow-ups, which go directly to continuation admission.
   const canUseSessionModel =
     hasModel ||
     Boolean(
-      token &&
-      user_id != null &&
-      sessionSpace &&
-      sessionSpace.id === activeProject?.spaceId &&
-      sessionSpace.sourceType !== 'legacy' &&
-      !sessionSpace.id.startsWith('legacy_') &&
-      (!sessionSpace.userId || sessionSpace.userId === String(user_id)) &&
+      canUseSessionSpace &&
       sessionModelIdentity &&
       sessionModelIdentity.category === sessionModelSelection?.modelType
     );
@@ -467,6 +470,21 @@ export default function ChatBox(): JSX.Element {
     setRun: setInterruptedRun,
     refresh: refreshInterruptedRun,
   } = useInterruptedRunStatus(activeProjectId);
+  const pendingModelAdmission =
+    activeProject?.metadata?.spaceModelAdmissionRunId;
+  // Cold Resume always passes through canonical model recovery in startTask.
+  // This permits that attempt, not warm use of an unconfirmed receipt/default.
+  const canAttemptModelRecovery = Boolean(
+    !sessionModelSelection &&
+    canUseSessionSpace &&
+    interruptedRun?.project_id === activeProjectId &&
+    interruptedRun?.status === 'interrupted' &&
+    interruptedRun.origin !== 'cloud_restore' &&
+    interruptedRun.latest_attempt &&
+    (pendingModelAdmission != null
+      ? pendingModelAdmission === interruptedRun.run_id
+      : activeProject?.metadata?.spaceModelDefaultPending === true)
+  );
   const [durableRunAction, setDurableRunAction] =
     useState<InterruptedRunBannerAction>(null);
   const isCloudRestoredRun = interruptedRun?.origin === 'cloud_restore';
@@ -1849,7 +1867,7 @@ export default function ChatBox(): JSX.Element {
       );
       return;
     }
-    if (!canUseSessionModel) {
+    if (!canUseSessionModel && !canAttemptModelRecovery) {
       notifyError(
         t('chat.select-model-before-resume', {
           defaultValue: 'Select a model before resuming this task.',
