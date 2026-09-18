@@ -30,6 +30,8 @@ export interface SpaceDiscoveryOption {
   label: string;
   source: string;
   availability: 'available' | 'requires_setup';
+  disabled?: boolean;
+  reason?: string;
 }
 
 export interface SpaceDiscoveryCatalog<
@@ -91,7 +93,19 @@ export function SpaceDiscoveryField<T extends SpaceDiscoveryOption>({
         ? t('layout.space-discovery-draft-source')
         : item.source === 'connector_catalog'
           ? t('layout.space-discovery-provider-source')
-          : t('layout.space-discovery-model-source');
+          : item.source === 'custom_catalog'
+            ? t('layout.space-discovery-custom-model-source')
+            : item.source === 'local_catalog'
+              ? t('layout.space-discovery-local-model-source')
+              : item.source === 'user_default'
+                ? t('layout.space-discovery-inherited-model-source')
+                : t('layout.space-discovery-model-source');
+  const availabilityLabel = (item: SpaceDiscoveryOption) =>
+    item.reason === 'model_ambiguous'
+      ? t('layout.space-discovery-model-ambiguous')
+      : item.reason === 'model_unavailable'
+        ? t('layout.space-discovery-model-unavailable')
+        : t('layout.space-discovery-setup');
   const current = catalog.items.find(
     (item) => item.value === (selectedValue ?? value)
   );
@@ -125,7 +139,7 @@ export function SpaceDiscoveryField<T extends SpaceDiscoveryOption>({
           <DsText as="p" role="meta" className="text-ds-ink-muted-default">
             {sourceLabel(current)}
             {current.availability === 'requires_setup'
-              ? ` · ${t('layout.space-discovery-setup')}`
+              ? ` · ${availabilityLabel(current)}`
               : ''}
           </DsText>
         ) : value &&
@@ -205,7 +219,7 @@ export function SpaceDiscoveryField<T extends SpaceDiscoveryOption>({
                 const candidate = catalog.items.find(
                   (item) => item.value === selected
                 );
-                if (candidate)
+                if (candidate && !candidate.disabled)
                   onSelect ? onSelect(candidate) : onChange(candidate.value);
               }}
               disabled={!filtered.length}
@@ -224,11 +238,12 @@ export function SpaceDiscoveryField<T extends SpaceDiscoveryOption>({
                       key={item.value}
                       value={item.value}
                       textValue={item.label}
+                      disabled={item.disabled}
                     >
                       <span className="break-words whitespace-normal">
                         {item.label} · {sourceLabel(item)}
                         {item.availability === 'requires_setup'
-                          ? ` · ${t('layout.space-discovery-setup')}`
+                          ? ` · ${availabilityLabel(item)}`
                           : ''}
                       </span>
                     </SelectItem>

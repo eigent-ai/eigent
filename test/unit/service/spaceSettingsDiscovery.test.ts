@@ -75,50 +75,105 @@ describe('Space Settings metadata discovery', () => {
     invalidateConnectorProvidersCache();
   });
 
-  it('reads model metadata without global selection, fake refs, or legacy fallback models', async () => {
-    proxyGetMock.mockResolvedValue({
-      default_model_id: 'model-a',
-      models: [
-        {
-          id: 'model-a',
-          display_name: 'Model A',
-          model_type: 'deployment-a',
-          model_platform: 'azure',
-          kind: 'chat',
-          api_key: 'fixture-secret',
-          capabilities: { unknown: 'private' },
-        },
-        {
-          id: 'image-a',
-          model_type: 'image',
-          model_platform: 'openai',
-          kind: 'image',
-        },
-        { id: 'broken', kind: 'chat' },
-      ],
-    });
-    expect(await discoverSpaceModels()).toEqual([
-      {
-        value: 'model-a',
-        label: 'Model A',
-        source: 'cloud_catalog',
-        availability: 'requires_setup',
-        reason: 'model_binding_required',
-        modelId: 'model-a',
-        modelType: 'deployment-a',
-        platform: 'azure',
-        isDefault: true,
-      },
+  it('projects selectable portable Cloud/custom/local refs without secrets or private IDs', async () => {
+    proxyGetMock.mockImplementation(async (url) =>
+      url === '/api/v1/cloud-models'
+        ? {
+            default_model_id: 'model-a',
+            models: [
+              {
+                id: 'model-a',
+                display_name: 'Model A',
+                model_type: 'deployment-a',
+                model_platform: 'azure',
+                kind: 'chat',
+                api_key: 'fixture-secret',
+                capabilities: { unknown: 'private' },
+              },
+              {
+                id: 'image-a',
+                model_type: 'image',
+                model_platform: 'openai',
+                kind: 'image',
+              },
+              { id: 'broken', kind: 'chat' },
+            ],
+          }
+        : [
+            {
+              category: 'custom',
+              model_platform: 'azure',
+              model_type: 'custom-a',
+              available: true,
+              id: 193,
+              api_key: 'fixture-secret',
+              endpoint_url: 'https://private.example',
+            },
+            {
+              category: 'local',
+              model_platform: 'ollama',
+              model_type: 'org/model:8b',
+              available: true,
+            },
+            {
+              category: 'custom',
+              model_platform: 'openai',
+              model_type: 'unavailable',
+              available: false,
+            },
+            {
+              category: 'custom',
+              model_platform: 'openai',
+              model_type: 'duplicate',
+              available: true,
+            },
+            {
+              category: 'custom',
+              model_platform: 'openai',
+              model_type: 'duplicate',
+              available: true,
+            },
+          ]
+    );
+    const result = await discoverSpaceModels();
+    expect(result.map((item) => item.value)).toEqual([
+      'provider://default',
+      'provider://cloud/model-a',
+      'provider://custom/azure/custom-a',
+      'provider://local/ollama/org%2Fmodel%3A8b',
+      'provider://custom/openai/unavailable',
+      'provider://custom/openai/duplicate',
     ]);
-    expect(proxyGetMock).toHaveBeenCalledTimes(1);
-    expect(proxyGetMock).toHaveBeenCalledWith('/api/v1/cloud-models', {
-      kind: 'chat',
+    expect(result[1]).toMatchObject({
+      label: 'Model A',
+      availability: 'available',
+      modelType: 'deployment-a',
+      isDefault: true,
     });
-    proxyGetMock.mockResolvedValue({ models: [] });
-    expect(await discoverSpaceModels()).toEqual([]);
+    expect(result[4]).toMatchObject({
+      disabled: true,
+      reason: 'model_unavailable',
+    });
+    expect(result[5]).toMatchObject({
+      disabled: true,
+      reason: 'model_ambiguous',
+    });
+    expect(JSON.stringify(result)).not.toMatch(
+      /fixture-secret|private|193|endpoint_url|api_key/
+    );
+    expect(proxyGetMock.mock.calls.map(([url]) => url)).toEqual([
+      '/api/v1/cloud-models',
+      '/api/v1/provider-models',
+    ]);
+    expect(fetchGetMock).not.toHaveBeenCalled();
+    proxyGetMock.mockImplementation(async (url) =>
+      url === '/api/v1/cloud-models' ? { models: [] } : []
+    );
+    expect((await discoverSpaceModels()).map((item) => item.value)).toEqual([
+      'provider://default',
+    ]);
     proxyGetMock.mockRejectedValue(new Error('offline'));
     await expect(discoverSpaceModels()).rejects.toThrow('offline');
-    expect(fetchGetMock).not.toHaveBeenCalled();
   });
 
   it('returns only contained current-bundle refs and explicit metadata fields', async () => {

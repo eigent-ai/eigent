@@ -23,6 +23,7 @@ import {
 import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { getSessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { isPlaceholderProjectName } from '@/lib/spaceLabel';
+import { recoverSpaceSessionModel } from '@/lib/spaceModelBinding';
 import { resolveHistoricalRunElapsedMs } from '@/lib/taskDuration';
 import { fetchProjectRuns } from '@/service/projectRunsApi';
 import type { ServerProject } from '@/service/spaceApi';
@@ -244,6 +245,9 @@ interface ProjectModelSelection {
   provider_id?: number;
   model_platform?: string;
   model_type?: string;
+  /** Portable origin only; credentials are resolved transiently at launch. */
+  model_ref?: string;
+  thinking_effort?: ThinkingEffortType;
 }
 
 interface ProjectMetadata {
@@ -269,6 +273,10 @@ interface ProjectMetadata {
   historyDisplayName?: string;
   /** Per-Project model pin; reused by startTask for follow-up runs. */
   modelSelection?: ProjectModelSelection;
+  /** Only containers created locally as new Sessions may adopt a Space default. */
+  spaceModelDefaultPending?: boolean;
+  /** A dispatched initial request whose delivery has not been reconciled. */
+  spaceModelAdmissionRunId?: string | null;
   /** Requested effort for new Runs; null clears a persisted override. */
   thinkingEffort?: ThinkingEffortType | null;
   serverSynced?: boolean;
@@ -614,6 +622,10 @@ interface ProjectStore {
     modelSelection: ProjectModelSelection
   ) => void;
   getProjectModel: (projectId: string | null) => ProjectModelSelection | null;
+  setProjectModelAdmission: (
+    projectId: string,
+    runId: string | null
+  ) => Promise<void>;
   setProjectThinkingEffort: (
     projectId: string,
     effort: ThinkingEffortType | undefined
@@ -808,6 +820,12 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       queuedMessages: [], // Initialize empty queued messages array
       metadata: {
         status: 'active',
+        ...(!historyId &&
+        type !== ProjectType.REPLAY &&
+        options?.createdAt === undefined &&
+        !useSpaceStore.getState().getProjectMeta(targetProjectId)
+          ? { spaceModelDefaultPending: true }
+          : {}),
         historyId: historyId,
         tags: type === ProjectType.REPLAY ? ['replay'] : [],
         ...(description === 'Auto-created project'
@@ -1748,6 +1766,37 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     );
 
     const cacheUserId = getAuthStore().user_id;
+    const restored = get().projects[loadProjectId];
+    if (
+      restored?.metadata?.spaceModelDefaultPending &&
+      !get().getProjectModel(loadProjectId) &&
+      restored.spaceId &&
+      !restored.spaceId.startsWith('legacy_')
+    ) {
+      const identity = getAuthStore();
+      try {
+        const selection = await recoverSpaceSessionModel(
+          restored.spaceId,
+          loadProjectId,
+          { email: identity.email || '', userId: identity.user_id },
+          () => {
+            const current = getAuthStore();
+            if (
+              current.token !== identity.token ||
+              current.user_id !== identity.user_id ||
+              current.email !== identity.email ||
+              get().projects[loadProjectId]?.spaceId !== restored.spaceId ||
+              get().getProjectModel(loadProjectId)
+            )
+              throw new Error('Session model recovery changed');
+          }
+        );
+        if (selection) get().setProjectModel(loadProjectId, selection);
+      } catch {
+        // Preserve pending delivery/eligibility. A live start must reconcile it
+        // before choosing a model; history can still be viewed while offline.
+      }
+    }
     // Cache usage requires both an authenticated user (to scope per-account)
     // AND a non-null server freshness anchor. Without the latter we cannot
     // detect staleness, so we neither read from nor write to the cache —
@@ -2877,7 +2926,11 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       previous.codex_model_type === modelSelection.codex_model_type &&
       previous.provider_id === modelSelection.provider_id &&
       previous.model_platform === modelSelection.model_platform &&
-      previous.model_type === modelSelection.model_type
+      previous.model_type === modelSelection.model_type &&
+      previous.model_ref === modelSelection.model_ref &&
+      previous.thinking_effort === modelSelection.thinking_effort &&
+      projects[projectId].metadata?.spaceModelDefaultPending !== true &&
+      !projects[projectId].metadata?.spaceModelAdmissionRunId
     ) {
       return;
     }
@@ -2890,6 +2943,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
           metadata: {
             ...state.projects[projectId].metadata,
             modelSelection,
+            spaceModelDefaultPending: false,
+            spaceModelAdmissionRunId: null,
           },
           updatedAt: Date.now(),
         },
@@ -2907,7 +2962,11 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       useSpaceStore.getState().getProjectMeta(projectId)?.spaceId;
     if (spaceId) {
       void proxyUpdateSpaceProject(spaceId, projectId, {
-        metadata: { modelSelection },
+        metadata: {
+          modelSelection,
+          spaceModelDefaultPending: false,
+          spaceModelAdmissionRunId: null,
+        },
       }).catch((error) => {
         console.warn(
           `Failed to persist model selection for project ${projectId}:`,
@@ -2915,6 +2974,23 @@ const projectStore = create<ProjectStore>()((set, get) => ({
         );
       });
     }
+  },
+
+  setProjectModelAdmission: async (projectId, runId) => {
+    const project = get().projects[projectId];
+    if (!project || get().getProjectModel(projectId)) return;
+    const updatedProject = {
+      ...project,
+      metadata: { ...project.metadata, spaceModelAdmissionRunId: runId },
+    };
+    set((state) => ({
+      projects: { ...state.projects, [projectId]: updatedProject },
+    }));
+    upsertSpaceProjectMetaFromProject(updatedProject);
+    if (updatedProject.spaceId)
+      await proxyUpdateSpaceProject(updatedProject.spaceId, projectId, {
+        metadata: { spaceModelAdmissionRunId: runId },
+      });
   },
 
   getProjectModel: (projectId: string | null) => {

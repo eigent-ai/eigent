@@ -1501,5 +1501,13 @@
   "space-discovery-manual": "手動輸入",
   "space-discovery-connector-note": "選擇供應商僅宣告所需的服務。連線和權限需另行設定。",
   "space-discovery-grants-empty": "未傳回支援的權限。現有權限會保留；請手動輸入所需權限。",
-  "space-discovery-available-options": "可用選項"
+  "space-discovery-available-options": "可用選項",
+  "space-default-model": "空間預設模型",
+  "space-discovery-custom-model-source": "自訂提供商",
+  "space-discovery-local-model-source": "本機提供商",
+  "space-discovery-inherited-model-source": "使用者預設模型",
+  "space-discovery-model-ambiguous": "多個提供商符合，請檢查模型設定",
+  "space-discovery-model-unavailable": "目前帳號無法使用，請檢查模型設定",
+  "space-discovery-model-policy": "發佈並完成設定後用於新會話。手動選擇的會話模型優先，現有會話維持原模型。 會話啟動時會檢查存取權限與推理強度支援。",
+  "space-discovery-model-runtime-scope": "會話支援一個 Bundle 智慧體及其指定的模型設定；未宣告智慧體時使用預設設定。目前不支援多個 Bundle 智慧體。"
 }

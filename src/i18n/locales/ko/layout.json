@@ -1501,5 +1501,13 @@
   "space-discovery-manual": "직접 입력",
   "space-discovery-connector-note": "제공업체를 선택하면 필요한 서비스만 지정됩니다. 연결과 권한은 별도로 설정해야 합니다.",
   "space-discovery-grants-empty": "지원되는 권한 정보가 없습니다. 기존 권한은 유지됩니다. 필요한 권한을 직접 입력하세요.",
-  "space-discovery-available-options": "사용 가능한 옵션"
+  "space-discovery-available-options": "사용 가능한 옵션",
+  "space-default-model": "스페이스 기본값",
+  "space-discovery-custom-model-source": "사용자 지정 제공업체",
+  "space-discovery-local-model-source": "로컬 제공업체",
+  "space-discovery-inherited-model-source": "사용자 기본 모델",
+  "space-discovery-model-ambiguous": "일치하는 제공업체가 여러 개입니다. 모델 설정을 확인하세요",
+  "space-discovery-model-unavailable": "이 계정에서 사용할 수 없습니다. 모델 설정을 확인하세요",
+  "space-discovery-model-policy": "게시 및 설정 후 새 세션에 적용됩니다. 수동 선택이 우선하며 기존 세션은 원래 모델을 유지합니다. 세션 시작 시 접근 권한과 추론 강도 지원 여부를 확인합니다.",
+  "space-discovery-model-runtime-scope": "세션은 번들 에이전트 하나와 지정된 프로필을 사용합니다. 에이전트가 없으면 기본 프로필을 사용합니다. 여러 번들 에이전트는 아직 지원하지 않습니다."
 }

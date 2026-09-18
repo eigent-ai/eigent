@@ -68,6 +68,14 @@ const mocks = vi.hoisted(() => {
     flushSave: vi.fn(),
     reload: vi.fn(),
     retrySave: vi.fn(),
+    modelItems: [] as Array<{
+      value: string;
+      label: string;
+      source: string;
+      availability: string;
+      disabled?: boolean;
+      reason?: string;
+    }>,
   };
 });
 
@@ -119,7 +127,7 @@ vi.mock('@/hooks/useSpaceSettingsDiscovery', () => {
   };
   return {
     useSpaceSettingsDiscovery: () => ({
-      models: empty,
+      models: { ...empty, status: 'ready', items: mocks.modelItems },
       skills: empty,
       mcpServers: empty,
       connectors,
@@ -157,6 +165,7 @@ vi.mock(
 
 describe('WorkspaceConfigurationEditor', () => {
   beforeEach(() => {
+    HTMLElement.prototype.scrollIntoView = vi.fn();
     mocks.reducedMotion = false;
     mocks.saveState = 'saved';
     mocks.hasPendingChanges = false;
@@ -165,7 +174,64 @@ describe('WorkspaceConfigurationEditor', () => {
     mocks.flushSave.mockResolvedValue(true);
     mocks.reload.mockClear();
     mocks.retrySave.mockClear();
+    mocks.modelItems = [];
     mocks.document.spec.environment.variables.splice(0);
+  });
+
+  it('selects a concrete model reference through the model dropdown and preserves manual values', async () => {
+    mocks.modelItems = [
+      {
+        value: 'provider://cloud/fixture',
+        label: 'Fixture Cloud',
+        source: 'cloud_catalog',
+        availability: 'available',
+      },
+      {
+        value: 'provider://custom/azure/missing',
+        label: 'Missing custom model',
+        source: 'custom_catalog',
+        availability: 'requires_setup',
+        disabled: true,
+        reason: 'model_unavailable',
+      },
+    ];
+    const { container } = render(
+      <WorkspaceConfigurationEditor presentation="settings" spaceId="space-1" />
+    );
+    const section = within(
+      container.querySelector('#space-settings-model') as HTMLElement
+    );
+    fireEvent.click(
+      section.getByRole('button', { name: 'Browse available options' })
+    );
+    const trigger = section.getByRole('combobox', {
+      name: 'Select default model reference',
+    });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    const missing = await screen.findByRole('option', {
+      name: /Missing custom model/,
+    });
+    expect(missing).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(screen.getByRole('option', { name: /Fixture Cloud/ }));
+    expect(
+      mocks.setDocument.mock.calls.at(-1)?.[0](mocks.document).spec.models
+        .default.modelRef
+    ).toBe('provider://cloud/fixture');
+    expect(
+      mocks.setDocument.mock.calls.at(-1)?.[0](mocks.document).spec.models
+        .default.thinkingEffort
+    ).toBe('medium');
+    fireEvent.change(section.getByLabelText('default model reference'), {
+      target: { value: 'provider://unknown/manual' },
+    });
+    expect(
+      mocks.setDocument.mock.calls.at(-1)?.[0](mocks.document).spec.models
+        .default.modelRef
+    ).toBe('provider://unknown/manual');
+    expect(
+      section.getByText(/Multiple bundle agents are not supported/)
+    ).toBeInTheDocument();
   });
 
   it('registers pending changes with the shared navigation guard', async () => {

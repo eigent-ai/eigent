@@ -20,10 +20,18 @@ import {
   type ConnectorProvider,
 } from '@/api/connectors';
 import { fetchGet, proxyFetchGet } from '@/api/http';
+import {
+  parseSpaceModelReference,
+  spaceModelReference,
+} from '@/lib/spaceModelReference';
 import type { WorkspaceConfigurationIdentity } from '@/service/workspaceConfigurationApi';
+import i18next from 'i18next';
 
 export type SpaceDiscoverySource =
   | 'cloud_catalog'
+  | 'custom_catalog'
+  | 'local_catalog'
+  | 'user_default'
   | 'connector_catalog'
   | 'materialized_bundle'
   | 'draft_bundle';
@@ -34,6 +42,7 @@ export interface SpaceDiscoveryCandidate {
   source: SpaceDiscoverySource;
   availability: 'available' | 'requires_setup';
   reason?: string;
+  disabled?: boolean;
 }
 
 export interface SpaceModelCandidate extends SpaceDiscoveryCandidate {
@@ -99,11 +108,17 @@ const bundleSource = (
 ): 'materialized_bundle' | 'draft_bundle' | null =>
   value === 'materialized_bundle' || value === 'draft_bundle' ? value : null;
 
-/** Metadata only: deliberately avoids the persisted cloud store and key lookup. */
+/** Metadata only: no keys, endpoints or account-private Provider IDs in this projection. */
 export async function discoverSpaceModels(): Promise<SpaceModelCandidate[]> {
-  const response = record(
-    await proxyFetchGet('/api/v1/cloud-models', { kind: 'chat' })
-  );
+  const [cloudResponse, providerResponse] = await Promise.all([
+    import.meta.env.VITE_USE_LOCAL_PROXY === 'true'
+      ? Promise.resolve({ models: [] })
+      : proxyFetchGet('/api/v1/cloud-models', { kind: 'chat' }),
+    proxyFetchGet('/api/v1/provider-models'),
+  ]);
+  const response = record(cloudResponse);
+  if (!Array.isArray(providerResponse))
+    throw new Error('model_catalog_unavailable');
   const models = Array.isArray(response.models) ? response.models : [];
   const candidates = models.flatMap((raw): SpaceModelCandidate[] => {
     const model = record(raw);
@@ -111,13 +126,14 @@ export async function discoverSpaceModels(): Promise<SpaceModelCandidate[]> {
     const modelType = textValue(model.model_type);
     const platform = identifier(model.model_platform);
     if (!modelId || !modelType || !platform || model.kind !== 'chat') return [];
+    const value = spaceModelReference({ category: 'cloud', modelId });
+    if (!parseSpaceModelReference(value)) return [];
     return [
       {
-        value: modelId,
+        value,
         label: textValue(model.display_name) ?? modelId,
         source: 'cloud_catalog',
-        availability: 'requires_setup',
-        reason: 'model_binding_required',
+        availability: 'available',
         modelId,
         modelType,
         platform,
@@ -126,7 +142,64 @@ export async function discoverSpaceModels(): Promise<SpaceModelCandidate[]> {
       },
     ];
   });
-  return unique(candidates);
+  const configured = providerResponse.flatMap((raw): SpaceModelCandidate[] => {
+    const provider = record(raw);
+    const category = provider.category;
+    const platform = identifier(provider.model_platform);
+    const modelId = textValue(provider.model_type);
+    if (
+      (category !== 'custom' && category !== 'local') ||
+      !platform ||
+      !modelId
+    )
+      return [];
+    const value = spaceModelReference({ category, platform, modelId });
+    if (!parseSpaceModelReference(value)) return [];
+    const available = provider.available === true;
+    return [
+      {
+        value,
+        label: `${platform} · ${modelId}`,
+        source: category === 'local' ? 'local_catalog' : 'custom_catalog',
+        availability: available ? 'available' : 'requires_setup',
+        disabled: !available,
+        ...(available ? {} : { reason: 'model_unavailable' }),
+        modelId,
+        modelType: modelId,
+        platform,
+        isDefault: false,
+      },
+    ];
+  });
+  const counts = new Map<string, number>();
+  configured.forEach((candidate) =>
+    counts.set(candidate.value, (counts.get(candidate.value) ?? 0) + 1)
+  );
+  return [
+    {
+      value: 'provider://default',
+      label: i18next.t('layout.default'),
+      source: 'user_default',
+      availability: 'available',
+      modelId: 'default',
+      modelType: '',
+      platform: '',
+      isDefault: true,
+    },
+    ...unique([
+      ...candidates,
+      ...configured.map((candidate) =>
+        counts.get(candidate.value)! > 1
+          ? {
+              ...candidate,
+              availability: 'requires_setup' as const,
+              disabled: true,
+              reason: 'model_ambiguous',
+            }
+          : candidate
+      ),
+    ]),
+  ];
 }
 
 /** Only current-Space, verified bundle metadata; never scan global Skills/MCP. */

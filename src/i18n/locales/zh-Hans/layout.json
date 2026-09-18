@@ -1501,5 +1501,13 @@
   "space-discovery-manual": "手动输入",
   "space-discovery-connector-note": "选择提供商仅声明所需的服务。连接和权限需另行配置。",
   "space-discovery-grants-empty": "未返回支持的权限。已有权限会保留；请手动输入所需权限。",
-  "space-discovery-available-options": "可用选项"
+  "space-discovery-available-options": "可用选项",
+  "space-default-model": "空间默认模型",
+  "space-discovery-custom-model-source": "自定义提供商",
+  "space-discovery-local-model-source": "本地提供商",
+  "space-discovery-inherited-model-source": "用户默认模型",
+  "space-discovery-model-ambiguous": "多个提供商匹配，请检查模型设置",
+  "space-discovery-model-unavailable": "当前账号不可用，请检查模型设置",
+  "space-discovery-model-policy": "发布并完成设置后用于新会话。手动选择的会话模型优先，已有会话保持原模型。 会话启动时会检查访问权限和推理强度支持。",
+  "space-discovery-model-runtime-scope": "会话支持一个 Bundle 智能体及其指定的模型配置；未声明智能体时使用默认配置。暂不支持多个 Bundle 智能体。"
 }
