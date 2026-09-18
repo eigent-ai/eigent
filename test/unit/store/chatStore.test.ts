@@ -2805,13 +2805,13 @@ describe('ChatStore - Core Functionality', () => {
             status: 'running',
             fileList: [],
           };
-          store.getState().setTaskRunning(runId, [task] as any);
+          store.getState().setTaskRunning(runId, [{ ...task }] as any);
           store.getState().setTaskAssigning(runId, [
             {
               agent_id: 'developer-1',
               name: 'Developer',
               type: 'developer_agent',
-              tasks: [task],
+              tasks: [{ ...task }],
               log: [],
               img: [],
               tools: [],
@@ -2840,6 +2840,332 @@ describe('ChatStore - Core Functionality', () => {
             canonicalEvent(runId, 'run.completed', 'Done'),
             'live'
           );
+
+        const displayTailFrames: [string, Record<string, unknown>][] = [
+          [
+            AgentStep.CREATE_AGENT,
+            {
+              agent_id: 'developer-1',
+              agent_name: 'developer_agent',
+              tools: [],
+            },
+          ],
+          [
+            AgentStep.ASSIGN_TASK,
+            {
+              assignee_id: 'developer-1',
+              task_id: 'sub-1',
+              content: 'Create game',
+              state: 'RUNNING',
+              failure_count: 1,
+            },
+          ],
+          [
+            AgentStep.DEACTIVATE_TOOLKIT,
+            {
+              agent_id: 'developer-1',
+              agent_name: 'developer_agent',
+              process_task_id: 'sub-1',
+              toolkit_name: 'Terminal Toolkit',
+              method_name: 'shell_exec',
+              message: 'Success: created game',
+            },
+          ],
+          [
+            AgentStep.TERMINAL,
+            {
+              agent_name: 'developer_agent',
+              process_task_id: 'sub-1',
+              output: 'Build complete',
+            },
+          ],
+          [
+            AgentStep.WRITE_FILE,
+            {
+              agent_name: 'developer_agent',
+              process_task_id: 'sub-1',
+              file_path: '/workspace/game.html',
+            },
+          ],
+          [
+            AgentStep.NOTICE,
+            { process_task_id: 'sub-1', notice: 'Validated output' },
+          ],
+          [
+            AgentStep.DEACTIVATE_AGENT,
+            { agent_id: 'developer-1', process_task_id: 'sub-1', tokens: 7 },
+          ],
+        ];
+        const sendDisplayTail = async (legacy: any, runId?: string) => {
+          for (const [step, data] of displayTailFrames) {
+            await send(legacy, step, data, runId);
+          }
+        };
+
+        it('reconstructs delayed display dependencies without prebuilt agents or subtasks', async () => {
+          const { store, streamContaining } = await startObservedLiveTask();
+          const legacy = streamContaining('/chat');
+          store.getState().setStatus('live-run', ChatTaskStatus.RUNNING);
+          store.getState().setTaskTime('live-run', Date.now() - 1000);
+          complete();
+          const elapsed = store.getState().tasks['live-run'].elapsed;
+
+          await sendDisplayTail(legacy);
+          expect(store.getState().tasks['live-run']).toMatchObject({
+            status: ChatTaskStatus.FINISHED,
+            durableRunStatus: 'completed',
+            taskTime: 0,
+            elapsed,
+            isPending: false,
+            autoConfirmDeadline: null,
+            taskRunning: [
+              {
+                id: 'sub-1',
+                status: 'skipped',
+                toolkits: [
+                  {
+                    toolkitStatus: 'completed',
+                    message: 'Success: created game',
+                  },
+                ],
+              },
+            ],
+            taskAssigning: [
+              {
+                agent_id: 'developer-1',
+                status: 'completed',
+                tasks: [
+                  {
+                    id: 'sub-1',
+                    status: 'skipped',
+                    terminal: ['Build complete'],
+                    fileList: [{ path: '/workspace/game.html' }],
+                    toolkits: [
+                      {
+                        toolkitStatus: 'completed',
+                        message: 'Success: created game',
+                      },
+                      {
+                        toolkitStatus: 'completed',
+                        message: 'Validated output',
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          });
+          await send(legacy, AgentStep.TASK_STATE, {
+            task_id: 'sub-1',
+            state: 'DONE',
+            result: 'Game created',
+          });
+          await send(legacy, AgentStep.END, { content: 'Done' });
+          expect(store.getState().tasks['live-run']).toMatchObject({
+            status: ChatTaskStatus.FINISHED,
+            taskTime: 0,
+            elapsed,
+            taskRunning: [{ id: 'sub-1', status: 'completed' }],
+            taskAssigning: [
+              {
+                tasks: [
+                  { id: 'sub-1', status: 'completed', report: 'Game created' },
+                ],
+              },
+            ],
+          });
+          expect(hasActiveSSEConnection(['live-run'])).toBe(false);
+        });
+
+        it('retains terminal assignment evidence and completes a previously started toolkit', async () => {
+          const { store, streamContaining } = await startObservedLiveTask();
+          const legacy = streamContaining('/chat');
+          seedWorkforce(store);
+          await send(legacy, AgentStep.ACTIVATE_TOOLKIT, {
+            agent_id: 'developer-1',
+            agent_name: 'developer_agent',
+            process_task_id: 'sub-1',
+            toolkit_name: 'Terminal Toolkit',
+            method_name: 'shell_exec',
+            message: 'Executing',
+          });
+          await send(legacy, AgentStep.TASK_STATE, {
+            task_id: 'sub-1',
+            state: 'DONE',
+            result: 'Existing result',
+          });
+          complete();
+          await send(legacy, ...displayTailFrames[1]);
+          await send(legacy, ...displayTailFrames[2]);
+          const task = store.getState().tasks['live-run'];
+          expect(task.taskAssigning[0].tasks[0]).toMatchObject({
+            status: 'completed',
+            report: 'Existing result',
+            toolkits: [
+              {
+                toolkitStatus: 'completed',
+                message: expect.stringContaining('Success: created game'),
+              },
+            ],
+          });
+          expect(task.taskAssigning[0].tasks[0].toolkits).toHaveLength(1);
+          expect(task.taskRunning[0]).toMatchObject({
+            status: 'completed',
+            toolkits: [
+              {
+                toolkitStatus: 'completed',
+                message: expect.stringContaining('Success: created game'),
+              },
+            ],
+          });
+          expect(task.taskAssigning[0].log).toHaveLength(2);
+        });
+
+        it('projects deactivation usage without replaying quick-reply completion effects', async () => {
+          const { store, streamContaining } = await startObservedLiveTask({
+            executionId: 'tail-execution',
+          });
+          const legacy = streamContaining('/chat');
+          seedWorkforce(store);
+          store.getState().addTokens('live-run', 17);
+          complete();
+          const receiptCount = vi.mocked(proxyUpdateTriggerExecution).mock.calls
+            .length;
+          const historyCount = vi.mocked(proxyFetchPut).mock.calls.length;
+          await send(legacy, AgentStep.DEACTIVATE_AGENT, {
+            agent_id: 'developer-1',
+            agent_name: 'question_confirm_agent',
+            process_task_id: 'sub-1',
+            status: 'completed',
+            message: 'Final response',
+            tokens: 123,
+          });
+          expect(store.getState().tasks['live-run']).toMatchObject({
+            tokens: 140,
+            status: ChatTaskStatus.FINISHED,
+            taskTime: 0,
+            taskAssigning: [{ status: 'completed' }],
+          });
+          expect(proxyUpdateTriggerExecution).toHaveBeenCalledTimes(
+            receiptCount
+          );
+          expect(proxyFetchPut).toHaveBeenCalledTimes(historyCount);
+          await send(legacy, AgentStep.END, { content: 'Done' });
+          expect(store.getState().tasks['live-run'].tokens).toBe(140);
+        });
+
+        it('projects a single-agent toolkit receipt once when display collections share a todo', async () => {
+          const { store, streamContaining } = await startObservedLiveTask();
+          const legacy = streamContaining('/chat');
+          await send(legacy, AgentStep.TODO_STATE, {
+            agent_id: 'single-1',
+            todos: [
+              { id: 'sub-1', content: 'Create game', status: 'in_progress' },
+            ],
+          });
+          complete();
+          await send(legacy, AgentStep.TODO_STATE, {
+            agent_id: 'single-1',
+            todos: [
+              { id: 'sub-1', content: 'Create game', status: 'completed' },
+            ],
+          });
+          await send(legacy, AgentStep.DEACTIVATE_TOOLKIT, {
+            agent_id: 'single-1',
+            agent_name: 'single_agent',
+            process_task_id: 'sub-1',
+            toolkit_name: 'Terminal Toolkit',
+            method_name: 'shell_exec',
+            message: 'Game created',
+          });
+          const task = store.getState().tasks['live-run'];
+          expect(task.taskRunning[0].toolkits).toHaveLength(1);
+          expect(task.taskAssigning[0].tasks[0].toolkits).toHaveLength(1);
+          expect(task.taskAssigning[0]).toMatchObject({
+            status: 'completed',
+            tasks: [
+              {
+                status: 'completed',
+                toolkits: [
+                  { toolkitStatus: 'completed', message: 'Game created' },
+                ],
+              },
+            ],
+          });
+          expect(task.status).toBe(ChatTaskStatus.FINISHED);
+          expect(task.taskTime).toBe(0);
+        });
+
+        it('does not navigate a browser preview from a delayed toolkit result', async () => {
+          const { usePageTabStore } = await import('@/store/pageTabStore');
+          const openPreview = vi
+            .spyOn(usePageTabStore.getState(), 'openBrowserPreview')
+            .mockImplementation(() => {});
+          try {
+            const { store, streamContaining } = await startObservedLiveTask();
+            const legacy = streamContaining('/chat');
+            seedWorkforce(store);
+            await send(legacy, AgentStep.ACTIVATE_TOOLKIT, {
+              agent_id: 'developer-1',
+              process_task_id: 'sub-1',
+              toolkit_name: 'Browser Toolkit',
+              method_name: 'visit page',
+              message: 'http://localhost:3000/',
+              tool_call_id: 'preview-1',
+            });
+            complete();
+            await send(legacy, AgentStep.DEACTIVATE_TOOLKIT, {
+              agent_id: 'developer-1',
+              process_task_id: 'sub-1',
+              toolkit_name: 'Browser Toolkit',
+              method_name: 'visit page',
+              message: 'Navigation completed.',
+              tool_call_id: 'preview-1',
+            });
+            expect(openPreview).not.toHaveBeenCalled();
+            expect(
+              store.getState().tasks['live-run'].taskAssigning[0].tasks[0]
+                .toolkits?.[0].message
+            ).toContain('Navigation completed.');
+          } finally {
+            openPreview.mockRestore();
+          }
+        });
+
+        it.each(['END', 'closed transport', 'failed Run', 'old Run'] as const)(
+          'rejects display dependency frames beyond the %s ownership boundary',
+          async (boundary) => {
+            const { store, streamContaining } = await startObservedLiveTask();
+            const legacy = streamContaining('/chat');
+            let runId = 'live-run';
+            if (boundary === 'old Run') {
+              await switchLegacyStreamToFollowUp({ store, streamContaining });
+              runId = 'follow-up-run';
+            }
+            if (boundary === 'failed Run') {
+              runEventIngressRegistry.ingest(
+                'project-1',
+                runId,
+                canonicalEvent(runId, 'run.failed'),
+                'live'
+              );
+            } else {
+              complete(runId);
+            }
+            if (boundary === 'END')
+              await send(legacy, AgentStep.END, { content: 'Done' });
+            if (boundary === 'closed transport')
+              closeSSEConnectionsForTasks([runId]);
+            const snapshot = JSON.stringify(store.getState().tasks[runId]);
+            await sendDisplayTail(
+              legacy,
+              boundary === 'old Run' ? 'live-run' : undefined
+            );
+            expect(JSON.stringify(store.getState().tasks[runId])).toBe(
+              snapshot
+            );
+          }
+        );
 
         it('retains the final task result and usage before END without restarting the clock', async () => {
           const { store, streamContaining } = await startObservedLiveTask();
@@ -2911,6 +3237,20 @@ describe('ChatStore - Core Functionality', () => {
             process_task_id: 'todo-1',
             state: 'RUNNING',
           });
+          await send(legacy, AgentStep.ACTIVATE_TOOLKIT, {
+            agent_id: 'single-1',
+            process_task_id: 'todo-1',
+            toolkit_name: 'Terminal Toolkit',
+            method_name: 'shell_exec',
+            message: 'Do not restart',
+          });
+          await send(legacy, AgentStep.DECOMPOSE_TEXT, {
+            content: 'Do not restart planning',
+          });
+          await send(legacy, AgentStep.ASK, {
+            agent: 'single-1',
+            content: 'Do not resume user input',
+          });
           await send(legacy, AgentStep.TASK_STATE, {
             task_id: 'todo-1',
             state: 'RUNNING',
@@ -2922,6 +3262,8 @@ describe('ChatStore - Core Functionality', () => {
             elapsed,
             autoConfirmDeadline: null,
             isPending: false,
+            activeAsk: '',
+            streamingDecomposeText: '',
             taskInfo: [
               { id: 'todo-1', status: 'completed' },
               { id: 'todo-2', status: 'skipped' },
@@ -2942,6 +3284,9 @@ describe('ChatStore - Core Functionality', () => {
                 (message) => message.step === AgentStep.TO_SUB_TASKS
               )
           ).toBe(false);
+          expect(
+            store.getState().tasks['live-run'].taskAssigning[0].log
+          ).toHaveLength(0);
         });
 
         it('closes the display-only tail at legacy END', async () => {

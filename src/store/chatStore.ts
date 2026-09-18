@@ -3551,9 +3551,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       // usage frames. END closes that Run's display-only tail, independently
       // of the physical transport being reused for a following Run.
       const completionTailSteps = new Set<AgentMessage['step']>([
+        // These are display dependencies/results, not execution controls.
+        // Their reducers must preserve terminal state while filling the tail.
+        AgentStep.CREATE_AGENT,
+        AgentStep.ASSIGN_TASK,
         AgentStep.TASK_STATE,
         AgentStep.TODO_STATE,
         AgentStep.REQUEST_USAGE,
+        AgentStep.DEACTIVATE_AGENT,
+        AgentStep.DEACTIVATE_TOOLKIT,
+        AgentStep.TERMINAL,
+        AgentStep.WRITE_FILE,
+        AgentStep.NOTICE,
       ]);
       let legacyEndRunId: string | null = null;
 
@@ -4440,6 +4449,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                       agentNameMap[agent_name as keyof typeof agentNameMap] ||
                       agent_name,
                     type: agent_name as AgentNameType,
+                    ...(isSuccessfulCompletionTail
+                      ? { status: AgentStatusValue.COMPLETED }
+                      : {}),
                     tasks: [],
                     log: [],
                     img: [],
@@ -4767,6 +4779,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               setTaskAssigning(currentTaskId, [...taskAssigning]);
             }
             if (agentMessages.step === AgentStep.DEACTIVATE_AGENT) {
+              if (isSuccessfulCompletionTail) {
+                taskAssigning[agentIndex].status = AgentStatusValue.COMPLETED;
+              }
               if (message) {
                 const index = taskAssigning[agentIndex].log.findLastIndex(
                   (log) =>
@@ -4786,7 +4801,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 taskRunning[taskIndex].agent!.status = 'completed';
               }
 
-              if (!type && historyId) {
+              if (!isSuccessfulCompletionTail && !type && historyId) {
                 const projectName =
                   tasks[currentTaskId].summaryTask.split('|')[0];
                 const obj = {
@@ -4814,6 +4829,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 agentMessages.data.message.trim().toLowerCase() !== 'no';
 
               if (
+                !isSuccessfulCompletionTail &&
                 isQuestionConfirmAgent &&
                 hasTokens &&
                 isNotClassificationAnswer
@@ -4899,6 +4915,60 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 taskAssigning[agentIndex].tasks[taskIndex].reAssignTo =
                   agentName;
               }
+            }
+
+            if (isSuccessfulCompletionTail) {
+              // A delayed assignment supplies the structure required by
+              // result/tool/file frames. Do not replay its execution-start,
+              // retry-log cleanup, or report-reset effects after completion.
+              const assignedIndex = taskAgent.tasks.findIndex(
+                (item) => item.id === task_id
+              );
+              const previousTask =
+                taskAgent.tasks[assignedIndex] ??
+                taskRunning[taskRunningIndex] ??
+                task;
+              const terminalStatus =
+                previousTask?.status === TaskStatus.COMPLETED ||
+                previousTask?.status === TaskStatus.FAILED
+                  ? previousTask.status
+                  : TaskStatus.SKIPPED;
+              const projectedTask: TaskInfo = {
+                ...previousTask,
+                id: task_id,
+                content: previousTask?.content || content,
+                status: terminalStatus,
+                agent: {
+                  ...taskAgent,
+                  tasks: [],
+                  status: AgentStatusValue.COMPLETED,
+                },
+              };
+              if (assignedIndex === -1) {
+                taskAgent.tasks.push({ ...projectedTask });
+              } else {
+                taskAgent.tasks[assignedIndex] = { ...projectedTask };
+              }
+              const runningProjection = {
+                ...projectedTask,
+                // Both display collections receive toolkit completion. Keep
+                // their receipts independent so one does not append twice.
+                toolkits: projectedTask.toolkits?.map((toolkit) => ({
+                  ...toolkit,
+                })),
+              };
+              if (taskRunningIndex === -1) {
+                taskRunning.push(runningProjection);
+              } else {
+                taskRunning[taskRunningIndex] = {
+                  ...taskRunning[taskRunningIndex],
+                  ...runningProjection,
+                };
+              }
+              taskAgent.status = AgentStatusValue.COMPLETED;
+              setTaskRunning(currentTaskId, taskRunning);
+              setTaskAssigning(currentTaskId, taskAssigning);
+              return;
             }
 
             // Clear logs from the assignee agent that are related to this task
@@ -5147,10 +5217,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           }
           // Deactivate Toolkit
           if (agentMessages.step === AgentStep.DEACTIVATE_TOOLKIT) {
-            handoffBrowserPreview.completeVisit(
-              normalizeToolkitMessage(agentMessages.data.message),
-              agentMessages.data.tool_call_id
-            );
+            if (!isSuccessfulCompletionTail) {
+              handoffBrowserPreview.completeVisit(
+                normalizeToolkitMessage(agentMessages.data.message),
+                agentMessages.data.tool_call_id
+              );
+            }
             // add log
             let taskAssigning = [...tasks[currentTaskId].taskAssigning];
             const resolvedProcessTaskId = resolveProcessTaskIdForToolkitEvent(
@@ -5181,6 +5253,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               );
             }
             if (assigneeAgentIndex !== -1) {
+              if (isSuccessfulCompletionTail) {
+                taskAssigning[assigneeAgentIndex].status =
+                  AgentStatusValue.COMPLETED;
+              }
               const message = filterMessage(agentMessages);
               if (message) {
                 const task = taskAssigning[assigneeAgentIndex].tasks.find(
@@ -5201,6 +5277,20 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                       `${normalizeToolkitMessage(task.toolkits[index].message)}\n${normalizeToolkitMessage(message.data.message)}`.trim();
                     task.toolkits[index].toolkitStatus =
                       AgentStatusValue.COMPLETED;
+                  } else if (
+                    isSuccessfulCompletionTail &&
+                    agentMessages.data.toolkit_name &&
+                    agentMessages.data.method_name
+                  ) {
+                    // The corresponding activation can be behind canonical
+                    // completion. Reconstruct only its final display receipt.
+                    task.toolkits ??= [];
+                    task.toolkits.push({
+                      toolkitName: agentMessages.data.toolkit_name,
+                      toolkitMethods: agentMessages.data.method_name,
+                      message: normalizeToolkitMessage(message.data.message),
+                      toolkitStatus: AgentStatusValue.COMPLETED,
+                    });
                   }
                   // task.toolkits?.unshift({
                   // 	toolkitName: agentMessages.data.toolkit_name as string,
@@ -5226,8 +5316,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             const taskIndex = taskRunning.findIndex(
               (task) => task.id === resolvedProcessTaskId
             );
+            const assignedTask = taskAssigning[assigneeAgentIndex]?.tasks.find(
+              (task) => task.id === resolvedProcessTaskId
+            );
+            const sharedTailReceipt =
+              isSuccessfulCompletionTail &&
+              assignedTask?.toolkits &&
+              assignedTask.toolkits === taskRunning[taskIndex]?.toolkits;
 
-            if (taskIndex !== -1) {
+            if (taskIndex !== -1 && !sharedTailReceipt) {
               if (toolkit_name && method_name && message) {
                 const targetMessage = filterMessage(agentMessages);
 
@@ -6082,7 +6179,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 toolkitName: 'notice',
                 toolkitMethods: '',
                 message: agentMessages.data.notice as string,
-                toolkitStatus: AgentStatusValue.RUNNING,
+                toolkitStatus: isSuccessfulCompletionTail
+                  ? AgentStatusValue.COMPLETED
+                  : AgentStatusValue.RUNNING,
               };
               if (assigneeAgentIndex !== -1 && task) {
                 task.toolkits ??= [];
