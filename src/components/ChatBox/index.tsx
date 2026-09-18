@@ -326,7 +326,12 @@ const buildUsageLimitBannerState = (
   };
 };
 export default function ChatBox(): JSX.Element {
-  const [message, setMessage] = useState<string>('');
+  const [message, setMessageState] = useState<string>('');
+  const composerRevisionRef = useRef(0);
+  const setMessage = useCallback<typeof setMessageState>((value) => {
+    composerRevisionRef.current += 1;
+    setMessageState(value);
+  }, []);
   const [pendingReviewHandoffIds, setPendingReviewHandoffIds] = useState<
     string[]
   >([]);
@@ -357,6 +362,8 @@ export default function ChatBox(): JSX.Element {
     (s) => s.chatTimelineDetailLevel ?? DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL
   );
   const activeProjectId = projectStore.activeProjectId;
+  const composerProjectRef = useRef(activeProjectId);
+  composerProjectRef.current = activeProjectId;
   const eventNativeTimelineEnabled = isChatEventTimelineEnabled();
   const {
     projectId: projectEventRuntimeProjectId,
@@ -525,7 +532,12 @@ export default function ChatBox(): JSX.Element {
       ]),
     ]);
     consumeWorkspaceChatDraft(workspaceChatDraftRequest.requestId);
-  }, [activeProjectId, consumeWorkspaceChatDraft, workspaceChatDraftRequest]);
+  }, [
+    activeProjectId,
+    consumeWorkspaceChatDraft,
+    workspaceChatDraftRequest,
+    setMessage,
+  ]);
 
   useEffect(() => {
     proxyFetchGet('/api/v1/configs').catch((err) =>
@@ -548,6 +560,8 @@ export default function ChatBox(): JSX.Element {
     | null
   >(null);
   const queuedDispatchRef = useRef<string | null>(null);
+  const followUpAdmissionsRef = useRef(new Map<string, symbol>());
+  const [followUpAdmissionRevision, setFollowUpAdmissionRevision] = useState(0);
   const interruptedAdmissionRef = useRef<string | null>(null);
   // Admission is monotonic. Late pending-list responses must never restore a
   // request already accepted by HTTP or observed starting in the event stream.
@@ -1009,7 +1023,7 @@ export default function ChatBox(): JSX.Element {
       newSearchParams.delete('skill_prompt');
       setSearchParams(newSearchParams, { replace: true });
     }
-  }, [skill_prompt, searchParams, setSearchParams]);
+  }, [skill_prompt, searchParams, setSearchParams, setMessage]);
 
   // Handle scrollbar visibility on scroll
   useEffect(() => {
@@ -1084,6 +1098,17 @@ export default function ChatBox(): JSX.Element {
       );
       return;
     }
+    if (
+      !queuedRequestId &&
+      (followUpAdmissionsRef.current.has(targetProjectId) ||
+        (queuedDispatchRef.current !== null &&
+          projectStore
+            .getProjectById(targetProjectId)
+            ?.queuedMessages.some(
+              (item) => item.task_id === queuedDispatchRef.current
+            )))
+    )
+      return;
 
     const targetProjectMeta = useSpaceStore
       .getState()
@@ -1247,6 +1272,7 @@ export default function ChatBox(): JSX.Element {
 
     if (textareaRef.current) textareaRef.current.style.height = '60px';
     let messageAccepted = false;
+    let followUpAdmission: symbol | undefined;
     try {
       if (startsAfterInterruption && !queuedRequestId) {
         // A new instruction is a new task, never an implicit Resume. Keep the
@@ -1489,15 +1515,44 @@ export default function ChatBox(): JSX.Element {
             // keep hasWaitComfirm as true so that follow-up improves work as usual
           } else {
             // Continue conversation: simple response, complex task, or finished task
+            // Claim synchronously: runtime lookup must not allow another user
+            // event (or the queued dispatcher) to submit the same turn.
+            followUpAdmission = Symbol(targetProjectId);
+            followUpAdmissionsRef.current.set(
+              targetProjectId,
+              followUpAdmission
+            );
+            const composerRevision = composerRevisionRef.current;
+            const sourceStore = projectStore.getActiveChatStore();
+            const sourceAttaches =
+              sourceStore?.getState().tasks[_taskId]?.attaches;
             const attachesForThisTurn =
               queuedAttaches ||
               JSON.parse(
-                JSON.stringify(chatStore.tasks[_taskId]?.attaches || [])
+                JSON.stringify(
+                  sourceAttaches || chatStore.tasks[_taskId]?.attaches || []
+                )
               );
             const improveAttaches =
               attachesForThisTurn.map(
                 (f: { filePath: string }) => f.filePath
               ) || [];
+            const clearOwnedComposer = () => {
+              if (
+                preserveComposer ||
+                composerProjectRef.current !== targetProjectId
+              )
+                return;
+              if (composerRevisionRef.current === composerRevision)
+                setMessage('');
+              const sourceTask = sourceStore?.getState().tasks[_taskId];
+              if (
+                sourceStore &&
+                sourceTask &&
+                sourceTask.attaches === sourceAttaches
+              )
+                sourceStore.getState().setAttaches(_taskId, []);
+            };
 
             const nextTaskId = generateUniqueId();
             await waitForPendingStaleRuntimeEviction(targetProjectId);
@@ -1527,10 +1582,7 @@ export default function ChatBox(): JSX.Element {
                 }
               );
               messageAccepted = true;
-              if (!preserveComposer) {
-                chatStore.setAttaches(_taskId, []);
-                setMessage('');
-              }
+              clearOwnedComposer();
             } else {
               // A normal warm follow-up is a new durable Run. Seed it before
               // admission so its pending work is visible immediately.
@@ -1544,7 +1596,6 @@ export default function ChatBox(): JSX.Element {
                 const prepareError = new Error(
                   t('chat.follow-up-prepare-failed')
                 );
-                notifyError(prepareError.message);
                 throw prepareError;
               }
 
@@ -1570,10 +1621,7 @@ export default function ChatBox(): JSX.Element {
                 content: displayContent,
                 attaches: attachesForThisTurn,
               });
-              if (!preserveComposer) {
-                chatStore.setAttaches(_taskId, []);
-                setMessage('');
-              }
+              clearOwnedComposer();
 
               try {
                 // Use improve endpoint (POST /chat/{id}) - {id} is project_id.
@@ -1607,6 +1655,14 @@ export default function ChatBox(): JSX.Element {
                 if (preserveComposer) throw error;
               }
             }
+            if (messageAccepted)
+              setAdmittedQueuedRun((current) =>
+                current &&
+                current.projectId !== targetProjectId &&
+                current.projectId === composerProjectRef.current
+                  ? current
+                  : { projectId: targetProjectId, runId: nextTaskId }
+              );
           }
         } else {
           // For the very first message, add it to the current chatStore first, then call startTask
@@ -1651,18 +1707,31 @@ export default function ChatBox(): JSX.Element {
       }
     } catch (error) {
       console.error('error:', error);
-      if (startsAfterInterruption)
+      if (startsAfterInterruption || followUpAdmission)
         notifyError(
           error instanceof Error ? error.message : t('chat.run-resume-failed')
         );
       if (preserveComposer) throw error;
     } finally {
+      if (
+        followUpAdmission &&
+        followUpAdmissionsRef.current.get(targetProjectId) === followUpAdmission
+      ) {
+        followUpAdmissionsRef.current.delete(targetProjectId);
+        // Wake a queued dispatch that yielded to this admission, including
+        // when the lookup failed without producing a Run/store update.
+        setFollowUpAdmissionRevision((revision) => revision + 1);
+      }
       if (interruptedAdmissionRef.current === targetProjectId)
         interruptedAdmissionRef.current = null;
       if (messageAccepted && !requiresHumanReply) {
         if (startsAfterInterruption) setInterruptedRun(null);
         acknowledgeWorkspaceReviewHandoffs(targetProjectId, reviewHandoffIds);
-        setPendingReviewHandoffIds([]);
+        if (!followUpAdmission) setPendingReviewHandoffIds([]);
+        else if (composerProjectRef.current === targetProjectId)
+          setPendingReviewHandoffIds((current) =>
+            current.filter((id) => !reviewHandoffIds.includes(id))
+          );
       }
       scheduleUsageRefresh();
     }
@@ -1983,6 +2052,7 @@ export default function ChatBox(): JSX.Element {
     if (admittedQueuedRun?.projectId === projectId) return;
     if (
       queuedDispatchRef.current ||
+      followUpAdmissionsRef.current.has(projectId) ||
       interruptedAdmissionRef.current === projectId ||
       queueActionRef.current?.projectId === projectId
     )
@@ -2046,6 +2116,7 @@ export default function ChatBox(): JSX.Element {
     projectStore,
     queuedMessages,
     queueAction,
+    followUpAdmissionRevision,
   ]);
 
   useEffect(() => {

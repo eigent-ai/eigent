@@ -233,7 +233,28 @@ vi.mock('../../../src/components/ChatBox/BottomBox', () => ({
             value={inputProps.value}
             disabled={inputProps.disabled}
             onChange={(e) => inputProps.onChange(e.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                inputProps.onSend();
+              }
+            }}
           />
+          <input
+            data-testid="attachment-input"
+            type="file"
+            onChange={(event) =>
+              inputProps.onFilesChange(
+                Array.from(event.target.files || []).map((file) => ({
+                  fileName: file.name,
+                  filePath: `/tmp/${file.name}`,
+                }))
+              )
+            }
+          />
+          <output data-testid="composer-files">
+            {inputProps.files?.map((file: any) => file.fileName).join(', ')}
+          </output>
           <button
             data-testid="send-button"
             data-composer-primary-action={primaryAction}
@@ -1165,6 +1186,433 @@ describe('ChatBox Component', async () => {
       expect(_mockFetchPost).not.toHaveBeenCalledWith(
         '/chat/test-project-id',
         expect.anything()
+      );
+    });
+
+    describe('normal follow-up admission ownership', () => {
+      const originalAttachment = {
+        fileName: 'original.pdf',
+        filePath: '/tmp/original.pdf',
+      };
+      const createFollowUpState = (attachment = originalAttachment) => {
+        const state = {
+          ...defaultChatStoreState,
+          startTask: vi.fn().mockResolvedValue(undefined),
+          setAttaches: vi.fn(),
+          tasks: {
+            'test-task-id': {
+              ...defaultChatStoreState.tasks['test-task-id'],
+              messages: [
+                {
+                  id: 'result',
+                  role: 'assistant',
+                  content: 'Previous result',
+                  step: 'wait_confirm',
+                  attaches: [],
+                },
+              ],
+              hasMessages: true,
+              hasWaitComfirm: true,
+              status: 'pending',
+              attaches: [attachment],
+            },
+          },
+        };
+        state.setAttaches.mockImplementation((_taskId, files) => {
+          state.tasks['test-task-id'].attaches = files;
+        });
+        return state;
+      };
+
+      const setupAdmission = (warm: boolean, stage: 'status' | 'stale') => {
+        let release!: () => void;
+        let reject!: (error: Error) => void;
+        const status = {
+          has_lock: true,
+          status: 'done',
+          run_id: 'test-task-id',
+          consumer_alive: warm,
+        };
+        const pendingOwnership = new Promise<any>((resolve, rejectPromise) => {
+          release = () => resolve(stage === 'status' ? status : undefined);
+          reject = rejectPromise;
+        });
+        if (stage === 'stale') {
+          waitForPendingStaleRuntimeEvictionMock.mockReturnValue(
+            pendingOwnership
+          );
+        }
+        mockFetchGet.mockImplementation((url: string) =>
+          url === '/chat/test-project-id/status'
+            ? stage === 'status'
+              ? pendingOwnership
+              : Promise.resolve(status)
+            : Promise.resolve({ runs: [] })
+        );
+        const chatState = createFollowUpState();
+        mockUseChatStoreAdapter.mockReturnValue({
+          projectStore: defaultProjectStoreState as any,
+          chatStore: chatState as any,
+        });
+        defaultProjectStoreState.getActiveChatStore.mockImplementation(() => ({
+          getState: () => chatState,
+          subscribe: () => () => {},
+        }));
+        const view = renderChatBox();
+        const rerender = () =>
+          view.rerender(
+            <BrowserRouter>
+              <ChatBox />
+            </BrowserRouter>
+          );
+        const waitUntilOwnershipPending = () =>
+          waitFor(() => {
+            if (stage === 'status') {
+              expect(mockFetchGet).toHaveBeenCalledWith(
+                '/chat/test-project-id/status'
+              );
+            } else {
+              expect(
+                waitForPendingStaleRuntimeEvictionMock
+              ).toHaveBeenCalledWith('test-project-id');
+            }
+          });
+        const expectAdmission = async () => {
+          await waitFor(() => {
+            if (warm) {
+              expect(_mockFetchPost).toHaveBeenCalledWith(
+                '/chat/test-project-id',
+                expect.objectContaining({
+                  question: 'Original instruction',
+                  attaches: [originalAttachment.filePath],
+                })
+              );
+            } else {
+              expect(chatState.startTask).toHaveBeenCalledWith(
+                expect.any(String),
+                undefined,
+                undefined,
+                undefined,
+                'Original instruction',
+                [originalAttachment],
+                undefined,
+                'test-project-id',
+                'single-agent',
+                expect.objectContaining({
+                  preserveTaskId: true,
+                  awaitAdmission: true,
+                })
+              );
+            }
+          });
+        };
+        const admissionCount = () =>
+          warm
+            ? _mockFetchPost.mock.calls.filter(
+                ([url]) => url === '/chat/test-project-id'
+              ).length
+            : chatState.startTask.mock.calls.length;
+        return {
+          chatState,
+          release,
+          reject,
+          status,
+          rerender,
+          waitUntilOwnershipPending,
+          expectAdmission,
+          admissionCount,
+        };
+      };
+
+      describe.each([
+        ['status', true],
+        ['status', false],
+        ['stale', true],
+        ['stale', false],
+      ] as const)('waiting for %s with warm=%s', (stage, warm) => {
+        it('admits only once for Enter then click in separate browser events', async () => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(warm, stage);
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.keyboard('{Enter}');
+          await setup.waitUntilOwnershipPending();
+          await user.click(screen.getByTestId('send-button'));
+
+          await act(async () => setup.release());
+          await setup.expectAdmission();
+          expect(setup.admissionCount()).toBe(1);
+        });
+
+        it('preserves a newer composer draft and attachments after the old admission resolves', async () => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(warm, stage);
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+
+          await user.clear(screen.getByTestId('message-input'));
+          await user.type(screen.getByTestId('message-input'), 'A newer draft');
+          await user.upload(
+            screen.getByTestId('attachment-input'),
+            new File(['new'], 'newer.pdf', { type: 'application/pdf' })
+          );
+          setup.rerender();
+          await act(async () => setup.release());
+          await setup.expectAdmission();
+          setup.rerender();
+
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'A newer draft'
+          );
+          expect(screen.getByTestId('composer-files')).toHaveTextContent(
+            'newer.pdf'
+          );
+          expect(setup.chatState.tasks['test-task-id'].attaches).toEqual([
+            { fileName: 'newer.pdf', filePath: '/tmp/newer.pdf' },
+          ]);
+        });
+
+        it('does not clear another Session composer after switching during admission', async () => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(warm, stage);
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+
+          const secondState = createFollowUpState({
+            fileName: 'second-session.pdf',
+            filePath: '/tmp/second-session.pdf',
+          });
+          defaultProjectStoreState.activeProjectId = 'second-project-id';
+          mockUseChatStoreAdapter.mockReturnValue({
+            projectStore: defaultProjectStoreState as any,
+            chatStore: secondState as any,
+          });
+          defaultProjectStoreState.getActiveChatStore.mockImplementation(
+            (projectId?: string) => ({
+              getState: () =>
+                projectId === 'test-project-id' ? setup.chatState : secondState,
+              subscribe: () => () => {},
+            })
+          );
+          setup.rerender();
+          await user.clear(screen.getByTestId('message-input'));
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Session B draft'
+          );
+
+          await act(async () => setup.release());
+          await setup.expectAdmission();
+          setup.rerender();
+
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'Session B draft'
+          );
+          expect(screen.getByTestId('composer-files')).toHaveTextContent(
+            'second-session.pdf'
+          );
+          expect(secondState.setAttaches).not.toHaveBeenCalled();
+        });
+      });
+
+      it.each([true, false])(
+        'retains the failed status draft and files for a successful retry with warm=%s',
+        async (warm) => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(warm, 'status');
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+          await act(async () => setup.reject(new Error('Status unavailable')));
+
+          expect(setup.admissionCount()).toBe(0);
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'Original instruction'
+          );
+          expect(screen.getByTestId('composer-files')).toHaveTextContent(
+            'original.pdf'
+          );
+
+          mockFetchGet.mockImplementation((url: string) =>
+            Promise.resolve(
+              url === '/chat/test-project-id/status'
+                ? setup.status
+                : { runs: [] }
+            )
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.expectAdmission();
+          expect(setup.admissionCount()).toBe(1);
+        }
+      );
+
+      it('preserves a clear-and-retyped identical draft as a newer edit', async () => {
+        const user = userEvent.setup();
+        const setup = setupAdmission(true, 'status');
+        await user.type(
+          screen.getByTestId('message-input'),
+          'Original instruction'
+        );
+        await user.click(screen.getByTestId('send-button'));
+        await setup.waitUntilOwnershipPending();
+        await user.clear(screen.getByTestId('message-input'));
+        await user.type(
+          screen.getByTestId('message-input'),
+          'Original instruction'
+        );
+
+        await act(async () => setup.release());
+        await setup.expectAdmission();
+
+        expect(screen.getByTestId('message-input')).toHaveValue(
+          'Original instruction'
+        );
+      });
+
+      it.each([
+        [true, true],
+        [true, false],
+        [false, true],
+        [false, false],
+      ])(
+        'holds newly queued work behind ordinary admission (warm=%s, succeeds=%s)',
+        async (warm, succeeds) => {
+          const user = userEvent.setup();
+          eventNativeHarness.enabled = true;
+          eventNativeHarness.snapshot = runningEventNativeSnapshot();
+          eventNativeHarness.snapshot.view.runs['test-task-id'].status =
+            'completed';
+          const setup = setupAdmission(warm, 'status');
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+
+          const queuedFile = {
+            fileName: 'queued.pdf',
+            filePath: '/tmp/queued.pdf',
+          };
+          const queuedMessages = [
+            {
+              task_id: 'queued-after-ordinary',
+              run_id: 'queued-after-ordinary',
+              content: 'Queued instruction',
+              timestamp: 1,
+              attaches: [queuedFile],
+            },
+          ];
+          defaultProjectStoreState.getProjectById.mockImplementation(
+            () => ({ queuedMessages }) as any
+          );
+          defaultProjectStoreState.removeQueuedMessage.mockImplementation(
+            (_projectId, taskId) => {
+              const index = queuedMessages.findIndex(
+                (item) => item.task_id === taskId
+              );
+              return index < 0 ? undefined : queuedMessages.splice(index, 1)[0];
+            }
+          );
+          setup.rerender();
+          await act(async () => {});
+          expect(setup.admissionCount()).toBe(0);
+          expect(
+            defaultProjectStoreState.setQueuedMessageProcessing
+          ).not.toHaveBeenCalled();
+
+          // Future queue status reads succeed; only the already captured
+          // ordinary request remains suspended or fails below.
+          mockFetchGet.mockImplementation((url: string) =>
+            Promise.resolve(
+              url === '/chat/test-project-id/status'
+                ? setup.status
+                : { items: [] }
+            )
+          );
+          if (succeeds) {
+            await act(async () => setup.release());
+            await setup.expectAdmission();
+            expect(setup.admissionCount()).toBe(1);
+            expect(
+              defaultProjectStoreState.setQueuedMessageProcessing
+            ).not.toHaveBeenCalled();
+
+            await user.type(
+              screen.getByTestId('message-input'),
+              'Unsent composer draft'
+            );
+            await user.upload(
+              screen.getByTestId('attachment-input'),
+              new File(['next'], 'next.pdf', { type: 'application/pdf' })
+            );
+            setup.rerender();
+            // HTTP admission alone does not release the queue. The exact
+            // admitted Run must reach a canonical terminal status first.
+            expect(setup.admissionCount()).toBe(1);
+            eventNativeHarness.snapshot =
+              runningEventNativeSnapshot('test-unique-id');
+            eventNativeHarness.snapshot.revision = 2;
+            eventNativeHarness.snapshot.view.runs['test-unique-id'].status =
+              'completed';
+            setup.rerender();
+          } else {
+            // Do not rerender: the failed admission must release its guard
+            // and make React reconsider the queued item by itself.
+            await act(async () =>
+              setup.reject(new Error('Status unavailable'))
+            );
+          }
+
+          await waitFor(() => {
+            if (warm) {
+              expect(_mockFetchPost).toHaveBeenCalledWith(
+                '/chat/test-project-id',
+                expect.objectContaining({
+                  question: 'Queued instruction',
+                  task_id: 'queued-after-ordinary',
+                  attaches: [queuedFile.filePath],
+                })
+              );
+            } else {
+              expect(setup.chatState.startTask).toHaveBeenCalledWith(
+                'queued-after-ordinary',
+                undefined,
+                undefined,
+                undefined,
+                'Queued instruction',
+                [queuedFile],
+                undefined,
+                'test-project-id',
+                'single-agent',
+                expect.objectContaining({
+                  preserveTaskId: true,
+                  awaitAdmission: true,
+                })
+              );
+            }
+          });
+          expect(setup.admissionCount()).toBe(succeeds ? 2 : 1);
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            succeeds ? 'Unsent composer draft' : 'Original instruction'
+          );
+          expect(screen.getByTestId('composer-files')).toHaveTextContent(
+            succeeds ? 'next.pdf' : 'original.pdf'
+          );
+        }
       );
     });
 
