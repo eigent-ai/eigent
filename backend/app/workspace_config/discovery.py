@@ -40,15 +40,87 @@ from app.workspace_config.models import (
 )
 
 
+def _checked_discovery_path(path: Path, boundary: Path) -> Path:
+    """Check before opening; resolving a link never creates a new boundary."""
+    try:
+        target = path.resolve(strict=True)
+        target.relative_to(boundary)
+        return target
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise EnvironmentSetupRequiredError(
+            ["configuration_discovery_boundary_invalid"]
+        ) from exc
+
+
+class _DiscoveryBundleReader(RuntimeEnvironmentAssembler):
+    """Reuse contract/digest validation with a bounded per-discovery reader."""
+
+    def __init__(
+        self, journal: SQLiteRunJournal, *, state_root: Path, root: Path
+    ):
+        super().__init__(journal, state_root=state_root)
+        self.discovery_root = root
+
+    def _read_limited(self, path: Path) -> bytes:
+        target = _checked_discovery_path(path, self.discovery_root)
+        if not target.is_file():
+            raise EnvironmentSetupRequiredError(
+                ["configuration_discovery_file_invalid"]
+            )
+        # Open the checked target, not the original symlink. This is a
+        # pre-open path check, not an OS sandbox or a guarantee against a
+        # hostile concurrent rename of path components between check/open.
+        return super()._read_limited(target)
+
+
 class WorkspaceResourceDiscovery:
     MAX_ASSETS = 512
     MAX_ASSET_BYTES = RuntimeEnvironmentAssembler.MAX_TEXT_ASSET_BYTES
 
     def __init__(self, journal: SQLiteRunJournal, *, state_root: Path):
         self.journal = journal
+        # The supplied storage parent is an application-owned anchor (it may
+        # use a platform alias such as /tmp). Do not resolve the managed state
+        # directory or its Space-specific descendants into a new identity.
+        state_path = state_root.expanduser().absolute()
+        self.state_root = state_path.parent.resolve() / state_path.name
         self.assembler = RuntimeEnvironmentAssembler(
             journal, state_root=state_root
         )
+
+    def _configuration_root(
+        self, *, space_id: str, space_root: Path, placement: str
+    ) -> Path:
+        if placement == "in_repo":
+            # WorkspaceResolver persists canonical binding paths. Resolving
+            # one again and accepting a different path would follow a replaced
+            # Space root (or parent) into another Space.
+            owner = space_root.expanduser().absolute()
+            candidate = owner / ".eigent"
+        elif placement == "sidecar":
+            if space_id in {"", ".", ".."} or any(
+                character
+                not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-"
+                for character in space_id
+            ):
+                raise EnvironmentSetupRequiredError(["space_identity_invalid"])
+            owner = self.state_root / "spaces" / space_id
+            candidate = owner / "configuration"
+        else:
+            raise EnvironmentSetupRequiredError(["config_placement_invalid"])
+        if (
+            _checked_discovery_path(owner, owner) != owner
+            or not owner.is_dir()
+        ):
+            raise EnvironmentSetupRequiredError(
+                ["configuration_discovery_boundary_invalid"]
+            )
+        root = _checked_discovery_path(candidate, owner)
+        if root == owner or not root.is_dir():
+            raise EnvironmentSetupRequiredError(
+                ["configuration_discovery_boundary_invalid"]
+            )
+        return root
 
     @staticmethod
     def _safe_ref(ref: str) -> bool:
@@ -80,21 +152,20 @@ class WorkspaceResourceDiscovery:
                 manifest = WorkspaceBundleManifest.model_validate(
                     revision.manifest
                 )
-                root = self.assembler._configuration_root(
+                root = self._configuration_root(
                     space_id=space_id,
                     space_root=space_root,
                     placement=installed.config_placement,
                 )
-                lock = self.assembler._load_configuration_contract(
-                    root, manifest
+                reader = _DiscoveryBundleReader(
+                    self.journal, state_root=self.state_root, root=root
                 )
+                lock = reader._load_configuration_contract(root, manifest)
                 dependencies = (*lock.assets, *lock.skills, *lock.mcp_packages)
                 digests = {item.ref: item.digest for item in dependencies}
 
                 def read_installed(ref: str) -> tuple[Path | None, bytes]:
-                    return self.assembler._read_bundle_asset(
-                        root, ref, digests
-                    )
+                    return reader._read_bundle_asset(root, ref, digests)
 
                 self._collect(
                     manifest=manifest,

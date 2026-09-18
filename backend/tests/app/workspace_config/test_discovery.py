@@ -14,14 +14,19 @@
 
 from __future__ import annotations
 
+import builtins
 import hashlib
+import io
 import json
+import os
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
 import yaml
 
 from app.run_journal import OptimisticConcurrencyError, SQLiteRunJournal
+from app.workspace_bundle.runtime import EnvironmentSetupRequiredError
 from app.workspace_config import WorkspaceBundleManifest
 from app.workspace_config.discovery import WorkspaceResourceDiscovery
 
@@ -140,6 +145,212 @@ def _import(journal, *, space_id="space-1", assets=None):
         ),
         updated_by="fixture",
     )
+
+
+def _deny_fixture_opens(monkeypatch, forbidden: Path):
+    """Observe the actual open boundary, not just the returned projection."""
+    opened = []
+    forbidden = forbidden.resolve()
+
+    def guard(original):
+        def checked(file, *args, **kwargs):
+            if isinstance(file, (str, bytes, os.PathLike)):
+                target = Path(os.fsdecode(file)).resolve()
+                if target == forbidden or forbidden in target.parents:
+                    opened.append(target)
+                    raise AssertionError("forbidden fixture was opened")
+            return original(file, *args, **kwargs)
+
+        return checked
+
+    monkeypatch.setattr(builtins, "open", guard(builtins.open))
+    monkeypatch.setattr(io, "open", guard(io.open))
+    return opened
+
+
+@pytest.mark.parametrize("placement", ["in_repo", "sidecar"])
+@pytest.mark.parametrize("redirect_owner", [False, True])
+def test_configuration_root_or_owner_cannot_redirect_to_another_space(
+    discovery, tmp_path, monkeypatch, placement, redirect_owner
+):
+    service, journal = discovery
+    root, configuration = _install(tmp_path, journal, placement=placement)
+    _, other_configuration = _install(
+        tmp_path, journal, space_id="space-other", placement=placement
+    )
+    link = configuration.parent if redirect_owner else configuration
+    target = (
+        other_configuration.parent if redirect_owner else other_configuration
+    )
+    link.rename(link.with_name("original-configuration"))
+    link.symlink_to(target, target_is_directory=True)
+    opened = _deny_fixture_opens(monkeypatch, other_configuration)
+
+    with pytest.raises(EnvironmentSetupRequiredError):
+        service.discover(space_id="space-1", space_root=root)
+    assert opened == []
+
+
+@pytest.mark.parametrize(
+    ("placement", "redirect"),
+    [
+        ("in_repo", "owner"),
+        ("in_repo", "parent"),
+        ("sidecar", "owner"),
+        ("sidecar", "parent"),
+        ("sidecar", "state"),
+    ],
+)
+def test_owned_configuration_ancestors_cannot_reanchor_discovery(
+    discovery, tmp_path, monkeypatch, placement, redirect
+):
+    _, journal = discovery
+    owned = tmp_path / "owned"
+    service = WorkspaceResourceDiscovery(journal, state_root=owned / "state")
+    root, configuration = _install(owned, journal, placement=placement)
+    owner = root if placement == "in_repo" else configuration.parent
+    link = (
+        owner
+        if redirect == "owner"
+        else owner.parent
+        if redirect == "parent"
+        else owned / "state"
+    )
+    outside = tmp_path / "synthetic-other-space"
+    link.rename(outside)
+    link.symlink_to(outside, target_is_directory=True)
+    opened = _deny_fixture_opens(monkeypatch, outside)
+
+    with pytest.raises(EnvironmentSetupRequiredError):
+        service.discover(space_id="space-1", space_root=root)
+    assert opened == []
+
+
+@pytest.mark.parametrize("placement", ["in_repo", "sidecar"])
+@pytest.mark.parametrize("contract", ["workspace.yaml", "workspace.lock"])
+def test_contract_symlink_is_rejected_before_opening_external_content(
+    discovery, tmp_path, monkeypatch, placement, contract
+):
+    service, journal = discovery
+    root, configuration = _install(tmp_path, journal, placement=placement)
+    outside = tmp_path / "synthetic-private-config.json"
+    outside.write_text('{"token":"synthetic-boundary-marker"}')
+    path = configuration / contract
+    path.unlink()
+    path.symlink_to(outside)
+    opened = _deny_fixture_opens(monkeypatch, outside)
+
+    with pytest.raises(EnvironmentSetupRequiredError) as caught:
+        service.discover(space_id="space-1", space_root=root)
+    assert opened == []
+    assert str(outside) not in str(caught.value)
+    assert "synthetic-boundary-marker" not in str(caught.value)
+
+
+@pytest.mark.parametrize("placement", ["in_repo", "sidecar"])
+@pytest.mark.parametrize("ref", [SKILL_REF, MCP_REF])
+@pytest.mark.parametrize("redirect_parent", [False, True])
+def test_asset_file_and_parent_links_never_open_external_targets(
+    discovery, tmp_path, monkeypatch, placement, ref, redirect_parent
+):
+    service, journal = discovery
+    root, configuration = _install(tmp_path, journal, placement=placement)
+    path = configuration / ref.removeprefix("bundle://")
+    link = path.parent if redirect_parent else path
+    outside = tmp_path / "synthetic-external-asset"
+    link.rename(outside)
+    link.symlink_to(outside, target_is_directory=redirect_parent)
+    opened = _deny_fixture_opens(monkeypatch, outside)
+
+    result = service.discover(space_id="space-1", space_root=root)
+    assert result["skills" if ref == SKILL_REF else "mcp_servers"] == []
+    assert opened == []
+
+
+@pytest.mark.parametrize("placement", ["in_repo", "sidecar"])
+@pytest.mark.parametrize("redirect_parent", [False, True])
+def test_mcp_executable_links_never_open_external_targets(
+    discovery, tmp_path, monkeypatch, placement, redirect_parent
+):
+    service, journal = discovery
+    executable_ref = "bundle://agent-plugins/research/bin/server"
+    assets = _assets()
+    assets[executable_ref] = b"#!/bin/sh\nexit 0\n"
+    assets[MCP_REF] = json.dumps(
+        {"mcpServers": {"research": {"command": "./bin/server", "args": []}}}
+    ).encode()
+    root, configuration = _install(
+        tmp_path, journal, assets=assets, placement=placement
+    )
+    executable = configuration / executable_ref.removeprefix("bundle://")
+    executable.chmod(0o755)
+    lock_path = configuration / "workspace.lock"
+    lock = yaml.safe_load(lock_path.read_text())
+    for asset in lock["assets"]:
+        if asset["ref"] == executable_ref:
+            asset["executable"] = True
+    lock_path.write_text(yaml.safe_dump(lock))
+    candidate = service.discover(space_id="space-1", space_root=root)[
+        "mcp_servers"
+    ][0]
+    assert candidate["availability"] == "available"
+
+    link = executable.parent if redirect_parent else executable
+    outside = tmp_path / "synthetic-external-executable"
+    link.rename(outside)
+    link.symlink_to(outside, target_is_directory=redirect_parent)
+    opened = _deny_fixture_opens(monkeypatch, outside)
+
+    result = service.discover(space_id="space-1", space_root=root)
+    assert result["mcp_servers"] == []
+    assert result["skills"][0]["ref"] == SKILL_REF
+    assert opened == []
+
+
+@pytest.mark.parametrize("placement", ["in_repo", "sidecar"])
+def test_contained_root_contract_and_asset_aliases_remain_valid(
+    discovery, tmp_path, placement
+):
+    service, journal = discovery
+    root, configuration = _install(tmp_path, journal, placement=placement)
+    # An alias may stay within the same Space owner; it cannot select a
+    # different Space owner. Contract/asset aliases stay inside that Bundle.
+    actual = configuration.with_name("contained-profile")
+    configuration.rename(actual)
+    configuration.symlink_to(actual.name, target_is_directory=True)
+    for filename in ("workspace.yaml", "workspace.lock"):
+        source = actual / filename
+        target = source.with_name("original-" + filename)
+        source.rename(target)
+        source.symlink_to(target.name)
+    source = actual / SKILL_REF.removeprefix("bundle://")
+    target = source.with_name("original-skill.md")
+    source.rename(target)
+    source.symlink_to(target.name)
+
+    result = service.discover(space_id="space-1", space_root=root)
+    assert result["skills"][0]["ref"] == SKILL_REF
+    assert result["mcp_servers"][0]["definition"] == MCP_REF
+    assert all(
+        item["availability"] == "available"
+        for item in [*result["skills"], *result["mcp_servers"]]
+    )
+    assert str(actual) not in json.dumps(result)
+
+
+def test_sidecar_trusted_storage_parent_alias_does_not_change_space_scope(
+    discovery, tmp_path
+):
+    _, journal = discovery
+    root, _ = _install(tmp_path, journal, placement="sidecar")
+    storage_alias = tmp_path / "storage-alias"
+    storage_alias.symlink_to(tmp_path, target_is_directory=True)
+    service = WorkspaceResourceDiscovery(
+        journal, state_root=storage_alias / "state"
+    )
+    # Sidecar does not require its files to be under the content workspace.
+    result = service.discover(space_id="space-1", space_root=root)
+    assert result["skills"][0]["ref"] == SKILL_REF
 
 
 @pytest.mark.parametrize("placement", ["in_repo", "sidecar"])
