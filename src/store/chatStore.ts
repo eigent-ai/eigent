@@ -2490,8 +2490,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       // Reuse the model captured on this Project (if any) so follow-up runs
       // keep the conversation's model even when the global default changed.
       const spaceId = resolveSpaceIdForProject(project_id);
+      const projectSpaceId = project?.spaceId;
       let pinnedModelSelection =
         !type && project_id ? projectStore.getProjectModel(project_id) : null;
+      // Server sync can omit the local new-Session marker while retaining a
+      // delivery receipt. That receipt still requires accepted-model recovery.
+      const pendingModelAdmission = project?.metadata?.spaceModelAdmissionRunId;
+      const needsModelRecovery = Boolean(
+        project?.metadata?.spaceModelDefaultPending || pendingModelAdmission
+      );
       let expectedModelSelection = JSON.stringify(pinnedModelSelection);
       const assertModelSelectionCurrent = () => {
         const currentAuth = getAuthStore();
@@ -2500,7 +2507,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           currentAuth.email !== email ||
           currentAuth.user_id !== user_id ||
           (project_id &&
-            (resolveSpaceIdForProject(project_id) !== spaceId ||
+            (projectStore.getProjectById(project_id)?.spaceId !==
+              projectSpaceId ||
+              resolveSpaceIdForProject(project_id) !== spaceId ||
               JSON.stringify(projectStore.getProjectModel(project_id)) !==
                 expectedModelSelection))
         ) {
@@ -2516,12 +2525,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       try {
         if (
           !type &&
-          !startOptions.resumeRequestId &&
           !pinnedModelSelection &&
-          project?.metadata?.spaceModelDefaultPending &&
-          project.spaceId &&
-          !project.spaceId.startsWith('legacy_') &&
-          !spaceId
+          ((pendingModelAdmission &&
+            (!projectSpaceId || spaceId !== projectSpaceId)) ||
+            (needsModelRecovery &&
+              project?.spaceId &&
+              !project.spaceId.startsWith('legacy_') &&
+              !spaceId))
         ) {
           throw spaceModelError('unavailable');
         }
@@ -2530,7 +2540,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           project_id &&
           spaceId &&
           !pinnedModelSelection &&
-          project?.metadata?.spaceModelDefaultPending
+          needsModelRecovery
         ) {
           const identity = { email: email || '', userId: user_id };
           const recovered = await recoverSpaceSessionModel(
@@ -2548,6 +2558,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           } else {
             if (
               startOptions.resumeRequestId ||
+              pendingModelAdmission ||
+              !projectStore.getProjectById(project_id)?.metadata
+                ?.spaceModelDefaultPending ||
               projectStore.getProjectById(project_id)?.metadata
                 ?.spaceModelAdmissionRunId
             )

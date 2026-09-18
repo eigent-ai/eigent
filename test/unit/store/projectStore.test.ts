@@ -13,6 +13,9 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { PROJECT_CACHE_SCHEMA_VERSION } from '@/lib/projectCache';
+import { createSyncedProjectInSpace } from '@/lib/spaceProject';
+import type { ProjectPayload, ServerProject } from '@/service/spaceApi';
+import { useCloudModelStore } from '@/store/cloudModelStore';
 import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
 import {
   getProjectEventStore,
@@ -30,7 +33,10 @@ const {
   hasActiveSSEConnectionMock,
   putCachedProjectMock,
   proxyFetchGetMock,
+  proxyCreateSpaceProjectMock,
+  proxyFetchSpaceProjectsMock,
   proxyUpdateSpaceProjectMock,
+  sseTransportMock,
   replayMock,
 } = vi.hoisted(() => ({
   deleteCachedProjectMock: vi.fn(),
@@ -39,7 +45,10 @@ const {
   hasActiveSSEConnectionMock: vi.fn(),
   putCachedProjectMock: vi.fn(),
   proxyFetchGetMock: vi.fn(),
+  proxyCreateSpaceProjectMock: vi.fn(),
+  proxyFetchSpaceProjectsMock: vi.fn(),
   proxyUpdateSpaceProjectMock: vi.fn().mockResolvedValue({}),
+  sseTransportMock: vi.fn(),
   replayMock: vi.fn(),
 }));
 
@@ -49,6 +58,9 @@ vi.mock('@/api/http', async (importOriginal) => {
     ...actual,
     fetchGet: fetchGetMock,
     proxyFetchGet: proxyFetchGetMock,
+    sseTransport: sseTransportMock,
+    waitForBackendReady: vi.fn(async () => true),
+    getBaseURL: vi.fn(async () => 'http://fixture.invalid'),
   };
 });
 
@@ -67,6 +79,8 @@ vi.mock('@/service/spaceApi', async (importOriginal) => {
   return {
     ...actual,
     proxyUpdateSpaceProject: proxyUpdateSpaceProjectMock,
+    proxyCreateSpaceProject: proxyCreateSpaceProjectMock,
+    proxyFetchSpaceProjects: proxyFetchSpaceProjectsMock,
   };
 });
 
@@ -109,6 +123,10 @@ describe('projectStore runtime shape', () => {
     hasActiveSSEConnectionMock.mockReturnValue(false);
     fetchGetMock.mockResolvedValue({ runs: [] });
     proxyFetchGetMock.mockResolvedValue({ tasks: [] });
+    proxyCreateSpaceProjectMock.mockReset();
+    proxyFetchSpaceProjectsMock.mockReset();
+    proxyUpdateSpaceProjectMock.mockReset().mockResolvedValue({});
+    sseTransportMock.mockReset();
     replayMock.mockResolvedValue(undefined);
     useProjectStore.setState({
       activeProjectId: null,
@@ -146,6 +164,266 @@ describe('projectStore runtime shape', () => {
       projectsSyncedAt: {},
     });
   });
+
+  it.each([true, false])(
+    'reconciles the persisted admission receipt after server sync and history restore (accepted: %s)',
+    async (accepted) => {
+      const { useAuthStore } = await import('@/store/authStore');
+      const originalAuth = useAuthStore.getState();
+      const originalCatalog = useCloudModelStore.getState();
+      const network = vi
+        .spyOn(globalThis, 'fetch')
+        .mockRejectedValue(
+          new Error('Real network is forbidden in this fixture')
+        );
+      useAuthStore.setState({
+        email: 'fixture@example.test',
+        user_id: 7,
+        token: 'synthetic-token',
+        modelType: 'cloud',
+        cloud_model_type: 'global',
+      });
+      const original = {
+        modelType: 'cloud' as const,
+        cloud_model_type: 'original',
+        model_platform: 'azure',
+        model_type: 'gpt-6-astra',
+      };
+      useCloudModelStore.setState({
+        models: [
+          {
+            id: 'global',
+            display_name: 'Global fixture',
+            model_type: 'gpt-5.5',
+            model_platform: 'azure',
+            provider_family: 'openai',
+            kind: 'chat',
+          },
+          {
+            id: 'original',
+            display_name: 'Accepted fixture',
+            model_type: 'gpt-6-astra',
+            model_platform: 'azure',
+            provider_family: 'openai',
+            kind: 'chat',
+          },
+        ],
+        retired: [],
+        defaultModelId: 'global',
+        status: 'ready',
+      });
+      try {
+        let serverProject!: ServerProject;
+        proxyCreateSpaceProjectMock.mockImplementation(
+          async (spaceId: string, payload: ProjectPayload) => {
+            serverProject = {
+              ...payload,
+              id: payload.id!,
+              user_id: '7',
+              space_id: spaceId,
+              status: 'active',
+              created_at: '2026-09-18T00:00:00Z',
+              updated_at: '2026-09-18T00:00:00Z',
+            };
+            return serverProject;
+          }
+        );
+        proxyUpdateSpaceProjectMock.mockImplementation(
+          async (
+            _spaceId: string,
+            _projectId: string,
+            payload: Partial<ProjectPayload>
+          ) => {
+            // Model the server's shallow metadata merge using the actual API
+            // payloads. Do not inject the local eligibility marker into them.
+            serverProject = {
+              ...serverProject,
+              ...payload,
+              metadata: { ...serverProject.metadata, ...payload.metadata },
+            };
+            return serverProject;
+          }
+        );
+        const { projectId } = await createSyncedProjectInSpace({
+          projectStore: useProjectStore.getState(),
+          spaceId: 'space_test',
+          name: 'Fresh fixture Session',
+          mode: 'single-agent',
+        });
+        expect(proxyCreateSpaceProjectMock.mock.calls[0][1].metadata).toEqual({
+          serverSynced: true,
+        });
+        expect(
+          useProjectStore.getState().projects[projectId].metadata
+            ?.spaceModelDefaultPending
+        ).toBe(true);
+        useProjectStore.getState().setHistoryId(projectId, 'history-1');
+        await useProjectStore
+          .getState()
+          .setProjectModelAdmission(projectId, 'accepted-run-1');
+        expect(
+          proxyUpdateSpaceProjectMock.mock.calls.at(-1)![2].metadata
+        ).toEqual({ spaceModelAdmissionRunId: 'accepted-run-1' });
+        expect(serverProject.metadata).toEqual({
+          serverSynced: true,
+          spaceModelAdmissionRunId: 'accepted-run-1',
+        });
+
+        useProjectStore.setState({ projects: {}, activeProjectId: null });
+        proxyFetchSpaceProjectsMock.mockImplementation(async () => [
+          serverProject,
+        ]);
+        await useSpaceStore.getState().syncProjectsFromServer('space_test', []);
+        expect(proxyFetchSpaceProjectsMock).toHaveBeenCalledWith('space_test');
+        const synced = useProjectStore.getState().projects[projectId];
+        expect(synced.metadata?.spaceModelAdmissionRunId).toBe(
+          'accepted-run-1'
+        );
+        expect(synced.metadata?.spaceModelDefaultPending).toBeUndefined();
+        expect(
+          useProjectStore.getState().getProjectModel(projectId)
+        ).toBeNull();
+
+        fetchGetMock.mockImplementation(async (url: string) => {
+          if (url.endsWith('/session-model'))
+            return {
+              space_id: 'space_test',
+              project_id: projectId,
+              accepted: accepted
+                ? { run_id: 'accepted-run-1', selection: original }
+                : null,
+              restore_pending: false,
+            };
+          if (url.endsWith('/model-selection')) {
+            throw new Error(
+              'An existing receipt must not acquire a new Space default'
+            );
+          }
+          return {
+            runs: [
+              {
+                run_id: 'accepted-run-1',
+                status: accepted ? 'completed' : 'pending',
+              },
+            ],
+          };
+        });
+        await useProjectStore
+          .getState()
+          .loadProjectFromHistory(
+            ['accepted-run-1'],
+            'First fixture question',
+            projectId,
+            'history-1',
+            'Existing fixture Session',
+            'space_test'
+          );
+        expect(replayMock).toHaveBeenCalled();
+        const recoveryCalls = () =>
+          fetchGetMock.mock.calls.filter(([url]) =>
+            url.endsWith('/session-model')
+          );
+        expect(recoveryCalls()).toHaveLength(1);
+        expect(recoveryCalls()[0][1]).toEqual({
+          project_id: projectId,
+          email: 'fixture@example.test',
+          user_id: 7,
+        });
+        const restored = useProjectStore.getState().projects[projectId];
+        if (accepted) {
+          expect(useProjectStore.getState().getProjectModel(projectId)).toEqual(
+            original
+          );
+          expect(restored.metadata?.spaceModelAdmissionRunId).toBeNull();
+          expect(restored.metadata?.spaceModelDefaultPending).toBe(false);
+        } else {
+          expect(
+            useProjectStore.getState().getProjectModel(projectId)
+          ).toBeNull();
+          expect(restored.metadata?.spaceModelAdmissionRunId).toBe(
+            'accepted-run-1'
+          );
+          expect(restored.metadata?.spaceModelDefaultPending).not.toBe(true);
+        }
+
+        proxyFetchGetMock.mockImplementation(async (url: string) =>
+          url === '/api/v1/user/key'
+            ? {
+                value: 'synthetic-cloud-key',
+                api_url: 'https://cloud.example.test',
+              }
+            : []
+        );
+        sseTransportMock.mockImplementation(async (options) => {
+          await options.onopen(
+            new Response('', {
+              status: 200,
+              headers: { 'content-type': 'text/event-stream' },
+            })
+          );
+        });
+        const chat = useProjectStore.getState().getChatStore(projectId)!;
+        const start = chat
+          .getState()
+          .startTask(
+            chat.getState().create(),
+            undefined,
+            undefined,
+            undefined,
+            'Next fixture question',
+            [],
+            undefined,
+            projectId,
+            'single-agent',
+            { skipHistoryCreate: true, awaitAdmission: true }
+          );
+        if (accepted) {
+          await start;
+          const request = sseTransportMock.mock.calls.find(
+            ([options]) => options.body?.project_id === projectId
+          )![0].body;
+          expect(request.model_platform).toBe('azure');
+          expect(request.model_type).toBe('gpt-6-astra');
+          expect(request.workspace_model_selection).toBeUndefined();
+          expect(useProjectStore.getState().getProjectModel(projectId)).toEqual(
+            original
+          );
+          expect(recoveryCalls()).toHaveLength(1);
+        } else {
+          await expect(start).rejects.toThrow('has not been confirmed');
+          expect(recoveryCalls()).toHaveLength(2);
+          expect(sseTransportMock).not.toHaveBeenCalled();
+          expect(
+            proxyFetchGetMock.mock.calls.some(
+              ([url]) => url === '/api/v1/user/key'
+            )
+          ).toBe(false);
+          expect(
+            useProjectStore.getState().getProjectModel(projectId)
+          ).toBeNull();
+          expect(
+            useProjectStore.getState().projects[projectId].metadata
+              ?.spaceModelAdmissionRunId
+          ).toBe('accepted-run-1');
+          expect(
+            useProjectStore.getState().projects[projectId].metadata
+              ?.spaceModelDefaultPending
+          ).not.toBe(true);
+        }
+        expect(
+          fetchGetMock.mock.calls.some(([url]) =>
+            url.endsWith('/model-selection')
+          )
+        ).toBe(false);
+        expect(useAuthStore.getState().cloud_model_type).toBe('global');
+        expect(network).not.toHaveBeenCalled();
+      } finally {
+        useAuthStore.setState(originalAuth);
+        useCloudModelStore.setState(originalCatalog);
+        network.mockRestore();
+      }
+    }
+  );
 
   it('limits Space default eligibility to fresh Session containers and clears it when pinned', () => {
     const store = useProjectStore.getState();
