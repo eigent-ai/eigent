@@ -25,7 +25,7 @@ import { useHost } from '@/host';
 import { notifyError } from '@/lib/notifyError';
 import { isLegacySpace, isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
-import { useAuthStore, useWorkerList } from '@/store/authStore';
+import { getAuthStore, useAuthStore, useWorkerList } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { openSettings } from '@/store/settingsStore';
@@ -161,6 +161,11 @@ export default function Workspace({
     }
     directProjectStartRef.current = true;
     setIsStartingDirectProject(true);
+    const startingAuth = getAuthStore();
+    const startingAccount =
+      startingAuth.token && startingAuth.user_id != null
+        ? String(startingAuth.user_id)
+        : null;
 
     try {
       if (!activeSpaceId) {
@@ -228,20 +233,32 @@ export default function Workspace({
       );
       targetChatStore.setHasWaitComfirm(taskId, true);
       targetChatStore.setAttaches(taskId, []);
-      setDraftFiles([]);
-      setMessage('');
+      // A newer New session command can clear selection without unmounting
+      // this composer or changing its Space/tab. It owns the draft and view.
       if (
         mountedRef.current &&
+        useProjectRuntimeStore.getState().activeProjectId === targetProjectId &&
         useSpaceStore.getState().activeSpaceId === activeSpaceId &&
         usePageTabStore.getState().activeWorkspaceTab === activeWorkspaceTab
       ) {
+        setDraftFiles([]);
+        setMessage('');
         setActiveWorkspaceTab('project');
       }
     } catch (err: unknown) {
       console.error('Failed to start task:', err);
-      notifyError(
-        err instanceof Error ? err.message : t('layout.failed-to-start-task')
-      );
+      // Auth changes before useUsageNotices synchronizes its account. Never
+      // re-report a departed account's rejection as the current user's limit.
+      const currentAuth = getAuthStore();
+      const currentAccount =
+        currentAuth.token && currentAuth.user_id != null
+          ? String(currentAuth.user_id)
+          : null;
+      if (currentAccount === startingAccount) {
+        notifyError(
+          err instanceof Error ? err.message : t('layout.failed-to-start-task')
+        );
+      }
     } finally {
       directProjectStartRef.current = false;
       setIsStartingDirectProject(false);
