@@ -96,6 +96,83 @@ def _headers() -> dict[str, str]:
     return {LOCAL_CONTROL_CAPABILITY_HEADER: "test-secret"}
 
 
+def test_discovery_is_capability_protected_and_does_not_save(
+    workspace_config_api, monkeypatch
+):
+    client, journal = workspace_config_api
+
+    def fail_global_config(*_args, **_kwargs):
+        raise AssertionError(
+            "Discovery must not read global MCP configuration"
+        )
+
+    monkeypatch.setattr(
+        workspace_config_controller, "read_mcp_config", fail_global_config
+    )
+    url = "/api/v1/spaces/space-1/workspace-configuration/discovery"
+    denied = client.get(url, params={"email": "user@example.com"})
+    assert denied.status_code == 401
+    rows_before = journal._connection.total_changes
+    result = client.get(
+        url, params={"email": "user@example.com"}, headers=_headers()
+    )
+    assert result.status_code == 200
+    assert result.json() == {
+        "space_id": "space-1",
+        "skills": [],
+        "mcp_servers": [],
+    }
+    assert journal.get_workspace_config_draft("space-1") is None
+    assert journal._connection.total_changes == rows_before
+
+
+def test_discovery_checks_the_requested_account_binding(
+    workspace_config_api, monkeypatch
+):
+    client, journal = workspace_config_api
+    resolver = workspace_config_controller.get_workspace_resolver()
+    calls = []
+
+    def no_binding(email, space_id, user_id):
+        calls.append((email, space_id, user_id))
+        return None
+
+    monkeypatch.setattr(resolver.store, "get_binding", no_binding)
+    result = client.get(
+        "/api/v1/spaces/space-other/workspace-configuration/discovery",
+        params={"email": "other@example.com", "user_id": "other-user"},
+        headers=_headers(),
+    )
+    assert result.status_code == 404
+    assert calls == [("other@example.com", "space-other", "other-user")]
+
+
+def test_discovery_error_does_not_expose_validation_inputs(
+    workspace_config_api, monkeypatch
+):
+    client, journal = workspace_config_api
+
+    def fail(*_args, **_kwargs):
+        raise ValueError(
+            "fixture-private-content at /private/fixture/location"
+        )
+
+    monkeypatch.setattr(
+        workspace_config_controller.WorkspaceResourceDiscovery,
+        "discover",
+        fail,
+    )
+    result = client.get(
+        "/api/v1/spaces/space-1/workspace-configuration/discovery",
+        params={"email": "user@example.com"},
+        headers=_headers(),
+    )
+    assert result.status_code == 500
+    assert result.json() == {
+        "detail": {"code": "workspace_configuration_discovery_failed"}
+    }
+
+
 def _agent_plugin(root: Path, *, schema: str = PLUGIN_SCHEMA) -> Path:
     root.mkdir()
     (root / "skills" / "research").mkdir(parents=True)

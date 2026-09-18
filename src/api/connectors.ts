@@ -20,11 +20,7 @@ import {
 } from '@/api/http';
 
 export type ConnectorAuthType =
-  | 'no_auth'
-  | 'api_key'
-  | 'custom_credential'
-  | 'oauth2'
-  | string;
+  'no_auth' | 'api_key' | 'custom_credential' | 'oauth2' | string;
 
 export interface ConnectorCredentialField {
   key: string;
@@ -135,6 +131,8 @@ export function isConnectedProvider(
 export interface FetchConnectorProvidersRequestOptions {
   /** Skip the short-lived list cache and force a network fetch. */
   bypassCache?: boolean;
+  /** Keep account-scoped discovery out of the shared cache and inflight map. */
+  isolated?: boolean;
 }
 
 const PROVIDERS_LIST_CACHE_TTL_MS = 60_000;
@@ -224,6 +222,14 @@ export async function fetchConnectorProviders(
   options: FetchConnectorProvidersOptions = {},
   requestOptions: FetchConnectorProvidersRequestOptions = {}
 ): Promise<ConnectorProvidersResponse> {
+  if (requestOptions.isolated) {
+    const response = await proxyFetchGet('/api/v1/connectors/providers', {
+      page: options.page || 1,
+      page_size: options.pageSize || 24,
+      ...(options.query?.trim() ? { q: options.query.trim() } : {}),
+    });
+    return normalizeProvidersResponse(response, options);
+  }
   const cacheKey = providersListCacheKey(options);
   if (!requestOptions.bypassCache) {
     const cached = getCachedConnectorProviders(options);

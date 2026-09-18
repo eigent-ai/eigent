@@ -1594,5 +1594,22 @@
   "terminal-process-local-shell": "الطرفية المحلية",
   "browser-preview-failed": "الصفحة غير متاحة",
   "browser-preview-local-unavailable": "ربما توقف الخادم المحلي. أعد المحاولة عندما يعمل، أو افتح ملف HTML الناتج من الملفات.",
-  "browser-preview-unavailable": "تحقق من العنوان والاتصال، ثم حاول مرة أخرى."
+  "browser-preview-unavailable": "تحقق من العنوان والاتصال، ثم حاول مرة أخرى.",
+  "space-discovery-installed-source": "ملف إعدادات المساحة المثبّت",
+  "space-discovery-draft-source": "مسودة المساحة الحالية",
+  "space-discovery-provider-source": "موفّر الموصل",
+  "space-discovery-model-source": "دليل النماذج",
+  "space-discovery-error": "تعذّر تحميل الخيارات المتاحة. أعد المحاولة أو أدخل قيمة يدويًا.",
+  "space-discovery-empty": "لا توجد خيارات مطابقة. لا يزال بإمكانك إدخال قيمة يدويًا.",
+  "space-discovery-setup": "يتطلب النشر والإعداد",
+  "space-discovery-unknown": "القيمة الحالية ليست ضمن الخيارات المكتشفة. تم الاحتفاظ بها لتعديلها يدويًا.",
+  "space-discovery-browse": "استعراض الخيارات المتاحة",
+  "space-discovery-model-gap": "البيانات الوصفية للنماذج متاحة. اختيار نموذج تشغيل محدد من إعدادات المساحة غير مدعوم بعد؛ يمكنك إعداده من محدد النموذج في الجلسة.",
+  "space-discovery-load-more": "تحميل المزيد",
+  "space-discovery-draft-prefill": "اقتراح مستند إلى ملف إعدادات المساحة الحالية. راجع هذه المسودة القابلة للتعديل واحفظها للتأكيد.",
+  "space-discovery-inherited-model": "يرث provider://default نموذج الجلسة. حفظ المسودة لا يغيّر جلسة قيد التشغيل.",
+  "space-discovery-manual": "إدخال يدوي",
+  "space-discovery-connector-note": "اختيار موفّر يحدد متطلبًا فقط. تُضبط الاتصالات والأذونات بشكل منفصل.",
+  "space-discovery-grants-empty": "لم تُقدَّم معلومات عن الأذونات المدعومة. يتم الاحتفاظ بالأذونات الحالية؛ أدخل الأذونات المطلوبة يدويًا.",
+  "space-discovery-available-options": "الخيارات المتاحة"
 }

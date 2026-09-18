@@ -106,6 +106,28 @@ vi.mock('@/store/authStore', () => ({
   useWorkerList: () => [],
 }));
 
+vi.mock('@/hooks/useSpaceSettingsDiscovery', () => {
+  const empty = { items: [], status: 'empty', error: null, retry: vi.fn() };
+  const connectors = {
+    ...empty,
+    query: '',
+    hasMore: false,
+    loadingMore: false,
+    loadMore: vi.fn(),
+    fetchDetails: vi.fn(),
+    detailError: null,
+  };
+  return {
+    useSpaceSettingsDiscovery: () => ({
+      models: empty,
+      skills: empty,
+      mcpServers: empty,
+      connectors,
+      setConnectorQuery: vi.fn(),
+    }),
+  };
+});
+
 vi.mock('@/hooks/useWorkspaceConfiguration', () => ({
   useWorkspaceConfiguration: () => ({
     draft: {
@@ -603,7 +625,9 @@ describe('WorkspaceConfigurationEditor', () => {
     panel = screen.getByRole('complementary', {
       name: 'Add environment variable',
     });
-    expect(within(panel).getByDisplayValue('ENV_VAR_1')).toBeVisible();
+    await waitFor(() =>
+      expect(within(panel).getByDisplayValue('ENV_VAR_1')).toBeVisible()
+    );
     expect(
       within(panel).getByRole('switch', { name: 'Required ENV_VAR_1' })
     ).toBeChecked();
@@ -651,9 +675,8 @@ describe('WorkspaceConfigurationEditor', () => {
     fireEvent.click(
       within(panel).getByRole('button', { name: 'Close editor' })
     );
-    expect(
-      screen.getByRole('complementary', { name: 'Edit instruction' })
-    ).toBeInTheDocument();
+    expect(panel).toBeInTheDocument();
+    expect(panel).toHaveAttribute('aria-hidden', 'true');
     await waitFor(() =>
       expect(
         screen.queryByRole('complementary', { name: 'Edit instruction' })
@@ -678,7 +701,7 @@ describe('WorkspaceConfigurationEditor', () => {
     expect(panel).toHaveStyle({ transform: 'translate3d(0, 0, 0)' });
 
     fireEvent.click(
-      within(panel).getByRole('button', { name: 'Browse registry' })
+      within(panel).getByRole('button', { name: 'Enter manually' })
     );
     expect(
       panel.querySelector('[data-workspace-resource-content-step="editor"]')
@@ -794,11 +817,11 @@ describe('WorkspaceConfigurationEditor', () => {
     );
     let panel = screen.getByRole('complementary', { name: 'Add skill' });
     fireEvent.click(
-      within(panel).getByRole('button', { name: 'Browse registry' })
+      within(panel).getByRole('button', { name: 'Enter manually' })
     );
     await waitFor(() =>
       expect(
-        within(panel).getByDisplayValue('registry://skills/new-skill@1.0.0')
+        within(panel).getByRole('textbox', { name: 'Skill reference' })
       ).toBeVisible()
     );
     fireEvent.click(within(panel).getByRole('button', { name: 'Back' }));
@@ -807,7 +830,11 @@ describe('WorkspaceConfigurationEditor', () => {
     ).toBeInTheDocument();
     expect(within(panel).queryByRole('button', { name: 'Back' })).toBeNull();
     fireEvent.click(
-      within(panel).getByRole('button', { name: 'Browse registry' })
+      within(panel).getByRole('button', { name: 'Enter manually' })
+    );
+    fireEvent.change(
+      within(panel).getByRole('textbox', { name: 'Skill reference' }),
+      { target: { value: 'bundle://skills/fixture/SKILL.md' } }
     );
     fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
     const addSkillUpdater = mocks.setDocument.mock.calls.at(-1)?.[0] as (
@@ -815,7 +842,7 @@ describe('WorkspaceConfigurationEditor', () => {
     ) => typeof mocks.document;
     expect(addSkillUpdater(mocks.document).spec.skills).toEqual([
       {
-        ref: 'registry://skills/new-skill@1.0.0',
+        ref: 'bundle://skills/fixture/SKILL.md',
         assignTo: [],
       },
     ]);

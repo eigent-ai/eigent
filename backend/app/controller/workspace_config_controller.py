@@ -61,6 +61,7 @@ from app.workspace_config import (
     assert_bundle_asset_safe,
     canonical_digest,
 )
+from app.workspace_config.discovery import WorkspaceResourceDiscovery
 
 router = APIRouter(dependencies=[Depends(require_local_control_principal)])
 _MAX_BUNDLE_ASSET_BYTES = 16 * 1024 * 1024
@@ -598,6 +599,43 @@ async def get_workspace_configuration(
         )
     except Exception as exc:
         raise _configuration_error(exc) from exc
+
+
+@router.get("/spaces/{space_id}/workspace-configuration/discovery")
+async def discover_workspace_configuration_resources(
+    space_id: str,
+    email: Annotated[str, Query(min_length=1, max_length=512)],
+    user_id: str | None = Query(default=None),
+) -> dict[str, Any]:
+    _assert_space_binding(space_id=space_id, email=email, user_id=user_id)
+    binding = get_workspace_resolver().store.get_binding(
+        email, space_id, user_id
+    )
+    if binding is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "workspace_binding_not_found"},
+        )
+    try:
+        journal = get_default_run_journal()
+        discovery = WorkspaceResourceDiscovery(
+            journal,
+            state_root=journal.path.parent / "workspace-git",
+        )
+        return await asyncio.to_thread(
+            discovery.discover,
+            space_id=space_id,
+            space_root=Path(binding.workspace_root),
+        )
+    except Exception as exc:
+        if isinstance(exc, OptimisticConcurrencyError):
+            raise _configuration_error(exc) from exc
+        # Discovery errors must not echo asset contents, physical paths, or
+        # validation inputs back to the renderer.
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "workspace_configuration_discovery_failed"},
+        ) from exc
 
 
 @router.put("/spaces/{space_id}/workspace-configuration")
