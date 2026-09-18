@@ -13,8 +13,12 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fetchGet } from '@/api/http';
-import { reconcileRunUsage } from '@/service/runUsageReconciliation';
+import {
+  readTerminalRunResult,
+  reconcileRunUsage,
+} from '@/service/runUsageReconciliation';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import completedDisplayFixture from '../../fixtures/completed-run-display.json';
 
 vi.mock('@/api/http', () => ({ fetchGet: vi.fn() }));
 const fetchGetMock = vi.mocked(fetchGet);
@@ -332,6 +336,242 @@ describe('reconcileRunUsage', () => {
     controller.abort();
     expect(await result).toMatchObject({ name: 'AbortError' });
     expect(fetchGetMock.mock.calls[0][3]?.signal?.aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe('readTerminalRunResult', () => {
+  const completedInput = {
+    ...input,
+    terminalEventTypes: ['run.completed'],
+  };
+
+  beforeEach(() => fetchGetMock.mockReset());
+  afterEach(() => vi.useRealTimers());
+
+  it('returns bounded display facts from an actual typed Journal receipt, without replaying controls', async () => {
+    fetchGetMock.mockResolvedValue(completedDisplayFixture);
+    const result = await readTerminalRunResult({
+      ...completedInput,
+      runId: completedDisplayFixture.run_id,
+    });
+    expect(result.tokens).toBe(123);
+    expect(result.displayEvents.map((item) => item.step)).toEqual([
+      'create_agent',
+      'assign_task',
+      'deactivate_toolkit',
+      'task_state',
+    ]);
+    expect(
+      result.displayEvents.find((item) => item.step === 'task_state')
+    ).toMatchObject({
+      eventId: 'fixture:task_state',
+      payload: {
+        task_id: 'sub-1',
+        status: 'completed',
+        failure_count: 1,
+        display_output:
+          'Report ready\n  Validation passed.\nSaved <device-home>/private/report.md\ntoken=[REDACTED]',
+        display_output_truncated: false,
+      },
+    });
+    expect(result.assistantFinal?.payload.content).toBe('The report is ready.');
+    expect(fetchGetMock).toHaveBeenCalledOnce();
+  });
+
+  it('allows only display steps before the completed boundary, never execution controls', async () => {
+    const steps = [
+      'create_agent',
+      'assign_task',
+      'task_state',
+      'todo_state',
+      'deactivate_toolkit',
+      'terminal',
+      'write_file',
+      'notice',
+      'activate_agent',
+      'activate_toolkit',
+      'new_task_state',
+      'wait_confirm',
+      'to_sub_tasks',
+      'error',
+    ];
+    fetchGetMock.mockResolvedValue(
+      page([
+        ...steps.map((step, index) =>
+          event(index + 1, `legacy.${step}`, { task_id: 'sub-1' })
+        ),
+        event(steps.length + 1, 'run.completed', {}),
+        event(steps.length + 2, 'legacy.task_state', { task_id: 'too-late' }),
+      ])
+    );
+    const result = await readTerminalRunResult(completedInput);
+    expect(result.displayEvents.map((item) => item.step)).toEqual(
+      steps.slice(0, 8)
+    );
+    expect(result.displayEvents).not.toContainEqual(
+      expect.objectContaining({ payload: { task_id: 'too-late' } })
+    );
+  });
+
+  it('rejects oversized accumulated display data rather than returning partial recovery', async () => {
+    const payload = { task_id: 'sub-1', result: 'x'.repeat(2 * 1024 * 1024) };
+    fetchGetMock
+      .mockResolvedValueOnce(
+        page([event(1, 'legacy.task_state', payload)], true)
+      )
+      .mockResolvedValueOnce(
+        page([
+          event(2, 'legacy.task_state', payload),
+          event(3, 'run.completed', {}),
+        ])
+      );
+    await expect(readTerminalRunResult(completedInput)).rejects.toThrow(
+      'display byte bound'
+    );
+    expect(fetchGetMock).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['end', null])(
+    'returns the complete assistant.final payload with legacy_step=%s in the existing usage scan',
+    async (legacyStep) => {
+      const payload = {
+        content: 'Complete final response '.repeat(300),
+        tokens: 900,
+        metadata: { files: [{ path: '/workspace/result.html' }] },
+      };
+      const final = {
+        ...event(2, 'assistant.final', payload),
+        legacy_step: legacyStep,
+      };
+      fetchGetMock.mockResolvedValue(
+        page([event(1), final, event(3, 'run.completed', {})])
+      );
+
+      await expect(readTerminalRunResult(completedInput)).resolves.toEqual({
+        tokens: 10,
+        displayEvents: [],
+        assistantFinal: { eventId: final.event_id, payload },
+      });
+      // assistant.final's token total is not a second provider-usage delta.
+      expect(fetchGetMock).toHaveBeenCalledOnce();
+    }
+  );
+
+  it('returns no invented final when a completed boundary precedes the answer', async () => {
+    fetchGetMock.mockResolvedValue(
+      page([
+        event(1),
+        event(2, 'run.completed', {}),
+        event(3, 'assistant.final', { content: 'Too late' }),
+      ])
+    );
+    await expect(readTerminalRunResult(completedInput)).resolves.toEqual({
+      tokens: 10,
+      displayEvents: [],
+    });
+  });
+
+  it('retains a final across pages but waits for the exact completed boundary', async () => {
+    const payload = { message: 'Final result' };
+    fetchGetMock
+      .mockResolvedValueOnce(
+        page([event(1), event(2, 'assistant.final', payload)], true)
+      )
+      .mockResolvedValueOnce(page([event(3, 'run.completed', {})]));
+    await expect(
+      readTerminalRunResult({ ...completedInput, throughSequence: 3 })
+    ).resolves.toEqual({
+      tokens: 10,
+      displayEvents: [],
+      assistantFinal: { eventId: 'event-2', payload },
+    });
+    expect(fetchGetMock).toHaveBeenCalledTimes(2);
+    expect(fetchGetMock.mock.calls[1][1]).toEqual({
+      after_sequence: 2,
+      limit: 1,
+    });
+  });
+
+  it.each(['run.failed', 'run.cancelled', 'run.deadline_reached'])(
+    'does not return an earlier final for %s',
+    async (terminal) => {
+      fetchGetMock.mockResolvedValue(
+        page([
+          event(1),
+          event(2, 'assistant.final', { content: 'Not a successful result' }),
+          event(3, 'legacy.task_state', {
+            task_id: 'sub-1',
+            result: 'Not successful',
+          }),
+          event(4, terminal, {}),
+        ])
+      );
+      await expect(
+        readTerminalRunResult({
+          ...input,
+          terminalEventTypes: ['run.completed', terminal],
+        })
+      ).resolves.toEqual({ tokens: 10, displayEvents: [] });
+    }
+  );
+
+  it.each(['same event id', 'distinct final events'])(
+    'rejects %s rather than choosing an ambiguous final',
+    async (duplicate) => {
+      const first = event(1, 'assistant.final', { content: 'First' });
+      const second = event(2, 'assistant.final', { content: 'Second' });
+      if (duplicate === 'same event id') second.event_id = first.event_id;
+      fetchGetMock.mockResolvedValue(
+        page([first, second, event(3, 'run.completed', {})])
+      );
+      await expect(readTerminalRunResult(completedInput)).rejects.toThrow();
+    }
+  );
+
+  it('does not expose a partial final without the matching terminal boundary', async () => {
+    fetchGetMock.mockResolvedValue(
+      page([
+        event(1, 'assistant.final', { content: 'Not committed as completed' }),
+      ])
+    );
+    await expect(readTerminalRunResult(completedInput)).rejects.toThrow(
+      'matching terminal boundary'
+    );
+  });
+
+  it('discards the captured final when the remaining scan times out, including late success', async () => {
+    vi.useFakeTimers();
+    let resolveTerminal!: (value: unknown) => void;
+    fetchGetMock
+      .mockResolvedValueOnce(
+        page(
+          [event(1, 'assistant.final', { content: 'Pending validation' })],
+          true
+        )
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveTerminal = resolve;
+          })
+      );
+    const result = readTerminalRunResult(completedInput);
+    const resolved = vi.fn();
+    const rejected = vi.fn();
+    const settled = result.then(resolved, rejected);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchGetMock).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await settled;
+    expect(resolved).not.toHaveBeenCalled();
+    expect(rejected).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'TimeoutError' })
+    );
+    expect(fetchGetMock.mock.calls[1][3]?.signal?.aborted).toBe(true);
+    resolveTerminal(page([event(2, 'run.completed', {})]));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(resolved).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
   });
 });

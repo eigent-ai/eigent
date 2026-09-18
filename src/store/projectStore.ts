@@ -42,6 +42,7 @@ import {
   createChatStoreInstance,
   hasActiveSSEConnection,
   VanillaChatStore,
+  waitForIdleSSEDisplayTail,
   type DurableRunDisplayStatus,
 } from './chatStore';
 import { usePageTabStore } from './pageTabStore';
@@ -1395,14 +1396,51 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       }
       const eviction = (async () => {
         try {
+          const getEvictableTaskIds = (): string[] | null => {
+            const latest = get();
+            const project = latest.projects[staleProjectId];
+            if (
+              !project ||
+              !latest.staleProjectIds.has(staleProjectId) ||
+              latest.activeProjectId === staleProjectId
+            )
+              return null;
+            const tasks = Object.values(project.chatStores).flatMap((store) =>
+              Object.values(store.getState().tasks)
+            );
+            if (
+              tasks.some(
+                (task) =>
+                  task.isPending ||
+                  task.status === ChatTaskStatus.RUNNING ||
+                  task.status === ChatTaskStatus.PAUSE
+              )
+            )
+              return null;
+            const taskIds = Object.values(project.chatStores).flatMap((store) =>
+              Object.keys(store.getState().tasks)
+            );
+            return hasActiveSSEConnection(taskIds) ? null : taskIds;
+          };
           const runtimeStatus = await fetchGet(
             `/chat/${encodeURIComponent(staleProjectId)}/status`
           );
+          if (
+            runtimeStatus?.consumer_alive &&
+            (runtimeStatus.status !== 'done' || !runtimeStatus.run_id)
+          )
+            return;
+          const displayTaskIds = getEvictableTaskIds();
+          if (displayTaskIds === null) return;
+          await waitForIdleSSEDisplayTail(displayTaskIds);
+          const drainedTaskIds = getEvictableTaskIds();
+          if (
+            drainedTaskIds === null ||
+            drainedTaskIds.length !== displayTaskIds.length ||
+            drainedTaskIds.some((taskId) => !displayTaskIds.includes(taskId))
+          )
+            return;
           if (runtimeStatus?.consumer_alive) {
-            if (runtimeStatus.status !== 'done' || !runtimeStatus.run_id) {
-              return;
-            }
-            if (get().activeProjectId === staleProjectId) return;
             const retired = await fetchPost(
               `/chat/${encodeURIComponent(staleProjectId)}/runtime/retire-idle`,
               { run_id: runtimeStatus.run_id }
@@ -1410,20 +1448,16 @@ const projectStore = create<ProjectStore>()((set, get) => ({
             if (retired?.consumer_alive) return;
           }
 
-          const latest = get();
+          const latestTaskIds = getEvictableTaskIds();
           if (
-            !latest.staleProjectIds.has(staleProjectId) ||
-            !latest.projects[staleProjectId]
+            latestTaskIds === null ||
+            latestTaskIds.length !== displayTaskIds.length ||
+            latestTaskIds.some((taskId) => !displayTaskIds.includes(taskId))
           ) {
             return;
           }
-          const latestTaskIds = Object.values(
-            latest.projects[staleProjectId].chatStores
-          ).flatMap((chatStore) => Object.keys(chatStore.getState().tasks));
-          if (hasActiveSSEConnection(latestTaskIds)) return;
-          if (latest.activeProjectId === staleProjectId) return;
           closeIdleSSEConnectionsForTasks(latestTaskIds);
-          latest._evictProjectRuntime(staleProjectId);
+          get()._evictProjectRuntime(staleProjectId);
         } catch (error) {
           console.warn(
             '[ProjectStore] Deferred stale runtime eviction until its backend consumer can retire',

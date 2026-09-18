@@ -24,6 +24,7 @@ import {
   closeIdleSSEConnectionsForTasks,
   hasActiveSSEConnection,
   hasSSETransportForTasks,
+  waitForIdleSSEDisplayTail,
 } from '@/store/chatStore';
 import {
   type TaskQueue,
@@ -144,6 +145,9 @@ export function useBackgroundTaskProcessor() {
         );
         const hasRunningChatTask = chatStates.some((state) =>
           Object.values(state.tasks).some((task) => {
+            // Admission/Resume claims ownership before it registers SSE or
+            // changes the previous terminal display status.
+            if (task.isPending) return true;
             // Terminal direct/single-agent tasks may retain skeleton markers.
             // They must not block the next queued trigger.
             if (task.status === ChatTaskStatus.FINISHED) return false;
@@ -253,16 +257,38 @@ export function useBackgroundTaskProcessor() {
         // task stores and SSE ownership at each boundary as well.
         if (getIdleProjectTaskIds(project.id) === null) continue;
 
-        if (runtimeStatus.consumer_alive) {
-          if (runtimeStatus.status !== 'done' || !runtimeStatus.run_id) {
-            console.log(
-              '[BackgroundTaskProcessor] Skipping project',
-              project.id,
-              '- backend legacy Run is not idle'
-            );
-            continue;
-          }
+        if (
+          runtimeStatus.consumer_alive &&
+          (runtimeStatus.status !== 'done' || !runtimeStatus.run_id)
+        ) {
+          console.log(
+            '[BackgroundTaskProcessor] Skipping project',
+            project.id,
+            '- backend legacy Run is not idle'
+          );
+          continue;
+        }
 
+        const displayTaskIds = getIdleProjectTaskIds(project.id);
+        if (displayTaskIds === null) continue;
+        // Canonical completion can overtake the legacy display tail. The
+        // connection owns a bounded drain window; it is not an active Run.
+        await waitForIdleSSEDisplayTail(displayTaskIds);
+        if (!lifetime.active) return;
+        const pendingAfterDisplay = findQueuedExecution(
+          project.id,
+          queuedIdentity
+        );
+        if (!pendingAfterDisplay || pendingAfterDisplay.processing) continue;
+        const drainedTaskIds = getIdleProjectTaskIds(project.id);
+        if (
+          drainedTaskIds === null ||
+          drainedTaskIds.length !== displayTaskIds.length ||
+          drainedTaskIds.some((taskId) => !displayTaskIds.includes(taskId))
+        )
+          continue;
+
+        if (runtimeStatus.consumer_alive) {
           // subscriber_count is only a point-in-time observation. Reusing a
           // warm consumer would race a renderer disconnect between this read
           // and follow-up admission, leaving the new Run without either the
@@ -305,7 +331,12 @@ export function useBackgroundTaskProcessor() {
         if (!pendingAfterRetirement || pendingAfterRetirement.processing)
           continue;
         const allTaskIds = getIdleProjectTaskIds(project.id);
-        if (allTaskIds === null) continue;
+        if (
+          allTaskIds === null ||
+          allTaskIds.length !== displayTaskIds.length ||
+          allTaskIds.some((taskId) => !displayTaskIds.includes(taskId))
+        )
+          continue;
 
         if (hasSSETransportForTasks(allTaskIds)) {
           console.log(

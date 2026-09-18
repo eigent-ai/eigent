@@ -68,10 +68,11 @@ import {
   classifyError as classifyUsageError,
   errorCopy,
 } from '@/lib/usageErrors';
+import { recoverCompletedRunDisplay } from '@/service/completedRunDisplayRecovery';
 import { cancelFollowUpRequest } from '@/service/followUpQueueApi';
 import { reconcileLegacyRunState } from '@/service/reconcileLegacyRunState';
 import { RUN_RECONCILIATION_MARKERS } from '@/service/runStateReconciliation';
-import { reconcileRunUsage } from '@/service/runUsageReconciliation';
+import { readTerminalRunResult } from '@/service/runUsageReconciliation';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { confirmCloudRecovery } from '@/store/usageNoticeStore';
 import { ExecutionStatus } from '@/types';
@@ -1384,6 +1385,7 @@ type ActiveSSEConnection = {
   logicalActive: boolean;
   taskId: string;
   recoverClosedUsage?: () => void;
+  displayTail?: { taskId: string; promise: Promise<void>; release: () => void };
 };
 
 const activeSSEControllers: Record<string, ActiveSSEConnection> = {};
@@ -1442,6 +1444,7 @@ function cleanupSSEConnection(
     recoverUsage?: boolean;
   } = {}
 ): void {
+  connection.displayTail?.release();
   // A superseded transport may deliver a late onerror/onclose callback after
   // another transport has claimed the same Run. Only the current owner may
   // dispose that Run's canonical observer.
@@ -1468,6 +1471,7 @@ function bindSSEConnectionToTask(
   connection: ActiveSSEConnection,
   taskId: string
 ): void {
+  if (connection.taskId !== taskId) connection.displayTail?.release();
   const existing = activeSSEControllers[taskId];
   if (existing && existing !== connection) {
     cleanupSSEConnection(existing);
@@ -1486,7 +1490,8 @@ function bindSSEConnectionToTask(
 
 function markSSEConnectionIdleForTask(
   connection: ActiveSSEConnection,
-  completedTaskId: string
+  completedTaskId: string,
+  { awaitDisplayTail = false }: { awaitDisplayTail?: boolean } = {}
 ): void {
   // fetch-event-source does not serialize async onmessage handlers. An END
   // handler may resume after NEW_TASK_STATE has already rebound this physical
@@ -1500,6 +1505,28 @@ function markSSEConnectionIdleForTask(
   }
   cleanupCanonicalTerminalObserverForTask(completedTaskId);
   connection.logicalActive = false;
+  if (!awaitDisplayTail) {
+    connection.displayTail?.release();
+  } else if (!connection.displayTail) {
+    // Logical completion stops the clock, not reception of its already-sent
+    // report/tool/END frames. Retirement waits for this acknowledgement, not
+    // a fixed delay; a missing END cannot pin queued work indefinitely.
+    let resolve!: () => void;
+    const promise = new Promise<void>((done) => {
+      resolve = done;
+    });
+    const tail = {
+      taskId: completedTaskId,
+      promise,
+      release: () => {
+        clearTimeout(timer);
+        if (connection.displayTail === tail) connection.displayTail = undefined;
+        resolve();
+      },
+    };
+    const timer = setTimeout(tail.release, 5_000);
+    connection.displayTail = tail;
+  }
 }
 
 function cleanupTaskSSEResources(
@@ -2248,8 +2275,8 @@ const updateTriggerExecutionStatus = async (
   }
 };
 
-/** Recover receipts already committed before a terminal closed legacy SSE. */
-function recoverTerminalUsage(
+/** Recover terminal receipts and missing display without replaying execution. */
+function recoverClosedTerminalResult(
   owner: Pick<VanillaChatStore, 'getState'>,
   projectId: string,
   taskId: string,
@@ -2273,16 +2300,16 @@ function recoverTerminalUsage(
     outcome === 'failed'
       ? ['run.failed', 'run.deadline_reached']
       : [`run.${outcome}`];
-  void reconcileRunUsage({
+  void readTerminalRunResult({
     projectId,
     runId: taskId,
     throughSequence,
     terminalEventTypes,
     signal: controller.signal,
   })
-    .then((tokens) => {
+    .then(({ tokens, displayEvents, assistantFinal }) => {
       const state = owner.getState();
-      const current = state.tasks[taskId];
+      let current = state.tasks[taskId];
       if (
         controller.signal.aborted ||
         terminalUsageRecoveries.get(taskId) !== controller ||
@@ -2293,6 +2320,42 @@ function recoverTerminalUsage(
         current.isPending
       )
         return;
+      if (outcome === 'completed' && displayEvents.length) {
+        const recovered = recoverCompletedRunDisplay(current, displayEvents);
+        state.setTaskInfo(taskId, recovered.taskInfo);
+        state.setTaskRunning(taskId, recovered.taskRunning);
+        state.setTaskAssigning(taskId, recovered.taskAssigning);
+        current = owner.getState().tasks[taskId];
+      }
+      if (outcome === 'completed' && assistantFinal) {
+        // Only recover the already-committed final display. Running the live
+        // END reducer here would replay uploads/history/analytics and could
+        // act on a following Run. Its original task and terminal are fixed.
+        const content = resolveEndMessageText(
+          extractEndPayloadText(assistantFinal.payload),
+          current.messages,
+          current
+        );
+        if (
+          content &&
+          !current.messages.some(
+            (message) =>
+              message.step === AgentStep.END ||
+              (message.step === AgentStep.WAIT_CONFIRM &&
+                message.role === 'agent' &&
+                message.content === content)
+          )
+        ) {
+          state.addMessages(taskId, {
+            id: assistantFinal.eventId,
+            role: 'agent',
+            content,
+            step: AgentStep.END,
+            isConfirm: false,
+            fileList: current.artifactManifestFiles || [],
+          });
+        }
+      }
       // Journal/model and legacy receipts overlap. This is a monotone known
       // total, not another delta; never add both sources or lower local usage.
       const knownTokens = Math.max(tokens, current.tokens || 0);
@@ -2317,7 +2380,7 @@ function recoverTerminalUsage(
     .catch((error) => {
       if (!controller.signal.aborted) {
         console.warn(
-          '[RunUsage] Could not recover terminal usage:',
+          '[RunResult] Could not recover terminal receipts:',
           taskId,
           error
         );
@@ -3385,7 +3448,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             (event.eventType !== 'run.completed' ||
               abortController.signal.aborted)
           ) {
-            recoverTerminalUsage(
+            recoverClosedTerminalResult(
               observedChatStore,
               project_id,
               observedTaskId,
@@ -3394,7 +3457,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             );
           }
           if (event.eventType === 'run.completed') {
-            markSSEConnectionIdleForTask(sseConnection, observedTaskId);
+            markSSEConnectionIdleForTask(sseConnection, observedTaskId, {
+              awaitDisplayTail: true,
+            });
             // The legacy transport may already have closed and relinquished
             // ownership, in which case the guarded idle transition is a
             // no-op but this terminal observer is still finished.
@@ -3519,7 +3584,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             'completed'
         )
           return;
-        recoverTerminalUsage(lockedChatStore, project_id, lockedTaskId);
+        recoverClosedTerminalResult(lockedChatStore, project_id, lockedTaskId);
       };
       sseConnection.recoverClosedUsage = recoverClosedCompletionUsage;
 
@@ -7953,7 +8018,7 @@ export function closeSSEConnectionsForTasks(taskIds: string[]): void {
 export function closeIdleSSEConnectionsForTasks(taskIds: string[]): void {
   for (const taskId of taskIds) {
     const connection = activeSSEControllers[taskId];
-    if (connection && !connection.logicalActive) {
+    if (connection && !connection.logicalActive && !connection.displayTail) {
       console.log(
         '[closeIdleSSEConnectionsForTasks] Closing idle SSE for task:',
         taskId
@@ -7961,4 +8026,20 @@ export function closeIdleSSEConnectionsForTasks(taskIds: string[]): void {
       cleanupSSEConnection(connection);
     }
   }
+}
+
+/** Await only captured idle display tails, never the execution or uploads. */
+export async function waitForIdleSSEDisplayTail(
+  taskIds: string[]
+): Promise<void> {
+  await Promise.all(
+    taskIds.map((taskId) => {
+      const connection = activeSSEControllers[taskId];
+      return connection &&
+        !connection.logicalActive &&
+        connection.taskId === taskId
+        ? connection.displayTail?.promise
+        : undefined;
+    })
+  );
 }

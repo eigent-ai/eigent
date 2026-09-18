@@ -17,6 +17,17 @@ import { fetchGet } from '@/api/http';
 const PAGE_LIMIT = 500;
 const MAX_PAGES = 20;
 const DEADLINE_MS = 5_000;
+const MAX_DISPLAY_BYTES = 8 * 1024 * 1024;
+const DISPLAY_STEPS = new Set([
+  'create_agent',
+  'assign_task',
+  'task_state',
+  'todo_state',
+  'deactivate_toolkit',
+  'terminal',
+  'write_file',
+  'notice',
+]);
 const TERMINAL_EVENTS = new Set([
   'run.completed',
   'run.failed',
@@ -30,6 +41,21 @@ type UsageReconciliationInput = {
   terminalEventTypes: readonly string[];
   throughSequence?: number;
   signal?: AbortSignal;
+};
+
+export type TerminalDisplayEvent = {
+  eventId: string;
+  step: string;
+  payload: Record<string, unknown>;
+};
+
+type TerminalRunResult = {
+  tokens: number;
+  displayEvents: TerminalDisplayEvent[];
+  assistantFinal?: {
+    eventId: string;
+    payload: Record<string, unknown>;
+  };
 };
 
 function object(value: unknown): Record<string, unknown> {
@@ -54,13 +80,20 @@ function sum(left: number, right: number): number {
 }
 
 /** Reconcile a known lower bound, never replaying execution/UI side effects. */
-export async function reconcileRunUsage({
+export async function reconcileRunUsage(
+  input: UsageReconciliationInput
+): Promise<number> {
+  return (await readTerminalRunResult(input)).tokens;
+}
+
+/** Return only receipts covered by the validated terminal boundary. */
+export async function readTerminalRunResult({
   projectId,
   runId,
   terminalEventTypes,
   throughSequence,
   signal,
-}: UsageReconciliationInput): Promise<number> {
+}: UsageReconciliationInput): Promise<TerminalRunResult> {
   if (
     !projectId ||
     !runId ||
@@ -109,6 +142,14 @@ export async function reconcileRunUsage({
   const seenEvents = new Set<string>();
   const invocations = new Map<string, number>();
   const agentTurns = new Map<string, { requests: number; summary: number }>();
+  let assistantFinal: TerminalRunResult['assistantFinal'];
+  const displayEvents: TerminalDisplayEvent[] = [];
+  let displayBytes = 0;
+  const retainDisplay = (value: unknown) => {
+    displayBytes += JSON.stringify(value).length * 2;
+    if (displayBytes > MAX_DISPLAY_BYTES)
+      throw new Error('Run result replay exceeded the display byte bound');
+  };
   let completedLegacyTokens = 0;
   const finishTurn = (key: string) => {
     const turn = agentTurns.get(key);
@@ -180,6 +221,38 @@ export async function reconcileRunUsage({
 
       for (const event of events) {
         const payload = object(event.payload);
+        if (
+          event.event_type === 'assistant.final' &&
+          terminalEventTypes.includes('run.completed')
+        ) {
+          if (
+            assistantFinal ||
+            (event.legacy_step !== undefined &&
+              event.legacy_step !== null &&
+              event.legacy_step !== 'end')
+          ) {
+            throw new Error(
+              'Run result replay returned an ambiguous final answer'
+            );
+          }
+          assistantFinal = {
+            eventId: event.event_id as string,
+            payload,
+          };
+          retainDisplay(assistantFinal);
+        }
+        if (
+          terminalEventTypes.includes('run.completed') &&
+          DISPLAY_STEPS.has(String(event.legacy_step))
+        ) {
+          const displayEvent = {
+            eventId: event.event_id as string,
+            step: event.legacy_step as string,
+            payload,
+          };
+          retainDisplay(displayEvent);
+          displayEvents.push(displayEvent);
+        }
         if (event.event_type === 'model.invocation.completed') {
           if (
             typeof payload.invocation_id !== 'string' ||
@@ -222,8 +295,16 @@ export async function reconcileRunUsage({
         if (
           terminalEventTypes.includes(event.event_type as string) &&
           (throughSequence === undefined || event.sequence === throughSequence)
-        )
-          return total();
+        ) {
+          return {
+            tokens: total(),
+            displayEvents:
+              event.event_type === 'run.completed' ? displayEvents : [],
+            ...(event.event_type === 'run.completed' && assistantFinal
+              ? { assistantFinal }
+              : {}),
+          };
+        }
       }
       cursor = expected;
       if (cursor === throughSequence || !page.has_more) {

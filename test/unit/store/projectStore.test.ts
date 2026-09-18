@@ -37,6 +37,7 @@ const {
   proxyFetchGetMock,
   proxyUpdateSpaceProjectMock,
   replayMock,
+  waitForIdleSSEDisplayTailMock,
 } = vi.hoisted(() => ({
   closeIdleSSEConnectionsForTasksMock: vi.fn(),
   deleteCachedProjectMock: vi.fn(),
@@ -48,6 +49,7 @@ const {
   proxyFetchGetMock: vi.fn(),
   proxyUpdateSpaceProjectMock: vi.fn().mockResolvedValue({}),
   replayMock: vi.fn(),
+  waitForIdleSSEDisplayTailMock: vi.fn(),
 }));
 
 vi.mock('@/api/http', async (importOriginal) => {
@@ -91,6 +93,7 @@ vi.mock('@/store/chatStore', async (importOriginal) => {
     },
     closeIdleSSEConnectionsForTasks: closeIdleSSEConnectionsForTasksMock,
     hasActiveSSEConnection: hasActiveSSEConnectionMock,
+    waitForIdleSSEDisplayTail: waitForIdleSSEDisplayTailMock,
   };
 });
 
@@ -117,6 +120,7 @@ describe('projectStore runtime shape', () => {
     getCachedProjectMock.mockResolvedValue(null);
     putCachedProjectMock.mockResolvedValue(undefined);
     hasActiveSSEConnectionMock.mockReturnValue(false);
+    waitForIdleSSEDisplayTailMock.mockResolvedValue(undefined);
     fetchGetMock.mockResolvedValue({ runs: [] });
     fetchPostMock.mockResolvedValue({
       retired: false,
@@ -925,6 +929,100 @@ describe('projectStore runtime shape', () => {
       expect.arrayContaining(['task_finished'])
     );
   });
+
+  it.each([true, false])(
+    'waits for the display tail before retirement or eviction when consumer_alive is %s',
+    async (consumerAlive) => {
+      const projectId = useProjectStore
+        .getState()
+        .createProject('Stale', undefined, 'stale_display');
+      const nextId = useProjectStore
+        .getState()
+        .createProject(
+          'Next',
+          undefined,
+          'stale_display_next',
+          undefined,
+          undefined,
+          false
+        );
+      useProjectStore
+        .getState()
+        .appendInitChatStore(projectId, 'completed-run');
+      useProjectStore.setState({ staleProjectIds: new Set([projectId]) });
+      fetchGetMock.mockResolvedValue({
+        status: 'done',
+        run_id: 'completed-run',
+        consumer_alive: consumerAlive,
+      });
+      const display = deferred<void>();
+      waitForIdleSSEDisplayTailMock.mockReturnValueOnce(display.promise);
+
+      useProjectStore.getState().setActiveProject(nextId);
+      await vi.waitFor(() =>
+        expect(waitForIdleSSEDisplayTailMock).toHaveBeenCalledOnce()
+      );
+      expect(fetchPostMock).not.toHaveBeenCalled();
+      expect(closeIdleSSEConnectionsForTasksMock).not.toHaveBeenCalled();
+      expect(useProjectStore.getState().projects[projectId]).toBeDefined();
+      display.resolve();
+      await waitForPendingStaleRuntimeEviction(projectId);
+      expect(fetchPostMock).toHaveBeenCalledTimes(consumerAlive ? 1 : 0);
+      expect(useProjectStore.getState().projects[projectId]).toBeUndefined();
+    }
+  );
+
+  it.each([
+    'reactivated',
+    'logical active',
+    'pending admission',
+    'replaced Run',
+  ])(
+    'does not retire or evict a Project that became %s during display drain',
+    async (change) => {
+      const projectId = useProjectStore
+        .getState()
+        .createProject('Stale', undefined, 'stale_display_changed');
+      const nextId = useProjectStore
+        .getState()
+        .createProject(
+          'Next',
+          undefined,
+          'stale_display_changed_next',
+          undefined,
+          undefined,
+          false
+        );
+      const appended = useProjectStore
+        .getState()
+        .appendInitChatStore(projectId, 'completed-run')!;
+      useProjectStore.setState({ staleProjectIds: new Set([projectId]) });
+      fetchGetMock.mockResolvedValue({
+        status: 'done',
+        run_id: 'completed-run',
+        consumer_alive: true,
+      });
+      const display = deferred<void>();
+      waitForIdleSSEDisplayTailMock.mockReturnValueOnce(display.promise);
+      useProjectStore.getState().setActiveProject(nextId);
+      await vi.waitFor(() =>
+        expect(waitForIdleSSEDisplayTailMock).toHaveBeenCalledOnce()
+      );
+      if (change === 'reactivated')
+        useProjectStore.getState().setActiveProject(projectId);
+      if (change === 'logical active')
+        hasActiveSSEConnectionMock.mockReturnValue(true);
+      if (change === 'pending admission')
+        appended.chatStore.getState().setIsPending('completed-run', true);
+      if (change === 'replaced Run')
+        useProjectStore.getState().appendInitChatStore(projectId, 'new-run');
+      display.resolve();
+      await waitForPendingStaleRuntimeEviction(projectId);
+      expect(fetchPostMock).not.toHaveBeenCalled();
+      expect(closeIdleSSEConnectionsForTasksMock).not.toHaveBeenCalled();
+      expect(useProjectStore.getState().projects[projectId]).toBeDefined();
+    }
+  );
 
   it('retires a backend consumer after its renderer transport is gone', async () => {
     const projectId = useProjectStore

@@ -178,10 +178,12 @@ import {
   resolveRunOutputFileList,
   settleLegacyTaskFromCanonicalTerminal,
   useChatStore,
+  waitForIdleSSEDisplayTail,
 } from '../../../src/store/chatStore';
 import { useProjectStore } from '../../../src/store/projectStore';
 import { ExecutionStatus } from '../../../src/types';
 import { AgentStep, ChatTaskStatus } from '../../../src/types/constants';
+import completedRunDisplay from '../../fixtures/completed-run-display.json';
 
 // Mock electron IPC
 (global as any).ipcRenderer = {
@@ -1933,6 +1935,7 @@ describe('ChatStore - Core Functionality', () => {
                   path === '/runs/live-run/events' ? page(events) : undefined
                 )
               );
+              if (closeMode === 'idle retirement') vi.useFakeTimers();
               publish(events);
               expect(legacy.signal.aborted).toBe(false);
               expect(
@@ -1941,9 +1944,12 @@ describe('ChatStore - Core Functionality', () => {
                   .mock.calls.some(([path]) => path.endsWith('/events'))
               ).toBe(false);
               if (closeMode === 'close') legacy.onclose();
-              else if (closeMode === 'idle retirement')
+              else if (closeMode === 'idle retirement') {
+                await vi.advanceTimersByTimeAsync(5_000);
+                await waitForIdleSSEDisplayTail(['live-run']);
+                vi.useRealTimers();
                 closeIdleSSEConnectionsForTasks(['live-run']);
-              else
+              } else
                 expect(() =>
                   legacy.onerror(new Error('connection closed'))
                 ).toThrow('connection closed');
@@ -1970,6 +1976,7 @@ describe('ChatStore - Core Functionality', () => {
                 path === '/runs/live-run/events' ? page(events) : undefined
               )
             );
+            vi.useFakeTimers();
             publish(events);
             await vi.waitFor(() =>
               expect(receipts(executionId).at(-1)?.tokens_used).toBe(0)
@@ -1981,6 +1988,9 @@ describe('ChatStore - Core Functionality', () => {
               }),
             });
             expect(store.getState().tasks['live-run'].tokens).toBe(123);
+            await vi.advanceTimersByTimeAsync(5_000);
+            await waitForIdleSSEDisplayTail(['live-run']);
+            vi.useRealTimers();
             closeIdleSSEConnectionsForTasks(['live-run']);
             await vi.waitFor(() =>
               expect(receipts(executionId).at(-1)?.tokens_used).toBe(123)
@@ -2011,6 +2021,159 @@ describe('ChatStore - Core Functionality', () => {
             );
             expect(store.getState().tasks['live-run'].tokens).toBe(123);
           });
+
+          it('recovers actual recorder display receipts after the END drain deadline without affecting the next Run', async () => {
+            const executionId = 'recorded-display-recovery';
+            const { store, streamContaining } = await startObservedLiveTask({
+              executionId,
+            });
+            const legacy = streamContaining('/chat');
+            let resolvePage!: (value: typeof completedRunDisplay) => void;
+            vi.mocked(fetchGet).mockImplementation((path) =>
+              path === '/runs/live-run/events'
+                ? new Promise((resolve) => {
+                    resolvePage = resolve;
+                  })
+                : Promise.resolve(undefined)
+            );
+            // This fixture is checked against the real EventRecorder, Step
+            // projection and complete_successful_run in backend tests.
+            const events = completedRunDisplay.events as unknown as ReturnType<
+              typeof journal
+            >;
+            vi.useFakeTimers();
+            publish(events);
+            const drained = waitForIdleSSEDisplayTail(['live-run']);
+            closeIdleSSEConnectionsForTasks(['live-run']);
+            expect(legacy.signal.aborted).toBe(false);
+            await vi.advanceTimersByTimeAsync(5_000);
+            await drained;
+            vi.useRealTimers();
+            closeIdleSSEConnectionsForTasks(['live-run']);
+            expect(legacy.signal.aborted).toBe(true);
+
+            store.getState().create('next-run');
+            store.getState().setExecutionId('next-run', 'next-execution');
+            store.getState().setStatus('next-run', ChatTaskStatus.RUNNING);
+            store.getState().setIsPending('next-run', true);
+            store.getState().setActiveTaskId('next-run');
+            const nextBefore = store.getState().tasks['next-run'];
+            resolvePage(completedRunDisplay);
+            await vi.waitFor(() =>
+              expect(
+                store.getState().tasks['live-run'].messages
+              ).toContainEqual(
+                expect.objectContaining({
+                  id: 'fixture:final',
+                  step: AgentStep.END,
+                  content: 'The report is ready.',
+                })
+              )
+            );
+            const completed = store.getState().tasks['live-run'];
+            expect(completed).toMatchObject({
+              status: ChatTaskStatus.FINISHED,
+              durableRunStatus: 'completed',
+              isPending: false,
+              tokens: 123,
+            });
+            expect(completed.taskRunning).toContainEqual(
+              expect.objectContaining({
+                id: 'sub-1',
+                content: 'Create the report',
+                status: 'completed',
+                failure_count: 1,
+                report:
+                  'Report ready\n  Validation passed.\nSaved <device-home>/private/report.md\ntoken=[REDACTED]',
+                reportTruncated: false,
+                toolkits: [
+                  {
+                    toolkitName: 'terminal',
+                    toolkitMethods: 'shell_exec',
+                    toolkitStatus: 'completed',
+                    message: 'Validation passed.',
+                  },
+                ],
+              })
+            );
+            expect(completed.taskAssigning[0].tasks[0].report).toBe(
+              completed.taskRunning[0].report
+            );
+            expect(store.getState().tasks['next-run']).toEqual(nextBefore);
+            expect(store.getState().activeTaskId).toBe('next-run');
+            expect(receipts('next-execution')).toEqual([]);
+            await vi.waitFor(() =>
+              expect(receipts(executionId).at(-1)).toMatchObject({
+                status: ExecutionStatus.Completed,
+                tokens_used: 123,
+              })
+            );
+            const sent = [...receipts(executionId)];
+            publish(events);
+            closeIdleSSEConnectionsForTasks(['live-run']);
+            await Promise.resolve();
+            expect(receipts(executionId)).toEqual(sent);
+            expect(
+              store
+                .getState()
+                .tasks['live-run'].messages.filter(
+                  (message) => message.step === AgentStep.END
+                )
+            ).toHaveLength(1);
+          });
+
+          it.each(['existing full report', 'old journal without report'])(
+            'keeps display recovery honest for %s',
+            async (caseName) => {
+              const { store, streamContaining } = await startObservedLiveTask();
+              const fixture = structuredClone(completedRunDisplay);
+              const report = fixture.events.find(
+                (event) => event.legacy_step === 'task_state'
+              )!.payload;
+              if (caseName === 'old journal without report') {
+                delete report.display_output;
+                delete report.display_output_truncated;
+              } else {
+                report.display_output = 'Bounded report…';
+                report.display_output_truncated = true;
+                store.getState().setTaskRunning('live-run', [
+                  {
+                    id: 'sub-1',
+                    content: 'Create the report',
+                    status: 'completed',
+                    report: 'The complete original SSE report',
+                  },
+                ] as any);
+              }
+              vi.mocked(fetchGet).mockImplementation((path) =>
+                Promise.resolve(
+                  path === '/runs/live-run/events' ? fixture : undefined
+                )
+              );
+              publish(fixture.events as unknown as ReturnType<typeof journal>);
+              streamContaining('/chat').onclose();
+              await vi.waitFor(() =>
+                expect(
+                  store
+                    .getState()
+                    .tasks['live-run'].messages.some(
+                      (message) => message.step === AgentStep.END
+                    )
+                ).toBe(true)
+              );
+              expect(
+                store.getState().tasks['live-run'].taskRunning[0].report
+              ).toBe(
+                caseName === 'existing full report'
+                  ? 'The complete original SSE report'
+                  : undefined
+              );
+              expect(
+                store.getState().tasks['live-run'].taskRunning[0]
+                  .reportTruncated
+              ).not.toBe(true);
+            }
+          );
 
           it('does not add journal totals to usage already delivered by legacy', async () => {
             const executionId = 'journal-legacy-overlap';
@@ -3251,6 +3414,103 @@ describe('ChatStore - Core Functionality', () => {
           }
         };
 
+        it('drains report, toolkit and END display before an idle retirement can abort A', async () => {
+          const { store, streamContaining } = await startObservedLiveTask();
+          const legacy = streamContaining('/chat');
+          complete();
+          let drained = false;
+          const pending = waitForIdleSSEDisplayTail(['live-run']).then(() => {
+            drained = true;
+          });
+          await Promise.resolve({ status: 'done' });
+          await Promise.resolve();
+          closeIdleSSEConnectionsForTasks(['live-run']);
+          expect(legacy.signal.aborted).toBe(false);
+          expect(drained).toBe(false);
+          expect(hasActiveSSEConnection(['live-run'])).toBe(false);
+          await sendDisplayTail(legacy);
+          await send(legacy, AgentStep.TASK_STATE, {
+            task_id: 'sub-1',
+            state: 'DONE',
+            result: 'Game created',
+          });
+          const end = send(legacy, AgentStep.END, { content: 'Game is ready' });
+          await pending;
+          expect(
+            store.getState().tasks['live-run'].taskAssigning[0].tasks[0]
+          ).toMatchObject({
+            report: 'Game created',
+            toolkits: [
+              expect.objectContaining({
+                message: 'Success: created game',
+                toolkitStatus: 'completed',
+              }),
+              expect.anything(),
+            ],
+          });
+          expect(
+            store
+              .getState()
+              .tasks['live-run'].messages.some(
+                (message) =>
+                  message.step === AgentStep.END &&
+                  message.content === 'Game is ready'
+              )
+          ).toBe(true);
+          closeIdleSSEConnectionsForTasks(['live-run']);
+          expect(legacy.signal.aborted).toBe(true);
+          await end;
+        });
+
+        it('bounds a missing END without claiming the logically completed Run is active', async () => {
+          const { streamContaining } = await startObservedLiveTask();
+          const legacy = streamContaining('/chat');
+          vi.useFakeTimers();
+          try {
+            complete();
+            let drained = false;
+            const pending = waitForIdleSSEDisplayTail(['live-run']).then(() => {
+              drained = true;
+            });
+            await vi.advanceTimersByTimeAsync(4_999);
+            expect(drained).toBe(false);
+            expect(hasActiveSSEConnection(['live-run'])).toBe(false);
+            closeIdleSSEConnectionsForTasks(['live-run']);
+            expect(legacy.signal.aborted).toBe(false);
+            await vi.advanceTimersByTimeAsync(1);
+            await pending;
+            closeIdleSSEConnectionsForTasks(['live-run']);
+            expect(legacy.signal.aborted).toBe(true);
+          } finally {
+            vi.useRealTimers();
+          }
+        });
+
+        it('releases a captured drain on deletion and cannot close a follow-up owner', async () => {
+          const { store, streamContaining } = await startObservedLiveTask();
+          const legacy = streamContaining('/chat');
+          complete();
+          const pending = waitForIdleSSEDisplayTail(['live-run']);
+          await send(legacy, AgentStep.END, { content: 'A done' });
+          store.getState().setNextTaskId('follow-up-run');
+          await send(legacy, AgentStep.NEW_TASK_STATE, {
+            task_id: 'follow-up-run',
+            content: 'Start B',
+          });
+          await pending;
+          closeIdleSSEConnectionsForTasks(['live-run', 'follow-up-run']);
+          expect(legacy.signal.aborted).toBe(false);
+          expect(hasActiveSSEConnection(['follow-up-run'])).toBe(true);
+          complete('follow-up-run');
+          const removed = waitForIdleSSEDisplayTail(['follow-up-run']);
+          store.getState().removeTask('follow-up-run');
+          await removed;
+          expect(legacy.signal.aborted).toBe(true);
+          expect(
+            store.getState().tasks['live-run'].messages.at(-1)?.content
+          ).toBe('A done');
+        });
+
         it('reconstructs delayed display dependencies without prebuilt agents or subtasks', async () => {
           const { store, streamContaining } = await startObservedLiveTask();
           const legacy = streamContaining('/chat');
@@ -4163,7 +4423,6 @@ describe('ChatStore - Core Functionality', () => {
         );
       });
     });
-
   });
 
   describe.each([false, true])('Task startup: %s', (awaitAdmission) => {

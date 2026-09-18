@@ -51,6 +51,7 @@ const mocks = vi.hoisted(() => {
     startTask: vi.fn(),
     triggerTaskStore,
     useProjectRuntimeStore,
+    waitForIdleSSEDisplayTail: vi.fn(),
   };
 });
 
@@ -80,6 +81,7 @@ vi.mock('@/store/chatStore', () => ({
   closeIdleSSEConnectionsForTasks: mocks.closeIdleSSEConnectionsForTasks,
   hasActiveSSEConnection: mocks.hasActiveSSEConnection,
   hasSSETransportForTasks: mocks.hasSSETransportForTasks,
+  waitForIdleSSEDisplayTail: mocks.waitForIdleSSEDisplayTail,
 }));
 
 vi.mock('@/store/projectRuntimeStore', () => ({
@@ -151,6 +153,7 @@ describe('useBackgroundTaskProcessor SSE admission', () => {
       projects: { 'project-1': project },
     });
     mocks.hasActiveSSEConnection.mockReturnValue(false);
+    mocks.waitForIdleSSEDisplayTail.mockResolvedValue(undefined);
     mocks.hasSSETransportForTasks.mockImplementation(
       () => physicalTransportPresent
     );
@@ -413,7 +416,104 @@ describe('useBackgroundTaskProcessor SSE admission', () => {
     }
   );
 
-  describe.each(['status', 'retirement'] as const)(
+  it.each([true, false])(
+    'waits for the display tail before retirement/close when consumer_alive is %s',
+    async (consumerAlive) => {
+      let releaseDisplay!: () => void;
+      mocks.waitForIdleSSEDisplayTail.mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          releaseDisplay = resolve;
+        })
+      );
+      mocks.fetchGet.mockResolvedValue({
+        status: 'done',
+        run_id: 'ended-run',
+        consumer_alive: consumerAlive,
+      });
+      const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+      await waitFor(() =>
+        expect(mocks.waitForIdleSSEDisplayTail).toHaveBeenCalledOnce()
+      );
+      expect(mocks.fetchPost).not.toHaveBeenCalled();
+      expect(mocks.closeIdleSSEConnectionsForTasks).not.toHaveBeenCalled();
+      expect(mocks.startTask).not.toHaveBeenCalled();
+
+      await act(async () => releaseDisplay());
+      await waitFor(() => expect(mocks.startTask).toHaveBeenCalledOnce());
+      expect(mocks.fetchPost).toHaveBeenCalledTimes(consumerAlive ? 1 : 0);
+      expect(
+        mocks.waitForIdleSSEDisplayTail.mock.invocationCallOrder[0]
+      ).toBeLessThan(
+        mocks.closeIdleSSEConnectionsForTasks.mock.invocationCallOrder[0]
+      );
+      unmount();
+    }
+  );
+
+  it('continues to another Session after the display barrier resolves and its first queue row was cancelled', async () => {
+    const first = mocks.projectRuntimeStore.getProjectById('project-1');
+    const second = {
+      ...first,
+      id: 'project-2',
+      queuedMessages: [
+        {
+          ...first.queuedMessages[0],
+          task_id: 'queued-2',
+          executionId: 'execution-2',
+        },
+      ],
+    };
+    mocks.projectRuntimeStore.getAllProjects.mockReturnValue([first, second]);
+    mocks.projectRuntimeStore.getProjectById.mockImplementation((id) =>
+      id === first.id ? first : second
+    );
+    mocks.projectRuntimeStore.markQueuedMessageAsProcessing.mockImplementation(
+      (id, taskId) => {
+        const project = id === first.id ? first : second;
+        project.queuedMessages = project.queuedMessages.map((msg: any) =>
+          msg.task_id === taskId ? { ...msg, processing: true } : msg
+        );
+      }
+    );
+    let releaseDisplay!: () => void;
+    mocks.waitForIdleSSEDisplayTail.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        releaseDisplay = resolve;
+      })
+    );
+    const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+    await waitFor(() =>
+      expect(mocks.waitForIdleSSEDisplayTail).toHaveBeenCalledOnce()
+    );
+    first.queuedMessages = [];
+    await act(async () => releaseDisplay());
+    await waitFor(() => expect(mocks.startTask).toHaveBeenCalledOnce());
+    expect(mocks.startTask.mock.calls[0][7]).toBe('project-2');
+    expect(mocks.fetchPost.mock.calls.map(([url]) => url)).toEqual([
+      '/chat/project-2/runtime/retire-idle',
+    ]);
+    unmount();
+  });
+
+  it('does not retire or admit after unmount while waiting for the display tail', async () => {
+    let releaseDisplay!: () => void;
+    mocks.waitForIdleSSEDisplayTail.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        releaseDisplay = resolve;
+      })
+    );
+    const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+    await waitFor(() =>
+      expect(mocks.waitForIdleSSEDisplayTail).toHaveBeenCalledOnce()
+    );
+    unmount();
+    await act(async () => releaseDisplay());
+    expect(mocks.fetchPost).not.toHaveBeenCalled();
+    expect(mocks.closeIdleSSEConnectionsForTasks).not.toHaveBeenCalled();
+    expect(mocks.startTask).not.toHaveBeenCalled();
+  });
+
+  describe.each(['status', 'display tail', 'retirement'] as const)(
     'queue changes while awaiting %s',
     (stage) => {
       const suspendOwnershipRequest = () => {
@@ -421,7 +521,12 @@ describe('useBackgroundTaskProcessor SSE admission', () => {
         const request = new Promise((resolve) => {
           resolveRequest = resolve;
         });
-        const fetch = stage === 'status' ? mocks.fetchGet : mocks.fetchPost;
+        const fetch =
+          stage === 'status'
+            ? mocks.fetchGet
+            : stage === 'display tail'
+              ? mocks.waitForIdleSSEDisplayTail
+              : mocks.fetchPost;
         fetch.mockReturnValueOnce(request);
         return {
           fetch,
@@ -444,7 +549,8 @@ describe('useBackgroundTaskProcessor SSE admission', () => {
           mocks.projectRuntimeStore.markQueuedMessageAsProcessing
         ).not.toHaveBeenCalled();
         expect(mocks.closeIdleSSEConnectionsForTasks).not.toHaveBeenCalled();
-        if (stage === 'status') expect(mocks.fetchPost).not.toHaveBeenCalled();
+        if (stage !== 'retirement')
+          expect(mocks.fetchPost).not.toHaveBeenCalled();
         unmount();
       });
 
@@ -491,12 +597,28 @@ describe('useBackgroundTaskProcessor SSE admission', () => {
             mocks.projectRuntimeStore.markQueuedMessageAsProcessing
           ).not.toHaveBeenCalled();
           expect(mocks.closeIdleSSEConnectionsForTasks).not.toHaveBeenCalled();
-          if (stage === 'status')
+          if (stage !== 'retirement')
             expect(mocks.fetchPost).not.toHaveBeenCalled();
           expect(project.queuedMessages).toHaveLength(1);
           unmount();
         }
       );
+
+      it('defers to pending admission on the same existing Run', async () => {
+        const { fetch, finish } = suspendOwnershipRequest();
+        const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+        await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+        sourceState.tasks['ended-run'].isPending = true;
+        await act(async () => finish());
+        expect(mocks.startTask).not.toHaveBeenCalled();
+        expect(mocks.closeIdleSSEConnectionsForTasks).not.toHaveBeenCalled();
+        expect(
+          mocks.projectRuntimeStore.markQueuedMessageAsProcessing
+        ).not.toHaveBeenCalled();
+        if (stage !== 'retirement')
+          expect(mocks.fetchPost).not.toHaveBeenCalled();
+        unmount();
+      });
 
       it.each([
         { task_id: 'replacement-task' },

@@ -68,6 +68,8 @@ declare global {
 
   interface TaskInfo {
     report?: string | undefined;
+    /** Recovered Journal display excerpt, not a complete subtask report. */
+    reportTruncated?: boolean;
     id: string;
     content: string;
     status?: TaskStatusType;
