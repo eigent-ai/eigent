@@ -93,6 +93,18 @@ class TriggerService:
         """Update execution status and metadata."""
         current_status = execution.status
         if current_status in TERMINAL_EXECUTION_STATUSES:
+            # Canonical completion may arrive before the legacy END token
+            # total. Enrich only that total for the same accepted outcome;
+            # never re-run terminal timing, metadata or failure accounting.
+            if (
+                status == current_status
+                and tokens_used is not None
+                and tokens_used > (execution.tokens_used or 0)
+            ):
+                execution.tokens_used = tokens_used
+                self.session.add(execution)
+                self.session.commit()
+                return execution
             logger.info(
                 "Ignored trigger execution update after terminal outcome",
                 extra={

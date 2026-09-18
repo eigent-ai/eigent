@@ -209,4 +209,211 @@ describe('trigger execution status delivery', () => {
     );
     expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
   });
+
+  it('coalesces pending same-outcome tokens without changing the first receipt', async () => {
+    let releaseRunning!: () => void;
+    mocks.proxyFetchPut
+      .mockReset()
+      .mockImplementationOnce(
+        () => new Promise<void>((resolve) => (releaseRunning = resolve))
+      )
+      .mockResolvedValue(undefined);
+    const { proxyUpdateTriggerExecution } =
+      await import('@/service/triggerApi');
+    const running = proxyUpdateTriggerExecution('pending-tokens', {
+      status: ExecutionStatus.Running,
+    });
+    await vi.waitFor(() =>
+      expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(1)
+    );
+    const canonical = proxyUpdateTriggerExecution('pending-tokens', {
+      status: ExecutionStatus.Completed,
+      tokens_used: 0,
+      completed_at: '2026-09-18T00:00:00Z',
+      output_data: { result: 'accepted' },
+    });
+    const legacy = proxyUpdateTriggerExecution('pending-tokens', {
+      status: ExecutionStatus.Completed,
+      tokens_used: 123,
+      completed_at: '2026-09-19T00:00:00Z',
+      output_data: { result: 'late' },
+      error_message: 'must not replace the receipt',
+    });
+    expect(
+      JSON.parse(window.localStorage.getItem(OUTBOX_KEY)!)[0].updateData
+    ).toEqual({
+      status: ExecutionStatus.Completed,
+      tokens_used: 123,
+      completed_at: '2026-09-18T00:00:00Z',
+      output_data: { result: 'accepted' },
+    });
+    releaseRunning();
+    await Promise.all([running, canonical, legacy]);
+    expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(2);
+    expect(mocks.proxyFetchPut.mock.calls[1][1].tokens_used).toBe(123);
+    expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
+  });
+
+  it('retains richer tokens while the older terminal receipt is in flight', async () => {
+    let releaseCanonical!: () => void;
+    let releaseLegacy!: () => void;
+    mocks.proxyFetchPut
+      .mockReset()
+      .mockImplementationOnce(
+        () => new Promise<void>((resolve) => (releaseCanonical = resolve))
+      )
+      .mockImplementationOnce(
+        () => new Promise<void>((resolve) => (releaseLegacy = resolve))
+      );
+    const { proxyUpdateTriggerExecution } =
+      await import('@/service/triggerApi');
+    const canonical = proxyUpdateTriggerExecution('inflight-tokens', {
+      status: ExecutionStatus.Completed,
+      tokens_used: 0,
+    });
+    await vi.waitFor(() =>
+      expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(1)
+    );
+    const legacy = proxyUpdateTriggerExecution('inflight-tokens', {
+      status: ExecutionStatus.Completed,
+      tokens_used: 123,
+    });
+    const lower = proxyUpdateTriggerExecution('inflight-tokens', {
+      status: ExecutionStatus.Completed,
+      tokens_used: 40,
+    });
+    await proxyUpdateTriggerExecution('inflight-tokens', {
+      status: ExecutionStatus.Failed,
+      tokens_used: 999,
+    });
+    expect(mocks.proxyFetchPut.mock.calls[0][1].tokens_used).toBe(0);
+    releaseCanonical();
+    await canonical;
+    await vi.waitFor(() =>
+      expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(2)
+    );
+    expect(
+      JSON.parse(window.localStorage.getItem(OUTBOX_KEY)!)[0].updateData
+    ).toEqual({ status: ExecutionStatus.Completed, tokens_used: 123 });
+    releaseLegacy();
+    await Promise.all([legacy, lower]);
+    expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
+  });
+
+  it('enriches an already-delivered terminal outcome exactly once', async () => {
+    mocks.proxyFetchPut.mockReset().mockResolvedValue(undefined);
+    const { proxyUpdateTriggerExecution } =
+      await import('@/service/triggerApi');
+    await proxyUpdateTriggerExecution('delivered-tokens', {
+      status: ExecutionStatus.Failed,
+      tokens_used: 0,
+      error_message: 'original failure',
+      duration_seconds: 8,
+    });
+    await proxyUpdateTriggerExecution('delivered-tokens', {
+      status: ExecutionStatus.Failed,
+      tokens_used: 123,
+      error_message: 'late different failure',
+      duration_seconds: 88,
+    });
+    for (const tokens of [0, 10, 123]) {
+      await proxyUpdateTriggerExecution('delivered-tokens', {
+        status: ExecutionStatus.Failed,
+        tokens_used: tokens,
+      });
+    }
+    await proxyUpdateTriggerExecution('delivered-tokens', {
+      status: ExecutionStatus.Completed,
+      tokens_used: 999,
+    });
+    expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(2);
+    expect(mocks.proxyFetchPut.mock.calls[1][1]).toEqual({
+      status: ExecutionStatus.Failed,
+      tokens_used: 123,
+      error_message: 'original failure',
+      duration_seconds: 8,
+    });
+  });
+
+  it('advances to richer tokens after an older request times out and resolves late', async () => {
+    vi.useFakeTimers();
+    let releaseOlderRequest!: () => void;
+    mocks.proxyFetchPut
+      .mockReset()
+      .mockImplementationOnce(
+        () => new Promise<void>((resolve) => (releaseOlderRequest = resolve))
+      )
+      .mockResolvedValue(undefined);
+    const { proxyUpdateTriggerExecution } =
+      await import('@/service/triggerApi');
+    const canonical = proxyUpdateTriggerExecution('timeout-tokens', {
+      status: ExecutionStatus.Completed,
+      tokens_used: 0,
+    });
+    await vi.waitFor(() =>
+      expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(1)
+    );
+    const legacy = proxyUpdateTriggerExecution('timeout-tokens', {
+      status: ExecutionStatus.Completed,
+      tokens_used: 123,
+    });
+    await vi.advanceTimersByTimeAsync(10_250);
+    await Promise.all([canonical, legacy]);
+    releaseOlderRequest();
+    await Promise.resolve();
+    expect(
+      mocks.proxyFetchPut.mock.calls.map(([, body]) => body.tokens_used)
+    ).toEqual([0, 123]);
+    expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
+    await proxyUpdateTriggerExecution('timeout-tokens', {
+      status: ExecutionStatus.Completed,
+      tokens_used: 100,
+    });
+    expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(2);
+  });
+
+  it('persists failed token enrichment and restores its maximum after restart', async () => {
+    vi.useFakeTimers();
+    mocks.proxyFetchPut
+      .mockReset()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValue(new Error('offline'));
+    const firstModule = await import('@/service/triggerApi');
+    await firstModule.proxyUpdateTriggerExecution('restart-tokens', {
+      status: ExecutionStatus.Completed,
+      tokens_used: 0,
+      output_data: { result: 'accepted' },
+    });
+    const enrichment = firstModule.proxyUpdateTriggerExecution(
+      'restart-tokens',
+      {
+        status: ExecutionStatus.Completed,
+        tokens_used: 123,
+        output_data: { result: 'late' },
+      }
+    );
+    await vi.runAllTimersAsync();
+    await enrichment;
+    expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(4);
+
+    vi.resetModules();
+    mocks.proxyFetchPut.mockReset().mockResolvedValue(undefined);
+    const recovered = await import('@/service/triggerApi');
+    await recovered.proxyUpdateTriggerExecution('restart-tokens', {
+      status: ExecutionStatus.Failed,
+      tokens_used: 999,
+    });
+    await recovered.proxyUpdateTriggerExecution('restart-tokens', {
+      status: ExecutionStatus.Completed,
+      tokens_used: 1,
+    });
+    await recovered.flushPendingTriggerExecutionUpdates();
+    expect(mocks.proxyFetchPut).toHaveBeenCalledTimes(1);
+    expect(mocks.proxyFetchPut.mock.calls[0][1]).toEqual({
+      status: ExecutionStatus.Completed,
+      tokens_used: 123,
+      output_data: { result: 'accepted' },
+    });
+    expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
+  });
 });

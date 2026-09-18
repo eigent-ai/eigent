@@ -338,3 +338,107 @@ def test_pending_acknowledgment_timeout_still_expires_once(
     redis_manager.remove_pending_execution.assert_called_once_with(
         "session-1", "execution-pending"
     )
+
+
+@pytest.mark.parametrize(
+    "terminal_status",
+    [ExecutionStatus.completed, ExecutionStatus.failed, ExecutionStatus.cancelled],
+)
+def test_same_terminal_outcome_only_enriches_tokens_monotonically(
+    tmp_path,
+    monkeypatch,
+    terminal_status,
+) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'terminal-tokens.db'}")
+    SQLModel.metadata.create_all(
+        engine,
+        tables=[Trigger.__table__, TriggerExecution.__table__],
+    )
+    monkeypatch.setattr(TriggerCrudService, "_publish_execution_event", Mock())
+    with Session(engine) as setup:
+        trigger = Trigger(
+            user_id="1",
+            project_id="project-1",
+            name="Token receipt",
+            trigger_type=TriggerType.schedule,
+            status=TriggerStatus.active,
+            consecutive_failures=2,
+        )
+        setup.add(trigger)
+        setup.flush()
+        setup.add(
+            TriggerExecution(
+                trigger_id=trigger.id,
+                execution_id="terminal-tokens",
+                execution_type=ExecutionType.scheduled,
+                status=ExecutionStatus.running,
+                started_at=datetime.now(UTC) - timedelta(seconds=8),
+            )
+        )
+        setup.commit()
+        TriggerCrudService.update_execution(
+            "terminal-tokens",
+            TriggerExecutionUpdate(
+                status=terminal_status,
+                tokens_used=0,
+                error_message="original receipt",
+                output_data={"result": "accepted"},
+            ),
+            user_id=1,
+            s=setup,
+        )
+        first = setup.exec(select(TriggerExecution)).one()
+        receipt = (first.completed_at, first.duration_seconds)
+        failure_count = setup.exec(select(Trigger)).one().consecutive_failures
+
+    # Keep an ORM snapshot from before the enriching update. The endpoint
+    # must refresh it while taking the execution lock, not write a stale max.
+    with Session(engine, expire_on_commit=False) as stale_session:
+        stale = stale_session.exec(select(TriggerExecution)).one()
+        assert not stale.tokens_used
+        stale_session.commit()
+
+        with Session(engine) as enrichment_session:
+            TriggerCrudService.update_execution(
+                "terminal-tokens",
+                TriggerExecutionUpdate(
+                    status=terminal_status,
+                    tokens_used=123,
+                    completed_at=datetime(2026, 9, 19, tzinfo=UTC),
+                    duration_seconds=999,
+                    error_message="late error",
+                    output_data={"result": "late output"},
+                    tools_executed={"late": True},
+                ),
+                user_id=1,
+                s=enrichment_session,
+            )
+
+        for status, tokens in [
+            (terminal_status, 50),
+            (terminal_status, 123),
+            (ExecutionStatus.running, 999),
+            (
+                ExecutionStatus.failed if terminal_status != ExecutionStatus.failed else ExecutionStatus.completed,
+                999,
+            ),
+        ]:
+            TriggerCrudService.update_execution(
+                "terminal-tokens",
+                TriggerExecutionUpdate(status=status, tokens_used=tokens),
+                user_id=1,
+                s=stale_session,
+            )
+            stale_session.commit()
+
+    with Session(engine) as verify:
+        execution = verify.exec(select(TriggerExecution)).one()
+        trigger = verify.exec(select(Trigger)).one()
+        assert execution.status == terminal_status
+        assert execution.tokens_used == 123
+        assert (execution.completed_at, execution.duration_seconds) == receipt
+        assert execution.error_message == "original receipt"
+        assert execution.output_data == {"result": "accepted"}
+        assert execution.tools_executed is None
+        assert trigger.consecutive_failures == failure_count
+        assert trigger.last_execution_status == terminal_status.value

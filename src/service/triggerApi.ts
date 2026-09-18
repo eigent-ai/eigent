@@ -280,13 +280,19 @@ const terminalExecutionStatuses = new Set<string>([
   ExecutionStatus.Cancelled,
   ExecutionStatus.Missed,
 ]);
-const acceptedTerminalStatusByExecutionId = new Map<string, string>();
+const acceptedTerminalUpdatesByExecutionId = new Map<
+  string,
+  PendingTerminalExecutionUpdate
+>();
 const pendingTerminalExecutionUpdates = new Map<
   string,
   PendingTerminalExecutionUpdate
 >();
 const triggerExecutionUpdateChains = new Map<string, Promise<void>>();
-const terminalDeliveryChains = new Map<string, Promise<void>>();
+const terminalDeliveryChains = new Map<
+  string,
+  { record: PendingTerminalExecutionUpdate; promise: Promise<void> }
+>();
 let terminalOutboxLoaded = false;
 let recoveryListenersInstalled = false;
 
@@ -295,6 +301,11 @@ const waitForTriggerExecutionRetry = (delayMs: number) =>
 
 const isTerminalExecutionStatus = (status?: string): status is string =>
   Boolean(status && terminalExecutionStatuses.has(status));
+
+const executionTokens = (data: TriggerExecutionUpdateData): number =>
+  Number.isSafeInteger(data.tokens_used) && (data.tokens_used ?? 0) >= 0
+    ? (data.tokens_used ?? 0)
+    : 0;
 
 const loadTerminalExecutionOutbox = () => {
   if (terminalOutboxLoaded) return;
@@ -318,7 +329,7 @@ const loadTerminalExecutionOutbox = () => {
         continue;
       }
       pendingTerminalExecutionUpdates.set(record.executionId, record);
-      acceptedTerminalStatusByExecutionId.set(record.executionId, status);
+      acceptedTerminalUpdatesByExecutionId.set(record.executionId, record);
     }
   } catch (error) {
     console.warn(
@@ -455,6 +466,10 @@ const deliverPendingTerminalExecutionUpdate = async (
 ) => {
   const maxAttempts = TERMINAL_EXECUTION_RETRY_DELAYS_MS.length + 1;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    // A richer receipt is already queued behind this delivery. Do not retry
+    // an obsolete total or let it remove the newer durable outbox record.
+    if (pendingTerminalExecutionUpdates.get(record.executionId) !== record)
+      return;
     try {
       await sendTriggerExecutionUpdate(
         record.executionId,
@@ -488,17 +503,17 @@ const enqueuePendingTerminalExecutionUpdate = (
   record: PendingTerminalExecutionUpdate
 ): Promise<void> => {
   const existingDelivery = terminalDeliveryChains.get(record.executionId);
-  if (existingDelivery) return existingDelivery;
+  if (existingDelivery?.record === record) return existingDelivery.promise;
 
   let delivery: Promise<void>;
   delivery = enqueueTriggerExecutionUpdate(record.executionId, () =>
     deliverPendingTerminalExecutionUpdate(record)
   ).finally(() => {
-    if (terminalDeliveryChains.get(record.executionId) === delivery) {
+    if (terminalDeliveryChains.get(record.executionId)?.promise === delivery) {
       terminalDeliveryChains.delete(record.executionId);
     }
   });
-  terminalDeliveryChains.set(record.executionId, delivery);
+  terminalDeliveryChains.set(record.executionId, { record, promise: delivery });
   return delivery;
 };
 
@@ -525,8 +540,8 @@ export async function flushPendingTriggerExecutionUpdates(): Promise<void> {
 
 /**
  * Serialize all execution status writes and durably retain terminal outcomes.
- * A terminal state is first-writer-wins in the renderer and immutable on the
- * server, so a late Running acknowledgement cannot resurrect a finished Run.
+ * A terminal outcome is first-writer-wins. Only a larger same-outcome token
+ * total may enrich its receipt; late Running cannot resurrect a finished Run.
  */
 export const proxyUpdateTriggerExecution = async (
   executionId: string,
@@ -537,8 +552,9 @@ export const proxyUpdateTriggerExecution = async (
   installTerminalExecutionRecoveryListeners();
 
   const status = updateData.status;
-  const acceptedTerminalStatus =
-    acceptedTerminalStatusByExecutionId.get(executionId);
+  const acceptedTerminalUpdate =
+    acceptedTerminalUpdatesByExecutionId.get(executionId);
+  const acceptedTerminalStatus = acceptedTerminalUpdate?.updateData.status;
 
   if (status === ExecutionStatus.Running && acceptedTerminalStatus) {
     console.log(
@@ -559,18 +575,32 @@ export const proxyUpdateTriggerExecution = async (
     }
 
     let record = pendingTerminalExecutionUpdates.get(executionId);
-    if (!record && acceptedTerminalStatus) {
-      // This exact terminal outcome was already delivered successfully.
-      return;
-    }
-    if (!record) {
+    if (acceptedTerminalUpdate) {
+      const tokens = executionTokens(updateData);
+      if (tokens > executionTokens(acceptedTerminalUpdate.updateData)) {
+        // Keep the first receipt's outcome, timing, error and output. A late
+        // legacy END may supply the final token total after canonical settle.
+        record = {
+          ...acceptedTerminalUpdate,
+          updateData: {
+            ...acceptedTerminalUpdate.updateData,
+            tokens_used: tokens,
+          },
+        };
+      } else if (!record) {
+        return;
+      }
+    } else {
       record = {
         executionId,
-        updateData,
+        updateData: { ...updateData },
         triggerInfo,
         queuedAt: Date.now(),
       };
-      acceptedTerminalStatusByExecutionId.set(executionId, status);
+    }
+    if (!record) return;
+    if (pendingTerminalExecutionUpdates.get(executionId) !== record) {
+      acceptedTerminalUpdatesByExecutionId.set(executionId, record);
       pendingTerminalExecutionUpdates.set(executionId, record);
       // Persist before the first network await so app shutdown cannot lose the
       // only canonical terminal receipt.

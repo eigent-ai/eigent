@@ -514,14 +514,20 @@ class TriggerCrudService:
             .join(Trigger)
             .where(and_(TriggerExecution.execution_id == execution_id, Trigger.user_id == str(user_id)))
             .with_for_update()
+            .execution_options(populate_existing=True)
         ).first()
         if not execution:
             return {"success": False, "error": "Execution not found", "status_code": 404}
 
-        # Terminal executions are immutable as a complete receipt, not only as
-        # a status value. Otherwise a late competing request could preserve the
-        # status while still overwriting completed_at, duration, or output.
+        # Freeze the accepted terminal receipt. The sole allowed enrichment is
+        # a larger token total for that same outcome, under this row lock.
         if execution.status in TERMINAL_EXECUTION_STATUSES:
+            if data.status == execution.status and data.tokens_used is not None:
+                TriggerService(s).update_execution_status(
+                    execution,
+                    data.status,
+                    tokens_used=data.tokens_used,
+                )
             logger.info(
                 "Ignored trigger execution update after terminal outcome",
                 extra={
