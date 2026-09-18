@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+import yaml
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -29,6 +30,7 @@ from app.controller import workspace_config_controller
 from app.router import register_routers
 from app.run_journal import SQLiteRunJournal
 from app.workspace_bundle.agent_plugins import MCP_SCHEMA, PLUGIN_SCHEMA
+from app.workspace_config import WorkspaceBundleManifest
 
 
 @dataclass
@@ -167,6 +169,86 @@ def test_discovery_error_does_not_expose_validation_inputs(
         params={"email": "user@example.com"},
         headers=_headers(),
     )
+    assert result.status_code == 500
+    assert result.json() == {
+        "detail": {"code": "workspace_configuration_discovery_failed"}
+    }
+
+
+@pytest.mark.parametrize("placement", ["in_repo", "sidecar"])
+@pytest.mark.parametrize("contract", ["workspace.yaml", "workspace.lock"])
+def test_discovery_contract_boundary_returns_only_a_generic_error(
+    workspace_config_api, tmp_path, monkeypatch, placement, contract
+):
+    client, journal = workspace_config_api
+    manifest = WorkspaceBundleManifest.model_validate(
+        {
+            "apiVersion": "eigent.ai/v1alpha1",
+            "kind": "WorkspaceBundle",
+            "metadata": {"id": "boundary", "name": "Boundary", "revision": 1},
+            "spec": {
+                "models": {"default": {"modelRef": "provider://default"}}
+            },
+        }
+    )
+    journal.put_workspace_config_revision(
+        revision_id=manifest.revision_id,
+        bundle_id=manifest.metadata.id,
+        revision_number=1,
+        manifest=manifest.canonical_payload(),
+        created_by="fixture",
+    )
+    journal.put_workspace_config_materialization(
+        materialization_id="boundary-materialization",
+        space_id="space-1",
+        revision_id=manifest.revision_id,
+        config_placement=placement,
+    )
+    configuration = (
+        tmp_path / "space" / ".eigent"
+        if placement == "in_repo"
+        else tmp_path
+        / "workspace-git"
+        / "spaces"
+        / "space-1"
+        / "configuration"
+    )
+    configuration.mkdir(parents=True)
+    (configuration / "workspace.yaml").write_text(
+        yaml.safe_dump(manifest.canonical_payload())
+    )
+    (configuration / "workspace.lock").write_text(
+        yaml.safe_dump(
+            {
+                "apiVersion": "eigent.ai/lock/v1alpha1",
+                "bundleRevision": manifest.revision_id,
+                "manifestDigest": manifest.digest,
+            }
+        )
+    )
+    outside = tmp_path / "synthetic-private-config.json"
+    outside.write_text('{"token":"synthetic-boundary-marker"}')
+    path = configuration / contract
+    path.unlink()
+    path.symlink_to(outside)
+    opened = []
+    original_open = Path.open
+
+    def checked_open(path, *args, **kwargs):
+        if path.resolve() == outside:
+            opened.append(path)
+            raise AssertionError("forbidden fixture was opened")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", checked_open)
+    rows_before = journal._connection.total_changes
+    result = client.get(
+        "/api/v1/spaces/space-1/workspace-configuration/discovery",
+        params={"email": "user@example.com"},
+        headers=_headers(),
+    )
+    assert opened == []
+    assert journal._connection.total_changes == rows_before
     assert result.status_code == 500
     assert result.json() == {
         "detail": {"code": "workspace_configuration_discovery_failed"}
