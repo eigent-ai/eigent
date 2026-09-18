@@ -1768,7 +1768,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     const cacheUserId = getAuthStore().user_id;
     const restored = get().projects[loadProjectId];
     if (
-      restored?.metadata?.spaceModelDefaultPending &&
+      (restored?.metadata?.spaceModelDefaultPending ||
+        restored?.metadata?.spaceModelAdmissionRunId) &&
       !get().getProjectModel(loadProjectId) &&
       restored.spaceId &&
       !restored.spaceId.startsWith('legacy_')
