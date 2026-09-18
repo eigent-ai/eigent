@@ -1308,6 +1308,7 @@ export default function ChatBox(): JSX.Element {
         }
       } else if (queuedRequestId) {
         const queuedFiles = queuedAttaches || [];
+        const draftStore = projectStore.getActiveChatStore();
         await waitForPendingStaleRuntimeEviction(targetProjectId);
         const backendStatus = startsAfterInterruption
           ? { consumer_alive: false }
@@ -1335,7 +1336,7 @@ export default function ChatBox(): JSX.Element {
           // instruction is still a normal new Run, so start it through the
           // cold admission path with its durable request id instead of
           // retrying /chat/{project} forever.
-          await chatStore.startTask(
+          const admission = chatStore.startTask(
             queuedRequestId,
             undefined,
             undefined,
@@ -1351,6 +1352,32 @@ export default function ChatBox(): JSX.Element {
               ...(reviewHandoffIds.length ? { reviewHandoffIds } : {}),
             }
           );
+          // Queued payloads do not own the user's current composer. Move
+          // that draft when cold startup synchronously selects its new Run.
+          const draftTask = draftStore?.getState().tasks[_taskId];
+          const nextState = projectStore
+            .getChatStore(targetProjectId)
+            ?.getState();
+          const nextTask = nextState?.tasks[queuedRequestId];
+          if (
+            draftStore &&
+            draftTask?.attaches.length &&
+            nextState?.activeTaskId === queuedRequestId &&
+            nextTask &&
+            queuedRequestId !== _taskId
+          ) {
+            const draftFiles = draftTask.attaches;
+            const existingPaths = new Set(
+              nextTask.attaches.map((file) => file.filePath)
+            );
+            nextState.setAttaches(queuedRequestId, [
+              ...nextTask.attaches,
+              ...draftFiles.filter((file) => !existingPaths.has(file.filePath)),
+            ]);
+            if (draftStore.getState().tasks[_taskId]?.attaches === draftFiles)
+              draftStore.getState().setAttaches(_taskId, []);
+          }
+          await admission;
         }
         messageAccepted = true;
       } else if (requiresHumanReply) {
@@ -1555,6 +1582,43 @@ export default function ChatBox(): JSX.Element {
             };
 
             const nextTaskId = generateUniqueId();
+            const transferEditedAttachments = (
+              nextStore: typeof sourceStore
+            ) => {
+              if (
+                preserveComposer ||
+                !sourceStore ||
+                !nextStore ||
+                nextTaskId === _taskId
+              )
+                return;
+              const sourceTask = sourceStore.getState().tasks[_taskId];
+              if (!sourceTask || sourceTask.attaches === sourceAttaches) return;
+              const nextState = nextStore.getState();
+              const nextTask = nextState.tasks[nextTaskId];
+              if (
+                nextState.activeTaskId !== nextTaskId ||
+                !nextTask ||
+                nextTask.attaches.length > 0
+              )
+                return;
+              // The composer now reads the prepared Run, not the previous
+              // one. Move only additions made during lookup; sent files
+              // already belong to the submitted message, not the next draft.
+              const editedAttachments = sourceTask.attaches;
+              const sentPaths = new Set<string>(improveAttaches);
+              nextState.setAttaches(
+                nextTaskId,
+                editedAttachments.filter(
+                  (file) => !sentPaths.has(file.filePath)
+                )
+              );
+              if (
+                sourceStore.getState().tasks[_taskId]?.attaches ===
+                editedAttachments
+              )
+                sourceStore.getState().setAttaches(_taskId, []);
+            };
             await waitForPendingStaleRuntimeEviction(targetProjectId);
             const backendStatus = await fetchGet(
               `/chat/${encodeURIComponent(targetProjectId)}/status`
@@ -1565,7 +1629,7 @@ export default function ChatBox(): JSX.Element {
               // consumer while this Project was being reactivated. Admit the
               // follow-up as a cold Run instead of posting to a dead queue.
               ensureActiveProjectMode();
-              await chatStore.startTask(
+              const admission = chatStore.startTask(
                 nextTaskId,
                 undefined,
                 undefined,
@@ -1581,6 +1645,13 @@ export default function ChatBox(): JSX.Element {
                   ...(reviewHandoffIds.length ? { reviewHandoffIds } : {}),
                 }
               );
+              // startTask prepares/selects its Run synchronously before its
+              // first await. Transfer now, before the user can edit that new
+              // task; never overwrite its later edits when admission settles.
+              transferEditedAttachments(
+                projectStore.getChatStore(targetProjectId)
+              );
+              await admission;
               messageAccepted = true;
               clearOwnedComposer();
             } else {
@@ -1600,6 +1671,7 @@ export default function ChatBox(): JSX.Element {
               }
 
               const nextChatState = nextChatResult.chatStore.getState();
+              transferEditedAttachments(nextChatResult.chatStore);
               // During the remaining multi-store migration window the
               // prepared Run can live in a different store. Keep the boundary
               // token on both sides so CONFIRMED reuses this exact task.

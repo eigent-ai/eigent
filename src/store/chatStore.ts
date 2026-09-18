@@ -2582,6 +2582,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           .setTaskSessionMode(newTaskId, sessionModeForRequest);
       }
 
+      // Capture ownership before startup yields to readiness/model requests.
+      // New composer files may be added to this Run while admission is pending.
+      // Resume continues the prior execution without submitting its draft.
+      const initialDraftOwner =
+        isLiveTask && !startOptions.resumeRequestId
+          ? {
+              store: targetChatStore,
+              taskId: newTaskId,
+              attaches: targetChatStore.getState().tasks[newTaskId]?.attaches,
+            }
+          : null;
+
       const finishStartupFailure = () => {
         if (!isLiveTask) return;
         const targetState = targetChatStore.getState();
@@ -6180,14 +6192,23 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             rejectResumeStreamOpen?.(error);
             throw error;
           }
+          const firstOpen = !resumeStreamOpened;
           if (resumeStreamOpened) reconcileStreamRun();
           resumeStreamOpened = true;
           resolveResumeStreamOpen?.();
           if (!type && project_id) {
             observeCanonicalTerminal(lockedChatStore, lockedTaskId);
           }
-          const { setAttaches, activeTaskId } = get();
-          setAttaches(activeTaskId as string, []);
+          if (firstOpen && initialDraftOwner) {
+            const ownerState = initialDraftOwner.store.getState();
+            const ownerTask = ownerState.tasks[initialDraftOwner.taskId];
+            if (
+              ownerTask &&
+              ownerTask.attaches === initialDraftOwner.attaches
+            ) {
+              ownerState.setAttaches(initialDraftOwner.taskId, []);
+            }
+          }
           return;
         },
 

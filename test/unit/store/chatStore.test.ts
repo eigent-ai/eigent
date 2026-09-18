@@ -1283,6 +1283,285 @@ describe('ChatStore - Core Functionality', () => {
       }
     });
 
+    describe('stream admission attachment ownership', () => {
+      const projectStoreState = vi.mocked(useProjectStore.getState);
+      let originalProjectStoreImplementation =
+        projectStoreState.getMockImplementation();
+      let originalStreamImplementation = vi
+        .mocked(fetchEventSource)
+        .getMockImplementation();
+      let originalProxyGetImplementation = vi
+        .mocked(proxyFetchGet)
+        .getMockImplementation();
+      let stores: ReturnType<typeof createChatStoreInstance>[] = [];
+
+      const file = (name: string) => ({
+        fileName: name,
+        filePath: `/tmp/${name}`,
+      });
+      const response = () =>
+        new Response('', {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        });
+
+      beforeEach(() => {
+        originalProjectStoreImplementation =
+          projectStoreState.getMockImplementation();
+        originalStreamImplementation = vi
+          .mocked(fetchEventSource)
+          .getMockImplementation();
+        originalProxyGetImplementation = vi
+          .mocked(proxyFetchGet)
+          .getMockImplementation();
+      });
+
+      afterEach(() => {
+        for (const store of stores)
+          closeSSEConnectionsForTasks(Object.keys(store.getState().tasks));
+        stores = [];
+        runEventIngressRegistry.clear();
+        runDomainEventHub.clear();
+        runProjectionStore.clear();
+        vi.mocked(waitForBackendReady).mockResolvedValue(true);
+        if (originalProjectStoreImplementation)
+          projectStoreState.mockImplementation(
+            originalProjectStoreImplementation
+          );
+        vi.mocked(fetchEventSource).mockReset();
+        if (originalStreamImplementation)
+          vi.mocked(fetchEventSource).mockImplementation(
+            originalStreamImplementation
+          );
+        if (originalProxyGetImplementation)
+          vi.mocked(proxyFetchGet).mockImplementation(
+            originalProxyGetImplementation
+          );
+      });
+
+      const beginStartup = ({
+        separateOwner = false,
+        replay = false,
+        resume = false,
+      } = {}) => {
+        const caller = createChatStoreInstance();
+        const owner = separateOwner ? createChatStoreInstance() : caller;
+        stores.push(caller, ...(separateOwner ? [owner] : []));
+        const runId = owner.getState().create('attachment-run');
+        owner.getState().setAttaches(runId, [file('submitted.txt')] as any);
+        if (resume) {
+          owner.getState().setStatus(runId, ChatTaskStatus.FINISHED);
+          owner.getState().setDurableRunStatus(runId, 'interrupted');
+          vi.mocked(fetchPost).mockResolvedValueOnce({
+            attempt: { attempt_number: 2 },
+          });
+        }
+        if (separateOwner) {
+          caller.getState().create('caller-run');
+          caller
+            .getState()
+            .setAttaches('caller-run', [file('caller.txt')] as any);
+        }
+        let releaseReady!: (ready: boolean) => void;
+        if (!replay)
+          vi.mocked(waitForBackendReady).mockReturnValueOnce(
+            new Promise<boolean>((resolve) => {
+              releaseReady = resolve;
+            })
+          );
+        vi.mocked(proxyFetchGet).mockImplementation(async (url: string) =>
+          url.includes('/snapshots')
+            ? []
+            : {
+                value: 'test-cloud-key',
+                api_url: 'https://models.example.test',
+                items: [],
+              }
+        );
+        const streams = new Map<string, any>();
+        let finishStream!: () => void;
+        vi.mocked(fetchEventSource).mockImplementation(async (url, options) => {
+          streams.set(String(url), options);
+          await new Promise<void>((resolve) => {
+            if (
+              String(url).includes('/playback/') ||
+              String(url).endsWith('/chat')
+            )
+              finishStream = resolve;
+          });
+        });
+        projectStoreState.mockReturnValue({
+          activeProjectId: 'project-1',
+          appendInitChatStore: () => ({ taskId: runId, chatStore: owner }),
+          getChatStore: () => owner,
+          getProjectById: () => ({
+            id: 'project-1',
+            mode: 'single',
+            spaceId: 'space-1',
+          }),
+          getHistoryId: () => null,
+          getAllChatStores: () => [{ chatId: 'primary', chatStore: owner }],
+          setActiveChatStore: vi.fn(),
+          getProjectModel: () => null,
+          setProjectModel: vi.fn(),
+          setProjectSpace: vi.fn(),
+          setHistoryId: vi.fn(),
+          getProjectThinkingEffortOverride: () => undefined,
+        } as any);
+        const admission = caller.getState().startTask(
+          runId,
+          replay ? 'replay' : undefined,
+          undefined,
+          undefined,
+          resume ? undefined : 'Submit this task',
+          resume ? undefined : ([file('submitted.txt')] as any),
+          undefined,
+          'project-1',
+          'single' as any,
+          replay
+            ? undefined
+            : {
+                preserveTaskId: true,
+                awaitAdmission: true,
+                ...(resume
+                  ? {
+                      resumeRequestId: 'resume-existing-draft',
+                      skipHistoryCreate: true,
+                    }
+                  : {}),
+              }
+        );
+        const getStream = async () => {
+          await vi.waitFor(() =>
+            expect(
+              [...streams.keys()].some((url) =>
+                replay ? url.includes('/playback/') : url.endsWith('/chat')
+              )
+            ).toBe(true)
+          );
+          return [...streams.entries()].find(([url]) =>
+            replay ? url.includes('/playback/') : url.endsWith('/chat')
+          )![1];
+        };
+        return {
+          caller,
+          owner,
+          runId,
+          admission,
+          getStream,
+          releaseReady: () => releaseReady(true),
+          finishStream: () => finishStream(),
+        };
+      };
+
+      it('preserves draft files added after task preparation but before readiness and first open', async () => {
+        const startup = beginStartup();
+        const nextDraft = [file('next-turn.txt')];
+        startup.owner.getState().setAttaches(startup.runId, nextDraft as any);
+        startup.releaseReady();
+        const stream = await startup.getStream();
+        await stream.onopen(response());
+        await startup.admission;
+
+        expect(startup.owner.getState().tasks[startup.runId].attaches).toEqual(
+          nextDraft
+        );
+        expect(JSON.parse(stream.body).attaches).toEqual([
+          '/tmp/submitted.txt',
+        ]);
+      });
+
+      it('clears only the initial owner when another task becomes active before open', async () => {
+        const startup = beginStartup();
+        startup.owner.getState().create('other-run');
+        startup.owner
+          .getState()
+          .setAttaches('other-run', [file('other.txt')] as any);
+        startup.releaseReady();
+        const stream = await startup.getStream();
+        await stream.onopen(response());
+        await startup.admission;
+
+        expect(startup.owner.getState().tasks[startup.runId].attaches).toEqual(
+          []
+        );
+        expect(startup.owner.getState().tasks['other-run'].attaches).toEqual([
+          file('other.txt'),
+        ]);
+      });
+
+      it('clears unchanged submitted draft files in the target store, not the calling store', async () => {
+        const startup = beginStartup({ separateOwner: true });
+        startup.releaseReady();
+        const stream = await startup.getStream();
+        await stream.onopen(response());
+        await startup.admission;
+
+        expect(startup.owner.getState().tasks[startup.runId].attaches).toEqual(
+          []
+        );
+        expect(startup.caller.getState().tasks['caller-run'].attaches).toEqual([
+          file('caller.txt'),
+        ]);
+      });
+
+      it('does not clear a later draft when the admitted transport reconnects', async () => {
+        const startup = beginStartup();
+        startup.releaseReady();
+        const stream = await startup.getStream();
+        await stream.onopen(response());
+        await startup.admission;
+        const nextDraft = [file('next-turn.txt')];
+        startup.owner.getState().setAttaches(startup.runId, nextDraft as any);
+
+        await stream.onopen(response());
+
+        expect(startup.owner.getState().tasks[startup.runId].attaches).toEqual(
+          nextDraft
+        );
+      });
+
+      it('preserves the existing draft when an interrupted Run resumes', async () => {
+        const startup = beginStartup({ resume: true });
+        const originalDraft =
+          startup.owner.getState().tasks[startup.runId].attaches;
+        startup.releaseReady();
+        const stream = await startup.getStream();
+        await stream.onopen(response());
+        await startup.admission;
+
+        expect(fetchPost).toHaveBeenCalledWith('/runs/attachment-run/resume', {
+          request_id: 'resume-existing-draft',
+          reason: 'explicit_resume',
+        });
+        expect(startup.owner.getState().tasks[startup.runId].attaches).toBe(
+          originalDraft
+        );
+        expect(startup.owner.getState().tasks[startup.runId].messages).toEqual(
+          []
+        );
+      });
+
+      it('does not clear an unrelated active draft when replay opens', async () => {
+        const startup = beginStartup({ replay: true });
+        startup.owner.getState().create('live-draft');
+        startup.owner
+          .getState()
+          .setAttaches('live-draft', [file('live.txt')] as any);
+        const stream = await startup.getStream();
+        await stream.onopen(response());
+        startup.finishStream();
+        await startup.admission;
+
+        expect(startup.owner.getState().tasks['live-draft'].attaches).toEqual([
+          file('live.txt'),
+        ]);
+        expect(startup.owner.getState().tasks[startup.runId].attaches).toEqual([
+          file('submitted.txt'),
+        ]);
+      });
+    });
+
     describe('canonical terminal observer lifecycle', () => {
       const projectStoreState = vi.mocked(useProjectStore.getState);
       const originalProjectStoreImplementation =
