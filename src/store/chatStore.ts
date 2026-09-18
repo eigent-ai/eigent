@@ -88,7 +88,10 @@ import {
   proxyUpdateTriggerExecution,
   trackTriggerExecutionRun,
 } from '@/service/triggerApi';
-import { confirmCloudRecovery } from '@/store/usageNoticeStore';
+import {
+  confirmCloudRecovery,
+  useUsageNoticeStore,
+} from '@/store/usageNoticeStore';
 import { ExecutionStatus } from '@/types';
 import {
   AgentMessageStatus,
@@ -2973,6 +2976,28 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             expectedModelSelection = JSON.stringify(
               projectStore.getProjectModel(project_id)
             );
+            // Before recovery the UI cannot infer this model's category from
+            // the unrelated global preference. Preserve its Cloud quota gate
+            // before a cold Resume can create another durable Attempt.
+            if (
+              startOptions.resumeRequestId &&
+              recovered.modelType === 'cloud'
+            ) {
+              const usageBlock = useUsageNoticeStore
+                .getState()
+                .incidents.find((item) =>
+                  [
+                    'credits',
+                    'trial-daily',
+                    'trial-total',
+                    'free-credits',
+                  ].includes(item.reason)
+                );
+              if (usageBlock)
+                throw Object.assign(new Error(errorCopy(usageBlock.reason)), {
+                  usageReason: usageBlock.reason,
+                });
+            }
           } else {
             if (
               startOptions.resumeRequestId ||
