@@ -17,7 +17,11 @@ import {
   SpaceResourceDiscoveryEditor,
   type SpaceSettingsDiscovery,
 } from '@/components/WorkspaceConfiguration/SpaceResourceDiscoveryEditor';
-import type { WorkspaceResourceEditorState } from '@/components/WorkspaceConfiguration/WorkspaceResourceEditorPanel';
+import {
+  canCommitResourceEditor,
+  type WorkspaceResourceEditorState,
+} from '@/components/WorkspaceConfiguration/WorkspaceResourceEditorPanel';
+import type { SpaceMcpCandidate } from '@/service/spaceSettingsDiscovery';
 import type { WorkspaceConfigurationDocument } from '@/service/workspaceConfigurationApi';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -35,6 +39,26 @@ const secondSkill = {
   value: 'bundle://skills/writer/SKILL.md',
   label: 'Writer',
 };
+const mcpCandidate = (id: string, slot: string): SpaceMcpCandidate => {
+  const definition = `bundle://mcp/${id}/mcp.json`;
+  return {
+    id,
+    definition,
+    value: JSON.stringify([definition, id]),
+    label: id,
+    source: 'draft_bundle',
+    availability: 'requires_setup',
+    secretSlots: [slot],
+  };
+};
+const mcpA = mcpCandidate('a', 'TOKEN_A');
+const mcpB = mcpCandidate('b', 'TOKEN_B');
+const newMcp = (): Extract<Editor, { kind: 'mcp' }> => ({
+  kind: 'mcp',
+  mode: 'create',
+  step: 'picker',
+  item: { id: 'mcp_1', definition: '', secretSlots: [], assignTo: [] },
+});
 const connector = {
   value: 'github',
   service: 'github',
@@ -130,9 +154,10 @@ function Harness({
 }
 const choose = async (title: string, option: string) => {
   const user = userEvent.setup();
-  await user.click(
-    screen.getByRole('button', { name: 'Browse available options' })
-  );
+  const browse = screen.getByRole('button', {
+    name: 'Browse available options',
+  });
+  if (browse.getAttribute('aria-expanded') !== 'true') await user.click(browse);
   screen.getByRole('combobox', { name: `Select ${title}` }).focus();
   await user.keyboard('[ArrowDown]');
   await user.click(screen.getByRole('option', { name: new RegExp(option) }));
@@ -334,6 +359,187 @@ describe('Space resource discovery drafts', () => {
       })
     );
   });
+
+  it.each(['selected', 'suggested'] as const)(
+    'updates untouched MCP slots when replacing a %s candidate through the real menu',
+    async (initialChoice) => {
+      const data = discovery();
+      data.mcpServers.items = [
+        initialChoice === 'suggested'
+          ? {
+              ...mcpA,
+              source: 'materialized_bundle',
+              availability: 'available',
+            }
+          : mcpA,
+        mcpB,
+      ];
+      const changed = vi.fn();
+      render(<Harness initial={newMcp()} data={data} changed={changed} />);
+      if (initialChoice === 'selected') await choose('Definition', '^a ·');
+      expect(screen.getByRole('textbox', { name: 'Secret slots' })).toHaveValue(
+        'TOKEN_A'
+      );
+      await choose('Definition', '^b ·');
+      const latest = changed.mock.calls.at(
+        -1
+      )![0] as WorkspaceResourceEditorState;
+      expect(latest).toMatchObject({
+        kind: 'mcp',
+        step: 'editor',
+        item: {
+          id: 'b',
+          definition: mcpB.definition,
+          secretSlots: ['TOKEN_B'],
+          assignTo: [],
+        },
+      });
+      expect(canCommitResourceEditor(latest, config)).toBe(true);
+      expect(screen.getByRole('textbox', { name: 'Secret slots' })).toHaveValue(
+        'TOKEN_B'
+      );
+    }
+  );
+
+  it.each(['CUSTOM_TOKEN', ''])(
+    'preserves manually changed MCP slots (%s) when choosing another candidate',
+    async (slots) => {
+      const data = discovery();
+      data.mcpServers.items = [mcpA, mcpB];
+      const changed = vi.fn();
+      render(<Harness initial={newMcp()} data={data} changed={changed} />);
+      await choose('Definition', '^a ·');
+      const field = screen.getByRole('textbox', { name: 'Secret slots' });
+      const user = userEvent.setup();
+      await user.clear(field);
+      if (slots) await user.type(field, slots);
+      await choose('Definition', '^b ·');
+      expect(field).toHaveValue(slots);
+      expect(changed).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          item: {
+            id: 'b',
+            definition: mcpB.definition,
+            secretSlots: slots ? [slots] : [],
+            assignTo: [],
+          },
+        })
+      );
+    }
+  );
+
+  it('keeps pre-existing untracked slots in a new MCP draft across candidate changes', async () => {
+    const data = discovery();
+    data.mcpServers.items = [mcpA, mcpB];
+    const changed = vi.fn();
+    const initial = newMcp();
+    initial.item.secretSlots = ['PRESET_TOKEN'];
+    render(<Harness initial={initial} data={data} changed={changed} />);
+    await choose('Definition', '^a ·');
+    await choose('Definition', '^b ·');
+    expect(screen.getByRole('textbox', { name: 'Secret slots' })).toHaveValue(
+      'PRESET_TOKEN'
+    );
+    expect(changed).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        item: {
+          id: 'b',
+          definition: mcpB.definition,
+          secretSlots: ['PRESET_TOKEN'],
+          assignTo: [],
+        },
+      })
+    );
+  });
+
+  it.each([{ slots: [] }, { slots: ['EXTERNAL_TOKEN'] }])(
+    'preserves MCP slots changed outside the field (%j) after an earlier automatic fill',
+    async ({ slots }) => {
+      const data = discovery();
+      data.mcpServers.items = [mcpA, mcpB];
+      const changed = vi.fn();
+      const view = render(
+        <SpaceResourceDiscoveryEditor
+          editor={newMcp()}
+          document={config}
+          discovery={data}
+          onChange={changed}
+        />
+      );
+      await choose('Definition', '^a ·');
+      const selected = changed.mock.calls.at(-1)![0] as Extract<
+        Editor,
+        { kind: 'mcp' }
+      >;
+      expect(selected.item.secretSlots).toEqual(['TOKEN_A']);
+      view.rerender(
+        <SpaceResourceDiscoveryEditor
+          editor={{
+            ...selected,
+            item: { ...selected.item, secretSlots: slots },
+          }}
+          document={config}
+          discovery={data}
+          onChange={changed}
+        />
+      );
+      await choose('Definition', '^b ·');
+      expect(changed).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          item: {
+            id: 'b',
+            definition: mcpB.definition,
+            secretSlots: slots,
+            assignTo: [],
+          },
+        })
+      );
+    }
+  );
+
+  it.each([{ slots: [] }, { slots: ['EXISTING_TOKEN'] }])(
+    'preserves saved MCP slots %j when explicitly changing its definition',
+    async ({ slots }) => {
+      const data = discovery();
+      const replacement = {
+        ...mcpB,
+        id: 'a',
+        value: JSON.stringify([mcpB.definition, 'a']),
+      };
+      data.mcpServers.items = [mcpA, replacement];
+      const changed = vi.fn();
+      render(
+        <Harness
+          initial={{
+            kind: 'mcp',
+            mode: 'edit',
+            step: 'editor',
+            index: 0,
+            item: {
+              id: 'a',
+              definition: mcpA.definition,
+              secretSlots: slots,
+              assignTo: [],
+            },
+          }}
+          data={data}
+          changed={changed}
+        />
+      );
+      expect(changed).not.toHaveBeenCalled();
+      await choose('Definition', '^b ·');
+      expect(changed).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          item: {
+            id: 'a',
+            definition: mcpB.definition,
+            secretSlots: slots,
+            assignTo: [],
+          },
+        })
+      );
+    }
+  );
 
   it('filters long candidate labels, preserves unknown manual values, and shows retry/empty states', async () => {
     const retry = vi.fn(),

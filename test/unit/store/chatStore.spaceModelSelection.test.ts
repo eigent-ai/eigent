@@ -237,6 +237,60 @@ describe('Space default through the real Chat start path', () => {
     restore_pending: false,
   });
 
+  it.each(['cloud', 'custom', 'local'])(
+    'launches the Space %s model when there is no global preferred provider',
+    async (category) => {
+      mocks.auth.modelType = 'custom';
+      mocks.auth.hasModelConfigured = false;
+      const platform = category === 'local' ? 'ollama' : 'azure';
+      providers =
+        category === 'cloud'
+          ? []
+          : [{ ...provider, provider_name: platform, prefer: false }];
+      if (category !== 'cloud')
+        installed.model_ref = `provider://${category}/${platform}/deployment`;
+      const originalGet = mocks.get.getMockImplementation()!;
+      mocks.get.mockImplementation(async (url, params) =>
+        url === '/api/v1/providers' && params?.prefer
+          ? { items: [], pages: 1 }
+          : originalGet(url, params)
+      );
+      await start();
+      expect(request()).toMatchObject({
+        model_type: category === 'cloud' ? 'gpt-6-astra' : 'deployment',
+        model_platform: platform,
+        workspace_model_selection: installed,
+      });
+      expect(project.metadata.modelSelection).toMatchObject({
+        modelType: category,
+        model_ref: installed.model_ref,
+      });
+      expect(mocks.auth.hasModelConfigured).toBe(false);
+      expect(
+        mocks.get.mock.calls.some(
+          ([url, params]) => url === '/api/v1/providers' && params?.prefer
+        )
+      ).toBe(false);
+    }
+  );
+
+  it.each(['missing-cloud', 'default'])(
+    'still rejects an unavailable %s selection at launch when the global provider is absent',
+    async (selection) => {
+      mocks.auth.modelType = 'custom';
+      mocks.auth.hasModelConfigured = false;
+      providers = [];
+      installed.model_ref =
+        selection === 'default'
+          ? 'provider://default'
+          : 'provider://cloud/missing-cloud';
+      await expect(start()).rejects.toThrow();
+      expect(mocks.sse).not.toHaveBeenCalled();
+      expect(mocks.projectStore.setProjectModel).not.toHaveBeenCalled();
+      expect(project.metadata.spaceModelDefaultPending).toBe(true);
+    }
+  );
+
   it.each([false, true])(
     'recovers a server-restored receipt without local eligibility before retry or Resume (%s)',
     async (resume) => {

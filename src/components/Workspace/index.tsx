@@ -77,7 +77,7 @@ export default function Workspace({
     (s) => s.workspaceChatFocusRequestId
   );
   const workerList = useWorkerList();
-  const { modelType, setWorkerList } = useAuthStore();
+  const { modelType, token, user_id, setWorkerList } = useAuthStore();
   const [draftSessionMode, setDraftSessionMode] = useState<SessionModeType>(
     SessionMode.SINGLE_AGENT
   );
@@ -102,6 +102,17 @@ export default function Workspace({
   const { hasModel, cloudUsageLimitReached } = useModelConfigCheck();
   const isCloudUsageLimited = modelType === 'cloud' && cloudUsageLimitReached;
   const usageLimitBanner = useUsageIncidentBanner(modelType);
+  // A fresh Session resolves its materialized Space model at launch. The
+  // unrelated global preference cannot establish whether that model is usable.
+  const canResolveSpaceModelAtLaunch = Boolean(
+    token &&
+    activeSpace &&
+    activeSpace.id === activeSpaceId &&
+    !isLegacyActiveSpace &&
+    !activeSpace.id.startsWith('legacy_') &&
+    (!activeSpace.userId || activeSpace.userId === String(user_id))
+  );
+  const canStartWithModel = hasModel || canResolveSpaceModelAtLaunch;
   const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
   const [addWorkerDialogOpen, setAddWorkerDialogOpen] = useState(false);
   const [editingWorkerAgent, setEditingWorkerAgent] = useState<Agent | null>(
@@ -150,7 +161,7 @@ export default function Workspace({
     // A known account limit should not create another empty Session.
     if (isCloudUsageLimited) return;
 
-    if (!hasModel) {
+    if (!canStartWithModel) {
       toast.error(t('layout.please-select-model-first'));
       openSettings('models');
       return;
@@ -293,7 +304,7 @@ export default function Workspace({
     onFilesChange: setDraftFiles,
     onAddFile: handleFileSelect,
     disabled:
-      !hasModel ||
+      !canStartWithModel ||
       isCloudUsageLimited ||
       isStartingDirectProject ||
       isLegacyActiveSpace,
@@ -432,7 +443,7 @@ export default function Workspace({
           state="input"
           queuedMessages={[]}
           onRemoveQueuedMessage={() => {}}
-          noModelOverlay={!hasModel && !isCloudUsageLimited}
+          noModelOverlay={!canStartWithModel && !isCloudUsageLimited}
           usageLimitBanner={usageLimitBanner}
           onSelectModel={() => openSettings('models')}
           inputProps={composerInputProps}

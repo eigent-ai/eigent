@@ -51,6 +51,7 @@ export function SpaceResourceDiscoveryEditor({
 }) {
   const { t } = useTranslation();
   const touched = useRef(new Set<string>());
+  const derivedSecretSlots = useRef<string[] | null>(null);
   const [suggested, setSuggested] = useState(false);
   const rawCatalog =
     editor.kind === 'skill'
@@ -134,13 +135,24 @@ export function SpaceResourceDiscoveryEditor({
     if (
       editor.kind === 'mcp' &&
       editor.mode === 'create' &&
-      !editor.item.secretSlots.length &&
       !touched.current.has('secretSlots')
     ) {
-      item = {
-        ...item,
-        secretSlots: [...(candidate as SpaceMcpCandidate).secretSlots],
-      };
+      const previous = derivedSecretSlots.current;
+      const canDerive =
+        previous === null
+          ? editor.item.secretSlots.length === 0
+          : previous.length === editor.item.secretSlots.length &&
+            previous.every(
+              (slot, index) => slot === editor.item.secretSlots[index]
+            );
+      // Keep only values this editor derived in sync with a new candidate.
+      // Pre-existing values and edits made outside this field remain owned by
+      // their author, even when no local input event marked them as touched.
+      if (canDerive) {
+        const secretSlots = [...(candidate as SpaceMcpCandidate).secretSlots];
+        derivedSecretSlots.current = [...secretSlots];
+        item = { ...item, secretSlots };
+      }
     }
     setSuggested(automatic);
     onChange({ ...editor, step: 'editor', item } as ResourceEditor);
