@@ -186,6 +186,8 @@
   "proxy-placeholder": "http://127.0.0.1:7890",
   "proxy-saved-restart-required": "تم حفظ تكوين الوكيل. أعد تشغيل التطبيق لتطبيق التغييرات.",
   "proxy-save-failed": "فشل حفظ تكوين الوكيل.",
+  "proxy-cleared-restart-required": "تم مسح تكوين الوكيل. أعد تشغيل التطبيق لتطبيق التغييرات.",
+  "proxy-reset-failed": "فشل إعادة تعيين تكوين الوكيل.",
   "proxy-invalid-url": "عنوان URL للوكيل غير صالح. يجب أن يبدأ بـ http:// أو https:// أو socks4:// أو socks5://.",
   "proxy-restart-hint": "يجب إعادة التشغيل لتطبيق تغييرات الوكيل.",
   "cloud-not-available-in-local-proxy": "إصدار السحابة غير متاح في وضع الوكيل المحلي",

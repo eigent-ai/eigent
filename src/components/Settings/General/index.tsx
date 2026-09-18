@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsText } from '@/components/ui/ds-text';
 import { Input } from '@/components/ui/input';
 import { LocaleEnum, switchLanguage } from '@/i18n';
 import { SITE_URL } from '@/lib';
@@ -67,9 +68,16 @@ export default function SettingGeneral({
 
   // Proxy configuration state
   const [proxyUrl, setProxyUrl] = useState('');
+  const [savedProxyUrl, setSavedProxyUrl] = useState('');
   const [proxyLoading, setProxyLoading] = useState(true);
   const [isProxySaving, setIsProxySaving] = useState(false);
   const [proxyNeedsRestart, setProxyNeedsRestart] = useState(false);
+  // One action button drives the field: it saves while the input differs from
+  // the persisted baseline, and clears the saved proxy once the two match.
+  // Compared untrimmed so a whitespace-only edit still reads as "Save" — the
+  // destructive Reset must never sit under a field the user has just typed in.
+  const isProxyDirty = proxyUrl !== savedProxyUrl;
+  const canClearSavedProxy = savedProxyUrl.trim() !== '';
 
   const languageList = [
     {
@@ -124,9 +132,9 @@ export default function SettingGeneral({
       try {
         if (host?.electronAPI?.readGlobalEnv) {
           const result = await host.electronAPI.readGlobalEnv('HTTP_PROXY');
-          if (result?.value) {
-            setProxyUrl(result.value);
-          }
+          const loadedProxyUrl = result?.value ?? '';
+          setProxyUrl(loadedProxyUrl);
+          setSavedProxyUrl(loadedProxyUrl);
         }
       } catch (_error) {
         console.log('No proxy configured');
@@ -136,6 +144,21 @@ export default function SettingGeneral({
     };
     void loadProxyConfig();
   }, [host]);
+
+  // The restart affordance lives in the toast rather than on the action button,
+  // so the button is only ever Save or Reset. The note under the input repeats
+  // it for anyone who dismisses or misses the toast.
+  const notifyProxyRestartRequired = (message: string) => {
+    const restartApp = host?.electronAPI?.restartApp;
+    toast.success(message, {
+      action: restartApp
+        ? {
+            label: t('setting.restart-to-apply'),
+            onClick: () => restartApp(),
+          }
+        : undefined,
+    });
+  };
 
   // Save proxy configuration
   const handleSaveProxy = async () => {
@@ -182,11 +205,40 @@ export default function SettingGeneral({
         );
         if (!result?.success) throw new Error('envRemove returned no success');
       }
+      setProxyUrl(trimmed);
+      setSavedProxyUrl(trimmed);
       setProxyNeedsRestart(true);
-      toast.success(t('setting.proxy-saved-restart-required'));
+      notifyProxyRestartRequired(t('setting.proxy-saved-restart-required'));
     } catch (error) {
       console.error('Failed to save proxy:', error);
       toast.error(t('setting.proxy-save-failed'));
+    } finally {
+      setIsProxySaving(false);
+    }
+  };
+
+  // Clear the saved proxy. Only reachable once the input matches the persisted
+  // baseline, so it never discards an edit the user can still see.
+  const handleResetProxy = async () => {
+    if (!authStore.email || !host?.electronAPI?.envRemove) {
+      toast.error(t('setting.proxy-reset-failed'));
+      return;
+    }
+
+    setIsProxySaving(true);
+    try {
+      const result = await host.electronAPI.envRemove(
+        authStore.email,
+        'HTTP_PROXY'
+      );
+      if (!result?.success) throw new Error('envRemove returned no success');
+      setProxyUrl('');
+      setSavedProxyUrl('');
+      setProxyNeedsRestart(true);
+      notifyProxyRestartRequired(t('setting.proxy-cleared-restart-required'));
+    } catch (error) {
+      console.error('Failed to reset proxy:', error);
+      toast.error(t('setting.proxy-reset-failed'));
     } finally {
       setIsProxySaving(false);
     }
@@ -295,45 +347,54 @@ export default function SettingGeneral({
             description={t('setting.network-proxy-description')}
             actionClassName="w-[280px]"
             action={
-              <Input
-                placeholder={t('setting.proxy-placeholder')}
-                value={proxyUrl}
-                onChange={(e) => {
-                  setProxyUrl(e.target.value);
-                  setProxyNeedsRestart(false);
-                }}
-                className="w-[280px]"
-                size="default"
-                disabled={proxyLoading}
-                note={
-                  proxyNeedsRestart
-                    ? t('setting.proxy-restart-hint')
-                    : undefined
-                }
-                trailingButton={
-                  <Button
-                    variant={proxyNeedsRestart ? 'outline' : 'primary'}
-                    size="sm"
-                    buttonRadius="full"
-                    onClick={
-                      proxyNeedsRestart
-                        ? () => host?.electronAPI?.restartApp()
-                        : handleSaveProxy
-                    }
-                    disabled={
-                      proxyLoading || (!proxyNeedsRestart && isProxySaving)
-                    }
-                  >
-                    {proxyLoading
-                      ? t('setting.loading')
-                      : proxyNeedsRestart
-                        ? t('setting.restart-to-apply')
+              <div className="flex w-full flex-col gap-ds-stack-related">
+                <Input
+                  placeholder={t('setting.proxy-placeholder')}
+                  value={proxyUrl}
+                  onChange={(e) => {
+                    setProxyUrl(e.target.value);
+                  }}
+                  size="default"
+                  disabled={proxyLoading}
+                  // Reserve room for the nested action so a long proxy URL
+                  // scrolls behind the field edge instead of under the button.
+                  className="pr-24"
+                  trailingButton={
+                    <Button
+                      variant={isProxyDirty ? 'primary' : 'outline'}
+                      size="sm"
+                      buttonRadius="full"
+                      onClick={
+                        isProxyDirty ? handleSaveProxy : handleResetProxy
+                      }
+                      disabled={
+                        proxyLoading ||
+                        isProxySaving ||
+                        (!isProxyDirty && !canClearSavedProxy)
+                      }
+                    >
+                      {proxyLoading
+                        ? t('setting.loading')
                         : isProxySaving
                           ? t('setting.saving')
-                          : t('setting.save')}
-                  </Button>
-                }
-              />
+                          : isProxyDirty
+                            ? t('setting.save')
+                            : t('setting.reset')}
+                    </Button>
+                  }
+                />
+                {/* Rendered here rather than via Input's `note` so it can carry
+                    the error tone without marking the field itself invalid. */}
+                {proxyNeedsRestart ? (
+                  <DsText
+                    as="span"
+                    role="meta"
+                    className="text-ds-text-status-error-strong-default"
+                  >
+                    {t('setting.proxy-restart-hint')}
+                  </DsText>
+                ) : null}
+              </div>
             }
           />
         )}
