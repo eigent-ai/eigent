@@ -1,0 +1,770 @@
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
+import ChatBox from '@/components/ChatBox';
+import { notifyError } from '@/lib/notifyError';
+import { useChatStore } from '@/store/chatStore';
+import { useCloudModelStore } from '@/store/cloudModelStore';
+import { openSettings } from '@/store/settingsStore';
+import { useUsageNoticeStore } from '@/store/usageNoticeStore';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Keep ChatBox, useModelConfigCheck, ChatStore startup, and binding resolution
+// real. Only isolate account/Space containers, HTTP/SSE, and unrelated UI.
+const mocks = vi.hoisted(() => ({
+  input: null as any,
+  space: null as any,
+  interrupted: null as any,
+  refreshInterrupted: vi.fn(),
+  setInterrupted: vi.fn(),
+  notifyError: vi.fn(),
+  cloudAvailable: true,
+  chat: null as any,
+  auth: {} as any,
+  projectStore: {} as any,
+  projectMeta: null as any,
+  get: vi.fn(),
+  localGet: vi.fn(),
+  sse: vi.fn(),
+  post: vi.fn(),
+}));
+vi.mock('@/api/http', () => ({
+  fetchGet: mocks.localGet,
+  proxyFetchGet: mocks.get,
+  fetchPost: mocks.post,
+  fetchPut: vi.fn(),
+  fetchDelete: vi.fn(),
+  proxyFetchPost: vi.fn(async () => ({ id: 'history' })),
+  proxyFetchPut: vi.fn(),
+  getBaseURL: vi.fn(async () => 'http://fixture.invalid'),
+  waitForBackendReady: vi.fn(async () => true),
+  uploadFile: vi.fn(),
+  sseTransport: mocks.sse,
+}));
+vi.mock('@/store/authStore', () => ({
+  getAuthStore: () => mocks.auth,
+  getWorkerList: () => [],
+  useAuthStore: Object.assign(
+    (selector: any) =>
+      typeof selector === 'function' ? selector(mocks.auth) : mocks.auth,
+    { getState: () => mocks.auth }
+  ),
+  useWorkerList: () => [],
+}));
+vi.mock('@/store/projectStore', () => ({
+  useProjectStore: { getState: () => mocks.projectStore },
+  useProjectRuntimeStore: { getState: () => mocks.projectStore },
+}));
+vi.mock('@/store/spaceStore', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/store/spaceStore')>();
+  const state = {
+    getActiveSpace: () => mocks.space,
+    getSpaceById: (id: string) => (id === mocks.space?.id ? mocks.space : null),
+    get spaces() {
+      return mocks.space ? { [mocks.space.id]: mocks.space } : {};
+    },
+    getProjectMeta: () => mocks.projectMeta,
+    updateProjectMeta: vi.fn(),
+  };
+  return {
+    ...actual,
+    legacySpaceIdForUser: () => 'legacy-local',
+    useSpaceStore: Object.assign((selector: any) => selector(state), {
+      getState: () => state,
+    }),
+  };
+});
+vi.mock('@/hooks/useChatStoreAdapter', () => ({
+  default: () => ({
+    chatStore: mocks.chat.getState(),
+    projectStore: mocks.projectStore,
+  }),
+}));
+vi.mock('@/hooks/useProjectEventRuntime', () => ({
+  useProjectEventRuntime: () => ({
+    hydration: { status: 'ready' },
+    projectId: 'session-1',
+    snapshot: null,
+  }),
+}));
+vi.mock('@/hooks/useInterruptedRunStatus', () => ({
+  useInterruptedRunStatus: () => ({
+    run: mocks.interrupted,
+    setRun: mocks.setInterrupted,
+    refresh: mocks.refreshInterrupted,
+  }),
+}));
+vi.mock('@/lib/notifyError', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/notifyError')>()),
+  notifyError: mocks.notifyError,
+}));
+vi.mock('@/store/usageNoticeStore', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/store/usageNoticeStore')>()),
+  refreshUsage: vi.fn(),
+}));
+vi.mock('@/store/chatEventProjectionBridge', () => ({
+  isChatEventTimelineEnabled: () => false,
+}));
+vi.mock('@/components/ChatBox/BottomBox/useEventNativeHumanControl', () => ({
+  useEventNativeHumanControl: () => ({
+    interaction: null,
+    variant: null,
+    pendingCount: 0,
+    phase: 'idle',
+    submitError: null,
+  }),
+}));
+vi.mock('@/components/ChatBox/ProjectChatContainer', () => ({
+  ProjectChatContainer: () => null,
+}));
+vi.mock('@/components/ChatBox/EventNativeProjectTimeline', () => ({
+  EventNativeProjectTimeline: () => null,
+}));
+vi.mock('@/components/ChatBox/BottomBox', () => ({
+  default: ({ inputProps, noModelOverlay }: any) => {
+    mocks.input = inputProps;
+    if (!inputProps) return null;
+    return (
+      <div
+        data-testid="chat-composer"
+        data-no-model-overlay={String(Boolean(noModelOverlay))}
+      >
+        <input
+          aria-label="Follow-up"
+          value={inputProps.value}
+          onChange={(e) => inputProps.onChange(e.target.value)}
+        />
+        <button
+          disabled={inputProps.disabled}
+          onClick={() => inputProps.onSend()}
+        >
+          Follow up
+        </button>
+      </div>
+    );
+  },
+}));
+vi.mock('@/store/settingsStore', () => ({ openSettings: vi.fn() }));
+vi.mock('@/host', () => ({
+  useHost: () => ({
+    electronAPI: {},
+    ipcRenderer: { on: vi.fn(), off: vi.fn() },
+  }),
+}));
+vi.mock('@/lib/events/appEvents', () => ({
+  recordTaskSubmitted: vi.fn(),
+  recordTaskFailed: vi.fn(),
+  recordTaskCompleted: vi.fn(),
+  recordFeatureUsed: vi.fn(),
+  recordTaskStopped: vi.fn(),
+}));
+vi.mock('@/lib/runEvents', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/runEvents')>()),
+  runEventIngressRegistry: { ensureLocal: vi.fn() },
+}));
+
+const cloud = (id: string, type = 'gpt-5.5') => ({
+  id,
+  display_name: id,
+  model_type: type,
+  model_platform: 'azure',
+  provider_family: 'openai',
+  kind: 'chat',
+  sort_order: 0,
+  capabilities: { request_compatibility: { preferred_transport: 'responses' } },
+});
+describe('ChatBox after an accepted Space model selection', () => {
+  let chat: ReturnType<typeof useChatStore>;
+  let project: any;
+  let installed: any;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw Error('Network forbidden');
+      })
+    );
+    mocks.space = {
+      id: 'space-1',
+      userId: 'account-a',
+      kind: 'cloud',
+      sourceType: 'blank',
+    };
+    mocks.interrupted = null;
+    mocks.cloudAvailable = true;
+    mocks.setInterrupted.mockImplementation((value) => {
+      mocks.interrupted = value;
+    });
+    useUsageNoticeStore.setState({
+      incidents: [],
+      credits: null,
+      subscription: null,
+    });
+    mocks.auth = {
+      token: 'synthetic-token',
+      email: 'a@example.test',
+      user_id: 'account-a',
+      language: 'en',
+      modelType: 'custom',
+      cloud_model_type: 'global',
+      setCloudModelType: vi.fn(),
+      hasModelConfigured: false,
+      setHasModelConfigured: vi.fn((value) => {
+        mocks.auth.hasModelConfigured = value;
+      }),
+    };
+    useCloudModelStore.setState({
+      models: [cloud('global'), cloud('manual')],
+      retired: [],
+      defaultModelId: 'global',
+      status: 'ready',
+    });
+    chat = useChatStore();
+    mocks.chat = chat;
+    project = {
+      id: 'session-1',
+      spaceId: 'space-1',
+      mode: 'single-agent',
+      metadata: { spaceModelDefaultPending: true },
+      createdAt: 1,
+      queuedMessages: [],
+    };
+    mocks.projectMeta = project;
+    installed = {
+      materialization_id: 'installed-1',
+      revision_id: 'bundle@1',
+      model_profile: 'default',
+      model_ref: 'provider://cloud/space-model',
+      thinking_effort: 'high',
+    };
+    mocks.projectStore = {
+      activeProjectId: 'session-1',
+      projects: { 'session-1': project },
+      getActiveChatStore: () => chat,
+      getProjectById: () => project,
+      getHistoryId: () => null,
+      getProjectModel: () =>
+        project.metadata.modelSelection ??
+        mocks.projectMeta?.metadata.modelSelection ??
+        null,
+      setProjectModel: vi.fn((_id, selection) => {
+        project.metadata.modelSelection = selection;
+        project.metadata.spaceModelDefaultPending = false;
+        project.metadata.spaceModelAdmissionRunId = null;
+      }),
+      setProjectModelAdmission: vi.fn(async (_id, runId) => {
+        project.metadata.spaceModelAdmissionRunId = runId;
+      }),
+      appendInitChatStore: (_projectId: string, requestedTaskId?: string) => {
+        const taskId = chat.getState().create(requestedTaskId);
+        chat.getState().setActiveTaskId(taskId);
+        return { taskId, chatStore: chat };
+      },
+      getAllChatStores: () => [],
+      getChatStore: () => chat,
+      setActiveChatStore: vi.fn(),
+      setHistoryId: vi.fn(),
+      setProjectSpace: vi.fn(),
+      getProjectThinkingEffortOverride: () => undefined,
+      setQueuedMessageProcessing: vi.fn((_projectId, taskId, processing) => {
+        const queued = project.queuedMessages.find(
+          (item: any) => item.task_id === taskId
+        );
+        if (queued) queued.processing = processing;
+      }),
+      removeQueuedMessage: vi.fn((_projectId, taskId) => {
+        project.queuedMessages = project.queuedMessages.filter(
+          (item: any) => item.task_id !== taskId
+        );
+      }),
+    };
+    mocks.localGet.mockImplementation(async (url) =>
+      url.includes('/session-model')
+        ? {
+            space_id: 'space-1',
+            project_id: 'session-1',
+            accepted: null,
+            restore_pending: false,
+          }
+        : url.includes('/model-selection')
+          ? { space_id: 'space-1', selection: installed }
+          : url.endsWith('/status')
+            ? { has_lock: true }
+            : {}
+    );
+    mocks.get.mockImplementation(async (url) => {
+      if (url === '/api/v1/cloud-models')
+        return {
+          models: mocks.cloudAvailable
+            ? [
+                cloud('space-model', 'gpt-6-astra'),
+                cloud('global'),
+                cloud('manual'),
+              ]
+            : [],
+        };
+      if (url === '/api/v1/user/key')
+        return {
+          value: 'synthetic-cloud-key',
+          api_url: 'https://cloud.example.test',
+        };
+      if (url === '/api/v1/providers') return { items: [], pages: 1 };
+      return [];
+    });
+    mocks.post.mockResolvedValue({});
+    mocks.sse.mockImplementation(async (options) => {
+      await options.onopen(
+        new Response('', {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        })
+      );
+    });
+  });
+  const start = (resume = false) =>
+    chat
+      .getState()
+      .startTask(
+        chat.getState().create(),
+        undefined,
+        undefined,
+        undefined,
+        'fixture question',
+        [],
+        undefined,
+        'session-1',
+        'single-agent',
+        {
+          skipHistoryCreate: true,
+          awaitAdmission: true,
+          ...(resume ? { resumeRequestId: 'resume-1' } : {}),
+        }
+      );
+  const request = () => mocks.sse.mock.calls.at(-1)![0].body;
+
+  afterEach(() => {
+    cleanup();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+  async function acceptInitialSpaceRun() {
+    expect(project.metadata.modelSelection).toBeUndefined();
+    await start();
+    const accepted = request();
+    expect(accepted).toMatchObject({
+      model_type: 'gpt-6-astra',
+      api_key: 'synthetic-cloud-key',
+      api_url: 'https://cloud.example.test',
+      extra_params: { api_mode: 'responses' },
+    });
+    expect(accepted.workspace_model_selection).toEqual(installed);
+    expect(project.metadata.modelSelection).toMatchObject({
+      cloud_model_type: 'space-model',
+      model_ref: 'provider://cloud/space-model',
+    });
+    expect(project.metadata.spaceModelDefaultPending).toBe(false);
+    expect(mocks.auth.hasModelConfigured).toBe(false);
+    // Simulate completion after the real admission handler has persisted its pin.
+    const taskId = chat.getState().activeTaskId!;
+    chat.getState().setStatus(taskId, 'finished');
+    chat.getState().setIsPending(taskId, false);
+    chat.getState().setHasMessages(taskId, true);
+    chat.getState().setHasWaitComfirm(taskId, true);
+    chat.getState().addMessages(taskId, {
+      id: 'synthetic-terminal',
+      role: 'agent',
+      content: 'First run complete',
+      step: 'end',
+    });
+    return accepted;
+  }
+  async function renderChat() {
+    render(
+      <MemoryRouter>
+        <ChatBox />
+      </MemoryRouter>
+    );
+    await waitFor(() =>
+      expect(mocks.auth.setHasModelConfigured).toHaveBeenCalledWith(false)
+    );
+  }
+  async function sendFollowup() {
+    fireEvent.change(screen.getByLabelText('Follow-up'), {
+      target: { value: 'Continue the same Session' },
+    });
+    await act(async () => mocks.input.onSend());
+  }
+  function interruptRun(runId: string) {
+    mocks.interrupted = {
+      run_id: runId,
+      project_id: 'session-1',
+      status: 'interrupted',
+      updated_at: 1,
+      origin: 'local',
+      latest_attempt: { attempt_number: 1, status: 'interrupted' },
+    };
+  }
+  async function resumeInterruptedRun() {
+    fireEvent.click(screen.getByRole('button', { name: /^Resume$/i }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: /resuming/i })
+      ).not.toBeInTheDocument()
+    );
+  }
+  it('keeps the automatically pinned Space model usable for a real ChatBox follow-up', async () => {
+    await acceptInitialSpaceRun();
+    const pin = { ...project.metadata.modelSelection };
+    installed = {
+      ...installed,
+      revision_id: 'bundle@2',
+      model_ref: 'provider://cloud/different',
+    };
+    const initialSelectionReads = mocks.localGet.mock.calls.filter(([url]) =>
+      url.includes('/model-selection')
+    ).length;
+    await renderChat();
+    expect(screen.getByTestId('chat-composer')).toHaveAttribute(
+      'data-no-model-overlay',
+      'false'
+    );
+    expect(screen.getByRole('button', { name: 'Follow up' })).toBeEnabled();
+    fireEvent.change(screen.getByLabelText('Follow-up'), {
+      target: { value: 'Continue the same Session' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Follow up' }));
+    await waitFor(() =>
+      expect(mocks.post).toHaveBeenCalledWith(
+        '/chat/session-1',
+        expect.objectContaining({ question: 'Continue the same Session' })
+      )
+    );
+    expect(mocks.sse).toHaveBeenCalledTimes(1);
+    expect(project.metadata.modelSelection).toEqual(pin);
+    expect(
+      mocks.localGet.mock.calls.filter(([url]) =>
+        url.includes('/model-selection')
+      )
+    ).toHaveLength(initialSelectionReads);
+    expect(openSettings).not.toHaveBeenCalled();
+    expect(notifyError).not.toHaveBeenCalled();
+    expect(mocks.auth).toMatchObject({
+      modelType: 'custom',
+      hasModelConfigured: false,
+    });
+  });
+  it('resolves the accepted pin again through real startup when resuming an interrupted Run', async () => {
+    const firstRequest = await acceptInitialSpaceRun();
+    const pin = { ...project.metadata.modelSelection };
+    const runId = chat.getState().activeTaskId!;
+    interruptRun(runId);
+    installed = {
+      ...installed,
+      revision_id: 'bundle@2',
+      model_ref: 'provider://cloud/different',
+    };
+    const selectionReads = mocks.localGet.mock.calls.filter(([url]) =>
+      url.includes('/model-selection')
+    ).length;
+    await renderChat();
+    await resumeInterruptedRun();
+    await waitFor(() => expect(mocks.sse).toHaveBeenCalledTimes(2));
+    expect(mocks.post).toHaveBeenCalledWith(
+      `/runs/${runId}/resume`,
+      expect.objectContaining({
+        reason: 'explicit_resume',
+        request_id: expect.any(String),
+      })
+    );
+    expect(request()).toMatchObject({
+      model_type: firstRequest.model_type,
+      api_key: firstRequest.api_key,
+      api_url: firstRequest.api_url,
+      extra_params: firstRequest.extra_params,
+    });
+    expect(JSON.parse(JSON.stringify(request()))).not.toHaveProperty(
+      'workspace_model_selection'
+    );
+    expect(project.metadata.modelSelection).toEqual(pin);
+    expect(
+      mocks.localGet.mock.calls.filter(([url]) =>
+        url.includes('/model-selection')
+      )
+    ).toHaveLength(selectionReads);
+    expect(notifyError).not.toHaveBeenCalled();
+    expect(mocks.auth.hasModelConfigured).toBe(false);
+  });
+  it('surfaces cold Resume binding failure without falling back to the changed Space default', async () => {
+    await acceptInitialSpaceRun();
+    const pin = { ...project.metadata.modelSelection };
+    interruptRun(chat.getState().activeTaskId!);
+    mocks.cloudAvailable = false;
+    const initialSelectionReads = mocks.localGet.mock.calls.filter(([url]) =>
+      url.includes('/model-selection')
+    ).length;
+    await renderChat();
+    await resumeInterruptedRun();
+    await waitFor(() => expect(notifyError).toHaveBeenCalled());
+    expect(mocks.refreshInterrupted).toHaveBeenCalledOnce();
+    expect(mocks.sse).toHaveBeenCalledTimes(1);
+    expect(mocks.post).not.toHaveBeenCalled();
+    expect(project.metadata.modelSelection).toEqual(pin);
+    expect(
+      mocks.localGet.mock.calls.filter(([url]) =>
+        url.includes('/model-selection')
+      )
+    ).toHaveLength(initialSelectionReads);
+  });
+  const refusals: Array<[string, () => void]> = [
+    [
+      'missing authentication',
+      () => {
+        mocks.auth.token = null;
+      },
+    ],
+    [
+      'unresolved account',
+      () => {
+        mocks.auth.user_id = null;
+      },
+    ],
+    [
+      'foreign Space account',
+      () => {
+        mocks.space.userId = 'account-b';
+      },
+    ],
+    [
+      'missing Session Space despite an active Space',
+      () => {
+        project.spaceId = undefined;
+      },
+    ],
+    [
+      'unresolved Session Space',
+      () => {
+        project.spaceId = 'missing-space';
+      },
+    ],
+    [
+      'legacy source Space',
+      () => {
+        mocks.space.sourceType = 'legacy';
+      },
+    ],
+    [
+      'legacy id Space',
+      () => {
+        mocks.space.id = 'legacy_account-a';
+        project.spaceId = mocks.space.id;
+      },
+    ],
+    [
+      'pending default without a pin',
+      () => {
+        delete project.metadata.modelSelection;
+        project.metadata.spaceModelDefaultPending = true;
+      },
+    ],
+    [
+      'admission receipt without a pin',
+      () => {
+        delete project.metadata.modelSelection;
+        project.metadata.spaceModelAdmissionRunId = 'accepted-run';
+      },
+    ],
+    [
+      'ordinary manual pin without portable identity',
+      () => {
+        delete project.metadata.modelSelection.model_ref;
+      },
+    ],
+    [
+      'default reference without a concrete identity',
+      () => {
+        project.metadata.modelSelection.model_ref = 'provider://default';
+      },
+    ],
+    [
+      'malformed reference',
+      () => {
+        project.metadata.modelSelection.model_ref = 'invalid-ref';
+      },
+    ],
+    [
+      'reference category differing from the pin',
+      () => {
+        project.metadata.modelSelection.model_ref =
+          'provider://custom/provider/model';
+      },
+    ],
+  ];
+  it.each(refusals)('retains the global gate for %s', async (_name, change) => {
+    await acceptInitialSpaceRun();
+    change();
+    await renderChat();
+    expect(screen.getByTestId('chat-composer')).toHaveAttribute(
+      'data-no-model-overlay',
+      'true'
+    );
+    expect(screen.getByRole('button', { name: 'Follow up' })).toBeDisabled();
+    await sendFollowup();
+    expect(notifyError).toHaveBeenCalled();
+    expect(openSettings).toHaveBeenCalledWith('models');
+    expect(mocks.sse).toHaveBeenCalledTimes(1);
+    expect(mocks.post).not.toHaveBeenCalled();
+  });
+  it.each(refusals.slice(0, 9))(
+    'does not admit Resume for %s',
+    async (_name, change) => {
+      await acceptInitialSpaceRun();
+      interruptRun(chat.getState().activeTaskId!);
+      change();
+      await renderChat();
+      await resumeInterruptedRun();
+      expect(notifyError).toHaveBeenCalled();
+      expect(mocks.sse).toHaveBeenCalledTimes(1);
+      expect(mocks.post).not.toHaveBeenCalled();
+      expect(mocks.setInterrupted).not.toHaveBeenCalled();
+    }
+  );
+  it.each(['follow-up', 'Resume'])(
+    'retains independent cloud usage rejection for %s',
+    async (action) => {
+      await acceptInitialSpaceRun();
+      const pin = { ...project.metadata.modelSelection };
+      if (action === 'Resume') interruptRun(chat.getState().activeTaskId!);
+      useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
+      await renderChat();
+      expect(screen.getByRole('button', { name: 'Follow up' })).toBeDisabled();
+      if (action === 'Resume') await resumeInterruptedRun();
+      else await sendFollowup();
+      expect(notifyError).toHaveBeenCalled();
+      expect(openSettings).not.toHaveBeenCalled();
+      expect(mocks.sse).toHaveBeenCalledTimes(1);
+      expect(mocks.post).not.toHaveBeenCalled();
+      expect(project.metadata.modelSelection).toEqual(pin);
+    }
+  );
+  it('accepts a Space with no account owner while retaining the accepted Session pin', async () => {
+    await acceptInitialSpaceRun();
+    delete mocks.space.userId;
+    await renderChat();
+    await sendFollowup();
+    expect(mocks.post).toHaveBeenCalledWith(
+      '/chat/session-1',
+      expect.objectContaining({ question: 'Continue the same Session' })
+    );
+  });
+  it('uses the persisted metadata pin when runtime metadata has none', async () => {
+    await acceptInitialSpaceRun();
+    mocks.projectMeta = { ...project, metadata: { ...project.metadata } };
+    delete project.metadata.modelSelection;
+    await renderChat();
+    await sendFollowup();
+    expect(mocks.post).toHaveBeenCalledWith(
+      '/chat/session-1',
+      expect.objectContaining({ question: 'Continue the same Session' })
+    );
+    expect(notifyError).not.toHaveBeenCalled();
+  });
+  it('keeps runtime pin precedence over conflicting persisted metadata', async () => {
+    await acceptInitialSpaceRun();
+    mocks.projectMeta = {
+      ...project,
+      metadata: {
+        ...project.metadata,
+        modelSelection: { modelType: 'custom' },
+      },
+    };
+    await renderChat();
+    await sendFollowup();
+    expect(mocks.post).toHaveBeenCalledWith(
+      '/chat/session-1',
+      expect.objectContaining({ question: 'Continue the same Session' })
+    );
+    expect(notifyError).not.toHaveBeenCalled();
+  });
+  it('does not borrow a persisted portable pin when the runtime pin is ordinary manual selection', async () => {
+    await acceptInitialSpaceRun();
+    mocks.projectMeta = { ...project, metadata: { ...project.metadata } };
+    project.metadata.modelSelection = { modelType: 'custom' };
+    await renderChat();
+    expect(screen.getByRole('button', { name: 'Follow up' })).toBeDisabled();
+    await sendFollowup();
+    expect(mocks.post).not.toHaveBeenCalled();
+  });
+  it('automatically admits a queued follow-up using the accepted Session pin', async () => {
+    await acceptInitialSpaceRun();
+    const pin = { ...project.metadata.modelSelection };
+    project.queuedMessages = [
+      {
+        task_id: 'queued-1',
+        content: 'Queued follow-up',
+        attaches: [],
+        timestamp: 1,
+        processing: false,
+      },
+    ];
+    await renderChat();
+    await waitFor(() =>
+      expect(mocks.post).toHaveBeenCalledWith(
+        '/chat/session-1',
+        expect.objectContaining({
+          question: 'Queued follow-up',
+          task_id: 'queued-1',
+        })
+      )
+    );
+    await waitFor(() =>
+      expect(mocks.projectStore.removeQueuedMessage).toHaveBeenCalledWith(
+        'session-1',
+        'queued-1'
+      )
+    );
+    expect(mocks.sse).toHaveBeenCalledTimes(1);
+    expect(project.metadata.modelSelection).toEqual(pin);
+    expect(notifyError).not.toHaveBeenCalled();
+  });
+  it('keeps an active human reply available when cloud usage is exhausted', async () => {
+    await acceptInitialSpaceRun();
+    const taskId = chat.getState().activeTaskId!;
+    chat.getState().setActiveAsk(taskId, 'synthetic-agent');
+    useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
+    await renderChat();
+    expect(screen.getByRole('button', { name: 'Follow up' })).toBeEnabled();
+    await sendFollowup();
+    expect(mocks.post).toHaveBeenCalledOnce();
+    expect(mocks.post).toHaveBeenCalledWith(
+      '/chat/session-1/human-reply',
+      expect.objectContaining({
+        agent: 'synthetic-agent',
+        reply: 'Continue the same Session',
+      })
+    );
+    expect(mocks.sse).toHaveBeenCalledTimes(1);
+    expect(chat.getState().activeTaskId).toBe(taskId);
+    expect(notifyError).not.toHaveBeenCalled();
+  });
+});
