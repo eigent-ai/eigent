@@ -417,6 +417,7 @@
   "notice-trial-total": "You’ve used all your trial credits.",
   "notice-free-credits": "You’re out of free credits.",
   "notice-model-access": "This model requires Eigent Plus or Pro.",
+  "notice-model-restricted": "Your remaining credits are reserved for Eigent. Select the Eigent model to continue.",
   "notice-service": "Eigent cloud is unavailable.",
   "notice-provider-credits": "Your model provider’s credits have run out. Check your provider account.",
   "notice-api-key": "This API key wasn’t accepted. Check the key in model settings.",

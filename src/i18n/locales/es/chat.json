@@ -421,6 +421,7 @@
   "notice-trial-total": "Has usado todos tus créditos de prueba.",
   "notice-free-credits": "Tus créditos gratuitos se han agotado.",
   "notice-model-access": "Este modelo requiere Eigent Plus o Pro.",
+  "notice-model-restricted": "Tus créditos restantes están reservados para Eigent. Selecciona el modelo Eigent para continuar.",
   "notice-service": "La nube de Eigent no está disponible.",
   "notice-provider-credits": "Los créditos de tu proveedor de modelos se han agotado. Revisa tu cuenta del proveedor.",
   "notice-api-key": "Esta clave API no se ha aceptado. Revísala en los ajustes del modelo.",

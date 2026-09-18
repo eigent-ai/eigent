@@ -433,6 +433,7 @@
   "notice-trial-total": "استخدمت جميع أرصدة الفترة التجريبية.",
   "notice-free-credits": "نفدت أرصدتك المجانية.",
   "notice-model-access": "يتطلب هذا النموذج Eigent Plus أو Pro.",
+  "notice-model-restricted": "أرصدة الاستخدام المتبقية مخصصة لنموذج Eigent. اختر نموذج Eigent للمتابعة.",
   "notice-service": "خدمة Eigent السحابية غير متاحة.",
   "notice-provider-credits": "نفدت أرصدة مزوّد النموذج. تحقق من حسابك لدى المزوّد.",
   "notice-api-key": "لم يُقبل مفتاح API هذا. تحقّق منه في إعدادات النموذج.",

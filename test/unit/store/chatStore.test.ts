@@ -1122,7 +1122,7 @@ describe('ChatStore - Core Functionality', () => {
     });
   });
 
-  describe('Task startup', () => {
+  describe.each([false, true])('Task startup: %s', (awaitAdmission) => {
     it('renders the pending user turn before backend readiness resolves', async () => {
       let resolveBackendReady!: (ready: boolean) => void;
       vi.mocked(waitForBackendReady).mockReturnValueOnce(
@@ -1170,7 +1170,8 @@ describe('ChatStore - Core Functionality', () => {
             [],
             undefined,
             'project-1',
-            'single' as any
+            'single' as any,
+            { awaitAdmission }
           );
       });
 
@@ -1188,7 +1189,11 @@ describe('ChatStore - Core Functionality', () => {
 
       resolveBackendReady(false);
       await act(async () => {
-        await startPromise;
+        if (awaitAdmission) {
+          await expect(startPromise).rejects.toThrow(/backend|Backend/);
+        } else {
+          await startPromise;
+        }
       });
 
       expect(result.current.getState().tasks['optimistic-task']).toMatchObject({
@@ -1264,7 +1269,7 @@ describe('ChatStore - Core Functionality', () => {
 
       await act(async () => {
         const initialTaskId = result.current.getState().create('initial-task');
-        await result.current
+        const startPromise = result.current
           .getState()
           .startTask(
             initialTaskId,
@@ -1275,8 +1280,16 @@ describe('ChatStore - Core Functionality', () => {
             [],
             undefined,
             'project-1',
-            'single' as any
+            'single' as any,
+            { awaitAdmission }
           );
+        if (awaitAdmission) {
+          await expect(startPromise).rejects.toMatchObject({
+            code: 'continuation_clarification_required',
+          });
+        } else {
+          await startPromise;
+        }
         await Promise.resolve();
       });
 

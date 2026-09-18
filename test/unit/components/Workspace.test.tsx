@@ -13,10 +13,24 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import Workspace from '@/components/Workspace';
+import { notifyError, reportError } from '@/lib/notifyError';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { errorCopy } from '@/lib/usageErrors';
+import {
+  setUsageAccount,
+  setUsageModelType,
+  useUsageNoticeStore,
+} from '@/store/usageNoticeStore';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { MemoryRouter } from 'react-router-dom';
+import { toast } from 'sonner';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
@@ -49,7 +63,7 @@ const mocks = vi.hoisted(() => {
     setAttaches: oldSetAttaches,
   };
   const projectState = {
-    activeProjectId: 'old-project',
+    activeProjectId: 'old-project' as string | null,
     projects: {
       'old-project': {
         id: 'old-project',
@@ -86,6 +100,9 @@ const mocks = vi.hoisted(() => {
   };
 
   return {
+    modelType: 'local',
+    auth: { token: 'fixture-a', user_id: 101 as number | null },
+    modelConfig: { hasModel: true, cloudUsageLimitReached: false },
     newChatState,
     newStartTask,
     newSetAttaches,
@@ -105,8 +122,15 @@ vi.mock('@/hooks/useChatStoreAdapter', () => ({
 }));
 
 vi.mock('@/hooks/useModelConfigCheck', () => ({
-  useModelConfigCheck: () => ({ hasModel: true }),
+  useModelConfigCheck: () => mocks.modelConfig,
 }));
+
+vi.mock('@/lib/notifyError', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/notifyError')>();
+  return { ...actual, notifyError: vi.fn(actual.notifyError) };
+});
+
+vi.mock('sonner', () => ({ toast: { error: vi.fn(), dismiss: vi.fn() } }));
 
 vi.mock('@/host', () => ({
   useHost: () => ({ electronAPI: {} }),
@@ -114,11 +138,12 @@ vi.mock('@/host', () => ({
 
 vi.mock('@/store/authStore', () => ({
   getAuthStore: () => ({
+    ...mocks.auth,
     language: 'en',
     setLanguage: vi.fn(),
   }),
   useAuthStore: () => ({
-    modelType: 'local',
+    modelType: mocks.modelType,
     setWorkerList: vi.fn(),
   }),
   useWorkerList: () => [],
@@ -164,19 +189,29 @@ vi.mock('@/components/ChatBox/BottomBox', () => ({
     inputProps,
     sessionModeSelectInteractive,
     modelSelectProjectId,
+    modelSelectDisabled,
+    usageLimitBanner,
   }: {
     inputProps: any;
     sessionModeSelectInteractive?: boolean;
     modelSelectProjectId?: string | null;
+    modelSelectDisabled?: boolean;
+    usageLimitBanner?: { message: string } | null;
   }) => (
     <div>
       <div
         data-testid="workspace-bottom-box-footer-props"
         data-interactive={String(Boolean(sessionModeSelectInteractive))}
         data-project-id={modelSelectProjectId ?? ''}
+        data-model-disabled={String(Boolean(modelSelectDisabled))}
       />
+      {usageLimitBanner && <div role="alert">{usageLimitBanner.message}</div>}
+      {inputProps.files.map((file: { filePath: string; fileName: string }) => (
+        <span key={file.filePath}>{file.fileName}</span>
+      ))}
       <input
         aria-label="workspace-message"
+        disabled={inputProps.disabled}
         value={inputProps.value}
         onChange={(event) => inputProps.onChange(event.target.value)}
       />
@@ -190,7 +225,11 @@ vi.mock('@/components/ChatBox/BottomBox', () => ({
       >
         Attach draft
       </button>
-      <button type="button" onClick={inputProps.onSend}>
+      <button
+        type="button"
+        onClick={inputProps.onSend}
+        disabled={inputProps.disabled}
+      >
         Send
       </button>
     </div>
@@ -219,10 +258,25 @@ const renderWorkspace = (props: ComponentProps<typeof Workspace> = {}) =>
 describe('Workspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.modelType = 'local';
+    mocks.auth = { token: 'fixture-a', user_id: 101 };
+    mocks.modelConfig = { hasModel: true, cloudUsageLimitReached: false };
+    mocks.spaceState.activeSpaceId = 'space-1';
+    mocks.pageState.activeWorkspaceTab = 'workforce';
+    mocks.projectState.activeProjectId = 'old-project';
+    setUsageAccount(null);
+    setUsageAccount('101');
+    setUsageModelType('local');
+    useUsageNoticeStore.setState({
+      incidents: [],
+      refreshing: false,
+      refreshError: null,
+    });
     mocks.spaceState.projectsBySpaceId = {};
-    vi.mocked(createSyncedProjectInSpace).mockResolvedValue({
-      projectId: 'new-project',
-      spaceId: 'space-1',
+    vi.mocked(createSyncedProjectInSpace).mockImplementation(async () => {
+      // Match createSyncedProjectInSpace's default setActive behavior.
+      mocks.projectState.activeProjectId = 'new-project';
+      return { projectId: 'new-project', spaceId: 'space-1' };
     });
     mocks.projectState.getComposerThinkingEffort.mockReturnValue('high');
     mocks.newStartTask.mockResolvedValue(undefined);
@@ -259,9 +313,275 @@ describe('Workspace', () => {
       [{ fileName: 'draft.txt', filePath: '/draft.txt' }],
       undefined,
       'new-project',
-      'single-agent'
+      'single-agent',
+      { awaitAdmission: true }
     );
     expect(mocks.oldSetAttaches).not.toHaveBeenCalled();
+  });
+
+  it('keeps the draft until startup is accepted, then opens the Session', async () => {
+    let accept!: () => void;
+    mocks.newStartTask.mockReturnValue(
+      new Promise<void>((resolve) => {
+        accept = resolve;
+      })
+    );
+    renderWorkspace();
+    fireEvent.change(screen.getByLabelText('workspace-message'), {
+      target: { value: 'Keep this draft' },
+    });
+    fireEvent.click(screen.getByText('Attach draft'));
+    fireEvent.click(screen.getByText('Send'));
+
+    await waitFor(() => expect(mocks.newStartTask).toHaveBeenCalledTimes(1));
+    expect(mocks.pageState.setActiveWorkspaceTab).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('workspace-message')).toHaveValue(
+      'Keep this draft'
+    );
+    expect(screen.getByText('draft.txt')).toBeInTheDocument();
+    expect(
+      screen.getByTestId('workspace-bottom-box-footer-props')
+    ).toHaveAttribute('data-model-disabled', 'true');
+
+    await act(async () => accept());
+    expect(mocks.pageState.setActiveWorkspaceTab).toHaveBeenCalledWith(
+      'project'
+    );
+    expect(screen.getByLabelText('workspace-message')).toHaveValue('');
+    expect(screen.queryByText('draft.txt')).not.toBeInTheDocument();
+  });
+
+  it.each(['workforce', 'new-project'])(
+    'preserves text, attachments and the %s page on startup failure',
+    async (tab) => {
+      mocks.pageState.activeWorkspaceTab = tab;
+      mocks.newStartTask.mockRejectedValue(new Error('Usage limit reached'));
+      const consoleError = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+      renderWorkspace({
+        variant: tab === 'new-project' ? 'new-project' : 'workspace',
+      });
+      fireEvent.change(screen.getByLabelText('workspace-message'), {
+        target: { value: 'Retry this work' },
+      });
+      fireEvent.click(screen.getByText('Attach draft'));
+      fireEvent.click(screen.getByText('Send'));
+
+      await waitFor(() =>
+        expect(notifyError).toHaveBeenCalledWith('Usage limit reached')
+      );
+      expect(mocks.pageState.setActiveWorkspaceTab).not.toHaveBeenCalled();
+      expect(screen.getByLabelText('workspace-message')).toHaveValue(
+        'Retry this work'
+      );
+      expect(screen.getByText('draft.txt')).toBeInTheDocument();
+      expect(screen.getByText('Send')).not.toBeDisabled();
+      expect(
+        screen.getByTestId('workspace-bottom-box-footer-props')
+      ).toHaveAttribute('data-model-disabled', 'false');
+      consoleError.mockRestore();
+    }
+  );
+
+  it('does not redirect a user who leaves while startup is pending', async () => {
+    let accept!: () => void;
+    mocks.newStartTask.mockReturnValue(
+      new Promise<void>((resolve) => {
+        accept = resolve;
+      })
+    );
+    const view = renderWorkspace();
+    fireEvent.change(screen.getByLabelText('workspace-message'), {
+      target: { value: 'Start in background' },
+    });
+    fireEvent.click(screen.getByText('Send'));
+    await waitFor(() => expect(mocks.newStartTask).toHaveBeenCalledTimes(1));
+    view.unmount();
+    await act(async () => accept());
+    expect(mocks.pageState.setActiveWorkspaceTab).not.toHaveBeenCalled();
+  });
+
+  it.each([null, 'another-project'])(
+    'preserves the composer when a newer Session selection is %s before admission',
+    async (activeProjectId) => {
+      mocks.pageState.activeWorkspaceTab = 'new-project';
+      let accept!: () => void;
+      mocks.newStartTask.mockReturnValue(
+        new Promise<void>((resolve) => {
+          accept = resolve;
+        })
+      );
+      const view = renderWorkspace({ variant: 'new-project' });
+      fireEvent.change(screen.getByLabelText('workspace-message'), {
+        target: { value: 'Keep my draft' },
+      });
+      fireEvent.click(screen.getByText('Attach draft'));
+      fireEvent.click(screen.getByText('Send'));
+      await waitFor(() => expect(mocks.newStartTask).toHaveBeenCalledTimes(1));
+
+      // New session clears selection without changing Space/tab or unmounting
+      // Workspace. A different selection likewise belongs to the newer intent.
+      mocks.projectState.activeProjectId = activeProjectId;
+      view.rerender(
+        <MemoryRouter>
+          <Workspace variant="new-project" />
+        </MemoryRouter>
+      );
+      await act(async () => accept());
+
+      expect(mocks.pageState.setActiveWorkspaceTab).not.toHaveBeenCalled();
+      expect(screen.getByLabelText('workspace-message')).toHaveValue(
+        'Keep my draft'
+      );
+      expect(screen.getByText('draft.txt')).toBeInTheDocument();
+      expect(screen.getByText('Send')).not.toBeDisabled();
+      // The admitted submission still settles only its own run-local state.
+      expect(mocks.newChatState.setHasWaitComfirm).toHaveBeenCalledWith(
+        'new-task',
+        true
+      );
+      expect(mocks.newSetAttaches).toHaveBeenLastCalledWith('new-task', []);
+    }
+  );
+
+  it.each([20, 22])(
+    'does not assign departed account key denial %s to the new account',
+    async (code) => {
+      mocks.modelType = 'cloud';
+      setUsageModelType('cloud');
+      let reject!: (error: Error) => void;
+      mocks.newStartTask.mockReturnValue(
+        new Promise<void>((_resolve, rejectPromise) => {
+          reject = rejectPromise;
+        })
+      );
+      const view = renderWorkspace();
+      fireEvent.change(screen.getByLabelText('workspace-message'), {
+        target: { value: 'Start account A work' },
+      });
+      fireEvent.click(screen.getByText('Send'));
+      await waitFor(() => expect(mocks.newStartTask).toHaveBeenCalledTimes(1));
+      expect(mocks.newStartTask.mock.calls[0][6]).toBeUndefined();
+
+      view.unmount();
+      mocks.auth = { token: 'fixture-b', user_id: 202 };
+      setUsageAccount('202');
+      await act(async () => {
+        // The HTTP layer keeps A's request identity; startTask passes its
+        // sanitized rejection to the Workspace catch without an executionId.
+        reportError({ code }, { modelType: 'cloud' }, '101');
+        reject(
+          Object.assign(new Error(errorCopy('credits')), {
+            usageReason: 'credits',
+            response: { data: { code } },
+          })
+        );
+      });
+
+      expect(useUsageNoticeStore.getState()).toMatchObject({
+        account: '202',
+        incidents: [],
+      });
+      expect(notifyError).not.toHaveBeenCalled();
+      expect(toast.error).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([null, '101'])(
+    'uses current auth when the usage account is %s after logout or account change',
+    async (usageAccount) => {
+      mocks.modelType = 'cloud';
+      setUsageModelType('cloud');
+      let reject!: (error: Error) => void;
+      mocks.newStartTask.mockReturnValue(
+        new Promise<void>((_resolve, rejectPromise) => {
+          reject = rejectPromise;
+        })
+      );
+      renderWorkspace();
+      fireEvent.change(screen.getByLabelText('workspace-message'), {
+        target: { value: 'Pending A work' },
+      });
+      fireEvent.click(screen.getByText('Send'));
+      await waitFor(() => expect(mocks.newStartTask).toHaveBeenCalledTimes(1));
+
+      // Auth updates synchronously, whereas useUsageNotices runs in an effect.
+      mocks.auth =
+        usageAccount === null
+          ? { token: '', user_id: null }
+          : { token: 'fixture-b', user_id: 202 };
+      setUsageAccount(usageAccount);
+      await act(async () => reject(new Error(errorCopy('credits'))));
+
+      expect(notifyError).not.toHaveBeenCalled();
+      expect(toast.error).not.toHaveBeenCalled();
+      expect(useUsageNoticeStore.getState().incidents).toEqual([]);
+    }
+  );
+
+  it.each([20, 22])(
+    'keeps the current account key denial %s actionable and deduplicated',
+    async (code) => {
+      mocks.modelType = 'cloud';
+      setUsageModelType('cloud');
+      mocks.newStartTask.mockImplementation(async () => {
+        reportError({ code }, { modelType: 'cloud' }, '101');
+        throw Object.assign(new Error(errorCopy('credits')), {
+          usageReason: 'credits',
+          response: { data: { code } },
+        });
+      });
+      renderWorkspace();
+      fireEvent.change(screen.getByLabelText('workspace-message'), {
+        target: { value: 'Keep this rejected draft' },
+      });
+      fireEvent.click(screen.getByText('Attach draft'));
+      fireEvent.click(screen.getByText('Send'));
+
+      await waitFor(() =>
+        expect(notifyError).toHaveBeenCalledWith(errorCopy('credits'))
+      );
+      expect(useUsageNoticeStore.getState()).toMatchObject({
+        account: '101',
+        incidents: [{ reason: 'credits' }],
+      });
+      expect(toast.error).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole('alert')).toHaveTextContent(errorCopy('credits'));
+      expect(screen.getByLabelText('workspace-message')).toHaveValue(
+        'Keep this rejected draft'
+      );
+      expect(screen.getByText('draft.txt')).toBeInTheDocument();
+      expect(mocks.pageState.setActiveWorkspaceTab).not.toHaveBeenCalled();
+    }
+  );
+
+  it('blocks known cloud limits before creating a Session and allows switching to a custom model', async () => {
+    mocks.modelType = 'cloud';
+    mocks.modelConfig.cloudUsageLimitReached = true;
+    useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
+    const view = renderWorkspace({ variant: 'new-project' });
+    expect(screen.getByLabelText('workspace-message')).toBeDisabled();
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(
+      screen.getByTestId('workspace-bottom-box-footer-props')
+    ).toHaveAttribute('data-model-disabled', 'false');
+    fireEvent.click(screen.getByText('Send'));
+    expect(createSyncedProjectInSpace).not.toHaveBeenCalled();
+
+    mocks.modelType = 'custom';
+    view.rerender(
+      <MemoryRouter>
+        <Workspace variant="new-project" />
+      </MemoryRouter>
+    );
+    expect(screen.getByLabelText('workspace-message')).not.toBeDisabled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('workspace-message'), {
+      target: { value: 'Use my custom model' },
+    });
+    fireEvent.click(screen.getByText('Send'));
+    await waitFor(() => expect(mocks.newStartTask).toHaveBeenCalledTimes(1));
   });
 
   it('shares the projectless interactive footer across Workspace and New session', () => {

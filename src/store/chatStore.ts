@@ -2403,16 +2403,18 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             session_mode: sessionModeForRequest,
           });
           const targetState = targetChatStore.getState();
+          const startupError = i18next.t('chat.backend-not-ready', {
+            defaultValue:
+              '❌ Backend service is not ready. Wait a moment and try again, or restart the application if the problem continues.',
+          });
           targetState.addMessages(newTaskId, {
             id: generateUniqueId(),
             role: 'agent',
-            content: i18next.t('chat.backend-not-ready', {
-              defaultValue:
-                '❌ Backend service is not ready. Wait a moment and try again, or restart the application if the problem continues.',
-            }),
+            content: startupError,
           });
           targetState.setIsPending(newTaskId, false);
           targetState.setStatus(newTaskId, ChatTaskStatus.FINISHED);
+          if (startOptions.awaitAdmission) throw new Error(startupError);
           return;
         }
         console.log('[startTask] Backend is ready, proceeding with task...');

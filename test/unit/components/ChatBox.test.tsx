@@ -185,6 +185,7 @@ vi.mock('../../../src/components/ChatBox/BottomBox', () => ({
       onSendQueuedMessageNow,
       queueContext,
       variant,
+      modelSelectDisabled,
     }: any) => {
       if (!inputProps) return null;
       const hasContent =
@@ -198,7 +199,12 @@ vi.mock('../../../src/components/ChatBox/BottomBox', () => ({
             ? 'resume'
             : 'idle';
       return (
-        <div data-testid="bottom-box">
+        <div
+          data-testid="bottom-box"
+          data-model-disabled={String(
+            modelSelectDisabled ?? inputProps.disabled ?? false
+          )}
+        >
           {variant?.kind === 'run_control' && (
             <div>{variant.header?.title}</div>
           )}
@@ -218,6 +224,7 @@ vi.mock('../../../src/components/ChatBox/BottomBox', () => ({
             data-testid="message-input"
             placeholder={inputProps.placeholder}
             value={inputProps.value}
+            disabled={inputProps.disabled}
             onChange={(e) => inputProps.onChange(e.target.value)}
           />
           <button
@@ -1454,6 +1461,11 @@ describe('ChatBox Component', async () => {
         await act(async () => {});
 
         if (blocked) {
+          expect(screen.getByTestId('message-input')).toBeDisabled();
+          expect(screen.getByTestId('bottom-box')).toHaveAttribute(
+            'data-model-disabled',
+            'false'
+          );
           expect(_mockFetchPost).not.toHaveBeenCalled();
           expect(
             defaultProjectStoreState.setQueuedMessageProcessing

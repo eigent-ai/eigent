@@ -30,6 +30,7 @@ export type ErrorReason =
   | 'rate-limit'
   | 'context'
   | 'request'
+  | 'model-restricted'
   | 'model-unavailable'
   | 'task';
 export interface ErrorContext {
@@ -52,6 +53,7 @@ const copyKeys: Record<ErrorReason, string> = {
   'rate-limit': 'chat.notice-rate-limit',
   context: 'chat.notice-context',
   request: 'chat.notice-request',
+  'model-restricted': 'chat.notice-model-restricted',
   'model-unavailable': 'chat.notice-model-unavailable',
   task: 'chat.notice-task',
 };
@@ -112,6 +114,14 @@ export function classifyError(
 
   // Gateway entitlement and spend-limit signals are distinct from upstream quota.
   if (reason === 'managed_service_unavailable') return 'service';
+  // This restriction still permits Eigent; it must not lock all cloud models.
+  if (
+    [body.code, detail.code, error.code, reason].includes(
+      'eigent_low_balance_model_restricted'
+    ) ||
+    /\beigent_low_balance_model_restricted\b/.test(text)
+  )
+    return 'model-restricted';
   if (code === '20' || code === '22') return 'credits';
   if (
     reason === 'budget_exceeded' ||
