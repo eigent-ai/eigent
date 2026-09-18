@@ -147,6 +147,119 @@ describe('projectStore runtime shape', () => {
     });
   });
 
+  it('limits Space default eligibility to fresh Session containers and clears it when pinned', () => {
+    const store = useProjectStore.getState();
+    const fresh = store.createProject(
+      'Fresh session',
+      undefined,
+      'fresh-model-session'
+    );
+    expect(
+      useProjectStore.getState().projects[fresh].metadata
+        ?.spaceModelDefaultPending
+    ).toBe(true);
+    store.setProjectModel(fresh, {
+      modelType: 'cloud',
+      cloud_model_type: 'fixture',
+    });
+    expect(
+      useProjectStore.getState().projects[fresh].metadata
+        ?.spaceModelDefaultPending
+    ).toBe(false);
+    expect(proxyUpdateSpaceProjectMock).toHaveBeenCalledWith(
+      'space_test',
+      fresh,
+      {
+        metadata: {
+          modelSelection: { modelType: 'cloud', cloud_model_type: 'fixture' },
+          spaceModelDefaultPending: false,
+          spaceModelAdmissionRunId: null,
+        },
+      }
+    );
+    const restored = store.createProject(
+      'Restored session',
+      undefined,
+      'restored-model-session',
+      undefined,
+      'existing-history'
+    );
+    expect(
+      useProjectStore.getState().projects[restored].metadata
+        ?.spaceModelDefaultPending
+    ).toBeUndefined();
+    const historical = store.createProject(
+      'Historical session',
+      undefined,
+      'historical-model-session',
+      undefined,
+      undefined,
+      false,
+      { createdAt: 1 }
+    );
+    expect(
+      useProjectStore.getState().projects[historical].metadata
+        ?.spaceModelDefaultPending
+    ).toBeUndefined();
+  });
+
+  it.each([true, false])(
+    'reconciles a restored pending Session only with durable acceptance (%s)',
+    async (accepted) => {
+      const id = useProjectStore
+        .getState()
+        .createProject('Fresh session', undefined, 'lost-admission');
+      useProjectStore.getState().setHistoryId(id, 'history-1');
+      await useProjectStore
+        .getState()
+        .setProjectModelAdmission(id, 'accepted-run-1');
+      const original = {
+        modelType: 'cloud',
+        cloud_model_type: 'original',
+        model_platform: 'azure',
+        model_type: 'gpt-5.5',
+      };
+      fetchGetMock.mockImplementation(async (url) =>
+        url.includes('/session-model')
+          ? {
+              space_id: 'space_test',
+              project_id: id,
+              accepted: accepted
+                ? { run_id: 'accepted-run-1', selection: original }
+                : null,
+              restore_pending: false,
+            }
+          : { runs: [{ run_id: 'accepted-run-1', status: 'pending' }] }
+      );
+      useProjectStore.setState({ projects: {}, activeProjectId: null });
+      await useProjectStore
+        .getState()
+        .loadProjectFromHistory(
+          ['accepted-run-1'],
+          'Existing question',
+          id,
+          'history-1',
+          'Existing session',
+          'space_test'
+        );
+      const restored = useProjectStore.getState().projects[id];
+      expect(replayMock).toHaveBeenCalled();
+      if (accepted) {
+        expect(useProjectStore.getState().getProjectModel(id)).toEqual(
+          original
+        );
+        expect(restored.metadata?.spaceModelDefaultPending).toBe(false);
+        expect(restored.metadata?.spaceModelAdmissionRunId).toBeNull();
+      } else {
+        expect(useProjectStore.getState().getProjectModel(id)).toBeNull();
+        expect(restored.metadata?.spaceModelDefaultPending).toBe(true);
+        expect(restored.metadata?.spaceModelAdmissionRunId).toBe(
+          'accepted-run-1'
+        );
+      }
+    }
+  );
+
   it('disposes the preview shell when its project is removed', () => {
     const projectId = useProjectStore
       .getState()

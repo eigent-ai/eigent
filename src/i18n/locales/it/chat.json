@@ -440,5 +440,9 @@
   "notice-refresh-failed": "Impossibile aggiornare i crediti. Riprova.",
   "notice-availability-unverified": "Impossibile verificare la disponibilità. Contatta l’assistenza se il problema persiste.",
   "notice-access-unverified": "Il piano è stato aggiornato. Riprova il modello per verificare l’accesso.",
-  "notice-credits-unavailable": "Crediti non disponibili"
+  "notice-credits-unavailable": "Crediti non disponibili",
+  "space-model-unconfirmed": "La prima richiesta della sessione non è ancora stata confermata. Riconnettiti e riprova, oppure scegli un modello per la sessione.",
+  "space-model-unavailable": "Questo modello non è disponibile per l’account attuale. Controlla le impostazioni dei modelli o scegli un modello per la sessione.",
+  "space-model-ambiguous": "Più provider corrispondono al modello. Controlla le impostazioni dei modelli o scegli un modello per la sessione.",
+  "space-model-changed": "L’account o il modello della sessione è cambiato durante il caricamento. Invia nuovamente il messaggio."
 }

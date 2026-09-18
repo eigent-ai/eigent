@@ -1545,5 +1545,13 @@
   "space-discovery-manual": "Inserisci manualmente",
   "space-discovery-connector-note": "Selezionare un fornitore dichiara solo un requisito. Le connessioni e le autorizzazioni si configurano separatamente.",
   "space-discovery-grants-empty": "Non sono state indicate autorizzazioni supportate. Le autorizzazioni esistenti vengono conservate. Inserisci manualmente quelle necessarie.",
-  "space-discovery-available-options": "Opzioni disponibili"
+  "space-discovery-available-options": "Opzioni disponibili",
+  "space-default-model": "Predefinito dello spazio",
+  "space-discovery-custom-model-source": "Provider personalizzato",
+  "space-discovery-local-model-source": "Provider locale",
+  "space-discovery-inherited-model-source": "Modello predefinito utente",
+  "space-discovery-model-ambiguous": "Più provider corrispondenti; controlla le impostazioni dei modelli",
+  "space-discovery-model-unavailable": "Non disponibile per questo account; controlla le impostazioni dei modelli",
+  "space-discovery-model-policy": "Si applica alle nuove sessioni dopo pubblicazione e configurazione. La scelta manuale ha priorità; le sessioni esistenti mantengono il modello originale. Accesso e supporto dello sforzo di ragionamento vengono verificati all’avvio della sessione.",
+  "space-discovery-model-runtime-scope": "Le sessioni supportano un agente del bundle con il suo profilo, oppure il profilo predefinito senza agenti. Più agenti del bundle non sono ancora supportati."
 }

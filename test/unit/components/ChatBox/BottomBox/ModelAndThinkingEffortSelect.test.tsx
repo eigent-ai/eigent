@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { ModelAndThinkingEffortSelect } from '@/components/ChatBox/BottomBox/ModelAndThinkingEffortSelect';
+import type { ProjectModelSelection } from '@/store/projectStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { ThinkingEffort } from '@/types/constants';
 import {
@@ -42,11 +43,13 @@ const mocks = vi.hoisted(() => ({
   runtimeState: {
     projects: {
       'project-1': {
+        spaceId: 'space-1',
         metadata: {
+          spaceModelDefaultPending: false,
           modelSelection: {
             modelType: 'cloud',
             cloud_model_type: 'gpt-5.5',
-          },
+          } as ProjectModelSelection | null,
         },
       },
     },
@@ -115,6 +118,8 @@ vi.mock('@/store/spaceStore', () => ({
 
 describe('ModelAndThinkingEffortSelect', () => {
   beforeEach(() => {
+    mocks.runtimeState.projects['project-1'].metadata.spaceModelDefaultPending =
+      false;
     mocks.runtimeState.projects['project-1'].metadata.modelSelection = {
       modelType: 'cloud',
       cloud_model_type: 'gpt-5.5',
@@ -124,6 +129,49 @@ describe('ModelAndThinkingEffortSelect', () => {
       .mockReturnValue(new Promise(() => undefined));
     mocks.fetchCloudModels.mockReset().mockResolvedValue([]);
     mocks.setProjectModel.mockReset();
+  });
+
+  it('shows the pending Space default until an explicit Session model is chosen', async () => {
+    const user = userEvent.setup();
+    const metadata = mocks.runtimeState.projects['project-1'].metadata;
+    metadata.modelSelection = null;
+    metadata.spaceModelDefaultPending = true;
+    const { rerender } = render(
+      <ModelAndThinkingEffortSelect projectId="project-1" />
+    );
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Model: Space default; Thinking effort: Default',
+      })
+    );
+    await user.hover(screen.getByRole('menuitem', { name: 'Eigent Cloud' }));
+    const model = await screen.findByRole('menuitemradio', {
+      name: 'Configured GPT-5.5',
+    });
+    expect(model).toHaveAttribute('aria-checked', 'false');
+    act(() => {
+      fireEvent.pointerMove(model);
+      model.focus();
+    });
+    await user.keyboard('{Enter}');
+    expect(mocks.setProjectModel).toHaveBeenCalledWith(
+      'project-1',
+      expect.objectContaining({
+        modelType: 'cloud',
+        cloud_model_type: 'gpt-5.5',
+      })
+    );
+    metadata.modelSelection = {
+      modelType: 'cloud',
+      cloud_model_type: 'gpt-5.5',
+    };
+    metadata.spaceModelDefaultPending = false;
+    rerender(<ModelAndThinkingEffortSelect projectId="project-1" />);
+    expect(
+      screen.getByRole('button', {
+        name: 'Model: GPT-5.5; Thinking effort: Default',
+      })
+    ).toBeVisible();
   });
 
   it('combines the requested effort and model sections in one menu', async () => {

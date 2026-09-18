@@ -42,10 +42,7 @@ import {
   recordTaskSubmitted,
 } from '@/lib/events/appEvents';
 import { notifyDurableRunStatusChanged } from '@/lib/events/durableRunEvents';
-import {
-  buildAgentModelConfigFromProvider,
-  splitProviderConfig,
-} from '@/lib/modelConfig';
+import { buildAgentModelConfigFromProvider } from '@/lib/modelConfig';
 import { reportError } from '@/lib/notifyError';
 import {
   normalizeRemoteSubAgentProvider,
@@ -58,6 +55,14 @@ import {
   isLocalWorkspaceSpace,
   isPlaceholderProjectName,
 } from '@/lib/spaceLabel';
+import {
+  fetchSpaceModelSelection,
+  recoverSpaceSessionModel,
+  resolveSpaceModelBinding,
+  spaceModelError,
+  type ResolvedSpaceModel,
+  type SpaceModelSelection,
+} from '@/lib/spaceModelBinding';
 import { settleTaskElapsedMs } from '@/lib/taskDuration';
 import {
   classifyError as classifyUsageError,
@@ -2484,8 +2489,105 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
       // Reuse the model captured on this Project (if any) so follow-up runs
       // keep the conversation's model even when the global default changed.
-      const pinnedModelSelection =
+      const spaceId = resolveSpaceIdForProject(project_id);
+      let pinnedModelSelection =
         !type && project_id ? projectStore.getProjectModel(project_id) : null;
+      let expectedModelSelection = JSON.stringify(pinnedModelSelection);
+      const assertModelSelectionCurrent = () => {
+        const currentAuth = getAuthStore();
+        if (
+          currentAuth.token !== token ||
+          currentAuth.email !== email ||
+          currentAuth.user_id !== user_id ||
+          (project_id &&
+            (resolveSpaceIdForProject(project_id) !== spaceId ||
+              JSON.stringify(projectStore.getProjectModel(project_id)) !==
+                expectedModelSelection))
+        ) {
+          throw spaceModelError('changed');
+        }
+      };
+      let spaceModelSelection: SpaceModelSelection | null = null;
+      let adoptingSpaceDefault = false;
+      let initialSessionModel: ReturnType<typeof projectStore.getProjectModel> =
+        null;
+      let spaceModelBinding: ResolvedSpaceModel | undefined;
+      let commitSpaceModelPin: (() => void) | undefined;
+      try {
+        if (
+          !type &&
+          !startOptions.resumeRequestId &&
+          !pinnedModelSelection &&
+          project?.metadata?.spaceModelDefaultPending &&
+          project.spaceId &&
+          !project.spaceId.startsWith('legacy_') &&
+          !spaceId
+        ) {
+          throw spaceModelError('unavailable');
+        }
+        if (
+          !type &&
+          project_id &&
+          spaceId &&
+          !pinnedModelSelection &&
+          project?.metadata?.spaceModelDefaultPending
+        ) {
+          const identity = { email: email || '', userId: user_id };
+          const recovered = await recoverSpaceSessionModel(
+            spaceId,
+            project_id,
+            identity,
+            assertModelSelectionCurrent
+          );
+          if (recovered) {
+            projectStore.setProjectModel(project_id, recovered);
+            pinnedModelSelection = recovered;
+            expectedModelSelection = JSON.stringify(
+              projectStore.getProjectModel(project_id)
+            );
+          } else {
+            if (
+              startOptions.resumeRequestId ||
+              projectStore.getProjectById(project_id)?.metadata
+                ?.spaceModelAdmissionRunId
+            )
+              throw spaceModelError('unconfirmed');
+            adoptingSpaceDefault = true;
+            spaceModelSelection = await fetchSpaceModelSelection(
+              spaceId,
+              identity,
+              assertModelSelectionCurrent
+            );
+          }
+        }
+        const ref =
+          pinnedModelSelection?.model_ref ?? spaceModelSelection?.model_ref;
+        if (!type && ref && ref !== 'provider://default') {
+          spaceModelBinding = await resolveSpaceModelBinding(
+            ref,
+            assertModelSelectionCurrent
+          );
+          if (
+            pinnedModelSelection &&
+            (pinnedModelSelection.provider_id !==
+              spaceModelBinding.selection.provider_id ||
+              pinnedModelSelection.model_platform !==
+                spaceModelBinding.selection.model_platform ||
+              pinnedModelSelection.model_type !==
+                spaceModelBinding.selection.model_type)
+          )
+            throw spaceModelError('unavailable');
+          pinnedModelSelection = {
+            ...spaceModelBinding.selection,
+            thinking_effort:
+              pinnedModelSelection?.thinking_effort ??
+              spaceModelSelection?.thinking_effort,
+          };
+        }
+      } catch (error) {
+        finishStartupFailure();
+        throw error;
+      }
       const effectiveModelType = pinnedModelSelection?.modelType ?? modelType;
       const requestAccount =
         getAuthStore().user_id != null ? String(getAuthStore().user_id) : null;
@@ -2507,8 +2609,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         !type &&
         (effectiveModelType === 'custom' || effectiveModelType === 'local')
       ) {
-        let provider: any = null;
-        if (pinnedModelSelection?.provider_id !== undefined) {
+        let provider: any = spaceModelBinding?.provider ?? null;
+        if (!provider && pinnedModelSelection?.provider_id !== undefined) {
           try {
             const res = await proxyFetchGet('/api/v1/providers');
             const providerList = Array.isArray(res) ? res : res.items || [];
@@ -2546,16 +2648,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           );
         }
 
-        const { modelConfigDict, extraParams } = splitProviderConfig(
-          provider.encrypted_config
-        );
+        const providerModel = buildAgentModelConfigFromProvider(provider);
         apiModel = {
-          api_key: provider.api_key,
-          model_type: provider.model_type,
-          model_platform: provider.provider_name,
-          api_url: provider.endpoint_url || provider.api_url,
-          model_config_dict: modelConfigDict,
-          extra_params: extraParams,
+          api_key: providerModel.api_key ?? '',
+          model_type: providerModel.model_type ?? '',
+          model_platform: providerModel.model_platform,
+          api_url: providerModel.api_url ?? '',
+          model_config_dict: providerModel.model_config_dict ?? {},
+          extra_params: providerModel.extra_params ?? {},
           auth_source: undefined,
         };
         resolvedProviderId = provider.id;
@@ -2563,9 +2663,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         const requestedCloudModelId =
           pinnedModelSelection?.cloud_model_type || cloud_model_type;
         const cloudModelStore = getCloudModelStore();
-        let resolvedCloudModel = cloudModelStore.resolveCloudModel(
-          requestedCloudModelId
-        );
+        let resolvedCloudModel =
+          spaceModelBinding?.cloudModel ??
+          cloudModelStore.resolveCloudModel(requestedCloudModelId);
         if (!resolvedCloudModel || resolvedCloudModel.source !== 'selected') {
           await cloudModelStore.fetchCloudModels(true);
           resolvedCloudModel = getCloudModelStore().resolveCloudModel(
@@ -2669,7 +2769,13 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       // Capture the resolved model on the Project so later runs (including
       // conversations reloaded from history) keep using it.
       if (!type && project_id && apiModel.model_platform) {
-        projectStore.setProjectModel(project_id, {
+        try {
+          assertModelSelectionCurrent();
+        } catch (error) {
+          finishStartupFailure();
+          throw error;
+        }
+        const modelSelection = {
           modelType: effectiveModelType,
           ...(resolvedCloudModelId
             ? { cloud_model_type: resolvedCloudModelId }
@@ -2682,7 +2788,31 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             : {}),
           model_platform: apiModel.model_platform,
           model_type: apiModel.model_type,
-        });
+          ...(pinnedModelSelection?.model_ref
+            ? { model_ref: pinnedModelSelection.model_ref }
+            : {}),
+          ...((pinnedModelSelection?.thinking_effort ??
+          spaceModelSelection?.thinking_effort)
+            ? {
+                thinking_effort:
+                  pinnedModelSelection?.thinking_effort ??
+                  spaceModelSelection?.thinking_effort,
+              }
+            : {}),
+        };
+        const commitModel = () => {
+          assertModelSelectionCurrent();
+          projectStore.setProjectModel(project_id, modelSelection);
+          expectedModelSelection = JSON.stringify(
+            projectStore.getProjectModel(project_id)
+          );
+        };
+        // An admission failure (including a stale materialization) must not
+        // turn an unaccepted Space default into an existing Session pin.
+        if (adoptingSpaceDefault) {
+          initialSessionModel = modelSelection;
+          commitSpaceModelPin = commitModel;
+        } else commitModel();
       }
 
       // Resolve the user-selected search path for this Run. Querit may use
@@ -2811,7 +2941,6 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       }
 
       // create history
-      const spaceId = resolveSpaceIdForProject(project_id);
       if (spaceId && project_id && project?.spaceId !== spaceId) {
         projectStore.setProjectSpace(project_id, spaceId);
       }
@@ -3028,6 +3157,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         return true;
       };
 
+      if (!type) {
+        try {
+          assertModelSelectionCurrent();
+        } catch (error) {
+          finishStartupFailure();
+          throw error;
+        }
+      }
       const requestBody = !type
         ? {
             space_id: spaceId,
@@ -3051,9 +3188,16 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             api_url: apiModel.api_url,
             model_config_dict: apiModel.model_config_dict,
             extra_params: apiModel.extra_params,
-            thinking_effort: projectStore.getProjectThinkingEffortOverride(
-              project_id ?? null
-            ),
+            thinking_effort:
+              projectStore.getProjectThinkingEffortOverride(
+                project_id ?? null
+              ) ??
+              pinnedModelSelection?.thinking_effort ??
+              spaceModelSelection?.thinking_effort,
+            workspace_model_selection: adoptingSpaceDefault
+              ? spaceModelSelection
+              : undefined,
+            session_model_selection: initialSessionModel ?? undefined,
             auth_source: apiModel.auth_source,
             installed_mcp: connectorGatewayMcpConfig || { mcpServers: {} },
             language: systemLanguage,
@@ -3107,6 +3251,22 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             })
           : null;
 
+      if (adoptingSpaceDefault && project_id) {
+        try {
+          await projectStore.setProjectModelAdmission(project_id, newTaskId);
+          assertModelSelectionCurrent();
+        } catch (error) {
+          try {
+            assertModelSelectionCurrent();
+            await projectStore.setProjectModelAdmission(project_id, null);
+          } catch {
+            // No Chat request was dispatched. Keep any unresolved persistence
+            // scoped to its owner; never write through a changed account.
+          }
+          finishStartupFailure();
+          throw error;
+        }
+      }
       const ssePromise = sseTransport({
         url: api,
         method: !type ? 'POST' : 'GET',
@@ -5621,6 +5781,16 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           console.log('open', respond);
           const contentType = respond.headers.get('content-type') || '';
           if (!respond.ok || !contentType.startsWith('text/event-stream')) {
+            if (
+              adoptingSpaceDefault &&
+              project_id &&
+              respond.status >= 400 &&
+              respond.status < 500
+            ) {
+              // A definitive admission rejection is distinct from lost delivery.
+              assertModelSelectionCurrent();
+              await projectStore.setProjectModelAdmission(project_id, null);
+            }
             let detail = `HTTP ${respond.status}`;
             let errorCode: string | undefined;
             let userMessage: string | undefined;
@@ -5654,6 +5824,15 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             throw error;
           }
           if (resumeStreamOpened) reconcileStreamRun();
+          if (commitSpaceModelPin) {
+            try {
+              commitSpaceModelPin();
+            } catch {
+              // A newer manual choice/account wins after this request was sent.
+              // The accepted Run already owns its original request snapshot.
+            }
+            commitSpaceModelPin = undefined;
+          }
           resumeStreamOpened = true;
           resolveResumeStreamOpen?.();
           if (!type && project_id) {

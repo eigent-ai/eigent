@@ -1523,5 +1523,13 @@
   "space-discovery-manual": "Manuell eingeben",
   "space-discovery-connector-note": "Die Auswahl eines Anbieters legt nur eine Anforderung fest. Verbindungen und Berechtigungen werden separat eingerichtet.",
   "space-discovery-grants-empty": "Es wurden keine unterstützten Berechtigungen gemeldet. Bestehende Berechtigungen bleiben erhalten. Gib benötigte Berechtigungen manuell ein.",
-  "space-discovery-available-options": "Verfügbare Optionen"
+  "space-discovery-available-options": "Verfügbare Optionen",
+  "space-default-model": "Space-Standard",
+  "space-discovery-custom-model-source": "Eigener Anbieter",
+  "space-discovery-local-model-source": "Lokaler Anbieter",
+  "space-discovery-inherited-model-source": "Benutzerstandard",
+  "space-discovery-model-ambiguous": "Mehrere passende Anbieter; Modelleinstellungen prüfen",
+  "space-discovery-model-unavailable": "Für dieses Konto nicht verfügbar; Modelleinstellungen prüfen",
+  "space-discovery-model-policy": "Gilt nach Veröffentlichung und Einrichtung für neue Sitzungen. Eine manuelle Modellauswahl hat Vorrang; bestehende Sitzungen behalten ihr Modell. Zugriff und Unterstützung der Denkintensität werden beim Sitzungsstart geprüft.",
+  "space-discovery-model-runtime-scope": "Sitzungen unterstützen einen Bundle-Agenten mit seinem Profil. Ohne Agent gilt das Standardprofil. Mehrere Bundle-Agenten werden noch nicht unterstützt."
 }

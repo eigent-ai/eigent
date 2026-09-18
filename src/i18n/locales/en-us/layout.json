@@ -1523,5 +1523,13 @@
   "space-discovery-manual": "Enter manually",
   "space-discovery-connector-note": "Selecting a provider declares a requirement only. Connections and permissions are configured separately.",
   "space-discovery-grants-empty": "No supported grants were reported. Existing grants are preserved; enter any required grants manually.",
-  "space-discovery-available-options": "Available options"
+  "space-discovery-available-options": "Available options",
+  "space-default-model": "Space default",
+  "space-discovery-custom-model-source": "Custom provider",
+  "space-discovery-local-model-source": "Local provider",
+  "space-discovery-inherited-model-source": "User default",
+  "space-discovery-model-ambiguous": "Multiple matching providers; review Models settings",
+  "space-discovery-model-unavailable": "Unavailable for this account; review Models settings",
+  "space-discovery-model-policy": "Applies to new sessions after publishing and setup. A manual session model wins; existing sessions keep their model. Access and thinking-effort support are checked when a session starts.",
+  "space-discovery-model-runtime-scope": "Sessions support one bundle agent and its assigned profile, or the default profile when no agent is declared. Multiple bundle agents are not supported yet."
 }

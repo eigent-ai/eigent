@@ -1545,5 +1545,13 @@
   "space-discovery-manual": "Saisir manuellement",
   "space-discovery-connector-note": "La sélection d’un fournisseur déclare uniquement un besoin. Les connexions et les autorisations se configurent séparément.",
   "space-discovery-grants-empty": "Aucune autorisation prise en charge n’a été signalée. Les autorisations existantes sont conservées. Saisissez manuellement les autorisations requises.",
-  "space-discovery-available-options": "Options disponibles"
+  "space-discovery-available-options": "Options disponibles",
+  "space-default-model": "Par défaut de l’espace",
+  "space-discovery-custom-model-source": "Fournisseur personnalisé",
+  "space-discovery-local-model-source": "Fournisseur local",
+  "space-discovery-inherited-model-source": "Modèle par défaut utilisateur",
+  "space-discovery-model-ambiguous": "Plusieurs fournisseurs correspondent ; vérifiez les paramètres des modèles",
+  "space-discovery-model-unavailable": "Indisponible pour ce compte ; vérifiez les paramètres des modèles",
+  "space-discovery-model-policy": "Après publication et configuration, ce choix s’applique aux nouvelles sessions. Un choix manuel est prioritaire ; les sessions existantes conservent leur modèle. L’accès et la prise en charge de l’effort de raisonnement sont vérifiés au démarrage.",
+  "space-discovery-model-runtime-scope": "Les sessions utilisent un seul agent de bundle et son profil, ou le profil par défaut sans agent. Plusieurs agents de bundle ne sont pas encore pris en charge."
 }

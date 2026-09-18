@@ -436,5 +436,9 @@
   "notice-refresh-failed": "Couldn’t refresh your credits. Try again.",
   "notice-availability-unverified": "Couldn’t check availability. Contact support if this continues.",
   "notice-access-unverified": "Your plan was refreshed. Try the model again to check access.",
-  "notice-credits-unavailable": "Credits unavailable"
+  "notice-credits-unavailable": "Credits unavailable",
+  "space-model-unconfirmed": "The first session request has not been confirmed. Reconnect and retry, or choose a session model.",
+  "space-model-unavailable": "This model is unavailable for the current account. Review Models settings or choose a session model.",
+  "space-model-ambiguous": "More than one provider matches this model. Review Models settings or choose a session model.",
+  "space-model-changed": "The account or session model changed while loading. Send your message again."
 }

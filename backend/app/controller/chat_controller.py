@@ -171,6 +171,7 @@ async def _record_canonical_user_message(
     source: str,
     attaches: list[str],
     review_handoff_ids: list[str] | None = None,
+    session_model_selection: dict[str, Any] | None = None,
 ) -> None:
     """Persist admission input against the injected journal instance."""
 
@@ -182,6 +183,11 @@ async def _record_canonical_user_message(
         source=source,
         attachment_names=[Path(path).name for path in attaches],
         review_handoff_ids=review_handoff_ids,
+        **(
+            {"session_model_selection": session_model_selection}
+            if session_model_selection is not None
+            else {}
+        ),
     )
 
 
@@ -235,7 +241,7 @@ def _legacy_environment_template(data: Chat) -> EnvironmentAdmissionTemplate:
                 exc_info=True,
             )
     mcp_configs = data.installed_mcp.get("mcpServers") or {}
-    return LegacyEnvironmentImporter().build_template(
+    template = LegacyEnvironmentImporter().build_template(
         model_platform=data.model_platform,
         model_type=data.model_type,
         auth_source=data.auth_source,
@@ -248,6 +254,24 @@ def _legacy_environment_template(data: Chat) -> EnvironmentAdmissionTemplate:
         mcp_server_configs=mcp_configs,
         skill_config=skill_config,
         session_mode=data.session_mode,
+    )
+    if data.workspace_model_selection is None:
+        return replace(
+            template,
+            workspace_model_selection_checked=(
+                "workspace_model_selection" in data.model_fields_set
+            ),
+        )
+    return replace(
+        template,
+        workspace_model_selection=data.workspace_model_selection,
+        workspace_model_selection_checked=True,
+        runtime_capability_manifest={
+            **template.runtime_capability_manifest,
+            "space_model_selection": data.workspace_model_selection.model_dump(
+                mode="json", exclude={"materialization_id"}
+            ),
+        },
     )
 
 
@@ -329,7 +353,19 @@ def _apply_environment_to_task_lock(
     template: EnvironmentAdmissionTemplate | None,
     runtime_environment: ResolvedRuntimeEnvironment | None = None,
 ) -> None:
-    task_lock.environment_admission_template = template
+    task_lock.environment_admission_template = (
+        replace(
+            template,
+            workspace_model_selection=None,
+            workspace_model_selection_checked=False,
+        )
+        if template is not None
+        and (
+            template.workspace_model_selection is not None
+            or template.workspace_model_selection_checked
+        )
+        else template
+    )
     task_lock.environment_spec_id = spec.spec_id
     task_lock.thinking_effort_requested = spec.thinking_effort_requested.value
     task_lock.thinking_effort_effective = spec.thinking_effort_effective.value
@@ -1131,6 +1167,14 @@ async def _prepare_chat_run(
     admission_request_id: str | None = None,
 ) -> _PreparedChatRun:
     """Bind fresh runtime inputs for a new Run or explicit Resume Attempt."""
+    if data.session_model_selection is not None and (
+        data.session_model_selection.model_platform != data.model_platform
+        or data.session_model_selection.model_type != data.model_type
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Session model does not match the Run binding",
+        )
     # TODO(brain-auth): Phase B should derive canonical user_id from
     # request.state.brain_auth, then verify/replace Chat.email before any
     # workspace snapshot, artifact path, or task lock is resolved.
@@ -1410,6 +1454,16 @@ async def _prepare_chat_run(
             source="chat",
             attaches=data.attaches or [],
             review_handoff_ids=data.review_handoff_ids,
+            session_model_selection=(
+                {
+                    "space_id": run_context.space_id,
+                    "selection": data.session_model_selection.model_dump(
+                        mode="json", by_alias=True, exclude_none=True
+                    ),
+                }
+                if data.session_model_selection is not None
+                else None
+            ),
         )
     if attempt is not None:
         run_context = replace(run_context, attempt_id=attempt.attempt_id)
@@ -1736,8 +1790,18 @@ async def start_chat_stream(data: Chat, request: Request):
     "/chat", name="start chat", dependencies=_CHAT_CONTROL_DEPENDENCIES
 )
 async def post(data: Chat, request: Request):
+    from app.workspace_config.models import WorkspaceModelSelectionChangedError
+
     try:
         stream = await start_chat_stream(data, request)
+    except WorkspaceModelSelectionChangedError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "workspace_model_selection_changed",
+                "message": str(exc),
+            },
+        ) from exc
     except (ModelCapabilityConfigError, UnsupportedThinkingEffortError) as exc:
         raise _model_capability_http_error(exc) from exc
     return StreamingResponse(

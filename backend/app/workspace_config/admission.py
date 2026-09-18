@@ -39,6 +39,8 @@ from app.workspace_config.models import (
     ThinkingEffort,
     WorkspaceBundleManifest,
     WorkspaceBundleReconfigurationPendingError,
+    WorkspaceModelSelection,
+    WorkspaceModelSelectionChangedError,
     canonical_digest,
     normalize_thinking_effort,
 )
@@ -66,6 +68,9 @@ class EnvironmentAdmissionTemplate:
     thinking_effort_requested: ThinkingEffort | None
     # In-process selection only: do not serialize it into environment facts.
     model_capability_inputs: dict[str, Any] | None = None
+    workspace_model_selection: WorkspaceModelSelection | None = None
+    # One-time initial lookup: None then means observed absence, not omission.
+    workspace_model_selection_checked: bool = False
 
     def refresh_model_capability(self) -> EnvironmentAdmissionTemplate:
         """Resolve a new Run's capability without reinterpreting old Attempts."""
@@ -320,7 +325,38 @@ class EnvironmentAdmissionService:
         installed = self.journal.get_latest_workspace_config_materialization(
             space_id
         )
-        effective_template = template
+        if (
+            template.workspace_model_selection_checked
+            and template.workspace_model_selection is None
+            and installed is not None
+        ):
+            raise WorkspaceModelSelectionChangedError()
+        if template.workspace_model_selection is not None:
+            from app.workspace_config.model_selection import (
+                installed_model_selection,
+            )
+
+            if (
+                installed is None
+                or installed.materialization_id
+                != template.workspace_model_selection.materialization_id
+                or installed.revision_id
+                != template.workspace_model_selection.revision_id
+                or installed_model_selection(self.journal, space_id)
+                != template.workspace_model_selection
+            ):
+                raise WorkspaceModelSelectionChangedError()
+        # The check belongs to first launch. Follow-ups keep the captured binding.
+        effective_template = (
+            replace(
+                template,
+                workspace_model_selection=None,
+                workspace_model_selection_checked=False,
+            )
+            if template.workspace_model_selection is not None
+            or template.workspace_model_selection_checked
+            else template
+        )
         local_context_sources: list[ResolvedContextSource] = []
         connector_bindings: list[ResolvedConnectorBinding] = []
         bundle_proposal_id: str | None = None
@@ -465,7 +501,7 @@ class EnvironmentAdmissionService:
                     resolved_configuration_root.expanduser().resolve()
                 )
             effective_template = replace(
-                template,
+                effective_template,
                 manifest=installed_manifest,
                 runtime_capability_manifest={
                     **template.runtime_capability_manifest,
@@ -599,6 +635,11 @@ class EnvironmentAdmissionService:
             owner_id=run_id,
             local_materialization=local_materialization,
             provider_capability=effective_template.provider_capability,
+            model_profile=(
+                effective_template.manifest.spec.agents[0].model_profile
+                if len(effective_template.manifest.spec.agents) == 1
+                else "default"
+            ),
             thinking_effort_override=(
                 effective_template.thinking_effort_requested
             ),

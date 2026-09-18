@@ -1611,5 +1611,13 @@
   "space-discovery-manual": "إدخال يدوي",
   "space-discovery-connector-note": "اختيار موفّر يحدد متطلبًا فقط. تُضبط الاتصالات والأذونات بشكل منفصل.",
   "space-discovery-grants-empty": "لم تُقدَّم معلومات عن الأذونات المدعومة. يتم الاحتفاظ بالأذونات الحالية؛ أدخل الأذونات المطلوبة يدويًا.",
-  "space-discovery-available-options": "الخيارات المتاحة"
+  "space-discovery-available-options": "الخيارات المتاحة",
+  "space-default-model": "الافتراضي للمساحة",
+  "space-discovery-custom-model-source": "موفر مخصص",
+  "space-discovery-local-model-source": "موفر محلي",
+  "space-discovery-inherited-model-source": "نموذج المستخدم الافتراضي",
+  "space-discovery-model-ambiguous": "توجد موفرات متعددة مطابقة؛ راجع إعدادات النماذج",
+  "space-discovery-model-unavailable": "غير متاح لهذا الحساب؛ راجع إعدادات النماذج",
+  "space-discovery-model-policy": "يُطبق على الجلسات الجديدة بعد النشر والإعداد. للاختيار اليدوي الأولوية، وتحتفظ الجلسات الحالية بنموذجها. يُتحقق من صلاحية الوصول ودعم جهد التفكير عند بدء الجلسة.",
+  "space-discovery-model-runtime-scope": "تدعم الجلسة وكيلاً واحداً من الحزمة وملفه المحدد، أو الملف الافتراضي عند عدم تحديد وكيل. تعدد وكلاء الحزمة غير مدعوم بعد."
 }
