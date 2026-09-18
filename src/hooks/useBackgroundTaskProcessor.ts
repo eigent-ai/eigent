@@ -36,6 +36,7 @@ import { useCallback, useEffect, useRef } from 'react';
 
 /** Poll interval in ms */
 const POLL_INTERVAL_MS = 2000;
+const RUNTIME_OWNERSHIP_TIMEOUT_MS = 10_000;
 
 interface ActiveBackgroundTask {
   projectId: string;
@@ -75,11 +76,54 @@ export function useBackgroundTaskProcessor() {
   const activeTasksRef = useRef<Map<string, ActiveBackgroundTask>>(new Map());
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isProcessingRef = useRef(false);
+  const runtimeRequestRef = useRef<AbortController | null>(null);
+  const lifetimeRef = useRef({ active: false });
+
+  useEffect(() => {
+    const lifetime = { active: true };
+    lifetimeRef.current = lifetime;
+    return () => {
+      lifetime.active = false;
+      runtimeRequestRef.current?.abort();
+    };
+  }, []);
 
   const processOneTask = useCallback(async () => {
-    if (isProcessingRef.current) return;
+    const lifetime = lifetimeRef.current;
+    if (!lifetime.active || isProcessingRef.current) return;
     isProcessingRef.current = true;
     try {
+      const requestRuntime = async (
+        request: (signal: AbortSignal) => Promise<LegacyChatRuntimeStatus>
+      ): Promise<LegacyChatRuntimeStatus> => {
+        const controller = new AbortController();
+        runtimeRequestRef.current = controller;
+        let onAbort!: () => void;
+        const aborted = new Promise<never>((_resolve, reject) => {
+          onAbort = () => reject(controller.signal.reason);
+          controller.signal.addEventListener('abort', onAbort, { once: true });
+        });
+        const timeout = setTimeout(
+          () =>
+            controller.abort(
+              new DOMException(
+                'Runtime ownership request timed out',
+                'AbortError'
+              )
+            ),
+          RUNTIME_OWNERSHIP_TIMEOUT_MS
+        );
+        try {
+          // Bound the whole helper, including readiness/header resolution.
+          // A late response cannot continue this timed-out admission attempt.
+          return await Promise.race([request(controller.signal), aborted]);
+        } finally {
+          clearTimeout(timeout);
+          controller.signal.removeEventListener('abort', onAbort);
+          if (runtimeRequestRef.current === controller)
+            runtimeRequestRef.current = null;
+        }
+      };
       const findQueuedExecution = (
         projectId: string,
         identity: Pick<TaskQueue, 'task_id' | 'executionId' | 'timestamp'>
@@ -137,6 +181,7 @@ export function useBackgroundTaskProcessor() {
       } | null = null;
 
       for (const project of projects) {
+        if (!lifetime.active) return;
         const projectData = projectStore.getProjectById(project.id);
         if (!projectData?.queuedMessages?.length) continue;
         const msg = projectData.queuedMessages.find(
@@ -179,8 +224,13 @@ export function useBackgroundTaskProcessor() {
 
         let runtimeStatus: LegacyChatRuntimeStatus;
         try {
-          runtimeStatus = await fetchGet(
-            `/chat/${encodeURIComponent(project.id)}/status`
+          runtimeStatus = await requestRuntime((signal) =>
+            fetchGet(
+              `/chat/${encodeURIComponent(project.id)}/status`,
+              undefined,
+              undefined,
+              { signal }
+            )
           );
         } catch (error) {
           console.warn(
@@ -191,6 +241,7 @@ export function useBackgroundTaskProcessor() {
           );
           continue;
         }
+        if (!lifetime.active) return;
 
         const pendingAfterStatus = findQueuedExecution(
           project.id,
@@ -219,9 +270,13 @@ export function useBackgroundTaskProcessor() {
           // therefore retires the idle consumer before opening a fresh stream.
           let retired: LegacyChatRuntimeStatus;
           try {
-            retired = await fetchPost(
-              `/chat/${encodeURIComponent(project.id)}/runtime/retire-idle`,
-              { run_id: runtimeStatus.run_id }
+            retired = await requestRuntime((signal) =>
+              fetchPost(
+                `/chat/${encodeURIComponent(project.id)}/runtime/retire-idle`,
+                { run_id: runtimeStatus.run_id },
+                undefined,
+                { signal }
+              )
             );
           } catch (error) {
             console.warn(
@@ -232,6 +287,7 @@ export function useBackgroundTaskProcessor() {
             );
             continue;
           }
+          if (!lifetime.active) return;
           if (retired?.consumer_alive) {
             console.warn(
               '[BackgroundTaskProcessor] Skipping project',

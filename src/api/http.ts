@@ -357,8 +357,12 @@ export async function fetchGetBlob(
   return response.blob();
 }
 
-export const fetchPost = (url: string, data?: any, headers?: any) =>
-  fetchRequest('POST', url, data, headers);
+export const fetchPost = (
+  url: string,
+  data?: any,
+  headers?: any,
+  options?: FetchRequestOptions
+) => fetchRequest('POST', url, data, headers, options);
 
 export const fetchPut = (url: string, data?: any, headers?: any) =>
   fetchRequest('PUT', url, data, headers);

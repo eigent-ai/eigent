@@ -16,7 +16,7 @@ import { useBackgroundTaskProcessor } from '@/hooks/useBackgroundTaskProcessor';
 import { ExecutionStatus } from '@/types';
 import { AgentStep, ChatTaskStatus } from '@/types/constants';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
   const projectRuntimeStore = {
@@ -177,7 +177,9 @@ describe('useBackgroundTaskProcessor SSE admission', () => {
     await waitFor(() => expect(mocks.startTask).toHaveBeenCalledTimes(1));
     expect(mocks.fetchPost).toHaveBeenCalledWith(
       '/chat/project-1/runtime/retire-idle',
-      { run_id: 'ended-run' }
+      { run_id: 'ended-run' },
+      undefined,
+      { signal: expect.any(AbortSignal) }
     );
     expect(mocks.fetchPost.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.closeIdleSSEConnectionsForTasks.mock.invocationCallOrder[0]
@@ -209,6 +211,207 @@ describe('useBackgroundTaskProcessor SSE admission', () => {
 
     unmount();
   });
+
+  describe.each(['status', 'retirement'] as const)(
+    'bounded %s requests',
+    (stage) => {
+      beforeEach(() => {
+        vi.useFakeTimers();
+        const first = mocks.projectRuntimeStore.getProjectById('project-1');
+        const second = {
+          ...first,
+          id: 'project-2',
+          queuedMessages: [
+            {
+              ...first.queuedMessages[0],
+              task_id: 'queued-trigger-2',
+              executionId: 'execution-2',
+            },
+          ],
+        };
+        const projects: Record<string, typeof first> = {
+          'project-1': first,
+          'project-2': second,
+        };
+        mocks.projectRuntimeStore.getAllProjects.mockReturnValue(
+          Object.values(projects)
+        );
+        mocks.projectRuntimeStore.getProjectById.mockImplementation(
+          (id: string) => projects[id]
+        );
+        mocks.projectRuntimeStore.getChatStore.mockImplementation(
+          (id: string) => projects[id].chatStores.primary
+        );
+        mocks.projectRuntimeStore.markQueuedMessageAsProcessing.mockImplementation(
+          (id: string, taskId: string) => {
+            projects[id].queuedMessages = projects[id].queuedMessages.map(
+              (message: { task_id: string }) =>
+                message.task_id === taskId
+                  ? { ...message, processing: true }
+                  : message
+            );
+          }
+        );
+        Object.assign(mocks.projectRuntimeStore, { projects });
+        mocks.hasSSETransportForTasks.mockReturnValue(false);
+      });
+
+      afterEach(() => vi.useRealTimers());
+
+      const suspendFirstProject = () => {
+        let resolveRequest!: (value: unknown) => void;
+        // Deliberately ignore AbortSignal: the hook must also bound async
+        // readiness/header work that has not reached fetch yet.
+        const request = new Promise((resolve) => {
+          resolveRequest = resolve;
+        });
+        let suspendedSignal!: AbortSignal;
+        let suspended = false;
+        let retryAllowed = false;
+        const successfulSignals: AbortSignal[] = [];
+        const events: string[] = [];
+        mocks.fetchGet.mockImplementation(
+          async (
+            url: string,
+            _params: unknown,
+            _headers: unknown,
+            { signal }: { signal: AbortSignal }
+          ) => {
+            if (url.includes('/project-2/')) {
+              successfulSignals.push(signal);
+              return { consumer_alive: false };
+            }
+            if (stage === 'status' && !suspended) {
+              suspended = true;
+              suspendedSignal = signal;
+              return request;
+            }
+            successfulSignals.push(signal);
+            if (retryAllowed) events.push('fresh-status');
+            return {
+              status: !suspended || retryAllowed ? 'done' : 'running',
+              run_id: 'ended-run',
+              consumer_alive: true,
+            };
+          }
+        );
+        mocks.fetchPost.mockImplementation(
+          async (
+            _url: string,
+            _data: unknown,
+            _headers: unknown,
+            { signal }: { signal: AbortSignal }
+          ) => {
+            if (stage === 'retirement' && !suspended) {
+              suspended = true;
+              suspendedSignal = signal;
+              return request;
+            }
+            successfulSignals.push(signal);
+            events.push('retired');
+            return { retired: true, consumer_alive: false };
+          }
+        );
+        mocks.startTask.mockImplementation((...args: unknown[]) => {
+          events.push(`start:${args[7]}`);
+          return new Promise<void>(() => {});
+        });
+        return {
+          signal: () => suspendedSignal,
+          resolve: () => resolveRequest({ consumer_alive: false }),
+          allowRetry: () => {
+            retryAllowed = true;
+          },
+          successfulSignals,
+          events,
+        };
+      };
+
+      it('skips a hung Session without treating timeout as retirement, then retries ownership afresh', async () => {
+        const pending = suspendFirstProject();
+        const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+        await act(async () => vi.advanceTimersByTimeAsync(0));
+        const fetch = stage === 'status' ? mocks.fetchGet : mocks.fetchPost;
+        expect(fetch).toHaveBeenCalledTimes(1);
+        const subscription =
+          mocks.useProjectRuntimeStore.subscribe.mock.calls[0][0];
+
+        await act(async () => {
+          subscription();
+          subscription();
+          await vi.advanceTimersByTimeAsync(9_999);
+        });
+        expect(fetch).toHaveBeenCalledTimes(1);
+        expect(mocks.startTask).not.toHaveBeenCalled();
+        expect(pending.signal().aborted).toBe(false);
+
+        await act(async () => vi.advanceTimersByTimeAsync(1));
+        expect(pending.signal().aborted).toBe(true);
+        expect(mocks.startTask).toHaveBeenCalledTimes(1);
+        expect(mocks.startTask.mock.calls[0][7]).toBe('project-2');
+        expect(
+          mocks.projectRuntimeStore.markQueuedMessageAsProcessing
+        ).not.toHaveBeenCalledWith('project-1', 'queued-trigger');
+        expect(mocks.closeIdleSSEConnectionsForTasks).not.toHaveBeenCalled();
+
+        // Even a successful late retirement response cannot resume the old
+        // attempt or consume its still-pending queue row.
+        await act(async () => pending.resolve());
+        expect(mocks.startTask).toHaveBeenCalledTimes(1);
+        expect(
+          mocks.projectRuntimeStore.getProjectById('project-1')
+            .queuedMessages[0].processing
+        ).not.toBe(true);
+
+        pending.allowRetry();
+        await act(async () => vi.advanceTimersByTimeAsync(2_000));
+        expect(pending.events).toEqual([
+          'start:project-2',
+          'fresh-status',
+          'retired',
+          'start:project-1',
+        ]);
+        await act(async () => {
+          subscription();
+          await vi.advanceTimersByTimeAsync(20_000);
+        });
+        expect(mocks.startTask).toHaveBeenCalledTimes(2);
+        expect(
+          pending.successfulSignals.every((signal) => !signal.aborted)
+        ).toBe(true);
+        unmount();
+        expect(vi.getTimerCount()).toBe(0);
+      });
+
+      it('aborts on unmount and cannot start either Session from a late response', async () => {
+        const pending = suspendFirstProject();
+        const { unmount } = renderHook(() => useBackgroundTaskProcessor());
+        await act(async () => vi.advanceTimersByTimeAsync(0));
+        expect(pending.signal().aborted).toBe(false);
+
+        await act(async () => {
+          unmount();
+          await vi.advanceTimersByTimeAsync(0);
+        });
+        expect(pending.signal().aborted).toBe(true);
+        await act(async () => {
+          pending.resolve();
+          await vi.advanceTimersByTimeAsync(20_000);
+        });
+        expect(vi.getTimerCount()).toBe(0);
+        expect(mocks.startTask).not.toHaveBeenCalled();
+        expect(mocks.closeIdleSSEConnectionsForTasks).not.toHaveBeenCalled();
+        expect(
+          mocks.projectRuntimeStore.markQueuedMessageAsProcessing
+        ).not.toHaveBeenCalled();
+        expect(
+          mocks.fetchGet.mock.calls.every(
+            ([url]) => !url.includes('/project-2/')
+          )
+        ).toBe(true);
+      });
+    }
+  );
 
   describe.each(['status', 'retirement'] as const)(
     'queue changes while awaiting %s',
@@ -453,7 +656,9 @@ describe('useBackgroundTaskProcessor SSE admission', () => {
     await waitFor(() => expect(mocks.startTask).toHaveBeenCalledTimes(1));
     expect(mocks.fetchPost).toHaveBeenCalledWith(
       '/chat/project-1/runtime/retire-idle',
-      { run_id: 'ended-run' }
+      { run_id: 'ended-run' },
+      undefined,
+      { signal: expect.any(AbortSignal) }
     );
     expect(mocks.fetchPost.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.startTask.mock.invocationCallOrder[0]
