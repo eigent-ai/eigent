@@ -1789,6 +1789,355 @@ describe('ChatStore - Core Functionality', () => {
             )
             .map(([, body]) => body as { status: string; tokens_used: number });
 
+        describe('closed legacy usage recovery', () => {
+          // Keep these tests on real chatStore + Journal reader + Trigger
+          // outbox. Only the two HTTP boundaries are mocked.
+          let originalRead: typeof fetchGet | undefined;
+          beforeEach(() => {
+            releaseProjectEventStore('project-1');
+            originalRead = vi.mocked(fetchGet).getMockImplementation();
+          });
+          afterEach(() => {
+            releaseProjectEventStore('project-1');
+            vi.mocked(fetchGet).mockImplementation(
+              originalRead || (() => Promise.resolve(undefined))
+            );
+          });
+
+          const journal = (eventType: string, runId = 'live-run') => {
+            const event = (
+              sequence: number,
+              type: string,
+              payload: Record<string, unknown>
+            ) => ({
+              ...canonicalEvent(runId, type),
+              event_id: `${runId}:${sequence}`,
+              sequence,
+              run_sequence: sequence,
+              run_version: sequence,
+              payload,
+            });
+            return [
+              event(1, 'run.attempt_started', {
+                attempt_number: 1,
+                attempt_id: 'attempt-1',
+              }),
+              event(2, 'model.invocation.completed', {
+                invocation_id: 'invocation-1',
+                attempt_id: 'attempt-1',
+                usage: { prompt_tokens: 80, completion_tokens: 43 },
+              }),
+              {
+                ...event(3, 'legacy.request_usage', {
+                  agent_id: 'developer-1',
+                  tokens: 123,
+                  step_total_tokens: 123,
+                }),
+                legacy_step: AgentStep.REQUEST_USAGE,
+              },
+              event(4, eventType, { message: 'Final outcome' }),
+            ];
+          };
+          const page = (events: ReturnType<typeof journal>) => ({
+            project_id: 'project-1',
+            run_id: events[0].run_id,
+            after_sequence: 0,
+            next_sequence: events.at(-1)!.sequence,
+            has_more: false,
+            events,
+          });
+          const publish = (events: ReturnType<typeof journal>) => {
+            for (const event of events)
+              runEventIngressRegistry.ingest(
+                'project-1',
+                event.run_id,
+                event,
+                'live'
+              );
+          };
+
+          it.each([
+            ['run.failed', ExecutionStatus.Failed, false],
+            ['run.cancelled', ExecutionStatus.Cancelled, false],
+            ['run.deadline_reached', ExecutionStatus.Failed, false],
+            ['run.failed', ExecutionStatus.Failed, true],
+            ['run.completed', ExecutionStatus.Completed, true],
+          ] as const)(
+            'recovers committed usage after %s (legacy closed first=%s)',
+            async (eventType, status, alreadyClosed) => {
+              const executionId = `journal-${eventType}-${alreadyClosed}`;
+              const { store, streamContaining } = await startObservedLiveTask({
+                executionId,
+              });
+              const legacy = streamContaining('/chat');
+              const events = journal(eventType);
+              let resolvePage!: (value: ReturnType<typeof page>) => void;
+              vi.mocked(fetchGet).mockImplementation((path) =>
+                path === '/runs/live-run/events'
+                  ? new Promise((resolve) => {
+                      resolvePage = resolve;
+                    })
+                  : Promise.resolve(undefined)
+              );
+              if (alreadyClosed) legacy.onclose();
+              publish(events);
+              expect(legacy.signal.aborted).toBe(true);
+              expect(store.getState().tasks['live-run'].status).toBe(
+                ChatTaskStatus.FINISHED
+              );
+              await vi.waitFor(() =>
+                expect(receipts(executionId)).toHaveLength(1)
+              );
+              // The physical stream cannot deliver more deltas. This formerly
+              // lost receipt is recovered from its commit-before-yield journal.
+              await legacy.onmessage({
+                data: JSON.stringify({
+                  step: AgentStep.REQUEST_USAGE,
+                  data: { agent_id: 'developer-1', tokens: 123 },
+                }),
+              });
+              expect(store.getState().tasks['live-run'].tokens).toBe(0);
+              resolvePage(page(events));
+              await vi.waitFor(() =>
+                expect(receipts(executionId).at(-1)).toMatchObject({
+                  status,
+                  tokens_used: 123,
+                })
+              );
+              expect(store.getState().tasks['live-run'].tokens).toBe(123);
+              const sent = receipts(executionId);
+              expect(sent).toHaveLength(2);
+              expect(sent[1]).toEqual({ ...sent[0], tokens_used: 123 });
+              publish(events);
+              await Promise.resolve();
+              expect(receipts(executionId)).toHaveLength(2);
+              expect(
+                vi
+                  .mocked(fetchGet)
+                  .mock.calls.filter(([path]) => path.endsWith('/events'))
+              ).toHaveLength(1);
+            }
+          );
+
+          it.each(['close', 'error', 'idle retirement'] as const)(
+            'recovers completed usage when legacy %s follows canonical completion without END',
+            async (closeMode) => {
+              const executionId = `completed-journal-${closeMode}`;
+              const { store, streamContaining } = await startObservedLiveTask({
+                executionId,
+              });
+              const legacy = streamContaining('/chat');
+              const events = journal('run.completed');
+              vi.mocked(fetchGet).mockImplementation((path) =>
+                Promise.resolve(
+                  path === '/runs/live-run/events' ? page(events) : undefined
+                )
+              );
+              publish(events);
+              expect(legacy.signal.aborted).toBe(false);
+              expect(
+                vi
+                  .mocked(fetchGet)
+                  .mock.calls.some(([path]) => path.endsWith('/events'))
+              ).toBe(false);
+              if (closeMode === 'close') legacy.onclose();
+              else if (closeMode === 'idle retirement')
+                closeIdleSSEConnectionsForTasks(['live-run']);
+              else
+                expect(() =>
+                  legacy.onerror(new Error('connection closed'))
+                ).toThrow('connection closed');
+              await vi.waitFor(() =>
+                expect(receipts(executionId).at(-1)?.tokens_used).toBe(123)
+              );
+              expect(store.getState().tasks['live-run']).toMatchObject({
+                tokens: 123,
+                status: ChatTaskStatus.FINISHED,
+                durableRunStatus: 'completed',
+              });
+            }
+          );
+
+          it('enriches the receipt even when the UI already received usage before a missing END', async () => {
+            const executionId = 'completed-usage-without-end';
+            const { store, streamContaining } = await startObservedLiveTask({
+              executionId,
+            });
+            const legacy = streamContaining('/chat');
+            const events = journal('run.completed');
+            vi.mocked(fetchGet).mockImplementation((path) =>
+              Promise.resolve(
+                path === '/runs/live-run/events' ? page(events) : undefined
+              )
+            );
+            publish(events);
+            await vi.waitFor(() =>
+              expect(receipts(executionId).at(-1)?.tokens_used).toBe(0)
+            );
+            await legacy.onmessage({
+              data: JSON.stringify({
+                step: AgentStep.REQUEST_USAGE,
+                data: { agent_id: 'developer-1', tokens: 123 },
+              }),
+            });
+            expect(store.getState().tasks['live-run'].tokens).toBe(123);
+            closeIdleSSEConnectionsForTasks(['live-run']);
+            await vi.waitFor(() =>
+              expect(receipts(executionId).at(-1)?.tokens_used).toBe(123)
+            );
+            expect(store.getState().tasks['live-run'].tokens).toBe(123);
+          });
+
+          it('uses the actual terminal journal boundary for a snapshot without an event cursor', async () => {
+            const executionId = 'snapshot-journal-usage';
+            const { store } = await startObservedLiveTask({ executionId });
+            const events = journal('run.deadline_reached');
+            vi.mocked(fetchGet).mockResolvedValue(page(events));
+            runProjectionStore.upsertRunSummaries('project-1', [
+              {
+                run_id: 'live-run',
+                project_id: 'project-1',
+                status: 'failed',
+                version: 87,
+                updated_at: Date.now(),
+                latest_attempt: { attempt_number: 1, status: 'failed' },
+              },
+            ]);
+            expect(
+              runProjectionStore.getRun('project-1', 'live-run')?.lastSequence
+            ).toBe(0);
+            await vi.waitFor(() =>
+              expect(receipts(executionId).at(-1)?.tokens_used).toBe(123)
+            );
+            expect(store.getState().tasks['live-run'].tokens).toBe(123);
+          });
+
+          it('does not add journal totals to usage already delivered by legacy', async () => {
+            const executionId = 'journal-legacy-overlap';
+            const { store, streamContaining } = await startObservedLiveTask({
+              executionId,
+            });
+            await streamContaining('/chat').onmessage({
+              data: JSON.stringify({
+                step: AgentStep.REQUEST_USAGE,
+                data: { agent_id: 'developer-1', tokens: 123 },
+              }),
+            });
+            const events = journal('run.failed');
+            vi.mocked(fetchGet).mockResolvedValue(page(events));
+            publish(events);
+            await vi.waitFor(() =>
+              expect(receipts(executionId)).toHaveLength(1)
+            );
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            expect(store.getState().tasks['live-run'].tokens).toBe(123);
+            expect(receipts(executionId)).toEqual([
+              expect.objectContaining({
+                status: ExecutionStatus.Failed,
+                tokens_used: 123,
+              }),
+            ]);
+          });
+
+          it('keeps delayed recovery on its original Run and execution when focus changes', async () => {
+            const executionId = 'journal-original-execution';
+            const { store } = await startObservedLiveTask({ executionId });
+            let resolvePage!: (value: ReturnType<typeof page>) => void;
+            vi.mocked(fetchGet).mockImplementation(
+              () =>
+                new Promise((resolve) => {
+                  resolvePage = resolve;
+                })
+            );
+            const events = journal('run.failed');
+            publish(events);
+            store.getState().create('new-run');
+            store.getState().setExecutionId('new-run', 'new-execution');
+            store.getState().setActiveTaskId('new-run');
+            resolvePage(page(events));
+            await vi.waitFor(() =>
+              expect(receipts(executionId).at(-1)?.tokens_used).toBe(123)
+            );
+            expect(store.getState().tasks['new-run'].tokens).toBe(0);
+            expect(receipts('new-execution')).toEqual([]);
+          });
+
+          it.each([
+            'removed',
+            'execution replaced',
+            'Resume admission',
+          ] as const)(
+            'ignores late journal reads after the original owner is %s',
+            async (boundary) => {
+              const executionId = `journal-owner-${boundary}`;
+              const { store } = await startObservedLiveTask({ executionId });
+              let resolvePage!: (value: ReturnType<typeof page>) => void;
+              let journalSignal!: AbortSignal;
+              vi.mocked(fetchGet).mockImplementation(
+                (_path, _params, _headers, options) => {
+                  journalSignal = options!.signal!;
+                  return new Promise((resolve) => {
+                    resolvePage = resolve;
+                  });
+                }
+              );
+              const events = journal('run.failed');
+              publish(events);
+              await vi.waitFor(() =>
+                expect(receipts(executionId)).toHaveLength(1)
+              );
+              if (boundary === 'removed')
+                store.getState().removeTask('live-run');
+              else if (boundary === 'execution replaced')
+                store
+                  .getState()
+                  .setExecutionId('live-run', 'replacement-execution');
+              else {
+                // Even a denied Resume invalidates recovery before readiness
+                // yields. The backend still owns whether admission is legal.
+                projectStoreState.mockReturnValue({
+                  ...projectStoreState(),
+                  getAllChatStores: () => [
+                    { chatId: 'primary', chatStore: store },
+                  ],
+                  setActiveChatStore: vi.fn(),
+                } as any);
+                vi.mocked(fetchPost).mockRejectedValueOnce(
+                  new Error('terminal Run cannot Resume')
+                );
+                await expect(
+                  store
+                    .getState()
+                    .startTask(
+                      'live-run',
+                      undefined,
+                      undefined,
+                      undefined,
+                      undefined,
+                      undefined,
+                      undefined,
+                      'project-1',
+                      'single' as any,
+                      {
+                        resumeRequestId: 'denied-resume',
+                        preserveTaskId: true,
+                        skipHistoryCreate: true,
+                        awaitAdmission: true,
+                      }
+                    )
+                ).rejects.toThrow('terminal Run cannot Resume');
+              }
+              resolvePage(page(events));
+              await new Promise((resolve) => setTimeout(resolve, 0));
+              expect(store.getState().tasks['live-run']?.tokens || 0).toBe(0);
+              expect(receipts(executionId)).toHaveLength(1);
+              expect(receipts('replacement-execution')).toEqual([]);
+              if (boundary !== 'execution replaced')
+                expect(journalSignal.aborted).toBe(true);
+            }
+          );
+        });
+
         it.each([
           ['runtime.interrupted', false],
           ['run.interrupted', false],

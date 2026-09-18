@@ -71,6 +71,7 @@ import {
 import { cancelFollowUpRequest } from '@/service/followUpQueueApi';
 import { reconcileLegacyRunState } from '@/service/reconcileLegacyRunState';
 import { RUN_RECONCILIATION_MARKERS } from '@/service/runStateReconciliation';
+import { reconcileRunUsage } from '@/service/runUsageReconciliation';
 import { proxyUpdateTriggerExecution } from '@/service/triggerApi';
 import { confirmCloudRecovery } from '@/store/usageNoticeStore';
 import { ExecutionStatus } from '@/types';
@@ -1382,9 +1383,19 @@ type ActiveSSEConnection = {
   live: boolean;
   logicalActive: boolean;
   taskId: string;
+  recoverClosedUsage?: () => void;
 };
 
 const activeSSEControllers: Record<string, ActiveSSEConnection> = {};
+
+// Journal reads outlive the terminal observer/transport, but never a new
+// admission of the same Run. Each read is also bounded by its own deadline.
+const terminalUsageRecoveries = new Map<string, AbortController>();
+
+function cancelTerminalUsageRecovery(taskId: string): void {
+  terminalUsageRecoveries.get(taskId)?.abort();
+  terminalUsageRecoveries.delete(taskId);
+}
 
 // A follow-up Run reuses the original legacy `/chat` connection while its
 // canonical observer follows the currently active task. Index the disposer by
@@ -1424,7 +1435,12 @@ function cleanupSSEConnection(
   {
     abort = true,
     disposeCanonicalObserver = true,
-  }: { abort?: boolean; disposeCanonicalObserver?: boolean } = {}
+    recoverUsage = true,
+  }: {
+    abort?: boolean;
+    disposeCanonicalObserver?: boolean;
+    recoverUsage?: boolean;
+  } = {}
 ): void {
   // A superseded transport may deliver a late onerror/onclose callback after
   // another transport has claimed the same Run. Only the current owner may
@@ -1445,6 +1461,7 @@ function cleanupSSEConnection(
   for (const [taskId, registered] of Object.entries(activeSSEControllers)) {
     if (registered === connection) delete activeSSEControllers[taskId];
   }
+  if (recoverUsage) connection.recoverClosedUsage?.();
 }
 
 function bindSSEConnectionToTask(
@@ -1489,10 +1506,11 @@ function cleanupTaskSSEResources(
   taskId: string,
   { abort = true }: { abort?: boolean } = {}
 ): void {
+  cancelTerminalUsageRecovery(taskId);
   cleanupCanonicalTerminalObserverForTask(taskId);
   const connection = activeSSEControllers[taskId];
   if (!connection) return;
-  cleanupSSEConnection(connection, { abort });
+  cleanupSSEConnection(connection, { abort, recoverUsage: false });
 }
 
 const CANONICAL_TERMINAL_RUN_STATUSES: Partial<
@@ -2230,6 +2248,88 @@ const updateTriggerExecutionStatus = async (
   }
 };
 
+/** Recover receipts already committed before a terminal closed legacy SSE. */
+function recoverTerminalUsage(
+  owner: Pick<VanillaChatStore, 'getState'>,
+  projectId: string,
+  taskId: string,
+  throughSequence?: number,
+  terminalMessage?: string
+): void {
+  const task = owner.getState().tasks[taskId];
+  const outcome = task?.durableRunStatus;
+  if (
+    !task ||
+    task.status !== ChatTaskStatus.FINISHED ||
+    task.isPending ||
+    !['failed', 'cancelled', 'completed'].includes(outcome || '') ||
+    terminalUsageRecoveries.has(taskId)
+  )
+    return;
+  const executionId = task.executionId;
+  const controller = new AbortController();
+  terminalUsageRecoveries.set(taskId, controller);
+  const terminalEventTypes =
+    outcome === 'failed'
+      ? ['run.failed', 'run.deadline_reached']
+      : [`run.${outcome}`];
+  void reconcileRunUsage({
+    projectId,
+    runId: taskId,
+    throughSequence,
+    terminalEventTypes,
+    signal: controller.signal,
+  })
+    .then((tokens) => {
+      const state = owner.getState();
+      const current = state.tasks[taskId];
+      if (
+        controller.signal.aborted ||
+        terminalUsageRecoveries.get(taskId) !== controller ||
+        !current ||
+        current.executionId !== executionId ||
+        current.durableRunStatus !== outcome ||
+        current.status !== ChatTaskStatus.FINISHED ||
+        current.isPending
+      )
+        return;
+      // Journal/model and legacy receipts overlap. This is a monotone known
+      // total, not another delta; never add both sources or lower local usage.
+      const knownTokens = Math.max(tokens, current.tokens || 0);
+      if (knownTokens > (current.tokens || 0)) {
+        state.addTokens(taskId, knownTokens - (current.tokens || 0));
+      }
+      // A legacy delta can already have reached the UI without its END
+      // receipt. Let the outbox dedupe the same-outcome enrichment separately.
+      void updateTriggerExecutionStatus(
+        owner.getState(),
+        projectId,
+        taskId,
+        outcome === 'completed'
+          ? ExecutionStatus.Completed
+          : outcome === 'cancelled'
+            ? ExecutionStatus.Cancelled
+            : ExecutionStatus.Failed,
+        knownTokens,
+        terminalMessage
+      );
+    })
+    .catch((error) => {
+      if (!controller.signal.aborted) {
+        console.warn(
+          '[RunUsage] Could not recover terminal usage:',
+          taskId,
+          error
+        );
+      }
+    })
+    .finally(() => {
+      if (terminalUsageRecoveries.get(taskId) === controller) {
+        terminalUsageRecoveries.delete(taskId);
+      }
+    });
+}
+
 const chatStore = (initial?: Partial<ChatStore>) =>
   createStore<ChatStore>()((set, get) => ({
     activeTaskId: null,
@@ -2585,6 +2685,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       // Capture ownership before startup yields to readiness/model requests.
       // New composer files may be added to this Run while admission is pending.
       // Resume continues the prior execution without submitting its draft.
+      if (isLiveTask) cancelTerminalUsageRecovery(newTaskId);
       const initialDraftOwner =
         isLiveTask && !startOptions.resumeRequestId
           ? {
@@ -3202,7 +3303,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         };
 
         const settleTerminal = (
-          event: Pick<RunDomainEvent, 'eventType' | 'payload'>
+          event: Pick<RunDomainEvent, 'eventType' | 'payload'> &
+            Partial<Pick<RunDomainEvent, 'runSequence'>>
         ) => {
           if (!active || !isAdmittedAttemptCurrent(observedTaskId)) return;
           const projectedRun = runProjectionStore.getRun(
@@ -3273,10 +3375,24 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             );
           }
 
-          // Failed/cancelled/interrupted executions cannot produce another
-          // useful legacy frame. Stop any retry loop left by the broken
-          // `/chat` transport. A completed Run still gets a chance to emit
-          // its legacy END frame with the final assistant response.
+          // Stop broken transport retries immediately. Its delayed usage is
+          // already in the Journal; recover it independently of this observer.
+          // Completed Runs with an open transport still consume their legacy
+          // tail first, so a journal total cannot double-count later deltas.
+          if (
+            CANONICAL_TERMINAL_RUN_STATUSES[event.eventType] !==
+              'interrupted' &&
+            (event.eventType !== 'run.completed' ||
+              abortController.signal.aborted)
+          ) {
+            recoverTerminalUsage(
+              observedChatStore,
+              project_id,
+              observedTaskId,
+              event.runSequence,
+              terminalMessage
+            );
+          }
           if (event.eventType === 'run.completed') {
             markSSEConnectionIdleForTask(sseConnection, observedTaskId);
             // The legacy transport may already have closed and relinquished
@@ -3390,6 +3506,22 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               activeSSEControllers[runId].controller === abortController),
         });
       };
+
+      const recoverClosedCompletionUsage = () => {
+        if (
+          type ||
+          !project_id ||
+          !abortController.signal.aborted ||
+          sseConnection.taskId !== lockedTaskId ||
+          (activeSSEControllers[lockedTaskId] &&
+            activeSSEControllers[lockedTaskId] !== sseConnection) ||
+          lockedChatStore.getState().tasks[lockedTaskId]?.durableRunStatus !==
+            'completed'
+        )
+          return;
+        recoverTerminalUsage(lockedChatStore, project_id, lockedTaskId);
+      };
+      sseConnection.recoverClosedUsage = recoverClosedCompletionUsage;
 
       // Function to update locked references (only for special cases like replay)
       const updateLockedReferences = (
