@@ -23,6 +23,7 @@ import type {
   ProjectWorkdirMode,
 } from '@/store/projectRuntimeStore';
 import type { Space, SpaceSourceType, SpaceStatus } from '@/store/spaceStore';
+import type { SpaceCategoryKey } from '@/types/exampleContent';
 
 export interface SpacePayload {
   id?: string;
@@ -30,6 +31,7 @@ export interface SpacePayload {
   description?: string;
   source_type?: SpaceSourceType;
   status?: SpaceStatus;
+  category_key?: SpaceCategoryKey | null;
   root_path?: string | null;
   root_fingerprint?: Record<string, unknown> | null;
   metadata?: Record<string, unknown> | null;
@@ -124,10 +126,15 @@ export interface ServerSpace {
   root_path?: string | null;
   root_fingerprint?: Record<string, unknown> | null;
   status: 'active' | 'disconnected' | 'archived';
+  category_key?: SpaceCategoryKey | null;
   schema_version: number;
   metadata?: Record<string, unknown> | null;
   created_at?: string | null;
   updated_at?: string | null;
+}
+
+export class UnsupportedSpaceCategoryPreferenceError extends Error {
+  readonly code = 'unsupported-space-category-preference';
 }
 
 export interface ProjectPayload {
@@ -166,11 +173,30 @@ export const toLocalSpace = (space: ServerSpace): Space => ({
   rootPath: space.root_path ?? null,
   rootFingerprint: space.root_fingerprint ?? null,
   status: space.status,
+  categoryKey: space.category_key ?? null,
   schemaVersion: space.schema_version,
   createdAt: timestampFromServer(space.created_at),
   updatedAt: timestampFromServer(space.updated_at),
   metadata: space.metadata ?? undefined,
 });
+
+const requireAcknowledgedCategory = (
+  space: unknown,
+  requestedCategory: SpaceCategoryKey | null | undefined
+): ServerSpace => {
+  if (requestedCategory === undefined) return space as ServerSpace;
+  if (
+    typeof space !== 'object' ||
+    space === null ||
+    !Object.prototype.hasOwnProperty.call(space, 'category_key') ||
+    (space as ServerSpace).category_key !== requestedCategory
+  ) {
+    throw new UnsupportedSpaceCategoryPreferenceError(
+      'The connected server did not confirm the Space category preference.'
+    );
+  }
+  return space as ServerSpace;
+};
 
 export const proxyFetchSpaces = async (): Promise<Space[]> => {
   const spaces = await proxyFetchGet('/api/v1/spaces');
@@ -186,7 +212,7 @@ export const proxyCreateSpace = async (
   payload: SpacePayload
 ): Promise<Space> => {
   const space = await proxyFetchPost('/api/v1/spaces', payload);
-  return toLocalSpace(space as ServerSpace);
+  return toLocalSpace(requireAcknowledgedCategory(space, payload.category_key));
 };
 
 export const proxyUpdateSpace = async (
@@ -194,7 +220,7 @@ export const proxyUpdateSpace = async (
   payload: Partial<SpacePayload>
 ): Promise<Space> => {
   const space = await proxyFetchPatch(`/api/v1/spaces/${spaceId}`, payload);
-  return toLocalSpace(space as ServerSpace);
+  return toLocalSpace(requireAcknowledgedCategory(space, payload.category_key));
 };
 
 export const proxyFetchSpaceProjects = async (

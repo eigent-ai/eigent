@@ -1,0 +1,49 @@
+{
+  "options": {
+    "schemaVersion": 1,
+    "contentRevision": "fixture-revision-1",
+    "status": "ready",
+    "delivery": "live",
+    "expiresAt": "2026-09-21T00:00:00Z",
+    "spaceCategories": [
+      {
+        "key": "customer-success",
+        "label": "Customer success",
+        "description": "Customer onboarding, retention, and support work.",
+        "sortOrder": 10,
+        "resolvedLocale": "en"
+      }
+    ]
+  },
+  "recommendations": {
+    "schemaVersion": 1,
+    "contentRevision": "fixture-revision-1",
+    "status": "ready",
+    "delivery": "live",
+    "expiresAt": "2026-09-21T00:00:00Z",
+    "items": [
+      {
+        "exampleRef": "example_fixture_weekly_summary",
+        "title": "Prepare a weekly summary",
+        "summary": "Summarize progress, blockers, and next steps.",
+        "prompt": "Review recent work and prepare a concise weekly summary.",
+        "resolvedLocale": "en",
+        "attribution": null,
+        "learnMoreUrl": null,
+        "automationDefaults": {
+          "name": "Weekly progress summary",
+          "description": "Prepare a weekly summary for this Space."
+        },
+        "requirements": { "connectorKeys": [] }
+      }
+    ]
+  },
+  "unavailable": {
+    "schemaVersion": 1,
+    "contentRevision": "fixture-unavailable",
+    "status": "unavailable",
+    "delivery": "none",
+    "expiresAt": null,
+    "items": []
+  }
+}

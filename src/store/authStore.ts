@@ -19,6 +19,7 @@ import {
   recordUserIdentityAvailable,
   recordUserSessionCleared,
 } from '@/lib/events/appEvents';
+import { clearExampleCategoryCache } from '@/lib/exampleCategoryCache';
 import { clearAllCachedProjects } from '@/lib/projectCache';
 import {
   DEFAULT_COLOR_THEME_ID,
@@ -38,12 +39,7 @@ const LEGACY_DEFAULT_CLOUD_MODEL_ID = 'gpt-5.5';
 
 /** Main workspace panel background (Workforce + Session tabs only). */
 export type WorkspaceMainBackground =
-  | 'empty'
-  | 'dots'
-  | 'blocks'
-  | 'ruled'
-  | 'dotted'
-  | 'dashed';
+  'empty' | 'dots' | 'blocks' | 'ruled' | 'dotted' | 'dashed';
 export type CloudModelType = string;
 export type CodexSubscriptionModelType = string;
 
@@ -168,6 +164,16 @@ const hydrateSpacesForUser = (userId: number | string | null | undefined) => {
   void useSpaceStore.getState().hydrateFromServer(userId);
 };
 
+const hydrateProfileForUser = (userId: number | string | null | undefined) => {
+  void import('./userProfileStore').then(({ useUserProfileStore }) => {
+    if (userId === null || userId === undefined || userId === '') {
+      useUserProfileStore.getState().reset();
+      return;
+    }
+    void useUserProfileStore.getState().hydrate(userId);
+  });
+};
+
 const clearAuthForCurrentEnvironment = (
   setState: (state: Partial<AuthState>) => void,
   getState: () => AuthState
@@ -181,6 +187,7 @@ const clearAuthForCurrentEnvironment = (
   const hadAuth = Boolean(state.token || state.email || state.user_id != null);
   if (state.user_id != null) {
     void clearAllCachedProjects(state.user_id);
+    clearExampleCategoryCache(getAuthEnvironmentKey(), String(state.user_id));
   }
 
   setState({
@@ -193,6 +200,7 @@ const clearAuthForCurrentEnvironment = (
     authEnvironmentKey: currentEnvironmentKey,
   });
   useSpaceStore.getState().resetForUser(null);
+  hydrateProfileForUser(null);
   if (hadAuth) {
     console.warn(
       '[authStore] Cleared persisted auth after API environment changed.'
@@ -240,6 +248,10 @@ const authStore = create<AuthState>()(
         const previousUserId = get().user_id;
         if (previousUserId != null && previousUserId !== resolvedUserId) {
           void clearAllCachedProjects(previousUserId);
+          clearExampleCategoryCache(
+            getAuthEnvironmentKey(),
+            String(previousUserId)
+          );
         }
         useSpaceStore.getState().resetForUser(resolvedUserId);
         set({
@@ -250,6 +262,7 @@ const authStore = create<AuthState>()(
           authEnvironmentKey: getAuthEnvironmentKey(),
         });
         hydrateSpacesForUser(resolvedUserId);
+        hydrateProfileForUser(resolvedUserId);
         recordUserIdentityAvailable({ id: resolvedUserId, email, username });
       },
 
@@ -260,6 +273,10 @@ const authStore = create<AuthState>()(
           // different user later doesn't see stale conversations. Fire-and-
           // forget — clearAllCachedProjects swallows its own errors.
           void clearAllCachedProjects(previousUserId);
+          clearExampleCategoryCache(
+            getAuthEnvironmentKey(),
+            String(previousUserId)
+          );
         }
         set({
           token: null,
@@ -272,6 +289,7 @@ const authStore = create<AuthState>()(
         });
         recordUserSessionCleared();
         useSpaceStore.getState().resetForUser(null);
+        hydrateProfileForUser(null);
       },
 
       // set related methods
@@ -573,6 +591,7 @@ queueMicrotask(() => {
   const { token, user_id, email, username } = authStore.getState();
   hydrateSpacesForUser(user_id);
   if (token && user_id != null) {
+    hydrateProfileForUser(user_id);
     recordUserIdentityAvailable({ id: user_id, email, username });
   }
 });
