@@ -16,6 +16,7 @@ import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
+from typing import get_args
 
 import pytest
 from pydantic import ValidationError
@@ -26,18 +27,29 @@ os.environ.setdefault("database_url", "sqlite:///test.db")
 os.environ.setdefault("secret_key", "test-secret")
 
 from app.domains.user.api.user_controller import put_profile
-from app.model.user.user import User, UserOut, UserProfile
+from app.model.user.user import User, UserOut, UserProfile, WorkRoleKey
 
 WORK_ROLE_KEYS = (
+    "product-management",
     "engineering",
-    "design",
-    "product",
-    "marketing",
+    "human-resources",
     "finance",
-    "legal",
-    "security",
+    "marketing",
+    "sales",
     "operations",
-    "other",
+    "data-science",
+    "design",
+    "legal",
+    "scientist",
+    "student",
+    "founder",
+    "healthcare",
+    "writer",
+    "educator",
+    "consultant",
+    "researcher",
+    "software-engineer",
+    "others",
 )
 
 
@@ -60,9 +72,17 @@ def test_profile_accepts_supported_work_roles(work_role_key: str):
     assert profile.work_role_key == work_role_key
 
 
-def test_profile_rejects_unknown_work_role():
+def test_profile_exposes_exact_product_owned_work_role_keys():
+    assert get_args(WorkRoleKey) == WORK_ROLE_KEYS
+
+
+@pytest.mark.parametrize(
+    "work_role_key",
+    ("product", "security", "other", "customer-success"),
+)
+def test_profile_rejects_unknown_or_retired_work_role(work_role_key: str):
     with pytest.raises(ValidationError):
-        UserProfile(work_role_key="sales")
+        UserProfile(work_role_key=work_role_key)
 
 
 def test_role_only_update_preserves_existing_profile_fields():
@@ -84,7 +104,7 @@ def test_role_only_update_preserves_existing_profile_fields():
 
 
 def test_legacy_profile_update_preserves_existing_work_role():
-    user = _ProfileUser(work_role_key="product")
+    user = _ProfileUser(work_role_key="product-management")
 
     put_profile(
         UserProfile(
@@ -99,11 +119,11 @@ def test_legacy_profile_update_preserves_existing_work_role():
     assert user.fullname == "Updated Name"
     assert user.nickname == "Updated Nickname"
     assert user.work_desc == "Updated description"
-    assert user.work_role_key == "product"
+    assert user.work_role_key == "product-management"
 
 
 def test_explicit_null_clears_work_role():
-    user = _ProfileUser(work_role_key="security")
+    user = _ProfileUser(work_role_key="software-engineer")
 
     put_profile(
         UserProfile(work_role_key=None),
@@ -157,4 +177,4 @@ def test_user_work_role_api_fixture_matches_models(server_root: Path):
     assert legacy_update.model_fields_set == {"fullname", "nickname", "work_desc"}
     assert clear_update.model_fields_set == {"work_role_key"}
     assert clear_update.work_role_key is None
-    assert response.work_role_key == "engineering"
+    assert response.work_role_key == "product-management"

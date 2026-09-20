@@ -31,15 +31,26 @@ class Status(IntEnum):
 
 
 WorkRoleKey = Literal[
+    "product-management",
     "engineering",
-    "design",
-    "product",
-    "marketing",
+    "human-resources",
     "finance",
-    "legal",
-    "security",
+    "marketing",
+    "sales",
     "operations",
-    "other",
+    "data-science",
+    "design",
+    "legal",
+    "scientist",
+    "student",
+    "founder",
+    "healthcare",
+    "writer",
+    "educator",
+    "consultant",
+    "researcher",
+    "software-engineer",
+    "others",
 ]
 
 
