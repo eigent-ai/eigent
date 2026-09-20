@@ -473,7 +473,8 @@ async function proxyFetchRequest(
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   url: string,
   data?: Record<string, any>,
-  customHeaders: Record<string, string> = {}
+  customHeaders: Record<string, string> = {},
+  requestOptions: FetchRequestOptions = {}
 ): Promise<any> {
   const baseURL = await getProxyBaseURL();
   const fullUrl = `${baseURL}${url}`;
@@ -498,18 +499,20 @@ async function proxyFetchRequest(
   const options: RequestInit = {
     method,
     headers,
+    signal: requestOptions.signal,
   };
 
   if (method === 'GET') {
-    const query = data
-      ? '?' +
-        Object.entries(data)
-          .map(
-            ([key, val]) =>
-              `${encodeURIComponent(key)}=${encodeURIComponent(val)}`
-          )
-          .join('&')
-      : '';
+    const queryParams = new URLSearchParams();
+    Object.entries(data ?? {}).forEach(([key, value]) => {
+      const values = Array.isArray(value) ? value : [value];
+      values.forEach((item) => {
+        if (item !== undefined && item !== null) {
+          queryParams.append(key, String(item));
+        }
+      });
+    });
+    const query = queryParams.size > 0 ? `?${queryParams.toString()}` : '';
     return handleResponse(fetch(fullUrl + query, options));
   }
 
@@ -520,8 +523,12 @@ async function proxyFetchRequest(
   return handleResponse(fetch(fullUrl, options));
 }
 
-export const proxyFetchGet = (url: string, params?: any, headers?: any) =>
-  proxyFetchRequest('GET', url, params, headers);
+export const proxyFetchGet = (
+  url: string,
+  params?: any,
+  headers?: any,
+  options?: FetchRequestOptions
+) => proxyFetchRequest('GET', url, params, headers, options);
 
 export const proxyFetchPost = (url: string, data?: any, headers?: any) =>
   proxyFetchRequest('POST', url, data, headers);

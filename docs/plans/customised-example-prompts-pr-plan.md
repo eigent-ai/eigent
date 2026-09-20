@@ -39,13 +39,13 @@ Integration and rollout are a shared release checklist, not a seventh implementa
 
 Use stable keys for storage and matching; translate display labels separately.
 
-| Field                | Allowed values                                                                                                    | Owner   |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------- | ------- |
-| User `work_role_key` | `engineering`, `design`, `product`, `marketing`, `finance`, `legal`, `security`, `operations`, `other`, or `null` | Product |
-| Space `category_key` | Any enabled category key declared by the active example providers, or `null`                                      | Content |
+| Field                | Allowed values                                                                                                                                                                                                                                                                        | Owner   |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| User `work_role_key` | `product-management`, `engineering`, `human-resources`, `finance`, `marketing`, `sales`, `operations`, `data-science`, `design`, `legal`, `scientist`, `student`, `founder`, `healthcare`, `writer`, `educator`, `consultant`, `researcher`, `software-engineer`, `others`, or `null` | Product |
+| Space `category_key` | Any enabled category key declared by the active example providers, or `null`                                                                                                                                                                                                          | Content |
 
 - `null` means no selection; existing records remain `null`.
-- `other` is an explicit work-role choice.
+- `others` is an explicit work-role choice.
 - Space category keys are lowercase slugs of at most 50 characters. They start with a letter and may contain lowercase letters, numbers, and single hyphen-separated segments, for example `engineering`, `customer-success`, or `revenue-operations`.
 - The Space database and profile API validate only this stable key format. They do not contain a category enum or validate catalog membership.
 - The active example providers are the source of truth for which Space
@@ -94,7 +94,7 @@ not repeat examples to fill an insufficient result set.
 
 This category-first fallback order gives the current Space's subject priority
 over the user's profession. Include fixture cases for every tier, missing
-values, explicit `other`, a provider-defined `general` category, dynamically
+values, explicit `others`, a provider-defined `general` category, dynamically
 added categories, disabled or removed categories, conflicting tags, ties,
 duplicates, and insufficient results.
 
@@ -289,52 +289,59 @@ integration surface for both UI PRs.
 
 ### Backend todo
 
-- [ ] Define an `ExampleContentProvider` boundary for category options and
+- [x] Define an `ExampleContentProvider` boundary for category options and
       example lookup using the shared normalized schema.
-- [ ] Implement the `eigent-default` adapter against PR 3's website/S3 catalog.
-- [ ] Add a resolver that chooses the configured account or organisation
+- [x] Implement the `eigent-default` HTTP adapter against PR 3's published
+      website/S3 catalog. Configure its server-only URL with
+      `EXAMPLE_CONTENT_DEFAULT_CATALOG_URL`.
+- [x] Add an account-aware provider registry boundary and resolver that chooses
+      the configured account or organisation
       provider set and uses `eigent-default` when no override exists.
-- [ ] Keep provider selection and credentials outside `category_key` and outside
+- [x] Keep provider selection and credentials outside `category_key` and outside
       desktop state.
-- [ ] Support explicit replace or augment policy with deterministic provider
+- [x] Support explicit replace or augment policy with deterministic provider
       precedence and collision-safe example references.
-- [ ] Merge category registries deterministically and reject incompatible
+- [x] Merge category registries deterministically and reject incompatible
       definitions for the same stable category key.
-- [ ] Load and validate provider-supplied Space-category registries and expose
+- [x] Load and validate provider-supplied Space-category registries and expose
       enabled, localised options through the Eigent API.
-- [ ] Validate every provider result at runtime and apply the specified
+- [x] Validate every provider result at runtime and apply the specified
       matching, ordering, deduplication, and locale rules.
-- [ ] Treat custom-agent output as untrusted content: enforce the same schema,
+- [x] Treat custom-agent output as untrusted content: enforce the same schema,
       length, plain-text, timeout, and cancellation boundaries before returning it.
-- [ ] Implement timeout, refresh, maximum cache age, disablement, and withdrawal behavior.
-- [ ] Return explicit ready/disabled/unavailable states with content revision
+- [x] Implement timeout, refresh, maximum cache age, disablement, and withdrawal behavior.
+- [x] Return explicit ready/disabled/unavailable states with content revision
       and expiry.
-- [ ] Test the matching matrix, default-provider behavior, provider switching,
+- [x] Test the matching matrix, default-provider behavior, provider switching,
       replace/augment precedence, ID collisions, and successful empty/disabled
       responses versus transport failures.
 
 ### Desktop todo
 
-- [ ] Add the fixed user-role type and an opaque Space-category key type; do not
+- [x] Add the fixed user-role type and an opaque Space-category key type; do not
       duplicate provider category lists in desktop code.
-- [ ] Add Space-category API mapping and create/update plumbing for blank and folder Spaces.
-- [ ] Add a client and cache for the server-provided, localised Space-category
+- [x] Add Space-category API mapping and create/update plumbing for blank and folder Spaces.
+- [x] Add a client and cache for the server-provided, localised Space-category
       options, scoped by API environment and opaque content revision.
-- [ ] Load the current user's profile after sign-in and restore it on application reload.
-- [ ] Scope profile state to account and API environment; clear it on logout/account/environment changes.
-- [ ] Ignore pending responses belonging to a previous account or recommendation context.
-- [ ] Refresh recommendations after role/category edits without restarting the app.
-- [ ] Treat absent fields from older servers as unset; report unsupported preference writes without claiming they were saved.
-- [ ] Add the shared example API client, recommendation hook, runtime response validation, and generic bundled examples.
-- [ ] Add the shared recommendation component with loading, empty, disabled, and unavailable states, designed with the designer.
-- [ ] Export a stable component/hook interface and fixtures so PRs 5 and 6 do not depend on one another.
-- [ ] Add a feature flag, disabled by default, before either page integration merges.
-- [ ] Ensure the flag disables example UI and requests on both surfaces.
-- [ ] Define shared analytics helpers for example impressions, selection, and subsequent explicit submission/save.
-- [ ] Track opaque example reference, content revision, and surface; do not
+- [x] Load the current user's profile after sign-in and restore it on application reload.
+- [x] Scope profile state to account and API environment; clear it on logout/account/environment changes.
+- [x] Ignore pending responses belonging to a previous account or recommendation context.
+- [x] Refresh recommendations after role/category edits without restarting the app.
+- [x] Treat absent fields from older servers as unset; report unsupported preference writes without claiming they were saved.
+- [x] Add the shared example API client, recommendation hook, runtime response
+      validation, and a server-owned generic bundled fallback. The desktop does
+      not apply an independent fallback, so disabled or withdrawn content stays hidden.
+- [ ] Complete designer review of the shared recommendation component. The
+      engineering implementation and loading, empty, disabled, and unavailable
+      state contract are in place for review.
+- [x] Export a stable component/hook interface and fixtures so PRs 5 and 6 do not depend on one another.
+- [x] Add a feature flag, disabled by default, before either page integration merges.
+- [x] Ensure the flag disables example UI and requests on both surfaces.
+- [x] Define shared analytics helpers for example impressions, selection, and subsequent explicit submission/save.
+- [x] Track opaque example reference, content revision, and surface; do not
       collect prompt text, user drafts, Space names, provider credentials, or
       private source locations.
-- [ ] Test profile hydration, account switching, stale requests, cache expiry, and feature-off behavior.
+- [x] Test profile hydration, account switching, stale requests, cache expiry, and feature-off behavior.
 
 ### PR 4 acceptance criteria
 

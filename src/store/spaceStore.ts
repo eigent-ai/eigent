@@ -30,6 +30,7 @@ import {
   proxyFetchSpaceProjects,
   type ServerProject,
 } from '@/service/spaceApi';
+import type { SpaceCategoryKey } from '@/types/exampleContent';
 import type { ProjectGroup } from '@/types/history';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
@@ -63,6 +64,7 @@ export interface Space {
   rootPath?: string | null;
   rootFingerprint?: Record<string, unknown> | null;
   status: SpaceStatus;
+  categoryKey?: SpaceCategoryKey | null;
   schemaVersion: number;
   createdAt: number;
   updatedAt: number;
@@ -83,6 +85,7 @@ export interface CreateSpaceInput {
   rootPath?: string | null;
   rootFingerprint?: Record<string, unknown> | null;
   metadata?: Space['metadata'];
+  categoryKey?: SpaceCategoryKey | null;
   setActive?: boolean;
 }
 
@@ -95,6 +98,7 @@ export type UpdateSpaceInput = Partial<
     | 'rootPath'
     | 'rootFingerprint'
     | 'status'
+    | 'categoryKey'
     | 'metadata'
   >
 >;
@@ -885,6 +889,7 @@ export const useSpaceStore = create<SpaceStore>()(
           rootPath: null,
           rootFingerprint: null,
           status: 'active',
+          categoryKey: null,
           schemaVersion: SPACE_SCHEMA_VERSION,
           createdAt: now,
           updatedAt: now,
@@ -1245,6 +1250,7 @@ export const useSpaceStore = create<SpaceStore>()(
           rootPath: input.rootPath ?? null,
           rootFingerprint: input.rootFingerprint ?? null,
           status: 'active',
+          categoryKey: input.categoryKey ?? null,
           schemaVersion: SPACE_SCHEMA_VERSION,
           createdAt: now,
           updatedAt: now,
@@ -1271,6 +1277,7 @@ export const useSpaceStore = create<SpaceStore>()(
           source_type: input.sourceType,
           root_path: input.rootPath,
           root_fingerprint: input.rootFingerprint,
+          category_key: input.categoryKey,
           metadata: input.metadata,
         });
         get().upsertSpaces(
@@ -1289,6 +1296,7 @@ export const useSpaceStore = create<SpaceStore>()(
           root_path: input.rootPath,
           root_fingerprint: input.rootFingerprint,
           status: input.status,
+          category_key: input.categoryKey,
           metadata: input.metadata,
         });
         get().upsertSpaces([space], undefined);

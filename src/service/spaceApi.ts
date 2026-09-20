@@ -23,6 +23,7 @@ import type {
   ProjectWorkdirMode,
 } from '@/store/projectRuntimeStore';
 import type { Space, SpaceSourceType, SpaceStatus } from '@/store/spaceStore';
+import type { SpaceCategoryKey } from '@/types/exampleContent';
 
 export interface SpacePayload {
   id?: string;
@@ -30,6 +31,7 @@ export interface SpacePayload {
   description?: string;
   source_type?: SpaceSourceType;
   status?: SpaceStatus;
+  category_key?: SpaceCategoryKey | null;
   root_path?: string | null;
   root_fingerprint?: Record<string, unknown> | null;
   metadata?: Record<string, unknown> | null;
@@ -124,6 +126,7 @@ export interface ServerSpace {
   root_path?: string | null;
   root_fingerprint?: Record<string, unknown> | null;
   status: 'active' | 'disconnected' | 'archived';
+  category_key?: SpaceCategoryKey | null;
   schema_version: number;
   metadata?: Record<string, unknown> | null;
   created_at?: string | null;
@@ -166,6 +169,7 @@ export const toLocalSpace = (space: ServerSpace): Space => ({
   rootPath: space.root_path ?? null,
   rootFingerprint: space.root_fingerprint ?? null,
   status: space.status,
+  categoryKey: space.category_key ?? null,
   schemaVersion: space.schema_version,
   createdAt: timestampFromServer(space.created_at),
   updatedAt: timestampFromServer(space.updated_at),
