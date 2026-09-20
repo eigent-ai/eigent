@@ -28,12 +28,12 @@ def _migration_revisions(path: Path) -> tuple[str, str | None]:
     return values["revision"], values["down_revision"]
 
 
-def test_user_work_role_migration_extends_current_merged_head(server_root: Path):
+def test_user_work_role_migration_extends_space_category_migration(server_root: Path):
     migration = server_root / "alembic/versions/2026_09_20_1300-add_user_work_role_key.py"
 
     assert _migration_revisions(migration) == (
         "add_user_work_role_key",
-        "merge_self_hosted_rc_lineages",
+        "add_space_category_key",
     )
     source = migration.read_text()
     assert 'sa.Column("work_role_key", sa.String(length=50), nullable=True)' in source

@@ -14,7 +14,7 @@
 """add optional work role key to users
 
 Revision ID: add_user_work_role_key
-Revises: merge_self_hosted_rc_lineages
+Revises: add_space_category_key
 Create Date: 2026-09-20 13:00:00
 """
 
@@ -25,7 +25,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "add_user_work_role_key"
-down_revision: str | None = "merge_self_hosted_rc_lineages"
+down_revision: str | None = "add_space_category_key"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
