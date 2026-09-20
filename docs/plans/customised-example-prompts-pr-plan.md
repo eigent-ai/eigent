@@ -117,7 +117,7 @@ Proposed initial caching defaults are a five-second upstream timeout, five-minut
 
 **Goal:** Persist one optional content-owned category key on each Space without embedding the category taxonomy in product code.
 
-### Todo
+### PR 1 todo
 
 - [ ] Add a nullable string `category_key` database column and migration; leave existing Spaces unset and do not add a fixed-value database constraint.
 - [ ] Extend `Space`, `SpaceIn`, `SpaceUpdate`, and `SpaceOut`.
@@ -127,7 +127,7 @@ Proposed initial caching defaults are a five-second upstream timeout, five-minut
 - [ ] Test arbitrary valid content-defined keys, malformed keys, explicit clearing, old-client payloads, migration, and category persistence.
 - [ ] Publish request/response fixtures for PR 4.
 
-### Acceptance criteria
+### PR 1 acceptance criteria
 
 A content-defined category key survives create, update, and reload. A newly published valid key requires no change to PR 1 code or database schema. Existing Spaces and clients continue to work. Space-category controls are implemented in PR 5; catalog retrieval and desktop type/API plumbing belong to PR 4.
 
@@ -137,7 +137,7 @@ A content-defined category key survives create, update, and reload. A newly publ
 
 **Goal:** Persist one optional work role per account without changing unrelated profile data.
 
-### Todo
+### PR 2 todo
 
 - [ ] Add a nullable `work_role_key` database column and migration.
 - [ ] Extend user-profile reads and updates; do not reuse `work_desc`, permission roles, or agent roles.
@@ -148,7 +148,7 @@ A content-defined category key survives create, update, and reload. A newly publ
 - [ ] Test role-only updates, old-client updates, explicit clearing, and profile read-back.
 - [ ] Publish API fixtures for PR 4.
 
-### Acceptance criteria
+### PR 2 acceptance criteria
 
 The role follows the account across devices. Setting or clearing it does not erase other profile fields. Existing users remain unset until they make a selection.
 
@@ -160,7 +160,7 @@ The role follows the account across devices. Setting or clearing it does not era
 
 **Goal:** Publish validated example content independently of desktop releases.
 
-### Todo
+### PR 3 todo
 
 - [ ] Commit the shared versioned catalog schema and representative fixtures.
 - [ ] Define the canonical `space_categories` registry with stable keys, enabled state, sort order, and translated labels.
@@ -176,7 +176,7 @@ The role follows the account across devices. Setting or clearing it does not era
 - [ ] Support category addition, label changes, disabling, and historical-selection labels without reusing or silently renaming a published key.
 - [ ] Test publisher validation and pointer/version consistency.
 
-### Acceptance criteria
+### PR 3 acceptance criteria
 
 Content can be published or withdrawn without releasing the app. Website, backend, and desktop teams have the same schema and fixtures. S3 objects contain public example content, not user profile data or credentials.
 
@@ -214,7 +214,7 @@ Content can be published or withdrawn without releasing the app. Website, backen
 - [ ] Track example ID, catalog version, and surface; do not collect prompt text, user drafts, or Space names.
 - [ ] Test profile hydration, account switching, stale requests, cache expiry, and feature-off behavior.
 
-### Acceptance criteria
+### PR 4 acceptance criteria
 
 Both UI teams can integrate against stable fixtures and exports. Disabled or withdrawn content is not restored by fallback handling. A failed recommendation request does not block the composer or Automation form.
 
@@ -256,7 +256,7 @@ The shared component uses existing primitives such as `Button`, `DsText`, `DsIco
 - [ ] Respect PR 4's feature flag, response states, and analytics contract.
 - [ ] Test zero-Session Spaces, existing targets, cancellation, save/retry, draft replacement, and Space changes.
 
-### Acceptance criteria
+### PR 5 acceptance criteria
 
 A user in a new Space with zero Sessions can choose an example and explicitly save an Automation. Cancelling before save creates nothing. Example selection never starts a Task or saves/activates an Automation. Existing users can set preferences without repeating installation onboarding.
 
@@ -268,7 +268,7 @@ A user in a new Space with zero Sessions can choose an example and explicitly sa
 
 **Dependencies:** PR 4, with profile/Space APIs from PRs 1 and 2. No dependency on PR 5's UI implementation.
 
-### Todo
+### PR 6 todo
 
 - [ ] Reuse PR 4's component and hook with `surface=workspace`.
 - [ ] Show up to three compact examples beneath the Workspace composer.
@@ -283,7 +283,7 @@ A user in a new Space with zero Sessions can choose an example and explicitly sa
 - [ ] Verify both Workspace and New Session variants if the component is mounted in both.
 - [ ] Test prefill, existing-draft protection, attachments, stale responses, disabled content, and explicit submission.
 
-### Acceptance criteria
+### PR 6 acceptance criteria
 
 Examples work with unset preferences before PR 5 ships and become personalised when values are available. Clicking an example never starts work. Existing drafts remain intact until the user confirms replacement.
 
