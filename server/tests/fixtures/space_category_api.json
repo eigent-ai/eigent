@@ -1,0 +1,28 @@
+{
+  "create_request": {
+    "name": "Customer research",
+    "source_type": "blank",
+    "category_key": "customer-success"
+  },
+  "update_request": {
+    "category_key": "revenue-operations"
+  },
+  "clear_request": {
+    "category_key": null
+  },
+  "space_response": {
+    "id": "space_fixture",
+    "user_id": "user_fixture",
+    "name": "Customer research",
+    "description": null,
+    "source_type": "blank",
+    "root_path": null,
+    "root_fingerprint": null,
+    "status": "active",
+    "category_key": "customer-success",
+    "schema_version": 1,
+    "metadata": null,
+    "created_at": "2026-09-20T12:00:00Z",
+    "updated_at": "2026-09-20T12:00:00Z"
+  }
+}

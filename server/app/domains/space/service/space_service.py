@@ -33,7 +33,14 @@ from app.model.project import (
     ProjectUpdate,
     ProjectWorkdirMode,
 )
-from app.model.space import Space, SpaceIn, SpaceOut, SpaceSourceType, SpaceStatus, SpaceUpdate
+from app.model.space import (
+    Space,
+    SpaceIn,
+    SpaceOut,
+    SpaceSourceType,
+    SpaceStatus,
+    SpaceUpdate,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -212,7 +219,10 @@ class SpaceService:
         return space
 
     @staticmethod
-    def _validate_space_payload(source_type: str | None = None, status: str | None = None) -> None:
+    def _validate_space_payload(
+        source_type: str | None = None,
+        status: str | None = None,
+    ) -> None:
         if source_type is not None and source_type not in SpaceService.SPACE_SOURCE_TYPES:
             raise ValueError("Invalid Space source_type")
         if status is not None and status not in SpaceService.SPACE_STATUSES:
@@ -295,7 +305,10 @@ class SpaceService:
     @staticmethod
     def create_space(data: SpaceIn, user_id: int | str, s: Session) -> Space:
         canonical_user_id = SpaceService.canonical_user_id(user_id)
-        SpaceService._validate_space_payload(data.source_type, data.status)
+        SpaceService._validate_space_payload(
+            data.source_type,
+            data.status,
+        )
         root_path, root_fingerprint = SpaceService._prepare_space_root(data, canonical_user_id, s)
         space = Space(
             id=data.id or f"space_{uuid4().hex}",
@@ -306,6 +319,7 @@ class SpaceService:
             root_path=root_path,
             root_fingerprint=root_fingerprint,
             status=data.status,
+            category_key=data.category_key,
             schema_version=data.schema_version,
             metadata_json=data.metadata,
         )
@@ -617,7 +631,9 @@ class SpaceService:
     @staticmethod
     def update_space(space_id: str, data: SpaceUpdate, user_id: int | str, s: Session) -> Space:
         space = SpaceService._get_owned_space(space_id, user_id, s)
-        SpaceService._validate_space_payload(status=data.status)
+        SpaceService._validate_space_payload(
+            status=data.status,
+        )
         update_data = data.model_dump(exclude_unset=True)
         metadata = update_data.pop("metadata", None)
         for key, value in update_data.items():
