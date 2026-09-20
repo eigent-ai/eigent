@@ -20,8 +20,14 @@ export {
   getExampleCategoryOptionsSnapshot,
   getLastKnownExampleCategory,
 } from '@/lib/exampleCategoryCache';
+export {
+  HttpExampleContentProvider,
+  createDefaultExampleContentProvider,
+} from '@/service/exampleContentApi';
+export type { ExampleContentProvider } from '@/service/exampleContentApi';
 export type {
   ExampleCategoryOption,
+  ExampleContentCatalog,
   ExampleContentItem,
   ExampleContentOptionsResponse,
   ExampleRecommendationsRequest,

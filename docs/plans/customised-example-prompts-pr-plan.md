@@ -3,14 +3,14 @@
 ## Objective and scope
 
 Show relevant example Tasks on Workspace and Automation by matching the user's
-work role with the current Space category. Deliver examples through a
-provider-neutral contract so shared open-source content, organisation-managed
-workflow libraries, or custom agents can supply them without changing the
-desktop integration.
+work role with the current Space category. For v1, the desktop fetches a public,
+provider-neutral catalog directly from S3/CDN and performs validation,
+localisation, and matching locally.
 
-Eigent's default example-content provider will use content authored in the
-website repository and published as a versioned catalog to S3. That is the
-initial provider implementation, not a product-wide storage contract.
+Eigent's default example-content provider uses content authored in the website
+repository and published as a versioned catalog to S3. The catalog contract is
+not S3-specific, so a later PR can add an authenticated server adapter for
+enterprise, private, or custom-agent catalogs without changing the shared UI.
 
 For v1, "user profile" means one selected work role, and "Space profile" means one selected category. Matching does not inspect free-text profiles, files, Memory, conversation history, or Workspace Bundle configuration.
 
@@ -18,14 +18,14 @@ Selecting an example prepares an editable draft. Running a Task or saving an Aut
 
 ## PR ownership and dependencies
 
-| PR  | Scope                                                                                          | Owner                                                    |
-| --- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| 1   | Space category schema and API                                                                  | Backend engineer                                         |
-| 2   | User-role persistence and compatible profile updates                                           | Backend engineer                                         |
-| 3   | Shared content contract and default website/S3 provider                                        | Website/content engineer                                 |
-| 4   | Provider resolver, retrieval API, desktop client, shared component, fixtures, and feature flag | Application engineer; designer supplies component design |
-| 5   | Role onboarding/settings, Space-category controls, and Automation examples                     | Designer/UI engineer                                     |
-| 6   | Workspace examples                                                                             | Workspace engineer                                       |
+| PR  | Scope                                                                                    | Owner                                                    |
+| --- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| 1   | Space category schema and API                                                            | Backend engineer                                         |
+| 2   | User-role persistence and compatible profile updates                                     | Backend engineer                                         |
+| 3   | Shared content contract and default website/S3 provider                                  | Website/content engineer                                 |
+| 4   | Direct catalog retrieval, desktop resolver, shared component, fixtures, and feature flag | Application engineer; designer supplies component design |
+| 5   | Role onboarding/settings, Space-category controls, and Automation examples               | Designer/UI engineer                                     |
+| 6   | Workspace examples                                                                       | Workspace engineer                                       |
 
 Confirm named owners before work starts, especially the additional user-profile work in PR 2 and the application infrastructure in PR 4.
 
@@ -48,12 +48,12 @@ Use stable keys for storage and matching; translate display labels separately.
 - `others` is an explicit work-role choice.
 - Space category keys are lowercase slugs of at most 50 characters. They start with a letter and may contain lowercase letters, numbers, and single hyphen-separated segments, for example `engineering`, `customer-success`, or `revenue-operations`.
 - The Space database and profile API validate only this stable key format. They do not contain a category enum or validate catalog membership.
-- The active example providers are the source of truth for which Space
+- The active example catalog is the source of truth for which Space
   categories are available for selection, their translated labels, and their
   ordering. Adding a valid category must not require a server migration or
   desktop release.
-- Provider adapters normalize source-native categories into this stable key
-  contract. A provider must not reuse an existing key with a different meaning.
+- Catalog adapters normalize source-native categories into this stable key
+  contract. A catalog must not reuse an existing key with a different meaning.
 - If a provider declares `general`, it is an explicit Space category, not a
   wildcard.
 - Provider tag `["*"]` means applicable to any value, including a missing
@@ -70,8 +70,8 @@ Use stable keys for storage and matching; translate display labels separately.
   wildcard recommendations unless an active provider still targets it. The UI
   must let the user clear or replace it.
 - Category values affect recommendations only. They are never authorization, entitlement, or execution settings.
-- `category_key` never identifies the provider. Provider choice and credentials
-  belong to separate account, organisation, or server configuration.
+- `category_key` never identifies the catalog source. Future provider choice
+  and credentials must remain separate from Space profile data.
 
 ### Matching and ordering
 
@@ -86,11 +86,11 @@ Then assign each eligible example to its best matching tier:
 
 A missing profile value cannot match a concrete tag. A conflicting concrete tag is ineligible even if the other dimension matches.
 
-Within each tier, sort by configured provider precedence, descending priority,
-then ascending opaque example reference. Remove duplicate references and fill
-remaining slots from lower tiers until the requested limit is reached. For
-example, one exact match plus two fallback matches returns three examples. Do
-not repeat examples to fill an insufficient result set.
+Within each tier, sort by descending priority, then ascending namespaced example
+reference. Remove duplicate references and fill remaining slots from lower
+tiers until the requested limit is reached. For example, one exact match plus
+two fallback matches returns three examples. Do not repeat examples to fill an
+insufficient result set.
 
 This category-first fallback order gives the current Space's subject priority
 over the user's profession. Include fixture cases for every tier, missing
@@ -98,11 +98,13 @@ values, explicit `others`, a provider-defined `general` category, dynamically
 added categories, disabled or removed categories, conflicting tags, ties,
 duplicates, and insufficient results.
 
-### Example-content provider and API
+### Example-content catalog delivery
 
-The application owns one provider-neutral content contract. Provider adapters
-normalize their native content into that contract, and the desktop consumes
-only the Eigent API and shared fixtures.
+The application owns one provider-neutral content contract. For v1, the desktop
+loads that normalized contract from a configured public HTTPS URL using
+`VITE_EXAMPLE_CONTENT_CATALOG_URL`. The request uses no AWS SDK, AWS credentials,
+cookies, bearer token, user role, or Space category. Personalisation happens
+locally after the complete public catalog is validated.
 
 Each provider result contains `schema_version`, `provider_key`,
 `provider_version`, `enabled`, `space_categories`, and `items`. Each
@@ -112,85 +114,40 @@ Space-category registry entry contains an immutable `key`, `enabled`,
 locale-keyed translations with title, summary, and plain-text prompt. Optional
 translated Automation name and description are display/draft defaults only.
 
-The delivery layer identifies an example by both `provider_key` and item `id`,
-or by an opaque reference derived from both. This prevents collisions when
-several providers use the same local item ID. Provider precedence and whether a
-configured provider replaces or augments the default are explicit server-side
-policy, not desktop behavior.
+The desktop identifies an example by both `provider_key` and item `id` in a
+stable namespaced reference. This prevents collisions and keeps the component
+contract usable if another adapter is introduced later.
 
-In replace mode, category options come from the selected provider. In augment
-mode, registries merge by stable category key and the highest-precedence
-provider supplies display metadata. A provider that assigns a different meaning
-to an existing key must map it to a different valid key. The resolver rejects
-incompatible definitions rather than silently reinterpreting a category already
-stored on a Space.
-
-Every provider rejects duplicate or malformed category keys and item category
+The desktop rejects duplicate or malformed category keys and item category
 tags that are neither `["*"]` nor references to enabled registry entries.
 Labels may change without changing stored keys. Disabling a category removes it
 from new selection; retain its last-known label long enough for clients to
 explain and clear historical selections.
 
 The initial provider is `eigent-default`. Its source catalog is authored in the
-website repository and published to S3. S3 access, validation, and ranking stay
-behind the server-side provider adapter; the desktop never receives AWS
-credentials or depends on an S3 object shape.
+website repository and published to a stable public S3/CDN URL. The bucket or
+CDN must permit cross-origin `GET` requests because the packaged Electron
+renderer and local web development both fetch it directly. Public objects
+contain example content only; they contain no user data, credentials, or private
+workflow content.
 
-Future providers may read an open-source catalog, an organisation-managed
-workflow library, or validated output from a custom agent. They implement the
-same provider interface for category options and example lookup. Provider
-registration, authentication, tenant access, and source preference remain
-separate from Space profile data. A user-supplied URL is not fetched merely
-because it appears in a client request.
+Enterprise/private catalogs and custom-agent output are deferred. A later PR may
+implement the same `ExampleContentProvider` interface with an authenticated
+server-backed adapter. Private URLs or credentials must never be added to the
+public desktop bundle, and a user-supplied URL must not be fetched merely because
+it appears in client state.
 
-Use an Eigent API for v1. Proposed request:
+The desktop derives category options and recommendation responses locally. Each
+derived result carries schema version, content revision, status, expiry, and
+resolved locale. A successful empty or disabled catalog is authoritative. A
+catalog request failure leaves the rest of Workspace and Automation usable.
 
-```http
-GET /api/v1/example-prompts?surface=automation&role_key=engineering&space_category_key=security&locale=en-US&limit=3
-```
-
-Omit role/category query parameters when unknown. The API validates fixed role
-values, validates category-key syntax, and bounds the limit. It accepts these
-as recommendation filters, not authorization or resource identifiers. A
-well-formed stored category that is absent or disabled across the active
-providers cannot match a concrete item tag, but it can still receive wildcard
-results.
-
-PR 4 also exposes the current provider-supplied category choices through the
-Eigent API, for example:
-
-```http
-GET /api/v1/example-prompt-options?locale=en-US
-```
-
-The options response carries `schema_version`, `content_revision`, `status`,
-`delivery`, `expires_at`, and enabled `space_categories` with resolved labels.
-`content_revision` is an opaque revision for the resolved provider set, so the
-desktop does not need provider-specific cache logic.
-
-Agree on a response with:
-
-- `schema_version` and opaque `content_revision`.
-- `status`: `ready`, `disabled`, or `unavailable`.
-- `delivery`: `live`, `cache`, `bundled`, or `none`.
-- `expires_at` for the result's maximum permitted reuse.
-- `items`: opaque example reference, title, summary, prompt, resolved locale,
-  optional attribution, and optional Automation defaults.
-
-`ready` may have an empty item list; that is an authoritative result. `disabled` always has no items. `unavailable` means neither live content nor an eligible cached result is available.
-
-Proposed initial caching defaults are a five-second upstream timeout, five-minute freshness period, and a 24-hour maximum age for last-known-good content. Confirm these before implementation.
-
-- Only request failure may use a still-valid cached result or bundled fallback.
-- A successful empty or disabled response replaces the previous result and suppresses fallback.
-- A successful provider refresh removes disabled/withdrawn entries from cache.
-- Record the latest known provider disable state per environment and respect it
-  during outages until a successful response re-enables the provider.
-- Offline clients cannot learn new withdrawals immediately; do not promise instantaneous removal. Expired remote content is discarded.
-- Server cache keys include provider configuration revision, account or
-  organisation scope, surface, role, category, and locale. Desktop results
-  carry the opaque content revision. Account or provider changes clear selected
-  drafts and derived recommendations.
+React Query shares one catalog request across both surfaces, considers it fresh
+for five minutes, and refreshes every five minutes while in use. A cached remote
+catalog is discarded after 24 hours. There is no bundled example fallback in
+v1, so a failed first request is unavailable and cannot resurrect withdrawn or
+disabled content. Offline clients cannot learn new withdrawals immediately; do
+not promise instantaneous removal.
 
 ## PR 1 — Space category schema and API
 
@@ -262,12 +219,12 @@ default example content independently of desktop releases.
 - [ ] Review each entry separately for Workspace and Automation suitability.
 - [ ] Keep initial examples usable with available product capabilities; avoid prompts that silently require unconfigured connectors or missing private inputs.
 - [ ] Validate content in the website build before publishing.
-- [ ] Publish immutable `eigent-default` catalog versions to S3, then update
-      `index.json` only after all referenced objects are available.
-- [ ] Keep S3 object paths, authentication, and pointer mechanics inside the
-      default provider adapter contract rather than the desktop-facing API.
-- [ ] Provide the default provider location and server access contract to the
-      PR 4 owner.
+- [ ] Publish immutable `eigent-default` catalog versions to S3, then update the
+      stable public catalog object only after the new version is valid.
+- [ ] Configure S3/CDN CORS for public credential-free `GET`/`HEAD` access from
+      the packaged Electron renderer and supported development origins.
+- [ ] Keep bucket names and object paths out of the provider-neutral catalog
+      schema; provide the public HTTPS catalog URL to the PR 4 owner.
 - [ ] Support item withdrawal, catalog disablement, and rollback to a previous valid catalog.
 - [ ] Support category addition, label changes, disabling, and historical-selection labels without reusing or silently renaming a published key.
 - [ ] Test publisher validation and pointer/version consistency.
@@ -276,61 +233,36 @@ default example content independently of desktop releases.
 ### PR 3 acceptance criteria
 
 Default content can be published or withdrawn without releasing the app. The
-website and default server adapter agree on the S3 format, while backend and
-desktop behavior is defined by the provider-neutral schema and fixtures. S3
-objects contain public example content, not user profile data or credentials.
+website publisher and desktop adapter agree on the normalized catalog contract.
+The stable public URL supports credential-free cross-origin reads. S3 objects
+contain public example content, not user profile data or credentials.
 
 ## PR 4 — Shared delivery and desktop infrastructure
 
 **Owner:** Application engineer; designer supplies shared component design
 
-**Goal:** Provide a provider-neutral delivery boundary and a complete shared
-integration surface for both UI PRs.
-
-### Backend todo
-
-- [x] Define an `ExampleContentProvider` boundary for category options and
-      example lookup using the shared normalized schema.
-- [x] Implement the `eigent-default` HTTP adapter against PR 3's published
-      website/S3 catalog. Configure its server-only URL with
-      `EXAMPLE_CONTENT_DEFAULT_CATALOG_URL`.
-- [x] Add an account-aware provider registry boundary and resolver that chooses
-      the configured account or organisation
-      provider set and uses `eigent-default` when no override exists.
-- [x] Keep provider selection and credentials outside `category_key` and outside
-      desktop state.
-- [x] Support explicit replace or augment policy with deterministic provider
-      precedence and collision-safe example references.
-- [x] Merge category registries deterministically and reject incompatible
-      definitions for the same stable category key.
-- [x] Load and validate provider-supplied Space-category registries and expose
-      enabled, localised options through the Eigent API.
-- [x] Validate every provider result at runtime and apply the specified
-      matching, ordering, deduplication, and locale rules.
-- [x] Treat custom-agent output as untrusted content: enforce the same schema,
-      length, plain-text, timeout, and cancellation boundaries before returning it.
-- [x] Implement timeout, refresh, maximum cache age, disablement, and withdrawal behavior.
-- [x] Return explicit ready/disabled/unavailable states with content revision
-      and expiry.
-- [x] Test the matching matrix, default-provider behavior, provider switching,
-      replace/augment precedence, ID collisions, and successful empty/disabled
-      responses versus transport failures.
+**Goal:** Provide a provider-neutral desktop boundary and a complete shared
+integration surface for both UI PRs, with no new example-content backend API.
 
 ### Desktop todo
 
 - [x] Add the fixed user-role type and an opaque Space-category key type; do not
       duplicate provider category lists in desktop code.
 - [x] Add Space-category API mapping and create/update plumbing for blank and folder Spaces.
-- [x] Add a client and cache for the server-provided, localised Space-category
-      options, scoped by API environment and opaque content revision.
+- [x] Add an `ExampleContentProvider` interface and credential-free HTTP adapter
+      for the configured public S3/CDN catalog URL.
+- [x] Validate the complete catalog at runtime, then resolve localised
+      Space-category options and recommendations in the desktop.
+- [x] Share the catalog through one React Query cache with five-minute refresh
+      and 24-hour maximum reuse.
 - [x] Load the current user's profile after sign-in and restore it on application reload.
 - [x] Scope profile state to account and API environment; clear it on logout/account/environment changes.
 - [x] Ignore pending responses belonging to a previous account or recommendation context.
 - [x] Refresh recommendations after role/category edits without restarting the app.
 - [x] Treat absent fields from older servers as unset; report unsupported preference writes without claiming they were saved.
-- [x] Add the shared example API client, recommendation hook, runtime response
-      validation, and a server-owned generic bundled fallback. The desktop does
-      not apply an independent fallback, so disabled or withdrawn content stays hidden.
+- [x] Add the shared catalog client, local matching resolver, recommendation
+      hook, runtime validation, abort handling, and explicit disabled/unavailable
+      states. Do not add a bundled fallback.
 - [ ] Complete designer review of the shared recommendation component. The
       engineering implementation and loading, empty, disabled, and unavailable
       state contract are in place for review.
@@ -341,16 +273,19 @@ integration surface for both UI PRs.
 - [x] Track opaque example reference, content revision, and surface; do not
       collect prompt text, user drafts, Space names, provider credentials, or
       private source locations.
-- [x] Test profile hydration, account switching, stale requests, cache expiry, and feature-off behavior.
+- [x] Test profile hydration, account switching, catalog validation, matching
+      tiers, missing preferences, localisation, disabled content, cache expiry,
+      credential-free fetches, and feature-off behavior.
 
 ### PR 4 acceptance criteria
 
 Both UI teams can integrate against stable fixtures and exports without knowing
-which provider supplied the content. The default website/S3 provider can be
-replaced or augmented by a conforming provider without changing the desktop
-client or Space schema. Disabled or withdrawn content is not restored by
-fallback handling. A failed recommendation request does not block the composer
-or Automation form.
+the public catalog's storage layout. The default website/S3 catalog is fetched
+directly and user role/category values never leave the desktop for matching.
+The provider interface leaves room for a later authenticated adapter, but
+enterprise/private catalog support is not part of this PR. Disabled or withdrawn
+content is not restored by fallback handling. A failed catalog request does not
+block the composer or Automation form.
 
 The shared component uses existing primitives such as `Button`, `DsText`, `DsIcon`, and `Skeleton`, with semantic tokens and visible keyboard focus.
 
@@ -368,8 +303,8 @@ The shared component uses existing primitives such as `Button`, `DsText`, `DsIco
 - [ ] Save only against the authenticated account. If selection occurs before sign-in, hold it as a pending draft and offer to save it once the account is known.
 - [ ] Make failed saves retryable without blocking onboarding or losing the selection.
 - [ ] Add optional Space-category selection for blank/folder Space creation and editing/clearing in Space settings.
-- [ ] Render Space-category choices from PR 4's server-provided options rather
-      than a bundled enum or provider-specific list.
+- [ ] Render Space-category choices from PR 4's validated catalog options rather
+      than a bundled enum or S3-specific list.
 - [ ] Do not require existing or imported Spaces to select a category before use.
 - [ ] If a stored category is no longer enabled, show it as unavailable using the last-known label when possible and let the user clear or replace it.
 - [ ] Localise labels and preserve the distinction between "Other", "General", and unset values.
@@ -413,7 +348,7 @@ A user in a new Space with zero Sessions can choose an example and explicitly sa
 - [ ] Do not create a Session or submit a Task until the user explicitly sends.
 - [ ] Refresh recommendations on role, category, Space, account, or locale changes.
 - [ ] Cancel or ignore stale requests using PR 4's shared behavior.
-- [ ] Respect the feature flag and cache/fallback/disablement rules; do not add independent fallback logic.
+- [ ] Respect the feature flag and cache/disablement rules; do not add independent fallback logic.
 - [ ] Use the shared analytics contract and clear example attribution when the draft is replaced or its context changes.
 - [ ] Verify both Workspace and New Session variants if the component is mounted in both.
 - [ ] Test prefill, existing-draft protection, attachments, stale responses, disabled content, and explicit submission.
@@ -432,17 +367,17 @@ Examples work with unset preferences before PR 5 ships and become personalised w
 - [ ] Verify keyboard navigation, visible focus, light/dark themes, 200% zoom, narrow windows, long translations, and reduced motion where applicable.
 - [ ] Report reused primitives, selected semantic tokens/axes, verified states/themes, and any registered design exception in UI PR handoffs.
 - [ ] Verify old clients against the new APIs and unset fields from older servers.
-- [ ] Test the full matching matrix, locale fallback, unavailable provider,
+- [ ] Test the full matching matrix, locale fallback, unavailable catalog,
       explicit empty result, disabled provider, withdrawn item, and expired cache.
-- [ ] Test changing from the default provider to a fixture enterprise or custom
-      provider without changing the desktop client or Space schema.
-- [ ] Test replace and augment policies, provider-local ID collisions, category
-      mapping, tenant isolation, and provider credential redaction.
+- [ ] Verify the public catalog request sends no auth token, cookie, user role,
+      Space category, or AWS credential.
+- [ ] Verify the configured S3/CDN object is readable from the packaged Electron
+      app and local web development with CORS enabled.
 - [ ] Test returning users, account switching, and preference changes without restart.
 - [ ] Perform a real Electron walkthrough of Workspace prefill and Automation creation in a Space with zero Sessions.
-- [ ] Deploy additive schema/API support and the validated default provider
+- [ ] Deploy additive profile schema/API support and the validated public catalog
       before enabling desktop integrations.
-- [ ] Enable internally first; observe request failures, fallback usage, selection, and successful explicit submission/save.
+- [ ] Enable internally first; observe request failures, selection, and successful explicit submission/save.
 - [ ] Test turning the feature off before wider rollout.
 - [ ] Keep all UI integrations gated until their dependencies and acceptance criteria are satisfied.
 
@@ -452,12 +387,12 @@ Examples work with unset preferences before PR 5 ships and become personalised w
       category registries, and one-value-per-profile v1 scope.
 - [ ] Assign named owners for all six PRs and confirm backend capacity for PR 2.
 - [ ] Approve the wildcard/null contract, category-first fallback order, and cache defaults.
-- [ ] Confirm the provider interface, replace/augment policy, and default
-      `eigent-default` behavior.
-- [ ] Provide the website/S3 publishing and server-access details only to the
-      default provider owners.
-- [ ] Have PRs 3 and 4 owners agree on the normalized schema, API response,
-      provider conformance fixtures, and default adapter before UI integration.
+- [ ] Confirm the provider interface and default `eigent-default` behavior;
+      explicitly defer replace/augment and private-provider policy.
+- [ ] Provide the public website/S3 catalog URL and CORS configuration to the
+      PR 4 owner.
+- [ ] Have PRs 3 and 4 owners agree on the normalized catalog schema,
+      conformance fixtures, and default HTTP adapter before UI integration.
 - [ ] Ask the designer to deliver the shared recommendation component design early for PR 4.
 - [ ] Prepare 12–20 examples and at least three wildcard examples for each surface.
 - [ ] Include the zero-Session Automation save flow in the designer's handoff.
@@ -469,11 +404,12 @@ Examples work with unset preferences before PR 5 ships and become personalised w
 - Preserve public terminology as **Space → Session → Task**.
 - Use **Automation** in visible copy while preserving backend `Trigger` and `Project` identifiers.
 - Validate content from every provider and render prompts as plain text.
-- Keep provider credentials and private source locations on the server side.
-- Use the website/S3 catalog as the default provider, not as the desktop or
+- Keep the v1 catalog public and credential-free. Add private source locations
+  and credentials only through a future authenticated server adapter.
+- Use the website/S3 catalog as the default source, not as the desktop or
   product schema.
-- Keep provider selection separate from `category_key`; switching providers
-  must not require a Space migration.
+- Keep catalog source selection separate from `category_key`; switching a
+  future provider must not require a Space migration.
 - Require provider adapters to normalize categories and preserve collision-safe
   example references.
 - Preference matching changes recommendations only; it does not change permissions, model settings, or execution behavior.

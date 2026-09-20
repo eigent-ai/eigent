@@ -40,7 +40,7 @@ export type WorkRoleKey = (typeof WORK_ROLE_KEYS)[number];
 export type SpaceCategoryKey = string;
 export type ExampleSurface = 'workspace' | 'automation';
 export type ExampleContentStatus = 'ready' | 'disabled' | 'unavailable';
-export type ExampleContentDelivery = 'live' | 'cache' | 'bundled' | 'none';
+export type ExampleContentDelivery = 'live' | 'cache' | 'none';
 
 export interface ExampleCategoryOption {
   key: SpaceCategoryKey;
@@ -93,4 +93,48 @@ export interface ExampleRecommendationsRequest {
   spaceCategoryKey?: SpaceCategoryKey | null;
   locale: string;
   limit?: number;
+}
+
+export interface ExampleContentCategoryTranslation {
+  label: string;
+  description: string | null;
+}
+
+export interface ExampleContentCatalogCategory {
+  key: SpaceCategoryKey;
+  enabled: boolean;
+  sortOrder: number;
+  translations: Record<string, ExampleContentCategoryTranslation>;
+}
+
+export interface ExampleContentItemTranslation {
+  title: string;
+  summary: string;
+  prompt: string;
+  automationName: string | null;
+  automationDescription: string | null;
+}
+
+export interface ExampleContentCatalogItem {
+  id: string;
+  enabled: boolean;
+  surfaces: ExampleSurface[];
+  roleKeys: Array<WorkRoleKey | '*'>;
+  spaceCategoryKeys: Array<SpaceCategoryKey | '*'>;
+  priority: number;
+  translations: Record<string, ExampleContentItemTranslation>;
+  attribution: string | null;
+  learnMoreUrl: string | null;
+  requirements: ExampleRequirements;
+}
+
+/** Validated snapshot of the provider-neutral catalog published to S3/CDN. */
+export interface ExampleContentCatalog {
+  schemaVersion: 1;
+  providerKey: string;
+  providerVersion: string;
+  enabled: boolean;
+  spaceCategories: ExampleContentCatalogCategory[];
+  items: ExampleContentCatalogItem[];
+  loadedAt: number;
 }

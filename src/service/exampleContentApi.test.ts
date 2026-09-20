@@ -11,116 +11,199 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 import {
+  HttpExampleContentProvider,
   isExampleContentExpired,
-  parseExampleContentOptions,
-  parseExampleRecommendations,
+  parseExampleContentCatalog,
+  resolveExampleContentOptions,
+  resolveExampleRecommendations,
 } from '@/service/exampleContentApi';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-const envelope = {
+const item = (
+  id: string,
+  roleKeys: string[],
+  categoryKeys: string[],
+  priority = 0
+) => ({
+  id,
+  enabled: true,
+  surfaces: ['workspace'],
+  role_keys: roleKeys,
+  space_category_keys: categoryKeys,
+  priority,
+  translations: {
+    en: {
+      title: id,
+      summary: `${id} summary`,
+      prompt: `${id} prompt`,
+    },
+  },
+  requirements: { connector_keys: [] },
+});
+
+const rawCatalog = () => ({
   schema_version: 1,
-  content_revision: 'revision-1',
-  status: 'ready',
-  delivery: 'live',
-  expires_at: '2026-09-21T00:00:00Z',
-};
+  provider_key: 'eigent-default',
+  provider_version: 'revision-1',
+  enabled: true,
+  space_categories: [
+    {
+      key: 'customer-success',
+      enabled: true,
+      sort_order: 10,
+      translations: {
+        en: { label: 'Customer success' },
+        'fr-FR': { label: 'Réussite client' },
+      },
+    },
+  ],
+  items: [
+    item('exact', ['engineering'], ['customer-success']),
+    item('category', ['*'], ['customer-success']),
+    item('role', ['engineering'], ['*']),
+    item('fallback', ['*'], ['*']),
+  ],
+});
 
-describe('exampleContentApi runtime validation', () => {
-  it('maps provider-neutral options without enumerating category keys', () => {
-    const result = parseExampleContentOptions({
-      ...envelope,
-      space_categories: [
-        {
-          key: 'new-content-defined-category',
-          label: 'A new category',
-          description: null,
-          sort_order: 12,
-          resolved_locale: 'en',
-        },
-      ],
-    });
+describe('example content S3 catalog', () => {
+  it('validates content-defined categories and localizes their labels', () => {
+    const catalog = parseExampleContentCatalog(rawCatalog(), 1_000);
+    const options = resolveExampleContentOptions(catalog, 'fr-FR');
 
-    expect(result.spaceCategories[0]).toEqual({
-      key: 'new-content-defined-category',
-      label: 'A new category',
+    expect(options.contentRevision).toBe('eigent-default:revision-1');
+    expect(options.spaceCategories[0]).toEqual({
+      key: 'customer-success',
+      label: 'Réussite client',
       description: null,
-      sortOrder: 12,
-      resolvedLocale: 'en',
+      sortOrder: 10,
+      resolvedLocale: 'fr-FR',
     });
   });
 
-  it('maps recommendations and optional Automation defaults', () => {
-    const result = parseExampleRecommendations({
-      ...envelope,
-      items: [
-        {
-          example_ref: 'example_123',
-          title: 'Weekly review',
-          summary: 'Review the week.',
-          prompt: 'Prepare a weekly review.',
-          resolved_locale: 'en',
-          attribution: null,
-          learn_more_url: null,
-          automation_defaults: {
-            name: 'Weekly review',
-            description: null,
-          },
-          requirements: { connector_keys: [] },
-        },
-      ],
+  it('orders exact, category, role, and wildcard matches', () => {
+    const catalog = parseExampleContentCatalog(rawCatalog());
+    const result = resolveExampleRecommendations(catalog, {
+      surface: 'workspace',
+      roleKey: 'engineering',
+      spaceCategoryKey: 'customer-success',
+      locale: 'en-US',
+      limit: 4,
     });
 
-    expect(result.items[0].exampleRef).toBe('example_123');
-    expect(result.items[0].automationDefaults?.name).toBe('Weekly review');
+    expect(result.items.map((entry) => entry.title)).toEqual([
+      'exact',
+      'category',
+      'role',
+      'fallback',
+    ]);
+    expect(result.items[0].exampleRef).toBe('example:eigent-default:exact');
   });
 
-  it('rejects content in disabled and unavailable envelopes', () => {
-    expect(() =>
-      parseExampleRecommendations({
-        ...envelope,
-        status: 'disabled',
-        delivery: 'none',
-        items: [
-          {
-            example_ref: 'example_123',
-            title: 'Should not render',
-            summary: 'Should not render.',
-            prompt: 'Should not render.',
-            resolved_locale: 'en',
-            requirements: { connector_keys: [] },
-          },
-        ],
-      })
-    ).toThrow('Non-ready');
+  it('uses only wildcard matches when preferences are unset', () => {
+    const catalog = parseExampleContentCatalog(rawCatalog());
+    const result = resolveExampleRecommendations(catalog, {
+      surface: 'workspace',
+      locale: 'en',
+      limit: 4,
+    });
+
+    expect(result.items.map((entry) => entry.title)).toEqual(['fallback']);
   });
 
-  it('rejects unknown schema versions and malformed items', () => {
-    expect(() =>
-      parseExampleRecommendations({
-        ...envelope,
-        schema_version: 2,
-        items: [],
-      })
-    ).toThrow('Unsupported');
-    expect(() =>
-      parseExampleRecommendations({
-        ...envelope,
-        items: [{ prompt: 'Incomplete' }],
-      })
-    ).toThrow('Invalid');
-  });
+  it('treats a successfully disabled catalog as authoritative', () => {
+    const catalog = parseExampleContentCatalog({
+      ...rawCatalog(),
+      enabled: false,
+    });
 
-  it('does not reuse content after its server-provided expiry', () => {
+    expect(resolveExampleContentOptions(catalog, 'en')).toMatchObject({
+      status: 'disabled',
+      spaceCategories: [],
+    });
     expect(
-      isExampleContentExpired(
-        { expiresAt: '2026-09-21T00:00:00Z' },
-        Date.parse('2026-09-21T00:00:01Z')
-      )
-    ).toBe(true);
-    expect(
-      isExampleContentExpired({ expiresAt: null }, Number.MAX_SAFE_INTEGER)
-    ).toBe(false);
+      resolveExampleRecommendations(catalog, {
+        surface: 'workspace',
+        locale: 'en',
+      })
+    ).toMatchObject({ status: 'disabled', items: [] });
+  });
+
+  it('rejects duplicate IDs and references to disabled categories', () => {
+    const duplicate = rawCatalog();
+    duplicate.items.push(item('exact', ['*'], ['*']));
+    expect(() => parseExampleContentCatalog(duplicate)).toThrow('Duplicate');
+
+    const unavailableCategory = rawCatalog();
+    unavailableCategory.space_categories[0].enabled = false;
+    expect(() => parseExampleContentCatalog(unavailableCategory)).toThrow(
+      'unavailable category'
+    );
+  });
+
+  it('fetches the public catalog without credentials', async () => {
+    const fetchImplementation = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => rawCatalog(),
+    }) as unknown as typeof fetch;
+    const provider = new HttpExampleContentProvider(
+      'eigent-default',
+      'https://cdn.example.com/example-content/catalog.json',
+      fetchImplementation
+    );
+
+    await expect(provider.loadCatalog()).resolves.toMatchObject({
+      providerKey: 'eigent-default',
+    });
+    expect(fetchImplementation).toHaveBeenCalledWith(
+      'https://cdn.example.com/example-content/catalog.json',
+      {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        credentials: 'omit',
+        signal: undefined,
+      }
+    );
+  });
+
+  it('rejects a catalog that does not belong to the configured provider', async () => {
+    const fetchImplementation = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ...rawCatalog(), provider_key: 'other-provider' }),
+    }) as unknown as typeof fetch;
+    const provider = new HttpExampleContentProvider(
+      'eigent-default',
+      'https://cdn.example.com/example-content/catalog.json',
+      fetchImplementation
+    );
+
+    await expect(provider.loadCatalog()).rejects.toThrow('provider key');
+  });
+
+  it('does not reuse a catalog after its maximum age', () => {
+    const catalog = parseExampleContentCatalog(rawCatalog(), 1_000);
+    const result = resolveExampleRecommendations(catalog, {
+      surface: 'workspace',
+      locale: 'en',
+    });
+
+    expect(isExampleContentExpired(result, 1_001)).toBe(false);
+    expect(isExampleContentExpired(result, 1_000 + 24 * 60 * 60 * 1_000)).toBe(
+      true
+    );
   });
 });

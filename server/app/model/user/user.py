@@ -14,6 +14,7 @@
 
 from datetime import date, datetime
 from enum import IntEnum
+from typing import Literal
 
 from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy import Integer, SmallInteger, String, text
@@ -22,12 +23,35 @@ from sqlmodel import Column, Field
 
 from app.core.encrypt import password_hash
 from app.model.abstract.model import AbstractModel, DefaultTimes
-from app.model.user.work_role import WorkRoleKey
 
 
 class Status(IntEnum):
     Normal = 1
     Block = -1
+
+
+WorkRoleKey = Literal[
+    "product-management",
+    "engineering",
+    "human-resources",
+    "finance",
+    "marketing",
+    "sales",
+    "operations",
+    "data-science",
+    "design",
+    "legal",
+    "scientist",
+    "student",
+    "founder",
+    "healthcare",
+    "writer",
+    "educator",
+    "consultant",
+    "researcher",
+    "software-engineer",
+    "others",
+]
 
 
 class User(AbstractModel, DefaultTimes, table=True):

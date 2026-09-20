@@ -503,16 +503,15 @@ async function proxyFetchRequest(
   };
 
   if (method === 'GET') {
-    const queryParams = new URLSearchParams();
-    Object.entries(data ?? {}).forEach(([key, value]) => {
-      const values = Array.isArray(value) ? value : [value];
-      values.forEach((item) => {
-        if (item !== undefined && item !== null) {
-          queryParams.append(key, String(item));
-        }
-      });
-    });
-    const query = queryParams.size > 0 ? `?${queryParams.toString()}` : '';
+    const query = data
+      ? '?' +
+        Object.entries(data)
+          .map(
+            ([key, val]) =>
+              `${encodeURIComponent(key)}=${encodeURIComponent(val)}`
+          )
+          .join('&')
+      : '';
     return handleResponse(fetch(fullUrl + query, options));
   }
 
