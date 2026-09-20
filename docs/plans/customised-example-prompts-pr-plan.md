@@ -2,7 +2,15 @@
 
 ## Objective and scope
 
-Show relevant example Tasks on Workspace and Automation by matching the user's work role with the current Space category. Author content in the website repository, publish it to S3, and deliver validated recommendations through an Eigent API.
+Show relevant example Tasks on Workspace and Automation by matching the user's
+work role with the current Space category. Deliver examples through a
+provider-neutral contract so shared open-source content, organisation-managed
+workflow libraries, or custom agents can supply them without changing the
+desktop integration.
+
+Eigent's default example-content provider will use content authored in the
+website repository and published as a versioned catalog to S3. That is the
+initial provider implementation, not a product-wide storage contract.
 
 For v1, "user profile" means one selected work role, and "Space profile" means one selected category. Matching does not inspect free-text profiles, files, Memory, conversation history, or Workspace Bundle configuration.
 
@@ -10,14 +18,14 @@ Selecting an example prepares an editable draft. Running a Task or saving an Aut
 
 ## PR ownership and dependencies
 
-| PR  | Scope                                                                                      | Owner                                                    |
-| --- | ------------------------------------------------------------------------------------------ | -------------------------------------------------------- |
-| 1   | Space category schema and API                                                              | Backend engineer                                         |
-| 2   | User-role persistence and compatible profile updates                                       | Backend engineer                                         |
-| 3   | Website catalog schema, content, and S3 publishing                                         | Website/content engineer                                 |
-| 4   | Retrieval API, desktop client, shared recommendation component, fixtures, and feature flag | Application engineer; designer supplies component design |
-| 5   | Role onboarding/settings, Space-category controls, and Automation examples                 | Designer/UI engineer                                     |
-| 6   | Workspace examples                                                                         | Workspace engineer                                       |
+| PR  | Scope                                                                                          | Owner                                                    |
+| --- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| 1   | Space category schema and API                                                                  | Backend engineer                                         |
+| 2   | User-role persistence and compatible profile updates                                           | Backend engineer                                         |
+| 3   | Shared content contract and default website/S3 provider                                        | Website/content engineer                                 |
+| 4   | Provider resolver, retrieval API, desktop client, shared component, fixtures, and feature flag | Application engineer; designer supplies component design |
+| 5   | Role onboarding/settings, Space-category controls, and Automation examples                     | Designer/UI engineer                                     |
+| 6   | Workspace examples                                                                             | Workspace engineer                                       |
 
 Confirm named owners before work starts, especially the additional user-profile work in PR 2 and the application infrastructure in PR 4.
 
@@ -34,22 +42,36 @@ Use stable keys for storage and matching; translate display labels separately.
 | Field                | Allowed values                                                                                                    | Owner   |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------- | ------- |
 | User `work_role_key` | `engineering`, `design`, `product`, `marketing`, `finance`, `legal`, `security`, `operations`, `other`, or `null` | Product |
-| Space `category_key` | Any enabled category key declared by the content catalog, or `null`                                               | Content |
+| Space `category_key` | Any enabled category key declared by the active example providers, or `null`                                      | Content |
 
 - `null` means no selection; existing records remain `null`.
 - `other` is an explicit work-role choice.
 - Space category keys are lowercase slugs of at most 50 characters. They start with a letter and may contain lowercase letters, numbers, and single hyphen-separated segments, for example `engineering`, `customer-success`, or `revenue-operations`.
 - The Space database and profile API validate only this stable key format. They do not contain a category enum or validate catalog membership.
-- The content catalog is the source of truth for which Space categories are available for selection, their translated labels, and their ordering. Adding a valid category must not require a server migration or desktop release.
-- If the catalog declares `general`, it is an explicit Space category, not a wildcard.
-- Catalog `["*"]` means applicable to any value, including a missing selection.
+- The active example providers are the source of truth for which Space
+  categories are available for selection, their translated labels, and their
+  ordering. Adding a valid category must not require a server migration or
+  desktop release.
+- Provider adapters normalize source-native categories into this stable key
+  contract. A provider must not reuse an existing key with a different meaning.
+- If a provider declares `general`, it is an explicit Space category, not a
+  wildcard.
+- Provider tag `["*"]` means applicable to any value, including a missing
+  selection.
 - Do not persist `"*"` on a user or Space or invent a `general` user role.
-- Each catalog tag array must contain either one or more valid concrete keys or `["*"]`. Empty arrays and mixed wildcard/concrete arrays are invalid.
-- V1 supports one role per user and one category per Space. Catalog entries may target several roles or categories.
+- Each provider tag array must contain either one or more valid concrete keys
+  or `["*"]`. Empty arrays and mixed wildcard/concrete arrays are invalid.
+- V1 supports one role per user and one category per Space. Example entries may
+  target several roles or categories.
 - Profile updates preserve omitted fields; explicit `null` clears the selected field.
 - New readers tolerate absent fields from older servers. Existing clients omitting the new fields must preserve saved values.
-- A disabled or removed catalog category does not erase the stored Space value. It is unavailable for new selection and receives wildcard recommendations unless a current catalog entry still targets it. The UI must let the user clear or replace it.
+- A category no longer offered by the active providers does not erase the
+  stored Space value. It is unavailable for new selection and receives
+  wildcard recommendations unless an active provider still targets it. The UI
+  must let the user clear or replace it.
 - Category values affect recommendations only. They are never authorization, entitlement, or execution settings.
+- `category_key` never identifies the provider. Provider choice and credentials
+  belong to separate account, organisation, or server configuration.
 
 ### Matching and ordering
 
@@ -64,41 +86,96 @@ Then assign each eligible example to its best matching tier:
 
 A missing profile value cannot match a concrete tag. A conflicting concrete tag is ineligible even if the other dimension matches.
 
-Within each tier, sort by descending priority, then ascending stable ID. Remove duplicate IDs and fill remaining slots from lower tiers until the requested limit is reached. For example, one exact match plus two fallback matches returns three examples. Do not repeat examples to fill an insufficient catalog.
+Within each tier, sort by configured provider precedence, descending priority,
+then ascending opaque example reference. Remove duplicate references and fill
+remaining slots from lower tiers until the requested limit is reached. For
+example, one exact match plus two fallback matches returns three examples. Do
+not repeat examples to fill an insufficient result set.
 
-This category-first fallback order gives the current Space's subject priority over the user's profession. Include fixture cases for every tier, missing values, explicit `other`, a catalog-defined `general` category, dynamically added categories, disabled or removed categories, conflicting tags, ties, duplicates, and insufficient results.
+This category-first fallback order gives the current Space's subject priority
+over the user's profession. Include fixture cases for every tier, missing
+values, explicit `other`, a provider-defined `general` category, dynamically
+added categories, disabled or removed categories, conflicting tags, ties,
+duplicates, and insufficient results.
 
-### Catalog and API
+### Example-content provider and API
 
-The website owns the canonical versioned catalog schema. Backend and desktop consume the same contract and fixtures.
+The application owns one provider-neutral content contract. Provider adapters
+normalize their native content into that contract, and the desktop consumes
+only the Eigent API and shared fixtures.
 
-The catalog envelope contains `schema_version`, `catalog_version`, `enabled`, `space_categories`, and `items`. Each Space-category registry entry contains an immutable `key`, `enabled`, `sort_order`, and locale-keyed labels. Each item contains `id`, `enabled`, `surfaces`, `role_keys`, `space_category_keys`, `priority`, and locale-keyed translations with title, summary, and plain-text prompt. Optional translated Automation name and description are display/draft defaults only.
+Each provider result contains `schema_version`, `provider_key`,
+`provider_version`, `enabled`, `space_categories`, and `items`. Each
+Space-category registry entry contains an immutable `key`, `enabled`,
+`sort_order`, and locale-keyed labels. Each item contains a provider-local
+`id`, `enabled`, `surfaces`, `role_keys`, `space_category_keys`, `priority`, and
+locale-keyed translations with title, summary, and plain-text prompt. Optional
+translated Automation name and description are display/draft defaults only.
 
-The publisher rejects duplicate or malformed category keys and item category tags that are neither `["*"]` nor references to enabled registry entries. Labels may change without changing stored keys. Disabling a category removes it from new selection; retain its last-known label long enough for clients to explain and clear historical selections.
+The delivery layer identifies an example by both `provider_key` and item `id`,
+or by an opaque reference derived from both. This prevents collisions when
+several providers use the same local item ID. Provider precedence and whether a
+configured provider replaces or augments the default are explicit server-side
+policy, not desktop behavior.
 
-Use an Eigent API for v1. S3 access and ranking live on the server; the desktop never needs AWS credentials. Proposed request:
+In replace mode, category options come from the selected provider. In augment
+mode, registries merge by stable category key and the highest-precedence
+provider supplies display metadata. A provider that assigns a different meaning
+to an existing key must map it to a different valid key. The resolver rejects
+incompatible definitions rather than silently reinterpreting a category already
+stored on a Space.
+
+Every provider rejects duplicate or malformed category keys and item category
+tags that are neither `["*"]` nor references to enabled registry entries.
+Labels may change without changing stored keys. Disabling a category removes it
+from new selection; retain its last-known label long enough for clients to
+explain and clear historical selections.
+
+The initial provider is `eigent-default`. Its source catalog is authored in the
+website repository and published to S3. S3 access, validation, and ranking stay
+behind the server-side provider adapter; the desktop never receives AWS
+credentials or depends on an S3 object shape.
+
+Future providers may read an open-source catalog, an organisation-managed
+workflow library, or validated output from a custom agent. They implement the
+same provider interface for category options and example lookup. Provider
+registration, authentication, tenant access, and source preference remain
+separate from Space profile data. A user-supplied URL is not fetched merely
+because it appears in a client request.
+
+Use an Eigent API for v1. Proposed request:
 
 ```http
 GET /api/v1/example-prompts?surface=automation&role_key=engineering&space_category_key=security&locale=en-US&limit=3
 ```
 
-Omit role/category query parameters when unknown. The API validates fixed role values, validates category-key syntax, and bounds the limit. It accepts these as recommendation filters, not authorization or resource identifiers. A well-formed stored category that is absent or disabled in the current catalog cannot match a concrete item tag, but it can still receive wildcard results.
+Omit role/category query parameters when unknown. The API validates fixed role
+values, validates category-key syntax, and bounds the limit. It accepts these
+as recommendation filters, not authorization or resource identifiers. A
+well-formed stored category that is absent or disabled across the active
+providers cannot match a concrete item tag, but it can still receive wildcard
+results.
 
-PR 4 also exposes the current content-owned category choices through the Eigent API, for example:
+PR 4 also exposes the current provider-supplied category choices through the
+Eigent API, for example:
 
 ```http
 GET /api/v1/example-prompt-options?locale=en-US
 ```
 
-The options response carries `schema_version`, `catalog_version`, `status`, `source`, `expires_at`, and enabled `space_categories` with resolved labels. The desktop never reads S3 directly.
+The options response carries `schema_version`, `content_revision`, `status`,
+`delivery`, `expires_at`, and enabled `space_categories` with resolved labels.
+`content_revision` is an opaque revision for the resolved provider set, so the
+desktop does not need provider-specific cache logic.
 
 Agree on a response with:
 
-- `schema_version` and `catalog_version`.
+- `schema_version` and opaque `content_revision`.
 - `status`: `ready`, `disabled`, or `unavailable`.
-- `source`: `live`, `cache`, or `none`.
+- `delivery`: `live`, `cache`, `bundled`, or `none`.
 - `expires_at` for the result's maximum permitted reuse.
-- `items`: ID, title, summary, prompt, resolved locale, and optional Automation defaults.
+- `items`: opaque example reference, title, summary, prompt, resolved locale,
+  optional attribution, and optional Automation defaults.
 
 `ready` may have an empty item list; that is an authoritative result. `disabled` always has no items. `unavailable` means neither live content nor an eligible cached result is available.
 
@@ -106,10 +183,14 @@ Proposed initial caching defaults are a five-second upstream timeout, five-minut
 
 - Only request failure may use a still-valid cached result or bundled fallback.
 - A successful empty or disabled response replaces the previous result and suppresses fallback.
-- A successful catalog refresh removes disabled/withdrawn entries from cache.
-- Record the latest known catalog disable state per environment and respect it during outages until a successful response re-enables the feature.
+- A successful provider refresh removes disabled/withdrawn entries from cache.
+- Record the latest known provider disable state per environment and respect it
+  during outages until a successful response re-enables the provider.
 - Offline clients cannot learn new withdrawals immediately; do not promise instantaneous removal. Expired remote content is discarded.
-- Cache keys include API environment, surface, role, category, and locale; results carry their catalog version. Account changes clear selected drafts and derived recommendations.
+- Server cache keys include provider configuration revision, account or
+  organisation scope, surface, role, category, and locale. Desktop results
+  carry the opaque content revision. Account or provider changes clear selected
+  drafts and derived recommendations.
 
 ## PR 1 — Space category schema and API
 
@@ -122,14 +203,19 @@ Proposed initial caching defaults are a five-second upstream timeout, five-minut
 - [ ] Add a nullable string `category_key` database column and migration; leave existing Spaces unset and do not add a fixed-value database constraint.
 - [ ] Extend `Space`, `SpaceIn`, `SpaceUpdate`, and `SpaceOut`.
 - [ ] Support category reads and writes through create, update, list, and detail APIs.
-- [ ] Validate only the stable lowercase-slug format and length; do not hardcode or fetch the catalog taxonomy in this PR.
+- [ ] Validate only the stable lowercase-slug format and length; do not hardcode
+      or fetch a provider taxonomy in this PR.
 - [ ] Preserve omitted fields on update and allow explicit `null` clearing.
 - [ ] Test arbitrary valid content-defined keys, malformed keys, explicit clearing, old-client payloads, migration, and category persistence.
 - [ ] Publish request/response fixtures for PR 4.
 
 ### PR 1 acceptance criteria
 
-A content-defined category key survives create, update, and reload. A newly published valid key requires no change to PR 1 code or database schema. Existing Spaces and clients continue to work. Space-category controls are implemented in PR 5; catalog retrieval and desktop type/API plumbing belong to PR 4.
+A content-defined category key survives create, update, and reload. A newly
+published valid key requires no change to PR 1 code or database schema.
+Existing Spaces and clients continue to work. Space-category controls are
+implemented in PR 5; provider resolution and desktop type/API plumbing belong
+to PR 4.
 
 ## PR 2 — User-role persistence and compatible profile updates
 
@@ -154,52 +240,86 @@ The role follows the account across devices. Setting or clearing it does not era
 
 **Current-code concern:** The existing profile PUT handler assigns fullname, nickname, and work description directly, and their request defaults are empty strings. Adjust those update semantics or introduce a dedicated partial-update endpoint before a role-only form uses it.
 
-## PR 3 — Website catalog and S3 publishing
+## PR 3 — Shared content contract and default provider
 
 **Owner:** Website/content engineer
 
-**Goal:** Publish validated example content independently of desktop releases.
+**Goal:** Define the provider-neutral content contract and publish Eigent's
+default example content independently of desktop releases.
 
 ### PR 3 todo
 
-- [ ] Commit the shared versioned catalog schema and representative fixtures.
-- [ ] Define the canonical `space_categories` registry with stable keys, enabled state, sort order, and translated labels.
-- [ ] Add website content fields for audience tags, surfaces, priority, enabled state, translations, and optional Automation defaults.
+- [ ] Commit the shared provider-result schema and representative fixtures
+      without embedding S3-specific fields in the application contract.
+- [ ] Define `provider_key`, `provider_version`, provider-local item IDs, and
+      the opaque/namespaced example reference expected from PR 4.
+- [ ] Define the default `space_categories` registry with stable keys, enabled
+      state, sort order, and translated labels.
+- [ ] Add website content fields for audience tags, surfaces, priority, enabled
+      state, translations, and optional Automation defaults.
 - [ ] Enforce unique stable IDs and category keys, valid category-key syntax, item tags that reference the registry, supported schema versions, plain-text prompts, and agreed content-length limits.
 - [ ] Write the first 12–20 concise examples, including at least three wildcard examples per surface.
 - [ ] Review each entry separately for Workspace and Automation suitability.
 - [ ] Keep initial examples usable with available product capabilities; avoid prompts that silently require unconfigured connectors or missing private inputs.
 - [ ] Validate content in the website build before publishing.
-- [ ] Publish immutable catalog versions to S3, then update `index.json` only after all referenced objects are available.
-- [ ] Provide the object location and server access contract to the PR 4 owner.
+- [ ] Publish immutable `eigent-default` catalog versions to S3, then update
+      `index.json` only after all referenced objects are available.
+- [ ] Keep S3 object paths, authentication, and pointer mechanics inside the
+      default provider adapter contract rather than the desktop-facing API.
+- [ ] Provide the default provider location and server access contract to the
+      PR 4 owner.
 - [ ] Support item withdrawal, catalog disablement, and rollback to a previous valid catalog.
 - [ ] Support category addition, label changes, disabling, and historical-selection labels without reusing or silently renaming a published key.
 - [ ] Test publisher validation and pointer/version consistency.
+- [ ] Document the minimum conformance fixtures another provider must pass.
 
 ### PR 3 acceptance criteria
 
-Content can be published or withdrawn without releasing the app. Website, backend, and desktop teams have the same schema and fixtures. S3 objects contain public example content, not user profile data or credentials.
+Default content can be published or withdrawn without releasing the app. The
+website and default server adapter agree on the S3 format, while backend and
+desktop behavior is defined by the provider-neutral schema and fixtures. S3
+objects contain public example content, not user profile data or credentials.
 
 ## PR 4 — Shared delivery and desktop infrastructure
 
 **Owner:** Application engineer; designer supplies shared component design
 
-**Goal:** Provide a complete shared integration surface for both UI PRs.
+**Goal:** Provide a provider-neutral delivery boundary and a complete shared
+integration surface for both UI PRs.
 
 ### Backend todo
 
-- [ ] Implement the example API against PR 3's catalog contract.
-- [ ] Load and validate the content-owned Space-category registry and expose enabled, localised options through the Eigent API.
-- [ ] Validate catalog content at runtime and apply the specified matching, ordering, deduplication, and locale rules.
+- [ ] Define an `ExampleContentProvider` boundary for category options and
+      example lookup using the shared normalized schema.
+- [ ] Implement the `eigent-default` adapter against PR 3's website/S3 catalog.
+- [ ] Add a resolver that chooses the configured account or organisation
+      provider set and uses `eigent-default` when no override exists.
+- [ ] Keep provider selection and credentials outside `category_key` and outside
+      desktop state.
+- [ ] Support explicit replace or augment policy with deterministic provider
+      precedence and collision-safe example references.
+- [ ] Merge category registries deterministically and reject incompatible
+      definitions for the same stable category key.
+- [ ] Load and validate provider-supplied Space-category registries and expose
+      enabled, localised options through the Eigent API.
+- [ ] Validate every provider result at runtime and apply the specified
+      matching, ordering, deduplication, and locale rules.
+- [ ] Treat custom-agent output as untrusted content: enforce the same schema,
+      length, plain-text, timeout, and cancellation boundaries before returning it.
 - [ ] Implement timeout, refresh, maximum cache age, disablement, and withdrawal behavior.
-- [ ] Return explicit ready/disabled/unavailable states with version and expiry.
-- [ ] Test the matching matrix and successful empty/disabled responses versus transport failures.
+- [ ] Return explicit ready/disabled/unavailable states with content revision
+      and expiry.
+- [ ] Test the matching matrix, default-provider behavior, provider switching,
+      replace/augment precedence, ID collisions, and successful empty/disabled
+      responses versus transport failures.
 
 ### Desktop todo
 
-- [ ] Add the fixed user-role type and an opaque Space-category key type; do not duplicate the catalog category list in desktop code.
+- [ ] Add the fixed user-role type and an opaque Space-category key type; do not
+      duplicate provider category lists in desktop code.
 - [ ] Add Space-category API mapping and create/update plumbing for blank and folder Spaces.
-- [ ] Add a client and cache for the server-provided, localised Space-category options, scoped by API environment and catalog version.
+- [ ] Add a client and cache for the server-provided, localised Space-category
+      options, scoped by API environment and opaque content revision.
 - [ ] Load the current user's profile after sign-in and restore it on application reload.
 - [ ] Scope profile state to account and API environment; clear it on logout/account/environment changes.
 - [ ] Ignore pending responses belonging to a previous account or recommendation context.
@@ -211,12 +331,19 @@ Content can be published or withdrawn without releasing the app. Website, backen
 - [ ] Add a feature flag, disabled by default, before either page integration merges.
 - [ ] Ensure the flag disables example UI and requests on both surfaces.
 - [ ] Define shared analytics helpers for example impressions, selection, and subsequent explicit submission/save.
-- [ ] Track example ID, catalog version, and surface; do not collect prompt text, user drafts, or Space names.
+- [ ] Track opaque example reference, content revision, and surface; do not
+      collect prompt text, user drafts, Space names, provider credentials, or
+      private source locations.
 - [ ] Test profile hydration, account switching, stale requests, cache expiry, and feature-off behavior.
 
 ### PR 4 acceptance criteria
 
-Both UI teams can integrate against stable fixtures and exports. Disabled or withdrawn content is not restored by fallback handling. A failed recommendation request does not block the composer or Automation form.
+Both UI teams can integrate against stable fixtures and exports without knowing
+which provider supplied the content. The default website/S3 provider can be
+replaced or augmented by a conforming provider without changing the desktop
+client or Space schema. Disabled or withdrawn content is not restored by
+fallback handling. A failed recommendation request does not block the composer
+or Automation form.
 
 The shared component uses existing primitives such as `Button`, `DsText`, `DsIcon`, and `Skeleton`, with semantic tokens and visible keyboard focus.
 
@@ -234,7 +361,8 @@ The shared component uses existing primitives such as `Button`, `DsText`, `DsIco
 - [ ] Save only against the authenticated account. If selection occurs before sign-in, hold it as a pending draft and offer to save it once the account is known.
 - [ ] Make failed saves retryable without blocking onboarding or losing the selection.
 - [ ] Add optional Space-category selection for blank/folder Space creation and editing/clearing in Space settings.
-- [ ] Render Space-category choices from PR 4's server-provided catalog options rather than a bundled enum.
+- [ ] Render Space-category choices from PR 4's server-provided options rather
+      than a bundled enum or provider-specific list.
 - [ ] Do not require existing or imported Spaces to select a category before use.
 - [ ] If a stored category is no longer enabled, show it as unavailable using the last-known label when possible and let the user clear or replace it.
 - [ ] Localise labels and preserve the distinction between "Other", "General", and unset values.
@@ -297,21 +425,32 @@ Examples work with unset preferences before PR 5 ships and become personalised w
 - [ ] Verify keyboard navigation, visible focus, light/dark themes, 200% zoom, narrow windows, long translations, and reduced motion where applicable.
 - [ ] Report reused primitives, selected semantic tokens/axes, verified states/themes, and any registered design exception in UI PR handoffs.
 - [ ] Verify old clients against the new APIs and unset fields from older servers.
-- [ ] Test the full matching matrix, locale fallback, unavailable catalog, explicit empty result, disabled catalog, withdrawn item, and expired cache.
+- [ ] Test the full matching matrix, locale fallback, unavailable provider,
+      explicit empty result, disabled provider, withdrawn item, and expired cache.
+- [ ] Test changing from the default provider to a fixture enterprise or custom
+      provider without changing the desktop client or Space schema.
+- [ ] Test replace and augment policies, provider-local ID collisions, category
+      mapping, tenant isolation, and provider credential redaction.
 - [ ] Test returning users, account switching, and preference changes without restart.
 - [ ] Perform a real Electron walkthrough of Workspace prefill and Automation creation in a Space with zero Sessions.
-- [ ] Deploy additive schema/API support and a validated catalog before enabling desktop integrations.
+- [ ] Deploy additive schema/API support and the validated default provider
+      before enabling desktop integrations.
 - [ ] Enable internally first; observe request failures, fallback usage, selection, and successful explicit submission/save.
 - [ ] Test turning the feature off before wider rollout.
 - [ ] Keep all UI integrations gated until their dependencies and acceptance criteria are satisfied.
 
 ## Product-owner immediate todo list
 
-- [ ] Confirm the fixed role keys, Space-category slug format, content ownership of the category registry, and one-value-per-profile v1 scope.
+- [ ] Confirm the fixed role keys, Space-category slug format, provider-owned
+      category registries, and one-value-per-profile v1 scope.
 - [ ] Assign named owners for all six PRs and confirm backend capacity for PR 2.
 - [ ] Approve the wildcard/null contract, category-first fallback order, and cache defaults.
-- [ ] Confirm the Eigent API delivery approach and provide the S3 publishing/access details to the relevant engineers.
-- [ ] Have PRs 3 and 4 owners agree on schema, API response, and fixtures before UI integration.
+- [ ] Confirm the provider interface, replace/augment policy, and default
+      `eigent-default` behavior.
+- [ ] Provide the website/S3 publishing and server-access details only to the
+      default provider owners.
+- [ ] Have PRs 3 and 4 owners agree on the normalized schema, API response,
+      provider conformance fixtures, and default adapter before UI integration.
 - [ ] Ask the designer to deliver the shared recommendation component design early for PR 4.
 - [ ] Prepare 12–20 examples and at least three wildcard examples for each surface.
 - [ ] Include the zero-Session Automation save flow in the designer's handoff.
@@ -322,8 +461,14 @@ Examples work with unset preferences before PR 5 ships and become personalised w
 - Use the active repository design and terminology contracts.
 - Preserve public terminology as **Space → Session → Task**.
 - Use **Automation** in visible copy while preserving backend `Trigger` and `Project` identifiers.
-- Validate remote content and render prompts as plain text.
-- Keep AWS credentials on the server/publishing side.
+- Validate content from every provider and render prompts as plain text.
+- Keep provider credentials and private source locations on the server side.
+- Use the website/S3 catalog as the default provider, not as the desktop or
+  product schema.
+- Keep provider selection separate from `category_key`; switching providers
+  must not require a Space migration.
+- Require provider adapters to normalize categories and preserve collision-safe
+  example references.
 - Preference matching changes recommendations only; it does not change permissions, model settings, or execution behavior.
 - Content publishing, schema migrations, application implementation, and rollout are separate deliverables; report their status independently.
 - Treat published Space-category keys as immutable identifiers. Change labels freely, but never reuse a key for a different meaning.
