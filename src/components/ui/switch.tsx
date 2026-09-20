@@ -76,7 +76,7 @@ const Switch = React.forwardRef<
     >
       <SwitchPrimitives.Thumb
         className={cn(
-          'pointer-events-none block rounded-full shadow-ds-elevation-control ring-0 transition-transform data-[state=unchecked]:translate-x-0',
+          'pointer-events-none block rounded-full shadow-ds-elevation-control ring-0 transition-transform data-[state=unchecked]:translate-x-0 motion-reduce:transition-none',
           sizeClasses[size].thumb,
           variantClasses[variant].thumb
         )}

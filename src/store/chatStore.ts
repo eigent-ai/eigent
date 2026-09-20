@@ -30,6 +30,7 @@ import type { AppHost } from '@/host/types';
 import { generateUniqueId, uploadLog } from '@/lib';
 import { isDisplayableOutputFile } from '@/lib/agentFileFilters';
 import { createBrowserPreviewHandoff } from '@/lib/browserPreviewHandoff';
+import { fetchConfiguredProviders } from '@/lib/configuredModels';
 import {
   classifyError,
   classifyTaskCategory,
@@ -2512,8 +2513,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         let provider: any = null;
         if (pinnedModelSelection?.provider_id !== undefined) {
           try {
-            const res = await proxyFetchGet('/api/v1/providers');
-            const providerList = Array.isArray(res) ? res : res.items || [];
+            const providerList = await fetchConfiguredProviders();
             provider =
               providerList.find(
                 (p: { id: number }) => p.id === pinnedModelSelection.provider_id
@@ -2522,11 +2522,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             console.error('Failed to load pinned model provider:', error);
           }
           if (!provider) {
-            toast.warning(
-              i18next.t('chat.model-fallback-warning', {
-                defaultValue:
-                  'The model used earlier in this conversation is no longer available. Falling back to the default model.',
-              })
+            finishStartupFailure();
+            throw new Error(
+              i18next.t('setting.model-list.missing-configuration')
             );
           }
         }
@@ -2534,7 +2532,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           const res = await proxyFetchGet('/api/v1/providers', {
             prefer: true,
           });
-          const providerList = res.items || [];
+          const providerList = Array.isArray(res) ? res : res.items || [];
           provider = providerList[0];
         }
 
@@ -2543,7 +2541,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           throw new Error(
             i18next.t('chat.no-model-provider', {
               defaultValue:
-                'No model provider is configured. Go to Agents > Models and configure at least one default model provider.',
+                'No model provider is configured. Go to Settings > Models and configure at least one default model provider.',
             })
           );
         }
@@ -2579,7 +2577,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           throw new Error(
             i18next.t('chat.cloud-model-unavailable', {
               defaultValue:
-                'The cloud model is unavailable. Try again or choose another model in Agents > Models.',
+                'The cloud model is unavailable. Try again or choose another model in Settings > Models.',
             })
           );
         }
@@ -2740,10 +2738,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       if (workerProviderIds.length > 0) {
         let workerProviderList: any[];
         try {
-          const providersRes = await proxyFetchGet('/api/v1/providers');
-          workerProviderList = Array.isArray(providersRes)
-            ? providersRes
-            : providersRes.items || [];
+          workerProviderList = await fetchConfiguredProviders();
         } catch (error) {
           finishStartupFailure();
           throw new Error(

@@ -14,6 +14,8 @@
 
 import { proxyFetchGet } from '@/api/http';
 import { createHost } from '@/host/createHost';
+import { MODEL_CONFIGURATIONS_CHANGED } from '@/lib/configuredModels';
+import { getProviderValid } from '@/lib/providerStatus';
 import { getAuthStore, useAuthStore } from '@/store/authStore';
 import { getCloudModelStore } from '@/store/cloudModelStore';
 import { refreshUsage, useUsageNoticeStore } from '@/store/usageNoticeStore';
@@ -74,8 +76,8 @@ export function useModelConfigCheck(): {
         setHasModelConfigured(Boolean(status?.connected));
       } else if (modelType === 'local' || modelType === 'custom') {
         const res = await proxyFetchGet('/api/v1/providers', { prefer: true });
-        const providerList = res.items || [];
-        setHasModelConfigured(providerList.length > 0);
+        const providerList = Array.isArray(res) ? res : res.items || [];
+        setHasModelConfigured(providerList.some(getProviderValid));
       } else {
         setHasModelConfigured(false);
       }
@@ -101,8 +103,10 @@ export function useModelConfigCheck(): {
       checkModelConfig();
     };
     window.addEventListener('focus', handleFocus);
+    window.addEventListener(MODEL_CONFIGURATIONS_CHANGED, handleFocus);
     return () => {
       window.removeEventListener('focus', handleFocus);
+      window.removeEventListener(MODEL_CONFIGURATIONS_CHANGED, handleFocus);
     };
   }, [checkModelConfig]);
 
