@@ -3,9 +3,10 @@
 ## Objective and scope
 
 Show relevant example Tasks on Workspace and Automation by matching the user's
-work role with the current Space category. For v1, the desktop fetches a public,
-provider-neutral catalog directly from S3/CDN and performs validation,
-localisation, and matching locally.
+work role with the current Space category. For v1, the desktop follows a public
+S3/CDN catalog index, verifies its immutable versioned objects, normalises them
+into the provider-neutral application contract, and performs localisation and
+matching locally.
 
 Eigent's default example-content provider uses content authored in the website
 repository and published as a versioned catalog to S3. The catalog contract is
@@ -100,19 +101,41 @@ duplicates, and insufficient results.
 
 ### Example-content catalog delivery
 
-The application owns one provider-neutral content contract. For v1, the desktop
-loads that normalized contract from a configured public HTTPS URL using
-`VITE_EXAMPLE_CONTENT_CATALOG_URL`. The request uses no AWS SDK, AWS credentials,
+The application owns one provider-neutral content contract. For v1,
+`VITE_EXAMPLE_CONTENT_CATALOG_URL` points to the default provider's public
+`catalog/index.json`. The desktop validates the index, reads the referenced
+immutable locale and registry objects, verifies each object's declared byte
+length and SHA-256 digest, and normalises the content-owned transport fields
+into the application contract. Requests use no AWS SDK, AWS credentials,
 cookies, bearer token, user role, or Space category. Personalisation happens
-locally after the complete public catalog is validated.
+locally only after the complete public catalog is accepted.
 
-Each provider result contains `schema_version`, `provider_key`,
-`provider_version`, `enabled`, `space_categories`, and `items`. Each
-Space-category registry entry contains an immutable `key`, `enabled`,
-`sort_order`, and locale-keyed labels. Each item contains a provider-local
-`id`, `enabled`, `surfaces`, `role_keys`, `space_category_keys`, `priority`, and
-locale-keyed translations with title, summary, and plain-text prompt. Optional
-translated Automation name and description are display/draft defaults only.
+Official and source builds fall back to the public `eigent-default` index when
+the catalog URL variable is missing or blank. `.env.example` documents that
+public value for operators; it is not a secret-bearing configuration file.
+Custom distributions may replace the URL with another compatible public index
+or disable all requests with `VITE_EXAMPLE_CONTENT_ENABLED=false`. PR 4 keeps
+the feature disabled by default until the Workspace and Automation integration
+PRs are ready to ship.
+
+The default CDN transport is provider-specific and is not exposed to the shared
+component or matching resolver. Its index declares `schemaVersion`,
+`providerKey`, `enabled`, `current`, `locales`,
+`minimumAdapterSchemaVersion`, and versioned object descriptors. The immutable
+version contains `catalog.<locale>.json`, `categories.<locale>.json`, and
+`registry.json`. The desktop requires the `en` fallback locale, merges the
+available locale objects only when their non-translated contracts agree, and
+rejects missing, malformed, oversized, truncated, or checksum-mismatched
+objects.
+
+After default-provider adaptation, each provider result contains
+`schema_version`, `provider_key`, `provider_version`, `enabled`,
+`space_categories`, and `items`. Each Space-category registry entry contains an
+immutable `key`, `enabled`, `sort_order`, and locale-keyed labels. Each item
+contains a provider-local `id`, `enabled`, `surfaces`, `role_keys`,
+`space_category_keys`, `priority`, and locale-keyed translations with title,
+summary, and plain-text prompt. Optional translated Automation name and
+description are display/draft defaults only.
 
 The desktop identifies an example by both `provider_key` and item `id` in a
 stable namespaced reference. This prevents collisions and keeps the component
@@ -125,11 +148,11 @@ from new selection; retain its last-known label long enough for clients to
 explain and clear historical selections.
 
 The initial provider is `eigent-default`. Its source catalog is authored in the
-website repository and published to a stable public S3/CDN URL. The bucket or
-CDN must permit cross-origin `GET` requests because the packaged Electron
-renderer and local web development both fetch it directly. Public objects
-contain example content only; they contain no user data, credentials, or private
-workflow content.
+website repository and published behind a stable public S3/CDN index URL. The
+CDN permits credential-free `GET` requests. Supported HTTP development origins
+also require CORS response headers; packaged Electron access is verified
+separately. Public objects contain example content only; they contain no user
+data, credentials, or private workflow content.
 
 Enterprise/private catalogs and custom-agent output are deferred. A later PR may
 implement the same `ExampleContentProvider` interface with an authenticated
@@ -250,8 +273,9 @@ integration surface for both UI PRs, with no new example-content backend API.
 - [x] Add the fixed user-role type and an opaque Space-category key type; do not
       duplicate provider category lists in desktop code.
 - [x] Add Space-category API mapping and create/update plumbing for blank and folder Spaces.
-- [x] Add an `ExampleContentProvider` interface and credential-free HTTP adapter
-      for the configured public S3/CDN catalog URL.
+- [x] Add an `ExampleContentProvider` interface and a default credential-free
+      CDN adapter that follows the configured index, verifies versioned locale
+      and registry objects, and returns the provider-neutral catalog.
 - [x] Validate the complete catalog at runtime, then resolve localised
       Space-category options and recommendations in the desktop.
 - [x] Share the catalog through one React Query cache with five-minute refresh
@@ -281,8 +305,9 @@ integration surface for both UI PRs, with no new example-content backend API.
 ### PR 4 acceptance criteria
 
 Both UI teams can integrate against stable fixtures and exports without knowing
-the public catalog's storage layout. The default website/S3 catalog is fetched
-directly and user role/category values never leave the desktop for matching.
+the public catalog's storage layout. The default website/S3 index and immutable
+objects are fetched directly, integrity-checked, and adapted locally. User
+role/category values never leave the desktop for matching.
 The provider interface leaves room for a later authenticated adapter, but
 enterprise/private catalog support is not part of this PR. Disabled or withdrawn
 content is not restored by fallback handling. A failed catalog request does not
@@ -390,8 +415,9 @@ Examples work with unset preferences before PR 5 ships and become personalised w
 - [ ] Approve the wildcard/null contract, category-first fallback order, and cache defaults.
 - [ ] Confirm the provider interface and default `eigent-default` behavior;
       explicitly defer replace/augment and private-provider policy.
-- [ ] Provide the public website/S3 catalog URL and CORS configuration to the
-      PR 4 owner.
+- [x] Provide the public website/S3 `catalog/index.json` URL to the PR 4 owner.
+- [ ] Enable CORS for the supported local development origins; packaged
+      Electron access has been verified separately.
 - [ ] Have PRs 3 and 4 owners agree on the normalized catalog schema,
       conformance fixtures, and default HTTP adapter before UI integration.
 - [ ] Ask the designer to deliver the shared recommendation component design early for PR 4.
