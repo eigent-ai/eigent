@@ -48,9 +48,8 @@ def put(data: UserIn, db_session: Session = Depends(session), auth: V1UserAuth =
 @router.put("/user/profile", name="update user profile", response_model=UserProfile)
 def put_profile(data: UserProfile, db_session: Session = Depends(session), auth: V1UserAuth = Depends(auth_must)):
     model = auth.user
-    model.nickname = data.nickname
-    model.fullname = data.fullname
-    model.work_desc = data.work_desc
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(model, field, value)
     model.save(db_session)
     return model
 

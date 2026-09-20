@@ -1,0 +1,25 @@
+{
+  "role_update_request": {
+    "work_role_key": "engineering"
+  },
+  "legacy_profile_update_request": {
+    "fullname": "Ada Lovelace",
+    "nickname": "Ada",
+    "work_desc": "Builds analytical systems"
+  },
+  "clear_role_request": {
+    "work_role_key": null
+  },
+  "user_response": {
+    "email": "ada@example.com",
+    "avatar": "",
+    "username": "ada",
+    "nickname": "Ada",
+    "fullname": "Ada Lovelace",
+    "work_desc": "Builds analytical systems",
+    "work_role_key": "engineering",
+    "credits": 0,
+    "status": 1,
+    "created_at": "2026-09-20T13:00:00"
+  }
+}

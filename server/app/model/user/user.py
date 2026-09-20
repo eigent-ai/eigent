@@ -14,9 +14,10 @@
 
 from datetime import date, datetime
 from enum import IntEnum
+from typing import Literal
 
 from pydantic import BaseModel, EmailStr, field_validator
-from sqlalchemy import Integer, SmallInteger, text
+from sqlalchemy import Integer, SmallInteger, String, text
 from sqlalchemy_utils import ChoiceType
 from sqlmodel import Column, Field
 
@@ -29,6 +30,19 @@ class Status(IntEnum):
     Block = -1
 
 
+WorkRoleKey = Literal[
+    "engineering",
+    "design",
+    "product",
+    "marketing",
+    "finance",
+    "legal",
+    "security",
+    "operations",
+    "other",
+]
+
+
 class User(AbstractModel, DefaultTimes, table=True):
     id: int = Field(default=None, primary_key=True)
     stack_id: str | None = Field(default=None, unique=True, max_length=255)
@@ -39,6 +53,10 @@ class User(AbstractModel, DefaultTimes, table=True):
     nickname: str = Field(default="", max_length=64)
     fullname: str = Field(default="", max_length=128)
     work_desc: str = Field(default="", max_length=255)
+    work_role_key: str | None = Field(
+        default=None,
+        sa_column=Column(String(50), nullable=True),
+    )
     credits: int = Field(default=0, description="credits", sa_column=Column(Integer, server_default=text("0")))
     last_daily_credit_date: date | None = Field(default=None, description="Last date daily credits were granted")
     last_monthly_credit_date: date | None = Field(default=None, description="Last month monthly credits were granted")
@@ -50,6 +68,7 @@ class UserProfile(BaseModel):
     fullname: str = ""
     nickname: str = ""
     work_desc: str = ""
+    work_role_key: WorkRoleKey | None = None
 
 
 class LoginByPasswordIn(BaseModel):
@@ -79,6 +98,7 @@ class UserOut(BaseModel):
     nickname: str | None = ""
     fullname: str | None = ""
     work_desc: str | None = ""
+    work_role_key: WorkRoleKey | None = None
     credits: int
     status: Status
     created_at: datetime
