@@ -37,6 +37,7 @@ import {
 } from '@/types/exampleContent';
 
 const CATALOG_MAXIMUM_AGE_MS = 24 * 60 * 60 * 1_000;
+const CATALOG_REQUEST_TIMEOUT_MS = 5_000;
 const CATEGORY_KEY_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const PROVIDER_KEY_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const ITEM_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -366,7 +367,8 @@ export class HttpExampleContentProvider implements ExampleContentProvider {
   constructor(
     readonly providerKey: string,
     private readonly catalogUrl: string,
-    private readonly fetchImplementation: FetchImplementation = fetch
+    private readonly fetchImplementation: FetchImplementation = fetch,
+    private readonly requestTimeoutMs = CATALOG_REQUEST_TIMEOUT_MS
   ) {
     const parsedUrl = new URL(catalogUrl);
     if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
@@ -375,24 +377,62 @@ export class HttpExampleContentProvider implements ExampleContentProvider {
   }
 
   async loadCatalog(signal?: AbortSignal): Promise<ExampleContentCatalog> {
-    const response = await this.fetchImplementation(this.catalogUrl, {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-      credentials: 'omit',
-      signal,
+    const requestController = new AbortController();
+    let timedOut = false;
+    const abortRequest = () => requestController.abort(signal?.reason);
+    const aborted = new Promise<never>((_, reject) => {
+      requestController.signal.addEventListener(
+        'abort',
+        () => {
+          let error = new Error(
+            'Example content catalog request was cancelled'
+          );
+          if (timedOut) {
+            error = new Error('Example content catalog request timed out');
+          } else if (signal?.reason instanceof Error) {
+            error = signal.reason;
+          }
+          reject(error);
+        },
+        { once: true }
+      );
     });
-    if (!response.ok) {
-      throw new Error(
-        `Example content catalog request failed (${response.status})`
-      );
+    if (signal?.aborted) {
+      abortRequest();
+    } else {
+      signal?.addEventListener('abort', abortRequest, { once: true });
     }
-    const catalog = parseExampleContentCatalog(await response.json());
-    if (catalog.providerKey !== this.providerKey) {
-      throw new Error(
-        'Example content provider key does not match the configured source'
-      );
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      requestController.abort();
+    }, this.requestTimeoutMs);
+    const request = (async () => {
+      const response = await this.fetchImplementation(this.catalogUrl, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        credentials: 'omit',
+        signal: requestController.signal,
+      });
+      if (!response.ok) {
+        throw new Error(
+          `Example content catalog request failed (${response.status})`
+        );
+      }
+      const catalog = parseExampleContentCatalog(await response.json());
+      if (catalog.providerKey !== this.providerKey) {
+        throw new Error(
+          'Example content provider key does not match the configured source'
+        );
+      }
+      return catalog;
+    })();
+
+    try {
+      return await Promise.race([request, aborted]);
+    } finally {
+      clearTimeout(timeout);
+      signal?.removeEventListener('abort', abortRequest);
     }
-    return catalog;
   }
 }
 

@@ -32,5 +32,10 @@ export function exampleContentAnalyticsEvent(
   action: ExampleContentAnalyticsAction,
   input: Omit<ExampleContentAnalyticsEvent, 'action'>
 ): ExampleContentAnalyticsEvent {
-  return { action, ...input };
+  return {
+    action,
+    exampleRef: input.exampleRef,
+    contentRevision: input.contentRevision,
+    surface: input.surface,
+  };
 }

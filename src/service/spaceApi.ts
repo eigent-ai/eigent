@@ -133,6 +133,10 @@ export interface ServerSpace {
   updated_at?: string | null;
 }
 
+export class UnsupportedSpaceCategoryPreferenceError extends Error {
+  readonly code = 'unsupported-space-category-preference';
+}
+
 export interface ProjectPayload {
   id?: string;
   name: string;
@@ -176,6 +180,24 @@ export const toLocalSpace = (space: ServerSpace): Space => ({
   metadata: space.metadata ?? undefined,
 });
 
+const requireAcknowledgedCategory = (
+  space: unknown,
+  requestedCategory: SpaceCategoryKey | null | undefined
+): ServerSpace => {
+  if (requestedCategory === undefined) return space as ServerSpace;
+  if (
+    typeof space !== 'object' ||
+    space === null ||
+    !Object.prototype.hasOwnProperty.call(space, 'category_key') ||
+    (space as ServerSpace).category_key !== requestedCategory
+  ) {
+    throw new UnsupportedSpaceCategoryPreferenceError(
+      'The connected server did not confirm the Space category preference.'
+    );
+  }
+  return space as ServerSpace;
+};
+
 export const proxyFetchSpaces = async (): Promise<Space[]> => {
   const spaces = await proxyFetchGet('/api/v1/spaces');
   return (spaces as ServerSpace[]).map(toLocalSpace);
@@ -190,7 +212,7 @@ export const proxyCreateSpace = async (
   payload: SpacePayload
 ): Promise<Space> => {
   const space = await proxyFetchPost('/api/v1/spaces', payload);
-  return toLocalSpace(space as ServerSpace);
+  return toLocalSpace(requireAcknowledgedCategory(space, payload.category_key));
 };
 
 export const proxyUpdateSpace = async (
@@ -198,7 +220,7 @@ export const proxyUpdateSpace = async (
   payload: Partial<SpacePayload>
 ): Promise<Space> => {
   const space = await proxyFetchPatch(`/api/v1/spaces/${spaceId}`, payload);
-  return toLocalSpace(space as ServerSpace);
+  return toLocalSpace(requireAcknowledgedCategory(space, payload.category_key));
 };
 
 export const proxyFetchSpaceProjects = async (

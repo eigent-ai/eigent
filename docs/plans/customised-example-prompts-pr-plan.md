@@ -142,12 +142,13 @@ derived result carries schema version, content revision, status, expiry, and
 resolved locale. A successful empty or disabled catalog is authoritative. A
 catalog request failure leaves the rest of Workspace and Automation usable.
 
-React Query shares one catalog request across both surfaces, considers it fresh
-for five minutes, and refreshes every five minutes while in use. A cached remote
-catalog is discarded after 24 hours. There is no bundled example fallback in
-v1, so a failed first request is unavailable and cannot resurrect withdrawn or
-disabled content. Offline clients cannot learn new withdrawals immediately; do
-not promise instantaneous removal.
+React Query shares one catalog request across both surfaces and applies a
+five-second request deadline. It considers the catalog fresh for five minutes
+and refreshes it every five minutes while in use. A cached remote catalog is
+discarded after 24 hours. There is no bundled example fallback in v1, so a
+failed first request is unavailable and cannot resurrect withdrawn or disabled
+content. Offline clients cannot learn new withdrawals immediately; do not
+promise instantaneous removal.
 
 ## PR 1 — Space category schema and API
 

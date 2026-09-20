@@ -170,13 +170,33 @@ describe('example content S3 catalog', () => {
     });
     expect(fetchImplementation).toHaveBeenCalledWith(
       'https://cdn.example.com/example-content/catalog.json',
-      {
+      expect.objectContaining({
         method: 'GET',
         headers: { Accept: 'application/json' },
         credentials: 'omit',
-        signal: undefined,
-      }
+        signal: expect.any(AbortSignal),
+      })
     );
+  });
+
+  it('times out a stalled catalog body within the request deadline', async () => {
+    vi.useFakeTimers();
+    const fetchImplementation = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => new Promise(() => undefined),
+    }) as unknown as typeof fetch;
+    const provider = new HttpExampleContentProvider(
+      'eigent-default',
+      'https://cdn.example.com/example-content/catalog.json',
+      fetchImplementation,
+      1_000
+    );
+
+    const result = expect(provider.loadCatalog()).rejects.toThrow('timed out');
+    await vi.advanceTimersByTimeAsync(1_000);
+    await result;
+    vi.useRealTimers();
   });
 
   it('rejects a catalog that does not belong to the configured provider', async () => {

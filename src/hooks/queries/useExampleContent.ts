@@ -36,7 +36,7 @@ import {
 import { useAuthStore } from '@/store/authStore';
 import type { ExampleRecommendationsRequest } from '@/types/exampleContent';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 const FIVE_MINUTES = 5 * 60 * 1_000;
 
@@ -58,6 +58,20 @@ const useExampleContentCatalog = (enabled: boolean) => {
   });
 };
 
+const useExampleContentExpiry = (expiresAt: string | null | undefined) => {
+  const [expiredRevision, setExpiredRevision] = useState<string | null>(null);
+  useEffect(() => {
+    if (expiresAt == null) return;
+    const remaining = Date.parse(expiresAt) - Date.now();
+    const timeout = setTimeout(
+      () => setExpiredRevision(expiresAt),
+      Math.max(0, remaining)
+    );
+    return () => clearTimeout(timeout);
+  }, [expiresAt]);
+  return expiresAt != null && expiredRevision === expiresAt;
+};
+
 export function useExampleContentOptions(locale: string) {
   const accountId = useAuthStore((state) => state.user_id);
   const environment = getAuthEnvironmentKey();
@@ -70,7 +84,10 @@ export function useExampleContentOptions(locale: string) {
         : resolveExampleContentOptions(query.data, locale),
     [locale, query.data]
   );
-  const isExpired = data ? isExampleContentExpired(data) : false;
+  const isExpiredByDeadline = useExampleContentExpiry(data?.expiresAt);
+  const isExpired = data
+    ? isExpiredByDeadline || isExampleContentExpired(data)
+    : false;
 
   useEffect(() => {
     if (data !== undefined && !isExpired) {
@@ -95,6 +112,9 @@ export function useExampleRecommendations(
         : resolveExampleRecommendations(query.data, request),
     [query.data, request]
   );
-  const isExpired = data ? isExampleContentExpired(data) : false;
+  const isExpiredByDeadline = useExampleContentExpiry(data?.expiresAt);
+  const isExpired = data
+    ? isExpiredByDeadline || isExampleContentExpired(data)
+    : false;
   return { ...query, data: isExpired ? undefined : data, isExpired };
 }

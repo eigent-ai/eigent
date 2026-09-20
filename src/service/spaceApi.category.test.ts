@@ -12,8 +12,14 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { toLocalSpace, type ServerSpace } from '@/service/spaceApi';
-import { describe, expect, it } from 'vitest';
+import {
+  proxyCreateSpace,
+  proxyUpdateSpace,
+  toLocalSpace,
+  UnsupportedSpaceCategoryPreferenceError,
+  type ServerSpace,
+} from '@/service/spaceApi';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const serverSpace = (categoryKey?: string | null): ServerSpace => ({
   id: 'space-1',
@@ -26,6 +32,11 @@ const serverSpace = (categoryKey?: string | null): ServerSpace => ({
 });
 
 describe('Space category desktop mapping', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
   it('preserves an opaque content-defined category key', () => {
     expect(toLocalSpace(serverSpace('revenue-operations')).categoryKey).toBe(
       'revenue-operations'
@@ -34,5 +45,39 @@ describe('Space category desktop mapping', () => {
 
   it('treats a category omitted by an older server as unset', () => {
     expect(toLocalSpace(serverSpace()).categoryKey).toBeNull();
+  });
+
+  it('rejects a category update ignored by an older server', async () => {
+    const { category_key: _categoryKey, ...olderServerResponse } =
+      serverSpace();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce(
+        new Response(JSON.stringify(olderServerResponse), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      )
+    );
+
+    await expect(
+      proxyUpdateSpace('space-1', { category_key: 'engineering' })
+    ).rejects.toBeInstanceOf(UnsupportedSpaceCategoryPreferenceError);
+  });
+
+  it('accepts explicit category clearing when the server confirms it', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce(
+        new Response(JSON.stringify(serverSpace(null)), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      )
+    );
+
+    await expect(
+      proxyCreateSpace({ name: 'Planning', category_key: null })
+    ).resolves.toMatchObject({ categoryKey: null });
   });
 });

@@ -27,9 +27,12 @@ import {
   exampleContentQueryKeys,
   useExampleRecommendations,
 } from '@/hooks/queries/useExampleContent';
-import { fetchExampleContentCatalog } from '@/service/exampleContentApi';
+import {
+  fetchExampleContentCatalog,
+  parseExampleContentCatalog,
+} from '@/service/exampleContentApi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import type { PropsWithChildren } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -59,9 +62,17 @@ const wrapper = ({ children }: PropsWithChildren) => {
   );
 };
 
+const wrapperFor = (queryClient: QueryClient) =>
+  function QueryWrapper({ children }: PropsWithChildren) {
+    return (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+  };
+
 describe('useExampleRecommendations', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.useRealTimers();
     authState.token = null;
     authState.user_id = null;
     vi.clearAllMocks();
@@ -95,5 +106,60 @@ describe('useExampleRecommendations', () => {
         'https://cdn.example.com/example-content/catalog-b.json'
       )
     );
+  });
+
+  it('hides a mounted recommendation when its catalog expires', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-20T12:00:00Z'));
+    vi.stubEnv('VITE_EXAMPLE_CONTENT_ENABLED', 'true');
+    const catalogUrl = 'https://cdn.example.com/example-content/catalog.json';
+    vi.stubEnv('VITE_EXAMPLE_CONTENT_CATALOG_URL', catalogUrl);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    queryClient.setQueryData(
+      exampleContentQueryKeys.catalog(catalogUrl),
+      parseExampleContentCatalog(
+        {
+          schema_version: 1,
+          provider_key: 'eigent-default',
+          provider_version: 'revision-1',
+          enabled: true,
+          space_categories: [],
+          items: [
+            {
+              id: 'fallback',
+              surfaces: ['workspace'],
+              role_keys: ['*'],
+              space_category_keys: ['*'],
+              translations: {
+                en: {
+                  title: 'Fallback',
+                  summary: 'Fallback summary',
+                  prompt: 'Fallback prompt',
+                },
+              },
+            },
+          ],
+        },
+        Date.now() - 24 * 60 * 60 * 1_000 + 1_000
+      )
+    );
+
+    const { result } = renderHook(
+      () =>
+        useExampleRecommendations({
+          surface: 'workspace',
+          locale: 'en',
+        }),
+      { wrapper: wrapperFor(queryClient) }
+    );
+    expect(result.current.data?.items).toHaveLength(1);
+
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+
+    expect(result.current.data).toBeUndefined();
+    expect(result.current.isExpired).toBe(true);
+    queryClient.clear();
   });
 });
