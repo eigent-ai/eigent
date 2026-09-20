@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { isCloudModelAvailable } from '@/lib/cloudModelAvailability';
 import {
   cloudModelRequestExtraParams,
   type CloudModel,
@@ -62,5 +63,19 @@ describe('cloudModelRequestExtraParams', () => {
         })
       )
     ).toEqual({});
+  });
+});
+
+describe('isCloudModelAvailable', () => {
+  it('allows unrestricted models and delays gating until the plan is known', () => {
+    expect(isCloudModelAvailable({ min_plan_key: null }, 'free')).toBe(true);
+    expect(isCloudModelAvailable({ min_plan_key: 'plus' }, null)).toBe(true);
+  });
+
+  it('applies the catalog minimum plan to free and paid accounts', () => {
+    expect(isCloudModelAvailable({ min_plan_key: 'plus' }, 'free')).toBe(false);
+    expect(isCloudModelAvailable({ min_plan_key: 'plus' }, 'plus')).toBe(true);
+    expect(isCloudModelAvailable({ min_plan_key: 'plus' }, 'pro')).toBe(true);
+    expect(isCloudModelAvailable({ min_plan_key: 'pro' }, 'plus')).toBe(false);
   });
 });
