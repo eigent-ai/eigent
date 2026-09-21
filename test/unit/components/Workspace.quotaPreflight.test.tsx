@@ -397,6 +397,103 @@ describe('Workspace quota preview through real Space creation and Chat startup',
   const createdProject = () =>
     mocks.projectStore.projects[mocks.projectStore.activeProjectId];
 
+  it.each(['quota-reason', 'refresh-completion'] as const)(
+    'can retry a failed startup after %s settles ahead of the send preview',
+    async (change) => {
+      if (change === 'refresh-completion')
+        useUsageNoticeStore.setState({ refreshing: true });
+      mount();
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled()
+      );
+      const originalGet = mocks.localGet.getMockImplementation()!;
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      mocks.localGet.mockImplementationOnce(async (...args) => {
+        await gate;
+        return originalGet(...args);
+      });
+      mocks.sse.mockRejectedValueOnce(
+        new Error('Synthetic transient startup failure')
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+      await waitFor(() => expect(mocks.localGet).toHaveBeenCalledTimes(2));
+      act(() =>
+        useUsageNoticeStore.setState(
+          change === 'quota-reason'
+            ? { incidents: [{ reason: 'trial-daily' }] }
+            : { refreshing: false }
+        )
+      );
+      await waitFor(() => expect(mocks.localGet).toHaveBeenCalledTimes(3));
+      await act(async () => {
+        await mocks.localGet.mock.results[2].value;
+      });
+      await act(async () => {
+        release();
+      });
+      await waitFor(() => expect(notifyError).toHaveBeenCalledOnce());
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: 'Select model' })
+        ).toBeEnabled()
+      );
+      expectDraftRetained();
+      expect(mocks.projectStore.createProject).toHaveBeenCalledOnce();
+      expect(mocks.sse).toHaveBeenCalledOnce();
+      expect(mocks.projectStore.setProjectModel).not.toHaveBeenCalled();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.getByLabelText('Session message')).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+      await waitFor(() =>
+        expect(mocks.pageStore.setActiveWorkspaceTab).toHaveBeenCalledWith(
+          'project'
+        )
+      );
+      expect(mocks.projectStore.createProject).toHaveBeenCalledTimes(2);
+      expect(mocks.sse).toHaveBeenCalledTimes(2);
+      expect(createdProject().metadata.modelSelection).toMatchObject({
+        modelType: 'custom',
+      });
+      expect(screen.getByLabelText('Session message')).toHaveValue('');
+      expect(screen.getByLabelText('Draft attachments')).toBeEmptyDOMElement();
+    }
+  );
+
+  it('does not continue creating a Session when unmounted during send metadata lookup', async () => {
+    const view = mount();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled()
+    );
+    const originalGet = mocks.localGet.getMockImplementation()!;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    mocks.localGet.mockImplementationOnce(async (...args) => {
+      await gate;
+      return originalGet(...args);
+    });
+    let send!: Promise<void>;
+    act(() => {
+      send = mocks.input.onSend();
+    });
+    await waitFor(() => expect(mocks.localGet).toHaveBeenCalledTimes(2));
+    view.unmount();
+    await act(async () => {
+      release();
+      await send;
+    });
+    expect(mocks.projectStore.createProject).not.toHaveBeenCalled();
+    expect(mocks.proxyPost).not.toHaveBeenCalled();
+    expect(mocks.sse).not.toHaveBeenCalled();
+    expect(mocks.pageStore.setActiveWorkspaceTab).not.toHaveBeenCalled();
+  });
+
   it.each(
     variants.flatMap((variant) =>
       (['custom', 'local'] as const).map((category) => ({ variant, category }))

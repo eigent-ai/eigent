@@ -21,9 +21,11 @@ import { errorCopy } from '@/lib/usageErrors';
 import { getAuthStore } from '@/store/authStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { useUsageNoticeStore } from '@/store/usageNoticeStore';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 const quotaReasons = ['credits', 'trial-daily', 'trial-total', 'free-credits'];
+
+type PreviewResult = { modelType?: string; error?: Error };
 
 function currentQuota() {
   const auth = getAuthStore();
@@ -73,11 +75,10 @@ export function useNewSessionModelQuota(
     usage.refreshing,
     refreshVersion,
   ]);
-  const [preview, setPreview] = useState<{
-    key: string;
-    modelType?: string;
-    error?: Error;
-  } | null>(null);
+  const [preview, setPreview] = useState<
+    (PreviewResult & { key: string }) | null
+  >(null);
+  const previewOwner = useRef<{ key: string; request: number } | null>(null);
   const needsPreview = Boolean(quota && spaceId);
 
   const assertCurrent = useCallback(() => {
@@ -103,22 +104,40 @@ export function useNewSessionModelQuota(
     return identity.category;
   }, [assertCurrent, spaceId, modelType]);
 
-  useEffect(() => {
-    if (!needsPreview) return;
-    let current = true;
-    void readCategory().then(
-      (resolvedModelType) => {
-        if (current) setPreview({ key, modelType: resolvedModelType });
-      },
-      () => {
-        if (current && JSON.stringify(contextSnapshot()) === contextKey)
-          setPreview({ key, error: spaceModelError('unavailable') });
-      }
-    );
-    return () => {
-      current = false;
+  const readPreview = useCallback(async () => {
+    const owner = previewOwner.current;
+    const request = owner?.key === key ? ++owner.request : undefined;
+    const publish = (result: PreviewResult) => {
+      if (
+        owner?.key === key &&
+        previewOwner.current === owner &&
+        owner.request === request
+      )
+        setPreview({ key, ...result });
     };
-  }, [key, needsPreview, readCategory, contextKey]);
+    try {
+      const category = await readCategory();
+      publish({ modelType: category });
+      return category;
+    } catch (error) {
+      if (JSON.stringify(contextSnapshot()) === contextKey)
+        publish({ error: spaceModelError('unavailable') });
+      throw error;
+    }
+  }, [key, readCategory, contextKey]);
+
+  useEffect(() => {
+    // Background and send reads share ownership, including key reuse and unmount.
+    const owner = { key, request: 0 };
+    previewOwner.current = owner;
+    if (needsPreview)
+      void readPreview().catch(() => {
+        // The latest owned failure is already exposed as a retryable preview.
+      });
+    return () => {
+      if (previewOwner.current === owner) previewOwner.current = null;
+    };
+  }, [key, needsPreview, readPreview]);
 
   const pending = needsPreview && preview?.key !== key;
   const error =
@@ -146,9 +165,8 @@ export function useNewSessionModelQuota(
       assertCurrent();
       // Re-read on send: a mounted preview is not a launch snapshot or a pin.
       if (currentQuota()) {
-        const category = await readCategory();
+        const category = await readPreview();
         assertCurrent();
-        setPreview({ key, modelType: category });
         const currentBlock = currentQuota();
         if (category === 'cloud' && currentBlock)
           throw Object.assign(new Error(errorCopy(currentBlock.reason)), {

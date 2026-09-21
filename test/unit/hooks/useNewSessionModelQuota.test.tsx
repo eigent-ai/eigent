@@ -279,4 +279,160 @@ describe('New Session metadata-only quota preflight', () => {
     mocks.auth.email = 'another@example.test';
     expect(assertCurrent).toThrow();
   });
+
+  it.each(['quota-reason', 'refresh-completion'] as const)(
+    'keeps the newer settled preview after %s during a send request',
+    async (change) => {
+      if (change === 'refresh-completion')
+        useUsageNoticeStore.setState({ refreshing: true });
+      const { result } = renderQuota();
+      await waitFor(() => expect(result.current.pending).toBe(false));
+      let release!: (value: unknown) => void;
+      mocks.get.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          })
+      );
+      const send = result.current.beforeCreate();
+      act(() =>
+        useUsageNoticeStore.setState(
+          change === 'quota-reason'
+            ? { incidents: [{ reason: 'trial-daily' }] }
+            : { refreshing: false }
+        )
+      );
+      await waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(3));
+      await waitFor(() => expect(result.current.pending).toBe(false));
+      await act(async () => {
+        release(selection('provider://custom/azure/old-send'));
+        await send;
+      });
+      expect(result.current).toMatchObject({
+        pending: false,
+        blocked: false,
+        effectiveModelType: 'custom',
+      });
+      expect(mocks.get).toHaveBeenCalledTimes(3);
+    }
+  );
+
+  it.each(['success', 'failure'] as const)(
+    'does not let an older background %s replace a newer send result for the same key',
+    async (outcome) => {
+      let resolve!: (value: unknown) => void;
+      let reject!: (error: Error) => void;
+      mocks.get.mockImplementationOnce(
+        () =>
+          new Promise((done, fail) => {
+            resolve = done;
+            reject = fail;
+          })
+      );
+      const { result } = renderQuota();
+      await act(async () => {
+        await result.current.beforeCreate();
+      });
+      expect(result.current.effectiveModelType).toBe('custom');
+      await act(async () => {
+        if (outcome === 'success') resolve(selection('provider://cloud/older'));
+        else reject(new Error('Older background lookup failed'));
+      });
+      expect(result.current).toMatchObject({
+        pending: false,
+        blocked: false,
+        effectiveModelType: 'custom',
+      });
+      expect(result.current.error).toBeUndefined();
+    }
+  );
+
+  it('keeps the current lifecycle when quota changes away and back to the same key', async () => {
+    const { result } = renderQuota();
+    await waitFor(() => expect(result.current.pending).toBe(false));
+    let release!: (value: unknown) => void;
+    mocks.get.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        })
+    );
+    const send = result.current.beforeCreate();
+    act(() =>
+      useUsageNoticeStore.setState({ incidents: [{ reason: 'trial-daily' }] })
+    );
+    await waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(result.current.pending).toBe(false));
+    mocks.get.mockResolvedValue(selection('provider://local/ollama/current'));
+    act(() =>
+      useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] })
+    );
+    await waitFor(() =>
+      expect(result.current.effectiveModelType).toBe('local')
+    );
+    await act(async () => {
+      release(selection('provider://custom/azure/old-send'));
+      await send;
+    });
+    expect(result.current).toMatchObject({
+      pending: false,
+      blocked: false,
+      effectiveModelType: 'local',
+    });
+  });
+
+  it('still refuses Cloud using the current quota reason when its preview publication is stale', async () => {
+    const { result } = renderQuota();
+    await waitFor(() => expect(result.current.pending).toBe(false));
+    let release!: (value: unknown) => void;
+    mocks.get.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        })
+    );
+    const send = result.current.beforeCreate();
+    const rejection = expect(send).rejects.toMatchObject({
+      usageReason: 'trial-total',
+    });
+    act(() =>
+      useUsageNoticeStore.setState({ incidents: [{ reason: 'trial-total' }] })
+    );
+    await waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(result.current.pending).toBe(false));
+    await act(async () => {
+      release(selection('provider://cloud/blocked'));
+      await rejection;
+    });
+    expect(result.current).toMatchObject({
+      pending: false,
+      effectiveModelType: 'custom',
+    });
+  });
+
+  it('shows a retryable error for a newer failed send lookup instead of accepting older background data', async () => {
+    let release!: (value: unknown) => void;
+    mocks.get.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        })
+    );
+    const { result } = renderQuota();
+    mocks.get.mockRejectedValueOnce(
+      new Error('Current send metadata unavailable')
+    );
+    await act(async () => {
+      await expect(result.current.beforeCreate()).rejects.toThrow(
+        'Current send metadata unavailable'
+      );
+    });
+    await act(async () => {
+      release(selection('provider://custom/azure/old-background'));
+    });
+    expect(result.current).toMatchObject({ pending: false, blocked: true });
+    expect(result.current.error).toBeInstanceOf(Error);
+    act(() => result.current.refresh());
+    await waitFor(() => expect(result.current.blocked).toBe(false));
+  });
 });
