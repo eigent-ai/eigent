@@ -3,6 +3,7 @@
     "description": "Organizza per fornitore i modelli che usi.",
     "all-providers": "Tutti i fornitori di modelli",
     "default-model": "Modello predefinito",
+    "default-model-description": "Questo modello predefinito verrà usato per le nuove sessioni finché non lo cambierai.",
     "add-provider": "Aggiungi fornitore",
     "add-model": "Aggiungi modello",
     "add-more": "Aggiungi altro",

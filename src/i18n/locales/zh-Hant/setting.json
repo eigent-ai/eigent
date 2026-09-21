@@ -3,6 +3,7 @@
     "description": "依提供商整理你常用的模型。",
     "all-providers": "所有模型提供商",
     "default-model": "預設模型",
+    "default-model-description": "在您變更之前，新工作階段將使用此預設模型。",
     "add-provider": "新增提供商",
     "add-model": "新增模型",
     "add-more": "新增更多",

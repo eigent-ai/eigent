@@ -274,6 +274,9 @@ describe('Models collections and configuration dialogs', () => {
     const defaultSetting = defaultTitle.closest(
       '[data-default-model-setting]'
     ) as HTMLElement;
+    expect(defaultSetting).toHaveTextContent(
+      'This default model will be used for new Sessions until you change it.'
+    );
     expect(providerBanner.parentElement?.parentElement).toHaveClass(
       'gap-ds-24',
       'py-ds-24'

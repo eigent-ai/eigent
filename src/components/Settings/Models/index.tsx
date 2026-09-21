@@ -538,6 +538,7 @@ function ModelsContent() {
             <SettingsRowGroup data-default-model-setting>
               <SettingsRow
                 title={t('setting.model-list.default-model')}
+                description={t('setting.model-list.default-model-description')}
                 actionClassName="ml-auto"
                 action={
                   <DropdownMenu>

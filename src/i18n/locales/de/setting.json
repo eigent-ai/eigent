@@ -3,6 +3,7 @@
     "description": "Verwendete Modelle nach Anbieter organisieren.",
     "all-providers": "Alle Modellanbieter",
     "default-model": "Standardmodell",
+    "default-model-description": "Dieses Standardmodell wird für neue Sitzungen verwendet, bis du es änderst.",
     "add-provider": "Anbieter hinzufügen",
     "add-model": "Modell hinzufügen",
     "add-more": "Mehr hinzufügen",

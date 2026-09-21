@@ -3,6 +3,7 @@
     "description": "使うモデルをプロバイダーごとに整理します。",
     "all-providers": "すべてのモデルプロバイダー",
     "default-model": "デフォルトモデル",
+    "default-model-description": "このデフォルトモデルは、変更するまで新しいセッションで使用されます。",
     "add-provider": "プロバイダーを追加",
     "add-model": "モデルを追加",
     "add-more": "さらに追加",
