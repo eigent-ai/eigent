@@ -4063,7 +4063,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       const ssePromise = sseTransport({
         url: api,
         beforeRequest: startOptions.resumeRequestId
-          ? assertAdmissionCurrent
+          ? () => {
+              // Before the first stream ACK, every retry is still admission.
+              // Once accepted, reconnect the same Run's frozen request rather
+              // than applying a later composer choice to its running Attempt.
+              if (!resumeStreamOpened) assertAdmissionCurrent();
+            }
           : undefined,
         method: !type ? 'POST' : 'GET',
         openWhenHidden: true,
