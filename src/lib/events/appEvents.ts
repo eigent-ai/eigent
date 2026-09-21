@@ -78,6 +78,9 @@ export interface AppEventMap {
   message_feedback: {
     rating: MessageFeedbackRating;
     message_id: string;
+    // Missing source identity: this is only a renderer-local interaction,
+    // not a reference that can be joined to durable message evidence.
+    message_id_source?: 'legacy_ui';
     // Message ids are only assumed to be stable inside one Run.
     run_id?: string;
     // Low-cardinality lifecycle step of the rated message (see AgentStep).

@@ -123,6 +123,8 @@ declare global {
 
   interface Message {
     id: string;
+    /** Source message/event identity, independent of the generated UI id. */
+    feedbackMessageId?: string;
     role: 'user' | 'agent';
     errorReason?: import('@/lib/usageErrors').ErrorReason;
     content: string;
@@ -147,6 +149,9 @@ declare global {
   }
 
   interface AgentMessage {
+    /** Retained when a canonical event enters the legacy message reducer. */
+    feedbackMessageId?: string;
+    event_id?: string;
     timestamp?: number | null;
     created_at?: string | null;
     /** Per-Run receive order used to merge legacy per-agent work logs. */

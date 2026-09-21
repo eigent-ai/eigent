@@ -76,6 +76,7 @@ describe('AgentMessageCard feedback', () => {
         properties: {
           rating: 'up',
           message_id: 'message-up',
+          message_id_source: 'legacy_ui',
           message_step: 'end',
         },
       }),
@@ -127,6 +128,7 @@ describe('AgentMessageCard feedback', () => {
         properties: {
           rating: 'down',
           message_id: 'message-down',
+          message_id_source: 'legacy_ui',
           message_step: 'agent_end',
         },
       }),
@@ -146,6 +148,76 @@ describe('AgentMessageCard feedback', () => {
     fireEvent.click(screen.getByLabelText('Thumb up'));
 
     expect(events).toHaveLength(1);
+  });
+
+  it.each([
+    ['scope-other-run', 'scope-message'],
+    ['scope-run', 'scope-other-message'],
+  ])(
+    'allows separate feedback for Run %s and message %s',
+    (runId, messageId) => {
+      // Unique first identities keep the module-level cache isolated per case.
+      const firstRun = `${runId}:scope-run`;
+      const firstMessage = `${messageId}:scope-message`;
+      const first = render(
+        <AgentMessageCard
+          id={`${runId}-first`}
+          content="Same answer"
+          feedbackRunId={firstRun}
+          feedbackMessageId={firstMessage}
+          typewriter={false}
+        />
+      );
+      fireEvent.click(screen.getByLabelText('Thumb up'));
+      first.unmount();
+      render(
+        <AgentMessageCard
+          id={`${runId}-second`}
+          content="Same answer"
+          feedbackRunId={
+            runId === 'scope-other-run' ? `${firstRun}:other` : firstRun
+          }
+          feedbackMessageId={
+            messageId === 'scope-other-message'
+              ? `${firstMessage}:other`
+              : firstMessage
+          }
+          typewriter={false}
+        />
+      );
+      expect(screen.getByLabelText('Thumb down')).not.toBeDisabled();
+      fireEvent.click(screen.getByLabelText('Thumb down'));
+      expect(events).toHaveLength(2);
+    }
+  );
+
+  it('does not let a temporary UI id reserve the same source identity', () => {
+    const first = render(
+      <AgentMessageCard
+        id="identity-collision"
+        content="Legacy result"
+        feedbackRunId="identity-collision-run"
+        typewriter={false}
+      />
+    );
+    fireEvent.click(screen.getByLabelText('Thumb up'));
+    first.unmount();
+    render(
+      <AgentMessageCard
+        id="source-render"
+        content="Canonical result"
+        feedbackMessageId="identity-collision"
+        feedbackRunId="identity-collision-run"
+        typewriter={false}
+      />
+    );
+    fireEvent.click(screen.getByLabelText('Thumb down'));
+    expect(events).toHaveLength(2);
+    expect(events[0].properties).toHaveProperty(
+      'message_id_source',
+      'legacy_ui'
+    );
+    expect(events[1].properties).not.toHaveProperty('message_id_source');
   });
 
   it('does not record the same logical message again after a remount', () => {

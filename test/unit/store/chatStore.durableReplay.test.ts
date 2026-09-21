@@ -12,6 +12,8 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { adaptChatProjectionEvent } from '@/lib/projector/chat';
+import { normalizeEvent } from '@/lib/projector/normalize';
 import {
   acceptCanonicalRunEvent,
   admitDurableRunResume,
@@ -31,6 +33,42 @@ import {
 import { describe, expect, it, vi } from 'vitest';
 
 describe('canonical Run replay projection', () => {
+  it.each([
+    [{ message_id: 'logical-id', content: 'Result' }, 'logical-id'],
+    [{ messageId: 'camel-id', content: 'Result' }, 'camel-id'],
+    [
+      {
+        message_id: 'outer-id',
+        message: { message_id: 'nested-id', content: 'Result' },
+      },
+      'nested-id',
+    ],
+    [{ message: { messageId: 42, content: 'Result' } }, '42'],
+    [{ message_id: '  ', content: 'Result' }, 'source-event'],
+    [{ id: 'ui-only-id', content: 'Result' }, 'source-event'],
+  ])(
+    'keeps feedback identity aligned with the canonical reader for %j',
+    (payload, expectedId) => {
+      const raw = {
+        event_id: 'source-event',
+        event_type: 'assistant.final',
+        legacy_step: 'end',
+        project_id: 'project-feedback',
+        run_id: 'run-feedback',
+        sequence: 1,
+        payload,
+      };
+      const legacy = canonicalRunEventToLegacyMessage(raw);
+      const projected = adaptChatProjectionEvent(normalizeEvent(raw));
+      expect(legacy?.feedbackMessageId).toBe(expectedId);
+      expect(projected.kind).toBe('display');
+      if (projected.kind !== 'display' || projected.node.kind !== 'message') {
+        throw new Error('Expected a displayed assistant message');
+      }
+      expect(projected.node.messageId ?? projected.node.id).toBe(expectedId);
+    }
+  );
+
   it('deduplicates the exact localized legacy replay failure', () => {
     const localizedMessage =
       'Diese ältere Aufgabe kann nicht wiedergegeben werden. Die gespeicherten Wiedergabedaten konnten nicht geladen werden.';

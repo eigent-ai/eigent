@@ -45,8 +45,12 @@ type MessageFeedbackState = {
 // identical message ids from colliding across separate Runs.
 const messageFeedbackByKey = new Map<string, MessageFeedbackRating>();
 
-function getMessageFeedbackKey(runId: string | undefined, messageId: string) {
-  return JSON.stringify([runId ?? null, messageId]);
+function getMessageFeedbackKey(
+  runId: string | undefined,
+  messageId: string,
+  hasSourceIdentity: boolean
+) {
+  return JSON.stringify([runId ?? null, messageId, hasSourceIdentity]);
 }
 
 interface AgentMessageCardProps {
@@ -98,6 +102,7 @@ export function AgentMessageCard({
   const enableTypewriter = !isCompleted;
 
   const [copied, setCopied] = useState(false);
+  const hasSourceIdentity = !!feedbackMessageId?.trim();
   const resolvedFeedbackMessageId = feedbackMessageId?.trim()
     ? feedbackMessageId
     : id;
@@ -106,7 +111,8 @@ export function AgentMessageCard({
     : undefined;
   const messageFeedbackKey = getMessageFeedbackKey(
     resolvedFeedbackRunId,
-    resolvedFeedbackMessageId
+    resolvedFeedbackMessageId,
+    hasSourceIdentity
   );
   const [feedbackState, setFeedbackState] =
     useState<MessageFeedbackState | null>(null);
@@ -145,9 +151,10 @@ export function AgentMessageCard({
     onMarkdownRenderComplete?.();
   }, [onMarkdownRenderComplete]);
 
-  // Feedback is recorded once per run-scoped message identity for this app
-  // session. The rating goes to the app event bus so edition adapters can
-  // report it; rated content and agent names are not included in the event.
+  // Source identities survive replay and renderer changes. An old message
+  // without source metadata can only be deduplicated for its current UI id;
+  // mark that limitation for consumers instead of claiming durable identity.
+  // Rated content and agent names are not included in the event.
   const submitFeedback = useCallback(
     (rating: MessageFeedbackRating) => {
       const recordedRating = messageFeedbackByKey.get(messageFeedbackKey);
@@ -166,6 +173,9 @@ export function AgentMessageCard({
         message_id: resolvedFeedbackMessageId,
         run_id: resolvedFeedbackRunId,
         message_step: messageStep,
+        ...(hasSourceIdentity
+          ? {}
+          : { message_id_source: 'legacy_ui' as const }),
       });
       toast.success(
         t('chat.feedback-thanks', { defaultValue: 'Thanks for your feedback' })
@@ -173,6 +183,7 @@ export function AgentMessageCard({
     },
     [
       messageFeedbackKey,
+      hasSourceIdentity,
       messageStep,
       resolvedFeedbackMessageId,
       resolvedFeedbackRunId,

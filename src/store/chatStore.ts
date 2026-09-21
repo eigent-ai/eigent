@@ -42,6 +42,7 @@ import {
   recordTaskSubmitted,
 } from '@/lib/events/appEvents';
 import { notifyDurableRunStatusChanged } from '@/lib/events/durableRunEvents';
+import { resolveSourceMessageId } from '@/lib/messageIdentity';
 import {
   buildAgentModelConfigFromProvider,
   splitProviderConfig,
@@ -122,6 +123,7 @@ export const canonicalRunEventToLegacyMessage = (
 ): AgentMessage | null => {
   if (!value || typeof value !== 'object') return null;
   const event = value as {
+    event_id?: unknown;
     event_type?: unknown;
     legacy_step?: unknown;
     payload?: unknown;
@@ -217,6 +219,7 @@ export const canonicalRunEventToLegacyMessage = (
   return {
     step: event.legacy_step,
     data: event.payload,
+    feedbackMessageId: resolveSourceMessageId(event.payload, event.event_id),
     // Canonical Run events use epoch seconds. Preserve the durable event time
     // so history hydration measures the original execution instead of the
     // few milliseconds taken by local SSE replay.
@@ -3951,6 +3954,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               id: generateUniqueId(),
               role: 'agent',
               content: content as string,
+              feedbackMessageId: resolveSourceMessageId(
+                agentMessages.data,
+                agentMessages.feedbackMessageId ?? agentMessages.event_id
+              ),
               step: AgentStep.WAIT_CONFIRM,
               isConfirm: false,
             });
@@ -5198,6 +5205,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             const endUiMessage: Message = {
               id: endMessageId,
               role: 'agent',
+              feedbackMessageId: resolveSourceMessageId(
+                agentMessages.data,
+                agentMessages.feedbackMessageId ?? agentMessages.event_id
+              ),
               content: endMessage || '',
               step: agentMessages.step,
               isConfirm: false,
@@ -5614,6 +5625,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             id: generateUniqueId(),
             role: 'agent',
             content: extractAgentMessageContent(agentMessages.data),
+            feedbackMessageId: resolveSourceMessageId(
+              agentMessages.data,
+              agentMessages.feedbackMessageId ?? agentMessages.event_id
+            ),
             step: agentMessages.step,
             isConfirm: false,
           };

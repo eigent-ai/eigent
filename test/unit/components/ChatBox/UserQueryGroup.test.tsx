@@ -41,15 +41,18 @@ vi.mock('@/components/ChatBox/MessageItem/AgentMessageCard', () => ({
     id,
     content,
     feedbackRunId,
+    feedbackMessageId,
     messageStep,
   }: {
     id: string;
     content: string;
     feedbackRunId?: string;
+    feedbackMessageId?: string;
     messageStep?: string;
   }) => (
     <div
       data-feedback-run-id={feedbackRunId}
+      data-feedback-message-id={feedbackMessageId}
       data-message-step={messageStep}
       data-testid={`agent-message-card-${id}`}
     >
@@ -165,24 +168,28 @@ describe('UserQueryGroup Run work-log ownership', () => {
       { id: 'user-1', role: 'user', content: 'Build a report' },
       {
         id: 'end-1',
+        feedbackMessageId: 'source-end-1',
         role: 'agent',
         step: AgentStep.END,
         content: 'Final response',
       },
       {
         id: 'agent-end-1',
+        feedbackMessageId: 'source-agent-end-1',
         role: 'agent',
         step: AgentStep.AGENT_END,
         content: 'Delegated result',
       },
       {
         id: 'generic-1',
+        feedbackMessageId: 'source-generic-1',
         role: 'agent',
         step: AgentStep.ACTIVATE_AGENT,
         content: 'Working update',
       },
       {
         id: 'skip-1',
+        feedbackMessageId: 'source-skip-1',
         role: 'agent',
         step: AgentStep.AGENT_END,
         content: 'skip',
@@ -201,6 +208,10 @@ describe('UserQueryGroup Run work-log ownership', () => {
       const card = screen.getByTestId(`agent-message-card-${messageId}`);
       expect(card).toHaveAttribute('data-message-step', messageStep);
       expect(card).toHaveAttribute('data-feedback-run-id', 'run-1');
+      expect(card).toHaveAttribute(
+        'data-feedback-message-id',
+        `source-${messageId}`
+      );
     }
   });
 

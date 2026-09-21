@@ -52,6 +52,7 @@ const AgentResultCard: React.FC<{
   agentName?: string;
   content: string;
   attaches?: any[];
+  feedbackMessageId?: string;
   feedbackRunId?: string;
   messageStep?: string;
   defaultOpen?: boolean;
@@ -60,6 +61,7 @@ const AgentResultCard: React.FC<{
   agentName,
   content,
   attaches,
+  feedbackMessageId,
   feedbackRunId,
   messageStep,
   defaultOpen = false,
@@ -94,6 +96,7 @@ const AgentResultCard: React.FC<{
             typewriter={false}
             onTyping={() => {}}
             attaches={attaches}
+            feedbackMessageId={feedbackMessageId}
             feedbackRunId={feedbackRunId}
             messageStep={messageStep}
           />
@@ -537,6 +540,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   errorReason={message.errorReason}
                   onTyping={() => {}}
                   feedbackRunId={activeTaskId ?? undefined}
+                  feedbackMessageId={message.feedbackMessageId}
                   messageStep={message.step}
                   deferredFooter={
                     message.fileList?.length ||
@@ -575,6 +579,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   })}
                   onTyping={() => {}}
                   feedbackRunId={activeTaskId ?? undefined}
+                  feedbackMessageId={message.feedbackMessageId}
                   messageStep={message.step}
                 />
               </motion.div>
@@ -594,6 +599,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   content={message.content}
                   attaches={message.attaches}
                   feedbackRunId={activeTaskId ?? undefined}
+                  feedbackMessageId={message.feedbackMessageId}
                   messageStep={message.step}
                   defaultOpen
                 />
@@ -617,6 +623,7 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                   onTyping={() => {}}
                   attaches={message.attaches}
                   feedbackRunId={activeTaskId ?? undefined}
+                  feedbackMessageId={message.feedbackMessageId}
                   messageStep={message.step}
                 />
               </motion.div>
