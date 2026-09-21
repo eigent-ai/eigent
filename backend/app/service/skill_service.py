@@ -13,6 +13,7 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import logging
+import mimetypes
 import os
 import re
 import shutil
@@ -24,6 +25,13 @@ SKILLS_ROOT = Path.home() / ".eigent" / "skills"
 SKILL_FILE = "SKILL.md"
 EXAMPLE_SKILLS_ENV = "EIGENT_EXAMPLE_SKILLS_DIR"
 EXAMPLE_SKILL_MARKER = ".eigent-example-skill"
+MAX_SKILL_PACKAGE_FILES = 1000
+SKILL_PACKAGE_MIME_FALLBACKS = {
+    ".md": "text/markdown",
+    ".py": "text/x-python",
+    ".yaml": "text/yaml",
+    ".yml": "text/yaml",
+}
 logger = logging.getLogger("skill_service")
 
 
@@ -343,15 +351,86 @@ def skill_delete(skill_dir_name: str) -> None:
         shutil.rmtree(dir_path)
 
 
-def skill_list_files(skill_dir_name: str) -> list[str]:
-    """List files in skill directory."""
+def _skill_package_root(skill_dir_name: str) -> Path:
     name = (skill_dir_name or "").strip()
-    if not name:
-        raise ValueError("Skill folder name is required")
+    normalized_name = name.replace("\\", "/")
+    if (
+        not normalized_name
+        or normalized_name in {".", ".."}
+        or "/" in normalized_name
+    ):
+        raise ValueError("A single skill folder name is required")
     dir_path = _assert_under_skills_root(SKILLS_ROOT / name)
-    if not dir_path.exists():
-        return []
-    return [e.name for e in dir_path.iterdir()]
+    if not dir_path.exists() or not dir_path.is_dir():
+        raise FileNotFoundError(f"Skill not found: {name}")
+    return dir_path
+
+
+def skill_file_path(skill_dir_name: str, relative_path: str) -> Path:
+    """Resolve one regular package file without leaving its skill directory."""
+    root = _skill_package_root(skill_dir_name)
+    normalized = (relative_path or "").replace("\\", "/")
+    parts = normalized.split("/")
+    if (
+        not normalized
+        or "\x00" in normalized
+        or normalized.startswith("/")
+        or any(part in {"", ".", ".."} for part in parts)
+    ):
+        raise ValueError("A safe relative skill file path is required")
+
+    candidate = root.joinpath(*parts)
+    current = root
+    for part in parts:
+        current /= part
+        if current.is_symlink():
+            raise PermissionError("Symlinked skill files are not readable")
+
+    try:
+        resolved = candidate.resolve(strict=True)
+        resolved.relative_to(root)
+    except FileNotFoundError:
+        raise
+    except (OSError, ValueError):
+        raise PermissionError("Path is outside skill directory")
+    if not resolved.is_file():
+        raise FileNotFoundError(f"Skill file not found: {relative_path}")
+    return resolved
+
+
+def skill_list_files(skill_dir_name: str) -> list[dict]:
+    """Recursively list regular files in a skill package."""
+    root = _skill_package_root(skill_dir_name)
+    files: list[dict] = []
+    for current_dir, dir_names, file_names in os.walk(root, followlinks=False):
+        current = Path(current_dir)
+        dir_names[:] = sorted(
+            name for name in dir_names if not (current / name).is_symlink()
+        )
+        for file_name in sorted(file_names):
+            path = current / file_name
+            if file_name == EXAMPLE_SKILL_MARKER or path.is_symlink():
+                continue
+            relative_path = path.relative_to(root).as_posix()
+            try:
+                resolved = skill_file_path(skill_dir_name, relative_path)
+                stat = resolved.stat()
+            except (FileNotFoundError, OSError, PermissionError, ValueError):
+                continue
+            mime_type, _ = mimetypes.guess_type(relative_path)
+            mime_type = mime_type or SKILL_PACKAGE_MIME_FALLBACKS.get(
+                path.suffix.lower()
+            )
+            files.append(
+                {
+                    "path": relative_path,
+                    "size": stat.st_size,
+                    "mimeType": mime_type,
+                }
+            )
+            if len(files) >= MAX_SKILL_PACKAGE_FILES:
+                return files
+    return files
 
 
 def _get_skill_name_from_file(skill_file_path: Path) -> str:

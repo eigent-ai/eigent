@@ -108,6 +108,29 @@ jobs:
           path: test-results/junit.xml
           if-no-files-found: warn
 
+  preview-browser-electron:
+    name: Run Browser Preview Electron Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install frontend dependencies
+        run: npm install --ignore-scripts
+
+      - name: Install Electron runtime
+        run: npm rebuild electron
+
+      - name: Run browser preview Electron test
+        run: xvfb-run --auto-servernum npm run test:preview-browser
+
   pytest:
     name: Run Python Tests
     runs-on: ubuntu-latest

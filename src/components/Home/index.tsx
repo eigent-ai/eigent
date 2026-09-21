@@ -35,6 +35,8 @@ import { useHomeHubCounts } from './hooks/useHomeHubCounts';
 import { useHomeHubProjects } from './hooks/useHomeHubProjects';
 import { useHomeHubTriggers } from './hooks/useHomeHubTriggers';
 import { useHomeSection } from './hooks/useHomeSection';
+import { useNewSpaceCreation } from './hooks/useNewSpaceCreation';
+import NewSpaceDialog from './NewSpaceDialog';
 import { persistHomeViewMode, readStoredHomeViewMode } from './utils';
 
 export { default as HomeGreeting } from './HomeGreeting';
@@ -80,6 +82,9 @@ export default function HomeHubRoot({ children }: { children: ReactNode }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<HomeSortBy>('created');
   const [sortDirection, setSortDirection] = useState<HomeSortDirection>('desc');
+  const [newSpaceDialogOpen, setNewSpaceDialogOpen] = useState(false);
+  const { createBlankSpace, createSpaceFromFolder } =
+    useNewSpaceCreation('home_hub');
 
   useEffect(() => {
     setSearchQuery('');
@@ -155,6 +160,7 @@ export default function HomeHubRoot({ children }: { children: ReactNode }) {
       setSortBy,
       sortDirection,
       setSortDirection,
+      openNewSpaceDialog: () => setNewSpaceDialogOpen(true),
       projects,
       projectsLoading,
       triggers,
@@ -218,6 +224,13 @@ export default function HomeHubRoot({ children }: { children: ReactNode }) {
         cancelText={t('layout.cancel')}
         confirmVariant="secondary"
         confirmTone="error"
+      />
+
+      <NewSpaceDialog
+        open={newSpaceDialogOpen}
+        onOpenChange={setNewSpaceDialogOpen}
+        onStartFromScratch={createBlankSpace}
+        onUseLocalFolder={createSpaceFromFolder}
       />
 
       {children}

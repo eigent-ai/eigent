@@ -1233,6 +1233,14 @@ async def step_solve(options: Chat, request: Request, task_lock: TaskLock):
                 }
                 yield sse_json("remove_task", returnData)
             elif item.action == Action.skip_task:
+                if (
+                    item.expected_task_id
+                    and item.expected_task_id != task_lock.current_task_id
+                ):
+                    logger.info(
+                        "Ignoring stop for a task that is no longer current"
+                    )
+                    continue
                 logger.info("=" * 80)
                 logger.info(
                     "🛑 [LIFECYCLE] SKIP_TASK action "
@@ -2875,8 +2883,7 @@ the current date.
     workforce.add_single_agent_worker(
         "Developer Agent: A master-level coding assistant with a powerful "
         "terminal. It can write and execute code, manage files, automate "
-        "desktop tasks, and deploy web applications to solve complex "
-        "technical challenges.",
+        "desktop tasks, and solve complex technical challenges.",
         developer,
     )
     workforce.add_single_agent_worker(

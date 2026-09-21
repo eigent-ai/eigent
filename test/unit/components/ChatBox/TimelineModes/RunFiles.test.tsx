@@ -16,6 +16,7 @@ import {
   normalizeRunReviewPath,
   resetRunFileDiffStatsCache,
   resolveRunFilePreview,
+  RunArtifactChangeList,
   runFileReviewPath,
   RunFilesGroup,
   useRunFileInfo,
@@ -307,10 +308,19 @@ describe('RunFiles capability boundary', () => {
       userId: 7,
     });
 
-    // A duplicate instance of the same Run shares the resolved request.
+    // Legacy final messages share the same totals and in-flight cache.
     render(
-      <RunFilesGroup
-        projectedArtifacts={[projectedArtifact]}
+      <RunArtifactChangeList
+        files={[
+          { name: '', path: '', type: 'File' },
+          {
+            name: 'report.csv',
+            path: '',
+            relativePath: 'reports/report.csv',
+            type: 'csv',
+          },
+        ]}
+        onOpen={() => {}}
         projectId="project-1"
         runId="run-1"
       />

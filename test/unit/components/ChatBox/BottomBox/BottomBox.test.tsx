@@ -14,19 +14,36 @@
 
 import BottomBox, { type BottomBoxProps } from '@/components/ChatBox/BottomBox';
 import {
+  act,
   fireEvent,
   render,
   screen,
   waitFor,
   within,
 } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+const motionPreferences = vi.hoisted(() => ({ reduced: false }));
+vi.mock('framer-motion', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('framer-motion')>()),
+  useReducedMotion: () => motionPreferences.reduced,
+}));
+afterEach(() => {
+  motionPreferences.reduced = false;
+});
 
 vi.mock('@/components/ChatBox/BottomBox/BoxFooter', () => ({
-  BoxFooter: ({ disabled }: { disabled?: boolean }) => (
+  BoxFooter: ({
+    disabled,
+    modelSelectDisabled = disabled,
+  }: {
+    disabled?: boolean;
+    modelSelectDisabled?: boolean;
+  }) => (
     <div
       data-testid="project-setup-footer"
       data-disabled={String(!!disabled)}
+      data-model-disabled={String(!!modelSelectDisabled)}
     />
   ),
 }));
@@ -85,6 +102,129 @@ const footerProps = {
 };
 
 describe('BottomBox structure', () => {
+  it('allows model recovery from a disabled composer but respects controlled locks', () => {
+    const { rerender } = render(
+      <BottomBox
+        state="input"
+        inputProps={{ disabled: true }}
+        modelSelectDisabled={false}
+        {...footerProps}
+      />
+    );
+    expect(screen.getByTestId('project-setup-footer')).toHaveAttribute(
+      'data-disabled',
+      'true'
+    );
+    expect(screen.getByTestId('project-setup-footer')).toHaveAttribute(
+      'data-model-disabled',
+      'false'
+    );
+
+    rerender(
+      <BottomBox
+        state="running"
+        variant={{
+          kind: 'run_control',
+          header: { title: 'Run interrupted' },
+          runId: 'run-1',
+          state: 'interrupted',
+          disabled: true,
+        }}
+        modelSelectDisabled={false}
+        {...footerProps}
+      />
+    );
+    expect(screen.getByTestId('project-setup-footer')).toHaveAttribute(
+      'data-model-disabled',
+      'true'
+    );
+  });
+
+  it('removes the tray immediately when its last task leaves the queue', () => {
+    const { container, rerender } = render(
+      <BottomBox
+        state="input"
+        inputProps={{}}
+        queuedMessages={[{ id: 'started', content: 'Now running' }]}
+      />
+    );
+    expect(container.querySelector('[data-bottom-box-query]')).not.toBeNull();
+    rerender(<BottomBox state="input" inputProps={{}} queuedMessages={[]} />);
+    expect(container.querySelector('[data-bottom-box-query]')).toBeNull();
+    expect(
+      screen.queryByRole('region', { name: /Queued tasks/ })
+    ).not.toBeInTheDocument();
+  });
+
+  it.each([false, true])(
+    'reveals the queue and follows content resizing (reduced motion: %s)',
+    async (reduced) => {
+      motionPreferences.reduced = reduced;
+      let naturalHeight = 36;
+      const originalRect = HTMLElement.prototype.getBoundingClientRect;
+      const rectSpy = vi
+        .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+        .mockImplementation(function () {
+          const rect = originalRect.call(this);
+          return this.hasAttribute('data-queue-reveal-content')
+            ? { ...rect, height: naturalHeight }
+            : rect;
+        });
+      const observers: {
+        callback: ResizeObserverCallback;
+        target?: Element;
+      }[] = [];
+      const originalObserver = global.ResizeObserver;
+      global.ResizeObserver = vi.fn().mockImplementation((callback) => {
+        const entry = { callback, target: undefined as Element | undefined };
+        observers.push(entry);
+        return {
+          observe: (target: Element) => {
+            entry.target = target;
+          },
+          disconnect: vi.fn(),
+        };
+      });
+      try {
+        const { container, rerender } = render(
+          <BottomBox state="input" inputProps={{}} />
+        );
+        expect(container.querySelector('[data-bottom-box-query]')).toBeNull();
+        const items = [{ id: 'one', content: 'First task' }];
+        rerender(
+          <BottomBox state="input" inputProps={{}} queuedMessages={items} />
+        );
+        const reveal = container.querySelector<HTMLElement>(
+          '[data-bottom-box-query]'
+        )!;
+        await waitFor(() =>
+          expect(parseFloat(reveal.style.height)).toBeCloseTo(36, 0)
+        );
+        const observer = observers.find(({ target }) =>
+          target?.hasAttribute('data-queue-reveal-content')
+        )!;
+        naturalHeight = 72;
+        rerender(
+          <BottomBox
+            state="input"
+            inputProps={{}}
+            queuedMessages={[...items, { id: 'two', content: 'Second task' }]}
+          />
+        );
+        act(() => observer.callback([], {} as ResizeObserver));
+        if (!reduced) expect(parseFloat(reveal.style.height)).toBeLessThan(72);
+        await waitFor(() =>
+          expect(parseFloat(reveal.style.height)).toBeCloseTo(72, 0)
+        );
+        expect(container.querySelector('[data-bottom-box-query]')).toBe(reveal);
+        expect(screen.getAllByRole('listitem')).toHaveLength(2);
+      } finally {
+        rectSpy.mockRestore();
+        global.ResizeObserver = originalObserver;
+      }
+    }
+  );
+
   it('keeps QueryBox above BoxMain and routes the legacy default to input', () => {
     const onFilesChange = vi.fn();
     const { container } = render(

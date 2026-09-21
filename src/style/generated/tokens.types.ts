@@ -168,6 +168,7 @@ export const DS_TOKEN_IDS = [
   'ref.space.6',
   'ref.space.64',
   'ref.space.8',
+  'ref.touchTarget.minimum',
   'ref.weight.bold',
   'ref.weight.medium',
   'ref.weight.regular',
@@ -233,6 +234,7 @@ export const DS_TOKEN_IDS = [
   'tooltip.paddingBlock',
   'tooltip.paddingInline',
   'tooltip.radius',
+  'touch-target.minimum',
 ] as const;
 
 export type DsTokenId = (typeof DS_TOKEN_IDS)[number];
@@ -487,6 +489,7 @@ export const DS_CSS_VARIABLES = [
   '--ds-ref-space-6',
   '--ds-ref-space-64',
   '--ds-ref-space-8',
+  '--ds-ref-touch-target-minimum',
   '--ds-ring-focus',
   '--ds-row-comfortable-icon',
   '--ds-row-comfortable-min-height',
@@ -549,6 +552,7 @@ export const DS_CSS_VARIABLES = [
   '--ds-tooltip-padding-block',
   '--ds-tooltip-padding-inline',
   '--ds-tooltip-radius',
+  '--ds-touch-target-minimum',
   '--ds-warning-on-default',
   '--ds-warning-on-muted',
   '--ds-warning-on-strong',

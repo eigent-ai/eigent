@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import i18n from '@/i18n';
+import { notifyExecutionError } from '@/lib/notifyError';
 import { queryClient, queryKeys } from '@/lib/queryClient';
 import { proxyFetchTriggerConfig } from '@/service/triggerApi';
 import { ActivityType, useActivityLogStore } from '@/store/activityLogStore';
@@ -374,11 +375,13 @@ export function useExecutionSubscription(enabled: boolean = true) {
                   triggerName: triggerName,
                   executionId: message.execution_id,
                 });
-                toast.error(
+                notifyExecutionError(
                   i18n.t('triggers.execution-failed-toast', {
                     defaultValue: 'Execution failed: {{name}}',
                     name: triggerName,
-                  })
+                  }),
+                  undefined,
+                  message.execution_id
                 );
               }
               break;
@@ -446,7 +449,7 @@ export function useExecutionSubscription(enabled: boolean = true) {
                 '[ExecutionSubscription] Server error:',
                 message.message
               );
-              toast.error(
+              notifyExecutionError(
                 i18n.t('triggers.listener-error', {
                   defaultValue: 'Listener error: {{message}}',
                   message: message.message,
@@ -491,7 +494,7 @@ export function useExecutionSubscription(enabled: boolean = true) {
           console.error(
             '[ExecutionSubscription] Authentication failed - not reconnecting'
           );
-          toast.error(
+          notifyExecutionError(
             i18n.t('triggers.listener-sign-in-failed', {
               defaultValue:
                 "Couldn't sign in to the task listener. Try reconnecting.",
@@ -539,7 +542,7 @@ export function useExecutionSubscription(enabled: boolean = true) {
               console.error(
                 '[ExecutionSubscription] Max reconnection attempts reached'
               );
-              toast.error(
+              notifyExecutionError(
                 i18n.t('triggers.listener-connection-lost', {
                   defaultValue:
                     'Lost connection to the task listener. Reconnecting…',

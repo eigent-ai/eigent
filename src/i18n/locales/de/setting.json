@@ -462,5 +462,10 @@
   "theme-description": "Wähle die Anwendungsfarbe-Thema aus.",
   "thinking-effort": "Denkzeit",
   "version": "Version",
-  "version-description": "Aktuelle Version und verfügbare Updates."
+  "version-description": "Aktuelle Version und verfügbare Updates.",
+  "models-api-key-invalid": "Ungültiger API-Schlüssel. Prüfen Sie Ihren API-Schlüssel und klicken Sie erneut auf Aktualisieren.",
+  "models-access-denied": "Zugriff verweigert. Prüfen Sie die Berechtigungen Ihres API-Schlüssels und den Kontozugriff und klicken Sie erneut auf Aktualisieren.",
+  "models-setup-hint": "Geben Sie Ihren API-Schlüssel ein, klicken Sie auf Aktualisieren und wählen Sie dann ein Modell aus der Dropdown-Liste.",
+  "models-add-api-key-tooltip": "API-Schlüssel hinzufügen, um den Modelltyp zu laden",
+  "models-connection-failed": "Modelle konnten nicht geladen werden. Prüfen Sie Ihre Verbindung und den API-Host und klicken Sie erneut auf Aktualisieren."
 }

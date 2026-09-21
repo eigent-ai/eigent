@@ -29,6 +29,8 @@ from contextvars import ContextVar, Token
 from types import TracebackType
 from typing import Protocol
 
+from app.run_runtime.execution_observation import execution_activity
+
 
 class ActiveExecutionPauseObserver(Protocol):
     """Receives pause accounting shared with an outer runtime watchdog."""
@@ -76,6 +78,18 @@ class ActiveExecutionTimeout:
     @property
     def expired(self) -> bool:
         return self._timeout is not None and self._timeout.expired()
+
+    def remaining(self) -> float | None:
+        """Expose the live budget without extending it for provider retries."""
+
+        if self._timeout is None:
+            return None
+        if self._pause_depth:
+            return self._remaining
+        deadline = self._timeout.when()
+        if deadline is None:
+            return None
+        return max(0.0, deadline - asyncio.get_running_loop().time())
 
     def refresh(self) -> None:
         """Renew a sliding deadline after observable execution progress."""
@@ -142,6 +156,17 @@ def refresh_active_execution_timeout() -> None:
         timeout.refresh()
 
 
+def remaining_active_execution_seconds() -> float | None:
+    """Minimum enabled budget; SDK per-attempt timeouts are not total caps."""
+
+    remaining = [
+        value
+        for timeout in _ACTIVE_EXECUTION_TIMEOUTS.get()
+        if (value := timeout.remaining()) is not None
+    ]
+    return min(remaining) if remaining else None
+
+
 @asynccontextmanager
 async def pause_active_execution_timeout(
     observer: ActiveExecutionPauseObserver | None = None,
@@ -154,7 +179,8 @@ async def pause_active_execution_timeout(
     for timeout in timeouts:
         timeout.pause()
     try:
-        yield
+        with execution_activity("hitl"):
+            yield
     finally:
         for timeout in reversed(timeouts):
             timeout.resume()

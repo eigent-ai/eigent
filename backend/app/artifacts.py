@@ -41,12 +41,22 @@ from app.utils.workspace_paths import (
     sanitize_identity,
 )
 from app.utils.workspace_resolver import TaskSnapshot, get_workspace_resolver
+from app.workspace_git.backend import (
+    WORKSPACE_PATH_LIMIT,
+    GitBackend,
+    GitBackendError,
+)
+from app.workspace_git.path_policy import WorkspacePathPolicy
 
 logger = logging.getLogger("artifacts")
 
-MAX_ARTIFACTS_PER_RUN = 500
 MAX_ARTIFACT_SCAN_SECONDS = 3.0
+# Bound traversal work, not the number of outputs at an arbitrary 500-file
+# prefix. Render tasks routinely produce more files than that.
 MAX_ARTIFACT_SCAN_ENTRIES = 100_000
+# ProjectEventStore rejects a single event above 256 KiB. Leave room for the
+# canonical event envelope while retaining hundreds of ordinary output rows.
+MAX_ARTIFACT_MANIFEST_BYTES = 244 * 1024
 _ACTIVE_RUN_STATUSES = {"pending", "running", "waiting_for_user"}
 _AGENT_GENERATED_UPLOAD_POLICY = "agent_generated"
 _METADATA_ONLY_UPLOAD_POLICY = "metadata_only"
@@ -69,6 +79,17 @@ def _canonical_digest(value: Any) -> str:
         sort_keys=True,
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _canonical_size(value: Any) -> int:
+    return len(
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    )
 
 
 @dataclass(frozen=True)
@@ -162,9 +183,108 @@ def _artifact_upload_policy(root: _ArtifactRoot, relative_path: str) -> str:
     return root.upload_policy
 
 
+def _artifact_path_filter(root: Path, *, deadline: float | None = None):
+    """Classify before consuming the manifest cap. Failure never widens scope."""
+    deadline = (
+        deadline
+        if deadline is not None
+        else time.perf_counter() + MAX_ARTIFACT_SCAN_SECONDS
+    )
+    seconds_left = deadline - time.perf_counter()
+    if seconds_left <= 0:
+        raise GitBackendError(
+            "Artifact classification exceeded its scan budget"
+        )
+    git = GitBackend(timeout_seconds=seconds_left)
+    probe = git.probe(root)
+    repository_root = probe.repository_root if probe.is_repository else None
+    policy = WorkspacePathPolicy(root)
+
+    def include(paths: tuple[str, ...]) -> set[str]:
+        candidates: dict[str, str] = {}
+        tracked_candidates: set[str] = set()
+        for value in paths:
+            seconds_left = deadline - time.perf_counter()
+            if seconds_left <= 0:
+                raise GitBackendError(
+                    "Artifact classification exceeded its scan budget"
+                )
+            git.timeout_seconds = seconds_left
+            path = Path(value)
+            relative = path.relative_to(root).as_posix()
+            if path.is_symlink() or not path.resolve().is_relative_to(root):
+                continue
+            if ".git" in Path(relative).parts:
+                continue
+            if path.is_dir() and (path / ".git").exists():
+                continue
+            tracked = (
+                repository_root is not None
+                and git.is_tracked(repository_root, path)
+                if path.is_dir()
+                or any(p.startswith(".") for p in Path(relative).parts)
+                else False
+            )
+            operational_path = relative + (
+                "/__entry__" if path.is_dir() else ""
+            )
+            if policy.is_operational(operational_path):
+                tracked = tracked or (
+                    repository_root is not None
+                    and git.is_tracked(repository_root, path)
+                )
+                if not tracked:
+                    continue
+            if (
+                any(p.startswith(".") for p in Path(relative).parts)
+                and not tracked
+            ):
+                continue
+            if tracked:
+                tracked_candidates.add(value)
+            candidates[value] = (
+                path.relative_to(repository_root).as_posix()
+                if repository_root is not None
+                else relative
+            )
+        ignored = set()
+        if repository_root is not None:
+            relative_paths = tuple(candidates.values())
+            for offset in range(0, len(relative_paths), WORKSPACE_PATH_LIMIT):
+                seconds_left = deadline - time.perf_counter()
+                if seconds_left <= 0:
+                    raise GitBackendError(
+                        "Artifact classification exceeded its scan budget"
+                    )
+                git.timeout_seconds = seconds_left
+                ignored.update(
+                    git.ignored_paths(
+                        repository_root,
+                        relative_paths[offset : offset + WORKSPACE_PATH_LIMIT],
+                    )
+                )
+        return {
+            value
+            for value, relative in candidates.items()
+            if relative not in ignored or value in tracked_candidates
+        }
+
+    return include
+
+
+def _deliverable_fields(path: Path) -> dict[str, str]:
+    return (
+        {"artifactRole": "deliverable"}
+        if path.suffix.lower() in {".mp4", ".blend"}
+        else {}
+    )
+
+
 def _git_run_changed_artifacts(
     journal: SQLiteRunJournal,
     run: RunRecord,
+    *,
+    deadline: float | None = None,
 ) -> ArtifactScanResult | None:
     """Project exact committed Run changes from Git into Artifact metadata."""
 
@@ -185,7 +305,14 @@ def _git_run_changed_artifacts(
     try:
         from app.workspace_git.backend import GitBackend
 
-        git = GitBackend()
+        seconds_left = (
+            MAX_ARTIFACT_SCAN_SECONDS
+            if deadline is None
+            else deadline - time.perf_counter()
+        )
+        if seconds_left <= 0:
+            return ArtifactScanResult([], "partial", True)
+        git = GitBackend(timeout_seconds=seconds_left)
         changes = git.changed_paths_between(
             Path(repository.root_path),
             base_commit=materialization.workspace_base_commit,
@@ -204,16 +331,36 @@ def _git_run_changed_artifacts(
             return None
         visible_root = Path(project.worktree_path).expanduser().resolve()
     values: list[dict[str, Any]] = []
-    truncated = len(changes) > MAX_ARTIFACTS_PER_RUN
+    truncated = False
     artifact_root = _ArtifactRoot(
         path=visible_root,
         scan_all=False,
         upload_policy=_AGENT_GENERATED_UPLOAD_POLICY,
     )
-    for change in changes[:MAX_ARTIFACTS_PER_RUN]:
+    try:
+        include = _artifact_path_filter(visible_root, deadline=deadline)
+        paths = tuple(
+            str(visible_root / change.relative_path) for change in changes
+        )
+        allowed: set[str] = set()
+        for offset in range(0, len(paths), WORKSPACE_PATH_LIMIT):
+            allowed.update(
+                include(paths[offset : offset + WORKSPACE_PATH_LIMIT])
+            )
+    except (GitBackendError, OSError, ValueError):
+        return ArtifactScanResult([], "classification_unavailable", True)
+    for change in sorted(
+        changes,
+        key=lambda item: (
+            Path(item.relative_path).suffix.lower() not in {".mp4", ".blend"},
+            item.relative_path,
+        ),
+    ):
         if change.status in {"D", "T"}:
             continue
         path = visible_root / change.relative_path
+        if str(path) not in allowed:
+            continue
         try:
             if path.is_symlink() or not path.is_file():
                 continue
@@ -222,6 +369,7 @@ def _git_run_changed_artifacts(
             continue
         values.append(
             {
+                **_deliverable_fields(path),
                 "filename": path.name,
                 "path": str(path.resolve()),
                 "relativePath": change.relative_path,
@@ -245,11 +393,12 @@ def _git_run_changed_artifacts(
 
 def discover_task_changed_files(
     snapshot: TaskSnapshot,
-    max_entries: int = MAX_ARTIFACTS_PER_RUN,
+    max_entries: int = MAX_ARTIFACT_SCAN_ENTRIES,
     modification_windows: tuple[tuple[float, float | None], ...] | None = None,
     *,
     working_root_upload_policy: str = _METADATA_ONLY_UPLOAD_POLICY,
     list_files_fn: Callable[..., list[str]] = list_files,
+    deadline: float | None = None,
 ) -> ArtifactScanResult:
     """Discover files generated or modified by one Run within hard budgets."""
 
@@ -257,7 +406,11 @@ def discover_task_changed_files(
     seen_paths: set[str] = set()
     remaining = max_entries
     windows = modification_windows or ((snapshot.task_start_time - 1.0, None),)
-    deadline = time.perf_counter() + MAX_ARTIFACT_SCAN_SECONDS
+    deadline = (
+        deadline
+        if deadline is not None
+        else time.perf_counter() + MAX_ARTIFACT_SCAN_SECONDS
+    )
     scanned_entries = 0
     scan_limited = False
 
@@ -295,36 +448,93 @@ def discover_task_changed_files(
         if remaining <= 0:
             scan_limited = True
             break
-        if artifact_root.scan_all:
-            paths = bounded_list_files(root, limit=remaining)
-        else:
-            paths = []
-            window_seen: set[str] = set()
-            for modified_after, modified_before in windows:
-                if len(paths) >= remaining:
-                    break
-                window_paths = bounded_list_files(
-                    root,
-                    limit=remaining - len(paths),
-                    modified_after=modified_after,
-                    modified_before=modified_before,
+        try:
+            include = _artifact_path_filter(root, deadline=deadline)
+            verified: set[str] = set()
+            classification_unavailable = False
+
+            def include_verified(paths: tuple[str, ...]) -> set[str]:
+                nonlocal scan_limited, classification_unavailable
+                allowed = verified.intersection(paths)
+                pending = tuple(path for path in paths if path not in verified)
+                for offset in range(0, len(pending), WORKSPACE_PATH_LIMIT):
+                    if classification_unavailable:
+                        break
+                    batch = pending[offset : offset + WORKSPACE_PATH_LIMIT]
+                    try:
+                        classified = include(batch)
+                    except (GitBackendError, OSError, ValueError) as error:
+                        logger.warning(
+                            "Artifact classification unavailable: %s", error
+                        )
+                        scan_limited = True
+                        classification_unavailable = True
+                        break
+                    verified.update(classified)
+                    allowed.update(classified)
+                return allowed
+
+            scan_options = {
+                "include_paths": include_verified,
+                "use_default_skips": False,
+                "skip_prefix": "",
+                "skip_extensions": (),
+                "priority_extensions": (".mp4", ".blend"),
+            }
+            if artifact_root.scan_all:
+                paths = bounded_list_files(
+                    root, limit=remaining, **scan_options
                 )
-                for window_path in window_paths:
-                    if window_path in window_seen:
-                        continue
-                    window_seen.add(window_path)
-                    paths.append(window_path)
+            else:
+                paths = []
+                window_seen: set[str] = set()
+                for modified_after, modified_before in windows:
+                    if len(paths) >= remaining:
+                        break
+                    window_paths = bounded_list_files(
+                        root,
+                        limit=remaining - len(paths),
+                        modified_after=modified_after,
+                        modified_before=modified_before,
+                        **scan_options,
+                    )
+                    for window_path in window_paths:
+                        if window_path in window_seen:
+                            continue
+                        window_seen.add(window_path)
+                        paths.append(window_path)
+            # Reuse completed classification after the deadline. Injected
+            # scanners must still prove every previously unseen path.
+            allowed = include_verified(tuple(paths))
+            paths = [path for path in paths if path in allowed]
+        except (GitBackendError, OSError, ValueError) as error:
+            logger.warning("Artifact classification unavailable: %s", error)
+            scan_limited = True
+            continue
         for absolute_path in paths:
             try:
-                path = Path(absolute_path).resolve()
-                if not path.is_file():
+                candidate = Path(absolute_path)
+                path = candidate.resolve()
+                # A verified path may have become a symlink during the scan;
+                # do not transfer its classification to a different target.
+                if (
+                    candidate.is_symlink()
+                    or path != candidate
+                    or not path.is_file()
+                ):
                     continue
                 identity = str(path)
                 if identity in seen_paths:
                     continue
                 relative_path = path.relative_to(root).as_posix()
                 stat_result = path.stat()
-            except (OSError, ValueError):
+                if not artifact_root.scan_all and not any(
+                    start <= stat_result.st_mtime
+                    and (end is None or stat_result.st_mtime <= end)
+                    for start, end in windows
+                ):
+                    continue
+            except (OSError, RuntimeError, ValueError):
                 # A tool may atomically replace or remove a file while the
                 # final scan runs. One vanished file cannot poison the Run.
                 continue
@@ -333,6 +543,7 @@ def discover_task_changed_files(
             remaining -= 1
             result.append(
                 {
+                    **_deliverable_fields(path),
                     "filename": path.name,
                     "path": identity,
                     "relativePath": relative_path,
@@ -359,7 +570,7 @@ def discover_task_changed_files(
 
 def scan_task_changed_files(
     snapshot: TaskSnapshot,
-    max_entries: int = MAX_ARTIFACTS_PER_RUN,
+    max_entries: int = MAX_ARTIFACT_SCAN_ENTRIES,
     modification_windows: tuple[tuple[float, float | None], ...] | None = None,
     *,
     working_root_upload_policy: str = _METADATA_ONLY_UPLOAD_POLICY,
@@ -450,6 +661,36 @@ def record_artifact_manifest(
         projected.append(
             _artifact_projection(run_id=run_id, artifact=attributed)
         )
+    # Preserve discovery's deliverable priority when applying the byte budget.
+    # Presentation order must not evict final outputs behind intermediate files.
+    projected.sort(key=lambda item: item.get("artifactRole") != "deliverable")
+    retained: list[dict[str, Any]] = []
+    # Use a conservative incremental allowance, then verify the exact canonical
+    # body size below. This stays linear even for very large workspaces.
+    retained_bytes = 512
+    for artifact in projected:
+        artifact_bytes = _canonical_size(artifact) + 1
+        if retained_bytes + artifact_bytes > MAX_ARTIFACT_MANIFEST_BYTES:
+            break
+        retained.append(artifact)
+        retained_bytes += artifact_bytes
+    if len(retained) < len(projected):
+        projected = retained
+        truncated = True
+        scan_status = "partial"
+    while projected:
+        candidate_body = {
+            "artifacts": projected,
+            "artifact_count": len(projected),
+            "scan_status": scan_status,
+            "truncated": truncated,
+        }
+        if _canonical_size(candidate_body) <= MAX_ARTIFACT_MANIFEST_BYTES:
+            break
+        projected.pop()
+        truncated = True
+        scan_status = "partial"
+    projected.sort(key=lambda item: str(item.get("relativePath") or ""))
     drafts: list[RunEventDraft] = []
     for artifact in projected:
         event_type = (
@@ -552,6 +793,25 @@ def finalize_run_artifacts(
     }:
         return existing
 
+    if existing is not None and current_run.status in {
+        "interrupted",
+        "cancelling",
+    }:
+        attempts = journal.list_run_attempts(run.run_id)
+        latest_attempt = max(
+            attempts, key=lambda item: item.attempt_number, default=None
+        )
+        if (
+            latest_attempt is not None
+            and latest_attempt.status == "interrupted"
+            and existing.created_at >= latest_attempt.started_at
+        ):
+            # Recovery scanned before closing the Attempt at its last consumer
+            # heartbeat. Rescanning that shorter mtime window on Cancel can
+            # erase outputs written after the heartbeat. No new Attempt ran,
+            # so retain the recovery manifest as the output authority.
+            return existing
+
     email: str | None = None
     user_id: str | int | None = None
     run_context = get_current_run_context()
@@ -598,6 +858,7 @@ def finalize_run_artifacts(
         windows, _ = task_modification_windows(
             journal, run.run_id, run.project_id
         )
+        scan_deadline = time.perf_counter() + MAX_ARTIFACT_SCAN_SECONDS
         scan_result = discover_task_changed_files(
             snapshot,
             modification_windows=windows,
@@ -606,8 +867,11 @@ def finalize_run_artifacts(
                 email=email,
                 user_id=user_id,
             ),
+            deadline=scan_deadline,
         )
-        git_result = _git_run_changed_artifacts(journal, run)
+        git_result = _git_run_changed_artifacts(
+            journal, run, deadline=scan_deadline
+        )
         if git_result is None:
             artifacts = scan_result.artifacts
             scan_status = scan_result.scan_status
@@ -627,12 +891,8 @@ def finalize_run_artifacts(
             ordered = sorted(
                 git_by_path.values(), key=lambda item: item["relativePath"]
             ) + sorted(direct_only, key=lambda item: item["relativePath"])
-            artifacts = ordered[:MAX_ARTIFACTS_PER_RUN]
-            truncated = (
-                scan_result.truncated
-                or git_result.truncated
-                or len(ordered) > MAX_ARTIFACTS_PER_RUN
-            )
+            artifacts = ordered
+            truncated = scan_result.truncated or git_result.truncated
             scan_status = "partial" if truncated else "complete"
 
     manifest = record_artifact_manifest(

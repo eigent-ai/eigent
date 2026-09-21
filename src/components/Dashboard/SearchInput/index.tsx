@@ -46,7 +46,7 @@ const COLLAPSED_WIDTH = 28;
 const EXPANDED_WIDTH = 240;
 
 export default function SearchInput({
-  value,
+  value: rawValue,
   onChange,
   placeholder,
   variant = 'default',
@@ -58,6 +58,7 @@ export default function SearchInput({
   clearOnEscape = false,
 }: SearchInputProps) {
   const { t } = useTranslation();
+  const value = rawValue ?? '';
   const inputRef = useRef<HTMLInputElement>(null);
   const [userExpanded, setUserExpanded] = useState(false);
   const isExpanded = userExpanded || value.length > 0;
@@ -188,6 +189,9 @@ export default function SearchInput({
     <div
       className={cn(
         'relative flex h-ds-control-sm min-h-ds-control-sm w-full items-center gap-ds-6 rounded-ds-field border-0 border-x-0 border-y-0 px-ds-8 transition-colors',
+        // The ring lives on the wrapper but must follow DS_FOCUS_RING's
+        // focus-visible semantics, so it is keyed off the inner input.
+        'has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ds-ring-focus has-[:focus-visible]:ring-offset-2',
         color === 'subtle-default'
           ? 'bg-ds-neutral-subtle-default focus-within:bg-ds-neutral-subtle-hover hover:bg-ds-neutral-subtle-hover'
           : 'bg-ds-neutral-default-default focus-within:bg-ds-neutral-default-hover hover:bg-ds-neutral-default-hover'

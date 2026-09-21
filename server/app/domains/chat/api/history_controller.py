@@ -46,7 +46,8 @@ def _sync_project_display_name(
     user_id: int | str,
     project_id: str | None,
     project_name: str | None,
-) -> None:
+    explicit_rename: bool = False,
+) -> str | None:
     name = (project_name or "").strip()
     if not project_id or not name:
         return
@@ -59,9 +60,14 @@ def _sync_project_display_name(
     ).first()
     if not project:
         return
-    project.name = name[:255]
-    project.updated_at = datetime.now()
-    db_session.add(project)
+    if explicit_rename:
+        project.name = name[:255]
+        project.metadata_json = {**(project.metadata_json or {}), "nameSource": "manual"}
+        project.updated_at = datetime.now()
+        db_session.add(project)
+    else:
+        SpaceService.initialize_project_name(project, name, db_session)
+    return project.name
 
 
 def _chat_status_value(value: object) -> int | None:
@@ -99,7 +105,7 @@ def create_chat_history(data: ChatHistoryIn, db_session: Session = Depends(sessi
     data.space_id = data.space_id or SpaceService.legacy_space_id(auth.id)
     project_display_name = (data.project_name or data.question or "").strip()
     try:
-        SpaceService.ensure_project(
+        project = SpaceService.ensure_project(
             auth.id,
             data.project_id,
             data.space_id,
@@ -113,6 +119,7 @@ def create_chat_history(data: ChatHistoryIn, db_session: Session = Depends(sessi
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     history_data = data.model_dump(exclude={"workdir_mode", "mode"})
+    history_data["project_name"] = project.name
     _clamp_chat_history_string_fields(history_data)
     chat_history = ChatHistory(**history_data)
     db_session.add(chat_history)
@@ -212,14 +219,19 @@ async def update_chat_history(
     # over-long value from any client cannot roll back the whole update.
     _clamp_chat_history_string_fields(update_data)
     _drop_stale_ongoing_status(history, update_data)
-    history.update_fields(update_data)
     if "project_name" in update_data:
-        _sync_project_display_name(
+        stable_name = _sync_project_display_name(
             db_session,
             user_id=auth.id,
             project_id=history.project_id or history.task_id,
-            project_name=history.project_name,
+            project_name=update_data["project_name"],
         )
+        if stable_name:
+            update_data["project_name"] = stable_name
+    # Project names can exceed the history column limit. Bound the history
+    # projection after substituting the stable name, without changing Project.
+    _clamp_chat_history_string_fields(update_data)
+    history.update_fields(update_data)
     history.save(db_session)
 
     db_session.refresh(history)
@@ -246,6 +258,7 @@ def update_project_name(
             user_id=user_id,
             project_id=project_id,
             project_name=new_name,
+            explicit_rename=True,
         )
         db_session.commit()
         return Response(status_code=200)

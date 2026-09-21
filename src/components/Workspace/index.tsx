@@ -20,10 +20,12 @@ import { SingleAgentList } from '@/components/Workspace/SingleAgentList';
 import { WorkforceAgentList } from '@/components/Workspace/WorkforceAgentList';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
+import { useUsageIncidentBanner } from '@/hooks/useUsageIncidentBanner';
 import { useHost } from '@/host';
+import { notifyError } from '@/lib/notifyError';
 import { isLegacySpace, isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import { createSyncedProjectInSpace } from '@/lib/spaceProject';
-import { useAuthStore, useWorkerList } from '@/store/authStore';
+import { getAuthStore, useAuthStore, useWorkerList } from '@/store/authStore';
 import { usePageTabStore } from '@/store/pageTabStore';
 import { useProjectRuntimeStore } from '@/store/projectRuntimeStore';
 import { openSettings } from '@/store/settingsStore';
@@ -95,8 +97,11 @@ export default function Workspace({
   const [message, setMessage] = useState('');
   const [draftFiles, setDraftFiles] = useState<FileAttachment[]>([]);
   const directProjectStartRef = useRef(false);
+  const mountedRef = useRef(false);
   const [isStartingDirectProject, setIsStartingDirectProject] = useState(false);
-  const { hasModel } = useModelConfigCheck();
+  const { hasModel, cloudUsageLimitReached } = useModelConfigCheck();
+  const isCloudUsageLimited = modelType === 'cloud' && cloudUsageLimitReached;
+  const usageLimitBanner = useUsageIncidentBanner(modelType);
   const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
   const [addWorkerDialogOpen, setAddWorkerDialogOpen] = useState(false);
   const [editingWorkerAgent, setEditingWorkerAgent] = useState<Agent | null>(
@@ -104,6 +109,13 @@ export default function Workspace({
   );
 
   const textareaRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (workspaceChatFocusRequestId === 0) return;
@@ -135,6 +147,9 @@ export default function Workspace({
       return;
     }
 
+    // A known account limit should not create another empty Session.
+    if (isCloudUsageLimited) return;
+
     if (!hasModel) {
       toast.error(t('layout.please-select-model-first'));
       openSettings('models');
@@ -146,6 +161,11 @@ export default function Workspace({
     }
     directProjectStartRef.current = true;
     setIsStartingDirectProject(true);
+    const startingAuth = getAuthStore();
+    const startingAccount =
+      startingAuth.token && startingAuth.user_id != null
+        ? String(startingAuth.user_id)
+        : null;
 
     try {
       if (!activeSpaceId) {
@@ -197,9 +217,8 @@ export default function Workspace({
       const attachesToSend = JSON.parse(JSON.stringify(draftFiles)) || [];
       targetChatStore.setAttaches(taskId, attachesToSend);
 
-      // Enter the live Project immediately; task startup continues in the background.
-      setActiveWorkspaceTab('project');
-
+      // Keep the draft mounted until the server accepts startup. Key/usage and
+      // admission failures must not navigate away from the user's composer.
       await targetChatStore.startTask(
         taskId,
         undefined,
@@ -209,18 +228,37 @@ export default function Workspace({
         attachesToSend,
         undefined,
         targetProjectId,
-        effectiveSessionMode
+        effectiveSessionMode,
+        { awaitAdmission: true }
       );
       targetChatStore.setHasWaitComfirm(taskId, true);
       targetChatStore.setAttaches(taskId, []);
-      setDraftFiles([]);
-      setMessage('');
+      // A newer New session command can clear selection without unmounting
+      // this composer or changing its Space/tab. It owns the draft and view.
+      if (
+        mountedRef.current &&
+        useProjectRuntimeStore.getState().activeProjectId === targetProjectId &&
+        useSpaceStore.getState().activeSpaceId === activeSpaceId &&
+        usePageTabStore.getState().activeWorkspaceTab === activeWorkspaceTab
+      ) {
+        setDraftFiles([]);
+        setMessage('');
+        setActiveWorkspaceTab('project');
+      }
     } catch (err: unknown) {
-      setActiveWorkspaceTab('workforce');
       console.error('Failed to start task:', err);
-      toast.error(
-        err instanceof Error ? err.message : t('layout.failed-to-start-task')
-      );
+      // Auth changes before useUsageNotices synchronizes its account. Never
+      // re-report a departed account's rejection as the current user's limit.
+      const currentAuth = getAuthStore();
+      const currentAccount =
+        currentAuth.token && currentAuth.user_id != null
+          ? String(currentAuth.user_id)
+          : null;
+      if (currentAccount === startingAccount) {
+        notifyError(
+          err instanceof Error ? err.message : t('layout.failed-to-start-task')
+        );
+      }
     } finally {
       directProjectStartRef.current = false;
       setIsStartingDirectProject(false);
@@ -254,7 +292,11 @@ export default function Workspace({
     files: draftFiles,
     onFilesChange: setDraftFiles,
     onAddFile: handleFileSelect,
-    disabled: !hasModel || isStartingDirectProject || isLegacyActiveSpace,
+    disabled:
+      !hasModel ||
+      isCloudUsageLimited ||
+      isStartingDirectProject ||
+      isLegacyActiveSpace,
     textareaRef,
     allowDragDrop: true,
     useCloudModelInDev,
@@ -373,10 +415,7 @@ export default function Workspace({
       >
         {renderAgentList()}
         {effectiveSessionMode === SessionMode.SINGLE_AGENT ? (
-          <span
-            data-workspace-single-agent-label
-            className={WORKSPACE_COWORK_TEXT_CLASS}
-          >
+          <span className="sr-only">
             {t('layout.workspace-session-single-agent', {
               defaultValue: 'Single Agent',
             })}
@@ -393,12 +432,14 @@ export default function Workspace({
           state="input"
           queuedMessages={[]}
           onRemoveQueuedMessage={() => {}}
-          noModelOverlay={!hasModel}
+          noModelOverlay={!hasModel && !isCloudUsageLimited}
+          usageLimitBanner={usageLimitBanner}
           onSelectModel={() => openSettings('models')}
           inputProps={composerInputProps}
           sessionMode={effectiveSessionMode}
           onSessionModeChange={setActiveProjectMode}
           sessionModeSelectInteractive
+          modelSelectDisabled={isStartingDirectProject || isLegacyActiveSpace}
         />
       </div>
       <AddWorker

@@ -13,7 +13,17 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { FILE_PREVIEW_LIMITS } from '@/shared/filePreviewContract';
-import { mkdir, mkdtemp, rm, truncate, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  symlink,
+  truncate,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -45,6 +55,33 @@ async function temporaryFile(name: string, content: string): Promise<string> {
 }
 
 describe('FileReader bounded preview', () => {
+  it.each([4, 10])('fully reads a %i MiB HTML document', async (mib) => {
+    const size = mib * 1024 * 1024;
+    const content = `<html>${' '.repeat(size - 13)}</html>`;
+    const filePath = await temporaryFile('index.html', content);
+    const reader = new FileReader(null as never);
+
+    const result = await reader.openFile('html', filePath, false);
+    expect(result).toHaveLength(size);
+    expect(result === content).toBe(true);
+  });
+
+  it('rejects full HTML reads above 10 MiB and clamps source reads to 1 MiB', async () => {
+    const filePath = await temporaryFile('large.html', '');
+    const size = 10 * 1024 * 1024 + 1;
+    await truncate(filePath, size);
+    const reader = new FileReader(null as never);
+
+    await expect(reader.openFile('html', filePath, false)).rejects.toThrow(
+      'FILE_PREVIEW_REQUIRES_BOUNDED_READER'
+    );
+    const preview = await reader.previewTextFile(filePath, 10 * 1024 * 1024);
+    expect(preview.bytesRead).toBe(1024 * 1024);
+    expect(preview.content).toBe('');
+    expect(preview.binary).toBe(true);
+    expect(preview.totalBytes).toBe(size);
+  });
+
   it('returns at most the configured CSV row count', async () => {
     const rows = Array.from({ length: 700 }, (_, index) => `${index},value`);
     const filePath = await temporaryFile(
@@ -88,9 +125,11 @@ describe('FileReader bounded preview', () => {
   });
 
   it('resolves only requested files and rejects traversal', async () => {
-    const directory = await mkdtemp(path.join(tmpdir(), 'eigent-workspace-'));
-    temporaryDirectories.push(directory);
-    const outsideFile = path.join(path.dirname(directory), 'outside.txt');
+    const fixture = await mkdtemp(path.join(tmpdir(), 'eigent-workspace-'));
+    temporaryDirectories.push(fixture);
+    const directory = path.join(fixture, 'workspace');
+    await mkdir(directory);
+    const outsideFile = path.join(fixture, 'outside.txt');
     await writeFile(path.join(directory, 'preview.png'), 'image');
     await writeFile(outsideFile, 'secret');
 
@@ -112,6 +151,152 @@ describe('FileReader bounded preview', () => {
     }
   });
 
+  it('keeps an empty manifest empty and excludes escapes and symlinks from requested resolution', async () => {
+    const fixture = await mkdtemp(path.join(tmpdir(), 'eigent-workspace-'));
+    temporaryDirectories.push(fixture);
+    const workspace = path.join(fixture, 'workspace');
+    const outside = path.join(fixture, 'outside');
+    await mkdir(workspace);
+    await mkdir(outside);
+    await writeFile(
+      path.join(workspace, 'final.mp4'),
+      'resolver-only media fixture'
+    );
+    await writeFile(path.join(workspace, 'scene.blend'), 'BLENDER-v300');
+    await writeFile(
+      path.join(workspace, 'unregistered.txt'),
+      'not an artifact'
+    );
+    await writeFile(
+      path.join(outside, 'secret.txt'),
+      'isolated secret fixture'
+    );
+    await symlink(
+      path.join(outside, 'secret.txt'),
+      path.join(workspace, 'link.txt')
+    );
+    await symlink(outside, path.join(workspace, 'linked-directory'));
+    await symlink(
+      path.join(workspace, 'final.mp4'),
+      path.join(workspace, 'alias.mp4')
+    );
+
+    const reader = new FileReader(null as never);
+    expect(reader.getWorkspaceFileList(workspace, [])).toEqual([]);
+    const files = reader.getWorkspaceFileList(workspace, [
+      'final.mp4',
+      'final.mp4',
+      'scene.blend',
+      'missing.mp4',
+      '../outside/secret.txt',
+      path.join(outside, 'secret.txt'),
+      'link.txt',
+      'linked-directory/secret.txt',
+      'alias.mp4',
+      'final.mp4\0scene.blend',
+      '%2e%2e/outside/secret.txt',
+      'https://example.test/final.mp4',
+    ]);
+    expect(files.map((file) => file.relativePath)).toEqual([
+      'final.mp4',
+      'scene.blend',
+    ]);
+    expect(files[0]).toMatchObject({
+      path: await realpath(path.join(workspace, 'final.mp4')),
+      type: 'mp4',
+      mimeType: 'video/mp4',
+    });
+    expect(files[1]).toMatchObject({
+      path: await realpath(path.join(workspace, 'scene.blend')),
+      type: 'blend',
+    });
+  });
+
+  it('does not recover moved paths, discover replacements, or rewrite a manifest', async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), 'eigent-workspace-'));
+    temporaryDirectories.push(workspace);
+    await mkdir(path.join(workspace, 'frames'));
+    await mkdir(path.join(workspace, 'resume_frames'));
+    await writeFile(path.join(workspace, 'frames/frame.png'), 'fixture frame');
+    const manifest = JSON.stringify({
+      artifacts: [
+        { artifact_id: 'old-frame', relative_path: 'frames/frame.png' },
+      ],
+    });
+    const manifestPath = path.join(workspace, 'manifest.json');
+    await writeFile(manifestPath, manifest);
+    const reader = new FileReader(null as never);
+    expect(
+      reader.getWorkspaceFileList(workspace, ['frames/frame.png'])
+    ).toHaveLength(1);
+    await rename(
+      path.join(workspace, 'frames/frame.png'),
+      path.join(workspace, 'resume_frames/frame.png')
+    );
+    expect(
+      reader.getWorkspaceFileList(workspace, ['frames/frame.png'])
+    ).toEqual([]);
+    expect(await readFile(manifestPath, 'utf8')).toBe(manifest);
+    expect(
+      reader.getWorkspaceFileList(workspace, ['resume_frames/frame.png'])[0]
+        .relativePath
+    ).toBe(path.join('resume_frames', 'frame.png'));
+  });
+
+  it('omits directory aliases whose real identity differs and retains explicitly requested canonical files', async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), 'eigent-workspace-'));
+    temporaryDirectories.push(workspace);
+    await mkdir(path.join(workspace, 'archive'));
+    await writeFile(path.join(workspace, 'archive/frame.txt'), 'fixture frame');
+    await writeFile(path.join(workspace, 'final.mp4'), 'resolver-only fixture');
+    await symlink(
+      path.join(workspace, 'archive'),
+      path.join(workspace, 'frames'),
+      'junction'
+    );
+    const reader = new FileReader(null as never);
+
+    expect(
+      reader.getWorkspaceFileList(workspace, ['frames/frame.txt'])
+    ).toEqual([]);
+    const files = reader.getWorkspaceFileList(workspace, [
+      'frames/frame.txt',
+      'archive/frame.txt',
+      'final.mp4',
+    ]);
+    expect(files.map((file) => file.relativePath)).toEqual([
+      path.join('archive', 'frame.txt'),
+      'final.mp4',
+    ]);
+    expect(files[0].path).toBe(
+      await realpath(path.join(workspace, 'archive/frame.txt'))
+    );
+  });
+
+  it('compares normalized identities while preserving native canonical paths', async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), 'eigent-workspace-'));
+    temporaryDirectories.push(workspace);
+    await mkdir(path.join(workspace, 'nested'));
+    await writeFile(
+      path.join(workspace, 'nested/report.txt'),
+      'fixture report'
+    );
+    const reader = new FileReader(null as never);
+
+    for (const relativePath of [
+      'nested/report.txt',
+      './nested//./report.txt',
+      path.join('nested', 'report.txt'),
+    ]) {
+      const files = reader.getWorkspaceFileList(workspace, [relativePath]);
+      expect(files).toHaveLength(1);
+      expect(files[0]).toMatchObject({
+        relativePath: path.join('nested', 'report.txt'),
+        path: await realpath(path.join(workspace, 'nested/report.txt')),
+      });
+    }
+  });
+
   it('fails closed before fully reading oversized rich text', async () => {
     const filePath = await temporaryFile('large.md', '');
     await truncate(filePath, FILE_PREVIEW_LIMITS.textBytes + 1);
@@ -120,5 +305,72 @@ describe('FileReader bounded preview', () => {
     await expect(reader.openFile('md', filePath, false)).rejects.toThrow(
       'FILE_PREVIEW_REQUIRES_BOUNDED_READER'
     );
+  });
+});
+
+describe('bounded text byte classification', () => {
+  it.each([
+    {
+      content: `${'A'.repeat(9000)}\ncafé\n`,
+      expected: `${'A'.repeat(9000)}\ncafé\n`,
+    },
+    {
+      content:
+        'before\n\u001b]8;;https://example.com\u001b\\link\u001b]8;;\u001b\\\nERROR: job failed\n',
+      expected: 'before\nlink\nERROR: job failed\n',
+    },
+  ])(
+    'preserves decoded local subtitle content %#',
+    async ({ content, expected }) => {
+      const filePath = await temporaryFile('subtitles.srt', '');
+      const bytes = Buffer.from(content, 'latin1');
+      await writeFile(filePath, bytes);
+      const result = await new FileReader(null as never).previewTextFile(
+        filePath
+      );
+
+      expect(result).toEqual({
+        content: expected,
+        binary: false,
+        bytesRead: bytes.length,
+        totalBytes: bytes.length,
+      });
+    }
+  );
+  it('blocks binary bytes instead of returning control characters', async () => {
+    const filePath = await temporaryFile('data.unknown', '');
+    await writeFile(filePath, Buffer.from([31, 139, 8, 0, 255, 1]));
+    const result = await new FileReader(null as never).previewTextFile(
+      filePath
+    );
+    expect(result.binary).toBe(true);
+    expect(result.content).toBe('');
+  });
+  it.each(['utf16le', 'utf8'] as const)(
+    'preserves %s text',
+    async (encoding) => {
+      const filePath = await temporaryFile('data.unknown', '');
+      await writeFile(
+        filePath,
+        Buffer.from(
+          (encoding === 'utf16le' ? '\ufeff' : '') + 'Hello 世界',
+          encoding
+        )
+      );
+      const result = await new FileReader(null as never).previewTextFile(
+        filePath
+      );
+      expect(result.binary).toBe(false);
+      expect(result.content).toBe('Hello 世界');
+    }
+  );
+  it('does not mistake a UTF-8 character cut by the byte cap for binary', async () => {
+    const filePath = await temporaryFile('data.unknown', 'a世');
+    const result = await new FileReader(null as never).previewTextFile(
+      filePath,
+      2
+    );
+    expect(result.binary).toBe(false);
+    expect(result.content).toBe('a');
   });
 });

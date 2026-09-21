@@ -32,6 +32,8 @@ export function selectHumanControls(
   return state.orderedInteractionIds.flatMap((id) => {
     const interaction = state.interactionById[id];
     if (
+      (interaction.status === 'requested' &&
+        state.inactiveRunIds?.[interaction.runId]) ||
       (options.runId && interaction.runId !== options.runId) ||
       (options.statuses && !options.statuses.has(interaction.status)) ||
       (options.interactionTypes &&

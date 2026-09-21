@@ -103,8 +103,19 @@ vi.mock('@/store/spaceStore', () => ({
 }));
 
 describe('Folder page layout', () => {
+  let matchesSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    // Floating UI checks whether a menu anchor is in the native top layer.
+    // jsdom's :modal selector can recurse indefinitely on GitHub's Node 20
+    // runner; these Radix menus use ordinary DOM, so isolate that query.
+    const matches = Element.prototype.matches;
+    matchesSpy = vi
+      .spyOn(Element.prototype, 'matches')
+      .mockImplementation(function (selector) {
+        return selector === ':modal' ? false : matches.call(this, selector);
+      });
     mocks.chatStore = null;
     mocks.getElectronAPI.mockReturnValue(null);
     mocks.getIpcRenderer.mockReturnValue(null);
@@ -137,6 +148,7 @@ describe('Folder page layout', () => {
 
   afterEach(() => {
     cleanup();
+    matchesSpy.mockRestore();
   });
 
   it('removes the far-right rail completely and reopens it from the viewer toolbar', async () => {
@@ -310,7 +322,7 @@ describe('Folder page layout', () => {
     );
   });
 
-  it('offers only Open in browser for a remote file on the web', async () => {
+  it('offers browser and download actions for a remote file on the web', async () => {
     const user = userEvent.setup();
     render(<Folder spaceId="space-1" />);
 
@@ -326,6 +338,7 @@ describe('Folder page layout', () => {
     const menuItems = await screen.findAllByRole('menuitem');
     expect(menuItems.map((item) => item.textContent?.trim())).toEqual([
       'Open in browser',
+      'Download',
     ]);
     expect(screen.queryByRole('menuitem', { name: 'Cursor' })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'VS Code' })).toBeNull();

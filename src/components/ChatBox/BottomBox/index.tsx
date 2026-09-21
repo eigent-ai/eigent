@@ -16,14 +16,20 @@ import { Button } from '@/components/ui/button';
 import { type SessionModeType } from '@/types/constants';
 import { motion, useReducedMotion } from 'framer-motion';
 import { TriangleAlert } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { BoxFooter } from './BoxFooter';
 import { BoxHeaderConfirm, BoxHeaderDisplay, BoxHeaderSave } from './BoxHeader';
 import { ControlInputRouter } from './ControlInput';
 import type { FileAttachment, InputboxProps } from './InputBox';
 import { ConnectorPickerPanel, SkillPickerPanel } from './PickerPanel';
-import { QueuedBox, type QueuedMessage } from './QueuedBox';
+import { QueuedBox, type QueueContext, type QueuedMessage } from './QueuedBox';
 import type { BottomBoxVariant, LegacyBottomBoxVariant } from './types';
 import {
   UsageLimitBanner,
@@ -47,14 +53,57 @@ const REDUCED_ENTER_TRANSITION = {
 const LAYOUT_TRANSITION = { duration: 0.22, ease: VARIANT_EASE } as const;
 const INSTANT_TRANSITION = { duration: 0 } as const;
 
+/** Accordion-style disclosure: measure natural content so additions retarget
+ * from the current height without scaling text or moving the composer. */
+function QueueReveal({
+  children,
+  reducedMotion,
+}: {
+  children: ReactNode;
+  reducedMotion: boolean | null;
+}) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState<number>();
+  useLayoutEffect(() => {
+    const content = contentRef.current;
+    if (!content) return;
+    const measure = () => setHeight(content.getBoundingClientRect().height);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, []);
+  return (
+    <motion.div
+      data-bottom-box-query
+      data-queue-reveal={reducedMotion ? 'reduced' : 'smooth'}
+      className="queued-task-composer-inset overflow-clip"
+      initial={{ opacity: 0, height: reducedMotion ? 'auto' : 0 }}
+      animate={{ opacity: 1, height: height ?? 'auto' }}
+      transition={{
+        height: reducedMotion ? INSTANT_TRANSITION : LAYOUT_TRANSITION,
+        opacity: reducedMotion
+          ? REDUCED_ENTER_TRANSITION
+          : VARIANT_ENTER_TRANSITION,
+      }}
+    >
+      <div ref={contentRef} className="flow-root" data-queue-reveal-content>
+        {children}
+      </div>
+    </motion.div>
+  );
+}
+
 interface BottomBoxCommonProps {
   // General state
   state: BottomBoxState;
 
   // Queue-related props
   queuedMessages?: QueuedMessage[];
-  onRemoveQueuedMessage?: (id: string) => void;
-  onSendQueuedMessageNow?: (id: string) => void;
+  queueContext?: QueueContext;
+  onRemoveQueuedMessage?: (id: string) => void | Promise<void>;
+  onSendQueuedMessageNow?: (id: string, expectedTaskId?: string) => void;
+  onReorderQueuedMessage?: (id: string, targetId: string) => void;
 
   // Subtask-related props (confirm/save state)
   subtitle?: string;
@@ -74,6 +123,8 @@ interface BottomBoxCommonProps {
   sessionModeSelectInteractive?: boolean;
   /** Project whose pinned model and thinking effort the footer selectors read and write. */
   modelSelectProjectId?: string | null;
+  /** Override input disablement for model recovery; controlled variants stay locked. */
+  modelSelectDisabled?: boolean;
 
   // Loading states
   loading?: boolean;
@@ -94,8 +145,10 @@ export default function BottomBox({
   state,
   variant = 'input',
   queuedMessages = [],
+  queueContext,
   onRemoveQueuedMessage,
   onSendQueuedMessageNow,
+  onReorderQueuedMessage,
   subtitle,
   autoStartDeadline,
   onStartTask,
@@ -107,6 +160,7 @@ export default function BottomBox({
   onSessionModeChange,
   sessionModeSelectInteractive = false,
   modelSelectProjectId,
+  modelSelectDisabled,
   loading = false,
   noModelOverlay = false,
   onSelectModel,
@@ -247,23 +301,20 @@ export default function BottomBox({
   return (
     <div
       data-bottom-box
-      className="relative z-50 flex w-full flex-col gap-1 rounded-3xl bg-ds-neutral-default-default"
+      className={`relative z-50 flex w-full flex-col ${showQueuedBox ? 'gap-0' : 'gap-1 rounded-3xl bg-ds-neutral-default-default'}`}
     >
       {/* QueryBox — queued user requests remain separate from BoxMain. */}
       {showQueuedBox && (
-        <motion.div
-          key="bottom-box-query"
-          data-bottom-box-query
-          initial={{ opacity: 0, y: overlayOffset }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={enterTransition}
-        >
+        <QueueReveal reducedMotion={shouldReduceMotion}>
           <QueuedBox
+            className={backgroundClass}
             queuedMessages={queuedMessages}
+            queueContext={queueContext}
             onRemoveQueuedMessage={onRemoveQueuedMessage}
             onSendQueuedMessageNow={onSendQueuedMessageNow}
+            onReorderQueuedMessage={onReorderQueuedMessage}
           />
-        </motion.div>
+        </QueueReveal>
       )}
 
       {/* Floating utility overlays: never affect BoxMain layout. */}
@@ -299,7 +350,7 @@ export default function BottomBox({
         layout={instantLayout ? false : 'size'}
         data-bottom-box-main
         data-layout-motion={instantLayout ? 'instant' : 'smooth'}
-        className={`relative flex w-full flex-col rounded-3xl ${backgroundClass}`}
+        className={`relative z-[1] flex w-full flex-col rounded-3xl ${backgroundClass}`}
         transition={{
           layout: instantLayout ? INSTANT_TRANSITION : LAYOUT_TRANSITION,
         }}
@@ -380,6 +431,11 @@ export default function BottomBox({
               projectId={modelSelectProjectId}
               interactive={sessionModeSelectInteractive}
               disabled={variantDisabled}
+              modelSelectDisabled={
+                normalizedVariant.kind === 'input'
+                  ? modelSelectDisabled
+                  : undefined
+              }
             />
           </div>
         ) : null}
@@ -438,4 +494,4 @@ export type {
   BottomBoxSelectionVariant,
   BottomBoxVariant,
 } from './types';
-export { type FileAttachment, type QueuedMessage };
+export { type FileAttachment, type QueueContext, type QueuedMessage };

@@ -15,6 +15,11 @@
 
 import { fetchGet, sseTransport } from '@/api/http';
 import { normalizeLocalRunEvent } from '@/lib/projector';
+import {
+  RUN_RECONCILIATION_MARKERS,
+  RunStateReconciler,
+  TERMINAL_RUN_EVENTS,
+} from '@/service/runStateReconciliation';
 import { getProjectEventStore } from '@/store/projectEventStore';
 import { RunEventIngress } from './ingress';
 import {
@@ -29,6 +34,7 @@ type ActiveIngress = {
   controller: AbortController;
   ingress: RunEventIngress;
   promise: Promise<void>;
+  reconciler: RunStateReconciler;
 };
 
 class RunEventStreamError extends Error {
@@ -44,6 +50,11 @@ class RunEventStreamError extends Error {
 export class RunEventIngressRegistry {
   private readonly active = new Map<string, ActiveIngress>();
   private readonly reconciliations = new Map<string, Promise<void>>();
+  private readonly runReads = new Map<
+    string,
+    { reconciler: RunStateReconciler; promise: Promise<void> }
+  >();
+  private generation = 0;
 
   ensureLocal(
     projectId: string,
@@ -51,10 +62,23 @@ export class RunEventIngressRegistry {
     options: { reconnect?: boolean } = {}
   ): ActiveIngress {
     const current = this.active.get(runId);
-    if (current?.projectId === projectId) return current;
+    if (current?.projectId === projectId && current.reconciler.isCurrent())
+      return current;
     if (current) this.disconnect(runId);
 
     const controller = new AbortController();
+    const projectEventStore = getProjectEventStore(projectId);
+    const incarnation = projectEventStore.getIncarnation();
+    const isCurrent = () =>
+      !controller.signal.aborted &&
+      this.active.get(runId)?.controller === controller &&
+      projectEventStore.isCurrentIncarnation(incarnation);
+    const reconciler = new RunStateReconciler(
+      projectId,
+      runId,
+      projectEventStore,
+      isCurrent
+    );
     const ingress = new RunEventIngress(projectId, runId);
     // One owned stream now feeds both RunProjectionStore and the Project event
     // timeline. Resume from the older watermark so neither consumer can miss a
@@ -72,12 +96,22 @@ export class RunEventIngressRegistry {
     let replaying = Boolean(options.reconnect || lastSequence > 0);
     let openCount = 0;
     let failures = 0;
+    const entry = {
+      projectId,
+      runId,
+      controller,
+      ingress,
+      reconciler,
+      promise: Promise.resolve(),
+    };
+    this.active.set(runId, entry);
     const promise = sseTransport({
       url: `/runs/${encodeURIComponent(runId)}/stream?after_sequence=${lastSequence}`,
       method: 'GET',
       signal: controller.signal,
       openWhenHidden: true,
       async onopen(response) {
+        if (!isCurrent()) return;
         const contentType = response.headers.get('content-type') || '';
         if (!response.ok || !contentType.startsWith('text/event-stream')) {
           throw new RunEventStreamError(
@@ -86,9 +120,15 @@ export class RunEventIngressRegistry {
           );
         }
         openCount += 1;
-        if (openCount > 1) replaying = true;
+        if (openCount > 1) {
+          replaying = true;
+          void reconciler.request();
+        }
       },
       async onmessage(message) {
+        if (!isCurrent()) return;
+        if (RUN_RECONCILIATION_MARKERS.has(message.event))
+          void reconciler.request();
         if (message.event === 'replay_caught_up') {
           replaying = false;
           runProjectionStore.completeResync(projectId);
@@ -105,13 +145,17 @@ export class RunEventIngressRegistry {
         // runProjectionStore, leaving Normal mode with a legacy ASK and no
         // canonical Tool identity until after the user decided.
         const projectEvent = normalizeLocalRunEvent(raw, projectId);
-        getProjectEventStore(projectId).enqueue({
+        projectEventStore.enqueue({
           ...projectEvent,
           raw: null,
         });
+        if (TERMINAL_RUN_EVENTS.has(projectEvent.eventType))
+          void reconciler.request();
       },
       onerror(error) {
         if (controller.signal.aborted) throw error;
+        if (!isCurrent()) throw error;
+        void reconciler.request();
         failures += 1;
         if (
           error instanceof RunEventStreamError &&
@@ -121,6 +165,9 @@ export class RunEventIngressRegistry {
           throw error;
         }
         return Math.min(15_000, 250 * 2 ** Math.min(failures, 6));
+      },
+      onclose() {
+        void reconciler.request();
       },
     })
       .catch((error) => {
@@ -132,14 +179,15 @@ export class RunEventIngressRegistry {
           });
         }
       })
-      .finally(() => {
+      .finally(async () => {
+        await reconciler.request();
+        reconciler.dispose();
         if (this.active.get(runId)?.controller === controller) {
           this.active.delete(runId);
         }
       });
 
-    const entry = { projectId, runId, controller, ingress, promise };
-    this.active.set(runId, entry);
+    entry.promise = promise;
     return entry;
   }
 
@@ -161,11 +209,41 @@ export class RunEventIngressRegistry {
     const current = this.active.get(runId);
     if (!current) return;
     this.active.delete(runId);
+    current.reconciler.dispose();
     current.controller.abort();
   }
 
+  /** Compatibility stream boundaries share the canonical owner when present. */
+  reconcileRun(projectId: string, runId: string): Promise<void> {
+    const current = this.active.get(runId);
+    if (current?.projectId === projectId && current.reconciler.isCurrent())
+      return current.reconciler.request();
+    const key = `${projectId}\u0000${runId}`;
+    const pending = this.runReads.get(key);
+    if (pending?.reconciler.isCurrent()) {
+      // Keep the later boundary while sharing this owner's cleanup promise.
+      void pending.reconciler.request();
+      return pending.promise;
+    }
+    pending?.reconciler.dispose();
+    const generation = this.generation;
+    const reconciler = new RunStateReconciler(
+      projectId,
+      runId,
+      getProjectEventStore(projectId),
+      () => this.generation === generation
+    );
+    const promise = reconciler.request().finally(() => {
+      reconciler.dispose();
+      if (this.runReads.get(key)?.reconciler === reconciler)
+        this.runReads.delete(key);
+    });
+    this.runReads.set(key, { reconciler, promise });
+    return promise;
+  }
+
   has(runId: string): boolean {
-    return this.active.has(runId);
+    return this.active.get(runId)?.reconciler.isCurrent() ?? false;
   }
 
   activeCount(): number {
@@ -175,26 +253,61 @@ export class RunEventIngressRegistry {
   reconcileProject(projectId: string): Promise<void> {
     const existing = this.reconciliations.get(projectId);
     if (existing) return existing;
+    const generation = this.generation;
+    const store = getProjectEventStore(projectId);
+    const incarnation = store.getIncarnation();
     const promise = (async () => {
       const response = await fetchGet('/runs', {
         project_id: projectId,
         limit: 100,
       });
+      if (
+        this.generation !== generation ||
+        !store.isCurrentIncarnation(incarnation) ||
+        (response?.project_id && response.project_id !== projectId)
+      )
+        return;
       const runs = Array.isArray(response?.runs)
-        ? (response.runs as DurableRunSummaryInput[])
+        ? (response.runs as DurableRunSummaryInput[]).filter(
+            (run) =>
+              run &&
+              run.project_id === projectId &&
+              typeof run.run_id === 'string'
+          )
         : [];
-      runProjectionStore.upsertRunSummaries(projectId, runs);
-      const returnedRunIds = new Set(runs.map((run) => run.run_id));
+      store.flushAll();
       for (const run of runs) {
-        if (run.status === 'running') {
+        if (run.project_id !== projectId) continue;
+        const knownRuns = [
+          store.getSnapshot().view.runs[run.run_id],
+          runProjectionStore.getRun(projectId, run.run_id),
+        ];
+        if (
+          knownRuns.some(
+            (known) =>
+              known &&
+              (!Number.isSafeInteger(run.version) ||
+                run.version! < known.runVersion ||
+                (run.version === known.runVersion &&
+                  known.status !== 'unknown' &&
+                  run.status !== known.status))
+          )
+        )
+          continue;
+        store.reconcileRunSummary(run, incarnation);
+        runProjectionStore.upsertRunSummaries(projectId, [run]);
+        const latest = runProjectionStore.getRun(projectId, run.run_id);
+        if (
+          latest?.origin === 'local' &&
+          !latest.resumeBlockedReason &&
+          ['pending', 'running', 'waiting_for_user', 'cancelling'].includes(
+            latest.status
+          )
+        ) {
           this.ensureLocal(projectId, run.run_id, { reconnect: true });
         } else this.disconnect(run.run_id);
       }
-      for (const [runId, active] of this.active) {
-        if (active.projectId === projectId && !returnedRunIds.has(runId)) {
-          this.disconnect(runId);
-        }
-      }
+      // Absence from the bounded /runs listing is never evidence of termination.
     })().finally(() => {
       if (this.reconciliations.get(projectId) === promise) {
         this.reconciliations.delete(projectId);
@@ -211,6 +324,9 @@ export class RunEventIngressRegistry {
   }
 
   clear(): void {
+    this.generation += 1;
+    for (const read of this.runReads.values()) read.reconciler.dispose();
+    this.runReads.clear();
     for (const runId of [...this.active.keys()]) this.disconnect(runId);
     this.reconciliations.clear();
   }

@@ -1,6 +1,6 @@
 {
   "name": "eigent",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "main": "dist-electron/main/index.js",
   "description": "Eigent",
   "author": "Eigent.AI",
@@ -42,11 +42,11 @@
     "build:design-system": "npm run generate:design-tokens",
     "check:design-system:clean-tree": "node scripts/check-design-system-clean-tree.mjs",
     "preview:web": "vite preview --config vite.config.web.ts",
-    "pretest": "vite build --mode=test",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts",
     "test:e2e": "vitest run --config vitest.config.ts",
-    "test:coverage": "vitest run --coverage",
+    "test:preview-browser": "node test/e2e/preview-browser/verify.mjs",
+    "test:coverage": "vitest run --config vitest.config.ts --coverage",
     "check:i18n": "node scripts/check-i18n-locale-parity.js && node scripts/check-i18n-source-usage.mjs",
     "check:design-token-usage": "node scripts/check-design-token-usage.mjs",
     "check:retired-ds-axes": "node scripts/check-retired-ds-axes.mjs",
@@ -154,6 +154,7 @@
     "@types/dompurify": "^3.0.5",
     "@types/lodash-es": "^4.17.12",
     "@types/mime": "^3.0.4",
+    "@types/node": "20.19.32",
     "@types/papaparse": "^5.3.16",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
@@ -191,6 +192,9 @@
     "vite-plugin-electron": "^0.29.0",
     "vite-plugin-electron-renderer": "^0.14.6",
     "vitest": "2.1.9"
+  },
+  "overrides": {
+    "@types/node": "20.19.32"
   },
   "pnpm": {
     "neverBuiltDependencies": []

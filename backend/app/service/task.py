@@ -359,6 +359,7 @@ class ActionRemoveTaskData(BaseModel):
 class ActionSkipTaskData(BaseModel):
     action: Literal[Action.skip_task] = Action.skip_task
     project_id: str
+    expected_task_id: str | None = None
 
 
 ActionData = (
@@ -493,6 +494,7 @@ class TaskLock:
     provider_effort_parameter_name: str | None
     provider_effort_parameter_value: str | None
     provider_capability_revision: str | None
+    provider_model_transport: str | None
 
     def __init__(
         self, id: str, queue: asyncio.Queue, human_input: dict
@@ -540,6 +542,7 @@ class TaskLock:
         self.provider_effort_parameter_name = None
         self.provider_effort_parameter_value = None
         self.provider_capability_revision = None
+        self.provider_model_transport = None
         self.local_history_degraded = False
         self.local_history_last_error = None
         self._memory_finalized_runs = set()
@@ -705,10 +708,11 @@ class TaskLock:
             waiters.clear()
 
         # Clean up registered toolkits (e.g., remove TerminalToolkit venvs)
+        remaining_toolkits = []
         for toolkit in self.registered_toolkits:
             try:
                 if hasattr(toolkit, "cleanup"):
-                    toolkit.cleanup()
+                    await asyncio.to_thread(toolkit.cleanup)
                     logger.info(
                         "Toolkit cleanup completed",
                         extra={
@@ -717,6 +721,7 @@ class TaskLock:
                         },
                     )
             except Exception as e:
+                remaining_toolkits.append(toolkit)
                 logger.warning(
                     f"Failed to cleanup toolkit: {e}",
                     extra={
@@ -724,7 +729,11 @@ class TaskLock:
                         "toolkit": type(toolkit).__name__,
                     },
                 )
-        self.registered_toolkits.clear()
+        self.registered_toolkits = remaining_toolkits
+        if remaining_toolkits:
+            # Keep ownership so delete_task_lock cannot orphan resources after
+            # a failed process-group kill. Repeated cleanup retries those only.
+            raise RuntimeError("Task resources did not finish cleanup")
 
         logger.info("Task lock cleanup completed", extra={"task_id": self.id})
 

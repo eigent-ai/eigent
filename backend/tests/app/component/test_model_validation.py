@@ -22,11 +22,94 @@ from app.component.model_validation import (
     ValidationErrorType,
     ValidationResult,
     ValidationStage,
+    _validation_effort_config,
     categorize_error,
     create_agent,
     format_raw_error,
     validate_model_with_details,
 )
+from app.workspace_config import ModelCapabilityRegistry
+
+
+def test_validation_applies_catalog_chat_transport_to_initializer():
+    metadata = next(
+        item
+        for item in ModelCapabilityRegistry().catalog.models
+        if item.model_platform == "azure"
+    ).model_dump(mode="json")
+    metadata["model_type"] = "fixture-chat-tools"
+    metadata["tools_transport"] = "chat_completions"
+    config, initializer, platform = _validation_effort_config(
+        "azure",
+        "fixture-chat-tools",
+        "https://provider.invalid",
+        {"reasoning_effort": "high"},
+        {"api_mode": "responses", "model_capability": metadata},
+    )
+    assert platform == "azure"
+    assert initializer["api_mode"] == "chat_completions"
+    assert config == {"reasoning_effort": "high"}
+
+
+@pytest.mark.parametrize(
+    "entrypoint", ["create_agent", "validate_model_with_details"]
+)
+@pytest.mark.parametrize("cloud", [False, True])
+def test_validation_consumes_capability_override_and_uses_responses(
+    entrypoint, cloud
+):
+    metadata = next(
+        item
+        for item in ModelCapabilityRegistry().catalog.models
+        if item.model_platform == "azure"
+    ).model_dump(mode="json")
+    metadata["model_type"] = "nebula-2027"
+    with patch(
+        "app.component.model_validation.ModelFactory.create",
+        side_effect=RuntimeError("fixture-stop-before-dispatch"),
+    ) as factory:
+        kwargs = dict(
+            model_platform="azure",
+            model_type="nebula-2027",
+            api_key="fixture-key",
+            url="https://proxy.eigent.ai"
+            if cloud
+            else "https://azure.invalid",
+            model_config_dict={"reasoning_effort": "max"},
+            model_capability=metadata,
+            api_mode="chat_completions",
+            api_version="2024-10-21",
+        )
+        if entrypoint == "create_agent":
+            with pytest.raises(RuntimeError, match="fixture-stop"):
+                create_agent(**kwargs)
+        else:
+            result = validate_model_with_details(**kwargs)
+            assert result.failed_stage == ValidationStage.MODEL_CREATION
+        params = factory.call_args.kwargs
+        assert params["model_platform"] == (
+            "openai-compatible-model" if cloud else "azure"
+        )
+        assert params["api_mode"] == "responses"
+        assert params["model_config_dict"] == {"reasoning": {"effort": "max"}}
+        assert "model_capability" not in params
+        assert ("api_version" in params) is not cloud
+    assert metadata["model_type"] == "nebula-2027"
+
+
+def test_unknown_provider_effort_fails_validation_before_model_creation():
+    with patch(
+        "app.component.model_validation.ModelFactory.create"
+    ) as factory:
+        result = validate_model_with_details(
+            model_platform="azure",
+            model_type="unknown-deployment",
+            model_config_dict={"reasoning_effort": "max"},
+        )
+        factory.assert_not_called()
+        assert result.failed_stage == ValidationStage.MODEL_CREATION
+        assert result.error_type == ValidationErrorType.INVALID_CONFIGURATION
+        assert "unknown_model" in result.error_message
 
 
 @pytest.mark.unit

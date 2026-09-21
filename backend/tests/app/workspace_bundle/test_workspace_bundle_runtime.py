@@ -520,7 +520,7 @@ def test_runtime_assembles_pinned_bundle_without_persisting_secret(
         monkeypatch.setattr(
             terminal,
             "_update_terminal_output",
-            streamed_output.append,
+            lambda output, **_: streamed_output.append(output),
         )
         with pytest.raises(RuntimeError, match="authorized process spawn"):
             terminal._get_env_vars()

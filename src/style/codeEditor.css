@@ -22,6 +22,12 @@
   font-family: var(--code-font-family, monospace);
 }
 
+/* File previews use one continuous editor surface. Keep this local so review
+ * diffs retain the contrasting gutter that anchors line-level changes. */
+.file-source-surface .monaco-editor .margin {
+  background-color: inherit !important;
+}
+
 /* Review diffs use one quiet surface across the content canvas, line-number
  * column, and glyph rail. Scope this treatment to review so the shared source
  * viewer retains its standard Monaco theme surfaces. */

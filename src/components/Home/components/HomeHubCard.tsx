@@ -136,16 +136,12 @@ function SpaceItemContent({
         type="button"
         variant="ghost"
         size="sm"
-        className={
-          layout === 'list'
-            ? 'h-7 cursor-pointer justify-self-end rounded-lg font-medium'
-            : 'h-7 cursor-pointer rounded-lg font-medium'
-        }
+        className="relative z-10 h-7 cursor-pointer rounded-lg font-medium"
         data-home-space-open-workspace
         data-layout={layout}
         onClick={handleOpenWorkspace}
       >
-        {t('layout.open-workspace', { defaultValue: 'Open Workspace' })}
+        {t('layout.open-workspace', { defaultValue: 'Open workspace' })}
       </Button>
     );
 
@@ -244,7 +240,13 @@ function SpaceItemContent({
                 },
               ]}
             />
-            {openWorkspaceButton}
+            <div
+              role="cell"
+              data-home-hub-column="action"
+              className="justify-self-end"
+            >
+              {openWorkspaceButton}
+            </div>
           </>
         ) : layout === 'board' ? (
           <HomeHubSpaceBoardCardBody

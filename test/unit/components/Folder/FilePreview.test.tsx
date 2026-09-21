@@ -14,6 +14,7 @@
 
 import { FilePreview } from '@/components/Folder/FilePreview';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
@@ -37,7 +38,8 @@ vi.mock('@/host', () => ({
   useHost: () => hostMock,
 }));
 
-vi.mock('@/lib/filePreviewLoader', () => ({
+vi.mock('@/lib/filePreviewLoader', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/filePreviewLoader')>()),
   loadFilePreview: loadFilePreviewMock,
 }));
 
@@ -54,14 +56,36 @@ vi.mock('@/components/Folder/index', () => ({
   downloadOpenedFile: vi.fn(),
   FileViewerPanel: ({
     selectedFile,
+    emptyState,
     onRevealFile,
+    onOpenExternalFile,
+    loadFailed,
+    onRetry,
   }: {
+    loadFailed?: boolean;
+    onRetry?: () => void;
     selectedFile: FileInfo | null;
+    emptyState?: ReactNode;
     onRevealFile: () => void;
+    onOpenExternalFile: () => void;
   }) => (
-    <button type="button" disabled={!selectedFile} onClick={onRevealFile}>
-      Reveal file
-    </button>
+    <>
+      <span>{selectedFile?.name}</span>
+      {loadFailed && (
+        <div role="alert">
+          Failed<button onClick={onRetry}>Retry</button>
+        </div>
+      )}
+      <button type="button" disabled={!selectedFile} onClick={onRevealFile}>
+        Reveal file
+      </button>
+      {selectedFile?.preview?.kind === 'blocked' && (
+        <button type="button" onClick={onOpenExternalFile}>
+          Open externally
+        </button>
+      )}
+      {!selectedFile ? emptyState : null}
+    </>
   ),
 }));
 
@@ -74,6 +98,18 @@ describe('FilePreview', () => {
       content: 'preview content',
     }));
     invokeMock.mockResolvedValue({ success: true });
+  });
+
+  it('opens Workspace Files from the empty preview with the requested label', () => {
+    const onJumpToFiles = vi.fn();
+    render(<FilePreview file={null} onJumpToFiles={onJumpToFiles} embedded />);
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'View all files in your workspace',
+      })
+    );
+    expect(onJumpToFiles).toHaveBeenCalledWith(null);
   });
 
   it('shows feedback when a local file cannot be revealed', async () => {
@@ -99,5 +135,83 @@ describe('FilePreview', () => {
         'Path is outside the active workspace'
       )
     );
+  });
+
+  it('opens an unsupported local Blender file only through the existing workspace action on a user click', async () => {
+    loadFilePreviewMock.mockImplementation(async (file) => ({
+      ...file,
+      content: undefined,
+      preview: {
+        kind: 'blocked',
+        reason: 'unsupported',
+        size: 2048,
+        limit: null,
+      },
+    }));
+    render(
+      <FilePreview
+        file={{
+          name: 'scene.blend',
+          type: 'blend',
+          path: '/workspace/scene.blend',
+          relativePath: 'scene.blend',
+        }}
+      />
+    );
+    const openButton = await screen.findByRole('button', {
+      name: 'Open externally',
+    });
+    expect(invokeMock).not.toHaveBeenCalled();
+    fireEvent.click(openButton);
+    expect(invokeMock).toHaveBeenCalledWith(
+      'open-local-file',
+      '/workspace/scene.blend'
+    );
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('file selection and loading recovery', () => {
+  const file = {
+    name: 'archive.zip',
+    path: '/workspace/archive.zip',
+    type: 'zip',
+  };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resolveArtifactAssetFileMock.mockImplementation(async (target) => target);
+    loadFilePreviewMock.mockImplementation(async (target) => target);
+  });
+  it('preserves ZIP selection and sends it through the shared loader', async () => {
+    render(<FilePreview file={file} />);
+    await waitFor(() =>
+      expect(loadFilePreviewMock).toHaveBeenCalledWith(file, expect.anything())
+    );
+    expect(screen.getByText('archive.zip')).toBeInTheDocument();
+  });
+  it('shows a load error and retries the selected file', async () => {
+    loadFilePreviewMock
+      .mockRejectedValueOnce(new Error('denied'))
+      .mockResolvedValueOnce(file);
+    render(<FilePreview file={file} />);
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    expect(loadFilePreviewMock).toHaveBeenCalledTimes(2);
+  });
+  it('does not restore a cleared selection when an old request finishes', async () => {
+    let resolve!: (value: FileInfo) => void;
+    loadFilePreviewMock.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        })
+    );
+    const { rerender } = render(<FilePreview file={file} />);
+    await waitFor(() => expect(loadFilePreviewMock).toHaveBeenCalledTimes(1));
+    rerender(<FilePreview file={null} />);
+    resolve(file);
+    await waitFor(() => expect(screen.queryByText('archive.zip')).toBeNull());
+    expect(screen.getByRole('button', { name: 'Reveal file' })).toBeDisabled();
   });
 });

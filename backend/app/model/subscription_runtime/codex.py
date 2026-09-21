@@ -27,7 +27,6 @@ MODEL_API_URL_ENV = "CODEX_MODEL_API_URL"
 MODEL_DEFAULT_HEADERS_ENV = "CODEX_MODEL_DEFAULT_HEADERS_JSON"
 RESOLVER_SECRET_HEADER = "x-eigent-resolver-secret"
 DEFAULT_CODEX_API_URL = "https://chatgpt.com/backend-api/codex"
-_CAMEL_RESPONSES_MULTIMODAL_PATCHED = False
 
 
 class CodexSubscriptionAuthError(RuntimeError):
@@ -138,87 +137,6 @@ def _codex_runtime_headers(access_token: str) -> dict[str, str]:
     return headers
 
 
-def _to_responses_content_part(part: Any) -> Any:
-    if not isinstance(part, dict):
-        return part
-
-    part_type = part.get("type")
-    if part_type == "text":
-        return {
-            **part,
-            "type": "input_text",
-        }
-    if part_type == "image_url":
-        image_url = part.get("image_url")
-        if isinstance(image_url, dict):
-            converted = {
-                "type": "input_image",
-                "image_url": image_url.get("url"),
-            }
-            detail = image_url.get("detail")
-            if detail in {"low", "high", "auto"}:
-                converted["detail"] = detail
-            return converted
-        return {
-            "type": "input_image",
-            "image_url": image_url,
-        }
-
-    return part
-
-
-def _normalize_responses_multimodal_content(
-    input_items: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    normalized_items: list[dict[str, Any]] = []
-    for item in input_items:
-        if not isinstance(item, dict):
-            normalized_items.append(item)
-            continue
-
-        content = item.get("content")
-        if not isinstance(content, list):
-            normalized_items.append(item)
-            continue
-
-        normalized_items.append(
-            {
-                **item,
-                "content": [
-                    _to_responses_content_part(part) for part in content
-                ],
-            }
-        )
-
-    return normalized_items
-
-
-def _install_camel_responses_multimodal_patch() -> None:
-    global _CAMEL_RESPONSES_MULTIMODAL_PATCHED
-    if _CAMEL_RESPONSES_MULTIMODAL_PATCHED:
-        return
-
-    from camel.models.openai_compatible_model import OpenAICompatibleModel
-    from camel.models.openai_model import OpenAIModel
-
-    for model_class in (OpenAIModel, OpenAICompatibleModel):
-        original_converter = model_class._convert_messages_to_responses_input
-
-        def patched_converter(
-            messages,
-            _original_converter=original_converter,
-        ):
-            return _normalize_responses_multimodal_content(
-                _original_converter(messages)
-            )
-
-        model_class._convert_messages_to_responses_input = staticmethod(
-            patched_converter
-        )
-
-    _CAMEL_RESPONSES_MULTIMODAL_PATCHED = True
-
-
 def apply_codex_subscription_runtime(
     options: Chat,
     effective_config: dict[str, Any],
@@ -227,8 +145,6 @@ def apply_codex_subscription_runtime(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     if not is_codex_subscription_auth(options):
         return effective_config, extra_params
-
-    _install_camel_responses_multimodal_patch()
 
     token_payload = _resolve_access_token(
         options.email, force_refresh=force_refresh

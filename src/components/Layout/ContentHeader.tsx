@@ -13,18 +13,87 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { cn } from '@/lib/utils';
-import type { ReactNode } from 'react';
+import { useIsPresent } from 'framer-motion';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import { createPortal } from 'react-dom';
 
 /**
  * Canonical layout header row: 40px, 8px inline inset, overflow visible so
  * the 2px focus ring is not clipped. Composes Button `sm` (28px).
  */
-export const CONTENT_HEADER_CLASS =
-  'flex h-ds-layout-row-header min-h-ds-layout-row-header w-full shrink-0 items-center gap-ds-6 overflow-visible px-ds-8';
+const CONTENT_HEADER_BASE_CLASS =
+  'flex w-full shrink-0 items-center gap-ds-6 overflow-visible';
+
+export const CONTENT_HEADER_CLASS = `${CONTENT_HEADER_BASE_CLASS} h-ds-layout-row-header min-h-ds-layout-row-header px-ds-8`;
 
 /** Bottom hairline for headers that sit above a scrolling list. */
 export const CONTENT_HEADER_BORDER_CLASS =
   'border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default';
+
+/** Title typography, exported for `titleAsChild` callers to reapply. */
+export const CONTENT_HEADER_TITLE_CLASS =
+  'min-w-0 shrink truncate !text-ds-text-body-large font-semibold text-ds-ink-default-default';
+
+const ContentHeaderFrameContext = createContext<{
+  element: HTMLElement | null;
+  setBorder: (border: boolean) => void;
+} | null>(null);
+
+/** Focus a page heading when its DOM node or represented page changes. */
+export function useFocusContentHeading(pageKey?: unknown) {
+  const previousNode = useRef<HTMLHeadingElement | null>(null);
+  const previousPageKey = useRef<unknown>();
+  return useCallback(
+    (node: HTMLHeadingElement | null) => {
+      if (
+        node &&
+        (node !== previousNode.current || pageKey !== previousPageKey.current)
+      ) {
+        node.focus({ preventScroll: true });
+      }
+      previousNode.current = node;
+      previousPageKey.current = pageKey;
+    },
+    [pageKey]
+  );
+}
+
+/** Keep the page divider outside keyed content transitions and lazy loading. */
+export function ContentHeaderFrame({ children }: { children: ReactNode }) {
+  const [element, setElement] = useState<HTMLElement | null>(null);
+  const [border, setBorder] = useState(true);
+  const value = useMemo(() => ({ element, setBorder }), [element]);
+  return (
+    <ContentHeaderFrameContext.Provider value={value}>
+      <header
+        ref={setElement}
+        data-content-header-frame
+        className="relative min-h-ds-layout-row-header w-full shrink-0"
+      >
+        {border ? (
+          <div
+            aria-hidden
+            data-content-header-divider
+            className={cn(
+              'pointer-events-none absolute inset-x-0 bottom-0',
+              CONTENT_HEADER_BORDER_CLASS
+            )}
+          />
+        ) : null}
+      </header>
+      {children}
+    </ContentHeaderFrameContext.Provider>
+  );
+}
 
 /**
  * Controls placed in a `ContentHeader` share one size so their heights match
@@ -36,36 +105,66 @@ export interface ContentHeaderProps {
   leading?: ReactNode;
   /** Header title; omit for headers that only carry controls. */
   title?: ReactNode;
+  /**
+   * Render `title` as-is instead of wrapping it in the default `<span>`. Use
+   * when the title must be a real heading element — a heading nested in the
+   * wrapper span would be invalid content nesting. Apply
+   * {@link CONTENT_HEADER_TITLE_CLASS} to the element you pass.
+   */
+  titleAsChild?: boolean;
   /** Right-aligned controls — keep every button at `size="sm"`. */
   actions?: ReactNode;
   /** Free-form children rendered after the title, before `actions`. */
   children?: ReactNode;
   /** Bottom divider (default true). */
   border?: boolean;
+  /** Allow a named composition such as a collection toolbar to wrap safely. */
+  height?: 'routine' | 'adaptive';
+  /** Remove the outer inset when a child pattern owns its aligned content rail. */
+  inset?: 'default' | 'none';
   className?: string;
+  /** Render in the nearest stable page frame, outside content animations. */
+  persistent?: boolean;
 }
 
 export default function ContentHeader({
   leading,
   title,
+  titleAsChild = false,
   actions,
   children,
   border = true,
+  height = 'routine',
+  inset = 'default',
   className,
+  persistent = false,
 }: ContentHeaderProps) {
-  return (
-    <header
+  const frame = useContext(ContentHeaderFrameContext);
+  const isPresent = useIsPresent();
+  const portaled = persistent && frame !== null;
+  const Element = portaled ? 'div' : 'header';
+  useLayoutEffect(() => {
+    if (portaled && isPresent) frame.setBorder(border);
+  }, [border, frame, isPresent, portaled]);
+  const content = (
+    <Element
       className={cn(
-        CONTENT_HEADER_CLASS,
-        border && CONTENT_HEADER_BORDER_CLASS,
+        CONTENT_HEADER_BASE_CLASS,
+        height === 'routine'
+          ? 'h-ds-layout-row-header min-h-ds-layout-row-header'
+          : 'min-h-ds-layout-row-header',
+        inset === 'default' && 'px-ds-8',
+        border && !portaled && CONTENT_HEADER_BORDER_CLASS,
         className
       )}
     >
       {leading}
       {title ? (
-        <span className="min-w-0 shrink truncate !text-ds-text-body-large font-semibold text-ds-ink-default-default">
-          {title}
-        </span>
+        titleAsChild ? (
+          title
+        ) : (
+          <span className={CONTENT_HEADER_TITLE_CLASS}>{title}</span>
+        )
       ) : null}
       {children}
       {actions ? (
@@ -73,6 +172,10 @@ export default function ContentHeader({
           {actions}
         </div>
       ) : null}
-    </header>
+    </Element>
   );
+  if (!portaled) return content;
+  return frame.element && isPresent
+    ? createPortal(content, frame.element)
+    : null;
 }

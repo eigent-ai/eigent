@@ -42,6 +42,8 @@ export interface BoxFooterProps {
    */
   interactive?: boolean;
   disabled?: boolean;
+  /** Keep model recovery available when only the composer is blocked by usage. */
+  modelSelectDisabled?: boolean;
 }
 
 /**
@@ -56,6 +58,7 @@ export function BoxFooter({
   projectId,
   interactive = false,
   disabled = false,
+  modelSelectDisabled = disabled,
 }: BoxFooterProps) {
   const [footerRef, compact] = useIsCompactWidth<HTMLDivElement>(
     COMPACT_WIDTH_THRESHOLD
@@ -120,7 +123,7 @@ export function BoxFooter({
             }
             setComposerThinkingEffort(effort);
           }}
-          disabled={disabled}
+          disabled={modelSelectDisabled}
           projectId={projectId}
           readOnly={!interactive && !projectId}
           className={compact ? 'max-w-56' : undefined}

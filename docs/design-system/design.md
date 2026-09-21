@@ -245,6 +245,9 @@ Standard control heights:
 | `lg`       |   36px | Prominent desktop control or row   |
 | `xl`       |   40px | Form field or comfortable control  |
 
+Coarse-pointer controls keep their visual recipe and use
+`--ds-touch-target-minimum` to provide a minimum 44 × 44px hit area.
+
 Do not use control-height tokens for layout rows merely because the numeric
 value matches. Canonical headers are separate 40px and 48px pattern recipes.
 
@@ -330,6 +333,16 @@ Use one primary action per decision context. Destructive meaning is
 `tone="error"`; do not create different destructive geometry. Deprecated
 one-word variants and `inverse` emphasis are compatibility only.
 
+#### Split button
+
+Use `SplitButton` from `src/components/ui/split-button.tsx` for a fixed primary
+action beside a menu of related actions. It composes secondary `Button` controls
+and `DropdownMenu`, inherits the supported button sizes, and defaults to `sm` in
+headers. The outer corners follow the button radius; the joined inner corners are
+square with a semantic hairline divider. Each half has its own focus and disabled
+state. Pressing either half must not scale it away from the shared seam. Choosing
+a menu action does not change the primary action.
+
 ### Forms
 
 Use `Input`, `Textarea`, `Select`, or `InputSelect`. Their shared field recipes
@@ -338,8 +351,14 @@ are:
 - `sm`: 32px single-line / 64px minimum textarea.
 - `default`: 40px single-line / 80px minimum textarea.
 
+`Select` also supports `size="xs"` at 28px for toolbar filters beside
+`Button size="sm"`. Regular form selects retain the `sm` and `default` sizes.
+
 The primitive owns label, placeholder, validation, disabled, focus, radius,
 and inset behavior. Validation tone is independent from interaction state.
+
+Use `Textarea variant="outlined"` for a multiline field with the same visible
+border and validation colors as `Input`.
 
 ### Tags, badges, rows, menus, and overlays
 
@@ -362,6 +381,9 @@ Use `ContentHeader` from `src/components/Layout/ContentHeader.tsx`.
 - Title: `text.body-large`, semibold.
 - Keep focus overflow visible.
 - Do not create a 44px header variant.
+- The title is wrapped in a `span`. When the header must carry a real page
+  heading, pass `titleAsChild` and apply `CONTENT_HEADER_TITLE_CLASS` to your
+  own element — never nest a heading inside the default wrapper.
 
 ### Markdown
 
