@@ -41,3 +41,18 @@ export function getAuthEnvironmentKey(): string {
   const key = parts.filter(Boolean).join('|');
   return key || 'eigent:local-default';
 }
+
+/** Non-secret ownership key for account-scoped background delivery. */
+export function getAccountEnvironmentKey(auth: {
+  user_id?: number | null;
+  email?: string | null;
+}): string {
+  return JSON.stringify([
+    getAuthEnvironmentKey(),
+    auth.user_id != null
+      ? `id:${auth.user_id}`
+      : auth.email
+        ? `email:${auth.email.trim().toLowerCase()}`
+        : 'signed-out',
+  ]);
+}
