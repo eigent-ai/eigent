@@ -401,14 +401,16 @@ describe('ChatBox after an accepted Space model selection', () => {
     });
     return accepted;
   }
-  async function renderChat() {
+  async function renderChat(hasModelConfigured = false) {
     render(
       <MemoryRouter>
         <ChatBox />
       </MemoryRouter>
     );
     await waitFor(() =>
-      expect(mocks.auth.setHasModelConfigured).toHaveBeenCalledWith(false)
+      expect(mocks.auth.setHasModelConfigured).toHaveBeenCalledWith(
+        hasModelConfigured
+      )
     );
   }
   async function sendFollowup() {
@@ -715,42 +717,67 @@ describe('ChatBox after an accepted Space model selection', () => {
     expect(notifyError).toHaveBeenCalled();
   });
   it.each([
-    { cachedIncident: false, name: 'fresh Cloud key quota rejection' },
+    {
+      cachedIncident: false,
+      globalModelType: 'custom',
+      name: 'fresh Cloud key quota rejection',
+    },
     {
       cachedIncident: true,
+      globalModelType: 'custom',
       name: 'cached Cloud quota despite an otherwise usable key',
     },
-  ])('blocks cold receipt admission for $name', async ({ cachedIncident }) => {
-    const acceptedRequest = await acceptInitialRunWithoutAck();
-    if (cachedIncident)
-      useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
-    const get = mocks.get.getMockImplementation()!;
-    if (!cachedIncident)
-      mocks.get.mockImplementation(async (...args) =>
-        args[0] === '/api/v1/user/key'
-          ? { code: '20', text: 'Synthetic credits exhausted' }
-          : get(...args)
+    {
+      cachedIncident: true,
+      globalModelType: 'cloud',
+      name: 'canonical Cloud quota after global Cloud preference defers classification',
+    },
+  ])(
+    'blocks cold receipt admission for $name',
+    async ({ cachedIncident, globalModelType }) => {
+      mocks.auth.modelType = globalModelType;
+      const acceptedRequest = await acceptInitialRunWithoutAck();
+      if (cachedIncident)
+        useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
+      const get = mocks.get.getMockImplementation()!;
+      if (!cachedIncident)
+        mocks.get.mockImplementation(async (...args) =>
+          args[0] === '/api/v1/user/key'
+            ? { code: '20', text: 'Synthetic credits exhausted' }
+            : get(...args)
+        );
+      await renderChat(globalModelType === 'cloud');
+      await resumeInterruptedRun();
+      await waitFor(() =>
+        expect(mocks.refreshInterrupted).toHaveBeenCalledOnce()
       );
-    await renderChat();
-    await resumeInterruptedRun();
-    await waitFor(() =>
-      expect(mocks.refreshInterrupted).toHaveBeenCalledOnce()
-    );
-    if (cachedIncident)
-      expect(mocks.get).not.toHaveBeenCalledWith('/api/v1/user/key');
-    else expect(mocks.get).toHaveBeenCalledWith('/api/v1/user/key');
-    expect(project.metadata.modelSelection).toEqual(
-      acceptedRequest.session_model_selection
-    );
-    expect(mocks.sse).toHaveBeenCalledTimes(1);
-    expect(mocks.post).not.toHaveBeenCalled();
-    expect(notifyError).toHaveBeenCalled();
-  });
-  it('recovers a custom receipt despite an unrelated cached cloud usage incident', async () => {
-    installed.model_ref = 'provider://custom/azure/deployment';
+      if (cachedIncident)
+        expect(mocks.get).not.toHaveBeenCalledWith('/api/v1/user/key');
+      else expect(mocks.get).toHaveBeenCalledWith('/api/v1/user/key');
+      expect(project.metadata.modelSelection).toEqual(
+        acceptedRequest.session_model_selection
+      );
+      expect(mocks.sse).toHaveBeenCalledTimes(1);
+      expect(mocks.post).not.toHaveBeenCalled();
+      expect(
+        mocks.localGet.mock.calls.filter(([url]) =>
+          url.includes('/session-model')
+        )
+      ).toHaveLength(1);
+      expect(
+        mocks.localGet.mock.calls.filter(([url]) =>
+          url.includes('/model-selection')
+        )
+      ).toHaveLength(0);
+      expect(notifyError).toHaveBeenCalled();
+    }
+  );
+  function configureSpaceProvider(category: 'custom' | 'local') {
+    const platform = category === 'local' ? 'ollama' : 'azure';
+    installed.model_ref = `provider://${category}/${platform}/deployment`;
     const provider = {
       id: 42,
-      provider_name: 'azure',
+      provider_name: platform,
       model_type: 'deployment',
       api_key: 'synthetic-custom-key',
       endpoint_url: 'https://custom.example.test',
@@ -766,70 +793,141 @@ describe('ChatBox after an accepted Space model selection', () => {
         ? { items: args[1]?.prefer ? [] : [provider], pages: 1 }
         : get(...args)
     );
-    const acceptedRequest = await acceptInitialRunWithoutAck();
-    expect(acceptedRequest.session_model_selection).toMatchObject({
-      modelType: 'custom',
-      provider_id: 42,
-      model_type: 'deployment',
-    });
-    useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
-    await renderChat();
-    await resumeInterruptedRun();
-    await waitFor(() => expect(mocks.sse).toHaveBeenCalledTimes(2));
-    expect(request()).toMatchObject({
-      run_id: acceptedRequest.run_id,
-      model_type: 'deployment',
-      api_key: 'synthetic-custom-key',
-      api_url: 'https://custom.example.test',
-      extra_params: { api_mode: 'responses' },
-    });
-    expect(project.metadata.modelSelection).toEqual(
-      acceptedRequest.session_model_selection
-    );
-    expect(mocks.post).toHaveBeenCalledWith(
-      `/runs/${acceptedRequest.run_id}/resume`,
-      expect.any(Object)
-    );
-    expect(mocks.auth.hasModelConfigured).toBe(false);
-    expect(notifyError).not.toHaveBeenCalled();
-  });
-  it('does not give an accepted receipt warm-send or queued admission before cold recovery', async () => {
+  }
+  it.each([
+    { globalModelType: 'cloud', category: 'custom' },
+    { globalModelType: 'cloud', category: 'local' },
+    { globalModelType: 'custom', category: 'custom' },
+    { globalModelType: 'custom', category: 'local' },
+  ] as const)(
+    'recovers $category receipt with cached Cloud quota and global $globalModelType preference',
+    async ({ globalModelType, category }) => {
+      configureSpaceProvider(category);
+      mocks.auth.modelType = globalModelType;
+      const acceptedRequest = await acceptInitialRunWithoutAck();
+      expect(acceptedRequest.session_model_selection).toMatchObject({
+        modelType: category,
+        provider_id: 42,
+        model_type: 'deployment',
+      });
+      useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
+      await renderChat(globalModelType === 'cloud');
+      await resumeInterruptedRun();
+      await waitFor(() => expect(mocks.sse).toHaveBeenCalledTimes(2));
+      expect(
+        mocks.localGet.mock.calls.filter(([url]) =>
+          url.includes('/session-model')
+        )
+      ).toHaveLength(1);
+      expect(
+        mocks.localGet.mock.calls.filter(([url]) =>
+          url.includes('/model-selection')
+        )
+      ).toHaveLength(0);
+      expect(request()).toMatchObject({
+        run_id: acceptedRequest.run_id,
+        model_type: 'deployment',
+        model_platform: acceptedRequest.model_platform,
+        api_key: 'synthetic-custom-key',
+        api_url: 'https://custom.example.test',
+        extra_params: { api_mode: 'responses' },
+      });
+      expect(project.metadata.modelSelection).toEqual(
+        acceptedRequest.session_model_selection
+      );
+      expect(mocks.post).toHaveBeenCalledWith(
+        `/runs/${acceptedRequest.run_id}/resume`,
+        expect.any(Object)
+      );
+      expect(mocks.auth.hasModelConfigured).toBe(globalModelType === 'cloud');
+      expect(mocks.get).not.toHaveBeenCalledWith('/api/v1/user/key');
+      expect(request().workspace_model_selection).toBeUndefined();
+      expect(notifyError).not.toHaveBeenCalled();
+    }
+  );
+  it('rejects an account change while recovering custom under a global Cloud quota incident', async () => {
+    configureSpaceProvider('custom');
+    mocks.auth.modelType = 'cloud';
     await acceptInitialRunWithoutAck();
-    // Remove the Interrupted banner so the queue is blocked by model readiness,
-    // rather than merely by the presence of an interrupted Run.
-    mocks.interrupted = null;
-    const taskId = chat.getState().activeTaskId!;
-    chat.getState().setStatus(taskId, 'finished');
-    chat.getState().setIsPending(taskId, false);
-    project.queuedMessages = [
-      {
-        task_id: 'queued-with-receipt',
-        content: 'Queued while unconfirmed',
-        attaches: [],
-        timestamp: 1,
-        processing: false,
-      },
-    ];
-    await renderChat();
-    expect(screen.getByRole('button', { name: 'Follow up' })).toBeDisabled();
-    expect(screen.getByTestId('chat-composer')).toHaveAttribute(
-      'data-no-model-overlay',
-      'true'
+    useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
+    const localGet = mocks.localGet.getMockImplementation()!;
+    mocks.localGet.mockImplementation(async (...args) => {
+      const response = await localGet(...args);
+      if (args[0].includes('/session-model')) {
+        mocks.auth.token = 'different-synthetic-token';
+        mocks.auth.user_id = 'account-b';
+      }
+      return response;
+    });
+    await renderChat(true);
+    await resumeInterruptedRun();
+    await waitFor(() =>
+      expect(mocks.refreshInterrupted).toHaveBeenCalledOnce()
     );
-    await sendFollowup();
-    expect(mocks.sse).toHaveBeenCalledTimes(1);
-    expect(mocks.post).not.toHaveBeenCalled();
     expect(
       mocks.localGet.mock.calls.filter(([url]) =>
         url.includes('/session-model')
       )
-    ).toHaveLength(0);
+    ).toHaveLength(1);
     expect(
-      mocks.projectStore.setQueuedMessageProcessing
-    ).not.toHaveBeenCalled();
-    expect(mocks.projectStore.removeQueuedMessage).not.toHaveBeenCalled();
+      mocks.localGet.mock.calls.filter(([url]) =>
+        url.includes('/model-selection')
+      )
+    ).toHaveLength(0);
+    expect(mocks.sse).toHaveBeenCalledTimes(1);
+    expect(mocks.post).not.toHaveBeenCalled();
+    expect(mocks.projectStore.setProjectModel).not.toHaveBeenCalled();
     expect(project.metadata.modelSelection).toBeUndefined();
+    expect(notifyError).toHaveBeenCalled();
   });
+  it.each([
+    { globalModelType: 'custom', category: 'cloud' },
+    { globalModelType: 'cloud', category: 'custom' },
+    { globalModelType: 'cloud', category: 'local' },
+  ] as const)(
+    'keeps $category receipt warm-send and queue blocked before recovery with global $globalModelType',
+    async ({ globalModelType, category }) => {
+      if (category !== 'cloud') configureSpaceProvider(category);
+      mocks.auth.modelType = globalModelType;
+      await acceptInitialRunWithoutAck();
+      if (globalModelType === 'cloud')
+        useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
+      // Remove the Interrupted banner to exercise the ordinary send/queue gates
+      // independently of their interrupted-Run barrier.
+      mocks.interrupted = null;
+      const taskId = chat.getState().activeTaskId!;
+      chat.getState().setStatus(taskId, 'finished');
+      chat.getState().setIsPending(taskId, false);
+      project.queuedMessages = [
+        {
+          task_id: 'queued-with-receipt',
+          content: 'Queued while unconfirmed',
+          attaches: [],
+          timestamp: 1,
+          processing: false,
+        },
+      ];
+      await renderChat(globalModelType === 'cloud');
+      expect(screen.getByRole('button', { name: 'Follow up' })).toBeDisabled();
+      expect(screen.getByTestId('chat-composer')).toHaveAttribute(
+        'data-no-model-overlay',
+        globalModelType === 'cloud' ? 'false' : 'true'
+      );
+      await sendFollowup();
+      expect(mocks.sse).toHaveBeenCalledTimes(1);
+      expect(mocks.post).not.toHaveBeenCalled();
+      expect(
+        mocks.localGet.mock.calls.filter(([url]) =>
+          url.includes('/session-model')
+        )
+      ).toHaveLength(0);
+      expect(
+        mocks.projectStore.setQueuedMessageProcessing
+      ).not.toHaveBeenCalled();
+      expect(mocks.projectStore.removeQueuedMessage).not.toHaveBeenCalled();
+      expect(project.metadata.modelSelection).toBeUndefined();
+    }
+  );
   it('keeps the automatically pinned Space model usable for a real ChatBox follow-up', async () => {
     await acceptInitialSpaceRun();
     const pin = { ...project.metadata.modelSelection };
@@ -1053,6 +1151,7 @@ describe('ChatBox after an accepted Space model selection', () => {
       await acceptInitialSpaceRun();
       const pin = { ...project.metadata.modelSelection };
       if (action === 'Resume') interruptRun(chat.getState().activeTaskId!);
+      mocks.localGet.mockClear();
       useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
       await renderChat();
       expect(screen.getByRole('button', { name: 'Follow up' })).toBeDisabled();
@@ -1062,6 +1161,12 @@ describe('ChatBox after an accepted Space model selection', () => {
       expect(openSettings).not.toHaveBeenCalled();
       expect(mocks.sse).toHaveBeenCalledTimes(1);
       expect(mocks.post).not.toHaveBeenCalled();
+      expect(
+        mocks.localGet.mock.calls.filter(([url]) =>
+          url.includes('/session-model')
+        )
+      ).toHaveLength(0);
+      expect(mocks.refreshInterrupted).not.toHaveBeenCalled();
       expect(project.metadata.modelSelection).toEqual(pin);
     }
   );
