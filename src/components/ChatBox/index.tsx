@@ -1861,7 +1861,9 @@ export default function ChatBox(): JSX.Element {
 
   const handleResumeInterruptedRun = async () => {
     if (!interruptedRun || !activeProjectId || !chatStore) return;
-    if (isCloudUsageLimited) {
+    // Unpinned recovery must establish the canonical model category first.
+    // startTask applies the quota check to that recovered model before admission.
+    if (isCloudUsageLimited && !canAttemptModelRecovery) {
       notifyError(
         cloudUsageLimitMessage || t('chat.usage-limit-trial-daily-exhausted')
       );
