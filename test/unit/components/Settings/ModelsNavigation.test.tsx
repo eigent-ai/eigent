@@ -35,6 +35,7 @@ const mocks = vi.hoisted(() => ({
   put: vi.fn(),
   remove: vi.fn(),
   validate: vi.fn(),
+  toastInfo: vi.fn(),
   auth: {
     user_id: 1,
     email: '',
@@ -61,6 +62,9 @@ vi.mock('@/api/http', () => ({
   proxyFetchPut: mocks.put,
   proxyFetchDelete: mocks.remove,
   fetchPost: mocks.validate,
+}));
+vi.mock('sonner', () => ({
+  toast: { info: mocks.toastInfo },
 }));
 vi.mock('@/store/authStore', () => ({
   useAuthStore: Object.assign(() => mocks.auth, { getState: () => mocks.auth }),
@@ -561,7 +565,7 @@ describe('Models collections and configuration dialogs', () => {
     expect(mocks.post).not.toHaveBeenCalled();
     expect(mocks.put).not.toHaveBeenCalled();
   });
-  it('keeps unavailable Eigent models off and offers a plan upgrade', async () => {
+  it('previews an unavailable toggle before showing a plan upgrade popup', async () => {
     const user = userEvent.setup();
     renderPage();
 
@@ -573,17 +577,20 @@ describe('Models collections and configuration dialogs', () => {
 
     await user.click(unavailableSwitch);
 
-    expect(unavailableSwitch).not.toBeChecked();
+    expect(unavailableSwitch).toBeChecked();
     expect(
       useModelVisibilityStore.getState().hiddenByAccount['1']
     ).toBeUndefined();
-    const notice = within(eigent).getByRole('alert');
-    expect(notice).toHaveTextContent('Upgrade your plan to use Claude.');
-    expect(
-      within(notice).getByRole('link', { name: 'Upgrade' })
-    ).toHaveAttribute('href', expect.stringMatching(/\/pricing$/));
-    await user.click(within(notice).getByRole('button', { name: 'Close' }));
-    expect(screen.queryByText('Upgrade your plan to use Claude.')).toBeNull();
+    expect(mocks.toastInfo).toHaveBeenCalledWith(
+      'Upgrade your plan to use Claude.',
+      expect.objectContaining({
+        id: 'eigent-model-upgrade-required',
+        closeButton: true,
+        action: expect.objectContaining({ label: 'Upgrade' }),
+      })
+    );
+    expect(within(eigent).queryByRole('alert')).toBeNull();
+    await waitFor(() => expect(unavailableSwitch).not.toBeChecked());
   });
   it('confirms deletion and removes only that record', async () => {
     const user = userEvent.setup();
