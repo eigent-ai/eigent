@@ -15,13 +15,18 @@
 import ChatBox from '@/components/ChatBox';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { notifyError } from '@/lib/notifyError';
-import { runDomainEventHub, runProjectionStore } from '@/lib/runEvents';
+import {
+  runDomainEventHub,
+  runEventIngressRegistry,
+  runProjectionStore,
+} from '@/lib/runEvents';
 import {
   beginResumeRequest,
   finishResumeRequest,
 } from '@/lib/runResumeRequest';
-import { useChatStore } from '@/store/chatStore';
+import { closeSSEConnectionsForTasks, useChatStore } from '@/store/chatStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
+import { setConnectionConfig } from '@/store/connectionStore';
 import { openSettings } from '@/store/settingsStore';
 import { useUsageNoticeStore } from '@/store/usageNoticeStore';
 import {
@@ -54,6 +59,7 @@ const mocks = vi.hoisted(() => ({
   sse: vi.fn(),
   post: vi.fn(),
   realInterrupted: false,
+  realTransport: false,
   durableRun: null as any,
 }));
 vi.mock('@/api/http', () => ({
@@ -68,6 +74,14 @@ vi.mock('@/api/http', () => ({
   waitForBackendReady: vi.fn(async () => true),
   uploadFile: vi.fn(),
   sseTransport: mocks.sse,
+}));
+vi.mock('@/host/createHost', () => ({
+  createHost: () => ({
+    electronAPI: {
+      getLocalControlCapability: async () => 'synthetic-capability',
+    },
+    ipcRenderer: null,
+  }),
 }));
 vi.mock('@/store/authStore', () => ({
   getAuthStore: () => mocks.auth,
@@ -225,6 +239,7 @@ describe('ChatBox after an accepted Space model selection', () => {
     runProjectionStore.clear();
     runDomainEventHub.clear();
     mocks.realInterrupted = false;
+    mocks.realTransport = false;
     mocks.durableRun = null;
     vi.stubGlobal(
       'fetch',
@@ -398,7 +413,10 @@ describe('ChatBox after an accepted Space model selection', () => {
 
   afterEach(() => {
     cleanup();
-    expect(globalThis.fetch).not.toHaveBeenCalled();
+    if (mocks.realTransport) {
+      closeSSEConnectionsForTasks(Object.keys(chat.getState().tasks));
+      vi.mocked(runEventIngressRegistry.reconcileRun).mockRestore();
+    } else expect(globalThis.fetch).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
   async function acceptInitialSpaceRun() {
@@ -677,6 +695,246 @@ describe('ChatBox after an accepted Space model selection', () => {
       finishResumeRequest(owner, newId, true);
     }
   );
+  async function prepareRealResumeTransport() {
+    const accepted = await acceptInitialRunWithoutAck();
+    mocks.projectStore.getAllChatStores = () => [
+      { chatId: 'chat-1', chatStore: chat },
+    ];
+    mocks.realInterrupted = true;
+    mocks.realTransport = true;
+    mocks.durableRun = { ...mocks.interrupted, version: 1 };
+    const requestIds: string[] = [];
+    mocks.post.mockImplementation(async (url, body, _headers, options) => {
+      if (!url.endsWith('/resume')) return {};
+      options.beforeRequest();
+      requestIds.push(body.request_id);
+      if (requestIds.length === 1)
+        mocks.durableRun = {
+          ...mocks.durableRun,
+          status: 'pending',
+          version: 2,
+          updated_at: 2,
+          latest_attempt: {
+            attempt_number: 2,
+            status: 'pending',
+            resume_request_id: body.request_id,
+          },
+        };
+      else expect(body.request_id).toBe(requestIds[0]);
+      return {
+        run_id: accepted.run_id,
+        attempt: mocks.durableRun.latest_attempt,
+      };
+    });
+    const http =
+      await vi.importActual<typeof import('@/api/http')>('@/api/http');
+    setConnectionConfig({
+      brainEndpoint: 'http://brain.fixture.invalid',
+      channel: 'web',
+    });
+    mocks.sse.mockImplementation(http.sseTransport);
+    vi.spyOn(runEventIngressRegistry, 'reconcileRun').mockResolvedValue(
+      undefined
+    );
+    return { accepted, requestIds };
+  }
+
+  it.each([false, true])(
+    'uses the actual SSE library for Resume network retry and recovered user retry (late quota=%s)',
+    async (lateQuota) => {
+      const { accepted, requestIds } = await prepareRealResumeTransport();
+      const delivered: any[] = [];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url, init) => {
+          expect(String(url)).toBe('http://brain.fixture.invalid/chat');
+          delivered.push(JSON.parse(init.body));
+          if (delivered.length === 1) {
+            if (lateQuota)
+              useUsageNoticeStore.setState({
+                incidents: [{ reason: 'credits' }],
+              });
+            throw new TypeError('Synthetic NetworkError before stream ACK');
+          }
+          return new Response(
+            new ReadableStream({ start: (controller) => controller.close() }),
+            { headers: { 'content-type': 'text/event-stream' } }
+          );
+        })
+      );
+      await renderChat();
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /^Resume$/i })).toBeEnabled()
+      );
+      fireEvent.change(screen.getByLabelText('Follow-up'), {
+        target: { value: 'Retain this retry draft' },
+      });
+      const files = [
+        { fileName: 'retry.txt', filePath: '/synthetic/retry.txt' },
+      ];
+      chat.getState().setAttaches(accepted.run_id, files as any);
+      fireEvent.click(screen.getByRole('button', { name: /^Resume$/i }));
+      if (lateQuota) {
+        await waitFor(() => expect(notifyError).toHaveBeenCalledOnce(), {
+          timeout: 2500,
+        });
+        expect(delivered).toHaveLength(1);
+        expect(requestIds).toHaveLength(1);
+        expect(chat.getState().tasks[accepted.run_id].isPending).toBe(false);
+        expect(
+          runProjectionStore.getRun('session-1', accepted.run_id)?.status
+        ).toBe('pending');
+        expect(screen.getByLabelText('Follow-up')).toHaveValue(
+          'Retain this retry draft'
+        );
+        expect(chat.getState().tasks[accepted.run_id].attaches).toEqual(files);
+        act(() => useUsageNoticeStore.setState({ incidents: [] }));
+        await waitFor(() =>
+          expect(
+            screen.getByRole('button', { name: /^Resume$/i })
+          ).toBeEnabled()
+        );
+        fireEvent.click(screen.getByRole('button', { name: /^Resume$/i }));
+      }
+      await waitFor(() => expect(delivered).toHaveLength(2), { timeout: 2500 });
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('button', { name: /resuming/i })
+        ).not.toBeInTheDocument()
+      );
+      expect(requestIds).toHaveLength(lateQuota ? 2 : 1);
+      expect(new Set(requestIds).size).toBe(1);
+      expect(delivered[1]).toMatchObject({
+        run_id: accepted.run_id,
+        resume_request_id: requestIds[0],
+      });
+      expect(mocks.durableRun.latest_attempt.attempt_number).toBe(2);
+      expect(chat.getState().tasks[accepted.run_id].attaches).toEqual(files);
+      expect(screen.getByLabelText('Follow-up')).toHaveValue(
+        'Retain this retry draft'
+      );
+      if (!lateQuota) expect(notifyError).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['manual', 'quota', 'account'] as const)(
+    'reconnects an accepted Attempt with its frozen request after a later %s change',
+    async (change) => {
+      const { accepted, requestIds } = await prepareRealResumeTransport();
+      let stream!: ReadableStreamDefaultController<Uint8Array>;
+      const deliveries: RequestInit[] = [];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url, init) => {
+          expect(String(url)).toBe('http://brain.fixture.invalid/chat');
+          deliveries.push({ ...init, headers: { ...init.headers } });
+          return new Response(
+            deliveries.length === 1
+              ? new ReadableStream<Uint8Array>({
+                  start(controller) {
+                    stream = controller;
+                  },
+                })
+              : new ReadableStream({
+                  start(controller) {
+                    controller.close();
+                  },
+                }),
+            { headers: { 'content-type': 'text/event-stream' } }
+          );
+        })
+      );
+      await renderChat();
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /^Resume$/i })).toBeEnabled()
+      );
+      await resumeInterruptedRun();
+      expect(deliveries).toHaveLength(1);
+      const laterSelection = { modelType: 'cloud', cloud_model_type: 'manual' };
+      await act(async () => {
+        if (change === 'manual')
+          project.metadata.modelSelection = laterSelection;
+        if (change === 'quota')
+          useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
+        if (change === 'account')
+          mocks.auth = {
+            ...mocks.auth,
+            user_id: 'account-b',
+            token: 'synthetic-b',
+          };
+        stream.error(
+          new TypeError('Synthetic NetworkError after accepted stream')
+        );
+      });
+      await waitFor(() => expect(deliveries).toHaveLength(2), {
+        timeout: 2500,
+      });
+      expect(deliveries[1].body).toBe(deliveries[0].body);
+      expect(deliveries[1].headers).toEqual(deliveries[0].headers);
+      expect(JSON.parse(deliveries[1].body as string)).toMatchObject({
+        run_id: accepted.run_id,
+        resume_request_id: requestIds[0],
+        model_type: 'gpt-6-astra',
+      });
+      expect(requestIds).toHaveLength(1);
+      expect(notifyError).not.toHaveBeenCalled();
+      if (change === 'manual')
+        expect(project.metadata.modelSelection).toBe(laterSelection);
+    }
+  );
+
+  it('does not reconnect a completed Run after the accepted stream loses its connection', async () => {
+    const { accepted, requestIds } = await prepareRealResumeTransport();
+    let stream!: ReadableStreamDefaultController<Uint8Array>;
+    let signal!: AbortSignal;
+    const fetch = vi.fn(async (url, init) => {
+      expect(String(url)).toBe('http://brain.fixture.invalid/chat');
+      signal = init.signal;
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            stream = controller;
+          },
+        }),
+        { headers: { 'content-type': 'text/event-stream' } }
+      );
+    });
+    vi.stubGlobal('fetch', fetch);
+    await renderChat();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^Resume$/i })).toBeEnabled()
+    );
+    await resumeInterruptedRun();
+    expect(fetch).toHaveBeenCalledOnce();
+    await act(async () => {
+      mocks.durableRun = {
+        ...mocks.durableRun,
+        status: 'completed',
+        version: 3,
+        updated_at: 3,
+        latest_attempt: {
+          ...mocks.durableRun.latest_attempt,
+          status: 'completed',
+        },
+      };
+      runProjectionStore.upsertRunSummaries('session-1', [mocks.durableRun]);
+    });
+    await waitFor(() =>
+      expect(chat.getState().tasks[accepted.run_id].status).toBe('finished')
+    );
+    await act(async () => {
+      stream.error(new TypeError('Synthetic NetworkError after completion'));
+    });
+    await waitFor(() => expect(signal.aborted).toBe(true));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+    });
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(requestIds).toHaveLength(1);
+    expect(chat.getState().tasks[accepted.run_id].status).toBe('finished');
+    expect(notifyError).not.toHaveBeenCalled();
+  });
+
   it('recovers an accepted receipt through actual cold Resume after its initial ACK was lost', async () => {
     const acceptedRequest = await acceptInitialRunWithoutAck();
     await renderChat();
