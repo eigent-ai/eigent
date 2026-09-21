@@ -22,6 +22,7 @@
     "view-all-models": "View all models",
     "available": "Available",
     "unavailable": "Unavailable",
+    "upgrade-required": "Upgrade your plan to use {{model}}.",
     "no-visible-models": "No models visible. Use Manage to show models.",
     "cloud-unavailable": "Eigent models are unavailable in local-only mode.",
     "load-error": "Could not load configured models.",

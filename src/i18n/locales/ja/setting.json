@@ -22,6 +22,7 @@
     "view-all-models": "すべてのモデルを表示",
     "available": "利用可能",
     "unavailable": "利用不可",
+    "upgrade-required": "{{model}}を使用するにはプランをアップグレードしてください。",
     "no-visible-models": "表示するモデルがありません。管理から表示できます。",
     "cloud-unavailable": "ローカル専用モードでは Eigent モデルを利用できません。",
     "load-error": "設定済みモデルを読み込めませんでした。",

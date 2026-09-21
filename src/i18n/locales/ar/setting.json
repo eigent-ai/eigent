@@ -22,6 +22,7 @@
     "view-all-models": "عرض جميع النماذج",
     "available": "متاح",
     "unavailable": "غير متاح",
+    "upgrade-required": "قم بترقية خطتك لاستخدام {{model}}.",
     "no-visible-models": "لا توجد نماذج ظاهرة. استخدم إدارة لإظهار النماذج.",
     "cloud-unavailable": "نماذج Eigent غير متاحة في الوضع المحلي فقط.",
     "load-error": "تعذّر تحميل النماذج المُعدّة.",

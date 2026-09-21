@@ -22,6 +22,7 @@
     "view-all-models": "查看所有模型",
     "available": "可用",
     "unavailable": "不可用",
+    "upgrade-required": "升級您的方案以使用 {{model}}。",
     "no-visible-models": "目前沒有可見模型。點選管理以顯示模型。",
     "cloud-unavailable": "僅本機模式下無法使用 Eigent 模型。",
     "load-error": "無法載入已設定的模型。",

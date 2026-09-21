@@ -22,6 +22,7 @@
     "view-all-models": "모든 모델 보기",
     "available": "사용 가능",
     "unavailable": "사용할 수 없음",
+    "upgrade-required": "{{model}}을(를) 사용하려면 요금제를 업그레이드하세요.",
     "no-visible-models": "표시되는 모델이 없습니다. 관리에서 모델을 표시하세요.",
     "cloud-unavailable": "로컬 전용 모드에서는 Eigent 모델을 사용할 수 없습니다.",
     "load-error": "설정된 모델을 불러오지 못했습니다.",
