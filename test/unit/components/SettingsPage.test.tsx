@@ -335,11 +335,23 @@ describe('SettingsPage', () => {
       if (path === '/api/v1/providers') {
         return {
           items: [
-            { id: 11, provider_name: 'openai', model_type: 'gpt-work' },
+            {
+              id: 11,
+              provider_name: 'openai',
+              model_type: 'gpt-work',
+              is_valid: 2,
+            },
             {
               id: 12,
               provider_name: 'anthropic',
               model_type: 'claude-personal',
+              is_valid: 2,
+            },
+            {
+              id: 13,
+              provider_name: 'openai',
+              model_type: 'gpt-expired',
+              is_valid: 1,
             },
           ],
         };

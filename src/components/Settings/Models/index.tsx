@@ -58,6 +58,7 @@ import { refreshUsage, useUsageNoticeStore } from '@/store/usageNoticeStore';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   ArrowUpRight,
+  Bell,
   Check,
   ChevronDown,
   ChevronRight,
@@ -142,15 +143,27 @@ function ModelsContent() {
   const availableProviders = modelProviders.filter((provider) =>
     provider.name.toLowerCase().includes(providerQuery.trim().toLowerCase())
   );
-  const visibleRecordCount = inventory.records.filter((record) =>
+  const matchingRecords = inventory.records.filter((record) =>
     matches(
       `${providerDefinition(record.provider_name).name} ${record.model_type} ${record.id}`
     )
+  );
+  const visibleRecordCount = matchingRecords.filter(getProviderValid).length;
+  const invalidRecordCount = inventory.records.filter(
+    (record) => !getProviderValid(record)
   ).length;
+  const matchingVisibleCloudCount = inventory.cloudAvailable
+    ? inventory.cloudModels.filter(
+        (model) =>
+          !inventory.hidden.includes(model.id) &&
+          matches(`Eigent ${model.display_name}`)
+      ).length
+    : 0;
   const visibleCloudCount = inventory.cloudAvailable
     ? inventory.cloudModels.filter(
         (model) =>
           !inventory.hidden.includes(model.id) &&
+          isCloudModelAvailable(model, planKey) &&
           matches(`Eigent ${model.display_name}`)
       ).length
     : 0;
@@ -167,7 +180,12 @@ function ModelsContent() {
           matches(`Eigent ${model.display_name}`)
       ).length
     : 0;
-  const hasMatches = visibleCount + matchingHiddenCloudCount > 0;
+  const hasMatches =
+    matchingRecords.length +
+      matchingVisibleCloudCount +
+      matchingHiddenCloudCount +
+      visibleCodexCount >
+    0;
   const formattedCredits =
     credits === null ? '—' : new Intl.NumberFormat().format(credits);
   const providerIcons = modelProviders.map((provider) => ({
@@ -367,9 +385,26 @@ function ModelsContent() {
               <span className="sr-only">{t('setting.loading')}</span>
             </span>
           ) : (
-            <Badge variant="secondary" size="xs">
-              {visibleCount}
-            </Badge>
+            <>
+              <Badge
+                variant="secondary"
+                size="xs"
+                aria-label={`${visibleCount} ${t('setting.models')}`}
+              >
+                {visibleCount}
+              </Badge>
+              {invalidRecordCount > 0 && (
+                <Badge
+                  variant="secondary"
+                  size="xs"
+                  tone="error"
+                  aria-label={`${invalidRecordCount} ${t('setting.not-configured')}`}
+                >
+                  <DsIcon icon={Bell} recipe="main-compact" />
+                  {invalidRecordCount}
+                </Badge>
+              )}
+            </>
           )
         }
       >
@@ -572,9 +607,12 @@ function ModelsContent() {
               )
                 return null;
               const closed = collapsed.includes(group);
+              const enabledCloudCount = inventory.cloudModels.filter(
+                (model) => !inventory.hidden.includes(model.id)
+              ).length;
               const modelCount = eigent
                 ? inventory.cloudAvailable
-                  ? inventory.cloudModels.length
+                  ? enabledCloudCount
                   : 0
                 : codex
                   ? 1
@@ -595,9 +633,18 @@ function ModelsContent() {
                         <Badge
                           variant="secondary"
                           size="xs"
-                          aria-label={`${modelCount} ${t('setting.models')}`}
+                          aria-label={
+                            eigent
+                              ? `${modelCount}/${inventory.cloudModels.length} ${t('setting.models')}`
+                              : `${modelCount} ${t('setting.models')}`
+                          }
                         >
                           {modelCount}
+                          {eigent && (
+                            <span className="text-ds-ink-muted-default">
+                              /{inventory.cloudModels.length}
+                            </span>
+                          )}
                         </Badge>
                         {eigent && (
                           <Badge
