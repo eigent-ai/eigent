@@ -13,9 +13,9 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, StringConstraints
 from sqlalchemy import CheckConstraint, Integer
 from sqlmodel import JSON, Column, Field, String
 
@@ -32,6 +32,16 @@ class SpaceStatus:
     ACTIVE = "active"
     DISCONNECTED = "disconnected"
     ARCHIVED = "archived"
+
+
+SpaceCategoryKey = Annotated[
+    str,
+    StringConstraints(
+        min_length=1,
+        max_length=50,
+        pattern=r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+    ),
+]
 
 
 class Space(AbstractModel, DefaultTimes, table=True):
@@ -62,6 +72,10 @@ class Space(AbstractModel, DefaultTimes, table=True):
         default=SpaceStatus.ACTIVE,
         sa_column=Column(String(50), nullable=False, index=True),
     )
+    category_key: str | None = Field(
+        default=None,
+        sa_column=Column(String(50), nullable=True),
+    )
     schema_version: int = Field(
         default=1,
         sa_column=Column(Integer, nullable=False, server_default="1"),
@@ -77,6 +91,7 @@ class SpaceIn(BaseModel):
     root_path: str | None = None
     root_fingerprint: dict[str, Any] | None = None
     status: str = SpaceStatus.ACTIVE
+    category_key: SpaceCategoryKey | None = None
     schema_version: int = 1
     metadata: dict[str, Any] | None = None
 
@@ -85,6 +100,7 @@ class SpaceUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     status: str | None = None
+    category_key: SpaceCategoryKey | None = None
     metadata: dict[str, Any] | None = None
 
 
@@ -107,6 +123,7 @@ class SpaceOut(BaseModel):
     root_path: str | None = None
     root_fingerprint: dict[str, Any] | None = None
     status: str
+    category_key: SpaceCategoryKey | None = None
     schema_version: int
     metadata: dict[str, Any] | None = None
     created_at: datetime | None = None
@@ -123,6 +140,7 @@ class SpaceOut(BaseModel):
             root_path=space.root_path,
             root_fingerprint=space.root_fingerprint,
             status=space.status,
+            category_key=space.category_key,
             schema_version=space.schema_version,
             metadata=space.metadata_json,
             created_at=space.created_at,

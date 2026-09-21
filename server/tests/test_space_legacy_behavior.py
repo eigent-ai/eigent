@@ -59,6 +59,7 @@ def _space(
         root_path=None,
         root_fingerprint=None,
         status="active",
+        category_key=None,
         schema_version=1,
         metadata_json={"legacy": True} if source_type == SpaceSourceType.LEGACY else None,
         created_at=None,
