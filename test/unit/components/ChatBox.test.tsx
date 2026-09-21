@@ -13,8 +13,10 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 // Comprehensive unit tests for ChatBox component
+import { generateUniqueId } from '@/lib';
 import { runProjectionStore } from '@/lib/runEvents';
 import { errorCopy } from '@/lib/usageErrors';
+import { createChatStoreInstance } from '@/store/chatStore';
 import {
   acknowledgeUsageNotice,
   reportUsageIncident,
@@ -22,8 +24,10 @@ import {
   setUsageModelType,
   useUsageNoticeStore,
 } from '@/store/usageNoticeStore';
+import { AgentStep, ChatTaskStatus } from '@/types/constants';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useSyncExternalStore } from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import { toast } from 'sonner';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -44,6 +48,7 @@ const eventNativeHarness = vi.hoisted(() => ({
   snapshot: null as any,
   controlOptions: null as any,
 }));
+const waitForPendingStaleRuntimeEvictionMock = vi.hoisted(() => vi.fn());
 
 const modelConfigHarness = vi.hoisted(() => ({
   hasModel: true,
@@ -135,7 +140,10 @@ vi.mock('../../../src/store/projectStore', () => {
   (useProjectStore as any).getState = vi.fn(() => ({
     getAllChatStores: () => [],
   }));
-  return { useProjectStore };
+  return {
+    useProjectStore,
+    waitForPendingStaleRuntimeEviction: waitForPendingStaleRuntimeEvictionMock,
+  };
 });
 
 vi.mock('@/store/projectStore', () => {
@@ -143,7 +151,10 @@ vi.mock('@/store/projectStore', () => {
   (useProjectStore as any).getState = vi.fn(() => ({
     getAllChatStores: () => [],
   }));
-  return { useProjectStore };
+  return {
+    useProjectStore,
+    waitForPendingStaleRuntimeEviction: waitForPendingStaleRuntimeEvictionMock,
+  };
 });
 
 // Mock useChatStoreAdapter to provide both stores
@@ -226,7 +237,29 @@ vi.mock('../../../src/components/ChatBox/BottomBox', () => ({
             value={inputProps.value}
             disabled={inputProps.disabled}
             onChange={(e) => inputProps.onChange(e.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                inputProps.onSend();
+              }
+            }}
           />
+          <input
+            data-testid="attachment-input"
+            type="file"
+            onChange={(event) =>
+              inputProps.onFilesChange([
+                ...(inputProps.files || []),
+                ...Array.from(event.target.files || []).map((file) => ({
+                  fileName: file.name,
+                  filePath: `/tmp/${file.name}`,
+                })),
+              ])
+            }
+          />
+          <output data-testid="composer-files">
+            {inputProps.files?.map((file: any) => file.fileName).join(', ')}
+          </output>
           <button
             data-testid="send-button"
             data-composer-primary-action={primaryAction}
@@ -465,6 +498,7 @@ describe('ChatBox Component', async () => {
     modelConfigHarness.cloudUsageLimitReached = false;
     // Reset all mocks
     vi.clearAllMocks();
+    vi.mocked(generateUniqueId).mockReturnValue('test-unique-id');
     runProjectionStore.clear();
     defaultChatStoreState.startTask.mockReset();
     invalidatePendingFollowUps('test-project-id');
@@ -492,6 +526,12 @@ describe('ChatBox Component', async () => {
       () => undefined
     );
     defaultProjectStoreState.getAllChatStores.mockReturnValue([]);
+    defaultProjectStoreState.getChatStore.mockReset();
+    defaultProjectStoreState.appendInitChatStore.mockImplementation(() => ({
+      chatStore: preparedRunChatStore,
+    }));
+    waitForPendingStaleRuntimeEvictionMock.mockReset();
+    waitForPendingStaleRuntimeEvictionMock.mockResolvedValue(undefined);
 
     // Setup default store states
     mockUseChatStoreAdapter.mockReturnValue({
@@ -502,7 +542,18 @@ describe('ChatBox Component', async () => {
     mockUseAuthStore.mockReturnValue(defaultAuthStoreState as any);
 
     // Setup default API responses
-    mockFetchGet.mockResolvedValue({ runs: [] });
+    mockFetchGet.mockImplementation((url: string) =>
+      Promise.resolve(
+        url === '/chat/test-project-id/status'
+          ? {
+              has_lock: true,
+              status: 'done',
+              run_id: 'test-task-id',
+              consumer_alive: true,
+            }
+          : { runs: [] }
+      )
+    );
     mockProxyFetchGet.mockImplementation((url: string) => {
       if (url === '/api/user/key' || url === '/api/v1/user/key') {
         return Promise.resolve({ value: 'test-api-key' });
@@ -1066,6 +1117,840 @@ describe('ChatBox Component', async () => {
       );
     });
 
+    it('waits for stale retirement and cold-admits when the warm consumer is gone', async () => {
+      const user = userEvent.setup();
+      let releaseRetirement!: () => void;
+      waitForPendingStaleRuntimeEvictionMock.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseRetirement = resolve;
+          })
+      );
+      mockFetchGet.mockImplementation((url: string) =>
+        Promise.resolve(
+          url === '/chat/test-project-id/status'
+            ? {
+                has_lock: true,
+                status: 'done',
+                run_id: 'test-task-id',
+                consumer_alive: false,
+              }
+            : { runs: [] }
+        )
+      );
+      const completedChatState = {
+        ...defaultChatStoreState,
+        tasks: {
+          'test-task-id': {
+            ...defaultChatStoreState.tasks['test-task-id'],
+            messages: [
+              { id: '1', role: 'user', content: 'Initial task', attaches: [] },
+              {
+                id: '2',
+                role: 'assistant',
+                content: 'Initial result',
+                step: 'wait_confirm',
+                attaches: [],
+              },
+            ],
+            hasMessages: true,
+            hasWaitComfirm: true,
+            status: 'pending',
+          },
+        },
+      };
+      mockUseChatStoreAdapter.mockReturnValue({
+        projectStore: defaultProjectStoreState as any,
+        chatStore: completedChatState as any,
+      });
+
+      renderChatBox();
+      await user.type(screen.getByTestId('message-input'), 'Continue safely');
+      await user.click(screen.getByTestId('send-button'));
+      await Promise.resolve();
+
+      expect(mockFetchGet).not.toHaveBeenCalledWith(
+        '/chat/test-project-id/status'
+      );
+      expect(completedChatState.startTask).not.toHaveBeenCalled();
+
+      releaseRetirement();
+
+      await waitFor(() =>
+        expect(completedChatState.startTask).toHaveBeenCalledWith(
+          'test-unique-id',
+          undefined,
+          undefined,
+          undefined,
+          'Continue safely',
+          [],
+          undefined,
+          'test-project-id',
+          'single-agent',
+          expect.objectContaining({
+            preserveTaskId: true,
+            awaitAdmission: true,
+          })
+        )
+      );
+      expect(_mockFetchPost).not.toHaveBeenCalledWith(
+        '/chat/test-project-id',
+        expect.anything()
+      );
+    });
+
+    describe('normal follow-up admission ownership', () => {
+      const originalAttachment = {
+        fileName: 'original.pdf',
+        filePath: '/tmp/original.pdf',
+      };
+      const createFollowUpStore = (attachment = originalAttachment) => {
+        const store = createChatStoreInstance();
+        const state = store.getState();
+        state.create('test-task-id');
+        state.addMessages('test-task-id', {
+          id: 'result',
+          role: 'agent',
+          content: 'Previous result',
+          step: AgentStep.WAIT_CONFIRM,
+        });
+        state.setHasMessages('test-task-id', true);
+        state.setHasWaitComfirm('test-task-id', true);
+        state.setAttaches('test-task-id', [attachment] as any);
+        store.setState({
+          setAttaches: vi.fn(state.setAttaches),
+          startTask: vi.fn(),
+        });
+        return store;
+      };
+
+      const setupAdmission = (
+        warm: boolean,
+        stage: 'status' | 'stale',
+        deferAdmission = false
+      ) => {
+        let release!: () => void;
+        let reject!: (error: Error) => void;
+        const status = {
+          has_lock: true,
+          status: 'done',
+          run_id: 'test-task-id',
+          consumer_alive: warm,
+        };
+        const pendingOwnership = new Promise<any>((resolve, rejectPromise) => {
+          release = () => resolve(stage === 'status' ? status : undefined);
+          reject = rejectPromise;
+        });
+        if (stage === 'stale') {
+          waitForPendingStaleRuntimeEvictionMock.mockReturnValue(
+            pendingOwnership
+          );
+        }
+        mockFetchGet.mockImplementation((url: string) =>
+          url === '/chat/test-project-id/status'
+            ? stage === 'status'
+              ? pendingOwnership
+              : Promise.resolve(status)
+            : Promise.resolve({ runs: [] })
+        );
+        const chatStore = createFollowUpStore();
+        let nextId = 0;
+        vi.mocked(generateUniqueId).mockImplementation(() => {
+          nextId += 1;
+          return nextId === 1 ? 'test-unique-id' : `test-unique-id-${nextId}`;
+        });
+        defaultProjectStoreState.getActiveChatStore.mockImplementation(
+          () => chatStore as any
+        );
+        defaultProjectStoreState.getChatStore.mockImplementation(
+          () => chatStore as any
+        );
+        // Subscribe to the actual primary store so create/select/setAttaches
+        // change both the active Run and the rendered composer immediately.
+        mockUseChatStoreAdapter.mockImplementation(
+          function useReactiveAdapter() {
+            const activeStore = defaultProjectStoreState.getActiveChatStore();
+            const chatState = useSyncExternalStore(
+              activeStore.subscribe,
+              activeStore.getState,
+              activeStore.getState
+            );
+            return {
+              projectStore: defaultProjectStoreState as any,
+              chatStore: chatState as any,
+            };
+          }
+        );
+        defaultProjectStoreState.appendInitChatStore.mockImplementation(
+          (_projectId, taskId) => {
+            const state = chatStore.getState();
+            if (!state.tasks[taskId]) state.create(taskId);
+            state.setActiveTaskId(taskId);
+            return { taskId, chatStore } as any;
+          }
+        );
+        let releaseAdmission!: () => void;
+        const pendingAdmission = new Promise<void>((resolve) => {
+          releaseAdmission = resolve;
+        });
+        const startTask = vi.mocked(chatStore.getState().startTask);
+        startTask.mockImplementation(
+          async (taskId, _type, _share, _delay, content, files) => {
+            defaultProjectStoreState.appendInitChatStore(
+              'test-project-id',
+              taskId
+            );
+            const state = chatStore.getState();
+            state.setIsPending(taskId, true);
+            state.setHasMessages(taskId, true);
+            state.addMessages(taskId, {
+              id: `${taskId}:user`,
+              role: 'user',
+              content: content || '',
+              attaches: files,
+            });
+            if (deferAdmission) await pendingAdmission;
+          }
+        );
+        if (warm && deferAdmission) {
+          _mockFetchPost.mockImplementation((url) =>
+            url === '/chat/test-project-id'
+              ? pendingAdmission
+              : Promise.resolve({ success: true })
+          );
+        }
+        const view = renderChatBox();
+        const rerender = () =>
+          view.rerender(
+            <BrowserRouter>
+              <ChatBox />
+            </BrowserRouter>
+          );
+        const waitUntilOwnershipPending = () =>
+          waitFor(() => {
+            if (stage === 'status') {
+              expect(mockFetchGet).toHaveBeenCalledWith(
+                '/chat/test-project-id/status'
+              );
+            } else {
+              expect(
+                waitForPendingStaleRuntimeEvictionMock
+              ).toHaveBeenCalledWith('test-project-id');
+            }
+          });
+        const expectAdmission = async () => {
+          await waitFor(() => {
+            if (warm) {
+              expect(_mockFetchPost).toHaveBeenCalledWith(
+                '/chat/test-project-id',
+                expect.objectContaining({
+                  question: 'Original instruction',
+                  attaches: [originalAttachment.filePath],
+                })
+              );
+            } else {
+              expect(startTask).toHaveBeenCalledWith(
+                expect.any(String),
+                undefined,
+                undefined,
+                undefined,
+                'Original instruction',
+                [originalAttachment],
+                undefined,
+                'test-project-id',
+                'single-agent',
+                expect.objectContaining({
+                  preserveTaskId: true,
+                  awaitAdmission: true,
+                })
+              );
+            }
+          });
+        };
+        const admissionCount = () =>
+          warm
+            ? _mockFetchPost.mock.calls.filter(
+                ([url]) => url === '/chat/test-project-id'
+              ).length
+            : startTask.mock.calls.length;
+        return {
+          get chatState() {
+            return chatStore.getState();
+          },
+          chatStore,
+          releaseAdmission,
+          release,
+          reject,
+          status,
+          rerender,
+          waitUntilOwnershipPending,
+          expectAdmission,
+          admissionCount,
+        };
+      };
+
+      describe.each([
+        ['status', true],
+        ['status', false],
+        ['stale', true],
+        ['stale', false],
+      ] as const)('waiting for %s with warm=%s', (stage, warm) => {
+        it('admits only once for Enter then click in separate browser events', async () => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(warm, stage);
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.keyboard('{Enter}');
+          await setup.waitUntilOwnershipPending();
+          await user.click(screen.getByTestId('send-button'));
+
+          await act(async () => setup.release());
+          await setup.expectAdmission();
+          expect(setup.admissionCount()).toBe(1);
+        });
+
+        it('preserves a newer composer draft and attachments after the old admission resolves', async () => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(warm, stage);
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+
+          await user.clear(screen.getByTestId('message-input'));
+          await user.type(screen.getByTestId('message-input'), 'A newer draft');
+          await user.upload(
+            screen.getByTestId('attachment-input'),
+            new File(['new'], 'newer.pdf', { type: 'application/pdf' })
+          );
+          setup.rerender();
+          await act(async () => setup.release());
+          await setup.expectAdmission();
+          setup.rerender();
+
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'A newer draft'
+          );
+          expect(screen.getByTestId('composer-files')).toHaveTextContent(
+            'newer.pdf'
+          );
+          const nextTaskId = setup.chatState.activeTaskId!;
+          expect(nextTaskId).not.toBe('test-task-id');
+          expect(setup.chatState.tasks[nextTaskId].attaches).toEqual([
+            { fileName: 'newer.pdf', filePath: '/tmp/newer.pdf' },
+          ]);
+          expect(setup.chatState.tasks['test-task-id'].attaches).toEqual([]);
+
+          await act(async () => {
+            const state = setup.chatStore.getState();
+            state.setIsPending(nextTaskId, false);
+            state.setStatus(nextTaskId, ChatTaskStatus.FINISHED);
+            state.setHasWaitComfirm(nextTaskId, true);
+            state.addMessages(nextTaskId, {
+              id: `${nextTaskId}:end`,
+              role: 'agent',
+              content: 'Done',
+              step: AgentStep.END,
+            });
+          });
+          await user.click(screen.getByTestId('send-button'));
+          await waitFor(() => {
+            if (warm) {
+              expect(_mockFetchPost).toHaveBeenLastCalledWith(
+                '/chat/test-project-id',
+                expect.objectContaining({
+                  question: 'A newer draft',
+                  attaches: ['/tmp/newer.pdf'],
+                })
+              );
+            } else {
+              expect(setup.chatState.startTask).toHaveBeenLastCalledWith(
+                expect.any(String),
+                undefined,
+                undefined,
+                undefined,
+                'A newer draft',
+                [{ fileName: 'newer.pdf', filePath: '/tmp/newer.pdf' }],
+                undefined,
+                'test-project-id',
+                'single-agent',
+                expect.objectContaining({
+                  preserveTaskId: true,
+                  awaitAdmission: true,
+                })
+              );
+            }
+          });
+        });
+
+        it('does not clear another Session composer after switching during admission', async () => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(warm, stage);
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+
+          const secondStore = createFollowUpStore({
+            fileName: 'second-session.pdf',
+            filePath: '/tmp/second-session.pdf',
+          });
+          defaultProjectStoreState.activeProjectId = 'second-project-id';
+          defaultProjectStoreState.getActiveChatStore.mockImplementation(
+            (projectId?: string) =>
+              (projectId === 'test-project-id'
+                ? setup.chatStore
+                : secondStore) as any
+          );
+          setup.rerender();
+          await user.clear(screen.getByTestId('message-input'));
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Session B draft'
+          );
+
+          await act(async () => setup.release());
+          await setup.expectAdmission();
+          setup.rerender();
+
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'Session B draft'
+          );
+          expect(screen.getByTestId('composer-files')).toHaveTextContent(
+            'second-session.pdf'
+          );
+          expect(secondStore.getState().setAttaches).not.toHaveBeenCalled();
+        });
+
+        it('does not reinsert unchanged submitted files into the new active Run', async () => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(warm, stage);
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+
+          await act(async () => setup.release());
+          await setup.expectAdmission();
+
+          const nextTaskId = setup.chatState.activeTaskId!;
+          expect(nextTaskId).not.toBe('test-task-id');
+          expect(setup.chatState.tasks[nextTaskId].attaches).toEqual([]);
+          expect(screen.getByTestId('composer-files')).toBeEmptyDOMElement();
+        });
+
+        it('keeps edited files on Session A when admission resolves while Session B is selected', async () => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(warm, stage);
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+          await user.clear(screen.getByTestId('message-input'));
+          await user.type(screen.getByTestId('message-input'), 'A newer draft');
+          await user.upload(
+            screen.getByTestId('attachment-input'),
+            new File(['new'], 'newer.pdf', { type: 'application/pdf' })
+          );
+
+          const secondStore = createFollowUpStore({
+            fileName: 'second-session.pdf',
+            filePath: '/tmp/second-session.pdf',
+          });
+          defaultProjectStoreState.activeProjectId = 'second-project-id';
+          defaultProjectStoreState.getActiveChatStore.mockImplementation(
+            (projectId?: string) =>
+              ((projectId || defaultProjectStoreState.activeProjectId) ===
+              'test-project-id'
+                ? setup.chatStore
+                : secondStore) as any
+          );
+          setup.rerender();
+          await user.clear(screen.getByTestId('message-input'));
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Session B draft'
+          );
+
+          await act(async () => setup.release());
+          await setup.expectAdmission();
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'Session B draft'
+          );
+          expect(screen.getByTestId('composer-files')).toHaveTextContent(
+            'second-session.pdf'
+          );
+          expect(secondStore.getState().setAttaches).not.toHaveBeenCalled();
+
+          defaultProjectStoreState.activeProjectId = 'test-project-id';
+          setup.rerender();
+          const nextTaskId = setup.chatState.activeTaskId!;
+          expect(nextTaskId).not.toBe('test-task-id');
+          expect(setup.chatState.tasks[nextTaskId].attaches).toEqual([
+            { fileName: 'newer.pdf', filePath: '/tmp/newer.pdf' },
+          ]);
+          expect(setup.chatState.tasks['test-task-id'].attaches).toEqual([]);
+          expect(screen.getByTestId('composer-files')).toHaveTextContent(
+            'newer.pdf'
+          );
+          expect(screen.getByTestId('composer-files')).not.toHaveTextContent(
+            'original.pdf'
+          );
+        });
+
+        it('keeps edits on the new active Run while its admission response is delayed', async () => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(warm, stage, true);
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+          await user.clear(screen.getByTestId('message-input'));
+          await user.type(screen.getByTestId('message-input'), 'A newer draft');
+          await user.upload(
+            screen.getByTestId('attachment-input'),
+            new File(['new'], 'newer.pdf', { type: 'application/pdf' })
+          );
+          expect(
+            setup.chatState.tasks['test-task-id'].attaches.map(
+              (file) => file.fileName
+            )
+          ).toEqual(['original.pdf', 'newer.pdf']);
+
+          await act(async () => setup.release());
+          await waitFor(() =>
+            expect(setup.chatState.activeTaskId).not.toBe('test-task-id')
+          );
+          const nextTaskId = setup.chatState.activeTaskId!;
+          // The pending SSE/HTTP admission cannot leave the draft files on
+          // the now-hidden historical task until its response arrives.
+          expect(screen.getByTestId('composer-files')).toHaveTextContent(
+            'newer.pdf'
+          );
+          expect(screen.getByTestId('composer-files')).not.toHaveTextContent(
+            'original.pdf'
+          );
+          await user.upload(
+            screen.getByTestId('attachment-input'),
+            new File(['later'], 'later.pdf', { type: 'application/pdf' })
+          );
+          await act(async () => setup.releaseAdmission());
+          await setup.expectAdmission();
+
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'A newer draft'
+          );
+          expect(
+            setup.chatState.tasks[nextTaskId].attaches.map(
+              (file) => file.fileName
+            )
+          ).toEqual(['newer.pdf', 'later.pdf']);
+          expect(screen.getByTestId('composer-files')).toHaveTextContent(
+            'newer.pdf, later.pdf'
+          );
+        });
+      });
+
+      it.each([true, false])(
+        'retains the failed status draft and files for a successful retry with warm=%s',
+        async (warm) => {
+          const user = userEvent.setup();
+          const setup = setupAdmission(warm, 'status');
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+          await act(async () => setup.reject(new Error('Status unavailable')));
+
+          expect(setup.admissionCount()).toBe(0);
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            'Original instruction'
+          );
+          expect(screen.getByTestId('composer-files')).toHaveTextContent(
+            'original.pdf'
+          );
+
+          mockFetchGet.mockImplementation((url: string) =>
+            Promise.resolve(
+              url === '/chat/test-project-id/status'
+                ? setup.status
+                : { runs: [] }
+            )
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.expectAdmission();
+          expect(setup.admissionCount()).toBe(1);
+        }
+      );
+
+      it('preserves a clear-and-retyped identical draft as a newer edit', async () => {
+        const user = userEvent.setup();
+        const setup = setupAdmission(true, 'status');
+        await user.type(
+          screen.getByTestId('message-input'),
+          'Original instruction'
+        );
+        await user.click(screen.getByTestId('send-button'));
+        await setup.waitUntilOwnershipPending();
+        await user.clear(screen.getByTestId('message-input'));
+        await user.type(
+          screen.getByTestId('message-input'),
+          'Original instruction'
+        );
+
+        await act(async () => setup.release());
+        await setup.expectAdmission();
+
+        expect(screen.getByTestId('message-input')).toHaveValue(
+          'Original instruction'
+        );
+      });
+
+      it.each([
+        [true, true],
+        [true, false],
+        [false, true],
+        [false, false],
+      ])(
+        'holds newly queued work behind ordinary admission (warm=%s, succeeds=%s)',
+        async (warm, succeeds) => {
+          const user = userEvent.setup();
+          eventNativeHarness.enabled = true;
+          eventNativeHarness.snapshot = runningEventNativeSnapshot();
+          eventNativeHarness.snapshot.view.runs['test-task-id'].status =
+            'completed';
+          const setup = setupAdmission(warm, 'status');
+          await user.type(
+            screen.getByTestId('message-input'),
+            'Original instruction'
+          );
+          await user.click(screen.getByTestId('send-button'));
+          await setup.waitUntilOwnershipPending();
+
+          const queuedFile = {
+            fileName: 'queued.pdf',
+            filePath: '/tmp/queued.pdf',
+          };
+          const queuedMessages = [
+            {
+              task_id: 'queued-after-ordinary',
+              run_id: 'queued-after-ordinary',
+              content: 'Queued instruction',
+              timestamp: 1,
+              attaches: [queuedFile],
+            },
+          ];
+          defaultProjectStoreState.getProjectById.mockImplementation(
+            () => ({ queuedMessages }) as any
+          );
+          defaultProjectStoreState.removeQueuedMessage.mockImplementation(
+            (_projectId, taskId) => {
+              const index = queuedMessages.findIndex(
+                (item) => item.task_id === taskId
+              );
+              return index < 0 ? undefined : queuedMessages.splice(index, 1)[0];
+            }
+          );
+          setup.rerender();
+          await act(async () => {});
+          expect(setup.admissionCount()).toBe(0);
+          expect(
+            defaultProjectStoreState.setQueuedMessageProcessing
+          ).not.toHaveBeenCalled();
+
+          // Future queue status reads succeed; only the already captured
+          // ordinary request remains suspended or fails below.
+          mockFetchGet.mockImplementation((url: string) =>
+            Promise.resolve(
+              url === '/chat/test-project-id/status'
+                ? setup.status
+                : { items: [] }
+            )
+          );
+          if (succeeds) {
+            await act(async () => setup.release());
+            await setup.expectAdmission();
+            expect(setup.admissionCount()).toBe(1);
+            expect(
+              defaultProjectStoreState.setQueuedMessageProcessing
+            ).not.toHaveBeenCalled();
+
+            await user.type(
+              screen.getByTestId('message-input'),
+              'Unsent composer draft'
+            );
+            await user.upload(
+              screen.getByTestId('attachment-input'),
+              new File(['next'], 'next.pdf', { type: 'application/pdf' })
+            );
+            setup.rerender();
+            // HTTP admission alone does not release the queue. The exact
+            // admitted Run must reach a canonical terminal status first.
+            expect(setup.admissionCount()).toBe(1);
+            eventNativeHarness.snapshot =
+              runningEventNativeSnapshot('test-unique-id');
+            eventNativeHarness.snapshot.revision = 2;
+            eventNativeHarness.snapshot.view.runs['test-unique-id'].status =
+              'completed';
+            setup.rerender();
+          } else {
+            // Do not rerender: the failed admission must release its guard
+            // and make React reconsider the queued item by itself.
+            await act(async () =>
+              setup.reject(new Error('Status unavailable'))
+            );
+          }
+
+          await waitFor(() => {
+            if (warm) {
+              expect(_mockFetchPost).toHaveBeenCalledWith(
+                '/chat/test-project-id',
+                expect.objectContaining({
+                  question: 'Queued instruction',
+                  task_id: 'queued-after-ordinary',
+                  attaches: [queuedFile.filePath],
+                })
+              );
+            } else {
+              expect(setup.chatState.startTask).toHaveBeenCalledWith(
+                'queued-after-ordinary',
+                undefined,
+                undefined,
+                undefined,
+                'Queued instruction',
+                [queuedFile],
+                undefined,
+                'test-project-id',
+                'single-agent',
+                expect.objectContaining({
+                  preserveTaskId: true,
+                  awaitAdmission: true,
+                })
+              );
+            }
+          });
+          expect(setup.admissionCount()).toBe(succeeds ? 2 : 1);
+          expect(screen.getByTestId('message-input')).toHaveValue(
+            succeeds ? 'Unsent composer draft' : 'Original instruction'
+          );
+          expect(screen.getByTestId('composer-files')).toHaveTextContent(
+            succeeds ? 'next.pdf' : 'original.pdf'
+          );
+        }
+      );
+
+      it('merges composer files into a reused queued Run without changing its request payload', async () => {
+        const user = userEvent.setup();
+        const setup = setupAdmission(false, 'status');
+        const queuedTaskId = 'queued-retry-with-draft';
+        const queuedFile = {
+          fileName: 'queued.pdf',
+          filePath: '/tmp/queued.pdf',
+        };
+        const existingFile = {
+          fileName: 'existing.pdf',
+          filePath: '/tmp/existing.pdf',
+        };
+        const targetShared = {
+          fileName: 'target-shared.pdf',
+          filePath: '/tmp/shared.pdf',
+        };
+        const sourceShared = {
+          fileName: 'source-shared.pdf',
+          filePath: '/tmp/shared.pdf',
+        };
+        await act(async () => {
+          const state = setup.chatStore.getState();
+          state.create(queuedTaskId);
+          state.setAttaches(queuedTaskId, [existingFile, targetShared] as any);
+          state.setActiveTaskId('test-task-id');
+          state.setAttaches('test-task-id', [
+            originalAttachment,
+            sourceShared,
+          ] as any);
+        });
+        await user.type(
+          screen.getByTestId('message-input'),
+          'Original instruction'
+        );
+        await user.click(screen.getByTestId('send-button'));
+        await setup.waitUntilOwnershipPending();
+
+        const queuedMessages = [
+          {
+            task_id: queuedTaskId,
+            run_id: queuedTaskId,
+            content: 'Queued instruction',
+            timestamp: 1,
+            attaches: [queuedFile],
+          },
+        ];
+        defaultProjectStoreState.getProjectById.mockImplementation(
+          () => ({ queuedMessages }) as any
+        );
+        defaultProjectStoreState.removeQueuedMessage.mockImplementation(() =>
+          queuedMessages.shift()
+        );
+        setup.rerender();
+        mockFetchGet.mockImplementation((url: string) =>
+          Promise.resolve(
+            url === '/chat/test-project-id/status'
+              ? setup.status
+              : { items: [] }
+          )
+        );
+        await act(async () => setup.reject(new Error('Status unavailable')));
+
+        await waitFor(() =>
+          expect(setup.chatState.startTask).toHaveBeenCalledWith(
+            queuedTaskId,
+            undefined,
+            undefined,
+            undefined,
+            'Queued instruction',
+            [queuedFile],
+            undefined,
+            'test-project-id',
+            'single-agent',
+            expect.objectContaining({
+              preserveTaskId: true,
+              awaitAdmission: true,
+            })
+          )
+        );
+        expect(setup.chatState.activeTaskId).toBe(queuedTaskId);
+        expect(setup.chatState.tasks[queuedTaskId].attaches).toEqual([
+          existingFile,
+          targetShared,
+          originalAttachment,
+        ]);
+        expect(setup.chatState.tasks['test-task-id'].attaches).toEqual([]);
+        expect(screen.getByTestId('composer-files')).toHaveTextContent(
+          'existing.pdf, target-shared.pdf, original.pdf'
+        );
+        expect(screen.getByTestId('composer-files')).not.toHaveTextContent(
+          'source-shared.pdf'
+        );
+        expect(screen.getByTestId('message-input')).toHaveValue(
+          'Original instruction'
+        );
+      });
+    });
+
     it('keeps the composer available and queues a second task while running', async () => {
       const user = userEvent.setup();
       const runningChatState = {
@@ -1219,6 +2104,15 @@ describe('ChatBox Component', async () => {
         acknowledgeUsageNotice();
         notice.mockClear();
         const user = userEvent.setup();
+        // This fixture has no warm consumer after the independent Run ends.
+        // A surviving TaskLock alone must not route B into a dead queue.
+        mockFetchGet.mockImplementation((url: string) =>
+          Promise.resolve(
+            url.endsWith('/status')
+              ? { has_lock: true, status: 'done', consumer_alive: false }
+              : { runs: [] }
+          )
+        );
         defaultProjectStoreState.getProjectById.mockImplementation(() => ({
           queuedMessages: [
             {
@@ -1452,7 +2346,7 @@ describe('ChatBox Component', async () => {
         mockFetchGet.mockImplementation((url: string) =>
           Promise.resolve(
             url.endsWith('/status')
-              ? { has_lock: true, status: 'done' }
+              ? { has_lock: true, status: 'done', consumer_alive: true }
               : { items: [] }
           )
         );
@@ -1678,7 +2572,7 @@ describe('ChatBox Component', async () => {
         mockFetchGet.mockImplementation((url: string) =>
           Promise.resolve(
             url === '/chat/test-project-id/status'
-              ? { has_lock: true, status: 'done' }
+              ? { has_lock: true, status: 'done', consumer_alive: true }
               : { items: [] }
           )
         );
@@ -1818,7 +2712,7 @@ describe('ChatBox Component', async () => {
             });
           return Promise.resolve(
             url.endsWith('/status')
-              ? { has_lock: true, status: 'done' }
+              ? { has_lock: true, status: 'done', consumer_alive: true }
               : { items: [] }
           );
         });
@@ -1924,7 +2818,7 @@ describe('ChatBox Component', async () => {
       mockFetchGet.mockImplementation((url: string) =>
         Promise.resolve(
           url.endsWith('/status')
-            ? { has_lock: true, status: 'done' }
+            ? { has_lock: true, status: 'done', consumer_alive: true }
             : { items: [] }
         )
       );
@@ -2008,6 +2902,7 @@ describe('ChatBox Component', async () => {
             has_lock: true,
             status: 'done',
             run_id: 'test-task-id',
+            consumer_alive: true,
           });
         }
         return Promise.resolve({ items: [] });
