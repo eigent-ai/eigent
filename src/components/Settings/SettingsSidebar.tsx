@@ -26,9 +26,12 @@ import {
 } from '@/components/Layout/AppSidebar';
 import { useConfiguredModels } from '@/hooks/useConfiguredModels';
 import { useHost } from '@/host';
+import { isCloudModelAvailable } from '@/lib/cloudModelAvailability';
+import { getProviderValid } from '@/lib/providerStatus';
 import { useAuthStore } from '@/store/authStore';
 import { useSettingsResourceCountsStore } from '@/store/settingsResourceCountsStore';
 import type { SettingsSectionId } from '@/store/settingsStore';
+import { useUsageNoticeStore } from '@/store/usageNoticeStore';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useConnectorsNavigation } from './Connectors/ConnectorsNavigationContext';
@@ -63,6 +66,7 @@ export default function SettingsSidebar({
   const { items: connectorItems, loading: connectorsLoading } =
     useConnectorsNavigation();
   const models = useConfiguredModels();
+  const planKey = useUsageNoticeStore((state) => state.subscription?.plan_key);
   const browserCount = useSettingsResourceCountsStore(
     (state) => state.counts['browser-connections']
   );
@@ -143,10 +147,12 @@ export default function SettingsSidebar({
     : connectorItems.length;
   const modelCount = models.loading
     ? null
-    : models.records.length +
+    : models.records.filter(getProviderValid).length +
       (models.cloudAvailable
         ? models.cloudModels.filter(
-            (model) => !models.hidden.includes(model.id)
+            (model) =>
+              !models.hidden.includes(model.id) &&
+              isCloudModelAvailable(model, planKey)
           ).length
         : 0) +
       (models.codexConnected ? 1 : 0);

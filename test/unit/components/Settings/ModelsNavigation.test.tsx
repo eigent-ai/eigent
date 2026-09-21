@@ -197,7 +197,11 @@ describe('Models collections and configuration dialogs', () => {
       screen.getByRole('region', { name: 'All model providers' })
     ).toBeInTheDocument();
     const eigent = screen.getByRole('region', { name: 'Eigent' });
-    expect(within(eigent).getByLabelText('2 Models')).toBeInTheDocument();
+    const eigentCount = within(eigent).getByLabelText('2/2 Models');
+    expect(eigentCount).toHaveTextContent('2/2');
+    expect(eigentCount.querySelector('span')).toHaveClass(
+      'text-ds-ink-muted-default'
+    );
     expect(within(eigent).getByLabelText('Credits: 1,250')).toHaveTextContent(
       'Credits:1,250'
     );
@@ -355,12 +359,32 @@ describe('Models collections and configuration dialogs', () => {
     const invalidName = await screen.findByText('model-a');
     const invalidRow = invalidName.parentElement as HTMLElement;
     const invalidStatus = within(invalidRow).getByText('Not configured');
+    const toolbar = screen.getByRole('region', { name: 'Models' });
 
     expect(invalidName).toHaveClass('text-ds-text-error-default-default');
     expect(invalidStatus).toHaveAttribute('data-tone', 'error');
+    expect(within(toolbar).getByLabelText('2 Models')).toHaveTextContent('2');
+    const invalidCount = within(toolbar).getByLabelText('1 Not configured');
+    expect(invalidCount).toHaveAttribute('data-tone', 'error');
+    expect(invalidCount.querySelector('svg')).toHaveClass('lucide-bell');
     expect(
       within(invalidRow).queryByText(/Configuration #/)
     ).not.toBeInTheDocument();
+  });
+
+  it('shows enabled and total Eigent models separately', async () => {
+    useModelVisibilityStore.setState({
+      hiddenByAccount: { '1': ['claude'] },
+    });
+    renderPage();
+
+    const eigent = await screen.findByRole('region', { name: 'Eigent' });
+    const count = within(eigent).getByLabelText('1/2 Models');
+
+    expect(count).toHaveTextContent('1/2');
+    expect(count.querySelector('span')).toHaveClass(
+      'text-ds-ink-muted-default'
+    );
   });
   it('edits only the selected configuration ID and preserves its default flag', async () => {
     renderPage();
