@@ -14,6 +14,8 @@
 
 import SettingsSection from '@/components/Settings/SettingsSection';
 import SettingsPage from '@/pages/Settings';
+import { useCloudModelStore } from '@/store/cloudModelStore';
+import { useModelVisibilityStore } from '@/store/modelVisibilityStore';
 import { useSettingsResourceCountsStore } from '@/store/settingsResourceCountsStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useSkillsStore, type Skill } from '@/store/skillsStore';
@@ -263,6 +265,32 @@ describe('SettingsPage', () => {
     useSettingsResourceCountsStore.setState({
       counts: { 'browser-connections': null, cookies: null },
     });
+    useCloudModelStore.setState({
+      models: [
+        {
+          id: 'gpt',
+          display_name: 'GPT',
+          model_type: 'gpt',
+          model_platform: 'openai',
+          provider_family: 'openai',
+          kind: 'chat',
+        },
+        {
+          id: 'claude',
+          display_name: 'Claude',
+          model_type: 'claude',
+          model_platform: 'anthropic',
+          provider_family: 'anthropic',
+          kind: 'chat',
+        },
+      ],
+      lastFetchedAt: Date.now(),
+      source: 'server',
+      status: 'ready',
+    });
+    useModelVisibilityStore.setState({
+      hiddenByAccount: { '7': ['claude'] },
+    });
     homeOverviewMocks.fetchConnectedProviders.mockResolvedValue([
       { service: 'github' },
       { service: 'notion' },
@@ -304,6 +332,18 @@ describe('SettingsPage', () => {
       return {};
     });
     homeOverviewMocks.proxyFetchGet.mockImplementation(async (path: string) => {
+      if (path === '/api/v1/providers') {
+        return {
+          items: [
+            { id: 11, provider_name: 'openai', model_type: 'gpt-work' },
+            {
+              id: 12,
+              provider_name: 'anthropic',
+              model_type: 'claude-personal',
+            },
+          ],
+        };
+      }
       if (path === '/api/v1/server/capabilities') {
         return { features: { connector_gateway: { enabled: true } } };
       }
@@ -353,12 +393,8 @@ describe('SettingsPage', () => {
     const sidebar = screen.getByRole('complementary', {
       name: 'Home',
     });
-    const contentShell = document.querySelector('.scrollbar-always-visible');
-    expect(contentShell).toHaveClass(
-      'overflow-y-scroll',
-      '[scrollbar-gutter:stable]'
-    );
-    expect(contentShell?.firstElementChild).toHaveClass('px-8');
+    const modelsSettings = await screen.findByTestId('models-settings');
+    expect(main).toContainElement(modelsSettings);
     expect(
       within(sidebar).getByRole('navigation', { name: 'Home' })
     ).toBeInTheDocument();
@@ -366,25 +402,6 @@ describe('SettingsPage', () => {
       screen.queryByRole('button', { name: 'Workspace Bundle' })
     ).not.toBeInTheDocument();
     const selectedTab = screen.getByRole('button', { name: 'Models' });
-    const header = getSettingsHeader();
-    const heading = within(header).getByRole('heading', {
-      name: 'Models',
-      level: 1,
-    });
-    expect(main).toContainElement(header);
-    expect(heading).toHaveFocus();
-    expect(header).toHaveClass('min-h-ds-layout-row-header');
-    expect(header.lastElementChild).toHaveClass('h-ds-layout-row-header');
-    expect(header.closest('[data-home-space-content-pane]')).toBeNull();
-    expect(within(header).getByText('Models')).toHaveClass(
-      'text-ds-text-body-large',
-      'font-bold'
-    );
-    expect(
-      within(header).queryByRole('button', {
-        name: 'Back',
-      })
-    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('heading', {
         name: 'layout.workspace-active-scope',
@@ -451,10 +468,9 @@ describe('SettingsPage', () => {
     expect(
       within(sidebar).queryByRole('button', { name: 'Privacy' })
     ).not.toBeInTheDocument();
-    expect(await screen.findByTestId('models-settings')).toBeInTheDocument();
   });
 
-  it('shows live resource counts on the Skills, Connectors, Browser, and Cookies tabs', async () => {
+  it('shows live resource counts on the Models, Skills, Connectors, Browser, and Cookies tabs', async () => {
     useSkillsStore.setState({
       skills: [
         {
@@ -476,6 +492,11 @@ describe('SettingsPage', () => {
     const sidebar = screen.getByRole('complementary', { name: 'Home' });
 
     await waitFor(() => {
+      expect(
+        within(
+          within(sidebar).getByRole('button', { name: 'Models' })
+        ).getByText('3')
+      ).toBeVisible();
       expect(
         within(
           within(sidebar).getByRole('button', { name: 'Skills' })

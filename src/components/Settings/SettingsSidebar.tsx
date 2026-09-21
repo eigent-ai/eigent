@@ -24,6 +24,7 @@ import {
   SidebarSection,
   SidebarShell,
 } from '@/components/Layout/AppSidebar';
+import { useConfiguredModels } from '@/hooks/useConfiguredModels';
 import { useHost } from '@/host';
 import { useAuthStore } from '@/store/authStore';
 import { useSettingsResourceCountsStore } from '@/store/settingsResourceCountsStore';
@@ -61,6 +62,7 @@ export default function SettingsSidebar({
   } = useSkillsLibrary();
   const { items: connectorItems, loading: connectorsLoading } =
     useConnectorsNavigation();
+  const models = useConfiguredModels();
   const browserCount = useSettingsResourceCountsStore(
     (state) => state.counts['browser-connections']
   );
@@ -139,7 +141,17 @@ export default function SettingsSidebar({
   const connectorCount = connectorsLoading
     ? initialConnectorCount
     : connectorItems.length;
+  const modelCount = models.loading
+    ? null
+    : models.records.length +
+      (models.cloudAvailable
+        ? models.cloudModels.filter(
+            (model) => !models.hidden.includes(model.id)
+          ).length
+        : 0) +
+      (models.codexConnected ? 1 : 0);
   const sectionCounts: Partial<Record<SettingsSectionId, number | null>> = {
+    models: modelCount,
     skills: skillsLoading || skillProfilesLoading ? null : skills.length,
     connectors: connectorCount,
     'browser-connections': browserCount,
