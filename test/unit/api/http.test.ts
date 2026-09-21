@@ -15,10 +15,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/store/authStore', () => ({
-  getAuthStore: () => ({ token: null }),
+  getAuthStore: () => mocked.auth,
 }));
 
 const mocked = vi.hoisted(() => ({
+  auth: { token: null as string | null, user_id: 1 },
   getLocalControlCapability: vi.fn(() =>
     Promise.resolve('renderer-capability')
   ),
@@ -48,7 +49,8 @@ vi.mock('@/components/Toast/trafficToast', () => ({
   showTrafficToast: mocked.showTrafficToast,
 }));
 
-import { fetchGet, fetchPost, getBaseURL } from '@/api/http';
+import { fetchGet, fetchPost, getBaseURL, proxyFetchPut } from '@/api/http';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import {
   resetConnectionConfig,
   setConnectionConfig,
@@ -56,6 +58,7 @@ import {
 
 describe('api/http handleResponse', () => {
   beforeEach(() => {
+    mocked.auth = { token: null, user_id: 1 };
     resetConnectionConfig();
     setConnectionConfig({
       brainEndpoint: 'http://brain.local',
@@ -66,6 +69,28 @@ describe('api/http handleResponse', () => {
     mocked.showTrafficToast.mockClear();
     vi.restoreAllMocks();
   });
+
+  it.each(['brain', 'server'])(
+    'does not send a %s request under a changed account after async URL resolution',
+    async (target) => {
+      const fetch = vi.spyOn(globalThis, 'fetch');
+      const options = {
+        expectedAccountKey: getAccountEnvironmentKey(mocked.auth),
+      };
+      const request =
+        target === 'brain'
+          ? fetchGet('/runs/exact-run', undefined, undefined, options)
+          : proxyFetchPut(
+              '/api/v1/execution/exact-execution',
+              { status: 'completed' },
+              undefined,
+              options
+            );
+      mocked.auth = { token: 'test-other-account', user_id: 2 };
+      await expect(request).rejects.toThrow('account changed');
+      expect(fetch).not.toHaveBeenCalled();
+    }
+  );
 
   it('throws for non-JSON error responses instead of returning stream object', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
@@ -132,6 +157,32 @@ describe('api/http handleResponse', () => {
       'http://brain.local/runs?project_id=project+1&status=pending&status=running&status=waiting_for_user&limit=1',
       expect.objectContaining({ method: 'GET' })
     );
+  });
+
+  it('forwards an optional POST abort signal without reporting cancellation as an error', async () => {
+    const controller = new AbortController();
+    const request = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new DOMException('Request aborted', 'AbortError'));
+
+    await expect(
+      fetchPost(
+        '/chat/project-1/runtime/retire-idle',
+        { run_id: 'ended-run' },
+        undefined,
+        { signal: controller.signal }
+      )
+    ).rejects.toMatchObject({ name: 'AbortError' });
+
+    expect(request).toHaveBeenCalledWith(
+      'http://brain.local/chat/project-1/runtime/retire-idle',
+      expect.objectContaining({
+        method: 'POST',
+        signal: controller.signal,
+        body: JSON.stringify({ run_id: 'ended-run' }),
+      })
+    );
+    expect(mocked.reportError).not.toHaveBeenCalled();
   });
 });
 
