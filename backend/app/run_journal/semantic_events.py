@@ -183,6 +183,32 @@ def _identifier(value: Any) -> str:
     return _bounded_text(value, limit=_MAX_ID_LENGTH)
 
 
+def _failure_count(value: Any) -> int:
+    if (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and 0 <= value <= 2**53 - 1
+        and value == int(value)
+    ):
+        return int(value)
+    return 0
+
+
+def _subtask_display_output(value: Any) -> dict[str, Any]:
+    if not isinstance(value, str) or not value.strip():
+        return {}
+    # Keep one extra redacted character to distinguish an exact-limit report
+    # from a truncated presentation fragment without persisting raw output.
+    text = _bounded_text_fragment(value, limit=_MAX_DISPLAY_TEXT + 1)
+    truncated = len(text) > _MAX_DISPLAY_TEXT
+    return {
+        "display_output": (
+            f"{text[: _MAX_DISPLAY_TEXT - 1]}…" if truncated else text
+        ),
+        "display_output_truncated": truncated,
+    }
+
+
 def _portable_path(relative_path: Any, fallback_path: Any = None) -> str:
     candidate = str(relative_path or "").strip().replace("\\", "/")
     while candidate.startswith("./"):
@@ -709,6 +735,7 @@ def project_legacy_semantic_event(
                 "task_id": task_id,
                 "assignee_id": assignee_id,
                 "status": status,
+                "failure_count": _failure_count(data.get("failure_count")),
                 "display_title": content or "Subtask",
                 "display_input": content,
                 "display_summary": (
@@ -723,7 +750,6 @@ def project_legacy_semantic_event(
         status = _status(data.get("state"))
         task_id = _identifier(data.get("task_id"))
         content = _bounded_text(data.get("content"))
-        failures = data.get("failure_count")
         return LegacySemanticProjection(
             _event_for_status("subtask", status),
             {
@@ -738,9 +764,7 @@ def project_legacy_semantic_event(
                 ),
                 "task_id": task_id,
                 "status": status,
-                "failure_count": (
-                    int(failures) if isinstance(failures, (int, float)) else 0
-                ),
+                "failure_count": _failure_count(data.get("failure_count")),
                 "display_title": content or "Subtask",
                 "display_input": content,
                 "display_summary": {
@@ -750,6 +774,11 @@ def project_legacy_semantic_event(
                     "pending": "Subtask is waiting",
                     "cancelled": "Subtask stopped",
                 }.get(status, "Subtask status updated"),
+                **(
+                    _subtask_display_output(data.get("result"))
+                    if status in {"completed", "failed"}
+                    else {}
+                ),
             },
         )
 
