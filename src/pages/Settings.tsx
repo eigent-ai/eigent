@@ -561,13 +561,16 @@ function HomeSettingsPageContent() {
     </div>
   ) : (
     <SettingsHeaderProvider activeSection={activeSection}>
-      {activeSection !== 'skills' && activeSection !== 'connectors' && (
-        <SettingsHeader activeSection={activeSection} />
-      )}
+      {activeSection !== 'skills' &&
+        activeSection !== 'connectors' &&
+        activeSection !== 'models' && (
+          <SettingsHeader activeSection={activeSection} />
+        )}
       <SettingsSectionContent
         activeSection={activeSection}
         contentClassName={isConnectorSubpage ? 'max-w-none px-0' : undefined}
         layout={
+          activeSection === 'models' ||
           activeSection === 'skills' ||
           (activeSection === 'connectors' && !isConnectorSubpage)
             ? 'collection'

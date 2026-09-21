@@ -13,10 +13,10 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { ModelAndThinkingEffortSelect } from '@/components/ChatBox/BottomBox/ModelAndThinkingEffortSelect';
-import { useSettingsStore } from '@/store/settingsStore';
+import { useModelVisibilityStore } from '@/store/modelVisibilityStore';
+import { useUsageNoticeStore } from '@/store/usageNoticeStore';
 import { ThinkingEffort } from '@/types/constants';
 import {
-  act,
   fireEvent,
   render,
   screen,
@@ -24,520 +24,366 @@ import {
   within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  proxyFetchGet: vi.fn(),
-  fetchCloudModels: vi.fn(),
+  get: vi.fn(),
+  post: vi.fn(),
   setProjectModel: vi.fn(),
-  authState: {
-    modelType: 'cloud',
-    cloud_model_type: 'gpt-5.5',
-    codex_model_type: 'gpt-5.5',
+  openSettings: vi.fn(),
+  fetchCloudModels: vi.fn(),
+  auth: {
+    user_id: 1,
     email: '',
-    appearance: 'light',
+    modelType: 'cloud',
+    cloud_model_type: 'gpt',
+    codex_model_type: 'gpt',
     setModelType: vi.fn(),
     setCloudModelType: vi.fn(),
   },
-  runtimeState: {
-    projects: {
-      'project-1': {
-        metadata: {
-          modelSelection: {
-            modelType: 'cloud',
-            cloud_model_type: 'gpt-5.5',
-          },
-        },
-      },
-    },
-    setProjectModel: vi.fn(),
-  },
-  spaceState: {
-    projectIdIndex: {},
-    projectsBySpaceId: {},
+  selection: null as null | {
+    modelType: string;
+    model_type?: string;
+    model_platform?: string;
+    cloud_model_type?: string;
+    provider_id?: number;
   },
 }));
-
 vi.mock('@/api/http', () => ({
-  proxyFetchGet: mocks.proxyFetchGet,
+  proxyFetchGet: mocks.get,
+  proxyFetchPost: mocks.post,
 }));
-
-vi.mock('@/host/createHost', () => ({
-  createHost: () => ({
-    electronAPI: {
-      codexSubscriptionStatus: vi
-        .fn()
-        .mockResolvedValue({ connected: false, status: 'not_connected' }),
-    },
-    ipcRenderer: {
-      on: vi.fn(),
-      off: vi.fn(),
-    },
-  }),
-}));
-
 vi.mock('@/store/authStore', () => ({
-  useAuthStore: () => mocks.authState,
+  useAuthStore: () => mocks.auth,
+  getAuthStore: () => mocks.auth,
 }));
-
 vi.mock('@/store/cloudModelStore', () => ({
   useCloudModelStore: (selector: (state: unknown) => unknown) =>
     selector({
       models: [
-        {
-          id: 'gpt-5.5',
-          display_name: 'GPT-5.5',
-          model_type: 'gpt-5.5',
-          model_platform: 'azure',
-          provider_family: 'openai',
-          kind: 'chat',
-        },
+        { id: 'gpt', display_name: 'GPT' },
+        { id: 'claude', display_name: 'Claude', min_plan_key: 'plus' },
       ],
       fetchCloudModels: mocks.fetchCloudModels,
-      getModelDisplayName: (modelId: string) =>
-        modelId === 'gpt-5.5' ? 'GPT-5.5' : modelId,
-      getEffectiveModelId: (modelId: string) => modelId,
+      getModelDisplayName: (id: string) => (id === 'gpt' ? 'GPT' : 'Claude'),
+      getEffectiveModelId: (id: string) => id,
     }),
 }));
-
+vi.mock('@/host/createHost', () => ({ createHost: () => ({}) }));
 vi.mock('@/store/projectRuntimeStore', () => ({
   useProjectRuntimeStore: (selector: (state: unknown) => unknown) =>
     selector({
-      ...mocks.runtimeState,
+      projects: { session: { metadata: { modelSelection: mocks.selection } } },
       setProjectModel: mocks.setProjectModel,
     }),
 }));
-
 vi.mock('@/store/spaceStore', () => ({
   useSpaceStore: (selector: (state: unknown) => unknown) =>
-    selector(mocks.spaceState),
+    selector({ projectIdIndex: {}, projectsBySpaceId: {} }),
 }));
-
-describe('ModelAndThinkingEffortSelect', () => {
-  beforeEach(() => {
-    mocks.runtimeState.projects['project-1'].metadata.modelSelection = {
-      modelType: 'cloud',
-      cloud_model_type: 'gpt-5.5',
-    };
-    mocks.proxyFetchGet
-      .mockReset()
-      .mockReturnValue(new Promise(() => undefined));
-    mocks.fetchCloudModels.mockReset().mockResolvedValue([]);
-    mocks.setProjectModel.mockReset();
+vi.mock('@/store/settingsStore', () => ({ openSettings: mocks.openSettings }));
+const records = [
+  {
+    id: 1,
+    provider_name: 'openai',
+    model_type: 'work-model',
+    api_key: 'test-a',
+    is_valid: 2,
+    prefer: true,
+  },
+  {
+    id: 2,
+    provider_name: 'openai',
+    model_type: 'personal-model',
+    api_key: 'test-b',
+    is_valid: 2,
+  },
+  { id: 3, provider_name: 'ollama', model_type: 'local-model', is_valid: 2 },
+  {
+    id: 4,
+    provider_name: 'anthropic',
+    model_type: 'invalid-model',
+    is_valid: 1,
+  },
+];
+beforeAll(() => {
+  HTMLElement.prototype.hasPointerCapture = vi.fn(() => false);
+  HTMLElement.prototype.scrollIntoView = vi.fn();
+});
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.selection = null;
+  mocks.auth.modelType = 'cloud';
+  mocks.get.mockResolvedValue({ items: records });
+  mocks.post.mockResolvedValue({});
+  useModelVisibilityStore.setState({ hiddenByAccount: {} });
+  useUsageNoticeStore.setState({ subscription: { plan_key: 'free' } });
+});
+async function openRoot() {
+  const user = userEvent.setup();
+  await user.click(screen.getByRole('button', { name: /select model/i }));
+  await screen.findByRole('button', {
+    name: 'Add more',
+    exact: true,
   });
-
-  it('combines the requested effort and model sections in one menu', async () => {
-    const user = userEvent.setup();
-    const onThinkingEffortChange = vi.fn();
+  return user;
+}
+async function open(selectedModel = 'GPT') {
+  const user = await openRoot();
+  const modelSubmenuTrigger = screen.getByRole('menuitem', {
+    name: selectedModel,
+  });
+  await user.hover(modelSubmenuTrigger);
+  await screen.findByRole('menuitemradio', { name: /personal-model/ });
+  return user;
+}
+describe('Configured model input menu', () => {
+  it('shows a single model list grouped by provider without unconfigured or invalid providers', async () => {
     render(
-      <ModelAndThinkingEffortSelect
-        projectId="project-1"
-        thinkingEffort={undefined}
-        onThinkingEffortChange={onThinkingEffortChange}
-      />
+      <ModelAndThinkingEffortSelect thinkingEffort={ThinkingEffort.HIGH} />
     );
-
-    const trigger = screen.getByRole('button', {
-      name: 'Model: GPT-5.5; Thinking effort: Default',
-    });
-    expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
-    expect(trigger).toHaveTextContent(/GPT-5\.5\s*Default/);
-    expect(trigger).not.toHaveTextContent('|');
-    expect(within(trigger).getByText('Default')).toHaveClass(
+    const trigger = screen.getByRole('button', { name: /select model/i });
+    expect(trigger).toHaveTextContent('GPT');
+    expect(within(trigger).getByText('High')).toHaveClass(
       'text-ds-ink-muted-default'
     );
-    expect(trigger).not.toHaveClass('min-w-56');
-
-    await user.click(trigger);
-    expect(trigger).toHaveClass('min-w-56');
-
-    const menu = await screen.findByRole('menu');
-    const thinkingLabel = within(menu).getByText('Thinking effort');
-    const modelLabel = within(menu).getByText('Model');
-    expect(thinkingLabel).toHaveClass('text-ds-text-meta');
-    expect(modelLabel).toHaveClass('text-ds-text-meta');
-    const menuText = menu.textContent ?? '';
-    expect(menuText.indexOf('Thinking effort')).toBeLessThan(
-      menuText.indexOf('Model')
-    );
-
-    const effortItems = within(menu).getAllByRole('menuitemradio');
-    expect(effortItems).toHaveLength(6);
-    const inheritedEffort = within(menu).getByRole('menuitemradio', {
-      name: 'Default',
-    });
-    expect(inheritedEffort).toHaveAttribute('aria-checked', 'true');
-    expect(inheritedEffort).toHaveClass(
-      'h-ds-control-md',
-      'min-h-ds-control-md',
-      'py-0'
-    );
-    expect(inheritedEffort.lastElementChild).toHaveClass('ml-auto');
+    expect(trigger).not.toHaveTextContent('|');
+    expect(trigger.querySelector('svg')).toBeNull();
+    await open();
+    expect(screen.getByRole('group', { name: 'Eigent' })).toBeInTheDocument();
     expect(
-      within(menu).getByRole('menuitemradio', { name: 'Low' })
-    ).toBeVisible();
+      screen.getByRole('group', { name: 'OpenAI' }).querySelector('img[alt=""]')
+    ).toHaveClass('size-ds-16');
+    expect(screen.queryByText('Claude')).not.toBeInTheDocument();
     expect(
-      within(menu).getByRole('menuitemradio', { name: 'High' })
-    ).toBeVisible();
-    const mediumEffort = within(menu).getByRole('menuitemradio', {
-      name: 'Medium',
-    });
-    expect(mediumEffort).toHaveAttribute('aria-checked', 'false');
-    expect(mediumEffort).toHaveClass(
-      'h-ds-control-md',
-      'min-h-ds-control-md',
-      'py-0'
-    );
+      within(screen.getByRole('group', { name: 'OpenAI' })).getAllByRole(
+        'menuitemradio'
+      )
+    ).toHaveLength(2);
     expect(
-      within(menu).getByRole('menuitemradio', { name: 'Extra High' })
-    ).toBeVisible();
+      within(screen.getByRole('group', { name: 'OpenAI' })).getByRole(
+        'menuitemradio',
+        { name: 'personal-model' }
+      )
+    ).toHaveTextContent('personal-model');
     expect(
-      within(menu).getByRole('menuitemradio', { name: 'Max' })
-    ).toBeVisible();
-    expect(within(menu).getAllByRole('separator')).toHaveLength(1);
-
-    const cloudModelTrigger = within(menu).getByRole('menuitem', {
-      name: 'Eigent Cloud',
-    });
-    expect(cloudModelTrigger).toHaveAttribute('aria-haspopup', 'menu');
-    expect(cloudModelTrigger.firstElementChild).toHaveClass('size-ds-icon-lg');
-    expect(cloudModelTrigger.querySelector('img')).toHaveClass(
-      'size-ds-icon-lg'
-    );
-    const customModelItem = within(menu).getByRole('menuitem', {
-      name: 'Custom model',
-    });
-    expect(customModelItem).toHaveAttribute('aria-haspopup', 'menu');
-    expect(customModelItem).toHaveClass(
-      'h-ds-control-md',
-      'min-h-ds-control-md',
-      'py-0'
-    );
-    expect(customModelItem.querySelector('.lucide-layers')).toHaveAttribute(
-      'stroke-width',
-      '2'
-    );
-    expect(customModelItem.firstElementChild).toHaveClass('size-ds-icon-lg');
-    expect(customModelItem.lastElementChild).toHaveClass('ml-auto');
-    const localModelItem = within(menu).getByRole('menuitem', {
-      name: 'Local model',
-    });
-    expect(localModelItem).toHaveAttribute('aria-haspopup', 'menu');
-    expect(localModelItem.firstElementChild).toHaveClass('size-ds-icon-lg');
-    await user.hover(localModelItem);
-    const localModelGroup = await screen.findByRole('group', {
-      name: 'Local model',
-    });
-    expect(localModelGroup.parentElement).toHaveClass(
-      'scrollbar-always-visible',
-      'overflow-y-auto'
-    );
-
-    await user.click(mediumEffort);
-
-    expect(onThinkingEffortChange).toHaveBeenCalledWith(ThinkingEffort.MEDIUM);
-    expect(mocks.setProjectModel).not.toHaveBeenCalled();
+      screen.queryByText('OpenAI | personal-model')
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('invalid-model')).not.toBeInTheDocument();
+    expect(screen.queryByText('Custom')).not.toBeInTheDocument();
+    expect(screen.queryByText('Anthropic')).not.toBeInTheDocument();
+    expect(
+      within(screen.getAllByRole('menu')[1]).getAllByRole('separator')
+    ).toHaveLength(2);
   });
-
-  it('keeps explicit Medium distinct from Bundle inheritance', async () => {
-    const user = userEvent.setup();
-    const onThinkingEffortChange = vi.fn();
+  it('does not override the model submenu anchor with a visual translation', async () => {
+    render(
+      <ModelAndThinkingEffortSelect thinkingEffort={ThinkingEffort.HIGH} />
+    );
+    await open();
+    const [modelMenu, modelSubmenu] = screen.getAllByRole('menu');
+    expect(modelMenu).toHaveClass('w-[280px]');
+    expect(modelSubmenu).toHaveClass('w-max');
+    expect(modelSubmenu).not.toHaveClass('min-w-[280px]');
+    expect(modelSubmenu.style.translate).toBe('');
+  });
+  it('updates a Session with the exact record without changing the global default or effort', async () => {
+    const effort = vi.fn();
     render(
       <ModelAndThinkingEffortSelect
-        projectId="project-1"
-        thinkingEffort={ThinkingEffort.MEDIUM}
-        onThinkingEffortChange={onThinkingEffortChange}
+        projectId="session"
+        thinkingEffort={ThinkingEffort.HIGH}
+        onThinkingEffortChange={effort}
       />
     );
-
-    await user.click(
-      screen.getByRole('button', {
-        name: 'Model: GPT-5.5; Thinking effort: Medium',
+    await open();
+    fireEvent.click(
+      screen.getByRole('menuitemradio', { name: /personal-model/ })
+    );
+    expect(mocks.setProjectModel).toHaveBeenCalledWith('session', {
+      modelType: 'custom',
+      provider_id: 2,
+      model_platform: 'openai',
+      model_type: 'personal-model',
+    });
+    expect(mocks.post).not.toHaveBeenCalled();
+    expect(mocks.auth.setModelType).not.toHaveBeenCalled();
+    expect(effort).not.toHaveBeenCalled();
+  });
+  it('updates the home default by saved record ID', async () => {
+    render(<ModelAndThinkingEffortSelect thinkingEffort={undefined} />);
+    await open();
+    fireEvent.click(
+      screen.getByRole('menuitemradio', { name: /personal-model/ })
+    );
+    await waitFor(() =>
+      expect(mocks.post).toHaveBeenCalledWith('/api/v1/provider/prefer', {
+        provider_id: 2,
       })
     );
-
-    const menu = await screen.findByRole('menu');
-    expect(
-      within(menu).getByRole('menuitemradio', { name: 'Medium' })
-    ).toHaveAttribute('aria-checked', 'true');
-    const inheritedEffort = within(menu).getByRole('menuitemradio', {
-      name: 'Default',
-    });
-    expect(inheritedEffort).toHaveAttribute('aria-checked', 'false');
-
-    await user.click(inheritedEffort);
-
-    expect(onThinkingEffortChange).toHaveBeenCalledWith(undefined);
+    expect(mocks.auth.setModelType).toHaveBeenCalledWith('custom');
   });
-
-  it('keeps the combined contextual name in read-only presentation', () => {
+  it('changes effort independently of the selected model', async () => {
+    const onChange = vi.fn();
     render(
       <ModelAndThinkingEffortSelect
-        projectId="project-1"
+        thinkingEffort={undefined}
+        onThinkingEffortChange={onChange}
+      />
+    );
+    await openRoot();
+    const slider = screen.getByRole('slider', { name: 'Thinking effort' });
+    expect(slider).toHaveAttribute('aria-valuetext', 'Default');
+    fireEvent.change(slider, { target: { value: '3' } });
+    expect(onChange).toHaveBeenCalledWith(ThinkingEffort.XHIGH);
+    expect(mocks.post).not.toHaveBeenCalled();
+    expect(mocks.setProjectModel).not.toHaveBeenCalled();
+  });
+  it('shows the selected effort in the header and resets to inheritance', async () => {
+    const onChange = vi.fn();
+    render(
+      <ModelAndThinkingEffortSelect
         thinkingEffort={ThinkingEffort.XHIGH}
+        onThinkingEffortChange={onChange}
+      />
+    );
+    const user = await openRoot();
+    const slider = screen.getByRole('slider', { name: 'Thinking effort' });
+    expect(slider).toHaveAttribute('min', '0');
+    expect(slider).toHaveAttribute('max', '4');
+    expect(slider).toHaveValue('3');
+    expect(screen.getByText('Thinking effort: Extra High')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Reset' }));
+    expect(onChange).toHaveBeenCalledWith(undefined);
+  });
+  it('grows the effort thumb from Low to the existing maximum size', async () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <ModelAndThinkingEffortSelect
+        thinkingEffort={ThinkingEffort.LOW}
+        onThinkingEffortChange={onChange}
+      />
+    );
+    await openRoot();
+    const slider = screen.getByRole('slider', { name: 'Thinking effort' });
+    const thumb = slider.parentElement?.querySelector('span[aria-hidden]');
+    expect(thumb).toHaveClass('size-ds-16');
+
+    rerender(
+      <ModelAndThinkingEffortSelect
+        thinkingEffort={ThinkingEffort.MAX}
+        onThinkingEffortChange={onChange}
+      />
+    );
+    expect(thumb).toHaveClass('size-ds-control-md');
+  });
+  it('uses the intended track and marker surface tokens', async () => {
+    const onChange = vi.fn();
+    render(
+      <ModelAndThinkingEffortSelect
+        thinkingEffort={ThinkingEffort.HIGH}
+        onThinkingEffortChange={onChange}
+      />
+    );
+    await openRoot();
+    const slider = screen.getByRole('slider', { name: 'Thinking effort' });
+    const track = slider.parentElement?.querySelector('svg > path');
+    const selectedTrack = slider.parentElement?.querySelector('svg > rect');
+    const markers = slider.parentElement?.querySelectorAll(
+      'div[aria-hidden] span'
+    );
+    expect(track).toHaveClass('fill-ds-bg-neutral-default-default');
+    expect(selectedTrack).toHaveClass('fill-ds-accent-strong-default');
+    expect(markers).toHaveLength(5);
+    markers?.forEach((marker) => {
+      expect(marker).toHaveClass('bg-ds-neutral-subtle-default');
+      expect(marker).not.toHaveClass('bg-ds-ink-inverse');
+    });
+  });
+  it('checks only the pinned record when the provider has several configurations', async () => {
+    mocks.selection = {
+      modelType: 'custom',
+      provider_id: 2,
+      model_platform: 'openai',
+      model_type: 'personal-model',
+    };
+    render(
+      <ModelAndThinkingEffortSelect
+        projectId="session"
+        thinkingEffort={undefined}
+      />
+    );
+    await open('personal-model');
+    expect(
+      screen.getByRole('menuitemradio', { name: /personal-model/ })
+    ).toHaveAttribute('aria-checked', 'true');
+    expect(
+      screen.getByRole('menuitemradio', { name: /work-model/ })
+    ).toHaveAttribute('aria-checked', 'false');
+  });
+  it.each(['custom', 'local'])(
+    'never substitutes the first %s record for an absent pinned configuration',
+    async (modelType) => {
+      mocks.selection = {
+        modelType,
+        model_type: 'removed-model',
+        provider_id: 999,
+      };
+      render(
+        <ModelAndThinkingEffortSelect
+          projectId="session"
+          thinkingEffort={undefined}
+        />
+      );
+      expect(
+        screen.getByRole('button', { name: /select model/i })
+      ).toHaveTextContent('removed-model');
+      await open('removed-model');
+      expect(
+        screen
+          .getAllByRole('menuitemradio')
+          .every((item) => item.getAttribute('aria-checked') === 'false')
+      ).toBe(true);
+    }
+  );
+  it('hides Eigent choices while preserving the name of a pinned hidden model', async () => {
+    useModelVisibilityStore.setState({ hiddenByAccount: { '1': ['claude'] } });
+    mocks.selection = { modelType: 'cloud', cloud_model_type: 'claude' };
+    render(
+      <ModelAndThinkingEffortSelect
+        projectId="session"
+        thinkingEffort={undefined}
+      />
+    );
+    expect(
+      screen.getByRole('button', { name: /select model/i })
+    ).toHaveTextContent('Claude');
+    await open('Claude');
+    expect(
+      screen.queryByRole('menuitemradio', { name: 'Claude' })
+    ).not.toBeInTheDocument();
+  });
+  it('opens Models directly from the footer', async () => {
+    render(<ModelAndThinkingEffortSelect thinkingEffort={undefined} />);
+    const user = await openRoot();
+    await user.click(
+      screen.getByRole('button', { name: 'Add more', exact: true })
+    );
+    expect(mocks.openSettings).toHaveBeenCalledWith('models');
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+    expect(
+      screen.getByRole('button', { name: /select model/i })
+    ).toHaveAttribute('data-state', 'closed');
+  });
+  it('keeps read-only sessions non-interactive', async () => {
+    render(
+      <ModelAndThinkingEffortSelect
+        thinkingEffort={ThinkingEffort.LOW}
         readOnly
       />
     );
-
-    expect(
-      screen.getByRole('status', {
-        name: 'Model: GPT-5.5; Thinking effort: Extra High',
-      })
-    ).toBeInTheDocument();
-  });
-
-  it('keeps project-scoped model selection inside the merged menu', async () => {
-    const user = userEvent.setup();
-    render(
-      <ModelAndThinkingEffortSelect
-        projectId="project-1"
-        thinkingEffort={ThinkingEffort.HIGH}
-      />
-    );
-
-    await user.click(
-      screen.getByRole('button', {
-        name: 'Model: GPT-5.5; Thinking effort: High',
-      })
-    );
-    await user.hover(screen.getByRole('menuitem', { name: 'Eigent Cloud' }));
-    const cloudModelGroup = await screen.findByRole('group', {
-      name: 'Eigent Cloud',
-    });
-    expect(cloudModelGroup.parentElement).toHaveClass(
-      'scrollbar-always-visible',
-      'overflow-y-auto'
-    );
-    const cloudModelItem = await screen.findByRole('menuitemradio', {
-      name: 'Configured GPT-5.5',
-    });
-    expect(cloudModelItem).toHaveAttribute('aria-checked', 'true');
-    expect(cloudModelItem).toHaveClass(
-      'h-ds-control-md',
-      'min-h-ds-control-md',
-      'py-0'
-    );
-    expect(cloudModelItem.firstElementChild).toHaveClass('size-ds-icon-lg');
-    expect(
-      within(cloudModelItem).getByRole('img', { name: 'Configured' })
-    ).toHaveClass('bg-ds-text-success-default-default');
-    expect(cloudModelItem.lastElementChild).toHaveClass(
-      'ml-auto',
-      'size-ds-icon-md'
-    );
-    expect(
-      cloudModelItem.lastElementChild?.querySelector('.lucide-check')
-    ).toBeInTheDocument();
-    act(() => {
-      fireEvent.pointerMove(cloudModelItem);
-      cloudModelItem.focus();
-    });
-    await user.keyboard('{Enter}');
-
-    await waitFor(() => {
-      expect(mocks.setProjectModel).toHaveBeenCalledWith('project-1', {
-        modelType: 'cloud',
-        cloud_model_type: 'gpt-5.5',
-      });
-    });
-  });
-
-  it('exposes custom-model selection and configuration status to assistive technology', async () => {
-    const user = userEvent.setup();
-    render(
-      <ModelAndThinkingEffortSelect
-        projectId="project-1"
-        thinkingEffort={ThinkingEffort.HIGH}
-      />
-    );
-
-    await user.click(
-      screen.getByRole('button', {
-        name: 'Model: GPT-5.5; Thinking effort: High',
-      })
-    );
-    await user.hover(screen.getByRole('menuitem', { name: 'Custom model' }));
-
-    const customModelGroup = await screen.findByRole('group', {
-      name: 'Custom model',
-    });
-    expect(customModelGroup.parentElement).toHaveClass(
-      'scrollbar-always-visible',
-      'overflow-y-auto'
-    );
-    const openAiItem = within(customModelGroup).getByRole('menuitemradio', {
-      name: 'Not configured OpenAI',
-    });
-    expect(openAiItem).toHaveAttribute('aria-checked', 'false');
-    expect(within(openAiItem).queryByText('Not configured')).toBeNull();
-    expect(
-      within(openAiItem).getByRole('img', { name: 'Not configured' })
-    ).toHaveClass(
-      'size-2',
-      'rounded-full',
-      'bg-ds-text-neutral-subtle-default',
-      'opacity-10'
-    );
-    expect(openAiItem.firstElementChild).toHaveClass('size-ds-icon-lg');
-    expect(openAiItem.lastElementChild).toHaveClass(
-      'ml-auto',
-      'size-ds-icon-md'
-    );
-    expect(openAiItem.querySelector('img')).toBeNull();
-  });
-
-  it('opens the selected unconfigured provider directly from the home menu', async () => {
-    mocks.proxyFetchGet.mockResolvedValue({ items: [] });
-    useSettingsStore.setState({ isOpen: false, modelProvider: null });
-    const user = userEvent.setup();
-    render(
-      <ModelAndThinkingEffortSelect thinkingEffort={ThinkingEffort.HIGH} />
-    );
-    await user.click(
-      screen.getByRole('button', {
-        name: 'Model: Select Default Model; Thinking effort: High',
-      })
-    );
-    await user.hover(screen.getByRole('menuitem', { name: 'Custom model' }));
-    const group = await screen.findByRole('group', { name: 'Custom model' });
-    const item = within(group).getByRole('menuitemradio', {
-      name: 'Not configured Ant Ling',
-    });
-    act(() => {
-      fireEvent.pointerMove(item);
-      item.focus();
-    });
-    await user.keyboard('{Enter}');
-    expect(useSettingsStore.getState()).toMatchObject({
-      isOpen: true,
-      activeSection: 'models',
-      modelProvider: 'ant-ling',
-    });
-    expect(mocks.setProjectModel).not.toHaveBeenCalled();
-  });
-
-  it('opens the selected unconfigured local model directly from the home menu', async () => {
-    mocks.proxyFetchGet.mockResolvedValue({ items: [] });
-    useSettingsStore.setState({ isOpen: false, modelProvider: null });
-    const user = userEvent.setup();
-    render(
-      <ModelAndThinkingEffortSelect thinkingEffort={ThinkingEffort.HIGH} />
-    );
-    await user.click(
-      screen.getByRole('button', {
-        name: 'Model: Select Default Model; Thinking effort: High',
-      })
-    );
-    await user.hover(screen.getByRole('menuitem', { name: 'Local model' }));
-    const group = await screen.findByRole('group', { name: 'Local model' });
-    const item = within(group).getByRole('menuitemradio', {
-      name: 'Not configured Ollama',
-    });
-    act(() => {
-      fireEvent.pointerMove(item);
-      item.focus();
-    });
-    await user.keyboard('{Enter}');
-    expect(useSettingsStore.getState()).toMatchObject({
-      isOpen: true,
-      activeSection: 'models',
-      modelProvider: 'ollama',
-    });
-    expect(mocks.setProjectModel).not.toHaveBeenCalled();
-  });
-
-  it('shows a green leading dot for configured custom models', async () => {
-    mocks.proxyFetchGet.mockResolvedValue({
-      items: [
-        {
-          id: 7,
-          provider_name: 'openai',
-          api_key: 'configured',
-          endpoint_url: '',
-          model_type: 'gpt-5.5',
-          prefer: false,
-        },
-      ],
-    });
-    const user = userEvent.setup();
-    render(
-      <ModelAndThinkingEffortSelect
-        projectId="project-1"
-        thinkingEffort={ThinkingEffort.HIGH}
-      />
-    );
-
-    await user.click(
-      screen.getByRole('button', {
-        name: 'Model: GPT-5.5; Thinking effort: High',
-      })
-    );
-    await user.hover(screen.getByRole('menuitem', { name: 'Custom model' }));
-
-    const configuredItem = await screen.findByRole('menuitemradio', {
-      name: 'Configured OpenAI',
-    });
-    expect(within(configuredItem).queryByText('Configured')).toBeNull();
-    expect(
-      within(configuredItem).getByRole('img', { name: 'Configured' })
-    ).toHaveClass(
-      'size-2',
-      'rounded-full',
-      'bg-ds-text-success-default-default'
-    );
-    expect(configuredItem.firstElementChild).toHaveClass('size-ds-icon-lg');
-  });
-
-  it.each([
-    ['Custom model', 'custom'],
-    ['Local model', 'local'],
-  ])(
-    'never ticks a %s row for a pin that carries no provider_id',
-    async (submenu, pinnedModelType) => {
-      mocks.runtimeState.projects['project-1'].metadata.modelSelection = {
-        modelType: pinnedModelType,
-        cloud_model_type: '',
-      };
-      mocks.proxyFetchGet.mockResolvedValue({ items: [] });
-      const user = userEvent.setup();
-      render(
-        <ModelAndThinkingEffortSelect
-          projectId="project-1"
-          thinkingEffort={ThinkingEffort.HIGH}
-        />
-      );
-
-      // Unconfigured providers all carry `provider_id: undefined`, so an
-      // unguarded identity lookup ticks whichever row happens to be first.
-      await user.click(
-        screen.getByRole('button', { name: /Thinking effort: High$/ })
-      );
-      await user.hover(screen.getByRole('menuitem', { name: submenu }));
-      const group = await screen.findByRole('group', { name: submenu });
-      const rows = within(group).getAllByRole('menuitemradio');
-
-      expect(rows.length).toBeGreaterThan(0);
-      for (const row of rows) {
-        expect(row).toHaveAttribute('aria-checked', 'false');
-      }
-    }
-  );
-
-  it('forwards its disabled state to the single combined trigger', async () => {
-    render(
-      <ModelAndThinkingEffortSelect
-        projectId="project-1"
-        thinkingEffort={ThinkingEffort.HIGH}
-        disabled
-      />
-    );
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole('button', {
-          name: 'Model: GPT-5.5; Thinking effort: High',
-        })
-      ).toBeDisabled();
-    });
+    await waitFor(() => expect(screen.getByText('GPT')).toBeInTheDocument());
+    expect(screen.getByText('Low')).toHaveClass('text-ds-ink-muted-default');
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 });
