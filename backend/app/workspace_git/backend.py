@@ -685,13 +685,10 @@ class GitBackend:
         pathspecs = self._relative_pathspecs(repository_root, paths)
         result = self._run(
             repository_root,
-            ("status", "--porcelain=v1", "--", *pathspecs),
+            ("status", "--porcelain=v1", "-z", "--", *pathspecs),
+            encoding="utf-8",
         )
-        return {
-            line[3:]: line[:2]
-            for line in result.stdout.splitlines()
-            if len(line) > 3
-        }
+        return self._status_records(result.stdout)
 
     def is_tracked(self, repository_root: Path, path: Path) -> bool:
         pathspec = self._relative_pathspecs(repository_root, (path,))[0]
@@ -1765,6 +1762,7 @@ class GitBackend:
         check: bool = True,
         identity: tuple[str, str] | None = None,
         input_text: str | None = None,
+        encoding: str | None = None,
     ) -> GitCommandResult:
         environment = self._environment(identity=identity)
         if args[0] == "check-ignore":
@@ -1778,6 +1776,7 @@ class GitBackend:
                 check=False,
                 capture_output=True,
                 text=True,
+                encoding=encoding,
                 input=input_text,
                 timeout=self.timeout_seconds,
                 env=environment,
