@@ -65,11 +65,11 @@ import {
   LoaderCircle,
   MoreHorizontal,
   Plus,
-  X,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import SettingsContentShell from '../SettingsContentShell';
 import { SettingsRow, SettingsRowGroup } from '../SettingsRowGroup';
 import SettingsSectionPage from '../SettingsSectionPage';
@@ -81,6 +81,8 @@ import {
   ModelConfigurationContent,
   ModelConfigurationDialog,
 } from './ModelConfigurationDialog';
+
+const UNAVAILABLE_TOGGLE_PREVIEW_MS = 320;
 
 export default function SettingModels() {
   const { user_id, email } = useAuthStore();
@@ -112,7 +114,10 @@ function ModelsContent() {
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [configurationBusy, setConfigurationBusy] = useState(false);
-  const [upgradeModel, setUpgradeModel] = useState<CloudModel | null>(null);
+  const [previewEnabledModelId, setPreviewEnabledModelId] = useState<
+    string | null
+  >(null);
+  const unavailableToggleTimer = useRef<number | null>(null);
   const [error, setError] = useState('');
   const [searchParams, setSearchParams] = useSearchParams();
   useEffect(() => {
@@ -129,6 +134,13 @@ function ModelsContent() {
   useEffect(() => {
     if (inventory.cloudAvailable) void refreshUsage();
   }, [inventory.cloudAvailable]);
+  useEffect(
+    () => () => {
+      if (unavailableToggleTimer.current !== null)
+        window.clearTimeout(unavailableToggleTimer.current);
+    },
+    []
+  );
 
   const isDefault = (record: ConfiguredProvider) =>
     auth.modelType === providerCategory(record.provider_name) &&
@@ -364,11 +376,37 @@ function ModelsContent() {
   const modelNameClass = (configured: boolean) =>
     `min-w-0 flex-1 truncate ${configured ? '' : 'text-ds-text-error-default-default'}`;
   const setCloudModelVisibility = (model: CloudModel, visible: boolean) => {
-    if (visible && !isCloudModelAvailable(model, planKey)) {
-      setUpgradeModel(model);
+    if (!isCloudModelAvailable(model, planKey)) {
+      if (!visible) return;
+      if (unavailableToggleTimer.current !== null)
+        window.clearTimeout(unavailableToggleTimer.current);
+      setPreviewEnabledModelId(model.id);
+      unavailableToggleTimer.current = window.setTimeout(
+        () => {
+          setPreviewEnabledModelId((current) =>
+            current === model.id ? null : current
+          );
+          unavailableToggleTimer.current = null;
+        },
+        shouldReduceMotion ? 0 : UNAVAILABLE_TOGGLE_PREVIEW_MS
+      );
+      toast.info(
+        t('setting.model-list.upgrade-required', {
+          model: model.display_name,
+        }),
+        {
+          id: 'eigent-model-upgrade-required',
+          closeButton: true,
+          action: {
+            label: t('setting.upgrade'),
+            onClick: () => {
+              window.location.href = `${SITE_URL}/pricing`;
+            },
+          },
+        }
+      );
       return;
     }
-    if (upgradeModel?.id === model.id) setUpgradeModel(null);
     inventory.setHidden(model.id, !visible);
   };
 
@@ -736,38 +774,6 @@ function ModelsContent() {
                       </Button>
                     </div>
                   </header>
-                  {eigent && upgradeModel && (
-                    <div
-                      role="alert"
-                      className="mx-ds-16 mb-ds-12 flex flex-wrap items-center gap-ds-8 rounded-ds-card bg-ds-bg-information-subtle-default p-ds-12 text-ds-text-information-strong-default"
-                    >
-                      <DsText className="m-0 flex-1 text-ds-text-information-strong-default">
-                        {t('setting.model-list.upgrade-required', {
-                          model: upgradeModel.display_name,
-                        })}
-                      </DsText>
-                      <Button
-                        asChild
-                        variant="outline"
-                        tone="information"
-                        size="sm"
-                      >
-                        <a href={`${SITE_URL}/pricing`}>
-                          {t('setting.upgrade')}
-                        </a>
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        tone="information"
-                        size="sm"
-                        buttonContent="icon-only"
-                        onClick={() => setUpgradeModel(null)}
-                        aria-label={t('setting.close')}
-                      >
-                        <X />
-                      </Button>
-                    </div>
-                  )}
                   {!closed && (
                     <div
                       id={`models-${group}`}
@@ -795,7 +801,10 @@ function ModelsContent() {
                                     size="sm"
                                     variant="outline"
                                     aria-label={model.display_name}
-                                    checked={available}
+                                    checked={
+                                      available ||
+                                      previewEnabledModelId === model.id
+                                    }
                                     disabled={
                                       available && cloudDefault(model.id)
                                     }
@@ -873,7 +882,9 @@ function ModelsContent() {
                                             size="sm"
                                             variant="outline"
                                             aria-label={model.display_name}
-                                            checked={false}
+                                            checked={
+                                              previewEnabledModelId === model.id
+                                            }
                                             onCheckedChange={(checked) =>
                                               setCloudModelVisibility(
                                                 model,
