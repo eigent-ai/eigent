@@ -102,6 +102,7 @@ export function normalizeEvent(
   const step = text(message.step, 'legacy_unknown');
   return {
     eventId: text(message.event_id, `${source}:${taskId}:${String(stepId)}`),
+    sourceEventId: text(message.event_id) || undefined,
     projectId,
     runId: taskId,
     runSequence: sequence,

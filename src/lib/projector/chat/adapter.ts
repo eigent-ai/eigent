@@ -578,6 +578,8 @@ function normalizeInput(input: ChatProjectionInput): NormalizedInput {
       base: {
         id: input.eventId,
         eventId: input.eventId,
+        sourceEventId:
+          input.source === 'canonical' ? input.eventId : input.sourceEventId,
         projectId: input.projectId,
         runId: input.runId,
         createdAt: input.createdAt,
@@ -594,6 +596,8 @@ function normalizeInput(input: ChatProjectionInput): NormalizedInput {
     base: {
       id: input.eventId,
       eventId: input.eventId,
+      sourceEventId:
+        input.source === 'canonical' ? input.eventId : input.sourceEventId,
       projectId: input.projectId,
       runId: input.taskId,
       createdAt: timestampFromLegacy(input),

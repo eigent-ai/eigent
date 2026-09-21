@@ -1074,7 +1074,7 @@ export function NarrativeTimeline({
                 }
                 feedbackMessageId={
                   run.finalAssistantResponse.messageId ??
-                  run.finalAssistantResponse.id
+                  run.finalAssistantResponse.sourceEventId
                 }
                 feedbackRunId={run.runId}
                 id={run.finalAssistantResponse.id}

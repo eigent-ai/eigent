@@ -123,6 +123,8 @@ export type CanonicalSemanticPayloadV2 = Record<string, unknown> & {
 
 export type CanonicalProjectEvent = {
   eventId: string;
+  /** Original legacy event_id, when provided; excludes synthesized transport IDs. */
+  sourceEventId?: string;
   projectId: string;
   runId: string;
   runSequence: number;
@@ -139,6 +141,8 @@ export type CanonicalProjectEvent = {
 
 export type ProjectedLegacyStep = {
   eventId: string;
+  /** Original legacy event_id retained separately from synthesized transport IDs. */
+  sourceEventId?: string;
   stepId: number | string;
   taskId: string;
   projectId: string;

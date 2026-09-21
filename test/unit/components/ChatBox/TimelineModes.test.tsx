@@ -353,6 +353,82 @@ describe('ChatBox timeline modes', () => {
     }
   });
 
+  it.each(['synthetic', 'event_id', 'message_id'] as const)(
+    'classifies historical feedback with %s identity',
+    async (identity) => {
+      const projectId = `feedback-legacy-history-${identity}`;
+      const runId = 'feedback-legacy-run';
+      const store = getProjectEventStore(projectId, {
+        scheduleFlush: () => () => {},
+      });
+      const events: AppEvent[] = [];
+      const unsubscribe = subscribeAppEvents((event) => {
+        if (event.name === 'message_feedback') events.push(event);
+      });
+
+      try {
+        expect(
+          enqueueChatEventProjection(
+            {
+              raw: {
+                step: 'end',
+                ...(identity === 'event_id'
+                  ? { event_id: 'source-event' }
+                  : {}),
+                data: {
+                  content: 'Historical result',
+                  ...(identity === 'message_id'
+                    ? { message_id: 'source-message' }
+                    : {}),
+                },
+              },
+              projectId,
+              runId,
+              sequence: 1,
+              sourceId: 'history-connection',
+              transport: 'legacy_chat',
+              historical: true,
+            },
+            true,
+            true
+          )
+        ).toBe('accepted');
+        store.flushAll();
+        render(
+          <TimelineModeRenderer
+            detailLevel="narrative"
+            runs={composeTimelineRuns(
+              selectRenderableChatNodes(store.getSnapshot().chat)
+            )}
+          />
+        );
+
+        fireEvent.click(await screen.findByLabelText('Thumb up'));
+        expect(events).toEqual([
+          expect.objectContaining({
+            properties: {
+              rating: 'up',
+              run_id: runId,
+              message_step: 'end',
+              message_id:
+                identity === 'event_id'
+                  ? 'source-event'
+                  : identity === 'message_id'
+                    ? 'source-message'
+                    : `chat_step_v1:${projectId}:${runId}:history-connection:1`,
+              ...(identity === 'synthetic'
+                ? { message_id_source: 'legacy_ui' }
+                : {}),
+            },
+          }),
+        ]);
+      } finally {
+        unsubscribe();
+        releaseProjectEventStore(projectId);
+      }
+    }
+  );
+
   it('renders Detailed as labelled rows with vertical Input then Output', () => {
     const runs = composeTimelineRuns(nodes('completed'));
     const { container } = render(

@@ -107,6 +107,8 @@ export type ChatRunStatus =
 export interface ChatProjectionNodeBase {
   id: string;
   eventId: string;
+  /** Backend event identity for correlation; absent for synthetic legacy IDs. */
+  sourceEventId?: string;
   projectId: string;
   runId: string;
   createdAt: string | null;

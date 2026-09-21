@@ -44,7 +44,7 @@ export function normalizeLegacyChatStep(
 
   const message = decodeTransportMessage(raw);
   const stepId = message.step_id ?? message.id ?? context.sequence;
-  return normalizeEvent(
+  const event = normalizeEvent(
     {
       ...message,
       project_id: message.project_id ?? context.projectId,
@@ -61,4 +61,11 @@ export function normalizeLegacyChatStep(
     },
     'chat_step_v1'
   );
+  // normalizeEvent sees the connection-local fallback above as event_id.
+  // Only the original frame can establish a source identity for correlation.
+  event.sourceEventId =
+    typeof message.event_id === 'string' && message.event_id.trim()
+      ? message.event_id
+      : undefined;
+  return event;
 }
