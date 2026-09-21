@@ -64,7 +64,6 @@ function click(item: MenuItem): void {
 function createOptions(platform: DesktopMenuPlatform, isDevelopment = false) {
   const dispatchRendererCommand = vi.fn();
   const openExternal = vi.fn().mockResolvedValue(undefined);
-  const requestClose = vi.fn();
   const requestQuit = vi.fn();
   const onOpenExternalError = vi.fn();
   const options: ApplicationMenuOptions = {
@@ -75,7 +74,6 @@ function createOptions(platform: DesktopMenuPlatform, isDevelopment = false) {
     onOpenExternalError,
     openExternal,
     platform,
-    requestClose,
     requestQuit,
   };
   return {
@@ -83,7 +81,6 @@ function createOptions(platform: DesktopMenuPlatform, isDevelopment = false) {
     onOpenExternalError,
     openExternal,
     options,
-    requestClose,
     requestQuit,
   };
 }
@@ -154,8 +151,7 @@ describe('application menu', () => {
     expect(findItem(template, 'help.keyboard-shortcuts').accelerator).toBe(
       'Command+/'
     );
-    expect(harness.requestClose).toHaveBeenCalledOnce();
-    expect(harness.requestQuit).toHaveBeenCalledOnce();
+    expect(harness.requestQuit).toHaveBeenCalledTimes(2);
     expect(harness.openExternal).toHaveBeenCalledWith(
       EIGENT_GITHUB_REPOSITORY_URL
     );
@@ -216,7 +212,6 @@ describe('application menu', () => {
 
       click(findItem(template, 'file.close-window'));
 
-      expect(harness.requestClose).not.toHaveBeenCalled();
       expect(harness.requestQuit).toHaveBeenCalledOnce();
 
       click(findItem(template, 'file.exit'));

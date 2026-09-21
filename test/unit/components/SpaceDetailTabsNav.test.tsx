@@ -26,16 +26,6 @@ import {
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const motionMocks = vi.hoisted(() => ({ reduced: false }));
-
-vi.mock('framer-motion', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('framer-motion')>();
-  return {
-    ...actual,
-    useReducedMotion: () => motionMocks.reduced,
-  };
-});
-
 function TabsHarness() {
   const [activeTab, setActiveTab] = useState<SpaceDetailTab>('projects');
   return <SpaceDetailTabsNav activeTab={activeTab} onChange={setActiveTab} />;
@@ -43,7 +33,6 @@ function TabsHarness() {
 
 describe('SpaceDetailTabsNav', () => {
   beforeEach(() => {
-    motionMocks.reduced = false;
     class TestPointerEvent extends MouseEvent {
       readonly pointerType: string;
 
@@ -76,6 +65,14 @@ describe('SpaceDetailTabsNav', () => {
       'aria-selected',
       'true'
     );
+    expect(screen.getByRole('tab', { name: 'Sessions' })).toHaveAttribute(
+      'id',
+      'space-detail-tab-projects'
+    );
+    expect(screen.getByRole('tab', { name: 'Sessions' })).toHaveAttribute(
+      'aria-controls',
+      'space-detail-panel-projects'
+    );
     expect(
       screen.getByRole('tab', { name: 'Sessions' }).querySelector('svg')
     ).toHaveClass('lucide-message-circle');
@@ -93,15 +90,15 @@ describe('SpaceDetailTabsNav', () => {
     fireEvent.keyDown(screen.getByRole('tab', { name: 'Tasks' }), {
       key: 'End',
     });
-    expect(screen.getByRole('tab', { name: 'Space Settings' })).toHaveFocus();
+    expect(screen.getByRole('tab', { name: 'Space settings' })).toHaveFocus();
 
-    fireEvent.keyDown(screen.getByRole('tab', { name: 'Space Settings' }), {
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Space settings' }), {
       key: 'Home',
     });
     expect(screen.getByRole('tab', { name: 'Sessions' })).toHaveFocus();
   });
 
-  it('uses instant Enter and Space activation until pointer interaction restores the spring', () => {
+  it('keeps Enter, Space, and pointer selection feedback instant', () => {
     render(<TabsHarness />);
     const tablist = screen.getByRole('tablist', { name: 'Space content' });
     const tasksTab = screen.getByRole('tab', { name: 'Tasks' });
@@ -120,7 +117,7 @@ describe('SpaceDetailTabsNav', () => {
     fireEvent.pointerDown(tasksTab, { pointerType: 'mouse' });
     fireEvent.click(tasksTab);
     expect(tasksTab).toHaveAttribute('aria-selected', 'true');
-    expect(tablist).toHaveAttribute('data-layout-movement', 'spring');
+    expect(tablist).toHaveAttribute('data-layout-movement', 'instant');
   });
 
   it('owns shared surfaces inside their tabs and clears hover for touch pointers', async () => {
@@ -163,13 +160,9 @@ describe('SpaceDetailTabsNav', () => {
     expect(indicator.style.height).toBe('');
   });
 
-  it('selects the instant layout branch for reduced motion', () => {
-    motionMocks.reduced = true;
+  it('does not expose shared-layout animation state', () => {
     render(<TabsHarness />);
 
-    expect(
-      screen.getByRole('tablist', { name: 'Space content' })
-    ).toHaveAttribute('data-motion-reduced', 'true');
     expect(
       screen.getByRole('tablist', { name: 'Space content' })
     ).toHaveAttribute('data-layout-movement', 'instant');

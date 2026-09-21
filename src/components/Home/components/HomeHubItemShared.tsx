@@ -19,6 +19,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DS_FOCUS_RING } from '@/components/ui/semanticProps';
 import { Tag } from '@/components/ui/tag';
 import { getSpaceStatusLabel } from '@/lib/spaceLabel';
 import { iconForTriggerType } from '@/lib/triggerIcon';
@@ -33,9 +34,10 @@ import {
   MoreHorizontal,
 } from 'lucide-react';
 import {
+  createContext,
   Fragment,
+  useContext,
   useState,
-  type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
 } from 'react';
@@ -46,10 +48,28 @@ export type HomeHubItemKind = 'space' | 'project' | 'task' | 'trigger';
 
 export const HOME_HUB_LIST_GRID_CLASS: Record<HomeHubItemKind, string> = {
   space: 'grid-cols-[minmax(0,2fr)_112px_72px_72px_72px_96px_120px]',
-  project: 'grid-cols-[minmax(0,2fr)_112px_72px_72px_80px_96px]',
-  task: 'grid-cols-[minmax(0,2fr)_112px_80px_96px]',
+  project: 'grid-cols-[minmax(0,2fr)_112px_72px_72px_80px]',
+  task: 'grid-cols-[minmax(0,2fr)_112px_80px]',
   trigger: 'grid-cols-[minmax(0,2fr)_112px_100px_96px_96px]',
 };
+
+type HomeHubItemActivation = {
+  onActivate: () => void;
+  layout: 'card' | 'list' | 'board';
+  kind?: HomeHubItemKind;
+};
+
+type HomeHubListLayout = {
+  gridClass: string;
+  hiddenColumns: readonly string[];
+};
+
+const HomeHubItemActivationContext =
+  createContext<HomeHubItemActivation | null>(null);
+
+export const HomeHubListLayoutContext = createContext<HomeHubListLayout | null>(
+  null
+);
 
 export type HomeHubMenuItem = {
   label: string;
@@ -65,10 +85,10 @@ export type HomeHubStat = {
 };
 
 export const homeHubSurfaceClass =
-  'rounded-xl bg-ds-neutral-default-default px-6 py-4 shadow-sm hover:bg-ds-neutral-default-hover hover:ring-ds-neutral-muted-default ease-[cubic-bezier(0.23,1,0.32,1)] cursor-pointer text-left transition-[background-color,box-shadow] duration-200 hover:ring-4';
+  'rounded-xl bg-ds-neutral-default-default px-6 py-4 shadow-sm hover:bg-ds-neutral-default-hover hover:ring-ds-neutral-muted-default ease-[cubic-bezier(0.23,1,0.32,1)] text-left transition-[background-color,box-shadow] duration-150 hover:ring-4';
 
 export const homeHubBoardSurfaceClass =
-  'h-auto w-full rounded-xl bg-ds-neutral-subtle-default px-6 py-4 ring-1 ring-transparent hover:ring-ds-hairline-subtle-disabled ease-[cubic-bezier(0.23,1,0.32,1)] cursor-pointer text-left transition-[background-color,box-shadow] duration-200 hover:ring-4';
+  'h-auto w-full rounded-xl bg-ds-neutral-subtle-default px-6 py-4 ring-1 ring-transparent hover:ring-ds-hairline-subtle-disabled ease-[cubic-bezier(0.23,1,0.32,1)] text-left transition-[background-color,box-shadow] duration-150 hover:ring-4';
 
 export { getSpaceKindLabel } from '@/lib/spaceLabel';
 
@@ -229,6 +249,43 @@ type HomeHubBoardCardBodyProps = {
   titleClassName?: string;
 };
 
+function HomeHubTitleAction({
+  title,
+  className,
+}: {
+  title: string;
+  className?: string;
+}) {
+  const activation = useContext(HomeHubItemActivationContext);
+  const ringOffsetClass =
+    activation?.layout === 'card'
+      ? 'focus-visible:ring-offset-ds-neutral-default-default'
+      : 'focus-visible:ring-offset-ds-neutral-subtle-default';
+
+  if (!activation) {
+    return <span className={className}>{title}</span>;
+  }
+
+  return (
+    <button
+      type="button"
+      className={cn(
+        'relative z-[1] min-w-0 cursor-pointer border-0 border-x-0 border-y-0 bg-transparent p-0 text-left',
+        activation.kind === 'space' && 'hover:underline',
+        DS_FOCUS_RING,
+        ringOffsetClass,
+        className
+      )}
+      onClick={(event) => {
+        event.stopPropagation();
+        activation.onActivate();
+      }}
+    >
+      {title}
+    </button>
+  );
+}
+
 export function HomeHubBoardCardBody({
   title,
   icon,
@@ -244,14 +301,13 @@ export function HomeHubBoardCardBody({
           <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-ds-ink-muted-default [&_svg]:h-4 [&_svg]:w-4">
             {icon}
           </span>
-          <span
+          <HomeHubTitleAction
+            title={title}
             className={cn(
               'w-full min-w-0 text-ds-text-body-large font-semibold break-words whitespace-normal text-ds-ink-default-default',
               titleClassName
             )}
-          >
-            {title}
-          </span>
+          />
         </div>
         <div className="shrink-0">
           <HomeHubCardMenu items={menuItems} />
@@ -300,14 +356,13 @@ export function HomeHubHubCardBody({
           <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-ds-ink-muted-default [&_svg]:h-4 [&_svg]:w-4">
             {icon}
           </span>
-          <span
+          <HomeHubTitleAction
+            title={title}
             className={cn(
               'min-w-0 truncate text-ds-text-body-large font-semibold text-ds-ink-default-default',
               titleClassName
             )}
-          >
-            {title}
-          </span>
+          />
         </div>
         <HomeHubCardMenu items={menuItems} />
       </div>
@@ -366,7 +421,7 @@ export function HomeHubCardMenu({ items }: { items: HomeHubMenuItem[] }) {
           size="xs"
           buttonContent="icon-only"
           buttonRadius="full"
-          className="hover:bg-ds-neutral-subtle-default"
+          className="relative z-10 touch-manipulation before:absolute before:-inset-ds-10 before:content-[''] hover:bg-ds-neutral-subtle-default"
           aria-label={t('layout.more-actions', {
             defaultValue: 'More actions',
           })}
@@ -428,19 +483,30 @@ export function HomeHubItemBody({
   nameIcon,
   listCells = [],
 }: HomeHubItemBodyProps) {
+  const listLayout = useContext(HomeHubListLayoutContext);
+  const visibleCells = listCells.filter(
+    (cell) => !listLayout?.hiddenColumns.includes(cell.id)
+  );
+
   return (
     <>
-      <div className="flex min-w-0 items-center gap-2">
+      <div
+        role="cell"
+        data-home-hub-column="name"
+        className="flex min-w-0 items-center gap-2"
+      >
         {nameIcon ? (
           <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-ds-ink-muted-default [&_svg]:h-4 [&_svg]:w-4">
             {nameIcon}
           </span>
         ) : null}
-        <span className={homeHubListNameClass}>{title}</span>
+        <HomeHubTitleAction title={title} className={homeHubListNameClass} />
       </div>
-      {listCells.map((cell) => (
+      {visibleCells.map((cell) => (
         <span
           key={cell.id}
+          role="cell"
+          data-home-hub-column={cell.id}
           className={cn(
             'truncate leading-none font-normal text-ds-ink-muted-default',
             cell.textSize === 'xs'
@@ -799,14 +865,8 @@ export function HomeHubItemShell({
 }: HomeHubItemShellProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPoint, setMenuPoint] = useState({ x: 0, y: 0 });
+  const listLayout = useContext(HomeHubListLayoutContext);
   const hasListContextMenu = layout === 'list' && menuItems.length > 0;
-
-  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      onClick();
-    }
-  };
 
   const handleContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     if (!hasListContextMenu) return;
@@ -819,10 +879,8 @@ export function HomeHubItemShell({
   const row = (
     <>
       <div
-        role="button"
-        tabIndex={0}
-        onClick={onClick}
-        onKeyDown={handleKeyDown}
+        role={layout === 'list' ? 'row' : undefined}
+        onClick={kind === 'space' ? onClick : undefined}
         onContextMenu={handleContextMenu}
         className={cn(
           layout === 'card' && homeHubSurfaceClass,
@@ -832,13 +890,19 @@ export function HomeHubItemShell({
             'relative flex h-auto w-full min-w-0 flex-col items-start overflow-hidden',
           layout === 'list' &&
             cn(
-              'grid w-full cursor-pointer items-center gap-x-4 rounded-xl border border-x border-y border-solid border-transparent bg-ds-neutral-default-default px-3 py-2.5 text-left transition-colors duration-150 hover:border-ds-hairline-subtle-default hover:bg-ds-neutral-default-hover',
-              kind ? HOME_HUB_LIST_GRID_CLASS[kind] : undefined
+              'grid w-full items-center gap-x-4 rounded-ds-field border border-x border-y border-solid border-transparent bg-transparent px-3 py-2.5 text-left transition-colors duration-150 hover:border-ds-hairline-subtle-default hover:bg-ds-neutral-default-hover',
+              listLayout?.gridClass ??
+                (kind ? HOME_HUB_LIST_GRID_CLASS[kind] : undefined)
             ),
+          kind === 'space' && 'cursor-pointer',
           className
         )}
       >
-        {children}
+        <HomeHubItemActivationContext.Provider
+          value={{ onActivate: onClick, layout, kind }}
+        >
+          {children}
+        </HomeHubItemActivationContext.Provider>
       </div>
       {hasListContextMenu ? (
         <DropdownMenuTrigger asChild>

@@ -20,7 +20,7 @@ import {
   runProjectionStore,
   useRunProjectionSelector,
 } from '@/lib/runEvents';
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 export interface DurableRunSummary {
   run_id: string;
@@ -100,38 +100,44 @@ function projectedRunToDurableSummary(
  */
 export function useInterruptedRunStatus(projectId: string | null) {
   const host = useHost();
+  const [dismissed, setDismissed] = useState<string | null>(null);
   const selectInterrupted = useCallback(
     (state: import('@/lib/projector').ProjectViewState | null) => {
-      const interrupted = Object.values(state?.runs || {}).filter(
-        (candidate) => candidate.status === 'interrupted'
-      );
-      interrupted.sort((left, right) =>
-        right.updatedAt.localeCompare(left.updatedAt)
-      );
-      return interrupted[0] || null;
+      // Only the latest locally executed task owns the composer. Earlier
+      // interruptions remain in history after the user starts another task.
+      const latest = Object.values(state?.runs || {})
+        .filter(
+          (candidate) =>
+            candidate.origin !== 'cloud_restore' && candidate.latestAttempt
+        )
+        .sort((left, right) =>
+          right.updatedAt.localeCompare(left.updatedAt)
+        )[0];
+      return latest?.status === 'interrupted' ? latest : null;
     },
     []
   );
   const projectedRun = useRunProjectionSelector(projectId, selectInterrupted);
   const run = useMemo(
     () =>
-      projectedRun && projectId
+      projectedRun &&
+      projectId &&
+      dismissed !== `${projectId}:${projectedRun.runId}`
         ? actionableInterruptedRun(
             projectedRunToDurableSummary(projectId, projectedRun)
           )
         : null,
-    [projectId, projectedRun]
+    [projectId, projectedRun, dismissed]
   );
 
   const setRun = useCallback(
     (next: DurableRunSummary | null) => {
       if (!projectId) return;
       if (!next) {
-        if (projectedRun) {
-          runProjectionStore.removeRun(projectId, projectedRun.runId);
-        }
+        if (projectedRun) setDismissed(`${projectId}:${projectedRun.runId}`);
         return;
       }
+      setDismissed(null);
       runProjectionStore.upsertRunSummaries(projectId, [next]);
     },
     [projectId, projectedRun]
@@ -141,6 +147,7 @@ export function useInterruptedRunStatus(projectId: string | null) {
     if (!projectId) return Promise.resolve();
     return runEventIngressRegistry
       .reconcileProject(projectId)
+      .then(() => setDismissed(null))
       .catch((error) => {
         // Brain can still be booting while the Project shell is visible. Keep
         // the last canonical state until backend-ready/focus retries it.

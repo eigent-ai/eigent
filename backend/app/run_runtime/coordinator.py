@@ -507,9 +507,15 @@ class RunCoordinator:
                 quiesce_calls.append(asyncio.to_thread(quiesce, run_id))
         if not quiesce_calls:
             return
-        results = await asyncio.gather(*quiesce_calls)
+        results: list[Any] = await asyncio.gather(
+            *quiesce_calls, return_exceptions=True
+        )
         lingering = tuple(
-            session_id for result in results for session_id in result
+            session_id
+            for result in results
+            for session_id in (
+                (str(result),) if isinstance(result, BaseException) else result
+            )
         )
         if lingering:
             raise RunRuntimeError(
@@ -629,6 +635,7 @@ class RunCoordinator:
                 reason=reason,
             )
             await self.cancel(run_id)
+            await self._settle_unsuccessful_run(run_id)
             await self._finalize_artifacts_before_terminal(run_id)
             cancelled = await asyncio.to_thread(
                 journal.complete_cancel,
@@ -673,16 +680,54 @@ class RunCoordinator:
             request_id=request_id,
             reason=reason,
         )
+        await self._settle_unsuccessful_run(run_id)
         await self._finalize_artifacts_before_terminal(run_id)
         cancelled = await asyncio.to_thread(
             journal.complete_cancel,
             run_id,
             request_id=request_id,
         )
+        try:
+            from app.workspace_git import get_default_workspace_git_lifecycle
+
+            await asyncio.to_thread(
+                get_default_workspace_git_lifecycle().finalize_run, run_id
+            )
+        except Exception:
+            logger.exception(
+                "Cancelled turn Git finalization needs attention",
+                extra={"run_id": run_id},
+            )
         from app.run_sync.runtime import notify_default_cloud_sync_worker
 
         notify_default_cloud_sync_worker()
         return cancelled
+
+    async def _settle_unsuccessful_run(self, run_id: str) -> None:
+        """Stop writers on every terminal path without rewriting the outcome."""
+        if self._journal is None:
+            return
+        run = await asyncio.to_thread(self._journal.get_run, run_id)
+        if run is None:
+            return
+        try:
+            await self._quiesce_run_background_sessions(
+                run_id, project_id=run.project_id
+            )
+        except Exception as error:
+            # Keep the failure/cancel fact and an explicit cleanup diagnostic.
+            # Failed captures remain quarantined; no automatic tool replay.
+            from app.run_journal.models import RunEventDraft
+
+            await asyncio.to_thread(
+                self._journal.append_event,
+                run_id,
+                RunEventDraft(
+                    event_id=f"workspace-teardown:{run_id}",
+                    event_type="workspace.teardown.needs_attention",
+                    payload={"error": str(error)[:4000]},
+                ),
+            )
 
     async def _finalize_artifacts_before_terminal(self, run_id: str) -> None:
         if self._journal is None:
@@ -711,6 +756,7 @@ class RunCoordinator:
             async for data in stream_factory():
                 handle.publish(data)
         except asyncio.CancelledError:
+            await self._settle_unsuccessful_run(handle.run_id)
             raise
         except RunInterruptedError as exc:
             await self._commit_execution_terminal(
@@ -802,6 +848,7 @@ class RunCoordinator:
         if run is None or run.status in {"completed", "failed", "cancelled"}:
             return
         try:
+            await self._settle_unsuccessful_run(run_id)
             if event_type in {
                 "run.completed",
                 "run.failed",

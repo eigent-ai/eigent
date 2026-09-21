@@ -29,8 +29,10 @@ import {
 } from '@/hooks/useIntegrationManagement';
 import { useHost } from '@/host';
 import { capitalizeFirstLetter, getProxyBaseURL } from '@/lib';
+import { shouldExposeBuiltInConnector } from '@/lib/builtInConnectorPolicy';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
+import { useServerCapabilityStore } from '@/store/serverCapabilityStore';
 import { openSettings } from '@/store/settingsStore';
 import type { TFunction } from 'i18next';
 import { CircleAlert, X } from 'lucide-react';
@@ -269,6 +271,12 @@ const ToolSelect = forwardRef<
   const { email } = useAuthStore();
   const [integrations, setIntegrations] = useState<any[]>([]);
   const [userMcpList, setUserMcpList] = useState<any[]>([]);
+  const connectorGatewayEnabled = useServerCapabilityStore((state) =>
+    state.isConnectorGatewayEnabled()
+  );
+  const fetchCapabilities = useServerCapabilityStore(
+    (state) => state.fetchCapabilities
+  );
 
   const integrationItems = integrations as IntegrationItem[];
   const { installed: webInstalled } =
@@ -758,6 +766,10 @@ const ToolSelect = forwardRef<
 
   // Effects
   useEffect(() => {
+    void fetchCapabilities();
+  }, [fetchCapabilities]);
+
+  useEffect(() => {
     fetchIntegrationsData();
     fetchInstalledMcps();
   }, [fetchIntegrationsData, fetchInstalledMcps]);
@@ -781,6 +793,9 @@ const ToolSelect = forwardRef<
   const webConnectedItems = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
     return integrations
+      .filter((i: IntegrationItem) =>
+        shouldExposeBuiltInConnector(i.key, connectorGatewayEnabled)
+      )
       .filter((i: IntegrationItem) => webInstalled[i.key])
       .filter((i: IntegrationItem) => {
         if (!kw) return true;
@@ -791,7 +806,7 @@ const ToolSelect = forwardRef<
           descStr.includes(kw)
         );
       });
-  }, [integrations, webInstalled, keyword]);
+  }, [connectorGatewayEnabled, integrations, webInstalled, keyword]);
 
   // Align with the Connectors page: only connected built-ins and enabled
   // custom MCPs are selectable as agent tools.

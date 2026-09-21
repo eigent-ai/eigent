@@ -12,7 +12,11 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { NavTab, SidebarNavGroup } from '@/components/Layout/AppSidebar';
+import {
+  NavTab,
+  SidebarCountBadge,
+  SidebarNavGroup,
+} from '@/components/Layout/AppSidebar';
 import type { LucideIcon } from 'lucide-react';
 import { Folder } from 'lucide-react';
 import { useMemo } from 'react';
@@ -28,17 +32,6 @@ const SECTION_ICONS: Record<HomeSection, LucideIcon> = {
 const SECTION_LABEL_KEYS: Record<HomeSection, string> = {
   spaces: 'layout.spaces',
 };
-
-/** Home-only trailing count chip for a sidebar tab. */
-function HomeSidebarCountBadge({ count }: { count: number }) {
-  return (
-    <div className="flex shrink-0 flex-col items-center rounded-xl bg-ds-neutral-muted-default px-1.5">
-      <span className="!text-ds-text-meta font-medium text-ds-ink-muted-default tabular-nums">
-        {count}
-      </span>
-    </div>
-  );
-}
 
 interface HomeSidebarNavGroupProps {
   activeSection: HomeSection | null;
@@ -77,7 +70,7 @@ export function HomeSidebarNavGroup({
             onClick={() => onSectionChange(id)}
             leading={<Icon className="h-4 w-4 shrink-0" aria-hidden />}
             label={label}
-            trailing={<HomeSidebarCountBadge count={count} />}
+            trailing={<SidebarCountBadge count={count} />}
             ariaLabel={label}
             ariaCurrentPage={active}
           />

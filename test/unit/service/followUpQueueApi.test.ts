@@ -17,6 +17,7 @@ import {
   cancelFollowUpRequest,
   createFollowUpRequest,
   getRemoteFollowUpByCommandId,
+  invalidatePendingFollowUps,
   listPendingFollowUpRequests,
   listPendingRemoteFollowUpRequests,
   markFollowUpRequestAdmitted,
@@ -93,6 +94,19 @@ describe('followUpQueueApi local Brain routes', () => {
     expect(fetchDelete).toHaveBeenCalledWith(
       '/projects/project%201/follow-ups/request%201'
     );
+  });
+
+  it('refreshes cached pending rows immediately after admission is observed', async () => {
+    vi.mocked(fetchGet).mockResolvedValueOnce({
+      items: [{ request_id: 'started' }],
+    });
+    expect(await listPendingFollowUpRequests('admission-cache')).toEqual([
+      { request_id: 'started' },
+    ]);
+    invalidatePendingFollowUps('admission-cache');
+    vi.mocked(fetchGet).mockResolvedValueOnce({ items: [] });
+    expect(await listPendingFollowUpRequests('admission-cache')).toEqual([]);
+    expect(fetchGet).toHaveBeenCalledTimes(2);
   });
 
   it('classifies only permanent continuation failures as terminal', () => {

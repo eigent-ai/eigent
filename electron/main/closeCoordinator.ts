@@ -64,6 +64,7 @@ export class CloseCoordinator {
   private readonly diagnostic: (message: string) => void;
   private responseTimer: unknown = null;
   private window: CoordinatedWindow | null = null;
+  private webContents: CoordinatedWindow['webContents'] | null = null;
   private pendingIntent: CloseIntent | null = null;
   private pendingAcknowledged = false;
   private nextIntent: CloseIntent | null = null;
@@ -169,17 +170,26 @@ export class CloseCoordinator {
     this.markRendererUnavailable('destroyed');
   };
 
-  private unbindHealthListeners(window: CoordinatedWindow): void {
-    window.off('unresponsive', this.handleRendererUnresponsive);
-    window.off('responsive', this.handleRendererResponsive);
-    window.webContents.off('did-start-loading', this.handleRendererLoading);
-    window.webContents.off('render-process-gone', this.handleRendererGone);
-    window.webContents.off('destroyed', this.handleRendererDestroyed);
+  private unbindHealthListeners(
+    window: CoordinatedWindow,
+    webContents: CoordinatedWindow['webContents']
+  ): void {
+    if (!window.isDestroyed()) {
+      window.off('unresponsive', this.handleRendererUnresponsive);
+      window.off('responsive', this.handleRendererResponsive);
+    }
+
+    if (webContents.isDestroyed()) return;
+    webContents.off('did-start-loading', this.handleRendererLoading);
+    webContents.off('render-process-gone', this.handleRendererGone);
+    webContents.off('destroyed', this.handleRendererDestroyed);
   }
 
   bindWindow(window: CoordinatedWindow): void {
     this.unbindWindow();
+    const webContents = window.webContents;
     this.window = window;
+    this.webContents = webContents;
     this.clearResponseTimer();
     this.pendingIntent = null;
     this.pendingAcknowledged = false;
@@ -192,17 +202,25 @@ export class CloseCoordinator {
     window.on('close', this.handleWindowClose);
     window.on('unresponsive', this.handleRendererUnresponsive);
     window.on('responsive', this.handleRendererResponsive);
-    window.webContents.on('did-start-loading', this.handleRendererLoading);
-    window.webContents.on('render-process-gone', this.handleRendererGone);
-    window.webContents.on('destroyed', this.handleRendererDestroyed);
+    webContents.on('did-start-loading', this.handleRendererLoading);
+    webContents.on('render-process-gone', this.handleRendererGone);
+    webContents.on('destroyed', this.handleRendererDestroyed);
   }
 
   unbindWindow(): void {
-    if (this.window) {
-      this.window.off('close', this.handleWindowClose);
-      this.unbindHealthListeners(this.window);
-    }
+    const window = this.window;
+    const webContents = this.webContents;
+    // Clear the reference before touching Electron objects so a destruction
+    // event or a repeated cleanup cannot try to unbind the same window again.
     this.window = null;
+    this.webContents = null;
+
+    if (window && webContents) {
+      if (!window.isDestroyed()) {
+        window.off('close', this.handleWindowClose);
+      }
+      this.unbindHealthListeners(window, webContents);
+    }
     this.clearResponseTimer();
     this.pendingIntent = null;
     this.pendingAcknowledged = false;

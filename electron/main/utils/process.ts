@@ -33,6 +33,22 @@ export function getBackendPath() {
   }
 }
 
+/** Return the Git runtime embedded in packaged Windows builds. */
+export function getBundledGitPath(): string | null {
+  if (!app.isPackaged || process.platform !== 'win32') {
+    return null;
+  }
+
+  const gitPath = path.join(
+    process.resourcesPath,
+    'prebuilt',
+    'mingit',
+    'cmd',
+    'git.exe'
+  );
+  return fs.existsSync(gitPath) ? gitPath : null;
+}
+
 export function runInstallScript(scriptPath: string): Promise<boolean> {
   return new Promise<boolean>((resolve, reject) => {
     const installScriptPath = path.join(

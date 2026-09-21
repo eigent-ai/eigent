@@ -52,10 +52,17 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
   // Local installed status
   const [installed, setInstalled] = useState<{ [key: string]: boolean }>({});
   // Configs cache
-  const [configs, setConfigs] = useState<any[]>([]);
+  const [configs, setConfigs] = useState<any[]>(() => {
+    const snapshot = integrationConfigsSnapshot;
+    return snapshot?.email === (email ?? null) ? snapshot.configs : [];
+  });
   const [configsLoading, setConfigsLoading] = useState(() => {
     const snapshot = integrationConfigsSnapshot;
     return !snapshot || snapshot.email !== (email ?? null);
+  });
+  const [configsHydrated, setConfigsHydrated] = useState(() => {
+    const snapshot = integrationConfigsSnapshot;
+    return Boolean(snapshot && snapshot.email === (email ?? null));
   });
   // Lock to prevent concurrent OAuth processing
   const isLockedRef = useRef(false);
@@ -88,7 +95,9 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
         };
       }
     } finally {
-      if (!ignore) setConfigsLoading(false);
+      if (!ignore) {
+        setConfigsLoading(false);
+      }
     }
   }, []);
 
@@ -98,10 +107,12 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
     const snap = integrationConfigsSnapshot;
     if (snap && snap.email === u) {
       setConfigs(snap.configs);
+      setConfigsHydrated(true);
       setConfigsLoading(false);
       return;
     }
     let cancelled = false;
+    setConfigsHydrated(false);
     setConfigsLoading(true);
     void (async () => {
       try {
@@ -119,7 +130,10 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
           integrationConfigsSnapshot = { email: u, configs: [] };
         }
       } finally {
-        if (!cancelled) setConfigsLoading(false);
+        if (!cancelled) {
+          setConfigsHydrated(true);
+          setConfigsLoading(false);
+        }
       }
     })();
     return () => {
@@ -440,6 +454,7 @@ export function useIntegrationManagement(items: IntegrationItem[]) {
     installed,
     configs,
     configsLoading,
+    configsHydrated,
     callBackUrl,
     fetchInstalled,
     saveEnvAndConfig,

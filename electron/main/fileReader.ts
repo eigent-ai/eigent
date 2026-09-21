@@ -23,8 +23,10 @@ import path from 'node:path';
 import { URL } from 'node:url';
 import * as unzipper from 'unzipper';
 import { parseStringPromise } from 'xml2js';
+import { normalizeWorkspaceRelativePath } from '../../src/lib/workspaceRelativePath';
 import {
   decideFilePreview,
+  decodePreviewText,
   FILE_PREVIEW_LIMITS,
   normalizePreviewFileType,
   type CsvFilePreview,
@@ -57,9 +59,11 @@ export class FileReader {
   // Remove automatic IPC handler registration from constructor
   // IPC handlers should be registered once in the main process
 
-  private async parseDocx(filePath: string): Promise<string> {
+  private async parseDocx(source: string | Buffer): Promise<string> {
     try {
-      const result = await mammoth.convertToHtml({ path: filePath });
+      const result = await mammoth.convertToHtml(
+        typeof source === 'string' ? { path: source } : { buffer: source }
+      );
       return result.value; // The generated HTML
     } catch (error) {
       console.error('DOCX parsing error:', error);
@@ -77,9 +81,12 @@ export class FileReader {
     }
   }
 
-  private async parseXlsx(filePath: string): Promise<string> {
+  private async parseXlsx(source: string | Buffer): Promise<string> {
     try {
-      const directory = await unzipper.Open.file(filePath);
+      const directory =
+        typeof source === 'string'
+          ? await unzipper.Open.file(source)
+          : await unzipper.Open.buffer(source);
 
       // Find the shared strings file and worksheets
       const sharedStringsFile = directory.files.find(
@@ -332,9 +339,12 @@ export class FileReader {
     }
   }
 
-  private async parsePptx(filePath: string): Promise<string> {
+  private async parsePptx(source: string | Buffer): Promise<string> {
     try {
-      const directory = await unzipper.Open.file(filePath);
+      const directory =
+        typeof source === 'string'
+          ? await unzipper.Open.file(source)
+          : await unzipper.Open.buffer(source);
       const slideFiles = directory.files.filter((f: any) =>
         f.path.match(/^ppt\/slides\/slide\d+\.xml$/)
       );
@@ -517,8 +527,13 @@ export class FileReader {
     try {
       const buffer = Buffer.alloc(bytesRead);
       const result = await handle.read(buffer, 0, bytesRead, 0);
+      const content = decodePreviewText(
+        buffer.subarray(0, result.bytesRead),
+        result.bytesRead < stats.size
+      );
       return {
-        content: buffer.subarray(0, result.bytesRead).toString('utf-8'),
+        content: content ?? '',
+        binary: content === null,
         bytesRead: result.bytesRead,
         totalBytes: stats.size,
       };
@@ -690,6 +705,26 @@ export class FileReader {
         reject(error);
       }
     });
+  }
+
+  public async previewOfficeBuffer(
+    type: string,
+    bytes: Uint8Array
+  ): Promise<string> {
+    const normalized = normalizePreviewFileType(type);
+    if (!['docx', 'pptx', 'xlsx'].includes(normalized)) {
+      throw new Error('Unsupported remote Office preview type');
+    }
+    if (bytes.byteLength > FILE_PREVIEW_LIMITS.officeBytes) {
+      throw new Error(
+        `FILE_PREVIEW_TOO_LARGE:${bytes.byteLength}:${FILE_PREVIEW_LIMITS.officeBytes}`
+      );
+    }
+
+    const buffer = Buffer.from(bytes);
+    if (normalized === 'docx') return this.parseDocx(buffer);
+    if (normalized === 'pptx') return this.parsePptx(buffer);
+    return this.parseXlsx(buffer);
   }
 
   // Folders to hide in the Agent Folder view
@@ -1375,6 +1410,9 @@ export class FileReader {
         const files: FileInfo[] = [];
         for (const relativePath of new Set(requestedRelativePaths)) {
           if (!relativePath || path.isAbsolute(relativePath)) continue;
+          const requestedIdentity =
+            normalizeWorkspaceRelativePath(relativePath);
+          if (!requestedIdentity) continue;
           const candidatePath = path.resolve(rootRealPath, relativePath);
           const relativeToRoot = path.relative(rootRealPath, candidatePath);
           if (
@@ -1392,6 +1430,15 @@ export class FileReader {
             if (
               realRelativePath.startsWith('..') ||
               path.isAbsolute(realRelativePath)
+            ) {
+              continue;
+            }
+            // A directory symlink can point at a different in-root identity.
+            // Omit that alias instead of returning an unrequested real path
+            // that would invalidate the renderer's entire batch.
+            if (
+              normalizeWorkspaceRelativePath(realRelativePath) !==
+              requestedIdentity
             ) {
               continue;
             }

@@ -25,7 +25,7 @@ import {
 import { formControlTokenAliases, mergeAliasStyles } from './tokenAliases';
 import { TooltipSimple } from './tooltip';
 
-export type SelectSize = 'default' | 'sm';
+export type SelectSize = keyof typeof formFieldSelectSizeClasses;
 /** Primary: default surface. Secondary: subtle surface for nested or lower-emphasis fields. */
 export type SelectVariant = 'primary' | 'secondary';
 // Only keep controllable states; hover/focus/default are automatic

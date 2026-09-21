@@ -94,6 +94,10 @@ describe('SpaceDetail loading skeletons', () => {
     expect(
       screen.getByRole('status', { name: 'Loading Memory content' })
     ).toBeInTheDocument();
+    expect(screen.getByRole('tabpanel')).toHaveAttribute(
+      'aria-labelledby',
+      'space-detail-tab-memory'
+    );
 
     await act(async () => {
       ready = true;

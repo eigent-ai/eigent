@@ -17,6 +17,7 @@ import AlertDialog from '@/components/ui/alertDialog';
 import { Button } from '@/components/ui/button';
 import { useHost } from '@/host';
 import { SITE_URL } from '@/lib';
+import { useSettingsResourceCountsStore } from '@/store/settingsResourceCountsStore';
 import { Cookie, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -48,6 +49,9 @@ export default function Cookies() {
   const [deletingAll, setDeletingAll] = useState(false);
   const [showRestartDialog, setShowRestartDialog] = useState(false);
   const [, setHasUnsavedChanges] = useState(false);
+  const setResourceCount = useSettingsResourceCountsStore(
+    (state) => state.setCount
+  );
 
   const getMainDomain = (domain: string): string => {
     const cleanDomain = domain.startsWith('.') ? domain.substring(1) : domain;
@@ -220,6 +224,12 @@ export default function Cookies() {
   };
 
   const groupedDomains = groupDomainsByMain(cookieDomains);
+
+  useEffect(() => {
+    if (!cookiesLoading) {
+      setResourceCount('cookies', cookieDomains.length);
+    }
+  }, [cookieDomains.length, cookiesLoading, setResourceCount]);
 
   return (
     <SettingsSectionPage>

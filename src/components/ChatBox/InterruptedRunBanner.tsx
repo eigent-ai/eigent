@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
-import { RotateCcw, TriangleAlert, X } from 'lucide-react';
+import { RotateCcw, X } from 'lucide-react';
 
 export type InterruptedRunBannerAction = 'resuming' | 'cancelling' | null;
 
@@ -55,7 +55,6 @@ export function InterruptedRunBanner({
       } rounded-2xl border border-x border-y border-solid border-ds-border-warning-default-default bg-ds-bg-warning-subtle-default px-4 py-3 text-ds-text-warning-strong-default shadow-ds-elevation-control`}
     >
       <div className="flex items-start gap-3">
-        <TriangleAlert className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-3">
             <span className="block text-ds-text-base font-semibold">
@@ -71,20 +70,7 @@ export function InterruptedRunBanner({
             {description}
           </span>
           {!readOnly && (
-            <div className="mt-3 flex items-center gap-2">
-              <Button
-                type="button"
-                variant="primary"
-                tone="warning"
-                size="sm"
-                onClick={onResume}
-                disabled={action !== null}
-              >
-                <RotateCcw className="size-ds-icon-md" aria-hidden="true" />
-                <span>
-                  {action === 'resuming' ? resumingLabel : resumeLabel}
-                </span>
-              </Button>
+            <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
               <Button
                 type="button"
                 variant="ghost"
@@ -96,6 +82,19 @@ export function InterruptedRunBanner({
                 <X className="size-ds-icon-md" aria-hidden="true" />
                 <span>
                   {action === 'cancelling' ? cancellingLabel : cancelLabel}
+                </span>
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                tone="warning"
+                size="sm"
+                onClick={onResume}
+                disabled={action !== null}
+              >
+                <RotateCcw className="size-ds-icon-md" aria-hidden="true" />
+                <span>
+                  {action === 'resuming' ? resumingLabel : resumeLabel}
                 </span>
               </Button>
             </div>

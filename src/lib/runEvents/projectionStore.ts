@@ -22,20 +22,11 @@ import {
 } from '@/lib/projector';
 import type { RunDomainEvent } from './types';
 
-export type DurableRunSummaryInput = {
-  run_id: string;
-  project_id: string;
-  status: string;
-  version?: number;
-  updated_at: number | string;
-  origin?: 'local' | 'cloud_restore' | 'remote';
-  resume_blocked_reason?: string | null;
-  total_attempt_elapsed_ms?: number | null;
-  latest_attempt?: {
-    attempt_number: number;
-    status: string;
-  } | null;
-};
+import {
+  mergeRunSummary,
+  type DurableRunSummaryInput,
+} from '@/lib/projector/runSummary';
+export type { DurableRunSummaryInput } from '@/lib/projector/runSummary';
 
 export type ProjectionApplyResult = {
   previous: ProjectViewState;
@@ -43,36 +34,6 @@ export type ProjectionApplyResult = {
   applied: boolean;
   gapDetected: boolean;
 };
-
-const TERMINAL_STATUSES = new Set<ProjectedRun['status']>([
-  'completed',
-  'failed',
-  'cancelled',
-]);
-
-function projectedStatus(value: string): ProjectedRun['status'] {
-  if (
-    value === 'completed' ||
-    value === 'failed' ||
-    value === 'cancelled' ||
-    value === 'interrupted'
-  ) {
-    return value;
-  }
-  return 'running';
-}
-
-function isoTimestamp(value: number | string): string {
-  if (typeof value === 'number') {
-    return new Date(
-      value < 10_000_000_000 ? value * 1000 : value
-    ).toISOString();
-  }
-  const parsed = Date.parse(value);
-  return Number.isNaN(parsed)
-    ? new Date(0).toISOString()
-    : new Date(parsed).toISOString();
-}
 
 /** Rebuildable renderer read model. SQLite remains the execution fact source. */
 export class RunProjectionStore {
@@ -126,35 +87,16 @@ export class RunProjectionStore {
     let changed = !this.projects.has(projectId);
     const runs = { ...previous.runs };
     for (const summary of summaries) {
-      if (summary.project_id !== projectId) continue;
+      if (
+        !summary ||
+        summary.project_id !== projectId ||
+        typeof summary.run_id !== 'string' ||
+        !summary.run_id
+      )
+        continue;
       const existing = runs[summary.run_id];
-      const incomingStatus = projectedStatus(summary.status);
-      // A stale list response must never move a terminal event projection back
-      // to running. A newer canonical list result may still repair nonterminal
-      // state after renderer restart.
-      const status =
-        existing &&
-        TERMINAL_STATUSES.has(existing.status) &&
-        incomingStatus === 'running'
-          ? existing.status
-          : incomingStatus;
-      const nextRun: ProjectedRun = {
-        ...existing,
-        runId: summary.run_id,
-        status,
-        lastSequence: existing?.lastSequence || 0,
-        runVersion: Math.max(existing?.runVersion || 0, summary.version || 0),
-        updatedAt: isoTimestamp(summary.updated_at),
-        origin: summary.origin ?? existing?.origin,
-        resumeBlockedReason: summary.resume_blocked_reason ?? null,
-        latestAttempt: summary.latest_attempt
-          ? {
-              attemptNumber: summary.latest_attempt.attempt_number,
-              status: summary.latest_attempt.status,
-            }
-          : null,
-        totalAttemptElapsedMs: summary.total_attempt_elapsed_ms ?? null,
-      };
+      const nextRun = mergeRunSummary(existing, summary);
+      if (!nextRun || nextRun === existing) continue;
       if (JSON.stringify(existing) !== JSON.stringify(nextRun)) {
         runs[summary.run_id] = nextRun;
         changed = true;

@@ -80,7 +80,6 @@ function buildTemplate(platform: DesktopShortcutPlatform) {
     messages: getNativeMenuMessages('en-US'),
     openExternal: vi.fn().mockResolvedValue(undefined),
     platform,
-    requestClose: vi.fn(),
     requestQuit: vi.fn(),
   });
 }

@@ -39,20 +39,31 @@ export function SettingsRouteBridge() {
   const location = useLocation();
   const isOpen = useSettingsStore((state) => state.isOpen);
   const activeSection = useSettingsStore((state) => state.activeSection);
+  const modelProvider = useSettingsStore((state) => state.modelProvider);
+  const finishSettingsNavigation = useSettingsStore(
+    (state) => state.finishSettingsNavigation
+  );
   const closeSettings = useSettingsStore((state) => state.closeSettings);
 
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
     const routeRequest = runAfterWorkspaceConfigurationSave(() => {
-      closeSettings();
+      const searchParams = new URLSearchParams({
+        section: 'settings',
+        tab: activeSection,
+      });
+      if (activeSection === 'models' && modelProvider) {
+        searchParams.set('provider', modelProvider);
+      }
+      const destination = `/home?${searchParams.toString()}`;
+      finishSettingsNavigation();
       if (isSettingsRoutePath(location.pathname)) {
-        const searchParams = new URLSearchParams(location.search);
         if (
-          searchParams.get('section') !== 'settings' ||
-          searchParams.get('tab') !== activeSection
+          location.pathname !== '/home' ||
+          location.search !== `?${searchParams.toString()}`
         ) {
-          navigate(`/home?section=settings&tab=${activeSection}`, {
+          navigate(destination, {
             replace: true,
             state: location.state,
           });
@@ -61,7 +72,7 @@ export function SettingsRouteBridge() {
       }
       // Record the origin so the route layout can retain Workspace state while
       // the full-page Home / Settings surface is active.
-      navigate(`/home?section=settings&tab=${activeSection}`, {
+      navigate(destination, {
         state: shellBackState(`${location.pathname}${location.search}`),
       });
     });
@@ -76,8 +87,10 @@ export function SettingsRouteBridge() {
       cancelled = true;
     };
   }, [
+    finishSettingsNavigation,
     closeSettings,
     activeSection,
+    modelProvider,
     isOpen,
     location.pathname,
     location.search,

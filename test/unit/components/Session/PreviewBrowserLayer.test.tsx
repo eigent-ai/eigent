@@ -169,6 +169,74 @@ describe('PreviewBrowserLayer', () => {
     ).toContainEqual(updated);
   });
 
+  it('shows a main-frame failure and keeps it visible until a retry finishes', () => {
+    renderLayer();
+    act(() =>
+      usePageTabStore.getState().openBrowserPreview('http://localhost:8080/')
+    );
+    const tab = getBrowserTab();
+    const guest = getPreviewWebview(tab.webviewId)!;
+    guest.getURL = () => 'chrome-error://chromewebdata/';
+    guest.isLoading = () => false;
+    const fail = (code: number, main = true) => {
+      const event = Object.assign(new Event('did-fail-load'), {
+        errorCode: code,
+        isMainFrame: main,
+        validatedURL: 'http://localhost:8080/',
+      });
+      act(() => guest.dispatchEvent(event));
+    };
+    fail(-105, false);
+    fail(-3);
+    expect(getBrowserTab().navigation.loadError).toBeUndefined();
+    fail(-102);
+    act(() => guest.dispatchEvent(new Event('did-stop-loading')));
+    expect(getBrowserTab().navigation).toMatchObject({
+      isLoading: false,
+      loadError: { code: -102, url: 'http://localhost:8080/' },
+    });
+    expect(getBrowserTab().url).toBe('http://localhost:8080/');
+    expect(guestContainer(tab.webviewId)!.style.visibility).toBe('hidden');
+    act(() => guest.dispatchEvent(new Event('did-finish-load')));
+    expect(getBrowserTab().navigation.loadError).toBeDefined();
+    guest.getURL = () => 'http://localhost:8080/';
+    act(() => guest.dispatchEvent(new Event('did-start-loading')));
+    expect(getBrowserTab().navigation.loadError).toEqual({
+      code: -102,
+      url: 'http://localhost:8080/',
+    });
+    expect(guestContainer(tab.webviewId)!.style.visibility).toBe('hidden');
+    act(() => guest.dispatchEvent(new Event('did-finish-load')));
+    expect(getBrowserTab().navigation.loadError).toBeUndefined();
+  });
+
+  it('retries the last successfully reported URL when Chromium omits the failed URL', () => {
+    renderLayer();
+    act(() =>
+      usePageTabStore.getState().openBrowserPreview('http://localhost:8080/')
+    );
+    const tab = getBrowserTab();
+    const guest = getPreviewWebview(tab.webviewId)!;
+    guest.getURL = () => 'http://localhost:8080/report';
+    guest.isLoading = () => false;
+    act(() => guest.dispatchEvent(new Event('did-navigate')));
+    guest.getURL = () => 'chrome-error://chromewebdata/';
+
+    act(() =>
+      guest.dispatchEvent(
+        Object.assign(new Event('did-fail-load'), {
+          errorCode: -102,
+          isMainFrame: true,
+          validatedURL: '',
+        })
+      )
+    );
+
+    expect(getBrowserTab().navigation.loadError?.url).toBe(
+      'http://localhost:8080/report'
+    );
+  });
+
   it('keeps the current guest mounted when the language changes', async () => {
     renderLayer();
     const tab = getBrowserTab();

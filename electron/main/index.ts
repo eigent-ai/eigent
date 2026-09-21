@@ -182,7 +182,9 @@ const rendererAppCommands = new RendererAppCommandCoordinator({
   diagnostic: (message) => log.warn(message),
 });
 const closeCoordinator = new CloseCoordinator({
-  defaultIntent: process.platform === 'darwin' ? 'close-window' : 'quit-app',
+  // Eigent owns a single application window. Closing it exits the app on
+  // every platform so shutdown cleanup also stops the local backend.
+  defaultIntent: 'quit-app',
   quit: () => app.quit(),
   shouldGuard: () => rendererAppCommands.isReady(),
   diagnostic: (message) => log.info(message),
@@ -250,7 +252,6 @@ function installNativeApplicationMenu(): void {
     },
     openExternal: (url) => shell.openExternal(url),
     platform,
-    requestClose: () => closeCoordinator.request('close-window'),
     requestQuit: () => closeCoordinator.request('quit-app'),
   });
 }
@@ -1920,18 +1921,9 @@ function registerIpcHandlers() {
   });
 
   // ==================== window control handler ====================
-  ipcMain.on('window-close', (event, data: unknown) => {
+  ipcMain.on('window-close', (event) => {
     if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
-    const isForceQuit =
-      Boolean(data) &&
-      typeof data === 'object' &&
-      (data as { isForceQuit?: unknown }).isForceQuit === true;
-    if (isForceQuit) {
-      return closeCoordinator.request('quit-app');
-    }
-    return closeCoordinator.request(
-      process.platform === 'darwin' ? 'close-window' : 'quit-app'
-    );
+    return closeCoordinator.request('quit-app');
   });
   ipcMain.on(WINDOW_CLOSE_RESPONSE_CHANNEL, (event, response: unknown) => {
     if (!isMainRendererSender(event.sender.id, win?.webContents.id)) return;
@@ -2546,6 +2538,18 @@ function registerIpcHandlers() {
     }
   );
 
+  ipcMain.handle(
+    'preview-office-buffer',
+    async (event, type: string, bytes: Uint8Array) => {
+      assertMainRendererSender(event);
+      if (!(bytes instanceof Uint8Array)) {
+        throw new Error('Invalid remote Office preview payload');
+      }
+      const manager = checkManagerInstance(fileReader, 'FileReader');
+      return manager.previewOfficeBuffer(type, bytes);
+    }
+  );
+
   ipcMain.handle('preview-csv-file', async (event, filePath: string) => {
     const manager = checkManagerInstance(fileReader, 'FileReader');
     const authorizedPath = await requireAuthorizedPreviewFile(event, filePath);
@@ -2689,7 +2693,8 @@ function registerIpcHandlers() {
       if (
         typeof workspaceRoot !== 'string' ||
         !Array.isArray(requestedRelativePaths) ||
-        requestedRelativePaths.length > 500 ||
+        requestedRelativePaths.length >
+          FILE_PREVIEW_LIMITS.workspaceResolverPaths ||
         requestedRelativePaths.some((value) => typeof value !== 'string')
       ) {
         throw new Error('Invalid workspace file resolver request');
@@ -4012,9 +4017,7 @@ app.on('window-all-closed', () => {
   appShellReadinessGate.markDocumentLoading();
   protocolUrlQueue = [];
 
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  app.quit();
 });
 
 // ==================== app activate event ====================
@@ -4068,7 +4071,7 @@ app.on('before-quit', async (event) => {
     // No need to sync between different profile directories
 
     // Clean up resources
-    disposeAllTerminals();
+    await disposeAllTerminals();
 
     if (webViewManager) {
       webViewManager.destroy();

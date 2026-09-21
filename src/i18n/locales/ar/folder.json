@@ -32,10 +32,18 @@
   "search-files": "البحث في الملفات",
   "source-for-file": "مصدر {{name}}",
   "source-view": "المصدر",
+  "preview-byte-summary": "معاينة {{bytesRead}}{{totalBytes}}",
   "truncated-preview-summary": "تجري معاينة {{bytesRead}}{{totalBytes}}. لم يُحمّل الملف كاملًا.",
   "video-playback-unsupported": "لا يدعم متصفحك تشغيل الفيديو.",
   "view-mode": "وضع العرض",
-  "folder-selected-open-in-description": "استخدم «فتح باستخدام» لفتح هذا المجلد نفسه في Finder أو في محرر.",
+  "folder-selected-open-in-description": "استخدم الإجراءات أعلاه لفتح هذا المجلد في مدير الملفات أو في محرر.",
   "folder-selected-preview-description": "حدّد ملفًا داخل هذا المجلد لمعاينة محتواه.",
-  "zip-file-is-not-supported-yet": "ملفات ZIP غير مدعومة حتى الآن."
+  "zip-file-is-not-supported-yet": "ملفات ZIP غير مدعومة حتى الآن.",
+  "show-in-finder": "إظهار في Finder",
+  "show-in-explorer": "إظهار في مستكشف الملفات",
+  "show-in-folder": "إظهار في المجلد",
+  "open-in-finder": "فتح في Finder",
+  "open-in-explorer": "فتح في مستكشف الملفات",
+  "open-in-folder": "فتح في مدير الملفات",
+  "preview-load-failed": "تعذرت معاينة هذا الملف. حاول مجددًا أو افتحه في تطبيق خارجي."
 }

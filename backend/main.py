@@ -152,28 +152,17 @@ async def startup_event():
     )
 
     reconciliation = await asyncio.to_thread(journal.reconcile_startup)
-    from app.workspace_git import (
-        WorkspaceGitObserver,
-        get_default_workforce_git_service,
-        get_default_workspace_git_lifecycle,
-        get_default_workspace_mutation_service,
+    from app.workspace_git.scheduler import (
         get_default_workspace_writer_scheduler,
     )
+    from app.workspace_git.startup import reconcile_workspace_git_startup
 
     writer_reconciliation = await asyncio.to_thread(
         get_default_workspace_writer_scheduler().reconcile_orphaned_admissions
     )
-    workforce_reconciliation = await asyncio.to_thread(
-        get_default_workforce_git_service().reconcile_startup
-    )
-    workspace_reconciliation = await asyncio.to_thread(
-        get_default_workspace_mutation_service().reconcile_startup
-    )
-    git_terminal_reconciliation = await asyncio.to_thread(
-        get_default_workspace_git_lifecycle().finalize_terminal_runs
-    )
-    git_observation = await asyncio.to_thread(
-        WorkspaceGitObserver(get_default_run_journal()).inspect_all
+    workspace_git_reconciliation = await asyncio.to_thread(
+        reconcile_workspace_git_startup,
+        journal,
     )
     from app.lightweight_memory import migrate_legacy_memory_v1_on_startup
     from app.workspace_config.legacy_migration import (
@@ -226,30 +215,38 @@ async def startup_event():
             "workspace_writer_reconciliation_failures": len(
                 writer_reconciliation.failed_request_ids
             ),
+            "workspace_git_reconciliation_skipped": (
+                workspace_git_reconciliation.skipped
+            ),
+            "workspace_git_reconciliation_skip_reason": (
+                workspace_git_reconciliation.skipped_reason
+            ),
             "recovered_agent_workspaces": len(
-                workforce_reconciliation.recovered_workspace_ids
+                workspace_git_reconciliation.workforce.recovered_workspace_ids
             ),
             "agent_workspaces_needing_attention": len(
-                workforce_reconciliation.needs_attention_workspace_ids
+                workspace_git_reconciliation.workforce.needs_attention_workspace_ids
             ),
             "reconcilable_commands": len(
                 reconciliation.reconcilable_command_ids
             ),
             "recovered_git_change_sets": len(
-                workspace_reconciliation.recovered_change_set_ids
+                workspace_git_reconciliation.mutations.recovered_change_set_ids
             ),
             "git_change_sets_needing_attention": len(
-                workspace_reconciliation.needs_attention_change_set_ids
+                workspace_git_reconciliation.mutations.needs_attention_change_set_ids
             ),
             "finalized_terminal_git_runs": len(
-                git_terminal_reconciliation.finalizations
+                workspace_git_reconciliation.terminal.finalizations
             ),
             "terminal_git_finalization_failures": len(
-                git_terminal_reconciliation.failed_run_ids
+                workspace_git_reconciliation.terminal.failed_run_ids
             ),
-            "external_git_changes": len(git_observation.changes),
+            "external_git_changes": len(
+                workspace_git_reconciliation.observation.changes
+            ),
             "git_observation_failures": len(
-                git_observation.failed_repository_ids
+                workspace_git_reconciliation.observation.failed_repository_ids
             ),
             "legacy_memory_imported": (legacy_memory_migration.imported_count),
             "legacy_memory_skipped": legacy_memory_migration.skipped_count,

@@ -71,6 +71,7 @@ export interface InputboxProps {
   onChange?: (value: string) => void;
   /** Callback when the send action is clicked. Text or attachments make it available. */
   onSend?: () => void;
+  queuesFollowUp?: boolean;
   /** Task state shown by the primary action when the composer has no draft. */
   taskControlState?: 'idle' | 'running' | 'paused';
   onPauseTask?: () => void;
@@ -154,6 +155,7 @@ export const Inputbox = ({
   value = '',
   onChange,
   onSend,
+  queuesFollowUp = false,
   taskControlState = 'idle',
   onPauseTask,
   onResumeTask,
@@ -256,7 +258,7 @@ export const Inputbox = ({
       ? t('chat.pause')
       : primaryAction === 'resume'
         ? t('layout.continue', { defaultValue: 'Continue' })
-        : t('chat.send-now');
+        : t(queuesFollowUp ? 'chat.queue-add' : 'chat.send-message');
   const primaryActionDisabled =
     primaryAction === 'idle' ||
     taskControlLoading ||
@@ -407,7 +409,7 @@ export const Inputbox = ({
       onDrop={handleDrop}
     >
       {isDragging && (
-        <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-x-2 border-y-2 border-dashed border-ds-hairline-strong-default bg-ds-bg-information-subtle-default text-ds-ink-default-default backdrop-blur-sm">
+        <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-3xl border-2 border-x-2 border-y-2 border-dashed border-ds-hairline-strong-default bg-ds-bg-information-subtle-default text-ds-ink-default-default backdrop-blur-sm">
           <UploadCloud className="h-8 w-8" />
           <span className="block text-ds-text-base font-semibold">
             {t('chat.drop-files-to-attach')}

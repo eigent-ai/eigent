@@ -17,12 +17,14 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from camel.toolkits import FunctionTool
 
 from app.run_context import RunContext, run_context_scope
 from app.run_journal import RunEventDraft, SQLiteRunJournal
 from app.run_policy import ToolSafetyClass
 from app.run_runtime.step_coordinator import PlanStepInput, RunStepCoordinator
 from app.run_runtime.tool_checkpoint import (
+    BackgroundToolResult,
     ToolCheckpointPersistenceError,
     UnsafeToolOutcomeError,
     build_tool_display_projection,
@@ -62,6 +64,68 @@ def _running_journal(tmp_path: Path) -> SQLiteRunJournal:
         activate=True,
     )
     return journal
+
+
+def test_dispatch_acknowledgement_is_not_a_terminal_tool_result(tmp_path):
+    def dispatch() -> str:
+        """Return a trusted acknowledgement from the process owner."""
+        return BackgroundToolResult("Dispatch accepted")
+
+    with _running_journal(tmp_path) as journal:
+        with run_context_scope(_context(tmp_path)):
+            checkpoint = prepare_tool_checkpoint(
+                raw_tool_call_id="bg",
+                tool_name="shell_exec",
+                arguments={},
+                journal=journal,
+            )
+        acknowledgement = FunctionTool(dispatch)()
+        assert isinstance(acknowledgement, BackgroundToolResult)
+        finish_tool_checkpoint(
+            checkpoint, result=acknowledgement, journal=journal
+        )
+        assert journal.list_tool_calls("run-1")[0].status == "dispatched"
+        finish_tool_checkpoint(
+            checkpoint,
+            result={"exit_code": 0, "workspace_checkpointed": True},
+            journal=journal,
+        )
+        # The watcher may finish before the caller persists its dispatch ack.
+        finish_tool_checkpoint(
+            checkpoint, result=acknowledgement, journal=journal
+        )
+        assert journal.list_tool_calls("run-1")[0].status == "completed"
+        events = journal.list_events("run-1")
+        assert (
+            sum(event.event_type == "tool.completed" for event in events) == 1
+        )
+
+
+def test_path_budget_evidence_survives_wrappers_and_stays_unknown(tmp_path):
+    from app.workspace_git.backend import WorkspaceDeltaLimitExceeded
+
+    with (
+        _running_journal(tmp_path) as journal,
+        run_context_scope(_context(tmp_path)),
+    ):
+        checkpoint = prepare_tool_checkpoint(
+            raw_tool_call_id="overflow",
+            tool_name="shell_exec",
+            arguments={"command": "render"},
+            journal=journal,
+        )
+        cause = WorkspaceDeltaLimitExceeded(
+            {f"frames/{i}.png": "??" for i in range(720)}
+        )
+        cause.diagnostic["phase"] = "post_dispatch"
+        wrapper = ValueError("tool wrapper")
+        wrapper.__cause__ = cause
+        with pytest.raises(UnsafeToolOutcomeError):
+            finish_tool_checkpoint(checkpoint, error=wrapper, journal=journal)
+        call = journal.list_tool_calls("run-1")[0]
+        assert call.status == "outcome_unknown"
+        assert call.result["workspace_path_budget"]["observed_count"] == 720
+        assert call.result["workspace_path_budget"]["phase"] == "post_dispatch"
 
 
 def test_checkpoint_surrounds_tool_and_redacts_credentials(tmp_path):

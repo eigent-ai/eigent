@@ -50,6 +50,342 @@ describe('parseBoundedCsvPreview', () => {
 });
 
 describe('loadFilePreview', () => {
+  it.each(['docx', 'xlsx', 'pptx'])(
+    'parses a bounded remote %s archive through the Electron host',
+    async (type) => {
+      const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(bytes, {
+            headers: {
+              'Content-Length': String(bytes.byteLength),
+              'Content-Type': 'application/zip',
+            },
+          })
+        )
+      );
+      const invoke = vi.fn().mockResolvedValue('<p>Office preview</p>');
+
+      const result = await loadFilePreview(
+        {
+          name: `report.${type}`,
+          type,
+          path: `https://files.example/report.${type}`,
+          size: bytes.byteLength,
+          mimeType: 'application/zip',
+          isRemote: true,
+        },
+        { ipcRenderer: { invoke } }
+      );
+
+      expect(result.content).toBe('<p>Office preview</p>');
+      expect(result.preview).toBeUndefined();
+      expect(invoke).toHaveBeenCalledWith('preview-office-buffer', type, bytes);
+    }
+  );
+
+  it.each([4, 10])('fully loads a %i MiB remote HTML document', async (mib) => {
+    const size = mib * 1024 * 1024;
+    const content = `<html>${' '.repeat(size - 13)}</html>`;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(content, { headers: { 'Content-Length': String(size) } })
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await loadFilePreview(
+      {
+        name: 'index.html',
+        type: 'html',
+        path: 'https://files.example/index.html',
+        size,
+      },
+      {}
+    );
+
+    expect(result.content?.length).toBe(size);
+    expect(result.content === content).toBe(true);
+    expect(result.preview).toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://files.example/index.html',
+      expect.objectContaining({ headers: { Range: 'bytes=0-10485760' } })
+    );
+  });
+
+  it.each([6, 12])(
+    'uses the response total for partial HTML with stale 4 MiB metadata and a %i MiB total',
+    async (totalMib) => {
+      const bodySize = 4 * 1024 * 1024;
+      const totalBytes = totalMib * 1024 * 1024;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response('x'.repeat(bodySize), {
+            status: 206,
+            headers: {
+              'Content-Range': `bytes 0-${bodySize - 1}/${totalBytes}`,
+              'Content-Length': String(bodySize),
+            },
+          })
+        )
+      );
+
+      const result = await loadFilePreview(
+        {
+          name: 'index.html',
+          type: 'html',
+          path: 'https://files.example/index.html',
+          size: bodySize,
+        },
+        {}
+      );
+
+      expect(result.content).toHaveLength(1024 * 1024);
+      expect(result.preview).toEqual({
+        kind: 'truncated-text',
+        bytesRead: 1024 * 1024,
+        totalBytes,
+      });
+    }
+  );
+
+  it.each([4, 6])(
+    'keeps partial HTML with an unknown response total as source despite %i MiB metadata',
+    async (metadataMib) => {
+      const bodySize = 4 * 1024 * 1024;
+      const metadataSize = metadataMib * 1024 * 1024;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response('x'.repeat(bodySize), {
+            status: 206,
+            headers: {
+              'Content-Range': `bytes 0-${bodySize - 1}/*`,
+              'Content-Length': String(bodySize),
+            },
+          })
+        )
+      );
+
+      const result = await loadFilePreview(
+        {
+          name: 'index.html',
+          type: 'html',
+          path: 'https://files.example/index.html',
+          size: metadataSize,
+        },
+        {}
+      );
+
+      expect(result.content).toHaveLength(1024 * 1024);
+      expect(result.preview).toEqual({
+        kind: 'truncated-text',
+        bytesRead: 1024 * 1024,
+        totalBytes: metadataSize,
+      });
+    }
+  );
+
+  it('fully previews a complete response when older metadata overstates its size', async () => {
+    const content = '<html>complete</html>';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(content, {
+          headers: { 'Content-Length': String(content.length) },
+        })
+      )
+    );
+
+    const result = await loadFilePreview(
+      {
+        name: 'index.html',
+        type: 'html',
+        path: 'https://files.example/index.html',
+        size: 4 * 1024 * 1024,
+      },
+      {}
+    );
+
+    expect(result.content).toBe(content);
+    expect(result.preview).toBeUndefined();
+  });
+
+  it.each([4 * 1024 * 1024, 10 * 1024 * 1024, 10 * 1024 * 1024 + 1, null])(
+    'routes local HTML of size %s through the appropriate authorized reader',
+    async (size) => {
+      const full = size !== null && size <= 10 * 1024 * 1024;
+      const invoke = vi
+        .fn()
+        .mockResolvedValueOnce({ size, mimeType: 'text/html' })
+        .mockResolvedValueOnce(
+          full
+            ? '<html>complete</html>'
+            : {
+                content: '<html>excerpt',
+                bytesRead: 13,
+                totalBytes: size,
+              }
+        );
+      const result = await loadFilePreview(
+        { name: 'index.html', type: 'html', path: '/workspace/index.html' },
+        { ipcRenderer: { invoke } }
+      );
+
+      expect(invoke).toHaveBeenCalledTimes(2);
+      expect(invoke).toHaveBeenNthCalledWith(
+        1,
+        'get-file-preview-metadata',
+        '/workspace/index.html'
+      );
+      if (full) {
+        expect(invoke).toHaveBeenNthCalledWith(
+          2,
+          'open-file',
+          'html',
+          '/workspace/index.html',
+          undefined
+        );
+        expect(result.preview).toBeUndefined();
+      } else {
+        expect(invoke).toHaveBeenNthCalledWith(
+          2,
+          'preview-text-file',
+          '/workspace/index.html',
+          1024 * 1024
+        );
+        expect(result.preview).toMatchObject({ kind: 'truncated-text' });
+      }
+    }
+  );
+
+  it.each([10 * 1024 * 1024 + 1, undefined])(
+    'bounds remote HTML source to 1 MiB when size is %s even if Range is ignored',
+    async (size) => {
+      const cancel = vi.fn();
+      const fetchMock = vi.fn().mockImplementation((_url, options) => {
+        if (
+          options.method === 'HEAD' ||
+          options.headers?.Range === 'bytes=0-0'
+        ) {
+          return Promise.resolve(new Response(null));
+        }
+        return Promise.resolve(
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(
+                  new TextEncoder().encode('x'.repeat(2 * 1024 * 1024))
+                );
+              },
+              cancel,
+            })
+          )
+        );
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const result = await loadFilePreview(
+        {
+          name: 'index.html',
+          type: 'html',
+          path: 'https://files.example/index.html',
+          size,
+        },
+        {}
+      );
+
+      expect(result.content).toHaveLength(1024 * 1024);
+      expect(result.preview).toEqual({
+        kind: 'truncated-text',
+        bytesRead: 1024 * 1024,
+        totalBytes: size ?? null,
+      });
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        'https://files.example/index.html',
+        expect.objectContaining({ headers: { Range: 'bytes=0-1048575' } })
+      );
+      expect(cancel).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it.each([2 * 1024 * 1024, 10 * 1024 * 1024 + 1])(
+    'uses only a 1 MiB source excerpt when a full HTML response has an unexpected %i bytes',
+    async (actualSize) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(new Response('x'.repeat(actualSize)))
+      );
+      const result = await loadFilePreview(
+        {
+          name: 'index.html',
+          type: 'html',
+          path: 'https://files.example/index.html',
+          size: 4 * 1024 * 1024,
+        },
+        {}
+      );
+
+      expect(result.content).toHaveLength(1024 * 1024);
+      expect(result.preview).toMatchObject({
+        kind: 'truncated-text',
+        bytesRead: 1024 * 1024,
+      });
+    }
+  );
+
+  it.each([
+    { type: 'mp4', mimeType: 'video/mp4' },
+    { type: 'blend', mimeType: 'application/octet-stream' },
+  ])(
+    'authorizes $type metadata without reading it as text or fetching HTTP',
+    async ({ type, mimeType }) => {
+      const invoke = vi.fn().mockResolvedValue({ size: 2048, mimeType });
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      const result = await loadFilePreview(
+        { name: `final.${type}`, path: `/workspace/final.${type}`, type },
+        { ipcRenderer: { invoke } }
+      );
+      expect(invoke).toHaveBeenCalledTimes(1);
+      expect(invoke).toHaveBeenCalledWith(
+        'get-file-preview-metadata',
+        `/workspace/final.${type}`
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+      if (type === 'blend') {
+        expect(result.content).toBeUndefined();
+        expect(result.preview).toMatchObject({
+          kind: 'blocked',
+          reason: 'unsupported',
+        });
+      } else {
+        expect(result.content).toBe(toLocalPreviewUrl('/workspace/final.mp4'));
+        expect(result.preview).toBeUndefined();
+      }
+    }
+  );
+
+  it('does not use HTTP after local metadata authorization fails', async () => {
+    const invoke = vi
+      .fn()
+      .mockRejectedValue(
+        new Error('Preview file is outside the active workspace')
+      );
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(
+      loadFilePreview(
+        { name: 'final.mp4', path: '/outside/final.mp4', type: 'mp4' },
+        { ipcRenderer: { invoke } }
+      )
+    ).rejects.toThrow('outside the active workspace');
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('keeps an absolute local path out of the custom URL hostname', () => {
     expect(toLocalPreviewUrl('/Users/Example User/report.pdf')).toBe(
       'localfile://preview/?path=%2FUsers%2FExample%20User%2Freport.pdf'
@@ -216,4 +552,97 @@ describe('loadFilePreview', () => {
     );
     expect(result.content).toBe('# preview');
   });
+});
+
+describe('unsupported file recovery', () => {
+  it.each(['zip', 'gz', 'tar', 'rar', '7z'])(
+    'never reads a local %s archive',
+    async (type) => {
+      const invoke = vi.fn().mockResolvedValue({ size: 1024 });
+      const file = await loadFilePreview(
+        { name: `file.${type}`, type, path: `/workspace/file.${type}` },
+        { ipcRenderer: { invoke } }
+      );
+      expect(invoke).toHaveBeenCalledTimes(1);
+      expect(file.preview).toMatchObject({
+        kind: 'blocked',
+        reason: 'unsupported',
+      });
+    }
+  );
+  it('blocks binary content returned by the desktop bounded reader', async () => {
+    const invoke = vi
+      .fn()
+      .mockResolvedValueOnce({ size: 100 })
+      .mockResolvedValueOnce({
+        binary: true,
+        content: '',
+        bytesRead: 100,
+        totalBytes: 100,
+      });
+    const file = await loadFilePreview(
+      {
+        name: 'data.unknown',
+        type: 'unknown',
+        path: '/workspace/data.unknown',
+      },
+      { ipcRenderer: { invoke } }
+    );
+    expect(file.content).toBeUndefined();
+    expect(file.preview?.kind).toBe('blocked');
+  });
+  it.each([
+    {
+      content: `${'A'.repeat(9000)}\ncafé\n`,
+      expected: `${'A'.repeat(9000)}\ncafé\n`,
+    },
+    {
+      content:
+        'before\n\u001b]8;;https://example.com\u001b\\link\u001b]8;;\u001b\\\nERROR: job failed\n',
+      expected: 'before\nlink\nERROR: job failed\n',
+    },
+  ])(
+    'preserves decoded remote subtitle content %#',
+    async ({ content, expected }) => {
+      const bytes = new Uint8Array(Buffer.from(content, 'latin1'));
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(bytes)));
+      const file = await loadFilePreview(
+        {
+          name: 'subtitles.srt',
+          path: 'https://files.example/subtitles.srt',
+          type: 'srt',
+          size: bytes.length,
+        },
+        {}
+      );
+
+      expect(file.content).toBe(expected);
+      expect(file.preview).toEqual({
+        kind: 'truncated-text',
+        bytesRead: bytes.length,
+        totalBytes: bytes.length,
+      });
+    }
+  );
+  it.each([
+    { bytes: new Uint8Array([31, 139, 8, 0, 0, 1]), blocked: true },
+    { bytes: new TextEncoder().encode('Hello 世界\n'), blocked: false },
+    { bytes: new Uint8Array([255, 254, 72, 0, 105, 0]), blocked: false },
+  ])(
+    'probes unknown remote bytes before decoding ($blocked)',
+    async ({ bytes, blocked }) => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(bytes)));
+      const file = await loadFilePreview(
+        {
+          name: 'download',
+          path: 'https://files.example/download',
+          type: '',
+          size: bytes.length,
+        },
+        {}
+      );
+      expect(file.preview?.kind).toBe(blocked ? 'blocked' : 'truncated-text');
+      if (!blocked) expect(file.content).toMatch(/Hello|Hi/);
+    }
+  );
 });

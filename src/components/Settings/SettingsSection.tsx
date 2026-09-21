@@ -25,6 +25,8 @@ interface SettingsSectionProps {
   titleVariant?: 'default' | 'hidden';
   className?: string;
   boxClassName?: string;
+  /** Raised panel on the content pane, or no fill so the page surface shows through. */
+  surface?: 'panel' | 'plain';
 }
 
 export default function SettingsSection({
@@ -37,6 +39,7 @@ export default function SettingsSection({
   titleVariant = 'default',
   className,
   boxClassName,
+  surface = 'panel',
 }: SettingsSectionProps) {
   const showTitle = titleVariant === 'default' && title != null;
 
@@ -63,7 +66,10 @@ export default function SettingsSection({
         className={cn(
           // Borderless: the section reads as a filled panel against the
           // subtle content-pane background instead of an outlined card.
-          'flex rounded-2xl border-0 border-x-0 border-y-0 bg-ds-neutral-default-default p-4',
+          'flex rounded-2xl border-0 border-x-0 border-y-0 p-4',
+          surface === 'plain'
+            ? 'bg-transparent'
+            : 'bg-ds-neutral-default-default',
           variant === 'horizontal' ? 'flex-row' : 'flex-col',
           boxClassName
         )}

@@ -29,10 +29,18 @@
   "search-files": "Cerca file",
   "source-for-file": "{{name}} - Sorgente",
   "source-view": "Sorgente",
+  "preview-byte-summary": "Anteprima di {{bytesRead}}{{totalBytes}}",
   "truncated-preview-summary": "{{bytesRead}}{{totalBytes}}. Carica completa non è stata caricata.",
   "video-playback-unsupported": "Il browser non supporta il playback dei video.",
   "view-mode": "Modo di visualizzazione",
-  "folder-selected-open-in-description": "Seleziona 'Apri' per aprire questo esatto cartellino nel Finder o in un editor.",
+  "folder-selected-open-in-description": "Usa le azioni qui sopra per aprire questa cartella nel file manager o in un editor.",
   "folder-selected-preview-description": "Seleziona un file all'interno di questo cartellino per visualizzare i suoi contenuti.",
-  "zip-file-is-not-supported-yet": "La scomparta zip non è ancora supportata."
+  "zip-file-is-not-supported-yet": "La scomparta zip non è ancora supportata.",
+  "show-in-finder": "Mostra nel Finder",
+  "show-in-explorer": "Mostra in Esplora file",
+  "show-in-folder": "Mostra nella cartella",
+  "open-in-finder": "Apri nel Finder",
+  "open-in-explorer": "Apri in Esplora file",
+  "open-in-folder": "Apri nel file manager",
+  "preview-load-failed": "Impossibile visualizzare questo file. Riprova o aprilo in un’applicazione esterna."
 }

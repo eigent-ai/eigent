@@ -38,6 +38,10 @@ const IDLE_HYDRATION: ProjectEventStoreHydrationState = {
   status: 'idle',
   errorCode: null,
   eventsTruncated: false,
+  hasOlderHistory: false,
+  isLoadingOlder: false,
+  olderHistoryError: false,
+  loadOlder: async () => undefined,
   retry: retryNothing,
 };
 

@@ -23,6 +23,7 @@ import { Folder } from 'lucide-react';
 import { useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import HomeHubCard from './components/HomeHubCard';
+import HomeHubEmptyState from './components/HomeHubEmptyState';
 import HomeHubGrid from './components/HomeHubGrid';
 import HomeHubListItem from './components/HomeHubListItem';
 import HomeHubListTable from './components/HomeHubListTable';
@@ -48,6 +49,8 @@ export default function Spaces() {
     projects: hubProjects,
     sortBy,
     sortDirection,
+    setSearchQuery,
+    openNewSpaceDialog,
   } = useHomeHub();
   const spacesById = useSpaceStore((state) => state.spaces);
   const projectsBySpaceId = useSpaceStore((state) => state.projectsBySpaceId);
@@ -163,18 +166,18 @@ export default function Spaces() {
     <div data-home-spaces-list className="flex w-full min-w-0 flex-col">
       <div className="mb-12 w-full min-w-0">
         {spaceSections.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-8 text-center">
-            <Folder className="mb-4 h-12 w-12 text-ds-ink-muted-default" />
-            <div className="text-sm text-ds-ink-muted-default">
-              {t('layout.spaces-hub-empty-title')}
-            </div>
-          </div>
+          <HomeHubEmptyState
+            icon={Folder}
+            title={t('layout.spaces-hub-empty-title')}
+            actionLabel={t('layout.spaces-new-space')}
+            onAction={openNewSpaceDialog}
+          />
         ) : filteredSpaceSections.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-8 text-center">
-            <div className="text-sm text-ds-ink-muted-default">
-              {t('layout.search-no-results')}
-            </div>
-          </div>
+          <HomeHubEmptyState
+            title={t('layout.search-no-results')}
+            actionLabel={t('agents.clear-search-tooltip')}
+            onAction={() => setSearchQuery('')}
+          />
         ) : viewMode === 'grid' || viewMode === 'board' ? (
           <HomeHubGrid>
             {filteredSpaceSections.map(({ space, projects }) => {
