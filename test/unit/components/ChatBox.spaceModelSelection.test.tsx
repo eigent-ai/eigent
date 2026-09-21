@@ -74,6 +74,7 @@ vi.mock('@/store/authStore', () => ({
 vi.mock('@/store/projectStore', () => ({
   useProjectStore: { getState: () => mocks.projectStore },
   useProjectRuntimeStore: { getState: () => mocks.projectStore },
+  waitForPendingStaleRuntimeEviction: vi.fn(async () => undefined),
 }));
 vi.mock('@/store/spaceStore', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/store/spaceStore')>();
@@ -312,7 +313,7 @@ describe('ChatBox after an accepted Space model selection', () => {
         : url.includes('/model-selection')
           ? { space_id: 'space-1', selection: installed }
           : url.endsWith('/status')
-            ? { has_lock: true }
+            ? { has_lock: true, consumer_alive: true }
             : {}
     );
     mocks.get.mockImplementation(async (url) => {
@@ -334,7 +335,9 @@ describe('ChatBox after an accepted Space model selection', () => {
       if (url === '/api/v1/providers') return { items: [], pages: 1 };
       return [];
     });
-    mocks.post.mockResolvedValue({});
+    mocks.post.mockImplementation(async (url: string) =>
+      url.endsWith('/resume') ? { attempt: { attempt_number: 2 } } : {}
+    );
     mocks.sse.mockImplementation(async (options) => {
       await options.onopen(
         new Response('', {

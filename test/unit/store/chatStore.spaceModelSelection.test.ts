@@ -188,7 +188,9 @@ describe('Space default through the real Chat start path', () => {
       if (url === '/api/v1/providers') return { items: providers, pages: 1 };
       return [];
     });
-    mocks.post.mockResolvedValue({});
+    mocks.post.mockImplementation(async (url: string) =>
+      url.endsWith('/resume') ? { attempt: { attempt_number: 2 } } : {}
+    );
     mocks.sse.mockImplementation(async (options) => {
       await options.onopen(
         new Response('', {
