@@ -39,6 +39,18 @@ from app.workspace_git import GitBackend
                 os.name == "nt", reason="Windows forbids newlines in filenames"
             ),
         ),
+        pytest.param(
+            "carriage\rname.md",
+            marks=pytest.mark.skipif(
+                os.name == "nt", reason="Windows forbids newlines in filenames"
+            ),
+        ),
+        pytest.param(
+            "crlf\r\nname.md",
+            marks=pytest.mark.skipif(
+                os.name == "nt", reason="Windows forbids newlines in filenames"
+            ),
+        ),
     ],
 )
 def test_path_status_preserves_filenames(tmp_path: Path, filename: str):

@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -291,6 +292,48 @@ def test_status_reports_pending_managed_paths_with_quoted_names(
     assert (
         service.status(result.repository.repository_id).pending_managed_paths
         == ()
+    )
+
+    target.write_text("pending edit\n", encoding="utf-8")
+
+    status = service.status(result.repository.repository_id)
+    assert status.pending_managed_paths == (filename,)
+    assert status.pending_managed_paths_truncated is False
+
+
+@pytest.mark.skipif(
+    os.name == "nt", reason="Windows forbids newlines in filenames"
+)
+@pytest.mark.parametrize("line_ending", ["\r", "\r\n"])
+def test_pending_managed_paths_distinguish_line_endings(
+    tmp_path,
+    journal,
+    line_ending,
+):
+    space = tmp_path / "repo"
+    space.mkdir()
+    service, backend = _service(tmp_path, journal)
+    result = service.bootstrap(
+        space_id="space-1",
+        space_root=space,
+        allow_init=True,
+    )
+    filename = f"report{line_ending}name.md"
+    target = space / filename
+    other = space / "report\nname.md"
+    for path in (target, other):
+        path.write_text("baseline\n", encoding="utf-8")
+    service.checkpoint(
+        result.repository.repository_id,
+        operation_request_id="checkpoint-1",
+        expected_repo_state_digest=backend.repo_state_token(space).digest,
+        paths=(target, other),
+        path_sources={path.name: "user_selected" for path in (target, other)},
+        target_role="user",
+        target_id="space-1",
+        actor_id="user-1",
+        trigger="user_save",
+        message="Save progress",
     )
 
     target.write_text("pending edit\n", encoding="utf-8")

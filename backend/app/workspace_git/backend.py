@@ -687,6 +687,7 @@ class GitBackend:
             repository_root,
             ("status", "--porcelain=v1", "-z", "--", *pathspecs),
             encoding="utf-8",
+            preserve_newlines=True,
         )
         return self._status_records(result.stdout)
 
@@ -1763,6 +1764,7 @@ class GitBackend:
         identity: tuple[str, str] | None = None,
         input_text: str | None = None,
         encoding: str | None = None,
+        preserve_newlines: bool = False,
     ) -> GitCommandResult:
         environment = self._environment(identity=identity)
         if args[0] == "check-ignore":
@@ -1770,14 +1772,17 @@ class GitBackend:
             # Git rejects even implicit :(literal) magic for this command.
             environment["GIT_LITERAL_PATHSPECS"] = "0"
         command = self._command(cwd, args)
+        command_input: str | bytes | None = input_text
+        if preserve_newlines and input_text is not None:
+            command_input = input_text.encode(encoding or "utf-8")
         try:
             completed = subprocess.run(
                 command,
                 check=False,
                 capture_output=True,
-                text=True,
-                encoding=encoding,
-                input=input_text,
+                text=not preserve_newlines,
+                encoding=None if preserve_newlines else encoding,
+                input=command_input,
                 timeout=self.timeout_seconds,
                 env=environment,
             )
@@ -1785,8 +1790,14 @@ class GitBackend:
             raise GitBackendError(
                 f"failed to execute typed Git operation: {args[0]}"
             ) from exc
-        stdout = completed.stdout[: self.max_output_chars]
-        stderr = completed.stderr[: self.max_output_chars]
+        output = completed.stdout
+        errors = completed.stderr
+        if preserve_newlines:
+            # Text mode would change CR/CRLF bytes inside NUL-delimited paths.
+            output = output.decode(encoding or "utf-8")
+            errors = errors.decode(encoding or "utf-8")
+        stdout = output[: self.max_output_chars]
+        stderr = errors[: self.max_output_chars]
         if check and completed.returncode != 0:
             raise GitCommandError(
                 args=args,
@@ -1797,8 +1808,8 @@ class GitBackend:
             stdout=stdout,
             stderr=stderr,
             returncode=completed.returncode,
-            stdout_truncated=len(completed.stdout) > self.max_output_chars,
-            stderr_truncated=len(completed.stderr) > self.max_output_chars,
+            stdout_truncated=len(output) > self.max_output_chars,
+            stderr_truncated=len(errors) > self.max_output_chars,
         )
 
     def _environment(
