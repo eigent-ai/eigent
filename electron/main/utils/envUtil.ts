@@ -19,6 +19,20 @@ import path from 'path';
 export const ENV_START = '# === MCP INTEGRATION ENV START ===';
 export const ENV_END = '# === MCP INTEGRATION ENV END ===';
 
+export function restrictEnvFilePermissions(envPath: string) {
+  try {
+    fs.chmodSync(envPath, 0o600);
+  } catch {
+    // best-effort on platforms without POSIX perms
+  }
+}
+
+export function writeEnvFile(envPath: string, content: string) {
+  fs.writeFileSync(envPath, content, { encoding: 'utf-8', mode: 0o600 });
+  // writeFileSync's mode only applies on create; enforce on existing files too.
+  restrictEnvFilePermissions(envPath);
+}
+
 export function getEnvPath(email: string) {
   const tempEmail = email
     .split('@')[0]
@@ -35,7 +49,9 @@ export function getEnvPath(email: string) {
   const defaultEnv = path.join(process.resourcesPath, 'backend', '.env');
   if (!fs.existsSync(envPath) && fs.existsSync(defaultEnv)) {
     fs.copyFileSync(defaultEnv, envPath);
-    fs.chmodSync(envPath, 0o600);
+  }
+  if (fs.existsSync(envPath)) {
+    restrictEnvFilePermissions(envPath);
   }
 
   return envPath;
