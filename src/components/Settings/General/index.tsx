@@ -309,7 +309,7 @@ export default function SettingGeneral({
                     setProxyUrl(e.target.value);
                   }}
                   size="default"
-                  disabled={proxyLoading}
+                  disabled={proxyLoading || isProxySaving}
                   note={
                     showProxyRestartAction
                       ? t('setting.proxy-restart-hint')

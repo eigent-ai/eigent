@@ -232,6 +232,7 @@ describe('General settings Network Proxy', () => {
       );
     });
     expect(input).toHaveValue('http://failed-proxy:9090');
+    expect(input).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Reset' })).toBeEnabled();
 
     await user.click(screen.getByRole('button', { name: 'Reset' }));
@@ -242,34 +243,61 @@ describe('General settings Network Proxy', () => {
     errorSpy.mockRestore();
   });
 
-  it('disables Reset while a save is in flight', async () => {
-    const user = userEvent.setup();
-    let resolveSave: (result: { success: boolean }) => void = () => {};
-    const envWrite = vi.fn(
-      () =>
-        new Promise<{ success: boolean }>((resolve) => {
-          resolveSave = resolve;
-        })
-    );
-    renderProxySettings('http://saved-proxy:8080', { envWrite });
-    const input = await screen.findByDisplayValue('http://saved-proxy:8080');
+  it.each([
+    {
+      operation: 'saving a proxy',
+      nextValue: 'http://pending-proxy:9090',
+      method: 'envWrite',
+    },
+    {
+      operation: 'removing a proxy',
+      nextValue: '',
+      method: 'envRemove',
+    },
+  ] as const)(
+    'prevents edits while $operation and restores editing after success',
+    async ({ nextValue, method }) => {
+      const user = userEvent.setup();
+      let resolveSave: (result: { success: boolean }) => void = () => {};
+      const persistProxy = vi.fn(
+        () =>
+          new Promise<{ success: boolean }>((resolve) => {
+            resolveSave = resolve;
+          })
+      );
+      renderProxySettings('http://saved-proxy:8080', {
+        [method]: persistProxy,
+      });
+      const input = await screen.findByDisplayValue('http://saved-proxy:8080');
 
-    await user.clear(input);
-    await user.type(input, 'http://pending-proxy:9090');
-    await user.click(screen.getByRole('button', { name: 'Save' }));
+      await user.clear(input);
+      if (nextValue) await user.type(input, nextValue);
+      await user.click(screen.getByRole('button', { name: 'Save' }));
 
-    await waitFor(() => expect(envWrite).toHaveBeenCalledTimes(1));
-    expect(screen.getByRole('button', { name: 'Reset' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Saving...' })).toBeDisabled();
+      await waitFor(() => expect(persistProxy).toHaveBeenCalledTimes(1));
+      expect(input).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Reset' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Saving...' })).toBeDisabled();
 
-    await act(async () => {
-      resolveSave({ success: true });
-    });
+      // A save callback must not replace a draft entered during persistence.
+      await user.type(input, 'http://newer-draft:7070');
+      expect(input).toHaveValue(nextValue);
 
-    expect(
-      await screen.findByRole('button', { name: 'Restart to Apply' })
-    ).toBeEnabled();
-  });
+      await act(async () => {
+        resolveSave({ success: true });
+      });
+
+      expect(
+        await screen.findByRole('button', { name: 'Restart to Apply' })
+      ).toBeEnabled();
+      expect(input).toBeEnabled();
+      expect(input).toHaveValue(nextValue);
+
+      await user.type(input, ' ');
+      expect(input).toHaveValue(`${nextValue} `);
+      expect(screen.getByRole('button', { name: 'Reset' })).toBeEnabled();
+    }
+  );
 
   it('resets edits to an empty loaded proxy without removing it', async () => {
     const user = userEvent.setup();
