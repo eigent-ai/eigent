@@ -55,7 +55,7 @@ def poll_trigger_schedules() -> None:
 
 @shared_task(queue="check_execution_timeouts")
 def check_execution_timeouts() -> None:
-    """Check for timed-out pending and running executions."""
+    """Expire unacknowledged executions and report delayed terminal receipts."""
     logger.info("Starting check_execution_timeouts task", extra={
         "pending_timeout": EXECUTION_PENDING_TIMEOUT_SECONDS,
         "running_timeout": EXECUTION_RUNNING_TIMEOUT_SECONDS
@@ -78,7 +78,7 @@ def check_execution_timeouts() -> None:
         ).all()
 
         timed_out_pending_count = 0
-        timed_out_running_count = 0
+        running_awaiting_receipt_count = 0
 
         for execution in executions:
             is_pending = execution.status == ExecutionStatus.pending
@@ -95,12 +95,16 @@ def check_execution_timeouts() -> None:
             time_elapsed = (now - reference_time).total_seconds()
 
             if time_elapsed > timeout_seconds:
-                if is_pending:
-                    new_status = ExecutionStatus.missed
-                    error_message = f"Execution acknowledgment timeout ({timeout_seconds} seconds)"
-                else:
-                    new_status = ExecutionStatus.failed
-                    error_message = f"Execution running timeout ({timeout_seconds} seconds) - no completion received"
+                if not is_pending:
+                    # The server cannot observe the Brain's progress or paused
+                    # deadline while it awaits user input. Elapsed wall time is
+                    # not a terminal receipt and cannot fail a healthy Run.
+                    # Only its authoritative terminal update may settle it.
+                    running_awaiting_receipt_count += 1
+                    continue
+
+                new_status = ExecutionStatus.missed
+                error_message = f"Execution acknowledgment timeout ({timeout_seconds} seconds)"
 
                 updated_execution, transitioned = (
                     trigger_service.transition_execution_status_by_id(
@@ -113,10 +117,7 @@ def check_execution_timeouts() -> None:
                 if not transitioned or updated_execution is None:
                     continue
                 execution = updated_execution
-                if is_pending:
-                    timed_out_pending_count += 1
-                else:
-                    timed_out_running_count += 1
+                timed_out_pending_count += 1
 
                 try:
                     trigger = session.get(Trigger, execution.trigger_id)
@@ -134,17 +135,22 @@ def check_execution_timeouts() -> None:
                 logger.info("Execution timed out", extra={
                     "execution_id": execution.execution_id,
                     "trigger_id": execution.trigger_id,
-                    "original_status": "pending" if is_pending else "running",
+                    "original_status": "pending",
                     "new_status": new_status.value,
                     "time_elapsed": time_elapsed
                 })
 
-        total_timed_out = timed_out_pending_count + timed_out_running_count
-        if total_timed_out > 0:
+        if running_awaiting_receipt_count > 0:
+            # Aggregate once per sweep instead of logging every long Run.
+            logger.warning("Running executions still await terminal receipts", extra={
+                "execution_count": running_awaiting_receipt_count,
+                "elapsed_threshold_seconds": EXECUTION_RUNNING_TIMEOUT_SECONDS,
+            })
+
+        if timed_out_pending_count > 0:
             logger.info("Marked executions as timed out", extra={
                 "timed_out_pending_count": timed_out_pending_count,
-                "timed_out_running_count": timed_out_running_count,
-                "total_timed_out": total_timed_out
+                "total_timed_out": timed_out_pending_count
             })
 
     except Exception as e:
