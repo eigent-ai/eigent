@@ -152,6 +152,8 @@ declare global {
     /** Retained when a canonical event enters the legacy message reducer. */
     feedbackMessageId?: string;
     event_id?: string;
+    /** Committed RunJournal receipt for a live legacy message. */
+    source_event_id?: string;
     timestamp?: number | null;
     created_at?: string | null;
     /** Per-Run receive order used to merge legacy per-agent work logs. */

@@ -31,6 +31,7 @@ import httpx
 
 from app.component.environment import env
 from app.run_context import get_current_run_context
+from app.run_journal.models import CommittedRunEvent
 from app.run_journal.runtime import get_default_event_recorder
 from app.run_sync.runtime import _uses_eigent_hosted_control_plane
 from app.service.task import get_task_lock_if_exists
@@ -107,10 +108,10 @@ def sync_step(func):
 
         try:
             async for value in func(*args, **kwargs):
-                await _record_local_step_fail_open(args, value)
+                receipt = await _record_local_step_fail_open(args, value)
                 if config:
                     _try_sync(args, value, config)
-                yield value
+                yield _with_feedback_source_identity(value, receipt)
         finally:
             # A stream normally emits a non-text terminal step, but flush the
             # tail here as well so cancellation/end-of-stream cannot strand a
@@ -173,7 +174,7 @@ async def sync_step_event(
     )
 
 
-async def _record_local_step(args, value) -> None:
+async def _record_local_step(args, value) -> CommittedRunEvent | None:
     data = _parse_value(value)
     if not data:
         return
@@ -217,16 +218,19 @@ async def _record_local_step(args, value) -> None:
         # remains alive for later follow-ups.
         from app.run_runtime import get_default_run_coordinator
 
-        if not await get_default_run_coordinator().complete_turn(
+        coordinator = get_default_run_coordinator()
+        completed, receipt = await coordinator.complete_turn_with_receipt(
             run_id,
             project_id=project_id,
             assistant_data=data["data"],
-        ):
+        )
+        if not completed:
             raise RuntimeError(
                 f"RunCoordinator could not terminalize completed Run {run_id!r}"
             )
+        return receipt
     else:
-        await get_default_event_recorder().record_legacy_step(
+        return await get_default_event_recorder().record_legacy_step(
             project_id=project_id,
             run_id=run_id,
             step=data["step"],
@@ -234,9 +238,11 @@ async def _record_local_step(args, value) -> None:
         )
 
 
-async def _record_local_step_fail_open(args, value) -> None:
+async def _record_local_step_fail_open(
+    args, value
+) -> CommittedRunEvent | None:
     try:
-        await _record_local_step(args, value)
+        return await _record_local_step(args, value)
     except Exception as exc:
         parsed = _parse_value(value)
         if parsed is not None and parsed.get("step") in {
@@ -253,6 +259,25 @@ async def _record_local_step_fail_open(args, value) -> None:
             run_id=run_id,
             error=exc,
         )
+        return None
+
+
+def _with_feedback_source_identity(value, receipt: CommittedRunEvent | None):
+    if receipt is None:
+        return value
+    frame = _parse_value(value)
+    if frame is None or frame["step"] not in {
+        "end",
+        "wait_confirm",
+        "agent_end",
+        "agent_summary_end",
+    }:
+        return value
+    # Keep legacy transport identity separate: reusing event_id here could
+    # suppress the authoritative canonical receipt in mixed-lane projections.
+    frame["source_event_id"] = receipt.event_id
+    encoded = json.dumps(frame, ensure_ascii=False)
+    return f"data: {encoded}\n\n" if value.startswith("data: ") else encoded
 
 
 async def _flush_local_text(run_id: str) -> None:

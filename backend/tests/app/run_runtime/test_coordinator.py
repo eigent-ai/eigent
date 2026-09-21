@@ -421,6 +421,13 @@ async def test_warm_turn_cancel_never_becomes_success_on_legacy_end(tmp_path):
         )
         assert journal.get_run("run-cancel").status == "cancelled"
         assert journal.get_run_final_result_event("run-cancel") is None
+        completed, receipt = await coordinator.complete_turn_with_receipt(
+            "run-cancel",
+            project_id="project-1",
+            assistant_data="Task stopped by user",
+        )
+        assert completed is True
+        assert receipt is None
         assert "run.completed" not in {
             event.event_type for event in journal.list_events("run-cancel")
         }

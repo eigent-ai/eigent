@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { resolveSourceEventId } from '../../messageIdentity';
 import { decodeTransportMessage } from '../decode';
 import { normalizeEvent } from '../normalize';
 import type { CanonicalProjectEvent } from '../types';
@@ -63,9 +64,6 @@ export function normalizeLegacyChatStep(
   );
   // normalizeEvent sees the connection-local fallback above as event_id.
   // Only the original frame can establish a source identity for correlation.
-  event.sourceEventId =
-    typeof message.event_id === 'string' && message.event_id.trim()
-      ? message.event_id
-      : undefined;
+  event.sourceEventId = resolveSourceEventId(message);
   return event;
 }

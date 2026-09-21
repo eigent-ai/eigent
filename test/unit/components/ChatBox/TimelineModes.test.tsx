@@ -353,7 +353,7 @@ describe('ChatBox timeline modes', () => {
     }
   });
 
-  it.each(['synthetic', 'event_id', 'message_id'] as const)(
+  it.each(['synthetic', 'event_id', 'message_id', 'source_event_id'] as const)(
     'classifies historical feedback with %s identity',
     async (identity) => {
       const projectId = `feedback-legacy-history-${identity}`;
@@ -374,6 +374,9 @@ describe('ChatBox timeline modes', () => {
                 step: 'end',
                 ...(identity === 'event_id'
                   ? { event_id: 'source-event' }
+                  : {}),
+                ...(identity === 'source_event_id'
+                  ? { source_event_id: 'source-receipt' }
                   : {}),
                 data: {
                   content: 'Historical result',
@@ -415,7 +418,9 @@ describe('ChatBox timeline modes', () => {
                   ? 'source-event'
                   : identity === 'message_id'
                     ? 'source-message'
-                    : `chat_step_v1:${projectId}:${runId}:history-connection:1`,
+                    : identity === 'source_event_id'
+                      ? 'source-receipt'
+                      : `chat_step_v1:${projectId}:${runId}:history-connection:1`,
               ...(identity === 'synthetic'
                 ? { message_id_source: 'legacy_ui' }
                 : {}),

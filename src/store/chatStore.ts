@@ -42,7 +42,10 @@ import {
   recordTaskSubmitted,
 } from '@/lib/events/appEvents';
 import { notifyDurableRunStatusChanged } from '@/lib/events/durableRunEvents';
-import { resolveSourceMessageId } from '@/lib/messageIdentity';
+import {
+  resolveSourceEventId,
+  resolveSourceMessageId,
+} from '@/lib/messageIdentity';
 import {
   buildAgentModelConfigFromProvider,
   splitProviderConfig,
@@ -3956,7 +3959,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               content: content as string,
               feedbackMessageId: resolveSourceMessageId(
                 agentMessages.data,
-                agentMessages.feedbackMessageId ?? agentMessages.event_id
+                agentMessages.feedbackMessageId ??
+                  resolveSourceEventId(agentMessages)
               ),
               step: AgentStep.WAIT_CONFIRM,
               isConfirm: false,
@@ -5207,7 +5211,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               role: 'agent',
               feedbackMessageId: resolveSourceMessageId(
                 agentMessages.data,
-                agentMessages.feedbackMessageId ?? agentMessages.event_id
+                agentMessages.feedbackMessageId ??
+                  resolveSourceEventId(agentMessages)
               ),
               content: endMessage || '',
               step: agentMessages.step,
@@ -5627,7 +5632,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             content: extractAgentMessageContent(agentMessages.data),
             feedbackMessageId: resolveSourceMessageId(
               agentMessages.data,
-              agentMessages.feedbackMessageId ?? agentMessages.event_id
+              agentMessages.feedbackMessageId ??
+                resolveSourceEventId(agentMessages)
             ),
             step: agentMessages.step,
             isConfirm: false,

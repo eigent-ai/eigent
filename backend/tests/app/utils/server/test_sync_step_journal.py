@@ -14,7 +14,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -88,6 +90,74 @@ async def test_sse_step_is_committed_before_it_is_yielded(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "step", ["end", "wait_confirm", "agent_end", "agent_summary_end"]
+)
+async def test_live_feedback_frame_references_its_committed_receipt(
+    tmp_path, monkeypatch, step
+):
+    from app import run_runtime
+    from app.run_journal.recorder import EventRecorder
+    from app.run_journal.store import SQLiteRunJournal
+    from app.run_runtime.coordinator import RunCoordinator
+
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-live", project_id="project-live")
+        coordinator = RunCoordinator(journal)
+        recorder = EventRecorder(journal)
+        release = asyncio.Event()
+        monkeypatch.setattr(
+            run_runtime, "get_default_run_coordinator", lambda: coordinator
+        )
+        monkeypatch.setattr(
+            sync_step_module, "get_default_event_recorder", lambda: recorder
+        )
+        monkeypatch.setattr(sync_step_module, "env", lambda *_args: "")
+        monkeypatch.setattr(
+            "app.lightweight_memory.schedule_project_memory_maintenance",
+            lambda _project_id: None,
+        )
+        payload = {"content": "The live result"}
+
+        @sync_step_module.sync_step
+        async def stream(chat, request):
+            yield f"data: {json.dumps({'step': step, 'data': payload})}\n\n"
+            await release.wait()
+
+        chat = SimpleNamespace(task_id="run-live", project_id="project-live")
+        try:
+            subscription = await coordinator.start_with_subscription(
+                run_id="run-live",
+                stream_factory=lambda: stream(
+                    chat, SimpleNamespace(headers={})
+                ),
+            )
+            value = await subscription.__anext__()
+            frame = sync_step_module._parse_value(value)
+            receipt = next(
+                event
+                for event in journal.list_events("run-live")
+                if event.event_type
+                == (
+                    "assistant.final"
+                    if step in {"end", "wait_confirm"}
+                    else f"legacy.{step}"
+                )
+            )
+            assert frame == {
+                "step": step,
+                "data": payload,
+                "source_event_id": receipt.event_id,
+            }
+            # A legacy transport identity must not masquerade as a canonical
+            # ingress event and suppress its authoritative replay later.
+            assert "event_id" not in frame
+        finally:
+            release.set()
+            await coordinator.close()
+
+
+@pytest.mark.asyncio
 async def test_non_sse_payload_is_not_written(monkeypatch):
     recorder = SimpleNamespace(record_legacy_step=AsyncMock())
     monkeypatch.setattr(
@@ -102,6 +172,66 @@ async def test_non_sse_payload_is_not_written(monkeypatch):
     chat = SimpleNamespace(task_id="run-1", project_id="project-1")
     assert [value async for value in stream(chat, SimpleNamespace(headers={}))]
     recorder.record_legacy_step.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", ["failed", "cancelled", "completed"])
+async def test_terminal_transport_close_has_no_new_result_identity(
+    tmp_path, monkeypatch, outcome
+):
+    from app import run_runtime
+    from app.run_journal.store import SQLiteRunJournal
+    from app.run_runtime.coordinator import RunCoordinator
+
+    with SQLiteRunJournal(tmp_path / "journal.sqlite3") as journal:
+        journal.ensure_run(run_id="run-close", project_id="project-close")
+        coordinator = RunCoordinator(journal)
+        release = asyncio.Event()
+        monkeypatch.setattr(
+            run_runtime, "get_default_run_coordinator", lambda: coordinator
+        )
+        monkeypatch.setattr(sync_step_module, "env", lambda *_args: "")
+        monkeypatch.setattr(
+            "app.lightweight_memory.schedule_project_memory_maintenance",
+            lambda _project_id: None,
+        )
+
+        @sync_step_module.sync_step
+        async def stream(chat, request):
+            if outcome == "completed":
+                await coordinator.complete_turn(
+                    "run-close",
+                    project_id="project-close",
+                    assistant_data="Original result",
+                )
+            else:
+                await coordinator._commit_run_terminal(
+                    run_id="run-close",
+                    started_at=1.0,
+                    event_type=f"run.{outcome}",
+                    payload={},
+                )
+            yield 'data: {"step":"end","data":{"message":"Stream closed"}}'
+            await release.wait()
+
+        try:
+            subscription = await coordinator.start_with_subscription(
+                run_id="run-close",
+                stream_factory=lambda: stream(
+                    SimpleNamespace(
+                        task_id="run-close", project_id="project-close"
+                    ),
+                    SimpleNamespace(headers={}),
+                ),
+            )
+            frame = sync_step_module._parse_value(
+                await subscription.__anext__()
+            )
+            assert "source_event_id" not in frame
+            assert journal.get_run("run-close").status == outcome
+        finally:
+            release.set()
+            await coordinator.close()
 
 
 @pytest.mark.asyncio
@@ -203,13 +333,13 @@ async def test_end_finalizes_artifacts_before_assistant_result_and_terminal(
                 "assistant.final+run.completed",
             ]
         )
-        return True
+        return True, None
 
     monkeypatch.setattr(
         run_runtime,
         "get_default_run_coordinator",
         lambda: SimpleNamespace(
-            complete_turn=AsyncMock(side_effect=complete_turn)
+            complete_turn_with_receipt=AsyncMock(side_effect=complete_turn)
         ),
     )
     monkeypatch.setattr(sync_step_module, "env", lambda *_args: "")
@@ -246,13 +376,13 @@ async def test_direct_answer_terminalizes_before_wait_confirm_is_yielded(
             "question": "status?",
         }
         order.append("assistant.final+run.completed")
-        return True
+        return True, None
 
     monkeypatch.setattr(
         run_runtime,
         "get_default_run_coordinator",
         lambda: SimpleNamespace(
-            complete_turn=AsyncMock(side_effect=complete_turn)
+            complete_turn_with_receipt=AsyncMock(side_effect=complete_turn)
         ),
     )
     monkeypatch.setattr(sync_step_module, "env", lambda *_args: "")
@@ -283,7 +413,9 @@ async def test_direct_answer_terminalization_failure_stops_success_frame(
     monkeypatch.setattr(
         run_runtime,
         "get_default_run_coordinator",
-        lambda: SimpleNamespace(complete_turn=AsyncMock(return_value=False)),
+        lambda: SimpleNamespace(
+            complete_turn_with_receipt=AsyncMock(return_value=(False, None))
+        ),
     )
     monkeypatch.setattr(sync_step_module, "env", lambda *_args: "")
 
@@ -302,8 +434,9 @@ async def test_direct_answer_terminalization_failure_stops_success_frame(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("step", ["activate_agent", "agent_end"])
 async def test_journal_failure_marks_degraded_but_does_not_stop_sse(
-    monkeypatch,
+    monkeypatch, step
 ):
     recorder = SimpleNamespace(
         record_legacy_step=AsyncMock(side_effect=OSError("disk full"))
@@ -324,7 +457,7 @@ async def test_journal_failure_marks_degraded_but_does_not_stop_sse(
 
     @sync_step_module.sync_step
     async def stream(chat, _request):
-        yield 'data: {"step":"activate_agent","data":{"agent":"browser"}}'
+        yield f'data: {{"step":"{step}","data":{{"agent":"browser"}}}}'
 
     chat = SimpleNamespace(task_id="run-1", project_id="project-1")
     values = [
@@ -332,6 +465,7 @@ async def test_journal_failure_marks_degraded_but_does_not_stop_sse(
     ]
 
     assert len(values) == 1
+    assert "source_event_id" not in sync_step_module._parse_value(values[0])
     task_lock.mark_local_history_degraded.assert_called_once_with(
         "OSError: disk full"
     )

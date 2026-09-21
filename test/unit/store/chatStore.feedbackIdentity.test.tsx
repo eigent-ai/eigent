@@ -30,13 +30,17 @@ vi.mock('@/api/http', async () => {
     getBaseURL,
     proxyFetchPost: vi.fn(() => Promise.resolve({ id: 'mock-history-id' })),
     proxyFetchPut: vi.fn(),
-    proxyFetchGet: vi.fn(() =>
-      Promise.resolve({
-        value: '',
-        api_url: '',
-        items: [],
-        warning_code: null,
-      })
+    proxyFetchGet: vi.fn((path: string) =>
+      Promise.resolve(
+        path === '/api/v1/chat/snapshots'
+          ? []
+          : {
+              value: '',
+              api_url: '',
+              items: [],
+              warning_code: null,
+            }
+      )
     ),
     uploadFile: vi.fn(),
     fetchDelete: vi.fn(),
@@ -188,7 +192,8 @@ function renderLegacyMessage(
 async function replay(
   store: VanillaChatStore,
   runId: string,
-  raw: Record<string, unknown>
+  raw: Record<string, unknown>,
+  replaySource: 'local_durable' | 'cloud' = 'local_durable'
 ) {
   vi.mocked(fetchEventSource).mockImplementation(async (_url, opts) => {
     await opts.onmessage?.({
@@ -211,7 +216,7 @@ async function replay(
         undefined,
         'feedback-project',
         undefined,
-        { replaySource: 'local_durable' }
+        { replaySource }
       );
   });
   return store
@@ -249,6 +254,50 @@ describe('feedback identity across legacy replay and canonical presentation', ()
     });
   });
   afterEach(() => unsubscribe());
+
+  it.each(['end', 'wait_confirm', 'agent_end', 'agent_summary_end'])(
+    'keeps a live-shaped %s rating when the canonical receipt is replayed',
+    async (step) => {
+      const { result } = renderHook(() => useChatStore());
+      const store = result.current;
+      const runId = store.getState().create();
+      const payload = { content: 'The live result' };
+      const receipt = canonical(
+        runId,
+        payload,
+        step === 'wait_confirm' ? 'end' : step
+      );
+      // Cloud replay and live /chat frames share the same legacy transport
+      // decoder. Use it here without starting model/network admission.
+      const live = await replay(
+        store,
+        runId,
+        { step, data: payload, source_event_id: receipt.event_id },
+        'cloud'
+      );
+      expect(live.feedbackMessageId).toBe(receipt.event_id);
+      const view = renderLegacyMessage(store, runId, live);
+      fireEvent.click(await screen.findByLabelText('Thumb up'));
+      view.unmount();
+
+      act(() => store.getState().create(runId));
+      const restored = await replay(store, runId, receipt);
+      expect(restored.id).not.toBe(live.id);
+      renderLegacyMessage(store, runId, restored);
+      expect(await screen.findByLabelText('Thumb up')).toHaveAttribute(
+        'aria-pressed',
+        'true'
+      );
+      expect(screen.getByLabelText('Thumb down')).toBeDisabled();
+      fireEvent.click(screen.getByLabelText('Thumb up'));
+      expect(events).toHaveLength(1);
+      expect(events[0].properties).toMatchObject({
+        message_id: receipt.event_id,
+        run_id: runId,
+      });
+      expect(events[0].properties).not.toHaveProperty('message_id_source');
+    }
+  );
 
   it.each(['event', 'message_id', 'messageId'] as const)(
     'keeps one rating across legacy and narrative renderers using %s identity',
