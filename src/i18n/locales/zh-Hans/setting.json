@@ -3,6 +3,7 @@
     "description": "按提供商整理你常用的模型。",
     "all-providers": "所有模型提供商",
     "default-model": "默认模型",
+    "default-model-description": "在您更改之前，新会话将使用此默认模型。",
     "add-provider": "添加提供商",
     "add-model": "添加模型",
     "add-more": "添加更多",

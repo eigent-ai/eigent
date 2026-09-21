@@ -3,6 +3,7 @@
     "description": "Keep the models you use, organized by provider.",
     "all-providers": "All model providers",
     "default-model": "Default model",
+    "default-model-description": "This default model will be used for new Sessions until you change it.",
     "add-provider": "Add provider",
     "add-model": "Add model",
     "add-more": "Add more",
