@@ -13,13 +13,14 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { Button } from '@/components/ui/button';
+import { DsText } from '@/components/ui/ds-text';
 import { Input } from '@/components/ui/input';
 import { LocaleEnum, switchLanguage } from '@/i18n';
 import { SITE_URL } from '@/lib';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationStore } from '@/store/installationStore';
 import { LogOut, Settings } from 'lucide-react';
-import { createRef, RefObject, useEffect, useState } from 'react';
+import { createRef, RefObject, useEffect, useId, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -71,9 +72,9 @@ export default function SettingGeneral({
   const [proxyLoading, setProxyLoading] = useState(true);
   const [isProxySaving, setIsProxySaving] = useState(false);
   const [proxyNeedsRestart, setProxyNeedsRestart] = useState(false);
+  const proxyRestartHintId = useId();
   const hasProxyValueChanged = proxyUrl !== savedProxyUrl;
   const hasUnsavedProxyChanges = proxyUrl.trim() !== savedProxyUrl.trim();
-  const showProxyRestartAction = proxyNeedsRestart && !hasUnsavedProxyChanges;
 
   const languageList = [
     {
@@ -143,6 +144,8 @@ export default function SettingGeneral({
 
   // Save proxy configuration
   const handleSaveProxy = async () => {
+    if (proxyLoading || isProxySaving || !hasUnsavedProxyChanges) return;
+
     if (!authStore.email) {
       toast.error(t('setting.proxy-save-failed'));
       return;
@@ -189,7 +192,13 @@ export default function SettingGeneral({
       setProxyUrl(trimmed);
       setSavedProxyUrl(trimmed);
       setProxyNeedsRestart(true);
-      toast.success(t('setting.proxy-saved-restart-required'));
+      toast.success(
+        t(
+          trimmed
+            ? 'setting.proxy-saved-restart-required'
+            : 'setting.proxy-cleared-restart-required'
+        )
+      );
     } catch (error) {
       console.error('Failed to save proxy:', error);
       toast.error(t('setting.proxy-save-failed'));
@@ -303,6 +312,10 @@ export default function SettingGeneral({
             action={
               <div className="flex w-full flex-col gap-ds-stack-related">
                 <Input
+                  aria-label={t('setting.network-proxy')}
+                  aria-describedby={
+                    proxyNeedsRestart ? proxyRestartHintId : undefined
+                  }
                   placeholder={t('setting.proxy-placeholder')}
                   value={proxyUrl}
                   onChange={(e) => {
@@ -310,14 +323,12 @@ export default function SettingGeneral({
                   }}
                   size="default"
                   disabled={proxyLoading || isProxySaving}
-                  note={
-                    showProxyRestartAction
-                      ? t('setting.proxy-restart-hint')
-                      : undefined
-                  }
                 />
-                <div className="flex items-center justify-end gap-ds-control-gap">
+                {/* Each action keeps its meaning after a save. In particular,
+                    a second Save click must never clear the proxy or restart. */}
+                <div className="flex flex-wrap items-center justify-end gap-ds-control-gap">
                   <Button
+                    type="button"
                     variant="outline"
                     size="sm"
                     buttonRadius="full"
@@ -331,29 +342,51 @@ export default function SettingGeneral({
                     {t('setting.reset')}
                   </Button>
                   <Button
-                    variant={showProxyRestartAction ? 'outline' : 'primary'}
+                    type="button"
+                    variant="primary"
                     size="sm"
                     buttonRadius="full"
-                    onClick={
-                      showProxyRestartAction
-                        ? () => host?.electronAPI?.restartApp()
-                        : handleSaveProxy
-                    }
+                    onClick={handleSaveProxy}
                     disabled={
-                      proxyLoading ||
-                      (!showProxyRestartAction &&
-                        (isProxySaving || !hasUnsavedProxyChanges))
+                      proxyLoading || isProxySaving || !hasUnsavedProxyChanges
                     }
                   >
                     {proxyLoading
                       ? t('setting.loading')
-                      : showProxyRestartAction
-                        ? t('setting.restart-to-apply')
-                        : isProxySaving
-                          ? t('setting.saving')
-                          : t('setting.save')}
+                      : isProxySaving
+                        ? t('setting.saving')
+                        : t('setting.save')}
                   </Button>
                 </div>
+                {proxyNeedsRestart ? (
+                  <>
+                    <div role="status">
+                      <DsText
+                        as="p"
+                        role="meta"
+                        id={proxyRestartHintId}
+                        className="text-ds-ink-muted-default"
+                      >
+                        {t('setting.proxy-restart-hint')}
+                      </DsText>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="self-end"
+                      onClick={() => host?.electronAPI?.restartApp()}
+                      disabled={
+                        proxyLoading ||
+                        isProxySaving ||
+                        hasProxyValueChanged ||
+                        !host?.electronAPI?.restartApp
+                      }
+                    >
+                      {t('setting.restart-to-apply')}
+                    </Button>
+                  </>
+                ) : null}
               </div>
             }
           />

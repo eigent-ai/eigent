@@ -14,7 +14,8 @@
 
 // These tests protect the persisted Network Proxy baseline: loading and saving
 // establish it, edits enable Save and Reset, and Reset never writes to disk.
-// They also cover disabling an existing proxy and the restart-required action.
+// Save and Restart remain separate actions, including during repeated clicks.
+// Pending writes lock editing; the restart notice survives subsequent drafts.
 
 import SettingGeneral from '@/components/Settings/General';
 import { HostProvider } from '@/host';
@@ -181,8 +182,15 @@ describe('General settings Network Proxy', () => {
     await user.clear(input);
     await user.type(input, 'http://another-proxy:7070');
     expect(
-      screen.queryByText('Restart required to apply proxy changes.')
-    ).not.toBeInTheDocument();
+      screen.getByText('Restart required to apply proxy changes.')
+    ).toBeInTheDocument();
+    // Applying the saved configuration must not silently discard this draft.
+    expect(
+      screen.getByRole('button', { name: 'Restart to Apply' })
+    ).toBeDisabled();
+    expect(input).toHaveAccessibleDescription(
+      'Restart required to apply proxy changes.'
+    );
     await user.click(screen.getByRole('button', { name: 'Reset' }));
 
     expect(input).toHaveValue('http://new-proxy:9090');
@@ -335,5 +343,100 @@ describe('General settings Network Proxy', () => {
     });
     expect(input).toHaveValue('');
     expect(screen.getByRole('button', { name: 'Reset' })).toBeDisabled();
+    expect(dependencyMocks.toastSuccess).toHaveBeenCalledWith(
+      'Proxy configuration cleared. Restart the app to apply changes.'
+    );
+  });
+
+  it.each([
+    { nextValue: 'http://new-proxy:9090', method: 'envWrite' },
+    { nextValue: '', method: 'envRemove' },
+  ] as const)(
+    'double-clicking Save calls $method once without restarting or resetting',
+    async ({ nextValue, method }) => {
+      const user = userEvent.setup();
+      const electronAPI = renderProxySettings('http://saved-proxy:8080');
+      const input = await screen.findByDisplayValue('http://saved-proxy:8080');
+
+      await user.clear(input);
+      if (nextValue) await user.type(input, nextValue);
+      await user.dblClick(screen.getByRole('button', { name: 'Save' }));
+
+      expect(electronAPI[method]).toHaveBeenCalledTimes(1);
+      expect(
+        electronAPI[method === 'envWrite' ? 'envRemove' : 'envWrite']
+      ).not.toHaveBeenCalled();
+      expect(electronAPI.restartApp).not.toHaveBeenCalled();
+      expect(input).toHaveValue(nextValue);
+      expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Reset' })).toBeDisabled();
+
+      // Restart requires a distinct, deliberate action after persistence.
+      await user.click(
+        screen.getByRole('button', { name: 'Restart to Apply' })
+      );
+      expect(electronAPI.restartApp).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('keeps the saved proxy and restores editing when clearing fails', async () => {
+    const user = userEvent.setup();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const electronAPI = renderProxySettings('http://saved-proxy:8080', {
+      envRemove: vi.fn().mockResolvedValue({ success: false }),
+    });
+    const input = await screen.findByDisplayValue('http://saved-proxy:8080');
+
+    await user.clear(input);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(dependencyMocks.toastError).toHaveBeenCalledWith(
+        'Failed to save proxy configuration.'
+      );
+    });
+    expect(input).toBeEnabled();
+    expect(input).toHaveValue('');
+    expect(
+      screen.queryByRole('button', { name: 'Restart to Apply' })
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Reset' }));
+    expect(input).toHaveValue('http://saved-proxy:8080');
+    expect(electronAPI.envRemove).toHaveBeenCalledTimes(1);
+    expect(electronAPI.envWrite).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it('locks Restart while another proxy change is being saved', async () => {
+    const user = userEvent.setup();
+    const electronAPI = renderProxySettings('http://saved-proxy:8080');
+    const input = await screen.findByDisplayValue('http://saved-proxy:8080');
+    await user.clear(input);
+    await user.type(input, 'http://first-proxy:9090');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    const restart = screen.getByRole('button', { name: 'Restart to Apply' });
+    expect(restart).toBeEnabled();
+    let resolveSave: (result: { success: boolean }) => void = () => {};
+    electronAPI.envWrite.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSave = resolve;
+        })
+    );
+
+    await user.clear(input);
+    await user.type(input, 'http://second-proxy:9090');
+    expect(restart).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(input).toBeDisabled();
+    expect(restart).toBeDisabled();
+    await user.click(restart);
+    expect(electronAPI.restartApp).not.toHaveBeenCalled();
+
+    await act(async () => resolveSave({ success: true }));
+    expect(input).toHaveValue('http://second-proxy:9090');
+    expect(restart).toBeEnabled();
   });
 });
