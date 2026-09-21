@@ -37,7 +37,28 @@ vi.mock('@/components/ChatBox/MessageItem/UserMessageCard', () => ({
 }));
 
 vi.mock('@/components/ChatBox/MessageItem/AgentMessageCard', () => ({
-  AgentMessageCard: ({ content }: { content: string }) => <div>{content}</div>,
+  AgentMessageCard: ({
+    id,
+    content,
+    feedbackRunId,
+    feedbackMessageId,
+    messageStep,
+  }: {
+    id: string;
+    content: string;
+    feedbackRunId?: string;
+    feedbackMessageId?: string;
+    messageStep?: string;
+  }) => (
+    <div
+      data-feedback-run-id={feedbackRunId}
+      data-feedback-message-id={feedbackMessageId}
+      data-message-step={messageStep}
+      data-testid={`agent-message-card-${id}`}
+    >
+      {content}
+    </div>
+  ),
 }));
 
 vi.mock('@/components/ChatBox/MessageItem/PreparingToExecuteTasks', () => ({
@@ -140,6 +161,58 @@ describe('UserQueryGroup Run work-log ownership', () => {
     expect(screen.getAllByTestId('task-work-log')).toHaveLength(1);
     expect(screen.queryByText('Which region?')).not.toBeInTheDocument();
     expect(screen.queryByText('Europe')).not.toBeInTheDocument();
+  });
+
+  it('forwards message lifecycle and Run identity to every feedback card path', () => {
+    const messages = [
+      { id: 'user-1', role: 'user', content: 'Build a report' },
+      {
+        id: 'end-1',
+        feedbackMessageId: 'source-end-1',
+        role: 'agent',
+        step: AgentStep.END,
+        content: 'Final response',
+      },
+      {
+        id: 'agent-end-1',
+        feedbackMessageId: 'source-agent-end-1',
+        role: 'agent',
+        step: AgentStep.AGENT_END,
+        content: 'Delegated result',
+      },
+      {
+        id: 'generic-1',
+        feedbackMessageId: 'source-generic-1',
+        role: 'agent',
+        step: AgentStep.ACTIVATE_AGENT,
+        content: 'Working update',
+      },
+      {
+        id: 'skip-1',
+        feedbackMessageId: 'source-skip-1',
+        role: 'agent',
+        step: AgentStep.AGENT_END,
+        content: 'skip',
+      },
+    ];
+
+    renderGroups(messages);
+
+    const expectedSteps = {
+      'end-1': AgentStep.END,
+      'agent-end-1': AgentStep.AGENT_END,
+      'generic-1': AgentStep.ACTIVATE_AGENT,
+      'skip-1': AgentStep.AGENT_END,
+    };
+    for (const [messageId, messageStep] of Object.entries(expectedSteps)) {
+      const card = screen.getByTestId(`agent-message-card-${messageId}`);
+      expect(card).toHaveAttribute('data-message-step', messageStep);
+      expect(card).toHaveAttribute('data-feedback-run-id', 'run-1');
+      expect(card).toHaveAttribute(
+        'data-feedback-message-id',
+        `source-${messageId}`
+      );
+    }
   });
 
   it('does not give a transient ordinary follow-up a second copy of the old Run log', () => {

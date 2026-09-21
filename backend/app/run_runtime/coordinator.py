@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from app.run_journal.models import (
         AttemptEnvironmentBinding,
+        CommittedRunEvent,
         RunAttemptRecord,
     )
     from app.run_journal.store import SQLiteRunJournal
@@ -375,6 +376,19 @@ class RunCoordinator:
         project_id: str,
         assistant_data: Any,
     ) -> bool:
+        """Complete a logical turn while retaining the boolean caller contract."""
+        completed, _receipt = await self.complete_turn_with_receipt(
+            run_id, project_id=project_id, assistant_data=assistant_data
+        )
+        return completed
+
+    async def complete_turn_with_receipt(
+        self,
+        run_id: str,
+        *,
+        project_id: str,
+        assistant_data: Any,
+    ) -> tuple[bool, CommittedRunEvent | None]:
         """Terminalize one Run without disposing its warm Project runtime.
 
         Compatibility chat generators intentionally stay alive across
@@ -383,26 +397,30 @@ class RunCoordinator:
         assistant result so it can atomically commit that result with the
         successful terminal; the same handle can then be rebound to the next
         Run without retaining the previous Run as ``running``.
+
+        Return the actual result receipt only when this call commits it. A
+        compatibility close frame after cancellation/failure has no assistant
+        result and must not invent an identity from the Run id.
         """
 
         async with self._lock:
             handle = self._handles.get(run_id)
             if handle is None or not handle.consumer_alive:
-                return False
+                return False, None
             started_at = handle.started_at
         if self._journal is None:
-            return True
+            return True, None
         from app.artifacts import finalize_run_artifacts
         from app.run_journal.models import RunEventDraft
 
         run = await asyncio.to_thread(self._journal.get_run, run_id)
         if run is None:
-            return False
+            return False, None
         if run.status in {"completed", "failed", "cancelled"}:
             # A compatibility END frame may close the renderer stream after a
             # durable cancel/failure. It is transport state, not permission to
             # rewrite the canonical Run outcome as success.
-            return True
+            return True, None
         await self._quiesce_run_background_sessions(
             run_id,
             project_id=project_id,
@@ -432,7 +450,7 @@ class RunCoordinator:
             if isinstance(assistant_data, dict)
             else {"message": str(assistant_data)}
         )
-        await asyncio.to_thread(
+        result_event, _terminal_event = await asyncio.to_thread(
             self._journal.complete_successful_run,
             run_id,
             assistant_final=RunEventDraft(
@@ -483,9 +501,8 @@ class RunCoordinator:
             if self._journal is not None
             else None
         )
-        return self._journal is None or (
-            run is not None and run.status == "completed"
-        )
+        completed = run is not None and run.status == "completed"
+        return completed, result_event if completed else None
 
     async def _quiesce_run_background_sessions(
         self,

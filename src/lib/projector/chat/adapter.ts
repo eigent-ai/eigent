@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { resolveSourceMessageId } from '@/lib/messageIdentity';
 import i18next from 'i18next';
 import type {
   CanonicalProjectEvent,
@@ -526,18 +527,6 @@ function explicitInteractionId(payload: JsonRecord): string | undefined {
   );
 }
 
-function explicitMessageId(payload: JsonRecord): string | undefined {
-  const message = asRecord(payload.message);
-  return (
-    firstText(
-      payload.message_id,
-      payload.messageId,
-      message.message_id,
-      message.messageId
-    ) || undefined
-  );
-}
-
 /**
  * Retain only backend option identifiers from a decision. Option values can be
  * opaque objects (and may contain data that is not intended for Timeline
@@ -589,6 +578,8 @@ function normalizeInput(input: ChatProjectionInput): NormalizedInput {
       base: {
         id: input.eventId,
         eventId: input.eventId,
+        sourceEventId:
+          input.source === 'canonical' ? input.eventId : input.sourceEventId,
         projectId: input.projectId,
         runId: input.runId,
         createdAt: input.createdAt,
@@ -605,6 +596,8 @@ function normalizeInput(input: ChatProjectionInput): NormalizedInput {
     base: {
       id: input.eventId,
       eventId: input.eventId,
+      sourceEventId:
+        input.source === 'canonical' ? input.eventId : input.sourceEventId,
       projectId: input.projectId,
       runId: input.taskId,
       createdAt: timestampFromLegacy(input),
@@ -683,7 +676,7 @@ function messageNode(
     status: eventIsStreaming ? 'streaming' : 'complete',
     purpose,
     attachments: messageAttachments(base, messagePayload),
-    messageId: explicitMessageId(messagePayload),
+    messageId: resolveSourceMessageId(data),
     agentId:
       firstText(messagePayload.agent_id, messagePayload.agentId) || undefined,
     agentName:
