@@ -482,6 +482,104 @@ describe('Space default through the real Chat start path', () => {
     expect(mocks.sse).not.toHaveBeenCalled();
   });
 
+  it.each([
+    'account',
+    'manual',
+    'space',
+    'credits',
+    'trial-daily',
+    'trial-total',
+    'free-credits',
+  ] as const)(
+    'rejects %s arriving while durable Resume admission is in flight',
+    async (change) => {
+      restoreAdmissionReceipt();
+      mocks.localGet.mockResolvedValue(acceptedResponse());
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      mocks.post.mockImplementation(async () => {
+        await gate;
+        return {
+          attempt: {
+            attempt_number: 2,
+            status: 'pending',
+            resume_request_id: 'resume-1',
+          },
+        };
+      });
+      const outcome = start(true).then(
+        () => null,
+        (error) => error
+      );
+      await vi.waitFor(() => expect(mocks.post).toHaveBeenCalledOnce());
+      if (change === 'account') mocks.auth.user_id = 'another-account';
+      else if (change === 'manual')
+        project.metadata.modelSelection = {
+          ...acceptedSelection,
+          cloud_model_type: 'manual',
+        };
+      else if (change === 'space') project.spaceId = 'another-space';
+      else useUsageNoticeStore.setState({ incidents: [{ reason: change }] });
+      release();
+      expect(await outcome).toBeInstanceOf(Error);
+      expect(mocks.sse).not.toHaveBeenCalled();
+      expect(mocks.post).toHaveBeenCalledOnce();
+      expect(
+        chat.getState().tasks[chat.getState().activeTaskId!].isPending
+      ).toBe(false);
+    }
+  );
+
+  it('does not consume or clear a different account quota during Cloud recovery or after Resume ACK', async () => {
+    restoreAdmissionReceipt();
+    mocks.localGet.mockResolvedValue(acceptedResponse());
+    const incidents = [{ reason: 'credits' as const }];
+    useUsageNoticeStore.setState({ account: 'account-b', incidents });
+    await start(true);
+    expect(mocks.sse).toHaveBeenCalledOnce();
+    expect(useUsageNoticeStore.getState()).toMatchObject({
+      account: 'account-b',
+      incidents,
+    });
+  });
+
+  it.each(['custom', 'local'] as const)(
+    'does not block recovered %s when same-account Cloud quota arrives during Resume admission',
+    async (category) => {
+      const platform = category === 'local' ? 'ollama' : 'azure';
+      providers = [{ ...provider, provider_name: platform }];
+      restoreAdmissionReceipt();
+      mocks.localGet.mockResolvedValue({
+        ...acceptedResponse(),
+        accepted: {
+          run_id: 'accepted-run-1',
+          selection: {
+            modelType: category,
+            provider_id: provider.id,
+            model_platform: platform,
+            model_type: 'deployment',
+            model_ref: `provider://${category}/${platform}/deployment`,
+          },
+        },
+      });
+      mocks.post.mockImplementation(async () => {
+        useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
+        return { attempt: { attempt_number: 2 } };
+      });
+      await start(true);
+      expect(request()).toMatchObject({
+        model_type: 'deployment',
+        resume_request_id: 'resume-1',
+      });
+      expect(mocks.get).not.toHaveBeenCalledWith('/api/v1/user/key');
+      expect(useUsageNoticeStore.getState().incidents).toEqual([
+        { reason: 'credits' },
+      ]);
+    }
+  );
+
   it.each(['custom', 'local'] as const)(
     'preserves recovered %s cold Resume under a global Cloud credit incident',
     async (category) => {

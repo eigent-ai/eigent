@@ -148,6 +148,8 @@ export async function getBaseURL() {
 type FetchRequestOptions = {
   signal?: AbortSignal;
   expectedAccountKey?: string;
+  /** Revalidate mutable admission context after asynchronous header lookup. */
+  beforeRequest?: () => void;
 };
 
 function assertRequestAccount(options: FetchRequestOptions): void {
@@ -170,6 +172,7 @@ async function fetchRequest(
   assertRequestAccount(requestOptions);
   const headers = await buildBrainHeaders(url, customHeaders);
   assertRequestAccount(requestOptions);
+  requestOptions.beforeRequest?.();
 
   const options: RequestInit = {
     method,
@@ -420,6 +423,7 @@ export interface SSETransportOptions {
   signal?: AbortSignal;
   extraHeaders?: Record<string, string>;
   openWhenHidden?: boolean;
+  beforeRequest?: () => void;
   onmessage: (event: EventSourceMessage) => void | Promise<void>;
   onopen?: (response: Response) => void | Promise<void>;
   onerror?: (err: any) => number | null | undefined | void;
@@ -443,6 +447,7 @@ export async function sseTransport(
         ? JSON.stringify(options.body)
         : undefined;
 
+  options.beforeRequest?.();
   await fetchEventSource(fullUrl, {
     method: options.method || 'POST',
     openWhenHidden: options.openWhenHidden ?? true,

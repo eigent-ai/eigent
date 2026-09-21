@@ -13,7 +13,13 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import ChatBox from '@/components/ChatBox';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { notifyError } from '@/lib/notifyError';
+import { runDomainEventHub, runProjectionStore } from '@/lib/runEvents';
+import {
+  beginResumeRequest,
+  finishResumeRequest,
+} from '@/lib/runResumeRequest';
 import { useChatStore } from '@/store/chatStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
 import { openSettings } from '@/store/settingsStore';
@@ -47,6 +53,8 @@ const mocks = vi.hoisted(() => ({
   localGet: vi.fn(),
   sse: vi.fn(),
   post: vi.fn(),
+  realInterrupted: false,
+  durableRun: null as any,
 }));
 vi.mock('@/api/http', () => ({
   fetchGet: mocks.localGet,
@@ -108,13 +116,19 @@ vi.mock('@/hooks/useProjectEventRuntime', () => ({
     snapshot: null,
   }),
 }));
-vi.mock('@/hooks/useInterruptedRunStatus', () => ({
-  useInterruptedRunStatus: () => ({
-    run: mocks.interrupted,
-    setRun: mocks.setInterrupted,
-    refresh: mocks.refreshInterrupted,
-  }),
-}));
+vi.mock('@/hooks/useInterruptedRunStatus', async (load) => {
+  const actual = await load<typeof import('@/hooks/useInterruptedRunStatus')>();
+  return {
+    useInterruptedRunStatus: (projectId: string) =>
+      mocks.realInterrupted
+        ? actual.useInterruptedRunStatus(projectId)
+        : {
+            run: mocks.interrupted,
+            setRun: mocks.setInterrupted,
+            refresh: mocks.refreshInterrupted,
+          },
+  };
+});
 vi.mock('@/lib/notifyError', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/notifyError')>()),
   notifyError: mocks.notifyError,
@@ -179,10 +193,16 @@ vi.mock('@/lib/events/appEvents', () => ({
   recordFeatureUsed: vi.fn(),
   recordTaskStopped: vi.fn(),
 }));
-vi.mock('@/lib/runEvents', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/lib/runEvents')>()),
-  runEventIngressRegistry: { ensureLocal: vi.fn() },
-}));
+vi.mock('@/lib/runEvents', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/runEvents')>();
+  vi.spyOn(actual.runEventIngressRegistry, 'ensureLocal').mockImplementation(
+    () => undefined
+  );
+  return {
+    ...actual,
+    runEventIngressRegistry: actual.runEventIngressRegistry,
+  };
+});
 
 const cloud = (id: string, type = 'gpt-5.5') => ({
   id,
@@ -201,6 +221,11 @@ describe('ChatBox after an accepted Space model selection', () => {
   let canonicalRecovery: any;
   beforeEach(() => {
     vi.clearAllMocks();
+    window.sessionStorage.clear();
+    runProjectionStore.clear();
+    runDomainEventHub.clear();
+    mocks.realInterrupted = false;
+    mocks.durableRun = null;
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => {
@@ -219,6 +244,7 @@ describe('ChatBox after an accepted Space model selection', () => {
       mocks.interrupted = value;
     });
     useUsageNoticeStore.setState({
+      account: 'account-a',
       incidents: [],
       credits: null,
       subscription: null,
@@ -314,7 +340,9 @@ describe('ChatBox after an accepted Space model selection', () => {
           ? { space_id: 'space-1', selection: installed }
           : url.endsWith('/status')
             ? { has_lock: true, consumer_alive: true }
-            : {}
+            : url === '/runs'
+              ? { runs: mocks.durableRun ? [mocks.durableRun] : [] }
+              : {}
     );
     mocks.get.mockImplementation(async (url) => {
       if (url === '/api/v1/cloud-models')
@@ -405,7 +433,7 @@ describe('ChatBox after an accepted Space model selection', () => {
     return accepted;
   }
   async function renderChat(hasModelConfigured = false) {
-    render(
+    const view = render(
       <MemoryRouter>
         <ChatBox />
       </MemoryRouter>
@@ -415,6 +443,7 @@ describe('ChatBox after an accepted Space model selection', () => {
         hasModelConfigured
       )
     );
+    return view;
   }
   async function sendFollowup() {
     fireEvent.change(screen.getByLabelText('Follow-up'), {
@@ -473,6 +502,181 @@ describe('ChatBox after an accepted Space model selection', () => {
     mocks.get.mockClear();
     return acceptedRequest;
   }
+
+  it.each([
+    'account',
+    'manual',
+    'space',
+    'quota',
+    'lost-ack',
+    'delivery-quota',
+  ] as const)(
+    'retries the same pending Resume through real ChatBox and canonical projection after %s changes',
+    async (change) => {
+      const accepted = await acceptInitialRunWithoutAck();
+      mocks.projectStore.getAllChatStores = () => [
+        { chatId: 'chat-1', chatStore: chat },
+      ];
+      mocks.realInterrupted = true;
+      mocks.durableRun = { ...mocks.interrupted, version: 1 };
+      // Keep a distinct account/Run's retry identity throughout both actions.
+      const otherOwner = {
+        accountKey: 'other-account',
+        projectId: 'other-session',
+        runId: 'other-run',
+      };
+      const otherRun = {
+        ...mocks.durableRun,
+        run_id: 'other-run',
+        project_id: 'other-session',
+      };
+      const otherId = beginResumeRequest(otherOwner, otherRun);
+      finishResumeRequest(otherOwner, otherId, false);
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const requestIds: string[] = [];
+      mocks.post.mockImplementation(
+        async (url: string, body: any, _headers: any, options: any) => {
+          if (!url.endsWith('/resume')) return {};
+          options?.beforeRequest?.();
+          requestIds.push(body.request_id);
+          // Synthetic I/O obeys the actual idempotent coordinator contract.
+          if (requestIds.length === 1) {
+            mocks.durableRun = {
+              ...mocks.durableRun,
+              status: 'pending',
+              version: 2,
+              updated_at: 2,
+              latest_attempt: {
+                attempt_number: 2,
+                status: 'pending',
+                resume_request_id: body.request_id,
+              },
+            };
+            await gate;
+            if (change === 'lost-ack')
+              throw new Error('Synthetic Resume ACK lost');
+          } else {
+            expect(body.request_id).toBe(requestIds[0]);
+          }
+          return {
+            run_id: accepted.run_id,
+            attempt: mocks.durableRun.latest_attempt,
+          };
+        }
+      );
+      const view = await renderChat();
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /^Resume$/i })).toBeEnabled()
+      );
+      fireEvent.change(screen.getByLabelText('Follow-up'), {
+        target: { value: 'Keep this draft' },
+      });
+      const attachments = [
+        { fileName: 'retained.txt', filePath: '/synthetic/retained.txt' },
+      ];
+      chat.getState().setAttaches(accepted.run_id, attachments as any);
+      fireEvent.click(screen.getByRole('button', { name: /^Resume$/i }));
+      await waitFor(() => expect(requestIds).toHaveLength(1));
+      const originalAuth = { ...mocks.auth };
+      const originalSelection = { ...project.metadata.modelSelection };
+      let rejectedDelivery = false;
+      if (change === 'delivery-quota') {
+        const send = mocks.sse.getMockImplementation()!;
+        mocks.sse.mockImplementationOnce(async (options) => {
+          useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
+          try {
+            options.beforeRequest();
+          } catch (error) {
+            rejectedDelivery = true;
+            throw error;
+          }
+          return send(options);
+        });
+      }
+      await act(async () => {
+        if (change === 'account')
+          mocks.auth = {
+            ...mocks.auth,
+            token: 'other-token',
+            user_id: 'account-b',
+            email: 'b@example.test',
+          };
+        if (change === 'manual')
+          project.metadata.modelSelection = {
+            ...originalSelection,
+            cloud_model_type: 'manual',
+            model_ref: 'provider://cloud/manual',
+            model_type: 'gpt-5.5',
+          };
+        if (change === 'space') project.spaceId = 'different-space';
+        if (change === 'quota')
+          useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
+        release();
+      });
+      await waitFor(() => expect(notifyError).toHaveBeenCalled());
+      if (change === 'delivery-quota') expect(rejectedDelivery).toBe(true);
+      else expect(mocks.sse).toHaveBeenCalledTimes(1); // only the initial ACK-loss request
+      expect(mocks.durableRun.latest_attempt.attempt_number).toBe(2);
+      expect(chat.getState().tasks[accepted.run_id].isPending).toBe(false);
+      expect(chat.getState().tasks[accepted.run_id].attaches).toEqual(
+        attachments
+      );
+      expect(screen.getByLabelText('Follow-up')).toHaveValue('Keep this draft');
+      // Restore the owner/context and retry in place; ACK loss also exercises
+      // remount recovery. No mocked interrupted banner is inserted for retry.
+      mocks.auth = originalAuth;
+      project.spaceId = 'space-1';
+      project.metadata.modelSelection = originalSelection;
+      act(() =>
+        useUsageNoticeStore.setState({ account: 'account-a', incidents: [] })
+      );
+      if (change === 'lost-ack') {
+        cleanup();
+        await renderChat();
+      } else {
+        view.rerender(
+          <MemoryRouter>
+            <ChatBox />
+          </MemoryRouter>
+        );
+      }
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /^Resume$/i })).toBeEnabled()
+      );
+      expect(
+        runProjectionStore.getRun('session-1', accepted.run_id)?.status
+      ).toBe('pending');
+      await resumeInterruptedRun();
+      await waitFor(() => expect(requestIds).toHaveLength(2));
+      expect(requestIds[1]).toBe(requestIds[0]);
+      expect(request().resume_request_id).toBe(requestIds[0]);
+      expect(request().run_id).toBe(accepted.run_id);
+      expect(
+        mocks.post.mock.calls.some(([url]) => url.endsWith('/cancel'))
+      ).toBe(false);
+      expect(beginResumeRequest(otherOwner, otherRun)).toBe(otherId);
+      finishResumeRequest(otherOwner, otherId, true);
+      const owner = {
+        accountKey: getAccountEnvironmentKey(mocks.auth),
+        projectId: 'session-1',
+        runId: accepted.run_id,
+      };
+      // A successful stream releases only this ticket.
+      const newId = beginResumeRequest(owner, {
+        ...mocks.durableRun,
+        status: 'interrupted',
+        latest_attempt: {
+          ...mocks.durableRun.latest_attempt,
+          status: 'interrupted',
+        },
+      });
+      expect(newId).not.toBe(requestIds[0]);
+      finishResumeRequest(owner, newId, true);
+    }
+  );
   it('recovers an accepted receipt through actual cold Resume after its initial ACK was lost', async () => {
     const acceptedRequest = await acceptInitialRunWithoutAck();
     await renderChat();
@@ -497,6 +701,11 @@ describe('ChatBox after an accepted Space model selection', () => {
       expect.objectContaining({
         request_id: expect.any(String),
         reason: 'explicit_resume',
+      }),
+      undefined,
+      expect.objectContaining({
+        beforeRequest: expect.any(Function),
+        expectedAccountKey: getAccountEnvironmentKey(mocks.auth),
       })
     );
     expect(request()).toMatchObject({
@@ -840,7 +1049,12 @@ describe('ChatBox after an accepted Space model selection', () => {
       );
       expect(mocks.post).toHaveBeenCalledWith(
         `/runs/${acceptedRequest.run_id}/resume`,
-        expect.any(Object)
+        expect.any(Object),
+        undefined,
+        expect.objectContaining({
+          beforeRequest: expect.any(Function),
+          expectedAccountKey: getAccountEnvironmentKey(mocks.auth),
+        })
       );
       expect(mocks.auth.hasModelConfigured).toBe(globalModelType === 'cloud');
       expect(mocks.get).not.toHaveBeenCalledWith('/api/v1/user/key');
@@ -993,6 +1207,11 @@ describe('ChatBox after an accepted Space model selection', () => {
       expect.objectContaining({
         reason: 'explicit_resume',
         request_id: expect.any(String),
+      }),
+      undefined,
+      expect.objectContaining({
+        beforeRequest: expect.any(Function),
+        expectedAccountKey: getAccountEnvironmentKey(mocks.auth),
       })
     );
     expect(request()).toMatchObject({

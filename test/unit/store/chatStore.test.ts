@@ -1631,10 +1631,18 @@ describe('ChatStore - Core Functionality', () => {
         await stream.onopen(response());
         await startup.admission;
 
-        expect(fetchPost).toHaveBeenCalledWith('/runs/attachment-run/resume', {
-          request_id: 'resume-existing-draft',
-          reason: 'explicit_resume',
-        });
+        expect(fetchPost).toHaveBeenCalledWith(
+          '/runs/attachment-run/resume',
+          {
+            request_id: 'resume-existing-draft',
+            reason: 'explicit_resume',
+          },
+          undefined,
+          expect.objectContaining({
+            expectedAccountKey: expect.any(String),
+            beforeRequest: expect.any(Function),
+          })
+        );
         expect(startup.owner.getState().tasks[startup.runId].attaches).toBe(
           originalDraft
         );

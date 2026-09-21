@@ -23,7 +23,11 @@ export type DurableRunSummaryInput = {
   origin?: 'local' | 'cloud_restore' | 'remote';
   resume_blocked_reason?: string | null;
   total_attempt_elapsed_ms?: number | null;
-  latest_attempt?: { attempt_number: number; status: string } | null;
+  latest_attempt?: {
+    attempt_number: number;
+    status: string;
+    resume_request_id?: string;
+  } | null;
 };
 
 export const TERMINAL_RUN_STATUSES = new Set<ProjectedRun['status']>([
@@ -85,6 +89,9 @@ export function mergeRunSummary(
           ? {
               attemptNumber: summary.latest_attempt.attempt_number,
               status: summary.latest_attempt.status,
+              ...(summary.latest_attempt.resume_request_id
+                ? { resumeRequestId: summary.latest_attempt.resume_request_id }
+                : {}),
             }
           : null,
     totalAttemptElapsedMs:

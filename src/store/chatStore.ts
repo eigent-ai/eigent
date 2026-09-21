@@ -144,6 +144,15 @@ export async function admitDurableRunResume(
       'Run Resume response did not identify the admitted attempt.'
     );
   }
+  if (
+    (response.run_id != null && response.run_id !== runId) ||
+    (response.attempt.resume_request_id != null &&
+      response.attempt.resume_request_id !== requestId) ||
+    (response.attempt.status != null &&
+      !['pending', 'running'].includes(response.attempt.status))
+  ) {
+    throw new Error('Run Resume response does not identify an active request.');
+  }
   return attemptNumber;
 }
 
@@ -2939,6 +2948,35 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       };
       let spaceModelSelection: SpaceModelSelection | null = null;
       let adoptingSpaceDefault = false;
+      // Only the actual Session model owns this gate. A global Cloud choice
+      // must not block custom/local recovery, nor may another account's cached
+      // incidents be consumed during an account transition.
+      const assertCloudQuota = (candidateModelType: string | undefined) => {
+        if (
+          (!adoptingSpaceDefault && !startOptions.resumeRequestId) ||
+          candidateModelType !== 'cloud'
+        )
+          return;
+        assertModelSelectionCurrent();
+        const usage = useUsageNoticeStore.getState();
+        const usageBlock =
+          token && user_id != null && usage.account === String(user_id)
+            ? usage.incidents.find((item) =>
+                [
+                  'credits',
+                  'trial-daily',
+                  'trial-total',
+                  'free-credits',
+                ].includes(item.reason)
+              )
+            : undefined;
+        if (usageBlock) {
+          finishStartupFailure();
+          throw Object.assign(new Error(errorCopy(usageBlock.reason)), {
+            usageReason: usageBlock.reason,
+          });
+        }
+      };
       let initialSessionModel: ReturnType<typeof projectStore.getProjectModel> =
         null;
       let spaceModelBinding: ResolvedSpaceModel | undefined;
@@ -2979,25 +3017,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             // Before recovery the UI cannot infer this model's category from
             // the unrelated global preference. Preserve its Cloud quota gate
             // before a cold Resume can create another durable Attempt.
-            if (
-              startOptions.resumeRequestId &&
-              recovered.modelType === 'cloud'
-            ) {
-              const usageBlock = useUsageNoticeStore
-                .getState()
-                .incidents.find((item) =>
-                  [
-                    'credits',
-                    'trial-daily',
-                    'trial-total',
-                    'free-credits',
-                  ].includes(item.reason)
-                );
-              if (usageBlock)
-                throw Object.assign(new Error(errorCopy(usageBlock.reason)), {
-                  usageReason: usageBlock.reason,
-                });
-            }
+            assertCloudQuota(recovered.modelType);
           } else {
             if (
               startOptions.resumeRequestId ||
@@ -3047,28 +3067,17 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       const effectiveModelType = pinnedModelSelection?.modelType ?? modelType;
       // Workspace's category preview is not an accepted binding. Re-check a
       // fresh adoption after resolution, before any Cloud key or admission.
-      const assertFreshCloudQuota = () => {
-        if (!adoptingSpaceDefault || effectiveModelType !== 'cloud') return;
-        const usage = useUsageNoticeStore.getState();
-        const usageBlock =
-          token && user_id != null && usage.account === String(user_id)
-            ? usage.incidents.find((item) =>
-                [
-                  'credits',
-                  'trial-daily',
-                  'trial-total',
-                  'free-credits',
-                ].includes(item.reason)
-              )
-            : undefined;
-        if (usageBlock) {
+      const assertAdmissionCurrent = () => {
+        if (type) return;
+        try {
+          assertModelSelectionCurrent();
+          assertCloudQuota(effectiveModelType);
+        } catch (error) {
           finishStartupFailure();
-          throw Object.assign(new Error(errorCopy(usageBlock.reason)), {
-            usageReason: usageBlock.reason,
-          });
+          throw error;
         }
       };
-      assertFreshCloudQuota();
+      assertAdmissionCurrent();
       const requestAccount =
         getAuthStore().user_id != null ? String(getAuthStore().user_id) : null;
       let resolvedProviderId: number | undefined;
@@ -3183,7 +3192,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
         let res: any;
         try {
-          assertFreshCloudQuota();
+          assertAdmissionCurrent();
           res = await proxyFetchGet('/api/v1/user/key');
         } catch (error: any) {
           finishStartupFailure();
@@ -3513,10 +3522,22 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       let resumedAttemptNumber: number | undefined;
       if (startOptions.resumeRequestId) {
         try {
+          assertAdmissionCurrent();
           resumedAttemptNumber = await admitDurableRunResume(
             newTaskId,
-            startOptions.resumeRequestId
+            startOptions.resumeRequestId,
+            (url, data) =>
+              fetchPost(url, data, undefined, {
+                expectedAccountKey: getAccountEnvironmentKey({
+                  user_id,
+                  email,
+                }),
+                beforeRequest: assertAdmissionCurrent,
+              })
           );
+          // An admitted but unstarted Attempt is recovered with this same
+          // request ID by ChatBox; never cancel the Run or rotate a lost ACK.
+          assertAdmissionCurrent();
         } catch (error) {
           finishStartupFailure();
           throw error;
@@ -3909,6 +3930,8 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       if (!type) {
         try {
           assertModelSelectionCurrent();
+          if (startOptions.resumeRequestId)
+            assertCloudQuota(effectiveModelType);
         } catch (error) {
           finishStartupFailure();
           throw error;
@@ -4003,8 +4026,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       if (adoptingSpaceDefault && project_id) {
         try {
           await projectStore.setProjectModelAdmission(project_id, newTaskId);
-          assertModelSelectionCurrent();
-          assertFreshCloudQuota();
+          assertAdmissionCurrent();
         } catch (error) {
           try {
             assertModelSelectionCurrent();
@@ -4040,6 +4062,9 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       admissionRequested = true;
       const ssePromise = sseTransport({
         url: api,
+        beforeRequest: startOptions.resumeRequestId
+          ? assertAdmissionCurrent
+          : undefined,
         method: !type ? 'POST' : 'GET',
         openWhenHidden: true,
         signal: abortController.signal,

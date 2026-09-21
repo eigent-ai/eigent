@@ -28,12 +28,17 @@ import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
 import { useUsageIncidentBanner } from '@/hooks/useUsageIncidentBanner';
 import { useHost } from '@/host';
 import { generateUniqueId } from '@/lib';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { notifyError } from '@/lib/notifyError';
 import {
   isProjectAchieved,
   setProjectAchievedState,
 } from '@/lib/projectAchievement';
 import { runEventIngressRegistry } from '@/lib/runEvents/registry';
+import {
+  beginResumeRequest,
+  finishResumeRequest,
+} from '@/lib/runResumeRequest';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { parseSpaceModelReference } from '@/lib/spaceModelReference';
 import { takeControlOfTask } from '@/lib/taskRuntimeControl';
@@ -478,7 +483,9 @@ export default function ChatBox(): JSX.Element {
     !sessionModelSelection &&
     canUseSessionSpace &&
     interruptedRun?.project_id === activeProjectId &&
-    interruptedRun?.status === 'interrupted' &&
+    (interruptedRun?.status === 'interrupted' ||
+      (interruptedRun?.status === 'pending' &&
+        interruptedRun.retry_request_id)) &&
     interruptedRun.origin !== 'cloud_restore' &&
     interruptedRun.latest_attempt &&
     (pendingModelAdmission != null
@@ -1878,7 +1885,12 @@ export default function ChatBox(): JSX.Element {
       return;
     }
     const run = interruptedRun;
-    const requestId = runActionRequestId('resume', run.run_id);
+    const owner = {
+      accountKey: getAccountEnvironmentKey(useAuthStore.getState()),
+      projectId: activeProjectId,
+      runId: run.run_id,
+    };
+    const requestId = beginResumeRequest(owner, run);
     setDurableRunAction('resuming');
     try {
       ensureActiveProjectMode();
@@ -1905,12 +1917,12 @@ export default function ChatBox(): JSX.Element {
       // RunJournal in the catch path.
       setInterruptedRun(null);
       await resumePromise;
-      clearRunActionRequestId('resume', run.run_id);
+      finishResumeRequest(owner, requestId, true);
     } catch (error: any) {
       console.error('[RunControl] Failed to resume Run', error);
-      clearRunActionRequestId('resume', run.run_id);
+      finishResumeRequest(owner, requestId, false);
       notifyError(error?.message || t('chat.run-resume-failed'));
-      await refreshInterruptedRun();
+      await refreshInterruptedRun(owner.accountKey);
     } finally {
       setDurableRunAction(null);
     }
