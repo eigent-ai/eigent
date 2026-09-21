@@ -123,6 +123,7 @@ vi.mock('../../../src/store/projectStore', () => ({
   },
 }));
 
+import { normalizeLegacyChatStep } from '@/lib/projector/adapters/legacyChatStep';
 import { composeTimelineRuns } from '@/lib/projector/chat/presentation';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { useChatStore } from '../../../src/store/chatStore';
@@ -296,6 +297,91 @@ describe('feedback identity across legacy replay and canonical presentation', ()
         run_id: runId,
       });
       expect(events[0].properties).not.toHaveProperty('message_id_source');
+    }
+  );
+
+  it.each([
+    { step: 'end', payload: { content: 'The same result' } },
+    { step: 'end', payload: 'The plain-text final result' },
+    { step: 'wait_confirm', payload: { content: 'The same result' } },
+    { step: 'agent_end', payload: { content: 'The same result' } },
+    { step: 'agent_summary_end', payload: { content: 'The same result' } },
+  ])(
+    'keeps the live $step rating after cloud playback ($payload)',
+    async ({ step, payload }) => {
+      const { result } = renderHook(() => useChatStore());
+      const store = result.current;
+      const runId = store.getState().create();
+      const sourceId = `cloud-receipt:${runId}`;
+      const live = await replay(
+        store,
+        runId,
+        {
+          step,
+          data: payload,
+          source_event_id: sourceId,
+        },
+        'cloud'
+      );
+      const view = renderLegacyMessage(store, runId, live);
+      fireEvent.click(await screen.findByLabelText('Thumb up'));
+      view.unmount();
+
+      act(() => store.getState().create(runId));
+      // Existing cloud servers persist and replay the data JSON unchanged.
+      const cloudFrame = {
+        id: 12345,
+        task_id: runId,
+        run_id: runId,
+        step,
+        data: {
+          ...(typeof payload === 'string' ? { message: payload } : payload),
+          source_event_id: sourceId,
+        },
+      };
+      const restored = await replay(store, runId, cloudFrame, 'cloud');
+      expect(restored.content).toBe(live.content);
+      expect(restored.feedbackMessageId).toBe(sourceId);
+      const historical = renderLegacyMessage(store, runId, restored);
+      expect(await screen.findByLabelText('Thumb up')).toHaveAttribute(
+        'aria-pressed',
+        'true'
+      );
+      expect(screen.getByLabelText('Thumb down')).toBeDisabled();
+      fireEvent.click(screen.getByLabelText('Thumb down'));
+      historical.unmount();
+
+      if (step === 'end') {
+        // The Narrative reader must use the same receipt, not its generated
+        // chat_step_v1 transport identity or the cloud database row id.
+        const projection = projectChatEvents('feedback-project', [
+          normalizeLegacyChatStep(cloudFrame, {
+            projectId: 'feedback-project',
+            runId,
+            sequence: 1,
+          }),
+        ]);
+        render(
+          <TimelineModeRenderer
+            detailLevel="narrative"
+            runs={composeTimelineRuns(projection.nodes)}
+          />
+        );
+        expect(await screen.findByLabelText('Thumb up')).toHaveAttribute(
+          'aria-pressed',
+          'true'
+        );
+        expect(screen.getByLabelText('Thumb down')).toBeDisabled();
+        fireEvent.click(screen.getByLabelText('Thumb down'));
+      }
+      expect(events.map((event) => event.properties)).toEqual([
+        {
+          rating: 'up',
+          message_id: sourceId,
+          run_id: runId,
+          message_step: step,
+        },
+      ]);
     }
   );
 

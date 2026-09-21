@@ -21,7 +21,13 @@ function asRecord(value: unknown): Record<string, unknown> {
 /** A committed receipt reference does not replace the transport event id. */
 export function resolveSourceEventId(data: unknown): string | undefined {
   const frame = asRecord(data);
-  for (const value of [frame.source_event_id, frame.event_id]) {
+  // Legacy cloud storage retains only data JSON. Its committed receipt takes
+  // precedence over any separately assigned transport identity on playback.
+  for (const value of [
+    frame.source_event_id,
+    asRecord(frame.data).source_event_id,
+    frame.event_id,
+  ]) {
     if (typeof value === 'string' && value.trim()) return value;
   }
   return undefined;

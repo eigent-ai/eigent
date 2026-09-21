@@ -90,11 +90,19 @@ async def test_sse_step_is_committed_before_it_is_yielded(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("cloud", [False, True])
 @pytest.mark.parametrize(
-    "step", ["end", "wait_confirm", "agent_end", "agent_summary_end"]
+    ("step", "payload"),
+    [
+        ("end", {"content": "The live result"}),
+        ("end", "The plain-text final result"),
+        ("wait_confirm", {"content": "The live result"}),
+        ("agent_end", {"content": "The live result"}),
+        ("agent_summary_end", {"content": "The live result"}),
+    ],
 )
 async def test_live_feedback_frame_references_its_committed_receipt(
-    tmp_path, monkeypatch, step
+    tmp_path, monkeypatch, step, payload, cloud
 ):
     from app import run_runtime
     from app.run_journal.recorder import EventRecorder
@@ -117,19 +125,27 @@ async def test_live_feedback_frame_references_its_committed_receipt(
             "app.lightweight_memory.schedule_project_memory_maintenance",
             lambda _project_id: None,
         )
-        payload = {"content": "The live result"}
+        send = AsyncMock()
+        monkeypatch.setattr(sync_step_module, "_send", send)
 
         @sync_step_module.sync_step
         async def stream(chat, request):
             yield f"data: {json.dumps({'step': step, 'data': payload})}\n\n"
             await release.wait()
 
-        chat = SimpleNamespace(task_id="run-live", project_id="project-live")
+        chat = SimpleNamespace(
+            task_id="run-live",
+            project_id="project-live",
+            server_url=(
+                "https://dev.eigent.ai" if cloud else "http://localhost:3001"
+            ),
+        )
         try:
             subscription = await coordinator.start_with_subscription(
                 run_id="run-live",
                 stream_factory=lambda: stream(
-                    chat, SimpleNamespace(headers={})
+                    chat,
+                    SimpleNamespace(headers={"authorization": "Bearer test"}),
                 ),
             )
             value = await subscription.__anext__()
@@ -152,6 +168,26 @@ async def test_live_feedback_frame_references_its_committed_receipt(
             # A legacy transport identity must not masquerade as a canonical
             # ingress event and suppress its authoritative replay later.
             assert "event_id" not in frame
+            await asyncio.sleep(0)
+            if cloud:
+                send.assert_awaited_once()
+                synced = send.await_args.args[1]
+                expected_data = (
+                    payload
+                    if isinstance(payload, dict)
+                    else {"message": payload}
+                )
+                assert synced["data"] == {
+                    **expected_data,
+                    "source_event_id": receipt.event_id,
+                }
+                assert synced["task_id"] == "run-live"
+                assert synced["step"] == step
+                assert "event_id" not in synced
+                # Cloud projection must not mutate the committed evidence.
+                assert "source_event_id" not in receipt.payload
+            else:
+                send.assert_not_awaited()
         finally:
             release.set()
             await coordinator.close()
@@ -187,6 +223,8 @@ async def test_terminal_transport_close_has_no_new_result_identity(
         journal.ensure_run(run_id="run-close", project_id="project-close")
         coordinator = RunCoordinator(journal)
         release = asyncio.Event()
+        send = AsyncMock()
+        monkeypatch.setattr(sync_step_module, "_send", send)
         monkeypatch.setattr(
             run_runtime, "get_default_run_coordinator", lambda: coordinator
         )
@@ -219,9 +257,11 @@ async def test_terminal_transport_close_has_no_new_result_identity(
                 run_id="run-close",
                 stream_factory=lambda: stream(
                     SimpleNamespace(
-                        task_id="run-close", project_id="project-close"
+                        task_id="run-close",
+                        project_id="project-close",
+                        server_url="https://dev.eigent.ai",
                     ),
-                    SimpleNamespace(headers={}),
+                    SimpleNamespace(headers={"authorization": "Bearer test"}),
                 ),
             )
             frame = sync_step_module._parse_value(
@@ -229,6 +269,11 @@ async def test_terminal_transport_close_has_no_new_result_identity(
             )
             assert "source_event_id" not in frame
             assert journal.get_run("run-close").status == outcome
+            await asyncio.sleep(0)
+            send.assert_awaited_once()
+            assert send.await_args.args[1]["data"] == {
+                "message": "Stream closed"
+            }
         finally:
             release.set()
             await coordinator.close()

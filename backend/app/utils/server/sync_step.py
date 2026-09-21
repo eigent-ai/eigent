@@ -109,9 +109,10 @@ def sync_step(func):
         try:
             async for value in func(*args, **kwargs):
                 receipt = await _record_local_step_fail_open(args, value)
+                value = _with_feedback_source_identity(value, receipt)
                 if config:
                     _try_sync(args, value, config)
-                yield _with_feedback_source_identity(value, receipt)
+                yield value
         finally:
             # A stream normally emits a non-text terminal step, but flush the
             # tail here as well so cancellation/end-of-stream cannot strand a
@@ -359,10 +360,25 @@ def _try_sync(args, value, sync_url):
     if task_id in _text_buffers:
         _flush_buffer(task_id, sync_url, headers)
 
+    payload_data = data["data"]
+    source_event_id = data.get("source_event_id")
+    if isinstance(source_event_id, str) and source_event_id.strip():
+        # Deployed cloud servers only retain the legacy data JSON. Store the
+        # receipt there so playback/remote-control projections preserve it
+        # without requiring a coordinated server schema migration. Keep the
+        # live frame and committed journal payload unchanged.
+        if isinstance(payload_data, str):
+            payload_data = {"message": payload_data}
+        if isinstance(payload_data, dict):
+            payload_data = {
+                **payload_data,
+                "source_event_id": source_event_id,
+            }
+
     payload = {
         "task_id": task_id,
         "step": step,
-        "data": data["data"],
+        "data": payload_data,
         "timestamp": time.time_ns() / 1_000_000_000,
     }
 
