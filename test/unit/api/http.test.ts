@@ -92,6 +92,45 @@ describe('api/http handleResponse', () => {
     }
   );
 
+  it.each(['resume', 'chat'])(
+    'checks admission context after delayed capability headers before delivering %s',
+    async (kind) => {
+      vi.resetModules();
+      const http = await import('@/api/http');
+      let release!: (value: string) => void;
+      mocked.getLocalControlCapability.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          })
+      );
+      const fetch = vi.spyOn(globalThis, 'fetch');
+      let current = true;
+      const beforeRequest = vi.fn(() => {
+        if (!current) throw new Error('stale admission');
+      });
+      const request =
+        kind === 'resume'
+          ? http.fetchPost(
+              '/runs/run-1/resume',
+              { request_id: 'resume-1' },
+              undefined,
+              { beforeRequest }
+            )
+          : http.sseTransport({
+              url: '/chat',
+              beforeRequest,
+              onmessage: vi.fn(),
+            });
+      await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+      current = false;
+      release('synthetic-capability');
+      await expect(request).rejects.toThrow('stale admission');
+      expect(beforeRequest).toHaveBeenCalledOnce();
+      expect(fetch).not.toHaveBeenCalled();
+    }
+  );
+
   it('throws for non-JSON error responses instead of returning stream object', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response('<html>bad gateway</html>', {

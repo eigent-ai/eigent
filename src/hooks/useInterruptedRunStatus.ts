@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { useHost } from '@/host';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import { DURABLE_RUN_STATUS_CHANGED_EVENT } from '@/lib/events/durableRunEvents';
 import type { ProjectedRun } from '@/lib/projector';
 import {
@@ -20,7 +21,19 @@ import {
   runProjectionStore,
   useRunProjectionSelector,
 } from '@/lib/runEvents';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  pendingResumeRequest,
+  resumeRequestsRevision,
+  subscribeResumeRequests,
+} from '@/lib/runResumeRequest';
+import { getAuthStore, useAuthStore } from '@/store/authStore';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 
 export interface DurableRunSummary {
   run_id: string;
@@ -29,9 +42,12 @@ export interface DurableRunSummary {
   updated_at: number;
   origin?: 'local' | 'cloud_restore' | 'remote';
   resume_blocked_reason?: string | null;
+  /** Local retry authority; the canonical Run remains pending. */
+  retry_request_id?: string;
   latest_attempt?: {
     attempt_number: number;
     status: string;
+    resume_request_id?: string;
   } | null;
 }
 
@@ -84,6 +100,9 @@ function projectedRunToDurableSummary(
       ? {
           attempt_number: run.latestAttempt.attemptNumber,
           status: run.latestAttempt.status,
+          ...(run.latestAttempt.resumeRequestId
+            ? { resume_request_id: run.latestAttempt.resumeRequestId }
+            : {}),
         }
       : null,
   };
@@ -100,34 +119,57 @@ function projectedRunToDurableSummary(
  */
 export function useInterruptedRunStatus(projectId: string | null) {
   const host = useHost();
+  const accountKey = useAuthStore(getAccountEnvironmentKey);
+  useSyncExternalStore(
+    subscribeResumeRequests,
+    resumeRequestsRevision,
+    resumeRequestsRevision
+  );
   const [dismissed, setDismissed] = useState<string | null>(null);
   const selectInterrupted = useCallback(
     (state: import('@/lib/projector').ProjectViewState | null) => {
       // Only the latest locally executed task owns the composer. Earlier
       // interruptions remain in history after the user starts another task.
-      const latest = Object.values(state?.runs || {})
-        .filter(
-          (candidate) =>
-            candidate.origin !== 'cloud_restore' && candidate.latestAttempt
-        )
-        .sort((left, right) =>
-          right.updatedAt.localeCompare(left.updatedAt)
-        )[0];
-      return latest?.status === 'interrupted' ? latest : null;
+      return (
+        Object.values(state?.runs || {})
+          .filter(
+            (candidate) =>
+              candidate.origin !== 'cloud_restore' && candidate.latestAttempt
+          )
+          .sort((left, right) =>
+            right.updatedAt.localeCompare(left.updatedAt)
+          )[0] ?? null
+      );
     },
     []
   );
   const projectedRun = useRunProjectionSelector(projectId, selectInterrupted);
+  const summary = useMemo(
+    () =>
+      projectedRun && projectId
+        ? projectedRunToDurableSummary(projectId, projectedRun)
+        : null,
+    [projectId, projectedRun]
+  );
+  const retryRequestId =
+    summary && projectId
+      ? pendingResumeRequest(
+          { accountKey, projectId, runId: summary.run_id },
+          summary
+        )
+      : null;
   const run = useMemo(
     () =>
-      projectedRun &&
+      summary &&
       projectId &&
-      dismissed !== `${projectId}:${projectedRun.runId}`
-        ? actionableInterruptedRun(
-            projectedRunToDurableSummary(projectId, projectedRun)
-          )
+      (summary.status === 'interrupted' || retryRequestId) &&
+      dismissed !== `${projectId}:${summary.run_id}`
+        ? actionableInterruptedRun({
+            ...summary,
+            ...(retryRequestId ? { retry_request_id: retryRequestId } : {}),
+          })
         : null,
-    [projectId, projectedRun, dismissed]
+    [projectId, summary, dismissed, retryRequestId]
   );
 
   const setRun = useCallback(
@@ -143,19 +185,29 @@ export function useInterruptedRunStatus(projectId: string | null) {
     [projectId, projectedRun]
   );
 
-  const refresh = useCallback((): Promise<void> => {
-    if (!projectId) return Promise.resolve();
-    return runEventIngressRegistry
-      .reconcileProject(projectId)
-      .then(() => setDismissed(null))
-      .catch((error) => {
-        // Brain can still be booting while the Project shell is visible. Keep
-        // the last canonical state until backend-ready/focus retries it.
-        if (error?.name !== 'AbortError') {
-          console.debug('[RunControl] Run status refresh deferred', error);
-        }
-      });
-  }, [projectId]);
+  const refresh = useCallback(
+    (expectedAccountKey?: string): Promise<void> => {
+      if (!projectId) return Promise.resolve();
+      if (
+        expectedAccountKey &&
+        expectedAccountKey !== getAccountEnvironmentKey(getAuthStore())
+      ) {
+        setDismissed(null);
+        return Promise.resolve();
+      }
+      return runEventIngressRegistry
+        .reconcileProject(projectId)
+        .then(() => setDismissed(null))
+        .catch((error) => {
+          // Brain can still be booting while the Project shell is visible. Keep
+          // the last canonical state until backend-ready/focus retries it.
+          if (error?.name !== 'AbortError') {
+            console.debug('[RunControl] Run status refresh deferred', error);
+          }
+        });
+    },
+    [projectId]
+  );
 
   useEffect(() => {
     void refresh();
