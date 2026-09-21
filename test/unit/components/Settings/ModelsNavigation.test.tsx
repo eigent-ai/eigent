@@ -197,8 +197,8 @@ describe('Models collections and configuration dialogs', () => {
       screen.getByRole('region', { name: 'All model providers' })
     ).toBeInTheDocument();
     const eigent = screen.getByRole('region', { name: 'Eigent' });
-    const eigentCount = within(eigent).getByLabelText('2/2 Models');
-    expect(eigentCount).toHaveTextContent('2/2');
+    const eigentCount = within(eigent).getByLabelText('1/2 Models');
+    expect(eigentCount).toHaveTextContent('1/2');
     expect(eigentCount.querySelector('span')).toHaveClass(
       'text-ds-ink-muted-default'
     );
@@ -525,6 +525,9 @@ describe('Models collections and configuration dialogs', () => {
     ).not.toBeInTheDocument();
   });
   it('hides and restores Eigent models locally, protecting the default', async () => {
+    useUsageNoticeStore.setState({
+      subscription: { plan_key: 'plus' },
+    });
     const user = userEvent.setup();
     renderPage();
     const defaultModelSwitch = screen.getByRole('switch', { name: 'GPT' });
@@ -557,6 +560,30 @@ describe('Models collections and configuration dialogs', () => {
     expect(useModelVisibilityStore.getState().hiddenByAccount['1']).toEqual([]);
     expect(mocks.post).not.toHaveBeenCalled();
     expect(mocks.put).not.toHaveBeenCalled();
+  });
+  it('keeps unavailable Eigent models off and offers a plan upgrade', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const eigent = screen.getByRole('region', { name: 'Eigent' });
+    const unavailableSwitch = within(eigent).getByRole('switch', {
+      name: 'Claude',
+    });
+    expect(unavailableSwitch).not.toBeChecked();
+
+    await user.click(unavailableSwitch);
+
+    expect(unavailableSwitch).not.toBeChecked();
+    expect(
+      useModelVisibilityStore.getState().hiddenByAccount['1']
+    ).toBeUndefined();
+    const notice = within(eigent).getByRole('alert');
+    expect(notice).toHaveTextContent('Upgrade your plan to use Claude.');
+    expect(
+      within(notice).getByRole('link', { name: 'Upgrade' })
+    ).toHaveAttribute('href', expect.stringMatching(/\/pricing$/));
+    await user.click(within(notice).getByRole('button', { name: 'Close' }));
+    expect(screen.queryByText('Upgrade your plan to use Claude.')).toBeNull();
   });
   it('confirms deletion and removes only that record', async () => {
     const user = userEvent.setup();

@@ -22,6 +22,7 @@
     "view-all-models": "Alle Modelle anzeigen",
     "available": "Verfügbar",
     "unavailable": "Nicht verfügbar",
+    "upgrade-required": "Upgrade deinen Tarif, um {{model}} zu verwenden.",
     "no-visible-models": "Keine Modelle sichtbar. Über Verwalten kannst du Modelle einblenden.",
     "cloud-unavailable": "Eigent-Modelle sind im rein lokalen Modus nicht verfügbar.",
     "load-error": "Konfigurierte Modelle konnten nicht geladen werden.",

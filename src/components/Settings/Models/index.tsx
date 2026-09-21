@@ -53,7 +53,7 @@ import {
   needsInvertModelImage,
 } from '@/shared/modelProviderImages';
 import { useAuthStore } from '@/store/authStore';
-import { useCloudModelStore } from '@/store/cloudModelStore';
+import { useCloudModelStore, type CloudModel } from '@/store/cloudModelStore';
 import { refreshUsage, useUsageNoticeStore } from '@/store/usageNoticeStore';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
@@ -65,6 +65,7 @@ import {
   LoaderCircle,
   MoreHorizontal,
   Plus,
+  X,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -111,6 +112,7 @@ function ModelsContent() {
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [configurationBusy, setConfigurationBusy] = useState(false);
+  const [upgradeModel, setUpgradeModel] = useState<CloudModel | null>(null);
   const [error, setError] = useState('');
   const [searchParams, setSearchParams] = useSearchParams();
   useEffect(() => {
@@ -361,6 +363,14 @@ function ModelsContent() {
   const modelRowClass = 'flex h-[52px] items-center gap-ds-12 px-ds-8 py-ds-16';
   const modelNameClass = (configured: boolean) =>
     `min-w-0 flex-1 truncate ${configured ? '' : 'text-ds-text-error-default-default'}`;
+  const setCloudModelVisibility = (model: CloudModel, visible: boolean) => {
+    if (visible && !isCloudModelAvailable(model, planKey)) {
+      setUpgradeModel(model);
+      return;
+    }
+    if (upgradeModel?.id === model.id) setUpgradeModel(null);
+    inventory.setHidden(model.id, !visible);
+  };
 
   return (
     <>
@@ -608,7 +618,9 @@ function ModelsContent() {
                 return null;
               const closed = collapsed.includes(group);
               const enabledCloudCount = inventory.cloudModels.filter(
-                (model) => !inventory.hidden.includes(model.id)
+                (model) =>
+                  !inventory.hidden.includes(model.id) &&
+                  isCloudModelAvailable(model, planKey)
               ).length;
               const modelCount = eigent
                 ? inventory.cloudAvailable
@@ -724,6 +736,38 @@ function ModelsContent() {
                       </Button>
                     </div>
                   </header>
+                  {eigent && upgradeModel && (
+                    <div
+                      role="alert"
+                      className="mx-ds-16 mb-ds-12 flex flex-wrap items-center gap-ds-8 rounded-ds-card bg-ds-bg-information-subtle-default p-ds-12 text-ds-text-information-strong-default"
+                    >
+                      <DsText className="m-0 flex-1 text-ds-text-information-strong-default">
+                        {t('setting.model-list.upgrade-required', {
+                          model: upgradeModel.display_name,
+                        })}
+                      </DsText>
+                      <Button
+                        asChild
+                        variant="outline"
+                        tone="information"
+                        size="sm"
+                      >
+                        <a href={`${SITE_URL}/pricing`}>
+                          {t('setting.upgrade')}
+                        </a>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        tone="information"
+                        size="sm"
+                        buttonContent="icon-only"
+                        onClick={() => setUpgradeModel(null)}
+                        aria-label={t('setting.close')}
+                      >
+                        <X />
+                      </Button>
+                    </div>
+                  )}
                   {!closed && (
                     <div
                       id={`models-${group}`}
@@ -732,46 +776,52 @@ function ModelsContent() {
                       {eigent ? (
                         <>
                           {inventory.cloudAvailable &&
-                            visibleCloud.map((model) => (
-                              <div key={model.id} className={modelRowClass}>
-                                <DsText
-                                  className="min-w-0 flex-1 truncate"
-                                  weight="medium"
-                                >
-                                  {model.display_name}
-                                </DsText>
-                                {cloudDefault(model.id) && badge}
-                                {availabilityStatus(
-                                  isCloudModelAvailable(model, planKey)
-                                )}
-                                <Switch
-                                  size="sm"
-                                  variant="outline"
-                                  aria-label={model.display_name}
-                                  checked
-                                  disabled={cloudDefault(model.id)}
-                                  onCheckedChange={(checked) =>
-                                    inventory.setHidden(model.id, !checked)
-                                  }
-                                />
-                                {actions(
-                                  model.display_name,
-                                  <DropdownMenuItem
-                                    disabled={
-                                      cloudDefault(model.id) ||
-                                      busy ||
-                                      !isCloudModelAvailable(model, planKey)
-                                    }
-                                    onSelect={() => {
-                                      auth.setCloudModelType(model.id);
-                                      auth.setModelType('cloud');
-                                    }}
+                            visibleCloud.map((model) => {
+                              const available = isCloudModelAvailable(
+                                model,
+                                planKey
+                              );
+                              return (
+                                <div key={model.id} className={modelRowClass}>
+                                  <DsText
+                                    className="min-w-0 flex-1 truncate"
+                                    weight="medium"
                                   >
-                                    {t('setting.set-as-default')}
-                                  </DropdownMenuItem>
-                                )}
-                              </div>
-                            ))}
+                                    {model.display_name}
+                                  </DsText>
+                                  {cloudDefault(model.id) && badge}
+                                  {availabilityStatus(available)}
+                                  <Switch
+                                    size="sm"
+                                    variant="outline"
+                                    aria-label={model.display_name}
+                                    checked={available}
+                                    disabled={
+                                      available && cloudDefault(model.id)
+                                    }
+                                    onCheckedChange={(checked) =>
+                                      setCloudModelVisibility(model, checked)
+                                    }
+                                  />
+                                  {actions(
+                                    model.display_name,
+                                    <DropdownMenuItem
+                                      disabled={
+                                        cloudDefault(model.id) ||
+                                        busy ||
+                                        !available
+                                      }
+                                      onSelect={() => {
+                                        auth.setCloudModelType(model.id);
+                                        auth.setModelType('cloud');
+                                      }}
+                                    >
+                                      {t('setting.set-as-default')}
+                                    </DropdownMenuItem>
+                                  )}
+                                </div>
+                              );
+                            })}
                           {inventory.cloudAvailable &&
                             hiddenCloud.length > 0 && (
                               <>
@@ -802,34 +852,38 @@ function ModelsContent() {
                                     id="hidden-eigent-models"
                                     className="flex flex-col divide-y divide-ds-hairline-subtle-disabled"
                                   >
-                                    {hiddenCloud.map((model) => (
-                                      <div
-                                        key={model.id}
-                                        className={modelRowClass}
-                                      >
-                                        <DsText
-                                          className="min-w-0 flex-1 truncate"
-                                          weight="medium"
+                                    {hiddenCloud.map((model) => {
+                                      const available = isCloudModelAvailable(
+                                        model,
+                                        planKey
+                                      );
+                                      return (
+                                        <div
+                                          key={model.id}
+                                          className={modelRowClass}
                                         >
-                                          {model.display_name}
-                                        </DsText>
-                                        {availabilityStatus(
-                                          isCloudModelAvailable(model, planKey)
-                                        )}
-                                        <Switch
-                                          size="sm"
-                                          variant="outline"
-                                          aria-label={model.display_name}
-                                          checked={false}
-                                          onCheckedChange={(checked) =>
-                                            inventory.setHidden(
-                                              model.id,
-                                              !checked
-                                            )
-                                          }
-                                        />
-                                      </div>
-                                    ))}
+                                          <DsText
+                                            className="min-w-0 flex-1 truncate"
+                                            weight="medium"
+                                          >
+                                            {model.display_name}
+                                          </DsText>
+                                          {availabilityStatus(available)}
+                                          <Switch
+                                            size="sm"
+                                            variant="outline"
+                                            aria-label={model.display_name}
+                                            checked={false}
+                                            onCheckedChange={(checked) =>
+                                              setCloudModelVisibility(
+                                                model,
+                                                checked
+                                              )
+                                            }
+                                          />
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 )}
                               </>

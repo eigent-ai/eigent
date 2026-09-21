@@ -22,6 +22,7 @@
     "view-all-models": "Visualizza tutti i modelli",
     "available": "Disponibile",
     "unavailable": "Non disponibile",
+    "upgrade-required": "Aggiorna il tuo piano per usare {{model}}.",
     "no-visible-models": "Nessun modello visibile. Usa Gestisci per mostrarli.",
     "cloud-unavailable": "I modelli Eigent non sono disponibili in modalità solo locale.",
     "load-error": "Impossibile caricare i modelli configurati.",
