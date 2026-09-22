@@ -52,6 +52,7 @@ vi.mock('@/components/Toast/trafficToast', () => ({
 import {
   fetchGet,
   fetchPost,
+  fetchPut,
   getBaseURL,
   proxyFetchPatch,
   proxyFetchPut,
@@ -76,7 +77,7 @@ describe('api/http handleResponse', () => {
     vi.restoreAllMocks();
   });
 
-  it.each(['brain', 'server'])(
+  it.each(['brain', 'brain-put', 'server'])(
     'does not send a %s request under a changed account after async URL resolution',
     async (target) => {
       const fetch = vi.spyOn(globalThis, 'fetch');
@@ -86,19 +87,26 @@ describe('api/http handleResponse', () => {
       const request =
         target === 'brain'
           ? fetchGet('/runs/exact-run', undefined, undefined, options)
-          : proxyFetchPut(
-              '/api/v1/execution/exact-execution',
-              { status: 'completed' },
-              undefined,
-              options
-            );
+          : target === 'brain-put'
+            ? fetchPut(
+                '/workspace-bundles/install-proposals/p/local-values',
+                {},
+                undefined,
+                options
+              )
+            : proxyFetchPut(
+                '/api/v1/execution/exact-execution',
+                { status: 'completed' },
+                undefined,
+                options
+              );
       mocked.auth = { token: 'test-other-account', user_id: 2 };
       await expect(request).rejects.toThrow('account changed');
       expect(fetch).not.toHaveBeenCalled();
     }
   );
 
-  it.each(['resume', 'chat'])(
+  it.each(['resume', 'chat', 'values'])(
     'checks admission context after delayed capability headers before delivering %s',
     async (kind) => {
       vi.resetModules();
@@ -123,11 +131,18 @@ describe('api/http handleResponse', () => {
               undefined,
               { beforeRequest }
             )
-          : http.sseTransport({
-              url: '/chat',
-              beforeRequest,
-              onmessage: vi.fn(),
-            });
+          : kind === 'values'
+            ? http.fetchPut(
+                '/workspace-bundles/install-proposals/p/local-values',
+                {},
+                undefined,
+                { beforeRequest }
+              )
+            : http.sseTransport({
+                url: '/chat',
+                beforeRequest,
+                onmessage: vi.fn(),
+              });
       await vi.waitFor(() => expect(release).toBeTypeOf('function'));
       current = false;
       release('synthetic-capability');

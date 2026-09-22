@@ -13,6 +13,8 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fetchGet, fetchPost, fetchPut } from '@/api/http';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
+import { getAuthStore } from '@/store/authStore';
 import i18next from 'i18next';
 import {
   getPublicWorkspaceBundleRevision,
@@ -200,6 +202,47 @@ export async function fetchWorkspaceBundleInstallReview(
   return { bundle: null, revision };
 }
 
+/** Bind live-resource readiness to the account that initiated the request. */
+async function installationRequest<T>(
+  method: 'GET' | 'POST' | 'PUT',
+  path: string,
+  data?: Record<string, unknown>,
+  identity?: { email: string; userId?: string | number | null }
+): Promise<T> {
+  const auth = getAuthStore();
+  const owner = getAccountEnvironmentKey(auth);
+  const token = auth.token;
+  const email = auth.email ?? '';
+  const userId = auth.user_id;
+  const assertCurrent = () => {
+    const current = getAuthStore();
+    if (
+      getAccountEnvironmentKey(current) !== owner ||
+      current.token !== token ||
+      (current.email ?? '') !== email
+    )
+      throw new Error('workspace_bundle_account_changed');
+  };
+  // Materialization also carries identity in its existing body contract.
+  if (
+    identity &&
+    (identity.email !== email ||
+      String(identity.userId ?? '') !== String(userId ?? ''))
+  )
+    throw new Error('workspace_bundle_account_changed');
+  const params = new URLSearchParams({ email });
+  if (userId != null) params.set('user_id', String(userId));
+  const url = `${path}?${params.toString()}`;
+  const request =
+    method === 'GET' ? fetchGet : method === 'POST' ? fetchPost : fetchPut;
+  const result = await request(url, data, undefined, {
+    expectedAccountKey: owner,
+    beforeRequest: assertCurrent,
+  });
+  assertCurrent();
+  return result;
+}
+
 export const createWorkspaceBundleInstallProposal = async (input: {
   proposalId: string;
   requestId: string;
@@ -208,7 +251,7 @@ export const createWorkspaceBundleInstallProposal = async (input: {
   slug: string;
   version: number;
 }): Promise<WorkspaceBundleInstallSnapshot> =>
-  fetchPost('/workspace-bundles/install-proposals', {
+  installationRequest('POST', '/workspace-bundles/install-proposals', {
     proposal_id: input.proposalId,
     request_id: input.requestId,
     space_id: input.spaceId,
@@ -221,14 +264,16 @@ export const createWorkspaceBundleInstallProposal = async (input: {
 export const fetchWorkspaceBundleInstallProposal = async (
   proposalId: string
 ): Promise<WorkspaceBundleInstallSnapshot> =>
-  fetchGet(
+  installationRequest(
+    'GET',
     `/workspace-bundles/install-proposals/${encodeURIComponent(proposalId)}`
   );
 
 export const fetchWorkspaceBundleInstallForSpace = async (
   spaceId: string
 ): Promise<WorkspaceBundleInstallationLookup> =>
-  fetchGet(
+  installationRequest(
+    'GET',
     `/spaces/${encodeURIComponent(spaceId)}/workspace-bundle-installation`
   );
 
@@ -238,7 +283,8 @@ export const decideWorkspaceBundleInstall = async (input: {
   approved: boolean;
   actorId: string;
 }): Promise<WorkspaceBundleInstallSnapshot> =>
-  fetchPost(
+  installationRequest(
+    'POST',
     `/workspace-bundles/install-proposals/${encodeURIComponent(input.proposalId)}/decision`,
     {
       expected_version: input.expectedVersion,
@@ -255,7 +301,8 @@ export const bindWorkspaceBundleConnector = async (input: {
   connectionId: string;
   actorId: string;
 }): Promise<WorkspaceBundleInstallSnapshot> =>
-  fetchPost(
+  installationRequest(
+    'POST',
     `/workspace-bundles/install-proposals/${encodeURIComponent(input.proposalId)}/connector-bindings`,
     {
       expected_version: input.expectedVersion,
@@ -273,7 +320,8 @@ export const bindWorkspaceBundleLocalPath = async (input: {
   localPath: string;
   actorId: string;
 }): Promise<WorkspaceBundleInstallSnapshot> =>
-  fetchPost(
+  installationRequest(
+    'POST',
     `/workspace-bundles/install-proposals/${encodeURIComponent(input.proposalId)}/local-path-bindings`,
     {
       expected_version: input.expectedVersion,
@@ -289,7 +337,8 @@ export const approveWorkspaceBundleScript = async (input: {
   actionId: string;
   actorId: string;
 }): Promise<WorkspaceBundleInstallSnapshot> =>
-  fetchPost(
+  installationRequest(
+    'POST',
     `/workspace-bundles/install-proposals/${encodeURIComponent(input.proposalId)}/script-approvals`,
     {
       expected_version: input.expectedVersion,
@@ -313,7 +362,8 @@ export const bindWorkspaceBundleLocalValues = async (input: {
   actorId: string;
   bindings: WorkspaceBundleOpaqueValueBinding[];
 }): Promise<WorkspaceBundleInstallSnapshot> =>
-  fetchPut(
+  installationRequest(
+    'PUT',
     `/workspace-bundles/install-proposals/${encodeURIComponent(input.proposalId)}/local-values`,
     {
       client_request_id: input.clientRequestId,
@@ -330,7 +380,8 @@ export const materializeWorkspaceBundle = async (input: {
   userId?: string | number | null;
   actorId: string;
 }): Promise<WorkspaceBundleInstallSnapshot> =>
-  fetchPost(
+  installationRequest(
+    'POST',
     `/workspace-bundles/install-proposals/${encodeURIComponent(input.proposalId)}/materialize`,
     {
       expected_version: input.expectedVersion,
@@ -340,7 +391,8 @@ export const materializeWorkspaceBundle = async (input: {
         : { user_id: input.userId }),
       actor_id: input.actorId,
       allow_content_repository_init: false,
-    }
+    },
+    { email: input.email, userId: input.userId }
   );
 
 export async function workspaceBundleAccountScopeDigest(

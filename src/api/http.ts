@@ -379,8 +379,12 @@ export const fetchPost = (
   options?: FetchRequestOptions
 ) => fetchRequest('POST', url, data, headers, options);
 
-export const fetchPut = (url: string, data?: any, headers?: any) =>
-  fetchRequest('PUT', url, data, headers);
+export const fetchPut = (
+  url: string,
+  data?: any,
+  headers?: any,
+  options?: FetchRequestOptions
+) => fetchRequest('PUT', url, data, headers, options);
 
 export const fetchPatch = (url: string, data?: any, headers?: any) =>
   fetchRequest('PATCH', url, data, headers);
