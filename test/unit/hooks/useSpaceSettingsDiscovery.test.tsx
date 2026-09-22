@@ -15,17 +15,17 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { modelsMock, bundleMock, connectorsMock, detailMock } = vi.hoisted(
+const { modelsMock, globalMock, connectorsMock, detailMock } = vi.hoisted(
   () => ({
     modelsMock: vi.fn(),
-    bundleMock: vi.fn(),
+    globalMock: vi.fn(),
     connectorsMock: vi.fn(),
     detailMock: vi.fn(),
   })
 );
 vi.mock('@/service/spaceSettingsDiscovery', () => ({
   discoverSpaceModels: modelsMock,
-  discoverSpaceBundleResources: bundleMock,
+  discoverGlobalSpaceResources: globalMock,
   discoverSpaceConnectors: connectorsMock,
   discoverSpaceConnectorDetails: detailMock,
 }));
@@ -58,8 +58,8 @@ const options = {
 describe('useSpaceSettingsDiscovery', () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    modelsMock.mockResolvedValue([]);
-    bundleMock.mockResolvedValue({ skills: [], mcpServers: [] });
+    modelsMock.mockResolvedValue({ items: [], unavailableSources: [] });
+    globalMock.mockResolvedValue({ skills: [], mcpServers: [] });
     connectorsMock.mockResolvedValue({ items: [], hasMore: false });
   });
 
@@ -75,7 +75,113 @@ describe('useSpaceSettingsDiscovery', () => {
     act(() => result.current.models.retry());
     await waitFor(() => expect(result.current.models.status).toBe('empty'));
     expect(modelsMock).toHaveBeenCalledTimes(2);
-    expect(bundleMock).toHaveBeenCalledTimes(1);
+    expect(globalMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('loads global resources for an empty Space without requesting a Bundle', async () => {
+    globalMock.mockResolvedValue({
+      skills: [
+        { value: 'registry://global/skills/fixture', label: 'Global skill' },
+      ],
+      mcpServers: [{ value: 'global-mcp', label: 'Global MCP' }],
+    });
+    const { result } = renderHook(() => useSpaceSettingsDiscovery(options));
+    await waitFor(() => expect(result.current.skills.status).toBe('ready'));
+    expect(result.current.skills.items[0].label).toBe('Global skill');
+    expect(result.current.mcpServers.items[0].label).toBe('Global MCP');
+    expect(globalMock).toHaveBeenCalledWith(options.identity);
+  });
+
+  it('retains healthy models alongside a visible partial-source warning and clears it on retry', async () => {
+    const healthy = { value: 'provider://cloud/healthy', label: 'Healthy' };
+    modelsMock.mockResolvedValueOnce({
+      items: [healthy],
+      unavailableSources: ['provider_catalog'],
+    });
+    const { result } = renderHook(() => useSpaceSettingsDiscovery(options));
+    await waitFor(() => expect(result.current.models.status).toBe('ready'));
+    expect(result.current.models.items).toEqual([healthy]);
+    expect(result.current.models.error).toBe('model_catalog_partial');
+    modelsMock.mockResolvedValueOnce({
+      items: [healthy],
+      unavailableSources: [],
+    });
+    act(() => result.current.models.retry());
+    await waitFor(() => expect(result.current.models.error).toBeNull());
+    await waitFor(() => expect(result.current.models.status).toBe('ready'));
+    expect(result.current.models.items).toEqual([healthy]);
+  });
+
+  it('shows disabled connector service explicitly and can recover on retry', async () => {
+    connectorsMock.mockRejectedValueOnce(
+      new Error('connector_catalog_disabled')
+    );
+    const { result } = renderHook(() => useSpaceSettingsDiscovery(options));
+    await waitFor(() => expect(result.current.connectors.status).toBe('error'));
+    expect(result.current.connectors.error).toBe('connector_catalog_disabled');
+    connectorsMock.mockResolvedValueOnce({
+      items: [connector('github')],
+      hasMore: false,
+    });
+    act(() => result.current.connectors.retry());
+    await waitFor(() => expect(result.current.connectors.status).toBe('ready'));
+    expect(result.current.connectors.error).toBeNull();
+  });
+
+  it('updates empty first-page status once a later page contains a selectable connector', async () => {
+    connectorsMock.mockResolvedValueOnce({ items: [], hasMore: true });
+    const { result } = renderHook(() => useSpaceSettingsDiscovery(options));
+    await waitFor(() => expect(result.current.connectors.status).toBe('empty'));
+    connectorsMock.mockResolvedValueOnce({
+      items: [connector('github')],
+      hasMore: false,
+    });
+    await act(() => result.current.connectors.loadMore());
+    expect(result.current.connectors.status).toBe('ready');
+    expect(result.current.connectors.items).toEqual([connector('github')]);
+    expect(result.current.connectors.hasMore).toBe(false);
+  });
+
+  it('preserves previous connector pages on failure, stops repeated paging, and reloads all pages after retry', async () => {
+    connectorsMock.mockResolvedValueOnce({
+      items: [connector('github')],
+      hasMore: true,
+    });
+    const { result } = renderHook(() => useSpaceSettingsDiscovery(options));
+    await waitFor(() => expect(result.current.connectors.status).toBe('ready'));
+    connectorsMock.mockRejectedValueOnce(
+      new Error('/private/path?api_key=secret')
+    );
+    await act(() => result.current.connectors.loadMore());
+    expect(result.current.connectors.items).toEqual([connector('github')]);
+    expect(result.current.connectors.error).toBe('discovery_unavailable');
+    expect(result.current.connectors.loadingMore).toBe(false);
+    await act(() => result.current.connectors.loadMore());
+    expect(connectorsMock).toHaveBeenCalledTimes(2);
+    connectorsMock.mockResolvedValueOnce({
+      items: [connector('github')],
+      hasMore: true,
+    });
+    act(() => result.current.connectors.retry());
+    await waitFor(() => expect(result.current.connectors.status).toBe('ready'));
+    expect(result.current.connectors.error).toBeNull();
+    connectorsMock.mockResolvedValueOnce({
+      items: [connector('slack')],
+      hasMore: false,
+    });
+    await act(() => result.current.connectors.loadMore());
+    expect(result.current.connectors.items.map((item) => item.value)).toEqual([
+      'github',
+      'slack',
+    ]);
+    expect(result.current.connectors.page).toBe(2);
+    expect(result.current.connectors.hasMore).toBe(false);
+    expect(connectorsMock.mock.calls).toEqual([
+      ['', 1],
+      ['', 2],
+      ['', 1],
+      ['', 2],
+    ]);
   });
 
   it.each([
@@ -87,14 +193,17 @@ describe('useSpaceSettingsDiscovery', () => {
     { ...options, identity: { ...options.identity, userId: 8 } },
     { ...options, editorKey: 'skill-other' },
   ])('quarantines late discovery when scope changes to %j', async (next) => {
-    const oldModels = pending<unknown[]>();
+    const oldModels = pending<{
+      items: unknown[];
+      unavailableSources: string[];
+    }>();
     const oldBundle = pending<{ skills: unknown[]; mcpServers: unknown[] }>();
     const oldConnectors = pending<{
       items: SpaceConnectorCandidate[];
       hasMore: boolean;
     }>();
     modelsMock.mockReturnValueOnce(oldModels.promise);
-    bundleMock.mockReturnValueOnce(oldBundle.promise);
+    globalMock.mockReturnValueOnce(oldBundle.promise);
     connectorsMock.mockReturnValueOnce(oldConnectors.promise);
     const { result, rerender } = renderHook(
       (props) => useSpaceSettingsDiscovery(props),
@@ -103,7 +212,10 @@ describe('useSpaceSettingsDiscovery', () => {
     rerender(next);
     await waitFor(() => expect(result.current.models.status).toBe('empty'));
     await act(async () => {
-      oldModels.resolve([{ value: 'old-model' }]);
+      oldModels.resolve({
+        items: [{ value: 'old-model' }],
+        unavailableSources: ['provider_catalog'],
+      });
       oldBundle.resolve({
         skills: [{ value: 'old-skill' }],
         mcpServers: [{ value: 'old-mcp' }],
@@ -216,7 +328,7 @@ describe('useSpaceSettingsDiscovery', () => {
       useSpaceSettingsDiscovery({ spaceId: 'space-1', identity: null })
     );
     expect(modelsMock).not.toHaveBeenCalled();
-    expect(bundleMock).not.toHaveBeenCalled();
+    expect(globalMock).not.toHaveBeenCalled();
     expect(connectorsMock).not.toHaveBeenCalled();
   });
 });

@@ -21,7 +21,7 @@ import {
 } from 'react';
 
 import {
-  discoverSpaceBundleResources,
+  discoverGlobalSpaceResources,
   discoverSpaceConnectorDetails,
   discoverSpaceConnectors,
   discoverSpaceModels,
@@ -149,6 +149,11 @@ const initialConnectors = (
   detailError: null,
 });
 
+const connectorErrorCode = (error: unknown): string =>
+  error instanceof Error && error.message === 'connector_catalog_disabled'
+    ? 'connector_catalog_disabled'
+    : 'discovery_unavailable';
+
 function useConnectorCatalog(scope: string, enabled: boolean) {
   const [search, setSearch] = useState({ scope, query: '' });
   const query = search.scope === scope ? search.query : '';
@@ -193,7 +198,7 @@ function useConnectorCatalog(scope: string, enabled: boolean) {
           status: result.items.length ? 'ready' : 'empty',
         });
       },
-      () => {
+      (error) => {
         if (
           activeScope.current !== requestScope ||
           requestSequence.current !== sequence
@@ -202,7 +207,7 @@ function useConnectorCatalog(scope: string, enabled: boolean) {
         setStored({
           ...initialConnectors(requestScope, enabled),
           status: 'error',
-          error: 'discovery_unavailable',
+          error: connectorErrorCode(error),
         });
       }
     );
@@ -213,6 +218,7 @@ function useConnectorCatalog(scope: string, enabled: boolean) {
     if (
       !enabled ||
       !state.hasMore ||
+      state.error ||
       state.loadingMore ||
       loadingMoreRef.current ||
       state.scope !== activeScope.current
@@ -229,21 +235,25 @@ function useConnectorCatalog(scope: string, enabled: boolean) {
         requestSequence.current !== sequence
       )
         return;
-      setStored((current) => ({
-        ...current,
-        items: Array.from(
+      setStored((current) => {
+        const items = Array.from(
           new Map(
             [...current.items, ...result.items].map((item) => [
               item.value,
               item,
             ])
           ).values()
-        ),
-        hasMore: result.hasMore,
-        page: nextPage,
-        loadingMore: false,
-      }));
-    } catch {
+        );
+        return {
+          ...current,
+          items,
+          status: items.length ? 'ready' : 'empty',
+          hasMore: result.hasMore,
+          page: nextPage,
+          loadingMore: false,
+        };
+      });
+    } catch (error) {
       if (
         activeScope.current !== requestScope ||
         requestSequence.current !== sequence
@@ -252,7 +262,7 @@ function useConnectorCatalog(scope: string, enabled: boolean) {
       setStored((current) => ({
         ...current,
         loadingMore: false,
-        error: 'discovery_unavailable',
+        error: connectorErrorCode(error),
       }));
     } finally {
       if (
@@ -264,6 +274,7 @@ function useConnectorCatalog(scope: string, enabled: boolean) {
   }, [
     enabled,
     state.hasMore,
+    state.error,
     state.loadingMore,
     state.scope,
     state.page,
@@ -343,16 +354,28 @@ export function useSpaceSettingsDiscovery({
     editorKey,
     active,
   ]);
-  const loadBundle = useCallback(
-    () => discoverSpaceBundleResources(spaceId ?? '', { email, userId }),
-    [spaceId, email, userId]
+  const loadGlobalResources = useCallback(
+    () => discoverGlobalSpaceResources({ email, userId }),
+    [email, userId]
   );
   const models = useCatalog(scope, active, discoverSpaceModels);
-  const resources = useCatalog<SpaceBundleDiscovery>(scope, active, loadBundle);
+  const resources = useCatalog<SpaceBundleDiscovery>(
+    scope,
+    active,
+    loadGlobalResources
+  );
   const connectors = useConnectorCatalog(scope, active);
 
   return {
-    models: catalog(models, models.data ?? []),
+    models: catalog(
+      {
+        ...models,
+        error: models.data?.unavailableSources.length
+          ? 'model_catalog_partial'
+          : models.error,
+      },
+      models.data?.items ?? []
+    ),
     skills: catalog(resources, resources.data?.skills ?? []),
     mcpServers: catalog(resources, resources.data?.mcpServers ?? []),
     connectors,

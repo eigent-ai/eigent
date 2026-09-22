@@ -154,11 +154,7 @@ function Harness({
 }
 const choose = async (title: string, option: string) => {
   const user = userEvent.setup();
-  const browse = screen.getByRole('button', {
-    name: 'Browse available options',
-  });
-  if (browse.getAttribute('aria-expanded') !== 'true') await user.click(browse);
-  screen.getByRole('combobox', { name: `Select ${title}` }).focus();
+  screen.getByRole('combobox', { name: title }).focus();
   await user.keyboard('[ArrowDown]');
   await user.click(screen.getByRole('option', { name: new RegExp(option) }));
 };
@@ -184,8 +180,8 @@ describe('Space resource discovery drafts', () => {
       />
     );
     expect(
-      screen.getByRole('textbox', { name: 'Skill reference' })
-    ).toHaveValue(skill.value);
+      screen.getByRole('combobox', { name: 'Skill reference' })
+    ).toHaveTextContent(skill.label);
     expect(screen.getByText(/Review this editable draft/)).toBeVisible();
     expect(changed).toHaveBeenLastCalledWith(
       expect.objectContaining({ item: { ref: skill.value, assignTo: [] } })
@@ -194,43 +190,10 @@ describe('Space resource discovery drafts', () => {
     expect(config.spec.models.default.modelRef).toBe('provider://default');
   });
 
-  it('never fills an existing resource or refills a value the user cleared before discovery returned', () => {
+  it('preserves an unknown saved reference without selecting a replacement', () => {
     const data = discovery();
-    data.skills.items = [];
-    data.skills.status = 'loading';
+    data.skills.items = [skill];
     const changed = vi.fn();
-    const view = render(
-      <Harness
-        initial={{
-          kind: 'skill',
-          mode: 'create',
-          step: 'picker',
-          item: { ref: '', assignTo: [] },
-        }}
-        data={data}
-        changed={changed}
-      />
-    );
-    const field = screen.getByRole('textbox', { name: 'Skill reference' });
-    fireEvent.change(field, { target: { value: 'manual' } });
-    fireEvent.change(field, { target: { value: '' } });
-    data.skills = { ...data.skills, status: 'ready', items: [skill] };
-    view.rerender(
-      <Harness
-        initial={{
-          kind: 'skill',
-          mode: 'create',
-          step: 'picker',
-          item: { ref: '', assignTo: [] },
-        }}
-        data={data}
-        changed={changed}
-      />
-    );
-    expect(field).toHaveValue('');
-    expect(changed).toHaveBeenCalledTimes(2);
-    view.unmount();
-    changed.mockClear();
     render(
       <Harness
         initial={{
@@ -245,8 +208,8 @@ describe('Space resource discovery drafts', () => {
       />
     );
     expect(
-      screen.getByRole('textbox', { name: 'Skill reference' })
-    ).toHaveValue('registry://legacy@1');
+      screen.getByRole('combobox', { name: 'Skill reference' })
+    ).toHaveTextContent('registry://legacy@1');
     expect(changed).not.toHaveBeenCalled();
   });
 
@@ -541,7 +504,7 @@ describe('Space resource discovery drafts', () => {
     }
   );
 
-  it('filters long candidate labels, preserves unknown manual values, and shows retry/empty states', async () => {
+  it('shows all options in one control, retains unknown values, and offers retry', async () => {
     const retry = vi.fn(),
       onChange = vi.fn();
     const { rerender } = render(
@@ -558,17 +521,17 @@ describe('Space resource discovery drafts', () => {
       />
     );
     const user = userEvent.setup();
-    await user.click(
-      screen.getByRole('button', { name: 'Browse available options' })
-    );
-    await user.type(
-      screen.getByRole('textbox', { name: 'Search Skill' }),
-      'Research'
-    );
+    expect(
+      screen.queryByRole('button', { name: 'Browse available options' })
+    ).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Enter manually' })).toBeNull();
     screen.getByRole('combobox').focus();
     await user.keyboard('[ArrowDown]');
     expect(screen.getByRole('option', { name: /Research/ })).toBeVisible();
-    expect(screen.queryByRole('option', { name: /Writer/ })).toBeNull();
+    expect(screen.getByRole('option', { name: /Writer/ })).toBeVisible();
+    expect(
+      screen.getByRole('option', { name: 'unknown://kept' })
+    ).toHaveAttribute('aria-disabled', 'true');
     await user.keyboard('[Escape]');
     expect(onChange).not.toHaveBeenCalled();
     rerender(
@@ -581,8 +544,119 @@ describe('Space resource discovery drafts', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Retry' }));
     expect(retry).toHaveBeenCalledOnce();
-    expect(screen.getByRole('textbox', { name: 'Skill' })).toHaveValue(
+    expect(screen.getByRole('combobox', { name: 'Skill' })).toHaveTextContent(
       'unknown://kept'
     );
+  });
+
+  it('loads subsequent pages without a browse step and stops on an error', () => {
+    const loadMore = vi.fn(),
+      retry = vi.fn();
+    const props = {
+      title: 'Connector',
+      value: '',
+      onChange: vi.fn(),
+      loadMore,
+      hasMore: true,
+      loadingMore: false,
+    };
+    const view = render(
+      <SpaceDiscoveryField
+        {...props}
+        catalog={{ items: [], status: 'empty', error: null, retry }}
+      />
+    );
+    expect(loadMore).toHaveBeenCalledOnce();
+    expect(screen.getByText('Loading...')).toBeVisible();
+    view.rerender(
+      <SpaceDiscoveryField
+        {...props}
+        catalog={{
+          items: [connector],
+          status: 'ready',
+          error: 'discovery_unavailable',
+          retry,
+        }}
+      />
+    );
+    expect(loadMore).toHaveBeenCalledOnce();
+    expect(screen.getByRole('combobox')).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled();
+  });
+
+  it('does not auto-select disabled resources and explains duplicate skills', async () => {
+    const data = discovery(),
+      changed = vi.fn();
+    data.skills.items = [
+      { ...skill, disabled: true, reason: 'global_resource_disabled' },
+    ];
+    const initial: Editor = {
+      kind: 'skill',
+      mode: 'create',
+      step: 'picker',
+      item: { ref: '', assignTo: [] },
+    };
+    const view = render(
+      <SpaceResourceDiscoveryEditor
+        editor={initial}
+        document={config}
+        discovery={data}
+        onChange={changed}
+      />
+    );
+    expect(changed).not.toHaveBeenCalled();
+    data.skills.items = [skill, secondSkill];
+    view.rerender(
+      <SpaceResourceDiscoveryEditor
+        editor={{ ...initial, item: { ref: 'registry://kept', assignTo: [] } }}
+        document={{
+          ...config,
+          spec: {
+            ...config.spec,
+            skills: [{ ref: skill.value, assignTo: [] }],
+          },
+        }}
+        discovery={data}
+        onChange={changed}
+      />
+    );
+    const user = userEvent.setup();
+    screen.getByRole('combobox', { name: 'Skill reference' }).focus();
+    await user.keyboard('[ArrowDown]');
+    expect(screen.getByRole('option', { name: /Research/ })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    );
+    expect(screen.getByRole('option', { name: /Research/ })).toHaveTextContent(
+      'Already added to this Space'
+    );
+  });
+
+  it('keeps an edited MCP ID and assignments while all configured definitions remain selectable', async () => {
+    const data = discovery(),
+      changed = vi.fn();
+    data.mcpServers.items = [mcpA, mcpB];
+    render(<Harness initial={newMcp()} data={data} changed={changed} />);
+    fireEvent.change(screen.getByRole('textbox', { name: 'MCP server id' }), {
+      target: { value: 'custom-id' },
+    });
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'Assign to agents' }),
+      { target: { value: 'custom-agent' } }
+    );
+    await choose('Definition', '^b ·');
+    expect(changed).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        item: {
+          id: 'custom-id',
+          definition: mcpB.definition,
+          secretSlots: ['TOKEN_B'],
+          assignTo: ['custom-agent'],
+        },
+      })
+    );
+    expect(
+      screen.getByRole('combobox', { name: 'Definition' })
+    ).toHaveTextContent('b');
   });
 });

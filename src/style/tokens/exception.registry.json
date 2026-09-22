@@ -79,6 +79,13 @@
       "removal": "none"
     },
     {
+      "id": "space-resource-editor-viewport",
+      "owner": "space-settings",
+      "reason": "WorkspaceResourceEditorPanel bounds its height to the measured sticky anchor, visual viewport, and clipping ancestors so footer actions remain visible in short or zoomed windows. The bottom inset uses space-panel-inset; measurements exclude the panel's animation transform.",
+      "platform": "all",
+      "removal": "When a shared anchored panel primitive owns these runtime bounds."
+    },
+    {
       "id": "markdown-document",
       "owner": "markdown",
       "reason": "Markdown document details and sanitized third-party content.",

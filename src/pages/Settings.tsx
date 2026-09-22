@@ -35,6 +35,7 @@ import { ConnectorsNavigationProvider } from '@/components/Settings/Connectors/C
 import SkillDetail from '@/components/Settings/Skills/components/SkillDetail';
 import SkillDetailSidebar from '@/components/Settings/Skills/components/SkillDetailSidebar';
 import { SkillsProvider } from '@/components/Settings/Skills/SkillsProvider';
+import { usePresenceFocusGuard } from '@/hooks/usePresenceFocusGuard';
 import {
   shellDetailBackTarget,
   withoutShellDetailBackState,
@@ -60,7 +61,6 @@ import {
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -176,17 +176,7 @@ const contentTransitionVariants = {
 
 function useExitingPaneGuard(elementRef: RefObject<HTMLElement | null>) {
   const isPresent = useIsPresent();
-
-  useLayoutEffect(() => {
-    const element = elementRef.current;
-    if (!element) return;
-    if (isPresent) {
-      element.removeAttribute('inert');
-    } else {
-      element.setAttribute('inert', '');
-    }
-  }, [elementRef, isPresent]);
-
+  usePresenceFocusGuard(elementRef, isPresent);
   return isPresent;
 }
 
@@ -210,7 +200,6 @@ function AnimatedSidebarPane({
         motionContext.direction === 1 ? 'forward' : 'back'
       }
       data-space-navigation-motion={motionContext.mode}
-      aria-hidden={isPresent ? undefined : true}
       className="absolute inset-0 h-full min-h-0 w-full"
       custom={motionContext}
       variants={sidebarTransitionVariants}
@@ -244,7 +233,6 @@ function AnimatedContentPane({
         motionContext.direction === 1 ? 'forward' : 'back'
       }
       data-space-navigation-motion={motionContext.mode}
-      aria-hidden={isPresent ? undefined : true}
       className="absolute inset-0 flex h-full min-h-0 min-w-0 flex-col"
       custom={motionContext}
       variants={contentTransitionVariants}

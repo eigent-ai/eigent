@@ -59,22 +59,26 @@ export function SpaceResourceDiscoveryEditor({
       : editor.kind === 'mcp'
         ? discovery.mcpServers
         : discovery.connectors;
-  const catalog =
-    editor.kind === 'mcp'
-      ? {
-          ...rawCatalog,
-          items: (rawCatalog.items as SpaceMcpCandidate[]).filter(
-            (candidate) =>
-              editor.mode === 'edit'
-                ? candidate.id === editor.item.id
-                : (!touched.current.has('id') ||
-                    candidate.id === editor.item.id) &&
-                  !document.spec.mcpServers.some(
-                    (server) => server.id === candidate.id
-                  )
-          ),
-        }
-      : rawCatalog;
+  const catalog = {
+    ...rawCatalog,
+    items: rawCatalog.items.map((candidate) => {
+      const duplicate =
+        editor.kind === 'skill'
+          ? document.spec.skills.some(
+              (skill, index) =>
+                index !== editor.index && skill.ref === candidate.value
+            )
+          : editor.kind === 'mcp' &&
+            editor.mode === 'create' &&
+            !touched.current.has('id') &&
+            document.spec.mcpServers.some(
+              (server) => server.id === (candidate as SpaceMcpCandidate).id
+            );
+      return duplicate
+        ? { ...candidate, disabled: true, reason: 'resource_duplicate' }
+        : candidate;
+    }),
+  };
   const primary =
     editor.kind === 'skill'
       ? 'ref'
@@ -98,6 +102,7 @@ export function SpaceResourceDiscoveryEditor({
     candidate: SpaceDiscoveryCandidate,
     automatic = false
   ) => {
+    if (candidate.disabled) return;
     let item = {
       ...editor.item,
       [primary]:
@@ -169,6 +174,7 @@ export function SpaceResourceDiscoveryEditor({
       return;
     const candidates = catalog.items.filter(
       (candidate) =>
+        !candidate.disabled &&
         candidate.availability === 'available' &&
         (editor.kind !== 'skill' ||
           !document.spec.skills.some((skill) => skill.ref === candidate.value))
@@ -226,7 +232,9 @@ export function SpaceResourceDiscoveryEditor({
         value={value}
         selectedValue={
           editor.kind === 'mcp'
-            ? JSON.stringify([editor.item.definition, editor.item.id])
+            ? (discovery.mcpServers.items.find(
+                (candidate) => candidate.definition === value
+              )?.value ?? value)
             : value
         }
         onChange={(next) => edit(primary, next)}
@@ -247,8 +255,6 @@ export function SpaceResourceDiscoveryEditor({
         }
         {...(editor.kind === 'connector'
           ? {
-              query: discovery.connectors.query,
-              onQueryChange: discovery.setConnectorQuery,
               hasMore: discovery.connectors.hasMore,
               loadMore: discovery.connectors.loadMore,
               loadingMore: discovery.connectors.loadingMore,
@@ -309,8 +315,7 @@ export function SpaceResourceDiscoveryEditor({
                 (
                   catalog.items.find(
                     (candidate) =>
-                      (candidate as SpaceMcpCandidate).definition === value &&
-                      (candidate as SpaceMcpCandidate).id === editor.item.id
+                      (candidate as SpaceMcpCandidate).definition === value
                   ) as SpaceMcpCandidate | undefined
                 )?.secretSlots ?? []
               }
@@ -325,16 +330,6 @@ export function SpaceResourceDiscoveryEditor({
           />
         </>
       )}
-      {editor.step === 'picker' ? (
-        <Button
-          type="button"
-          variant="secondary"
-          size="md"
-          onClick={() => onChange({ ...editor, step: 'editor' })}
-        >
-          {t('layout.space-discovery-manual')}
-        </Button>
-      ) : null}
     </div>
   );
 }

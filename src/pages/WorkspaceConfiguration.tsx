@@ -47,6 +47,7 @@ import {
   type WorkspaceResourceEditorState,
 } from '@/components/WorkspaceConfiguration/WorkspaceResourceEditorPanel';
 import { WorkspaceResourceListItem } from '@/components/WorkspaceConfiguration/WorkspaceResourceListItem';
+import { focusVisibleElement } from '@/hooks/usePresenceFocusGuard';
 import { useSpaceSettingsDiscovery } from '@/hooks/useSpaceSettingsDiscovery';
 import { useWorkspaceConfiguration } from '@/hooks/useWorkspaceConfiguration';
 import { cn } from '@/lib/utils';
@@ -171,6 +172,7 @@ function AddSectionButton({
     });
   return (
     <Button
+      data-workspace-resource-add
       type="button"
       variant="primary"
       size="sm"
@@ -489,14 +491,11 @@ export function WorkspaceConfigurationEditor({
     useState<WorkspaceResourceEditorState | null>(null);
   const [editorEpoch, setEditorEpoch] = useState(0);
   const editorEpochRef = useRef(0);
-  const setResourceEditor = useCallback(
-    (next: WorkspaceResourceEditorState | null) => {
-      editorEpochRef.current += 1;
-      setEditorEpoch(editorEpochRef.current);
-      setResourceEditorState(next);
-    },
-    []
-  );
+  const editorFocusRef = useRef<{
+    trigger: HTMLElement | null;
+    fallback: HTMLElement | null;
+    scope: string;
+  } | null>(null);
   const [activeSectionId, setActiveSectionId] =
     useState<WorkspaceSettingSectionId>('space-settings-identity');
   const settingsContentRef = useRef<HTMLDivElement>(null);
@@ -531,6 +530,27 @@ export function WorkspaceConfigurationEditor({
   useLayoutEffect(() => {
     discoveryScopeRef.current = discoveryScope;
   }, [discoveryScope]);
+  const setResourceEditor = useCallback(
+    (next: WorkspaceResourceEditorState | null) => {
+      if (next) {
+        const active = globalThis.document.activeElement;
+        const trigger = active instanceof HTMLElement ? active : null;
+        editorFocusRef.current = {
+          trigger,
+          fallback:
+            trigger
+              ?.closest('[data-workspace-settings-section]')
+              ?.querySelector<HTMLElement>('[data-workspace-resource-add]') ??
+            null,
+          scope: discoveryScopeRef.current,
+        };
+      }
+      editorEpochRef.current += 1;
+      setEditorEpoch(editorEpochRef.current);
+      setResourceEditorState(next);
+    },
+    []
+  );
   const discovery = useSpaceSettingsDiscovery({
     spaceId: targetSpaceId,
     identity,
@@ -573,11 +593,26 @@ export function WorkspaceConfigurationEditor({
     [setDocument]
   );
   const closeResourceEditor = useCallback(
-    () => setResourceEditor(null),
+    (deleted = false) => {
+      const saved = editorFocusRef.current;
+      const active = globalThis.document.activeElement;
+      if (
+        saved?.scope === discoveryScopeRef.current &&
+        active instanceof HTMLElement &&
+        active.closest('[data-workspace-resource-editor-panel]')
+      ) {
+        if (deleted || !focusVisibleElement(saved.trigger)) {
+          focusVisibleElement(saved.fallback);
+        }
+      }
+      editorFocusRef.current = null;
+      setResourceEditor(null);
+    },
     [setResourceEditor]
   );
 
   useEffect(() => {
+    editorFocusRef.current = null;
     setResourceEditor(null);
   }, [targetSpaceId, email, userId, setResourceEditor]);
 
@@ -971,7 +1006,7 @@ export function WorkspaceConfigurationEditor({
         next.spec.mcpServers.splice(resourceEditor.index, 1);
       }
     });
-    closeResourceEditor();
+    closeResourceEditor(true);
   };
 
   return (
@@ -1915,7 +1950,11 @@ export function WorkspaceConfigurationEditor({
                 <WorkspaceResourceListItem
                   key={`${item.ref}-${index}`}
                   leading={<Package className="h-4 w-4" aria-hidden />}
-                  title={humanizeIdentifier(item.ref)}
+                  title={
+                    discovery.skills.items.find(
+                      (candidate) => candidate.value === item.ref
+                    )?.label ?? humanizeIdentifier(item.ref)
+                  }
                   subtitle={t(
                     'layout.workspace-configuration-resource-assignment-summary',
                     {

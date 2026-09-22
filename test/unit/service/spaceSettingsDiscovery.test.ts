@@ -14,10 +14,13 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { fetchGetMock, proxyGetMock } = vi.hoisted(() => ({
+const { fetchGetMock, proxyGetMock, auth } = vi.hoisted(() => ({
+  auth: { token: 'fixture-token', user_id: 7, email: 'fixture@example.com' },
   fetchGetMock: vi.fn(),
   proxyGetMock: vi.fn(),
 }));
+
+vi.mock('@/store/authStore', () => ({ getAuthStore: () => auth }));
 
 vi.mock('@/api/http', () => ({
   fetchGet: fetchGetMock,
@@ -38,6 +41,7 @@ import {
   invalidateConnectorProvidersCache,
 } from '@/api/connectors';
 import {
+  discoverGlobalSpaceResources,
   discoverSpaceBundleResources,
   discoverSpaceConnectorDetails,
   discoverSpaceConnectors,
@@ -73,6 +77,11 @@ describe('Space Settings metadata discovery', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     invalidateConnectorProvidersCache();
+    Object.assign(auth, {
+      token: 'fixture-token',
+      user_id: 7,
+      email: 'fixture@example.com',
+    });
   });
 
   it('projects selectable portable Cloud/custom/local refs without secrets or private IDs', async () => {
@@ -135,7 +144,8 @@ describe('Space Settings metadata discovery', () => {
             },
           ]
     );
-    const result = await discoverSpaceModels();
+    const { items: result, unavailableSources } = await discoverSpaceModels();
+    expect(unavailableSources).toEqual([]);
     expect(result.map((item) => item.value)).toEqual([
       'provider://default',
       'provider://cloud/model-a',
@@ -169,11 +179,14 @@ describe('Space Settings metadata discovery', () => {
     proxyGetMock.mockImplementation(async (url) =>
       url === '/api/v1/cloud-models' ? { models: [] } : []
     );
-    expect((await discoverSpaceModels()).map((item) => item.value)).toEqual([
-      'provider://default',
-    ]);
+    expect(
+      (await discoverSpaceModels()).items.map((item) => item.value)
+    ).toEqual(['provider://default']);
     proxyGetMock.mockRejectedValue(new Error('offline'));
-    await expect(discoverSpaceModels()).rejects.toThrow('offline');
+    expect((await discoverSpaceModels()).unavailableSources).toEqual([
+      'cloud_catalog',
+      'provider_catalog',
+    ]);
   });
 
   it('returns only contained current-bundle refs and explicit metadata fields', async () => {
@@ -261,6 +274,172 @@ describe('Space Settings metadata discovery', () => {
     ).rejects.toThrow('space_discovery_mismatch');
   });
 
+  it('projects only global registry metadata, keeps disabled resources visible, and accepts configured MCP names', async () => {
+    const skillRef = `registry://global/skills/${'a'.repeat(64)}`;
+    const mcpRef = `registry://global/mcp/${'b'.repeat(64)}`;
+    fetchGetMock.mockResolvedValue({
+      skills: [
+        {
+          ref: skillRef,
+          label: 'Research',
+          source: 'global_configuration',
+          enabled: false,
+          unavailableReason: 'global_resource_disabled',
+          assignTo: ['private-agent'],
+          path: '/private/skill',
+        },
+      ],
+      mcp_servers: [
+        {
+          id: 'Research tools',
+          definition: mcpRef,
+          label: 'Research tools',
+          source: 'global_configuration',
+          enabled: true,
+          unavailableReason: null,
+          secretSlots: [],
+          assignTo: ['private-agent'],
+          env: { API_KEY: 'fixture-secret' },
+          url: 'https://private.example',
+        },
+      ],
+    });
+    const result = await discoverGlobalSpaceResources({
+      email: auth.email,
+      userId: auth.user_id,
+    });
+    expect(result.skills).toEqual([
+      {
+        value: skillRef,
+        label: 'Research',
+        source: 'global_configuration',
+        availability: 'requires_setup',
+        disabled: true,
+        reason: 'global_resource_disabled',
+      },
+    ]);
+    expect(result.mcpServers).toEqual([
+      {
+        value: JSON.stringify([mcpRef, 'Research tools']),
+        definition: mcpRef,
+        id: 'Research tools',
+        label: 'Research tools',
+        source: 'global_configuration',
+        availability: 'available',
+        disabled: false,
+        secretSlots: [],
+      },
+    ]);
+    expect(fetchGetMock).toHaveBeenCalledWith(
+      '/workspace-configuration/global-resources',
+      { email: auth.email, user_id: auth.user_id },
+      undefined,
+      {
+        expectedAccountKey: expect.any(String),
+        beforeRequest: expect.any(Function),
+      }
+    );
+    expect(JSON.stringify(result)).not.toMatch(
+      /private|fixture-secret|API_KEY|assignTo|url|path/
+    );
+    expect(proxyGetMock).not.toHaveBeenCalled();
+  });
+
+  it('disables duplicate global identities, rejects unsupported refs and sanitizes unavailable reasons', async () => {
+    const skill = {
+      ref: `registry://global/skills/${'a'.repeat(64)}`,
+      label: 'Research',
+      source: 'global_configuration',
+      enabled: true,
+    };
+    const mcp = {
+      id: 'research',
+      definition: `registry://global/mcp/${'b'.repeat(64)}`,
+      source: 'global_configuration',
+      enabled: true,
+      secretSlots: [],
+    };
+    fetchGetMock.mockResolvedValue({
+      skills: [
+        skill,
+        skill,
+        {
+          ...skill,
+          ref: `registry://global/skills/${'c'.repeat(64)}`,
+          enabled: false,
+          unavailableReason: '/private/api_key=fixture-secret',
+        },
+        ...[
+          'bundle://skills/a',
+          'registry://global/skills/../private',
+          'registry://global/skills/not-a-hash',
+        ].map((ref) => ({ ...skill, ref })),
+      ],
+      mcp_servers: [
+        mcp,
+        { ...mcp, definition: `registry://global/mcp/${'d'.repeat(64)}` },
+        {
+          ...mcp,
+          id: 'bad-slots',
+          definition: `registry://global/mcp/${'e'.repeat(64)}`,
+          secretSlots: ['API_KEY'],
+        },
+      ],
+    });
+    const result = await discoverGlobalSpaceResources({ email: auth.email });
+    expect(result.skills).toHaveLength(2);
+    expect(result.skills[0]).toMatchObject({
+      disabled: true,
+      reason: 'global_resource_ambiguous',
+    });
+    expect(result.skills[1]).toMatchObject({
+      disabled: true,
+      reason: 'global_resource_unavailable',
+    });
+    expect(result.mcpServers.slice(0, 2)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          disabled: true,
+          reason: 'global_resource_ambiguous',
+        }),
+      ])
+    );
+    expect(result.mcpServers[2]).toMatchObject({
+      disabled: true,
+      reason: 'global_mcp_invalid',
+      secretSlots: [],
+    });
+    expect(JSON.stringify(result)).not.toMatch(
+      /private|fixture-secret|API_KEY/
+    );
+  });
+
+  it('rejects malformed global catalog envelopes instead of presenting a successful empty catalog', async () => {
+    fetchGetMock.mockResolvedValue({ skills: [], mcp_servers: null });
+    await expect(
+      discoverGlobalSpaceResources({ email: auth.email })
+    ).rejects.toThrow('global_resource_discovery_unavailable');
+  });
+
+  it('guards global discovery at delivery and after an account changes while awaiting a response', async () => {
+    let resolve!: (value: unknown) => void;
+    fetchGetMock.mockImplementation(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        })
+    );
+    const request = discoverGlobalSpaceResources({
+      email: auth.email,
+      userId: auth.user_id,
+    });
+    const beforeRequest = fetchGetMock.mock.calls[0][3].beforeRequest;
+    auth.user_id = 8;
+    expect(beforeRequest).toThrow('global_resource_account_changed');
+    resolve({ skills: [], mcp_servers: [] });
+    await expect(request).rejects.toThrow('global_resource_account_changed');
+  });
+
   it('keeps separate MCP server IDs that share one verified definition file', async () => {
     const definition = 'bundle://agent-plugins/research/mcp.json';
     fetchGetMock.mockResolvedValue({
@@ -340,6 +519,24 @@ describe('Space Settings metadata discovery', () => {
       'fresh-account'
     );
     expect(proxyGetMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('distinguishes a disabled connector gateway from an enabled empty catalog', async () => {
+    proxyGetMock.mockResolvedValue({
+      ...providersResponse([]),
+      enabled: false,
+    });
+    await expect(discoverSpaceConnectors()).rejects.toThrow(
+      'connector_catalog_disabled'
+    );
+    proxyGetMock.mockResolvedValue({
+      ...providersResponse([]),
+      total_pages: 1,
+    });
+    await expect(discoverSpaceConnectors()).resolves.toEqual({
+      items: [],
+      hasMore: false,
+    });
   });
 
   it('reads provider detail supported scopes without connecting or granting them', async () => {

@@ -19,13 +19,12 @@ import {
   providerLabel,
   type ConnectorProvider,
 } from '@/api/connectors';
-import { fetchGet, proxyFetchGet } from '@/api/http';
-import {
-  parseSpaceModelReference,
-  spaceModelReference,
-} from '@/lib/spaceModelReference';
+import { fetchGet } from '@/api/http';
+import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import type { WorkspaceConfigurationIdentity } from '@/service/workspaceConfigurationApi';
-import i18next from 'i18next';
+import { getAuthStore } from '@/store/authStore';
+
+export { discoverSpaceModels } from '@/service/spaceModelDiscovery';
 
 export type SpaceDiscoverySource =
   | 'cloud_catalog'
@@ -33,6 +32,7 @@ export type SpaceDiscoverySource =
   | 'local_catalog'
   | 'user_default'
   | 'connector_catalog'
+  | 'global_configuration'
   | 'materialized_bundle'
   | 'draft_bundle';
 
@@ -108,98 +108,127 @@ const bundleSource = (
 ): 'materialized_bundle' | 'draft_bundle' | null =>
   value === 'materialized_bundle' || value === 'draft_bundle' ? value : null;
 
-/** Metadata only: no keys, endpoints or account-private Provider IDs in this projection. */
-export async function discoverSpaceModels(): Promise<SpaceModelCandidate[]> {
-  const [cloudResponse, providerResponse] = await Promise.all([
-    import.meta.env.VITE_USE_LOCAL_PROXY === 'true'
-      ? Promise.resolve({ models: [] })
-      : proxyFetchGet('/api/v1/cloud-models', { kind: 'chat' }),
-    proxyFetchGet('/api/v1/provider-models'),
-  ]);
-  const response = record(cloudResponse);
-  if (!Array.isArray(providerResponse))
-    throw new Error('model_catalog_unavailable');
-  const models = Array.isArray(response.models) ? response.models : [];
-  const candidates = models.flatMap((raw): SpaceModelCandidate[] => {
-    const model = record(raw);
-    const modelId = textValue(model.id);
-    const modelType = textValue(model.model_type);
-    const platform = identifier(model.model_platform);
-    if (!modelId || !modelType || !platform || model.kind !== 'chat') return [];
-    const value = spaceModelReference({ category: 'cloud', modelId });
-    if (!parseSpaceModelReference(value)) return [];
-    return [
-      {
-        value,
-        label: textValue(model.display_name) ?? modelId,
-        source: 'cloud_catalog',
-        availability: 'available',
-        modelId,
-        modelType,
-        platform,
-        isDefault:
-          response.default_model_id === modelId || model.is_default === true,
-      },
-    ];
-  });
-  const configured = providerResponse.flatMap((raw): SpaceModelCandidate[] => {
-    const provider = record(raw);
-    const category = provider.category;
-    const platform = identifier(provider.model_platform);
-    const modelId = textValue(provider.model_type);
-    if (
-      (category !== 'custom' && category !== 'local') ||
-      !platform ||
-      !modelId
-    )
-      return [];
-    const value = spaceModelReference({ category, platform, modelId });
-    if (!parseSpaceModelReference(value)) return [];
-    const available = provider.available === true;
-    return [
-      {
-        value,
-        label: `${platform} · ${modelId}`,
-        source: category === 'local' ? 'local_catalog' : 'custom_catalog',
-        availability: available ? 'available' : 'requires_setup',
-        disabled: !available,
-        ...(available ? {} : { reason: 'model_unavailable' }),
-        modelId,
-        modelType: modelId,
-        platform,
-        isDefault: false,
-      },
-    ];
-  });
+const globalRef = (value: unknown, kind: 'skills' | 'mcp'): string | null =>
+  typeof value === 'string' &&
+  new RegExp(`^registry://global/${kind}/[a-f0-9]{64}$`).test(value)
+    ? value
+    : null;
+
+function globalAvailability(
+  item: Record<string, unknown>
+): Pick<SpaceDiscoveryCandidate, 'availability' | 'disabled' | 'reason'> {
+  if (item.enabled === true && item.unavailableReason == null)
+    return { availability: 'available', disabled: false };
+  const reason = [
+    'global_resource_disabled',
+    'global_skill_invalid',
+    'global_mcp_invalid',
+  ].includes(String(item.unavailableReason))
+    ? String(item.unavailableReason)
+    : 'global_resource_unavailable';
+  return { availability: 'requires_setup', disabled: true, reason };
+}
+
+function disableDuplicates<T extends SpaceDiscoveryCandidate>(
+  items: T[],
+  identity: (item: T) => string = (item) => item.value
+): T[] {
   const counts = new Map<string, number>();
-  configured.forEach((candidate) =>
-    counts.set(candidate.value, (counts.get(candidate.value) ?? 0) + 1)
+  for (const item of items) {
+    const key = identity(item);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return unique(
+    items.map((item) =>
+      counts.get(identity(item))! > 1
+        ? {
+            ...item,
+            availability: 'requires_setup',
+            disabled: true,
+            reason: 'global_resource_ambiguous',
+          }
+        : item
+    )
   );
-  return [
-    {
-      value: 'provider://default',
-      label: i18next.t('layout.default'),
-      source: 'user_default',
-      availability: 'available',
-      modelId: 'default',
-      modelType: '',
-      platform: '',
-      isDefault: true,
-    },
-    ...unique([
-      ...candidates,
-      ...configured.map((candidate) =>
-        counts.get(candidate.value)! > 1
-          ? {
-              ...candidate,
-              availability: 'requires_setup' as const,
-              disabled: true,
-              reason: 'model_ambiguous',
-            }
-          : candidate
-      ),
-    ]),
-  ];
+}
+
+/** Global metadata only. Runtime resolves opaque registry references locally. */
+export async function discoverGlobalSpaceResources(
+  identity: WorkspaceConfigurationIdentity
+): Promise<SpaceBundleDiscovery> {
+  const auth = getAuthStore();
+  const owner = getAccountEnvironmentKey(auth);
+  const token = auth.token;
+  const assertCurrent = () => {
+    const current = getAuthStore();
+    if (getAccountEnvironmentKey(current) !== owner || current.token !== token)
+      throw new Error('global_resource_account_changed');
+  };
+  const response = record(
+    await fetchGet(
+      '/workspace-configuration/global-resources',
+      {
+        email: identity.email,
+        ...(identity.userId == null ? {} : { user_id: identity.userId }),
+      },
+      undefined,
+      { expectedAccountKey: owner, beforeRequest: assertCurrent }
+    )
+  );
+  assertCurrent();
+  if (!Array.isArray(response.skills) || !Array.isArray(response.mcp_servers))
+    throw new Error('global_resource_discovery_unavailable');
+  const skills = response.skills.flatMap((raw): SpaceSkillCandidate[] => {
+    const item = record(raw);
+    const value = globalRef(item.ref, 'skills');
+    if (!value || item.source !== 'global_configuration') return [];
+    return [
+      {
+        value,
+        label: textValue(item.label) ?? value,
+        source: 'global_configuration',
+        ...globalAvailability(item),
+      },
+    ];
+  });
+  const mcpServers = response.mcp_servers.flatMap(
+    (raw): SpaceMcpCandidate[] => {
+      const item = record(raw);
+      const definition = globalRef(item.definition, 'mcp');
+      const id = textValue(item.id);
+      if (
+        !definition ||
+        !id ||
+        id !== item.id ||
+        item.source !== 'global_configuration'
+      )
+        return [];
+      return [
+        {
+          value: JSON.stringify([definition, id]),
+          definition,
+          id,
+          label: textValue(item.label) ?? id,
+          source: 'global_configuration',
+          ...globalAvailability(item),
+          ...(Array.isArray(item.secretSlots) && item.secretSlots.length === 0
+            ? {}
+            : {
+                availability: 'requires_setup' as const,
+                disabled: true,
+                reason: 'global_mcp_invalid',
+              }),
+          // Global MCP credentials are already configured. Never transplant
+          // private environment/header data into Bundle secret bindings.
+          secretSlots: [],
+        },
+      ];
+    }
+  );
+  return {
+    skills: disableDuplicates(skills),
+    mcpServers: disableDuplicates(mcpServers, (item) => item.id),
+  };
 }
 
 /** Only current-Space, verified bundle metadata; never scan global Skills/MCP. */
@@ -319,6 +348,7 @@ export async function discoverSpaceConnectors(
     { query, page, pageSize: 24 },
     { isolated: true }
   );
+  if (!response.enabled) throw new Error('connector_catalog_disabled');
   return {
     items: unique(
       response.providers.flatMap((provider) => {
@@ -327,9 +357,7 @@ export async function discoverSpaceConnectors(
       })
     ),
     hasMore:
-      response.enabled &&
-      Number.isFinite(response.total_pages) &&
-      page < response.total_pages,
+      Number.isFinite(response.total_pages) && page < response.total_pages,
   };
 }
 

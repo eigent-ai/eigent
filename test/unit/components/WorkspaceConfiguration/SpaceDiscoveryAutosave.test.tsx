@@ -38,7 +38,7 @@ const mocks = vi.hoisted(() => ({
   auth: { email: 'fixture@example.com', user_id: 7 },
   fetch: vi.fn(),
   save: vi.fn(),
-  bundle: vi.fn(),
+  resources: vi.fn(),
   models: vi.fn(),
   connectors: vi.fn(),
   details: vi.fn(),
@@ -76,7 +76,7 @@ vi.mock('@/service/workspaceConfigurationApi', async (importOriginal) => ({
 }));
 
 vi.mock('@/service/spaceSettingsDiscovery', () => ({
-  discoverSpaceBundleResources: mocks.bundle,
+  discoverGlobalSpaceResources: mocks.resources,
   discoverSpaceModels: mocks.models,
   discoverSpaceConnectors: mocks.connectors,
   discoverSpaceConnectorDetails: mocks.details,
@@ -132,12 +132,15 @@ const draft = (
   updated_at: version > 0 ? 10 : null,
 });
 
+const skillRef = (name: string) =>
+  `registry://global/skills/${({ verified: 'a', 'new-scope': 'b', 'old-scope': 'c' }[name] ?? 'd').repeat(64)}`;
+
 const resources = (name = 'verified'): SpaceBundleDiscovery => ({
   skills: [
     {
-      value: `bundle://skills/${name}/SKILL.md`,
+      value: skillRef(name),
       label: name,
-      source: 'materialized_bundle',
+      source: 'global_configuration',
       availability: 'available',
     },
   ],
@@ -160,6 +163,16 @@ describe('Space discovery with configuration autosave', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     vi.resetAllMocks();
+    // resetAllMocks clears the shared observer constructor implementation.
+    // Keep the browser instance contract for the real panel layout effect.
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe = vi.fn();
+        unobserve = vi.fn();
+        disconnect = vi.fn();
+      }
+    );
     mocks.auth.email = 'fixture@example.com';
     mocks.auth.user_id = 7;
     mocks.fetch.mockImplementation((spaceId: string) =>
@@ -178,14 +191,15 @@ describe('Space discovery with configuration autosave', () => {
           draft(spaceId, input.expectedVersion + 1, input.document)
         )
     );
-    mocks.bundle.mockResolvedValue(resources());
-    mocks.models.mockResolvedValue([]);
+    mocks.resources.mockResolvedValue(resources());
+    mocks.models.mockResolvedValue({ items: [], unavailableSources: [] });
     mocks.connectors.mockResolvedValue({ items: [], hasMore: false });
     mocks.details.mockResolvedValue(null);
   });
 
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
     vi.useRealTimers();
   });
 
@@ -196,8 +210,8 @@ describe('Space discovery with configuration autosave', () => {
     await advance();
     const panel = await openSkill();
     expect(
-      within(panel).getByRole('textbox', { name: 'Skill reference' })
-    ).toHaveValue('bundle://skills/verified/SKILL.md');
+      within(panel).getByRole('combobox', { name: 'Skill reference' })
+    ).toHaveTextContent('verified');
     expect(
       within(panel).getByRole('textbox', { name: 'Assign to agents' })
     ).toHaveValue('');
@@ -216,7 +230,7 @@ describe('Space discovery with configuration autosave', () => {
     expect(identity).toEqual({ email: 'fixture@example.com', userId: 7 });
     expect(first.expectedVersion).toBe(0);
     expect(first.document.spec.skills).toEqual([
-      { ref: 'bundle://skills/verified/SKILL.md', assignTo: [] },
+      { ref: skillRef('verified'), assignTo: [] },
     ]);
     expect(first.document.spec.models.default.modelRef).toBe(
       'provider://default'
@@ -259,7 +273,7 @@ describe('Space discovery with configuration autosave', () => {
       'Newest before navigation'
     );
     expect(mocks.save.mock.calls[0][2].document.spec.skills).toEqual([
-      { ref: 'bundle://skills/verified/SKILL.md', assignTo: [] },
+      { ref: skillRef('verified'), assignTo: [] },
     ]);
     expect(hasPendingWorkspaceConfigurationChanges()).toBe(false);
     await advance(1_000);
@@ -273,11 +287,9 @@ describe('Space discovery with configuration autosave', () => {
       const oldCatalog = new Promise<SpaceBundleDiscovery>((resolve) => {
         resolveOld = resolve;
       });
-      mocks.bundle.mockImplementation(
-        (spaceId: string, identity: WorkspaceConfigurationIdentity) =>
-          spaceId === 'space-1' && identity.email === 'fixture@example.com'
-            ? oldCatalog
-            : Promise.resolve(resources('new-scope'))
+      let switched = false;
+      mocks.resources.mockImplementation(() =>
+        switched ? Promise.resolve(resources('new-scope')) : oldCatalog
       );
       const { rerender } = render(
         <WorkspaceConfigurationEditor
@@ -288,9 +300,10 @@ describe('Space discovery with configuration autosave', () => {
       await advance();
       const oldPanel = await openSkill();
       expect(
-        within(oldPanel).getByRole('textbox', { name: 'Skill reference' })
-      ).toHaveValue('');
+        within(oldPanel).getByRole('combobox', { name: 'Skill reference' })
+      ).toHaveTextContent('Select');
 
+      switched = true;
       const nextSpaceId = switchKind === 'Space' ? 'space-2' : 'space-1';
       if (switchKind === 'account') {
         mocks.auth.email = 'other-fixture@example.com';
@@ -305,15 +318,15 @@ describe('Space discovery with configuration autosave', () => {
       await advance();
       const currentPanel = await openSkill();
       expect(
-        within(currentPanel).getByRole('textbox', { name: 'Skill reference' })
-      ).toHaveValue('bundle://skills/new-scope/SKILL.md');
+        within(currentPanel).getByRole('combobox', { name: 'Skill reference' })
+      ).toHaveTextContent('new-scope');
       await act(async () => {
         resolveOld(resources('old-scope'));
       });
       await advance(1_000);
       expect(
-        within(currentPanel).getByRole('textbox', { name: 'Skill reference' })
-      ).toHaveValue('bundle://skills/new-scope/SKILL.md');
+        within(currentPanel).getByRole('combobox', { name: 'Skill reference' })
+      ).toHaveTextContent('new-scope');
       expect(mocks.save).not.toHaveBeenCalled();
       fireEvent.click(
         within(currentPanel).getByRole('button', { name: 'Save' })
@@ -327,7 +340,7 @@ describe('Space discovery with configuration autosave', () => {
         userId: mocks.auth.user_id,
       });
       expect(input.document.spec.skills).toEqual([
-        { ref: 'bundle://skills/new-scope/SKILL.md', assignTo: [] },
+        { ref: skillRef('new-scope'), assignTo: [] },
       ]);
       expect(JSON.stringify(input.document)).not.toContain('old-scope');
     }
