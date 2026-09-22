@@ -29,6 +29,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 
 from app.auth import require_local_control_principal
+from app.auth.local_control import LocalControlPrincipal
 from app.component import code
 from app.component.environment import env, sanitize_env_path, set_user_env_path
 from app.exception.exception import UserException
@@ -395,7 +396,20 @@ def _assemble_runtime_environment(
     journal: SQLiteRunJournal,
     spec: EffectiveEnvironmentSpec,
     run_context: RunContext,
+    principal: LocalControlPrincipal | None = None,
 ) -> ResolvedRuntimeEnvironment | None:
+    # Global Skill settings are account-owned. Chat body / persisted RunContext
+    # identity is not an authenticated remote owner. Only the trusted Desktop
+    # capability may supply its local legacy email identity; remote Brain users
+    # resolve canonical settings for their authenticated principal exclusively.
+    user_id = None
+    email = ""
+    if isinstance(principal, LocalControlPrincipal):
+        if principal.kind == "brain_user":
+            user_id = principal.user_id or None
+        elif principal.kind == "desktop_renderer":
+            user_id = run_context.user_id
+            email = run_context.email
     return RuntimeEnvironmentAssembler(
         journal,
         state_root=(configured_run_journal_path().parent / "workspace-git"),
@@ -403,6 +417,8 @@ def _assemble_runtime_environment(
         spec,
         space_id=run_context.space_id,
         space_root=_space_root_for_run(run_context),
+        user_id=user_id,
+        email=email,
     )
 
 
@@ -1315,6 +1331,7 @@ async def _prepare_chat_run(
                     journal,
                     persisted_spec,
                     run_context,
+                    getattr(request.state, "local_control_principal", None),
                 )
             except EnvironmentSetupRequiredError as exc:
                 raise _environment_setup_error(exc) from exc
@@ -1398,6 +1415,7 @@ async def _prepare_chat_run(
                     journal,
                     environment.spec,
                     run_context,
+                    getattr(request.state, "local_control_principal", None),
                 )
             except EnvironmentSetupRequiredError as exc:
                 raise _environment_setup_error(exc) from exc
@@ -2380,6 +2398,7 @@ async def _improve_chat(
                     journal,
                     environment.spec,
                     refreshed_context,
+                    getattr(request.state, "local_control_principal", None),
                 )
             except EnvironmentSetupRequiredError as exc:
                 await rollback_runtime_binding()

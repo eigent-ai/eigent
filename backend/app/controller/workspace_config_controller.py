@@ -62,6 +62,11 @@ from app.workspace_config import (
     canonical_digest,
 )
 from app.workspace_config.discovery import WorkspaceResourceDiscovery
+from app.workspace_config.global_resources import (
+    GLOBAL_MCP_PREFIX,
+    GlobalResourceUnavailable,
+    discover_global_resources,
+)
 from app.workspace_config.model_selection import (
     accepted_session_model,
     installed_model_selection,
@@ -658,6 +663,41 @@ async def get_workspace_session_model(
         ) from exc
 
 
+@router.get("/workspace-configuration/global-resources")
+async def get_global_configuration_resources(
+    request: Request,
+    email: Annotated[str, Query(min_length=1, max_length=512)],
+    user_id: str | None = Query(default=None),
+) -> dict[str, Any]:
+    principal = request.state.local_control_principal
+    if (
+        principal.kind == "brain_user"
+        and str(user_id or "") != principal.user_id
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "global_resource_identity_mismatch"},
+        )
+    try:
+        return await asyncio.to_thread(
+            discover_global_resources,
+            user_id=user_id,
+            # The local renderer may read its legacy email-owned config.
+            # Remote Brain identity only authorizes the authenticated owner,
+            # never another legacy directory supplied as a query parameter.
+            email=email if principal.kind == "desktop_renderer" else "",
+        )
+    except GlobalResourceUnavailable as exc:
+        raise HTTPException(
+            status_code=422, detail={"code": str(exc)}
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "global_resource_discovery_failed"},
+        ) from exc
+
+
 @router.get("/spaces/{space_id}/workspace-configuration/discovery")
 async def discover_workspace_configuration_resources(
     space_id: str,
@@ -708,6 +748,12 @@ async def put_workspace_configuration(
     journal = get_default_run_journal()
     try:
         manifest = WorkspaceBundleManifest.model_validate(body.document)
+        if any(
+            server.definition.startswith(GLOBAL_MCP_PREFIX)
+            and server.secret_slots
+            for server in manifest.spec.mcp_servers
+        ):
+            raise ValueError("global_mcp_secret_slots_unsupported")
         canonical = manifest.canonical_payload()
         existing = journal.get_workspace_config_draft(space_id)
         if existing is not None:

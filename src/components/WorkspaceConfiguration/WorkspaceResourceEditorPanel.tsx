@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { usePresenceFocusGuard } from '@/hooks/usePresenceFocusGuard';
 import type {
   WorkspaceAgentProfile,
   WorkspaceConfigurationDocument,
@@ -49,7 +50,15 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   SpaceResourceDiscoveryEditor,
@@ -157,6 +166,63 @@ const editorName = (
 const drawerEase = [0.32, 0.72, 0, 1] as const;
 const uiEaseOut = [0.23, 1, 0.32, 1] as const;
 type ContentDirection = 1 | -1;
+
+const panelAvailableHeight =
+  'max(0px, calc(var(--ds-resource-editor-available-height, 100dvh) - var(--ds-space-panel-inset)))';
+
+/** Runtime bounds belong to the sticky anchor, never the animated panel. */
+function useResourcePanelHeight(panelRef: RefObject<HTMLElement | null>) {
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    const anchor = panel?.closest<HTMLElement>(
+      '[data-workspace-resource-panel-anchor]'
+    );
+    const view = panel?.ownerDocument.defaultView;
+    if (!panel || !anchor || !view) return;
+    const ancestors: HTMLElement[] = [];
+    for (
+      let parent = anchor.parentElement;
+      parent;
+      parent = parent.parentElement
+    ) {
+      ancestors.push(parent);
+    }
+    const viewport = view.visualViewport;
+    const measure = () => {
+      let bottom = viewport
+        ? viewport.offsetTop + viewport.height
+        : view.innerHeight;
+      for (const parent of ancestors) {
+        if (
+          /(auto|scroll|hidden|clip|overlay)/.test(
+            view.getComputedStyle(parent).overflowY
+          )
+        ) {
+          bottom = Math.min(bottom, parent.getBoundingClientRect().bottom);
+        }
+      }
+      panel.style.setProperty(
+        '--ds-resource-editor-available-height',
+        `${Math.max(0, bottom - anchor.getBoundingClientRect().top)}px`
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(anchor);
+    ancestors.forEach((parent) => observer.observe(parent));
+    view.addEventListener('resize', measure);
+    view.addEventListener('scroll', measure, true);
+    viewport?.addEventListener('resize', measure);
+    viewport?.addEventListener('scroll', measure);
+    return () => {
+      observer.disconnect();
+      view.removeEventListener('resize', measure);
+      view.removeEventListener('scroll', measure, true);
+      viewport?.removeEventListener('resize', measure);
+      viewport?.removeEventListener('scroll', measure);
+    };
+  }, [panelRef]);
+}
 
 const ENVIRONMENT_VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -901,15 +967,21 @@ export function WorkspaceResourceEditorPanel({
   const { t } = useTranslation();
   const reduceMotion = Boolean(useReducedMotion());
   const isPresent = useIsPresent();
+  const panelRef = useRef<HTMLElement>(null);
+  useResourcePanelHeight(panelRef);
+  usePresenceFocusGuard(panelRef, isPresent, true);
   const [contentDirection, setContentDirection] = useState<ContentDirection>(1);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (isPresent && event.key === 'Escape' && !event.defaultPrevented) {
+        event.preventDefault();
+        onClose();
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  }, [isPresent, onClose]);
 
   const resourceName = editorName(editor.kind, t);
   const title =
@@ -925,10 +997,7 @@ export function WorkspaceResourceEditorPanel({
   const canGoBack =
     editor.mode === 'create' &&
     editor.step === 'editor' &&
-    (editor.kind === 'context' ||
-      editor.kind === 'skill' ||
-      editor.kind === 'connector' ||
-      editor.kind === 'mcp');
+    editor.kind === 'context';
   const handleEditorChange = useCallback(
     (nextEditor: WorkspaceResourceEditorState) => {
       if (nextEditor.step !== editor.step) {
@@ -993,9 +1062,8 @@ export function WorkspaceResourceEditorPanel({
 
   return (
     <motion.aside
+      ref={panelRef}
       data-workspace-resource-editor-panel
-      aria-hidden={!isPresent || undefined}
-      {...(!isPresent ? { inert: '' } : {})}
       data-motion-reduced={reduceMotion ? 'true' : 'false'}
       aria-label={title}
       initial={{ opacity: 0, transform: panelOffsetTransform }}
@@ -1015,9 +1083,13 @@ export function WorkspaceResourceEditorPanel({
           ease: drawerEase,
         },
       }}
-      className="pointer-events-auto ml-auto flex max-h-[calc(100dvh-5rem)] min-h-[80dvh] w-full flex-col overflow-hidden rounded-2xl border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default shadow-xl md:w-1/2 md:min-w-[420px]"
+      style={{
+        maxHeight: panelAvailableHeight,
+        minHeight: `min(80dvh, ${panelAvailableHeight})`,
+      }}
+      className="pointer-events-auto ml-auto flex w-full flex-col overflow-hidden rounded-2xl border border-x border-y border-solid border-ds-hairline-subtle-default bg-ds-neutral-subtle-default shadow-xl md:w-1/2 md:min-w-[420px]"
     >
-      <header className="flex items-start justify-between gap-4 border-x-0 border-t-0 border-r-0 border-b border-l-0 border-solid border-ds-hairline-subtle-default px-5 py-4">
+      <header className="flex shrink-0 items-start justify-between gap-4 border-x-0 border-t-0 border-r-0 border-b border-l-0 border-solid border-ds-hairline-subtle-default px-5 py-4">
         <div className="flex min-w-0 items-start gap-2">
           {canGoBack ? (
             <Button
@@ -1037,7 +1109,7 @@ export function WorkspaceResourceEditorPanel({
               {title}
             </span>
             <span className="mt-1 block text-ds-text-meta text-ds-ink-muted-default">
-              {editor.step === 'picker'
+              {editor.step === 'picker' && editor.kind === 'context'
                 ? t('layout.workspace-resource-choose-type-description', {
                     resourceName,
                     defaultValue:
@@ -1067,6 +1139,7 @@ export function WorkspaceResourceEditorPanel({
           aria-label={t('layout.workspace-resource-close-editor', {
             defaultValue: 'Close editor',
           })}
+          data-resource-editor-close
           onClick={onClose}
         >
           <X className="h-4 w-4" aria-hidden />
@@ -1121,7 +1194,7 @@ export function WorkspaceResourceEditorPanel({
         </AnimatePresence>
       </div>
 
-      <footer className="border-x-0 border-t border-r-0 border-b-0 border-l-0 border-solid border-ds-hairline-subtle-default px-4 py-2">
+      <footer className="shrink-0 border-x-0 border-t border-r-0 border-b-0 border-l-0 border-solid border-ds-hairline-subtle-default px-4 py-2">
         <div className="flex items-center gap-2">
           {editor.mode === 'edit' ? (
             <Button
