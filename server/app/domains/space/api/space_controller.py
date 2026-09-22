@@ -12,8 +12,7 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi import Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session
 
 from app.core.database import session
@@ -26,12 +25,12 @@ from app.domains.space.service.space_service import SpaceHasProjectsError, Space
 from app.model.project import ProjectIn, ProjectOut, ProjectUpdate
 from app.model.space import (
     SpaceIn,
+    SpaceOut,
     SpaceOverlayDiscardIn,
     SpaceOverlayDiscardResponse,
     SpaceOverlayListResponse,
     SpaceOverlayOut,
     SpaceOverlayWriteIn,
-    SpaceOut,
     SpaceProjectApplyIn,
     SpaceProjectApplyResponse,
     SpaceProjectRefreshIn,
@@ -212,6 +211,23 @@ def update_space_project(
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.patch(
+    "/{space_id}/projects/{project_id}/model-admission",
+    name="conditionally clear project model admission",
+    response_model=ProjectOut,
+)
+def clear_space_project_model_admission(
+    space_id: str,
+    project_id: str,
+    data: ProjectUpdate,
+    db_session: Session = Depends(session),
+    auth: V1UserAuth = Depends(auth_must),
+):
+    if data.expected_model_admission_run_id is None:
+        raise HTTPException(status_code=422, detail="Expected model admission Run is required")
+    return update_space_project(space_id, project_id, data, db_session, auth)
 
 
 @router.post("/{space_id}/projects/{project_id}/promote", name="promote project to folder space", response_model=ProjectOut)

@@ -523,6 +523,98 @@ describe('projectStore runtime shape', () => {
     }
   );
 
+  it('does not persist an unowned receipt clear', async () => {
+    const store = useProjectStore.getState();
+    const id = store.createProject('Fresh session');
+    proxyUpdateSpaceProjectMock.mockClear();
+    await store.setProjectModelAdmission(id, null);
+    expect(proxyUpdateSpaceProjectMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps the old cleanup precondition frozen while a new receipt is delivered', async () => {
+    const store = useProjectStore.getState();
+    const id = store.createProject('Fresh session');
+    await store.setProjectModelAdmission(id, 'old-run');
+    const api =
+      await vi.importActual<typeof import('@/service/spaceApi')>(
+        '@/service/spaceApi'
+      );
+    proxyUpdateSpaceProjectMock.mockImplementation(api.proxyUpdateSpaceProject);
+    const oldResponse = deferred<Response>();
+    const newResponse = deferred<Response>();
+    const network = vi
+      .spyOn(globalThis, 'fetch')
+      .mockReturnValueOnce(oldResponse.promise)
+      .mockReturnValueOnce(newResponse.promise);
+    try {
+      const cleanup = store.setProjectModelAdmission(id, null, () => {});
+      await vi.waitFor(() => expect(network).toHaveBeenCalledTimes(1));
+      const newer = store.setProjectModelAdmission(id, 'new-run', () => {});
+      await vi.waitFor(() => expect(network).toHaveBeenCalledTimes(2));
+      const [oldUrl, oldInit] = network.mock.calls[0];
+      const [newUrl, newInit] = network.mock.calls[1];
+      expect(String(oldUrl)).toBe(`${newUrl}/model-admission`);
+      expect(JSON.parse(oldInit!.body as string)).toEqual({
+        metadata: { spaceModelAdmissionRunId: null },
+        expected_model_admission_run_id: 'old-run',
+      });
+      expect(JSON.parse(newInit!.body as string)).toEqual({
+        metadata: { spaceModelAdmissionRunId: 'new-run' },
+      });
+      newResponse.resolve(
+        new Response('{}', { headers: { 'content-type': 'application/json' } })
+      );
+      await newer;
+      oldResponse.resolve(
+        new Response('{}', { headers: { 'content-type': 'application/json' } })
+      );
+      await cleanup;
+      expect(
+        useProjectStore.getState().projects[id].metadata
+          ?.spaceModelAdmissionRunId
+      ).toBe('new-run');
+    } finally {
+      network.mockRestore();
+    }
+  });
+
+  it('never falls back to an unconditional clear on a server without the cleanup endpoint', async () => {
+    const store = useProjectStore.getState();
+    const id = store.createProject('Fresh session');
+    await store.setProjectModelAdmission(id, 'old-run');
+    const api =
+      await vi.importActual<typeof import('@/service/spaceApi')>(
+        '@/service/spaceApi'
+      );
+    proxyUpdateSpaceProjectMock.mockImplementation(api.proxyUpdateSpaceProject);
+    const network = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ detail: 'Not Found' }), { status: 404 })
+      )
+      .mockResolvedValueOnce(
+        new Response('{}', { headers: { 'content-type': 'application/json' } })
+      );
+    try {
+      await expect(
+        store.setProjectModelAdmission(id, null, () => {})
+      ).rejects.toThrow();
+      expect(network).toHaveBeenCalledOnce();
+      expect(String(network.mock.calls[0][0])).toMatch(/\/model-admission$/);
+      expect(
+        useProjectStore.getState().projects[id].metadata
+          ?.spaceModelAdmissionRunId
+      ).toBeNull();
+      await store.setProjectModelAdmission(id, 'new-run', () => {});
+      expect(network).toHaveBeenCalledTimes(2);
+      expect(JSON.parse(network.mock.calls[1][1]!.body as string)).toEqual({
+        metadata: { spaceModelAdmissionRunId: 'new-run' },
+      });
+    } finally {
+      network.mockRestore();
+    }
+  });
+
   it('keeps newer receipt ownership after an already-delivered cleanup later fails', async () => {
     const store = useProjectStore.getState();
     const id = store.createProject(
@@ -550,6 +642,7 @@ describe('projectStore runtime shape', () => {
       const init = network.mock.calls[0][1]!;
       expect(JSON.parse(init.body as string)).toEqual({
         metadata: { spaceModelAdmissionRunId: null },
+        expected_model_admission_run_id: 'old-run',
       });
       const current = useProjectStore.getState().projects[id];
       useProjectStore.setState({

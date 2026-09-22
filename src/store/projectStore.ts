@@ -2985,6 +2985,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     beforeRequest?.();
     const project = get().projects[projectId];
     if (!project || get().getProjectModel(projectId)) return;
+    const previousRunId = project.metadata?.spaceModelAdmissionRunId;
+    if (runId === null && !previousRunId) return;
     const updatedProject = {
       ...project,
       metadata: { ...project.metadata, spaceModelAdmissionRunId: runId },
@@ -2997,7 +2999,14 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       await proxyUpdateSpaceProject(
         updatedProject.spaceId,
         projectId,
-        { metadata: { spaceModelAdmissionRunId: runId } },
+        {
+          metadata: { spaceModelAdmissionRunId: runId },
+          // A dispatched cleanup can arrive after a newer receipt. The server
+          // must compare its owner under the same lock as the metadata write.
+          ...(runId === null
+            ? { expected_model_admission_run_id: previousRunId! }
+            : {}),
+        },
         beforeRequest
           ? {
               beforeRequest: () => {
