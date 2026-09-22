@@ -17,6 +17,8 @@
 from inspect import isawaitable
 from typing import Any
 
+from openai.lib._pydantic import to_strict_json_schema
+
 
 def _check_response_event(event: Any) -> None:
     # The SDK preserves flat ResponseErrorEvent objects, but CAMEL's pinned
@@ -119,6 +121,37 @@ def configure_responses_input(model_backend: Any) -> None:
     )
     if not callable(convert):
         return
+
+    prepare = getattr(model_backend, "_prepare_responses_request_config", None)
+    if callable(prepare):
+
+        def prepare_with_output_schema(
+            tools=None, response_format=None, stream=False
+        ):
+            config = prepare(
+                tools=tools, response_format=response_format, stream=stream
+            )
+            if response_format is not None:
+                # CAMEL closes objects but leaves defaulted fields out of
+                # required. Use the SDK's own Pydantic conversion, as its
+                # native parse path does, including nested workforce schemas.
+                text = config["text"]
+                config = {
+                    **config,
+                    "text": {
+                        **text,
+                        "format": {
+                            **text["format"],
+                            "schema": to_strict_json_schema(response_format),
+                            "strict": True,
+                        },
+                    },
+                }
+            return config
+
+        model_backend._prepare_responses_request_config = (
+            prepare_with_output_schema  # noqa: SLF001
+        )
 
     def convert_messages(messages):
         items = []
