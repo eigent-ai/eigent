@@ -14,6 +14,8 @@
 
 import { useChatStore } from '@/store/chatStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
+import { useUsageNoticeStore } from '@/store/usageNoticeStore';
+import { ChatTaskStatus } from '@/types/constants';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   auth: {} as any,
@@ -100,6 +102,7 @@ describe('Space default through the real Chat start path', () => {
   let providers: any[];
   beforeEach(() => {
     vi.clearAllMocks();
+    useUsageNoticeStore.setState({ account: 'account-a', incidents: [] });
     mocks.auth = {
       token: 'synthetic-token',
       email: 'a@example.test',
@@ -236,6 +239,278 @@ describe('Space default through the real Chat start path', () => {
     accepted: { run_id: 'accepted-run-1', selection: acceptedSelection },
     restore_pending: false,
   });
+
+  it.each(
+    (['cloud', 'custom'] as const).flatMap((globalModel) =>
+      (['credits', 'trial-daily', 'trial-total', 'free-credits'] as const).map(
+        (reason) => ({ globalModel, reason })
+      )
+    )
+  )(
+    'blocks fresh actual Cloud with current-account $reason before key or admission when global is $globalModel',
+    async ({ globalModel, reason }) => {
+      mocks.auth.modelType = globalModel;
+      useUsageNoticeStore.setState({ incidents: [{ reason }] });
+
+      await expect(start()).rejects.toMatchObject({ usageReason: reason });
+
+      expect(mocks.localGet).toHaveBeenCalledWith(
+        '/spaces/space-1/workspace-configuration/model-selection',
+        { email: 'a@example.test', user_id: 'account-a' }
+      );
+      expect(mocks.get).not.toHaveBeenCalledWith('/api/v1/user/key');
+      expect(mocks.post).not.toHaveBeenCalled();
+      expect(mocks.sse).not.toHaveBeenCalled();
+      expect(mocks.projectStore.setProjectModel).not.toHaveBeenCalled();
+      expect(
+        mocks.projectStore.setProjectModelAdmission
+      ).not.toHaveBeenCalled();
+      expect(project.metadata.spaceModelDefaultPending).toBe(true);
+      expect(
+        chat.getState().tasks[chat.getState().activeTaskId!]
+      ).toMatchObject({ isPending: false, status: ChatTaskStatus.FINISHED });
+    }
+  );
+
+  it.each(['default', 'absent'] as const)(
+    'blocks fresh %s Space selection when it falls back to quota-limited Cloud',
+    async (selection) => {
+      if (selection === 'absent') installed = null;
+      else installed.model_ref = 'provider://default';
+      useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
+
+      await expect(start()).rejects.toMatchObject({ usageReason: 'credits' });
+
+      expect(mocks.get).not.toHaveBeenCalledWith('/api/v1/user/key');
+      expect(mocks.post).not.toHaveBeenCalled();
+      expect(mocks.sse).not.toHaveBeenCalled();
+      expect(mocks.projectStore.setProjectModel).not.toHaveBeenCalled();
+      expect(
+        mocks.projectStore.setProjectModelAdmission
+      ).not.toHaveBeenCalled();
+      expect(project.metadata.spaceModelDefaultPending).toBe(true);
+    }
+  );
+
+  it.each(['custom', 'local'] as const)(
+    'starts fresh actual %s despite the global Cloud credit incident',
+    async (category) => {
+      const platform = category === 'local' ? 'ollama' : 'azure';
+      installed.model_ref = `provider://${category}/${platform}/deployment`;
+      providers = [{ ...provider, provider_name: platform }];
+      useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
+
+      await start();
+
+      expect(request()).toMatchObject({
+        model_type: 'deployment',
+        model_platform: platform,
+        workspace_model_selection: installed,
+      });
+      expect(project.metadata.modelSelection).toMatchObject({
+        modelType: category,
+        model_ref: installed.model_ref,
+      });
+      expect(mocks.get).not.toHaveBeenCalledWith('/api/v1/user/key');
+      expect(mocks.sse).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it.each(['service', 'model-access'] as const)(
+    'does not turn %s into a fresh Cloud account quota block',
+    async (reason) => {
+      useUsageNoticeStore.setState({
+        incidents: [{ reason, modelId: 'space-model' }],
+      });
+
+      await start();
+
+      expect(mocks.get).toHaveBeenCalledWith('/api/v1/user/key');
+      expect(mocks.sse).toHaveBeenCalledTimes(1);
+      expect(request().model_type).toBe('gpt-6-astra');
+    }
+  );
+
+  it.each(['account-b', null])(
+    'ignores fresh Cloud quota incidents associated with usage account %s',
+    async (account) => {
+      useUsageNoticeStore.setState({
+        account,
+        incidents: [{ reason: 'credits' }],
+      });
+
+      await start();
+
+      expect(mocks.get).toHaveBeenCalledWith('/api/v1/user/key');
+      expect(mocks.sse).toHaveBeenCalledTimes(1);
+      expect(request().model_type).toBe('gpt-6-astra');
+    }
+  );
+
+  it('checks the current quota after fresh Cloud binding resolution', async () => {
+    const originalGet = mocks.get.getMockImplementation()!;
+    mocks.get.mockImplementation(async (url, params) => {
+      const result = await originalGet(url, params);
+      if (url === '/api/v1/cloud-models')
+        useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
+      return result;
+    });
+
+    await expect(start()).rejects.toMatchObject({ usageReason: 'credits' });
+
+    expect(mocks.get).not.toHaveBeenCalledWith('/api/v1/user/key');
+    expect(mocks.sse).not.toHaveBeenCalled();
+    expect(mocks.projectStore.setProjectModelAdmission).not.toHaveBeenCalled();
+  });
+
+  it('rechecks fresh default Cloud quota after the catalog fetch before requesting a key', async () => {
+    installed.model_ref = 'provider://default';
+    useCloudModelStore.setState({
+      models: [],
+      defaultModelId: '',
+      status: 'idle',
+    });
+    const originalGet = mocks.get.getMockImplementation()!;
+    mocks.get.mockImplementation(async (url, params) => {
+      const result = await originalGet(url, params);
+      if (url === '/api/v1/cloud-models')
+        useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
+      return result;
+    });
+
+    await expect(start()).rejects.toMatchObject({ usageReason: 'credits' });
+
+    expect(
+      mocks.get.mock.calls.some(([url]) => url === '/api/v1/cloud-models')
+    ).toBe(true);
+    expect(mocks.get).not.toHaveBeenCalledWith('/api/v1/user/key');
+    expect(mocks.post).not.toHaveBeenCalled();
+    expect(mocks.sse).not.toHaveBeenCalled();
+    expect(mocks.projectStore.setProjectModel).not.toHaveBeenCalled();
+    expect(mocks.projectStore.setProjectModelAdmission).not.toHaveBeenCalled();
+    expect(project.metadata.spaceModelDefaultPending).toBe(true);
+  });
+
+  it('clears the fresh receipt without admitting or pinning when quota arrives after the key request', async () => {
+    const originalGet = mocks.get.getMockImplementation()!;
+    mocks.get.mockImplementation(async (url, params) => {
+      const result = await originalGet(url, params);
+      if (url === '/api/v1/user/key')
+        useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
+      return result;
+    });
+
+    await expect(start()).rejects.toMatchObject({ usageReason: 'credits' });
+
+    expect(mocks.get).toHaveBeenCalledWith('/api/v1/user/key');
+    expect(mocks.post).not.toHaveBeenCalled();
+    expect(mocks.sse).not.toHaveBeenCalled();
+    expect(mocks.projectStore.setProjectModel).not.toHaveBeenCalled();
+    expect(mocks.projectStore.setProjectModelAdmission).toHaveBeenCalledTimes(
+      2
+    );
+    expect(mocks.projectStore.setProjectModelAdmission).toHaveBeenNthCalledWith(
+      1,
+      'session-1',
+      expect.any(String)
+    );
+    expect(mocks.projectStore.setProjectModelAdmission).toHaveBeenNthCalledWith(
+      2,
+      'session-1',
+      null
+    );
+    expect(project.metadata.spaceModelAdmissionRunId).toBeNull();
+    expect(project.metadata.spaceModelDefaultPending).toBe(true);
+    expect(chat.getState().tasks[chat.getState().activeTaskId!]).toMatchObject({
+      isPending: false,
+      status: ChatTaskStatus.FINISHED,
+    });
+  });
+
+  it('keeps an existing manual pin outside the fresh guard even with a stale pending marker', async () => {
+    project.metadata.modelSelection = {
+      modelType: 'cloud',
+      cloud_model_type: 'manual',
+    };
+    useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
+
+    await start();
+
+    expect(mocks.localGet).not.toHaveBeenCalled();
+    expect(mocks.get).toHaveBeenCalledWith('/api/v1/user/key');
+    expect(request().workspace_model_selection).toBeUndefined();
+    expect(project.metadata.modelSelection.cloud_model_type).toBe('manual');
+  });
+
+  it('keeps established Session starts outside the fresh quota guard', async () => {
+    delete project.metadata.spaceModelDefaultPending;
+    useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
+
+    await start();
+
+    expect(mocks.localGet).not.toHaveBeenCalled();
+    expect(mocks.get).toHaveBeenCalledWith('/api/v1/user/key');
+    expect(mocks.sse).toHaveBeenCalledTimes(1);
+    expect(request().workspace_model_selection).toBeUndefined();
+  });
+
+  it('keeps a non-Resume accepted receipt retry outside the fresh quota guard', async () => {
+    restoreAdmissionReceipt();
+    mocks.localGet.mockResolvedValue(acceptedResponse());
+    useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
+
+    await start();
+
+    expect(mocks.get).toHaveBeenCalledWith('/api/v1/user/key');
+    expect(mocks.sse).toHaveBeenCalledTimes(1);
+    expect(request().workspace_model_selection).toBeUndefined();
+    expect(project.metadata.modelSelection).toMatchObject(acceptedSelection);
+  });
+
+  it('preserves the existing recovered Cloud cold Resume quota guard', async () => {
+    restoreAdmissionReceipt();
+    mocks.localGet.mockResolvedValue(acceptedResponse());
+    useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
+
+    await expect(start(true)).rejects.toMatchObject({ usageReason: 'credits' });
+
+    expect(project.metadata.modelSelection).toMatchObject(acceptedSelection);
+    expect(mocks.get).not.toHaveBeenCalledWith('/api/v1/user/key');
+    expect(mocks.post).not.toHaveBeenCalled();
+    expect(mocks.sse).not.toHaveBeenCalled();
+  });
+
+  it.each(['custom', 'local'] as const)(
+    'preserves recovered %s cold Resume under a global Cloud credit incident',
+    async (category) => {
+      const platform = category === 'local' ? 'ollama' : 'azure';
+      const selection = {
+        modelType: category,
+        provider_id: provider.id,
+        model_platform: platform,
+        model_type: 'deployment',
+        model_ref: `provider://${category}/${platform}/deployment`,
+      };
+      providers = [{ ...provider, provider_name: platform }];
+      restoreAdmissionReceipt();
+      mocks.localGet.mockResolvedValue({
+        ...acceptedResponse(),
+        accepted: { run_id: 'accepted-run-1', selection },
+      });
+      useUsageNoticeStore.setState({ incidents: [{ reason: 'credits' }] });
+
+      await start(true);
+
+      expect(mocks.get).not.toHaveBeenCalledWith('/api/v1/user/key');
+      expect(mocks.sse).toHaveBeenCalledTimes(1);
+      expect(request()).toMatchObject({
+        model_type: 'deployment',
+        model_platform: platform,
+        resume_request_id: 'resume-1',
+      });
+      expect(request().workspace_model_selection).toBeUndefined();
+    }
+  );
 
   it.each(['cloud', 'custom', 'local'])(
     'launches the Space %s model when there is no global preferred provider',

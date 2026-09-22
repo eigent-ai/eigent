@@ -3045,6 +3045,30 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         throw error;
       }
       const effectiveModelType = pinnedModelSelection?.modelType ?? modelType;
+      // Workspace's category preview is not an accepted binding. Re-check a
+      // fresh adoption after resolution, before any Cloud key or admission.
+      const assertFreshCloudQuota = () => {
+        if (!adoptingSpaceDefault || effectiveModelType !== 'cloud') return;
+        const usage = useUsageNoticeStore.getState();
+        const usageBlock =
+          token && user_id != null && usage.account === String(user_id)
+            ? usage.incidents.find((item) =>
+                [
+                  'credits',
+                  'trial-daily',
+                  'trial-total',
+                  'free-credits',
+                ].includes(item.reason)
+              )
+            : undefined;
+        if (usageBlock) {
+          finishStartupFailure();
+          throw Object.assign(new Error(errorCopy(usageBlock.reason)), {
+            usageReason: usageBlock.reason,
+          });
+        }
+      };
+      assertFreshCloudQuota();
       const requestAccount =
         getAuthStore().user_id != null ? String(getAuthStore().user_id) : null;
       let resolvedProviderId: number | undefined;
@@ -3159,6 +3183,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
 
         let res: any;
         try {
+          assertFreshCloudQuota();
           res = await proxyFetchGet('/api/v1/user/key');
         } catch (error: any) {
           finishStartupFailure();
@@ -3979,6 +4004,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         try {
           await projectStore.setProjectModelAdmission(project_id, newTaskId);
           assertModelSelectionCurrent();
+          assertFreshCloudQuota();
         } catch (error) {
           try {
             assertModelSelectionCurrent();
