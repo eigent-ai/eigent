@@ -218,12 +218,13 @@ export const proxyCreateSpaceProject = async (
 export const proxyUpdateSpaceProject = async (
   spaceId: string,
   projectId: string,
-  payload: Partial<ProjectPayload>
+  payload: Partial<ProjectPayload>,
+  options?: Parameters<typeof proxyFetchPatch>[3]
 ): Promise<ServerProject> => {
-  const project = await proxyFetchPatch(
-    `/api/v1/spaces/${spaceId}/projects/${projectId}`,
-    payload
-  );
+  const url = `/api/v1/spaces/${spaceId}/projects/${projectId}`;
+  const project = options
+    ? await proxyFetchPatch(url, payload, undefined, options)
+    : await proxyFetchPatch(url, payload);
   return project;
 };
 

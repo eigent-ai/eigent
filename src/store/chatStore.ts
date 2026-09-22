@@ -1418,6 +1418,12 @@ type ActiveSSEConnection = {
 
 const activeSSEControllers: Record<string, ActiveSSEConnection> = {};
 
+// A failed first delivery may outlive its active account/Space. Remember only
+// proven-unsent receipts so that their owner can release them on a later retry.
+// Unknown ACKs never enter this map; after renderer restart canonical recovery
+// remains authoritative rather than inferring that a request was not sent.
+const unsentSpaceModelAdmissions = new Map<string, string>();
+
 // Journal reads outlive the terminal observer/transport, but never a new
 // admission of the same Run. Each read is also bounded by its own deadline.
 const terminalUsageRecoveries = new Map<string, AbortController>();
@@ -2806,7 +2812,21 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           triggerExecutionId &&
           project_id
         ) {
-          forgetRejectedTriggerRun(triggerExecutionId, project_id, newTaskId);
+          try {
+            forgetRejectedTriggerRun(
+              triggerExecutionId,
+              project_id,
+              newTaskId,
+              triggerAccountKey
+            );
+          } catch (error) {
+            // A storage failure must not strand the never-submitted task in
+            // Preparing or replace its original admission error.
+            console.warn(
+              'Failed to release an unsubmitted Trigger binding:',
+              error
+            );
+          }
         }
         const targetState = targetChatStore.getState();
         const task = targetState.tasks[newTaskId];
@@ -2925,7 +2945,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         !type && project_id ? projectStore.getProjectModel(project_id) : null;
       // Server sync can omit the local new-Session marker while retaining a
       // delivery receipt. That receipt still requires accepted-model recovery.
-      const pendingModelAdmission = project?.metadata?.spaceModelAdmissionRunId;
+      let pendingModelAdmission = project?.metadata?.spaceModelAdmissionRunId;
       const needsModelRecovery = Boolean(
         project?.metadata?.spaceModelDefaultPending || pendingModelAdmission
       );
@@ -2944,6 +2964,51 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 expectedModelSelection))
         ) {
           throw spaceModelError('changed');
+        }
+      };
+      const modelAdmissionOwnerKey = JSON.stringify([
+        getAccountEnvironmentKey({ email, user_id }),
+        project_id,
+        projectSpaceId,
+        spaceId,
+        expectedModelSelection,
+      ]);
+      const clearOwnedModelAdmission = (runId: string) => {
+        if (!project_id) return;
+        try {
+          assertModelSelectionCurrent();
+          if (
+            projectStore.getProjectById(project_id)?.metadata
+              ?.spaceModelAdmissionRunId === runId
+          ) {
+            // The Store clears locally before its first await. Observe remote
+            // persistence without holding the composer in Preparing for it.
+            void projectStore
+              .setProjectModelAdmission(
+                project_id,
+                null,
+                assertModelSelectionCurrent
+              )
+              .then(
+                () => {
+                  if (
+                    unsentSpaceModelAdmissions.get(modelAdmissionOwnerKey) ===
+                    runId
+                  )
+                    unsentSpaceModelAdmissions.delete(modelAdmissionOwnerKey);
+                },
+                (error) => {
+                  console.warn(
+                    'Failed to persist Session receipt cleanup:',
+                    error
+                  );
+                }
+              );
+          }
+        } catch (error) {
+          // Local clearing is optimistic. Do not roll it back after a failed
+          // persistence, or write through another account/Space/model owner.
+          console.warn('Failed to release a Session model receipt:', error);
         }
       };
       let spaceModelSelection: SpaceModelSelection | null = null;
@@ -2982,6 +3047,19 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       let spaceModelBinding: ResolvedSpaceModel | undefined;
       let commitSpaceModelPin: (() => void) | undefined;
       try {
+        if (
+          !type &&
+          pendingModelAdmission &&
+          unsentSpaceModelAdmissions.get(modelAdmissionOwnerKey) ===
+            pendingModelAdmission
+        ) {
+          clearOwnedModelAdmission(pendingModelAdmission);
+          assertModelSelectionCurrent();
+          pendingModelAdmission = project_id
+            ? projectStore.getProjectById(project_id)?.metadata
+                ?.spaceModelAdmissionRunId
+            : undefined;
+        }
         if (
           !type &&
           !pinnedModelSelection &&
@@ -4023,18 +4101,27 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             })
           : null;
 
+      const releaseUnsentModelAdmission = () => {
+        if (!adoptingSpaceDefault || admissionRequested) return;
+        if (
+          !unsentSpaceModelAdmissions.has(modelAdmissionOwnerKey) ||
+          (project_id &&
+            projectStore.getProjectById(project_id)?.metadata
+              ?.spaceModelAdmissionRunId === newTaskId)
+        )
+          unsentSpaceModelAdmissions.set(modelAdmissionOwnerKey, newTaskId);
+        clearOwnedModelAdmission(newTaskId);
+      };
       if (adoptingSpaceDefault && project_id) {
         try {
-          await projectStore.setProjectModelAdmission(project_id, newTaskId);
+          await projectStore.setProjectModelAdmission(
+            project_id,
+            newTaskId,
+            assertModelSelectionCurrent
+          );
           assertAdmissionCurrent();
         } catch (error) {
-          try {
-            assertModelSelectionCurrent();
-            await projectStore.setProjectModelAdmission(project_id, null);
-          } catch {
-            // No Chat request was dispatched. Keep any unresolved persistence
-            // scoped to its owner; never write through a changed account.
-          }
+          releaseUnsentModelAdmission();
           finishStartupFailure();
           throw error;
         }
@@ -4059,15 +4146,32 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       ]);
       let legacyEndRunId: string | null = null;
 
-      admissionRequested = true;
+      const guardDelivery =
+        adoptingSpaceDefault || startOptions.resumeRequestId;
+      if (!guardDelivery) admissionRequested = true;
       const ssePromise = sseTransport({
         url: api,
-        beforeRequest: startOptions.resumeRequestId
+        beforeRequest: guardDelivery
           ? () => {
-              // Before the first stream ACK, every retry is still admission.
-              // Once accepted, reconnect the same Run's frozen request rather
-              // than applying a later composer choice to its running Attempt.
-              if (!resumeStreamOpened) assertAdmissionCurrent();
+              // Resume retains its scoped admission ticket until stream ACK.
+              // Fresh starts become uncertain once fetch begins: subsequent
+              // reconnects keep that Run's frozen body/headers and receipt.
+              if (
+                !admissionRequested ||
+                (startOptions.resumeRequestId && !resumeStreamOpened)
+              )
+                assertAdmissionCurrent();
+              if (
+                adoptingSpaceDefault &&
+                !admissionRequested &&
+                project_id &&
+                projectStore.getProjectById(project_id)?.metadata
+                  ?.spaceModelAdmissionRunId !== newTaskId
+              ) {
+                finishStartupFailure();
+                throw spaceModelError('changed');
+              }
+              admissionRequested = true;
             }
           : undefined,
         method: !type ? 'POST' : 'GET',
@@ -6832,6 +6936,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
           addMessages(currentTaskId, newMessage);
         },
         async onopen(respond) {
+          admissionRequested = true;
           console.log('open', respond);
           const contentType = respond.headers.get('content-type') || '';
           if (!respond.ok || !contentType.startsWith('text/event-stream')) {
@@ -6842,8 +6947,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               respond.status < 500
             ) {
               // A definitive admission rejection is distinct from lost delivery.
-              assertModelSelectionCurrent();
-              await projectStore.setProjectModelAdmission(project_id, null);
+              clearOwnedModelAdmission(newTaskId);
             }
             let detail = `HTTP ${respond.status}`;
             let errorCode: string | undefined;
@@ -7085,6 +7189,12 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             );
           }
         },
+      }).catch((error) => {
+        if (!admissionRequested) {
+          releaseUnsentModelAdmission();
+          finishStartupFailure();
+        }
+        throw error;
       });
       if (resumeStreamOpenPromise) {
         try {

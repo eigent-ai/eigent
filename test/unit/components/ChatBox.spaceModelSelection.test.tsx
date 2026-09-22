@@ -488,7 +488,8 @@ describe('ChatBox after an accepted Space model selection', () => {
     );
   }
   async function acceptInitialRunWithoutAck() {
-    mocks.sse.mockImplementationOnce(async () => {
+    mocks.sse.mockImplementationOnce(async (options) => {
+      options.beforeRequest?.(); // The request was sent; only its ACK is lost.
       throw new Error('Synthetic ACK lost after canonical acceptance');
     });
     await expect(start()).rejects.toThrow('Synthetic ACK lost');

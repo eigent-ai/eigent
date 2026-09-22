@@ -49,7 +49,13 @@ vi.mock('@/components/Toast/trafficToast', () => ({
   showTrafficToast: mocked.showTrafficToast,
 }));
 
-import { fetchGet, fetchPost, getBaseURL, proxyFetchPut } from '@/api/http';
+import {
+  fetchGet,
+  fetchPost,
+  getBaseURL,
+  proxyFetchPatch,
+  proxyFetchPut,
+} from '@/api/http';
 import { getAccountEnvironmentKey } from '@/lib/authEnvironment';
 import {
   resetConnectionConfig,
@@ -130,6 +136,24 @@ describe('api/http handleResponse', () => {
       expect(fetch).not.toHaveBeenCalled();
     }
   );
+
+  it('checks receipt ownership after async proxy URL resolution before PATCH delivery', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    let current = true;
+    const beforeRequest = vi.fn(() => {
+      if (!current) throw new Error('stale receipt owner');
+    });
+    const request = proxyFetchPatch(
+      '/api/v1/spaces/space-a/projects/session-a',
+      { metadata: { spaceModelAdmissionRunId: null } },
+      undefined,
+      { beforeRequest }
+    );
+    current = false;
+    await expect(request).rejects.toThrow('stale receipt owner');
+    expect(beforeRequest).toHaveBeenCalledOnce();
+    expect(fetch).not.toHaveBeenCalled();
+  });
 
   it('throws for non-JSON error responses instead of returning stream object', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
