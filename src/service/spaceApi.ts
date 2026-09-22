@@ -141,7 +141,9 @@ export interface ProjectPayload {
 }
 
 export interface ProjectUpdatePayload extends Partial<ProjectPayload> {
-  expected_model_admission_run_id?: string;
+  expected_model_admission_run_id?: string | null;
+  expected_model_admission_revision?: string | null;
+  model_admission_revision?: string;
 }
 
 export interface ServerProject {
@@ -227,9 +229,11 @@ export const proxyUpdateSpaceProject = async (
 ): Promise<ServerProject> => {
   // Older servers must reject a conditional cleanup rather than silently
   // ignoring its precondition and treating it as an unconditional PATCH.
-  const suffix = payload.expected_model_admission_run_id
-    ? '/model-admission'
-    : '';
+  const suffix = payload.model_admission_revision
+    ? '/model-admission/transition'
+    : payload.expected_model_admission_run_id
+      ? '/model-admission'
+      : '';
   const url = `/api/v1/spaces/${spaceId}/projects/${projectId}${suffix}`;
   const project = options
     ? await proxyFetchPatch(url, payload, undefined, options)

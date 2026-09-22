@@ -21,7 +21,11 @@ from app.domains.space.service.overlay_service import (
     PendingOverlayError,
     SpaceOverlayService,
 )
-from app.domains.space.service.space_service import SpaceHasProjectsError, SpaceService
+from app.domains.space.service.space_service import (
+    ProjectModelAdmissionConflictError,
+    SpaceHasProjectsError,
+    SpaceService,
+)
 from app.model.project import ProjectIn, ProjectOut, ProjectUpdate
 from app.model.space import (
     SpaceIn,
@@ -206,11 +210,28 @@ def update_space_project(
     auth: V1UserAuth = Depends(auth_must),
 ):
     try:
-        return ProjectOut.from_model(
-            SpaceService.update_project(space_id, project_id, data, auth.id, db_session)
-        )
+        return ProjectOut.from_model(SpaceService.update_project(space_id, project_id, data, auth.id, db_session))
+    except ProjectModelAdmissionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.patch(
+    "/{space_id}/projects/{project_id}/model-admission/transition",
+    name="transition project model admission",
+    response_model=ProjectOut,
+)
+def transition_space_project_model_admission(
+    space_id: str,
+    project_id: str,
+    data: ProjectUpdate,
+    db_session: Session = Depends(session),
+    auth: V1UserAuth = Depends(auth_must),
+):
+    if data.model_admission_revision is None:
+        raise HTTPException(status_code=422, detail="Model admission revision is required")
+    return update_space_project(space_id, project_id, data, db_session, auth)
 
 
 @router.patch(

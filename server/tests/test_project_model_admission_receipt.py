@@ -82,7 +82,9 @@ def fixture(tmp_path):
 
 
 async def patch(client, body, endpoint=ENDPOINT, **kwargs):
-    if "expected_model_admission_run_id" in body:
+    if "model_admission_revision" in body:
+        endpoint += "/model-admission/transition"
+    elif "expected_model_admission_run_id" in body:
         endpoint += "/model-admission"
     return await client.patch(endpoint, json=body, **kwargs)
 
@@ -275,7 +277,13 @@ def test_concurrent_transactions_serialize_the_metadata_read_and_write(fixture, 
                 release_first.set()
             responses = await asyncio.gather(first, second)
             assert [response.status_code for response in responses] == [200, 200]
-            assert metadata(engine) == {"unrelated": {"keep": True}, **expected}
+            actual = metadata(engine)
+            expected_metadata = {"unrelated": {"keep": True}, **expected}
+            if "modelSelection" in expected:
+                revision = actual["spaceModelAdmissionRevision"]
+                assert isinstance(revision, str) and len(revision) == 32
+                expected_metadata["spaceModelAdmissionRevision"] = revision
+            assert actual == expected_metadata
 
     try:
         asyncio.run(exercise())
@@ -410,5 +418,192 @@ def test_lost_new_receipt_response_and_both_old_cleanups_preserve_a_later_run(fi
             for run_id in [NEW, OLD, NEW]:
                 assert (await patch(client, {**CLEANUP, "expected_model_admission_run_id": run_id})).status_code == 200
             assert metadata(engine)["spaceModelAdmissionRunId"] == "later-run"
+
+    asyncio.run(exercise())
+
+
+def transition(run_id, revision, expected_run_id=None, expected_revision=None):
+    return {
+        "metadata": {"spaceModelAdmissionRunId": run_id},
+        "expected_model_admission_run_id": expected_run_id,
+        "expected_model_admission_revision": expected_revision,
+        "model_admission_revision": revision,
+    }
+
+
+async def apply_transition(client, body):
+    response = await client.patch(ENDPOINT + "/model-admission/transition", json=body)
+    assert response.status_code == 200, response.text
+    return response.json()["metadata"]
+
+
+@pytest.mark.parametrize("failure_timing", ["before-commit", "after-commit"])
+@pytest.mark.parametrize("cleanup_timing", ["before-new-owner", "after-new-owner"])
+@pytest.mark.parametrize("later_run", ["later-run", OLD])
+def test_versioned_assignment_cleanup_and_aba_matrix(fixture, failure_timing, cleanup_timing, later_run):
+    app, engine = fixture
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    assign_a = transition(OLD, "a")
+    clear_a = transition(None, "clear-a", OLD, "a")
+    assign_b = transition(NEW, "b", None, "clear-a")
+
+    async def gate(scope, receive, send):
+        if dict(scope.get("headers", [])).get(b"x-old-assignment") == b"hold":
+            entered.set()
+            await release.wait()
+        await app(scope, receive, send)
+
+    async def exercise():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=gate), base_url="http://fixture.invalid"
+        ) as client:
+            await client.patch(ENDPOINT, json={"metadata": {"spaceModelAdmissionRunId": None}})
+            old = asyncio.create_task(
+                client.patch(
+                    ENDPOINT + "/model-admission/transition", json=assign_a, headers={"x-old-assignment": "hold"}
+                )
+            )
+            await asyncio.wait_for(entered.wait(), 5)
+            if failure_timing == "after-commit":
+                release.set()
+                assert (await old).status_code == 200
+            # The client has already been told its A write failed. The original
+            # upstream ASGI task remains alive in the before-commit case.
+            if cleanup_timing == "before-new-owner":
+                state = await apply_transition(client, clear_a)
+                if state.get("spaceModelAdmissionRevision") != "clear-a":
+                    state = await apply_transition(
+                        client,
+                        transition(
+                            None,
+                            "clear-a",
+                            state.get("spaceModelAdmissionRunId"),
+                            state.get("spaceModelAdmissionRevision"),
+                        ),
+                    )
+                assert state["spaceModelAdmissionRunId"] is None
+            state = await apply_transition(client, assign_b)
+            if state.get("spaceModelAdmissionRevision") != "b":
+                assert state.get("spaceModelAdmissionRunId") in [None, OLD]
+                state = await apply_transition(
+                    client,
+                    transition(
+                        NEW, "b", state.get("spaceModelAdmissionRunId"), state.get("spaceModelAdmissionRevision")
+                    ),
+                )
+            assert state["spaceModelAdmissionRunId"] == NEW
+            release.set()
+            assert (await old).status_code == 200
+            # Delayed original and duplicate old operations cannot restore A.
+            for body in [clear_a, assign_a, clear_a]:
+                state = await apply_transition(client, body)
+                assert state["spaceModelAdmissionRunId"] == NEW
+                assert state["spaceModelAdmissionRevision"] == "b"
+            clear_b = transition(None, "clear-b", NEW, "b")
+            state = await apply_transition(client, clear_b)
+            assert state["spaceModelAdmissionRunId"] is None
+            for body in [assign_a, assign_b, clear_a, clear_b]:
+                state = await apply_transition(client, body)
+                assert state["spaceModelAdmissionRunId"] is None
+                assert state["spaceModelAdmissionRevision"] == "clear-b"
+            state = await apply_transition(client, transition(later_run, "later", None, "clear-b"))
+            for body in [assign_a, assign_b, clear_a, clear_b]:
+                state = await apply_transition(client, body)
+                assert state["spaceModelAdmissionRunId"] == later_run
+                assert state["spaceModelAdmissionRevision"] == "later"
+            assert metadata(engine) == {
+                "spaceModelAdmissionRunId": later_run,
+                "spaceModelAdmissionRevision": "later",
+                "unrelated": {"keep": True},
+            }
+
+    try:
+        asyncio.run(exercise())
+    finally:
+        release.set()
+
+
+def test_versioned_unknown_owner_and_manual_pin_are_preserved(fixture):
+    app, engine = fixture
+
+    async def exercise():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://fixture.invalid"
+        ) as client:
+            body = transition(NEW, "new", OLD)
+            state = await apply_transition(client, body)
+            assert state["spaceModelAdmissionRunId"] == NEW
+            assert await apply_transition(client, body) == state  # Lost ACK / exact duplicate.
+            legacy = await client.patch(ENDPOINT, json={"metadata": {"spaceModelAdmissionRunId": OLD}})
+            assert legacy.status_code == 409
+            assert (await patch(client, {**CLEANUP, "expected_model_admission_run_id": NEW})).status_code == 200
+            assert metadata(engine) == state
+            pin = await client.patch(
+                ENDPOINT, json={"metadata": {"modelSelection": MANUAL, "spaceModelAdmissionRunId": None}}
+            )
+            assert pin.status_code == 200
+            pinned = metadata(engine)
+            assert pinned["modelSelection"] == MANUAL
+            assert pinned["spaceModelAdmissionRevision"] != "new"
+            assert await apply_transition(client, transition(OLD, "obsolete", NEW, "new")) == pinned
+            # A later unpin also changes generation; even empty -> empty is not
+            # the old snapshot on which an in-flight assignment was authorized.
+            unpin = await client.patch(ENDPOINT, json={"metadata": {"modelSelection": None}})
+            assert unpin.status_code == 200
+            cleared = metadata(engine)
+            assert cleared["spaceModelAdmissionRevision"] != pinned["spaceModelAdmissionRevision"]
+            assert (
+                await apply_transition(client, transition(OLD, "obsolete", None, pinned["spaceModelAdmissionRevision"]))
+                == cleared
+            )
+            fresh = transition("fresh", "fresh-version", None, cleared["spaceModelAdmissionRevision"])
+            assert (await apply_transition(client, fresh))["spaceModelAdmissionRunId"] == "fresh"
+            assert metadata(engine)["unrelated"] == {"keep": True}
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"model_admission_revision": ""},
+        {"model_admission_revision": None},
+        {"expected_model_admission_revision": "same", "model_admission_revision": "same"},
+        {"metadata": {"spaceModelAdmissionRunId": NEW, "other": "forbidden"}},
+        {"metadata": {"spaceModelAdmissionRunId": 42}},
+        {"name": "forbidden"},
+    ],
+)
+def test_versioned_transition_requires_complete_exclusive_state(fixture, extra):
+    app, engine = fixture
+
+    async def exercise():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://fixture.invalid"
+        ) as client:
+            response = await client.patch(
+                ENDPOINT + "/model-admission/transition", json={**transition(NEW, "new", OLD), **extra}
+            )
+            assert response.status_code == 422
+            assert metadata(engine)["spaceModelAdmissionRunId"] == OLD
+
+    asyncio.run(exercise())
+
+
+def test_concurrent_versioned_assignments_have_only_one_owner(fixture):
+    app, engine = fixture
+
+    async def exercise():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://fixture.invalid"
+        ) as client:
+            first, second = await asyncio.gather(
+                apply_transition(client, transition("first", "first-version", OLD)),
+                apply_transition(client, transition("second", "second-version", OLD)),
+            )
+            actual = metadata(engine)
+            assert actual["spaceModelAdmissionRunId"] in ["first", "second"]
+            assert first == second == actual
 
     asyncio.run(exercise())

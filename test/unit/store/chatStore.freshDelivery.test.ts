@@ -300,6 +300,7 @@ describe('Fresh Space admission at actual HTTP delivery', () => {
     'Space',
     'manual model',
     'newer receipt',
+    'newer revision',
   ] as const)(
     'rejects %s changes before first fetch without clearing a different owner',
     async (change) => {
@@ -319,6 +320,8 @@ describe('Fresh Space admission at actual HTTP delivery', () => {
           mocks.projectStore.setProjectModel('session-1', model);
         if (change === 'newer receipt')
           project.metadata.spaceModelAdmissionRunId = 'new-owner-run';
+        if (change === 'newer revision')
+          project.metadata.spaceModelAdmissionRevision = 'new-owner-version';
       });
       await expect(start()).rejects.toThrow();
       expect(delivery).not.toHaveBeenCalled();
@@ -331,6 +334,13 @@ describe('Fresh Space admission at actual HTTP delivery', () => {
         expect(project.metadata.spaceModelDefaultPending).toBe(false);
       } else if (change === 'newer receipt') {
         expect(project.metadata.spaceModelAdmissionRunId).toBe('new-owner-run');
+      } else if (change === 'newer revision') {
+        expect(project.metadata.spaceModelAdmissionRunId).toBe(
+          request().run_id
+        );
+        expect(project.metadata.spaceModelAdmissionRevision).toBe(
+          'new-owner-version'
+        );
       } else {
         expect(project.metadata.modelSelection).toBeUndefined();
         expect(project.metadata.spaceModelDefaultPending).toBe(true);
