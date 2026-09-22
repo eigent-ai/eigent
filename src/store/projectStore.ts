@@ -23,7 +23,10 @@ import {
 import type { SessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { getSessionNavLeadPresentation } from '@/lib/sessionNavLead';
 import { isPlaceholderProjectName } from '@/lib/spaceLabel';
-import { recoverSpaceSessionModel } from '@/lib/spaceModelBinding';
+import {
+  recoverSpaceSessionModel,
+  spaceModelError,
+} from '@/lib/spaceModelBinding';
 import { resolveHistoricalRunElapsedMs } from '@/lib/taskDuration';
 import { fetchProjectRuns } from '@/service/projectRunsApi';
 import type { ServerProject } from '@/service/spaceApi';
@@ -624,7 +627,8 @@ interface ProjectStore {
   getProjectModel: (projectId: string | null) => ProjectModelSelection | null;
   setProjectModelAdmission: (
     projectId: string,
-    runId: string | null
+    runId: string | null,
+    beforeRequest?: () => void
   ) => Promise<void>;
   setProjectThinkingEffort: (
     projectId: string,
@@ -2977,7 +2981,8 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     }
   },
 
-  setProjectModelAdmission: async (projectId, runId) => {
+  setProjectModelAdmission: async (projectId, runId, beforeRequest) => {
+    beforeRequest?.();
     const project = get().projects[projectId];
     if (!project || get().getProjectModel(projectId)) return;
     const updatedProject = {
@@ -2989,9 +2994,25 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     }));
     upsertSpaceProjectMetaFromProject(updatedProject);
     if (updatedProject.spaceId)
-      await proxyUpdateSpaceProject(updatedProject.spaceId, projectId, {
-        metadata: { spaceModelAdmissionRunId: runId },
-      });
+      await proxyUpdateSpaceProject(
+        updatedProject.spaceId,
+        projectId,
+        { metadata: { spaceModelAdmissionRunId: runId } },
+        beforeRequest
+          ? {
+              beforeRequest: () => {
+                beforeRequest();
+                // A later receipt, manual selection, or restored container
+                // owns its own metadata. Do not deliver this stale write.
+                if (
+                  get().projects[projectId] !== updatedProject ||
+                  updatedProject.metadata.spaceModelAdmissionRunId !== runId
+                )
+                  throw spaceModelError('changed');
+              },
+            }
+          : undefined
+      );
   },
 
   getProjectModel: (projectId: string | null) => {

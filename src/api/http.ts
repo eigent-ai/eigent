@@ -544,6 +544,7 @@ async function proxyFetchRequest(
     }
   }
 
+  requestOptions.beforeRequest?.();
   const options: RequestInit = {
     method,
     headers,
@@ -583,8 +584,12 @@ export const proxyFetchPut = (
   options?: FetchRequestOptions
 ) => proxyFetchRequest('PUT', url, data, headers, options);
 
-export const proxyFetchPatch = (url: string, data?: any, headers?: any) =>
-  proxyFetchRequest('PATCH', url, data, headers);
+export const proxyFetchPatch = (
+  url: string,
+  data?: any,
+  headers?: any,
+  options?: FetchRequestOptions
+) => proxyFetchRequest('PATCH', url, data, headers, options);
 
 export const proxyFetchDelete = (url: string, data?: any, headers?: any) =>
   proxyFetchRequest('DELETE', url, data, headers);

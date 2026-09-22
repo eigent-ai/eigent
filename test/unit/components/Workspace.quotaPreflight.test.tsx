@@ -15,8 +15,9 @@
 import Workspace from '@/components/Workspace';
 import { notifyError } from '@/lib/notifyError';
 import { errorCopy } from '@/lib/usageErrors';
-import { useChatStore } from '@/store/chatStore';
+import { closeSSEConnectionsForTasks, useChatStore } from '@/store/chatStore';
 import { useCloudModelStore } from '@/store/cloudModelStore';
+import { setConnectionConfig } from '@/store/connectionStore';
 import { useUsageNoticeStore } from '@/store/usageNoticeStore';
 import {
   act,
@@ -42,6 +43,8 @@ const mocks = vi.hoisted(() => ({
   proxyPost: vi.fn(),
   post: vi.fn(),
   sse: vi.fn(),
+  lateHeader: vi.fn(),
+  realTransport: false,
 }));
 
 vi.mock('@/api/http', () => ({
@@ -98,6 +101,17 @@ vi.mock('@/hooks/useModelConfigCheck', () => ({
   useModelConfigCheck: () => ({ hasModel: true }),
 }));
 vi.mock('@/host', () => ({ useHost: () => ({ electronAPI: {} }) }));
+vi.mock('@/host/createHost', () => ({
+  createHost: () => ({
+    electronAPI: {
+      getLocalControlCapability: async () => {
+        await mocks.lateHeader();
+        return '';
+      },
+    },
+    ipcRenderer: null,
+  }),
+}));
 vi.mock('@/store/settingsStore', () => ({ openSettings: vi.fn() }));
 vi.mock('@/lib/notifyError', () => ({ notifyError: vi.fn() }));
 vi.mock('@/lib/events/appEvents', () => ({
@@ -108,7 +122,10 @@ vi.mock('@/lib/events/appEvents', () => ({
   recordTaskStopped: vi.fn(),
 }));
 vi.mock('@/lib/runEvents', () => ({
-  runEventIngressRegistry: { ensureLocal: vi.fn() },
+  runEventIngressRegistry: {
+    ensureLocal: vi.fn(),
+    reconcileRun: vi.fn(async () => undefined),
+  },
 }));
 vi.mock('@/components/AddWorker', () => ({ AddWorker: () => null }));
 vi.mock('@/components/Workspace/SingleAgentList', () => ({
@@ -191,6 +208,8 @@ describe('Workspace quota preview through real Space creation and Chat startup',
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.lateHeader.mockReset();
+    mocks.realTransport = false;
     mocks.input = null;
     mocks.network.mockImplementation(async () => {
       throw new Error('Unexpected network in the synthetic fixture');
@@ -349,6 +368,8 @@ describe('Workspace quota preview through real Space creation and Chat startup',
 
   afterEach(() => {
     cleanup();
+    if (mocks.realTransport)
+      closeSSEConnectionsForTasks(Object.keys(chat.getState().tasks));
     expect(mocks.network).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
@@ -396,6 +417,75 @@ describe('Workspace quota preview through real Space creation and Chat startup',
   }
   const createdProject = () =>
     mocks.projectStore.projects[mocks.projectStore.activeProjectId];
+
+  it.each(variants)(
+    'keeps the %s draft on a first-fetch guard failure and sends it after quota recovery',
+    async (variant) => {
+      mocks.realTransport = true;
+      installed.model_ref = 'provider://cloud/space-model';
+      useUsageNoticeStore.setState({ incidents: [] });
+      setConnectionConfig({
+        brainEndpoint: 'http://brain.fixture.invalid',
+        channel: 'web',
+      });
+      const http =
+        await vi.importActual<typeof import('@/api/http')>('@/api/http');
+      mocks.sse.mockImplementation(http.sseTransport);
+      const delivery = vi.fn(async (url, init) => {
+        expect(url).toBe('http://brain.fixture.invalid/chat');
+        expect(JSON.parse(init.body)).toMatchObject({
+          question,
+          attaches: [attachment.filePath],
+          model_type: 'gpt-6-astra',
+        });
+        return new Response(
+          new ReadableStream({ start: (controller) => controller.close() }),
+          { headers: { 'content-type': 'text/event-stream' } }
+        );
+      });
+      vi.stubGlobal('fetch', delivery);
+      mocks.lateHeader.mockImplementationOnce(() => {
+        expect(delivery).not.toHaveBeenCalled();
+        useUsageNoticeStore.setState({
+          account: 'account-a',
+          incidents: [{ reason: 'credits' }],
+        });
+      });
+      mount(variant);
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled()
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+      await waitFor(() => expect(notifyError).toHaveBeenCalledOnce());
+      expect(delivery).not.toHaveBeenCalled();
+      expectDraftRetained();
+      const failedProject = createdProject();
+      expect(failedProject.metadata).toMatchObject({
+        spaceModelDefaultPending: true,
+        spaceModelAdmissionRunId: null,
+      });
+      expect(failedProject.metadata.modelSelection).toBeUndefined();
+      const failedRun = mocks.sse.mock.calls[0][0].body.run_id;
+      expect(chat.getState().tasks[failedRun].isPending).toBe(false);
+      act(() => useUsageNoticeStore.setState({ incidents: [] }));
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled()
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+      await waitFor(() =>
+        expect(mocks.pageStore.setActiveWorkspaceTab).toHaveBeenCalledWith(
+          'project'
+        )
+      );
+      expect(delivery).toHaveBeenCalledOnce();
+      expect(createdProject().metadata.modelSelection).toMatchObject({
+        cloud_model_type: 'space-model',
+      });
+      expect(screen.getByLabelText('Session message')).toHaveValue('');
+      expect(screen.getByLabelText('Draft attachments')).toBeEmptyDOMElement();
+      expect(notifyError).toHaveBeenCalledOnce();
+    }
+  );
 
   it.each(['quota-reason', 'refresh-completion'] as const)(
     'can retry a failed startup after %s settles ahead of the send preview',

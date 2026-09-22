@@ -443,6 +443,141 @@ describe('projectStore runtime shape', () => {
     }
   );
 
+  it.each([
+    'Run',
+    'in-place receipt',
+    'Space',
+    'model',
+    'account',
+    'token',
+  ] as const)(
+    'refuses stale receipt cleanup before actual proxy fetch after %s changes',
+    async (change) => {
+      const store = useProjectStore.getState();
+      const id = store.createProject(
+        'Fresh session',
+        undefined,
+        'guarded-receipt'
+      );
+      await store.setProjectModelAdmission(id, 'old-run');
+      const api =
+        await vi.importActual<typeof import('@/service/spaceApi')>(
+          '@/service/spaceApi'
+        );
+      proxyUpdateSpaceProjectMock.mockImplementation(
+        api.proxyUpdateSpaceProject
+      );
+      const network = vi
+        .spyOn(globalThis, 'fetch')
+        .mockRejectedValue(new Error('Unexpected network'));
+      let account = 'account-a';
+      let token = 'synthetic-a';
+      try {
+        const clearing = store.setProjectModelAdmission(id, null, () => {
+          if (account !== 'account-a' || token !== 'synthetic-a')
+            throw new Error('Receipt account changed');
+        });
+        // The local clear happened, but the proxy still awaits base URL.
+        expect(
+          useProjectStore.getState().projects[id].metadata
+            ?.spaceModelAdmissionRunId
+        ).toBeNull();
+        const current = useProjectStore.getState().projects[id];
+        const model = {
+          modelType: 'cloud' as const,
+          cloud_model_type: 'manual',
+        };
+        if (change === 'account') account = 'account-b';
+        if (change === 'token') token = 'synthetic-b';
+        if (change === 'in-place receipt')
+          current.metadata!.spaceModelAdmissionRunId = 'new-run';
+        if (change === 'Run' || change === 'Space' || change === 'model')
+          useProjectStore.setState({
+            projects: {
+              [id]: {
+                ...current,
+                ...(change === 'Space' ? { spaceId: 'space-other' } : {}),
+                metadata: {
+                  ...current.metadata,
+                  ...(change === 'Run'
+                    ? { spaceModelAdmissionRunId: 'new-run' }
+                    : {}),
+                  ...(change === 'model'
+                    ? { modelSelection: model, spaceModelDefaultPending: false }
+                    : {}),
+                },
+              },
+            },
+          });
+        await expect(clearing).rejects.toThrow(/changed/);
+        expect(network).not.toHaveBeenCalled();
+        const final = useProjectStore.getState().projects[id];
+        if (change === 'Run' || change === 'in-place receipt')
+          expect(final.metadata?.spaceModelAdmissionRunId).toBe('new-run');
+        if (change === 'Space') expect(final.spaceId).toBe('space-other');
+        if (change === 'model')
+          expect(final.metadata?.modelSelection).toEqual(model);
+      } finally {
+        network.mockRestore();
+      }
+    }
+  );
+
+  it('keeps newer receipt ownership after an already-delivered cleanup later fails', async () => {
+    const store = useProjectStore.getState();
+    const id = store.createProject(
+      'Fresh session',
+      undefined,
+      'cleanup-failure'
+    );
+    await store.setProjectModelAdmission(id, 'old-run');
+    const api =
+      await vi.importActual<typeof import('@/service/spaceApi')>(
+        '@/service/spaceApi'
+      );
+    proxyUpdateSpaceProjectMock.mockImplementation(api.proxyUpdateSpaceProject);
+    const response = deferred<Response>();
+    const network = vi
+      .spyOn(globalThis, 'fetch')
+      .mockReturnValue(response.promise);
+    try {
+      const clearing = store.setProjectModelAdmission(id, null, () => {});
+      const outcome = clearing.then(
+        () => null,
+        (error) => error
+      );
+      await vi.waitFor(() => expect(network).toHaveBeenCalledOnce());
+      const init = network.mock.calls[0][1]!;
+      expect(JSON.parse(init.body as string)).toEqual({
+        metadata: { spaceModelAdmissionRunId: null },
+      });
+      const current = useProjectStore.getState().projects[id];
+      useProjectStore.setState({
+        projects: {
+          [id]: {
+            ...current,
+            metadata: {
+              ...current.metadata,
+              spaceModelAdmissionRunId: 'new-run',
+            },
+          },
+        },
+      });
+      response.reject(new Error('Synthetic cleanup delivery failure'));
+      expect(await outcome).toBeInstanceOf(Error);
+      expect(
+        useProjectStore.getState().projects[id].metadata
+          ?.spaceModelAdmissionRunId
+      ).toBe('new-run');
+      expect(
+        useProjectStore.getState().projects[id].metadata
+          ?.spaceModelDefaultPending
+      ).toBe(true);
+    } finally {
+      network.mockRestore();
+    }
+  });
+
   it('limits Space default eligibility to fresh Session containers and clears it when pinned', () => {
     const store = useProjectStore.getState();
     const fresh = store.createProject(

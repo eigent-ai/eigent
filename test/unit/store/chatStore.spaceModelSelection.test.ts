@@ -414,12 +414,14 @@ describe('Space default through the real Chat start path', () => {
     expect(mocks.projectStore.setProjectModelAdmission).toHaveBeenNthCalledWith(
       1,
       'session-1',
-      expect.any(String)
+      expect.any(String),
+      expect.any(Function)
     );
     expect(mocks.projectStore.setProjectModelAdmission).toHaveBeenNthCalledWith(
       2,
       'session-1',
-      null
+      null,
+      expect.any(Function)
     );
     expect(project.metadata.spaceModelAdmissionRunId).toBeNull();
     expect(project.metadata.spaceModelDefaultPending).toBe(true);
@@ -990,6 +992,7 @@ describe('Space default through the real Chat start path', () => {
     'recovers a lost accepted binding before retry or Resume (%s)',
     async (resume) => {
       mocks.sse.mockImplementationOnce(async (options) => {
+        options.beforeRequest?.(); // Actual delivery preceded the lost ACK.
         options.onerror(new Error('Synthetic delivery lost'));
       });
       await expect(start()).rejects.toThrow();
