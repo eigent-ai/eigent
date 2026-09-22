@@ -51,6 +51,7 @@ from app.workspace_config import (
 )
 from app.workspace_config.global_resources import (
     GLOBAL_MCP_PREFIX,
+    GLOBAL_SKILL_PREFIX,
     GlobalResourceUnavailable,
     resolve_global_mcp,
 )
@@ -763,7 +764,7 @@ class WorkspaceBundleInstaller:
         script_actions = [
             f"skill.script.execute:{item.ref}"
             for item in manifest.spec.skills
-            if item.ref.startswith("bundle://")
+            if item.ref.startswith(("bundle://", GLOBAL_SKILL_PREFIX))
         ] + [
             f"mcp.server.start:{item.id}" for item in manifest.spec.mcp_servers
         ]

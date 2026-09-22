@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import pytest
+from fastapi import Request
 from pydantic import ValidationError
 
 from app.controller import workspace_bundle_controller
@@ -703,7 +704,7 @@ async def test_space_installation_lookup_returns_successful_empty_state(
     )
 
     payload = await workspace_bundle_controller.get_space_bundle_installation(
-        "space-without-bundle"
+        "space-without-bundle", Request({"type": "http", "query_string": b""})
     )
 
     assert payload == {"proposal": None}
@@ -794,6 +795,7 @@ async def test_local_value_put_returns_only_the_exact_ref_replaced_by_cas(
                 ],
             }
         ),
+        Request({"type": "http", "query_string": b""}),
     )
 
     assert response["cleanup_secret_refs"] == [old_ref]
