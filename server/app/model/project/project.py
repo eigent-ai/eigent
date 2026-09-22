@@ -89,10 +89,29 @@ class ProjectUpdate(BaseModel):
     workdir_mode: str | None = None
     metadata: dict[str, Any] | None = None
     expected_model_admission_run_id: str | None = Field(default=None, min_length=1)
+    expected_model_admission_revision: str | None = Field(default=None, min_length=1)
+    model_admission_revision: str | None = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
-    def receipt_cleanup_only(self) -> Self:
-        if self.expected_model_admission_run_id is not None and (
+    def validate_model_admission(self) -> Self:
+        if self.model_admission_revision is not None:
+            fields = {
+                "metadata",
+                "expected_model_admission_run_id",
+                "expected_model_admission_revision",
+                "model_admission_revision",
+            }
+            run_id = (self.metadata or {}).get("spaceModelAdmissionRunId")
+            if (
+                self.model_fields_set != fields
+                or set(self.metadata or {}) != {"spaceModelAdmissionRunId"}
+                or (run_id is not None and (not isinstance(run_id, str) or not run_id))
+                or self.model_admission_revision == self.expected_model_admission_revision
+            ):
+                raise ValueError("A receipt transition requires a new revision and its complete expected state")
+        elif "expected_model_admission_revision" in self.model_fields_set:
+            raise ValueError("A receipt transition requires a new revision")
+        elif self.expected_model_admission_run_id is not None and (
             self.metadata != {"spaceModelAdmissionRunId": None}
             or self.model_fields_set - {"metadata", "expected_model_admission_run_id"}
         ):

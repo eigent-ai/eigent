@@ -1422,7 +1422,10 @@ const activeSSEControllers: Record<string, ActiveSSEConnection> = {};
 // proven-unsent receipts so that their owner can release them on a later retry.
 // Unknown ACKs never enter this map; after renderer restart canonical recovery
 // remains authoritative rather than inferring that a request was not sent.
-const unsentSpaceModelAdmissions = new Map<string, string>();
+const unsentSpaceModelAdmissions = new Map<
+  string,
+  { runId: string; revision: string | null }
+>();
 
 // Journal reads outlive the terminal observer/transport, but never a new
 // admission of the same Run. Each read is also bounded by its own deadline.
@@ -2973,13 +2976,17 @@ const chatStore = (initial?: Partial<ChatStore>) =>
         spaceId,
         expectedModelSelection,
       ]);
-      const clearOwnedModelAdmission = (runId: string) => {
+      const clearOwnedModelAdmission = (
+        runId: string,
+        revision: string | null
+      ) => {
         if (!project_id) return;
         try {
           assertModelSelectionCurrent();
+          const current = projectStore.getProjectById(project_id)?.metadata;
           if (
-            projectStore.getProjectById(project_id)?.metadata
-              ?.spaceModelAdmissionRunId === runId
+            current?.spaceModelAdmissionRunId === runId &&
+            (current.spaceModelAdmissionRevision ?? null) === revision
           ) {
             // The Store clears locally before its first await. Observe remote
             // persistence without holding the composer in Preparing for it.
@@ -2991,10 +2998,10 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               )
               .then(
                 () => {
-                  if (
-                    unsentSpaceModelAdmissions.get(modelAdmissionOwnerKey) ===
-                    runId
-                  )
+                  const proof = unsentSpaceModelAdmissions.get(
+                    modelAdmissionOwnerKey
+                  );
+                  if (proof?.runId === runId && proof.revision === revision)
                     unsentSpaceModelAdmissions.delete(modelAdmissionOwnerKey);
                 },
                 (error) => {
@@ -3047,13 +3054,17 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       let spaceModelBinding: ResolvedSpaceModel | undefined;
       let commitSpaceModelPin: (() => void) | undefined;
       try {
+        const unsentProof = unsentSpaceModelAdmissions.get(
+          modelAdmissionOwnerKey
+        );
         if (
           !type &&
           pendingModelAdmission &&
-          unsentSpaceModelAdmissions.get(modelAdmissionOwnerKey) ===
-            pendingModelAdmission
+          unsentProof?.runId === pendingModelAdmission &&
+          unsentProof.revision ===
+            (project?.metadata?.spaceModelAdmissionRevision ?? null)
         ) {
-          clearOwnedModelAdmission(pendingModelAdmission);
+          clearOwnedModelAdmission(pendingModelAdmission, unsentProof.revision);
           assertModelSelectionCurrent();
           pendingModelAdmission = project_id
             ? projectStore.getProjectById(project_id)?.metadata
@@ -4101,24 +4112,40 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             })
           : null;
 
+      let modelAdmissionRevision: string | null = null;
       const releaseUnsentModelAdmission = () => {
         if (!adoptingSpaceDefault || admissionRequested) return;
+        const current = project_id
+          ? projectStore.getProjectById(project_id)?.metadata
+          : undefined;
         if (
           !unsentSpaceModelAdmissions.has(modelAdmissionOwnerKey) ||
-          (project_id &&
-            projectStore.getProjectById(project_id)?.metadata
-              ?.spaceModelAdmissionRunId === newTaskId)
+          (current?.spaceModelAdmissionRunId === newTaskId &&
+            (current.spaceModelAdmissionRevision ?? null) ===
+              modelAdmissionRevision)
         )
-          unsentSpaceModelAdmissions.set(modelAdmissionOwnerKey, newTaskId);
-        clearOwnedModelAdmission(newTaskId);
+          unsentSpaceModelAdmissions.set(modelAdmissionOwnerKey, {
+            runId: newTaskId,
+            revision: modelAdmissionRevision,
+          });
+        clearOwnedModelAdmission(newTaskId, modelAdmissionRevision);
       };
       if (adoptingSpaceDefault && project_id) {
         try {
-          await projectStore.setProjectModelAdmission(
+          const before = projectStore.getProjectById(project_id);
+          const assignment = projectStore.setProjectModelAdmission(
             project_id,
             newTaskId,
             assertModelSelectionCurrent
           );
+          // The Store publishes its receipt synchronously before transport.
+          // Capture this generation, not whichever owner is current on failure.
+          const assigned = projectStore.getProjectById(project_id);
+          modelAdmissionRevision =
+            assigned !== before
+              ? (assigned?.metadata?.spaceModelAdmissionRevision ?? null)
+              : null;
+          await assignment;
           assertAdmissionCurrent();
         } catch (error) {
           releaseUnsentModelAdmission();
@@ -4165,8 +4192,11 @@ const chatStore = (initial?: Partial<ChatStore>) =>
                 adoptingSpaceDefault &&
                 !admissionRequested &&
                 project_id &&
-                projectStore.getProjectById(project_id)?.metadata
-                  ?.spaceModelAdmissionRunId !== newTaskId
+                (projectStore.getProjectById(project_id)?.metadata
+                  ?.spaceModelAdmissionRunId !== newTaskId ||
+                  (projectStore.getProjectById(project_id)?.metadata
+                    ?.spaceModelAdmissionRevision ?? null) !==
+                    modelAdmissionRevision)
               ) {
                 finishStartupFailure();
                 throw spaceModelError('changed');
@@ -6947,7 +6977,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
               respond.status < 500
             ) {
               // A definitive admission rejection is distinct from lost delivery.
-              clearOwnedModelAdmission(newTaskId);
+              clearOwnedModelAdmission(newTaskId, modelAdmissionRevision);
             }
             let detail = `HTTP ${respond.status}`;
             let errorCode: string | undefined;
