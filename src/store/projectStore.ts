@@ -3005,13 +3005,14 @@ const projectStore = create<ProjectStore>()((set, get) => ({
     const ownerKey = JSON.stringify([accountKey, project.spaceId, projectId]);
     let writes = receiptWrites.get(ownerKey);
     if (!writes) receiptWrites.set(ownerKey, (writes = new Map()));
-    const released = previousRunId ? writes.get(previousRunId) : undefined;
-    if (
-      runId !== null &&
-      previousRunId &&
-      previousRunId !== runId &&
-      !released?.abandoned
-    )
+    const previousRevision =
+      project.metadata?.spaceModelAdmissionRevision ?? null;
+    const candidate = previousRunId ? writes.get(previousRunId) : undefined;
+    // A reused Run ID does not transfer the old generation's unsent proof.
+    // Match before publishing locally, including same-Run assignments/clears.
+    const released =
+      candidate?.revision === previousRevision ? candidate : undefined;
+    if (runId !== null && previousRunId && !released?.abandoned)
       throw spaceModelError('changed');
     if (runId === null && released) released.abandoned = true;
     const revision = Array.from(
@@ -3019,8 +3020,7 @@ const projectStore = create<ProjectStore>()((set, get) => ({
       (value) => value.toString(16).padStart(2, '0')
     ).join('');
     let expectedRunId = previousRunId;
-    let expectedRevision =
-      project.metadata?.spaceModelAdmissionRevision ?? null;
+    let expectedRevision = previousRevision;
     const write: ReceiptWrite = {
       revision,
       bases: new Set(),
