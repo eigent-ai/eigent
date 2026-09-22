@@ -646,6 +646,135 @@ describe('projectStore runtime shape', () => {
     }
   );
 
+  it.each(['old-run', 'new-run'])(
+    'refuses to borrow an abandoned proof from another revision for %s',
+    async (targetRun) => {
+      const store = useProjectStore.getState();
+      const id = store.createProject('Fresh session');
+      proxyUpdateSpaceProjectMock.mockRejectedValueOnce(
+        new Error('Lost receipt response')
+      );
+      await expect(
+        store.setProjectModelAdmission(id, 'old-run')
+      ).rejects.toThrow();
+      const current = useProjectStore.getState().projects[id];
+      const synced = {
+        ...current,
+        metadata: {
+          ...current.metadata,
+          spaceModelAdmissionRevision: 'another-accepted-generation',
+        },
+      };
+      useProjectStore.setState({ projects: { [id]: synced } });
+      proxyUpdateSpaceProjectMock.mockClear();
+      await expect(
+        store.setProjectModelAdmission(id, targetRun)
+      ).rejects.toThrow(/changed/);
+      expect(proxyUpdateSpaceProjectMock).not.toHaveBeenCalled();
+      expect(useProjectStore.getState().projects[id]).toBe(synced);
+    }
+  );
+
+  it('refuses to replace a same-Run generation whose delivery is not known unsent', async () => {
+    const store = useProjectStore.getState();
+    const id = store.createProject('Fresh session');
+    await store.setProjectModelAdmission(id, 'unknown-ack-run');
+    const current = useProjectStore.getState().projects[id];
+    proxyUpdateSpaceProjectMock.mockClear();
+    await expect(
+      store.setProjectModelAdmission(id, 'unknown-ack-run')
+    ).rejects.toThrow(/changed/);
+    expect(proxyUpdateSpaceProjectMock).not.toHaveBeenCalled();
+    expect(useProjectStore.getState().projects[id]).toBe(current);
+  });
+
+  it.each(['failed-run', 'new-run'])(
+    'allows a proven-unsent generation to retry as %s',
+    async (targetRun) => {
+      const store = useProjectStore.getState();
+      const id = store.createProject('Fresh session');
+      proxyUpdateSpaceProjectMock.mockRejectedValueOnce(
+        new Error('Lost receipt response')
+      );
+      await expect(
+        store.setProjectModelAdmission(id, 'failed-run')
+      ).rejects.toThrow();
+      const previousRevision =
+        useProjectStore.getState().projects[id].metadata!
+          .spaceModelAdmissionRevision;
+      await store.setProjectModelAdmission(id, targetRun);
+      expect(proxyUpdateSpaceProjectMock).toHaveBeenCalledTimes(2);
+      expect(proxyUpdateSpaceProjectMock.mock.calls[1][2]).toMatchObject({
+        metadata: { spaceModelAdmissionRunId: targetRun },
+        expected_model_admission_run_id: 'failed-run',
+        expected_model_admission_revision: previousRevision,
+      });
+      const current = useProjectStore.getState().projects[id].metadata!;
+      expect(current.spaceModelAdmissionRunId).toBe(targetRun);
+      expect(current.spaceModelAdmissionRevision).not.toBe(previousRevision);
+    }
+  );
+
+  it('allows a new generation of the same Run after explicit release', async () => {
+    const store = useProjectStore.getState();
+    const id = store.createProject('Fresh session');
+    await store.setProjectModelAdmission(id, 'reused-run');
+    const firstRevision =
+      useProjectStore.getState().projects[id].metadata!
+        .spaceModelAdmissionRevision;
+    await store.setProjectModelAdmission(id, null);
+    const clearedRevision =
+      useProjectStore.getState().projects[id].metadata!
+        .spaceModelAdmissionRevision;
+    await store.setProjectModelAdmission(id, 'reused-run');
+    expect(proxyUpdateSpaceProjectMock).toHaveBeenCalledTimes(3);
+    expect(proxyUpdateSpaceProjectMock.mock.calls[2][2]).toMatchObject({
+      metadata: { spaceModelAdmissionRunId: 'reused-run' },
+      expected_model_admission_run_id: null,
+      expected_model_admission_revision: clearedRevision,
+    });
+    const current = useProjectStore.getState().projects[id].metadata!;
+    expect(current.spaceModelAdmissionRunId).toBe('reused-run');
+    expect(
+      new Set([
+        firstRevision,
+        clearedRevision,
+        current.spaceModelAdmissionRevision,
+      ]).size
+    ).toBe(3);
+  });
+
+  it('does not mark another generation abandoned when clearing the same Run ID', async () => {
+    const store = useProjectStore.getState();
+    const id = store.createProject('Fresh session');
+    await store.setProjectModelAdmission(id, 'accepted-run');
+    const accepted = useProjectStore.getState().projects[id];
+    useProjectStore.setState({
+      projects: {
+        [id]: {
+          ...accepted,
+          metadata: {
+            ...accepted.metadata,
+            spaceModelAdmissionRevision: 'later-generation',
+          },
+        },
+      },
+    });
+    proxyUpdateSpaceProjectMock.mockRejectedValueOnce(
+      new Error('Cleanup failed')
+    );
+    await expect(store.setProjectModelAdmission(id, null)).rejects.toThrow();
+    // Reconcile back to the original unknown-ACK generation. Clearing a later
+    // generation must not have converted its old record into an unsent proof.
+    useProjectStore.setState({ projects: { [id]: accepted } });
+    proxyUpdateSpaceProjectMock.mockClear();
+    await expect(
+      store.setProjectModelAdmission(id, 'replacement')
+    ).rejects.toThrow(/changed/);
+    expect(proxyUpdateSpaceProjectMock).not.toHaveBeenCalled();
+    expect(useProjectStore.getState().projects[id]).toBe(accepted);
+  });
+
   it('bounds version conflicts and allows cleanup followed by a legitimate same-Session retry', async () => {
     const store = useProjectStore.getState();
     const id = store.createProject('Fresh session');

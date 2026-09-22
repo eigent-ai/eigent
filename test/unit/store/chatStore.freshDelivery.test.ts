@@ -390,6 +390,58 @@ describe('Fresh Space admission at actual HTTP delivery', () => {
     }
   );
 
+  it.each([null, 'unknown-generation'])(
+    'does not release an unchanged merged receipt after assignment rejects (revision=%s)',
+    async (revision) => {
+      const taskId = chat.getState().create();
+      const originalGet = mocks.get.getMockImplementation()!;
+      mocks.get.mockImplementation(async (url, params) => {
+        const result = await originalGet(url, params);
+        if (url === '/api/v1/user/key') {
+          project.metadata.spaceModelAdmissionRunId = taskId;
+          project.metadata.spaceModelAdmissionRevision = revision;
+        }
+        return result;
+      });
+      // The real getter merges Space metadata into a newly allocated shell.
+      mocks.projectStore.getProjectById = () => ({
+        ...project,
+        metadata: { ...project.metadata },
+      });
+      const rejected = new Error('Unknown receipt generation');
+      mocks.projectStore.setProjectModelAdmission.mockRejectedValue(rejected);
+      await expect(
+        chat
+          .getState()
+          .startTask(
+            taskId,
+            undefined,
+            undefined,
+            undefined,
+            'Retained draft',
+            [],
+            undefined,
+            'session-1',
+            'single-agent',
+            {
+              skipHistoryCreate: true,
+              awaitAdmission: true,
+              preserveTaskId: true,
+            }
+          )
+      ).rejects.toBe(rejected);
+      expect(
+        mocks.projectStore.setProjectModelAdmission
+      ).toHaveBeenCalledOnce();
+      expect(mocks.sse).not.toHaveBeenCalled();
+      expect(project.metadata).toMatchObject({
+        spaceModelAdmissionRunId: taskId,
+        spaceModelAdmissionRevision: revision,
+      });
+      expect(chat.getState().tasks[taskId].isPending).toBe(false);
+    }
+  );
+
   it('keeps local eligibility and the original error when receipt cleanup persistence fails', async () => {
     const delivery = await useActualTransport();
     mocks.projectStore.setProjectModelAdmission.mockImplementation(

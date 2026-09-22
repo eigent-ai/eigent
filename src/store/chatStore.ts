@@ -4112,9 +4112,14 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             })
           : null;
 
-      let modelAdmissionRevision: string | null = null;
+      let modelAdmissionRevision: string | null | undefined;
       const releaseUnsentModelAdmission = () => {
-        if (!adoptingSpaceDefault || admissionRequested) return;
+        if (
+          !adoptingSpaceDefault ||
+          admissionRequested ||
+          modelAdmissionRevision === undefined
+        )
+          return;
         const current = project_id
           ? projectStore.getProjectById(project_id)?.metadata
           : undefined;
@@ -4132,19 +4137,25 @@ const chatStore = (initial?: Partial<ChatStore>) =>
       };
       if (adoptingSpaceDefault && project_id) {
         try {
-          const before = projectStore.getProjectById(project_id);
+          const before = projectStore.getProjectById(project_id)?.metadata;
+          const beforeRunId = before?.spaceModelAdmissionRunId ?? null;
+          const beforeRevision = before?.spaceModelAdmissionRevision ?? null;
           const assignment = projectStore.setProjectModelAdmission(
             project_id,
             newTaskId,
             assertModelSelectionCurrent
           );
           // The Store publishes its receipt synchronously before transport.
-          // Capture this generation, not whichever owner is current on failure.
-          const assigned = projectStore.getProjectById(project_id);
-          modelAdmissionRevision =
-            assigned !== before
-              ? (assigned?.metadata?.spaceModelAdmissionRevision ?? null)
-              : null;
+          // Compare receipt values: getProjectById may return a new merged
+          // object even when the setter rejected before publishing anything.
+          const assigned = projectStore.getProjectById(project_id)?.metadata;
+          if (
+            assigned?.spaceModelAdmissionRunId === newTaskId &&
+            (beforeRunId !== newTaskId ||
+              (assigned.spaceModelAdmissionRevision ?? null) !== beforeRevision)
+          )
+            modelAdmissionRevision =
+              assigned.spaceModelAdmissionRevision ?? null;
           await assignment;
           assertAdmissionCurrent();
         } catch (error) {
@@ -6973,6 +6984,7 @@ const chatStore = (initial?: Partial<ChatStore>) =>
             if (
               adoptingSpaceDefault &&
               project_id &&
+              modelAdmissionRevision !== undefined &&
               respond.status >= 400 &&
               respond.status < 500
             ) {
