@@ -96,11 +96,7 @@ export enum TriggerType {
 /** Slack event input data from slack_trigger execution */
 export interface SlackInputData {
   event_type:
-    | 'app_mention'
-    | 'message'
-    | 'reaction_added'
-    | 'reaction_removed'
-    | string;
+    'app_mention' | 'message' | 'reaction_added' | 'reaction_removed' | string;
   event_ts: string;
   team_id: string;
   user_id: string;
