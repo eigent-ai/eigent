@@ -12,11 +12,15 @@
 # limitations under the License.
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import copy
+import json
+
 import httpx
 import pytest
 from camel.models import ModelFactory
 from camel.models.openai_compatible_model import OpenAICompatibleModel
-from openai import AsyncOpenAI, BadRequestError
+from camel.toolkits import FunctionTool
+from openai import AsyncOpenAI, BadRequestError, OpenAI
 from pydantic import BaseModel
 
 from app.model.model_platform import (
@@ -111,6 +115,159 @@ def test_non_meta_backend_keeps_strict_tool_schema():
     configure_meta_model_api_backend(backend, "https://api.openai.com/v1")
 
     assert backend._prepare_request_config(tools)["tools"] == tools
+
+
+@pytest.mark.parametrize(
+    "nested_schema",
+    [
+        {"type": "object"},
+        {"type": "object", "additionalProperties": True},
+        {"type": "object", "additionalProperties": {"type": "string"}},
+        {"type": ["object", "null"], "additionalProperties": True},
+        {"type": "array", "items": {"type": "object"}},
+        {"anyOf": [{"type": "null"}, {"type": "object"}]},
+        {"allOf": [{"type": "object"}]},
+        {"oneOf": [{"type": "object"}]},
+        {"$ref": "#/$defs/Mapping", "$defs": {"Mapping": {"type": "object"}}},
+    ],
+)
+def test_meta_only_relaxes_tools_with_open_object_schemas(nested_schema):
+    class Backend:
+        def _prepare_request_config(self, tools=None):
+            return {"tools": tools}
+
+    closed_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "query": {
+                "type": "string",
+                "enum": ["object", "additionalProperties"],
+            }
+        },
+        "required": ["query"],
+    }
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "lookup",
+                "strict": True,
+                "parameters": closed_schema,
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "mapping_tool",
+                "strict": True,
+                "parameters": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {"value": nested_schema},
+                    "required": ["value"],
+                },
+            },
+        },
+    ]
+    original_tools = copy.deepcopy(tools)
+    backend = Backend()
+    configure_meta_model_api_backend(backend, "https://api.meta.ai/v1")
+    configure_meta_model_api_backend(backend, "https://api.meta.ai/v1")
+
+    prepared = backend._prepare_request_config(tools)["tools"]
+
+    assert prepared[0] == original_tools[0]
+    assert "strict" not in prepared[1]["function"]
+    assert (
+        prepared[1]["function"]["parameters"]
+        == tools[1]["function"]["parameters"]
+    )
+    assert tools == original_tools
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_meta_strict_tools_support_structured_output(asynchronous):
+    """Exercise the SDK parse path used by workers with native output schemas."""
+
+    class WorkerResult(BaseModel):
+        result: str
+
+    def lookup(query: str) -> str:
+        """Look up a value.
+
+        Args:
+            query: The value to look up.
+        """
+        return query
+
+    tools = [FunctionTool(lookup).get_openai_tool_schema()]
+    original_tools = copy.deepcopy(tools)
+    requests = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "id": "chatcmpl-test",
+                "object": "chat.completion",
+                "created": 0,
+                "model": "muse-spark-1.3",
+                "choices": [
+                    {
+                        "index": 0,
+                        "finish_reason": "stop",
+                        "message": {
+                            "role": "assistant",
+                            "content": '{"result":"done"}',
+                        },
+                    }
+                ],
+            },
+        )
+
+    transport = httpx.MockTransport(respond)
+    with OpenAI(
+        api_key="test-key",
+        base_url="https://api.meta.ai/v1",
+        http_client=httpx.Client(transport=transport),
+        max_retries=0,
+    ) as client:
+        async with AsyncOpenAI(
+            api_key="test-key",
+            base_url="https://api.meta.ai/v1",
+            http_client=httpx.AsyncClient(transport=transport),
+            max_retries=0,
+        ) as async_client:
+            backend = ModelFactory.create(
+                model_platform="openai-compatible-model",
+                model_type="muse-spark-1.3",
+                api_key="test-key",
+                url="https://api.meta.ai/v1",
+                client=client,
+                async_client=async_client,
+                model_config_dict={"stream": False},
+            )
+            configure_meta_model_api_backend(backend, "https://api.meta.ai/v1")
+            messages = [{"role": "user", "content": "Return the result."}]
+            if asynchronous:
+                response = await backend._arequest_parse(
+                    messages, WorkerResult, tools
+                )
+            else:
+                response = backend._request_parse(
+                    messages, WorkerResult, tools
+                )
+
+    assert response.choices[0].message.parsed == WorkerResult(result="done")
+    assert len(requests) == 1
+    assert requests[0].url.path == "/v1/chat/completions"
+    payload = json.loads(requests[0].content)
+    assert payload["tools"][0]["function"]["strict"] is True
+    assert payload["response_format"]["type"] == "json_schema"
+    assert tools == original_tools
 
 
 def test_normalize_optional_model_platform_handles_none():

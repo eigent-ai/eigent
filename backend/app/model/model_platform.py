@@ -105,6 +105,41 @@ def is_meta_model_api_endpoint(api_url: object) -> bool:
         return False
 
 
+def _meta_schema_requires_non_strict(schema: object) -> bool:
+    """Find object schemas that are not closed, without changing arguments."""
+    if not isinstance(schema, dict):
+        return False
+
+    schema_type = schema.get("type")
+    is_object = (
+        schema_type == "object"
+        or (isinstance(schema_type, list) and "object" in schema_type)
+        or "properties" in schema
+        or "additionalProperties" in schema
+    )
+    if is_object and schema.get("additionalProperties") is not False:
+        return True
+
+    # Visit schema-bearing keywords, not data in defaults, enums or examples.
+    for keyword in ("properties", "$defs", "definitions", "patternProperties"):
+        children = schema.get(keyword)
+        if isinstance(children, dict) and any(
+            _meta_schema_requires_non_strict(child)
+            for child in children.values()
+        ):
+            return True
+    for keyword in ("items", "prefixItems", "allOf", "anyOf", "oneOf", "not"):
+        children = schema.get(keyword)
+        if isinstance(children, list):
+            if any(
+                _meta_schema_requires_non_strict(child) for child in children
+            ):
+                return True
+        elif _meta_schema_requires_non_strict(children):
+            return True
+    return False
+
+
 def configure_meta_model_api_backend(
     model_backend: Any, api_url: object
 ) -> None:
@@ -114,9 +149,9 @@ def configure_meta_model_api_backend(
     every object schema to set ``additionalProperties`` to ``false``, but
     Eigent has tools with dictionary arguments whose additional properties
     describe the dictionary value type. Meta accepts those schemas when strict
-    mode is omitted, which is also the documented default. Eigent currently
-    uses Meta's Chat Completions transport, whose CAMEL request preparation is
-    adapted here.
+    mode is omitted. Preserve strict mode for closed schemas: the SDK's native
+    structured-output parser requires strict tools, including for Meta workers
+    in a Workforce. Only relax tools whose object schemas are not closed.
     """
     if not is_meta_model_api_endpoint(api_url) or getattr(
         model_backend, "_eigent_meta_tools_configured", False
@@ -129,7 +164,7 @@ def configure_meta_model_api_backend(
     if not callable(prepare):
         return
 
-    def prepare_without_strict_tools(tools=None):
+    def prepare_with_compatible_tools(tools=None):
         request_config = prepare(tools)
         request_tools = request_config.get("tools")
         if not isinstance(request_tools, list):
@@ -140,19 +175,25 @@ def configure_meta_model_api_backend(
             if not isinstance(tool, dict) or tool.get("type") != "function":
                 compatible_tools.append(tool)
                 continue
-            compatible_tool = dict(tool)
             function = tool.get("function")
-            if isinstance(function, dict):
-                compatible_function = dict(function)
-                compatible_function.pop("strict", None)
-                compatible_tool["function"] = compatible_function
+            if not isinstance(
+                function, dict
+            ) or not _meta_schema_requires_non_strict(
+                function.get("parameters")
+            ):
+                compatible_tools.append(tool)
+                continue
+            compatible_tool = dict(tool)
+            compatible_function = dict(function)
+            compatible_function.pop("strict", None)
+            compatible_tool["function"] = compatible_function
             compatible_tool.pop("strict", None)
             compatible_tools.append(compatible_tool)
 
         return {**request_config, "tools": compatible_tools}
 
     model_backend._prepare_request_config = (  # noqa: SLF001
-        prepare_without_strict_tools
+        prepare_with_compatible_tools
     )
     model_backend._eigent_meta_tools_configured = True  # noqa: SLF001
 
