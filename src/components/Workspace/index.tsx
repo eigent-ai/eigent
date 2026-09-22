@@ -20,6 +20,7 @@ import { SingleAgentList } from '@/components/Workspace/SingleAgentList';
 import { WorkforceAgentList } from '@/components/Workspace/WorkforceAgentList';
 import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useModelConfigCheck } from '@/hooks/useModelConfigCheck';
+import { useNewSessionModelQuota } from '@/hooks/useNewSessionModelQuota';
 import { useUsageIncidentBanner } from '@/hooks/useUsageIncidentBanner';
 import { useHost } from '@/host';
 import { notifyError } from '@/lib/notifyError';
@@ -99,9 +100,7 @@ export default function Workspace({
   const directProjectStartRef = useRef(false);
   const mountedRef = useRef(false);
   const [isStartingDirectProject, setIsStartingDirectProject] = useState(false);
-  const { hasModel, cloudUsageLimitReached } = useModelConfigCheck();
-  const isCloudUsageLimited = modelType === 'cloud' && cloudUsageLimitReached;
-  const usageLimitBanner = useUsageIncidentBanner(modelType);
+  const { hasModel } = useModelConfigCheck();
   // A fresh Session resolves its materialized Space model at launch. The
   // unrelated global preference cannot establish whether that model is usable.
   const canResolveSpaceModelAtLaunch = Boolean(
@@ -113,6 +112,35 @@ export default function Workspace({
     (!activeSpace.userId || activeSpace.userId === String(user_id))
   );
   const canStartWithModel = hasModel || canResolveSpaceModelAtLaunch;
+  const modelQuota = useNewSessionModelQuota(
+    canResolveSpaceModelAtLaunch ? activeSpaceId : null,
+    modelType
+  );
+  const incidentBanner = useUsageIncidentBanner(
+    modelQuota.isCurrentAccount ? (modelQuota.effectiveModelType ?? '') : ''
+  );
+  const usageLimitBanner = modelQuota.error
+    ? {
+        message: modelQuota.error.message,
+        actionLabel: t('chat.notice-refresh'),
+        severity: 'danger' as const,
+        onAction: modelQuota.refresh,
+      }
+    : incidentBanner
+      ? {
+          ...incidentBanner,
+          onAction: () => {
+            incidentBanner.onAction();
+            modelQuota.refresh();
+          },
+          onRefresh: incidentBanner.onRefresh
+            ? () => {
+                incidentBanner.onRefresh?.();
+                modelQuota.refresh();
+              }
+            : undefined,
+        }
+      : null;
   const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
   const [addWorkerDialogOpen, setAddWorkerDialogOpen] = useState(false);
   const [editingWorkerAgent, setEditingWorkerAgent] = useState<Agent | null>(
@@ -158,8 +186,8 @@ export default function Workspace({
       return;
     }
 
-    // A known account limit should not create another empty Session.
-    if (isCloudUsageLimited) return;
+    // Resolve the actual Space category before creating a quota-blocked Session.
+    if (modelQuota.blocked) return;
 
     if (!canStartWithModel) {
       toast.error(t('layout.please-select-model-first'));
@@ -194,6 +222,8 @@ export default function Workspace({
         return;
       }
 
+      const assertStartingContext = await modelQuota.beforeCreate();
+      if (!mountedRef.current) return;
       const projectStore = useProjectRuntimeStore.getState();
       const composerThinkingEffort = projectStore.getComposerThinkingEffort();
       const syncedProject = await createSyncedProjectInSpace({
@@ -211,6 +241,8 @@ export default function Workspace({
             : {}),
         },
       });
+      assertStartingContext();
+      if (!mountedRef.current) return;
       useSpaceStore.getState().setActiveSpace(syncedProject.spaceId);
       const targetProjectId = syncedProject.projectId;
       const targetChatStore =
@@ -305,7 +337,7 @@ export default function Workspace({
     onAddFile: handleFileSelect,
     disabled:
       !canStartWithModel ||
-      isCloudUsageLimited ||
+      modelQuota.blocked ||
       isStartingDirectProject ||
       isLegacyActiveSpace,
     textareaRef,
@@ -443,7 +475,7 @@ export default function Workspace({
           state="input"
           queuedMessages={[]}
           onRemoveQueuedMessage={() => {}}
-          noModelOverlay={!canStartWithModel && !isCloudUsageLimited}
+          noModelOverlay={!canStartWithModel && !modelQuota.blocked}
           usageLimitBanner={usageLimitBanner}
           onSelectModel={() => openSettings('models')}
           inputProps={composerInputProps}

@@ -294,7 +294,8 @@ describe('Workspace delegates current Space model validation to launch', () => {
         [],
         undefined,
         'new-session',
-        'single-agent'
+        'single-agent',
+        { awaitAdmission: true }
       );
       expect(openSettings).not.toHaveBeenCalled();
       expect(toast.error).not.toHaveBeenCalled();
@@ -364,15 +365,13 @@ describe('Workspace delegates current Space model validation to launch', () => {
       await renderAfterGlobalProviderReset(variant);
       fireEvent.click(screen.getByRole('button', { name: 'Send' }));
       await waitFor(() =>
-        expect(toast.error).toHaveBeenCalledWith(failure.message)
+        expect(toast.error).toHaveBeenCalledWith(failure.message, undefined)
       );
       expect(createSyncedProjectInSpace).toHaveBeenCalledTimes(1);
       expect(mocks.newChatState.startTask).toHaveBeenCalledTimes(1);
       expect(mocks.projectState.setProjectModel).not.toHaveBeenCalled();
       expect(mocks.newChatState.setHasWaitComfirm).not.toHaveBeenCalled();
-      expect(mocks.pageState.setActiveWorkspaceTab).toHaveBeenLastCalledWith(
-        'workforce'
-      );
+      expect(mocks.pageState.setActiveWorkspaceTab).not.toHaveBeenCalled();
       expect(screen.getByLabelText('Session message')).toHaveValue(question);
       expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled();
       expect(openSettings).not.toHaveBeenCalled();
