@@ -13,13 +13,12 @@
 # ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 from datetime import datetime
-from typing import Any
-
-from pydantic import BaseModel
-from sqlalchemy import CheckConstraint
-from sqlmodel import JSON, Column, Field, String, UniqueConstraint
+from typing import Any, Self
 
 from app.model.abstract.model import AbstractModel, DefaultTimes
+from pydantic import BaseModel, model_validator
+from sqlalchemy import CheckConstraint
+from sqlmodel import JSON, Column, Field, String, UniqueConstraint
 
 
 class ProjectMode:
@@ -89,6 +88,16 @@ class ProjectUpdate(BaseModel):
     status: str | None = None
     workdir_mode: str | None = None
     metadata: dict[str, Any] | None = None
+    expected_model_admission_run_id: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def receipt_cleanup_only(self) -> Self:
+        if self.expected_model_admission_run_id is not None and (
+            self.metadata != {"spaceModelAdmissionRunId": None}
+            or self.model_fields_set - {"metadata", "expected_model_admission_run_id"}
+        ):
+            raise ValueError("Conditional receipt cleanup cannot change other project fields")
+        return self
 
 
 class ProjectOut(BaseModel):
