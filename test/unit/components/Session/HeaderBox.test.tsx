@@ -155,6 +155,8 @@ describe('HeaderBox chat timeline mode', () => {
 
     expect(menu).toContainElement(title);
     expect(menu).toContainElement(menuIcon as HTMLElement);
+    expect(menu).toHaveClass('active:scale-100');
+    expect(menu).not.toHaveClass('active:scale-[0.97]');
     expect(title).toHaveClass('max-w-[200px]', 'overflow-hidden');
     expect(title).not.toHaveClass('truncate');
     expect((title as HTMLElement).style.maskImage).toBe('');
@@ -212,9 +214,10 @@ describe('HeaderBox chat timeline mode', () => {
     );
     const items = screen.getAllByRole('menuitem');
     expect(items.slice(0, 2).map((item) => item.textContent)).toEqual([
-      'Draft with skill',
-      'Create automation',
+      'Turn into skill',
+      'Turn into automation',
     ]);
+    expect(items[0].closest('[role="menu"]')).toHaveClass('w-56');
     expect(items[0]).toHaveAttribute('aria-disabled', 'true');
     expect(items[1]).toHaveAttribute('aria-disabled', 'true');
   });
@@ -235,8 +238,8 @@ describe('HeaderBox chat timeline mode', () => {
     useSkillsStore.setState({
       skills: [
         {
-          id: 'automation-draft',
-          name: 'automation-draft',
+          id: 'skill-creator',
+          name: 'skill-creator',
           description: '',
           filePath: '',
           fileContent: '',
@@ -257,12 +260,15 @@ describe('HeaderBox chat timeline mode', () => {
       });
       await user.click(trigger);
       await user.click(
-        screen.getByRole('menuitem', { name: 'Draft with skill' })
+        screen.getByRole('menuitem', { name: 'Turn into skill' })
       );
       expect(requestChatDraft).toHaveBeenCalledWith(
-        expect.stringContaining('Original request:\nOriginal request'),
+        expect.stringContaining('#skill-creator'),
         undefined,
         { projectId: 'project-1', ifEmpty: true }
+      );
+      expect(requestChatDraft.mock.calls[0][0]).toContain(
+        'Original request:\nOriginal request'
       );
       expect(requestChatDraft.mock.calls[0][0]).toContain(
         'Final result summary:\nFinal result'
@@ -270,7 +276,7 @@ describe('HeaderBox chat timeline mode', () => {
 
       await user.click(trigger);
       await user.click(
-        screen.getByRole('menuitem', { name: 'Create automation' })
+        screen.getByRole('menuitem', { name: 'Turn into automation' })
       );
       expect(
         screen.getByRole('dialog', { name: 'Automation draft' })
@@ -305,11 +311,17 @@ describe('HeaderBox chat timeline mode', () => {
     });
     await user.click(trigger);
     const viewSettings = screen.getByRole('menuitem', {
-      name: 'View settings',
+      name: 'View settings Narrative',
     });
     const narrativeDetail = screen.getByRole('menuitem', {
-      name: 'Narrative detail',
+      name: 'Narrative detail Compact',
     });
+    expect(
+      viewSettings.querySelector('.lucide-gallery-thumbnails')
+    ).toBeTruthy();
+    expect(
+      narrativeDetail.querySelector('.lucide-sliders-horizontal')
+    ).toBeTruthy();
     expect(viewSettings).toHaveAttribute('aria-haspopup', 'menu');
     expect(narrativeDetail).not.toHaveAttribute('aria-disabled', 'true');
 
@@ -324,7 +336,12 @@ describe('HeaderBox chat timeline mode', () => {
     );
 
     await user.click(trigger);
-    await user.click(screen.getByRole('menuitem', { name: 'View settings' }));
+    expect(
+      screen.getByRole('menuitem', { name: 'Narrative detail Expanded' })
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole('menuitem', { name: 'View settings Narrative' })
+    );
     expect(
       screen.getByRole('menuitemradio', { name: 'Narrative' })
     ).toHaveAttribute('aria-checked', 'true');
@@ -337,7 +354,10 @@ describe('HeaderBox chat timeline mode', () => {
     );
     await user.click(trigger);
     expect(
-      screen.getByRole('menuitem', { name: 'Narrative detail' })
+      screen.getByRole('menuitem', { name: 'View settings Trajectory' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Narrative detail Expanded' })
     ).toHaveAttribute('aria-disabled', 'true');
   });
 
@@ -448,7 +468,7 @@ describe('HeaderBox chat timeline mode', () => {
     trigger.focus();
     await user.keyboard('{Enter}');
     const viewSettings = screen.getByRole('menuitem', {
-      name: 'View settings',
+      name: 'View settings Narrative',
     });
     act(() => viewSettings.focus());
     await user.keyboard('{ArrowRight}');

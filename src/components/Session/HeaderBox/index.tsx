@@ -61,6 +61,7 @@ import {
   GalleryThumbnails,
   Pencil,
   Pin,
+  SlidersHorizontal,
   Trash2,
   WandSparkles,
 } from 'lucide-react';
@@ -171,12 +172,12 @@ export function HeaderBox({
   const activePreviewProjectId = usePageTabStore(
     (state) => state.sessionPreviewProjectId
   );
-  const skillAvailable = useSkillsStore((state) =>
+  const skillCreatorAvailable = useSkillsStore((state) =>
     state.skills.some(
       (skill) =>
         skill.enabled &&
-        (skill.name === 'automation-draft' ||
-          skill.skillDirName === 'automation-draft')
+        (skill.name === 'skill-creator' ||
+          skill.skillDirName === 'skill-creator')
     )
   );
   const pinned = Boolean(projectId && pinnedProjectIds.includes(projectId));
@@ -230,16 +231,16 @@ export function HeaderBox({
     t(`chat.timeline-density-${density}`, {
       defaultValue: NARRATIVE_DENSITY_FALLBACK_LABELS[density],
     });
-  const draftWithSkill = () => {
+  const turnIntoSkill = () => {
     if (!projectId || !automationSource || activePreviewProjectId !== projectId)
       return;
-    if (!skillAvailable) {
+    if (!skillCreatorAvailable) {
       toast.info(t('chat.automation-skill-unavailable'));
       return;
     }
     const prompt = [
-      '#automation-draft',
-      'Use the automation-draft skill to propose an editable automation for this completed Task. Do not create it. Return the versioned automation-draft block.',
+      '#skill-creator',
+      'Use the skill-creator skill to turn this completed Task into a reusable skill. Generalize the repeatable workflow rather than copying the one-off result. Show the proposed skill for review before saving it.',
       `Original request:\n${automationSource.taskPrompt.slice(0, 4000)}`,
       `Final result summary:\n${automationSource.resultContent.slice(0, 4000)}`,
     ].join('\n\n');
@@ -298,7 +299,7 @@ export function HeaderBox({
                 size="sm"
                 buttonContent="text"
                 className={cn(
-                  'no-drag max-w-full min-w-0 shrink',
+                  'no-drag max-w-full min-w-0 shrink active:scale-100',
                   sessionMenuOpen &&
                     'bg-ds-neutral-strong-default text-ds-ink-default-default'
                 )}
@@ -324,7 +325,7 @@ export function HeaderBox({
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="start"
-              className="w-64"
+              className="w-56"
               onCloseAutoFocus={(event) => {
                 if (automationDialogOpen) event.preventDefault();
               }}
@@ -333,7 +334,7 @@ export function HeaderBox({
                 disabled={
                   !automationSource || activePreviewProjectId !== projectId
                 }
-                onSelect={draftWithSkill}
+                onSelect={turnIntoSkill}
               >
                 <DsIcon icon={WandSparkles} recipe="main" />
                 {t('chat.automation-draft-with-skill')}
@@ -344,17 +345,23 @@ export function HeaderBox({
               >
                 <DsIcon icon={AlarmClock} recipe="main" />
                 {t('chat.create-automation-from-task', {
-                  defaultValue: 'Create automation',
+                  defaultValue: 'Turn into automation',
                 })}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               {eventNativeTimelineEnabled ? (
                 <>
                   <DropdownMenuSub>
-                    <DropdownMenuSubTrigger className="min-h-ds-control-lg">
-                      {t('chat.timeline-view-settings', {
-                        defaultValue: 'View settings',
-                      })}
+                    <DropdownMenuSubTrigger className="min-h-ds-control-lg w-full min-w-0">
+                      <DsIcon icon={GalleryThumbnails} recipe="main" />
+                      <span className="min-w-0 flex-1 truncate">
+                        {t('chat.timeline-view-settings', {
+                          defaultValue: 'View settings',
+                        })}
+                      </span>
+                      <span className="shrink-0 text-ds-text-meta text-ds-ink-muted-default">
+                        {timelineStyleLabel(chatTimelineDetailLevel)}
+                      </span>
                     </DropdownMenuSubTrigger>
                     <DropdownMenuSubContent className="w-44">
                       <DropdownMenuRadioGroup
@@ -376,12 +383,18 @@ export function HeaderBox({
                   </DropdownMenuSub>
                   <DropdownMenuSub>
                     <DropdownMenuSubTrigger
-                      className="min-h-ds-control-lg"
+                      className="min-h-ds-control-lg w-full min-w-0"
                       disabled={chatTimelineDetailLevel !== 'narrative'}
                     >
-                      {t('chat.timeline-narrative-detail-label', {
-                        defaultValue: 'Narrative detail',
-                      })}
+                      <DsIcon icon={SlidersHorizontal} recipe="main" />
+                      <span className="min-w-0 flex-1 truncate">
+                        {t('chat.timeline-narrative-detail-label', {
+                          defaultValue: 'Narrative detail',
+                        })}
+                      </span>
+                      <span className="shrink-0 text-ds-text-meta text-ds-ink-muted-default">
+                        {densityLabel(narrativeInformationDensity)}
+                      </span>
                     </DropdownMenuSubTrigger>
                     <DropdownMenuSubContent className="w-44">
                       <DropdownMenuRadioGroup
