@@ -36,7 +36,6 @@ import { normalizeRunReviewPath } from './RunFiles';
 import {
   hasRunExecutionRows,
   isActiveRunStatus,
-  RunActivityIndicator,
   statusIcon,
   statusLabel,
   type InteractiveTimelinePlan,
@@ -666,11 +665,6 @@ function DetailedRun({
       {isActiveRunStatus(run.status) && !hasRunExecutionRows(run) ? (
         <div className="px-3 py-2">
           <PreparingToExecuteTasks />
-        </div>
-      ) : null}
-      {run.status === 'running' && !paused && hasRunExecutionRows(run) ? (
-        <div className="px-3 py-2">
-          <RunActivityIndicator />
         </div>
       ) : null}
     </section>

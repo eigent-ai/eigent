@@ -364,7 +364,7 @@ export function UserMessageCard({
             <time
               dateTime={validDate!.toISOString()}
               title={fullTimeLabel ?? undefined}
-              className="text-ds-text-meta text-ds-ink-muted-default"
+              className="px-ds-6 text-ds-text-meta text-ds-ink-muted-default"
             >
               {timeLabel}
             </time>

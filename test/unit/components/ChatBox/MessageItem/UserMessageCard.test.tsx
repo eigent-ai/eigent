@@ -112,6 +112,7 @@ describe('UserMessageCard', () => {
       'datetime',
       '2026-09-23T10:15:00.000Z'
     );
+    expect(container.querySelector('time')).toHaveClass('px-ds-6');
     expect(hoverActions).toContainElement(
       screen.getByRole('button', { name: 'Copy message' })
     );

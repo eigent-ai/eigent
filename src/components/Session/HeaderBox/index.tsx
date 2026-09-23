@@ -64,7 +64,7 @@ import {
   Trash2,
   WandSparkles,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
@@ -90,6 +90,10 @@ const NARRATIVE_DENSITY_FALLBACK_LABELS: Record<
 /** Match the composer control row when the resizable Session pane is narrow. */
 const COMPACT_WIDTH_THRESHOLD = 460;
 
+/** A mask fades the text itself, so the Button's rest, hover, and open surfaces remain intact. */
+const TITLE_OVERFLOW_MASK =
+  'linear-gradient(to right, white calc(100% - var(--ds-ref-space-24)), transparent 100%)';
+
 export interface HeaderBoxProps {
   /** Total token count for the current project */
   totalTokens?: number;
@@ -113,6 +117,8 @@ export function HeaderBox({
 }: HeaderBoxProps) {
   const { t } = useTranslation();
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
+  const titleRef = useRef<HTMLSpanElement>(null);
+  const [titleOverflowing, setTitleOverflowing] = useState(false);
   const [automationDialogOpen, setAutomationDialogOpen] = useState(false);
   const [automationDialogContext, setAutomationDialogContext] = useState<{
     projectId: string;
@@ -124,6 +130,18 @@ export function HeaderBox({
   const [headerRef, compact] = useIsCompactWidth<HTMLDivElement>(
     COMPACT_WIDTH_THRESHOLD
   );
+  useLayoutEffect(() => {
+    const title = titleRef.current;
+    if (!title) return;
+
+    const measure = () =>
+      setTitleOverflowing(title.scrollWidth > title.clientWidth + 1);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(title);
+    return () => observer.disconnect();
+  }, [projectName]);
   const { appearance } = useAuthStore();
   const setActiveWorkspaceTab = usePageTabStore((s) => s.setActiveWorkspaceTab);
   const sessionPreviewOpen = usePageTabStore(
@@ -287,7 +305,16 @@ export function HeaderBox({
                 aria-label={`${sessionMenuLabel}: ${projectName}`}
               >
                 <span
-                  className="max-w-[200px] min-w-0 truncate font-semibold"
+                  ref={titleRef}
+                  className="max-w-[200px] min-w-0 overflow-hidden font-semibold whitespace-nowrap"
+                  style={
+                    titleOverflowing
+                      ? {
+                          maskImage: TITLE_OVERFLOW_MASK,
+                          WebkitMaskImage: TITLE_OVERFLOW_MASK,
+                        }
+                      : undefined
+                  }
                   title={projectName}
                 >
                   {projectName}

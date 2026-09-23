@@ -90,6 +90,7 @@ function completedSnapshot(): ProjectEventStoreSnapshot {
 
 describe('HeaderBox chat timeline mode', () => {
   let resizeHeader: ((width: number) => void) | undefined;
+  let resizeTitle: ((width: number) => void) | undefined;
 
   beforeEach(() => {
     runtimeMock.mockReturnValue({ projectId: null, snapshot: null });
@@ -100,15 +101,18 @@ describe('HeaderBox chat timeline mode', () => {
     vi.stubGlobal(
       'ResizeObserver',
       class ResizeObserverMock {
-        constructor(callback: ResizeObserverCallback) {
-          resizeHeader = (width) =>
-            callback(
+        constructor(private callback: ResizeObserverCallback) {}
+
+        observe(target: Element) {
+          const resize = (width: number) =>
+            this.callback(
               [{ contentRect: { width } } as ResizeObserverEntry],
               this as unknown as ResizeObserver
             );
+          if (target.tagName === 'SPAN') resizeTitle = resize;
+          else resizeHeader = resize;
         }
 
-        observe() {}
         unobserve() {}
         disconnect() {}
       }
@@ -151,7 +155,9 @@ describe('HeaderBox chat timeline mode', () => {
 
     expect(menu).toContainElement(title);
     expect(menu).toContainElement(menuIcon as HTMLElement);
-    expect(title).toHaveClass('max-w-[200px]', 'truncate');
+    expect(title).toHaveClass('max-w-[200px]', 'overflow-hidden');
+    expect(title).not.toHaveClass('truncate');
+    expect((title as HTMLElement).style.maskImage).toBe('');
     expect(title).toHaveAttribute('title', 'Timeline project');
     expect(
       menu.compareDocumentPosition(tokenLabel) &
@@ -171,6 +177,11 @@ describe('HeaderBox chat timeline mode', () => {
 
   it('keeps a long Session title bounded and exposes its full name', () => {
     const projectName = 'A long Session title that exceeds the header width';
+    let titleWidth = 200;
+    vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(280);
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(
+      () => titleWidth
+    );
     render(<HeaderBox projectName={projectName} projectId="project-1" />);
 
     const menu = screen.getByRole('button', {
@@ -179,8 +190,17 @@ describe('HeaderBox chat timeline mode', () => {
     const title = screen.getByText(projectName);
 
     expect(menu).toHaveClass('min-w-0', 'max-w-full', 'shrink');
-    expect(title).toHaveClass('max-w-[200px]', 'truncate');
+    expect(title).toHaveClass('max-w-[200px]', 'overflow-hidden');
+    expect(title).not.toHaveClass('truncate');
+    expect(title).toHaveStyle({
+      maskImage:
+        'linear-gradient(to right, white calc(100% - var(--ds-ref-space-24)), transparent 100%)',
+    });
     expect(title).toHaveAttribute('title', projectName);
+
+    titleWidth = 300;
+    act(() => resizeTitle?.(titleWidth));
+    expect((title as HTMLElement).style.maskImage).toBe('');
   });
 
   it('puts automation actions first and disables them without a completed result', async () => {
