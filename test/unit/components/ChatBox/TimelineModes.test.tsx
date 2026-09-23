@@ -1169,9 +1169,9 @@ describe('ChatBox timeline modes', () => {
     expect(groupTrigger).not.toHaveTextContent('read_file');
     expect(groupTrigger).toHaveClass(
       'group',
-      'text-ds-ink-muted-default',
-      'hover:text-ds-ink-default-default',
-      'focus-visible:text-ds-ink-default-default'
+      'text-ds-ink-subtle-default',
+      'hover:text-ds-ink-muted-default',
+      'focus-visible:text-ds-ink-muted-default'
     );
     expect(groupChevron).toBeInTheDocument();
     expect(groupChevron).toHaveClass(

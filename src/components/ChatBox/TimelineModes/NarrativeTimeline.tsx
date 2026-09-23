@@ -273,7 +273,7 @@ function NarrativeToolGroup({
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
         className={cn(
-          'group inline-flex max-w-full min-w-0 items-center gap-ds-6 self-start rounded-ds-compact-control px-0 py-ds-2 text-left text-ds-ink-muted-default transition-colors hover:text-ds-ink-default-default focus-visible:text-ds-ink-default-default',
+          'group inline-flex max-w-full min-w-0 items-center gap-ds-6 self-start rounded-ds-compact-control px-0 py-ds-2 text-left text-ds-ink-subtle-default transition-colors hover:text-ds-ink-muted-default focus-visible:text-ds-ink-muted-default',
           DS_FOCUS_RING
         )}
         data-narrative-segment-call-count={callCount}
@@ -297,7 +297,7 @@ function NarrativeToolGroup({
           <ShinyText
             speed={2.5}
             text={toolGroupLabel}
-            className="min-w-0 shrink overflow-hidden !text-ds-text-base !font-normal text-ellipsis whitespace-nowrap group-hover:!bg-none group-hover:!text-ds-ink-default-default group-focus-visible:!bg-none group-focus-visible:!text-ds-ink-default-default"
+            className="min-w-0 shrink overflow-hidden !text-ds-text-base !font-normal text-ellipsis whitespace-nowrap group-hover:!bg-none group-hover:!text-ds-ink-muted-default group-focus-visible:!bg-none group-focus-visible:!text-ds-ink-muted-default"
           />
         ) : (
           <span className="min-w-0 shrink overflow-hidden !text-ds-text-base font-normal text-ellipsis whitespace-nowrap">
