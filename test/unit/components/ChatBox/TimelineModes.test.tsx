@@ -1174,20 +1174,29 @@ describe('ChatBox timeline modes', () => {
       'focus-visible:text-ds-ink-default-default'
     );
     expect(groupChevron).toBeInTheDocument();
-    expect(groupChevron).not.toHaveClass('opacity-0');
+    expect(groupChevron).toHaveClass(
+      'opacity-0',
+      'group-hover:opacity-100',
+      'group-focus-visible:opacity-100'
+    );
 
     fireEvent.click(groupTrigger);
 
-    expect(groupChevron).toHaveClass('rotate-90');
+    expect(groupChevron).toHaveClass('rotate-90', 'opacity-100');
 
     const childTriggers = container.querySelectorAll(
       '[data-timeline-call-trigger]'
     );
     expect(childTriggers).toHaveLength(1);
     expect(childTriggers[0]).toHaveTextContent('read_file');
+    expect(childTriggers[0]).toHaveAttribute('aria-expanded', 'true');
     expect(
       childTriggers[0]!.querySelector('[data-timeline-call-chevron]')
     ).not.toHaveClass('opacity-0');
+    fireEvent.click(childTriggers[0]!);
+    expect(
+      childTriggers[0]!.querySelector('[data-timeline-call-chevron]')
+    ).toHaveClass('opacity-0', 'group-hover:opacity-100');
   });
 
   it('derives the group count from the rendered children and keeps their order', () => {
@@ -1548,6 +1557,20 @@ describe('ChatBox timeline modes', () => {
     expect(
       container.querySelector('[data-narrative-run-work-log]')
     ).toBeInTheDocument();
+    const workLog = container.querySelector(
+      '[data-narrative-run-work-log]'
+    ) as HTMLElement;
+    const trigger = workLog.querySelector(
+      'button[aria-expanded]'
+    ) as HTMLElement;
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(trigger.querySelector('svg')).toHaveClass(
+      'opacity-0',
+      'group-hover:opacity-100'
+    );
+    fireEvent.click(trigger);
+    expect(trigger.querySelector('svg')).not.toHaveClass('opacity-0');
   });
 
   it('highlights only the latest running tool and hands off when it completes', () => {

@@ -235,7 +235,7 @@ function TraceRow({
         aria-controls={detailsId}
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full min-w-0 flex-row items-center gap-3 bg-transparent px-1 py-2.5 text-left"
+        className="group flex w-full min-w-0 flex-row items-center gap-3 bg-transparent px-1 py-2.5 text-left"
       >
         <span className="flex w-28 shrink-0 justify-end" data-trace-tag-column>
           <span
@@ -264,8 +264,10 @@ function TraceRow({
           <ChevronRight
             aria-hidden
             className={cn(
-              'size-3.5 shrink-0 text-ds-ink-muted-default transition-transform duration-150 motion-reduce:transition-none',
-              open && 'rotate-90'
+              'size-3.5 shrink-0 text-ds-ink-muted-default transition-[opacity,transform] duration-150 motion-reduce:transition-none',
+              open
+                ? 'rotate-90 opacity-100'
+                : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100'
             )}
             data-trace-chevron
           />

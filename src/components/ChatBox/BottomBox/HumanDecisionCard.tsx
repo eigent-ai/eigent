@@ -68,6 +68,13 @@ export function HumanDecisionCard({
         <>
           <BoxHeaderDisplay
             {...variant.header}
+            {...(variant.kind === 'approval'
+              ? {
+                  description: undefined,
+                  contextItems: undefined,
+                  details: undefined,
+                }
+              : {})}
             className="px-0 pt-0"
             descriptionAsTitle={
               variant.kind === 'feedback' && variant.presentation === 'question'

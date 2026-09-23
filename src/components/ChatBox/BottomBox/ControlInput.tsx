@@ -113,19 +113,28 @@ function ApprovalInput({ variant }: { variant: BottomBoxApprovalVariant }) {
       className={controlSurfaceClassName}
     >
       <BoxHeaderDisplay
-        {...variant.header}
-        eyebrow={undefined}
-        contextItems={undefined}
-        details={undefined}
+        eyebrow={variant.header.eyebrow}
+        title={variant.header.title}
         className="px-0 pt-0 pb-0"
       />
-      {variant.options.length === 1 && variant.options[0].scope === 'once' && (
-        <p className="m-0 text-ds-text-meta text-ds-ink-muted-default">
-          {t('chat.control-once-only-explanation')}
+      {variant.error ? (
+        <p
+          role="alert"
+          className="m-0 text-ds-text-meta text-ds-text-error-default-default"
+        >
+          {variant.error}
         </p>
-      )}
-      <div data-approval-actions className="flex w-full justify-end">
-        <ControlActions>
+      ) : null}
+      <div
+        data-approval-actions
+        className="flex w-full flex-wrap items-center justify-between gap-ds-8"
+      >
+        {variant.options.length === 1 && variant.options[0].scope === 'once' ? (
+          <p className="m-0 min-w-0 flex-1 text-ds-text-meta text-ds-ink-muted-default">
+            {t('chat.control-once-only-explanation')}
+          </p>
+        ) : null}
+        <div className="ml-auto flex flex-wrap justify-end gap-ds-8">
           <Button
             type="button"
             variant="ghost"
@@ -159,7 +168,7 @@ function ApprovalInput({ variant }: { variant: BottomBoxApprovalVariant }) {
               </Button>
             );
           })}
-        </ControlActions>
+        </div>
       </div>
     </div>
   );

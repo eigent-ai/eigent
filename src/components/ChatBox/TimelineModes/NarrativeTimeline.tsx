@@ -313,8 +313,10 @@ function NarrativeToolGroup({
         <DsIcon
           icon={ChevronRight}
           className={cn(
-            'transition-transform duration-200',
-            open && 'rotate-90'
+            'transition-[opacity,transform] duration-200',
+            open
+              ? 'rotate-90 opacity-100'
+              : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100'
           )}
           data-narrative-segment-chevron
         />
@@ -648,8 +650,10 @@ function NarrativeSubagentRow({
         <DsIcon
           icon={ChevronRight}
           className={cn(
-            'text-ds-ink-subtle-default transition-transform duration-200',
-            open && 'rotate-90'
+            'text-ds-ink-subtle-default transition-[opacity,transform] duration-200',
+            open
+              ? 'rotate-90 opacity-100'
+              : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100'
           )}
           data-narrative-subagent-chevron
         />
@@ -992,7 +996,7 @@ function NarrativeAgentGroup({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full min-w-0 items-center justify-start gap-1 px-0 py-1 text-left"
+        className="group flex w-full min-w-0 items-center justify-start gap-1 px-0 py-1 text-left"
         data-narrative-agent-trigger
       >
         {shimmerOnLabel ? (
@@ -1008,7 +1012,11 @@ function NarrativeAgentGroup({
         )}
         <DsIcon
           icon={open ? ChevronDown : ChevronRight}
-          className="text-ds-ink-muted-default"
+          className={cn(
+            'text-ds-ink-muted-default transition-opacity duration-200',
+            !open &&
+              'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100'
+          )}
         />
       </button>
       <AnimatePresence initial={false}>
@@ -1152,14 +1160,18 @@ function NarrativeRunWorkLog({
           manuallyToggled.current = true;
           setOpen((value) => !value);
         }}
-        className="flex w-full min-w-0 items-center justify-start gap-1 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-0 py-2 text-left"
+        className="group flex w-full min-w-0 items-center justify-start gap-1 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-0 py-2 text-left"
       >
         <span className="text-ds-text-base font-medium text-ds-ink-muted-default">
           <NarrativeWorkLogSummary paused={paused} run={run} />
         </span>
         <DsIcon
           icon={open ? ChevronDown : ChevronRight}
-          className="text-ds-ink-muted-default"
+          className={cn(
+            'text-ds-ink-muted-default transition-opacity duration-200',
+            !open &&
+              'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100'
+          )}
         />
       </button>
       <AnimatePresence initial={false}>

@@ -193,7 +193,7 @@ export function CallRow({
           setOpen((value) => !value);
         }}
         className={cn(
-          'inline-flex max-w-full min-w-0 items-center gap-ds-6 self-start rounded-ds-compact-control px-0 py-ds-2 text-left transition-opacity hover:opacity-80',
+          'group inline-flex max-w-full min-w-0 items-center gap-ds-6 self-start rounded-ds-compact-control px-0 py-ds-2 text-left transition-opacity hover:opacity-80',
           DS_FOCUS_RING,
           failed && 'text-ds-text-status-error-default-default'
         )}
@@ -241,11 +241,13 @@ export function CallRow({
         <DsIcon
           icon={ChevronRight}
           className={cn(
-            'transition-transform duration-200',
+            'transition-[opacity,transform] duration-200',
             failed
               ? 'text-ds-text-status-error-default-default'
               : 'text-ds-ink-subtle-default',
-            open && 'rotate-90'
+            open
+              ? 'rotate-90 opacity-100'
+              : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100'
           )}
           data-timeline-call-chevron
         />

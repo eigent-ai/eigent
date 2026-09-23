@@ -391,11 +391,11 @@ describe('BottomBox structure', () => {
 
     expect(approvalSurface).toBeInTheDocument();
     expect(approvalHeader).toBeInTheDocument();
-    expect(approvalHeader).not.toHaveTextContent('Permission required');
+    expect(approvalHeader).toHaveTextContent('Permission required');
     expect(approvalHeader).toHaveTextContent('Allow todo_write?');
     expect(approvalSurface).toContainElement(approvalActions as HTMLElement);
     expect(container.querySelector('[data-approval-actions]')).toHaveClass(
-      'justify-end'
+      'justify-between'
     );
     const approvalButtons = within(approvalActions as HTMLElement).getAllByRole(
       'button'
@@ -404,9 +404,15 @@ describe('BottomBox structure', () => {
     approvalButtons.forEach((button) =>
       expect(button).toHaveClass('!rounded-full')
     );
-    expect(
+    expect(approvalActions).toContainElement(
       screen.getByText('This action supports one-time approval only.')
-    ).toBeInTheDocument();
+    );
+    expect(approvalActions?.firstElementChild).toBe(
+      screen.getByText('This action supports one-time approval only.')
+    );
+    expect(approvalActions?.lastElementChild).toContainElement(
+      screen.getByRole('button', { name: 'Approve once' })
+    );
     expect(
       screen.queryByRole('button', { name: /always allow/i })
     ).not.toBeInTheDocument();
@@ -455,7 +461,7 @@ describe('BottomBox structure', () => {
       />
     );
 
-    expect(screen.queryByText('Input required')).not.toBeInTheDocument();
+    expect(screen.getByText('Input required')).toBeInTheDocument();
     expect(
       screen.queryByText('Allow this action one time only.')
     ).not.toBeInTheDocument();
@@ -520,7 +526,7 @@ describe('BottomBox structure', () => {
       'data-layout-motion',
       'instant'
     );
-    expect(screen.queryByText('Input required')).not.toBeInTheDocument();
+    expect(screen.getByText('Input required')).toBeInTheDocument();
     expect(
       screen.getByText('The agent wants to publish the report.')
     ).toBeInTheDocument();
