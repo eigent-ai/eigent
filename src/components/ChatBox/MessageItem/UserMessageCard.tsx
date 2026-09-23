@@ -340,45 +340,43 @@ export function UserMessageCard({
             )}
           </div>
         </div>
-        <div className="mt-2 flex w-full shrink-0 flex-wrap items-center justify-end gap-1 border-x-0 border-y-0 border-t border-ds-hairline-subtle-default pt-1">
+      </div>
+      <div
+        className="mt-ds-4 flex w-full items-center justify-end gap-ds-4"
+        data-user-message-actions
+      >
+        {canClamp && (
+          <Button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setExpanded((value) => !value);
+            }}
+            variant="ghost"
+            size="xs"
+            buttonContent="text"
+            textWeight="normal"
+            className="mr-auto"
+          >
+            {t(
+              expanded
+                ? 'chat.agent-outcome-collapse'
+                : 'chat.agent-outcome-expand'
+            )}
+          </Button>
+        )}
+        <div
+          className="pointer-events-none flex items-center justify-end gap-ds-4 opacity-0 transition-opacity group-focus-within/msg:pointer-events-auto group-focus-within/msg:opacity-100 group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100"
+          data-user-message-hover-actions
+        >
           {timeLabel && (
             <time
               dateTime={validDate!.toISOString()}
               title={fullTimeLabel ?? undefined}
-              className="mr-auto text-ds-text-meta text-ds-ink-muted-default"
+              className="text-ds-text-meta text-ds-ink-muted-default"
             >
               {timeLabel}
             </time>
-          )}
-          {canClamp && !expanded && (
-            <Button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setExpanded(true);
-              }}
-              variant="ghost"
-              size="xs"
-              buttonContent="text"
-              textWeight="normal"
-            >
-              {t('chat.agent-outcome-expand')}
-            </Button>
-          )}
-          {canClamp && expanded && (
-            <Button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setExpanded(false);
-              }}
-              variant="ghost"
-              size="xs"
-              buttonContent="text"
-              textWeight="normal"
-            >
-              {t('chat.agent-outcome-collapse')}
-            </Button>
           )}
           <Button
             onClick={handleCopy}

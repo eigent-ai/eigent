@@ -70,7 +70,7 @@ describe('UserMessageCard', () => {
     }
   });
 
-  it('exposes time, copy, and edit actions without hover', () => {
+  it('keeps time, copy, and edit below the bubble and right-aligned on hover', () => {
     const onEditAndResend = vi.fn();
     const { container } = render(
       <UserMessageCard
@@ -81,11 +81,33 @@ describe('UserMessageCard', () => {
       />
     );
 
+    const root = container.firstElementChild;
+    const bubble = root?.firstElementChild;
+    const actions = container.querySelector('[data-user-message-actions]');
+    const hoverActions = container.querySelector(
+      '[data-user-message-hover-actions]'
+    );
+
+    expect(root).toHaveClass('group/msg');
+    expect(actions).toBe(bubble?.nextElementSibling);
+    expect(actions).toHaveClass('justify-end');
+    expect(hoverActions).toHaveClass(
+      'opacity-0',
+      'group-hover/msg:opacity-100',
+      'group-focus-within/msg:opacity-100',
+      '[@media(hover:none)]:opacity-100'
+    );
+    expect(hoverActions).toContainElement(container.querySelector('time'));
     expect(container.querySelector('time')).toHaveAttribute(
       'datetime',
       '2026-09-23T10:15:00.000Z'
     );
-    expect(screen.getByRole('button', { name: 'Copy message' })).toBeVisible();
+    expect(hoverActions).toContainElement(
+      screen.getByRole('button', { name: 'Copy message' })
+    );
+    expect(hoverActions).toContainElement(
+      screen.getByRole('button', { name: 'Edit and resend' })
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Edit and resend' }));
     expect(onEditAndResend).toHaveBeenCalledOnce();
   });
