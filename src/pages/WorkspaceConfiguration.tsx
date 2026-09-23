@@ -47,6 +47,10 @@ import {
 } from '@/components/WorkspaceConfiguration/WorkspaceResourceEditorPanel';
 import { WorkspaceResourceListItem } from '@/components/WorkspaceConfiguration/WorkspaceResourceListItem';
 import { useWorkspaceConfiguration } from '@/hooks/useWorkspaceConfiguration';
+import {
+  SPACE_CONFIGURATION_SECTIONS,
+  type SpaceConfigurationSection,
+} from '@/lib/spaceConfigurationRoute';
 import { cn } from '@/lib/utils';
 import { registerWorkspaceConfigurationNavigationGuard } from '@/lib/workspaceConfigurationNavigationGuard';
 import {
@@ -66,7 +70,6 @@ import {
   Package,
   Plus,
   Server,
-  ShareIcon,
   Trash2,
 } from 'lucide-react';
 import {
@@ -253,20 +256,11 @@ function SettingRow({
   );
 }
 
-const workspaceSettingSections = [
-  { id: 'space-settings-identity' },
-  { id: 'space-settings-model' },
-  { id: 'space-settings-environment' },
-  { id: 'space-settings-instructions' },
-  { id: 'space-settings-context' },
-  { id: 'space-settings-agents' },
-  { id: 'space-settings-skills' },
-  { id: 'space-settings-connectors' },
-  { id: 'space-settings-mcp-servers' },
-] as const;
+const workspaceSettingSections = SPACE_CONFIGURATION_SECTIONS.map((id) => ({
+  id,
+}));
 
-type WorkspaceSettingSectionId =
-  (typeof workspaceSettingSections)[number]['id'];
+type WorkspaceSettingSectionId = SpaceConfigurationSection;
 
 const tableBoxClassName = 'w-full rounded-xl bg-ds-neutral-subtle-default p-0';
 
@@ -381,11 +375,13 @@ function WorkspaceCollectionSection({
 export interface WorkspaceConfigurationEditorProps {
   presentation?: 'page' | 'settings';
   spaceId?: string | null;
+  targetSection?: SpaceConfigurationSection | null;
 }
 
 export function WorkspaceConfigurationEditor({
   presentation = 'page',
   spaceId,
+  targetSection = null,
 }: WorkspaceConfigurationEditorProps) {
   const { t } = useTranslation();
   const workspaceSettingSectionLabel = (section: WorkspaceSettingSectionId) => {
@@ -487,6 +483,7 @@ export function WorkspaceConfigurationEditor({
   const [activeSectionId, setActiveSectionId] =
     useState<WorkspaceSettingSectionId>('space-settings-identity');
   const settingsContentRef = useRef<HTMLDivElement>(null);
+  const lastRoutedSectionRef = useRef<string | null>(null);
   const storeActiveSpaceId = useSpaceStore((state) => state.activeSpaceId);
   const targetSpaceId = spaceId === undefined ? storeActiveSpaceId : spaceId;
   const targetSpace = useSpaceStore((state) =>
@@ -635,6 +632,17 @@ export function WorkspaceConfigurationEditor({
     },
     [reduceMotion]
   );
+
+  useEffect(() => {
+    if (!targetSection) return;
+    const routeKey = `${targetSpaceId ?? ''}:${targetSection}`;
+    if (lastRoutedSectionRef.current === routeKey) return;
+    lastRoutedSectionRef.current = routeKey;
+    const frame = window.requestAnimationFrame(() => {
+      scrollToSection(targetSection);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [scrollToSection, targetSection, targetSpaceId]);
 
   if (!targetSpaceId || !targetSpace) {
     return (
@@ -1124,28 +1132,62 @@ export function WorkspaceConfigurationEditor({
                   </div>
                 </SettingRow>
                 <SettingRow
-                  label={t('layout.workspace-configuration-profile', {
-                    defaultValue: 'Profile',
+                  label={t('layout.workspace-configuration-deployment', {
+                    defaultValue: 'Deployment',
                   })}
+                  description={t(
+                    'layout.workspace-configuration-deployment-description',
+                    {
+                      defaultValue:
+                        'Publish an immutable Space profile for this self-hosted deployment.',
+                    }
+                  )}
                 >
-                  <div className="flex min-h-10 items-center justify-end">
+                  <div className="flex min-h-10 flex-wrap items-center justify-end gap-3">
+                    <span
+                      className={cn(
+                        'text-ds-text-base font-medium',
+                        draft?.base_revision_id
+                          ? 'text-ds-text-success-strong-default'
+                          : 'text-ds-ink-muted-default'
+                      )}
+                    >
+                      {draft?.base_revision_id
+                        ? t('layout.workspace-configuration-deployed', {
+                            defaultValue: 'Deployed',
+                          })
+                        : t('layout.workspace-configuration-local-draft', {
+                            defaultValue: 'Local draft',
+                          })}
+                    </span>
                     <Button
                       type="button"
-                      variant="secondary"
+                      variant="primary"
                       size="sm"
-                      buttonContent="icon-only"
                       buttonRadius="full"
                       aria-label={t(
-                        'layout.workspace-configuration-share-profile',
-                        { defaultValue: 'Share Space profile' }
+                        draft?.base_revision_id
+                          ? 'layout.workspace-configuration-deploy-update'
+                          : 'layout.workspace-configuration-deploy-space',
+                        {
+                          defaultValue: draft?.base_revision_id
+                            ? 'Deploy update'
+                            : 'Deploy Space',
+                        }
                       )}
-                      title={t('layout.workspace-configuration-share-profile', {
-                        defaultValue: 'Share Space profile',
-                      })}
                       onClick={() => setSaveDialogOpen(true)}
                       disabled={!draft?.persisted || saveState !== 'saved'}
                     >
-                      <ShareIcon className="h-4 w-4" aria-hidden />
+                      {t(
+                        draft?.base_revision_id
+                          ? 'layout.workspace-configuration-deploy-update'
+                          : 'layout.workspace-configuration-deploy-space',
+                        {
+                          defaultValue: draft?.base_revision_id
+                            ? 'Deploy update'
+                            : 'Deploy Space',
+                        }
+                      )}
                     </Button>
                   </div>
                 </SettingRow>

@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { DsIcon } from '@/components/ui/ds-icon';
 import { DsText } from '@/components/ui/ds-text';
 import { Skeleton } from '@/components/ui/skeleton';
+import { isSpaceConfigurationSection } from '@/lib/spaceConfigurationRoute';
 import { getSpaceStatusLabel, isLocalWorkspaceSpace } from '@/lib/spaceLabel';
 import { AUTOMATION_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
@@ -233,6 +234,12 @@ export default function SpaceDetail({
     searchParams,
     data.projects
   );
+  const configurationSectionValue = searchParams.get('spaceConfig');
+  const configurationSection = isSpaceConfigurationSection(
+    configurationSectionValue
+  )
+    ? configurationSectionValue
+    : null;
 
   const heading = useFocusContentHeading(spaceId);
 
@@ -306,6 +313,7 @@ export default function SpaceDetail({
           <Projects
             projectsOverride={data.projects}
             presentation="space-detail"
+            onCreateFirstSession={handleOpenWorkspace}
           />
         );
       case 'tasks':
@@ -341,6 +349,7 @@ export default function SpaceDetail({
             key={spaceId}
             presentation="settings"
             spaceId={spaceId}
+            targetSection={configurationSection}
           />
         );
     }

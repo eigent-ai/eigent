@@ -20,11 +20,13 @@ import type { LucideIcon } from 'lucide-react';
 export default function HomeHubEmptyState({
   icon,
   title,
+  description,
   actionLabel,
   onAction,
 }: {
   icon?: LucideIcon;
   title: string;
+  description?: string;
   actionLabel?: string;
   onAction?: () => void;
 }) {
@@ -43,6 +45,14 @@ export default function HomeHubEmptyState({
       <DsText role="body-large" weight="semibold">
         {title}
       </DsText>
+      {description ? (
+        <DsText
+          role="base"
+          className="mt-ds-4 max-w-lg text-ds-ink-muted-default"
+        >
+          {description}
+        </DsText>
+      ) : null}
       {actionLabel && onAction ? (
         <Button
           type="button"

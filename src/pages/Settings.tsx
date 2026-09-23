@@ -39,6 +39,7 @@ import {
   shellDetailBackTarget,
   withoutShellDetailBackState,
 } from '@/lib/shellRoutes';
+import { buildSettingsCompatibilityUrl } from '@/lib/spaceConfigurationRoute';
 import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
 import { LegacyRouteWorkflowDialog } from '@/routers/LegacyRouteCompatibility';
 import { usePageTabStore } from '@/store/pageTabStore';
@@ -66,7 +67,12 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  Navigate,
+  useLocation,
+  useNavigate,
+  useSearchParams,
+} from 'react-router-dom';
 
 type SpaceNavigationDirection = 1 | -1;
 type SpaceNavigationMotion = 'full' | 'fade' | 'instant';
@@ -422,16 +428,6 @@ function HomeSettingsPageContent() {
     }
   }, [navigateHome, routeSpace, spaceId, visibleSpaceId]);
 
-  const handleSettingsSectionChange = useCallback(
-    (section: SettingsSectionId) => {
-      void runAfterWorkspaceConfigurationSave(() => {
-        setActiveSection(section);
-        navigateHome(`?section=settings&tab=${section}`);
-      });
-    },
-    [navigateHome, setActiveSection]
-  );
-
   const handleSelectSpace = useCallback(
     (nextSpaceId: string) => {
       void runAfterWorkspaceConfigurationSave(() => {
@@ -525,9 +521,7 @@ function HomeSettingsPageContent() {
           ) : (
             <SettingsSidebar
               activeHomeSection={isSpacesView ? 'spaces' : null}
-              activeSection={isSpacesView ? null : activeSection}
               onHomeSectionChange={handleHomeSectionChange}
-              onSectionChange={handleSettingsSectionChange}
             />
           )}
         </AnimatedSidebarPane>
@@ -606,10 +600,41 @@ function HomeSettingsPageContent() {
   );
 }
 
+function HomeSpaceRouteContent() {
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
+  const sectionFromUrl = searchParams.get('section');
+  const tabFromUrl = searchParams.get('tab');
+  const legacySettingsSection = isSettingsSection(tabFromUrl)
+    ? tabFromUrl
+    : isSettingsSection(sectionFromUrl)
+      ? sectionFromUrl
+      : null;
+
+  if (legacySettingsSection && sectionFromUrl !== 'spaces') {
+    return (
+      <Navigate
+        replace
+        state={location.state}
+        to={buildSettingsCompatibilityUrl(
+          activeSpaceId,
+          legacySettingsSection,
+          {
+            provider: searchParams.get('provider'),
+          }
+        )}
+      />
+    );
+  }
+
+  return <HomeSettingsPageContent />;
+}
+
 export default function SettingsPageRoute() {
   return (
     <HomeHubRoot>
-      <HomeSettingsPageContent />
+      <HomeSpaceRouteContent />
       <LegacyRouteWorkflowDialog />
     </HomeHubRoot>
   );

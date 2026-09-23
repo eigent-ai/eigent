@@ -19,6 +19,7 @@ import {
 } from '@/components/Layout/AppCommandProvider';
 import { UserMenu } from '@/components/TopBar/UserMenu';
 import { APP_COMMAND } from '@/shared/appCommands';
+import { setUsageAccount, useUsageNoticeStore } from '@/store/usageNoticeStore';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
@@ -107,22 +108,22 @@ describe('UserMenu subscription summary', () => {
   beforeEach(() => {
     vi.mocked(proxyFetchGet).mockReset();
     executeAppCommand.mockReset();
+    setUsageAccount(null);
+    setUsageAccount('person@example.com');
   });
 
-  it('refreshes on each open and retains successful values on a partial failure', async () => {
+  it('refreshes on each open and shows the successful credit result on a partial failure', async () => {
     const user = userEvent.setup();
-    const consoleError = vi
-      .spyOn(console, 'error')
-      .mockImplementation(() => undefined);
     vi.mocked(proxyFetchGet)
       .mockResolvedValueOnce({ plan_key: 'pro' })
-      .mockResolvedValueOnce({ credits: 10 });
+      .mockResolvedValueOnce({ credits: 10 })
+      .mockResolvedValueOnce({ value: 'key' });
 
     renderUserMenu();
     await openMenu(user);
 
     await waitFor(() => {
-      expect(proxyFetchGet).toHaveBeenCalledTimes(2);
+      expect(proxyFetchGet).toHaveBeenCalledTimes(3);
     });
     expect(await screen.findByText('Pro')).toBeInTheDocument();
     expect(screen.getByText('Pro').parentElement).toHaveTextContent('Pro · 10');
@@ -130,11 +131,12 @@ describe('UserMenu subscription summary', () => {
     await closeMenu(user);
     vi.mocked(proxyFetchGet)
       .mockResolvedValueOnce({ plan_key: 'team' })
-      .mockResolvedValueOnce({ credits: 20 });
+      .mockResolvedValueOnce({ credits: 20 })
+      .mockResolvedValueOnce({ value: 'key' });
     await openMenu(user);
 
     await waitFor(() => {
-      expect(proxyFetchGet).toHaveBeenCalledTimes(4);
+      expect(proxyFetchGet).toHaveBeenCalledTimes(6);
       expect(screen.getByText('Team').parentElement).toHaveTextContent(
         'Team · 20'
       );
@@ -143,28 +145,25 @@ describe('UserMenu subscription summary', () => {
     await closeMenu(user);
     vi.mocked(proxyFetchGet)
       .mockRejectedValueOnce(new Error('subscription unavailable'))
-      .mockResolvedValueOnce({ credits: 25 });
+      .mockResolvedValueOnce({ credits: 25 })
+      .mockResolvedValueOnce({ value: 'key' });
     await openMenu(user);
 
     await waitFor(() => {
-      expect(proxyFetchGet).toHaveBeenCalledTimes(6);
-      expect(screen.getByText('Team').parentElement).toHaveTextContent(
-        'Team · 25'
-      );
+      expect(proxyFetchGet).toHaveBeenCalledTimes(9);
+      expect(screen.getByText('—').parentElement).toHaveTextContent('— · 25');
     });
-    expect(consoleError).toHaveBeenCalledWith(
-      'Failed to load subscription:',
-      expect.any(Error)
+    expect(useUsageNoticeStore.getState().refreshError).toBe(
+      'chat.notice-refresh-failed'
     );
-
-    consoleError.mockRestore();
   });
 
-  it('groups account details before preferences and dispatches Settings through the app command controller', async () => {
+  it('groups account details before preferences and opens Space configuration', async () => {
     const user = userEvent.setup();
     vi.mocked(proxyFetchGet)
       .mockResolvedValueOnce({ plan_key: 'pro' })
-      .mockResolvedValueOnce({ credits: 10 });
+      .mockResolvedValueOnce({ credits: 10 })
+      .mockResolvedValueOnce({ value: 'key' });
 
     renderUserMenu('/?tab=project');
     await openMenu(user);
@@ -179,14 +178,16 @@ describe('UserMenu subscription summary', () => {
       within(menu).getAllByRole('separator');
     const appearance = within(menu).getByText('Appearance');
     const language = within(menu).getByRole('menuitem', { name: 'Language' });
-    const settings = within(menu).getByRole('menuitem', { name: 'Settings' });
+    const configuration = within(menu).getByRole('menuitem', {
+      name: 'Configuration',
+    });
     const keyboardShortcuts = within(menu).getByRole('menuitem', {
       name: 'Keyboard Shortcuts',
     });
     const logout = within(menu).getByRole('menuitem', { name: 'Log out' });
 
     expect(plan).toHaveTextContent('Pro · 10');
-    expect(settings.querySelector('svg')).toHaveClass('lucide-settings');
+    expect(configuration.querySelector('svg')).toHaveClass('lucide-settings');
     expect(keyboardShortcuts.querySelector('svg')).toHaveClass(
       'lucide-keyboard'
     );
@@ -197,8 +198,8 @@ describe('UserMenu subscription summary', () => {
       [referFriends, accountDivider],
       [accountDivider, appearance],
       [appearance, language],
-      [language, settings],
-      [settings, keyboardShortcuts],
+      [language, configuration],
+      [configuration, keyboardShortcuts],
       [keyboardShortcuts, logoutDivider],
       [logoutDivider, logout],
     ] as const) {
@@ -207,9 +208,11 @@ describe('UserMenu subscription summary', () => {
           Node.DOCUMENT_POSITION_FOLLOWING
       ).toBeTruthy();
     }
-    await user.click(settings);
+    await user.click(configuration);
 
-    expect(executeAppCommand).toHaveBeenCalledWith(APP_COMMAND.openSettings);
+    expect(executeAppCommand).toHaveBeenCalledWith(
+      APP_COMMAND.navigateConfiguration
+    );
 
     await openMenu(user);
     await user.click(

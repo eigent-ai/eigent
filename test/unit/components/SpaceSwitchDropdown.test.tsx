@@ -79,8 +79,8 @@ describe('SpaceSwitchDropdown', () => {
     const renameItem = within(menu).getByRole('menuitem', {
       name: 'Rename Space',
     });
-    const spaceSettingsItem = within(menu).getByRole('menuitem', {
-      name: 'Space settings',
+    const configurationItem = within(menu).getByRole('menuitem', {
+      name: 'Configuration',
     });
     const memorySettingsItem = within(menu).getByRole('menuitem', {
       name: 'Memory settings',
@@ -100,11 +100,11 @@ describe('SpaceSwitchDropdown', () => {
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
     expect(
-      renameItem.compareDocumentPosition(spaceSettingsItem) &
+      renameItem.compareDocumentPosition(configurationItem) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
     expect(
-      spaceSettingsItem.compareDocumentPosition(memorySettingsItem) &
+      configurationItem.compareDocumentPosition(memorySettingsItem) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
     expect(currentSpaceLabel).toHaveClass('text-ds-text-meta', 'font-medium');
@@ -134,7 +134,7 @@ describe('SpaceSwitchDropdown', () => {
     await user.click(screen.getByRole('button', { name: 'Current Space' }));
     await user.click(
       within(await screen.findByRole('menu')).getByRole('menuitem', {
-        name: 'Space settings',
+        name: 'Configuration',
       })
     );
     expect(onOpenSpaceSettings).toHaveBeenCalledOnce();

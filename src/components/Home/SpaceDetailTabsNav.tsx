@@ -88,8 +88,8 @@ const SPACE_DETAIL_TAB_OPTIONS: SpaceDetailTabConfig[] = [
   },
   {
     id: 'workspace-profile',
-    labelKey: 'layout.space-settings',
-    defaultLabel: 'Space settings',
+    labelKey: 'layout.configuration-tab',
+    defaultLabel: 'Configuration',
     icon: Settings,
   },
 ];

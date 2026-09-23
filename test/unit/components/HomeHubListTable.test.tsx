@@ -45,7 +45,8 @@ describe('HomeHubListTable', () => {
     );
 
     expect(screen.queryByRole('columnheader', { name: 'Space' })).toBeNull();
-    expect(screen.getAllByRole('columnheader')).toHaveLength(4);
+    expect(screen.getByRole('columnheader', { name: 'Status' })).toBeVisible();
+    expect(screen.getAllByRole('columnheader')).toHaveLength(5);
   });
 
   it('uses a real title button without making the row an interactive wrapper', () => {
@@ -57,6 +58,7 @@ describe('HomeHubListTable', () => {
             title="Forecast session"
             listCells={[
               { id: 'space', content: 'Finance' },
+              { id: 'status', content: 'Ready' },
               { id: 'tasks', content: '2' },
               { id: 'triggers', content: '0' },
               { id: 'updated', content: '1h' },

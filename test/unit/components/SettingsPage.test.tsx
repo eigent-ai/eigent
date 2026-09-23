@@ -16,7 +16,6 @@ import SettingsSection from '@/components/Settings/SettingsSection';
 import SettingsPage from '@/pages/Settings';
 import { useSettingsResourceCountsStore } from '@/store/settingsResourceCountsStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { useSkillsStore, type Skill } from '@/store/skillsStore';
 import { useSpaceStore } from '@/store/spaceStore';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -246,12 +245,6 @@ function renderSettingsPage(
   );
 }
 
-function getSettingsHeader() {
-  const header = document.querySelector('header');
-  expect(header).not.toBeNull();
-  return header as HTMLElement;
-}
-
 describe('SettingsPage', () => {
   beforeEach(() => {
     pageMotionMocks.reduced = false;
@@ -345,639 +338,46 @@ describe('SettingsPage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('renders scoped navigation in the shared app shell', async () => {
-    renderSettingsPage();
-
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    const main = screen.getByRole('main');
-    const sidebar = screen.getByRole('complementary', {
-      name: 'Home',
-    });
-    const contentShell = document.querySelector('.scrollbar-always-visible');
-    expect(contentShell).toHaveClass(
-      'overflow-y-scroll',
-      '[scrollbar-gutter:stable]'
-    );
-    expect(contentShell?.firstElementChild).toHaveClass('px-8');
-    expect(
-      within(sidebar).getByRole('navigation', { name: 'Home' })
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'Workspace Bundle' })
-    ).not.toBeInTheDocument();
-    const selectedTab = screen.getByRole('button', { name: 'Models' });
-    const header = getSettingsHeader();
-    const heading = within(header).getByRole('heading', {
-      name: 'Models',
-      level: 1,
-    });
-    expect(main).toContainElement(header);
-    expect(heading).toHaveFocus();
-    expect(header).toHaveClass('min-h-ds-layout-row-header');
-    expect(header.lastElementChild).toHaveClass('h-ds-layout-row-header');
-    expect(header.closest('[data-home-space-content-pane]')).toBeNull();
-    expect(within(header).getByText('Models')).toHaveClass(
-      'text-ds-text-body-large',
-      'font-bold'
-    );
-    expect(
-      within(header).queryByRole('button', {
-        name: 'Back',
-      })
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('heading', {
-        name: 'layout.workspace-active-scope',
-        level: 3,
-      })
-    ).not.toBeInTheDocument();
-    expect(selectedTab).toHaveAttribute('aria-current', 'page');
-    expect(selectedTab).toHaveClass(
-      'bg-ds-neutral-subtle-default',
-      'h-8',
-      'w-full'
-    );
-    const homeLabel = within(sidebar).getByText('Home');
-    const globalSettingLabel = within(sidebar).getByText('Global Settings');
-    expect(
-      homeLabel.compareDocumentPosition(globalSettingLabel) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-    expect(
-      within(sidebar).getByRole('button', { name: 'Spaces' })
-    ).toBeInTheDocument();
-    expect(
-      within(sidebar).queryByRole('button', { name: 'Sessions' })
-    ).not.toBeInTheDocument();
-    expect(
-      within(sidebar).queryByRole('button', { name: 'Tasks' })
-    ).not.toBeInTheDocument();
-    expect(
-      within(sidebar).queryByRole('button', { name: 'Automations' })
-    ).not.toBeInTheDocument();
-    expect(globalSettingLabel).toBeInTheDocument();
-    expect(
-      globalSettingLabel.compareDocumentPosition(selectedTab) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-    expect(screen.getByText('Browser')).toBeInTheDocument();
-    expect(screen.getByText('Extension')).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Models' }).querySelector('svg')
-    ).toHaveClass('lucide-sparkles');
-    expect(
-      screen.getByRole('button', { name: 'Sub Agents' }).querySelector('svg')
-    ).toHaveClass('lucide-bot');
-    expect(
-      screen.getByRole('button', { name: 'Skills' }).querySelector('svg')
-    ).toHaveClass('lucide-wand-sparkles');
-    expect(
-      screen.getByRole('button', { name: 'Browser' }).querySelector('svg')
-    ).toHaveClass('lucide-globe');
-    expect(
-      screen.getByRole('button', { name: 'Extension' }).querySelector('svg')
-    ).toHaveClass('lucide-puzzle');
-    expect(
-      within(sidebar)
-        .getByRole('button', { name: 'Settings' })
-        .querySelector('svg')
-    ).toHaveClass('lucide-settings');
-    expect(
-      within(sidebar).queryByRole('button', { name: 'General' })
-    ).not.toBeInTheDocument();
-    expect(
-      within(sidebar).queryByRole('button', { name: 'Appearance' })
-    ).not.toBeInTheDocument();
-    expect(
-      within(sidebar).queryByRole('button', { name: 'Privacy' })
-    ).not.toBeInTheDocument();
-    expect(await screen.findByTestId('models-settings')).toBeInTheDocument();
-  });
-
-  it('shows live resource counts on the Skills, Connectors, Browser, and Cookies tabs', async () => {
-    useSkillsStore.setState({
-      skills: [
-        {
-          id: 'research',
-          name: 'Research',
-          description: 'Find sources',
-          filePath: 'research/SKILL.md',
-          fileContent: '',
-          addedAt: 0,
-          scope: { isGlobal: true, selectedAgents: [] },
-          enabled: true,
-          isExample: false,
+  it('redirects legacy Settings URLs into the active Space configuration', async () => {
+    const now = Date.now();
+    useSpaceStore.setState((state) => ({
+      ...state,
+      activeSpaceId: 'active-space',
+      spaces: {
+        ...state.spaces,
+        'active-space': {
+          id: 'active-space',
+          name: 'Active Space',
+          sourceType: 'folder',
+          rootPath: '/work/active-space',
+          status: 'active',
+          schemaVersion: 2,
+          createdAt: now,
+          updatedAt: now,
         },
-      ],
-    });
-
-    renderSettingsPage();
-
-    const sidebar = screen.getByRole('complementary', { name: 'Home' });
-
-    await waitFor(() => {
-      expect(
-        within(
-          within(sidebar).getByRole('button', { name: 'Skills' })
-        ).getByText('1')
-      ).toBeVisible();
-      expect(
-        within(
-          within(sidebar).getByRole('button', { name: 'Connectors' })
-        ).getByText('2')
-      ).toBeVisible();
-      expect(
-        within(
-          within(sidebar).getByRole('button', { name: 'Browser' })
-        ).getByText('2')
-      ).toBeVisible();
-      expect(
-        within(
-          within(sidebar).getByRole('button', { name: 'Cookies' })
-        ).getByText('3')
-      ).toBeVisible();
-    });
-  });
-
-  it('switches between Home and Settings sections in the same shell', async () => {
-    const user = userEvent.setup();
-
-    renderSettingsPage();
-    const settingsFrame = getSettingsHeader();
-
-    const spacesTab = screen.getByRole('button', { name: 'Spaces' });
-    const modelsTab = screen.getByRole('button', { name: 'Models' });
-    await user.click(spacesTab);
-
-    await waitFor(() => {
-      expect(spacesTab).toHaveAttribute('aria-current', 'page');
-      expect(modelsTab).not.toHaveAttribute('aria-current');
-    });
-
-    const overview = document.querySelector(
-      '[data-home-spaces-overview]'
-    ) as HTMLElement;
-    const toolbar = document.querySelector(
-      '[data-home-spaces-toolbar]'
-    ) as HTMLElement;
-    const collectionHeader = toolbar.closest('header');
-    const list = document.querySelector('[data-home-spaces-list]');
-    expect(collectionHeader).toBe(settingsFrame);
-    expect(collectionHeader).toHaveClass('min-h-ds-layout-row-header');
-    expect(
-      collectionHeader?.querySelector('[data-content-header-divider]')
-    ).toHaveClass('border-ds-hairline-subtle-default');
-    expect(toolbar).toHaveClass('max-w-[1100px]', 'px-ds-32');
-    expect(collectionHeader?.nextElementSibling).toContainElement(overview);
-    expect(collectionHeader).not.toContainElement(overview);
-    expect(overview).toHaveTextContent(/Morning|Good Afternoon|Evening/);
-    expect(overview).toHaveTextContent('Douglas');
-    expect(within(overview).queryByText('Status')).not.toBeInTheDocument();
-    expect(within(overview).queryByText('Tasks')).not.toBeInTheDocument();
-    expect(
-      within(overview)
-        .getByText('Spaces')
-        .parentElement?.parentElement?.querySelector('svg')
-    ).toHaveClass('lucide-folder');
-    expect(
-      within(overview)
-        .getByText('Connectors')
-        .parentElement?.parentElement?.querySelector('svg')
-    ).toHaveClass('lucide-cable');
-    expect(await within(overview).findByText('2')).toBeInTheDocument();
-    expect(
-      within(overview)
-        .getByText('Skills')
-        .parentElement?.parentElement?.querySelector('svg')
-    ).toHaveClass('lucide-wand-sparkles');
-    expect(
-      within(overview)
-        .getByText('Memory left')
-        .parentElement?.parentElement?.querySelector('svg')
-    ).toHaveClass('lucide-brain');
-    expect(await within(overview).findByText('4,000')).toBeInTheDocument();
-    expect(
-      within(toolbar).getByPlaceholderText('Search spaces...')
-    ).toBeInTheDocument();
-    expect(
-      within(toolbar).getByRole('tab', { name: 'List' })
-    ).toBeInTheDocument();
-    expect(
-      within(toolbar).queryByRole('tab', { name: 'Board' })
-    ).not.toBeInTheDocument();
-    const newSpaceButton = within(toolbar).getByRole('button', {
-      name: 'New Space',
-    });
-    expect(newSpaceButton.querySelector('svg')).not.toBeInTheDocument();
-    expect(
-      toolbar.compareDocumentPosition(list!) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-
-    await user.click(newSpaceButton);
-    const newSpaceDialog = await screen.findByRole('dialog', {
-      name: 'Create a new Space',
-    });
-    const newSpaceOptions = within(newSpaceDialog).getByRole('group', {
-      name: 'New Space options',
-    });
-    expect(newSpaceOptions).toHaveClass('grid-cols-3');
-    expect(
-      within(newSpaceOptions).getByRole('button', {
-        name: 'Start from scratch',
-      })
-    ).toBeInTheDocument();
-    expect(
-      within(newSpaceOptions).getByRole('button', {
-        name: 'Use a local folder',
-      })
-    ).toBeInTheDocument();
-    await user.click(
-      within(newSpaceOptions).getByRole('button', {
-        name: 'Import from Workspace Bundle',
-      })
-    );
-
-    const bundleOptionsDialog = await screen.findByRole('dialog', {
-      name: 'Import a Bundle',
-    });
-    const bundleOptions = within(bundleOptionsDialog).getByRole('group', {
-      name: 'Bundle import options',
-    });
-    expect(bundleOptions).toHaveClass('grid-cols-2');
-    expect(
-      within(bundleOptions).getByRole('button', {
-        name: 'Import Agent Plugin as Bundle',
-      })
-    ).toBeInTheDocument();
-    await user.click(
-      within(bundleOptions).getByRole('button', {
-        name: 'Add Workspace Bundle name',
-      })
-    );
-
-    const workspaceBundleDialog = await screen.findByRole('dialog', {
-      name: 'Import Workspace Bundle',
-    });
-    expect(
-      await within(workspaceBundleDialog).findByRole('textbox', {
-        name: 'Workspace Bundle share handle',
-      })
-    ).toBeInTheDocument();
-    await user.click(
-      within(workspaceBundleDialog).getByRole('button', { name: 'Close' })
-    );
-
-    await user.click(newSpaceButton);
-    const reopenedNewSpaceDialog = await screen.findByRole('dialog', {
-      name: 'Create a new Space',
-    });
-    await user.click(
-      within(reopenedNewSpaceDialog).getByRole('button', {
-        name: 'Import from Workspace Bundle',
-      })
-    );
-    const reopenedBundleOptions = await screen.findByRole('dialog', {
-      name: 'Import a Bundle',
-    });
-    await user.click(
-      within(reopenedBundleOptions).getByRole('button', {
-        name: 'Import Agent Plugin as Bundle',
-      })
-    );
-    const agentPluginDialog = await screen.findByRole('dialog', {
-      name: 'Import Agent Plugin as Bundle',
-    });
-    expect(
-      await within(agentPluginDialog).findByRole('button', {
-        name: 'Select directory or archive',
-      })
-    ).toBeInTheDocument();
-    await user.click(
-      within(agentPluginDialog).getByRole('button', { name: 'Close' })
-    );
-
-    await user.click(modelsTab);
-
-    await waitFor(() => {
-      expect(modelsTab).toHaveAttribute('aria-current', 'page');
-      expect(spacesTab).not.toHaveAttribute('aria-current');
-    });
-  });
-
-  it('combines the app settings categories into one vertical page', async () => {
-    const user = userEvent.setup();
-
-    renderSettingsPage();
-
-    const sidebar = screen.getByRole('complementary', { name: 'Home' });
-    await user.click(within(sidebar).getByRole('button', { name: 'Settings' }));
-
-    const general = await screen.findByTestId('general-settings');
-    const appearance = screen.getByTestId('appearance-settings');
-    const privacy = screen.getByTestId('privacy-settings');
-    const about = screen.getByRole('img', { name: 'Eigent' });
-
-    expect(
-      general.compareDocumentPosition(appearance) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-    expect(
-      appearance.compareDocumentPosition(privacy) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-    expect(
-      privacy.compareDocumentPosition(about) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-    expect(
-      screen.queryByRole('heading', {
-        name: /general|appearance|privacy|about/i,
-      })
-    ).not.toBeInTheDocument();
-  });
-
-  it('shows one Skills overview with source filters instead of ownership tabs', async () => {
-    const user = userEvent.setup();
-    useSkillsStore.setState({ skills: [] });
-    const sync = vi
-      .spyOn(useSkillsStore.getState(), 'syncFromDisk')
-      .mockResolvedValue();
-    renderSettingsPage();
-    await user.click(screen.getByRole('button', { name: 'Skills' }));
-    expect(
-      await screen.findByRole('heading', { name: 'Skills', level: 1 })
-    ).not.toHaveClass('sr-only');
-    expect(
-      screen.queryByRole('tab', { name: 'Your skills' })
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('tab', { name: 'Example skills' })
-    ).not.toBeInTheDocument();
-    expect(
-      await screen.findByRole('combobox', { name: 'Skill source' })
-    ).toBeVisible();
-    expect(screen.getByRole('combobox', { name: 'Status' })).toBeVisible();
-    expect(
-      screen.getByRole('textbox', { name: 'Search skills…' })
-    ).toBeVisible();
-    const toolbar = screen.getByRole('region', { name: 'Skills toolbar' });
-    const dashboard = screen.getByRole('region', { name: 'Skill overview' });
-    const collectionHeader = toolbar.closest('header');
-    expect(within(dashboard).getAllByRole('term')).toHaveLength(4);
-    expect(collectionHeader).toHaveClass('min-h-ds-layout-row-header');
-    expect(toolbar).toHaveClass('max-w-[1100px]', 'px-ds-32');
-    expect(
-      dashboard.closest('.scrollbar-always-visible')?.firstElementChild
-    ).toHaveClass('max-w-[1100px]', 'px-8');
-    expect(collectionHeader?.nextElementSibling).toContainElement(dashboard);
-    expect(collectionHeader).not.toContainElement(dashboard);
-    expect(collectionHeader?.closest('[data-settings-section]')).toBeNull();
-    expect(
-      collectionHeader?.closest('[data-home-space-content-pane]')
-    ).toBeNull();
-    expect(
-      within(toolbar).getByRole('button', { name: 'Add skill' })
-    ).toBeVisible();
-    expect(
-      toolbar.compareDocumentPosition(dashboard) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-    await user.click(
-      within(toolbar).getByRole('button', { name: 'Add skill' })
-    );
-    const addSkillDialog = await screen.findByRole('dialog', {
-      name: 'Add skill',
-    });
-    await waitFor(() => expect(addSkillDialog).toBeVisible());
-    sync.mockRestore();
-  });
-
-  it('focuses the Skills heading whenever its persistent header returns', async () => {
-    const user = userEvent.setup();
-    useSkillsStore.setState({ skills: [] });
-    vi.spyOn(useSkillsStore.getState(), 'syncFromDisk').mockResolvedValue();
-    renderSettingsPage();
-
-    await user.click(screen.getByRole('button', { name: 'Skills' }));
-    expect(
-      await screen.findByRole('heading', { name: 'Skills', level: 1 })
-    ).toHaveFocus();
-    await user.click(
-      screen.getByRole('button', { name: 'Spaces', exact: true })
-    );
-    await user.click(screen.getByRole('button', { name: 'Skills' }));
-
-    expect(
-      await screen.findByRole('heading', { name: 'Skills', level: 1 })
-    ).toHaveFocus();
-  });
-
-  it('navigates Skills with the same shell transition and preserves overview filters on return', async () => {
-    const user = userEvent.setup();
-    const skill: Skill = {
-      id: 'disk-research',
-      name: 'research',
-      skillDirName: 'research',
-      description: 'Find sources',
-      filePath: 'research/SKILL.md',
-      fileContent: '',
-      addedAt: 0,
-      enabled: true,
-      isExample: false,
-      scope: { isGlobal: true, selectedAgents: [] },
-    };
-    useSkillsStore.setState({ skills: [skill] });
-    const sync = vi
-      .spyOn(useSkillsStore.getState(), 'syncFromDisk')
-      .mockResolvedValue();
-    const { unmount } = renderSettingsPage(
-      '/home?section=settings&tab=skills&skillSearch=research&skillFilter=global'
-    );
-    const shell = document.querySelector(
-      '[data-home-space-sidebar-pane]'
-    )?.parentElement;
-    const skillLink = await screen.findByRole('link', {
-      name: 'research',
-      exact: true,
-    });
-    const skillsTable = screen.getByRole('table', { name: 'Skills' });
-    const headerRow = within(skillsTable).getAllByRole('row')[0];
-    expect(headerRow).toHaveClass('hover:bg-transparent');
-    expect(
-      within(headerRow).queryByRole('button', { name: 'Skill' })
-    ).not.toBeInTheDocument();
-    expect(skillLink).toHaveClass(
-      'hover:!text-ds-ink-default-default',
-      'hover:no-underline'
-    );
-    expect(skillLink.closest('td')?.firstElementChild).toHaveClass(
-      'flex',
-      'flex-col',
-      'justify-center'
-    );
-    expect(skillLink).toHaveAttribute(
-      'href',
-      '/home?section=settings&tab=skills&skillSearch=research&skillFilter=global&skillId=global%3Aresearch'
-    );
-    await user.click(skillLink);
-    await waitFor(() =>
-      expect(document.querySelector('[data-skill-detail]')).toBeInTheDocument()
-    );
-    const pane = document.querySelector(
-      '[data-home-space-sidebar-pane="skill-detail"]'
-    );
-    expect(pane?.parentElement).toBe(shell);
-    expect(pane).toHaveAttribute('data-space-navigation-direction', 'forward');
-    expect(pane).toHaveAttribute('data-space-navigation-motion', 'full');
-    await waitFor(() =>
-      expect(
-        screen.getByRole('navigation', { name: 'Select a skill' })
-      ).toBeVisible()
-    );
-    const skillSidebar = screen.getByRole('complementary', { name: 'Skills' });
-    const skillSidebarHeader = skillSidebar.querySelector(
-      'header'
-    ) as HTMLElement;
-    expect(skillSidebarHeader).not.toHaveClass('border-b');
-    const back = within(skillSidebarHeader).getByRole('button', {
-      name: 'Back',
-    });
-    const addSkill = within(skillSidebarHeader).getByRole('button', {
-      name: 'Add skill',
-    });
-    expect(addSkill).toHaveAttribute('data-variant', 'primary');
-    expect(addSkill).toHaveClass('!rounded-full');
-    const skillSearch = within(skillSidebar).getByRole('searchbox', {
-      name: 'Search skills…',
-    });
-    expect(skillSearch.closest('.py-ds-8')).not.toHaveClass('px-ds-8');
-    expect(
-      addSkill.compareDocumentPosition(skillSearch) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-    expect(skillSidebar.querySelector('.uppercase')).not.toBeInTheDocument();
-    await user.type(skillSearch, 'missing');
-    expect(
-      within(skillSidebar).queryByRole('button', { name: 'research' })
-    ).not.toBeInTheDocument();
-    expect(skillSidebar).toHaveTextContent('No skills match your filters.');
-    await user.clear(skillSearch);
-    fireEvent.keyDown(back, { key: 'Enter' });
-    fireEvent.click(back);
-    await waitFor(() =>
-      expect(
-        document.querySelector('[data-home-space-sidebar-pane="home"]')
-      ).toHaveAttribute('data-space-navigation-motion', 'instant')
-    );
-    expect(
-      await screen.findByRole('textbox', { name: 'Search skills…' })
-    ).toHaveValue('research');
-    expect(
-      await screen.findByRole('combobox', { name: 'Skill source' })
-    ).toHaveTextContent('Global');
-    expect(screen.getByTestId('settings-location')).toHaveTextContent(
-      '/home?section=settings&tab=skills&skillSearch=research&skillFilter=global'
-    );
-    unmount();
-    sync.mockRestore();
-    useSkillsStore.setState({ skills: [] });
-  });
-
-  it('removes the Skills toolbar and restores the settings header during a page switch', async () => {
-    const user = userEvent.setup();
-
-    renderSettingsPage();
-
-    await user.click(screen.getByRole('button', { name: 'Skills' }));
-    const toolbar = await screen.findByRole('region', {
-      name: 'Skills toolbar',
-    });
-    const frame = toolbar.closest('header');
-
-    expect(
-      within(toolbar).getByRole('button', { name: 'Add skill' })
-    ).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Channels' }));
-
-    await waitFor(() => {
-      const header = getSettingsHeader();
-      expect(header).toBe(frame);
-      expect(
-        screen.queryByRole('region', { name: 'Skills toolbar' })
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByRole('button', { name: 'Add skill' })
-      ).not.toBeInTheDocument();
-      expect(within(header).getByText('Channels')).toBeInTheDocument();
-    });
-    await waitFor(() => {
-      expect(
-        document.querySelector('[data-settings-section="channels"]')
-      ).toBeInTheDocument();
-    });
-  });
-
-  it('uses the connector-focused sidebar for the Add connector subpage', async () => {
-    renderSettingsPage(
-      '/home?section=settings&tab=connectors&connectorView=add&connectorAdd=browse'
-    );
-
-    await waitFor(() =>
-      expect(document.querySelector('[data-add-connector]')).toBeInTheDocument()
-    );
-    const sidebarPane = document.querySelector(
-      '[data-home-space-sidebar-pane="connector-detail"]'
-    );
-    expect(sidebarPane).toBeInTheDocument();
-    const connectorSidebar = await screen.findByRole('complementary', {
-      name: 'Connectors',
-    });
-    expect(
-      within(connectorSidebar).getByRole('button', { name: 'Back' })
-    ).toBeVisible();
-    expect(
-      within(connectorSidebar).getByRole('button', { name: 'Add connector' })
-    ).toHaveAttribute('data-variant', 'primary');
-
-    const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
-    expect(
-      within(breadcrumb).getByRole('button', { name: 'Connectors' })
-    ).toBeVisible();
-    expect(breadcrumb.querySelector('ol')).not.toBeNull();
-    expect(breadcrumb).not.toHaveAttribute('title');
-    expect(
-      screen.getByRole('heading', {
-        name: 'Add connector',
-        level: 1,
-      })
-    ).toBeVisible();
-    expect(within(breadcrumb).queryByRole('heading')).toBeNull();
-  });
-
-  it('returns from Connector detail to the page that opened it', async () => {
-    const user = userEvent.setup();
-    renderSettingsPage([
-      '/?space=workspace-space',
-      {
-        pathname: '/home',
-        search:
-          '?section=settings&tab=connectors&connectorView=add&connectorAdd=browse',
-        state: { from: '/?space=workspace-space' },
       },
-    ]);
+      projectsBySpaceId: {
+        ...state.projectsBySpaceId,
+        'active-space': {},
+      },
+      projectsSyncedAt: {
+        ...state.projectsSyncedAt,
+        'active-space': now,
+      },
+    }));
 
-    const connectorSidebar = await screen.findByRole('complementary', {
-      name: 'Connectors',
-    });
-    await user.click(
-      within(connectorSidebar).getByRole('button', { name: 'Back' })
+    renderSettingsPage(
+      '/home?section=settings&tab=models&provider=local-provider'
     );
 
     await waitFor(() =>
       expect(screen.getByTestId('settings-location')).toHaveTextContent(
-        '/?space=workspace-space'
+        '/home?section=spaces&spaceId=active-space&spaceTab=workspace-profile&spaceConfig=space-settings-model&provider=local-provider'
       )
     );
+    expect(
+      screen.queryByRole('button', { name: 'Models' })
+    ).not.toBeInTheDocument();
   });
 
   it('returns from Space detail to its workspace origin', async () => {
@@ -1212,7 +612,7 @@ describe('SettingsPage', () => {
       'Automations',
       'Context',
       'Memory',
-      'Space settings',
+      'Configuration',
     ]) {
       expect(screen.getByRole('tab', { name: tabName })).toBeInTheDocument();
     }
@@ -1239,7 +639,7 @@ describe('SettingsPage', () => {
       screen.getByRole('tab', { name: 'Context' }).querySelector('svg')
     ).toHaveClass('lucide-library');
     expect(
-      screen.getByRole('tab', { name: 'Space settings' }).querySelector('svg')
+      screen.getByRole('tab', { name: 'Configuration' }).querySelector('svg')
     ).toHaveClass('lucide-settings');
     fireEvent.pointerEnter(screen.getByRole('tab', { name: 'Memory' }), {
       pointerType: 'mouse',

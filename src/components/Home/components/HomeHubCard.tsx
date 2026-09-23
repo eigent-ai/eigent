@@ -43,6 +43,7 @@ import {
   HomeHubItemShell,
   HomeHubProjectBoardCardBody,
   HomeHubProjectCardBody,
+  HomeHubSessionStatusTag,
   HomeHubSpaceBoardCardBody,
   HomeHubSpaceCardBody,
   HomeHubTaskBoardCardBody,
@@ -373,6 +374,12 @@ function ProjectItemContent({
             nameIcon={<MessageCircle className="h-4 w-4" />}
             listCells={[
               { id: 'space', content: spaceLabel || '—' },
+              {
+                id: 'status',
+                content: (
+                  <HomeHubSessionStatusTag status={runtimeStatus ?? null} />
+                ),
+              },
               {
                 id: 'tasks',
                 content: formatCompactCount(project.task_count),

@@ -14,6 +14,7 @@
 
 import { SettingsRouteBridge } from '@/components/Layout';
 import { openSettings, useSettingsStore } from '@/store/settingsStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -36,7 +37,7 @@ function LocationProbe() {
   );
 }
 
-describe('SettingsRouteBridge', () => {
+describe('SpaceConfigurationRouteBridge', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useSettingsStore.setState({
@@ -44,6 +45,7 @@ describe('SettingsRouteBridge', () => {
       isOpen: false,
       modelProvider: null,
     });
+    useSpaceStore.setState({ activeSpaceId: 'space-1' });
   });
 
   it('moves the provider target into the destination URL', async () => {
@@ -62,7 +64,7 @@ describe('SettingsRouteBridge', () => {
     act(() => openSettings('models', { modelProvider: 'ant-ling' }));
     await waitFor(() =>
       expect(screen.getByTestId('location')).toHaveTextContent(
-        '/home?section=settings&tab=models&provider=ant-ling'
+        '/home?section=spaces&spaceId=space-1&spaceTab=workspace-profile&spaceConfig=space-settings-model&provider=ant-ling'
       )
     );
     expect(useSettingsStore.getState()).toMatchObject({
@@ -85,7 +87,7 @@ describe('SettingsRouteBridge', () => {
     expect(screen.getByTestId('location')).toHaveTextContent('/:null');
   });
 
-  it('clears a rejected request so the same Settings command can retry', async () => {
+  it('clears a rejected request so the same configuration command can retry', async () => {
     mocks.runAfterWorkspaceConfigurationSave
       .mockResolvedValueOnce(false)
       .mockImplementationOnce(
@@ -115,7 +117,7 @@ describe('SettingsRouteBridge', () => {
     await waitFor(() => {
       expect(mocks.runAfterWorkspaceConfigurationSave).toHaveBeenCalledTimes(2);
       expect(screen.getByTestId('location')).toHaveTextContent(
-        '/home?section=settings&tab=settings:{"from":"/?view=project"}'
+        '/home?section=spaces&spaceId=space-1&spaceTab=workspace-profile&spaceConfig=space-settings-identity:{"from":"/?view=project"}'
       );
     });
   });

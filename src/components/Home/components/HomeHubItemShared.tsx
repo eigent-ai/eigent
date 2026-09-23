@@ -48,7 +48,7 @@ export type HomeHubItemKind = 'space' | 'project' | 'task' | 'trigger';
 
 export const HOME_HUB_LIST_GRID_CLASS: Record<HomeHubItemKind, string> = {
   space: 'grid-cols-[minmax(0,2fr)_112px_72px_72px_72px_96px_120px]',
-  project: 'grid-cols-[minmax(0,2fr)_112px_72px_72px_80px]',
+  project: 'grid-cols-[minmax(0,2fr)_112px_104px_72px_72px_80px]',
   task: 'grid-cols-[minmax(0,2fr)_112px_80px]',
   trigger: 'grid-cols-[minmax(0,2fr)_112px_100px_96px_96px]',
 };
@@ -177,15 +177,15 @@ export function HomeHubRuntimeStatusTag({
   const { t } = useTranslation();
   const config = {
     running: {
-      label: t('layout.home-project-status-running'),
+      label: t('layout.session-status-working'),
       tone: 'information' as const,
     },
     success: {
-      label: t('layout.home-project-status-succeeded'),
+      label: t('layout.session-status-ready'),
       tone: 'success' as const,
     },
     error: {
-      label: t('layout.home-project-status-failed'),
+      label: t('layout.session-status-needs-attention'),
       tone: 'error' as const,
     },
   }[status];
@@ -197,6 +197,24 @@ export function HomeHubRuntimeStatusTag({
       emphasis="default"
     />
   );
+}
+
+export function HomeHubSessionStatusTag({
+  status,
+}: {
+  status: 'running' | 'success' | 'error' | null;
+}) {
+  const { t } = useTranslation();
+  if (!status) {
+    return (
+      <HomeHubToneTag
+        label={t('layout.session-status-ready')}
+        tone="neutral"
+        emphasis="default"
+      />
+    );
+  }
+  return <HomeHubRuntimeStatusTag status={status} />;
 }
 
 function HomeHubCardStatsLine({ items }: { items: string[] }) {
@@ -642,9 +660,7 @@ export function HomeHubProjectCardBody({
       updatedAt={updatedAt}
       footerTags={
         <>
-          {runtimeStatus ? (
-            <HomeHubRuntimeStatusTag status={runtimeStatus} />
-          ) : null}
+          <HomeHubSessionStatusTag status={runtimeStatus ?? null} />
           <HomeHubHeaderTag label={spaceLabel} />
         </>
       }
@@ -673,9 +689,7 @@ export function HomeHubProjectBoardCardBody({
       ]}
       otherContent={
         <>
-          {runtimeStatus ? (
-            <HomeHubRuntimeStatusTag status={runtimeStatus} />
-          ) : null}
+          <HomeHubSessionStatusTag status={runtimeStatus ?? null} />
           <HomeHubHeaderTag
             label={spaceLabel}
             emphasis="default"

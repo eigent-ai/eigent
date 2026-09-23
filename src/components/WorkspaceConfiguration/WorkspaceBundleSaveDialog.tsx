@@ -689,8 +689,8 @@ export function WorkspaceBundleSaveDialog({
         }}
       >
         <DialogHeader
-          title={t('layout.workspace-bundle-save-title', {
-            defaultValue: 'Save Workspace Bundle',
+          title={t('layout.workspace-configuration-deploy-space', {
+            defaultValue: 'Deploy Space',
           })}
           subtitle={t('layout.workspace-bundle-save-subtitle', {
             defaultValue:
@@ -1130,8 +1130,8 @@ export function WorkspaceBundleSaveDialog({
                 <div className="rounded-xl border border-x border-y border-ds-border-success-default-default bg-ds-bg-success-subtle-default p-4">
                   <p className="flex items-center gap-2 text-ds-text-base font-bold">
                     <Check className="h-4 w-4" aria-hidden />{' '}
-                    {t('layout.workspace-bundle-save-published', {
-                      defaultValue: 'Published',
+                    {t('layout.workspace-configuration-deployed', {
+                      defaultValue: 'Deployed',
                     })}
                   </p>
                   <p className="mt-2 text-ds-text-meta font-medium text-ds-ink-muted-default">
@@ -1227,12 +1227,19 @@ export function WorkspaceBundleSaveDialog({
               disabled={!canPublish}
             >
               {publishing
-                ? t('layout.workspace-bundle-save-publishing', {
-                    defaultValue: 'Publishing…',
+                ? t('layout.workspace-configuration-deploying', {
+                    defaultValue: 'Deploying…',
                   })
-                : t('layout.workspace-bundle-save-publish-version', {
-                    defaultValue: 'Publish version',
-                  })}
+                : t(
+                    draft.base_revision_id
+                      ? 'layout.workspace-configuration-deploy-update'
+                      : 'layout.workspace-configuration-deploy-space',
+                    {
+                      defaultValue: draft.base_revision_id
+                        ? 'Deploy update'
+                        : 'Deploy Space',
+                    }
+                  )}
             </Button>
           ) : null}
         </DialogFooter>

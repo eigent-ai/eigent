@@ -40,6 +40,7 @@ const LIST_COLUMNS: Record<HomeHubItemKind, HomeHubListColumn[]> = {
   project: [
     { id: 'name', labelKey: 'layout.home-list-name' },
     { id: 'space', labelKey: 'layout.home-list-space' },
+    { id: 'status', labelKey: 'layout.home-list-status' },
     { id: 'tasks', labelKey: 'layout.tasks-heading', align: 'right' },
     { id: 'triggers', labelKey: 'layout.triggers', align: 'right' },
     { id: 'updated', labelKey: 'layout.home-list-updated', align: 'right' },
@@ -60,13 +61,13 @@ const LIST_COLUMNS: Record<HomeHubItemKind, HomeHubListColumn[]> = {
 
 const LIST_MIN_WIDTH_CLASS: Record<HomeHubItemKind, string> = {
   space: 'min-w-[720px]',
-  project: 'min-w-[560px]',
+  project: 'min-w-[680px]',
   task: 'min-w-[420px]',
   trigger: 'min-w-[560px]',
 };
 
 const PROJECT_WITHOUT_SPACE_GRID_CLASS =
-  'grid-cols-[minmax(0,2fr)_72px_72px_80px]';
+  'grid-cols-[minmax(0,2fr)_104px_72px_72px_80px]';
 
 type HomeHubListTableProps = {
   kind: HomeHubItemKind;

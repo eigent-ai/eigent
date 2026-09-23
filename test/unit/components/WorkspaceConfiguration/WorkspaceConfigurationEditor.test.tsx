@@ -247,7 +247,7 @@ describe('WorkspaceConfigurationEditor', () => {
     ).not.toHaveClass('max-w-5xl');
   });
 
-  it('keeps only tabs in the profile rail and groups version status with Profile sharing', async () => {
+  it('keeps only tabs in the profile rail and groups version status with deployment', async () => {
     const { container } = render(
       <WorkspaceConfigurationEditor presentation="settings" spaceId="space-1" />
     );
@@ -353,19 +353,20 @@ describe('WorkspaceConfigurationEditor', () => {
     expect(
       profileStatusGroup.querySelectorAll('[data-settings-row-divider]')
     ).toHaveLength(1);
-    const profileRow = within(profileStatusGroup)
-      .getByText('Profile')
+    const deploymentRow = within(profileStatusGroup)
+      .getByText('Deployment')
       .closest('[data-workspace-setting-row]');
     const versionRow = within(profileStatusGroup)
       .getByText('Draft version 1')
       .closest('[data-workspace-setting-row]');
     expect(versionRow).toHaveTextContent('Draft version 1');
     expect(versionRow).toHaveTextContent('Saved');
-    expect(profileRow).toHaveTextContent('Profile');
-    expect(profileRow).not.toHaveTextContent('Research Bundle');
-    expect(profileRow).toContainElement(
+    expect(deploymentRow).toHaveTextContent('Deployment');
+    expect(deploymentRow).toHaveTextContent('Local draft');
+    expect(deploymentRow).not.toHaveTextContent('Research Bundle');
+    expect(deploymentRow).toContainElement(
       within(profileStatusGroup).getByRole('button', {
-        name: 'Share Space profile',
+        name: 'Deploy Space',
       })
     );
     expect(
@@ -374,7 +375,7 @@ describe('WorkspaceConfigurationEditor', () => {
     ).toBeTruthy();
     expect(within(identityGroup).queryByText('Profile')).toBeNull();
     expect(
-      versionRow!.compareDocumentPosition(profileRow!) &
+      versionRow!.compareDocumentPosition(deploymentRow!) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
     expect(

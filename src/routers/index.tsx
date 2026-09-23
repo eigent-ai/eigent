@@ -14,11 +14,13 @@
 
 import { proxyFetchPost } from '@/api/http';
 import { isDesktop } from '@/client/platform';
+import { buildSettingsCompatibilityUrl } from '@/lib/spaceConfigurationRoute';
 import { useAuthStore } from '@/store/authStore';
 import {
   SETTINGS_SECTIONS,
   type SettingsSectionId,
 } from '@/store/settingsStore';
+import { useSpaceStore } from '@/store/spaceStore';
 import { lazy, useEffect, useReducer } from 'react';
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 
@@ -163,28 +165,23 @@ function SettingsRouteRedirect() {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
   const sectionFromUrl = searchParams.get('section');
-  const isLegacySettingsSection = SETTINGS_SECTIONS.includes(
-    sectionFromUrl as SettingsSectionId
-  );
+  const tabFromUrl = searchParams.get('tab');
+  const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
+  const legacySection = SETTINGS_SECTIONS.includes(
+    tabFromUrl as SettingsSectionId
+  )
+    ? (tabFromUrl as SettingsSectionId)
+    : SETTINGS_SECTIONS.includes(sectionFromUrl as SettingsSectionId)
+      ? (sectionFromUrl as SettingsSectionId)
+      : 'settings';
+  const destination =
+    sectionFromUrl === 'spaces'
+      ? '/home?section=spaces'
+      : buildSettingsCompatibilityUrl(activeSpaceId, legacySection, {
+          provider: searchParams.get('provider'),
+        });
 
-  if (sectionFromUrl !== 'spaces') {
-    searchParams.set('section', 'settings');
-    if (
-      sectionFromUrl &&
-      isLegacySettingsSection &&
-      sectionFromUrl !== 'settings'
-    ) {
-      searchParams.set('tab', sectionFromUrl);
-    }
-  }
-
-  return (
-    <Navigate
-      to={`/home?${searchParams.toString()}`}
-      replace
-      state={location.state}
-    />
-  );
+  return <Navigate to={destination} replace state={location.state} />;
 }
 
 // Main route configuration
@@ -220,14 +217,8 @@ const AppRoutes = () => (
           path="/agent-plugins/import"
           element={<LegacyRouteRedirect kind="agent-plugin-import" />}
         />
-        <Route
-          path="/setting"
-          element={<Navigate to="/home?section=settings" replace />}
-        />
-        <Route
-          path="/setting/*"
-          element={<Navigate to="/home?section=settings" replace />}
-        />
+        <Route path="/setting" element={<SettingsRouteRedirect />} />
+        <Route path="/setting/*" element={<SettingsRouteRedirect />} />
       </Route>
     </Route>
     <Route path="*" element={<NotFound />} />

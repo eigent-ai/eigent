@@ -169,8 +169,8 @@ export function UserMenu() {
     window.location.href = `${SITE_URL}/dashboard`;
   };
 
-  const handleOpenSettings = () => {
-    executeAppCommand(APP_COMMAND.openSettings);
+  const handleOpenConfiguration = () => {
+    executeAppCommand(APP_COMMAND.navigateConfiguration);
   };
 
   const handleOpenKeyboardShortcuts = () => {
@@ -334,10 +334,12 @@ export function UserMenu() {
           <DropdownMenuItem
             className="gap-2"
             onPointerEnter={closeLanguageSub}
-            onSelect={handleOpenSettings}
+            onSelect={handleOpenConfiguration}
           >
             <Settings className="h-4 w-4" aria-hidden />
-            {t('setting.settings')}
+            {t('layout.configuration-tab', {
+              defaultValue: 'Configuration',
+            })}
           </DropdownMenuItem>
 
           <DropdownMenuItem

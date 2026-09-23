@@ -90,9 +90,9 @@ describe('SpaceDetailTabsNav', () => {
     fireEvent.keyDown(screen.getByRole('tab', { name: 'Tasks' }), {
       key: 'End',
     });
-    expect(screen.getByRole('tab', { name: 'Space settings' })).toHaveFocus();
+    expect(screen.getByRole('tab', { name: 'Configuration' })).toHaveFocus();
 
-    fireEvent.keyDown(screen.getByRole('tab', { name: 'Space settings' }), {
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Configuration' }), {
       key: 'Home',
     });
     expect(screen.getByRole('tab', { name: 'Sessions' })).toHaveFocus();

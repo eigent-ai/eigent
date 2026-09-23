@@ -19,6 +19,7 @@ import { useDesktopUpdater } from '@/hooks/useDesktopUpdater';
 import { useInstallationSetup } from '@/hooks/useInstallationSetup';
 import { useHost } from '@/host';
 import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
+import { buildSettingsCompatibilityUrl } from '@/lib/spaceConfigurationRoute';
 import { runAfterWorkspaceConfigurationSave } from '@/lib/workspaceConfigurationNavigationGuard';
 import { useAuthStore } from '@/store/authStore';
 import { useInstallationUI } from '@/store/installationStore';
@@ -29,12 +30,12 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import InstallationErrorDialog from '../InstallStep/InstallationErrorDialog/InstallationErrorDialog';
 
 /**
- * Settings used to be a modal, and `openSettings(section)` is still the
- * call every feature uses to jump into a section. Settings is now a page in
- * the app shell, so translate that request into a route change and clear the
- * flag; `activeSection` stays in the store and drives the page.
+ * `openSettings(section)` remains a compatibility API for older feature
+ * callsites. The self-hosted product UI owns configuration at the Space level,
+ * so translate each request into its active-Space destination and clear the
+ * request flag.
  */
-export function SettingsRouteBridge() {
+export function SpaceConfigurationRouteBridge() {
   const navigate = useNavigate();
   const location = useLocation();
   const isOpen = useSettingsStore((state) => state.isOpen);
@@ -44,24 +45,24 @@ export function SettingsRouteBridge() {
     (state) => state.finishSettingsNavigation
   );
   const closeSettings = useSettingsStore((state) => state.closeSettings);
+  const activeSpaceId = useSpaceStore((state) => state.activeSpaceId);
 
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
     const routeRequest = runAfterWorkspaceConfigurationSave(() => {
-      const searchParams = new URLSearchParams({
-        section: 'settings',
-        tab: activeSection,
-      });
-      if (activeSection === 'models' && modelProvider) {
-        searchParams.set('provider', modelProvider);
-      }
-      const destination = `/home?${searchParams.toString()}`;
+      const destination = buildSettingsCompatibilityUrl(
+        activeSpaceId,
+        activeSection,
+        {
+          provider: activeSection === 'models' ? modelProvider : null,
+        }
+      );
       finishSettingsNavigation();
       if (isSettingsRoutePath(location.pathname)) {
         if (
           location.pathname !== '/home' ||
-          location.search !== `?${searchParams.toString()}`
+          `${location.pathname}${location.search}` !== destination
         ) {
           navigate(destination, {
             replace: true,
@@ -90,6 +91,7 @@ export function SettingsRouteBridge() {
     finishSettingsNavigation,
     closeSettings,
     activeSection,
+    activeSpaceId,
     modelProvider,
     isOpen,
     location.pathname,
@@ -100,6 +102,9 @@ export function SettingsRouteBridge() {
 
   return null;
 }
+
+/** @deprecated Use SpaceConfigurationRouteBridge for new code. */
+export const SettingsRouteBridge = SpaceConfigurationRouteBridge;
 
 const Layout = () => {
   const host = useHost();
@@ -173,7 +178,7 @@ const Layout = () => {
       >
         {showTopBar ? <TopBar /> : null}
       </div>
-      <SettingsRouteBridge />
+      <SpaceConfigurationRouteBridge />
       <div className="relative h-full min-h-0 flex-1 overflow-hidden">
         {/* Installation screen */}
         {actualShouldShowInstallScreen && <InstallDependencies />}

@@ -522,7 +522,9 @@ export function SpaceSwitchDropdown({
           >
             <Settings className="h-4 w-4" aria-hidden />
             <span>
-              {t('layout.space-settings', { defaultValue: 'Space settings' })}
+              {t('layout.configuration-tab', {
+                defaultValue: 'Configuration',
+              })}
             </span>
           </DropdownMenuItem>
         ) : null}

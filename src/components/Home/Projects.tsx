@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { DsText } from '@/components/ui/ds-text';
 import type { ProjectGroup } from '@/types/history';
 import { MessageCircle } from 'lucide-react';
 import { useMemo } from 'react';
@@ -76,11 +77,13 @@ function ProjectRow({
 interface ProjectsProps {
   projectsOverride?: ProjectGroup[];
   presentation?: 'home' | 'space-detail';
+  onCreateFirstSession?: () => void;
 }
 
 export default function Projects({
   projectsOverride,
   presentation = 'home',
+  onCreateFirstSession,
 }: ProjectsProps = {}) {
   const { t } = useTranslation();
   const {
@@ -185,11 +188,31 @@ export default function Projects({
 
   return (
     <div className="flex w-full min-w-0 flex-col">
+      {presentation === 'space-detail' ? (
+        <DsText role="base" className="mb-ds-16 text-ds-ink-muted-default">
+          {t('layout.sessions-agent-description')}
+        </DsText>
+      ) : null}
       <div className="mb-12 w-full min-w-0">
         {projects.length === 0 ? (
           <HomeHubEmptyState
             icon={MessageCircle}
-            title={t('dashboard.no-projects-found')}
+            title={
+              presentation === 'space-detail'
+                ? t('layout.sessions-empty-title')
+                : t('dashboard.no-projects-found')
+            }
+            description={
+              presentation === 'space-detail'
+                ? t('layout.sessions-empty-description')
+                : undefined
+            }
+            actionLabel={
+              presentation === 'space-detail' && onCreateFirstSession
+                ? t('layout.sessions-empty-action')
+                : undefined
+            }
+            onAction={onCreateFirstSession}
           />
         ) : filteredProjects.length === 0 ? (
           <HomeHubEmptyState title={t('layout.search-no-results')} />
