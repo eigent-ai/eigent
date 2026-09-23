@@ -14,11 +14,20 @@
 
 import { useHost } from '@/host';
 import { cn } from '@/lib/utils';
-import { Check, Copy, FileText, Image, Pencil } from 'lucide-react';
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import {
+  Check,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Copy,
+  FileText,
+  Image,
+  Pencil,
+} from 'lucide-react';
+import { useCallback, useId, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '../../ui/button';
+import { DsIcon } from '../../ui/ds-icon';
 import { Popover, PopoverContent, PopoverTrigger } from '../../ui/popover';
 import { UserMessageRichContent } from './UserMessageRichContent';
 
@@ -72,6 +81,7 @@ export function UserMessageCard({
   const [expanded, setExpanded] = useState(false);
   const [canClamp, setCanClamp] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+  const contentId = useId();
   const hoverCloseTimerRef = useRef<number | null>(null);
   const { t, i18n } = useTranslation();
   const date = createdAt
@@ -324,6 +334,7 @@ export function UserMessageCard({
         )}
         <div className="relative w-full">
           <div
+            id={contentId}
             ref={contentRef}
             style={
               !expanded ? { maxHeight: USER_MESSAGE_COLLAPSED_MAX } : undefined
@@ -345,26 +356,6 @@ export function UserMessageCard({
         className="mt-ds-4 flex w-full items-center justify-end gap-ds-4"
         data-user-message-actions
       >
-        {canClamp && (
-          <Button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setExpanded((value) => !value);
-            }}
-            variant="ghost"
-            size="xs"
-            buttonContent="text"
-            textWeight="normal"
-            className="mr-auto"
-          >
-            {t(
-              expanded
-                ? 'chat.agent-outcome-collapse'
-                : 'chat.agent-outcome-expand'
-            )}
-          </Button>
-        )}
         <div
           className="pointer-events-none flex items-center justify-end gap-ds-4 opacity-0 transition-opacity group-focus-within/msg:pointer-events-auto group-focus-within/msg:opacity-100 group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100"
           data-user-message-hover-actions
@@ -392,7 +383,32 @@ export function UserMessageCard({
               <Copy />
             )}
           </Button>
-          {onEditAndResend && (
+          {canClamp ? (
+            <Button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setExpanded((value) => !value);
+              }}
+              variant="ghost"
+              size="sm"
+              buttonContent="icon-only"
+              aria-label={t(
+                expanded
+                  ? 'chat.agent-outcome-collapse'
+                  : 'chat.agent-outcome-expand'
+              )}
+              title={t(
+                expanded
+                  ? 'chat.agent-outcome-collapse'
+                  : 'chat.agent-outcome-expand'
+              )}
+              aria-controls={contentId}
+              aria-expanded={expanded}
+            >
+              <DsIcon icon={expanded ? ChevronsDownUp : ChevronsUpDown} />
+            </Button>
+          ) : onEditAndResend ? (
             <Button
               type="button"
               onClick={onEditAndResend}
@@ -404,7 +420,7 @@ export function UserMessageCard({
             >
               <Pencil aria-hidden className="size-4" />
             </Button>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

@@ -13,7 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { invokeMock, toastErrorMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
@@ -31,6 +31,16 @@ vi.mock('sonner', () => ({
 import { UserMessageCard } from '@/components/ChatBox/MessageItem/UserMessageCard';
 
 describe('UserMessageCard', () => {
+  let scrollHeightSpy: ReturnType<typeof vi.spyOn> | undefined;
+  let clientHeightSpy: ReturnType<typeof vi.spyOn> | undefined;
+
+  afterEach(() => {
+    scrollHeightSpy?.mockRestore();
+    clientHeightSpy?.mockRestore();
+    scrollHeightSpy = undefined;
+    clientHeightSpy = undefined;
+  });
+
   beforeEach(() => {
     invokeMock.mockReset();
     invokeMock.mockResolvedValue({ success: true });
@@ -110,6 +120,59 @@ describe('UserMessageCard', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Edit and resend' }));
     expect(onEditAndResend).toHaveBeenCalledOnce();
+  });
+
+  it('replaces edit with an expand action for a folded message', () => {
+    scrollHeightSpy = vi
+      .spyOn(HTMLElement.prototype, 'scrollHeight', 'get')
+      .mockReturnValue(120);
+    clientHeightSpy = vi
+      .spyOn(HTMLElement.prototype, 'clientHeight', 'get')
+      .mockReturnValue(80);
+    const onEditAndResend = vi.fn();
+    const { container } = render(
+      <UserMessageCard
+        id="long-user-message"
+        content={'A long message '.repeat(30)}
+        onEditAndResend={onEditAndResend}
+      />
+    );
+
+    const hoverActions = container.querySelector(
+      '[data-user-message-hover-actions]'
+    );
+    const expand = screen.getByRole('button', { name: 'Expand' });
+    const content = document.getElementById(
+      expand.getAttribute('aria-controls')!
+    );
+
+    expect(hoverActions).toContainElement(expand);
+    expect(
+      screen.queryByRole('button', { name: 'Edit and resend' })
+    ).toBeNull();
+    expect(expand).toHaveAttribute('aria-expanded', 'false');
+    expect(content).toHaveStyle({
+      maxHeight: 'calc(4 * var(--lineHeight-14, 20px))',
+    });
+    expect(content).toHaveClass('overflow-hidden');
+
+    fireEvent.click(expand);
+
+    const collapse = screen.getByRole('button', { name: 'Collapse' });
+    expect(collapse).toHaveAttribute('aria-expanded', 'true');
+    expect(content).not.toHaveStyle({
+      maxHeight: 'calc(4 * var(--lineHeight-14, 20px))',
+    });
+    expect(content).not.toHaveClass('overflow-hidden');
+
+    fireEvent.click(collapse);
+
+    expect(screen.getByRole('button', { name: 'Expand' })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
+    expect(content).toHaveClass('overflow-hidden');
+    expect(onEditAndResend).not.toHaveBeenCalled();
   });
 
   it('keeps durable attachment names display-only', () => {
