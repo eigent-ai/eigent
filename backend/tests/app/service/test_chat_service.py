@@ -1565,7 +1565,9 @@ class TestChatServiceIntegration:
             patch(
                 "app.run_runtime.get_default_run_coordinator",
                 return_value=SimpleNamespace(
-                    complete_turn=AsyncMock(return_value=True)
+                    complete_turn_with_receipt=AsyncMock(
+                        return_value=(True, None)
+                    )
                 ),
             ),
         ):

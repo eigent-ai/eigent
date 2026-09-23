@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from app.run_journal.models import (
         AttemptEnvironmentBinding,
+        CommittedRunEvent,
         RunAttemptRecord,
     )
     from app.run_journal.store import SQLiteRunJournal
@@ -115,6 +116,7 @@ class RuntimeHandle:
     started_at: float = field(default_factory=time.time)
     consumer_heartbeat_at: float = field(default_factory=time.time)
     completed_at: float | None = None
+    retiring: bool = False
     _subscribers: dict[str, asyncio.Queue[Any]] = field(
         default_factory=dict, init=False, repr=False
     )
@@ -247,37 +249,53 @@ class RunCoordinator:
             self._journal = journal
 
     @asynccontextmanager
-    async def admission_scope(self, run_id: str) -> AsyncIterator[None]:
-        """Serialize admission side effects for one Run, not all Runs.
+    async def admission_scope(
+        self,
+        run_id: str,
+        *,
+        project_id: str | None = None,
+    ) -> AsyncIterator[None]:
+        """Serialize admission with Run controls and legacy Project writers.
 
         The controller must enter this scope before creating durable memory,
         mutating compatibility TaskLock state, or queueing the initial command.
-        A concurrent retry can then attach to the first consumer without
-        repeating any of those effects.
+        Legacy ``/chat`` also needs a Project gate because different Run ids
+        share one mutable TaskLock queue. Always acquire that gate before the
+        Run gate; canonical controls acquire only the Run gate, so admission
+        cannot race cancellation/resume or introduce a reverse lock order.
+        A concurrent retry can attach without repeating admission effects.
         """
 
+        gate_keys = [f"run:{run_id}"]
+        if project_id:
+            gate_keys.insert(0, f"project:{project_id}")
+        gates: list[tuple[str, _AdmissionGate]] = []
         async with self._lock:
-            gate = self._admission_gates.get(run_id)
-            if gate is None:
-                gate = _AdmissionGate()
-                self._admission_gates[run_id] = gate
-            gate.users += 1
+            for gate_key in gate_keys:
+                gate = self._admission_gates.get(gate_key)
+                if gate is None:
+                    gate = _AdmissionGate()
+                    self._admission_gates[gate_key] = gate
+                gate.users += 1
+                gates.append((gate_key, gate))
 
-        acquired = False
+        acquired: list[_AdmissionGate] = []
         try:
-            await gate.lock.acquire()
-            acquired = True
+            for _, gate in gates:
+                await gate.lock.acquire()
+                acquired.append(gate)
             yield
         finally:
-            if acquired:
+            for gate in reversed(acquired):
                 gate.lock.release()
             async with self._lock:
-                gate.users -= 1
-                if (
-                    gate.users == 0
-                    and self._admission_gates.get(run_id) is gate
-                ):
-                    self._admission_gates.pop(run_id, None)
+                for gate_key, gate in gates:
+                    gate.users -= 1
+                    if (
+                        gate.users == 0
+                        and self._admission_gates.get(gate_key) is gate
+                    ):
+                        self._admission_gates.pop(gate_key, None)
 
     async def attach_if_running(
         self,
@@ -289,7 +307,7 @@ class RunCoordinator:
 
         async with self._lock:
             handle = self._handles.get(run_id)
-            if handle is None or not handle.consumer_alive:
+            if handle is None or not handle.consumer_alive or handle.retiring:
                 return None
             return handle.subscribe(max_buffer=max_buffer)
 
@@ -306,7 +324,27 @@ class RunCoordinator:
         async with self._lock:
             existing = self._handles.get(run_id)
             if existing is not None and existing.consumer_alive:
+                if existing.retiring:
+                    raise RunRuntimeError(
+                        f"run {run_id!r} consumer is retiring"
+                    )
                 return existing.subscribe(max_buffer=subscriber_buffer)
+
+            if command_queue is not None:
+                queue_owner = next(
+                    (
+                        candidate
+                        for candidate in self._handles.values()
+                        if candidate.consumer_alive
+                        and candidate.command_queue is command_queue
+                    ),
+                    None,
+                )
+                if queue_owner is not None:
+                    raise RunRuntimeError(
+                        "TaskLock queue already has a live consumer owned by "
+                        f"run {queue_owner.run_id!r}"
+                    )
 
             handle = RuntimeHandle(
                 run_id=run_id,
@@ -338,12 +376,35 @@ class RunCoordinator:
         async with self._lock:
             return self._handles.get(run_id)
 
+    async def get_queue_owner(
+        self, command_queue: asyncio.Queue[Any]
+    ) -> RuntimeHandle | None:
+        """Return the sole live consumer for one compatibility TaskLock."""
+
+        async with self._lock:
+            return next(
+                (
+                    handle
+                    for handle in self._handles.values()
+                    if handle.consumer_alive
+                    and handle.command_queue is command_queue
+                ),
+                None,
+            )
+
     async def rebind_run(self, previous_run_id: str, run_id: str) -> bool:
         """Move a compatibility consumer to a newly admitted follow-up Run."""
 
         async with self._lock:
             handle = self._handles.get(previous_run_id)
-            if handle is None or not handle.consumer_alive:
+            if (
+                handle is None
+                or not handle.consumer_alive
+                or handle.retiring
+                or handle.cancel_event.is_set()
+            ):
+                # Cancellation leaves the task alive during generator/tool
+                # teardown. It can no longer own a newly admitted follow-up.
                 return False
             if previous_run_id == run_id:
                 return True
@@ -360,6 +421,36 @@ class RunCoordinator:
             self._handles[run_id] = handle
             return True
 
+    async def retire(
+        self,
+        run_id: str,
+        *,
+        command_queue: asyncio.Queue[Any] | None = None,
+    ) -> bool:
+        """Stop and await one warm consumer before its queue is reused.
+
+        Detaching a renderer subscription deliberately does not stop Run
+        execution. Callers that need to replace a warm legacy ``/chat``
+        consumer must use this explicit barrier; returning means the old
+        ``step_solve`` loop can no longer take another queue item.
+        """
+
+        async with self._lock:
+            handle = self._handles.get(run_id)
+            if handle is None:
+                return False
+            if (
+                command_queue is not None
+                and handle.command_queue is not command_queue
+            ):
+                raise RunRuntimeError(
+                    f"run {run_id!r} does not own the requested TaskLock queue"
+                )
+            handle.retiring = True
+
+        await handle.cancel()
+        return True
+
     async def notify_deadline_changed(self, run_id: str) -> bool:
         async with self._lock:
             handle = self._handles.get(run_id)
@@ -375,6 +466,19 @@ class RunCoordinator:
         project_id: str,
         assistant_data: Any,
     ) -> bool:
+        """Complete a logical turn while retaining the boolean caller contract."""
+        completed, _receipt = await self.complete_turn_with_receipt(
+            run_id, project_id=project_id, assistant_data=assistant_data
+        )
+        return completed
+
+    async def complete_turn_with_receipt(
+        self,
+        run_id: str,
+        *,
+        project_id: str,
+        assistant_data: Any,
+    ) -> tuple[bool, CommittedRunEvent | None]:
         """Terminalize one Run without disposing its warm Project runtime.
 
         Compatibility chat generators intentionally stay alive across
@@ -383,26 +487,30 @@ class RunCoordinator:
         assistant result so it can atomically commit that result with the
         successful terminal; the same handle can then be rebound to the next
         Run without retaining the previous Run as ``running``.
+
+        Return the actual result receipt only when this call commits it. A
+        compatibility close frame after cancellation/failure has no assistant
+        result and must not invent an identity from the Run id.
         """
 
         async with self._lock:
             handle = self._handles.get(run_id)
             if handle is None or not handle.consumer_alive:
-                return False
+                return False, None
             started_at = handle.started_at
         if self._journal is None:
-            return True
+            return True, None
         from app.artifacts import finalize_run_artifacts
         from app.run_journal.models import RunEventDraft
 
         run = await asyncio.to_thread(self._journal.get_run, run_id)
         if run is None:
-            return False
+            return False, None
         if run.status in {"completed", "failed", "cancelled"}:
             # A compatibility END frame may close the renderer stream after a
             # durable cancel/failure. It is transport state, not permission to
             # rewrite the canonical Run outcome as success.
-            return True
+            return True, None
         await self._quiesce_run_background_sessions(
             run_id,
             project_id=project_id,
@@ -432,7 +540,7 @@ class RunCoordinator:
             if isinstance(assistant_data, dict)
             else {"message": str(assistant_data)}
         )
-        await asyncio.to_thread(
+        result_event, _terminal_event = await asyncio.to_thread(
             self._journal.complete_successful_run,
             run_id,
             assistant_final=RunEventDraft(
@@ -483,9 +591,8 @@ class RunCoordinator:
             if self._journal is not None
             else None
         )
-        return self._journal is None or (
-            run is not None and run.status == "completed"
-        )
+        completed = run is not None and run.status == "completed"
+        return completed, result_event if completed else None
 
     async def _quiesce_run_background_sessions(
         self,

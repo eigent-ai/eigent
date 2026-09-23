@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { resolveSourceEventId } from '../messageIdentity';
 import { decodeTransportMessage } from './decode';
 import type { CanonicalProjectEvent } from './types';
 
@@ -102,6 +103,7 @@ export function normalizeEvent(
   const step = text(message.step, 'legacy_unknown');
   return {
     eventId: text(message.event_id, `${source}:${taskId}:${String(stepId)}`),
+    sourceEventId: resolveSourceEventId(message),
     projectId,
     runId: taskId,
     runSequence: sequence,

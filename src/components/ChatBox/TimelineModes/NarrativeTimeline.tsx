@@ -37,7 +37,11 @@ import {
   DEFAULT_NARRATIVE_INFORMATION_DENSITY,
   type NarrativeInformationDensity,
 } from '@/types/chatTimeline';
-import { SessionMode, type SessionModeType } from '@/types/constants';
+import {
+  AgentStep,
+  SessionMode,
+  type SessionModeType,
+} from '@/types/constants';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -1291,24 +1295,28 @@ export function NarrativeTimeline({
               interactivePlan={interactivePlan}
             />
             {run.finalAssistantResponse ? (
-              <>
-                <AgentMessageCard
-                  content={run.finalAssistantResponse.content}
-                  deferredFooter={
-                    showFiles ? (
-                      <RunFilesGroup
-                        artifactNodes={run.artifacts}
-                        projectedArtifacts={projectedArtifacts}
-                        artifactManifest={artifactManifest}
-                        projectId={run.projectId}
-                        runId={run.runId}
-                      />
-                    ) : undefined
-                  }
-                  id={run.finalAssistantResponse.id}
-                  typewriter={isActiveRunStatus(run.status)}
-                />
-              </>
+              <AgentMessageCard
+                content={run.finalAssistantResponse.content}
+                deferredFooter={
+                  showFiles ? (
+                    <RunFilesGroup
+                      artifactNodes={run.artifacts}
+                      projectedArtifacts={projectedArtifacts}
+                      artifactManifest={artifactManifest}
+                      projectId={run.projectId}
+                      runId={run.runId}
+                    />
+                  ) : undefined
+                }
+                feedbackMessageId={
+                  run.finalAssistantResponse.messageId ??
+                  run.finalAssistantResponse.sourceEventId
+                }
+                feedbackRunId={run.runId}
+                id={run.finalAssistantResponse.id}
+                messageStep={AgentStep.END}
+                typewriter={isActiveRunStatus(run.status)}
+              />
             ) : null}
             {!run.finalAssistantResponse && showFiles ? (
               <RunFilesGroup

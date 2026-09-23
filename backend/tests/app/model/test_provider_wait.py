@@ -1,3 +1,17 @@
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
+
 """Real pinned SDK + mock HTTP, including a virtual event-loop clock."""
 
 from __future__ import annotations
@@ -641,8 +655,12 @@ async def test_tool_and_hitl_boundaries_preserve_pause_accounting(
         with tool_checkpoint_scope(checkpoint):
             async with pause_active_execution_timeout():
                 await clock.sleep(3600)
-                assert remaining_active_execution_seconds() == 8
-        assert remaining_active_execution_seconds() == 8
+                assert remaining_active_execution_seconds() == pytest.approx(
+                    8, rel=0, abs=1e-9
+                )
+        assert remaining_active_execution_seconds() == pytest.approx(
+            8, rel=0, abs=1e-9
+        )
     observed = events(caplog)
     assert [(e["phase"], e["boundary"]) for e in observed] == [
         ("tool", "enter"),

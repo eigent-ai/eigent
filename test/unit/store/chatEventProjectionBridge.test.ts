@@ -540,6 +540,54 @@ describe('mixed history retained across snapshot replacement', () => {
   beforeEach(() => releaseProjectEventStore(projectId));
   afterEach(() => releaseProjectEventStore(projectId));
 
+  it('keeps feedback receipt references separate from canonical ingress identity', () => {
+    const store = getProjectEventStore(projectId, {
+      scheduleFlush: () => () => {},
+    });
+    const frame = legacy(1, 'agent_end', { content: 'Worker result' });
+    frame.raw = {
+      ...(frame.raw as Record<string, unknown>),
+      source_event_id: 'canonical:1',
+    };
+    expect(enqueueChatEventProjection(frame, true, true)).toBe('accepted');
+    store.flushAll();
+    const legacyNode = store.getSnapshot().chat.nodes[0];
+    expect(legacyNode.eventId).not.toBe('canonical:1');
+    expect(legacyNode.sourceEventId).toBe('canonical:1');
+
+    expect(
+      enqueueChatEventProjection(
+        canonical(
+          1,
+          'legacy.agent_end',
+          { content: 'Worker result' },
+          'agent_end'
+        ),
+        true,
+        true
+      )
+    ).toBe('accepted');
+    store.flushAll();
+    const snapshot = store.getSnapshot();
+    expect(snapshot.view.runs[runId].lastSequence).toBe(1);
+    expect(snapshot.view.seenEventIds['canonical:1']).toBe(true);
+    // Existing mirror folding may retain the first display node; its source
+    // reference is stable while canonical sequence/status still advance.
+    expect(snapshot.chat.nodeById[legacyNode.id]).toMatchObject({
+      sourceEventId: 'canonical:1',
+      content: 'Worker result',
+    });
+    expect(snapshot.view.needsResync).toBe(false);
+    expect(
+      enqueueChatEventProjection(canonical(2, 'run.completed', {}), true, true)
+    ).toBe('accepted');
+    store.flushAll();
+    expect(store.getSnapshot().view.runs[runId]).toMatchObject({
+      lastSequence: 2,
+      status: 'completed',
+    });
+  });
+
   it.each(['decompose_text', 'write_file'] as const)(
     'keeps a distinct equal %s receipt when refreshing an established pair',
     (family) => {

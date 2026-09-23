@@ -18,29 +18,38 @@ import {
   getProjectEventStore,
   resetProjectEventStoresForTests,
 } from '@/store/projectEventStore';
-import { useProjectStore } from '@/store/projectStore';
+import {
+  useProjectStore,
+  waitForPendingStaleRuntimeEviction,
+} from '@/store/projectStore';
 import { SPACE_SCHEMA_VERSION, useSpaceStore } from '@/store/spaceStore';
 import { normalizeThinkingEffort, ThinkingEffort } from '@/types/constants';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
+  closeIdleSSEConnectionsForTasksMock,
   deleteCachedProjectMock,
   fetchGetMock,
+  fetchPostMock,
   getCachedProjectMock,
   hasActiveSSEConnectionMock,
   putCachedProjectMock,
   proxyFetchGetMock,
   proxyUpdateSpaceProjectMock,
   replayMock,
+  waitForIdleSSEDisplayTailMock,
 } = vi.hoisted(() => ({
+  closeIdleSSEConnectionsForTasksMock: vi.fn(),
   deleteCachedProjectMock: vi.fn(),
   fetchGetMock: vi.fn(),
+  fetchPostMock: vi.fn(),
   getCachedProjectMock: vi.fn(),
   hasActiveSSEConnectionMock: vi.fn(),
   putCachedProjectMock: vi.fn(),
   proxyFetchGetMock: vi.fn(),
   proxyUpdateSpaceProjectMock: vi.fn().mockResolvedValue({}),
   replayMock: vi.fn(),
+  waitForIdleSSEDisplayTailMock: vi.fn(),
 }));
 
 vi.mock('@/api/http', async (importOriginal) => {
@@ -48,6 +57,7 @@ vi.mock('@/api/http', async (importOriginal) => {
   return {
     ...actual,
     fetchGet: fetchGetMock,
+    fetchPost: fetchPostMock,
     proxyFetchGet: proxyFetchGetMock,
   };
 });
@@ -81,7 +91,9 @@ vi.mock('@/store/chatStore', async (importOriginal) => {
       store.setState({ replay: replayMock } as any);
       return store;
     },
+    closeIdleSSEConnectionsForTasks: closeIdleSSEConnectionsForTasksMock,
     hasActiveSSEConnection: hasActiveSSEConnectionMock,
+    waitForIdleSSEDisplayTail: waitForIdleSSEDisplayTailMock,
   };
 });
 
@@ -102,12 +114,18 @@ describe('projectStore runtime shape', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    closeIdleSSEConnectionsForTasksMock.mockReset();
     resetProjectEventStoresForTests();
     deleteCachedProjectMock.mockResolvedValue(undefined);
     getCachedProjectMock.mockResolvedValue(null);
     putCachedProjectMock.mockResolvedValue(undefined);
     hasActiveSSEConnectionMock.mockReturnValue(false);
+    waitForIdleSSEDisplayTailMock.mockResolvedValue(undefined);
     fetchGetMock.mockResolvedValue({ runs: [] });
+    fetchPostMock.mockResolvedValue({
+      retired: false,
+      consumer_alive: false,
+    });
     proxyFetchGetMock.mockResolvedValue({ tasks: [] });
     replayMock.mockResolvedValue(undefined);
     useProjectStore.setState({
@@ -867,27 +885,302 @@ describe('projectStore runtime shape', () => {
     expect(hasActiveSSEConnectionMock).toHaveBeenCalledWith(
       expect.arrayContaining(['task_live'])
     );
+    expect(closeIdleSSEConnectionsForTasksMock).not.toHaveBeenCalled();
   });
 
-  it('evicts a stale project runtime on a later transition after active SSE is gone', () => {
+  it('closes an idle SSE before evicting a stale project runtime', async () => {
     const projectId = useProjectStore
       .getState()
       .createProject('Stale Project', undefined, 'project_stale_safe');
+    const nextProjectId = useProjectStore
+      .getState()
+      .createProject(
+        'Next Project',
+        undefined,
+        'project_stale_safe_next',
+        undefined,
+        undefined,
+        false
+      );
 
     useProjectStore.getState().appendInitChatStore(projectId, 'task_finished');
     useProjectStore.setState({
       staleProjectIds: new Set([projectId]),
     });
     hasActiveSSEConnectionMock.mockReturnValue(false);
+    closeIdleSSEConnectionsForTasksMock.mockImplementation(() => {
+      expect(useProjectStore.getState().projects[projectId]).toBeDefined();
+    });
 
-    useProjectStore.getState()._evictStaleOnTransition('project_next');
+    useProjectStore.getState().setActiveProject(nextProjectId);
 
-    expect(useProjectStore.getState().projects[projectId]).toBeUndefined();
+    expect(useProjectStore.getState().projects[projectId]).toBeDefined();
+    await vi.waitFor(() =>
+      expect(useProjectStore.getState().projects[projectId]).toBeUndefined()
+    );
     expect(useProjectStore.getState().staleProjectIds.has(projectId)).toBe(
       false
     );
     expect(useSpaceStore.getState().getProjectMeta(projectId)).toBeDefined();
     expect(hasActiveSSEConnectionMock).toHaveBeenCalledWith(
+      expect.arrayContaining(['task_finished'])
+    );
+    expect(closeIdleSSEConnectionsForTasksMock).toHaveBeenCalledWith(
+      expect.arrayContaining(['task_finished'])
+    );
+  });
+
+  it.each([true, false])(
+    'waits for the display tail before retirement or eviction when consumer_alive is %s',
+    async (consumerAlive) => {
+      const projectId = useProjectStore
+        .getState()
+        .createProject('Stale', undefined, 'stale_display');
+      const nextId = useProjectStore
+        .getState()
+        .createProject(
+          'Next',
+          undefined,
+          'stale_display_next',
+          undefined,
+          undefined,
+          false
+        );
+      useProjectStore
+        .getState()
+        .appendInitChatStore(projectId, 'completed-run');
+      useProjectStore.setState({ staleProjectIds: new Set([projectId]) });
+      fetchGetMock.mockResolvedValue({
+        status: 'done',
+        run_id: 'completed-run',
+        consumer_alive: consumerAlive,
+      });
+      const display = deferred<void>();
+      waitForIdleSSEDisplayTailMock.mockReturnValueOnce(display.promise);
+
+      useProjectStore.getState().setActiveProject(nextId);
+      await vi.waitFor(() =>
+        expect(waitForIdleSSEDisplayTailMock).toHaveBeenCalledOnce()
+      );
+      expect(fetchPostMock).not.toHaveBeenCalled();
+      expect(closeIdleSSEConnectionsForTasksMock).not.toHaveBeenCalled();
+      expect(useProjectStore.getState().projects[projectId]).toBeDefined();
+      display.resolve();
+      await waitForPendingStaleRuntimeEviction(projectId);
+      expect(fetchPostMock).toHaveBeenCalledTimes(consumerAlive ? 1 : 0);
+      expect(useProjectStore.getState().projects[projectId]).toBeUndefined();
+    }
+  );
+
+  it.each([
+    'reactivated',
+    'logical active',
+    'pending admission',
+    'replaced Run',
+  ])(
+    'does not retire or evict a Project that became %s during display drain',
+    async (change) => {
+      const projectId = useProjectStore
+        .getState()
+        .createProject('Stale', undefined, 'stale_display_changed');
+      const nextId = useProjectStore
+        .getState()
+        .createProject(
+          'Next',
+          undefined,
+          'stale_display_changed_next',
+          undefined,
+          undefined,
+          false
+        );
+      const appended = useProjectStore
+        .getState()
+        .appendInitChatStore(projectId, 'completed-run')!;
+      useProjectStore.setState({ staleProjectIds: new Set([projectId]) });
+      fetchGetMock.mockResolvedValue({
+        status: 'done',
+        run_id: 'completed-run',
+        consumer_alive: true,
+      });
+      const display = deferred<void>();
+      waitForIdleSSEDisplayTailMock.mockReturnValueOnce(display.promise);
+      useProjectStore.getState().setActiveProject(nextId);
+      await vi.waitFor(() =>
+        expect(waitForIdleSSEDisplayTailMock).toHaveBeenCalledOnce()
+      );
+      if (change === 'reactivated')
+        useProjectStore.getState().setActiveProject(projectId);
+      if (change === 'logical active')
+        hasActiveSSEConnectionMock.mockReturnValue(true);
+      if (change === 'pending admission')
+        appended.chatStore.getState().setIsPending('completed-run', true);
+      if (change === 'replaced Run')
+        useProjectStore.getState().appendInitChatStore(projectId, 'new-run');
+      display.resolve();
+      await waitForPendingStaleRuntimeEviction(projectId);
+      expect(fetchPostMock).not.toHaveBeenCalled();
+      expect(closeIdleSSEConnectionsForTasksMock).not.toHaveBeenCalled();
+      expect(useProjectStore.getState().projects[projectId]).toBeDefined();
+    }
+  );
+
+  it('retires a backend consumer after its renderer transport is gone', async () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject('Stale Project', undefined, 'project_stale_backend');
+    const nextProjectId = useProjectStore
+      .getState()
+      .createProject(
+        'Next Project',
+        undefined,
+        'project_next',
+        undefined,
+        undefined,
+        false
+      );
+
+    useProjectStore.getState().appendInitChatStore(projectId, 'task_finished');
+    useProjectStore.setState({
+      staleProjectIds: new Set([projectId]),
+    });
+    fetchGetMock.mockResolvedValue({
+      status: 'done',
+      run_id: 'task_finished',
+      consumer_alive: true,
+      subscriber_count: 1,
+    });
+    const retirement = deferred<{
+      retired: boolean;
+      consumer_alive: boolean;
+    }>();
+    fetchPostMock.mockReturnValue(retirement.promise);
+
+    useProjectStore.getState().setActiveProject(nextProjectId);
+
+    expect(useProjectStore.getState().projects[projectId]).toBeDefined();
+    expect(closeIdleSSEConnectionsForTasksMock).not.toHaveBeenCalled();
+    retirement.resolve({ retired: true, consumer_alive: false });
+
+    await vi.waitFor(() =>
+      expect(useProjectStore.getState().projects[projectId]).toBeUndefined()
+    );
+    expect(fetchPostMock).toHaveBeenCalledWith(
+      '/chat/project_stale_backend/runtime/retire-idle',
+      { run_id: 'task_finished' }
+    );
+    expect(closeIdleSSEConnectionsForTasksMock).toHaveBeenCalledWith(
+      expect.arrayContaining(['task_finished'])
+    );
+  });
+
+  it('lets a reactivated Project wait for an older stale retirement', async () => {
+    const projectId = useProjectStore
+      .getState()
+      .createProject('Stale Project', undefined, 'project_reactivated');
+    const nextProjectId = useProjectStore
+      .getState()
+      .createProject(
+        'Next Project',
+        undefined,
+        'project_reactivated_next',
+        undefined,
+        undefined,
+        false
+      );
+
+    useProjectStore.getState().appendInitChatStore(projectId, 'run_finished');
+    useProjectStore.setState({ staleProjectIds: new Set([projectId]) });
+    fetchGetMock.mockResolvedValue({
+      status: 'done',
+      run_id: 'run_finished',
+      consumer_alive: true,
+    });
+    const retirement = deferred<{
+      retired: boolean;
+      consumer_alive: boolean;
+    }>();
+    fetchPostMock.mockReturnValue(retirement.promise);
+
+    useProjectStore.getState().setActiveProject(nextProjectId);
+    await vi.waitFor(() => expect(fetchPostMock).toHaveBeenCalledTimes(1));
+    useProjectStore.getState().setActiveProject(projectId);
+
+    let waitFinished = false;
+    const admissionBarrier = waitForPendingStaleRuntimeEviction(projectId).then(
+      () => {
+        waitFinished = true;
+      }
+    );
+    await Promise.resolve();
+    expect(waitFinished).toBe(false);
+
+    retirement.resolve({ retired: true, consumer_alive: false });
+    await admissionBarrier;
+
+    expect(useProjectStore.getState().activeProjectId).toBe(projectId);
+    expect(useProjectStore.getState().projects[projectId]).toBeDefined();
+    expect(closeIdleSSEConnectionsForTasksMock).not.toHaveBeenCalled();
+  });
+
+  it('retries an older stale runtime on a later Project transition', async () => {
+    const staleProjectId = useProjectStore
+      .getState()
+      .createProject('Stale Project', undefined, 'project_stale_retry');
+    const nextProjectId = useProjectStore
+      .getState()
+      .createProject(
+        'Next Project',
+        undefined,
+        'project_stale_retry_next',
+        undefined,
+        undefined,
+        false
+      );
+    const laterProjectId = useProjectStore
+      .getState()
+      .createProject(
+        'Later Project',
+        undefined,
+        'project_stale_retry_later',
+        undefined,
+        undefined,
+        false
+      );
+
+    useProjectStore
+      .getState()
+      .appendInitChatStore(staleProjectId, 'task_finished');
+    useProjectStore.setState({
+      staleProjectIds: new Set([staleProjectId]),
+    });
+    fetchGetMock
+      .mockRejectedValueOnce(new Error('runtime status temporarily offline'))
+      .mockResolvedValue({
+        status: 'done',
+        run_id: 'task_finished',
+        consumer_alive: false,
+      });
+
+    useProjectStore.getState().setActiveProject(nextProjectId);
+
+    await vi.waitFor(() => expect(fetchGetMock).toHaveBeenCalledTimes(1));
+    expect(useProjectStore.getState().projects[staleProjectId]).toBeDefined();
+    expect(useProjectStore.getState().staleProjectIds.has(staleProjectId)).toBe(
+      true
+    );
+
+    // The old Project is not reopened. A later unrelated transition sweeps
+    // all inactive stale runtimes and retries the failed status request.
+    useProjectStore.getState().setActiveProject(laterProjectId);
+
+    await vi.waitFor(() =>
+      expect(
+        useProjectStore.getState().projects[staleProjectId]
+      ).toBeUndefined()
+    );
+    expect(fetchGetMock).toHaveBeenCalledTimes(2);
+    expect(useProjectStore.getState().activeProjectId).toBe(laterProjectId);
+    expect(closeIdleSSEConnectionsForTasksMock).toHaveBeenCalledWith(
       expect.arrayContaining(['task_finished'])
     );
   });

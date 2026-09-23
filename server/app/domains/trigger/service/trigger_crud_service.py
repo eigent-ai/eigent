@@ -39,7 +39,10 @@ from app.shared.types.trigger_types import TriggerType, TriggerStatus
 from app.core.redis_utils import get_redis_manager
 from app.domains.space.service import SpaceService
 from app.domains.trigger.service.trigger_schedule_service import TriggerScheduleService
-from app.domains.trigger.service.trigger_service import TriggerService
+from app.domains.trigger.service.trigger_service import (
+    TERMINAL_EXECUTION_STATUSES,
+    TriggerService,
+)
 
 
 ACTIVE_STATUSES = (TriggerStatus.active, TriggerStatus.pending_verification)
@@ -510,9 +513,29 @@ class TriggerCrudService:
             select(TriggerExecution)
             .join(Trigger)
             .where(and_(TriggerExecution.execution_id == execution_id, Trigger.user_id == str(user_id)))
+            .with_for_update()
+            .execution_options(populate_existing=True)
         ).first()
         if not execution:
             return {"success": False, "error": "Execution not found", "status_code": 404}
+
+        # Freeze the accepted terminal receipt. The sole allowed enrichment is
+        # a larger token total for that same outcome, under this row lock.
+        if execution.status in TERMINAL_EXECUTION_STATUSES:
+            if data.status == execution.status and data.tokens_used is not None:
+                TriggerService(s).update_execution_status(
+                    execution,
+                    data.status,
+                    tokens_used=data.tokens_used,
+                )
+            logger.info(
+                "Ignored trigger execution update after terminal outcome",
+                extra={
+                    "execution_id": execution.execution_id,
+                    "current_status": execution.status.value,
+                },
+            )
+            return {"success": True, "execution": execution}
 
         update_data = data.model_dump(exclude_unset=True)
 

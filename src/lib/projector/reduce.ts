@@ -495,6 +495,7 @@ export function reduceProjectView(
   const legacyData = event.payload.__legacy_data ?? event.payload;
   const legacyReceipt: ProjectedLegacyStep = {
     eventId: event.eventId,
+    sourceEventId: event.sourceEventId,
     stepId: legacyStepId,
     taskId: event.runId,
     projectId: event.projectId,

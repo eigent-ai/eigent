@@ -41,7 +41,7 @@ function record(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function parseSummary(
+export function parseSummary(
   raw: unknown,
   projectId: string,
   runId: string

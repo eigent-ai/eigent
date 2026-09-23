@@ -14,6 +14,11 @@
 
 import { presentChatSemanticEntities } from '@/components/ChatBox/EventTimeline/presentationPolicy';
 import {
+  createProjectViewState,
+  normalizeEvent,
+  reduceProjectView,
+} from '@/lib/projector';
+import {
   adaptChatProjectionEvent,
   createChatProjectionState,
   projectChatEvents,
@@ -67,6 +72,51 @@ function semanticSubtaskPayload(
 }
 
 describe('chat projection presentation contract', () => {
+  it.each([
+    'canonical',
+    'chat_step_v1',
+    'indexeddb_v1',
+    'local_memory_v1',
+  ] as const)(
+    'retains source event identity through %s normalization and legacy projection',
+    (source) => {
+      for (const explicit of [true, false]) {
+        if (source === 'canonical' && !explicit) continue;
+        const input = normalizeEvent(
+          {
+            project_id: 'project-1',
+            run_id: 'run-1',
+            task_id: 'run-1',
+            step: 'end',
+            event_type: 'assistant.final',
+            legacy_step: 'end',
+            payload: { content: 'Final result' },
+            data: { content: 'Final result' },
+            ...(explicit ? { event_id: 'source-event' } : {}),
+          },
+          source
+        );
+        const view = reduceProjectView(
+          createProjectViewState('project-1', 'rehydrate'),
+          input
+        );
+        // Both supported readers must retain actual receipts while leaving
+        // generated migration IDs out of feedback correlation metadata.
+        for (const receipt of [input, ...view.legacySteps]) {
+          const decision = adaptChatProjectionEvent(receipt);
+          expect(decision).toMatchObject({
+            kind: 'display',
+            node: {
+              kind: 'message',
+              id: input.eventId,
+              sourceEventId: explicit ? 'source-event' : undefined,
+            },
+          });
+        }
+      }
+    }
+  );
+
   it('uses the explicit approval question for the durable timeline receipt', () => {
     const state = projectChatEvents('project-1', [
       event(
