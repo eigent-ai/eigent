@@ -13,7 +13,6 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { AgentMessageCard } from '@/components/ChatBox/MessageItem/AgentMessageCard';
-import { CreateAutomationFromTask } from '@/components/ChatBox/MessageItem/CreateAutomationFromTask';
 import { PreparingToExecuteTasks } from '@/components/ChatBox/MessageItem/PreparingToExecuteTasks';
 import { formatSplittingElapsed } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
@@ -1304,13 +1303,6 @@ export function NarrativeTimeline({
                   id={run.finalAssistantResponse.id}
                   typewriter={isActiveRunStatus(run.status)}
                 />
-                {run.status === 'completed' && run.userQuery?.content ? (
-                  <CreateAutomationFromTask
-                    projectId={run.projectId}
-                    taskPrompt={run.userQuery.content}
-                    resultContent={run.finalAssistantResponse.content}
-                  />
-                ) : null}
               </>
             ) : null}
             {!run.finalAssistantResponse && showFiles ? (

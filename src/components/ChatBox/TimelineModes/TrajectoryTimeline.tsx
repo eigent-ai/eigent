@@ -12,7 +12,6 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
-import { CreateAutomationFromTask } from '@/components/ChatBox/MessageItem/CreateAutomationFromTask';
 import { PreparingToExecuteTasks } from '@/components/ChatBox/MessageItem/PreparingToExecuteTasks';
 import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
 import { UserMessageCard } from '@/components/ChatBox/MessageItem/UserMessageCard';
@@ -672,17 +671,6 @@ function DetailedRun({
       {run.status === 'running' && !paused && hasRunExecutionRows(run) ? (
         <div className="px-3 py-2">
           <RunActivityIndicator />
-        </div>
-      ) : null}
-      {run.status === 'completed' &&
-      run.userQuery?.content &&
-      run.finalAssistantResponse ? (
-        <div className="mt-ds-8">
-          <CreateAutomationFromTask
-            projectId={run.projectId}
-            taskPrompt={run.userQuery.content}
-            resultContent={run.finalAssistantResponse.content}
-          />
         </div>
       ) : null}
     </section>

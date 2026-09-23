@@ -13,21 +13,86 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { HeaderBox } from '@/components/Session/HeaderBox';
+import type { ChatMessageNode } from '@/lib/projector/chat';
 import { usePageTabStore } from '@/store/pageTabStore';
+import type { ProjectEventStoreSnapshot } from '@/store/projectEventStore';
 import { useSessionControlsStore } from '@/store/sessionControlsStore';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { useSkillsStore } from '@/store/skillsStore';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { runtimeMock } = vi.hoisted(() => ({ runtimeMock: vi.fn() }));
 
 vi.mock('@/store/authStore', () => ({
   getAuthStore: vi.fn(() => ({ language: 'en-US' })),
   useAuthStore: vi.fn(() => ({ appearance: 'light' })),
 }));
 
+vi.mock('@/hooks/useProjectEventRuntime', () => ({
+  useProjectEventRuntime: runtimeMock,
+}));
+
+vi.mock('@/components/Trigger/TriggerDialog', () => ({
+  TriggerDialog: ({
+    isOpen,
+    sourceProjectId,
+    initialTaskPrompt,
+  }: {
+    isOpen: boolean;
+    sourceProjectId?: string;
+    initialTaskPrompt?: string;
+  }) =>
+    isOpen ? (
+      <div role="dialog" aria-label="Automation draft">
+        {sourceProjectId}: {initialTaskPrompt}
+      </div>
+    ) : null,
+}));
+
+function message(
+  id: string,
+  runId: string,
+  runSequence: number,
+  role: ChatMessageNode['role'],
+  purpose: ChatMessageNode['purpose'],
+  content: string
+): ChatMessageNode {
+  return {
+    id,
+    eventId: id,
+    projectId: 'project-1',
+    runId,
+    runSequence,
+    cloudCursor: null,
+    createdAt: `2026-09-23T10:00:0${runSequence}.000Z`,
+    eventType: 'test.message',
+    legacyStep: null,
+    kind: 'message',
+    role,
+    purpose,
+    content,
+    status: 'complete',
+  };
+}
+
+function completedSnapshot(): ProjectEventStoreSnapshot {
+  return {
+    view: { projectId: 'project-1', runs: {} },
+    chat: {
+      nodes: [
+        message('query-1', 'run-1', 1, 'user', 'query', 'Original request'),
+        message('final-1', 'run-1', 2, 'assistant', 'final', 'Final result'),
+      ],
+    },
+  } as ProjectEventStoreSnapshot;
+}
+
 describe('HeaderBox chat timeline mode', () => {
   let resizeHeader: ((width: number) => void) | undefined;
 
   beforeEach(() => {
+    runtimeMock.mockReturnValue({ projectId: null, snapshot: null });
     vi.stubEnv('VITE_CHATBOX_EVENT_BUS', 'true');
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       width: 800,
@@ -51,7 +116,9 @@ describe('HeaderBox chat timeline mode', () => {
     usePageTabStore.setState({
       chatTimelineDetailLevel: 'narrative',
       narrativeInformationDensity: 'compact',
+      sessionPreviewProjectId: null,
     });
+    useSkillsStore.setState({ skills: [] });
     localStorage.removeItem('eigent-pinned-projects');
     useSessionControlsStore.setState({ pinnedProjectIds: [], request: null });
   });
@@ -116,7 +183,94 @@ describe('HeaderBox chat timeline mode', () => {
     expect(title).toHaveAttribute('title', projectName);
   });
 
-  it('switches views and adjusts Narrative detail in one menu', async () => {
+  it('puts automation actions first and disables them without a completed result', async () => {
+    const user = userEvent.setup();
+    render(<HeaderBox projectName="Timeline project" projectId="project-1" />);
+
+    await user.click(
+      screen.getByRole('button', { name: 'Session settings: Timeline project' })
+    );
+    const items = screen.getAllByRole('menuitem');
+    expect(items.slice(0, 2).map((item) => item.textContent)).toEqual([
+      'Draft with skill',
+      'Create automation',
+    ]);
+    expect(items[0]).toHaveAttribute('aria-disabled', 'true');
+    expect(items[1]).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('drafts from the latest completed result and opens an editable automation', async () => {
+    const user = userEvent.setup();
+    const originalRequestChatDraft =
+      usePageTabStore.getState().requestWorkspaceChatDraft;
+    const requestChatDraft = vi.fn();
+    runtimeMock.mockReturnValue({
+      projectId: 'project-1',
+      snapshot: completedSnapshot(),
+    });
+    usePageTabStore.setState({
+      sessionPreviewProjectId: 'project-1',
+      requestWorkspaceChatDraft: requestChatDraft,
+    });
+    useSkillsStore.setState({
+      skills: [
+        {
+          id: 'automation-draft',
+          name: 'automation-draft',
+          description: '',
+          filePath: '',
+          fileContent: '',
+          addedAt: 0,
+          scope: { isGlobal: true, selectedAgents: [] },
+          enabled: true,
+          isExample: false,
+        },
+      ],
+    });
+
+    try {
+      const { rerender } = render(
+        <HeaderBox projectName="Timeline project" projectId="project-1" />
+      );
+      const trigger = screen.getByRole('button', {
+        name: 'Session settings: Timeline project',
+      });
+      await user.click(trigger);
+      await user.click(
+        screen.getByRole('menuitem', { name: 'Draft with skill' })
+      );
+      expect(requestChatDraft).toHaveBeenCalledWith(
+        expect.stringContaining('Original request:\nOriginal request'),
+        undefined,
+        { projectId: 'project-1', ifEmpty: true }
+      );
+      expect(requestChatDraft.mock.calls[0][0]).toContain(
+        'Final result summary:\nFinal result'
+      );
+
+      await user.click(trigger);
+      await user.click(
+        screen.getByRole('menuitem', { name: 'Create automation' })
+      );
+      expect(
+        screen.getByRole('dialog', { name: 'Automation draft' })
+      ).toHaveTextContent('project-1: Original request');
+      rerender(
+        <HeaderBox projectName="Another session" projectId="project-2" />
+      );
+      expect(
+        screen.getByRole('dialog', { name: 'Automation draft' })
+      ).toHaveTextContent('project-1: Original request');
+    } finally {
+      act(() => {
+        usePageTabStore.setState({
+          requestWorkspaceChatDraft: originalRequestChatDraft,
+        });
+      });
+    }
+  });
+
+  it('shows view and Narrative detail submenus, disabling detail for Trajectory', async () => {
     const user = userEvent.setup();
     render(
       <HeaderBox
@@ -126,28 +280,45 @@ describe('HeaderBox chat timeline mode', () => {
       />
     );
 
-    await user.click(
-      screen.getByRole('button', { name: 'Session settings: Timeline project' })
-    );
-    expect(screen.getByText('View settings')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Narrative' })).toHaveAttribute(
-      'data-state',
-      'active'
-    );
-    expect(
-      screen.getByRole('slider', { name: 'Narrative detail' })
-    ).toHaveAttribute('aria-valuetext', 'Compact');
-    fireEvent.change(screen.getByRole('slider', { name: 'Narrative detail' }), {
-      target: { value: '2' },
+    const trigger = screen.getByRole('button', {
+      name: 'Session settings: Timeline project',
     });
+    await user.click(trigger);
+    const viewSettings = screen.getByRole('menuitem', {
+      name: 'View settings',
+    });
+    const narrativeDetail = screen.getByRole('menuitem', {
+      name: 'Narrative detail',
+    });
+    expect(viewSettings).toHaveAttribute('aria-haspopup', 'menu');
+    expect(narrativeDetail).not.toHaveAttribute('aria-disabled', 'true');
+
+    await user.click(narrativeDetail);
+    expect(
+      screen.getByRole('menuitemradio', { name: 'Compact' })
+    ).toHaveAttribute('aria-checked', 'true');
+    act(() => screen.getByRole('menuitemradio', { name: 'Expanded' }).focus());
+    await user.keyboard('{Enter}');
     expect(usePageTabStore.getState().narrativeInformationDensity).toBe(
       'expanded'
     );
-    await user.click(screen.getByRole('tab', { name: 'Trajectory' }));
+
+    await user.click(trigger);
+    await user.click(screen.getByRole('menuitem', { name: 'View settings' }));
+    expect(
+      screen.getByRole('menuitemradio', { name: 'Narrative' })
+    ).toHaveAttribute('aria-checked', 'true');
+    act(() =>
+      screen.getByRole('menuitemradio', { name: 'Trajectory' }).focus()
+    );
+    await user.keyboard('{Enter}');
     expect(usePageTabStore.getState().chatTimelineDetailLevel).toBe(
       'trajectory'
     );
-    expect(screen.queryByRole('slider')).not.toBeInTheDocument();
+    await user.click(trigger);
+    expect(
+      screen.getByRole('menuitem', { name: 'Narrative detail' })
+    ).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('shows the Session trigger as selected only while its panel is open', async () => {
@@ -201,7 +372,7 @@ describe('HeaderBox chat timeline mode', () => {
     await user.click(
       screen.getByRole('button', { name: 'Session settings: Timeline project' })
     );
-    await user.click(screen.getByRole('button', { name: 'Pin' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Pin' }));
     expect(useSessionControlsStore.getState().pinnedProjectIds).toEqual([
       'project-1',
     ]);
@@ -211,8 +382,8 @@ describe('HeaderBox chat timeline mode', () => {
     await user.click(
       screen.getByRole('button', { name: 'Session settings: Timeline project' })
     );
-    expect(screen.getByRole('button', { name: 'Unpin' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Rename session' }));
+    expect(screen.getByRole('menuitem', { name: 'Unpin' })).toBeInTheDocument();
+    await user.click(screen.getByRole('menuitem', { name: 'Rename session' }));
     expect(useSessionControlsStore.getState().request).toMatchObject({
       action: 'rename',
       projectId: 'project-1',
@@ -220,7 +391,7 @@ describe('HeaderBox chat timeline mode', () => {
     await user.click(
       screen.getByRole('button', { name: 'Session settings: Timeline project' })
     );
-    await user.click(screen.getByRole('button', { name: 'End session' }));
+    await user.click(screen.getByRole('menuitem', { name: 'End session' }));
     expect(useSessionControlsStore.getState().request).toMatchObject({
       action: 'end',
       projectId: 'project-1',
@@ -228,7 +399,7 @@ describe('HeaderBox chat timeline mode', () => {
     await user.click(
       screen.getByRole('button', { name: 'Session settings: Timeline project' })
     );
-    await user.click(screen.getByRole('button', { name: 'Delete session' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Delete session' }));
     expect(useSessionControlsStore.getState().request).toMatchObject({
       action: 'delete',
       projectId: 'project-1',
@@ -243,10 +414,12 @@ describe('HeaderBox chat timeline mode', () => {
     await user.click(
       screen.getByRole('button', { name: 'Session settings: Ended' })
     );
-    expect(screen.getByRole('button', { name: 'End session' })).toBeDisabled();
+    expect(
+      screen.getByRole('menuitem', { name: 'End session' })
+    ).toHaveAttribute('aria-disabled', 'true');
   });
 
-  it('lets keyboard users reach the view control and density slider', async () => {
+  it('lets keyboard users open view settings and choose a mode', async () => {
     const user = userEvent.setup();
     render(<HeaderBox projectName="Timeline project" projectId="project-1" />);
     const trigger = screen.getByRole('button', {
@@ -254,14 +427,17 @@ describe('HeaderBox chat timeline mode', () => {
     });
     trigger.focus();
     await user.keyboard('{Enter}');
-    expect(screen.getByRole('tab', { name: 'Narrative' })).toHaveFocus();
-    await user.tab();
-    expect(
-      screen.getByRole('slider', { name: 'Narrative detail' })
-    ).toHaveFocus();
+    const viewSettings = screen.getByRole('menuitem', {
+      name: 'View settings',
+    });
+    act(() => viewSettings.focus());
     await user.keyboard('{ArrowRight}');
-    expect(usePageTabStore.getState().narrativeInformationDensity).toBe(
-      'balanced'
+    expect(
+      screen.getByRole('menuitemradio', { name: 'Narrative' })
+    ).toHaveFocus();
+    await user.keyboard('{ArrowDown}{Enter}');
+    expect(usePageTabStore.getState().chatTimelineDetailLevel).toBe(
+      'trajectory'
     );
   });
 });

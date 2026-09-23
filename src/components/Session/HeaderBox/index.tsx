@@ -16,24 +16,36 @@ import tokenDarkIcon from '@/assets/custom/token-dark.svg';
 import tokenLightIcon from '@/assets/custom/token-light.svg';
 import { AnimatedTokenNumber } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { CONTENT_HEADER_CLASS } from '@/components/Layout/ContentHeader';
+import { TriggerDialog } from '@/components/Trigger/TriggerDialog';
 import { Button } from '@/components/ui/button';
-import { DsIcon } from '@/components/ui/ds-icon';
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import { RangeSlider } from '@/components/ui/range-slider';
-import { Separator } from '@/components/ui/separator';
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TooltipSimple } from '@/components/ui/tooltip';
+import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { useIsCompactWidth } from '@/hooks/useIsCompactWidth';
+import { useProjectEventRuntime } from '@/hooks/useProjectEventRuntime';
+import {
+  parseAutomationDraft,
+  type AutomationDraftV1,
+} from '@/lib/automationDraft';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
 import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
 import { useSessionControlsStore } from '@/store/sessionControlsStore';
+import { useSkillsStore } from '@/store/skillsStore';
 import {
   DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL,
   DEFAULT_NARRATIVE_INFORMATION_DENSITY,
@@ -42,6 +54,7 @@ import {
   type NarrativeInformationDensity,
 } from '@/types/chatTimeline';
 import {
+  AlarmClock,
   Archive,
   ArrowLeft,
   EllipsisVertical,
@@ -49,9 +62,16 @@ import {
   Pencil,
   Pin,
   Trash2,
+  WandSparkles,
 } from 'lucide-react';
-import { useId, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
+import {
+  selectEventAutomationSource,
+  selectLegacyAutomationSource,
+  type SessionAutomationSource,
+} from './sessionAutomationSource';
 
 const TIMELINE_MODE_FALLBACK_LABELS: Record<ChatTimelineDetailLevel, string> = {
   narrative: 'Narrative',
@@ -92,8 +112,15 @@ export function HeaderBox({
   empty = false,
 }: HeaderBoxProps) {
   const { t } = useTranslation();
-  const densityId = useId();
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
+  const [automationDialogOpen, setAutomationDialogOpen] = useState(false);
+  const [automationDialogContext, setAutomationDialogContext] = useState<{
+    projectId: string;
+    source: SessionAutomationSource;
+    draft: AutomationDraftV1 | null;
+  } | null>(null);
+  const { projectStore, chatStore } = useChatStoreAdapter();
+  const projectEventRuntime = useProjectEventRuntime();
   const [headerRef, compact] = useIsCompactWidth<HTMLDivElement>(
     COMPACT_WIDTH_THRESHOLD
   );
@@ -120,7 +147,53 @@ export function HeaderBox({
   const pinnedProjectIds = useSessionControlsStore((s) => s.pinnedProjectIds);
   const togglePinned = useSessionControlsStore((s) => s.togglePinned);
   const requestSessionAction = useSessionControlsStore((s) => s.requestAction);
+  const requestChatDraft = usePageTabStore(
+    (state) => state.requestWorkspaceChatDraft
+  );
+  const activePreviewProjectId = usePageTabStore(
+    (state) => state.sessionPreviewProjectId
+  );
+  const skillAvailable = useSkillsStore((state) =>
+    state.skills.some(
+      (skill) =>
+        skill.enabled &&
+        (skill.name === 'automation-draft' ||
+          skill.skillDirName === 'automation-draft')
+    )
+  );
   const pinned = Boolean(projectId && pinnedProjectIds.includes(projectId));
+  const automationSource = useMemo(() => {
+    if (!sessionMenuOpen || !projectId) return null;
+    const eventSource = selectEventAutomationSource(
+      projectEventRuntime.projectId === projectId
+        ? projectEventRuntime.snapshot
+        : null,
+      projectId
+    );
+    const legacySource = () => {
+      const chatStates = projectStore
+        .getAllChatStores(projectId)
+        .map(({ chatStore: store }) => ({ tasks: store.getState().tasks }));
+      if (
+        chatStore?.tasks &&
+        !chatStates.some((state) => state.tasks === chatStore.tasks)
+      ) {
+        chatStates.push({ tasks: chatStore.tasks });
+      }
+      return selectLegacyAutomationSource(chatStates);
+    };
+    return eventNativeTimelineEnabled
+      ? (eventSource ?? legacySource())
+      : (legacySource() ?? eventSource);
+  }, [
+    chatStore,
+    eventNativeTimelineEnabled,
+    projectEventRuntime.projectId,
+    projectEventRuntime.snapshot,
+    projectId,
+    projectStore,
+    sessionMenuOpen,
+  ]);
   const tokenIcon = appearance === 'dark' ? tokenDarkIcon : tokenLightIcon;
   const backTooltip = t('layout.back-tooltip', {
     defaultValue: 'Back',
@@ -139,6 +212,31 @@ export function HeaderBox({
     t(`chat.timeline-density-${density}`, {
       defaultValue: NARRATIVE_DENSITY_FALLBACK_LABELS[density],
     });
+  const draftWithSkill = () => {
+    if (!projectId || !automationSource || activePreviewProjectId !== projectId)
+      return;
+    if (!skillAvailable) {
+      toast.info(t('chat.automation-skill-unavailable'));
+      return;
+    }
+    const prompt = [
+      '#automation-draft',
+      'Use the automation-draft skill to propose an editable automation for this completed Task. Do not create it. Return the versioned automation-draft block.',
+      `Original request:\n${automationSource.taskPrompt.slice(0, 4000)}`,
+      `Final result summary:\n${automationSource.resultContent.slice(0, 4000)}`,
+    ].join('\n\n');
+    requestChatDraft(prompt, undefined, { projectId, ifEmpty: true });
+  };
+
+  const openAutomationDialog = () => {
+    if (!projectId || !automationSource) return;
+    setAutomationDialogContext({
+      projectId,
+      source: automationSource,
+      draft: parseAutomationDraft(automationSource.resultContent),
+    });
+    setAutomationDialogOpen(true);
+  };
 
   if (empty) {
     return (
@@ -171,8 +269,11 @@ export function HeaderBox({
           </Button>
         </TooltipSimple>
         {projectName ? (
-          <Popover open={sessionMenuOpen} onOpenChange={setSessionMenuOpen}>
-            <PopoverTrigger asChild>
+          <DropdownMenu
+            open={sessionMenuOpen}
+            onOpenChange={setSessionMenuOpen}
+          >
+            <DropdownMenuTrigger asChild>
               <Button
                 type="button"
                 variant="ghost"
@@ -193,184 +294,131 @@ export function HeaderBox({
                 </span>
                 <DsIcon icon={EllipsisVertical} recipe="main" />
               </Button>
-            </PopoverTrigger>
-            <PopoverContent align="start" className="w-64 p-xs">
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="start"
+              className="w-64"
+              onCloseAutoFocus={(event) => {
+                if (automationDialogOpen) event.preventDefault();
+              }}
+            >
+              <DropdownMenuItem
+                disabled={
+                  !automationSource || activePreviewProjectId !== projectId
+                }
+                onSelect={draftWithSkill}
+              >
+                <DsIcon icon={WandSparkles} recipe="main" />
+                {t('chat.automation-draft-with-skill')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!automationSource}
+                onSelect={openAutomationDialog}
+              >
+                <DsIcon icon={AlarmClock} recipe="main" />
+                {t('chat.create-automation-from-task', {
+                  defaultValue: 'Create automation',
+                })}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               {eventNativeTimelineEnabled ? (
                 <>
-                  <div className="px-2 py-1.5 text-ds-text-meta font-medium text-ds-ink-muted-default">
-                    {t('chat.timeline-view-settings', {
-                      defaultValue: 'View settings',
-                    })}
-                  </div>
-                  <div className="px-2 pb-2">
-                    <Tabs
-                      value={chatTimelineDetailLevel}
-                      onValueChange={(value) =>
-                        setChatTimelineDetailLevel(
-                          value as ChatTimelineDetailLevel
-                        )
-                      }
-                    >
-                      <TabsList
-                        appearance="default"
-                        className="w-full"
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger className="min-h-ds-control-lg">
+                      {t('chat.timeline-view-settings', {
+                        defaultValue: 'View settings',
+                      })}
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className="w-44">
+                      <DropdownMenuRadioGroup
+                        value={chatTimelineDetailLevel}
+                        onValueChange={(value) =>
+                          setChatTimelineDetailLevel(
+                            value as ChatTimelineDetailLevel
+                          )
+                        }
                         aria-label={t('chat.timeline-view-label')}
                       >
-                        <TabsTrigger
-                          className="min-w-0 flex-1"
-                          value="narrative"
-                          tabIndex={
-                            chatTimelineDetailLevel === 'narrative' ? 0 : -1
-                          }
-                        >
-                          {timelineStyleLabel('narrative')}
-                        </TabsTrigger>
-                        <TabsTrigger
-                          className="min-w-0 flex-1"
-                          value="trajectory"
-                          tabIndex={
-                            chatTimelineDetailLevel === 'trajectory' ? 0 : -1
-                          }
-                        >
-                          {timelineStyleLabel('trajectory')}
-                        </TabsTrigger>
-                      </TabsList>
-                      <TabsContent
-                        value="narrative"
-                        className="mt-2"
-                        tabIndex={-1}
+                        {(['narrative', 'trajectory'] as const).map((level) => (
+                          <DropdownMenuRadioItem key={level} value={level}>
+                            {timelineStyleLabel(level)}
+                          </DropdownMenuRadioItem>
+                        ))}
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger
+                      className="min-h-ds-control-lg"
+                      disabled={chatTimelineDetailLevel !== 'narrative'}
+                    >
+                      {t('chat.timeline-narrative-detail-label', {
+                        defaultValue: 'Narrative detail',
+                      })}
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className="w-44">
+                      <DropdownMenuRadioGroup
+                        value={narrativeInformationDensity}
+                        onValueChange={(value) =>
+                          setNarrativeInformationDensity(
+                            value as NarrativeInformationDensity
+                          )
+                        }
+                        aria-label={t('chat.timeline-narrative-detail-label', {
+                          defaultValue: 'Narrative detail',
+                        })}
                       >
-                        <div className="flex flex-col gap-2 pb-2">
-                          <label
-                            htmlFor={densityId}
-                            className="text-ds-text-meta font-medium text-ds-ink-muted-default"
-                          >
-                            {t('chat.timeline-narrative-detail-label', {
-                              defaultValue: 'Narrative detail',
-                            })}
-                          </label>
-                          <RangeSlider
-                            id={densityId}
-                            min={0}
-                            max={2}
-                            step={1}
-                            value={narrativeInformationDensities.indexOf(
-                              narrativeInformationDensity
-                            )}
-                            onChange={(event) =>
-                              setNarrativeInformationDensity(
-                                narrativeInformationDensities[
-                                  Number(event.target.value)
-                                ]
-                              )
-                            }
-                            onKeyDown={(event) => {
-                              const current =
-                                narrativeInformationDensities.indexOf(
-                                  narrativeInformationDensity
-                                );
-                              const next =
-                                event.key === 'Home'
-                                  ? 0
-                                  : event.key === 'End'
-                                    ? 2
-                                    : event.key === 'ArrowRight' ||
-                                        event.key === 'ArrowUp'
-                                      ? Math.min(2, current + 1)
-                                      : event.key === 'ArrowLeft' ||
-                                          event.key === 'ArrowDown'
-                                        ? Math.max(0, current - 1)
-                                        : null;
-                              if (next === null) return;
-                              event.preventDefault();
-                              setNarrativeInformationDensity(
-                                narrativeInformationDensities[next]
-                              );
-                            }}
-                            aria-valuetext={densityLabel(
-                              narrativeInformationDensity
-                            )}
-                          />
-                          <div
-                            className="flex justify-between gap-1 text-ds-text-meta text-ds-ink-muted-default"
-                            aria-hidden
-                          >
-                            {narrativeInformationDensities.map((density) => (
-                              <span key={density}>{densityLabel(density)}</span>
-                            ))}
-                          </div>
-                        </div>
-                      </TabsContent>
-                      <TabsContent
-                        value="trajectory"
-                        className="mt-0"
-                        tabIndex={-1}
-                      />
-                    </Tabs>
-                  </div>
-                  <Separator className="my-1" />
+                        {narrativeInformationDensities.map((density) => (
+                          <DropdownMenuRadioItem key={density} value={density}>
+                            {densityLabel(density)}
+                          </DropdownMenuRadioItem>
+                        ))}
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                  <DropdownMenuSeparator />
                 </>
               ) : null}
-              <Button
-                type="button"
-                variant="ghost"
-                size="md"
-                className="w-full justify-start"
+              <DropdownMenuItem
                 disabled={!projectId}
-                onClick={() => {
+                onSelect={() => {
                   if (projectId) togglePinned(projectId);
-                  setSessionMenuOpen(false);
                 }}
               >
                 <DsIcon icon={Pin} recipe="main" />
                 {t(pinned ? 'layout.unpin' : 'layout.pin')}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="md"
-                className="w-full justify-start"
+              </DropdownMenuItem>
+              <DropdownMenuItem
                 disabled={!projectId}
-                onClick={() => {
+                onSelect={() => {
                   if (projectId) requestSessionAction('rename', projectId);
-                  setSessionMenuOpen(false);
                 }}
               >
                 <DsIcon icon={Pencil} recipe="main" />
                 {t('layout.rename-project')}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="md"
-                className="w-full justify-start"
+              </DropdownMenuItem>
+              <DropdownMenuItem
                 disabled={!projectId || projectAchieved}
-                onClick={() => {
+                onSelect={() => {
                   if (projectId) requestSessionAction('end', projectId);
-                  setSessionMenuOpen(false);
                 }}
               >
                 <DsIcon icon={Archive} recipe="main" />
                 {t('layout.achieve-project')}
-              </Button>
-              <Separator className="my-1" />
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                tone="error"
-                className="w-full justify-start"
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-ds-text-error-default-default focus:text-ds-text-error-strong-default data-[highlighted]:text-ds-text-error-default-default [&>svg]:text-ds-icon-error-default-default"
                 disabled={!projectId}
-                onClick={() => {
+                onSelect={() => {
                   if (projectId) requestSessionAction('delete', projectId);
-                  setSessionMenuOpen(false);
                 }}
               >
                 <DsIcon icon={Trash2} recipe="main" />
                 {t('layout.delete-project')}
-              </Button>
-            </PopoverContent>
-          </Popover>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : null}
       </div>
 
@@ -422,6 +470,16 @@ export function HeaderBox({
           </Button>
         </TooltipSimple>
       </div>
+      {automationDialogContext ? (
+        <TriggerDialog
+          selectedTrigger={null}
+          isOpen={automationDialogOpen}
+          onOpenChange={setAutomationDialogOpen}
+          sourceProjectId={automationDialogContext.projectId}
+          initialTaskPrompt={automationDialogContext.source.taskPrompt}
+          initialDraft={automationDialogContext.draft}
+        />
+      ) : null}
     </div>
   );
 }
