@@ -70,6 +70,26 @@ describe('UserMessageCard', () => {
     }
   });
 
+  it('exposes time, copy, and edit actions without hover', () => {
+    const onEditAndResend = vi.fn();
+    const { container } = render(
+      <UserMessageCard
+        id="user-message-actions"
+        content="Earlier request"
+        createdAt="2026-09-23T10:15:00Z"
+        onEditAndResend={onEditAndResend}
+      />
+    );
+
+    expect(container.querySelector('time')).toHaveAttribute(
+      'datetime',
+      '2026-09-23T10:15:00.000Z'
+    );
+    expect(screen.getByRole('button', { name: 'Copy message' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit and resend' }));
+    expect(onEditAndResend).toHaveBeenCalledOnce();
+  });
+
   it('keeps durable attachment names display-only', () => {
     render(
       <UserMessageCard

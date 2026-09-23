@@ -12,6 +12,7 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import useChatStoreAdapter from '@/hooks/useChatStoreAdapter';
 import { isUserMessageReplyToAsk } from '@/lib/humanInteractionMessages';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
 import { resolveWorkspaceFilePath } from '@/lib/workspaceRelativePath';
@@ -30,6 +31,7 @@ import React, {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AgentMessageCard } from './MessageItem/AgentMessageCard';
+import { CreateAutomationFromTask } from './MessageItem/CreateAutomationFromTask';
 import {
   HumanInteractionCard,
   isHumanInteractionReadOnly,
@@ -124,6 +126,11 @@ export interface QueryGroup {
 }
 
 interface UserQueryGroupProps {
+  onEditUserMessage?: (message: {
+    id: string;
+    content: string;
+    attaches?: readonly { fileName: string; filePath?: string }[];
+  }) => void;
   chatId: string;
   chatStore: VanillaChatStore;
   queryGroup: QueryGroup;
@@ -149,8 +156,10 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
   onQueryActive,
   index,
   taskId: scopedTaskId,
+  onEditUserMessage,
 }) => {
   const { t } = useTranslation();
+  const { projectStore } = useChatStoreAdapter();
   const groupRef = useRef<HTMLDivElement>(null);
   const chatState = chatStore.getState();
 
@@ -368,6 +377,17 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
             id={queryGroup.userMessage.id}
             content={queryGroup.userMessage.content}
             attaches={queryGroup.userMessage.attaches}
+            createdAt={queryGroup.userMessage.timestamp}
+            onEditAndResend={
+              onEditUserMessage
+                ? () =>
+                    onEditUserMessage({
+                      id: queryGroup.userMessage.id,
+                      content: queryGroup.userMessage.content,
+                      attaches: queryGroup.userMessage.attaches,
+                    })
+                : undefined
+            }
           />
         </motion.div>
       )}
@@ -542,6 +562,14 @@ export const UserQueryGroup: React.FC<UserQueryGroupProps> = ({
                     ) : undefined
                   }
                 />
+                {projectStore.activeProjectId &&
+                queryGroup.userMessage?.content ? (
+                  <CreateAutomationFromTask
+                    projectId={projectStore.activeProjectId}
+                    taskPrompt={queryGroup.userMessage.content}
+                    resultContent={message.content}
+                  />
+                ) : null}
               </motion.div>
             );
           } else if (message.content === 'skip') {

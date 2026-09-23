@@ -119,6 +119,11 @@ function ApprovalInput({ variant }: { variant: BottomBoxApprovalVariant }) {
         details={undefined}
         className="px-0 pt-0 pb-0"
       />
+      {variant.options.length === 1 && variant.options[0].scope === 'once' && (
+        <p className="m-0 text-ds-text-meta text-ds-ink-muted-default">
+          {t('chat.control-once-only-explanation')}
+        </p>
+      )}
       <div data-approval-actions className="flex w-full justify-end">
         <ControlActions>
           <Button
@@ -131,15 +136,22 @@ function ApprovalInput({ variant }: { variant: BottomBoxApprovalVariant }) {
           >
             {variant.rejectLabel ?? t('chat.control-reject')}
           </Button>
-          {variant.options.map((option) => {
+          {variant.options.map((option, index) => {
             return (
               <Button
                 key={option.scope}
                 type="button"
-                variant="primary"
-                tone="success"
+                variant={
+                  option.scope === 'once' ||
+                  (index === 0 &&
+                    !variant.options.some((item) => item.scope === 'once'))
+                    ? 'primary'
+                    : 'secondary'
+                }
+                tone={option.scope === 'once' ? 'success' : 'neutral'}
                 size="sm"
                 buttonRadius="full"
+                title={option.description}
                 disabled={variant.disabled || variant.submitting}
                 onClick={() => variant.onApprove(option.scope)}
               >

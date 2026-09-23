@@ -16,6 +16,7 @@ import { useTerminalProcesses } from '@/components/Session/PreviewPanel/tabs/ter
 import { Button } from '@/components/ui/button';
 import { openTerminalProcessPreview } from '@/lib/terminalPreview';
 import { usePageTabStore } from '@/store/pageTabStore';
+import { DEFAULT_NARRATIVE_INFORMATION_DENSITY } from '@/types/chatTimeline';
 
 import { formatSplittingElapsed } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
@@ -84,6 +85,10 @@ export function CallRow({
 }: CallRowProps) {
   const { t } = useTranslation();
   const projectId = usePageTabStore((state) => state.sessionPreviewProjectId);
+  const density = usePageTabStore(
+    (state) =>
+      state.narrativeInformationDensity ?? DEFAULT_NARRATIVE_INFORMATION_DENSITY
+  );
   const processes = useTerminalProcesses(
     call.actionKind === 'command' ? projectId : null
   );
@@ -164,14 +169,12 @@ export function CallRow({
   );
   // A pending human call is the one thing the user must act on, so it opens
   // itself. Everything else follows the shimmer/auto-collapse rule.
-  const autoExpanded = highlighted || pendingHuman;
+  const autoExpanded = highlighted || pendingHuman || density === 'expanded';
   const [open, setOpen] = useState(autoExpanded);
-  const wasAutoExpanded = useRef(autoExpanded);
+  const manuallyToggled = useRef(false);
 
   useEffect(() => {
-    if (autoExpanded) setOpen(true);
-    else if (wasAutoExpanded.current) setOpen(false);
-    wasAutoExpanded.current = autoExpanded;
+    if (!manuallyToggled.current) setOpen(autoExpanded);
   }, [autoExpanded]);
 
   return (
@@ -187,7 +190,10 @@ export function CallRow({
       <button
         type="button"
         aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => {
+          manuallyToggled.current = true;
+          setOpen((value) => !value);
+        }}
         className={cn(
           'inline-flex max-w-full min-w-0 items-center gap-ds-6 self-start rounded-ds-compact-control px-0 py-ds-2 text-left transition-opacity hover:opacity-80',
           DS_FOCUS_RING,

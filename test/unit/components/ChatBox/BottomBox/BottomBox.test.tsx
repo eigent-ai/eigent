@@ -404,7 +404,9 @@ describe('BottomBox structure', () => {
     approvalButtons.forEach((button) =>
       expect(button).toHaveClass('!rounded-full')
     );
-    expect(container.querySelector('p, h1, h2, h3, h4, h5, h6')).toBeNull();
+    expect(
+      screen.getByText('This action supports one-time approval only.')
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: /always allow/i })
     ).not.toBeInTheDocument();

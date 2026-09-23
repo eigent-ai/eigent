@@ -308,6 +308,66 @@ describe('ChatBox timeline modes', () => {
     });
   });
 
+  it.each(['narrative', 'trajectory'] as const)(
+    'shows a recorded model switch before the next query in %s',
+    (detailLevel) => {
+      const secondRunNodes = nodes('completed').map(
+        (node): ChatProjectionNode => ({
+          ...node,
+          id: `${node.id}-2`,
+          eventId: `${node.eventId}-2`,
+          runId: 'run-2',
+          createdAt: '2026-08-20T00:00:00Z',
+        })
+      );
+      const runs = composeTimelineRuns([
+        ...nodes('completed'),
+        ...secondRunNodes,
+      ]);
+      const modelByRun = {
+        'run-1': { platform: 'openai', type: 'gpt-4' },
+        'run-2': { platform: 'openai', type: 'gpt-5' },
+      };
+      const view = render(
+        <TimelineModeRenderer
+          detailLevel={detailLevel}
+          runs={runs}
+          resolvedModelsByRun={modelByRun}
+        />
+      );
+
+      const divider = view.container.querySelector(
+        '[data-model-change-divider]'
+      );
+      expect(divider).toHaveTextContent('Model changed to gpt-5');
+      const secondRun = view.container.querySelector('[data-run-id="run-2"]');
+      expect(
+        detailLevel === 'narrative'
+          ? secondRun?.firstElementChild
+          : secondRun?.previousElementSibling
+      ).toBe(divider);
+      view.rerender(
+        <TimelineModeRenderer
+          detailLevel={detailLevel}
+          runs={runs}
+          resolvedModelsByRun={{
+            'run-1': modelByRun['run-1'],
+            'run-2': modelByRun['run-1'],
+          }}
+        />
+      );
+      expect(
+        view.container.querySelector('[data-model-change-divider]')
+      ).toBeNull();
+      view.rerender(
+        <TimelineModeRenderer detailLevel={detailLevel} runs={runs} />
+      );
+      expect(
+        view.container.querySelector('[data-model-change-divider]')
+      ).toBeNull();
+    }
+  );
+
   it('renders Detailed as labelled rows with vertical Input then Output', () => {
     const runs = composeTimelineRuns(nodes('completed'));
     const { container } = render(
@@ -328,7 +388,10 @@ describe('ChatBox timeline modes', () => {
     );
     rows.forEach((row) => {
       const rowButton = row.querySelector(':scope > button');
-      expect(row).toHaveAttribute('data-expanded', 'false');
+      expect(row).toHaveAttribute(
+        'data-expanded',
+        row.getAttribute('data-message-role') === 'user' ? 'true' : 'false'
+      );
       expect(row).toHaveClass(
         'bg-ds-neutral-subtle-default',
         'hover:bg-ds-neutral-default-default'

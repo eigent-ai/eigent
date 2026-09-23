@@ -32,6 +32,7 @@ import {
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { ResolvedRunModel } from './ModelChangeDivider';
 
 export function isActiveRunStatus(status: TimelineRunView['status']): boolean {
   return ['pending', 'running', 'waiting_for_user', 'cancelling'].includes(
@@ -266,6 +267,13 @@ export interface InteractiveTimelinePlan {
 
 export interface TimelineModeProps {
   runs: readonly TimelineRunView[];
+  /** Resolved from each Run's immutable attempt, never from composer state. */
+  resolvedModelsByRun?: Readonly<Record<string, ResolvedRunModel | null>>;
+  onEditUserMessage?: (message: {
+    id: string;
+    content: string;
+    attaches?: readonly { fileName: string; filePath?: string }[];
+  }) => void;
   artifactManifestsByRun?: Readonly<Record<string, ProjectedArtifactManifest>>;
   projectedArtifactsByRun?: Readonly<Record<string, ProjectedArtifact[]>>;
   /**

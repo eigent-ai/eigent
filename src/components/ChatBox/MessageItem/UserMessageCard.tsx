@@ -14,7 +14,7 @@
 
 import { useHost } from '@/host';
 import { cn } from '@/lib/utils';
-import { Check, Copy, FileText, Image } from 'lucide-react';
+import { Check, Copy, FileText, Image, Pencil } from 'lucide-react';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -52,6 +52,8 @@ interface UserMessageCardProps {
   content: string;
   className?: string;
   attaches?: readonly UserMessageAttachment[];
+  createdAt?: string | number | null;
+  onEditAndResend?: () => void;
 }
 
 export function UserMessageCard({
@@ -59,6 +61,8 @@ export function UserMessageCard({
   content,
   className,
   attaches,
+  createdAt,
+  onEditAndResend,
 }: UserMessageCardProps) {
   const host = useHost();
   const ipcRenderer = host?.ipcRenderer;
@@ -69,7 +73,27 @@ export function UserMessageCard({
   const [canClamp, setCanClamp] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const hoverCloseTimerRef = useRef<number | null>(null);
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const date = createdAt
+    ? new Date(
+        typeof createdAt === 'number' && createdAt < 1e12
+          ? createdAt * 1000
+          : createdAt
+      )
+    : null;
+  const validDate = date && !Number.isNaN(date.getTime()) ? date : null;
+  const timeLabel = validDate
+    ? new Intl.DateTimeFormat(i18n.language, {
+        hour: 'numeric',
+        minute: '2-digit',
+      }).format(validDate)
+    : null;
+  const fullTimeLabel = validDate
+    ? new Intl.DateTimeFormat(i18n.language, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      }).format(validDate)
+    : null;
 
   useLayoutEffect(() => {
     const el = contentRef.current;
@@ -316,7 +340,16 @@ export function UserMessageCard({
             )}
           </div>
         </div>
-        <div className="pointer-events-none absolute right-2 bottom-1 z-10 flex w-full shrink-0 items-center justify-end gap-0.5 opacity-0 transition-opacity duration-300 group-hover/msg:pointer-events-auto group-hover/msg:opacity-100">
+        <div className="mt-2 flex w-full shrink-0 flex-wrap items-center justify-end gap-1 border-x-0 border-y-0 border-t border-ds-hairline-subtle-default pt-1">
+          {timeLabel && (
+            <time
+              dateTime={validDate!.toISOString()}
+              title={fullTimeLabel ?? undefined}
+              className="mr-auto text-ds-text-meta text-ds-ink-muted-default"
+            >
+              {timeLabel}
+            </time>
+          )}
           {canClamp && !expanded && (
             <Button
               type="button"
@@ -352,6 +385,8 @@ export function UserMessageCard({
             variant="ghost"
             size="sm"
             buttonContent="icon-only"
+            aria-label={t('chat.message-copy')}
+            title={t('chat.message-copy')}
           >
             {copied ? (
               <Check className="h-4 w-4 text-ds-text-success-default-default" />
@@ -359,6 +394,19 @@ export function UserMessageCard({
               <Copy />
             )}
           </Button>
+          {onEditAndResend && (
+            <Button
+              type="button"
+              onClick={onEditAndResend}
+              variant="ghost"
+              size="sm"
+              buttonContent="icon-only"
+              aria-label={t('chat.message-edit-and-resend')}
+              title={t('chat.message-edit-and-resend')}
+            >
+              <Pencil aria-hidden className="size-4" />
+            </Button>
+          )}
         </div>
       </div>
     </div>

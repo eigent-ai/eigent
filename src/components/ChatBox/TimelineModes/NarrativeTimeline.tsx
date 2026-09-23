@@ -13,6 +13,7 @@
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
 import { AgentMessageCard } from '@/components/ChatBox/MessageItem/AgentMessageCard';
+import { CreateAutomationFromTask } from '@/components/ChatBox/MessageItem/CreateAutomationFromTask';
 import { PreparingToExecuteTasks } from '@/components/ChatBox/MessageItem/PreparingToExecuteTasks';
 import { formatSplittingElapsed } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
@@ -32,6 +33,8 @@ import {
 } from '@/lib/projector/chat/presentation';
 import { errorCopy } from '@/lib/usageErrors';
 import { cn } from '@/lib/utils';
+import { usePageTabStore } from '@/store/pageTabStore';
+import { DEFAULT_NARRATIVE_INFORMATION_DENSITY } from '@/types/chatTimeline';
 import { SessionMode, type SessionModeType } from '@/types/constants';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ChevronDown, ChevronRight } from 'lucide-react';
@@ -42,6 +45,7 @@ import { taskErrorReason } from '../taskErrorPresentation';
 
 import { actionIcon } from './actionIcon';
 import { CallRow, isCallActiveStatus, isCallErrorStatus } from './CallRow';
+import { ModelChangeDivider } from './ModelChangeDivider';
 import { RunFilesGroup } from './RunFiles';
 import {
   disclosureMotion,
@@ -904,17 +908,20 @@ function NarrativeRunWorkLog({
     [animationsActive, items]
   );
   const reducedMotion = Boolean(useReducedMotion());
-  const [open, setOpen] = useState(live);
-  const wasLive = useRef(live);
+  const density = usePageTabStore(
+    (state) =>
+      state.narrativeInformationDensity ?? DEFAULT_NARRATIVE_INFORMATION_DENSITY
+  );
+  const defaultOpen = live || density !== 'compact';
+  const [open, setOpen] = useState(defaultOpen);
+  const manuallyToggled = useRef(false);
   const lastAgentIndex = entries.findLastIndex(
     (entry) => entry.kind === 'agent'
   );
 
   useEffect(() => {
-    if (live) setOpen(true);
-    else if (wasLive.current) setOpen(false);
-    wasLive.current = live;
-  }, [live]);
+    if (!manuallyToggled.current) setOpen(defaultOpen);
+  }, [defaultOpen]);
 
   if (items.length === 0) {
     // Lifecycle/time belongs to the Task, not to the availability of tool
@@ -942,7 +949,10 @@ function NarrativeRunWorkLog({
       <button
         type="button"
         aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => {
+          manuallyToggled.current = true;
+          setOpen((value) => !value);
+        }}
         className="flex w-full min-w-0 items-center justify-start gap-1 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-0 py-2 text-left"
       >
         <span className="text-ds-text-base font-medium text-ds-ink-muted-default">
@@ -1008,16 +1018,18 @@ function NarrativeRunWorkLog({
 
 export function NarrativeTimeline({
   runs,
+  resolvedModelsByRun = {},
   projectedArtifactsByRun = {},
   artifactManifestsByRun = {},
   interactivePlansByRun = {},
   paused = false,
   sessionMode,
+  onEditUserMessage,
 }: TimelineModeProps & { sessionMode?: SessionModeType }) {
   const workforce = sessionMode === SessionMode.WORKFORCE;
   return (
     <div className="flex w-full flex-col gap-3" data-timeline-mode="narrative">
-      {runs.map((run) => {
+      {runs.map((run, index) => {
         const projectedArtifacts = projectedArtifactsByRun[run.runId];
         const artifactManifest = artifactManifestsByRun[run.runId];
         const interactivePlan = interactivePlansByRun[run.runId];
@@ -1037,11 +1049,28 @@ export function NarrativeTimeline({
             data-run-id={run.runId}
             key={run.id}
           >
+            {index > 0 ? (
+              <ModelChangeDivider
+                previous={resolvedModelsByRun[runs[index - 1].runId]}
+                current={resolvedModelsByRun[run.runId]}
+              />
+            ) : null}
             {run.userQuery ? (
               <UserMessageCard
                 attaches={run.userQuery.attachments}
                 content={run.userQuery.content}
                 id={run.userQuery.id}
+                createdAt={run.userQuery.createdAt}
+                onEditAndResend={
+                  onEditUserMessage
+                    ? () =>
+                        onEditUserMessage({
+                          id: run.userQuery!.id,
+                          content: run.userQuery!.content,
+                          attaches: run.userQuery!.attachments,
+                        })
+                    : undefined
+                }
               />
             ) : null}
             {isActiveRunStatus(run.status) && !hasWorkBand ? (
@@ -1055,22 +1084,31 @@ export function NarrativeTimeline({
               interactivePlan={interactivePlan}
             />
             {run.finalAssistantResponse ? (
-              <AgentMessageCard
-                content={run.finalAssistantResponse.content}
-                deferredFooter={
-                  showFiles ? (
-                    <RunFilesGroup
-                      artifactNodes={run.artifacts}
-                      projectedArtifacts={projectedArtifacts}
-                      artifactManifest={artifactManifest}
-                      projectId={run.projectId}
-                      runId={run.runId}
-                    />
-                  ) : undefined
-                }
-                id={run.finalAssistantResponse.id}
-                typewriter={isActiveRunStatus(run.status)}
-              />
+              <>
+                <AgentMessageCard
+                  content={run.finalAssistantResponse.content}
+                  deferredFooter={
+                    showFiles ? (
+                      <RunFilesGroup
+                        artifactNodes={run.artifacts}
+                        projectedArtifacts={projectedArtifacts}
+                        artifactManifest={artifactManifest}
+                        projectId={run.projectId}
+                        runId={run.runId}
+                      />
+                    ) : undefined
+                  }
+                  id={run.finalAssistantResponse.id}
+                  typewriter={isActiveRunStatus(run.status)}
+                />
+                {run.status === 'completed' && run.userQuery?.content ? (
+                  <CreateAutomationFromTask
+                    projectId={run.projectId}
+                    taskPrompt={run.userQuery.content}
+                    resultContent={run.finalAssistantResponse.content}
+                  />
+                ) : null}
+              </>
             ) : null}
             {!run.finalAssistantResponse && showFiles ? (
               <RunFilesGroup

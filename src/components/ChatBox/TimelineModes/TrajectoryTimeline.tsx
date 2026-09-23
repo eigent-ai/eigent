@@ -12,8 +12,10 @@
 // limitations under the License.
 // ========= Copyright 2025-2026 @ Eigent.ai All Rights Reserved. =========
 
+import { CreateAutomationFromTask } from '@/components/ChatBox/MessageItem/CreateAutomationFromTask';
 import { PreparingToExecuteTasks } from '@/components/ChatBox/MessageItem/PreparingToExecuteTasks';
 import { ToolInputOutputDetails } from '@/components/ChatBox/MessageItem/ToolInputOutputDetails';
+import { UserMessageCard } from '@/components/ChatBox/MessageItem/UserMessageCard';
 import { MarkDown } from '@/components/WorkFlow/MarkDown';
 import type {
   TimelineRunView,
@@ -30,6 +32,7 @@ import { useTranslation } from 'react-i18next';
 import { TaskErrorNotice } from '../TaskErrorNotice';
 import { taskErrorReason } from '../taskErrorPresentation';
 
+import { ModelChangeDivider } from './ModelChangeDivider';
 import { normalizeRunReviewPath } from './RunFiles';
 import {
   hasRunExecutionRows,
@@ -431,14 +434,37 @@ function InteractionTraceDetails({
 function NodeTraceDetails({
   row,
   runId,
+  onEditUserMessage,
 }: {
   row: NodeTraceRow;
   runId: string;
+  onEditUserMessage?: TimelineModeProps['onEditUserMessage'];
 }) {
   const { t } = useTranslation();
   const openReviewPreview = usePageTabStore((state) => state.openReviewPreview);
   const node = row.node;
   if (node.kind === 'message') {
+    if (node.role === 'user') {
+      return (
+        <UserMessageCard
+          id={node.id}
+          content={node.content}
+          attaches={node.attachments}
+          createdAt={node.createdAt}
+          className="pl-0"
+          onEditAndResend={
+            onEditUserMessage
+              ? () =>
+                  onEditUserMessage({
+                    id: node.id,
+                    content: node.content,
+                    attaches: node.attachments,
+                  })
+              : undefined
+          }
+        />
+      );
+    }
     return (
       <MarkDown
         content={node.content}
@@ -545,10 +571,12 @@ function DetailedRun({
   run,
   paused,
   interactivePlan,
+  onEditUserMessage,
 }: {
   run: TimelineRunView;
   paused: boolean;
   interactivePlan?: InteractiveTimelinePlan;
+  onEditUserMessage?: TimelineModeProps['onEditUserMessage'];
 }) {
   const { t } = useTranslation();
   return (
@@ -600,8 +628,9 @@ function DetailedRun({
                     : undefined
                 }
                 autoExpanded={
-                  row.node.kind === 'interaction' &&
-                  row.node.status === 'requested'
+                  (row.node.kind === 'interaction' &&
+                    row.node.status === 'requested') ||
+                  (row.node.kind === 'message' && row.node.role === 'user')
                 }
                 interactionId={
                   row.node.kind === 'interaction'
@@ -625,7 +654,11 @@ function DetailedRun({
                 status={nodeStatus(row, paused)}
                 summary={nodeSummary(row, t)}
               >
-                <NodeTraceDetails row={row} runId={run.runId} />
+                <NodeTraceDetails
+                  row={row}
+                  runId={run.runId}
+                  onEditUserMessage={onEditUserMessage}
+                />
               </TraceRow>
             );
           })}
@@ -641,24 +674,45 @@ function DetailedRun({
           <RunActivityIndicator />
         </div>
       ) : null}
+      {run.status === 'completed' &&
+      run.userQuery?.content &&
+      run.finalAssistantResponse ? (
+        <div className="mt-ds-8">
+          <CreateAutomationFromTask
+            projectId={run.projectId}
+            taskPrompt={run.userQuery.content}
+            resultContent={run.finalAssistantResponse.content}
+          />
+        </div>
+      ) : null}
     </section>
   );
 }
 
 export function TrajectoryTimeline({
   runs,
+  resolvedModelsByRun = {},
   interactivePlansByRun = {},
   paused = false,
+  onEditUserMessage,
 }: TimelineModeProps) {
   return (
     <div className="flex w-full flex-col gap-3" data-timeline-mode="trajectory">
-      {runs.map((run) => (
-        <DetailedRun
-          interactivePlan={interactivePlansByRun[run.runId]}
-          key={run.id}
-          paused={paused}
-          run={run}
-        />
+      {runs.map((run, index) => (
+        <div className="flex flex-col gap-3" key={run.id}>
+          {index > 0 ? (
+            <ModelChangeDivider
+              previous={resolvedModelsByRun[runs[index - 1].runId]}
+              current={resolvedModelsByRun[run.runId]}
+            />
+          ) : null}
+          <DetailedRun
+            interactivePlan={interactivePlansByRun[run.runId]}
+            paused={paused}
+            run={run}
+            onEditUserMessage={onEditUserMessage}
+          />
+        </div>
       ))}
     </div>
   );

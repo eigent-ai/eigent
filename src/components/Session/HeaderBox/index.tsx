@@ -17,8 +17,17 @@ import tokenLightIcon from '@/assets/custom/token-light.svg';
 import { AnimatedTokenNumber } from '@/components/ChatBox/MessageItem/TokenUtils';
 import { CONTENT_HEADER_CLASS } from '@/components/Layout/ContentHeader';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { DsIcon } from '@/components/ui/ds-icon';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TooltipSimple } from '@/components/ui/tooltip';
 import { useIsCompactWidth } from '@/hooks/useIsCompactWidth';
 import { cn } from '@/lib/utils';
@@ -28,10 +37,14 @@ import { getSessionPreviewSlice, usePageTabStore } from '@/store/pageTabStore';
 import {
   chatTimelineDetailLevels,
   DEFAULT_CHAT_TIMELINE_DETAIL_LEVEL,
+  DEFAULT_NARRATIVE_INFORMATION_DENSITY,
+  narrativeInformationDensities,
   type ChatTimelineDetailLevel,
+  type NarrativeInformationDensity,
 } from '@/types/chatTimeline';
 import {
   ArrowLeft,
+  ChevronDown,
   createLucideIcon,
   GalleryThumbnails,
   Logs,
@@ -61,6 +74,15 @@ const TIMELINE_MODE_ICONS: Record<ChatTimelineDetailLevel, LucideIcon> = {
 const TIMELINE_MODE_FALLBACK_LABELS: Record<ChatTimelineDetailLevel, string> = {
   narrative: 'Narrative',
   trajectory: 'Trajectory',
+};
+
+const NARRATIVE_DENSITY_FALLBACK_LABELS: Record<
+  NarrativeInformationDensity,
+  string
+> = {
+  compact: 'Compact',
+  balanced: 'Balanced',
+  expanded: 'Expanded',
 };
 
 /** Match the composer control row when the resizable Session pane is narrow. */
@@ -99,6 +121,13 @@ export function HeaderBox({
   const setChatTimelineDetailLevel = usePageTabStore(
     (s) => s.setChatTimelineDetailLevel
   );
+  const narrativeInformationDensity = usePageTabStore(
+    (s) =>
+      s.narrativeInformationDensity ?? DEFAULT_NARRATIVE_INFORMATION_DENSITY
+  );
+  const setNarrativeInformationDensity = usePageTabStore(
+    (s) => s.setNarrativeInformationDensity
+  );
   const eventNativeTimelineEnabled = isChatEventTimelineEnabled();
   const tokenIcon = appearance === 'dark' ? tokenDarkIcon : tokenLightIcon;
   const backTooltip = t('layout.back-tooltip', {
@@ -114,14 +143,7 @@ export function HeaderBox({
     t(`chat.timeline-style-${level}`, {
       defaultValue: TIMELINE_MODE_FALLBACK_LABELS[level],
     });
-  const timelineModeOptions = chatTimelineDetailLevels.map((level) => ({
-    value: level,
-    label: timelineStyleLabel(level),
-    icon: TIMELINE_MODE_ICONS[level],
-  }));
-  const handleTimelineStyleChange = (value: ChatTimelineDetailLevel) => {
-    setChatTimelineDetailLevel(value);
-  };
+  const SelectedViewIcon = TIMELINE_MODE_ICONS[chatTimelineDetailLevel];
 
   if (empty) {
     return (
@@ -175,42 +197,62 @@ export function HeaderBox({
           </div>
         ) : null}
         {eventNativeTimelineEnabled ? (
-          <Tabs
-            value={chatTimelineDetailLevel}
-            onValueChange={(value) =>
-              handleTimelineStyleChange(value as ChatTimelineDetailLevel)
-            }
-            className="no-drag inline-flex shrink-0"
-          >
-            <TabsList appearance="default" aria-label={timelineStyleTooltip}>
-              {timelineModeOptions.map((option) => {
-                const Icon = option.icon;
-                return (
-                  <TabsTrigger
-                    key={option.value}
-                    value={option.value}
-                    aria-label={option.label}
-                  >
-                    <TooltipSimple
-                      content={
-                        <ShortcutTooltipContent
-                          label={option.label}
-                          shortcutId="toggle-timeline-view"
-                        />
-                      }
-                      compact
-                      variant="instant"
-                      side="bottom"
-                    >
-                      <div className="inline-flex h-5 w-5 items-center justify-center">
-                        <Icon size={16} />
-                      </div>
-                    </TooltipSimple>
-                  </TabsTrigger>
-                );
-              })}
-            </TabsList>
-          </Tabs>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="no-drag shrink-0 gap-ds-control-gap"
+                aria-label={`${timelineStyleTooltip}: ${timelineStyleLabel(chatTimelineDetailLevel)}`}
+              >
+                <DsIcon icon={SelectedViewIcon} recipe="main" />
+                {!compact ? (
+                  <span>{timelineStyleLabel(chatTimelineDetailLevel)}</span>
+                ) : null}
+                <DsIcon icon={ChevronDown} recipe="main-compact" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>
+                {t('chat.timeline-view-label', { defaultValue: 'View' })}
+              </DropdownMenuLabel>
+              <DropdownMenuRadioGroup
+                value={chatTimelineDetailLevel}
+                onValueChange={(value) =>
+                  setChatTimelineDetailLevel(value as ChatTimelineDetailLevel)
+                }
+              >
+                {chatTimelineDetailLevels.map((level) => (
+                  <DropdownMenuRadioItem key={level} value={level}>
+                    {timelineStyleLabel(level)}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>
+                {t('chat.timeline-narrative-detail-label', {
+                  defaultValue: 'Narrative detail · default',
+                })}
+              </DropdownMenuLabel>
+              <DropdownMenuRadioGroup
+                value={narrativeInformationDensity}
+                onValueChange={(value) =>
+                  setNarrativeInformationDensity(
+                    value as NarrativeInformationDensity
+                  )
+                }
+              >
+                {narrativeInformationDensities.map((density) => (
+                  <DropdownMenuRadioItem key={density} value={density}>
+                    {t(`chat.timeline-density-${density}`, {
+                      defaultValue: NARRATIVE_DENSITY_FALLBACK_LABELS[density],
+                    })}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : null}
         <TooltipSimple
           content={

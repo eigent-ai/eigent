@@ -47,7 +47,10 @@ describe('HeaderBox chat timeline mode', () => {
         disconnect() {}
       }
     );
-    usePageTabStore.setState({ chatTimelineDetailLevel: 'narrative' });
+    usePageTabStore.setState({
+      chatTimelineDetailLevel: 'narrative',
+      narrativeInformationDensity: 'balanced',
+    });
   });
 
   afterEach(() => {
@@ -60,8 +63,8 @@ describe('HeaderBox chat timeline mode', () => {
     render(<HeaderBox totalTokens={42} projectName="Timeline project" />);
 
     const tokenLabel = screen.getByText(/Total:/);
-    const toggle = screen.getByRole('tablist', {
-      name: 'Chat timeline style',
+    const toggle = screen.getByRole('button', {
+      name: 'Chat timeline style: Narrative',
     });
     const previewButton = screen.getByRole('button', {
       name: 'Open preview',
@@ -77,17 +80,23 @@ describe('HeaderBox chat timeline mode', () => {
     ).toBeTruthy();
   });
 
-  it('offers exactly the two timeline modes as a segmented control', () => {
+  it('offers independent view and Narrative detail choices in one menu', async () => {
+    const user = userEvent.setup();
     render(<HeaderBox totalTokens={42} />);
 
-    const options = screen.getAllByRole('tab');
-    expect(options.map((option) => option.getAttribute('aria-label'))).toEqual([
-      'Narrative',
-      'Trajectory',
-    ]);
-    expect(screen.getByRole('tab', { name: 'Narrative' })).toHaveAttribute(
-      'aria-selected',
-      'true'
+    await user.click(
+      screen.getByRole('button', { name: 'Chat timeline style: Narrative' })
+    );
+    expect(screen.getAllByRole('menuitemradio')).toHaveLength(5);
+    expect(
+      screen.getByRole('menuitemradio', { name: 'Narrative' })
+    ).toHaveAttribute('aria-checked', 'true');
+    await user.click(screen.getByRole('menuitemradio', { name: 'Expanded' }));
+    expect(usePageTabStore.getState().narrativeInformationDensity).toBe(
+      'expanded'
+    );
+    expect(usePageTabStore.getState().chatTimelineDetailLevel).toBe(
+      'narrative'
     );
   });
 
@@ -100,7 +109,7 @@ describe('HeaderBox chat timeline mode', () => {
 
     expect(screen.queryByText(/Total:/)).not.toBeInTheDocument();
     expect(
-      screen.getByRole('tablist', { name: 'Chat timeline style' })
+      screen.getByRole('button', { name: 'Chat timeline style: Narrative' })
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Open preview' })
@@ -111,18 +120,16 @@ describe('HeaderBox chat timeline mode', () => {
     const user = userEvent.setup();
     render(<HeaderBox totalTokens={42} />);
 
-    await user.click(screen.getByRole('tab', { name: 'Trajectory' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Chat timeline style: Narrative' })
+    );
+    await user.click(screen.getByRole('menuitemradio', { name: 'Trajectory' }));
 
     expect(usePageTabStore.getState().chatTimelineDetailLevel).toBe(
       'trajectory'
     );
-    expect(screen.getByRole('tab', { name: 'Trajectory' })).toHaveAttribute(
-      'aria-selected',
-      'true'
-    );
-    expect(screen.getByRole('tab', { name: 'Narrative' })).toHaveAttribute(
-      'aria-selected',
-      'false'
-    );
+    expect(
+      screen.getByRole('button', { name: 'Chat timeline style: Trajectory' })
+    ).toBeInTheDocument();
   });
 });
