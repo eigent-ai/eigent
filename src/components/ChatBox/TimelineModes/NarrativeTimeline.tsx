@@ -378,16 +378,98 @@ function groupCallsByToolkit(calls: readonly TimelineCall[]): TimelineCall[][] {
   return groups;
 }
 
-function toolkitGroupLabel(calls: readonly TimelineCall[]): string {
-  const toolkit = calls[0]?.toolkitName?.trim() || '';
-  const descriptions = [
-    ...new Set(
-      calls.map((call) =>
-        (call.methodName?.trim() || call.title.trim()).replaceAll('_', ' ')
-      )
-    ),
-  ].filter((description) => description && description !== toolkit);
-  return [toolkit, descriptions.join(', ')].filter(Boolean).join(' · ');
+/** Only promote short, display-safe request text to a collapsed row. */
+function groupCallSubject(call: TimelineCall): string | null {
+  const input = call.input?.trim();
+  if (!input || input.length > 1_000) return null;
+
+  let subject = input;
+  if (input.startsWith('{')) {
+    try {
+      const parsed: unknown = JSON.parse(input);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return null;
+      }
+      const fields = parsed as Record<string, unknown>;
+      const fieldNames =
+        call.actionKind === 'search'
+          ? ['query', 'search_query', 'q']
+          : ['command', 'cmd'];
+      const value = fieldNames
+        .map((key) => fields[key])
+        .find((field): field is string => typeof field === 'string');
+      if (!value) return null;
+      subject = value.trim();
+    } catch {
+      return null;
+    }
+  } else {
+    subject = subject.replace(/^(?:search query|query|command):\s*/i, '');
+    if (call.actionKind === 'command') subject = subject.replace(/^\$\s+/, '');
+  }
+
+  if (
+    !subject ||
+    subject.length > 160 ||
+    /[\r\n\t{}]/.test(subject) ||
+    /\b(?:api[_-]?key|access[_-]?token|secret|password|authorization|bearer)\b|(?:^|\s)[\w.-]*(?:KEY|TOKEN|SECRET)=/i.test(
+      subject
+    )
+  ) {
+    return null;
+  }
+  return subject;
+}
+
+function groupCallTitle(call: TimelineCall): string | null {
+  const title = call.title.trim();
+  const toolkit = call.toolkitName?.trim() || '';
+  if (!title || title === toolkit) return null;
+  const prefix = [`${toolkit} · `, `${toolkit}.`].find((part) =>
+    title.startsWith(part)
+  );
+  const description = prefix ? title.slice(prefix.length).trim() : title;
+  if (
+    !description ||
+    description === call.methodName ||
+    description === call.methodName?.replaceAll('_', ' ')
+  ) {
+    return null;
+  }
+  return description;
+}
+
+function toolkitGroupLabel(
+  calls: readonly TimelineCall[],
+  t: ReturnType<typeof useTranslation>['t']
+): string {
+  const latest = calls.at(-1);
+  if (!latest) return '';
+  const subject = groupCallSubject(latest);
+  const title = groupCallTitle(latest);
+  if (latest.actionKind === 'search') {
+    return subject
+      ? t('chat.timeline-searched-for', {
+          defaultValue: 'Searched for {{query}}',
+          query: subject,
+        })
+      : title || t('chat.timeline-searched', { defaultValue: 'Searched' });
+  }
+  if (latest.actionKind === 'command') {
+    return subject
+      ? t('chat.timeline-ran-command-name', {
+          defaultValue: 'Ran {{command}}',
+          command: subject,
+        })
+      : title ||
+          t('chat.timeline-ran-command', { defaultValue: 'Ran command' });
+  }
+
+  return (
+    title ||
+    latest.methodName?.trim().replaceAll('_', ' ') ||
+    t('chat.timeline-tool', { defaultValue: 'Tool' })
+  );
 }
 
 function NarrativeSubagentRow({
@@ -630,6 +712,7 @@ function NarrativeSegment({
   latestRunningCallId: string | null;
   reducedMotion: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
@@ -691,7 +774,7 @@ function NarrativeSegment({
               <NarrativeToolGroup
                 calls={calls}
                 key={calls[0].id}
-                label={toolkitGroupLabel(calls)}
+                label={toolkitGroupLabel(calls, t)}
                 latestRunningCallId={latestRunningCallId}
                 reducedMotion={reducedMotion}
                 runActive={runActive}

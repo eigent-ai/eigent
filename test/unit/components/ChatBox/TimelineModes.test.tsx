@@ -382,7 +382,7 @@ describe('ChatBox timeline modes', () => {
       ...container.querySelectorAll('[data-narrative-segment-trigger]'),
     ];
     expect(groups).toHaveLength(1);
-    expect(groups[0]).toHaveTextContent('File Toolkit · read file, write file');
+    expect(groups[0]).toHaveTextContent('Write second file · 2 actions');
     expect(
       container.querySelectorAll('[data-timeline-call-trigger]')
     ).toHaveLength(1);
@@ -410,12 +410,17 @@ describe('ChatBox timeline modes', () => {
   });
 
   it('groups adjacent Search and legacy Terminal calls in Balanced view with counts', () => {
-    const terminal = (id: string, runSequence: number): ChatProjectionNode => ({
+    const terminal = (
+      id: string,
+      runSequence: number,
+      input?: string
+    ): ChatProjectionNode => ({
       ...normalToolActivity({
         id,
         runSequence,
         status: 'completed',
         title: 'Terminal',
+        input,
       }),
       activityType: 'terminal',
       toolkitName: undefined,
@@ -428,6 +433,7 @@ describe('ChatBox timeline modes', () => {
         status: 'completed',
         toolkitName: 'Search Toolkit',
         methodName: 'search_google',
+        input: 'Eigent timeline',
       }),
       normalToolActivity({
         id: 'search-second',
@@ -435,10 +441,11 @@ describe('ChatBox timeline modes', () => {
         status: 'completed',
         toolkitName: 'SearchToolkit',
         methodName: 'search_google',
+        input: 'Eigent event timeline',
       }),
-      terminal('terminal-first', 3),
-      terminal('terminal-second', 4),
-      terminal('terminal-third', 5),
+      terminal('terminal-first', 3, 'Command: npm test'),
+      terminal('terminal-second', 4, 'git status'),
+      terminal('terminal-third', 5, '{"command":"npm run build"}'),
       normalToolActivity({
         id: 'file-read',
         runSequence: 6,
@@ -447,7 +454,7 @@ describe('ChatBox timeline modes', () => {
         methodName: 'read_file',
         title: 'Read a file',
       }),
-      terminal('terminal-after-file', 7),
+      terminal('terminal-after-file', 7, 'pwd'),
       runningRunStatus(8),
     ];
     usePageTabStore.setState({ narrativeInformationDensity: 'balanced' });
@@ -464,9 +471,9 @@ describe('ChatBox timeline modes', () => {
     ];
     expect(groups).toHaveLength(2);
     expect(groups[0]).toHaveTextContent(
-      'Search Toolkit · search google · 2 actions'
+      'Searched for Eigent event timeline · 2 actions'
     );
-    expect(groups[1]).toHaveTextContent('Terminal · 3 actions');
+    expect(groups[1]).toHaveTextContent('Ran npm run build · 3 actions');
     expect(
       [...container.querySelectorAll('[data-timeline-call-trigger]')].map(
         (node) => node.textContent?.trim()
@@ -478,6 +485,53 @@ describe('ChatBox timeline modes', () => {
         '[data-narrative-segment-calls] [data-timeline-call-trigger]'
       )
     ).toHaveLength(3);
+  });
+
+  it('refreshes a Balanced group heading as new calls arrive and hides unsafe subjects', () => {
+    const search = (id: string, runSequence: number, input: string) =>
+      normalToolActivity({
+        id,
+        runSequence,
+        status: 'completed',
+        toolkitName: 'Search Toolkit',
+        methodName: 'search_google',
+        input,
+      });
+    const first = search('search-1', 1, 'initial topic');
+    const second = search('search-2', 2, 'more precise topic');
+    usePageTabStore.setState({ narrativeInformationDensity: 'balanced' });
+    const view = (work: ChatProjectionNode[]) => (
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns([...work, runningRunStatus(work.length + 1)])}
+        sessionMode={SessionMode.SINGLE_AGENT}
+      />
+    );
+    const { container, rerender } = render(view([first, second]));
+    const group = () =>
+      container.querySelector('[data-narrative-segment-trigger]');
+
+    expect(group()).toHaveTextContent('Searched for more precise topic');
+    rerender(
+      view([first, second, search('search-3', 3, '{"query":"latest topic"}')])
+    );
+    expect(group()).toHaveTextContent('Searched for latest topic · 3 actions');
+    rerender(view([first, second, search('search-3', 3, 'api_key=private')]));
+    expect(group()).toHaveTextContent('Searched · 3 actions');
+    expect(group()).not.toHaveTextContent('private');
+    rerender(
+      view([
+        first,
+        second,
+        {
+          ...search('search-3', 3, ''),
+          title: 'Found relevant documentation',
+        },
+      ])
+    );
+    expect(group()).toHaveTextContent(
+      'Found relevant documentation · 3 actions'
+    );
   });
 
   it.each(['narrative', 'trajectory'] as const)(
