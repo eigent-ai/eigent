@@ -36,7 +36,7 @@ export function SidebarShell({
     <aside
       aria-label={ariaLabel}
       className={cn(
-        'box-border flex h-full min-h-0 w-full min-w-0 shrink-0 flex-col items-start overflow-hidden rounded-2xl bg-ds-neutral-default-default p-1',
+        'box-border flex h-full min-h-0 w-full min-w-0 shrink-0 flex-col items-start overflow-hidden p-1',
         className
       )}
     >
@@ -79,9 +79,12 @@ export function SidebarSection({
 /** Hairline divider between sidebar sections. */
 export function SidebarSeparator({ className }: { className?: string }) {
   return (
-    <div className={cn('my-2 px-3', className)}>
-      <div className="h-px w-full bg-ds-border-neutral-default-default" />
-    </div>
+    <div
+      className={cn(
+        'my-2 w-full border-x-0 border-y-0 border-t-ds-hairline border-solid border-ds-hairline-subtle-default',
+        className
+      )}
+    />
   );
 }
 
