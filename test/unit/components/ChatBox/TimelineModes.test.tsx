@@ -1174,15 +1174,11 @@ describe('ChatBox timeline modes', () => {
       'focus-visible:text-ds-ink-default-default'
     );
     expect(groupChevron).toBeInTheDocument();
-    expect(groupChevron).toHaveClass(
-      'opacity-0',
-      'group-hover:opacity-100',
-      'group-focus-visible:opacity-100'
-    );
+    expect(groupChevron).not.toHaveClass('opacity-0');
 
     fireEvent.click(groupTrigger);
 
-    expect(groupChevron).toHaveClass('rotate-90', 'opacity-100');
+    expect(groupChevron).toHaveClass('rotate-90');
 
     const childTriggers = container.querySelectorAll(
       '[data-timeline-call-trigger]'

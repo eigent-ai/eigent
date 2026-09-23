@@ -313,8 +313,8 @@ function NarrativeToolGroup({
         <DsIcon
           icon={ChevronRight}
           className={cn(
-            'opacity-0 transition-[opacity,transform] duration-200 group-hover:opacity-100 group-focus-visible:opacity-100',
-            open && 'rotate-90 opacity-100'
+            'transition-transform duration-200',
+            open && 'rotate-90'
           )}
           data-narrative-segment-chevron
         />

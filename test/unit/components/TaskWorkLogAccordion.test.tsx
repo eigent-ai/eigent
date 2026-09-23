@@ -323,6 +323,7 @@ describe('TaskWorkLogAccordion repeated tool-call rendering', () => {
 
     expect(browserGroup).toHaveAttribute('aria-expanded', 'false');
     expect(todoGroup).toHaveAttribute('aria-expanded', 'false');
+    expect(browserGroup.querySelector('svg')).not.toHaveClass('opacity-0');
     expect(
       screen.getAllByRole('button', {
         name: 'Browser Toolkit · Browser visit page · 2 events',
@@ -337,6 +338,13 @@ describe('TaskWorkLogAccordion repeated tool-call rendering', () => {
         name: 'Browser Toolkit · Browser visit page',
       })
     ).toHaveLength(2);
+    expect(
+      screen
+        .getAllByRole('button', {
+          name: 'Browser Toolkit · Browser visit page',
+        })[0]
+        ?.querySelector('svg')
+    ).not.toHaveClass('opacity-0');
   });
 
   it('keeps Search unified and shows providers only in expanded details', () => {

@@ -1161,10 +1161,8 @@ const ToolDetailRow = memo(function ToolDetailRow({
           size={16}
           aria-hidden
           className={cn(
-            'shrink-0 text-ds-ink-subtle-default transition-[opacity,transform] duration-200',
-            open
-              ? 'rotate-90 opacity-100'
-              : 'rotate-0 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100'
+            'shrink-0 text-ds-ink-subtle-default transition-transform duration-200',
+            open && 'rotate-90'
           )}
         />
       </button>
@@ -1248,10 +1246,8 @@ const RepeatedToolDetailRow = memo(function RepeatedToolDetailRow({
           size={16}
           aria-hidden
           className={cn(
-            'shrink-0 text-ds-ink-subtle-default transition-[opacity,transform] duration-200',
-            open
-              ? 'rotate-90 opacity-100'
-              : 'rotate-0 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100'
+            'shrink-0 text-ds-ink-subtle-default transition-transform duration-200',
+            open && 'rotate-90'
           )}
         />
       </button>
