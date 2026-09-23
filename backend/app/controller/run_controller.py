@@ -332,6 +332,32 @@ def _total_attempt_elapsed_ms(attempts: list[Any], *, now: float) -> int:
     return total
 
 
+def _resolved_model_for_attempt(journal, attempt) -> dict[str, str] | None:
+    """Expose only the model identity from an attempt's immutable binding."""
+
+    if attempt is None or not attempt.environment_spec_id:
+        return None
+    spec = journal.get_effective_environment_spec(attempt.environment_spec_id)
+    if spec is None or spec.owner_id != attempt.run_id:
+        return None
+    semantic = spec.redacted_spec.get("semantic_spec")
+    if not isinstance(semantic, dict):
+        return None
+    manifest = semantic.get("runtime_capability_manifest")
+    if not isinstance(manifest, dict):
+        return None
+    model = manifest.get("model")
+    if not isinstance(model, dict):
+        return None
+    platform, model_type = model.get("platform"), model.get("type")
+    if not all(
+        isinstance(value, str) and value.strip()
+        for value in (platform, model_type)
+    ):
+        return None
+    return {"platform": platform, "type": model_type}
+
+
 @router.get("/runs")
 async def list_project_runs(
     project_id: str = Query(min_length=1),
@@ -368,6 +394,11 @@ async def list_project_runs(
             {
                 **asdict(run),
                 "latest_attempt": (asdict(attempts[-1]) if attempts else None),
+                "resolved_model": await asyncio.to_thread(
+                    _resolved_model_for_attempt,
+                    journal,
+                    attempts[-1] if attempts else None,
+                ),
                 "total_attempt_elapsed_ms": (
                     _total_attempt_elapsed_ms(attempts, now=now)
                     if attempts
@@ -399,6 +430,11 @@ async def get_run(run_id: str):
         **asdict(run),
         "attempts": [asdict(attempt) for attempt in attempts],
         "latest_attempt": asdict(attempts[-1]) if attempts else None,
+        "resolved_model": await asyncio.to_thread(
+            _resolved_model_for_attempt,
+            journal,
+            attempts[-1] if attempts else None,
+        ),
         "total_attempt_elapsed_ms": (
             _total_attempt_elapsed_ms(attempts, now=time.time())
             if attempts
