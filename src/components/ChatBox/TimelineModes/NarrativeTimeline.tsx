@@ -378,6 +378,22 @@ function groupCallsByToolkit(calls: readonly TimelineCall[]): TimelineCall[][] {
   return groups;
 }
 
+/** A collapsed row must not promote a long payload or credential-like text. */
+function conciseRowText(value: string | undefined): string | null {
+  const text = value?.trim();
+  if (
+    !text ||
+    text.length > 160 ||
+    /[\r\n\t{}]/.test(text) ||
+    /\b(?:api[_-]?key|access[_-]?token|secret|password|authorization|bearer)\b|(?:^|\s)[\w.-]*(?:KEY|TOKEN|SECRET)=/i.test(
+      text
+    )
+  ) {
+    return null;
+  }
+  return text;
+}
+
 /** Only promote short, display-safe request text to a collapsed row. */
 function groupCallSubject(call: TimelineCall): string | null {
   const input = call.input?.trim();
@@ -408,17 +424,23 @@ function groupCallSubject(call: TimelineCall): string | null {
     if (call.actionKind === 'command') subject = subject.replace(/^\$\s+/, '');
   }
 
-  if (
-    !subject ||
-    subject.length > 160 ||
-    /[\r\n\t{}]/.test(subject) ||
-    /\b(?:api[_-]?key|access[_-]?token|secret|password|authorization|bearer)\b|(?:^|\s)[\w.-]*(?:KEY|TOKEN|SECRET)=/i.test(
-      subject
-    )
-  ) {
-    return null;
+  return conciseRowText(subject);
+}
+
+/** The call detail is the human-readable work description, when supplied. */
+function groupCallDescription(call: TimelineCall): string | null {
+  for (const candidate of [call.notice?.content, call.detail]) {
+    const description = conciseRowText(candidate);
+    if (
+      description &&
+      !/^(?:completed|in progress|started|running|failed|cancelled|timed out|returned text)(?:[ .:(]|$)/i.test(
+        description
+      )
+    ) {
+      return description;
+    }
   }
-  return subject;
+  return null;
 }
 
 function groupCallTitle(call: TimelineCall): string | null {
@@ -446,6 +468,7 @@ function toolkitGroupLabel(
   const latest = calls.at(-1);
   if (!latest) return '';
   const subject = groupCallSubject(latest);
+  const description = groupCallDescription(latest);
   const title = groupCallTitle(latest);
   if (latest.actionKind === 'search') {
     return subject
@@ -456,13 +479,16 @@ function toolkitGroupLabel(
       : title || t('chat.timeline-searched', { defaultValue: 'Searched' });
   }
   if (latest.actionKind === 'command') {
-    return subject
-      ? t('chat.timeline-ran-command-name', {
-          defaultValue: 'Ran {{command}}',
-          command: subject,
-        })
-      : title ||
-          t('chat.timeline-ran-command', { defaultValue: 'Ran command' });
+    if (description) return description;
+    if (subject) {
+      return t('chat.timeline-ran-command-name', {
+        defaultValue: 'Ran {{command}}',
+        command: subject,
+      });
+    }
+    return (
+      title || t('chat.timeline-ran-command', { defaultValue: 'Ran command' })
+    );
   }
 
   return (
@@ -765,6 +791,7 @@ function NarrativeSegment({
             calls.length === 1 ? (
               <CallRow
                 call={calls[0]}
+                displayTitle={toolkitGroupLabel(calls, t)}
                 key={calls[0].id}
                 latestRunningCallId={latestRunningCallId}
                 reducedMotion={reducedMotion}

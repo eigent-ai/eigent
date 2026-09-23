@@ -60,6 +60,8 @@ export function isCallActiveStatus(status: TimelineCall['status']): boolean {
 
 interface CallRowProps {
   call: TimelineCall;
+  /** Narrative Balanced can surface the call's display description at rest. */
+  displayTitle?: string;
   runActive: boolean;
   /** Row id that currently owns the single running shimmer, if any. */
   latestRunningCallId?: string | null;
@@ -78,6 +80,7 @@ interface CallRowProps {
  */
 export function CallRow({
   call,
+  displayTitle,
   runActive,
   latestRunningCallId = null,
   reducedMotion,
@@ -208,7 +211,7 @@ export function CallRow({
         />
         {highlighted ? (
           <ShinyText
-            text={call.title}
+            text={displayTitle || call.title}
             speed={2.5}
             className="min-w-0 shrink overflow-hidden !text-ds-text-base !font-normal text-ellipsis whitespace-nowrap text-ds-ink-subtle-default"
           />
@@ -221,7 +224,7 @@ export function CallRow({
                 : 'text-ds-ink-subtle-default'
             )}
           >
-            {call.title}
+            {displayTitle || call.title}
           </span>
         )}
         {failed ? (

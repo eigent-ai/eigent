@@ -478,7 +478,7 @@ describe('ChatBox timeline modes', () => {
       [...container.querySelectorAll('[data-timeline-call-trigger]')].map(
         (node) => node.textContent?.trim()
       )
-    ).toEqual(['Read a file', 'Terminal']);
+    ).toEqual(['Read a file', 'Ran pwd']);
     fireEvent.click(groups[1] as HTMLElement);
     expect(
       container.querySelectorAll(
@@ -532,6 +532,59 @@ describe('ChatBox timeline modes', () => {
     expect(group()).toHaveTextContent(
       'Found relevant documentation · 3 actions'
     );
+  });
+
+  it('uses a command description above a long script in Balanced rows and groups', () => {
+    const longCommand = `Command: python3 -c "${'import urllib.request '.repeat(20)}"`;
+    const terminal = (
+      id: string,
+      runSequence: number,
+      detail: string
+    ): ChatProjectionNode => ({
+      ...normalToolActivity({
+        id,
+        runSequence,
+        status: 'completed',
+        title: 'Ran command',
+        input: longCommand,
+      }),
+      activityType: 'terminal',
+      toolkitName: undefined,
+      methodName: undefined,
+      detail,
+    });
+    const work = [
+      terminal('fetch-news', 1, 'Fetching Anthropic news page'),
+      normalToolActivity({
+        id: 'read-file',
+        runSequence: 2,
+        status: 'completed',
+        toolkitName: 'File Toolkit',
+        title: 'Read notes',
+      }),
+      terminal('check-news', 3, 'Checking news sources'),
+      terminal('summarize-news', 4, 'Summarizing Anthropic news page'),
+      runningRunStatus(5),
+    ];
+    usePageTabStore.setState({ narrativeInformationDensity: 'balanced' });
+    const { container } = render(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns(work)}
+        sessionMode={SessionMode.SINGLE_AGENT}
+      />
+    );
+
+    expect(
+      [...container.querySelectorAll('[data-timeline-call-trigger]')].map(
+        (node) => node.textContent?.trim()
+      )
+    ).toEqual(['Fetching Anthropic news page', 'Read notes']);
+    const group = container.querySelector('[data-narrative-segment-trigger]');
+    expect(group).toHaveTextContent(
+      'Summarizing Anthropic news page · 2 actions'
+    );
+    expect(group).not.toHaveTextContent('python3');
   });
 
   it.each(['narrative', 'trajectory'] as const)(
