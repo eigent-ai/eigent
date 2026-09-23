@@ -217,6 +217,7 @@ describe('HeaderBox chat timeline mode', () => {
       'Turn into skill',
       'Turn into automation',
     ]);
+    expect(items[1].querySelector('.lucide-zap')).toBeTruthy();
     expect(items[0].closest('[role="menu"]')).toHaveClass('w-56');
     expect(items[0]).toHaveAttribute('aria-disabled', 'true');
     expect(items[1]).toHaveAttribute('aria-disabled', 'true');
@@ -316,11 +317,9 @@ describe('HeaderBox chat timeline mode', () => {
     const narrativeDetail = screen.getByRole('menuitem', {
       name: 'Narrative detail Compact',
     });
+    expect(viewSettings.querySelector('.lucide-square-menu')).toBeTruthy();
     expect(
-      viewSettings.querySelector('.lucide-gallery-thumbnails')
-    ).toBeTruthy();
-    expect(
-      narrativeDetail.querySelector('.lucide-sliders-horizontal')
+      narrativeDetail.querySelector('.lucide-rectangle-ellipsis')
     ).toBeTruthy();
     expect(viewSettings).toHaveAttribute('aria-haspopup', 'menu');
     expect(narrativeDetail).not.toHaveAttribute('aria-disabled', 'true');

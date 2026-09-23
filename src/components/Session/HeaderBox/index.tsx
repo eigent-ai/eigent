@@ -40,6 +40,7 @@ import {
   parseAutomationDraft,
   type AutomationDraftV1,
 } from '@/lib/automationDraft';
+import { AUTOMATION_ICON } from '@/lib/triggerIcon';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { isChatEventTimelineEnabled } from '@/store/chatEventProjectionBridge';
@@ -54,14 +55,14 @@ import {
   type NarrativeInformationDensity,
 } from '@/types/chatTimeline';
 import {
-  AlarmClock,
   Archive,
   ArrowLeft,
   EllipsisVertical,
   GalleryThumbnails,
   Pencil,
   Pin,
-  SlidersHorizontal,
+  RectangleEllipsis,
+  SquareMenu,
   Trash2,
   WandSparkles,
 } from 'lucide-react';
@@ -343,7 +344,7 @@ export function HeaderBox({
                 disabled={!automationSource}
                 onSelect={openAutomationDialog}
               >
-                <DsIcon icon={AlarmClock} recipe="main" />
+                <DsIcon icon={AUTOMATION_ICON} recipe="main" />
                 {t('chat.create-automation-from-task', {
                   defaultValue: 'Turn into automation',
                 })}
@@ -353,7 +354,7 @@ export function HeaderBox({
                 <>
                   <DropdownMenuSub>
                     <DropdownMenuSubTrigger className="min-h-ds-control-lg w-full min-w-0">
-                      <DsIcon icon={GalleryThumbnails} recipe="main" />
+                      <DsIcon icon={SquareMenu} recipe="main" />
                       <span className="min-w-0 flex-1 truncate">
                         {t('chat.timeline-view-settings', {
                           defaultValue: 'View settings',
@@ -386,7 +387,7 @@ export function HeaderBox({
                       className="min-h-ds-control-lg w-full min-w-0"
                       disabled={chatTimelineDetailLevel !== 'narrative'}
                     >
-                      <DsIcon icon={SlidersHorizontal} recipe="main" />
+                      <DsIcon icon={RectangleEllipsis} recipe="main" />
                       <span className="min-w-0 flex-1 truncate">
                         {t('chat.timeline-narrative-detail-label', {
                           defaultValue: 'Narrative detail',
