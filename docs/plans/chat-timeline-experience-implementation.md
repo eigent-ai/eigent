@@ -14,7 +14,7 @@ This plan covers all seven observations from the source review and the subsequen
 
 1. Move active human decisions out of the composer into a stable floating card, with chronological receipts in the timeline.
 2. Explain approval-scope limitations without changing backend permission policy.
-3. Replace the Narrative/Trajectory tabs with one dropdown containing view selection and a separate default Narrative information-density preference. Allow future view additions through the same control.
+3. Put Narrative/Trajectory and the Narrative density control in the Session-title menu, alongside Session actions. Give each density a distinct way to present the same chronological work.
 4. Draft an automation from a task using a dedicated agent skill, then reuse the existing automation editor and creation API.
 5. Mark model changes at the next submitted task boundary.
 6. Add accessible user-message metadata and actions, separating editing from Git recovery.
@@ -32,7 +32,7 @@ Source observations were checked on this branch. They are not live UI verificati
 | ------------------ | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Timeline transport | `src/components/ChatBox/index.tsx`, `ProjectChatContainer.tsx`, `EventNativeProjectTimeline.tsx` | Local `.env.local` has `VITE_CHATBOX_EVENT_BUS=false`; legacy and event-native rendering remain separate. Do not enable the flag as part of writing this plan.                                    |
 | Event presentation | `src/lib/projector/chat/presentation`, `TimelineModes`                                           | `TimelineRunView` already groups queries, work, interactions, artifacts, and final results. Model and user-action capabilities need explicit presentation metadata.                               |
-| View preferences   | `src/types/chatTimeline.ts`, `src/store/pageTabStore.ts`, `Session/HeaderBox/index.tsx`          | Two persisted view values, with retired values normalized; no independent Narrative-density setting.                                                                                              |
+| View preferences   | `src/types/chatTimeline.ts`, `src/store/pageTabStore.ts`, `Session/HeaderBox/index.tsx`          | View and Narrative density now persist independently. The current dropdown is on the right and all three densities share one action-row structure; this section replans both.                     |
 | Human control      | `BottomBox/controlArbitration.ts`, `useEventNativeHumanControl.ts`, `legacyHumanControl.ts`      | Control authority already lives outside button rendering. Preserve durable identity, pending counts, idempotent decisions, and reconciliation.                                                    |
 | Permissions        | `backend/app/permission_policy/service.py`, `backend/app/controller/run_controller.py`           | Terminal execution and actions without one exact resource matcher are once-only. This policy offers `once` and, when eligible, `space`; frontend support for `run` does not mean it is offered.   |
 | Automation         | `MessageItem/TaskCompletionCard.tsx`, `Trigger/TriggerDialog.tsx`, `src/service/triggerApi.ts`   | Completion card has no callers found in the active source. Dialog can prefill only the prompt through its current public props; creation already exists.                                          |
@@ -69,51 +69,56 @@ Use the existing project/run/message identities. Legacy-only identities may supp
 
 The renderer must retain unsupported trace events for inspection and preserve existing hydration, recovery, source arbitration, and scroll anchors. Do not replace these mechanisms while adding presentation features.
 
-## 4. One view dropdown and Narrative density
+## 4. Session-title menu and Narrative density
 
 ### Interaction
 
-Replace the two header tabs with one `Button size="sm"` opening `DropdownMenu`. The trigger shows the selected view label and a chevron, with an accessible name such as “Timeline view: Narrative.” Clicking opens the menu; it does not also cycle views.
+Remove the right-side View dropdown. Put an icon-only chevron `Button size="sm"` immediately after the truncated Session title in the left side of the canonical header. The title stays a label, not a menu trigger. Give the chevron an accessible name such as “Session options for [name]”; retain the full title in its tooltip or accessible label. The back button remains before the title, and token usage and Preview remain on the right. Keep the chevron visible when the Session pane is compact. A new, unnamed Session may omit the menu until it has a durable Project identity.
 
-Menu structure:
+The chevron opens one `DropdownMenu` with two clearly separated sections:
 
 ```text
-View
-  Narrative                    selected radio item
-  Trajectory
-------------------------------
-Narrative detail · default
-  Compact
-  Balanced                     selected radio item
-  Expanded
+View settings
+  [ Narrative | Trajectory ]   pill tab switch
+  Narrative detail             only while Narrative is selected
+  Compact ──●──── Balanced ──── Expanded  three-stop slider
+────────────────────────────
+Pin / Unpin
+Rename session
+End session
+Delete session
 ```
 
-Keep existing localized view labels unless a separate copy change is agreed. The density section remains available while Trajectory is selected, clearly labeled as applying to Narrative. Choosing density updates that preference without switching views. A choice closes the menu and returns focus to the trigger.
+Use the shared `Tabs` pill treatment for the two view choices, with text labels rather than icon-only choices. The Narrative detail control appears only when Narrative is selected. The slider has exactly three stops, labeled Compact, Balanced, Expanded; expose its current value with `aria-valuetext`, keyboard arrows/Home/End, and a visible selected label. Changing a view or density keeps the menu open so the user can inspect the result; closing returns focus to the chevron. If Radix menu keyboard handling conflicts with nested tabs or the slider, move the settings into a menu-owned popover panel while preserving this one trigger and visual structure. Do not leave controls that look functional but cannot be reached by keyboard.
+
+Pin uses the same persisted `eigent-pinned-projects` state as the sidebar. Rename uses the existing Session-name update endpoint and updates both visible Session caches only after success. End and Delete open the existing confirmation flows; End still stops an active task before marking the Session achieved, and Delete retains its history/file cleanup behavior. Reuse one action owner shared by the header and sidebar, rather than duplicating destructive logic or dispatching untyped UI events. Show Unpin for a pinned Session, disable End for an ended Session, and separate Delete visually with its destructive tone. Keep backend `Project` identifiers and the persisted pin key unchanged.
 
 Retain the existing view-switch keyboard shortcut. It cycles available views only, never changes density, and skips modes not supported by the current transport. Do not add a new shortcut for density in the first version.
 
 ### State and future modes
 
 - Preserve the serialized `chatTimelineDetailLevel` key and existing values. Use a clearer presentation variable name if helpful without changing serialization.
-- Add a separate persisted `narrativeInformationDensity` value: `compact | balanced | expanded`, default `balanced`.
+- Keep the persisted `narrativeInformationDensity` value: `compact | balanced | expanded`, but change its default and unknown-value fallback to `compact`. Do not overwrite an existing explicit preference during migration.
 - Match the existing device-local preference scope; this is not a new account-sync setting. Both values persist across Sessions and restarts. Do not introduce a per-Session override in v1.
-- Preserve existing retired-view migrations; normalize unknown density values to Balanced. Normalize unsupported view selections to the supported default and ensure the label matches the rendered view.
-- Represent view entries in a typed, code-owned registry with ID, label key, icon, renderer, supported transport, and supported settings. Add future settings as descriptor-backed groups in the same dropdown. Do not build a general plugin framework or expose speculative modes.
+- Preserve existing retired-view migrations; normalize unknown density values to Compact. Normalize unsupported view selections to the supported default and ensure the label matches the rendered view.
+- Keep view IDs and labels typed so a future view can be added to the same View settings section. Do not build a general plugin framework or expose speculative modes.
 - Legacy mode receives the same Narrative density behavior. Keep Trajectory available only when its authoritative event source is available; explain its unavailability in the menu if shown. Do not present legacy rows as a complete event trace.
 
 ### Density behavior
 
-| Setting  | Running task                                                                       | Completed task                                                           |
-| -------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Compact  | Current activity, elapsed status, and important notices; previous work collapsed   | Work summary collapsed                                                   |
-| Balanced | Agent narration and meaningful steps visible; tool input/output collapsed          | Concise process summary with step labels; verbose tool details collapsed |
-| Expanded | Process groups and tool details expanded by default; large payloads remain bounded | Same expanded default; no forced collapse on completion                  |
+All three densities keep the Run summary, agent ownership, chronological agent messages, plans, human decisions, errors, files, and final result. They change only the work rows **between** adjacent agent messages. Workforce keeps agent groups; a single-agent Session does not gain a redundant agent wrapper.
 
-Approvals, unresolved questions, errors, final results, and files remain available at every density. Density governs disclosure, not event collection or deletion. Large traces still need bounded rendering and payload disclosure.
+| Setting               | Work rows between two agent messages                                                                                                                                                                                                                                                                                               | First view                                                                   |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Compact (new default) | One accordion for all consecutive toolkit actions in that message interval, regardless of toolkit. This is the current grouped-action treatment. Its summary may show a count, while failure/running state remains visible.                                                                                                        | Accordion closed; the agent message remains visible.                         |
+| Balanced              | Preserve order and group only adjacent calls with the same explicit toolkit identity. Give each group a descriptive label containing the toolkit and its distinct method/action descriptions, not only “N actions.” A single call stays as its own action row. Missing toolkit identity does not justify grouping unrelated calls. | Groups closed; individual action titles visible.                             |
+| Expanded              | Show message, action, message, action in source order, matching the older non-event-bus structure and density. Each action has its own row; request/response details remain available through that row’s disclosure.                                                                                                               | Action rows visible; large input/output payloads stay bounded and collapsed. |
 
-Use stable execution/item IDs for manual disclosure overrides. Changing the default re-evaluates untouched rows; manually expanded/collapsed rows retain their state for the mounted Session and across view switches. A new Session uses the saved default. Completion must not overwrite the user's explicit expansion choice.
+The outer Run and agent disclosures are independent of density. Switching density must not hide all historical narration just because Compact is selected. Human decisions and errors never disappear inside a generic action-count accordion. An active or failed action must expose its state at the group level. Preserve manual disclosure choices by stable Run/item ID when possible; changing density should not mutate event data or reorder calls. A new Session uses the saved default.
 
-Acceptance: one header control; independent view/density state; persisted migration; keyboard and screen-reader operation; no query/result movement or lost scroll anchor on switching; parity for supported legacy Narrative behavior.
+Compare Expanded against a captured legacy Session with interleaved messages and actions before calling parity complete. Test repeated same-toolkit calls, toolkit changes, missing toolkit IDs, one-call intervals, multiple agents, nested subagents, long labels, running/failing calls, restored history, reduced motion, narrow panes, and 200% zoom.
+
+Acceptance: one Session-title chevron menu; a working pill view switch; slider visible only in Narrative; independent persisted state; the three distinct grouping rules above; working Pin, Rename, End, and Delete paths through shared Session actions; keyboard and screen-reader operation; no query/result movement or lost scroll anchor on switching; parity for supported legacy Narrative behavior.
 
 ## 5. Human decisions and permission explanations
 
@@ -244,7 +249,7 @@ Acceptance: valid completed artifact, streaming/truncated descriptor, malicious 
 | Slice | Deliverable                                                                | Depends on                                 | Completion gate                                                                                         |
 | ----- | -------------------------------------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
 | A     | Representative recorded fixtures and common query/result boundaries        | None                                       | Legacy/event-native source mapping, identity and scroll tests pass; no new transport introduced.        |
-| B     | One dropdown, preference migration, Narrative density                      | A                                          | View/density independent; both supported paths behave correctly; no extra header switch.                |
+| B     | Session-title menu, shared Session actions, three Narrative densities      | A                                          | View/density independent; controls and confirmations work; grouping follows the three rules above.      |
 | C     | Floating decision card and policy explanations                             | A                                          | Consecutive-request input safety, one authority, replay/retry/read-only coverage.                       |
 | D     | User-message copy/time/edit and submitted-model divider                    | A                                          | Metadata lineage verified; history preserved; unavailable history displayed honestly.                   |
 | E     | `automation-draft` skill, parser, result action, editor integration        | A; supported skill invocation/distribution | Reviewed draft creates through existing API; first execution verified; no invented schedule or binding. |
@@ -256,7 +261,7 @@ Do not tie the first useful release to automation, HTML, or Rewind. First demons
 
 ## 10. Validation and design handoff
 
-Use `docs/design-system/design.md` and `docs/product-terminology.md` as authoritative contracts, with `docs/design-system/index.html` as visual reference. Reuse `Button`, `DropdownMenu` radio groups/labels/separators, `Tooltip`, `DsText`, `DsIcon`, shared fields, and the existing dialog. Select supported axes, including header `size="sm"`, ghost/secondary controls, and one primary decision action.
+Use `docs/design-system/design.md` and `docs/product-terminology.md` as authoritative contracts, with `docs/design-system/index.html` as visual reference. Reuse the canonical header, `Button`, `DropdownMenu`, `Tabs`, `Tooltip`, `DsText`, `DsIcon`, shared fields, and the existing confirmation dialogs. Use the existing Appearance slider recipe as a reference for the three-stop range control. Select supported axes, including header `size="sm"`, ghost/secondary controls, semantic focus, and one primary decision action. Inspect the actual dropdown at narrow width, short height, 200% zoom, keyboard focus, reduced motion, and all registered light/dark themes; do not add arbitrary control geometry or new color roles.
 
 Use semantic neutral surfaces, Ink hierarchy, Hairline boundaries, card/popover radii, floating elevation for the decision card, and shared spacing. Do not hand-edit generated tokens or inherit deprecated aliases from old components. Inspect the exception registry for chat scroll and iframe geometry; register any genuinely new runtime-coupled exception with an owner and reason before use.
 
@@ -299,7 +304,7 @@ Interview status: not completed. The plan's technical sequence is actionable, bu
 
 ## 12. Implementation checkpoint on this branch
 
-The first implementation pass now includes the single View dropdown with a persisted Narrative detail preference; Compact, Balanced, and Expanded work-log disclosure behavior; a floating human-decision card above the disabled composer; a separate review step before actions on a successor request; visible one-time-only approval guidance; Copy, time, and edit-a-copy actions on user messages; bundled `automation-draft` and `interactive-result` skills; and a task-result action that opens the existing automation editor with a validated draft when the result contains one. The task automation editor now shows its captured source Session and requires the user to review its schedule and required inputs before creation. These are local source changes, not a release or deployment.
+The first implementation pass includes the right-side View dropdown with a persisted Narrative detail preference; Compact, Balanced, and Expanded work-log disclosure defaults that still share one row structure; a floating human-decision card above the disabled composer; a separate review step before actions on a successor request; visible one-time-only approval guidance; Copy, time, and edit-a-copy actions on user messages; bundled `automation-draft` and `interactive-result` skills; and a task-result action that opens the existing automation editor with a validated draft when the result contains one. The task automation editor shows its captured source Session and requires the user to review its schedule and required inputs before creation. The revised §4 supersedes that dropdown and density behavior; it is planned, not implemented on this branch.
 
 The automation action currently opens a manually editable editor when the result lacks a valid `automation-draft` block. When the bundled skill is enabled, a separate “Draft with skill” action prepares a follow-up using the selected task's request and result; the user submits it through the normal task runtime, where `SkillToolkit` can load the skill. This does not start a hidden model call or automatically replace an existing composer draft. Installed-skill invocation and the returned artifact still need an end-to-end runtime check. The existing `SchedulePicker` initializes a daily schedule even when no recurrence was requested; the added review gate prevents silent creation from this task action, but mapping natural-language schedules into the picker remains unimplemented.
 
