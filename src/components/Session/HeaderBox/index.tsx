@@ -44,7 +44,7 @@ import {
 import {
   Archive,
   ArrowLeft,
-  ChevronDown,
+  EllipsisVertical,
   GalleryThumbnails,
   Pencil,
   Pin,
@@ -171,29 +171,27 @@ export function HeaderBox({
           </Button>
         </TooltipSimple>
         {projectName ? (
-          <span
-            className="max-w-[200px] min-w-0 truncate text-ds-text-base font-semibold text-ds-ink-default-default"
-            title={projectName}
-          >
-            {projectName}
-          </span>
-        ) : null}
-        {projectName ? (
           <Popover open={sessionMenuOpen} onOpenChange={setSessionMenuOpen}>
             <PopoverTrigger asChild>
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                buttonContent="icon-only"
+                buttonContent="text"
                 className={cn(
-                  'no-drag shrink-0',
+                  'no-drag max-w-full min-w-0 shrink',
                   sessionMenuOpen &&
                     'bg-ds-neutral-strong-default text-ds-ink-default-default'
                 )}
                 aria-label={`${sessionMenuLabel}: ${projectName}`}
               >
-                <DsIcon icon={ChevronDown} recipe="main" />
+                <span
+                  className="max-w-[200px] min-w-0 truncate font-semibold"
+                  title={projectName}
+                >
+                  {projectName}
+                </span>
+                <DsIcon icon={EllipsisVertical} recipe="main" />
               </Button>
             </PopoverTrigger>
             <PopoverContent align="start" className="w-64 p-xs">

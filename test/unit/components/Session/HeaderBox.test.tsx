@@ -62,7 +62,8 @@ describe('HeaderBox chat timeline mode', () => {
     vi.restoreAllMocks();
   });
 
-  it('places the Session menu beside its title and keeps preview on the right', () => {
+  it('uses the Session title and trailing menu icon as one trigger', async () => {
+    const user = userEvent.setup();
     render(
       <HeaderBox
         totalTokens={42}
@@ -79,10 +80,12 @@ describe('HeaderBox chat timeline mode', () => {
     const previewButton = screen.getByRole('button', {
       name: 'Open preview',
     });
+    const menuIcon = menu.querySelector('.lucide-ellipsis-vertical');
 
-    expect(
-      title.compareDocumentPosition(menu) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    expect(menu).toContainElement(title);
+    expect(menu).toContainElement(menuIcon as HTMLElement);
+    expect(title).toHaveClass('max-w-[200px]', 'truncate');
+    expect(title).toHaveAttribute('title', 'Timeline project');
     expect(
       menu.compareDocumentPosition(tokenLabel) &
         Node.DOCUMENT_POSITION_FOLLOWING
@@ -91,6 +94,26 @@ describe('HeaderBox chat timeline mode', () => {
       tokenLabel.compareDocumentPosition(previewButton) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
+
+    await user.click(title);
+    expect(menu).toHaveAttribute('aria-expanded', 'true');
+    await user.keyboard('{Escape}');
+    await user.click(menuIcon!);
+    expect(menu).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('keeps a long Session title bounded and exposes its full name', () => {
+    const projectName = 'A long Session title that exceeds the header width';
+    render(<HeaderBox projectName={projectName} projectId="project-1" />);
+
+    const menu = screen.getByRole('button', {
+      name: `Session settings: ${projectName}`,
+    });
+    const title = screen.getByText(projectName);
+
+    expect(menu).toHaveClass('min-w-0', 'max-w-full', 'shrink');
+    expect(title).toHaveClass('max-w-[200px]', 'truncate');
+    expect(title).toHaveAttribute('title', projectName);
   });
 
   it('switches views and adjusts Narrative detail in one menu', async () => {
@@ -127,7 +150,7 @@ describe('HeaderBox chat timeline mode', () => {
     expect(screen.queryByRole('slider')).not.toBeInTheDocument();
   });
 
-  it('shows the chevron as selected only while its panel is open', async () => {
+  it('shows the Session trigger as selected only while its panel is open', async () => {
     const user = userEvent.setup();
     render(<HeaderBox projectName="Timeline project" projectId="project-1" />);
     const trigger = screen.getByRole('button', {
