@@ -409,6 +409,77 @@ describe('ChatBox timeline modes', () => {
     expect(screen.getByText('I will inspect the files.')).toBeInTheDocument();
   });
 
+  it('groups adjacent Search and legacy Terminal calls in Balanced view with counts', () => {
+    const terminal = (id: string, runSequence: number): ChatProjectionNode => ({
+      ...normalToolActivity({
+        id,
+        runSequence,
+        status: 'completed',
+        title: 'Terminal',
+      }),
+      activityType: 'terminal',
+      toolkitName: undefined,
+      methodName: undefined,
+    });
+    const work = [
+      normalToolActivity({
+        id: 'search-first',
+        runSequence: 1,
+        status: 'completed',
+        toolkitName: 'Search Toolkit',
+        methodName: 'search_google',
+      }),
+      normalToolActivity({
+        id: 'search-second',
+        runSequence: 2,
+        status: 'completed',
+        toolkitName: 'SearchToolkit',
+        methodName: 'search_google',
+      }),
+      terminal('terminal-first', 3),
+      terminal('terminal-second', 4),
+      terminal('terminal-third', 5),
+      normalToolActivity({
+        id: 'file-read',
+        runSequence: 6,
+        status: 'completed',
+        toolkitName: 'File Toolkit',
+        methodName: 'read_file',
+        title: 'Read a file',
+      }),
+      terminal('terminal-after-file', 7),
+      runningRunStatus(8),
+    ];
+    usePageTabStore.setState({ narrativeInformationDensity: 'balanced' });
+    const { container } = render(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns(work)}
+        sessionMode={SessionMode.SINGLE_AGENT}
+      />
+    );
+
+    const groups = [
+      ...container.querySelectorAll('[data-narrative-segment-trigger]'),
+    ];
+    expect(groups).toHaveLength(2);
+    expect(groups[0]).toHaveTextContent(
+      'Search Toolkit · search google · 2 actions'
+    );
+    expect(groups[1]).toHaveTextContent('Terminal · 3 actions');
+    expect(
+      [...container.querySelectorAll('[data-timeline-call-trigger]')].map(
+        (node) => node.textContent?.trim()
+      )
+    ).toEqual(['Read a file', 'Terminal']);
+    fireEvent.click(groups[1] as HTMLElement);
+    expect(
+      container.querySelectorAll(
+        '[data-narrative-segment-calls] [data-timeline-call-trigger]'
+      )
+    ).toHaveLength(3);
+  });
+
   it.each(['narrative', 'trajectory'] as const)(
     'shows a recorded model switch before the next query in %s',
     (detailLevel) => {

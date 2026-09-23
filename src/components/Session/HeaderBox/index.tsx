@@ -23,6 +23,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import { RangeSlider } from '@/components/ui/range-slider';
 import { Separator } from '@/components/ui/separator';
 import { ShortcutTooltipContent } from '@/components/ui/shortcut-tooltip';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -183,9 +184,13 @@ export function HeaderBox({
               <Button
                 type="button"
                 variant="ghost"
-                size="md"
+                size="sm"
                 buttonContent="icon-only"
-                className="no-drag shrink-0"
+                className={cn(
+                  'no-drag shrink-0',
+                  sessionMenuOpen &&
+                    'bg-ds-neutral-strong-default text-ds-ink-default-default'
+                )}
                 aria-label={`${sessionMenuLabel}: ${projectName}`}
               >
                 <DsIcon icon={ChevronDown} recipe="main" />
@@ -246,9 +251,8 @@ export function HeaderBox({
                               defaultValue: 'Narrative detail',
                             })}
                           </label>
-                          <input
+                          <RangeSlider
                             id={densityId}
-                            type="range"
                             min={0}
                             max={2}
                             step={1}
@@ -288,7 +292,6 @@ export function HeaderBox({
                             aria-valuetext={densityLabel(
                               narrativeInformationDensity
                             )}
-                            className="h-2 w-full cursor-pointer appearance-none rounded-full bg-ds-neutral-subtle-disabled accent-ds-accent-default-default focus-visible:ring-2 focus-visible:ring-ds-ring-focus focus-visible:ring-offset-2 focus-visible:outline-none"
                           />
                           <div
                             className="flex justify-between gap-1 text-ds-text-meta text-ds-ink-muted-default"

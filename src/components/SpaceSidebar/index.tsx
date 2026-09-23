@@ -17,7 +17,6 @@ import {
   fetchPut,
   proxyFetchDelete,
   proxyFetchGet,
-  proxyFetchPut,
 } from '@/api/http';
 import { GlobalSearchDialog } from '@/components/GlobalSearch';
 import { useAppCommand } from '@/components/Layout/AppCommandProvider';
@@ -40,6 +39,7 @@ import {
 import { ensureProjectRuntimeLoaded } from '@/lib/projectRuntimeHydration';
 import { ensureScratchSpaceWorkspaceBinding } from '@/lib/scratchSpaceWorkspace';
 import { resolveSessionNavLeadPresentation } from '@/lib/sessionNavLead';
+import { renameSession } from '@/lib/sessionRename';
 import { isSettingsRoutePath, shellBackState } from '@/lib/shellRoutes';
 import {
   getFilesTabBindingLabel,
@@ -515,22 +515,12 @@ export default function SpaceSidebar({
     if (!projectId || !name || renameProjectLoading) return;
     setRenameProjectLoading(true);
     try {
-      const response = await proxyFetchPut(
-        `/api/v1/chat/project/${projectId}/name?new_name=${encodeURIComponent(name)}`
+      await renameSession(
+        projectId,
+        name,
+        projectStore,
+        useSpaceStore.getState()
       );
-      if (response?.code !== undefined && response.code !== 0) {
-        throw new Error(`Failed to update session name: ${response.code}`);
-      }
-      const project = projectStore.getProjectById(projectId);
-      const meta = useSpaceStore.getState().getProjectMeta(projectId);
-      projectStore.updateProject(projectId, {
-        name,
-        metadata: { ...project?.metadata, nameSource: 'manual' },
-      });
-      useSpaceStore.getState().updateProjectMeta(projectId, {
-        name,
-        metadata: { ...meta?.metadata, nameSource: 'manual' },
-      });
       setRenameProjectId(null);
     } catch (error) {
       console.error('[SpaceSidebar] Failed to rename session:', error);

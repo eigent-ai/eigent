@@ -256,13 +256,12 @@ function NarrativeToolGroup({
   );
   // The group owns only structure. Individual CallRows own invocation titles,
   // so a one-call group never repeats its child's title in the header.
-  const toolGroupLabel =
-    label ??
-    t('chat.timeline-action-count', {
-      defaultValue_one: '{{count}} action',
-      defaultValue_other: '{{count}} actions',
-      count: callCount,
-    });
+  const countLabel = t('chat.timeline-action-count', {
+    defaultValue_one: '{{count}} action',
+    defaultValue_other: '{{count}} actions',
+    count: callCount,
+  });
+  const toolGroupLabel = label ?? countLabel;
   // A closed segment hides the running call, so the shimmer moves up to the
   // label. Opening it hands the shimmer back to the call that owns it, which
   // keeps exactly one live indicator on screen either way.
@@ -307,6 +306,12 @@ function NarrativeToolGroup({
             {toolGroupLabel}
           </span>
         )}
+        {label ? (
+          <span className="shrink-0 !text-ds-text-base font-normal whitespace-nowrap">
+            {' · '}
+            {countLabel}
+          </span>
+        ) : null}
         <DsIcon
           icon={ChevronRight}
           className={cn(
@@ -354,11 +359,17 @@ function NarrativeToolGroup({
 
 /** A missing toolkit identity cannot justify folding unrelated calls. */
 function groupCallsByToolkit(calls: readonly TimelineCall[]): TimelineCall[][] {
+  const identity = (call: TimelineCall) =>
+    call.toolkitName
+      ?.normalize('NFKC')
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_-]+/g, '');
   const groups: TimelineCall[][] = [];
   for (const call of calls) {
-    const toolkit = call.toolkitName?.trim();
+    const toolkit = identity(call);
     const previous = groups.at(-1);
-    if (toolkit && previous?.[0]?.toolkitName?.trim() === toolkit) {
+    if (toolkit && previous?.[0] && identity(previous[0]) === toolkit) {
       previous.push(call);
     } else {
       groups.push([call]);
@@ -375,7 +386,7 @@ function toolkitGroupLabel(calls: readonly TimelineCall[]): string {
         (call.methodName?.trim() || call.title.trim()).replaceAll('_', ' ')
       )
     ),
-  ];
+  ].filter((description) => description && description !== toolkit);
   return [toolkit, descriptions.join(', ')].filter(Boolean).join(' · ');
 }
 

@@ -127,6 +127,22 @@ describe('HeaderBox chat timeline mode', () => {
     expect(screen.queryByRole('slider')).not.toBeInTheDocument();
   });
 
+  it('shows the chevron as selected only while its panel is open', async () => {
+    const user = userEvent.setup();
+    render(<HeaderBox projectName="Timeline project" projectId="project-1" />);
+    const trigger = screen.getByRole('button', {
+      name: 'Session settings: Timeline project',
+    });
+
+    expect(trigger).not.toHaveClass('bg-ds-neutral-strong-default');
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(trigger).toHaveClass('bg-ds-neutral-strong-default');
+    await user.keyboard('{Escape}');
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(trigger).not.toHaveClass('bg-ds-neutral-strong-default');
+  });
+
   it('hides token usage when the Session pane shrinks and keeps the menu and preview', () => {
     render(
       <HeaderBox
