@@ -31,7 +31,7 @@ function approval(
 
 describe('HumanDecisionCard', () => {
   it('shows only the approval type and title above its controls', () => {
-    render(
+    const { container } = render(
       <HumanDecisionCard
         requestKey="run:approval-1"
         variant={{
@@ -55,6 +55,20 @@ describe('HumanDecisionCard', () => {
     expect(screen.queryByText('single_agent')).not.toBeInTheDocument();
     expect(screen.queryByText('Review details')).not.toBeInTheDocument();
     expect(screen.queryByText('secret')).not.toBeInTheDocument();
+    expect(container.querySelector('[data-human-decision-card]')).toHaveClass(
+      'border'
+    );
+    const approvalSurface = container.querySelector('[data-approval-surface]');
+    expect(approvalSurface).not.toHaveClass('border');
+    expect(approvalSurface).not.toHaveClass('border-x');
+    expect(approvalSurface).not.toHaveClass('border-y');
+    expect(
+      screen.queryByText('This action supports one-time approval only.')
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reject' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Approve once' })
+    ).toBeInTheDocument();
   });
 
   it('keeps a failed approval decision visible without restoring technical context', () => {

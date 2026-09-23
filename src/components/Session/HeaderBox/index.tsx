@@ -21,7 +21,9 @@ import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
@@ -62,7 +64,6 @@ import {
   Pencil,
   Pin,
   RectangleEllipsis,
-  SquareMenu,
   Trash2,
   WandSparkles,
 } from 'lucide-react';
@@ -84,9 +85,9 @@ const NARRATIVE_DENSITY_FALLBACK_LABELS: Record<
   NarrativeInformationDensity,
   string
 > = {
-  compact: 'Compact',
-  balanced: 'Balanced',
-  expanded: 'Expanded',
+  compact: 'Minimum',
+  balanced: 'Moderate',
+  expanded: 'Full',
 };
 
 /** Match the composer control row when the resizable Session pane is narrow. */
@@ -352,71 +353,77 @@ export function HeaderBox({
               <DropdownMenuSeparator />
               {eventNativeTimelineEnabled ? (
                 <>
-                  <DropdownMenuSub>
-                    <DropdownMenuSubTrigger className="min-h-ds-control-lg w-full min-w-0">
-                      <DsIcon icon={SquareMenu} recipe="main" />
-                      <span className="min-w-0 flex-1 truncate">
-                        {t('chat.timeline-view-settings', {
-                          defaultValue: 'View settings',
-                        })}
-                      </span>
-                      <span className="shrink-0 text-ds-text-meta text-ds-ink-muted-default">
-                        {timelineStyleLabel(chatTimelineDetailLevel)}
-                      </span>
-                    </DropdownMenuSubTrigger>
-                    <DropdownMenuSubContent className="w-44">
-                      <DropdownMenuRadioGroup
-                        value={chatTimelineDetailLevel}
-                        onValueChange={(value) =>
-                          setChatTimelineDetailLevel(
-                            value as ChatTimelineDetailLevel
-                          )
-                        }
-                        aria-label={t('chat.timeline-view-label')}
+                  <DropdownMenuLabel className="text-ds-text-meta font-medium text-ds-ink-muted-default">
+                    {t('chat.timeline-view-settings', {
+                      defaultValue: 'Chat View Style',
+                    })}
+                  </DropdownMenuLabel>
+                  <DropdownMenuGroup
+                    aria-label={t('chat.timeline-view-label')}
+                    className="mx-ds-8 mb-ds-4 flex rounded-lg bg-ds-neutral-strong-default p-ds-2"
+                  >
+                    {(['narrative', 'trajectory'] as const).map((level) => (
+                      <DropdownMenuItem
+                        key={level}
+                        role="menuitemradio"
+                        aria-checked={chatTimelineDetailLevel === level}
+                        onSelect={(event) => {
+                          event.preventDefault();
+                          setChatTimelineDetailLevel(level);
+                        }}
+                        className={cn(
+                          'min-h-ds-control-md min-w-0 flex-1 justify-center rounded-lg text-center font-medium',
+                          chatTimelineDetailLevel === level
+                            ? 'bg-ds-neutral-subtle-default text-ds-ink-default-default shadow-ds-elevation-control'
+                            : 'text-ds-ink-muted-default'
+                        )}
                       >
-                        {(['narrative', 'trajectory'] as const).map((level) => (
-                          <DropdownMenuRadioItem key={level} value={level}>
-                            {timelineStyleLabel(level)}
-                          </DropdownMenuRadioItem>
-                        ))}
-                      </DropdownMenuRadioGroup>
-                    </DropdownMenuSubContent>
-                  </DropdownMenuSub>
-                  <DropdownMenuSub>
-                    <DropdownMenuSubTrigger
-                      className="min-h-ds-control-lg w-full min-w-0"
-                      disabled={chatTimelineDetailLevel !== 'narrative'}
-                    >
-                      <DsIcon icon={RectangleEllipsis} recipe="main" />
-                      <span className="min-w-0 flex-1 truncate">
-                        {t('chat.timeline-narrative-detail-label', {
-                          defaultValue: 'Narrative detail',
-                        })}
-                      </span>
-                      <span className="shrink-0 text-ds-text-meta text-ds-ink-muted-default">
-                        {densityLabel(narrativeInformationDensity)}
-                      </span>
-                    </DropdownMenuSubTrigger>
-                    <DropdownMenuSubContent className="w-44">
-                      <DropdownMenuRadioGroup
-                        value={narrativeInformationDensity}
-                        onValueChange={(value) =>
-                          setNarrativeInformationDensity(
-                            value as NarrativeInformationDensity
-                          )
-                        }
-                        aria-label={t('chat.timeline-narrative-detail-label', {
-                          defaultValue: 'Narrative detail',
-                        })}
-                      >
-                        {narrativeInformationDensities.map((density) => (
-                          <DropdownMenuRadioItem key={density} value={density}>
-                            {densityLabel(density)}
-                          </DropdownMenuRadioItem>
-                        ))}
-                      </DropdownMenuRadioGroup>
-                    </DropdownMenuSubContent>
-                  </DropdownMenuSub>
+                        {timelineStyleLabel(level)}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuGroup>
+                  {chatTimelineDetailLevel === 'narrative' ? (
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger className="min-h-ds-control-lg w-full min-w-0">
+                        <DsIcon icon={RectangleEllipsis} recipe="main" />
+                        <span className="min-w-0 flex-1 truncate">
+                          {timelineStyleLabel('narrative')}:{' '}
+                          <span className="text-ds-text-meta text-ds-ink-muted-default">
+                            {densityLabel(narrativeInformationDensity)}
+                          </span>
+                        </span>
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="w-44">
+                        <DropdownMenuRadioGroup
+                          value={narrativeInformationDensity}
+                          onValueChange={(value) =>
+                            setNarrativeInformationDensity(
+                              value as NarrativeInformationDensity
+                            )
+                          }
+                          aria-label={t(
+                            'chat.timeline-narrative-detail-label',
+                            {
+                              defaultValue: 'Narrative style',
+                            }
+                          )}
+                        >
+                          {narrativeInformationDensities.map((density) => (
+                            <DropdownMenuRadioItem
+                              key={density}
+                              value={density}
+                              onSelect={(event) => {
+                                event.preventDefault();
+                                setNarrativeInformationDensity(density);
+                              }}
+                            >
+                              {densityLabel(density)}
+                            </DropdownMenuRadioItem>
+                          ))}
+                        </DropdownMenuRadioGroup>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                  ) : null}
                   <DropdownMenuSeparator />
                 </>
               ) : null}

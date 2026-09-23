@@ -844,7 +844,14 @@ describe('chat projection presentation contract', () => {
   });
 
   it('gives migrated live transcript families to the canonical lane only', () => {
-    for (const step of ['confirmed', 'end', 'decompose_text', 'write_file']) {
+    for (const step of [
+      'confirmed',
+      'end',
+      'decompose_text',
+      'write_file',
+      'activate_toolkit',
+      'deactivate_toolkit',
+    ]) {
       expect(shouldProjectLegacyChatStep(step, true)).toBe(false);
       expect(shouldProjectLegacyChatStep(step, false)).toBe(true);
       expect(shouldProjectLegacyChatStep(step, true, true)).toBe(true);

@@ -1987,15 +1987,14 @@ export function TaskWorkLogAccordion({
 
   const { isOpen, toggle } = useGroupOpenState(effectiveGroups);
 
-  const [outerOpen, setOuterOpen] = useState(() => taskRunning);
-
-  useEffect(() => {
-    if (status === ChatTaskStatus.FINISHED) {
-      setOuterOpen(false);
-    } else if (status === ChatTaskStatus.RUNNING) {
-      setOuterOpen(true);
-    }
-  }, [status]);
+  const [manualOuterOpen, setManualOuterOpen] = useState<{
+    taskId: string;
+    open: boolean;
+  } | null>(null);
+  const outerOpen =
+    manualOuterOpen?.taskId === taskId
+      ? manualOuterOpen.open
+      : status !== ChatTaskStatus.FINISHED;
 
   if (!taskId || !task) return null;
 
@@ -2014,7 +2013,7 @@ export function TaskWorkLogAccordion({
       <button
         type="button"
         aria-expanded={outerOpen}
-        onClick={() => setOuterOpen((v) => !v)}
+        onClick={() => setManualOuterOpen({ taskId, open: !outerOpen })}
         className={cn(
           'group flex w-full min-w-0 items-center justify-start gap-1 px-0 py-2 text-left',
           WORK_LOG_SUMMARY_TRIGGER_BORDER_CLASS

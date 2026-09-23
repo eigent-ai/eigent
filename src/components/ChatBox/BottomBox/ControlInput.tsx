@@ -39,6 +39,7 @@ import type {
 interface InputVariantRouterProps {
   variant: BottomBoxVariant;
   inputProps: InputboxProps;
+  borderlessApproval?: boolean;
   connectorPanelOpen?: boolean;
   onToggleConnectorPanel?: () => void;
   skillPanelOpen?: boolean;
@@ -103,14 +104,22 @@ function ConfirmationInput({
   );
 }
 
-function ApprovalInput({ variant }: { variant: BottomBoxApprovalVariant }) {
+function ApprovalInput({
+  variant,
+  borderless,
+}: {
+  variant: BottomBoxApprovalVariant;
+  borderless?: boolean;
+}) {
   const { t } = useTranslation();
 
   return (
     <div
       data-bottom-box-input-surface
       data-approval-surface
-      className={controlSurfaceClassName}
+      className={
+        borderless ? 'flex w-full flex-col gap-3' : controlSurfaceClassName
+      }
     >
       <BoxHeaderDisplay
         eyebrow={variant.header.eyebrow}
@@ -127,14 +136,9 @@ function ApprovalInput({ variant }: { variant: BottomBoxApprovalVariant }) {
       ) : null}
       <div
         data-approval-actions
-        className="flex w-full flex-wrap items-center justify-between gap-ds-8"
+        className="flex w-full flex-wrap justify-end gap-ds-8"
       >
-        {variant.options.length === 1 && variant.options[0].scope === 'once' ? (
-          <p className="m-0 min-w-0 flex-1 text-ds-text-meta text-ds-ink-muted-default">
-            {t('chat.control-once-only-explanation')}
-          </p>
-        ) : null}
-        <div className="ml-auto flex flex-wrap justify-end gap-ds-8">
+        <div className="flex flex-wrap justify-end gap-ds-8">
           <Button
             type="button"
             variant="ghost"
@@ -546,6 +550,7 @@ function RunControlInput({ variant }: { variant: BottomBoxRunControlVariant }) {
 export function ControlInputRouter({
   variant,
   inputProps,
+  borderlessApproval,
   connectorPanelOpen,
   onToggleConnectorPanel,
   skillPanelOpen,
@@ -570,7 +575,9 @@ export function ControlInputRouter({
       content = <ConfirmationInput variant={variant} />;
       break;
     case 'approval':
-      content = <ApprovalInput variant={variant} />;
+      content = (
+        <ApprovalInput variant={variant} borderless={borderlessApproval} />
+      );
       break;
     case 'selection':
       content = <SelectionInput variant={variant} />;

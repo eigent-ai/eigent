@@ -394,8 +394,9 @@ describe('BottomBox structure', () => {
     expect(approvalHeader).toHaveTextContent('Permission required');
     expect(approvalHeader).toHaveTextContent('Allow todo_write?');
     expect(approvalSurface).toContainElement(approvalActions as HTMLElement);
+    expect(approvalSurface).toHaveClass('border');
     expect(container.querySelector('[data-approval-actions]')).toHaveClass(
-      'justify-between'
+      'justify-end'
     );
     const approvalButtons = within(approvalActions as HTMLElement).getAllByRole(
       'button'
@@ -404,11 +405,11 @@ describe('BottomBox structure', () => {
     approvalButtons.forEach((button) =>
       expect(button).toHaveClass('!rounded-full')
     );
-    expect(approvalActions).toContainElement(
-      screen.getByText('This action supports one-time approval only.')
-    );
-    expect(approvalActions?.firstElementChild).toBe(
-      screen.getByText('This action supports one-time approval only.')
+    expect(
+      screen.queryByText('This action supports one-time approval only.')
+    ).not.toBeInTheDocument();
+    expect(approvalActions?.firstElementChild).toContainElement(
+      screen.getByRole('button', { name: 'Reject' })
     );
     expect(approvalActions?.lastElementChild).toContainElement(
       screen.getByRole('button', { name: 'Approve once' })

@@ -1119,16 +1119,11 @@ function NarrativeRunWorkLog({
       state.narrativeInformationDensity ?? DEFAULT_NARRATIVE_INFORMATION_DENSITY
   );
   // Density changes only action presentation. It never hides all narration.
-  const defaultOpen = true;
-  const [open, setOpen] = useState(defaultOpen);
-  const manuallyToggled = useRef(false);
+  const [manualOpen, setManualOpen] = useState<boolean | null>(null);
+  const open = manualOpen ?? !isTerminalRunStatus(run.status);
   const lastAgentIndex = entries.findLastIndex(
     (entry) => entry.kind === 'agent'
   );
-
-  useEffect(() => {
-    if (!manuallyToggled.current) setOpen(defaultOpen);
-  }, [defaultOpen]);
 
   if (items.length === 0) {
     // Lifecycle/time belongs to the Task, not to the availability of tool
@@ -1157,8 +1152,7 @@ function NarrativeRunWorkLog({
         type="button"
         aria-expanded={open}
         onClick={() => {
-          manuallyToggled.current = true;
-          setOpen((value) => !value);
+          setManualOpen(!open);
         }}
         className="group flex w-full min-w-0 items-center justify-start gap-1 border-x-0 border-t-0 border-b border-solid border-ds-hairline-subtle-default px-0 py-2 text-left"
       >

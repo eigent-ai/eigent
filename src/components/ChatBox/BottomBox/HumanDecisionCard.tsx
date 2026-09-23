@@ -90,6 +90,7 @@ export function HumanDecisionCard({
             variant={
               variant.kind === 'approval' ? { ...variant, header: {} } : variant
             }
+            borderlessApproval={variant.kind === 'approval'}
             inputProps={{}}
           />
         </>

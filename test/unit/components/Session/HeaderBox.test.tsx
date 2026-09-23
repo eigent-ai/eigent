@@ -297,7 +297,7 @@ describe('HeaderBox chat timeline mode', () => {
     }
   });
 
-  it('shows view and Narrative detail submenus, disabling detail for Trajectory', async () => {
+  it('keeps the Chat view pill open and shows Narrative style only in Narrative', async () => {
     const user = userEvent.setup();
     render(
       <HeaderBox
@@ -311,53 +311,65 @@ describe('HeaderBox chat timeline mode', () => {
       name: 'Session settings: Timeline project',
     });
     await user.click(trigger);
-    const viewSettings = screen.getByRole('menuitem', {
-      name: 'View settings Narrative',
+    expect(screen.getByText('Chat View Style')).toHaveClass(
+      'text-ds-text-meta',
+      'text-ds-ink-muted-default'
+    );
+    const narrativeMode = screen.getByRole('menuitemradio', {
+      name: 'Narrative',
     });
+    const trajectoryMode = screen.getByRole('menuitemradio', {
+      name: 'Trajectory',
+    });
+    expect(narrativeMode).toHaveAttribute('aria-checked', 'true');
+    expect(trajectoryMode).toHaveAttribute('aria-checked', 'false');
+    expect(narrativeMode).toHaveClass('rounded-lg');
     const narrativeDetail = screen.getByRole('menuitem', {
-      name: 'Narrative detail Compact',
+      name: 'Narrative: Minimum',
     });
-    expect(viewSettings.querySelector('.lucide-square-menu')).toBeTruthy();
     expect(
       narrativeDetail.querySelector('.lucide-rectangle-ellipsis')
     ).toBeTruthy();
-    expect(viewSettings).toHaveAttribute('aria-haspopup', 'menu');
     expect(narrativeDetail).not.toHaveAttribute('aria-disabled', 'true');
 
     await user.click(narrativeDetail);
     expect(
-      screen.getByRole('menuitemradio', { name: 'Compact' })
+      screen.getByRole('menuitemradio', { name: 'Minimum' })
     ).toHaveAttribute('aria-checked', 'true');
-    act(() => screen.getByRole('menuitemradio', { name: 'Expanded' }).focus());
+    act(() => screen.getByRole('menuitemradio', { name: 'Moderate' }).focus());
+    await user.keyboard('{Enter}');
+    expect(usePageTabStore.getState().narrativeInformationDensity).toBe(
+      'balanced'
+    );
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(
+      screen.getByRole('menuitem', { name: 'Narrative: Moderate' })
+    ).toBeInTheDocument();
+    act(() => screen.getByRole('menuitemradio', { name: 'Full' }).focus());
     await user.keyboard('{Enter}');
     expect(usePageTabStore.getState().narrativeInformationDensity).toBe(
       'expanded'
     );
-
-    await user.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
     expect(
-      screen.getByRole('menuitem', { name: 'Narrative detail Expanded' })
+      screen.getByRole('menuitem', { name: 'Narrative: Full' })
     ).toBeInTheDocument();
-    await user.click(
-      screen.getByRole('menuitem', { name: 'View settings Narrative' })
-    );
-    expect(
-      screen.getByRole('menuitemradio', { name: 'Narrative' })
-    ).toHaveAttribute('aria-checked', 'true');
-    act(() =>
-      screen.getByRole('menuitemradio', { name: 'Trajectory' }).focus()
-    );
-    await user.keyboard('{Enter}');
+
+    await user.click(trajectoryMode);
     expect(usePageTabStore.getState().chatTimelineDetailLevel).toBe(
       'trajectory'
     );
-    await user.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(trajectoryMode).toHaveAttribute('aria-checked', 'true');
     expect(
-      screen.getByRole('menuitem', { name: 'View settings Trajectory' })
+      screen.queryByRole('menuitem', { name: 'Narrative: Full' })
+    ).not.toBeInTheDocument();
+
+    await user.click(narrativeMode);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(
+      screen.getByRole('menuitem', { name: 'Narrative: Full' })
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole('menuitem', { name: 'Narrative detail Expanded' })
-    ).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('shows the Session trigger as selected only while its panel is open', async () => {
@@ -458,7 +470,7 @@ describe('HeaderBox chat timeline mode', () => {
     ).toHaveAttribute('aria-disabled', 'true');
   });
 
-  it('lets keyboard users open view settings and choose a mode', async () => {
+  it('lets keyboard users select a Chat view without closing the menu', async () => {
     const user = userEvent.setup();
     render(<HeaderBox projectName="Timeline project" projectId="project-1" />);
     const trigger = screen.getByRole('button', {
@@ -466,17 +478,14 @@ describe('HeaderBox chat timeline mode', () => {
     });
     trigger.focus();
     await user.keyboard('{Enter}');
-    const viewSettings = screen.getByRole('menuitem', {
-      name: 'View settings Narrative',
+    const trajectoryMode = screen.getByRole('menuitemradio', {
+      name: 'Trajectory',
     });
-    act(() => viewSettings.focus());
-    await user.keyboard('{ArrowRight}');
-    expect(
-      screen.getByRole('menuitemradio', { name: 'Narrative' })
-    ).toHaveFocus();
-    await user.keyboard('{ArrowDown}{Enter}');
+    act(() => trajectoryMode.focus());
+    await user.keyboard('{Enter}');
     expect(usePageTabStore.getState().chatTimelineDetailLevel).toBe(
       'trajectory'
     );
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
   });
 });

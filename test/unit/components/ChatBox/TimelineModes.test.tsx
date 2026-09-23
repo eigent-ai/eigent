@@ -2595,6 +2595,62 @@ describe('ChatBox timeline modes', () => {
     expect(workLogTrigger).not.toHaveTextContent('{{time}}');
   });
 
+  it('folds the work log on completion until the user opens it', () => {
+    const { container, rerender } = render(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns(nodes('running'))}
+      />
+    );
+    const trigger = container.querySelector(
+      '[data-narrative-run-work-log] button[aria-expanded]'
+    ) as HTMLButtonElement;
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+    rerender(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns(nodes('completed'))}
+      />
+    );
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(
+      container.querySelector('[data-narrative-timeline]')
+    ).toBeInTheDocument();
+    rerender(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns(nodes('completed'))}
+      />
+    );
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('keeps a user-opened work log open across the terminal receipt', () => {
+    const running = composeTimelineRuns(nodes('running'));
+    const { container, rerender } = render(
+      <TimelineModeRenderer detailLevel="narrative" runs={running} />
+    );
+    const trigger = container.querySelector(
+      '[data-narrative-run-work-log] button[aria-expanded]'
+    ) as HTMLButtonElement;
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+    rerender(
+      <TimelineModeRenderer
+        detailLevel="narrative"
+        runs={composeTimelineRuns(nodes('completed'))}
+      />
+    );
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  });
+
   it('shows canonical duration even when an older Task has no work-log items yet', () => {
     const composed = composeTimelineRuns(
       nodes('completed').filter(

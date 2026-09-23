@@ -397,6 +397,50 @@ describe('TaskWorkLogAccordion repeated tool-call rendering', () => {
       'google'
     );
   });
+
+  it('folds a finished Task log and lets a user reopen it', () => {
+    const store = createWorkLogStore([
+      mk(AgentStep.ACTIVATE_AGENT),
+      ...completedCall('File Toolkit', 'read_file', 'index.html', 'Read file'),
+    ]);
+    const { container, rerender } = render(
+      <TaskWorkLogAccordion chatStore={store} taskId="task-1" />
+    );
+    const trigger = container.querySelector(
+      'button[aria-expanded]'
+    ) as HTMLButtonElement;
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+    store.getState().tasks['task-1']!.status = ChatTaskStatus.FINISHED;
+    rerender(<TaskWorkLogAccordion chatStore={store} taskId="task-1" />);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    rerender(<TaskWorkLogAccordion chatStore={store} taskId="task-1" />);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('respects a manual open state when a Task finishes', () => {
+    const store = createWorkLogStore([
+      mk(AgentStep.ACTIVATE_AGENT),
+      ...completedCall('File Toolkit', 'read_file', 'index.html', 'Read file'),
+    ]);
+    const { container, rerender } = render(
+      <TaskWorkLogAccordion chatStore={store} taskId="task-1" />
+    );
+    const trigger = container.querySelector(
+      'button[aria-expanded]'
+    ) as HTMLButtonElement;
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+    store.getState().tasks['task-1']!.status = ChatTaskStatus.FINISHED;
+    rerender(<TaskWorkLogAccordion chatStore={store} taskId="task-1" />);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  });
 });
 
 describe('TaskWorkLogAccordion human-tool detail', () => {
